@@ -18,7 +18,7 @@ In the NSCR editor, click any tile to edit its palette or character location. Ri
 
 In the NCER editor, each object can be displayed, as well as each of its cells. In here you can edit the character origin and palette of each cell. Under File->Export Bitmap, you can export the currently viewed cell as a bitmap.
 
-##NSBTX Editor
+## NSBTX Editor
 
 In the NSBTX editor, there are two windows on the left; one with the textures, and one with the palettes. Select a tetxure and its corresponding palette to preview that texture. On the top of the window will display the texture's format, size, and number of color entries in its palette. Click the replace button to replace the currently viewed texture with a Nitro TGA file. Under File->Export Bitmap, you can export the current selected texture as a Nitro TGA.
 
