@@ -15,6 +15,9 @@ int nscrIsValidHudson(LPBYTE buffer, int size) {
 	if (size < 8) return 0;
 	int fileSize = 4 + *(WORD *) (buffer + 1);
 	if (fileSize > size) return 0;
+	int tilesX = buffer[6];
+	int tilesY = buffer[7];
+	if (!tilesX || !tilesY) return 0;
 	return 1;
 }
 

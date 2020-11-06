@@ -216,9 +216,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 				}
 				if(format == 0){
-					if (ncgrIsValidHudson(buffer, dwSize)) format = 2;
-					else if (nclrIsValidHudson(buffer, dwSize)) format = 1;
+					if (nclrIsValidHudson(buffer, dwSize)) format = 1;
 					else if (nscrIsValidHudson(buffer, dwSize)) format = 3;
+					else if (ncgrIsValidHudson(buffer, dwSize)) format = 2;
 					
 				}
 				if (format == 1) {

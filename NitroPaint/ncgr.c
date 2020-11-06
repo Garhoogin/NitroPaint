@@ -13,12 +13,15 @@ int calculateWidth(int nTiles) {
 }
 
 int ncgrIsValidHudson(LPBYTE buffer, int size) {
+	//_asm int 3
 	if (size < 8) return 0;
 	if (*buffer == 0x10) return 0;
+	if (*buffer != 0) return 0;
 	if (buffer[4] != 1 && buffer[4] != 0) return 0;
+	if (buffer[3] != 0) return 0;
 	int dataLength = *(WORD *) (buffer + 1);
 	dataLength -= 4;
-	if (dataLength + 8 > size) return 0;
+	if (dataLength + 8 != size) return 0;
 	return 1;
 }
 

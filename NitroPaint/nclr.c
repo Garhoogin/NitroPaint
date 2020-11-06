@@ -53,8 +53,14 @@ int nclrIsValidHudson(LPBYTE lpFile, int size) {
 	int dataLength = *(WORD *) lpFile;
 	int nColors = *(WORD *) (lpFile + 2);
 	if (dataLength & 1) return 0;
-	if (dataLength + 4 > size) return 0;
-	if (nColors * 2 + 4 > size) return 0;
+	if (dataLength + 4 != size) return 0;
+	if (nColors * 2 + 4 != size) return 0;
+
+	WORD *data = lpFile + 4;
+	for (int i = 0; i < nColors; i++) {
+		WORD w = data[i];
+		if (w & 0x8000) return 0;
+	}
 	return 1;
 }
 
