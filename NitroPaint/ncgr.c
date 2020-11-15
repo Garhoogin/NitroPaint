@@ -223,7 +223,7 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 		}
 	} else {
 		BYTE header[] = {0, 0, 0, 0, 1, 0, 0, 0};
-		if (ncgr->nBits == 4) header[4] == 0;
+		if (ncgr->nBits == 4) header[4] = 0;
 		*(WORD *) (header + 5) = ncgr->nTiles;
 		int nCharacterBytes = 64 * ncgr->nTiles;
 		if (ncgr->nBits == 4) nCharacterBytes >>= 1;
