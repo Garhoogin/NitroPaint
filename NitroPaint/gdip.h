@@ -8,6 +8,8 @@ extern INT __stdcall GdipGetImageWidth(void * img, INT * width);
 extern INT __stdcall GdipGetImageHeight(void * img, INT * width);
 extern INT __stdcall GdipBitmapLockBits(void * img, RECT * rc, int n1, int n2, void * n3);
 extern INT __stdcall GdipDisposeImage(void * img);
+extern INT __stdcall GdipCreateBitmapFromScan0(INT n1, INT n2, INT n3, INT n4, void *n5, void *n6);
+extern INT __stdcall GdipSaveImageToFile(void *n1, LPWSTR n2, void *n3, void *n4);
 
 
 typedef struct {

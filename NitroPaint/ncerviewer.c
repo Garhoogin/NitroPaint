@@ -232,7 +232,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_FILE_EXPORT:
 					{
-						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"BMP Files (*.bmp)\0*.bmp\0All Files\0*.*\0", L"bmp");
+						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 						if (!location) break;
 						int width, height;
 
