@@ -160,25 +160,27 @@ DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR * ncgr, NCLR * nclr, int * wi
 	int tilesX = *width / 8;
 	int tilesY = *height / 8;
 
-	for (int x = 0; x < tilesX; x++) {
-		for (int y = 0; y < tilesY; y++) {
-			DWORD block[64];
+	if (ncgr != NULL) {
+		for (int x = 0; x < tilesX; x++) {
+			for (int y = 0; y < tilesY; y++) {
+				DWORD block[64];
 
-			int bitsOffset = x * 8 + (y * 8 * tilesX * 8);
-			if (ncgr->mapping == 0) {
-				int startX = ncgrStart % ncgr->tilesX;
-				int startY = ncgrStart / ncgr->tilesX;
-				int ncx = x + startX;
-				int ncy = y + startY;
-				ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
-			} else {
-				int index = y * tilesY + x + ncgrStart;
-				int ncx = index % ncgr->tilesX;
-				int ncy = index / ncgr->tilesX;
-				ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
-			}
-			for (int i = 0; i < 8; i++) {
-				memcpy(bits + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
+				int bitsOffset = x * 8 + (y * 8 * tilesX * 8);
+				if (ncgr->mapping == 0) {
+					int startX = ncgrStart % ncgr->tilesX;
+					int startY = ncgrStart / ncgr->tilesX;
+					int ncx = x + startX;
+					int ncy = y + startY;
+					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
+				} else {
+					int index = y * tilesY + x + ncgrStart;
+					int ncx = index % ncgr->tilesX;
+					int ncy = index / ncgr->tilesX;
+					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
+				}
+				for (int i = 0; i < 8; i++) {
+					memcpy(bits + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
+				}
 			}
 		}
 	}
