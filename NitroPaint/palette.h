@@ -16,4 +16,6 @@ closestpalette(RGB rgb, RGB * palette, int paletteSize, RGB * error);
 
 void doDiffuse(int i, int width, int height, unsigned int * pixels, int errorRed, int errorGreen, int errorBlue, int errorAlpha, float amt);
 
-void createPalettes(DWORD *img, int width, int height, int chunkSize, DWORD *palette, int nPalettes, int paletteSize);
+DWORD averageColor(DWORD *cols, int nColors);
+
+unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize);

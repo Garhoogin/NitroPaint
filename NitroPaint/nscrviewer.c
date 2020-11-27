@@ -6,11 +6,13 @@
 #include "nitropaint.h"
 #include "nscr.h"
 #include "gdip.h"
+#include "palette.h"
 
 extern HICON g_appIcon;
 
 #define NV_INITIALIZE (WM_USER+1)
 #define NV_SETDATA (WM_USER+2)
+#define NV_INITIMPORTDIALOG (WM_USER+3)
 
 DWORD * renderNscrBits(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL checker, int * width, int * height, int tileMarks, int highlightTile) {
 	int bWidth = renderNscr->nWidth;
@@ -209,7 +211,11 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_NSCRMENU_IMPORTBITMAPHERE:
 					{
-
+						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND h = CreateWindow(L"NscrBitmapImportClass", L"Import Bitmap", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
+						WORD d = data->nscr.data[data->contextHoverX + data->contextHoverY * (data->nscr.nWidth >> 3)];
+						SendMessage(h, NV_INITIMPORTDIALOG, d, data->contextHoverX | (data->contextHoverY << 16));
+						ShowWindow(h, SW_SHOW);
 						break;
 					}
 				}
@@ -465,6 +471,284 @@ LRESULT WINAPI NscrTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct {
+	HWND hWndBitmapName;
+	HWND hWndBrowseButton;
+	HWND hWndPaletteInput;
+	HWND hWndPalettesInput;
+	HWND hWndImportButton;
+
+	int nscrTileX;
+	int nscrTileY;
+	int characterOrigin;
+} NSCRBITMAPIMPORTDATA;
+
+LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NSCRBITMAPIMPORTDATA *data = GetWindowLongPtr(hWnd, 0);
+	if (data == NULL) {
+		data = calloc(1, sizeof(NSCRBITMAPIMPORTDATA));
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+	}
+	switch (msg) {
+		case WM_CREATE:
+		{
+			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
+			/*
+
+			Bitmap:   [__________] [...]
+			Palette:  [_____]
+			Palettes: [_____]
+			          [Import]
+			
+			*/
+
+			CreateWindow(L"STATIC", L"Bitmap:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Palettes:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
+
+			data->hWndBitmapName = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 10, 200, 22, hWnd, NULL, NULL, NULL);
+			data->hWndBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 320, 10, 25, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPalettesInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndImportButton = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 91, 100, 22, hWnd, NULL, NULL, NULL);
+
+			SetWindowSize(hWnd, 355, 123);
+			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			break;
+		}
+		case NV_INITIMPORTDIALOG:
+		{
+			WORD d = wParam;
+			int palette = (d >> 12) & 0xF;
+			int charOrigin = d & 0x3FF;
+			int nscrTileX = LOWORD(lParam);
+			int nscrTileY = HIWORD(lParam);
+
+			data->nscrTileX = nscrTileX;
+			data->nscrTileY = nscrTileY;
+			data->characterOrigin = charOrigin;
+
+			WCHAR textBuffer[16];
+			wsprintf(textBuffer, L"%d", palette);
+			SendMessage(data->hWndPaletteInput, WM_SETTEXT, wcslen(textBuffer), (LPARAM) textBuffer);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			if (lParam) {
+				HWND hWndControl = (HWND) lParam;
+				if (hWndControl == data->hWndBrowseButton) {
+					LPWSTR location = openFileDialog(hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+					if (!location) break;
+
+					SendMessage(data->hWndBitmapName, WM_SETTEXT, wcslen(location), (LPARAM) location);
+
+					free(location);
+				} else if (hWndControl == data->hWndImportButton) {
+					WCHAR textBuffer[MAX_PATH + 1];
+					SendMessage(data->hWndBitmapName, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
+					int width, height;
+					DWORD *px = gdipReadImage(textBuffer, &width, &height);
+					int tilesX = width / 8;
+					int tilesY = height / 8;
+
+					SendMessage(data->hWndPalettesInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
+					int nPalettes = _wtoi(textBuffer);
+					if (nPalettes > 16) nPalettes = 16;
+					SendMessage(data->hWndPaletteInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
+					int paletteNumber = _wtoi(textBuffer);
+					int diffuse = 1;
+
+					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+					HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+					NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+					NCGR *ncgr = &ncgrViewerData->ncgr;
+					HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
+					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+					NSCR *nscr = &nscrViewerData->nscr;
+					int paletteSize = ncgr->nBits == 4 ? 16 : 256;
+
+					//split image into 8x8 chunks, and find the average color in each.
+					DWORD *avgs = calloc(tilesX * tilesY, 4);
+					for (int y = 0; y < tilesY; y++) {
+						for (int x = 0; x < tilesX; x++) {
+							int srcOffset = x * 8 + y * 8 * (width);
+							DWORD block[64];
+							CopyMemory(block, px + srcOffset, 32);
+							CopyMemory(block + 8, px + srcOffset + width, 32);
+							CopyMemory(block + 16, px + srcOffset + width * 2, 32);
+							CopyMemory(block + 24, px + srcOffset + width * 3, 32);
+							CopyMemory(block + 32, px + srcOffset + width * 4, 32);
+							CopyMemory(block + 40, px + srcOffset + width * 5, 32);
+							CopyMemory(block + 48, px + srcOffset + width * 6, 32);
+							CopyMemory(block + 56, px + srcOffset + width * 7, 32);
+							DWORD avg = averageColor(block, 64);
+							avgs[x + y * tilesX] = avg;
+						}
+					}
+					
+					//generate an nPalettes color palette
+					DWORD *avgPals = (DWORD *) calloc(nPalettes + 1, 4);
+					createPalette_(avgs, tilesX, tilesY, avgPals, nPalettes + 1); //+1 because 1 color is reserved
+
+					int useCounts[16] = { 0 };
+					int *closests = calloc(tilesX * tilesY, sizeof(int));
+					
+					//for each tile, see which color in avgPals (excluding entry 0) matches a tile's average.
+					for (int y = 0; y < tilesY; y++) {
+						for (int x = 0; x < tilesX; x++) {
+							int srcOffset = x * 8 + y * 8 * (width);
+							DWORD block[64];
+							CopyMemory(block, px + srcOffset, 32);
+							CopyMemory(block + 8, px + srcOffset + width, 32);
+							CopyMemory(block + 16, px + srcOffset + width * 2, 32);
+							CopyMemory(block + 24, px + srcOffset + width * 3, 32);
+							CopyMemory(block + 32, px + srcOffset + width * 4, 32);
+							CopyMemory(block + 40, px + srcOffset + width * 5, 32);
+							CopyMemory(block + 48, px + srcOffset + width * 6, 32);
+							CopyMemory(block + 56, px + srcOffset + width * 7, 32);
+							DWORD avg = averageColor(block, 64);
+							int closest = 0;
+							if(avg & 0xFF000000) closest = closestpalette(*(RGB *) &avg, (RGB*) (avgPals + 1), nPalettes, NULL);
+							useCounts[closest]++;
+							closests[x + y * tilesX] = closest;
+						}
+					}
+					
+					//now, create a new bitmap for each set of tiles that share a palette.
+					DWORD **groups = (DWORD **) calloc(nPalettes, sizeof(DWORD *));
+					for (int i = 0; i < nPalettes; i++) {
+						groups[i] = (DWORD *) calloc(useCounts[i] * 64, 4);
+					}
+					int written[16] = { 0 };
+					for (int y = 0; y < tilesY; y++) {
+						for (int x = 0; x < tilesX; x++) {
+							int srcOffset = x * 8 + y * 8 * (width);
+							int uses = closests[x + y * tilesX];
+							DWORD *block = groups[uses] + written[uses] * 64;
+							CopyMemory(block, px + srcOffset, 32);
+							CopyMemory(block + 8, px + srcOffset + width, 32);
+							CopyMemory(block + 16, px + srcOffset + width * 2, 32);
+							CopyMemory(block + 24, px + srcOffset + width * 3, 32);
+							CopyMemory(block + 32, px + srcOffset + width * 4, 32);
+							CopyMemory(block + 40, px + srcOffset + width * 5, 32);
+							CopyMemory(block + 48, px + srcOffset + width * 6, 32);
+							CopyMemory(block + 56, px + srcOffset + width * 7, 32);
+							written[uses]++;
+						}
+					}
+					
+					DWORD *pals = calloc(nPalettes * paletteSize, 4);
+					for (int i = 0; i < nPalettes; i++) {
+						createPalette_(groups[i], 8, written[i] * 8, pals + i * paletteSize, paletteSize);
+					}
+					//write to NCLR
+					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
+					NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
+					NCLR *nclr = &nclrViewerData->nclr;
+					WORD *destPalette = nclr->colors + paletteNumber * paletteSize;
+					for (int i = 0; i < nPalettes; i++) {
+						WORD *dest = destPalette + i * paletteSize;
+						for (int j = 0; j < paletteSize; j++) {
+							DWORD col = (pals + i * paletteSize)[j];
+							int r = col & 0xFF;
+							int g = (col >> 8) & 0xFF;
+							int b = (col >> 16) & 0xFF;
+							r = r * 31 / 255;
+							g = g * 31 / 255;
+							b = b * 31 / 255;
+							dest[j] = r | (g << 5) | (b << 10);
+						}
+					}
+
+					//next, start palette matching. See which palette best fits a tile, set it in the NSCR, then write the bits to the NCGR.
+					WORD *nscrData = nscr->data;
+					for (int y = 0; y < tilesY; y++) {
+						for (int x = 0; x < tilesX; x++) {
+							int srcOffset = x * 8 + y * 8 * (width);
+							DWORD block[64];
+							CopyMemory(block, px + srcOffset, 32);
+							CopyMemory(block + 8, px + srcOffset + width, 32);
+							CopyMemory(block + 16, px + srcOffset + width * 2, 32);
+							CopyMemory(block + 24, px + srcOffset + width * 3, 32);
+							CopyMemory(block + 32, px + srcOffset + width * 4, 32);
+							CopyMemory(block + 40, px + srcOffset + width * 5, 32);
+							CopyMemory(block + 48, px + srcOffset + width * 6, 32);
+							CopyMemory(block + 56, px + srcOffset + width * 7, 32);
+							
+							int leastError = 0x7FFFFFFF;
+							int leastIndex = 0;
+							for (int i = 0; i < nPalettes; i++) {
+								int err = getPaletteError((RGB*) block, 64, pals + i * paletteSize, paletteSize);
+								if (err < leastError) {
+									leastError = err;
+									leastIndex = i;
+								}
+							}
+
+							int nscrX = x + data->nscrTileX;
+							int nscrY = y + data->nscrTileY;
+
+							WORD d = nscrData[nscrX + nscrY * (nscr->nWidth >> 3)];
+							d = d & 0xFFF;
+							d |= (leastIndex + paletteNumber) << 12;
+							nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
+
+							int charOrigin = d & 0x3FF;
+							int ncgrX = charOrigin % ncgr->tilesX;
+							int ncgrY = charOrigin / ncgr->tilesX;
+							BYTE *ncgrTile = ncgr->tiles[charOrigin];
+							for (int i = 0; i < 64; i++) {
+								if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
+								else {
+									int index = 1 + closestpalette(*(RGB *) &block[i], pals + leastIndex * paletteSize + 1, paletteSize - 1, NULL);
+									if (diffuse) {
+										RGB original = *(RGB *) &block[i];
+										RGB closest = ((RGB *) (pals + leastIndex * paletteSize))[index];
+										int er = closest.r - original.r;
+										int eg = closest.g - original.g;
+										int eb = closest.b - original.b;
+										doDiffuse(i, 8, 8, block, -er, -eg, -eb, 0, 1.0f);
+									}
+									ncgrTile[i] = index;
+								}
+							}
+						}
+					}
+
+					InvalidateRect(hWndNclrViewer, NULL, FALSE);
+					InvalidateRect(hWndNscrViewer, NULL, FALSE);
+					InvalidateRect(hWndNcgrViewer, NULL, FALSE);
+
+					free(pals);
+					free(groups);
+					free(closests);
+					free(avgPals);
+					free(px);
+					free(avgs);
+					PostMessage(hWnd, WM_CLOSE, 0, 0);
+				}
+			}
+			break;
+		}
+		case WM_CLOSE:
+		{
+			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) & ~WS_DISABLED);
+			SetFocus(hWndParent);
+			break;
+		}
+		case WM_DESTROY:
+		{
+			free(data);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 VOID RegisterNscrTileEditorClass(VOID) {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -475,7 +759,20 @@ VOID RegisterNscrTileEditorClass(VOID) {
 	wcex.cbWndExtra = sizeof(LPVOID);
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
-	int n = RegisterClassEx(&wcex);
+	RegisterClassEx(&wcex);
+}
+
+VOID RegisterNscrBitmapImportClass(VOID) {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"NscrBitmapImportClass";
+	wcex.lpfnWndProc = NscrBitmapImportWndProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
 }
 
 VOID RegisterNscrViewerClass(VOID) {
@@ -490,6 +787,7 @@ VOID RegisterNscrViewerClass(VOID) {
 	wcex.hIconSm = g_appIcon;
 	RegisterClassEx(&wcex);
 	RegisterNscrTileEditorClass();
+	RegisterNscrBitmapImportClass();
 }
 
 HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {

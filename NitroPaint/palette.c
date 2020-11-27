@@ -285,224 +285,36 @@ int chunkDeviation(DWORD *block, int width) {
 	return deviation;
 }
 
-//this has to be passed to the comparator.
-static int _chunkSize;
+DWORD averageColor(DWORD *cols, int nColors) {
+	int tr = 0, tg = 0, tb = 0, nCounted = 0;
 
-int chunkSortComparator(void *block1, void *block2) {
-	int chunkSize = _chunkSize;
-	return chunkDeviation(block2, chunkSize) - chunkDeviation(block1, chunkSize);
+	for (int i = 0; i < nColors; i++) {
+		DWORD c = cols[i];
+		if (c & 0xFF000000 == 0) continue;
+		tr += c & 0xFF;
+		tg += (c >> 8) & 0xFF;
+		tb += (c >> 16) & 0xFF;
+		nCounted++;
+	}
+
+	if (nCounted == 0) return 0;
+	tr = (tr + (nCounted >> 1)) / nCounted;
+	tg = (tg + (nCounted >> 1)) / nCounted;
+	tb = (tb + (nCounted >> 1)) / nCounted;
+	
+	return tr | (tg << 8) | (tb << 16) | 0xFF000000;
 }
 
-//Functions for creating multiple palettes for a bitmap.
-void createPalettes(DWORD *img, int width, int height, int chunkSize, DWORD *palette, int nPalettes, const int paletteSize) {
-	//first, divide the image into chunks. 
-	int chunksX = width >> 3;
-	int chunksY = height >> 3;
-	int nChunks = chunksX * chunksY;
-	DWORD *palettes = (DWORD *) calloc(nChunks, paletteSize * 4);
-
-	DWORD *chunks = (DWORD *) calloc(width * height, 4);
-	//read off the image into the chunks
-	int index = 0;
-	for (int y = 0; y < chunksY; y++) {
-		for (int x = 0; x < chunksX; x++) {
-			int offs = x * chunkSize + y * chunkSize * chunksX;
-			DWORD *origin = img + offs;
-			DWORD *block = chunks + index * chunkSize * chunkSize;
-			//copy from origin to block
-			for (int _y = 0; _y < chunkSize; _y++) {
-				CopyMemory(block + _y * chunkSize, origin + _y * width, chunkSize * 4);
-			}
-
-			index++;
-		}
+unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize) {
+	unsigned int error = 0;
+	for (int i = 0; i < nPx; i++) {
+		RGB thisColor = px[i];
+		if (thisColor.a == 0) continue;
+		RGB closest = pal[closestpalette(px[i], pal + 1, paletteSize - 1, NULL) + 1];
+		int er = closest.r - thisColor.r;
+		int eg = closest.g - thisColor.g;
+		int eb = closest.b - thisColor.b;
+		error += (int) (sqrt(er * er + eg * eg + eb * eb) + 0.5f);
 	}
-
-	//next, sort the blocks by their standard deviation.
-	_chunkSize = chunkSize;
-	qsort(chunks, nChunks, chunkSize * chunkSize * 4, chunkSortComparator);
-
-	//next, create a palette for each chunk of the image.
-	for (int i = 0; i < nChunks; i++) {
-		createPalette_(chunks + i * chunkSize * chunkSize, chunkSize, chunkSize, palettes + i * paletteSize, paletteSize);
-	}
-
-	//continually reduce the tolerance until the palettes are merged correctly.
-	/*int tolerance = 2;
-	while (1) {
-		int nCreatedPalettes = 0;
-		for (int i = 0; i < nChunks; i++) {
-			DWORD *thisPal = palettes + i * paletteSize;
-			//which palette does it best fit into?
-			int bestFit = 0, bestTolerance = 0x7FFFFFFF;
-			if (nCreatedPalettes == 0) {
-				//if there are no palettes yet, just put this one down.
-				bestTolerance = 0;
-			} else {
-				//iterate over the palettes to try to ind the best match.
-				for (int j = 0; j < nCreatedPalettes; j++) {
-					DWORD *compareTo = palettes + j * paletteSize;
-					int dst = comparePalettes(thisPal, compareTo, paletteSize);
-					if (dst < bestTolerance) {
-						bestTolerance = dst;
-					}
-					
-				}
-			}
-
-			//if the tolerance exceeds the limits or if there are no entries, put it down.
-			if (bestTolerance > tolerance || nCreatedPalettes == 0) {
-				CopyMemory(thisPal, palette + nCreatedPalettes * paletteSize, paletteSize);
-				nCreatedPalettes++;
-			} else {
-				//otherwise, merge with its closest match.
-			}
-		}
-		tolerance += 4;
-	}*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	DWORD * paletteIndices = (DWORD *) calloc(nChunks, 4);
-
-	typedef struct {
-		DWORD r;
-		DWORD g;
-		DWORD b;
-		DWORD a;
-	} BIGCOLOR;
-
-	int maxColors = nPalettes * paletteSize;//127;
-	/*if (maxColors & 7) {
-		//not a multiple of 8
-		if((maxColors & 7) > 3) maxColors += 8 - (maxColors & 7);
-		else maxColors -= maxColors & 7;
-	}*/
-	int n = maxColors / paletteSize;
-	BIGCOLOR * colors = (BIGCOLOR *) calloc(n * paletteSize + paletteSize, sizeof(BIGCOLOR));
-	int tolerance = 0;
-	int * sizes = (int *) calloc(n * paletteSize + paletteSize, sizeof(int));
-	int nPals = 0;
-
-	RGB *c = (RGB *) calloc(paletteSize, 4);
-	RGB *testSmall = (RGB *) calloc(paletteSize, 4);
-	BIGCOLOR *test = (BIGCOLOR *) calloc(paletteSize, sizeof(BIGCOLOR));
-	BIGCOLOR *b = (BIGCOLOR *) calloc(paletteSize, sizeof(BIGCOLOR));
-	int *indices = (int *) calloc(paletteSize, sizeof(int));
-	char *used = (char *) calloc(paletteSize, 1);
-
-	while(1){		//oddly, this function performs worse when given more color room.
-		printf("-----------------\nNew tolerance: %d\n", tolerance);
-		int nProcessed = 0;
-		memset(colors, 0, (n * paletteSize + paletteSize) * sizeof(BIGCOLOR));
-		memset(sizes, 0, n * 4 * paletteSize);
-		nPals = 0;
-		for(int i = 0; i < nChunks; i++, nProcessed++){
-			memcpy(c, palette + (i * paletteSize), paletteSize * sizeof(RGB));
-			int foundMatch = 0, foundIndex = -1;
-			//find matching palette within tolerance to c. Check from 0 to (nPals-1).
-			double leastDistance = 100000.0;
-			//for the mappings, indices
-			for(int j = 0; j < nPals; j++){
-				memcpy(test, &colors[j * paletteSize], sizeof(test));
-				//divide
-				for(int k = 0; k < paletteSize; k++){
-					int testSize = sizes[j * paletteSize + k];
-					test[k].r = (test[k].r + (testSize >> 1)) / testSize;
-					test[k].g = (test[k].g + (testSize >> 1)) / testSize;
-					test[k].b = (test[k].b + (testSize >> 1)) / testSize;
-					testSmall[k].r = test[k].r;
-					testSmall[k].g = test[k].g;
-					testSmall[k].b = test[k].b;
-				}
-				//map each color c to a color in test
-				//color 0 gets index 0, color 1 gets index 1...
-				for (int k = 0; k < paletteSize; k++) {
-					indices[k] = closestpalette(c[k], testSmall, 4, NULL);
-				}
-				//add up distances
-				double distance = 0.0;
-				for(int k = 0; k < paletteSize; k++){
-					int dR = c[k].r - testSmall[indices[k]].r;
-					int dG = c[k].g - testSmall[indices[k]].g;
-					int dB = c[k].b - testSmall[indices[k]].b;
-					distance += sqrt(dR * dR + dG * dG + dB * dB);
-				}
-				if(distance <= tolerance && distance < leastDistance){
-					foundMatch = 1;
-					foundIndex = j;
-					leastDistance = distance;
-				}
-			}
-			if(!foundMatch || ((nChunks - i) <= (n - nPals))){
-				for (int j = 0; j < paletteSize; j++) {
-					b[j].r = c[j].r;
-					b[j].g = c[j].g;
-					b[j].b = c[j].b;
-				}
-				memcpy(colors + paletteSize * nPals, b, paletteSize * sizeof(BIGCOLOR));
-				//_flags[nPals] = flags[i];
-				paletteIndices[i] = nPals;
-				for (int j = 0; j < paletteSize; j++) {
-					sizes[nPals * paletteSize + j] = 1;
-				}
-				printf("Created new entry %d from slot %d.\n", nPals, i);
-				nPals++;
-				if(nPals > n){
-					break;
-				}
-			} else {
-				//map each color in c to its closest color in the cumulative palette (divided by each respective size).
-				//add to the cumulative palette, then add to sizes.
-				//indices has the closest color mappings. Add to sizes, and add to the colors.
-				for(int j = 0; j < paletteSize; j++){
-					sizes[foundIndex * paletteSize + indices[j]]++;
-					colors[foundIndex * paletteSize + indices[j]].r += c[j].r;
-					colors[foundIndex * paletteSize + indices[j]].g += c[j].g;
-					colors[foundIndex * paletteSize + indices[j]].b += c[j].b;
-				}
-				printf("Palette %d slotted in %d.\n", i, foundIndex);
-				//paletteIndices[i] = foundIndex;
-			}
-		}
-		if(nPals <= n) break; //success
-							  //failure
-		tolerance += paletteSize / 2;
-
-	}
-
-	//average colors
-	for(int i = 0; i < nPals * paletteSize; i++){
-		colors[i].r = (colors[i].r + (sizes[i] >> 1)) / sizes[i];
-		colors[i].g = (colors[i].g + (sizes[i] >> 1)) / sizes[i];
-		colors[i].b = (colors[i].b + (sizes[i] >> 1)) / sizes[i];
-		DWORD c = colors[i].r | (colors[i].g << 8) | (colors[i].b << 16);
-		palette[i] = c;
-	}
-
-
-
-
-
-
-
-
-
-
-
-	
-	//CopyMemory(palette, palettes, nPalettes * paletteSize * 4);
-	free(palettes);
-	free(chunks);
+	return error;
 }
