@@ -303,13 +303,11 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int index = y * 16 + x;
 					if (index < data->nclr.nColors) {
 						CHOOSECOLOR cc = { 0 };
-						//COLORREF * tmpCust = (COLORREF *) calloc(16, sizeof(COLORREF));
-						COLORREF tmpCust[16] = { 0 };
 						cc.lStructSize = sizeof(cc);
 						cc.hInstance = (HINSTANCE) GetWindowLongA(hWnd, GWL_HINSTANCE);
 						cc.hwndOwner = hWnd;
 						cc.rgbResult = RGBFromDS(data->nclr.colors[index]);
-						cc.lpCustColors = tmpCust;
+						cc.lpCustColors = data->tmpCust;
 						cc.Flags = 0x103;
 						if (ChooseColor(&cc)) {
 							DWORD result = cc.rgbResult;

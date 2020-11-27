@@ -24,6 +24,8 @@ typedef struct {
 	int dragging;
 	int draggingIndex;
 	int rowDragging;
+
+	COLORREF tmpCust[16];
 } NCLRVIEWERDATA;
 
 VOID RegisterNclrViewerClass(VOID);
