@@ -87,6 +87,31 @@ void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors
 		if (d >> 24) continue;
 		img[i] = 0;
 	}
+	/* is this image already compressed enough? */
+	int nUniqueColors = 0, nSearched = 0;
+	for (int i = 0; i < width * height; i++) {
+		DWORD d = img[i];
+		if (d == 0) continue;
+		d &= 0xFFFFFF;
+		int found = 0;
+		for (int j = 0; j < nUniqueColors; j++) {
+			if (d == pal[j + 1] & 0xFFFFFF) {
+				found = 1;
+				break;
+			}
+		}
+		if (!found) {
+			if (nUniqueColors >= nColors - 1) break;
+			pal[nUniqueColors + 1] = d;
+			nUniqueColors++;
+		}
+		nSearched++;
+	}
+	_asm int 3
+	if (nSearched == width * height) {
+		pal[0] = 0xFF00FF;
+		return;
+	}
 													   /* create a copy. This way, we can modify it. */
 	DWORD * copy = (DWORD *) calloc(width * height, sizeof(DWORD));
 	unsigned scaleTo = 0;
