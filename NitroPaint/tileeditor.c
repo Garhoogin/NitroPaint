@@ -191,7 +191,10 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_LBUTTONDOWN:
 		case WM_MOUSEMOVE:
 		{
-			if (msg == WM_LBUTTONDOWN) data->mouseDown = TRUE;
+			if (msg == WM_LBUTTONDOWN) {
+				data->mouseDown = TRUE;
+				SetCapture(hWnd);
+			}
 			if (!data->mouseDown) break;
 			//what region is the mouse in?
 			POINT mousePos;
@@ -242,6 +245,7 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_LBUTTONUP:
 		{
 			data->mouseDown = FALSE;
+			ReleaseCapture();
 			break;
 		}
 		case WM_DESTROY:
