@@ -471,12 +471,54 @@ LRESULT WINAPI NscrTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
+void createMultiPalettes(DWORD *px, int tilesX, int tilesY, int width, DWORD *pals, int nPalettes, int paletteSize, int *useCounts, int *closests) {
+	//compute the palettes from how the tiles are divided.
+	DWORD **groups = (DWORD **) calloc(nPalettes, sizeof(DWORD *));
+	for (int i = 0; i < nPalettes; i++) {
+		groups[i] = (DWORD *) calloc(useCounts[i] * 64, 4);
+	}
+	int written[16] = { 0 };
+	for (int y = 0; y < tilesY; y++) {
+		for (int x = 0; x < tilesX; x++) {
+			int srcOffset = x * 8 + y * 8 * (width);
+			int uses = closests[x + y * tilesX];
+			DWORD *block = groups[uses] + written[uses] * 64;
+			CopyMemory(block, px + srcOffset, 32);
+			CopyMemory(block + 8, px + srcOffset + width, 32);
+			CopyMemory(block + 16, px + srcOffset + width * 2, 32);
+			CopyMemory(block + 24, px + srcOffset + width * 3, 32);
+			CopyMemory(block + 32, px + srcOffset + width * 4, 32);
+			CopyMemory(block + 40, px + srcOffset + width * 5, 32);
+			CopyMemory(block + 48, px + srcOffset + width * 6, 32);
+			CopyMemory(block + 56, px + srcOffset + width * 7, 32);
+			written[uses]++;
+		}
+	}
+
+	for (int i = 0; i < nPalettes; i++) {
+		createPalette_(groups[i], 8, written[i] * 8, pals + i * paletteSize, paletteSize);
+	}
+	free(groups);
+}
+
+int computeMultiPaletteError(int *closests, DWORD *blocks, int tilesX, int tilesY, int width, DWORD *pals, int nPalettes, int paletteSize) {
+	int error = 0;
+	for (int i = 0; i < tilesX * tilesY; i++) {
+		int x = i % tilesX;
+		int y = i / tilesX;
+		DWORD *block = blocks + 64 * (x + y * tilesX);
+		error += getPaletteError(block, 64, pals + closests[i] * paletteSize, paletteSize);
+	}
+	return error;
+}
+
 typedef struct {
 	HWND hWndBitmapName;
 	HWND hWndBrowseButton;
 	HWND hWndPaletteInput;
 	HWND hWndPalettesInput;
 	HWND hWndImportButton;
+	HWND hWndDitherCheckbox;
 
 	int nscrTileX;
 	int nscrTileY;
@@ -506,14 +548,23 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateWindow(L"STATIC", L"Bitmap:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Palettes:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Dither:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 100, 22, hWnd, NULL, NULL, NULL);
 
 			data->hWndBitmapName = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 10, 200, 22, hWnd, NULL, NULL, NULL);
 			data->hWndBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 320, 10, 25, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteInput = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 120, 37, 100, 200, hWnd, NULL, NULL, NULL);
 			data->hWndPalettesInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndImportButton = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 91, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDitherCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 91, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndImportButton = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 118, 100, 22, hWnd, NULL, NULL, NULL);
 
-			SetWindowSize(hWnd, 355, 123);
+			for (int i = 0; i < 16; i++) {
+				WCHAR textBuffer[4];
+				wsprintf(textBuffer, L"%d", i);
+				SendMessage(data->hWndPaletteInput, CB_ADDSTRING, wcslen(textBuffer), (LPARAM) textBuffer);
+			}
+			SendMessage(data->hWndDitherCheckbox, BM_SETCHECK, 1, 0);
+
+			SetWindowSize(hWnd, 355, 150);
 			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
 			break;
 		}
@@ -529,9 +580,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->nscrTileY = nscrTileY;
 			data->characterOrigin = charOrigin;
 
-			WCHAR textBuffer[16];
-			wsprintf(textBuffer, L"%d", palette);
-			SendMessage(data->hWndPaletteInput, WM_SETTEXT, wcslen(textBuffer), (LPARAM) textBuffer);
+			SendMessage(data->hWndPaletteInput, CB_SETCURSEL, palette, 0);
 			break;
 		}
 		case WM_COMMAND:
@@ -556,9 +605,8 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					SendMessage(data->hWndPalettesInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
 					int nPalettes = _wtoi(textBuffer);
 					if (nPalettes > 16) nPalettes = 16;
-					SendMessage(data->hWndPaletteInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
-					int paletteNumber = _wtoi(textBuffer);
-					int diffuse = 1;
+					int paletteNumber = SendMessage(data->hWndPaletteInput, CB_GETCURSEL, 0, 0);
+					int diffuse = SendMessage(data->hWndDitherCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
 					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
@@ -569,13 +617,19 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
 					NSCR *nscr = &nscrViewerData->nscr;
 					int paletteSize = ncgr->nBits == 4 ? 16 : 256;
+					int maxTilesX = (nscr->nWidth / 8) - data->nscrTileX;
+					int maxTilesY = (nscr->nHeight / 8) - data->nscrTileY;
+					if (tilesX > maxTilesX) tilesX = maxTilesX;
+					if (tilesY > maxTilesY) tilesY = maxTilesY;
+
+					DWORD *blocks = (DWORD *) calloc(tilesX * tilesY, 64 * 4);
 
 					//split image into 8x8 chunks, and find the average color in each.
 					DWORD *avgs = calloc(tilesX * tilesY, 4);
 					for (int y = 0; y < tilesY; y++) {
 						for (int x = 0; x < tilesX; x++) {
 							int srcOffset = x * 8 + y * 8 * (width);
-							DWORD block[64];
+							DWORD *block = blocks + 64 * (x + y * tilesX);
 							CopyMemory(block, px + srcOffset, 32);
 							CopyMemory(block + 8, px + srcOffset + width, 32);
 							CopyMemory(block + 16, px + srcOffset + width * 2, 32);
@@ -588,62 +642,74 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							avgs[x + y * tilesX] = avg;
 						}
 					}
-					
+
 					//generate an nPalettes color palette
 					DWORD *avgPals = (DWORD *) calloc(nPalettes + 1, 4);
 					createPalette_(avgs, tilesX, tilesY, avgPals, nPalettes + 1); //+1 because 1 color is reserved
 
 					int useCounts[16] = { 0 };
 					int *closests = calloc(tilesX * tilesY, sizeof(int));
-					
+
+					//form a best guess of how to divide the tiles amonng the palettes.
 					//for each tile, see which color in avgPals (excluding entry 0) matches a tile's average.
 					for (int y = 0; y < tilesY; y++) {
 						for (int x = 0; x < tilesX; x++) {
-							int srcOffset = x * 8 + y * 8 * (width);
-							DWORD block[64];
-							CopyMemory(block, px + srcOffset, 32);
-							CopyMemory(block + 8, px + srcOffset + width, 32);
-							CopyMemory(block + 16, px + srcOffset + width * 2, 32);
-							CopyMemory(block + 24, px + srcOffset + width * 3, 32);
-							CopyMemory(block + 32, px + srcOffset + width * 4, 32);
-							CopyMemory(block + 40, px + srcOffset + width * 5, 32);
-							CopyMemory(block + 48, px + srcOffset + width * 6, 32);
-							CopyMemory(block + 56, px + srcOffset + width * 7, 32);
+							DWORD *block = blocks + 64 * (x + y * tilesX);
 							DWORD avg = averageColor(block, 64);
 							int closest = 0;
-							if(avg & 0xFF000000) closest = closestpalette(*(RGB *) &avg, (RGB*) (avgPals + 1), nPalettes, NULL);
+							if (avg & 0xFF000000) closest = closestpalette(*(RGB *) &avg, (RGB*) (avgPals + 1), nPalettes, NULL);
 							useCounts[closest]++;
 							closests[x + y * tilesX] = closest;
 						}
 					}
+
+					//refine the choice of palettes.
+					DWORD *pals = calloc(nPalettes * paletteSize, 4);
+					{
+						//create an array for temporary work.
+						int *tempClosests = calloc(tilesX * tilesY, sizeof(int));
+						int tempUseCounts[16];
+						int bestError = computeMultiPaletteError(closests, blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize);
+
+						while (1) {
+							int nChanged = 0;
+							for (int i = 0; i < tilesX * tilesY; i++) {
+								int x = i % tilesX;
+								int y = i / tilesX;
+								DWORD *block = blocks + 64 * (x + y * tilesX);
+
+								//go over each group to see if this tile works better in another.
+								for (int j = 0; j < nPalettes; j++) {
+									if (j == closests[i]) continue;
+									memcpy(tempClosests, closests, tilesX * tilesY * sizeof(int));
+									memcpy(tempUseCounts, useCounts, sizeof(useCounts));
+
+									tempClosests[i] = j;
+									tempUseCounts[j]++;
+									tempUseCounts[closests[i]]--;
+									createMultiPalettes(px, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
+
+									//compute total error
+									int error = computeMultiPaletteError(tempClosests, blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize);
+									if (error < bestError) {
+										bestError = error;
+										int oldClosest = closests[i];
+										closests[i] = j;
+										useCounts[j]++;
+										useCounts[oldClosest]--;
+										nChanged++;
+									}
+								}
+							}
+							if (nChanged == 0) break;
+						}
+
+						free(tempClosests);
+					}
 					
 					//now, create a new bitmap for each set of tiles that share a palette.
-					DWORD **groups = (DWORD **) calloc(nPalettes, sizeof(DWORD *));
-					for (int i = 0; i < nPalettes; i++) {
-						groups[i] = (DWORD *) calloc(useCounts[i] * 64, 4);
-					}
-					int written[16] = { 0 };
-					for (int y = 0; y < tilesY; y++) {
-						for (int x = 0; x < tilesX; x++) {
-							int srcOffset = x * 8 + y * 8 * (width);
-							int uses = closests[x + y * tilesX];
-							DWORD *block = groups[uses] + written[uses] * 64;
-							CopyMemory(block, px + srcOffset, 32);
-							CopyMemory(block + 8, px + srcOffset + width, 32);
-							CopyMemory(block + 16, px + srcOffset + width * 2, 32);
-							CopyMemory(block + 24, px + srcOffset + width * 3, 32);
-							CopyMemory(block + 32, px + srcOffset + width * 4, 32);
-							CopyMemory(block + 40, px + srcOffset + width * 5, 32);
-							CopyMemory(block + 48, px + srcOffset + width * 6, 32);
-							CopyMemory(block + 56, px + srcOffset + width * 7, 32);
-							written[uses]++;
-						}
-					}
-					
-					DWORD *pals = calloc(nPalettes * paletteSize, 4);
-					for (int i = 0; i < nPalettes; i++) {
-						createPalette_(groups[i], 8, written[i] * 8, pals + i * paletteSize, paletteSize);
-					}
+					createMultiPalettes(px, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
+
 					//write to NCLR
 					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 					NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
@@ -667,16 +733,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					WORD *nscrData = nscr->data;
 					for (int y = 0; y < tilesY; y++) {
 						for (int x = 0; x < tilesX; x++) {
-							int srcOffset = x * 8 + y * 8 * (width);
-							DWORD block[64];
-							CopyMemory(block, px + srcOffset, 32);
-							CopyMemory(block + 8, px + srcOffset + width, 32);
-							CopyMemory(block + 16, px + srcOffset + width * 2, 32);
-							CopyMemory(block + 24, px + srcOffset + width * 3, 32);
-							CopyMemory(block + 32, px + srcOffset + width * 4, 32);
-							CopyMemory(block + 40, px + srcOffset + width * 5, 32);
-							CopyMemory(block + 48, px + srcOffset + width * 6, 32);
-							CopyMemory(block + 56, px + srcOffset + width * 7, 32);
+							DWORD *block = blocks + 64 * (x + y * tilesX);
 							
 							int leastError = 0x7FFFFFFF;
 							int leastIndex = 0;
@@ -722,8 +779,8 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					InvalidateRect(hWndNscrViewer, NULL, FALSE);
 					InvalidateRect(hWndNcgrViewer, NULL, FALSE);
 
+					free(blocks);
 					free(pals);
-					free(groups);
 					free(closests);
 					free(avgPals);
 					free(px);
