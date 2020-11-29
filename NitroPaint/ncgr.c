@@ -160,6 +160,7 @@ DWORD getColor(WORD col) {
 }
 
 int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker) {
+	if (x + y * ncgr->tilesX >= ncgr->nTiles) return 1;
 	BYTE * tile = ncgr->tiles[x + y * ncgr->tilesX];
 	int nTiles = ncgr->nTiles;
 	for (int i = 0; i < 64; i++) {
