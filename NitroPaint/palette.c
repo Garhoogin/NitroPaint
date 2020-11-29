@@ -107,7 +107,6 @@ void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors
 		}
 		nSearched++;
 	}
-	_asm int 3
 	if (nSearched == width * height) {
 		pal[0] = 0xFF00FF;
 		return;
