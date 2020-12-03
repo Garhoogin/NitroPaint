@@ -89,7 +89,7 @@ DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr) {
 	return bits;
 }
 
-VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC) {
+VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
 	int width = data->ncgr.tilesX * 8;
 	int height = data->ncgr.tilesY * 8;
 
@@ -122,6 +122,7 @@ HWND getMainWindow(HWND hWnd) {
 }
 
 #define NV_INITIALIZE (WM_USER+1)
+#define NV_RECALCULATE (WM_USER+2)
 
 LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
@@ -142,6 +143,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hoverY = -1;
 			data->hoverIndex = -1;
 
+			data->hWndViewer = CreateWindow(L"NcgrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 256, 256, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteDropdown = CreateWindowEx(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 200, 100, hWnd, NULL, NULL, NULL);
 			data->hWndWidthDropdown = CreateWindowEx(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 200, 100, hWnd, NULL, NULL, NULL);
 			data->hWndWidthLabel = CreateWindow(L"STATIC", L" Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 100, 21, hWnd, NULL, NULL, NULL);
@@ -172,8 +174,9 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			rc.bottom = data->frameData.contentHeight;
 			if (rc.right < 150) rc.right = 150;
 			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-			int width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
-			int height = rc.bottom - rc.top + 4 + 42; //+42 to account for combobox
+			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
+			int height = rc.bottom - rc.top + 4 + 42 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for combobox
+			width += 1, height += 1;
 			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
 
 
@@ -230,23 +233,10 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					data->ncgr.tilesX = width;
 					data->ncgr.tilesY = data->ncgr.nTiles / width;
 
-					data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
-					data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
-
 					RECT rcClient;
 					GetClientRect(hWnd, &rcClient);
 
-					SCROLLINFO info;
-					info.cbSize = sizeof(info);
-					info.nMin = 0;
-					info.nMax = data->frameData.contentWidth;
-					info.nPage = rcClient.right - rcClient.left + 1;
-					info.fMask = SIF_RANGE | SIF_PAGE;
-					SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
-
-					info.nMax = data->frameData.contentHeight;
-					info.nPage = rcClient.bottom - rcClient.top + 1;
-					SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+					SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
 			}
@@ -264,20 +254,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							data->showBorders = 0;
 							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
 						}
-
-						data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
-						data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
-
-						SCROLLINFO info;
-						info.cbSize = sizeof(info);
-						info.nMin = 0;
-						info.nMax = data->frameData.contentWidth;
-						info.fMask = SIF_RANGE;
-						SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
-
-						info.nMax = data->frameData.contentHeight;
-						SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
-
+						SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
@@ -290,30 +267,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (LOWORD(wParam) == ID_ZOOM_200) data->scale = 2;
 						if (LOWORD(wParam) == ID_ZOOM_400) data->scale = 4;
 						if (LOWORD(wParam) == ID_ZOOM_800) data->scale = 8;
-
-						data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
-						data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
-
-						RECT rcClient;
-						GetClientRect(hWnd, &rcClient);
-
-						SCROLLINFO info;
-						info.cbSize = sizeof(info);
-						info.nMin = 0;
-						info.nMax = data->frameData.contentWidth;
-						info.nPage = data->frameData.contentWidth + 4 + 1;
-						info.fMask = SIF_RANGE | SIF_PAGE;
-						SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
-
-						info.nMax = data->frameData.contentHeight;
-						info.nPage = data->frameData.contentHeight + 4 + 42 + 1;
-						SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
-
-						RECT rc = { 0 };
-						rc.right = data->frameData.contentWidth + 4;
-						rc.bottom = data->frameData.contentHeight + 4 + 42;
-						AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_HSCROLL | WS_VSCROLL, FALSE);
-						SetWindowPos(hWnd, HWND_TOP, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_NOMOVE);
 
 						int checkBox = ID_ZOOM_100;
 						if (data->scale == 2) {
@@ -329,7 +282,9 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							CheckMenuItem(GetMenu(getMainWindow(hWnd)), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
 						}
 
+						SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
 						InvalidateRect(hWnd, NULL, FALSE);
+						RedrawWindow(data->hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
 					}
 					case ID_NCGRMENU_IMPORTBITMAPHERE:
@@ -474,177 +429,11 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			break;
 		}
-		case WM_RBUTTONUP:
-		case WM_LBUTTONDOWN:
-		{
-			//get coordinates.
-			int hoverX = data->hoverX;
-			int hoverY = data->hoverY;
-			POINT mousePos;
-			GetCursorPos(&mousePos);
-			ScreenToClient(hWnd, &mousePos);
-			//transform it by scroll position
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-
-			mousePos.x += horiz.nPos;
-			mousePos.y += vert.nPos;
-			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < data->frameData.contentWidth && mousePos.y < data->frameData.contentHeight) {
-				//find the tile coordinates.
-				int x = 0, y = 0;
-				if (data->showBorders) {
-					mousePos.x -= 1;
-					mousePos.y -= 1;
-					if (mousePos.x < 0) mousePos.x = 0;
-					if (mousePos.y < 0) mousePos.y = 0;
-					int cellWidth = 8 * data->scale + 1;
-					mousePos.x /= cellWidth;
-					mousePos.y /= cellWidth;
-					x = mousePos.x;
-					y = mousePos.y;
-				} else {
-					int cellWidth = 8 * data->scale;
-					mousePos.x /= cellWidth;
-					mousePos.y /= cellWidth;
-					x = mousePos.x;
-					y = mousePos.y;
-				}
-				if (msg == WM_LBUTTONDOWN) {
-					HWND hWndMain = getMainWindow(hWnd);
-					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-					NCLR *nclr = NULL;
-					if (nitroPaintStruct->hWndNclrViewer) {
-						NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(nitroPaintStruct->hWndNclrViewer, 0);
-						nclr = &nclrViewerData->nclr;
-					}
-					if (data->hWndTileEditorWindow) DestroyWindow(data->hWndTileEditorWindow);
-					data->hWndTileEditorWindow = CreateTileEditor(CW_USEDEFAULT, CW_USEDEFAULT, 480, 256, nitroPaintStruct->hWndMdi, data->hoverX, data->hoverY);
-				} else {
-					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 1);
-					POINT mouse;
-					GetCursorPos(&mouse);
-					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
-					data->contextHoverY = hoverY;
-					data->contextHoverX = hoverX;
-				}
-			}
-			break;
-		}
-		case WM_MOUSEMOVE:
-		case WM_NCMOUSEMOVE:
-		{
-			TRACKMOUSEEVENT evt;
-			evt.cbSize = sizeof(evt);
-			evt.hwndTrack = hWnd;
-			evt.dwHoverTime = 0;
-			evt.dwFlags = TME_LEAVE;
-			TrackMouseEvent(&evt);
-		}
-		case WM_MOUSELEAVE:
-		{
-			int oldHovered = data->hoverIndex;
-			POINT mousePos;
-			GetCursorPos(&mousePos);
-			ScreenToClient(hWnd, &mousePos);
-
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-			mousePos.x += horiz.nPos;
-			mousePos.y += vert.nPos;
-
-			int hoverX = -1, hoverY = -1, hoverIndex = -1;
-			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < data->frameData.contentWidth && mousePos.y < data->frameData.contentHeight) {
-				//find the tile coordinates.
-				int x = 0, y = 0;
-				if (data->showBorders) {
-					mousePos.x -= 1;
-					mousePos.y -= 1;
-					if (mousePos.x < 0) mousePos.x = 0;
-					if (mousePos.y < 0) mousePos.y = 0;
-					int cellWidth = 8 * data->scale + 1;
-					mousePos.x /= cellWidth;
-					mousePos.y /= cellWidth;
-					x = mousePos.x;
-					y = mousePos.y;
-				} else {
-					int cellWidth = 8 * data->scale;
-					mousePos.x /= cellWidth;
-					mousePos.y /= cellWidth;
-					x = mousePos.x;
-					y = mousePos.y;
-				}
-				hoverX = x, hoverY = y;
-				hoverIndex = hoverX + hoverY * data->ncgr.tilesX;
-			}
-			if (msg == WM_MOUSELEAVE) {
-				hoverX = -1, hoverY = -1, hoverIndex = -1;
-			}
-			data->hoverX = hoverX;
-			data->hoverY = hoverY;
-			data->hoverIndex = hoverIndex;
-			if (data->hoverIndex != oldHovered) {
-				HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLong(hWndMain, 0);
-				if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
-			}
-
-			InvalidateRect(hWnd, NULL, FALSE);
-			break;
-		}
 		case WM_PAINT:
 		{
-			RECT rcClient;
-			GetClientRect(hWnd, &rcClient);
-			PAINTSTRUCT ps;
-			HDC hWindowDC = BeginPaint(hWnd, &ps);
-
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-
-
-			HDC hDC = CreateCompatibleDC(hWindowDC);
-			HBITMAP hBitmap = CreateCompatibleBitmap(hWindowDC, max(data->frameData.contentWidth, horiz.nPos + rcClient.right), max(data->frameData.contentHeight, vert.nPos + rcClient.bottom));
-			SelectObject(hDC, hBitmap);
-			IntersectClipRect(hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
-			DefMDIChildProc(hWnd, WM_ERASEBKGND, (WPARAM) hDC, 0);
-			HPEN defaultPen = SelectObject(hDC, GetStockObject(NULL_PEN));
-			HBRUSH defaultBrush = SelectObject(hDC, GetSysColorBrush(GetClassLong(hWnd, GCL_HBRBACKGROUND) - 1));
-			Rectangle(hDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
-			SelectObject(hDC, defaultPen);
-			SelectObject(hDC, defaultBrush);
-
-			PaintNcgrViewer(hWnd, data, hDC);
-
-			BitBlt(hWindowDC, 0, 0, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, hDC, horiz.nPos, vert.nPos, SRCCOPY);
-			EndPaint(hWnd, &ps);
-			DeleteObject(hDC);
-			DeleteObject(hBitmap);
-			if (data->hWndTileEditorWindow) InvalidateRect(data->hWndTileEditorWindow, NULL, FALSE);
-			
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLong(hWndMain, 0);
-			if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
-
-			InvalidateRect(data->hWndWidthLabel, NULL, FALSE);
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
 			break;
 		}
-		case WM_ERASEBKGND:
-			return 1;
 		case WM_MDIACTIVATE:
 		{
 			HWND hWndMain = getMainWindow(hWnd);
@@ -688,13 +477,282 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
 			int height = rcClient.bottom - rcClient.top;
-			MoveWindow(data->hWndPaletteDropdown, 0, height - 21, 150, 21, FALSE);
-			MoveWindow(data->hWndWidthDropdown, 50, height - 42, 100, 21, FALSE);
+			MoveWindow(data->hWndViewer, 0, 0, rcClient.right, height - 42, FALSE);
+			MoveWindow(data->hWndPaletteDropdown, 0, height - 21, 150, 21, TRUE);
+			MoveWindow(data->hWndWidthDropdown, 50, height - 42, 100, 21, TRUE);
 			MoveWindow(data->hWndWidthLabel, 0, height - 42, 50, 21, FALSE);
-			break;
+			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
+}
+
+VOID UpdateScrollbarVisibility(HWND hWnd) {
+	SCROLLINFO scroll;
+	scroll.fMask = SIF_ALL;
+	ShowScrollBar(hWnd, SB_BOTH, TRUE);
+	GetScrollInfo(hWnd, SB_HORZ, &scroll);
+	if (scroll.nMax < scroll.nPage) {
+		EnableScrollBar(hWnd, SB_HORZ, ESB_DISABLE_BOTH);
+	} else {
+		EnableScrollBar(hWnd, SB_HORZ, ESB_ENABLE_BOTH);
+	}
+	GetScrollInfo(hWnd, SB_VERT, &scroll);
+	if (scroll.nMax < scroll.nPage) {
+		EnableScrollBar(hWnd, SB_VERT, ESB_DISABLE_BOTH);
+	} else {
+		EnableScrollBar(hWnd, SB_VERT, ESB_ENABLE_BOTH);
+	}
+}
+
+LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndNcgrViewer = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+	int contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
+	int contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
+
+	//little hack for code reuse >:)
+	FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
+	if (!frameData) {
+		frameData = calloc(1, sizeof(FRAMEDATA));
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) frameData);
+	}
+	frameData->contentWidth = contentWidth;
+	frameData->contentHeight = contentHeight;
+
+	UpdateScrollbarVisibility(hWnd);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			ShowScrollBar(hWnd, SB_BOTH, FALSE);
+			break;
+		}
+		case WM_PAINT:
+		{
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+			PAINTSTRUCT ps;
+			HDC hWindowDC = BeginPaint(hWnd, &ps);
+
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+
+
+			HDC hDC = CreateCompatibleDC(hWindowDC);
+			HBITMAP hBitmap = CreateCompatibleBitmap(hWindowDC, max(contentWidth, horiz.nPos + rcClient.right), max(contentHeight, vert.nPos + rcClient.bottom));
+			SelectObject(hDC, hBitmap);
+			IntersectClipRect(hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
+			DefMDIChildProc(hWnd, WM_ERASEBKGND, (WPARAM) hDC, 0);
+			HPEN defaultPen = SelectObject(hDC, GetStockObject(NULL_PEN));
+			HBRUSH defaultBrush = SelectObject(hDC, GetSysColorBrush(GetClassLong(hWnd, GCL_HBRBACKGROUND) - 1));
+			Rectangle(hDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
+			SelectObject(hDC, defaultPen);
+			SelectObject(hDC, defaultBrush);
+
+			PaintNcgrViewer(hWndNcgrViewer, data, hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
+
+			BitBlt(hWindowDC, 0, 0, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, hDC, horiz.nPos, vert.nPos, SRCCOPY);
+			EndPaint(hWnd, &ps);
+			DeleteObject(hDC);
+			DeleteObject(hBitmap);
+			if (data->hWndTileEditorWindow) InvalidateRect(data->hWndTileEditorWindow, NULL, FALSE);
+
+			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWndNcgrViewer, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLong(hWndMain, 0);
+			if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
+
+			InvalidateRect(data->hWndWidthLabel, NULL, FALSE);
+			break;
+		}
+		case WM_RBUTTONUP:
+		case WM_LBUTTONDOWN:
+		{
+			//get coordinates.
+			int hoverX = data->hoverX;
+			int hoverY = data->hoverY;
+			POINT mousePos;
+			GetCursorPos(&mousePos);
+			ScreenToClient(hWnd, &mousePos);
+			//transform it by scroll position
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+
+			mousePos.x += horiz.nPos;
+			mousePos.y += vert.nPos;
+			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < contentWidth && mousePos.y < contentHeight) {
+				//find the tile coordinates.
+				int x = 0, y = 0;
+				if (data->showBorders) {
+					mousePos.x -= 1;
+					mousePos.y -= 1;
+					if (mousePos.x < 0) mousePos.x = 0;
+					if (mousePos.y < 0) mousePos.y = 0;
+					int cellWidth = 8 * data->scale + 1;
+					mousePos.x /= cellWidth;
+					mousePos.y /= cellWidth;
+					x = mousePos.x;
+					y = mousePos.y;
+				} else {
+					int cellWidth = 8 * data->scale;
+					mousePos.x /= cellWidth;
+					mousePos.y /= cellWidth;
+					x = mousePos.x;
+					y = mousePos.y;
+				}
+				if (msg == WM_LBUTTONDOWN) {
+					HWND hWndMain = getMainWindow(hWndNcgrViewer);
+					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+					NCLR *nclr = NULL;
+					if (nitroPaintStruct->hWndNclrViewer) {
+						NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(nitroPaintStruct->hWndNclrViewer, 0);
+						nclr = &nclrViewerData->nclr;
+					}
+					if (data->hWndTileEditorWindow) DestroyWindow(data->hWndTileEditorWindow);
+					data->hWndTileEditorWindow = CreateTileEditor(CW_USEDEFAULT, CW_USEDEFAULT, 480, 256, nitroPaintStruct->hWndMdi, data->hoverX, data->hoverY);
+				} else {
+					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 1);
+					POINT mouse;
+					GetCursorPos(&mouse);
+					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWndNcgrViewer, NULL);
+					data->contextHoverY = hoverY;
+					data->contextHoverX = hoverX;
+				}
+			}
+			break;
+		}
+		case WM_MOUSEMOVE:
+		case WM_NCMOUSEMOVE:
+		{
+			TRACKMOUSEEVENT evt;
+			evt.cbSize = sizeof(evt);
+			evt.hwndTrack = hWnd;
+			evt.dwHoverTime = 0;
+			evt.dwFlags = TME_LEAVE;
+			TrackMouseEvent(&evt);
+		}
+		case WM_MOUSELEAVE:
+		{
+			int oldHovered = data->hoverIndex;
+			POINT mousePos;
+			GetCursorPos(&mousePos);
+			ScreenToClient(hWnd, &mousePos);
+
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+			mousePos.x += horiz.nPos;
+			mousePos.y += vert.nPos;
+
+			int hoverX = -1, hoverY = -1, hoverIndex = -1;
+			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < contentWidth && mousePos.y < contentHeight) {
+				//find the tile coordinates.
+				int x = 0, y = 0;
+				if (data->showBorders) {
+					mousePos.x -= 1;
+					mousePos.y -= 1;
+					if (mousePos.x < 0) mousePos.x = 0;
+					if (mousePos.y < 0) mousePos.y = 0;
+					int cellWidth = 8 * data->scale + 1;
+					mousePos.x /= cellWidth;
+					mousePos.y /= cellWidth;
+					x = mousePos.x;
+					y = mousePos.y;
+				} else {
+					int cellWidth = 8 * data->scale;
+					mousePos.x /= cellWidth;
+					mousePos.y /= cellWidth;
+					x = mousePos.x;
+					y = mousePos.y;
+				}
+				hoverX = x, hoverY = y;
+				hoverIndex = hoverX + hoverY * data->ncgr.tilesX;
+			}
+			if (msg == WM_MOUSELEAVE) {
+				hoverX = -1, hoverY = -1, hoverIndex = -1;
+			}
+			data->hoverX = hoverX;
+			data->hoverY = hoverY;
+			data->hoverIndex = hoverIndex;
+			if (data->hoverIndex != oldHovered) {
+				HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWndNcgrViewer, GWL_HWNDPARENT), GWL_HWNDPARENT);
+				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLong(hWndMain, 0);
+				if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
+			}
+
+			InvalidateRect(hWndNcgrViewer, NULL, FALSE);
+			break;
+		}
+		case NV_RECALCULATE:
+		{
+			SCROLLINFO info;
+			info.cbSize = sizeof(info);
+			info.nMin = 0;
+			info.nMax = contentWidth;
+			info.fMask = SIF_RANGE;
+			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+			info.nMax = contentHeight;
+			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+			SendMessage(hWnd, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
+			break;
+		}
+		case WM_ERASEBKGND:
+			return 1;
+		case WM_HSCROLL:
+		case WM_VSCROLL:
+		case WM_MOUSEWHEEL:
+			return DefChildProc(hWnd, msg, wParam, lParam);
+		case WM_SIZE:
+		{
+			SCROLLINFO info;
+			info.cbSize = sizeof(info);
+			info.nMin = 0;
+			info.nMax = contentWidth;
+			info.fMask = SIF_RANGE;
+			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+			info.nMax = contentHeight;
+			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			return DefChildProc(hWnd, msg, wParam, lParam);
+		}
+		case WM_DESTROY:
+		{
+			free(frameData);
+			break;
+		}
+		
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+VOID RegisterNcgrPreviewClass(VOID) {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = g_useDarkTheme ? CreateSolidBrush(RGB(32, 32, 32)) : (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"NcgrPreviewClass";
+	wcex.lpfnWndProc = NcgrPreviewWndProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
 }
 
 VOID RegisterNcgrViewerClass(VOID) {
@@ -708,6 +766,7 @@ VOID RegisterNcgrViewerClass(VOID) {
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
 	RegisterClassEx(&wcex);
+	RegisterNcgrPreviewClass();
 	RegisterTileEditorClass();
 }
 
@@ -730,8 +789,8 @@ HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPWS
 		rc.right = width;
 		rc.bottom = height;
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4 + 42; //+42 to account for the combobox
+		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
+		height = rc.bottom - rc.top + 4 + 42 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for the combobox
 		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"NCGR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
 		if (ncgr.isHudson) {
