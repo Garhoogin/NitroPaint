@@ -710,6 +710,11 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					//now, create a new bitmap for each set of tiles that share a palette.
 					createMultiPalettes(px, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
 
+					int charBase = 0;
+					if (nscr->nHighestIndex >= ncgr->nTiles) {
+						charBase = nscr->nHighestIndex + 1 - ncgr->nTiles;
+					}
+
 					//write to NCLR
 					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 					NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
@@ -756,7 +761,8 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							int charOrigin = d & 0x3FF;
 							int ncgrX = charOrigin % ncgr->tilesX;
 							int ncgrY = charOrigin / ncgr->tilesX;
-							BYTE *ncgrTile = ncgr->tiles[charOrigin];
+							if (charOrigin - charBase < 0) continue;
+							BYTE *ncgrTile = ncgr->tiles[charOrigin - charBase];
 							for (int i = 0; i < 64; i++) {
 								if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
 								else {
