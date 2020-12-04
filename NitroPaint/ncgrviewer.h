@@ -15,6 +15,7 @@ typedef struct {
 	int hoverIndex;
 	int selectedPalette;
 	HWND hWndViewer;
+	HWND hWndCharacterLabel;
 	HWND hWndPaletteDropdown;
 	HWND hWndWidthLabel;
 	HWND hWndWidthDropdown;
