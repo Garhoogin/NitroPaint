@@ -131,6 +131,13 @@ VOID CascadeChildren(HWND hWndMdi) {
 	EnumChildWindows(hWndMdi, CascadeChildrenEnumProc, (LPARAM) &cascadeX);
 }
 
+BOOL CALLBACK SaveAllProc(HWND hWnd, LPARAM lParam) {
+	HWND hWndMdi = (HWND) lParam;
+	if ((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT) != hWndMdi) return TRUE;
+	SendMessage(hWnd, WM_COMMAND, ID_FILE_SAVE, 0);
+	return TRUE;
+}
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NITROPAINTSTRUCT *data = GetWindowLongPtr(hWnd, 0);
 	if (!data) {
@@ -320,6 +327,12 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
 
 						free(path);
+						break;
+					}
+					case ID_FILE_SAVEALL:
+					{
+						HWND hWndMdi = data->hWndMdi;
+						EnumChildWindows(hWndMdi, SaveAllProc, (LPARAM) hWndMdi);
 						break;
 					}
 					case ID_NEW_NEWNCGR40015: //NCGR+NSCR

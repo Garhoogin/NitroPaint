@@ -46,13 +46,15 @@
 #define ID_OPEN_OPENNSBTX               40041
 #define ID_NSCRMENU_FLIPHORIZONTALLY    40042
 #define ID_NSCRMENU_FLIPVERTICALLY      40043
+#define ID_NSCRMENU_IMPORTBITMAPHERE    40044
+#define ID_FILE_SAVEALL                 40045
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        110
-#define _APS_NEXT_COMMAND_VALUE         40044
+#define _APS_NEXT_COMMAND_VALUE         40046
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
