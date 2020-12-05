@@ -248,7 +248,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			mousePos.x += horiz.nPos;
 			mousePos.y += vert.nPos;
 			
-			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < data->nscr.nWidth && mousePos.y < data->nscr.nHeight) {
+			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < data->nscr.nWidth && mousePos.y < data->nscr.nHeight && msg != WM_MOUSELEAVE) {
 				int x = mousePos.x / 8;
 				int y = mousePos.y / 8;
 				if (x != data->hoverX || y != data->hoverY) {
