@@ -30,6 +30,8 @@ long _ftol2_sse(float f) { //ugly hack
 	return _ftol(f);
 }
 
+int __wgetmainargs(int *argc, wchar_t ***argv, wchar_t ***env, int doWildCard, int *startInfo);
+
 HICON g_appIcon = NULL;
 
 LPWSTR g_lpszNitroPaintClassName = L"NitroPaintClass";
@@ -138,6 +140,85 @@ BOOL CALLBACK SaveAllProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
+VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
+	NITROPAINTSTRUCT *data = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWnd, 0);
+	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	DWORD dwSize = GetFileSize(hFile, NULL), dwRead;
+	LPBYTE buffer = (LPBYTE) calloc(dwSize, 1);
+	ReadFile(hFile, buffer, dwSize, &dwRead, NULL);
+	CloseHandle(hFile);
+
+	DWORD dwMagic = *(DWORD *) buffer;
+	DWORD test = '0XTB';
+
+	int format = 0;
+
+	if (dwSize > 4) {
+		switch (dwMagic) {
+			case 'NCLR':
+			case 'RLCN':
+			{
+				format = 1;
+				break;
+			}
+			case 'NCGR':
+			case 'RGCN':
+			{
+				format = 2;
+				break;
+			}
+			case 'NSCR':
+			case 'RCSN':
+			{
+				format = 3;
+				break;
+			}
+			case 'NCER':
+			case 'RECN':
+			{
+				format = 4;
+				break;
+			}
+			case 'BTX0':
+			case '0XTB':
+			{
+				format = 5;
+				break;
+			}
+		}
+	}
+	if(format == 0){
+		if (nclrIsValidHudson(buffer, dwSize)) format = 1;
+		else if (nscrIsValidHudson(buffer, dwSize)) format = 3;
+		else if (ncgrIsValidHudson(buffer, dwSize)) format = 2;
+
+	}
+	if (format == 1) {
+
+		//if there is already an NCLR open, close it.
+		if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
+		data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
+
+		if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
+	} else if (format == 2) {
+		//if there is already an NCGR open, close it.
+		if (data->hWndNcgrViewer) DestroyWindow(data->hWndNcgrViewer);
+		data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
+		if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+	} else if (format == 3) {
+		//if there is already an NSCR open, close it.
+		if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
+		data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+	} else if (format == 4) {
+		if (data->hWndNcerViewer) DestroyWindow(data->hWndNcerViewer);
+		data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+
+		if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+	} else if (format == 5) {
+		HWND h = CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
+	}
+}
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NITROPAINTSTRUCT *data = GetWindowLongPtr(hWnd, 0);
 	if (!data) {
@@ -158,6 +239,20 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			//subclass the MDI client window.
 			OldMdiClientWndProc = SetWindowLongPtr(data->hWndMdi, GWL_WNDPROC, NewMdiClientWndProc);
 			DragAcceptFiles(hWnd, TRUE);
+
+			//open command line argument's files
+			int argc;
+			wchar_t **argv;
+			wchar_t **env;
+			int *startInfo;
+			__wgetmainargs(&argc, &argv, &env, 1, &startInfo);
+			if (argc > 1) {
+				argc--;
+				argv++;
+				for (int i = 0; i < argc; i++) {
+					OpenFileByName(hWnd, argv[i]);
+				}
+			}
 			return 1;
 		}
 		case WM_PAINT:
@@ -176,82 +271,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			for (int i = 0; i < nFiles; i++) {
 				WCHAR path[MAX_PATH + 1] = { 0 };
 				DragQueryFile(hDrop, i, path, MAX_PATH);
-
-				HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-				DWORD dwSize = GetFileSize(hFile, NULL), dwRead;
-				LPBYTE buffer = (LPBYTE) calloc(dwSize, 1);
-				ReadFile(hFile, buffer, dwSize, &dwRead, NULL);
-				CloseHandle(hFile);
-
-				DWORD dwMagic = *(DWORD *) buffer;
-				DWORD test = '0XTB';
-
-				int format = 0;
-
-				if (dwSize > 4) {
-					switch (dwMagic) {
-						case 'NCLR':
-						case 'RLCN':
-						{
-							format = 1;
-							break;
-						}
-						case 'NCGR':
-						case 'RGCN':
-						{
-							format = 2;
-							break;
-						}
-						case 'NSCR':
-						case 'RCSN':
-						{
-							format = 3;
-							break;
-						}
-						case 'NCER':
-						case 'RECN':
-						{
-							format = 4;
-							break;
-						}
-						case 'BTX0':
-						case '0XTB':
-						{
-							format = 5;
-							break;
-						}
-					}
-				}
-				if(format == 0){
-					if (nclrIsValidHudson(buffer, dwSize)) format = 1;
-					else if (nscrIsValidHudson(buffer, dwSize)) format = 3;
-					else if (ncgrIsValidHudson(buffer, dwSize)) format = 2;
-					
-				}
-				if (format == 1) {
-
-					//if there is already an NCLR open, close it.
-					if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
-					data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
-
-					if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
-				} else if (format == 2) {
-					//if there is already an NCGR open, close it.
-					if (data->hWndNcgrViewer) DestroyWindow(data->hWndNcgrViewer);
-					data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
-					if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-				} else if (format == 3) {
-					//if there is already an NSCR open, close it.
-					if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
-					data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-				} else if (format == 4) {
-					if (data->hWndNcerViewer) DestroyWindow(data->hWndNcerViewer);
-					data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-
-					if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-				} else if (format == 5) {
-					HWND h = CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
-				}
+				OpenFileByName(hWnd, path);
 			}
 			DragFinish(hDrop);
 			return 0;
