@@ -1,3 +1,4 @@
+#include <math.h>
 #include "nscrviewer.h"
 #include "ncgrviewer.h"
 #include "nclrviewer.h"
@@ -512,6 +513,37 @@ int computeMultiPaletteError(int *closests, DWORD *blocks, int tilesX, int tiles
 	return error;
 }
 
+int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int charNumber) {
+	int error = 0;
+	for (int i = 0; i < 64; i++) {
+		DWORD col = block[i];
+		int r = col & 0xFF;
+		int g = (col >> 8) & 0xFF;
+		int b = (col >> 16) & 0xFF;
+		int a = (col >> 24) & 0xFF;
+
+		int index = character[i];
+		DWORD matched = pals[index];
+		int mr = matched & 0xFF;
+		int mg = (matched >> 8) & 0xFF;
+		int mb = (matched >> 16) & 0xFF;
+		int ma = 255;
+		if (!index) {
+			ma = 0;
+			mr = r;
+			mg = g;
+			mb = b;
+		}
+
+		int dr = r - mr;
+		int dg = g - mg;
+		int db = b - mb;
+		int da = a - ma;
+		error += (int) sqrt(dr * dr + dg * dg + db * db + da * da);
+	}
+	return error;
+}
+
 typedef struct {
 	HWND hWndBitmapName;
 	HWND hWndBrowseButton;
@@ -519,6 +551,8 @@ typedef struct {
 	HWND hWndPalettesInput;
 	HWND hWndImportButton;
 	HWND hWndDitherCheckbox;
+	HWND hWndNewPaletteCheckbox;
+	HWND hWndNewCharactersCheckbox;
 
 	int nscrTileX;
 	int nscrTileY;
@@ -549,13 +583,17 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Palettes:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Dither:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Create new palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Overwrite characters:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 100, 22, hWnd, NULL, NULL, NULL);
 
 			data->hWndBitmapName = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 10, 200, 22, hWnd, NULL, NULL, NULL);
 			data->hWndBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 320, 10, 25, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteInput = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 120, 37, 100, 200, hWnd, NULL, NULL, NULL);
 			data->hWndPalettesInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndDitherCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 91, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndImportButton = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndImportButton = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 172, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNewPaletteCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 118, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNewCharactersCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 145, 22, 22, hWnd, NULL, NULL, NULL);
 
 			for (int i = 0; i < 16; i++) {
 				WCHAR textBuffer[4];
@@ -563,8 +601,10 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				SendMessage(data->hWndPaletteInput, CB_ADDSTRING, wcslen(textBuffer), (LPARAM) textBuffer);
 			}
 			SendMessage(data->hWndDitherCheckbox, BM_SETCHECK, 1, 0);
+			SendMessage(data->hWndNewPaletteCheckbox, BM_SETCHECK, 1, 0);
+			SendMessage(data->hWndNewCharactersCheckbox, BM_SETCHECK, 1, 0);
 
-			SetWindowSize(hWnd, 355, 150);
+			SetWindowSize(hWnd, 355, 204);
 			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
 			break;
 		}
@@ -607,6 +647,8 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					if (nPalettes > 16) nPalettes = 16;
 					int paletteNumber = SendMessage(data->hWndPaletteInput, CB_GETCURSEL, 0, 0);
 					int diffuse = SendMessage(data->hWndDitherCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int newPalettes = SendMessage(data->hWndNewPaletteCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int newCharacters = SendMessage(data->hWndNewCharactersCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
 					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
@@ -623,6 +665,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					if (tilesY > maxTilesY) tilesY = maxTilesY;
 
 					DWORD *blocks = (DWORD *) calloc(tilesX * tilesY, 64 * 4);
+					DWORD *pals = calloc(nPalettes * paletteSize, 4);
 
 					//split image into 8x8 chunks, and find the average color in each.
 					DWORD *avgs = calloc(tilesX * tilesY, 4);
@@ -644,71 +687,90 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 
 					//generate an nPalettes color palette
-					DWORD *avgPals = (DWORD *) calloc(nPalettes + 1, 4);
-					createPalette_(avgs, tilesX, tilesY, avgPals, nPalettes + 1); //+1 because 1 color is reserved
+					if (newPalettes) {
+						DWORD *avgPals = (DWORD *) calloc(nPalettes + 1, 4);
+						createPalette_(avgs, tilesX, tilesY, avgPals, nPalettes + 1); //+1 because 1 color is reserved
 
-					int useCounts[16] = { 0 };
-					int *closests = calloc(tilesX * tilesY, sizeof(int));
+						int useCounts[16] = { 0 };
+						int *closests = calloc(tilesX * tilesY, sizeof(int));
 
-					//form a best guess of how to divide the tiles amonng the palettes.
-					//for each tile, see which color in avgPals (excluding entry 0) matches a tile's average.
-					for (int y = 0; y < tilesY; y++) {
-						for (int x = 0; x < tilesX; x++) {
-							DWORD *block = blocks + 64 * (x + y * tilesX);
-							DWORD avg = averageColor(block, 64);
-							int closest = 0;
-							if (avg & 0xFF000000) closest = closestpalette(*(RGB *) &avg, (RGB*) (avgPals + 1), nPalettes, NULL);
-							useCounts[closest]++;
-							closests[x + y * tilesX] = closest;
-						}
-					}
-
-					//refine the choice of palettes.
-					DWORD *pals = calloc(nPalettes * paletteSize, 4);
-					{
-						//create an array for temporary work.
-						int *tempClosests = calloc(tilesX * tilesY, sizeof(int));
-						int tempUseCounts[16];
-						int bestError = computeMultiPaletteError(closests, blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize);
-
-						while (1) {
-							int nChanged = 0;
-							for (int i = 0; i < tilesX * tilesY; i++) {
-								int x = i % tilesX;
-								int y = i / tilesX;
+						//form a best guess of how to divide the tiles amonng the palettes.
+						//for each tile, see which color in avgPals (excluding entry 0) matches a tile's average.
+						for (int y = 0; y < tilesY; y++) {
+							for (int x = 0; x < tilesX; x++) {
 								DWORD *block = blocks + 64 * (x + y * tilesX);
+								DWORD avg = averageColor(block, 64);
+								int closest = 0;
+								if (avg & 0xFF000000) closest = closestpalette(*(RGB *) &avg, (RGB*) (avgPals + 1), nPalettes, NULL);
+								useCounts[closest]++;
+								closests[x + y * tilesX] = closest;
+							}
+						}
+						free(avgPals);
 
-								//go over each group to see if this tile works better in another.
-								for (int j = 0; j < nPalettes; j++) {
-									if (j == closests[i]) continue;
-									memcpy(tempClosests, closests, tilesX * tilesY * sizeof(int));
-									memcpy(tempUseCounts, useCounts, sizeof(useCounts));
+						//refine the choice of palettes.
+						{
+							//create an array for temporary work.
+							int *tempClosests = calloc(tilesX * tilesY, sizeof(int));
+							int tempUseCounts[16];
+							int bestError = computeMultiPaletteError(closests, blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize);
 
-									tempClosests[i] = j;
-									tempUseCounts[j]++;
-									tempUseCounts[closests[i]]--;
-									createMultiPalettes(px, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
+							while (1) {
+								int nChanged = 0;
+								for (int i = 0; i < tilesX * tilesY; i++) {
+									int x = i % tilesX;
+									int y = i / tilesX;
+									DWORD *block = blocks + 64 * (x + y * tilesX);
 
-									//compute total error
-									int error = computeMultiPaletteError(tempClosests, blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize);
-									if (error < bestError) {
-										bestError = error;
-										int oldClosest = closests[i];
-										closests[i] = j;
-										useCounts[j]++;
-										useCounts[oldClosest]--;
-										nChanged++;
+									//go over each group to see if this tile works better in another.
+									for (int j = 0; j < nPalettes; j++) {
+										if (j == closests[i]) continue;
+										memcpy(tempClosests, closests, tilesX * tilesY * sizeof(int));
+										memcpy(tempUseCounts, useCounts, sizeof(useCounts));
+
+										tempClosests[i] = j;
+										tempUseCounts[j]++;
+										tempUseCounts[closests[i]]--;
+										createMultiPalettes(px, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
+
+										//compute total error
+										int error = computeMultiPaletteError(tempClosests, blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize);
+										if (error < bestError) {
+											bestError = error;
+											int oldClosest = closests[i];
+											closests[i] = j;
+											useCounts[j]++;
+											useCounts[oldClosest]--;
+											nChanged++;
+										}
 									}
 								}
+								if (nChanged == 0) break;
 							}
-							if (nChanged == 0) break;
+
+							free(tempClosests);
 						}
 
-						free(tempClosests);
+						//now, create a new bitmap for each set of tiles that share a palette.
+						createMultiPalettes(px, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
+						free(closests);
+					} else {
+						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
+						NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
+						NCLR *nclr = &nclrViewerData->nclr;
+						WORD *destPalette = nclr->colors + paletteNumber * paletteSize;
+						int nColors = nPalettes * paletteSize;
+						for (int i = 0; i < nColors; i++) {
+							WORD c = destPalette[i];
+							int r = c & 0x1F;
+							int g = (c >> 5) & 0x1F;
+							int b = (b >> 10) & 0x1F;
+							r = r * 255 / 31;
+							g = g * 255 / 31;
+							b = b * 255 / 31;
+							pals[i] = r | (g << 8) | (b << 16);
+						}
 					}
-					
-					//now, create a new bitmap for each set of tiles that share a palette.
-					createMultiPalettes(px, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
 
 					int charBase = 0;
 					if (nscr->nHighestIndex >= ncgr->nTiles) {
@@ -718,65 +780,100 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					//write to NCLR
 					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 					NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
-					NCLR *nclr = &nclrViewerData->nclr;
-					WORD *destPalette = nclr->colors + paletteNumber * paletteSize;
-					for (int i = 0; i < nPalettes; i++) {
-						WORD *dest = destPalette + i * paletteSize;
-						for (int j = 0; j < paletteSize; j++) {
-							DWORD col = (pals + i * paletteSize)[j];
-							int r = col & 0xFF;
-							int g = (col >> 8) & 0xFF;
-							int b = (col >> 16) & 0xFF;
-							r = r * 31 / 255;
-							g = g * 31 / 255;
-							b = b * 31 / 255;
-							dest[j] = r | (g << 5) | (b << 10);
+					if (newPalettes) {
+						NCLR *nclr = &nclrViewerData->nclr;
+						WORD *destPalette = nclr->colors + paletteNumber * paletteSize;
+						for (int i = 0; i < nPalettes; i++) {
+							WORD *dest = destPalette + i * paletteSize;
+							for (int j = 0; j < paletteSize; j++) {
+								DWORD col = (pals + i * paletteSize)[j];
+								int r = col & 0xFF;
+								int g = (col >> 8) & 0xFF;
+								int b = (col >> 16) & 0xFF;
+								r = r * 31 / 255;
+								g = g * 31 / 255;
+								b = b * 31 / 255;
+								dest[j] = r | (g << 5) | (b << 10);
+							}
 						}
 					}
 
 					//next, start palette matching. See which palette best fits a tile, set it in the NSCR, then write the bits to the NCGR.
 					WORD *nscrData = nscr->data;
-					for (int y = 0; y < tilesY; y++) {
-						for (int x = 0; x < tilesX; x++) {
-							DWORD *block = blocks + 64 * (x + y * tilesX);
-							
-							int leastError = 0x7FFFFFFF;
-							int leastIndex = 0;
-							for (int i = 0; i < nPalettes; i++) {
-								int err = getPaletteError((RGB*) block, 64, pals + i * paletteSize, paletteSize);
-								if (err < leastError) {
-									leastError = err;
-									leastIndex = i;
+					if (newCharacters) {
+						for (int y = 0; y < tilesY; y++) {
+							for (int x = 0; x < tilesX; x++) {
+								DWORD *block = blocks + 64 * (x + y * tilesX);
+
+								int leastError = 0x7FFFFFFF;
+								int leastIndex = 0;
+								for (int i = 0; i < nPalettes; i++) {
+									int err = getPaletteError((RGB*) block, 64, pals + i * paletteSize, paletteSize);
+									if (err < leastError) {
+										leastError = err;
+										leastIndex = i;
+									}
+								}
+
+								int nscrX = x + data->nscrTileX;
+								int nscrY = y + data->nscrTileY;
+
+								WORD d = nscrData[nscrX + nscrY * (nscr->nWidth >> 3)];
+								d = d & 0xFFF;
+								d |= (leastIndex + paletteNumber) << 12;
+								nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
+
+								int charOrigin = d & 0x3FF;
+								int ncgrX = charOrigin % ncgr->tilesX;
+								int ncgrY = charOrigin / ncgr->tilesX;
+								if (charOrigin - charBase < 0) continue;
+								BYTE *ncgrTile = ncgr->tiles[charOrigin - charBase];
+								for (int i = 0; i < 64; i++) {
+									if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
+									else {
+										int index = 1 + closestpalette(*(RGB *) &block[i], pals + leastIndex * paletteSize + 1, paletteSize - 1, NULL);
+										if (diffuse) {
+											RGB original = *(RGB *) &block[i];
+											RGB closest = ((RGB *) (pals + leastIndex * paletteSize))[index];
+											int er = closest.r - original.r;
+											int eg = closest.g - original.g;
+											int eb = closest.b - original.b;
+											doDiffuse(i, 8, 8, block, -er, -eg, -eb, 0, 1.0f);
+										}
+										ncgrTile[i] = index;
+									}
 								}
 							}
+						}
+					} else {
+						for (int y = 0; y < tilesY; y++) {
+							for (int x = 0; x < tilesX; x++) {
+								DWORD *block = blocks + 64 * (x + y * tilesX);
 
-							int nscrX = x + data->nscrTileX;
-							int nscrY = y + data->nscrTileY;
-
-							WORD d = nscrData[nscrX + nscrY * (nscr->nWidth >> 3)];
-							d = d & 0xFFF;
-							d |= (leastIndex + paletteNumber) << 12;
-							nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
-
-							int charOrigin = d & 0x3FF;
-							int ncgrX = charOrigin % ncgr->tilesX;
-							int ncgrY = charOrigin / ncgr->tilesX;
-							if (charOrigin - charBase < 0) continue;
-							BYTE *ncgrTile = ncgr->tiles[charOrigin - charBase];
-							for (int i = 0; i < 64; i++) {
-								if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
-								else {
-									int index = 1 + closestpalette(*(RGB *) &block[i], pals + leastIndex * paletteSize + 1, paletteSize - 1, NULL);
-									if (diffuse) {
-										RGB original = *(RGB *) &block[i];
-										RGB closest = ((RGB *) (pals + leastIndex * paletteSize))[index];
-										int er = closest.r - original.r;
-										int eg = closest.g - original.g;
-										int eb = closest.b - original.b;
-										doDiffuse(i, 8, 8, block, -er, -eg, -eb, 0, 1.0f);
+								//find what combination of palette and character minimizes the error.
+								int chosenCharacter = 0, chosenPalette = 0;
+								int minError = 0x7FFFFFFF;
+								for (int i = 0; i < nPalettes; i++) {
+									for (int j = 0; j < ncgr->nTiles; j++) {
+										int charId = j;
+										int err = calculatePaletteCharError(block, pals + i * paletteSize, ncgr->tiles[charId], charId);
+										if (err < minError) {
+											chosenCharacter = charId;
+											chosenPalette = i;
+											minError = err;
+										}
 									}
-									ncgrTile[i] = index;
 								}
+
+								int nscrX = x + data->nscrTileX;
+								int nscrY = y + data->nscrTileY;
+
+								WORD d = nscrData[nscrX + nscrY * (nscr->nWidth >> 3)];
+								d = d & 0xFFF;
+								d |= (chosenPalette + paletteNumber) << 12;
+								d &= 0xFC00;
+								d |= (chosenCharacter + charBase);
+								nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
 							}
 						}
 					}
@@ -787,8 +884,6 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 					free(blocks);
 					free(pals);
-					free(closests);
-					free(avgPals);
 					free(px);
 					free(avgs);
 					PostMessage(hWnd, WM_CLOSE, 0, 0);
