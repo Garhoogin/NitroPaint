@@ -182,10 +182,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			mousePos.x += horiz.nPos;
 			mousePos.y += vert.nPos;
 
-			int moveX = abs(mousePos.x - data->dragStart.x);
-			int moveY = abs(mousePos.y - data->dragStart.y);
-
-			if (moveX + moveY > 10) {
+			if (data->dragStart.x / 16 != mousePos.x / 16 || data->dragStart.y / 16 != mousePos.y / 16) {
 				data->dragging = 1;
 			}
 			data->dragPoint.x = mousePos.x;
