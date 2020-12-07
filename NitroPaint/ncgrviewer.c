@@ -60,16 +60,25 @@ DWORD * renderNcgrBits(NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL
 	return bits;
 }
 
-DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr) {
+DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor) {
 	int width = ncgr->tilesX * 8;
 	DWORD *bits = (DWORD *) malloc(ncgr->tilesX * ncgr->tilesY * 64 * 4);
 
 	int tileNumber = 0;
 	for (int y = 0; y < ncgr->tilesY; y++) {
 		for (int x = 0; x < ncgr->tilesX; x++) {
-			BYTE *tile = ncgr->tiles + (64 * tileNumber);
+			BYTE *tile = ncgr->tiles[tileNumber];
 			DWORD block[64];
 			ncgrGetTile(ncgr, nclr, x, y, block, usePalette, TRUE);
+			if (highlightColor != -1) {
+				for (int i = 0; i < 64; i++) {
+					if (tile[i] != highlightColor) continue;
+					DWORD col = block[i];
+					int lightness = (col & 0xFF) + ((col >> 8) & 0xFF) + ((col >> 16) & 0xFF);
+					if (lightness < 383) block[i] = 0xFFFFFFFF;
+					else block[i] = 0xFF000000;
+				}
+			}
 
 			int imgX = x * 8, imgY = y * 8;
 			int offset = imgX + imgY * width;
@@ -83,7 +92,7 @@ DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr) {
 			memcpy(bits + offset + width * 7, block + 56, 32);
 
 
-			tile++;
+			tileNumber++;
 		}
 	}
 	return bits;
@@ -102,7 +111,9 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 		nclr = &nclrViewerData->nclr;
 	}
 
-	DWORD *px = NcgrToBitmap(&data->ncgr, data->selectedPalette, nclr);
+	int highlightColor = data->verifyColor % (1 << data->ncgr.nBits);
+	if ((data->verifyFrames & 1) == 0) highlightColor = -1;
+	DWORD *px = NcgrToBitmap(&data->ncgr, data->selectedPalette, nclr, highlightColor);
 	int outWidth, outHeight;
 	HBITMAP hTiles = CreateTileBitmap(px, width, height, data->hoverX, data->hoverY, &outWidth, &outHeight, data->scale, data->showBorders);
 
@@ -436,6 +447,19 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			wsprintf(buffer, L" Character %d", data->hoverIndex);
 			SendMessage(data->hWndCharacterLabel, WM_SETTEXT, wcslen(buffer), (LPARAM) buffer);
 			InvalidateRect(data->hWndViewer, NULL, FALSE);
+			break;
+		}
+		case WM_TIMER:
+		{
+			if (wParam == 1) {
+				int color = data->verifyColor;
+				data->verifyFrames--;
+				if (!data->verifyFrames) {
+					KillTimer(hWnd, wParam);
+				}
+				InvalidateRect(data->hWndViewer, NULL, FALSE);
+				return 0;
+			}
 			break;
 		}
 		case WM_MDIACTIVATE:

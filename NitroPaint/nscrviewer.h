@@ -17,6 +17,8 @@ typedef struct {
 	int contextHoverY;
 	int editingX;
 	int editingY;
+	int verifyColor;
+	int verifyFrames;
 } NSCRVIEWERDATA;
 
 VOID RegisterNscrViewerClass(VOID);

@@ -15,7 +15,7 @@ extern HICON g_appIcon;
 #define NV_SETDATA (WM_USER+2)
 #define NV_INITIMPORTDIALOG (WM_USER+3)
 
-DWORD * renderNscrBits(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL checker, int * width, int * height, int tileMarks, int highlightTile) {
+DWORD * renderNscrBits(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL checker, int * width, int * height, int tileMarks, int highlightTile, int highlightColor) {
 	int bWidth = renderNscr->nWidth;
 	int bHeight = renderNscr->nHeight;
 	if (drawGrid) {
@@ -69,6 +69,25 @@ DWORD * renderNscrBits(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, 
 				}
 			}
 
+			if (highlightColor != -1) {
+				int color = highlightColor % (1 << renderNcgr->nBits);
+				int highlightPalette = highlightColor / (1 << renderNcgr->nBits);
+				WORD nscrData = renderNscr->data[x + y * (renderNscr->nWidth / 8)];
+				if (((nscrData >> 12) & 0xF) == highlightPalette) {
+					int charBase = 0;
+					if (renderNscr->nHighestIndex >= renderNcgr->nTiles) charBase = renderNscr->nHighestIndex + 1 - renderNcgr->nTiles;
+					int tileIndex = nscrData & 0x3FF;
+					if (tileIndex - charBase >= 0) {
+						BYTE *tile = renderNcgr->tiles[tileIndex - charBase];
+						for (int i = 0; i < 64; i++) {
+							if (tile[i] == color) {
+								block[i] = 0xFFFFFFFF;
+							}
+						}
+					}
+				}
+			}
+
 			for (int i = 0; i < 8; i++) {
 				CopyMemory(bits + dwDest + i * bWidth, block + (i << 3), 32);
 			}
@@ -86,10 +105,10 @@ DWORD * renderNscrBits(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, 
 	return bits;
 }
 
-HBITMAP renderNscr(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, int * width, int * height, int highlightNclr, int highlightTile) {
+HBITMAP renderNscr(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, int * width, int * height, int highlightNclr, int highlightTile, int highlightColor) {
 	if (renderNcgr != NULL) {
 		if (renderNscr->nHighestIndex >= renderNcgr->nTiles && highlightNclr != -1) highlightNclr -= (renderNcgr->nTiles - renderNscr->nHighestIndex - 1);
-		DWORD * bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, drawGrid, TRUE, width, height, highlightNclr, highlightTile);
+		DWORD * bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, drawGrid, TRUE, width, height, highlightNclr, highlightTile, highlightColor);
 
 		HBITMAP hBitmap = CreateBitmap(*width, *height, 1, 32, bits);
 		free(bits);
@@ -180,7 +199,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						nscr = &data->nscr;
 
-						DWORD * bits = renderNscrBits(nscr, ncgr, nclr, FALSE, FALSE, &width, &height, -1, -1);
+						DWORD * bits = renderNscrBits(nscr, ncgr, nclr, FALSE, FALSE, &width, &height, -1, -1, -1);
 						
 						writeImage(bits, width, height, location);
 						free(bits);
@@ -347,7 +366,9 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			nscr = &data->nscr;
 			int bitmapWidth, bitmapHeight;
 			
-			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, FALSE, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile);
+			int highlightColor = data->verifyColor;
+			if ((data->verifyFrames & 1) == 0) highlightColor = -1;
+			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, FALSE, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor);
 
 			HDC hDC = CreateCompatibleDC(hWindowDC);
 			SelectObject(hDC, hBitmap);
@@ -356,6 +377,19 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			DeleteObject(hBitmap);
 
 			EndPaint(hWnd, &ps);
+			break;
+		}
+		case WM_TIMER:
+		{
+			if (wParam == 1) {
+				int color = data->verifyColor;
+				data->verifyFrames--;
+				if (!data->verifyFrames) {
+					KillTimer(hWnd, wParam);
+				}
+				InvalidateRect(hWnd, NULL, FALSE);
+				return 0;
+			}
 			break;
 		}
 		case WM_DESTROY:

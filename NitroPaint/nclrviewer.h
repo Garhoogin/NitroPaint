@@ -15,6 +15,7 @@ typedef struct {
 	NCLR nclr;
 	int hoverX;
 	int hoverY;
+	int contextHoverX;
 	int contextHoverY;
 	int hoverIndex;
 

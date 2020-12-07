@@ -2,6 +2,7 @@
 #include "childwindow.h"
 #include "nitropaint.h"
 #include "ncgrviewer.h"
+#include "nscrviewer.h"
 #include "ncerviewer.h"
 #include "resource.h"
 
@@ -359,6 +360,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_RBUTTONUP:
 		{
 			int hoverY = data->hoverY;
+			int hoverX = data->hoverX;
 			POINT mousePos;
 			GetCursorPos(&mousePos);
 			ScreenToClient(hWnd, &mousePos);
@@ -384,6 +386,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					GetCursorPos(&mouse);
 					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
 					data->contextHoverY = hoverY;
+					data->contextHoverX = hoverX;
 				}
 			}
 			break;
@@ -515,6 +518,29 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					case ID_FILE_SAVE:
 					{
 						nclrWrite(&data->nclr, data->szOpenFile);
+						break;
+					}
+					case ID_MENU_VERIFYCOLOR:
+					{
+						int index = data->contextHoverX + data->contextHoverY * 16;
+						int palette = index >> data->nclr.nBits;
+						
+						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						NITROPAINTSTRUCT *nitroPaintStruct = GetWindowLongPtr(hWndMain, 0);
+						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+						HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
+						if (hWndNcgrViewer) {
+							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+							ncgrViewerData->verifyColor = index;
+							ncgrViewerData->verifyFrames = 10;
+							SetTimer(hWndNcgrViewer, 1, 100, NULL);
+						}
+						if (hWndNscrViewer) {
+							NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+							nscrViewerData->verifyColor = index;
+							nscrViewerData->verifyFrames = 10;
+							SetTimer(hWndNscrViewer, 1, 100, NULL);
+						}
 						break;
 					}
 				}
