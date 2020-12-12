@@ -377,7 +377,7 @@ void createMultiPalettes(DWORD *blocks, int tilesX, int tilesY, int width, DWORD
 	free(groups);
 }
 
-void createMultiplePalettes(DWORD *blocks, DWORD *avgs, DWORD *px, int width, int tilesX, int tilesY, DWORD *pals, int nPalettes, int paletteSize) {
+void createMultiplePalettes(DWORD *blocks, DWORD *avgs, int width, int tilesX, int tilesY, DWORD *pals, int nPalettes, int paletteSize) {
 	DWORD *avgPals = (DWORD *) calloc(nPalettes + 1, 4);
 	createPalette_(avgs, tilesX, tilesY, avgPals, nPalettes + 1); //+1 because 1 color is reserved
 

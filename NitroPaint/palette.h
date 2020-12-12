@@ -20,4 +20,4 @@ DWORD averageColor(DWORD *cols, int nColors);
 
 unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize);
 
-void createMultiplePalettes(DWORD *blocks, DWORD *avgs, DWORD *px, int width, int tilesX, int tilesY, DWORD *pals, int nPalettes, int paletteSize);
+void createMultiplePalettes(DWORD *blocks, DWORD *avgs, int width, int tilesX, int tilesY, DWORD *pals, int nPalettes, int paletteSize);

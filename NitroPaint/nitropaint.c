@@ -389,6 +389,8 @@ typedef struct {
 	HWND nscrCreateDropdown;
 	HWND nscrCreateButton;
 	HWND nscrCreateBin;
+	HWND hWndPaletteInput;
+	HWND hWndPalettesInput;
 } CREATEDIALOGDATA;
 
 BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
@@ -417,20 +419,24 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			CreateWindow(L"STATIC", L"Bitmap:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Bits:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Dither:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Create bin:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Palettes:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Create bin:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 50, 22, hWnd, NULL, NULL, NULL);
 
 			data->nscrCreateInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", NULL, WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 10, 200, 22, hWnd, NULL, NULL, NULL);
 			data->nscrCreateInputButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 270, 10, 50, 22, hWnd, NULL, NULL, NULL);
 			data->nscrCreateDither = CreateWindow(L"BUTTON", NULL, WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 70, 64, 22, 22, hWnd, NULL, NULL, NULL);
 			data->nscrCreateDropdown = CreateWindow(WC_COMBOBOX, NULL, WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 70, 37, 100, 100, hWnd, NULL, NULL, NULL);
-			data->nscrCreateButton = CreateWindow(L"BUTTON", L"Create", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 121, 100, 22, hWnd, NULL, NULL, NULL);
-			data->nscrCreateBin = CreateWindow(L"BUTTON", L"", BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE, 70, 91, 22, 22, hWnd, NULL, NULL, NULL);
+			data->nscrCreateButton = CreateWindow(L"BUTTON", L"Create", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 172, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPalettesInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 70, 91, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 70, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			data->nscrCreateBin = CreateWindow(L"BUTTON", L"", BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE, 70, 145, 22, 22, hWnd, NULL, NULL, NULL);
 
 			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 1, (LPARAM) L"4");
 			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 1, (LPARAM) L"8");
 			SendMessage(data->nscrCreateDropdown, CB_SETCURSEL, 1, 0);
 
-			SetWindowSize(hWnd, 330, 126 + 22 + 5);
+			SetWindowSize(hWnd, 330, 204);
 			SetGUIFont(hWnd);
 			return 1;
 		}
@@ -452,11 +458,15 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					free(location);
 				}  else if (hWndControl == data->nscrCreateButton) {
 					WCHAR location[MAX_PATH + 1];
-					SendMessage(data->nscrCreateInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
 					int dither = SendMessage(data->nscrCreateDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int bin = SendMessage(data->nscrCreateBin, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int bitsOptions[] = {4, 8};
 					int bits = bitsOptions[SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0)];
+					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH + 1, (LPARAM) location);
+					int palette = _wtoi(location);
+					SendMessage(data->hWndPalettesInput, WM_GETTEXT, MAX_PATH + 1, (LPARAM) location);
+					int nPalettes = _wtoi(location);
+					SendMessage(data->nscrCreateInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
 
 					LPWSTR nclrLocation = saveFileDialog(hWnd, L"Save NCLR", L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*", L"nclr");
 					if (!nclrLocation) break;
@@ -474,7 +484,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 					int width, height;
 					DWORD * bbits = gdipReadImage(location, &width, &height);
-					nscrCreate(bbits, width, height, bits, dither, nclrLocation, ncgrLocation, nscrLocation, bin);
+					nscrCreate(bbits, width, height, bits, dither, nclrLocation, ncgrLocation, nscrLocation, palette, nPalettes, bin);
 
 					free(bbits);
 
