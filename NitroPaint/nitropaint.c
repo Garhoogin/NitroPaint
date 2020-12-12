@@ -523,6 +523,8 @@ void RegisterCreateDialogClass() {
 	wcex.lpszClassName = L"CreateDialogClass";
 	wcex.lpfnWndProc = CreateDialogWndProc;
 	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
 	RegisterClassEx(&wcex);
 }
 
