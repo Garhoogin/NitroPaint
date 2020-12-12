@@ -498,6 +498,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			if (data->hWndTileEditorWindow) DestroyWindow(data->hWndTileEditorWindow);
 			free(data->ncgr.tiles);
 			free(data);
+			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
 		case WM_SIZE:
@@ -537,8 +538,11 @@ VOID UpdateScrollbarVisibility(HWND hWnd) {
 LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	HWND hWndNcgrViewer = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
-	int contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
-	int contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
+	int contentWidth = 0, contentHeight = 0;
+	if (data) {
+		contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
+		contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
+	}
 
 	//little hack for code reuse >:)
 	FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
@@ -763,6 +767,7 @@ LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		case WM_DESTROY:
 		{
 			free(frameData);
+			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
 		
