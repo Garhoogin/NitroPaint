@@ -404,6 +404,80 @@ VOID SetGUIFont(HWND hWnd) {
 	EnumChildWindows(hWnd, SetGUIFontProc, (LPARAM) hFont);
 }
 
+typedef struct {
+	WCHAR szNclrPath[MAX_PATH + 1];
+	WCHAR szNcgrPath[MAX_PATH + 1];
+	WCHAR szNscrPath[MAX_PATH + 1];
+	HWND hWndMain;
+	DWORD *bbits;
+} CREATENSCRDATA;
+
+#define NV_SETDATA (WM_USER+2)
+
+void nscrCreateCallback(void *data) {
+	CREATENSCRDATA *createData = (CREATENSCRDATA *) data;
+	HWND hWndMain = createData->hWndMain;
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	HWND hWndMdi = nitroPaintStruct->hWndMdi;
+
+	if (nitroPaintStruct->hWndNscrViewer) DestroyWindow(nitroPaintStruct->hWndNscrViewer);
+	if (nitroPaintStruct->hWndNcgrViewer) DestroyWindow(nitroPaintStruct->hWndNcgrViewer);
+	if (nitroPaintStruct->hWndNclrViewer) DestroyWindow(nitroPaintStruct->hWndNclrViewer);
+	nitroPaintStruct->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, createData->szNclrPath);
+	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, createData->szNcgrPath);
+	nitroPaintStruct->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, createData->szNscrPath);
+
+	free(createData->bbits);
+	free(data);
+}
+
+DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
+	struct {
+		PROGRESSDATA *data;
+		DWORD *bbits;
+		int width;
+		int height;
+		int bits;
+		int dither;
+		CREATENSCRDATA *createData;
+		int palette;
+		int nPalettes;
+		int bin;
+	} *params = lpParameter;
+	nscrCreate(params->bbits, params->width, params->height, params->bits, params->dither,
+			   params->createData->szNclrPath, params->createData->szNcgrPath, params->createData->szNscrPath,
+			   params->palette, params->nPalettes, params->bin);
+	free(lpParameter);
+	params->data->waitOn = 1;
+	return 0;
+}
+
+void threadedNscrCreate(PROGRESSDATA *data, DWORD *bbits, int width, int height, int bits, int dither, CREATENSCRDATA *createData, int palette, int nPalettes, int bin) {
+	struct {
+		PROGRESSDATA *data;
+		DWORD *bbits;
+		int width;
+		int height;
+		int bits;
+		int dither;
+		CREATENSCRDATA *createData;
+		int palette;
+		int nPalettes;
+		int bin;
+	} *params = calloc(1, sizeof(*params));
+	params->data = data;
+	params->bbits = bbits;
+	params->width = width;
+	params->height = height;
+	params->bits = bits;
+	params->dither = dither;
+	params->createData = createData;
+	params->palette = palette;
+	params->nPalettes = nPalettes;
+	params->bin = bin;
+	CreateThread(NULL, 0, threadedNscrCreateInternal, (LPVOID) params, 0, NULL);
+}
+
 LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	CREATEDIALOGDATA *data = (CREATEDIALOGDATA *) GetWindowLongPtr(hWnd, 0);
 	if (!data) {
@@ -484,24 +558,34 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 					int width, height;
 					DWORD * bbits = gdipReadImage(location, &width, &height);
-					nscrCreate(bbits, width, height, bits, dither, nclrLocation, ncgrLocation, nscrLocation, palette, nPalettes, bin);
-
-					free(bbits);
 
 					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 					HWND hWndMdi = nitroPaintStruct->hWndMdi;
-					if (nitroPaintStruct->hWndNscrViewer) DestroyWindow(nitroPaintStruct->hWndNscrViewer);
-					if (nitroPaintStruct->hWndNcgrViewer) DestroyWindow(nitroPaintStruct->hWndNcgrViewer);
-					if (nitroPaintStruct->hWndNclrViewer) DestroyWindow(nitroPaintStruct->hWndNclrViewer);
-					nitroPaintStruct->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, nclrLocation);
-					nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, ncgrLocation);
-					nitroPaintStruct->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, nscrLocation);
-					//InvalidateRect(hWndMain, NULL, TRUE);
+
+					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
+					ShowWindow(hWndProgress, SW_SHOW);
+					CREATENSCRDATA *createData = (CREATENSCRDATA *) calloc(1, sizeof(CREATENSCRDATA));
+					CopyMemory(createData->szNclrPath, nclrLocation, 2 * (wcslen(nclrLocation) + 1));
+					CopyMemory(createData->szNcgrPath, ncgrLocation, 2 * (wcslen(ncgrLocation) + 1));
+					CopyMemory(createData->szNscrPath, nscrLocation, 2 * (wcslen(nscrLocation) + 1));
+					createData->hWndMain = hWndMain;
+					createData->bbits = bbits;
+					PROGRESSDATA *progressData = (PROGRESSDATA *) calloc(1, sizeof(PROGRESSDATA));
+					progressData->data = createData;
+					progressData->callback = nscrCreateCallback;
+					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
+
+					threadedNscrCreate(progressData, bbits, width, height, bits, dither, createData, palette, nPalettes, bin);
+
 					free(nclrLocation);
 					free(ncgrLocation);
 					free(nscrLocation);
+
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					SetActiveWindow(hWndProgress);
+					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
+
 				}
 			}
 			break;
@@ -522,6 +606,66 @@ void RegisterCreateDialogClass() {
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.lpszClassName = L"CreateDialogClass";
 	wcex.lpfnWndProc = CreateDialogWndProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
+LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch (msg) {
+		case WM_CREATE:
+		{
+			CreateWindow(L"STATIC", L"In progress...", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
+			SetTimer(hWnd, 1, 50, NULL);
+			SetGUIFont(hWnd);
+			break;
+		}
+		case WM_TIMER:
+		{
+			PROGRESSDATA *data = (PROGRESSDATA *) GetWindowLongPtr(hWnd, 0);
+			if (data) {
+				if (data->waitOn) {
+					KillTimer(hWnd, 1);
+					if (data->callback) data->callback(data->data);
+					DestroyWindow(hWnd);
+				}
+			}
+			break;
+		}
+		case NV_SETDATA:
+		{
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) lParam);
+			break;
+		}
+		case WM_DESTROY:
+		{
+			PROGRESSDATA *data = (PROGRESSDATA *) GetWindowLongPtr(hWnd, 0);
+			if (data) {
+				free(data);
+				SetWindowLongPtr(hWnd, 0, 0);
+			}
+			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			SetActiveWindow(hWndMain);
+			break;
+		}
+		case WM_CLOSE:
+		{
+
+			return 0;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+void RegisterProgressWindowClass() {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"ProgressWindowClass";
+	wcex.lpfnWndProc = ProgressWindowWndProc;
 	wcex.cbWndExtra = sizeof(LPVOID);
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
@@ -551,6 +695,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	RegisterNcerViewerClass();
 	RegisterCreateDialogClass();
 	RegisterNsbtxViewerClass();
+	RegisterProgressWindowClass();
 
 	InitCommonControls();
 

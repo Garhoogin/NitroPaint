@@ -710,6 +710,54 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 	free(avgs);
 }
 
+typedef struct {
+	NCLR *nclr;
+	NCGR *ncgr;
+	NSCR *nscr;
+	DWORD *px;
+	int width;
+	int height;
+	int nPalettes;
+	int paletteNumber;
+	int newPalettes;
+	int newCharacters;
+	int diffuse;
+	int maxTilesX;
+	int maxTilesY;
+	int nscrTileX;
+	int nscrTileY;
+	HWND hWndNclrViewer;
+	HWND hWndNcgrViewer;
+	HWND hWndNscrViewer;
+} NSCRIMPORTDATA;
+
+void nscrImportCallback(void *data) {
+	NSCRIMPORTDATA *importData = (NSCRIMPORTDATA *) data;
+
+	InvalidateRect(importData->hWndNclrViewer, NULL, FALSE);
+	InvalidateRect(importData->hWndNcgrViewer, NULL, FALSE);
+	InvalidateRect(importData->hWndNscrViewer, NULL, FALSE);
+	free(importData->px);
+	free(data);
+}
+
+DWORD WINAPI threadedNscrImportBitmapInternal(LPVOID lpParameter) {
+	PROGRESSDATA *progressData = (PROGRESSDATA *) lpParameter;
+	NSCRIMPORTDATA *importData = (NSCRIMPORTDATA *) progressData->data;
+	nscrImportBitmap(importData->nclr, importData->ncgr, importData->nscr, importData->px,
+					 importData->width, importData->height, importData->nPalettes, importData->paletteNumber,
+					 importData->newPalettes, importData->newCharacters, importData->diffuse,
+					 importData->maxTilesX, importData->maxTilesY, importData->nscrTileX, importData->nscrTileY);
+	progressData->waitOn = 1;
+	return 0;
+}
+
+void threadedNscrImportBitmap(PROGRESSDATA *param) {
+	CreateThread(NULL, 0, threadedNscrImportBitmapInternal, param, 0, NULL);
+	//nscrImportBitmap(nclr, ncgr, nscr, px, width, height, nPalettes, paletteNumber, newPalettes, \
+					 newCharacters, diffuse, maxTilesX, maxTilesY, nscrTileX, nscrTileY);
+}
+
 LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NSCRBITMAPIMPORTDATA *data = GetWindowLongPtr(hWnd, 0);
 	if (data == NULL) {
@@ -810,17 +858,39 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 					NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
 					NCLR *nclr = &nclrViewerData->nclr;
-
 					int maxTilesX = (nscr->nWidth / 8) - data->nscrTileX;
 					int maxTilesY = (nscr->nHeight / 8) - data->nscrTileY;
-					nscrImportBitmap(nclr, ncgr, nscr, px, width, height, nPalettes, paletteNumber, newPalettes, 
-									 newCharacters, diffuse, maxTilesX, maxTilesY, data->nscrTileX, data->nscrTileY);
 
-					InvalidateRect(hWndNclrViewer, NULL, FALSE);
-					InvalidateRect(hWndNscrViewer, NULL, FALSE);
-					InvalidateRect(hWndNcgrViewer, NULL, FALSE);
-					PostMessage(hWnd, WM_CLOSE, 0, 0);
-					free(px);
+					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
+					ShowWindow(hWndProgress, SW_SHOW);
+					NSCRIMPORTDATA *nscrImportData = (NSCRIMPORTDATA *) calloc(1, sizeof(NSCRIMPORTDATA));
+					nscrImportData->nclr = nclr;
+					nscrImportData->ncgr = ncgr;
+					nscrImportData->nscr = nscr;
+					nscrImportData->px = px;
+					nscrImportData->width = width;
+					nscrImportData->height = height;
+					nscrImportData->nPalettes = nPalettes;
+					nscrImportData->paletteNumber = paletteNumber;
+					nscrImportData->newPalettes = newPalettes;
+					nscrImportData->newCharacters = newCharacters;
+					nscrImportData->diffuse = diffuse;
+					nscrImportData->maxTilesX = maxTilesX;
+					nscrImportData->maxTilesY = maxTilesY;
+					nscrImportData->nscrTileX = data->nscrTileX;
+					nscrImportData->nscrTileY = data->nscrTileY;
+					nscrImportData->hWndNclrViewer = hWndNclrViewer;
+					nscrImportData->hWndNcgrViewer = hWndNcgrViewer;
+					nscrImportData->hWndNscrViewer = hWndNscrViewer;
+					PROGRESSDATA *progressData = (PROGRESSDATA *) calloc(1, sizeof(PROGRESSDATA));
+					progressData->data = nscrImportData;
+					progressData->callback = nscrImportCallback;
+					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
+
+					threadedNscrImportBitmap(progressData);
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					SetActiveWindow(hWndProgress);
+					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
 				}
 			}
 			break;
