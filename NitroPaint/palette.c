@@ -310,21 +310,27 @@ int chunkDeviation(DWORD *block, int width) {
 }
 
 DWORD averageColor(DWORD *cols, int nColors) {
-	int tr = 0, tg = 0, tb = 0, nCounted = 0;
+	int tr = 0, tg = 0, tb = 0, ta = 0;
 
 	for (int i = 0; i < nColors; i++) {
 		DWORD c = cols[i];
-		if (c & 0xFF000000 == 0) continue;
-		tr += c & 0xFF;
-		tg += (c >> 8) & 0xFF;
-		tb += (c >> 16) & 0xFF;
-		nCounted++;
+		int a = c >> 24;
+		if (a == 0) continue;
+		ta += a;
+
+		tr += (c & 0xFF) * a;
+		tg += ((c >> 8) & 0xFF) * a;
+		tb += ((c >> 16) & 0xFF) * a;
 	}
 
-	if (nCounted == 0) return 0;
-	tr = (tr + (nCounted >> 1)) / nCounted;
-	tg = (tg + (nCounted >> 1)) / nCounted;
-	tb = (tb + (nCounted >> 1)) / nCounted;
+	if (ta == 0) return 0;
+	tr = tr / ta;
+	tg = tg / ta;
+	tb = tb / ta;
+	//maybe unnecessary
+	if (tr > 255) tr = 255;
+	if (tg > 255) tg = 255;
+	if (tb > 255) tb = 255;
 	
 	return tr | (tg << 8) | (tb << 16) | 0xFF000000;
 }
