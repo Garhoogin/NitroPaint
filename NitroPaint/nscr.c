@@ -351,6 +351,38 @@ void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalT
 	HeapFree(GetProcessHeap(), 0, dataArea);
 }
 
+int m(int a);
+
+#define diffuse(a,r,g,b,ap) a=m((a&0xFF)+(r))|(m(((a>>8)&0xFF)+(g))<<8)|(m(((a>>16)&0xFF)+(b))<<16)|(m(((a>>24)&0xFF)+(ap))<<24)
+
+void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, int errorRed, int errorGreen, int errorBlue, int errorAlpha, float amt) {
+	//if ((pixels[i] >> 24) < 127) return;
+	if (i % width < width - 1) {
+		unsigned int right = pixels[i + 1];
+		diffuse(right, errorRed * 7 * amt / 16, errorGreen * 7 * amt / 16, errorBlue * 7 * amt / 16, errorAlpha * 7 * amt / 16);
+		pixels[i + 1] = right;
+	}
+	if (i / width < height - 1) {
+		if (i % width > 0) {//downleft
+			if (i % 8 != 0 || (i / width) % 8 == 7) {
+				unsigned int right = pixels[i + width - 1];
+				diffuse(right, errorRed * 3 * amt / 16, errorGreen * 3 * amt / 16, errorBlue * 3 * amt / 16, errorAlpha * 3 * amt / 16);
+				pixels[i + width - 1] = right;
+			}
+		}
+		if (1) {//down
+			unsigned int right = pixels[i + width];
+			diffuse(right, errorRed * 5 * amt / 16, errorGreen * 5 * amt / 16, errorBlue * 5 * amt / 16, errorAlpha * 5 * amt / 16);
+			pixels[i + width] = right;
+		}
+		if (i % width < width - 1) {
+			unsigned int right = pixels[i + width + 1];
+			diffuse(right, errorRed * 1 * amt / 16, errorGreen * 1 * amt / 16, errorBlue * 1 * amt / 16, errorAlpha * 1 * amt / 16);
+			pixels[i + width + 1] = right;
+		}
+	}
+}
+
 void nscrCreate(DWORD * imgBits, int width, int height, int nBits, int dither, LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, int paletteBase, int nPalettes, int bin) {
 	//combine similar.
 	DWORD * bits = imgBits;//combineSimilar(imgBits, width, height, 1024);
@@ -437,7 +469,10 @@ void nscrCreate(DWORD * imgBits, int width, int height, int nBits, int dither, L
 				int errorGreen = -(chosen.g - ((d >> 8) & 0xFF));
 				int errorBlue = -(chosen.b - ((d >> 16) & 0xFF));
 				paletted[index] = closest; //effectively turns this pixel array into an index array.
-				if(dither) doDiffuse(index, width, height, paletted, errorRed, errorGreen, errorBlue, 0, 1.0f);
+				if (dither && closest) {
+					float amt = 1.0f;
+					doDiffuseRespectTile(index, width, height, paletted, errorRed, errorGreen, errorBlue, 0, amt);
+				}
 			}
 		}
 	}
