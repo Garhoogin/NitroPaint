@@ -175,11 +175,10 @@ int nscrGetTileEx(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL chec
 	if(tileNo != NULL) *tileNo = tileNumber;
 
 	if (nclr) {
-		int paletteBitness = nclr->nBits;
-		int paletteSize = 16;
-		if (paletteBitness == 8) paletteSize = 256;
-		WORD * palette = nclr->colors + paletteSize * paletteNumber;
 		int bitness = ncgr->nBits;
+		int paletteSize = 16;
+		if (bitness == 8) paletteSize = 256;
+		WORD * palette = nclr->colors + paletteSize * paletteNumber;
 		int tileSize = 32;
 		if (bitness == 8) tileSize = 64;
 		if (nscr->nHighestIndex == ncgr->nTiles) tileNumber--; //some NSCRs need this. Why? I'm not sure.
