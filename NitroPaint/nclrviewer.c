@@ -282,6 +282,9 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			GetCursorPos(&mousePos);
 			ScreenToClient(hWnd, &mousePos);
 			ReleaseCapture();
+			if (!data->mouseDown) {
+				break;
+			}
 			if (!data->dragging) {
 			//transform it by scroll position
 				SCROLLINFO horiz, vert;
