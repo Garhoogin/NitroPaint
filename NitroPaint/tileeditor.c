@@ -188,6 +188,27 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			return 1;
 		}
+		case WM_RBUTTONDOWN:
+		{
+			POINT mousePos;
+			GetCursorPos(&mousePos);
+			ScreenToClient(hWnd, &mousePos);
+
+			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+			NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+			NCGR *ncgr = &ncgrViewerData->ncgr;
+
+			if (mousePos.x < 256) {
+				int x = mousePos.x / 32;
+				int y = mousePos.y / 32;
+				int color = ncgr->tiles[data->tileX + data->tileY * ncgr->tilesX][x + y * 8];
+				data->selectedColor = color;
+				InvalidateRect(hWnd, NULL, FALSE);
+			}
+			break;
+		}
 		case WM_LBUTTONDOWN:
 		case WM_MOUSEMOVE:
 		{
