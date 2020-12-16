@@ -436,6 +436,43 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						free(location);
 						break;
 					}
+					case ID_NCGRMENU_COPY:
+					{
+						HANDLE hString = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 134);
+						LPSTR clip = (LPSTR) GlobalLock(hString);
+						*(DWORD *) clip = 0x30303030;
+						clip[4] = 'C';
+						BYTE *tile = data->ncgr.tiles[data->contextHoverX + data->contextHoverY * data->ncgr.tilesX];
+						for (int i = 0; i < 64; i++) {
+							int n = tile[i];
+							clip[5 + i * 2] = (n & 0xF) + '0';
+							clip[6 + i * 2] = ((n >> 4) & 0xF) + '0';
+						}
+						GlobalUnlock(hString);
+						OpenClipboard(hWnd);
+						EmptyClipboard();
+						SetClipboardData(CF_TEXT, hString);
+						CloseClipboard();
+						break;
+					}
+					case ID_NCGRMENU_PASTE:
+					{
+						OpenClipboard(hWnd);
+						HANDLE hString = GetClipboardData(CF_TEXT);
+						CloseClipboard();
+						LPSTR clip = GlobalLock(hString);
+
+						if (strlen(clip) == 133 && *(DWORD *) clip == 0x30303030 && clip[4] == 'C') {
+							BYTE *tile = data->ncgr.tiles[data->contextHoverX + data->contextHoverY * data->ncgr.tilesX];
+							for (int i = 0; i < 64; i++) {
+								tile[i] = (clip[5 + i * 2] & 0xF) | ((clip[6 + i * 2] & 0xF) << 4);
+							}
+							InvalidateRect(hWnd, NULL, FALSE);
+						}
+
+						GlobalUnlock(hString);
+						break;
+					}
 
 				}
 			}

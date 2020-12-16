@@ -238,6 +238,42 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						ShowWindow(h, SW_SHOW);
 						break;
 					}
+					case ID_NSCRMENU_COPY:
+					{
+						int tileX = data->contextHoverX;
+						int tileY = data->contextHoverY;
+						WORD d = data->nscr.data[tileX + tileY * (data->nscr.nWidth / 8)];
+						HANDLE hString = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 10);
+						LPSTR clip = (LPSTR) GlobalLock(hString);
+						*(DWORD *) clip = 0x30303030;
+						clip[4] = 'N';
+						clip[5] = (d & 0xF) + '0';
+						clip[6] = ((d >> 4) & 0xF) + '0';
+						clip[7] = ((d >> 8) & 0xF) + '0';
+						clip[8] = ((d >> 12) & 0xF) + '0';
+						clip[9] = '\0';
+						GlobalUnlock(hString);
+						OpenClipboard(hWnd);
+						EmptyClipboard();
+						SetClipboardData(CF_TEXT, hString);
+						CloseClipboard();
+						break;
+					}
+					case ID_NSCRMENU_PASTE:
+					{
+						OpenClipboard(hWnd);
+						HANDLE hString = GetClipboardData(CF_TEXT);
+						CloseClipboard();
+						LPSTR clip = GlobalLock(hString);
+						if (strlen(clip) == 9 && *(DWORD *) clip == 0x30303030 && clip[4] == 'N') {
+							WORD d = (clip[5] & 0xF) | ((clip[6] & 0xF) << 4) | ((clip[7] & 0xF) << 8) | ((clip[8] & 0xF) << 12);
+							data->nscr.data[data->contextHoverX + data->contextHoverY * (data->nscr.nWidth / 8)] = d;
+							InvalidateRect(hWnd, NULL, FALSE);
+						}
+
+						GlobalUnlock(hString);
+						break;
+					}
 				}
 			}
 			break;

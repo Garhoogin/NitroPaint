@@ -49,13 +49,17 @@
 #define ID_NSCRMENU_IMPORTBITMAPHERE    40044
 #define ID_FILE_SAVEALL                 40045
 #define ID_MENU_VERIFYCOLOR             40046
+#define ID_NCGRMENU_COPY                40047
+#define ID_NCGRMENU_PASTE               40048
+#define ID_NSCRMENU_COPY                40049
+#define ID_NSCRMENU_PASTE               40050
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        110
-#define _APS_NEXT_COMMAND_VALUE         40047
+#define _APS_NEXT_COMMAND_VALUE         40051
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
