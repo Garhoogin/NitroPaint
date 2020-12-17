@@ -10,12 +10,6 @@
 
 extern HICON g_appIcon;
 
-int getDimension(int tiles, int border, int scale) {
-	int width = tiles * 8 * scale;
-	if (border) width += 1 + tiles;
-	return width;
-}
-
 DWORD * renderNcgrBits(NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL drawChecker, int * width, int * height, int markX, int markY, int previewPalette) {
 	int xTiles = renderNcgr->tilesX;
 	int yTiles = renderNcgr->tilesY;

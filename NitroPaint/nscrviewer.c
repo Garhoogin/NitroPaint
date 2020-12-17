@@ -8,6 +8,7 @@
 #include "nscr.h"
 #include "gdip.h"
 #include "palette.h"
+#include "tiler.h"
 
 extern HICON g_appIcon;
 
@@ -15,12 +16,12 @@ extern HICON g_appIcon;
 #define NV_SETDATA (WM_USER+2)
 #define NV_INITIMPORTDIALOG (WM_USER+3)
 
-DWORD * renderNscrBits(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL checker, int * width, int * height, int tileMarks, int highlightTile, int highlightColor) {
+DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor) {
 	int bWidth = renderNscr->nWidth;
 	int bHeight = renderNscr->nHeight;
 	if (drawGrid) {
-		bWidth = bWidth * 9 / 8 + 1;
-		bHeight = bHeight * 9 / 8 + 1;
+		bWidth += renderNscr->nWidth / 8 + 1;
+		bHeight += renderNscr->nHeight / 8 + 1;
 	}
 	*width = bWidth;
 	*height = bHeight;
@@ -105,12 +106,13 @@ DWORD * renderNscrBits(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, 
 	return bits;
 }
 
-HBITMAP renderNscr(NSCR * renderNscr, NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, int * width, int * height, int highlightNclr, int highlightTile, int highlightColor) {
+HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int highlightColor, int scale) {
 	if (renderNcgr != NULL) {
 		if (renderNscr->nHighestIndex >= renderNcgr->nTiles && highlightNclr != -1) highlightNclr -= (renderNcgr->nTiles - renderNscr->nHighestIndex - 1);
-		DWORD * bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, drawGrid, TRUE, width, height, highlightNclr, highlightTile, highlightColor);
+		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, FALSE, TRUE, width, height, highlightNclr, highlightTile, highlightColor);
 
-		HBITMAP hBitmap = CreateBitmap(*width, *height, 1, 32, bits);
+		//HBITMAP hBitmap = CreateBitmap(*width, *height, 1, 32, bits);
+		HBITMAP hBitmap = CreateTileBitmap(bits, *width, *height, -1, -1, width, height, scale, drawGrid);
 		free(bits);
 		return hBitmap;
 	}
@@ -168,6 +170,30 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			info.nPage = rcClient.bottom - rcClient.top + 1;
 			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
 			return 1;
+		}
+		case WM_MDIACTIVATE:
+		{
+			HWND hWndMain = getMainWindow(hWnd);
+			if ((HWND) lParam == hWnd) {
+				if (data->showBorders)
+					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
+				else
+					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+				int checkBox = ID_ZOOM_100;
+				if (data->scale == 2) {
+					checkBox = ID_ZOOM_200;
+				} else if (data->scale == 4) {
+					checkBox = ID_ZOOM_400;
+				} else if (data->scale == 8) {
+					checkBox = ID_ZOOM_800;
+				}
+				int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
+				for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
+					int id = ids[i];
+					CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
+				}
+			}
+			break;
 		}
 		case WM_COMMAND:
 		{
@@ -274,6 +300,72 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						GlobalUnlock(hString);
 						break;
 					}
+					case ID_VIEW_GRIDLINES:
+					{
+						HWND hWndMain = getMainWindow(hWnd);
+						int state = GetMenuState(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_BYCOMMAND);
+						state = !state;
+						if (state) {
+							data->showBorders = 1;
+							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
+						} else {
+							data->showBorders = 0;
+							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+						}
+						data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
+						data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
+
+						SCROLLINFO info;
+						info.cbSize = sizeof(info);
+						info.nMin = 0;
+						info.nMax = data->frameData.contentWidth;
+						info.fMask = SIF_RANGE;
+						SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+						info.nMax = data->frameData.contentHeight;
+						SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+						InvalidateRect(hWnd, NULL, TRUE);
+						break;
+					}
+					case ID_ZOOM_100:
+					case ID_ZOOM_200:
+					case ID_ZOOM_400:
+					case ID_ZOOM_800:
+					{
+						if (LOWORD(wParam) == ID_ZOOM_100) data->scale = 1;
+						if (LOWORD(wParam) == ID_ZOOM_200) data->scale = 2;
+						if (LOWORD(wParam) == ID_ZOOM_400) data->scale = 4;
+						if (LOWORD(wParam) == ID_ZOOM_800) data->scale = 8;
+
+						int checkBox = ID_ZOOM_100;
+						if (data->scale == 2) {
+							checkBox = ID_ZOOM_200;
+						} else if (data->scale == 4) {
+							checkBox = ID_ZOOM_400;
+						} else if (data->scale == 8) {
+							checkBox = ID_ZOOM_800;
+						}
+						int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
+						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
+							int id = ids[i];
+							CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
+						}
+						data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
+						data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
+
+						SCROLLINFO info;
+						info.cbSize = sizeof(info);
+						info.nMin = 0;
+						info.nMax = data->frameData.contentWidth;
+						info.fMask = SIF_RANGE;
+						SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+						info.nMax = data->frameData.contentHeight;
+						SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+						InvalidateRect(hWnd, NULL, TRUE);
+						break;
+					}
 				}
 			}
 			break;
@@ -304,9 +396,15 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			mousePos.x += horiz.nPos;
 			mousePos.y += vert.nPos;
 			
-			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < data->nscr.nWidth && mousePos.y < data->nscr.nHeight && msg != WM_MOUSELEAVE) {
-				int x = mousePos.x / 8;
-				int y = mousePos.y / 8;
+			if (mousePos.x >= 0 && mousePos.y >= 0
+				&& mousePos.x < getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale)
+				&& mousePos.y < getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale) && msg != WM_MOUSELEAVE) {
+				int x = mousePos.x / (8 * data->scale);
+				int y = mousePos.y / (8 * data->scale);
+				if (data->showBorders) {
+					x = (mousePos.x - 1) / (8 * data->scale + 1);
+					y = (mousePos.y - 1) / (8 * data->scale + 1);
+				}
 				if (x != data->hoverX || y != data->hoverY) {
 					data->hoverX = x;
 					data->hoverY = y;
@@ -343,24 +441,26 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			mousePos.x += horiz.nPos;
 			mousePos.y += vert.nPos;
-			if (msg == WM_RBUTTONUP) {
-			//if it is within the colors area, open a color chooser
-				if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < data->nscr.nWidth && mousePos.y < data->nscr.nHeight) {
+			if (mousePos.x >= 0 && mousePos.y >= 0
+				&& mousePos.x < getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale)
+				&& mousePos.y < getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale)) {
+				if (msg == WM_RBUTTONUP) {
+					//if it is within the colors area, open a color chooser
 					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 2);
 					POINT mouse;
 					GetCursorPos(&mouse);
 					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
 					data->contextHoverY = hoverY;
 					data->contextHoverX = hoverX;
+				} else {
+					if (data->hWndTileEditor != NULL) DestroyWindow(data->hWndTileEditor);
+					data->editingX = data->hoverX;
+					data->editingY = data->hoverY;
+					data->hWndTileEditor = CreateWindowEx(WS_EX_MDICHILD | WS_EX_CLIENTEDGE, L"NscrTileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN,
+														  CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), NULL, NULL, NULL);
+					data->hoverX = -1;
+					data->hoverY = -1;
 				}
-			} else {
-				if (data->hWndTileEditor != NULL) DestroyWindow(data->hWndTileEditor);
-				data->editingX = data->hoverX;
-				data->editingY = data->hoverY;
-				data->hWndTileEditor = CreateWindowEx(WS_EX_MDICHILD | WS_EX_CLIENTEDGE, L"NscrTileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN,
-													CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), NULL, NULL, NULL);
-				data->hoverX = -1;
-				data->hoverY = -1;
 			}
 			break;
 		}
@@ -404,7 +504,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			
 			int highlightColor = data->verifyColor;
 			if ((data->verifyFrames & 1) == 0) highlightColor = -1;
-			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, FALSE, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor);
+			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale);
 
 			HDC hDC = CreateCompatibleDC(hWindowDC);
 			SelectObject(hDC, hBitmap);

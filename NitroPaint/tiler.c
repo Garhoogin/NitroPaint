@@ -103,3 +103,9 @@ HBITMAP CreateTileBitmap(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX,
 	return hBitmap;
 	
 }
+
+int getDimension(int tiles, int border, int scale) {
+	int width = tiles * 8 * scale;
+	if (border) width += 1 + tiles;
+	return width;
+}
