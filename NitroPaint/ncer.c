@@ -335,6 +335,35 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 			WriteFile(hFile, ncer->uext, ncer->uextSize, &dwWritten, NULL);
 		}
 
+	} else {
+		DWORD dwWritten;
+		WriteFile(hFile, &ncer->nCells, 4, &dwWritten, NULL);
+		int ofs = 4 * ncer->nCells;
+		for (int i = 0; i < ncer->nCells; i++) {
+			NCER_CELL *cell = ncer->cells + i;
+			int attrsSize = cell->nAttribs * 0xA + 2;
+			WriteFile(hFile, &ofs, 4, &dwWritten, NULL);
+			ofs += attrsSize;
+		}
+		for (int i = 0; i < ncer->nCells; i++) {
+			NCER_CELL *cell = ncer->cells + i;
+			WriteFile(hFile, &cell->nAttribs, 2, &dwWritten, NULL);
+			for (int j = 0; j < cell->nAttribs; j++) {
+				NCER_CELL_INFO info;
+				decodeAttributesEx(&info, cell, j);
+				SHORT pos[2];
+				pos[0] = info.x;
+				pos[1] = info.y;
+				if (pos[0] & 0x100) {
+					pos[0] |= 0xFE00;
+				}
+				if (pos[1] & 0x80) {
+					pos[1] |= 0xFF00;
+				}
+				WriteFile(hFile, cell->attr + j * 3, 6, &dwWritten, NULL);
+				WriteFile(hFile, pos, 4, &dwWritten, NULL);
+			}
+		}
 	}
 	CloseHandle(hFile);
 }
