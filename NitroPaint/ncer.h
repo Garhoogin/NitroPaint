@@ -44,6 +44,10 @@ typedef struct NCER_ {
 	int compress;
 } NCER;
 
+int ncerIsValid(char *buffer, int size);
+
+int ncerIsValidHudson(char *buffer, int size);
+
 int ncerRead(NCER *ncer, char *buffer, int size);
 
 int ncerReadFile(NCER *ncer, LPWSTR path);

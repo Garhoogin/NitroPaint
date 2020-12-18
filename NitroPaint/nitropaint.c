@@ -191,7 +191,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		if (nclrIsValidHudson(buffer, dwSize)) format = 1;
 		else if (nscrIsValidHudson(buffer, dwSize)) format = 3;
 		else if (ncgrIsValidHudson(buffer, dwSize)) format = 2;
-
+		else if (ncerIsValidHudson(buffer, dwSize)) format = 4;
 	}
 	if (format == 1) {
 

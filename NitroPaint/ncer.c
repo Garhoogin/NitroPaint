@@ -2,10 +2,74 @@
 #include "nclr.h"
 #include "ncgr.h"
 
+int ncerIsValidHudson(char *buffer, int size) {
+	int nCells = *(int *) buffer;
+
+	for (int i = 0; i < nCells; i++) {
+		DWORD ofs = ((DWORD *) (buffer + 4))[i] + 4;
+		if (ofs >= size) return 0;
+		SHORT nOAM = *(SHORT *) (buffer + ofs);
+		WORD *attrs = (WORD *) (buffer + ofs + 2);
+		//attrs size: 0xA * nOAM
+		DWORD endOfs = ofs + 2 + 0xA * nOAM;
+		if (endOfs > size) return 0;
+	}
+	return 1;
+}
+
+int ncerIsValid(char *buffer, int size) {
+	if (size <= 4) return 0;
+	DWORD dwMagic = *(DWORD *) buffer;
+	if (dwMagic != 0x5245434E && dwMagic != 0x4E434552) return ncerIsValidHudson(buffer, size);
+	return 1;
+}
+
+int ncerReadHudson(NCER *ncer, char *buffer, int size) {
+	int nCells = *(int *) buffer;
+	ncer->isHudson = 1;
+	ncer->labl = NULL;
+	ncer->lablSize = 0;
+	ncer->uext = NULL;
+	ncer->uextSize = 0;
+	ncer->compress = 0;
+	ncer->nCells = nCells;
+	ncer->bankAttribs = 0;
+	
+	NCER_CELL *cells = (NCER_CELL *) calloc(nCells, sizeof(NCER_CELL));
+	ncer->cells = cells;
+	for (int i = 0; i < nCells; i++) {
+		DWORD ofs = ((DWORD *) (buffer + 4))[i] + 4;
+		SHORT nOAM = *(SHORT *) (buffer + ofs);
+		NCER_CELL *thisCell = cells + i;
+		thisCell->nAttr = nOAM * 3;
+		thisCell->nAttribs = nOAM;
+		thisCell->attr = (WORD *) calloc(3 * nOAM, 2);
+		thisCell->cellAttr = 0;
+		int minX = 0x7FFF, maxX = -0x7FFF, minY = 0x7FFF, maxY = -0x7FFF;
+		WORD *attrs = (WORD *) (buffer + ofs + 2);
+		for (int j = 0; j < nOAM; j++) {
+			memcpy(thisCell->attr + j * 3, attrs + j * 5, 6);
+			NCER_CELL_INFO info;
+			decodeAttributesEx(&info, thisCell, j);
+			SHORT x = attrs[j * 5 + 3];
+			SHORT y = attrs[j * 5 + 4];
+			if (x - info.width / 2 < minX) minX = x - info.width / 2;
+			if (x + info.width / 2 > maxX) maxX = x + info.width / 2;
+			if (y - info.height / 2 < minY) minY = y - info.height / 2;
+			if (y + info.height / 2 > maxY) maxY = y + info.height / 2;
+		}
+		thisCell->maxX = maxX;
+		thisCell->minX = minX;
+		thisCell->maxY = maxY;
+		thisCell->minY = minY;
+	}
+	return 0;
+}
+
 int ncerRead(NCER *ncer, char *buffer, int size) {
 	if (size < 16) return 1;
 	DWORD dwMagic = *(DWORD *) buffer;
-	if (dwMagic != 0x5245434E && dwMagic != 0x4E434552) return 1;
+	if (dwMagic != 0x5245434E && dwMagic != 0x4E434552) return ncerReadHudson(ncer, buffer, size);
 
 	ncer->nCells = 0;
 	ncer->compress = 0;
@@ -161,8 +225,8 @@ DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR * ncgr, NCLR * nclr, int * wi
 	int tilesY = *height / 8;
 
 	if (ncgr != NULL) {
-		for (int x = 0; x < tilesX; x++) {
-			for (int y = 0; y < tilesY; y++) {
+		for (int y = 0; y < tilesY; y++) {
+			for (int x = 0; x < tilesX; x++) {
 				DWORD block[64];
 
 				int bitsOffset = x * 8 + (y * 8 * tilesX * 8);
@@ -173,7 +237,7 @@ DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR * ncgr, NCLR * nclr, int * wi
 					int ncy = y + startY;
 					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
 				} else {
-					int index = y * tilesY + x + ncgrStart;
+					int index = ncgrStart + x + y * tilesX;
 					int ncx = index % ncgr->tilesX;
 					int ncy = index / ncgr->tilesX;
 					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
