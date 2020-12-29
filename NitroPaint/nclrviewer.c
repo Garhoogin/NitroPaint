@@ -307,7 +307,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						CHOOSECOLOR cc = { 0 };
 						cc.lStructSize = sizeof(cc);
 						cc.hInstance = (HINSTANCE) GetWindowLongA(hWnd, GWL_HINSTANCE);
-						cc.hwndOwner = hWnd;
+						cc.hwndOwner = GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 						cc.rgbResult = RGBFromDS(data->nclr.colors[index]);
 						cc.lpCustColors = data->tmpCust;
 						cc.Flags = 0x103;

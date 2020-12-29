@@ -113,21 +113,6 @@ HBITMAP RenderHSVGradientBar(int hLeft, int sLeft, int vLeft, int hRight, int sR
 	return hBitmap;
 }
 
-VOID DrawTickOld(HDC hDC, int x, int y) {
-	MoveToEx(hDC, x - 3, y + 1, NULL);
-	LineTo(hDC, x, y + 4);
-	LineTo(hDC, x + 4, y);
-	MoveToEx(hDC, x - 3, y + 2, NULL);
-	LineTo(hDC, x, y + 5);
-	LineTo(hDC, x + 4, y + 1);
-	MoveToEx(hDC, x - 3, 19 + y, NULL);
-	LineTo(hDC, x, 16 + y);
-	LineTo(hDC, x + 4, 20 + y);
-	MoveToEx(hDC, x - 3, 20 + y, NULL);
-	LineTo(hDC, x, 17 + y);
-	LineTo(hDC, x + 4, 21 + y);
-}
-
 VOID DrawTick(HDC hDC, int x, int y) {
 	MoveToEx(hDC, x - 1, y + 3 + 1, NULL);
 	LineTo(hDC, x, y + 4 + 1);
@@ -542,6 +527,7 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			HWND hWndOwner = data->chooseColor->hwndOwner;
 			if (hWndOwner) {
 				SetWindowLongPtr(hWndOwner, GWL_STYLE, GetWindowLongPtr(hWndOwner, GWL_STYLE) & ~WS_DISABLED);
+				SetActiveWindow(hWndOwner);
 			}
 			break;
 		}
@@ -553,7 +539,7 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-BOOL CustomChooseColor(CHOOSECOLORW *chooseColor) {
+BOOL WINAPI CustomChooseColor(CHOOSECOLORW *chooseColor) {
 	if (chooseColor->lStructSize != sizeof(CHOOSECOLORW)) return FALSE;
 	if (!g_ccRegistered) {
 		WNDCLASSEX wcex = { 0 };
