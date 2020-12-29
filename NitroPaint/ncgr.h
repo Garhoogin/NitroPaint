@@ -2,6 +2,11 @@
 
 #include "nclr.h"
 
+#define NCGR_TYPE_INVALID	0
+#define NCGR_TYPE_NCGR		1
+#define NCGR_TYPE_HUDSON	2
+#define NCGR_TYPE_HUDSON2	3
+
 typedef struct NCGR_{
 	int nTiles;
 	int tilesX;
@@ -9,9 +14,9 @@ typedef struct NCGR_{
 	int mapping;
 	int nBits;
 	int tileWidth;
-	BYTE ** tiles;
+	BYTE **tiles;
 	int compress;
-	int isHudson;
+	int type;
 } NCGR;
 
 int ncgrIsValidHudson(LPBYTE buffer, int size);

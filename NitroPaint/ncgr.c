@@ -13,35 +13,46 @@ int calculateWidth(int nTiles) {
 }
 
 int ncgrIsValidHudson(LPBYTE buffer, int size) {
-	//_asm int 3
 	if (size < 8) return 0;
 	if (*buffer == 0x10) return 0;
 	if (*buffer != 0) return 0;
-	if (buffer[4] != 1 && buffer[4] != 0) return 0;
-	if (buffer[3] != 0) return 0;
 	int dataLength = *(WORD *) (buffer + 1);
+	if (buffer[3] != 0) return 0;
+	if (dataLength * 32 + 4 == size) {
+		//no second header
+		return NCGR_TYPE_HUDSON2;
+	}
+	if (buffer[4] != 1 && buffer[4] != 0) return 0;
 	dataLength -= 4;
+	
 	if (dataLength + 8 != size) return 0;
-	return 1;
+	return NCGR_TYPE_HUDSON;
 }
 
 int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	if (size < 8) return 1; //file too small
 	if (*buffer == 0x10) return 1; //TODO: LZ77 decompress
 	if (buffer[4] != 1 && buffer[4] != 0) return 1; //not a character file
+	int type = ncgrIsValidHudson(buffer, size);
 
-	int dataLength = *(WORD *) (buffer + 1);
-	dataLength -= 4;
-	if (dataLength + 8 > size) return 1;
+	int nCharacters = 0;
+	if (type == NCGR_TYPE_HUDSON) {
 
-	int nCharacters = *(WORD *) (buffer + 5);
+		int dataLength = *(WORD *) (buffer + 1);
+		dataLength -= 4;
+		if (dataLength + 8 > size) return 1;
+
+		nCharacters = *(WORD *) (buffer + 5);
+	} else if (type == NCGR_TYPE_HUDSON2) {
+		nCharacters = *(WORD *) (buffer + 1);
+	}
 
 	ncgr->compress = 0;
-	ncgr->isHudson = 1;
+	ncgr->type = type;
 	ncgr->nTiles = nCharacters;
 	ncgr->tileWidth = 8;
 	ncgr->mapping = 0x10;
-	ncgr->nBits = 8; //TODO: maybe not always
+	ncgr->nBits = 8;
 	ncgr->tilesX = -1;
 	ncgr->tilesY = -1;
 
@@ -55,7 +66,8 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	tilesY = tileCount / tilesX;
 
 	BYTE ** tiles = (BYTE **) calloc(tileCount, sizeof(BYTE **));
-	buffer += 0x8;
+	buffer += 0x4;
+	if (type == NCGR_TYPE_HUDSON) buffer += 0x4;
 	for (int i = 0; i < tileCount; i++) {
 		tiles[i] = (BYTE *) calloc(8 * 8, 1);
 		BYTE * tile = tiles[i];
@@ -131,7 +143,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	ncgr->tilesY = tilesY;
 	ncgr->mapping = mapping;
 	ncgr->compress = 0;
-	ncgr->isHudson = 0;
+	ncgr->type = NCGR_TYPE_NCGR;
 	return 0;
 
 }
@@ -181,7 +193,7 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 
 void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (!ncgr->isHudson) {
+	if (ncgr->type == NCGR_TYPE_NCGR) {
 		BYTE ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, 0x1, 0 };
 		BYTE charHeader[] = { 'R', 'A', 'H', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -222,16 +234,24 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 				WriteFile(hFile, buffer, 32, &dwWritten, NULL);
 			}
 		}
-	} else {
-		BYTE header[] = {0, 0, 0, 0, 1, 0, 0, 0};
-		if (ncgr->nBits == 4) header[4] = 0;
-		*(WORD *) (header + 5) = ncgr->nTiles;
-		int nCharacterBytes = 64 * ncgr->nTiles;
-		if (ncgr->nBits == 4) nCharacterBytes >>= 1;
-		*(WORD *) (header + 1) = nCharacterBytes + 4;
-
+	} else if(ncgr->type == NCGR_TYPE_HUDSON || ncgr->type == NCGR_TYPE_HUDSON2) {
 		DWORD dwWritten;
-		WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+
+		if (ncgr->type == NCGR_TYPE_HUDSON) {
+			BYTE header[] = { 0, 0, 0, 0, 1, 0, 0, 0 };
+			if (ncgr->nBits == 4) header[4] = 0;
+			*(WORD *) (header + 5) = ncgr->nTiles;
+			int nCharacterBytes = 64 * ncgr->nTiles;
+			if (ncgr->nBits == 4) nCharacterBytes >>= 1;
+			*(WORD *) (header + 1) = nCharacterBytes + 4;
+
+			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		} else if(ncgr->type == NCGR_TYPE_HUDSON2) {
+			BYTE header[] = { 0, 0, 0, 0 };
+			*(WORD *) (header + 1) = ncgr->nTiles;
+			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		}
+
 		for (int i = 0; i < ncgr->nTiles; i++) {
 			if (ncgr->nBits == 8) {
 				WriteFile(hFile, ncgr->tiles[i], 64, &dwWritten, NULL);

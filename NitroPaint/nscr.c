@@ -12,32 +12,51 @@
 
 int nscrIsValidHudson(LPBYTE buffer, int size) {
 	if (*buffer == 0x10) return 0;
-	if (size < 8) return 0;
+	if (size < 4) return 0;
 	int fileSize = 4 + *(WORD *) (buffer + 1);
-	if (fileSize > size) return 0;
+	if (fileSize != size) {
+		//might be format 2
+		fileSize = 4 + *(WORD *) buffer;
+		if (fileSize != size) return 0;
+		int tilesX = buffer[2];
+		int tilesY = buffer[3];
+		if (tilesX * tilesY * 2 + 4 != fileSize) return 0;
+		return NSCR_TYPE_HUDSON2;
+	}
 	int tilesX = buffer[6];
 	int tilesY = buffer[7];
 	if (!tilesX || !tilesY) return 0;
-	return 1;
+	return NSCR_TYPE_HUDSON;
 }
 
 int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	if (*file == 0x10) return 1; //TODO: implement LZ77 decompression
 	if (dwFileSize < 8) return 1; //file too small
 	//if (file[4] != 0) return 1; //not a screen file
+	int type = nscrIsValidHudson(file, dwFileSize);
 
-	int fileSize = 4 + *(WORD *) (file + 1);
-	int tilesX = file[6];
-	int tilesY = file[7];
+	int tilesX = 0, tilesY = 0;
+	WORD *srcData = NULL;
 
-	nscr->data = malloc(fileSize - 8);
+	if (type == NSCR_TYPE_HUDSON) {
+		int fileSize = 4 + *(WORD *) (file + 1);
+		tilesX = file[6];
+		tilesY = file[7];
+		srcData = file + 8;
+	} else if (type == NSCR_TYPE_HUDSON2) {
+		tilesX = file[2];
+		tilesY = file[3];
+		srcData = file + 4;
+	}
+
+	nscr->data = malloc(tilesX * tilesY * 2);
 	nscr->nWidth = tilesX * 8;
 	nscr->nHeight = tilesY * 8;
-	nscr->dataSize = fileSize - 8;
+	nscr->dataSize = tilesX * tilesY * 2;
 	nscr->nHighestIndex = 0;
 	nscr->compress = 0;
-	nscr->isHudson = 1;
-	memcpy(nscr->data, file + 0x8, nscr->dataSize);
+	nscr->type = type;
+	memcpy(nscr->data, srcData, nscr->dataSize);
 	for (int i = 0; i < nscr->dataSize / 2; i++) {
 		WORD w = nscr->data[i];
 		w &= 0x3FF;
@@ -80,7 +99,7 @@ int nscrRead(NSCR * nscr, char * file, DWORD dwFileSize) {
 	nscr->dataSize = dwDataSize;
 	nscr->nHighestIndex = 0;
 	nscr->compress = 0;
-	nscr->isHudson = 0;
+	nscr->type = NSCR_TYPE_NSCR;
 	memcpy(nscr->data, file + 0x14, dwDataSize);
 	for (int i = 0; i < dwDataSize / 2; i++) {
 		WORD w = nscr->data[i];
@@ -263,7 +282,7 @@ int isDuplicate(DWORD * block1, DWORD * block2) {
 
 void nscrWrite(NSCR *nscr, LPWSTR name) {
 	DWORD dwWritten;
-	if (!nscr->isHudson) {
+	if (nscr->type == NSCR_TYPE_NSCR) {
 		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -287,17 +306,26 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 		WriteFile(hFile, nrcsHeader, sizeof(nrcsHeader), &dwWritten, NULL);
 		WriteFile(hFile, nscr->data, dataSize, &dwWritten, NULL);
 		CloseHandle(hFile);
-	} else {
-		int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
-		BYTE header[8] = { 0 };
-		*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
-		*(WORD *) (header + 4) = 2 * nTotalTiles;
-		header[6] = nscr->nWidth / 8;
-		header[7] = nscr->nHeight / 8;
-
+	} else if(nscr->type == NSCR_TYPE_HUDSON || nscr->type == NSCR_TYPE_HUDSON2) {
 		DWORD dwWritten;
 		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		
+		int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
+		if (nscr->type == NSCR_TYPE_HUDSON) {
+			BYTE header[8] = { 0 };
+			*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
+			*(WORD *) (header + 4) = 2 * nTotalTiles;
+			header[6] = nscr->nWidth / 8;
+			header[7] = nscr->nHeight / 8;
+			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		} else if (nscr->type == NSCR_TYPE_HUDSON2) {
+			BYTE header[4] = { 0, 0, 0, 0 };
+			*(WORD *) header = nTotalTiles * 2;
+			header[2] = nscr->nWidth / 8;
+			header[3] = nscr->nHeight / 8;
+			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		}
+
 		WriteFile(hFile, nscr->data, 2 * nTotalTiles, &dwWritten, NULL);
 		CloseHandle(hFile);
 	}

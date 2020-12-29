@@ -15,15 +15,20 @@
 #define TILE_FLIPXY (TILE_FLIPX|TILE_FLIPY)
 #define TILE_FLIPNONE 0
 
+#define NSCR_TYPE_INVALID	0
+#define NSCR_TYPE_NSCR		1
+#define NSCR_TYPE_HUDSON	2
+#define NSCR_TYPE_HUDSON2	3
+
 typedef struct NSCR_ {
 	DWORD nWidth;
 	DWORD nHeight;
 	DWORD dataSize;
-	WORD * data;
+	WORD *data;
 	int fmt;
 	int nHighestIndex;//weird hack
 	int compress; //to indicate the file should be compressed
-	int isHudson; //to indicate the file is a Mario Party DS format screen file
+	int type; //to indicate the file is a Mario Party DS format screen file
 } NSCR;
 
 int nscrIsValidHudson(LPBYTE buffer, int size);
