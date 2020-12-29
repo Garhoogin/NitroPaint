@@ -4,6 +4,7 @@
 #include "ncgrviewer.h"
 #include "nscrviewer.h"
 #include "ncerviewer.h"
+#include "colorchooser.h"
 #include "resource.h"
 
 extern HICON g_appIcon;
@@ -310,7 +311,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						cc.rgbResult = RGBFromDS(data->nclr.colors[index]);
 						cc.lpCustColors = data->tmpCust;
 						cc.Flags = 0x103;
-						if (ChooseColor(&cc)) {
+						if (CustomChooseColor(&cc)) {
 							DWORD result = cc.rgbResult;
 							int r = result & 0xFF;
 							int g = (result >> 8) & 0xFF;
