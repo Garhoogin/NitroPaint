@@ -551,6 +551,7 @@ BOOL WINAPI CustomChooseColor(CHOOSECOLORW *chooseColor) {
 		wcex.lpfnWndProc = ColorChooserWndProc;
 		wcex.cbWndExtra = sizeof(LPVOID) * 14;
 		RegisterClassEx(&wcex);
+		g_ccRegistered = TRUE;
 	}
 
 	DWORD dwStyle = WS_CAPTION | WS_SYSMENU;
@@ -562,7 +563,7 @@ BOOL WINAPI CustomChooseColor(CHOOSECOLORW *chooseColor) {
 	rc.bottom = 209;
 	AdjustWindowRect(&rc, dwStyle, FALSE);
 
-	HWND hWndChooser = CreateWindow(L"ColorChooserClass", L"Choose Color", dwStyle, 
+	HWND hWndChooser = CreateWindowEx(WS_EX_DLGMODALFRAME, L"ColorChooserClass", L"Choose Color", dwStyle, 
 									CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, chooseColor->hwndOwner, NULL, NULL, NULL);
 	CHOOSECOLORDATA *data = (CHOOSECOLORDATA *) GetWindowLongPtr(hWndChooser, 0);
 	data->chooseColor = chooseColor;

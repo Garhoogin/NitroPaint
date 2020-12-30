@@ -53,13 +53,14 @@
 #define ID_NCGRMENU_PASTE               40048
 #define ID_NSCRMENU_COPY                40049
 #define ID_NSCRMENU_PASTE               40050
+#define ID_VIEW_USE15BPPCOLORCHOOSER    40051
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        110
-#define _APS_NEXT_COMMAND_VALUE         40051
+#define _APS_NEXT_COMMAND_VALUE         40052
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

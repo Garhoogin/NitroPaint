@@ -365,6 +365,17 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						MessageBox(hWnd, L"GUI NCLR/NCGR Editor/NSCR Viewer. Made by Garhoogin with help from Gericom, Xgone, and ProfessorDoktorGamer.", L"About NitroPaint", MB_ICONINFORMATION);
 						break;
 					}
+					case ID_VIEW_USE15BPPCOLORCHOOSER:
+					{
+						int state = GetMenuState(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND);
+						state = !state;
+						if (state) {
+							CheckMenuItem(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_CHECKED);
+						} else {
+							CheckMenuItem(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_UNCHECKED);
+						}
+						break;
+					}
 				}
 			}
 			HWND hWndActive = SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);

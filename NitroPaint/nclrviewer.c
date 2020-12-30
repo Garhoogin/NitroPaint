@@ -304,14 +304,17 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int y = mousePos.y / 16;
 					int index = y * 16 + x;
 					if (index < data->nclr.nColors) {
+						HWND hWndMain = getMainWindow(hWnd);
 						CHOOSECOLOR cc = { 0 };
 						cc.lStructSize = sizeof(cc);
-						cc.hInstance = (HINSTANCE) GetWindowLongA(hWnd, GWL_HINSTANCE);
-						cc.hwndOwner = GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						cc.hInstance = (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE);
+						cc.hwndOwner = hWndMain;
 						cc.rgbResult = RGBFromDS(data->nclr.colors[index]);
 						cc.lpCustColors = data->tmpCust;
 						cc.Flags = 0x103;
-						if (CustomChooseColor(&cc)) {
+						BOOL (__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
+						if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
+						if (ChooseColorFunction(&cc)) {
 							DWORD result = cc.rgbResult;
 							int r = result & 0xFF;
 							int g = (result >> 8) & 0xFF;
@@ -321,7 +324,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							b = ((b + 4) * 31 / 255);
 							data->nclr.colors[index] = r | (g << 5) | (b << 10);
 							InvalidateRect(hWnd, NULL, FALSE);
-							HWND hWndMain = getMainWindow(hWnd);
+							
 							NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 							if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
 							if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
