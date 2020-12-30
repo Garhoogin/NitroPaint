@@ -32,8 +32,8 @@ int ncgrIsValidHudson(LPBYTE buffer, int size) {
 int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	if (size < 8) return 1; //file too small
 	if (*buffer == 0x10) return 1; //TODO: LZ77 decompress
-	if (buffer[4] != 1 && buffer[4] != 0) return 1; //not a character file
 	int type = ncgrIsValidHudson(buffer, size);
+	if (type == NCGR_TYPE_INVALID) return 1;
 
 	int nCharacters = 0;
 	if (type == NCGR_TYPE_HUDSON) {
@@ -56,7 +56,11 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	ncgr->tilesX = -1;
 	ncgr->tilesY = -1;
 
-	if(buffer[4] == 0){
+	if (type == NCGR_TYPE_HUDSON) {
+		if (buffer[4] == 0) {
+			ncgr->nBits = 4;
+		}
+	} else if (type == NCGR_TYPE_HUDSON2) {
 		ncgr->nBits = 4;
 	}
 
