@@ -1,4 +1,4 @@
-#include <Windows.h>
+﻿#include <Windows.h>
 #include <CommCtrl.h>
 #include <Uxtheme.h>
 
@@ -80,6 +80,9 @@ LPWSTR openFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension) 
 	}
 	return NULL;
 }
+
+CONFIGURATIONSTRUCT g_configuration;
+LPWSTR g_configPath;
 
 WNDPROC OldMdiClientWndProc = NULL;
 LRESULT WINAPI NewMdiClientWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -253,6 +256,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					OpenFileByName(hWnd, argv[i]);
 				}
 			}
+
+			//check config data
+			if (g_configuration.nclrViewerConfiguration.useDSColorPicker) {
+				CheckMenuItem(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_CHECKED);
+			}
 			return 1;
 		}
 		case WM_PAINT:
@@ -370,8 +378,10 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						int state = GetMenuState(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND);
 						state = !state;
 						if (state) {
+							WritePrivateProfileStringW(L"NclrViewer", L"UseDSColorPicker", L"1", g_configPath);
 							CheckMenuItem(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_CHECKED);
 						} else {
+							WritePrivateProfileStringW(L"NclrViewer", L"UseDSColorPicker", L"0", g_configPath);
 							CheckMenuItem(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_UNCHECKED);
 						}
 						break;
@@ -683,8 +693,39 @@ void RegisterProgressWindowClass() {
 	RegisterClassEx(&wcex);
 }
 
+VOID ReadConfiguration(LPWSTR lpszPath) {
+	DWORD dwAttributes = GetFileAttributes(lpszPath);
+	if (dwAttributes == INVALID_FILE_ATTRIBUTES) {
+		
+		/*HANDLE hFile = CreateFile(lpszPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		CloseHandle(hFile);*/
+		BOOL result = TRUE;
+		result = result && WritePrivateProfileStringW(L"NclrViewer", L"UseDSColorPicker", L"0", lpszPath);
+		result = result && WritePrivateProfileStringW(L"NcgrViewer", L"Gridlines", L"1", lpszPath);
+		result = result && WritePrivateProfileStringW(L"NscrViewer", L"Gridlines", L"1", lpszPath);
+	}
+	g_configuration.nclrViewerConfiguration.useDSColorPicker = GetPrivateProfileInt(L"NclrViewer", L"UseDSColorPicker", 0, lpszPath);
+	g_configuration.ncgrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NcgrViewer", L"Gridlines", 1, lpszPath);
+	g_configuration.nscrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NscrViewer", L"Gridlines", 0, lpszPath);
+}
+
+VOID SetConfigPath() {
+	LPWSTR name = L"nitropaint.ini";
+	g_configPath = calloc(MAX_PATH + 1, 1);
+	DWORD nLength = GetModuleFileNameW(GetModuleHandleW(NULL), g_configPath, MAX_PATH);
+	int endOffset = 0;
+	for (int i = 0; i < nLength; i++) {
+		if (g_configPath[i] == L'\\' || g_configPath[i] == '/') endOffset = i + 1;
+	}
+	memcpy(g_configPath + endOffset, name, wcslen(name) * 2 + 2);
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	g_appIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
+
+	SetConfigPath();
+	ReadConfiguration(g_configPath);
 
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);

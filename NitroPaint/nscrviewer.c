@@ -130,6 +130,12 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			data->showBorders = 0;
 			data->scale = 1;
+
+			//read config data
+			if (g_configuration.nscrViewerConfiguration.gridlines) {
+				data->showBorders = 1;
+				CheckMenuItem(GetMenu((HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT)), ID_VIEW_GRIDLINES, MF_CHECKED);
+			}
 			break;
 		}
 		case NV_INITIALIZE:

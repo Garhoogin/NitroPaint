@@ -3,6 +3,22 @@
 #define g_useDarkTheme 0
 
 typedef struct {
+	BOOL useDarkTheme;
+	struct {
+		BOOL useDSColorPicker;
+	} nclrViewerConfiguration;
+	struct {
+		BOOL gridlines;
+	} ncgrViewerConfiguration;
+	struct {
+		BOOL gridlines;
+	} nscrViewerConfiguration;
+} CONFIGURATIONSTRUCT;
+
+extern CONFIGURATIONSTRUCT g_configuration;
+extern LPWSTR g_configPath;
+
+typedef struct {
 	HWND hWndMdi;
 	HWND hWndNclrViewer;
 	HWND hWndNcgrViewer;

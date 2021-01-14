@@ -161,6 +161,11 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			SendMessage(data->hWndPaletteDropdown, CB_SETCURSEL, 0, 0);
 
+			//read config data
+			if (!g_configuration.ncgrViewerConfiguration.gridlines) {
+				data->showBorders = 0;
+				CheckMenuItem(GetMenu((HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT)), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+			}
 			break;
 		}
 		case NV_INITIALIZE:
