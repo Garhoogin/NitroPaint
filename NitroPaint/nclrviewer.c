@@ -110,6 +110,38 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 	DeleteObject(ncerOutline);
 }
 
+int lightness(WORD col) {
+	int r = col & 0x1F;
+	int g = (col >> 5) & 0x1F;
+	int b = (col >> 10) & 0x1F;
+	return (1063 * r + 3576 * g + 361 * b + 2500) / 5000;
+}
+
+int colorSortLightness(PVOID p1, PVOID p2) {
+	WORD c1 = *(WORD *) p1;
+	WORD c2 = *(WORD *) p2;
+	return lightness(c1) - lightness(c2);
+}
+
+int colorSortHue(PVOID p1, PVOID p2) {
+	WORD c1 = *(WORD *) p1;
+	WORD c2 = *(WORD *) p2;
+
+	int r1 = c1 & 0x1F;
+	int r2 = c2 & 0x1F;
+	int g1 = (c1 >> 5) & 0x1F;
+	int g2 = (c2 >> 5) & 0x1F;
+	int b1 = (c1 >> 10) & 0x1F;
+	int b2 = (c2 >> 10) & 0x1F;
+	COLORREF col1 = RGB(r1, g1, b1);
+	COLORREF col2 = RGB(r2, g2, b2);
+
+	int h1, s1, v1, h2, s2, v2;
+	ConvertRGBToHSV(col1, &h1, &s1, &v1);
+	ConvertRGBToHSV(col2, &h2, &s2, &v2);
+	return h1 - h2;
+}
+
 #define NV_INITIALIZE (WM_USER+1)
 
 LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -502,13 +534,13 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						palString[3] = 0x20 + ((length >> 12) & 0xF);
 
 						int strOffset = 4;
-						for(int i = 0; i < length; i++){
+						for (int i = 0; i < length; i++) {
 							int offs = i + offset;
 							int row = offs >> 4;
 							int col = (offs & 0xF) + 1;
 							DWORD d = 0x00FFFFFF & (RGBFromDS(data->nclr.colors[offs]));
 
-							for(int j = 0; j < 8; j++){
+							for (int j = 0; j < 8; j++) {
 								palString[strOffset] = 0x30 + ((d >> 28) & 0xF);
 								d <<= 4;
 								strOffset++;
@@ -540,9 +572,23 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						int b = (col >> 10) & 0x1F;
 
 						//0.2126r + 0.7152g + 0.0722b
-						int l = (1063 * r + 3576 * g + 361 * b + 2500) / 5000;
+						int l = lightness(col);
 
 						pal[index] = l | (l << 5) | (l << 10);
+						InvalidateRect(hWnd, NULL, FALSE);
+						break;
+					}
+					case ID_ARRANGEPALETTE_BYLIGHTNESS:
+					case ID_ARRANGEPALETTE_BYHUE:
+					{
+						int index = data->contextHoverX + data->contextHoverY * 16;
+						int palette = index >> data->nclr.nBits;
+
+						WORD *pal = data->nclr.colors + (palette << data->nclr.nBits);
+
+						int type = LOWORD(wParam);
+						qsort(pal + 1, (1 << data->nclr.nBits) - 1, 2, 
+							  type == ID_ARRANGEPALETTE_BYLIGHTNESS ? colorSortLightness : colorSortHue);
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
