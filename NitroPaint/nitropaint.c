@@ -468,7 +468,6 @@ DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	nscrCreate(params->bbits, params->width, params->height, params->bits, params->dither,
 			   params->createData->szNclrPath, params->createData->szNcgrPath, params->createData->szNscrPath,
 			   params->palette, params->nPalettes, params->bin);
-	free(lpParameter);
 	params->data->waitOn = 1;
 	return 0;
 }

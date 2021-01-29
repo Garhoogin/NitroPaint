@@ -525,7 +525,7 @@ void nscrCreate(DWORD * imgBits, int width, int height, int nBits, int dither, L
 	if (nToAllocate & 0xF) nToAllocate += (0x10 - (nToAllocate & 0xF));
 
 	//blocks is now an array of blocks. Next, we need to find duplicate blocks. 
-	int nBlocks = nToAllocate; //number of generated tiles
+	int nBlocks = tilesX * tilesY; //number of generated tiles
 	int nTotalTiles = nBlocks; //number of output tiles
 							   //first, merge duplicates. Then, merge similar blocks until nBlocks <= 0x400.
 	WORD * indices = (WORD *) calloc(width * height, 2);

@@ -398,6 +398,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 			nitroPaintStruct->hWndNscrViewer = NULL;
+			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
 		case NV_SETDATA:
