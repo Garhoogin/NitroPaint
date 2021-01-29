@@ -20,6 +20,12 @@ typedef struct {
 	int editingY;
 	int verifyColor;
 	int verifyFrames;
+
+	int mouseDown;
+	int selStartX; //-1 when no selection.
+	int selStartY;
+	int selEndX;
+	int selEndY;
 } NSCRVIEWERDATA;
 
 VOID RegisterNscrViewerClass(VOID);

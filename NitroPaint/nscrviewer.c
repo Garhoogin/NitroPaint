@@ -17,7 +17,7 @@ extern HICON g_appIcon;
 #define NV_INITIMPORTDIALOG (WM_USER+3)
 #define NV_RECALCULATE (WM_USER+4)
 
-DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor) {
+DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY) {
 	int bWidth = renderNscr->nWidth;
 	int bHeight = renderNscr->nHeight;
 	if (drawGrid) {
@@ -31,6 +31,11 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL
 
 	int tilesX = renderNscr->nWidth >> 3;
 	int tilesY = renderNscr->nHeight >> 3;
+
+	int selX = min(selStartX, selEndX);
+	int selY = min(selStartY, selEndY);
+	int selRight = max(selStartX, selEndX);
+	int selBottom = max(selStartY, selEndY);
 
 	DWORD block[64];
 
@@ -71,6 +76,20 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL
 				}
 			}
 
+			if (x >= selX && y >= selY && x <= selRight && y <= selBottom) {
+				for (int i = 0; i < 64; i++) {
+					DWORD d = block[i];
+					int b = d & 0xFF;
+					int g = (d >> 8) & 0xFF;
+					int r = (d >> 16) & 0xFF;
+					r = (r + 255) >> 1;
+					g = (g + 255) >> 1;
+					b = (b + 0) >> 1;
+					block[i] = (d & 0xFF000000) | b | (g << 8) | (r << 16);
+				}
+
+			}
+
 			if (highlightColor != -1) {
 				int color = highlightColor % (1 << renderNcgr->nBits);
 				int highlightPalette = highlightColor / (1 << renderNcgr->nBits);
@@ -107,10 +126,10 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL
 	return bits;
 }
 
-HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int highlightColor, int scale) {
+HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int highlightColor, int scale, int selStartX, int selStartY, int selEndX, int selEndY) {
 	if (renderNcgr != NULL) {
 		if (renderNscr->nHighestIndex >= renderNcgr->nTiles && highlightNclr != -1) highlightNclr -= (renderNcgr->nTiles - renderNscr->nHighestIndex - 1);
-		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, FALSE, TRUE, width, height, highlightNclr, highlightTile, highlightColor);
+		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, FALSE, TRUE, width, height, highlightNclr, highlightTile, highlightColor, selStartX, selStartY, selEndX, selEndY);
 
 		//HBITMAP hBitmap = CreateBitmap(*width, *height, 1, 32, bits);
 		HBITMAP hBitmap = CreateTileBitmap(bits, *width, *height, -1, -1, width, height, scale, drawGrid);
@@ -131,6 +150,10 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			data->showBorders = 0;
 			data->scale = 1;
+			data->selStartX = -1;
+			data->selStartY = -1;
+			data->selEndX = -1;
+			data->selEndY = -1;
 
 			data->hWndPreview = CreateWindow(L"NscrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
 
@@ -246,7 +269,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						nscr = &data->nscr;
 
-						DWORD * bits = renderNscrBits(nscr, ncgr, nclr, FALSE, FALSE, &width, &height, -1, -1, -1);
+						DWORD * bits = renderNscrBits(nscr, ncgr, nclr, FALSE, FALSE, &width, &height, -1, -1, -1, -1, -1, -1, -1);
 						
 						writeImage(bits, width, height, location);
 						free(bits);
@@ -319,6 +342,15 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 
 						GlobalUnlock(hString);
+						break;
+					}
+					case ID_NSCRMENU_DESELECT:
+					{
+						data->selStartX = -1;
+						data->selStartY = -1;
+						data->selEndX = -1;
+						data->selEndY = -1;
+						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
 					case ID_VIEW_GRIDLINES:
@@ -979,7 +1011,7 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 			int highlightColor = data->verifyColor;
 			if ((data->verifyFrames & 1) == 0) highlightColor = -1;
-			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale);
+			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale, data->selStartX, data->selStartY, data->selEndX, data->selEndY);
 
 			HDC hDC = CreateCompatibleDC(hWindowDC);
 			SelectObject(hDC, hBitmap);
@@ -1049,6 +1081,29 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			mousePos.x += horiz.nPos;
 			mousePos.y += vert.nPos;
 
+			if (msg != WM_MOUSELEAVE) {
+				int x = mousePos.x / (8 * data->scale);
+				int y = mousePos.y / (8 * data->scale);
+
+				if (data->showBorders) {
+					x = (mousePos.x - 1) / (8 * data->scale + 1);
+					y = (mousePos.y - 1) / (8 * data->scale + 1);
+				}
+
+				if (x < 0) x = 0;
+				if (y < 0) y = 0;
+				if (x >= data->nscr.nWidth / 8) x = data->nscr.nWidth / 8 - 1;
+				if (y >= data->nscr.nHeight / 8) y = data->nscr.nHeight / 8 - 1;
+
+				if (x != data->hoverX || y != data->hoverY) {
+					if (data->mouseDown && data->selStartX != -1 && data->selStartY != -1) {
+						data->selEndX = x;
+						data->selEndY = y;
+					}
+					InvalidateRect(hWnd, NULL, FALSE);
+				}
+			}
+
 			if (mousePos.x >= 0 && mousePos.y >= 0
 				&& mousePos.x < getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale)
 				&& mousePos.y < getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale) && msg != WM_MOUSELEAVE) {
@@ -1075,6 +1130,7 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			InvalidateRect(hWnd, NULL, FALSE);
 			break;
 		}
+		case WM_LBUTTONUP:
 		case WM_LBUTTONDOWN:
 		case WM_RBUTTONUP:
 		{
@@ -1094,6 +1150,10 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 			mousePos.x += horiz.nPos;
 			mousePos.y += vert.nPos;
+			if (msg == WM_LBUTTONUP) {
+				data->mouseDown = 0;
+				ReleaseCapture();
+			}
 			if (mousePos.x >= 0 && mousePos.y >= 0
 				&& mousePos.x < getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale)
 				&& mousePos.y < getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale)) {
@@ -1105,14 +1165,24 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWndNscrViewer, NULL);
 					data->contextHoverY = hoverY;
 					data->contextHoverX = hoverX;
-				} else {
+				} else if(msg == WM_LBUTTONUP) {
 					if (data->hWndTileEditor != NULL) DestroyWindow(data->hWndTileEditor);
-					data->editingX = data->hoverX;
-					data->editingY = data->hoverY;
-					data->hWndTileEditor = CreateWindowEx(WS_EX_MDICHILD | WS_EX_CLIENTEDGE, L"NscrTileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN,
-														  CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, (HWND) GetWindowLong(hWndNscrViewer, GWL_HWNDPARENT), NULL, NULL, NULL);
-					data->hoverX = -1;
-					data->hoverY = -1;
+					if (data->hoverX == data->selStartX && data->hoverY == data->selStartY) {
+						data->editingX = data->hoverX;
+						data->editingY = data->hoverY;
+						data->hWndTileEditor = CreateWindowEx(WS_EX_MDICHILD | WS_EX_CLIENTEDGE, L"NscrTileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN,
+															  CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, (HWND) GetWindowLong(hWndNscrViewer, GWL_HWNDPARENT), NULL, NULL, NULL);
+						data->hoverX = -1;
+						data->hoverY = -1;
+					}
+				} else if (msg == WM_LBUTTONDOWN) {
+					data->selStartX = data->hoverX;
+					data->selStartY = data->hoverY;
+					data->selEndX = data->selStartX;
+					data->selEndY = data->selStartY;
+					data->mouseDown = 1;
+					InvalidateRect(hWnd, NULL, FALSE);
+					SetCapture(hWnd);
 				}
 			}
 			break;
