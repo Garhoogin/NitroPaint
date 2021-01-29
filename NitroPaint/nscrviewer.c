@@ -15,6 +15,7 @@ extern HICON g_appIcon;
 #define NV_INITIALIZE (WM_USER+1)
 #define NV_SETDATA (WM_USER+2)
 #define NV_INITIMPORTDIALOG (WM_USER+3)
+#define NV_RECALCULATE (WM_USER+4)
 
 DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor) {
 	int bWidth = renderNscr->nWidth;
@@ -131,11 +132,25 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->showBorders = 0;
 			data->scale = 1;
 
+			data->hWndPreview = CreateWindow(L"NscrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
+
 			//read config data
 			if (g_configuration.nscrViewerConfiguration.gridlines) {
 				data->showBorders = 1;
 				CheckMenuItem(GetMenu((HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT)), ID_VIEW_GRIDLINES, MF_CHECKED);
 			}
+			break;
+		}
+		case WM_SIZE:
+		{
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+			MoveWindow(data->hWndPreview, 0, 0, rcClient.right, rcClient.bottom, TRUE);
+			return DefMDIChildProc(hWnd, msg, wParam, lParam);
+		}
+		case WM_PAINT:
+		{
+			InvalidateRect(data->hWndPreview, NULL, FALSE);
 			break;
 		}
 		case NV_INITIALIZE:
@@ -154,8 +169,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			rc.right = data->frameData.contentWidth;
 			rc.bottom = data->frameData.contentHeight;
 			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-			int width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
-			int height = rc.bottom - rc.top + 4;
+			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
+			int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL);
 			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
 
 
@@ -321,16 +336,9 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
 						data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
 
-						SCROLLINFO info;
-						info.cbSize = sizeof(info);
-						info.nMin = 0;
-						info.nMax = data->frameData.contentWidth;
-						info.fMask = SIF_RANGE;
-						SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
-
-						info.nMax = data->frameData.contentHeight;
-						SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
 						InvalidateRect(hWnd, NULL, TRUE);
+						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
 					}
 					case ID_ZOOM_100:
@@ -360,165 +368,13 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
 						data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
 
-						SCROLLINFO info;
-						info.cbSize = sizeof(info);
-						info.nMin = 0;
-						info.nMax = data->frameData.contentWidth;
-						info.fMask = SIF_RANGE;
-						SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
-
-						info.nMax = data->frameData.contentHeight;
-						SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
 						InvalidateRect(hWnd, NULL, TRUE);
+						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
 					}
 				}
 			}
-			break;
-		}
-		case WM_MOUSEMOVE:
-		case WM_NCMOUSEMOVE:
-		{
-			TRACKMOUSEEVENT evt;
-			evt.cbSize = sizeof(evt);
-			evt.hwndTrack = hWnd;
-			evt.dwHoverTime = 0;
-			evt.dwFlags = TME_LEAVE;
-			TrackMouseEvent(&evt);
-		}
-		case WM_MOUSELEAVE:
-		{
-			POINT mousePos;
-			GetCursorPos(&mousePos);
-			ScreenToClient(hWnd, &mousePos);
-
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-			mousePos.x += horiz.nPos;
-			mousePos.y += vert.nPos;
-			
-			if (mousePos.x >= 0 && mousePos.y >= 0
-				&& mousePos.x < getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale)
-				&& mousePos.y < getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale) && msg != WM_MOUSELEAVE) {
-				int x = mousePos.x / (8 * data->scale);
-				int y = mousePos.y / (8 * data->scale);
-				if (data->showBorders) {
-					x = (mousePos.x - 1) / (8 * data->scale + 1);
-					y = (mousePos.y - 1) / (8 * data->scale + 1);
-				}
-				if (x != data->hoverX || y != data->hoverY) {
-					data->hoverX = x;
-					data->hoverY = y;
-					InvalidateRect(hWnd, NULL, FALSE);
-				}
-			} else {
-				int x = -1, y = -1;
-				if (x != data->hoverX || y != data->hoverY) {
-					data->hoverX = -1;
-					data->hoverY = -1;
-					InvalidateRect(hWnd, NULL, FALSE);
-				}
-			}
-
-			InvalidateRect(hWnd, NULL, FALSE);
-			break;
-		}
-		case WM_LBUTTONDOWN:
-		case WM_RBUTTONUP:
-		{
-			int hoverY = data->hoverY;
-			int hoverX = data->hoverX;
-			POINT mousePos;
-			GetCursorPos(&mousePos);
-			ScreenToClient(hWnd, &mousePos);
-			//transform it by scroll position
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-
-			mousePos.x += horiz.nPos;
-			mousePos.y += vert.nPos;
-			if (mousePos.x >= 0 && mousePos.y >= 0
-				&& mousePos.x < getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale)
-				&& mousePos.y < getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale)) {
-				if (msg == WM_RBUTTONUP) {
-					//if it is within the colors area, open a color chooser
-					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 2);
-					POINT mouse;
-					GetCursorPos(&mouse);
-					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
-					data->contextHoverY = hoverY;
-					data->contextHoverX = hoverX;
-				} else {
-					if (data->hWndTileEditor != NULL) DestroyWindow(data->hWndTileEditor);
-					data->editingX = data->hoverX;
-					data->editingY = data->hoverY;
-					data->hWndTileEditor = CreateWindowEx(WS_EX_MDICHILD | WS_EX_CLIENTEDGE, L"NscrTileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN,
-														  CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), NULL, NULL, NULL);
-					data->hoverX = -1;
-					data->hoverY = -1;
-				}
-			}
-			break;
-		}
-		case WM_PAINT:
-		{
-			PAINTSTRUCT ps;
-			HDC hWindowDC = BeginPaint(hWnd, &ps);
-
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-
-			NSCR *nscr = NULL;
-			NCGR *ncgr = NULL;
-			NCLR *nclr = NULL;
-
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-			if (hWndNclrViewer) {
-				NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
-				nclr = &nclrViewerData->nclr;
-			}
-			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-			int hoveredNcgrTile = -1, hoveredNscrTile = -1;
-			if (data->hoverX != -1 && data->hoverY != -1) {
-				hoveredNscrTile = data->hoverX + data->hoverY * (data->nscr.nWidth / 8);
-			}
-			if (hWndNcgrViewer) {
-				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
-				ncgr = &ncgrViewerData->ncgr;
-				hoveredNcgrTile = ncgrViewerData->hoverIndex;
-			}
-			
-			nscr = &data->nscr;
-			int bitmapWidth, bitmapHeight;
-			
-			int highlightColor = data->verifyColor;
-			if ((data->verifyFrames & 1) == 0) highlightColor = -1;
-			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale);
-
-			HDC hDC = CreateCompatibleDC(hWindowDC);
-			SelectObject(hDC, hBitmap);
-			BitBlt(hWindowDC, -horiz.nPos, -vert.nPos, bitmapWidth, bitmapHeight, hDC, 0, 0, SRCCOPY);
-			DeleteObject(hDC);
-			DeleteObject(hBitmap);
-
-			EndPaint(hWnd, &ps);
 			break;
 		}
 		case WM_TIMER:
@@ -1047,6 +903,217 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_DESTROY:
 		{
 			free(data);
+			SetWindowLongPtr(hWnd, 0, 0);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndNscrViewer = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+	int contentWidth = 0, contentHeight = 0;
+	if (data) {
+		contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
+		contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
+	}
+
+	//little hack for code reuse >:)
+	FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
+	if (!frameData) {
+		frameData = calloc(1, sizeof(FRAMEDATA));
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) frameData);
+	}
+	frameData->contentWidth = contentWidth;
+	frameData->contentHeight = contentHeight;
+
+	UpdateScrollbarVisibility(hWnd);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			ShowScrollBar(hWnd, SB_BOTH, FALSE);
+			break;
+		}
+		case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hWindowDC = BeginPaint(hWnd, &ps);
+
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.nPos = 0;
+			vert.nPos = 0;
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+
+			NSCR *nscr = NULL;
+			NCGR *ncgr = NULL;
+			NCLR *nclr = NULL;
+
+			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWndNscrViewer, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
+			if (hWndNclrViewer) {
+				NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
+				nclr = &nclrViewerData->nclr;
+			}
+			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+			int hoveredNcgrTile = -1, hoveredNscrTile = -1;
+			if (data->hoverX != -1 && data->hoverY != -1) {
+				hoveredNscrTile = data->hoverX + data->hoverY * (data->nscr.nWidth / 8);
+			}
+			if (hWndNcgrViewer) {
+				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+				ncgr = &ncgrViewerData->ncgr;
+				hoveredNcgrTile = ncgrViewerData->hoverIndex;
+			}
+
+			nscr = &data->nscr;
+			int bitmapWidth, bitmapHeight;
+
+			int highlightColor = data->verifyColor;
+			if ((data->verifyFrames & 1) == 0) highlightColor = -1;
+			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale);
+
+			HDC hDC = CreateCompatibleDC(hWindowDC);
+			SelectObject(hDC, hBitmap);
+			BitBlt(hWindowDC, -horiz.nPos, -vert.nPos, bitmapWidth, bitmapHeight, hDC, 0, 0, SRCCOPY);
+			DeleteObject(hDC);
+			DeleteObject(hBitmap);
+
+			EndPaint(hWnd, &ps);
+			break;
+		}
+		case NV_RECALCULATE:
+		{
+			SCROLLINFO info;
+			info.cbSize = sizeof(info);
+			info.nMin = 0;
+			info.nMax = contentWidth;
+			info.fMask = SIF_RANGE;
+			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+			info.nMax = contentHeight;
+			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+			SendMessage(hWnd, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
+			break;
+		}
+		case WM_HSCROLL:
+		case WM_VSCROLL:
+		case WM_MOUSEWHEEL:
+			return DefChildProc(hWnd, msg, wParam, lParam);
+		case WM_SIZE:
+		{
+			SCROLLINFO info;
+			info.cbSize = sizeof(info);
+			info.nMin = 0;
+			info.nMax = contentWidth;
+			info.fMask = SIF_RANGE;
+			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+			info.nMax = contentHeight;
+			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			return DefChildProc(hWnd, msg, wParam, lParam);
+		}
+		case WM_MOUSEMOVE:
+		case WM_NCMOUSEMOVE:
+		{
+			TRACKMOUSEEVENT evt;
+			evt.cbSize = sizeof(evt);
+			evt.hwndTrack = hWnd;
+			evt.dwHoverTime = 0;
+			evt.dwFlags = TME_LEAVE;
+			TrackMouseEvent(&evt);
+		}
+		case WM_MOUSELEAVE:
+		{
+			POINT mousePos;
+			GetCursorPos(&mousePos);
+			ScreenToClient(hWnd, &mousePos);
+
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+			mousePos.x += horiz.nPos;
+			mousePos.y += vert.nPos;
+
+			if (mousePos.x >= 0 && mousePos.y >= 0
+				&& mousePos.x < getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale)
+				&& mousePos.y < getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale) && msg != WM_MOUSELEAVE) {
+				int x = mousePos.x / (8 * data->scale);
+				int y = mousePos.y / (8 * data->scale);
+				if (data->showBorders) {
+					x = (mousePos.x - 1) / (8 * data->scale + 1);
+					y = (mousePos.y - 1) / (8 * data->scale + 1);
+				}
+				if (x != data->hoverX || y != data->hoverY) {
+					data->hoverX = x;
+					data->hoverY = y;
+					InvalidateRect(hWnd, NULL, FALSE);
+				}
+			} else {
+				int x = -1, y = -1;
+				if (x != data->hoverX || y != data->hoverY) {
+					data->hoverX = -1;
+					data->hoverY = -1;
+					InvalidateRect(hWnd, NULL, FALSE);
+				}
+			}
+
+			InvalidateRect(hWnd, NULL, FALSE);
+			break;
+		}
+		case WM_LBUTTONDOWN:
+		case WM_RBUTTONUP:
+		{
+			int hoverY = data->hoverY;
+			int hoverX = data->hoverX;
+			POINT mousePos;
+			GetCursorPos(&mousePos);
+			ScreenToClient(hWnd, &mousePos);
+			//transform it by scroll position
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+
+			mousePos.x += horiz.nPos;
+			mousePos.y += vert.nPos;
+			if (mousePos.x >= 0 && mousePos.y >= 0
+				&& mousePos.x < getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale)
+				&& mousePos.y < getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale)) {
+				if (msg == WM_RBUTTONUP) {
+					//if it is within the colors area, open a color chooser
+					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 2);
+					POINT mouse;
+					GetCursorPos(&mouse);
+					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWndNscrViewer, NULL);
+					data->contextHoverY = hoverY;
+					data->contextHoverX = hoverX;
+				} else {
+					if (data->hWndTileEditor != NULL) DestroyWindow(data->hWndTileEditor);
+					data->editingX = data->hoverX;
+					data->editingY = data->hoverY;
+					data->hWndTileEditor = CreateWindowEx(WS_EX_MDICHILD | WS_EX_CLIENTEDGE, L"NscrTileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN,
+														  CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, (HWND) GetWindowLong(hWndNscrViewer, GWL_HWNDPARENT), NULL, NULL, NULL);
+					data->hoverX = -1;
+					data->hoverY = -1;
+				}
+			}
 			break;
 		}
 	}
@@ -1079,6 +1146,20 @@ VOID RegisterNscrBitmapImportClass(VOID) {
 	RegisterClassEx(&wcex);
 }
 
+VOID RegisterNscrPreviewClass(VOID) {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"NscrPreviewClass";
+	wcex.lpfnWndProc = NscrPreviewWndProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
 VOID RegisterNscrViewerClass(VOID) {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -1092,6 +1173,7 @@ VOID RegisterNscrViewerClass(VOID) {
 	RegisterClassEx(&wcex);
 	RegisterNscrTileEditorClass();
 	RegisterNscrBitmapImportClass();
+	RegisterNscrPreviewClass();
 }
 
 HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {
@@ -1109,8 +1191,8 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPWS
 		rc.right = width;
 		rc.bottom = height;
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4;
+		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
+		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL);
 		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"NSCR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
 

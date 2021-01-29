@@ -10,6 +10,7 @@ typedef struct {
 	int scale;
 
 	HWND hWndTileEditor;
+	HWND hWndPreview;
 
 	int hoverX;
 	int hoverY;
