@@ -184,6 +184,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			int n = nclrReadFile(&data->nclr, path);
 			if (n) return 0;
 			WCHAR titleBuffer[MAX_PATH + 15];
+			if (!g_configuration.fullPaths) path = GetFileName(path);
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
 			memcpy(titleBuffer + wcslen(titleBuffer), L" - NCLR Viewer", 30);
 			SetWindowText(hWnd, titleBuffer);

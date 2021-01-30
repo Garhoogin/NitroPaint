@@ -81,6 +81,16 @@ LPWSTR openFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension) 
 	return NULL;
 }
 
+LPWSTR GetFileName(LPWSTR lpszPath) {
+	WCHAR *current = lpszPath;
+	while (*lpszPath) {
+		WCHAR c = *lpszPath;
+		if (c == '\\' || c == '/') current = lpszPath;
+		lpszPath++;
+	}
+	return current + 1;
+}
+
 CONFIGURATIONSTRUCT g_configuration;
 LPWSTR g_configPath;
 
@@ -261,6 +271,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (g_configuration.nclrViewerConfiguration.useDSColorPicker) {
 				CheckMenuItem(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_CHECKED);
 			}
+			if (g_configuration.fullPaths) {
+				CheckMenuItem(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_CHECKED);
+			}
 			return 1;
 		}
 		case WM_PAINT:
@@ -384,6 +397,20 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							WritePrivateProfileStringW(L"NclrViewer", L"UseDSColorPicker", L"0", g_configPath);
 							CheckMenuItem(GetMenu(hWnd), ID_VIEW_USE15BPPCOLORCHOOSER, MF_UNCHECKED);
 						}
+						break;
+					}
+					case ID_VIEW_FULLFILEPATHS:
+					{
+						int state = GetMenuState(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_BYCOMMAND);
+						state = !state;
+						if (state) {
+							WritePrivateProfileStringW(L"NitroPaint", L"FullPaths", L"1", g_configPath);
+							CheckMenuItem(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_CHECKED);
+						} else {
+							WritePrivateProfileStringW(L"NitroPaint", L"FullPaths", L"0", g_configPath);
+							CheckMenuItem(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_UNCHECKED);
+						}
+						g_configuration.fullPaths = state;
 						break;
 					}
 				}
@@ -703,10 +730,12 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 		result = result && WritePrivateProfileStringW(L"NclrViewer", L"UseDSColorPicker", L"0", lpszPath);
 		result = result && WritePrivateProfileStringW(L"NcgrViewer", L"Gridlines", L"1", lpszPath);
 		result = result && WritePrivateProfileStringW(L"NscrViewer", L"Gridlines", L"0", lpszPath);
+		result = result && WritePrivateProfileStringW(L"NitroPaint", L"FullPaths", L"1", lpszPath);
 	}
 	g_configuration.nclrViewerConfiguration.useDSColorPicker = GetPrivateProfileInt(L"NclrViewer", L"UseDSColorPicker", 0, lpszPath);
 	g_configuration.ncgrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NcgrViewer", L"Gridlines", 1, lpszPath);
 	g_configuration.nscrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NscrViewer", L"Gridlines", 0, lpszPath);
+	g_configuration.fullPaths = GetPrivateProfileInt(L"NitroPaint", L"FullPaths", 1, lpszPath);
 }
 
 VOID SetConfigPath() {

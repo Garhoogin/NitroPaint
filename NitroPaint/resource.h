@@ -60,13 +60,14 @@
 #define ID_ARRANGEPALETTE_BYLIGHTNESS   40055
 #define ID_ARRANGEPALETTE_BYHUE         40056
 #define ID_NSCRMENU_DESELECT            40057
+#define ID_VIEW_FULLFILEPATHS           40058
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        110
-#define _APS_NEXT_COMMAND_VALUE         40058
+#define _APS_NEXT_COMMAND_VALUE         40059
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

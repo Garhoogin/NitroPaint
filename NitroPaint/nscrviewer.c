@@ -203,6 +203,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 			memcpy(&data->nscr, (NSCR *) lParam, sizeof(NSCR));
 			WCHAR titleBuffer[MAX_PATH + 15];
+			if (!g_configuration.fullPaths) path = GetFileName(path);
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
 			memcpy(titleBuffer + wcslen(titleBuffer), L" - NSCR Viewer", 30);
 			SetWindowText(hWnd, titleBuffer);

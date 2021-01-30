@@ -174,6 +174,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 			memcpy(&data->ncgr, (NCGR *) lParam, sizeof(NCGR));
 			WCHAR titleBuffer[MAX_PATH + 15];
+			if (!g_configuration.fullPaths) path = GetFileName(path);
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
 			memcpy(titleBuffer + wcslen(titleBuffer), L" - NCGR Viewer", 30);
 			SetWindowText(hWnd, titleBuffer);

@@ -4,6 +4,7 @@
 
 typedef struct {
 	BOOL useDarkTheme;
+	BOOL fullPaths;
 	struct {
 		BOOL useDSColorPicker;
 	} nclrViewerConfiguration;
@@ -36,3 +37,5 @@ typedef struct {
 LPWSTR openFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension);
 
 LPWSTR saveFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension);
+
+LPWSTR GetFileName(LPWSTR lpszPath);

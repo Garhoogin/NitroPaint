@@ -65,6 +65,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 			memcpy(&data->nsbtx, (NSBTX *) lParam, sizeof(NSBTX));
 			WCHAR titleBuffer[MAX_PATH + 15];
+			if (!g_configuration.fullPaths) path = GetFileName(path);
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
 			memcpy(titleBuffer + wcslen(titleBuffer), L" - NSBTX Viewer", 32);
 			SetWindowText(hWnd, titleBuffer);
