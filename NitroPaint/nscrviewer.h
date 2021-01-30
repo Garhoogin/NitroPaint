@@ -11,6 +11,11 @@ typedef struct {
 
 	HWND hWndTileEditor;
 	HWND hWndPreview;
+	HWND hWndCharacterLabel;
+	HWND hWndCharacterNumber;
+	HWND hWndPaletteLabel;
+	HWND hWndPaletteNumber;
+	HWND hWndApply;
 
 	int hoverX;
 	int hoverY;

@@ -82,9 +82,9 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL
 					int b = d & 0xFF;
 					int g = (d >> 8) & 0xFF;
 					int r = (d >> 16) & 0xFF;
-					r = (r + 255) >> 1;
-					g = (g + 255) >> 1;
-					b = (b + 0) >> 1;
+					r = (r * 3 + 255) >> 2;
+					g = (g * 3 + 255) >> 2;
+					b = (b * 3 + 0) >> 2;
 					block[i] = (d & 0xFF000000) | b | (g << 8) | (r << 16);
 				}
 
@@ -154,8 +154,22 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->selStartY = -1;
 			data->selEndX = -1;
 			data->selEndY = -1;
+			data->hoverX = -1;
+			data->hoverY = -1;
 
 			data->hWndPreview = CreateWindow(L"NscrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
+			//Character: \n Palette: 
+			data->hWndCharacterLabel = CreateWindow(L"STATIC", L"Character:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteLabel = CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndCharacterNumber = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteNumber = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndApply = CreateWindow(L"BUTTON", L"Apply", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			WCHAR bf[16];
+			for (int i = 0; i < 16; i++) {
+				wsprintf(bf, L"Palette %02d", i);
+				SendMessage(data->hWndPaletteNumber, CB_ADDSTRING, (WPARAM) wcslen(bf), (LPARAM) bf);
+			}
+			SendMessage(data->hWndPaletteNumber, CB_SETCURSEL, 0, 0);
 
 			//read config data
 			if (g_configuration.nscrViewerConfiguration.gridlines) {
@@ -168,7 +182,14 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
-			MoveWindow(data->hWndPreview, 0, 0, rcClient.right, rcClient.bottom, TRUE);
+			MoveWindow(data->hWndPreview, 0, 0, rcClient.right - 200, rcClient.bottom, TRUE);
+
+			MoveWindow(data->hWndCharacterLabel, rcClient.right - 190, 10, 70, 22, TRUE);
+			MoveWindow(data->hWndPaletteLabel, rcClient.right - 190, 37, 70, 22, TRUE);
+			MoveWindow(data->hWndCharacterNumber, rcClient.right - 110, 10, 100, 22, TRUE);
+			MoveWindow(data->hWndPaletteNumber, rcClient.right - 110, 37, 100, 100, TRUE);
+			MoveWindow(data->hWndApply, rcClient.right - 110, 64, 100, 22, TRUE);
+
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
 		case WM_PAINT:
@@ -192,7 +213,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			rc.right = data->frameData.contentWidth;
 			rc.bottom = data->frameData.contentHeight;
 			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
+			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200; //+4 to account for WS_EX_CLIENTEDGE
 			int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL);
 			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
 
@@ -406,6 +427,28 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 				}
+			} else if (lParam) {
+				HWND hWndControl = (HWND) lParam;
+				if (hWndControl == data->hWndApply) {
+					WCHAR bf[16];
+					SendMessage(data->hWndCharacterNumber, WM_GETTEXT, 15, (LPARAM) bf);
+					int character = _wtoi(bf);
+					int palette = SendMessage(data->hWndPaletteNumber, CB_GETCURSEL, 0, 0);
+					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					SendMessage(hWnd, NV_SETDATA, (WPARAM) character, (LPARAM) palette);
+					int tilesX = data->nscr.nWidth / 8, tilesY = data->nscr.nHeight / 8;
+					int nTiles = tilesX * tilesY;
+
+					int xMin = min(data->selStartX, data->selEndX), xMax = max(data->selStartX, data->selEndX);
+					int yMin = min(data->selStartY, data->selEndY), yMax = max(data->selStartY, data->selEndY);
+					for (int i = 0; i < nTiles; i++) {
+						int x = i % tilesX, y = i / tilesX;
+						if (x >= xMin && y >= yMin && x <= xMax && y <= yMax) {
+							data->nscr.data[i] = (data->nscr.data[i] & 0xC00) | character | (palette << 12);
+						}
+					}
+					InvalidateRect(hWnd, NULL, FALSE);
+				}
 			}
 			break;
 		}
@@ -433,108 +476,17 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
-		case NV_SETDATA:
+		case WM_LBUTTONDOWN:
 		{
-			int tile = data->editingX + data->editingY * (data->nscr.nWidth >> 3);
-			int character = wParam & 0x3FF;
-			int palette = lParam & 0xF; //0x0C00
-			data->nscr.data[tile] = (data->nscr.data[tile] & 0xC00) | character | (palette << 12);
+			data->selStartX = -1;
+			data->selStartY = -1;
+			data->selEndX = -1;
+			data->selEndY = -1;
 			InvalidateRect(hWnd, NULL, FALSE);
-
 			break;
 		}
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
-}
-
-
-typedef struct {
-	HWND hWndCharacterInput;
-	HWND hWndPaletteInput;
-	HWND hWndOk;
-} NSCRTILEEDITORDATA;
-
-LRESULT WINAPI NscrTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NSCRTILEEDITORDATA *data = (NSCRTILEEDITORDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!data) {
-		data = (NSCRTILEEDITORDATA *) calloc(1, sizeof(NSCRTILEEDITORDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
-	switch (msg) {
-		case WM_CREATE:
-		{
-			RECT rc = { 0 };
-			rc.right = 200;
-			rc.bottom = 96;
-			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-			int width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
-			int height = rc.bottom - rc.top + 4;
-			SetWindowPos(hWnd, hWnd, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
-
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
-			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
-			int editing = nscrViewerData->editingX + nscrViewerData->editingY * (nscrViewerData->nscr.nWidth >> 3);
-			WORD cell = nscrViewerData->nscr.data[editing];
-
-			/*
-				Character: [______]
-				Palette:   [_____v]
-			*/
-			CreateWindow(L"STATIC", L"Character:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 70, 22, hWnd, NULL, NULL, NULL);
-			data->hWndCharacterInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 90, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 70, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteInput = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 90, 37, 100, 300, hWnd, NULL, NULL, NULL);
-			WCHAR bf[16];
-			for (int i = 0; i < 16; i++) {
-				wsprintf(bf, L"Palette %02d", i);
-				SendMessage(data->hWndPaletteInput, CB_ADDSTRING, (WPARAM) wcslen(bf), (LPARAM) bf);
-			}
-			SendMessage(data->hWndPaletteInput, CB_SETCURSEL, (cell >> 12) & 0xF, 0);
-			wsprintf(bf, L"%d", cell & 0x3FF);
-			SendMessage(data->hWndCharacterInput, WM_SETTEXT, (WPARAM) wcslen(bf), (LPARAM) bf);
-			data->hWndOk = CreateWindow(L"BUTTON", L"OK", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 90, 64, 100, 22, hWnd, NULL, NULL, NULL);
-			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
-			break;
-		}
-		case WM_NCHITTEST:
-		{
-			int ht = DefMDIChildProc(hWnd, msg, wParam, lParam);
-			if (ht == HTTOP || ht == HTBOTTOM || ht == HTLEFT || ht == HTRIGHT || ht == HTTOPLEFT || ht == HTTOPRIGHT || ht == HTBOTTOMLEFT || ht == HTBOTTOMRIGHT) return HTCAPTION;
-			return ht;
-		}
-		case WM_DESTROY:
-		{
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
-			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
-			nscrViewerData->hWndTileEditor = NULL;
-			free(data);
-			break;
-		}
-		case WM_COMMAND:
-		{
-			if (lParam) {
-				HWND hWndControl = (HWND) lParam;
-				if (hWndControl == data->hWndOk) {
-					WCHAR bf[16];
-					SendMessage(data->hWndCharacterInput, WM_GETTEXT, 15, (LPARAM) bf);
-					int character = _wtoi(bf);
-					int palette = SendMessage(data->hWndPaletteInput, CB_GETCURSEL, 0, 0);
-					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-					HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
-					SendMessage(hWndNscrViewer, NV_SETDATA, (WPARAM) character, (LPARAM) palette);
-					DestroyWindow(hWnd);
-					SetFocus(hWndNscrViewer);
-				}
-			}
-			break;
-		}
-	}
-	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
 int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int charNumber) {
@@ -1166,12 +1118,9 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					data->contextHoverY = hoverY;
 					data->contextHoverX = hoverX;
 				} else if(msg == WM_LBUTTONUP) {
-					if (data->hWndTileEditor != NULL) DestroyWindow(data->hWndTileEditor);
 					if (data->hoverX == data->selStartX && data->hoverY == data->selStartY) {
 						data->editingX = data->hoverX;
 						data->editingY = data->hoverY;
-						data->hWndTileEditor = CreateWindowEx(WS_EX_MDICHILD | WS_EX_CLIENTEDGE, L"NscrTileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN,
-															  CW_USEDEFAULT, CW_USEDEFAULT, 200, 150, (HWND) GetWindowLong(hWndNscrViewer, GWL_HWNDPARENT), NULL, NULL, NULL);
 						data->hoverX = -1;
 						data->hoverY = -1;
 					}
@@ -1183,25 +1132,30 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					data->mouseDown = 1;
 					InvalidateRect(hWnd, NULL, FALSE);
 					SetCapture(hWnd);
+
+					int tile = data->selStartX + data->selStartY * (data->nscr.nWidth / 8);
+					WORD d = data->nscr.data[tile];
+					int character = d & 0x3FF;
+					int palette = d >> 12;
+
+					WCHAR bf[8];
+					SendMessage(data->hWndPaletteNumber, CB_SETCURSEL, palette, 0);
+					int len = wsprintfW(bf, L"%d", character);
+					SendMessage(data->hWndCharacterNumber, WM_SETTEXT, len, (LPARAM) bf);
+				}
+			} else {
+				if (msg == WM_LBUTTONDOWN) {
+					data->selStartX = -1;
+					data->selStartY = -1;
+					data->selEndX = -1;
+					data->selEndY = -1;
+					InvalidateRect(hWnd, NULL, FALSE);
 				}
 			}
 			break;
 		}
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
-}
-
-VOID RegisterNscrTileEditorClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NscrTileEditorClass";
-	wcex.lpfnWndProc = NscrTileEditorWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
 }
 
 VOID RegisterNscrBitmapImportClass(VOID) {
@@ -1242,7 +1196,6 @@ VOID RegisterNscrViewerClass(VOID) {
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
 	RegisterClassEx(&wcex);
-	RegisterNscrTileEditorClass();
 	RegisterNscrBitmapImportClass();
 	RegisterNscrPreviewClass();
 }
@@ -1262,7 +1215,7 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPWS
 		rc.right = width;
 		rc.bottom = height;
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
+		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL);
 		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"NSCR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
