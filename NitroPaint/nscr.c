@@ -391,7 +391,7 @@ void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, i
 	}
 	if (i / width < height - 1) {
 		if (i % width > 0) {//downleft
-			if (i % 8 != 0 || (i / width) % 8 == 7) {
+			if ((i % width) % 8 != 0 || (i / width) % 8 == 7) {
 				unsigned int right = pixels[i + width - 1];
 				diffuse(right, errorRed * 3 * amt / 16, errorGreen * 3 * amt / 16, errorBlue * 3 * amt / 16, errorAlpha * 3 * amt / 16);
 				pixels[i + width - 1] = right;
