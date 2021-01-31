@@ -557,25 +557,29 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_MENU_INVERTCOLOR:
 					{
-						int index = data->contextHoverX + data->contextHoverY * 16;
+						int index = data->contextHoverY * 16;
 						WORD *pal = data->nclr.colors;
-						pal[index] ^= 0x7FFF;
+						for (int i = 0; i < 16; i++) {
+							pal[index + i] ^= 0x7FFF;
+						}
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
 					case ID_MENU_MAKEGRAYSCALE:
 					{
-						int index = data->contextHoverX + data->contextHoverY * 16;
+						int index = data->contextHoverY * 16;
 						WORD *pal = data->nclr.colors;
-						WORD col = pal[index];
-						int r = col & 0x1F;
-						int g = (col >> 5) & 0x1F;
-						int b = (col >> 10) & 0x1F;
+						for (int i = 0; i < 16; i++) {
+							WORD col = pal[index + i];
+							int r = col & 0x1F;
+							int g = (col >> 5) & 0x1F;
+							int b = (col >> 10) & 0x1F;
 
-						//0.2126r + 0.7152g + 0.0722b
-						int l = lightness(col);
+							//0.2126r + 0.7152g + 0.0722b
+							int l = lightness(col);
 
-						pal[index] = l | (l << 5) | (l << 10);
+							pal[index + i] = l | (l << 5) | (l << 10);
+						}
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
