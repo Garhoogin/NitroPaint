@@ -300,19 +300,56 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_NSCRMENU_FLIPHORIZONTALLY:
 					{
-						int tileNo = data->contextHoverX + data->contextHoverY * (data->nscr.nWidth >> 3);
-						WORD oldVal = data->nscr.data[tileNo];
-						oldVal ^= (TILE_FLIPX << 10);
-						data->nscr.data[tileNo] = oldVal;
+						int selStartX = min(data->selStartX, data->selEndX), selEndX = max(data->selStartX, data->selEndX);
+						int selStartY = min(data->selStartY, data->selEndY), selEndY = max(data->selStartY, data->selEndY);
+						int selWidth = selEndX + 1 - selStartX;
+						int selHeight = selEndY + 1 - selStartY;
+						if (selWidth == 1 && selHeight == 1) {
+							int tileNo = data->contextHoverX + data->contextHoverY * (data->nscr.nWidth >> 3);
+							WORD oldVal = data->nscr.data[tileNo];
+							oldVal ^= (TILE_FLIPX << 10);
+							data->nscr.data[tileNo] = oldVal;
+						} else if (selStartX != -1 && selStartY != -1) {
+							//for each row
+							for (int y = selStartY; y < selHeight; y++) {
+								//for width/2
+								for (int x = 0; x < selWidth / 2; x++) {
+									//swap x with selWidth-1-x
+									int t1 = x + selStartX, t2 = selWidth - 1 - x + selStartX;
+									WORD d1 = data->nscr.data[t1 + y * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPX << 10);
+									WORD d2 = data->nscr.data[t2 + y * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPX << 10);
+									data->nscr.data[t1 + y * (data->nscr.nWidth >> 3)] = d2;
+									data->nscr.data[t2 + y * (data->nscr.nWidth >> 3)] = d1;
+								}
+							}
+						}
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
 					case ID_NSCRMENU_FLIPVERTICALLY:
 					{
-						int tileNo = data->contextHoverX + data->contextHoverY * (data->nscr.nWidth >> 3);
-						WORD oldVal = data->nscr.data[tileNo];
-						oldVal ^= (TILE_FLIPY << 10);
-						data->nscr.data[tileNo] = oldVal;
+						int selStartX = min(data->selStartX, data->selEndX), selEndX = max(data->selStartX, data->selEndX);
+						int selStartY = min(data->selStartY, data->selEndY), selEndY = max(data->selStartY, data->selEndY);
+						int selWidth = selEndX + 1 - selStartX;
+						int selHeight = selEndY + 1 - selStartY;
+						if (selWidth == 1 && selHeight == 1) {
+							int tileNo = data->contextHoverX + data->contextHoverY * (data->nscr.nWidth >> 3);
+							WORD oldVal = data->nscr.data[tileNo];
+							oldVal ^= (TILE_FLIPY << 10);
+							data->nscr.data[tileNo] = oldVal;
+						} else if (selStartX != -1 && selStartY != -1) {
+							//for every column
+							for (int x = selStartX; x < selStartX + selWidth; x++) {
+								//for every row/2
+								for (int y = 0; y < selHeight / 2; y++) {
+									int t1 = y + selStartY, t2 = selHeight - 1 - y + selStartY;
+									WORD d1 = data->nscr.data[x + t1 * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPY << 10);
+									WORD d2 = data->nscr.data[x + t2 * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPY << 10);
+									data->nscr.data[x + t1 * (data->nscr.nWidth >> 3)] = d2;
+									data->nscr.data[x + t2 * (data->nscr.nWidth >> 3)] = d1;
+								}
+							}
+						}
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
