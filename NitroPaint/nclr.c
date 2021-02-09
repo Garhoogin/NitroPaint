@@ -9,7 +9,7 @@ int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	
 	nclr->nColors = nColors;
 	nclr->nBits = 4;
-	nclr->colors = (WORD *) calloc(nColors, 2);
+	nclr->colors = (COLOR *) calloc(nColors, 2);
 	nclr->isHudson = 1;
 	memcpy(nclr->colors, buffer + 4, nColors * 2);
 	return 0;
@@ -28,7 +28,7 @@ int nclrRead(NCLR * nclr, char * buffer, int size) {
 
 	nclr->nColors = nColors;
 	nclr->nBits = bits;
-	nclr->colors = (WORD *) calloc(nColors, 2);
+	nclr->colors = (COLOR *) calloc(nColors, 2);
 	nclr->isHudson = 0;
 	memcpy(nclr->colors, buffer + dataOffset, nColors * 2);
 	return 0;
@@ -56,9 +56,9 @@ int nclrIsValidHudson(LPBYTE lpFile, int size) {
 	if (dataLength + 4 != size) return 0;
 	if (nColors * 2 + 4 != size) return 0;
 
-	WORD *data = lpFile + 4;
+	COLOR *data = lpFile + 4;
 	for (int i = 0; i < nColors; i++) {
-		WORD w = data[i];
+		COLOR w = data[i];
 		if (w & 0x8000) return 0;
 	}
 	return 1;
@@ -104,16 +104,10 @@ void nclrWrite(NCLR * nclr, LPWSTR name) {
 }
 
 void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int bin) {
-	WORD * cpal = (WORD *) HeapAlloc(GetProcessHeap(), 0, nColors * 2);
+	COLOR *cpal = (WORD *) calloc(nColors, 2);
 	for (int i = 0; i < nColors; i++) {
 		DWORD d = palette[i];
-		int r = d & 0xFF;
-		int g = (d >> 8) & 0xFF;
-		int b = (d >> 16) & 0xFF;
-		r = (r + 4) * 31 / 255;
-		g = (g + 4) * 31 / 255;
-		b = (b + 4) * 31 / 255;
-		cpal[i] = r | (g << 5) | (b << 10);
+		cpal[i] = ColorConvertToDS(d);
 	}
 
 	if (!bin) {
@@ -149,6 +143,6 @@ void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR na
 		WriteFile(hFile, cpal, nColors * 2, &dwWritten, NULL);
 		CloseHandle(hFile);
 	}
-	HeapFree(GetProcessHeap(), 0, cpal);
+	free(cpal);
 
 }

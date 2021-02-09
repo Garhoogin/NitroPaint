@@ -10,8 +10,6 @@ extern HANDLE g_appIcon;
 
 #define NV_INITIALIZE (WM_USER+1)
 
-#define REVERSE(x) ((x)&0xFF00FF00)|(((x)&0xFF)<<16)|(((x)>>16)&0xFF)
-
 HWND CreateTileEditor(int x, int y, int width, int height, HWND hWndParent, int tileX, int tileY) {
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
 		RECT rc = { 0 };
@@ -111,9 +109,9 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			} else paletteSize = 0;
 
 			SelectObject(hDC, GetStockObject(BLACK_PEN));
-			WORD col = nclr->colors[data->selectedColor + usedPalette * paletteSize];
-			DWORD dw = getColor(col);
-			HBRUSH hbr = CreateSolidBrush(REVERSE(dw));
+			COLOR col = nclr->colors[data->selectedColor + usedPalette * paletteSize];
+			DWORD dw = ColorConvertFromDS(col);
+			HBRUSH hbr = CreateSolidBrush(dw);
 			SelectObject(hDC, hbr);
 			if (data->selectedColor) {
 				Rectangle(hDC, 350, 0, 371, 21);
@@ -147,8 +145,8 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					if (idx) {
 						col = nclr->colors[idx + (usedPalette << ncgr->nBits)];
-						dw = getColor(col);
-						hbr = CreateSolidBrush(REVERSE(dw));
+						dw = ColorConvertFromDS(col);
+						hbr = CreateSolidBrush(dw);
 						SelectObject(hDC, hbr);
 						Rectangle(hDC, pX, pY, pX + 14, pY + 14);
 						DeleteObject(hbr);

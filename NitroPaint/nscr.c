@@ -197,7 +197,7 @@ int nscrGetTileEx(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL chec
 		int bitness = ncgr->nBits;
 		int paletteSize = 16;
 		if (bitness == 8) paletteSize = 256;
-		WORD * palette = nclr->colors + paletteSize * paletteNumber;
+		COLOR* palette = nclr->colors + paletteSize * paletteNumber;
 		int tileSize = 32;
 		if (bitness == 8) tileSize = 64;
 		if (nscr->nHighestIndex == ncgr->nTiles) tileNumber--; //some NSCRs need this. Why? I'm not sure.
@@ -217,8 +217,8 @@ int nscrGetTileEx(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL chec
 
 			for (int i = 0; i < 64; i++) {
 				if (ncgrTile[i]) {
-					WORD c = palette[ncgrTile[i]];
-					out[i] = getColor(c) | 0xFF000000;
+					COLOR c = palette[ncgrTile[i]];
+					out[i] = ColorConvertFromDS(CREVERSE(c)) | 0xFF000000;
 				} else {
 					out[i] = 0;
 				}

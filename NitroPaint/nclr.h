@@ -1,10 +1,11 @@
 #pragma once
 #include <Windows.h>
+#include "color.h"
 
 typedef struct NCLR_ {
 	int nBits;
 	int nColors;
-	WORD * colors;
+	COLOR* colors;
 	int isHudson;
 } NCLR;
 

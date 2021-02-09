@@ -320,7 +320,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						int originX = data->contextHoverX;
 						int originY = data->contextHoverY;
 						int paletteNumber = data->selectedPalette;
-						WORD *nitroPalette = nclr->colors + (paletteNumber << ncgr->nBits);
+						COLOR *nitroPalette = nclr->colors + (paletteNumber << ncgr->nBits);
 						int paletteSize = 1 << data->ncgr.nBits;
 						if ((data->selectedPalette << ncgr->nBits) + paletteSize >= nclr->nColors) {
 							paletteSize = nclr->nColors - (data->selectedPalette << ncgr->nBits);
@@ -336,25 +336,23 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (!createPalette) {
 							//decode the palette
 							for (int i = 0; i < paletteSize; i++) {
-								DWORD col = getColor(nitroPalette[i]);
-								int r = (col >> 16) & 0xFF;
+								DWORD col = ColorConvertFromDS(nitroPalette[i]);
+								int b = (col >> 16) & 0xFF;
 								int g = (col >> 8) & 0xFF;
-								int b = col & 0xFF;
-								palette[i] = r | (g << 8) | (b << 16);
+								int r = col & 0xFF;
+								palette[i] = b | (g << 8) | (r << 16);
 							}
 						} else {
 							//create a palette, then encode them to the nclr
 							createPalette_(pixels, width, height, palette, paletteSize);
 							for (int i = 0; i < paletteSize; i++) {
 								DWORD d = palette[i];
-								int r = d & 0xFF;
-								int g = (d >> 8) & 0xFF;
-								int b = (d >> 16) & 0xFF;
-								r = (r + 4) * 31 / 255;
-								g = (g + 4) * 31 / 255;
-								b = (b + 4) * 31 / 255;
-								nitroPalette[i] = r | (g << 5) | (b << 10);
-								palette[i] = (r * 255 / 31) | ((g * 255 / 31) << 8) | ((b * 255 / 31) << 16);
+								COLOR ds = ColorConvertToDS(d);
+								int r = GetR(ds) * 255 / 31;
+								int g = GetG(ds) * 255 / 31;
+								int b = GetB(ds) * 255 / 31;
+								nitroPalette[i] = ds;
+								palette[i] = r | (g << 8) | (b << 16);
 							}
 						}
 

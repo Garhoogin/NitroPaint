@@ -1,6 +1,7 @@
 #include "ncgr.h"
 #include "nclr.h"
 #include "nscr.h"
+#include "color.h"
 #include <stdio.h>
 
 int calculateWidth(int nTiles) {
@@ -165,16 +166,6 @@ int ncgrReadFile(NCGR *ncgr, LPWSTR path) {
 	return n;
 }
 
-DWORD getColor(WORD col) {
-	int r = col & 0x1F;
-	int g = (col >> 5) & 0x1F;
-	int b = (col >> 10) & 0x1F;
-	r = r * 255 / 31;
-	g = g * 255 / 31;
-	b = b * 255 / 31;
-	return b | (g << 8) | (r << 16);
-}
-
 int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker) {
 	if (x + y * ncgr->tilesX >= ncgr->nTiles) return 1;
 	BYTE * tile = ncgr->tiles[x + y * ncgr->tilesX];
@@ -186,10 +177,10 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 			if (c) out[i] = 0xFFFFFFFF;
 			else out[i] = 0xFFC0C0C0;
 		} else if(index) {
-			WORD w = 0;
+			COLOR w = 0;
 			if(nclr && (index + (previewPalette << ncgr->nBits)) < nclr->nColors)
 				w = nclr->colors[index + (previewPalette << ncgr->nBits)];
-			out[i] = getColor(w) | 0xFF000000;
+			out[i] = ColorConvertFromDS(CREVERSE(w)) | 0xFF000000;
 		} else out[i] = 0;
 	}
 	return 0;

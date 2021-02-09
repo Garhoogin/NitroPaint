@@ -2,6 +2,7 @@
 
 #include "childwindow.h"
 #include "colorchooser.h"
+#include "color.h"
 
 static BOOL g_ccRegistered = FALSE;
 
@@ -128,16 +129,6 @@ VOID DrawTick(HDC hDC, int x, int y) {
 	LineTo(hDC, x + 2, 19 + y - 1);
 }
 
-WORD ConvertRGBToDS(COLORREF rgb) {
-	int r = rgb & 0xFF;
-	int g = (rgb >> 8) & 0xFF;
-	int b = (rgb >> 16) & 0xFF;
-	r = (r + 4) * 31 / 255;
-	g = (g + 4) * 31 / 255;
-	b = (b + 4) * 31 / 255;
-	return r | (g << 5) | (b << 10);
-}
-
 typedef struct {
 	CHOOSECOLORW *chooseColor;
 	COLORREF inputColor;
@@ -178,7 +169,7 @@ VOID UpdateValues(HWND hWnd, COLORREF rgb) {
 	wsprintf(text, L"%d", v);
 	if(hWndFocus != data->inputs[5]) SendMessage(data->inputs[5], WM_SETTEXT, 0, (LPARAM) text);
 
-	WORD ds = ConvertRGBToDS(rgb);
+	COLOR ds = ColorConvertToDS(rgb);
 	wsprintf(text, L"%04X", ds);
 	if(hWndFocus != data->inputs[6]) SendMessage(data->inputs[6], WM_SETTEXT, 0, (LPARAM) text);
 
@@ -315,13 +306,7 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					hsv[channel - 3] = v;
 					ConvertHSVToRGB(hsv[0], hsv[1], hsv[2], &rgb);
 
-					int r = rgb & 0xFF;
-					int g = (rgb >> 8) & 0xFF;
-					int b = (rgb >> 16) & 0xFF;
-					r = ((r + 4) * 31 / 255) * 255 / 31;
-					g = ((g + 4) * 31 / 255) * 255 / 31;
-					b = ((b + 4) * 31 / 255) * 255 / 31;
-					rgb = RGB(r, g, b);
+					rgb = ColorConvertFromDS(ColorConvertToDS(rgb));
 				}
 				if (chooseColor->rgbResult != rgb) {
 					chooseColor->rgbResult = rgb;
@@ -428,13 +413,7 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 								current++;
 							}
 
-							int r = val & 0x1F;
-							int g = (val >> 5) & 0x1F;
-							int b = (val >> 10) & 0x1F;
-							r = r * 255 / 31;
-							g = g * 255 / 31;
-							b = b * 255 / 31;
-							rgb = RGB(r, g, b);
+							rgb = ColorConvertFromDS(val);
 							chooseColor->rgbResult = rgb;
 							UpdateValues(hWnd, rgb);
 						}

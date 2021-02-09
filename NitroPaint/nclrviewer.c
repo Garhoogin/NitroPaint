@@ -110,31 +110,25 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 	DeleteObject(ncerOutline);
 }
 
-int lightness(WORD col) {
-	int r = col & 0x1F;
-	int g = (col >> 5) & 0x1F;
-	int b = (col >> 10) & 0x1F;
+int lightness(COLOR col) {
+	int r = GetR(col);
+	int g = GetG(col);
+	int b = GetB(col);
 	return (1063 * r + 3576 * g + 361 * b + 2500) / 5000;
 }
 
 int colorSortLightness(PVOID p1, PVOID p2) {
-	WORD c1 = *(WORD *) p1;
-	WORD c2 = *(WORD *) p2;
+	COLOR c1 = *(COLOR *) p1;
+	COLOR c2 = *(COLOR *) p2;
 	return lightness(c1) - lightness(c2);
 }
 
 int colorSortHue(PVOID p1, PVOID p2) {
-	WORD c1 = *(WORD *) p1;
-	WORD c2 = *(WORD *) p2;
+	COLOR c1 = *(COLOR *) p1;
+	COLOR c2 = *(COLOR *) p2;
 
-	int r1 = c1 & 0x1F;
-	int r2 = c2 & 0x1F;
-	int g1 = (c1 >> 5) & 0x1F;
-	int g2 = (c2 >> 5) & 0x1F;
-	int b1 = (c1 >> 10) & 0x1F;
-	int b2 = (c2 >> 10) & 0x1F;
-	COLORREF col1 = RGB(r1, g1, b1);
-	COLORREF col2 = RGB(r2, g2, b2);
+	COLORREF col1 = ColorConvertFromDS(c1);
+	COLORREF col2 = ColorConvertFromDS(c2);
 
 	int h1, s1, v1, h2, s2, v2;
 	ConvertRGBToHSV(col1, &h1, &s1, &v1);
@@ -558,7 +552,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					case ID_MENU_INVERTCOLOR:
 					{
 						int index = data->contextHoverY * 16;
-						WORD *pal = data->nclr.colors;
+						COLOR *pal = data->nclr.colors;
 						for (int i = 0; i < 16; i++) {
 							pal[index + i] ^= 0x7FFF;
 						}
@@ -568,17 +562,17 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					case ID_MENU_MAKEGRAYSCALE:
 					{
 						int index = data->contextHoverY * 16;
-						WORD *pal = data->nclr.colors;
+						COLOR *pal = data->nclr.colors;
 						for (int i = 0; i < 16; i++) {
-							WORD col = pal[index + i];
-							int r = col & 0x1F;
-							int g = (col >> 5) & 0x1F;
-							int b = (col >> 10) & 0x1F;
+							COLOR col = pal[index + i];
+							int r = GetR(col);
+							int g = GetG(col);
+							int b = GetB(col);
 
 							//0.2126r + 0.7152g + 0.0722b
 							int l = lightness(col);
 
-							pal[index + i] = l | (l << 5) | (l << 10);
+							pal[index + i] = ColorCreate(l, l, l);
 						}
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
@@ -589,7 +583,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						int index = data->contextHoverX + data->contextHoverY * 16;
 						int palette = index >> data->nclr.nBits;
 
-						WORD *pal = data->nclr.colors + (palette << data->nclr.nBits);
+						COLOR *pal = data->nclr.colors + (palette << data->nclr.nBits);
 
 						int type = LOWORD(wParam);
 						qsort(pal + 1, (1 << data->nclr.nBits) - 1, 2, 
