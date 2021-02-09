@@ -25,8 +25,6 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 
 int ncgrReadFile(NCGR *ncgr, LPWSTR path);
 
-DWORD getColor(WORD col);
-
 void ncgrWrite(NCGR * ncgr, LPWSTR name);
 
 void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int bin);

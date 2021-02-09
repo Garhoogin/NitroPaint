@@ -9,16 +9,6 @@
 
 extern HICON g_appIcon;
 
-DWORD RGBFromDS(WORD col) {
-	int r = col & 0x1F;
-	int g = (col >> 5) & 0x1F;
-	int b = (col >> 10) & 0x1F;
-	r = r * 255 / 31;
-	g = g * 255 / 31;
-	b = b * 255 / 31;
-	return r | (g << 8) | (b << 16);
-}
-
 VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 
 	WORD *cols = data->nclr.colors;
@@ -80,7 +70,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 				}
 			}
 			WORD col = cols[index];
-			DWORD rgb = RGBFromDS(col);
+			DWORD rgb = ColorConvertFromDS(col);
 
 			HBRUSH hbr = CreateSolidBrush(rgb);
 			SelectObject(hDC, hbr);
@@ -336,7 +326,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						cc.lStructSize = sizeof(cc);
 						cc.hInstance = (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE);
 						cc.hwndOwner = hWndMain;
-						cc.rgbResult = RGBFromDS(data->nclr.colors[index]);
+						cc.rgbResult = ColorConvertFromDS(data->nclr.colors[index]);
 						cc.lpCustColors = data->tmpCust;
 						cc.Flags = 0x103;
 						BOOL (__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
@@ -533,7 +523,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							int offs = i + offset;
 							int row = offs >> 4;
 							int col = (offs & 0xF) + 1;
-							DWORD d = 0x00FFFFFF & (RGBFromDS(data->nclr.colors[offs]));
+							DWORD d = 0x00FFFFFF & (ColorConvertFromDS(data->nclr.colors[offs]));
 
 							for (int j = 0; j < 8; j++) {
 								palString[strOffset] = 0x30 + ((d >> 28) & 0xF);

@@ -39,8 +39,6 @@ DWORD * toBitmap(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int * width, int * heigh
 
 void nscrWrite(NSCR *nscr, LPWSTR name);
 
-DWORD getColor(WORD c);
-
 int nscrGetTile(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL chceker, DWORD * out);
 
 int nscrGetTileEx(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL checker, DWORD * out, int *tileNo);
