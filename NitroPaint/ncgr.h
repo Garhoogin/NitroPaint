@@ -8,6 +8,7 @@
 #define NCGR_TYPE_HUDSON2	3
 
 typedef struct NCGR_{
+	OBJECT_HEADER header;
 	int nTiles;
 	int tilesX;
 	int tilesY;
@@ -15,8 +16,6 @@ typedef struct NCGR_{
 	int nBits;
 	int tileWidth;
 	BYTE **tiles;
-	int compress;
-	int type;
 } NCGR;
 
 int ncgrIsValidHudson(LPBYTE buffer, int size);

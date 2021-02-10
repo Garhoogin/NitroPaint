@@ -54,8 +54,10 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->nHeight = tilesY * 8;
 	nscr->dataSize = tilesX * tilesY * 2;
 	nscr->nHighestIndex = 0;
-	nscr->compress = 0;
-	nscr->type = type;
+	nscr->header.type = FILE_TYPE_SCREEN;
+	nscr->header.format = type;
+	nscr->header.size = sizeof(*nscr);
+	nscr->header.compression = COMPRESSION_NONE;
 	memcpy(nscr->data, srcData, nscr->dataSize);
 	for (int i = 0; i < nscr->dataSize / 2; i++) {
 		WORD w = nscr->data[i];
@@ -98,8 +100,10 @@ int nscrRead(NSCR * nscr, char * file, DWORD dwFileSize) {
 	nscr->nHeight = nHeight;
 	nscr->dataSize = dwDataSize;
 	nscr->nHighestIndex = 0;
-	nscr->compress = 0;
-	nscr->type = NSCR_TYPE_NSCR;
+	nscr->header.type = FILE_TYPE_SCREEN;
+	nscr->header.format = NSCR_TYPE_NSCR;
+	nscr->header.size = sizeof(*nscr);
+	nscr->header.compression = COMPRESSION_NONE;
 	memcpy(nscr->data, file + 0x14, dwDataSize);
 	for (int i = 0; i < dwDataSize / 2; i++) {
 		WORD w = nscr->data[i];
@@ -282,7 +286,7 @@ int isDuplicate(DWORD * block1, DWORD * block2) {
 
 void nscrWrite(NSCR *nscr, LPWSTR name) {
 	DWORD dwWritten;
-	if (nscr->type == NSCR_TYPE_NSCR) {
+	if (nscr->header.format == NSCR_TYPE_NSCR) {
 		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -306,19 +310,19 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 		WriteFile(hFile, nrcsHeader, sizeof(nrcsHeader), &dwWritten, NULL);
 		WriteFile(hFile, nscr->data, dataSize, &dwWritten, NULL);
 		CloseHandle(hFile);
-	} else if(nscr->type == NSCR_TYPE_HUDSON || nscr->type == NSCR_TYPE_HUDSON2) {
+	} else if(nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
 		DWORD dwWritten;
 		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		
 		int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
-		if (nscr->type == NSCR_TYPE_HUDSON) {
+		if (nscr->header.format == NSCR_TYPE_HUDSON) {
 			BYTE header[8] = { 0 };
 			*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
 			*(WORD *) (header + 4) = 2 * nTotalTiles;
 			header[6] = nscr->nWidth / 8;
 			header[7] = nscr->nHeight / 8;
 			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-		} else if (nscr->type == NSCR_TYPE_HUDSON2) {
+		} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
 			BYTE header[4] = { 0, 0, 0, 0 };
 			*(WORD *) header = nTotalTiles * 2;
 			header[2] = nscr->nWidth / 8;

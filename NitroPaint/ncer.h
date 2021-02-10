@@ -3,6 +3,9 @@
 #include "ncgr.h"
 #include "nclr.h"
 
+#define NCER_TYPE_NCER 0
+#define NCER_TYPE_HUDSON 1
+
 typedef struct NCER_CELL_ {
 	int nAttribs;
 	int cellAttr;
@@ -32,6 +35,7 @@ typedef struct NCER_CELL_INFO_ {
 } NCER_CELL_INFO;
 
 typedef struct NCER_ {
+	OBJECT_HEADER header;
 	int nCells;
 	int bankAttribs;
 	NCER_CELL *cells;
@@ -40,8 +44,6 @@ typedef struct NCER_ {
 	char *uext;
 	int lablSize;
 	char *labl;
-	int isHudson;
-	int compress;
 } NCER;
 
 int ncerIsValid(char *buffer, int size);

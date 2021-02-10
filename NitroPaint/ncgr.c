@@ -48,8 +48,10 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 		nCharacters = *(WORD *) (buffer + 1);
 	}
 
-	ncgr->compress = 0;
-	ncgr->type = type;
+	ncgr->header.type = FILE_TYPE_CHARACTER;
+	ncgr->header.format = type;
+	ncgr->header.size = sizeof(*ncgr);
+	ncgr->header.compression = COMPRESSION_NONE;
 	ncgr->nTiles = nCharacters;
 	ncgr->tileWidth = 8;
 	ncgr->mapping = 0x10;
@@ -147,8 +149,10 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
 	ncgr->mapping = mapping;
-	ncgr->compress = 0;
-	ncgr->type = NCGR_TYPE_NCGR;
+	ncgr->header.type = FILE_TYPE_CHARACTER;
+	ncgr->header.format = NCGR_TYPE_NCGR;
+	ncgr->header.size = sizeof(*ncgr);
+	ncgr->header.compression = COMPRESSION_NONE;
 	return 0;
 
 }
@@ -188,7 +192,7 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 
 void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (ncgr->type == NCGR_TYPE_NCGR) {
+	if (ncgr->header.format == NCGR_TYPE_NCGR) {
 		BYTE ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, 0x1, 0 };
 		BYTE charHeader[] = { 'R', 'A', 'H', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -229,10 +233,10 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 				WriteFile(hFile, buffer, 32, &dwWritten, NULL);
 			}
 		}
-	} else if(ncgr->type == NCGR_TYPE_HUDSON || ncgr->type == NCGR_TYPE_HUDSON2) {
+	} else if(ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
 		DWORD dwWritten;
 
-		if (ncgr->type == NCGR_TYPE_HUDSON) {
+		if (ncgr->header.format == NCGR_TYPE_HUDSON) {
 			BYTE header[] = { 0, 0, 0, 0, 1, 0, 0, 0 };
 			if (ncgr->nBits == 4) header[4] = 0;
 			*(WORD *) (header + 5) = ncgr->nTiles;
@@ -241,7 +245,7 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 			*(WORD *) (header + 1) = nCharacterBytes + 4;
 
 			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-		} else if(ncgr->type == NCGR_TYPE_HUDSON2) {
+		} else if(ncgr->header.format == NCGR_TYPE_HUDSON2) {
 			BYTE header[] = { 0, 0, 0, 0 };
 			*(WORD *) (header + 1) = ncgr->nTiles;
 			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);

@@ -314,7 +314,7 @@ HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPWS
 		height = rc.bottom - rc.top + 4;
 		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcerViewerClass", L"NCER Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncer);
-		if (ncer.isHudson) {
+		if (ncer.header.format == NCER_TYPE_HUDSON) {
 			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
 		}
 		return h;

@@ -1,6 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include "texture.h"
+#include "filecommon.h"
 
 typedef struct DICTENTRY_ {
 	int sizeUnit;
@@ -39,6 +40,7 @@ typedef struct DICTPLTTDATA_ {
 } DICTPLTTDATA;
 
 typedef struct NSBTX_ {
+	OBJECT_HEADER header;
 	int nTextures;
 	int nPalettes;
 	TEXELS *textures;

@@ -1,12 +1,16 @@
 #pragma once
 #include <Windows.h>
 #include "color.h"
+#include "filecommon.h"
+
+#define NCLR_TYPE_NCLR 0
+#define NCLR_TYPE_HUDSON 1
 
 typedef struct NCLR_ {
+	OBJECT_HEADER header;
 	int nBits;
 	int nColors;
-	COLOR* colors;
-	int isHudson;
+	COLOR *colors;
 } NCLR;
 
 int nclrIsValidHudson(LPBYTE lpFile, int size);

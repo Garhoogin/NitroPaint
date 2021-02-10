@@ -155,6 +155,10 @@ int nsbtxRead(NSBTX *nsbtx, char *buffer, int size) {
 	nsbtx->nPalettes = dictPal.nEntries;
 	nsbtx->textures = (TEXELS *) calloc(nsbtx->nTextures, sizeof(TEXELS));
 	nsbtx->palettes = (PALETTE *) calloc(nsbtx->nPalettes, sizeof(PALETTE));
+	nsbtx->header.type = FILE_TYPE_NSBTX;
+	nsbtx->header.format = 0;
+	nsbtx->header.size = sizeof(*nsbtx);
+	nsbtx->header.compression = COMPRESSION_NONE;
 
 	memcpy(nsbtx->textures, texels, nsbtx->nTextures * sizeof(TEXELS));
 	memcpy(nsbtx->palettes, palettes, nsbtx->nPalettes * sizeof(PALETTE));

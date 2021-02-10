@@ -26,14 +26,16 @@ int ncerIsValid(char *buffer, int size) {
 
 int ncerReadHudson(NCER *ncer, char *buffer, int size) {
 	int nCells = *(int *) buffer;
-	ncer->isHudson = 1;
 	ncer->labl = NULL;
 	ncer->lablSize = 0;
 	ncer->uext = NULL;
 	ncer->uextSize = 0;
-	ncer->compress = 0;
 	ncer->nCells = nCells;
 	ncer->bankAttribs = 0;
+	ncer->header.type = FILE_TYPE_CELL;
+	ncer->header.format = NCER_TYPE_HUDSON;
+	ncer->header.size = sizeof(*ncer);
+	ncer->header.compression = COMPRESSION_NONE;
 	
 	NCER_CELL *cells = (NCER_CELL *) calloc(nCells, sizeof(NCER_CELL));
 	ncer->cells = cells;
@@ -72,12 +74,14 @@ int ncerRead(NCER *ncer, char *buffer, int size) {
 	if (dwMagic != 0x5245434E && dwMagic != 0x4E434552) return ncerReadHudson(ncer, buffer, size);
 
 	ncer->nCells = 0;
-	ncer->compress = 0;
-	ncer->isHudson = 0;
 	ncer->uextSize = 0;
 	ncer->lablSize = 0;
 	ncer->uext = NULL;
 	ncer->labl = NULL;
+	ncer->header.type = FILE_TYPE_CELL;
+	ncer->header.format = NCER_TYPE_NCER;
+	ncer->header.size = sizeof(*ncer);
+	ncer->header.compression = COMPRESSION_NONE;
 
 	char *end = buffer + size;
 	buffer += 0x10;
@@ -265,7 +269,7 @@ int ncerFree(NCER *ncer) {
 
 void ncerWrite(NCER * ncer, LPWSTR name) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (!ncer->isHudson) {
+	if (ncer->header.format == NCER_TYPE_NCER) {
 		DWORD dwWritten;
 		int hasLabl = ncer->labl != NULL;
 		int hasUext = ncer->uext != NULL;

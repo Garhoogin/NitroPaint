@@ -10,7 +10,10 @@ int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	nclr->nColors = nColors;
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
-	nclr->isHudson = 1;
+	nclr->header.type = FILE_TYPE_PALETTE;
+	nclr->header.format = NCLR_TYPE_HUDSON;
+	nclr->header.size = sizeof(*nclr);
+	nclr->header.compression = COMPRESSION_NONE;
 	memcpy(nclr->colors, buffer + 4, nColors * 2);
 	return 0;
 }
@@ -29,7 +32,10 @@ int nclrRead(NCLR * nclr, char * buffer, int size) {
 	nclr->nColors = nColors;
 	nclr->nBits = bits;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
-	nclr->isHudson = 0;
+	nclr->header.type = FILE_TYPE_PALETTE;
+	nclr->header.format = NCLR_TYPE_NCLR;
+	nclr->header.size = sizeof(*nclr);
+	nclr->header.compression = COMPRESSION_NONE;
 	memcpy(nclr->colors, buffer + dataOffset, nColors * 2);
 	return 0;
 }
@@ -73,7 +79,7 @@ int nclrIsValid(LPBYTE lpFile, int size) {
 
 void nclrWrite(NCLR * nclr, LPWSTR name) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (!nclr->isHudson) {
+	if (nclr->header.format == NCLR_TYPE_NCLR) {
 		BYTE fileHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
 		//BYTE pmcpHeader[] = {'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 0, 0, 0, 0, 0xEF, 0xBE, 0x8, 0}; 
