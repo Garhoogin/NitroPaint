@@ -1,5 +1,6 @@
 #include "palette.h"
 #include <math.h>
+#include <intrin.h>
 
 #define BIGINT unsigned long long
 
@@ -9,6 +10,22 @@ typedef struct BUCKET_ {
 	float deviation;
 	DWORD avg;
 } BUCKET;
+
+__m128 __inline Q_rsqrt(__m128 x) {
+	return _mm_rsqrt_ps(x);
+}
+
+float __inline Q_frsqrt(float x) {
+	return _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(x)));
+}
+
+__m128 __inline Q_sqrt(__m128 x) {
+	return _mm_mul_ps(_mm_rsqrt_ps(x), x);
+}
+
+float __inline Q_fsqrt(float x) {
+	return _mm_cvtss_f32(Q_sqrt(_mm_set_ss(x)));
+}
 
 /*
 * reduce a color to its nearest 15-bit color, and convert back to 24-bit color.
@@ -59,7 +76,13 @@ void createBucket(BUCKET * bucket, DWORD * colors, int nColors) {
 		}
 		//note, this isn't exactly a standard deviation, because I am square rooting the list size.
 		//I do this to strike a balance between detail and smooth colors.
-		bucket->deviation = sqrt((double) devRed / sqrt((double) nColors)) + sqrt((double) devGreen / sqrt((double) nColors)) + sqrt((double) devBlue / sqrt((double) nColors));
+		float invSqrtColors = Q_frsqrt(nColors);
+		__m128 devs = _mm_set_ps(0, devBlue, devGreen, devRed);
+		devs = _mm_mul_ps(devs, _mm_set_ps(0.0f, invSqrtColors, invSqrtColors, invSqrtColors));
+		devs = Q_sqrt(devs);
+		
+		//bucket->deviation = sqrt((double) devRed / sqrt((double) nColors)) + sqrt((double) devGreen / sqrt((double) nColors)) + sqrt((double) devBlue / sqrt((double) nColors));
+		bucket->deviation = devs.m128_f32[0] + devs.m128_f32[1] + devs.m128_f32[2];
 
 	}
 	bucket->avg = reduce(bucket->avg);
@@ -336,17 +359,25 @@ DWORD averageColor(DWORD *cols, int nColors) {
 }
 
 unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize) {
-	unsigned int error = 0;
-	for (int i = 0; i < nPx; i++) {
-		RGB thisColor = px[i];
-		if (thisColor.a == 0) continue;
-		RGB closest = pal[closestpalette(px[i], pal + 1, paletteSize - 1, NULL) + 1];
-		int er = closest.r - thisColor.r;
-		int eg = closest.g - thisColor.g;
-		int eb = closest.b - thisColor.b;
-		error += (int) (sqrt(er * er + eg * eg + eb * eb) + 0.5f);
+	float error = 0.0f;
+	__m128 v_error = _mm_set_ps(0, 0, 0, 0);
+	for (int _i = 0; _i < nPx / 4; _i++) {
+		int i = _i * 4;
+		float __declspec(align(16)) squares[4];
+
+		for (int j = 0; j < 4; j++) {
+			RGB thisColor = px[i + j];
+			if (thisColor.a == 0) continue;
+			RGB closest = pal[closestpalette(thisColor, pal + 1, paletteSize - 1, NULL) + 1];
+			int er = closest.r - thisColor.r;
+			int eg = closest.g - thisColor.g;
+			int eb = closest.b - thisColor.b;
+			squares[j] = er * er + eg * eg + eb * eb;
+		}
+		__m128 roots = Q_sqrt(_mm_load_ps(squares));
+		v_error = _mm_add_ps(v_error, roots);
 	}
-	return error;
+	return (int) (v_error.m128_f32[0] + v_error.m128_f32[1] + v_error.m128_f32[2] + v_error.m128_f32[3]);
 }
 
 int computeMultiPaletteError(int *closests, DWORD *blocks, int tilesX, int tilesY, int width, DWORD *pals, int nPalettes, int paletteSize) {
@@ -360,27 +391,32 @@ int computeMultiPaletteError(int *closests, DWORD *blocks, int tilesX, int tiles
 	return error;
 }
 
+DWORD **g_groups = NULL;
+DWORD *g_bgroups = NULL;
+
 void createMultiPalettes(DWORD *blocks, int tilesX, int tilesY, int width, DWORD *pals, int nPalettes, int paletteSize, int *useCounts, int *closests) {
 	//compute the palettes from how the tiles are divided.
-	DWORD **groups = (DWORD **) calloc(nPalettes, sizeof(DWORD *));
+	if (g_groups == NULL) g_groups = (DWORD **) calloc(nPalettes, sizeof(DWORD *));
+	if (g_bgroups == NULL) g_bgroups = (DWORD *) calloc(tilesX * tilesY * 64, 4);
+	int ofs = 0;
 	for (int i = 0; i < nPalettes; i++) {
-		groups[i] = (DWORD *) calloc(useCounts[i] * 64, 4);
+		g_groups[i] = g_bgroups + ofs;
+		ofs += useCounts[i] * 64;
 	}
+	
 	int written[16] = { 0 };
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			int uses = closests[x + y * tilesX];
-			DWORD *block = groups[uses] + written[uses] * 64;
+			DWORD *block = g_groups[uses] + written[uses] * 64;
 			CopyMemory(block, blocks + 64 * (x + y * tilesX), 256);
 			written[uses]++;
 		}
 	}
 
 	for (int i = 0; i < nPalettes; i++) {
-		createPalette_(groups[i], 8, written[i] * 8, pals + i * paletteSize, paletteSize);
-		free(groups[i]);
+		createPalette_(g_groups[i], 8, written[i] * 8, pals + i * paletteSize, paletteSize);
 	}
-	free(groups);
 }
 
 void createMultiplePalettes(DWORD *blocks, DWORD *avgs, int width, int tilesX, int tilesY, DWORD *pals, int nPalettes, int paletteSize) {
@@ -450,4 +486,8 @@ void createMultiplePalettes(DWORD *blocks, DWORD *avgs, int width, int tilesX, i
 	//now, create a new bitmap for each set of tiles that share a palette.
 	createMultiPalettes(blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
 	free(closests);
+	free(g_groups);
+	free(g_bgroups);
+	g_groups = NULL;
+	g_bgroups = NULL;
 }
