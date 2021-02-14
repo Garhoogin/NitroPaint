@@ -311,7 +311,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							data->nscr.data[tileNo] = oldVal;
 						} else if (selStartX != -1 && selStartY != -1) {
 							//for each row
-							for (int y = selStartY; y < selHeight; y++) {
+							for (int y = selStartY; y < selStartY + selHeight; y++) {
 								//for width/2
 								for (int x = 0; x < selWidth / 2; x++) {
 									//swap x with selWidth-1-x
