@@ -18,7 +18,15 @@ int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	return 0;
 }
 
-int nclrRead(NCLR * nclr, char * buffer, int size) {
+int nclrRead(NCLR *nclr, char *buffer, int size) {
+	if (lz77IsCompressed(buffer, size)) {
+		int uncompressedSize;
+		char *bf = lz77decompress(buffer, size, &uncompressedSize);
+		int r = nclrRead(nclr, bf, uncompressedSize);
+		free(bf);
+		nclr->header.compression = COMPRESSION_LZ77;
+		return r;
+	}
 	if (*buffer != 'R' && *buffer != 'N') return hudsonPaletteRead(nclr, buffer, size);
 	short nBlocks = *(short *) (buffer + 0xE);
 	buffer += 0x10;
@@ -107,6 +115,9 @@ void nclrWrite(NCLR * nclr, LPWSTR name) {
 		WriteFile(hFile, nclr->colors, nclr->nColors << 1, &dwWritten, NULL);
 	}
 	CloseHandle(hFile);
+	if (nclr->header.compression != COMPRESSION_NONE) {
+		fileCompress(name, nclr->header.compression);
+	}
 }
 
 void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int bin) {

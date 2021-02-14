@@ -67,7 +67,15 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	return 0;
 }
 
-int nscrRead(NSCR * nscr, char * file, DWORD dwFileSize) {
+int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
+	if (lz77IsCompressed(file, dwFileSize)) {
+		int uncompressedSize;
+		char *bf = lz77decompress(file, dwFileSize, &uncompressedSize);
+		int r = nscrRead(nscr, bf, uncompressedSize);
+		free(bf);
+		nscr->header.compression = COMPRESSION_LZ77;
+		return r;
+	}
 	if (!dwFileSize) return 1;
 	if (*file == 0 || *file == 0x10) return hudsonScreenRead(nscr, file, dwFileSize);
 	if (dwFileSize < 0x14) return 1;
@@ -332,6 +340,9 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 
 		WriteFile(hFile, nscr->data, 2 * nTotalTiles, &dwWritten, NULL);
 		CloseHandle(hFile);
+	}
+	if (nscr->header.compression != COMPRESSION_NONE) {
+		fileCompress(name, nscr->header.compression);
 	}
 }
 
