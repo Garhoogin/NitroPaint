@@ -3,6 +3,7 @@
 #include <Uxtheme.h>
 
 #include "nitropaint.h"
+#include "filecommon.h"
 #include "palette.h"
 #include "resource.h"
 #include "tiler.h"
@@ -161,74 +162,36 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	ReadFile(hFile, buffer, dwSize, &dwRead, NULL);
 	CloseHandle(hFile);
 
-	DWORD dwMagic = *(DWORD *) buffer;
-	DWORD test = '0XTB';
-
-	int format = 0;
-
-	if (dwSize > 4) {
-		switch (dwMagic) {
-			case 'NCLR':
-			case 'RLCN':
-			{
-				format = 1;
-				break;
-			}
-			case 'NCGR':
-			case 'RGCN':
-			{
-				format = 2;
-				break;
-			}
-			case 'NSCR':
-			case 'RCSN':
-			{
-				format = 3;
-				break;
-			}
-			case 'NCER':
-			case 'RECN':
-			{
-				format = 4;
-				break;
-			}
-			case 'BTX0':
-			case '0XTB':
-			{
-				format = 5;
-				break;
-			}
-		}
-	}
-	if(format == 0){
-		if (nclrIsValidHudson(buffer, dwSize)) format = 1;
-		else if (nscrIsValidHudson(buffer, dwSize)) format = 3;
-		else if (ncgrIsValidHudson(buffer, dwSize)) format = 2;
-		else if (ncerIsValidHudson(buffer, dwSize)) format = 4;
-	}
-	if (format == 1) {
-
-		//if there is already an NCLR open, close it.
-		if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
-		data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
-
-		if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
-	} else if (format == 2) {
-		//if there is already an NCGR open, close it.
-		if (data->hWndNcgrViewer) DestroyWindow(data->hWndNcgrViewer);
-		data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
-		if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-	} else if (format == 3) {
-		//if there is already an NSCR open, close it.
-		if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
-		data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-	} else if (format == 4) {
-		if (data->hWndNcerViewer) DestroyWindow(data->hWndNcerViewer);
-		data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-
-		if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-	} else if (format == 5) {
-		HWND h = CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
+	int format = fileIdentify(buffer, dwSize);
+	switch (format) {
+		case FILE_TYPE_PALETTE:
+			//if there is already an NCLR open, close it.
+			if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
+			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
+			if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
+			break;
+		case FILE_TYPE_CHARACTER:
+			//if there is already an NCGR open, close it.
+			if (data->hWndNcgrViewer) DestroyWindow(data->hWndNcgrViewer);
+			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
+			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+			break;
+		case FILE_TYPE_SCREEN:
+			//if there is already an NSCR open, close it.
+			if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
+			data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			break;
+		case FILE_TYPE_CELL:
+			//if there is already an NCER open, close it.
+			if (data->hWndNcerViewer) DestroyWindow(data->hWndNcerViewer);
+			data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+			break;
+		case FILE_TYPE_NSBTX:
+			CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
+			break;
+		default:
+			break;
 	}
 }
 

@@ -1,0 +1,169 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="nitropaint.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tiler.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ncgrviewer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nclrviewer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="exceptions.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nscrviewer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="childwindow.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nclr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ncgr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nscr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="gdip.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="palette.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tileeditor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ncer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ncerviewer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nsbtx.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="texture.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nsbtxviewer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="colorchooser.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="color.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="compression.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="filecommon.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="tiler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ncgrviewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nclrviewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="exceptions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nscrviewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nitropaint.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="childwindow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nclr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ncgr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nscr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gdip.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="palette.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tileeditor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ncer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ncerviewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nsbtx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nsbtxviewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="colorchooser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="color.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="filecommon.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="compression.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="NitroPaint.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="ncedit.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="hudson.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+</Project>

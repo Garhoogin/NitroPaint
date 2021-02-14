@@ -99,6 +99,14 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 }
 
 int ncgrRead(NCGR *ncgr, char *buffer, int size) {
+	if (lz77IsCompressed(buffer, size)) {
+		int uncompressedSize;
+		char *bf = lz77decompress(buffer, size, &uncompressedSize);
+		int r = ncgrRead(ncgr, bf, uncompressedSize);
+		free(bf);
+		ncgr->header.compression = COMPRESSION_LZ77;
+		return r;
+	}
 	if (*buffer == 0x10 || *buffer == 0x00) return hudsonReadCharacter(ncgr, buffer, size);
 	if (size < 0x10) return 1;
 	DWORD magic = *(DWORD *) buffer;
@@ -267,6 +275,9 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 	}
 
 	CloseHandle(hFile);
+	if (ncgr->header.compression != COMPRESSION_NONE) {
+		fileCompress(name, ncgr->header.compression);
+	}
 }
 
 void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int bin) {

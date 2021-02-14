@@ -1,5 +1,8 @@
 #pragma once
+#include "compression.h"
+#include <Windows.h>
 
+#define FILE_TYPE_UNKNOWN    0
 #define FILE_TYPE_PALETTE    1
 #define FILE_TYPE_CHARACTER  2
 #define FILE_TYPE_SCREEN     3
@@ -15,3 +18,7 @@ typedef struct OBJECT_HEADER_ {
 	int format;
 	int compression;
 } OBJECT_HEADER;
+
+int fileIdentify(char *file, int size);
+
+void fileCompress(LPWSTR name, int compression);
