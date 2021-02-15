@@ -1,5 +1,6 @@
 #include "ncgrviewer.h"
 #include "nclrviewer.h"
+#include "nscrviewer.h"
 #include "childwindow.h"
 #include "nitropaint.h"
 #include "resource.h"
@@ -222,6 +223,20 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			info.nMax = data->frameData.contentHeight;
 			info.nPage = rcClient.bottom - rcClient.top + 1;
 			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+
+			//guess a tile base based on an open NCGR (if any)
+			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
+			if (hWndNscrViewer) {
+				NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+				NSCR *nscr = &nscrViewerData->nscr;
+				if (nscr->nHighestIndex >= data->ncgr.nTiles) {
+					NscrViewerSetTileBase(hWndNscrViewer, nscr->nHighestIndex + 1 - data->ncgr.nTiles);
+				} else {
+					NscrViewerSetTileBase(hWndNscrViewer, 0);
+				}
+			}
 			break;
 		}
 		case WM_COMMAND:

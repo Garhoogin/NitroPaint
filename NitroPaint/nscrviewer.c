@@ -17,7 +17,7 @@ extern HICON g_appIcon;
 #define NV_INITIMPORTDIALOG (WM_USER+3)
 #define NV_RECALCULATE (WM_USER+4)
 
-DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY) {
+DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY) {
 	int bWidth = renderNscr->nWidth;
 	int bHeight = renderNscr->nHeight;
 	if (drawGrid) {
@@ -47,7 +47,7 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL
 			if (drawGrid) offsetX = x * 9 + 1;
 
 			int tileNo = -1;
-			nscrGetTileEx(renderNscr, renderNcgr, renderNclr, x, y, checker, block, &tileNo);
+			nscrGetTileEx(renderNscr, renderNcgr, renderNclr, tileBase, x, y, checker, block, &tileNo);
 			DWORD dwDest = x * 8 + y * 8 * bWidth;
 
 			if (tileMarks != -1 && tileMarks == tileNo) {
@@ -95,8 +95,7 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL
 				int highlightPalette = highlightColor / (1 << renderNcgr->nBits);
 				WORD nscrData = renderNscr->data[x + y * (renderNscr->nWidth / 8)];
 				if (((nscrData >> 12) & 0xF) == highlightPalette) {
-					int charBase = 0;
-					if (renderNscr->nHighestIndex >= renderNcgr->nTiles) charBase = renderNscr->nHighestIndex + 1 - renderNcgr->nTiles;
+					int charBase = tileBase;
 					int tileIndex = nscrData & 0x3FF;
 					if (tileIndex - charBase >= 0) {
 						BYTE *tile = renderNcgr->tiles[tileIndex - charBase];
@@ -126,10 +125,10 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL
 	return bits;
 }
 
-HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int highlightColor, int scale, int selStartX, int selStartY, int selEndX, int selEndY) {
+HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int highlightColor, int scale, int selStartX, int selStartY, int selEndX, int selEndY) {
 	if (renderNcgr != NULL) {
-		if (renderNscr->nHighestIndex >= renderNcgr->nTiles && highlightNclr != -1) highlightNclr -= (renderNcgr->nTiles - renderNscr->nHighestIndex - 1);
-		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, FALSE, TRUE, width, height, highlightNclr, highlightTile, highlightColor, selStartX, selStartY, selEndX, selEndY);
+		if (highlightNclr != -1) highlightNclr += tileBase;
+		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, tileBase, FALSE, TRUE, width, height, highlightNclr, highlightTile, highlightColor, selStartX, selStartY, selEndX, selEndY);
 
 		//HBITMAP hBitmap = CreateBitmap(*width, *height, 1, 32, bits);
 		HBITMAP hBitmap = CreateTileBitmap(bits, *width, *height, -1, -1, width, height, scale, drawGrid);
@@ -137,6 +136,14 @@ HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, BOOL dr
 		return hBitmap;
 	}
 	return NULL;
+}
+
+void NscrViewerSetTileBase(HWND hWnd, int tileBase) {
+	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	data->tileBase = tileBase;
+	WCHAR buffer[16];
+	int len = wsprintfW(buffer, L"%d", tileBase);
+	SendMessage(data->hWndTileBase, WM_SETTEXT, len, (LPARAM) buffer);
 }
 
 LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -164,6 +171,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndCharacterNumber = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteNumber = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndApply = CreateWindow(L"BUTTON", L"Apply", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndTileBaseLabel = CreateWindow(L"STATIC", L"Tile Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			WCHAR bf[16];
 			for (int i = 0; i < 16; i++) {
 				wsprintf(bf, L"Palette %02d", i);
@@ -182,13 +191,16 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
-			MoveWindow(data->hWndPreview, 0, 0, rcClient.right - 200, rcClient.bottom, TRUE);
+			MoveWindow(data->hWndPreview, 0, 0, rcClient.right - 200, rcClient.bottom - 22, TRUE);
 
 			MoveWindow(data->hWndCharacterLabel, rcClient.right - 190, 10, 70, 22, TRUE);
 			MoveWindow(data->hWndPaletteLabel, rcClient.right - 190, 37, 70, 22, TRUE);
 			MoveWindow(data->hWndCharacterNumber, rcClient.right - 110, 10, 100, 22, TRUE);
 			MoveWindow(data->hWndPaletteNumber, rcClient.right - 110, 37, 100, 100, TRUE);
 			MoveWindow(data->hWndApply, rcClient.right - 110, 64, 100, 22, TRUE);
+			MoveWindow(data->hWndTileBaseLabel, 0, rcClient.bottom - 22, 50, 22, TRUE);
+			MoveWindow(data->hWndTileBase, 50, rcClient.bottom - 22, 100, 22, TRUE);
+			
 
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
@@ -215,7 +227,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			rc.bottom = data->frameData.contentHeight;
 			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200; //+4 to account for WS_EX_CLIENTEDGE
-			int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL);
+			int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22;
 			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
 
 
@@ -235,6 +247,18 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			info.nMax = data->frameData.contentHeight;
 			info.nPage = rcClient.bottom - rcClient.top + 1;
 			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+
+			//guess a tile base based on an open NCGR (if any)
+			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+			if (hWndNcgrViewer) {
+				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+				int nTiles = ncgrViewerData->ncgr.nTiles;
+				if (data->nscr.nHighestIndex >= nTiles) {
+					NscrViewerSetTileBase(hWnd, data->nscr.nHighestIndex + 1 - nTiles);
+				}
+			}
 			return 1;
 		}
 		case WM_MDIACTIVATE:
@@ -291,7 +315,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						nscr = &data->nscr;
 
-						DWORD * bits = renderNscrBits(nscr, ncgr, nclr, FALSE, FALSE, &width, &height, -1, -1, -1, -1, -1, -1, -1);
+						DWORD * bits = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &width, &height, -1, -1, -1, -1, -1, -1, -1);
 						
 						writeImage(bits, width, height, location);
 						free(bits);
@@ -519,6 +543,17 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 					}
 					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (hWndControl == data->hWndTileBase) {
+					WORD command = HIWORD(wParam);
+					if (command == EN_CHANGE) {
+						WCHAR bf[16];
+						SendMessage(hWndControl, WM_GETTEXT, 15, (LPARAM) bf);
+						int base = _wtol(bf);
+						if (base != data->tileBase) {
+							data->tileBase = base;
+							InvalidateRect(hWnd, NULL, FALSE);
+						}
+					}
 				}
 			}
 			break;
@@ -606,7 +641,7 @@ typedef struct {
 	int characterOrigin;
 } NSCRBITMAPIMPORTDATA;
 
-void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, int height, int nPalettes, int paletteNumber, BOOL newPalettes,
+void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, int height, int tileBase, int nPalettes, int paletteNumber, BOOL newPalettes,
 					  BOOL newCharacters, BOOL diffuse, int maxTilesX, int maxTilesY, int nscrTileX, int nscrTileY) {
 	int tilesX = width / 8;
 	int tilesY = height / 8;
@@ -656,10 +691,10 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 		}
 	}
 
-	int charBase = 0;
-	if (nscr->nHighestIndex >= ncgr->nTiles) {
+	int charBase = tileBase;
+	/*if (nscr->nHighestIndex >= ncgr->nTiles) {
 		charBase = nscr->nHighestIndex + 1 - ncgr->nTiles;
-	}
+	}*/
 
 	//write to NCLR
 	if (newPalettes) {
@@ -771,6 +806,7 @@ typedef struct {
 	DWORD *px;
 	int width;
 	int height;
+	int tileBase;
 	int nPalettes;
 	int paletteNumber;
 	int newPalettes;
@@ -799,7 +835,7 @@ DWORD WINAPI threadedNscrImportBitmapInternal(LPVOID lpParameter) {
 	PROGRESSDATA *progressData = (PROGRESSDATA *) lpParameter;
 	NSCRIMPORTDATA *importData = (NSCRIMPORTDATA *) progressData->data;
 	nscrImportBitmap(importData->nclr, importData->ncgr, importData->nscr, importData->px,
-					 importData->width, importData->height, importData->nPalettes, importData->paletteNumber,
+					 importData->width, importData->height, importData->tileBase, importData->nPalettes, importData->paletteNumber,
 					 importData->newPalettes, importData->newCharacters, importData->diffuse,
 					 importData->maxTilesX, importData->maxTilesY, importData->nscrTileX, importData->nscrTileY);
 	progressData->waitOn = 1;
@@ -924,6 +960,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					nscrImportData->px = px;
 					nscrImportData->width = width;
 					nscrImportData->height = height;
+					nscrImportData->tileBase = nscrViewerData->tileBase;
 					nscrImportData->nPalettes = nPalettes;
 					nscrImportData->paletteNumber = paletteNumber;
 					nscrImportData->newPalettes = newPalettes;
@@ -1034,7 +1071,7 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 			int highlightColor = data->verifyColor;
 			if ((data->verifyFrames & 1) == 0) highlightColor = -1;
-			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale, data->selStartX, data->selStartY, data->selEndX, data->selEndY);
+			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->tileBase, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale, data->selStartX, data->selStartY, data->selEndX, data->selEndY);
 
 			HDC hDC = CreateCompatibleDC(hWindowDC);
 			SelectObject(hDC, hBitmap);
@@ -1287,7 +1324,7 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPWS
 		rc.bottom = height;
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL);
+		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22;
 		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"NSCR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
 

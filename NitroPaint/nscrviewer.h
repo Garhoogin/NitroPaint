@@ -16,6 +16,8 @@ typedef struct {
 	HWND hWndPaletteLabel;
 	HWND hWndPaletteNumber;
 	HWND hWndApply;
+	HWND hWndTileBaseLabel;
+	HWND hWndTileBase;
 
 	int hoverX;
 	int hoverY;
@@ -25,6 +27,7 @@ typedef struct {
 	int editingY;
 	int verifyColor;
 	int verifyFrames;
+	int tileBase;
 
 	int mouseDown;
 	int selStartX; //-1 when no selection.
@@ -32,6 +35,8 @@ typedef struct {
 	int selEndX;
 	int selEndY;
 } NSCRVIEWERDATA;
+
+void NscrViewerSetTileBase(HWND hWnd, int tileBase);
 
 VOID RegisterNscrViewerClass(VOID);
 

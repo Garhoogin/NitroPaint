@@ -188,11 +188,11 @@ void flipY(DWORD * block) {
 	}
 }
 
-int nscrGetTile(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL checker, DWORD * out) {
-	return nscrGetTileEx(nscr, ncgr, nclr, x, y, checker, out, NULL);
+int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL checker, DWORD * out) {
+	return nscrGetTileEx(nscr, ncgr, nclr, 0, x, y, checker, out, NULL);
 }
 
-int nscrGetTileEx(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL checker, DWORD * out, int *tileNo) {
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo) {
 	if (x >= nscr->nWidth / 8) return 1;
 	if (y >= nscr->nHeight / 8) return 1;
 	int nWidthTiles = nscr->nWidth >> 3;
@@ -212,7 +212,7 @@ int nscrGetTileEx(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL chec
 		COLOR* palette = nclr->colors + paletteSize * paletteNumber;
 		int tileSize = 32;
 		if (bitness == 8) tileSize = 64;
-		if (nscr->nHighestIndex == ncgr->nTiles) tileNumber--; //some NSCRs need this. Why? I'm not sure.
+		tileNumber -= tileBase;
 		if (ncgr) {
 			if (tileNumber >= ncgr->nTiles || tileNumber < 0) { //? let's just paint a transparent square
 				if (!checker) FillMemory(out, 64 * 4, 0);
