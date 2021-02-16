@@ -677,39 +677,24 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 		
 		createMultiplePalettes(blocks, avgs, width, tilesX, tilesY, pals, nPalettes, paletteSize);
 	} else {
-		WORD *destPalette = nclr->colors + paletteNumber * paletteSize;
+		COLOR *destPalette = nclr->colors + paletteNumber * paletteSize;
 		int nColors = nPalettes * paletteSize;
 		for (int i = 0; i < nColors; i++) {
-			WORD c = destPalette[i];
-			int r = c & 0x1F;
-			int g = (c >> 5) & 0x1F;
-			int b = (b >> 10) & 0x1F;
-			r = r * 255 / 31;
-			g = g * 255 / 31;
-			b = b * 255 / 31;
-			pals[i] = r | (g << 8) | (b << 16);
+			COLOR c = destPalette[i];
+			pals[i] = ColorConvertFromDS(c);
 		}
 	}
 
 	int charBase = tileBase;
-	/*if (nscr->nHighestIndex >= ncgr->nTiles) {
-		charBase = nscr->nHighestIndex + 1 - ncgr->nTiles;
-	}*/
 
 	//write to NCLR
 	if (newPalettes) {
-		WORD *destPalette = nclr->colors + paletteNumber * paletteSize;
+		COLOR *destPalette = nclr->colors + paletteNumber * paletteSize;
 		for (int i = 0; i < nPalettes; i++) {
-			WORD *dest = destPalette + i * paletteSize;
+			COLOR *dest = destPalette + i * paletteSize;
 			for (int j = 0; j < paletteSize; j++) {
 				DWORD col = (pals + i * paletteSize)[j];
-				int r = col & 0xFF;
-				int g = (col >> 8) & 0xFF;
-				int b = (col >> 16) & 0xFF;
-				r = r * 31 / 255;
-				g = g * 31 / 255;
-				b = b * 31 / 255;
-				dest[j] = r | (g << 5) | (b << 10);
+				dest[j] = ColorConvertToDS(col);
 			}
 		}
 	}
