@@ -333,13 +333,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
 						if (ChooseColorFunction(&cc)) {
 							DWORD result = cc.rgbResult;
-							int r = result & 0xFF;
-							int g = (result >> 8) & 0xFF;
-							int b = (result >> 16) & 0xFF;
-							r = ((r + 4) * 31 / 255);
-							g = ((g + 4) * 31 / 255);
-							b = ((b + 4) * 31 / 255);
-							data->nclr.colors[index] = r | (g << 5) | (b << 10);
+							data->nclr.colors[index] = ColorConvertToDS(result);
 							InvalidateRect(hWnd, NULL, FALSE);
 							
 							NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);

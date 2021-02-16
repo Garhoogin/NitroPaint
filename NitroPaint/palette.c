@@ -1,4 +1,5 @@
 #include "palette.h"
+#include "color.h"
 #include <math.h>
 #include <intrin.h>
 
@@ -31,13 +32,7 @@ float __inline Q_fsqrt(float x) {
 * reduce a color to its nearest 15-bit color, and convert back to 24-bit color.
 */
 DWORD reduce(DWORD col) {
-	int r = col & 0xFF;
-	int g = (col >> 8) & 0xFF;
-	int b = (col >> 16) & 0xFF;
-	r = ((r + 4) * 31 / 255) * 255 / 31;
-	g = ((g + 4) * 31 / 255) * 255 / 31;
-	b = ((b + 4) * 31 / 255) * 255 / 31;
-	return r | (g << 8) | (b << 16);
+	return ColorConvertFromDS(ColorConvertToDS(col));
 }
 
 void createBucket(BUCKET * bucket, DWORD * colors, int nColors) {

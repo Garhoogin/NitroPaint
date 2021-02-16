@@ -363,11 +363,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							for (int i = 0; i < paletteSize; i++) {
 								DWORD d = palette[i];
 								COLOR ds = ColorConvertToDS(d);
-								int r = GetR(ds) * 255 / 31;
-								int g = GetG(ds) * 255 / 31;
-								int b = GetB(ds) * 255 / 31;
 								nitroPalette[i] = ds;
-								palette[i] = r | (g << 8) | (b << 16);
+								palette[i] = ColorConvertFromDS(ds);
 							}
 						}
 
