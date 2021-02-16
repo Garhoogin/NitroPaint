@@ -40,6 +40,6 @@ void nscrWrite(NSCR *nscr, LPWSTR name);
 
 int nscrGetTile(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL chceker, DWORD * out);
 
-int nscrGetTileEx(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL checker, DWORD * out, int *tileNo);
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo);
 
-void nscrCreate(DWORD * imgBits, int width, int height, int nBits, int dither, LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, int palette, int nPalettes, int bin);
+void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, int palette, int nPalettes, int bin, int tileBase);

@@ -425,7 +425,7 @@ void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, i
 	}
 }
 
-void nscrCreate(DWORD * imgBits, int width, int height, int nBits, int dither, LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, int paletteBase, int nPalettes, int bin) {
+void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, int paletteBase, int nPalettes, int bin, int tileBase) {
 	//combine similar.
 	DWORD * bits = imgBits;//combineSimilar(imgBits, width, height, 1024);
 						   //create the palette.
@@ -584,7 +584,7 @@ void nscrCreate(DWORD * imgBits, int width, int height, int nBits, int dither, L
 
 	//see how many are left
 	nBlocks;
-	if (nBlocks > 1024) {
+	if (nBlocks + tileBase > 1024) {
 		char bf[32];// = "Too many tiles! Tiles: \0\0\0\0\0";
 		//sprintf(bf, "Too many tiles! Tiles: %d", nBlocks);
 		//itoa(nBlocks, bf + 23, 10);
@@ -593,11 +593,15 @@ void nscrCreate(DWORD * imgBits, int width, int height, int nBits, int dither, L
 	}
 	//_asm int 3
 	//round up nBlocks to a multiple of 16.
-	int nMisaligned = nBlocks & 0xF;
-	int nMisalignedBlocks = nBlocks;
-	int nAdded = 0;
-	if (nMisaligned) nBlocks += (0x10 - nMisaligned), nAdded = (0x10 - nMisaligned);
-	ZeroMemory(blocks + 64 * nMisalignedBlocks, 64 * nAdded * 4);
+	//int nMisaligned = nBlocks & 0xF;
+	//int nMisalignedBlocks = nBlocks;
+	//int nAdded = 0;
+	//if (nMisaligned) nBlocks += (0x10 - nMisaligned), nAdded = (0x10 - nMisaligned);
+	//ZeroMemory(blocks + 64 * nMisalignedBlocks, 64 * nAdded * 4);
+
+	for (int i = 0; i < nTotalTiles; i++) {
+		indices[i] += tileBase;
+	}
 
 	//create nclr
 	nclrCreate(palette, 256, nBits, 0, lpszNclrLocation, bin);
