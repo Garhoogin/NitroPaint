@@ -6,6 +6,7 @@
 #define NCGR_TYPE_NCGR		1
 #define NCGR_TYPE_HUDSON	2
 #define NCGR_TYPE_HUDSON2	3
+#define NCGR_TYPE_NCBR      4
 
 typedef struct NCGR_{
 	OBJECT_HEADER header;

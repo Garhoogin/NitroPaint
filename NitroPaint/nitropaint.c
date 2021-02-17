@@ -286,9 +286,12 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						free(path);
 						break;
 					}
+					case ID_OPEN_OPENNCBR:
 					case ID_OPEN_OPENNCGR:
 					{
-						LPWSTR path = openFileDialog(hWnd, L"Open NCGR", L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*\0", L"ncgr");
+						LPWSTR path;
+						if(menuID == ID_OPEN_OPENNCGR) path = openFileDialog(hWnd, L"Open NCGR", L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*\0", L"ncgr");
+						else path = openFileDialog(hWnd, L"Open NCBR", L"NCBR Files (*.ncbr)\0*.ncbr\0All Files\0*.*\0", L"ncbr");
 						if (!path) break;
 
 						//if there is already an NCGR open, close it.

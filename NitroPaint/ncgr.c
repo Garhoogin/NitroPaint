@@ -120,6 +120,12 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	int mapping = *(int *) (buffer + 0x10);
 	depth = 1 << (depth - 1);
 	int tileDataSize = *(int *) (buffer + 0x18);
+	int type = *(int *) (buffer + 0x14);
+
+	int format = NCGR_TYPE_NCGR;
+	if (type == 1) {
+		format = NCGR_TYPE_NCBR;
+	}
 
 
 	int tileCount = tilesX * tilesY;
@@ -130,20 +136,53 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 		tilesY = tileCount / tilesX;
 	}
 
-	BYTE ** tiles = (BYTE **) calloc(tileCount, sizeof(BYTE **));
+	BYTE **tiles = (BYTE **) calloc(tileCount, sizeof(BYTE **));
 	buffer += 0x20;
-	for (int i = 0; i < tileCount; i++) {
-		tiles[i] = (BYTE *) calloc(8 * 8, 1);
-		BYTE * tile = tiles[i];
-		if (depth == 8) {
-			memcpy(tile, buffer, 64);
-			buffer += 64;
-		} else if (depth == 4) {
-			for (int j = 0; j < 32; j++) {
-				BYTE b = *buffer;
-				tile[j * 2] = b & 0xF;
-				tile[j * 2 + 1] = b >> 4;
-				buffer++;
+
+	if (format == NCGR_TYPE_NCGR) {
+		for (int i = 0; i < tileCount; i++) {
+			tiles[i] = (BYTE *) calloc(8 * 8, 1);
+			BYTE * tile = tiles[i];
+			if (depth == 8) {
+				memcpy(tile, buffer, 64);
+				buffer += 64;
+			} else if (depth == 4) {
+				for (int j = 0; j < 32; j++) {
+					BYTE b = *buffer;
+					tile[j * 2] = b & 0xF;
+					tile[j * 2 + 1] = b >> 4;
+					buffer++;
+				}
+			}
+		}
+	} else if (format == NCGR_TYPE_NCBR) {
+		for (int y = 0; y < tilesY; y++) {
+			for (int x = 0; x < tilesX; x++) {
+
+				int offset = x * 4 + 4 * y * tilesX * 8;
+				BYTE *tile = calloc(64, 1);
+				tiles[x + y * tilesX] = tile;
+				if (depth == 8) {
+					offset *= 2;
+					BYTE *indices = buffer + offset;
+					memcpy(tile, indices, 8);
+					memcpy(tile + 8, indices + 8 * tilesX, 8);
+					memcpy(tile + 16, indices + 16 * tilesX, 8);
+					memcpy(tile + 24, indices + 24 * tilesX, 8);
+					memcpy(tile + 32, indices + 32 * tilesX, 8);
+					memcpy(tile + 40, indices + 40 * tilesX, 8);
+					memcpy(tile + 48, indices + 48 * tilesX, 8);
+					memcpy(tile + 56, indices + 56 * tilesX, 8);
+				} else if (depth == 4) {
+					BYTE *indices = buffer + offset;
+					for (int j = 0; j < 8; j++) {
+						for (int i = 0; i < 4; i++) {
+							tile[i * 2 + j * 8] = indices[i + j * 4] & 0xF;
+							tile[i * 2 + 1 + j * 8] = indices[i + j * 4] >> 4;
+						}
+					}
+				}
+
 			}
 		}
 	}
@@ -158,7 +197,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	ncgr->tilesY = tilesY;
 	ncgr->mapping = mapping;
 	ncgr->header.type = FILE_TYPE_CHARACTER;
-	ncgr->header.format = NCGR_TYPE_NCGR;
+	ncgr->header.format = format;
 	ncgr->header.size = sizeof(*ncgr);
 	ncgr->header.compression = COMPRESSION_NONE;
 	return 0;
@@ -200,9 +239,12 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 
 void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (ncgr->header.format == NCGR_TYPE_NCGR) {
+	if (ncgr->header.format == NCGR_TYPE_NCGR || ncgr->header.format == NCGR_TYPE_NCBR) {
 		BYTE ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, 0x1, 0 };
 		BYTE charHeader[] = { 'R', 'A', 'H', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+		if (ncgr->header.format == NCGR_TYPE_NCBR) {
+			charHeader[20] = 1;
+		}
 
 		int nTiles = ncgr->nTiles;
 		int nBytesPerTile = 64;
@@ -228,18 +270,43 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 		DWORD dwWritten;
 		WriteFile(hFile, ncgrHeader, 0x10, &dwWritten, NULL);
 		WriteFile(hFile, charHeader, 0x20, &dwWritten, NULL);
-		for (int i = 0; i < ncgr->nTiles; i++) {
-			if (ncgr->nBits == 8) {
-				WriteFile(hFile, ncgr->tiles[i], 64, &dwWritten, NULL);
-			} else {
-				BYTE buffer[32];
-				for (int j = 0; j < 32; j++) {
-					BYTE b = ncgr->tiles[i][(j << 1)] | (ncgr->tiles[i][(j << 1) + 1] << 4);
+		if (ncgr->header.format == NCGR_TYPE_NCGR) {
+			for (int i = 0; i < ncgr->nTiles; i++) {
+				if (ncgr->nBits == 8) {
+					WriteFile(hFile, ncgr->tiles[i], 64, &dwWritten, NULL);
+				} else {
+					BYTE buffer[32];
+					for (int j = 0; j < 32; j++) {
+						BYTE b = ncgr->tiles[i][(j << 1)] | (ncgr->tiles[i][(j << 1) + 1] << 4);
 
-					buffer[j] = b;
+						buffer[j] = b;
+					}
+					WriteFile(hFile, buffer, 32, &dwWritten, NULL);
 				}
-				WriteFile(hFile, buffer, 32, &dwWritten, NULL);
 			}
+		} else if (ncgr->header.format == NCGR_TYPE_NCBR) {
+			BYTE *bmp = (BYTE *) calloc(nTiles, 8 * ncgr->nBits);
+			int nWidth = ncgr->tilesX * 8;
+			for (int y = 0; y < ncgr->tilesY; y++) {
+				for (int x = 0; x < ncgr->tilesX; x++) {
+					BYTE *tile = ncgr->tiles[x + y * ncgr->tilesX];
+					if (ncgr->nBits == 8) {
+						for (int i = 0; i < 64; i++) {
+							int tX = x * 8 + (i % 8);
+							int tY = y * 8 + (i / 8);
+							bmp[tX + tY * nWidth] = tile[i];
+						}
+					} else {
+						for (int i = 0; i < 32; i++) {
+							int tX = x * 8 + ((i * 2) % 8);
+							int tY = y * 8 + (i / 4);
+							bmp[(tX + tY * nWidth) / 2] = tile[i * 2] | (tile[i * 2 + 1] << 4);
+						}
+					}
+				}
+			}
+			WriteFile(hFile, bmp, nTiles * 8 * ncgr->nBits, &dwWritten, NULL);
+			free(bmp);
 		}
 	} else if(ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
 		DWORD dwWritten;
