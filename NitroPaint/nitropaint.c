@@ -195,6 +195,14 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	}
 }
 
+VOID HandleSwitch(LPWSTR lpSwitch) {
+	if (!wcsncmp(lpSwitch, L"EVENT:", 6)) {
+		//signal event
+		HANDLE hEvent = (HANDLE) _wtol(lpSwitch + 6);
+		SetEvent(hEvent);
+	}
+}
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NITROPAINTSTRUCT *data = GetWindowLongPtr(hWnd, 0);
 	if (!data) {
@@ -226,7 +234,13 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 				argc--;
 				argv++;
 				for (int i = 0; i < argc; i++) {
-					OpenFileByName(hWnd, argv[i]);
+					LPWSTR arg = argv[i];
+					if (arg[0] != L'/') {
+						OpenFileByName(hWnd, argv[i]);
+					} else {
+						//command line switch
+						HandleSwitch(arg + 1);
+					}
 				}
 			}
 
