@@ -39,6 +39,8 @@ LPWSTR g_lpszNitroPaintClassName = L"NitroPaintClass";
 
 extern EXCEPTION_DISPOSITION __cdecl ExceptionHandler(EXCEPTION_RECORD *exceptionRecord, void *establisherFrame, CONTEXT *contextRecord, void *dispatcherContext);
 
+HANDLE g_hEvent = NULL;
+
 LPWSTR saveFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension) {
 	OPENFILENAME o = { 0 };
 	WCHAR fbuff[MAX_PATH + 1] = { 0 };
@@ -197,9 +199,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 VOID HandleSwitch(LPWSTR lpSwitch) {
 	if (!wcsncmp(lpSwitch, L"EVENT:", 6)) {
-		//signal event
-		HANDLE hEvent = (HANDLE) _wtol(lpSwitch + 6);
-		SetEvent(hEvent);
+		g_hEvent = (HANDLE) _wtol(lpSwitch + 6);
 	}
 }
 
@@ -769,6 +769,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	HWND hWnd = CreateWindowEx(0, g_lpszNitroPaintClassName, L"NitroPaint", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInstance, NULL);
 	ShowWindow(hWnd, SW_SHOW);
+	if (g_hEvent != NULL) SetEvent(g_hEvent);
 
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0)) {
