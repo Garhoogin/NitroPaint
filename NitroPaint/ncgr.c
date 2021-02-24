@@ -117,7 +117,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	unsigned short tilesY = *(unsigned short *) (buffer + 0x8);
 	unsigned short tilesX = *(unsigned short *) (buffer + 0xA);
 	int depth = *(int *) (buffer + 0xC);
-	int mapping = *(int *) (buffer + 0x10);
+	int mapping = *(short *) (buffer + 0x10);
 	depth = 1 << (depth - 1);
 	int tileDataSize = *(int *) (buffer + 0x18);
 	int type = *(int *) (buffer + 0x14);
