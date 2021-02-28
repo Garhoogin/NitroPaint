@@ -206,24 +206,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				nStrings++;
 			}
 
-
-			RECT rcClient;
-			GetClientRect(hWnd, &rcClient);
-
-			SCROLLINFO info;
-			info.cbSize = sizeof(info);
-			info.nMin = 0;
-			info.nMax = data->frameData.contentWidth;
-			info.nPos = 0;
-			info.nPage = rcClient.right - rcClient.left + 1;
-			info.nTrackPos = 0;
-			info.fMask = SIF_POS | SIF_RANGE | SIF_POS | SIF_TRACKPOS | SIF_PAGE;
-			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
-
-			info.nMax = data->frameData.contentHeight;
-			info.nPage = rcClient.bottom - rcClient.top + 1;
-			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
-
 			//guess a tile base based on an open NCGR (if any)
 			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
