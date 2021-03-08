@@ -347,7 +347,7 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 	}
 }
 
-void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int bin) {
+void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int fmt) {
 
 	int nBlockSize = 64;
 	if (nBits == 4) nBlockSize = 32;
@@ -360,7 +360,7 @@ void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int bin) {
 		}
 	}
 
-	if (!bin) {
+	if (fmt == 0) {
 		BYTE ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 1, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE rahcHeader[] = { 'R', 'A', 'H', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x18, 0, 0, 0 };
 		//BYTE sopcHeader[] = {'S', 'O', 'P', 'C', 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -401,15 +401,21 @@ void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int bin) {
 		WriteFile(hFile, rahcHeader, sizeof(rahcHeader), &dwWritten, NULL);
 		WriteFile(hFile, b, nBlocks * nBlockSize, &dwWritten, NULL);
 		CloseHandle(hFile);
-	} else {
-		BYTE header[8] = { 0 };
-		*(WORD *) (header + 1) = nBlocks * nBlockSize + 4;
-		if(nBits == 8) header[4] = 1;
-		*(WORD *) (header + 5) = nBlocks;
+	} else if(fmt == 1 || fmt == 2) {
 
 		DWORD dwWritten;
 		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		if (fmt == 1) {
+			BYTE header[8] = { 0 };
+			*(WORD *) (header + 1) = nBlocks * nBlockSize + 4;
+			if(nBits == 8) header[4] = 1;
+			*(WORD *) (header + 5) = nBlocks;
+			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		} else {
+			BYTE header[4] = { 0 };
+			*(WORD *) (header + 1) = nBlocks;
+			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		}
 		WriteFile(hFile, b, nBlocks * nBlockSize, &dwWritten, NULL);
 		CloseHandle(hFile);
 	}

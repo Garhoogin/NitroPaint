@@ -120,14 +120,14 @@ void nclrWrite(NCLR * nclr, LPWSTR name) {
 	}
 }
 
-void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int bin) {
+void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int fmt) {
 	COLOR *cpal = (WORD *) calloc(nColors, 2);
 	for (int i = 0; i < nColors; i++) {
 		DWORD d = palette[i];
 		cpal[i] = ColorConvertToDS(d);
 	}
 
-	if (!bin) {
+	if (fmt == 0) {
 		BYTE nclrHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0x0, 0x1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
 		//BYTE pmcpHeader[] = {'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 1, 0, 0xEF, 0xBE, 8, 0, 0, 0, 0, 0};
@@ -149,7 +149,7 @@ void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR na
 		WriteFile(hFile, ttlpHeader, sizeof(ttlpHeader), &dwWritten, NULL);
 		WriteFile(hFile, cpal, nColors * 2, &dwWritten, NULL);
 		CloseHandle(hFile);
-	} else {
+	} else if(fmt == 1 || fmt == 2) {
 		BYTE header[4];
 		*(WORD *) header = 2 * nColors;
 		*(WORD *) (header + 2) = nColors;

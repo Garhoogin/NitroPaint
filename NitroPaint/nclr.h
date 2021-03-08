@@ -19,6 +19,6 @@ int nclrRead(NCLR * nclr, char * buffer, int size);
 
 void nclrWrite(NCLR * nclr, LPWSTR name);
 
-void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int bin);
+void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int fmt);
 
 int nclrReadFile(NCLR *nclr, LPWSTR path);

@@ -27,4 +27,4 @@ int ncgrReadFile(NCGR *ncgr, LPWSTR path);
 
 void ncgrWrite(NCGR * ncgr, LPWSTR name);
 
-void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int bin);
+void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int fmt);

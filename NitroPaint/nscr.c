@@ -346,14 +346,14 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 	}
 }
 
-void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalTiles, int width, int height, int nBits, LPWSTR name, int bin) {
+void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalTiles, int width, int height, int nBits, LPWSTR name, int fmt) {
 	WORD * dataArea = (WORD *) (HeapAlloc(GetProcessHeap(), 0, nTotalTiles * 2));
 
 	for (int i = 0; i < nTotalTiles; i++) {
 		dataArea[i] = (indices[i] & 0x3FF) | ((modes[i] & 0x3) << 10) | ((paletteIndices[i] & 0xF) << 12);
 	}
 
-	if (!bin) {
+	if (fmt == 0) {
 		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -377,16 +377,23 @@ void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalT
 		WriteFile(hFile, nrcsHeader, sizeof(nrcsHeader), &dwWritten, NULL);
 		WriteFile(hFile, dataArea, 2 * nTotalTiles, &dwWritten, NULL);
 		CloseHandle(hFile);
-	} else {
-		BYTE header[8] = { 0 };
-		*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
-		*(WORD *) (header + 4) = 2 * nTotalTiles;
-		header[6] = width / 8;
-		header[7] = height / 8;
-
+	} else if(fmt == 1 || fmt == 2) {
 		DWORD dwWritten;
 		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		if (fmt == 1) {
+			BYTE header[8] = { 0 };
+			*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
+			*(WORD *) (header + 4) = 2 * nTotalTiles;
+			header[6] = width / 8;
+			header[7] = height / 8;
+			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		} else {
+			BYTE header[4] = { 0 };
+			*(WORD *) (header) = 2 * nTotalTiles;
+			header[2] = width / 8;
+			header[3] = height / 8;
+			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+		}
 		WriteFile(hFile, dataArea, 2 * nTotalTiles, &dwWritten, NULL);
 		CloseHandle(hFile);
 	}
@@ -425,7 +432,7 @@ void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, i
 	}
 }
 
-void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, int paletteBase, int nPalettes, int bin, int tileBase) {
+void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, int paletteBase, int nPalettes, int fmt, int tileBase) {
 	//combine similar.
 	DWORD * bits = imgBits;//combineSimilar(imgBits, width, height, 1024);
 						   //create the palette.
@@ -604,11 +611,11 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LP
 	}
 
 	//create nclr
-	nclrCreate(palette, 256, nBits, 0, lpszNclrLocation, bin);
+	nclrCreate(palette, 256, nBits, 0, lpszNclrLocation, fmt);
 	//create ngr
-	ncgrCreate(blocks, nBlocks, nBits, lpszNcgrLocation, bin);
+	ncgrCreate(blocks, nBlocks, nBits, lpszNcgrLocation, fmt);
 	//create nscr
-	nscrCreate_(indices, modes, paletteIndices, nTotalTiles, width, height, nBits, lpszNscrLocation, bin);
+	nscrCreate_(indices, modes, paletteIndices, nTotalTiles, width, height, nBits, lpszNscrLocation, fmt);
 	free(modes);
 	free(blocks);
 	free(indices);
