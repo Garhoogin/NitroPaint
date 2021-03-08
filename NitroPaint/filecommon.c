@@ -4,6 +4,7 @@
 #include "nscr.h"
 #include "ncer.h"
 #include "nsbtx.h"
+#include "ntft.h"
 
 int fileIdentify(char *file, int size) {
 	char *buffer = file;
@@ -58,6 +59,7 @@ int fileIdentify(char *file, int size) {
 		else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 		else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 		else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
+		else if (ntftIsValid(buffer, bufferSize)) type = FILE_TYPE_BMAP;
 	}
 
 	if (buffer != file) {

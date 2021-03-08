@@ -16,6 +16,7 @@
 #include "gdip.h"
 #include "tileeditor.h"
 #include "nsbtx.h"
+#include "ntft.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -213,7 +214,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		case WM_CREATE:
 		{
 			CLIENTCREATESTRUCT createStruct;
-			createStruct.hWindowMenu = GetSubMenu(GetMenu(hWnd), 2);
+			createStruct.hWindowMenu = GetSubMenu(GetMenu(hWnd), 3);
 			createStruct.idFirstChild = 200;
 			data->hWndMdi = CreateWindowEx(WS_EX_CLIENTEDGE, L"MDICLIENT", L"MDI", WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN | WS_HSCROLL | WS_VSCROLL, 0, 0, 500, 500, hWnd, NULL, NULL, &createStruct);
 #if(g_useDarkTheme)
@@ -348,6 +349,33 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
 
 						free(path);
+						break;
+					}
+					case ID_NTFT_IMAGE:
+					{
+						LPWSTR path = openFileDialog(hWnd, L"Open Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+						if (!path) break;
+						LPWSTR dest = saveFileDialog(hWnd, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
+						if (!dest) {
+							free(path);
+							break;
+						}
+
+						int width, height;
+						NTFT ntft;
+						DWORD *bits = gdipReadImage(path, &width, &height);
+						ntftCreate(&ntft, bits, width * height);
+						ntftWrite(&ntft, dest);
+						free(ntft.px);
+
+						free(path);
+						free(dest);
+						break;
+					}
+					case ID_NTFT_NTFT:
+					{
+						//create window
+						CreateWindow(L"NtftConvertDialogClass", L"Convert NTFT", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
 						break;
 					}
 					case ID_FILE_SAVEALL:
@@ -707,6 +735,123 @@ void RegisterProgressWindowClass() {
 	RegisterClassEx(&wcex);
 }
 
+typedef struct {
+	HWND hWndFileInput;
+	HWND hWndBrowseButton;
+	HWND hWndWidthInput;
+	HWND hWndConvertButton;
+} NTFTCONVERTDATA;
+
+LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NTFTCONVERTDATA *data = (NTFTCONVERTDATA *) GetWindowLongPtr(hWnd, 0);
+	if (data == NULL) {
+		data = (NTFTCONVERTDATA *) calloc(1, sizeof(NTFTCONVERTDATA));
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+	}
+	switch (msg) {
+		case WM_CREATE:
+		{
+			SetWindowSize(hWnd, 50 + 10 + 200 + 10 + 10, 10 + 10 + 22 + 5 + 22 + 5 + 22);
+			CreateWindow(L"STATIC", L"Input:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 50, 22, hWnd, NULL, NULL, NULL);
+			data->hWndFileInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 10, 170, 22, hWnd, NULL, NULL, NULL);
+			data->hWndBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 10, 30, 22, hWnd, NULL, NULL, NULL);
+			data->hWndWidthInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"8", WS_VISIBLE | WS_CHILD | ES_NUMBER, 70, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			SetGUIFont(hWnd);
+			
+			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl) {
+				if (hWndControl == data->hWndBrowseButton) {
+					LPWSTR path = openFileDialog(hWnd, L"Open NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
+					if (!path) break;
+					SendMessage(data->hWndFileInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+
+					//try to guess a size
+					NTFT ntft;
+					int r = ntftReadFile(&ntft, path);
+					if (!r) {
+						int nPx = ntft.nPx;
+						free(ntft.px);
+						int guessWidth = 8;
+						while (1) {
+							if (nPx / guessWidth <= guessWidth) break;
+							guessWidth *= 2;
+						}
+
+						WCHAR buffer[16];
+						int len = wsprintfW(buffer, L"%d", guessWidth);
+						SendMessage(data->hWndWidthInput, WM_SETTEXT, len, (LPARAM) buffer);
+					}
+
+					free(path);
+				} else if (hWndControl == data->hWndConvertButton) {
+					LPWSTR out = saveFileDialog(hWnd, L"Save Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+					if (!out) break;
+					WCHAR src[MAX_PATH + 1];
+					SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
+					int width = _wtol(src);
+					SendMessage(data->hWndFileInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
+
+					NTFT ntft;
+					ntftReadFile(&ntft, src);
+					int nPx = ntft.nPx;
+
+					DWORD *px = (DWORD *) malloc(nPx * 4);
+					for (int i = 0; i < nPx; i++){
+						COLOR c = ntft.px[i];
+						DWORD converted = ColorConvertFromDS(c);
+						if (c & 0x8000) converted |= 0xFF000000;
+						px[i] = REVERSE(converted);
+					}
+
+					writeImage(px, width, nPx / width, out);
+					free(ntft.px);
+					free(px);
+					free(out);
+					DestroyWindow(hWnd);
+				}
+			}
+			break;
+		}
+		case WM_CLOSE:
+		{
+			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) & ~WS_DISABLED);
+			SetActiveWindow(hWndParent);
+			break;
+		}
+		case WM_DESTROY:
+		{
+			free(data);
+			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			SetActiveWindow(hWndMain);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+void RegisterNtftConvertDialogClass() {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"NtftConvertDialogClass";
+	wcex.lpfnWndProc = NtftConvertDialogProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
 VOID ReadConfiguration(LPWSTR lpszPath) {
 	DWORD dwAttributes = GetFileAttributes(lpszPath);
 	if (dwAttributes == INVALID_FILE_ATTRIBUTES) {
@@ -737,6 +882,17 @@ VOID SetConfigPath() {
 	memcpy(g_configPath + endOffset, name, wcslen(name) * 2 + 2);
 }
 
+void RegisterClasses() {
+	RegisterNcgrViewerClass();
+	RegisterNclrViewerClass();
+	RegisterNscrViewerClass();
+	RegisterNcerViewerClass();
+	RegisterCreateDialogClass();
+	RegisterNsbtxViewerClass();
+	RegisterProgressWindowClass();
+	RegisterNtftConvertDialogClass();
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	g_appIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
 
@@ -757,13 +913,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	wcex.hIconSm = g_appIcon;
 	RegisterClassEx(&wcex);
 
-	RegisterNcgrViewerClass();
-	RegisterNclrViewerClass();
-	RegisterNscrViewerClass();
-	RegisterNcerViewerClass();
-	RegisterCreateDialogClass();
-	RegisterNsbtxViewerClass();
-	RegisterProgressWindowClass();
+	RegisterClasses();
 
 	InitCommonControls();
 

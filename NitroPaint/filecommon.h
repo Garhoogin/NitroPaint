@@ -8,6 +8,7 @@
 #define FILE_TYPE_SCREEN     3
 #define FILE_TYPE_CELL       4
 #define FILE_TYPE_NSBTX      5
+#define FILE_TYPE_BMAP       6
 
 #define COMPRESSION_NONE     0
 #define COMPRESSION_LZ77     1
