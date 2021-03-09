@@ -173,6 +173,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndApply = CreateWindow(L"BUTTON", L"Apply", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndTileBaseLabel = CreateWindow(L"STATIC", L"Tile Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndSize = CreateWindow(L"STATIC", L"Size: 0x0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndSelectionSize = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			WCHAR bf[16];
 			for (int i = 0; i < 16; i++) {
 				wsprintf(bf, L"Palette %02d", i);
@@ -200,6 +202,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			MoveWindow(data->hWndApply, rcClient.right - 110, 64, 100, 22, TRUE);
 			MoveWindow(data->hWndTileBaseLabel, 0, rcClient.bottom - 22, 50, 22, TRUE);
 			MoveWindow(data->hWndTileBase, 50, rcClient.bottom - 22, 100, 22, TRUE);
+			MoveWindow(data->hWndSize, 160, rcClient.bottom - 22, 100, 22, TRUE);
+			MoveWindow(data->hWndSelectionSize, 260, rcClient.bottom - 22, 100, 22, TRUE);
 			
 
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
@@ -259,6 +263,11 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					NscrViewerSetTileBase(hWnd, data->nscr.nHighestIndex + 1 - nTiles);
 				}
 			}
+
+			//set size label
+			WCHAR buffer[32];
+			int len = wsprintfW(buffer, L"Size: %dx%d", data->nscr.nWidth, data->nscr.nHeight);
+			SendMessage(data->hWndSize, WM_SETTEXT, len, (LPARAM) buffer);
 			return 1;
 		}
 		case WM_MDIACTIVATE:
@@ -483,6 +492,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						data->selEndX = -1;
 						data->selEndY = -1;
 						InvalidateRect(hWnd, NULL, FALSE);
+						SendMessage(data->hWndSelectionSize, WM_SETTEXT, 0, (LPARAM) L"");
 						break;
 					}
 					case ID_VIEW_GRIDLINES:
@@ -605,6 +615,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->selEndX = -1;
 			data->selEndY = -1;
 			InvalidateRect(hWnd, NULL, FALSE);
+			SendMessage(data->hWndSelectionSize, WM_SETTEXT, 0, (LPARAM) L"");
 			break;
 		}
 	}
@@ -1160,6 +1171,11 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					if (data->mouseDown && data->selStartX != -1 && data->selStartY != -1) {
 						data->selEndX = x;
 						data->selEndY = y;
+
+						WCHAR sizeBuffer[32];
+						int len = wsprintfW(sizeBuffer, L"Selection: %dx%d", 8 * (max(data->selEndX, data->selStartX) - min(data->selEndX, data->selStartX) + 1),
+								  8 * (max(data->selEndY, data->selStartY) - min(data->selEndY, data->selStartY) + 1));
+						SendMessage(data->hWndSelectionSize, WM_SETTEXT, len, (LPARAM) sizeBuffer);
 					}
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
@@ -1247,10 +1263,13 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					int character = d & 0x3FF;
 					int palette = d >> 12;
 
-					WCHAR bf[8];
+					WCHAR bf[16];
 					SendMessage(data->hWndPaletteNumber, CB_SETCURSEL, palette, 0);
 					int len = wsprintfW(bf, L"%d", character);
 					SendMessage(data->hWndCharacterNumber, WM_SETTEXT, len, (LPARAM) bf);
+
+					len = wsprintfW(bf, L"Selection: %dx%d", 8, 8);
+					SendMessage(data->hWndSelectionSize, WM_SETTEXT, len, (LPARAM) bf);
 				}
 			} else {
 				if (msg == WM_LBUTTONDOWN) {
@@ -1259,6 +1278,7 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					data->selEndX = -1;
 					data->selEndY = -1;
 					InvalidateRect(hWnd, NULL, FALSE);
+					SendMessage(data->hWndSelectionSize, WM_SETTEXT, 0, (LPARAM) L"");
 				}
 			}
 			break;

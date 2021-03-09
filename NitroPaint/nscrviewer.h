@@ -18,6 +18,8 @@ typedef struct {
 	HWND hWndApply;
 	HWND hWndTileBaseLabel;
 	HWND hWndTileBase;
+	HWND hWndSize;
+	HWND hWndSelectionSize;
 
 	int hoverX;
 	int hoverY;
