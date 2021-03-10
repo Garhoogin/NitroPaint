@@ -163,6 +163,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							int selectedTexture = SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0);
 							TEXELS *destTex = data->nsbtx.textures + selectedTexture;
 							PALETTE *destPal = data->nsbtx.palettes + selectedPalette;
+							int oldTexImageParam = destTex->texImageParam;
 							memcpy(texels.name, destTex->name, 16);
 							memcpy(palette.name, destPal->name, 16);
 							if (destTex->cmp) free(destTex->cmp);
@@ -171,6 +172,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 								free(destPal->pal);
 								memcpy(destPal, &palette, sizeof(PALETTE));
 							}
+							//keep flipping, repeat, and transfomation
+							int mask = 0xC00F0000;
+							destTex->texImageParam = (oldTexImageParam & mask) | (destTex->texImageParam & ~mask);
 							InvalidateRect(hWnd, NULL, TRUE);
 						}
 
