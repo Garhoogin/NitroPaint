@@ -306,6 +306,42 @@ int ilog2(int x) {
 	return n - 1;
 }
 
+int nitrotgaIsValid(unsigned char *buffer, int size) {
+	//is the file even big enough to hold a TGA header and comment?
+	if (size < 0x16) return 0;
+
+	int commentLength = *buffer;
+	if (commentLength < 4) return 0;
+	int ptrOffset = 0x12 + commentLength - 4;
+	if (ptrOffset + 4 > size) return 0;
+	int ptr = *(int *) (buffer + ptrOffset);
+	if (ptr + 0xC > size) return 0;
+
+	//process sections. When any anomalies are found, return 0.
+	char *curr = buffer + ptr;
+	while (1) {
+		//is there space enough left for a section header?
+		if (curr + 0xC > buffer + size) return 0;
+
+		//all sections must start with nns_.
+		if (*(int *) curr != 0x5F736E6E) return 0;
+		int section = *(int *) (curr + 4);
+		int sectionSize = *(int *) (curr + 8);
+
+		//does the section size make sense?
+		if (sectionSize < 0xC) return 0;
+
+		//is the entire section within the file?
+		if (curr - buffer + sectionSize > size) return 0;
+
+		//Is this the end marker?
+		if (section == 0x62646E65) return 1;
+		curr += sectionSize;
+	}
+
+	return 1;
+}
+
 int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeHigh;
@@ -314,6 +350,11 @@ int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 	DWORD dwRead;
 	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
 	CloseHandle(hFile);
+
+	if (!nitrotgaIsValid(lpBuffer, dwSize)) {
+		free(lpBuffer);
+		return 1;
+	}
 
 	int commentLength = *lpBuffer;
 	int nitroOffset = *(int *) (lpBuffer + 0x12 + commentLength - 4);
