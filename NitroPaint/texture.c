@@ -253,19 +253,6 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 	WriteFile(hFile, &txelLength, 4, &dwWritten, NULL);
 	WriteFile(hFile, texels->texel, txelLength - 0xC, &dwWritten, NULL);
 
-	//palette (if applicable)
-	if (FORMAT(texels->texImageParam) != CT_DIRECT) {
-		WriteFile(hFile, "nns_pcol", 8, &dwWritten, NULL);
-		DWORD pcolLength = palette->nColors * 2 + 0xC;
-		WriteFile(hFile, &pcolLength, 4, &dwWritten, NULL);
-		WriteFile(hFile, palette->pal, palette->nColors * 2, &dwWritten, NULL);
-
-		WriteFile(hFile, "nns_pnam", 8, &dwWritten, NULL);
-		DWORD pnamLength = max16Len(palette->name) + 0xC;
-		WriteFile(hFile, &pnamLength, 4, &dwWritten, NULL);
-		WriteFile(hFile, palette->name, pnamLength - 0xC, &dwWritten, NULL);
-	}
-
 	//write 4x4 if applicable
 	if (FORMAT(texels->texImageParam) == CT_4x4) {
 		WriteFile(hFile, "nns_pidx", 8, &dwWritten, NULL);
@@ -273,6 +260,28 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 		WriteFile(hFile, &pidxLength, 4, &dwWritten, NULL);
 		WriteFile(hFile, texels->cmp, pidxLength - 0xC, &dwWritten, NULL);
 	}
+
+	//palette (if applicable)
+	if (FORMAT(texels->texImageParam) != CT_DIRECT) {
+		WriteFile(hFile, "nns_pnam", 8, &dwWritten, NULL);
+		DWORD pnamLength = max16Len(palette->name) + 0xC;
+		WriteFile(hFile, &pnamLength, 4, &dwWritten, NULL);
+		WriteFile(hFile, palette->name, pnamLength - 0xC, &dwWritten, NULL);
+
+		WriteFile(hFile, "nns_pcol", 8, &dwWritten, NULL);
+		DWORD pcolLength = palette->nColors * 2 + 0xC;
+		WriteFile(hFile, &pcolLength, 4, &dwWritten, NULL);
+		WriteFile(hFile, palette->pal, palette->nColors * 2, &dwWritten, NULL);
+	}
+
+	BYTE gnam[] = {'n', 'n', 's', '_', 'g', 'n', 'a', 'm', 22, 0, 0, 0, 'N', 'i', 't', 'r', 'o', 'P', 'a', 'i', 'n', 't'};
+	WriteFile(hFile, gnam, sizeof(gnam), &dwWritten, NULL);
+
+	BYTE gver[] = {'n', 'n', 's', '_', 'g', 'v', 'e', 'r', 19, 0, 0, 0, '2', '.', '5', '.', '2', '.', '3'};
+	WriteFile(hFile, gver, sizeof(gver), &dwWritten, NULL);
+
+	BYTE imst[] = {'n', 'n', 's', '_', 'i', 'm', 's', 't', 0xC, 0, 0, 0};
+	WriteFile(hFile, imst, sizeof(imst), &dwWritten, NULL);
 
 	//if c0xp
 	if (COL0TRANS(texels->texImageParam)) {
