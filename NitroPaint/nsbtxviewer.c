@@ -56,6 +56,17 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			data->hWndTextureSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 0, 150, 100, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 100, 150, 100, hWnd, NULL, NULL, NULL);
 			data->hWndReplaceButton = CreateWindow(L"BUTTON", L"Replace", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 150, 300 - 22, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndRepeatS = CreateWindow(WC_COMBOBOXW, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 250, 300 - 22, 70, 100, hWnd, NULL, NULL, NULL);
+			data->hWndRepeatT = CreateWindow(WC_COMBOBOXW, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 320, 300 - 22, 70, 100, hWnd, NULL, NULL, NULL);
+
+			SendMessage(data->hWndRepeatS, CB_ADDSTRING, 8, (LPARAM) L"Clamp S");
+			SendMessage(data->hWndRepeatS, CB_ADDSTRING, 9, (LPARAM) L"Repeat S");
+			SendMessage(data->hWndRepeatS, CB_ADDSTRING, 7, (LPARAM) L"Flip S");
+			SendMessage(data->hWndRepeatS, CB_SETCURSEL, 0, 0);
+			SendMessage(data->hWndRepeatT, CB_ADDSTRING, 8, (LPARAM) L"Clamp T");
+			SendMessage(data->hWndRepeatT, CB_ADDSTRING, 9, (LPARAM) L"Repeat T");
+			SendMessage(data->hWndRepeatT, CB_ADDSTRING, 7, (LPARAM) L"Flip T");
+			SendMessage(data->hWndRepeatT, CB_SETCURSEL, 0, 0);
 			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
 			return 1;
 		}
@@ -91,6 +102,15 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			}
 			SendMessage(data->hWndTextureSelect, LB_SETCURSEL, 0, 0);
 			SendMessage(data->hWndPaletteSelect, LB_SETCURSEL, 0, 0);
+
+			int param = data->nsbtx.textures->texImageParam;
+			int modeS = 0, modeT = 0;
+			if (param & (1 << 16)) modeS = 1;
+			if (param & (1 << 17)) modeT = 1;
+			if (modeS && param & (1 << 18)) modeS = 2;
+			if (modeT && param & (1 << 19)) modeT = 2;
+			SendMessage(data->hWndRepeatS, CB_SETCURSEL, modeS, 0);
+			SendMessage(data->hWndRepeatT, CB_SETCURSEL, modeT, 0);
 			return 1;
 		}
 		case WM_PAINT:
@@ -147,7 +167,29 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				HWND hWndControl = (HWND) lParam;
 				int m = HIWORD(wParam);
 				if (m == LBN_SELCHANGE) {
-					InvalidateRect(hWnd, NULL, TRUE);
+					int currentTexture = SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0);
+					if (hWndControl == data->hWndTextureSelect || hWndControl == data->hWndPaletteSelect) {
+						int param = data->nsbtx.textures[currentTexture].texImageParam;
+						int modeS = 0, modeT = 0;
+						if (param & (1 << 16)) modeS = 1;
+						if (param & (1 << 17)) modeT = 1;
+						if (modeS && param & (1 << 18)) modeS = 2;
+						if (modeT && param & (1 << 19)) modeT = 2;
+						SendMessage(data->hWndRepeatS, CB_SETCURSEL, modeS, 0);
+						SendMessage(data->hWndRepeatT, CB_SETCURSEL, modeT, 0);
+						InvalidateRect(hWnd, NULL, TRUE);
+					} else if (hWndControl == data->hWndRepeatS || hWndControl == data->hWndRepeatT) {
+						int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+						if (sel > 0) sel++;
+						sel = ((sel & 2) >> 1) | ((sel & 1) << 2);
+						int param = data->nsbtx.textures[currentTexture].texImageParam;
+						if (hWndControl == data->hWndRepeatS) {
+							param = (param & 0xFFFAFFFF) | (sel << 16);
+						} else {
+							param = (param & 0xFFF5FFFF) | (sel << 17);
+						}
+						data->nsbtx.textures[currentTexture].texImageParam = param;
+					}
 				} else if (m == BN_CLICKED) {
 					if (hWndControl == data->hWndReplaceButton) {
 						LPWSTR path = openFileDialog(hWnd, L"Open Nitro TGA", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
@@ -192,6 +234,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			MoveWindow(data->hWndTextureSelect, 0, 0, 150, height / 2, TRUE);
 			MoveWindow(data->hWndPaletteSelect, 0, height / 2, 150, height / 2, TRUE);
 			MoveWindow(data->hWndReplaceButton, 150, height - 22, 100, 22, TRUE);
+			MoveWindow(data->hWndRepeatS, 250, height - 22, 70, 100, TRUE);
+			MoveWindow(data->hWndRepeatT, 320, height - 22, 70, 100, TRUE);
 			break;
 		}
 		case WM_DESTROY:
