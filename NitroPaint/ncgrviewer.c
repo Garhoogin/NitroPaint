@@ -334,10 +334,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							//decode the palette
 							for (int i = 0; i < paletteSize; i++) {
 								DWORD col = ColorConvertFromDS(nitroPalette[i]);
-								int b = (col >> 16) & 0xFF;
-								int g = (col >> 8) & 0xFF;
-								int r = col & 0xFF;
-								palette[i] = b | (g << 8) | (r << 16);
+								palette[i] = col;
 							}
 						} else {
 							//create a palette, then encode them to the nclr
