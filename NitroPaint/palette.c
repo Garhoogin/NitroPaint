@@ -65,7 +65,7 @@ void createBucket(BUCKET * bucket, DWORD * colors, int nColors) {
 	bucket->avg = reduce(bucket->avg);
 }
 
-int shiftBy = 0;
+static int shiftBy = 0;
 int paletteCcomparator(void * d1, void * d2) {
 	int n1 = ((*(DWORD *) d1) >> shiftBy) & 0xFF;
 	int n2 = ((*(DWORD *) d2) >> shiftBy) & 0xFF;
@@ -80,7 +80,7 @@ int lightnessCompare(void * d1, void * d2) {
 	return l1 - l2;
 }
 
-void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors) {
+void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, int nColors) {
 	/* if it has alpha 0, just overwrite it to be black. */
 	for (int i = 0; i < width * height; i++) {
 		DWORD d = img[i];
@@ -95,24 +95,23 @@ void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors
 		d &= 0xFFFFFF;
 		int found = 0;
 		for (int j = 0; j < nUniqueColors; j++) {
-			if (d == pal[j + 1] & 0xFFFFFF) {
+			if (d == pal[j] & 0xFFFFFF) {
 				found = 1;
 				break;
 			}
 		}
 		if (!found) {
-			if (nUniqueColors >= nColors - 1) break;
-			pal[nUniqueColors + 1] = d;
+			if (nUniqueColors >= nColors) break;
+			pal[nUniqueColors] = d;
 			nUniqueColors++;
 		}
 		nSearched++;
 	}
 	if (nSearched == width * height) {
-		pal[0] = 0xFF00FF;
 		return;
 	}
 	/* create a copy. This way, we can modify it. */
-	DWORD * copy = (DWORD *) calloc(width * height, sizeof(DWORD));
+	DWORD *copy = (DWORD *) calloc(width * height, sizeof(DWORD));
 	unsigned scaleTo = 0;
 	unsigned nPixels = width * height;
 	for (unsigned i = 0; i < nPixels; i++) {
@@ -125,9 +124,9 @@ void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors
 
 
 	unsigned nBuckets = 1;
-	BUCKET * buckets = (BUCKET *) calloc(nColors, sizeof(BUCKET));
+	BUCKET *buckets = (BUCKET *) calloc(nColors, sizeof(BUCKET));
 	createBucket(buckets, copy, scaleTo);
-	unsigned nDesired = nColors - 1;
+	unsigned nDesired = nColors;
 	while (nBuckets < nDesired) {
 
 		float largestDeviation = 0.0f;
@@ -146,11 +145,10 @@ void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors
 		/* split the chosen bucket in half. */
 		BUCKET popped = buckets[largestIndex];
 		nBuckets--;
-		DWORD * asArray = popped.colors;
+		DWORD *asArray = popped.colors;
 		unsigned length = popped.nColors;
 		memmove(buckets + largestIndex, buckets + largestIndex + 1, sizeof(BUCKET) * (nColors - largestIndex - 1)); /* remove it */
 
-																													/* split the array into two subarrays. */
 		int maxes[] = { 0, 0, 0 };
 		int mins[] = { 255, 255, 255 };
 		for (unsigned k = 0; k < length; k++) {
@@ -190,7 +188,7 @@ void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors
 				DWORD avg = buckets[i].avg;
 				// bucket's deviation is 0! check all future buckets for duplication.
 				for (unsigned j = i + 1; j < nBuckets; j++) {
-					BUCKET * b = buckets + j;
+					BUCKET *b = buckets + j;
 					//if (b->deviation != 0) continue;
 					DWORD avg2 = b->avg;
 					if (avg2 != avg) continue;
@@ -214,10 +212,12 @@ void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors
 	free(copy);
 	free(buckets);
 
-	pal[nColors - 1] = *pal;
-	*pal = 0xFF00FF;
+	qsort(pal, nColors, 4, lightnessCompare);
+}
 
-	qsort(pal + 1, nColors - 1, 4, lightnessCompare);
+void createPalette_(DWORD *img, int width, int height, DWORD *pal, int nColors) {
+	createPaletteExact(img, width, height, pal + 1, nColors - 1);
+	*pal = 0xFF00FF;
 }
 
 
