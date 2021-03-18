@@ -1,10 +1,10 @@
 # NitroPaint
 
-NitroPaint is a general purpose DS graphics editor. It is capable of editing NCLR, NCGR, NSCR, NCER, and NSBTX files.
+NitroPaint is a general purpose DS graphics editor. It is capable of editing NCLR, NCGR, NCBR, NSCR, NCER, and NSBTX files.
 
 ## NCLR Editor
 
-In the NCLR editor, click any color space to open a color chooser. Here is where you can change the color of this entry. Right click an entry and you get the options to row copy and row paste, which copies the row of the highlighted entry and pastes it respectively. Click and drag a color entry to reposition it in the file. Do this while holding Ctrl to move the entire row. Editing the NCLR will have its changes reflected in the NCGR, NSCR, and NCER windows, if open.
+In the NCLR editor, click any color space to open a color chooser. Here is where you can change the color of this entry. Right click an entry and you get the options to row copy and row paste, which copies the row of the highlighted entry and pastes it respectively. Click and drag a color entry to reposition it in the file. Do this while holding Ctrl to move the entire row. Editing the NCLR will have its changes reflected in the NCGR, NSCR, and NCER windows, if open. To show where colors are used, right click a color and select Verify Color. This will flash the color in the open NCGR and NSCR.
 
 ## NCGR Editor
 
@@ -12,7 +12,7 @@ In the NCGR editor, click any tile to open the tile editor. Here you can select 
 
 ## NSCR Editor
 
-In the NSCR editor, click any tile to edit its palette or character location. Right click it to flip it horizontally or vertically. Under File->Export Bitmap, you can export the NSCR file as a bmp image.
+In the NSCR editor, click any tile to edit its palette or character location. Right click it to flip it horizontally or vertically. Under File->Export Bitmap, you can export the NSCR file as an image. The NSCR editor also allows flipping of selections, as well as mass editing of the selected area.
 
 ## NCER Editor
 
