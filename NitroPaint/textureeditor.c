@@ -73,6 +73,8 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hasPalette = FALSE;
 			data->frameData.contentWidth = data->width;
 			data->frameData.contentHeight = data->height;
+			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 			break;
 		}
 		case NV_SETPATH:

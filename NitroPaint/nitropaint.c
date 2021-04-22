@@ -354,7 +354,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NTFT_IMAGE:
 					{
-						LPWSTR path = openFileDialog(hWnd, L"Open Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+						LPWSTR path = openFileDialog(hWnd, L"Open Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
 						if (!path) break;
 						LPWSTR dest = saveFileDialog(hWnd, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
 						if (!dest) {
@@ -392,7 +392,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEW_NEWTEXTURE:
 					{
-						LPWSTR path = openFileDialog(hWnd, L"Open Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+						LPWSTR path = openFileDialog(hWnd, L"Open Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
 						if (path == NULL) break;
 
 						HWND h = CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
@@ -601,7 +601,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			if (HIWORD(wParam) == BN_CLICKED) {
 				HWND hWndControl = (HWND) lParam;
 				if (hWndControl == data->nscrCreateInputButton) {
-					LPWSTR location = openFileDialog(hWnd, L"Select Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+					LPWSTR location = openFileDialog(hWnd, L"Select Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
 					if (!location) break;
 					SendMessage(data->nscrCreateInput, WM_SETTEXT, (WPARAM) wcslen(location), (LPARAM) location);
 					free(location);
@@ -806,7 +806,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 					free(path);
 				} else if (hWndControl == data->hWndConvertButton) {
-					LPWSTR out = saveFileDialog(hWnd, L"Save Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+					LPWSTR out = saveFileDialog(hWnd, L"Save Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
 					if (!out) break;
 					WCHAR src[MAX_PATH + 1];
 					SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
