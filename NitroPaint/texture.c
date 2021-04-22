@@ -224,6 +224,27 @@ void convertTexture(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 	}
 }
 
+#pragma comment(lib, "Version.lib")
+
+void getVersion(char *buffer, int max) {
+	WCHAR path[MAX_PATH];
+	GetModuleFileName(NULL, path, MAX_PATH);
+	DWORD handle;
+	DWORD dwSize = GetFileVersionInfoSize(path, &handle);
+	if (dwSize) {
+		BYTE *buf = (BYTE *) calloc(1, dwSize);
+		if (GetFileVersionInfo(path, handle, dwSize, buf)) {
+			UINT size;
+			VS_FIXEDFILEINFO *info;
+			if (VerQueryValue(buf, L"\\", &info, &size)) {		
+				DWORD ms = info->dwFileVersionMS, ls = info->dwFileVersionLS;
+				sprintf(buffer, "%d.%d.%d.%d", HIWORD(ms), LOWORD(ms), HIWORD(ls), LOWORD(ls));
+			}
+		}
+		free(buf);
+	}
+}
+
 void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwWritten;
@@ -277,8 +298,12 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 	BYTE gnam[] = {'n', 'n', 's', '_', 'g', 'n', 'a', 'm', 22, 0, 0, 0, 'N', 'i', 't', 'r', 'o', 'P', 'a', 'i', 'n', 't'};
 	WriteFile(hFile, gnam, sizeof(gnam), &dwWritten, NULL);
 
-	BYTE gver[] = {'n', 'n', 's', '_', 'g', 'v', 'e', 'r', 19, 0, 0, 0, '2', '.', '5', '.', '2', '.', '3'};
+	char version[16];
+	getVersion(version, 16);
+	BYTE gver[] = {'n', 'n', 's', '_', 'g', 'v', 'e', 'r', 0, 0, 0, 0};
+	*(DWORD *) (gver + 8) = strlen(version) + 0xC;
 	WriteFile(hFile, gver, sizeof(gver), &dwWritten, NULL);
+	WriteFile(hFile, version, strlen(version), &dwWritten, NULL);
 
 	BYTE imst[] = {'n', 'n', 's', '_', 'i', 'm', 's', 't', 0xC, 0, 0, 0};
 	WriteFile(hFile, imst, sizeof(imst), &dwWritten, NULL);
