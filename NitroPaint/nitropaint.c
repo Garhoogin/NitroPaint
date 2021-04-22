@@ -15,6 +15,7 @@
 #include "exceptions.h"
 #include "gdip.h"
 #include "tileeditor.h"
+#include "textureeditor.h"
 #include "nsbtx.h"
 #include "ntft.h"
 
@@ -387,6 +388,15 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_NEW_NEWNCGR40015: //NCGR+NSCR
 					{
 						HWND h = CreateWindow(L"CreateDialogClass", L"Create NSCR", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						break;
+					}
+					case ID_NEW_NEWTEXTURE:
+					{
+						LPWSTR path = openFileDialog(hWnd, L"Open Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+						if (path == NULL) break;
+
+						HWND h = CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+						free(path);
 						break;
 					}
 					case ID_HELP_ABOUT:
@@ -895,6 +905,7 @@ void RegisterClasses() {
 	RegisterNsbtxViewerClass();
 	RegisterProgressWindowClass();
 	RegisterNtftConvertDialogClass();
+	RegisterTextureEditorClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {

@@ -306,6 +306,12 @@ int ilog2(int x) {
 	return n - 1;
 }
 
+int textureDimensionIsValid(int x) {
+	if (x & (x - 1)) return 0;
+	if (x < 8 || x > 1024) return 0;
+	return 1;
+}
+
 int nitrotgaIsValid(unsigned char *buffer, int size) {
 	//is the file even big enough to hold a TGA header and comment?
 	if (size < 0x16) return 0;
@@ -380,7 +386,7 @@ int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 		buffer += 8;
 		int length = (*(int *) buffer) - 0xC;
 		buffer += 4;
-		
+
 		if (!strcmp(sect, "nns_txel")) {
 			txel = calloc(length, 1);
 			memcpy(txel, buffer, length);

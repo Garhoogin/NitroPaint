@@ -11,7 +11,7 @@ VOID SetWindowSize(HWND hWnd, int width, int height) {
 	RECT rc = { 0 };
 	rc.bottom = height;
 	rc.right = width;
-	AdjustWindowRect(&rc, GetWindowLong(hWnd, GWL_STYLE), !!GetMenu(hWnd));
+	AdjustWindowRect(&rc, GetWindowLong(hWnd, GWL_STYLE), !!GetMenu(hWnd) && !(GetWindowLong(hWnd, GWL_EXSTYLE) & WS_EX_MDICHILD));
 	SetWindowPos(hWnd, HWND_TOP, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_NOMOVE);
 }
 

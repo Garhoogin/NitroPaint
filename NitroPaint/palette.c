@@ -75,9 +75,10 @@ int paletteCcomparator(void * d1, void * d2) {
 int lightnessCompare(void * d1, void * d2) {
 	DWORD c1 = *(DWORD *) d1;
 	DWORD c2 = *(DWORD *) d2;
-	int l1 = (c1 & 0xFF) + ((c1 >> 8) & 0xFF) + ((c1 >> 16) & 0xFF);
-	int l2 = (c2 & 0xFF) + ((c2 >> 8) & 0xFF) + ((c2 >> 16) & 0xFF);
-	return l1 - l2;
+	int y1, u1, v1, y2, u2, v2;
+	convertRGBToYUV(c1 & 0xFF, (c1 >> 8) & 0xFF, (c1 >> 16) & 0xFF, &y1, &u1, &v1);
+	convertRGBToYUV(c2 & 0xFF, (c2 >> 8) & 0xFF, (c2 >> 16) & 0xFF, &y2, &u2, &v2);
+	return y1 - y2;
 }
 
 void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, int nColors) {
@@ -108,6 +109,10 @@ void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, int nColo
 		nSearched++;
 	}
 	if (nSearched == width * height) {
+		for (int i = 0; i < nColors - nUniqueColors; i++) {
+			pal[i + nUniqueColors] = 0;
+		}
+		qsort(pal, nColors, 4, lightnessCompare);
 		return;
 	}
 	/* create a copy. This way, we can modify it. */
@@ -450,4 +455,10 @@ void createMultiplePalettes(DWORD *blocks, DWORD *avgs, int width, int tilesX, i
 	//now, create a new bitmap for each set of tiles that share a palette.
 	createMultiPalettes(blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests);
 	free(closests);
+}
+
+void convertRGBToYUV(int r, int g, int b, int *y, int *u, int *v) {
+	*y = (int) ( 0.2990 * r + 0.5870 * g + 0.1140 * b);
+	*u = (int) (-0.1684 * r - 0.3316 * g + 0.5000 * b);
+	*v = (int) ( 0.5000 * r - 0.4187 * g - 0.0813 * b);
 }

@@ -65,13 +65,14 @@
 #define ID_TOOLS_NTFT                   40060
 #define ID_NTFT_NTFT                    40061
 #define ID_NTFT_IMAGE                   40062
+#define ID_NEW_NEWTEXTURE               40063
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        110
-#define _APS_NEXT_COMMAND_VALUE         40063
+#define _APS_NEXT_COMMAND_VALUE         40064
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

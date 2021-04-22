@@ -41,6 +41,8 @@ int getTexelSize(int width, int height, int texImageParam);
 
 void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette);
 
+int textureDimensionIsValid(int x);
+
 int nitrotgaIsValid(unsigned char *buffer, int size);
 
 int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette);
