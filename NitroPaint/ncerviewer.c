@@ -6,6 +6,8 @@
 #include "resource.h"
 #include "nclrviewer.h"
 #include "ncgrviewer.h"
+#include "palette.h"
+#include "gdip.h"
 
 extern HICON g_appIcon;
 
@@ -70,6 +72,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndCharacterOffsetButton = CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD, 64 + 50 + 30, 0, 20, 21, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 64, 21, 100, 100, hWnd, NULL, NULL, NULL);
 			data->hWndSizeLabel = CreateWindow(L"STATIC", L"Size: 64x64", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 64, 42, 100, 21, hWnd, NULL, NULL, NULL);
+			data->hWndImportBitmap = CreateWindow(L"BUTTON", L"Import Bitmap", WS_VISIBLE | WS_CHILD, 0, 90, 164, 22, hWnd, NULL, NULL, NULL);
+			data->hWndImportReplacePalette = CreateWindow(L"BUTTON", L"Import and Replace Palette", WS_VISIBLE | WS_CHILD, 0, 112, 164, 22, hWnd, NULL, NULL, NULL);
 
 			break;
 		}
@@ -90,8 +94,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
 			memcpy(titleBuffer + wcslen(titleBuffer), L" - NCER Viewer", 30);
 			SetWindowText(hWnd, titleBuffer);
-			data->frameData.contentWidth = 64 + 100;
-			data->frameData.contentHeight = 64 + 21;
+			data->frameData.contentWidth = 164;
+			data->frameData.contentHeight = 134;
 
 			RECT rc = { 0 };
 			rc.right = data->frameData.contentWidth;
@@ -222,6 +226,105 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					attr2 |= chr & 0x3FF;
 					cell->attr[2 + 3 * data->oam] = attr2;
 					InvalidateRect(hWnd, NULL, TRUE);
+				} else if (notification == BN_CLICKED && (hWndControl == data->hWndImportBitmap || hWndControl == data->hWndImportReplacePalette)) {
+					LPWSTR path = openFileDialog(hWnd, L"Select Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
+					if (path == NULL) break;
+
+					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
+					HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+					NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+					NCLR *nclr = NULL;
+					NCGR *ncgr = &ncgrViewerData->ncgr;
+					if (hWndNclrViewer) {
+						NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
+						nclr = &nclrViewerData->nclr;
+					}
+
+					NCER_CELL_INFO cell;
+					decodeAttributesEx(&cell, data->ncer.cells + data->cell, data->oam);
+
+					BOOL createPalette = hWndControl == data->hWndImportReplacePalette;
+					BOOL dither = MessageBox(hWnd, L"Use dithering?", L"Dither", MB_ICONQUESTION | MB_YESNO) == IDYES;
+					int originX = 0;//data->contextHoverX;
+					int originY = 0;//data->contextHoverY;
+					int replacePalette = data->ncer.cells[data->cell].attr[data->oam * 3];
+					int paletteNumber = cell.palette;
+					COLOR *nitroPalette = nclr->colors + (paletteNumber << ncgr->nBits);
+					int paletteSize = 1 << ncgrViewerData->ncgr.nBits;
+					if ((cell.palette << ncgr->nBits) + paletteSize >= nclr->nColors) {
+						paletteSize = nclr->nColors - (cell.palette << ncgr->nBits);
+					}
+
+					DWORD *palette = (DWORD *) calloc(paletteSize, 4);
+
+					int width, height;
+					DWORD *pixels = gdipReadImage(path, &width, &height);
+
+					//if we use an existing palette, decode the palette values.
+					//if we do not use an existing palette, generate one.
+					if (!createPalette) {
+						//decode the palette
+						for (int i = 0; i < paletteSize; i++) {
+							DWORD col = ColorConvertFromDS(nitroPalette[i]);
+							palette[i] = col;
+						}
+					} else {
+						//create a palette, then encode them to the nclr
+						createPalette_(pixels, width, height, palette, paletteSize);
+						for (int i = 0; i < paletteSize; i++) {
+							DWORD d = palette[i];
+							COLOR ds = ColorConvertToDS(d);
+							nitroPalette[i] = ds;
+							palette[i] = ColorConvertFromDS(ds);
+						}
+					}
+
+					//replace graphics character by character. Mapping gets very weird.
+					int charOrigin = cell.characterName;
+					int bits = cell.characterBits;
+					int tilesX = cell.width / 8, tilesY = cell.height / 8;
+					for (int y = 0; y < tilesY; y++) {
+						for (int x = 0; x < tilesX; x++) {
+							BYTE *tilePtr;
+							if (ncgr->mapping == 0) {
+								int startX = charOrigin % ncgr->tilesX;
+								int startY = charOrigin / ncgr->tilesX;
+								int ncx = x + startX;
+								int ncy = y + startY;
+								tilePtr = ncgrViewerData->ncgr.tiles[ncx + ncy * tilesX];
+							} else {
+								int index = charOrigin + x + y * tilesX;
+								tilePtr = ncgrViewerData->ncgr.tiles[index];
+							}
+							
+							//map colors
+							for (int i = 0; i < 64; i++) {
+								int tileX = i % 8, tileY = i / 8;
+								if (tileX + x * 8 < width && tileY + y * 8 < height) {
+									DWORD thisColor = pixels[tileX + x * 8 + (tileY + y * 8) * width];
+									int closest = closestpalette(*(RGB *) &thisColor, (RGB *) palette + 1, bits == 4 ? 15 : 255, NULL) + 1;
+									if (thisColor >> 24 == 0) closest = 0;
+									tilePtr[i] = closest;
+									if (closest && dither) {
+										//diffuse?
+										int errorRed = (thisColor & 0xFF) - (palette[closest] & 0xFF);
+										int errorGreen = ((thisColor >> 8) & 0xFF) - ((palette[closest] >> 8) & 0xFF);
+										int errorBlue = ((thisColor >> 16) & 0xFF) - ((palette[closest] >> 16) & 0xFF);
+										doDiffuse(tileX + x * 8 + (tileY + y * 8) * width, width, height, pixels, errorRed, errorGreen, errorBlue, 0, 1.0f);
+									}
+								}
+							}
+						}
+					}
+
+					free(path);
+					free(pixels);
+					free(palette);
+					InvalidateRect(hWndNclrViewer, NULL, FALSE);
+					InvalidateRect(hWndNcgrViewer, NULL, FALSE);
+					InvalidateRect(hWnd, NULL, FALSE);
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {

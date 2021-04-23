@@ -19,6 +19,8 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndSizeLabel;
 	HWND hWndCharacterOffsetButton;
 	HWND hWndOamDropdown;
+	HWND hWndImportBitmap;
+	HWND hWndImportReplacePalette;
 } NCERVIEWERDATA;
 
 VOID RegisterNcerViewerClass(VOID);
