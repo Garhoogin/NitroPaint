@@ -16,6 +16,8 @@ typedef struct {
 	HWND hWndPaletteLabel;
 	HWND hWndPaletteNumber;
 	HWND hWndApply;
+	HWND hWndAdd;
+	HWND hWndSubtract;
 	HWND hWndTileBaseLabel;
 	HWND hWndTileBase;
 	HWND hWndSize;

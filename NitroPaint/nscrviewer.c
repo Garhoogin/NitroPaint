@@ -171,6 +171,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndCharacterNumber = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteNumber = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndApply = CreateWindow(L"BUTTON", L"Apply", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndAdd = CreateWindow(L"BUTTON", L"Add", WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndSubtract = CreateWindow(L"BUTTON", L"Subtract", WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndTileBaseLabel = CreateWindow(L"STATIC", L"Tile Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
 			data->hWndSize = CreateWindow(L"STATIC", L"Size: 0x0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
@@ -200,6 +202,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			MoveWindow(data->hWndCharacterNumber, rcClient.right - 110, 10, 100, 22, TRUE);
 			MoveWindow(data->hWndPaletteNumber, rcClient.right - 110, 37, 100, 100, TRUE);
 			MoveWindow(data->hWndApply, rcClient.right - 110, 64, 100, 22, TRUE);
+			MoveWindow(data->hWndAdd, rcClient.right - 110, 91, 100, 22, TRUE);
+			MoveWindow(data->hWndSubtract, rcClient.right - 110, 118, 100, 22, TRUE);
 			MoveWindow(data->hWndTileBaseLabel, 0, rcClient.bottom - 22, 50, 22, TRUE);
 			MoveWindow(data->hWndTileBase, 50, rcClient.bottom - 22, 100, 22, TRUE);
 			MoveWindow(data->hWndSize, 160, rcClient.bottom - 22, 100, 22, TRUE);
@@ -550,7 +554,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				}
 			} else if (lParam) {
 				HWND hWndControl = (HWND) lParam;
-				if (hWndControl == data->hWndApply) {
+				if (hWndControl == data->hWndApply || hWndControl == data->hWndAdd || hWndControl == data->hWndSubtract) {
 					WCHAR bf[16];
 					SendMessage(data->hWndCharacterNumber, WM_GETTEXT, 15, (LPARAM) bf);
 					int character = _wtoi(bf);
@@ -565,7 +569,20 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					for (int i = 0; i < nTiles; i++) {
 						int x = i % tilesX, y = i / tilesX;
 						if (x >= xMin && y >= yMin && x <= xMax && y <= yMax) {
-							data->nscr.data[i] = (data->nscr.data[i] & 0xC00) | character | (palette << 12);
+							WORD oldValue = data->nscr.data[i];
+							int newPalette = (oldValue >> 12) & 0xF;
+							int newCharacter = oldValue & 0x3FF;
+							if (hWndControl == data->hWndAdd) {
+								newPalette = (newPalette + palette) & 0xF;
+								newCharacter = (newCharacter + character) & 0x3FF;
+							} else if (hWndControl == data->hWndSubtract) {
+								newPalette = (newPalette - palette) & 0xF;
+								newCharacter = (newCharacter - character) & 0x3FF;
+							} else {
+								newCharacter = character;
+								newPalette = palette;
+							}
+							data->nscr.data[i] = (oldValue & 0xC00) | newCharacter | (newPalette << 12);
 						}
 					}
 					InvalidateRect(hWnd, NULL, FALSE);
