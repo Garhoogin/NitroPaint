@@ -440,8 +440,11 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int len = SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) buffer);
 					int mtx = _wtol(buffer);
 					WORD *dest = data->ncer.cells[data->cell].attr + (data->oam * 3 + 1);
-					*dest = (*dest & 0xC1FF) | ((mtx & 0x1F) << 9);
-					InvalidateRect(hWnd, NULL, FALSE);
+					WORD attr0 = dest[-1];
+					if (attr0 & 0x100) {
+						*dest = (*dest & 0xC1FF) | ((mtx & 0x1F) << 9);
+						InvalidateRect(hWnd, NULL, FALSE);
+					}
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {
