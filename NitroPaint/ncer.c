@@ -202,18 +202,29 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 
 	info->width = widths[shape][size];
 	info->height = heights[shape][size];
+	info->size = size;
+	info->shape = shape;
 
 	info->characterName = attr2 & 0x3FF;
 	info->priority = (attr2 >> 10) & 0x3;
 	info->palette = (attr2 >> 12) & 0xF;
+	info->mode = (attr0 >> 10) & 3;
+	info->mosaic = (attr0 >> 12) & 1;
 
 	int rotateScale = (attr0 >> 8) & 1;
+	info->rotateScale = rotateScale;
 	if (rotateScale) {
 		info->flipX = 0;
 		info->flipY = 0;
+		info->doubleSize = (attr0 >> 9) & 1;
+		info->disable = 0;
+		info->matrix = (attr1 >> 9) & 0x1F;
 	} else {
 		info->flipX = (attr1 >> 12) & 1;
 		info->flipY = (attr1 >> 13) & 1;
+		info->doubleSize = 0;
+		info->disable = (attr0 >> 9) & 1;
+		info->matrix = 0;
 	}
 
 	int is8 = (attr0 >> 13) & 1;
@@ -226,10 +237,9 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	return 0;
 }
 
-DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR * ncgr, NCLR * nclr, int * width, int * height, int checker) {
+void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, DWORD *out, int *width, int *height, int checker) {
 	*width = info->width;
 	*height = info->height;
-	DWORD *bits = calloc(*width * *height, 4);
 
 	int ncgrStart = info->characterName;
 
@@ -255,13 +265,104 @@ DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR * ncgr, NCLR * nclr, int * wi
 					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
 				}
 				for (int i = 0; i < 8; i++) {
-					memcpy(bits + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
+					memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
 				}
 			}
 		}
 	}
+}
 
+DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int *width, int *height, int checker) {
+	*width = info->width;
+	*height = info->height;
+	DWORD *bits = calloc(*width * *height, 4);
+	ncerCellToBitmap2(info, ncgr, nclr, bits, width, height, checker);
 	return bits;
+}
+
+DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int *width, int *height, int checker, int outline) {
+	*width = 512, *height = 256;
+	DWORD *px = (DWORD *) calloc(*width * *height, 4);
+
+	DWORD *block = (DWORD *) calloc(64 * 64, 4);
+	for (int i = 0; i < cell->nAttribs; i++) {
+		NCER_CELL_INFO info;
+		int entryWidth, entryHeight;
+		decodeAttributesEx(&info, cell, i);
+
+		//is 8bpp? If so, cut off the last bit.
+		if (info.characterBits == 8) info.characterName &= 0xFFFFFFFE;
+		ncerCellToBitmap2(&info, ncgr, nclr, block, &entryWidth, &entryHeight, 0);
+
+		//HV flip? Only if not affine!
+		if (!info.rotateScale) {
+			DWORD temp[64];
+			if (info.flipY) {
+				for (int i = 0; i < info.height / 2; i++) {
+					memcpy(temp, block + i * info.width, info.width * 4);
+					memcpy(block + i * info.width, block + (info.height - 1 - i) * info.width, info.width * 4);
+					memcpy(block + (info.height - 1 - i) * info.width, temp, info.width * 4);
+
+				}
+			}
+			if (info.flipX) {
+				for (int i = 0; i < info.width / 2; i++) {
+					for (int j = 0; j < info.height; j++) {
+						DWORD left = block[i + j * info.width];
+						block[i + j * info.width] = block[info.width - 1 - i + j * info.width];
+						block[info.width - 1 - i + j * info.width] = left;
+					}
+				}
+			}
+		}
+
+		if (!info.disable) {
+			//outline cell?
+			if (outline == -2 || outline == i) {
+				for (int j = 0; j < info.width; j++) {
+					block[j] = 0xFF000000;
+					block[j + (info.height - 1) * info.width] = 0xFF000000;
+				}
+				for (int j = 0; j < info.height; j++) {
+					block[j * info.width] = 0xFF000000;
+					block[(j + 1) * info.width - 1] = 0xFF000000;
+				}
+			}
+
+			int x = info.x;
+			int y = info.y;
+			//copy data
+			for (int j = 0; j < info.height; j++) {
+				int _y = (y + j + yOffs) & 0xFF;
+				for (int k = 0; k < info.width; k++) {
+					int _x = (x + k + xOffs) & 0x1FF;
+					DWORD col = block[j * info.width + k];
+					if (col >> 24) {
+						px[_x + _y * *width] = block[j * info.width + k];
+					}
+				}
+			}
+		}
+	}
+	free(block);
+
+	//apply checker background
+	if (checker) {
+		for (int y = 0; y < *height; y++) {
+			for (int x = 0; x < *width; x++) {
+				int index = y * *width + x;
+				if (px[index] >> 24 == 0) {
+					int p = ((x >> 2) ^ (y >> 2)) & 1;
+					if (p) {
+						px[index] = 0xFFFFFFFF;
+					} else {
+						px[index] = 0xFFC0C0C0;
+					}
+				}
+			}
+		}
+	}
+	return px;
 }
 
 int ncerFree(NCER *ncer) {

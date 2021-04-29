@@ -21,6 +21,16 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndOamDropdown;
 	HWND hWndImportBitmap;
 	HWND hWndImportReplacePalette;
+
+	HWND hWndXInput;
+	HWND hWndYInput;
+	HWND hWndRotateScale;
+	HWND hWndHFlip;
+	HWND hWndVFlip;
+	HWND hWndDisable;
+	HWND hWndMatrix;
+	HWND hWnd8bpp;
+	HWND hWndMosaic;
 } NCERVIEWERDATA;
 
 VOID RegisterNcerViewerClass(VOID);

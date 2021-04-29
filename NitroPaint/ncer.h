@@ -20,18 +20,31 @@ typedef struct NCER_CELL_ {
 } NCER_CELL;
 
 typedef struct NCER_CELL_INFO_ {
-	int x;
-	int y;
-	int characterName;
-	int palette;
+	//Attribute 0
+	int y;				//
+	int rotateScale;	//
+	int doubleSize;		//
+	int disable;		//
+	int mode;			//
+	int mosaic;			//
+	int characterBits;	//
+	int shape;			//
+
+	//Attribute 1
+	int x;				//
+	int matrix;
+	int flipX;			//
+	int flipY;			//
+	int size;			//
+
+	//Attribute 2
+	int characterName;	//
+	int priority;		//
+	int palette;		//
+
+	//Convenience
 	int width;
 	int height;
-	int priority;
-	int shape;
-	int characterBits;
-	int mosaic;
-	int flipX;
-	int flipY;
 } NCER_CELL_INFO;
 
 typedef struct NCER_ {
@@ -61,5 +74,7 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
 int ncerFree(NCER *ncer);
 
 DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR * ncgr, NCLR * nclr, int * width, int * height, int checker);
+
+DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int *width, int *height, int checker, int outline);
 
 void ncerWrite(NCER *ncer, LPWSTR name);
