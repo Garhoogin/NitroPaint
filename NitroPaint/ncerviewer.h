@@ -12,6 +12,11 @@ typedef struct NCERVIEWERDATA_ {
 	int hoverY;
 	int cell;
 	int oam;
+	int mouseDown;
+	int dragStartX;
+	int dragStartY;
+	int oamStartX;
+	int oamStartY;
 
 	HWND hWndCellDropdown;
 	HWND hWndCharacterOffset;
@@ -31,6 +36,11 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndMatrix;
 	HWND hWnd8bpp;
 	HWND hWndMosaic;
+	HWND hWndOamAdd;
+	HWND hWndOamRemove;
+	HWND hWndCellAdd;
+	HWND hWndCellRemove;
+	HWND hWndSizeDropdown;
 } NCERVIEWERDATA;
 
 VOID RegisterNcerViewerClass(VOID);

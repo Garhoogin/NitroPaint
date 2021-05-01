@@ -187,6 +187,14 @@ int decodeAttributes(NCER_CELL_INFO *info, NCER_CELL *cell) {
 	return decodeAttributesEx(info, cell, 0);
 }
 
+void getObjSize(int shape, int size, int *width, int *height) {
+	int widths[3][4] = { {8, 16, 32, 64}, {16, 32, 32, 64}, {8, 8, 16, 32} };
+	int heights[3][4] = { {8, 16, 32, 64}, {8, 8, 16, 32}, {16, 32, 32, 64} };
+
+	*width = widths[shape][size];
+	*height = heights[shape][size];
+}
+
 int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	WORD attr0 = cell->attr[oam * 3];
 	WORD attr1 = cell->attr[oam * 3 + 1];
@@ -197,11 +205,7 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	int shape = attr0 >> 14;
 	int size = attr1 >> 14;
 
-	int widths[3][4] = { {8, 16, 32, 64}, {16, 32, 32, 64}, {8, 8, 16, 32} };
-	int heights[3][4] = { {8, 16, 32, 64}, {8, 8, 16, 32}, {16, 32, 32, 64} };
-
-	info->width = widths[shape][size];
-	info->height = heights[shape][size];
+	getObjSize(shape, size, &info->width, &info->height);
 	info->size = size;
 	info->shape = shape;
 
@@ -285,7 +289,7 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 	DWORD *px = (DWORD *) calloc(*width * *height, 4);
 
 	DWORD *block = (DWORD *) calloc(64 * 64, 4);
-	for (int i = 0; i < cell->nAttribs; i++) {
+	for (int i = cell->nAttribs - 1; i >= 0; i--) {
 		NCER_CELL_INFO info;
 		int entryWidth, entryHeight;
 		decodeAttributesEx(&info, cell, i);

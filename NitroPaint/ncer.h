@@ -67,6 +67,8 @@ int ncerRead(NCER *ncer, char *buffer, int size);
 
 int ncerReadFile(NCER *ncer, LPWSTR path);
 
+void getObjSize(int shape, int size, int *width, int *height);
+
 int decodeAttributes(NCER_CELL_INFO *info, NCER_CELL *cell);
 
 int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
