@@ -55,10 +55,10 @@ int ncerReadHudson(NCER *ncer, char *buffer, int size) {
 			decodeAttributesEx(&info, thisCell, j);
 			SHORT x = attrs[j * 5 + 3];
 			SHORT y = attrs[j * 5 + 4];
-			if (x - info.width / 2 < minX) minX = x - info.width / 2;
-			if (x + info.width / 2 > maxX) maxX = x + info.width / 2;
-			if (y - info.height / 2 < minY) minY = y - info.height / 2;
-			if (y + info.height / 2 > maxY) maxY = y + info.height / 2;
+			if (x < minX) minX = x;
+			if (x + info.width > maxX) maxX = x + info.width;
+			if (y < minY) minY = y;
+			if (y + info.height > maxY) maxY = y + info.height;
 		}
 		thisCell->maxX = maxX;
 		thisCell->minX = minX;
@@ -324,12 +324,12 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 			//outline cell?
 			if (outline == -2 || outline == i) {
 				for (int j = 0; j < info.width; j++) {
-					block[j] = 0xFF000000;
-					block[j + (info.height - 1) * info.width] = 0xFF000000;
+					block[j] = 0xFE000000;
+					block[j + (info.height - 1) * info.width] = 0xFE000000;
 				}
 				for (int j = 0; j < info.height; j++) {
-					block[j * info.width] = 0xFF000000;
-					block[(j + 1) * info.width - 1] = 0xFF000000;
+					block[j * info.width] = 0xFE000000;
+					block[(j + 1) * info.width - 1] = 0xFE000000;
 				}
 			}
 

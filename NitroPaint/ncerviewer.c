@@ -34,8 +34,24 @@ VOID PaintNcerViewer(HWND hWnd) {
 	decodeAttributesEx(&info, cell, data->oam);
 	int width, height;
 
+	int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
 	DWORD *bits = ncerRenderWholeCell(data->ncer.cells + data->cell, ncgr, nclr, 
-									  256 - cell->minX / 2, 128 - cell->minY / 2, &width, &height, 1, data->oam);
+									  translateX, translateY, &width, &height, 1, data->oam);
+	//draw lines if needed
+	if (data->showCellBounds) {
+		int minX = cell->minX + translateX, maxX = cell->maxX + translateX - 1;
+		int minY = cell->minY + translateY, maxY = cell->maxY + translateY - 1;
+		minX &= 0x1FF, maxX &= 0x1FF, minY &= 0xFF, maxY &= 0xFF;
+
+		for (int i = 0; i < 256; i++) {
+			if(bits[i * 512 + minX] >> 24 != 0xFE) bits[i * 512 + minX] = 0xFF0000FF;
+			if(bits[i * 512 + maxX] >> 24 != 0xFE) bits[i * 512 + maxX] = 0xFF0000FF;
+		}
+		for (int i = 0; i < 512; i++) {
+			if(bits[minY * 512 + i] >> 24 != 0xFE) bits[minY * 512 + i] = 0xFF0000FF;
+			if(bits[maxY * 512 + i] >> 24 != 0xFE) bits[maxY * 512 + i] = 0xFF0000FF;
+		}
+	}
 
 	HBITMAP hbm = CreateBitmap(width, height, 1, 32, bits);
 	HDC hCompatibleDC = CreateCompatibleDC(hWindowDC);
@@ -196,6 +212,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndCellAdd = CreateWindow(L"BUTTON", L"+", WS_VISIBLE | WS_CHILD, 148, 256, 16, 21, hWnd, NULL, NULL, NULL);
 
 			data->hWndSizeDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 537, 63, 75, 100, hWnd, NULL, NULL, NULL);
+			data->hWndCellBoundsCheckbox = CreateWindow(L"BUTTON", L"Show cell bounds", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 169, 256, 100, 22, hWnd, NULL, NULL, NULL);
 			break;
 		}
 		case WM_NCHITTEST:	//make the border non-sizeable
@@ -297,8 +314,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SetFocus(hWnd);
 			if (pos.x >= 0 && pos.y >= 0 && pos.x < 512 && pos.y < 256) {
 				NCER_CELL *cell = data->ncer.cells + data->cell;
-				int x = (pos.x - 256 + cell->minX) & 0x1FF;
-				int y = (pos.y - 128 + cell->minY) & 0xFF;
+				int x = (pos.x - 256 + (cell->maxX + cell->minX) / 2) & 0x1FF;
+				int y = (pos.y - 128 + (cell->maxY + cell->minY) / 2) & 0xFF;
 				int oam = getOamFromPoint(cell, x, y);
 				if (oam != -1) {
 					NCER_CELL_INFO info;
@@ -662,6 +679,10 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					attr[1] = (attr[1] & 0x3FFF) | (size << 14);
 					UpdateControls(hWnd);
 					InvalidateRect(hWnd, NULL, TRUE);
+				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellBoundsCheckbox) {
+					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					data->showCellBounds = state;
+					InvalidateRect(hWnd, NULL, FALSE);
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {

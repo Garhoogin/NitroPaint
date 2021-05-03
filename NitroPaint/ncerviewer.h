@@ -17,6 +17,7 @@ typedef struct NCERVIEWERDATA_ {
 	int dragStartY;
 	int oamStartX;
 	int oamStartY;
+	int showCellBounds;
 
 	HWND hWndCellDropdown;
 	HWND hWndCharacterOffset;
@@ -41,6 +42,7 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndCellAdd;
 	HWND hWndCellRemove;
 	HWND hWndSizeDropdown;
+	HWND hWndCellBoundsCheckbox;
 } NCERVIEWERDATA;
 
 VOID RegisterNcerViewerClass(VOID);
