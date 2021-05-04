@@ -453,83 +453,93 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						nclr = &nclrViewerData->nclr;
 					}
 
-					NCER_CELL_INFO cell;
-					decodeAttributesEx(&cell, data->ncer.cells + data->cell, data->oam);
+					NCER_CELL *cell = data->ncer.cells + data->cell;
 
 					BOOL createPalette = hWndControl == data->hWndImportReplacePalette;
 					BOOL dither = MessageBox(hWnd, L"Use dithering?", L"Dither", MB_ICONQUESTION | MB_YESNO) == IDYES;
-					int originX = 0;//data->contextHoverX;
-					int originY = 0;//data->contextHoverY;
-					int replacePalette = data->ncer.cells[data->cell].attr[data->oam * 3];
-					int paletteNumber = cell.palette;
-					COLOR *nitroPalette = nclr->colors + (paletteNumber << ncgr->nBits);
-					int paletteSize = 1 << ncgrViewerData->ncgr.nBits;
-					if ((cell.palette << ncgr->nBits) + paletteSize >= nclr->nColors) {
-						paletteSize = nclr->nColors - (cell.palette << ncgr->nBits);
-					}
 
-					DWORD *palette = (DWORD *) calloc(paletteSize, 4);
+					DWORD *palette = (DWORD *) calloc(256, 4);
+					COLOR *nitroPalette = nclr->colors;
+					int paletteSize = 1 << ncgr->nBits;
+					for (int i = 0; i < nclr->nColors; i++) {
+						palette[i] = ColorConvertFromDS(nitroPalette[i]);
+					}
 
 					int width, height;
 					DWORD *pixels = gdipReadImage(path, &width, &height);
 
-					//if we use an existing palette, decode the palette values.
 					//if we do not use an existing palette, generate one.
-					if (!createPalette) {
-						//decode the palette
-						for (int i = 0; i < paletteSize; i++) {
-							DWORD col = ColorConvertFromDS(nitroPalette[i]);
-							palette[i] = col;
-						}
-					} else {
+					if(createPalette){
 						//create a palette, then encode them to the nclr
 						createPalette_(pixels, width, height, palette, paletteSize);
 						for (int i = 0; i < paletteSize; i++) {
 							DWORD d = palette[i];
 							COLOR ds = ColorConvertToDS(d);
-							nitroPalette[i] = ds;
 							palette[i] = ColorConvertFromDS(ds);
+						}
+						//write out to each palette used by this cell
+						for (int i = 0; i < cell->nAttribs; i++) {
+							WORD *attr = cell->attr + (i * 3);
+							int paletteIndex = attr[2] >> 12;
+							COLOR *thisPalette = nitroPalette + (paletteIndex << ncgr->nBits);
+							for (int j = 0; j < paletteSize; j++) {
+								thisPalette[j] = ColorConvertToDS(palette[j]);
+							}
 						}
 					}
 
-					//replace graphics character by character. Mapping gets very weird.
-					int charOrigin = cell.characterName;
-					int bits = cell.characterBits;
-					int tilesX = cell.width / 8, tilesY = cell.height / 8;
-					for (int y = 0; y < tilesY; y++) {
-						for (int x = 0; x < tilesX; x++) {
-							BYTE *tilePtr;
-							if (ncgr->mapping == 0) {
-								int startX = charOrigin % ncgr->tilesX;
-								int startY = charOrigin / ncgr->tilesX;
-								int ncx = x + startX;
-								int ncy = y + startY;
-								tilePtr = ncgrViewerData->ncgr.tiles[ncx + ncy * tilesX];
-							} else {
-								int index = charOrigin + x + y * tilesX;
-								tilePtr = ncgrViewerData->ncgr.tiles[index];
-							}
-							
-							//map colors
-							for (int i = 0; i < 64; i++) {
-								int tileX = i % 8, tileY = i / 8;
-								if (tileX + x * 8 < width && tileY + y * 8 < height) {
-									DWORD thisColor = pixels[tileX + x * 8 + (tileY + y * 8) * width];
-									int closest = closestpalette(*(RGB *) &thisColor, (RGB *) palette + 1, bits == 4 ? 15 : 255, NULL) + 1;
-									if (thisColor >> 24 == 0) closest = 0;
-									tilePtr[i] = closest;
-									if (closest && dither) {
-										//diffuse?
-										int errorRed = (thisColor & 0xFF) - (palette[closest] & 0xFF);
-										int errorGreen = ((thisColor >> 8) & 0xFF) - ((palette[closest] >> 8) & 0xFF);
-										int errorBlue = ((thisColor >> 16) & 0xFF) - ((palette[closest] >> 16) & 0xFF);
-										doDiffuse(tileX + x * 8 + (tileY + y * 8) * width, width, height, pixels, errorRed, errorGreen, errorBlue, 0, 1.0f);
+					//for each OAM entry, match each pixel to a pixel of the image.
+					int translateX = -256 + (cell->maxX + cell->minX) / 2, translateY = -128 + (cell->maxY + cell->minY) / 2;
+					for (int i = 0; i < cell->nAttribs; i++) {
+						NCER_CELL_INFO info;
+						decodeAttributesEx(&info, cell, i);
+						
+						BYTE **characterBase = ncgr->tiles + info.characterName;
+						int nCharsX = info.width / 8, nCharsY = info.height / 8;
+						for (int cellY = 0; cellY < info.height; cellY++) {
+							for (int cellX = 0; cellX < info.width; cellX++) {
+								BYTE *character;
+								if (ncgr->mapping == 0x10) {
+									character = characterBase[cellX / 8 + nCharsX * (cellY / 8)];
+								} else {
+									character = characterBase[cellX / 8 + (cellY / 8) * ncgr->tilesX];
+								}
+								int x = (cellX + info.x + translateX) & 0x1FF;
+								int y = (cellY + info.y + translateY) & 0xFF;
+								
+								//adjust x and y if the cell is flipped
+								if (info.flipX) {
+									x = (info.width - 1 - (x - info.x) + info.x) & 0x1FF;
+								}
+								if (info.flipY) {
+									y = (info.height - 1 - (y - info.y) + info.y) & 0xFF;
+								}
+
+								if (x < width && y < height) {
+									//pixel is in the image. 
+									DWORD col = pixels[x + y * width];
+									int _x = cellX % 8, _y = cellY % 8;
+									if (col >> 24 > 0x80) {
+										int closest = closestpalette(*(RGB *) &col, palette + (16 * info.palette) + 1, paletteSize - 1, NULL) + 1;
+										character[_x + _y * 8] = closest;
+
+										//diffuse
+										if (dither) {
+											DWORD chosen = palette[16 * info.palette + closest];
+											int dr = (chosen & 0xFF) - (col & 0xFF);
+											int dg = ((chosen >> 8) & 0xFF) - ((col >> 8) & 0xFF);
+											int db = ((chosen >> 16) & 0xFF) - ((col >> 16) & 0xFF);
+											doDiffuse(x + y * width, width, height, pixels, -dr, -dg, -db, 0, 1.0f);
+										}
+									} else {
+										character[_x + _y * 8] = 0;
 									}
 								}
 							}
 						}
 					}
 
+					
 					free(path);
 					free(pixels);
 					free(palette);
@@ -719,7 +729,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							ncgr = &ncgrViewerData->ncgr;
 						}
 
-						DWORD *bits =  ncerCellToBitmap(&info, ncgr, nclr, &width, &height, 0);
+						int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
+						DWORD *bits = ncerRenderWholeCell(cell, ncgr, nclr, translateX, translateY, &width, &height, 0, -1);
 
 						writeImage(bits, width, height, location);
 						free(bits);
