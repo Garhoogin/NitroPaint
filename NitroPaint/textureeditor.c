@@ -116,7 +116,11 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						MessageBox(hWnd, L"No palette for this texture.", L"No palette", MB_ICONERROR);
 					} else {
 						HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-						data->hWndPaletteEditor = CreateTexturePaletteEditor(CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWndMdi, data);
+						if (data->hWndPaletteEditor == NULL) {
+							data->hWndPaletteEditor = CreateTexturePaletteEditor(CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWndMdi, data);
+						} else {
+							SendMessage(hWndMdi, WM_MDIACTIVATE, (WPARAM) data->hWndPaletteEditor, 0);
+						}
 					}
 				} else if (hWndControl == data->hWndConvert) {
 					HWND hWndMain = GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
@@ -464,9 +468,9 @@ float mylog2(float d) { //UGLY!
 #define log2 mylog2
 
 int chooseColorCount(int bWidth, int bHeight) {
-	int colors = (int) (500.0f * (0.5f * log2(bWidth * bHeight) - 5.0f) + 0.5f);
+	int colors = (int) (250.0f * (0.5f * log2(bWidth * bHeight) - 5.0f) + 0.5f);
 	if (sqrt(bWidth * bHeight) < 83.0f) {
-		colors = (int) (8.69093398125f * sqrt(bWidth * bHeight) - 33.019715673f);
+		colors = (int) (4.345466990625f * sqrt(bWidth * bHeight) - 16.5098578365f);
 	}
 	if (colors & 7) {
 		colors += 8 - (colors & 7);
@@ -518,6 +522,7 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	setStyle(data->hWndDitherAlpha, disables[0], WS_DISABLED);
 	setStyle(data->hWndDither, disables[1], WS_DISABLED);
 	setStyle(data->hWndColorEntries, disables[2], WS_DISABLED);
+	setStyle(data->hWndOptimizationSlider, disables[2], WS_DISABLED);
 	setStyle(data->hWndPaletteName, disables[3], WS_DISABLED);
 	SetFocus(data->hWndConvertDialog);
 	InvalidateRect(data->hWndConvertDialog, NULL, FALSE);
@@ -751,6 +756,9 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		}
 		case WM_PAINT:
 		{
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+
 			SCROLLINFO vert;
 			vert.cbSize = sizeof(vert);
 			vert.fMask = SIF_ALL;
@@ -764,10 +772,12 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			for (int i = 0; i < nColors; i++) {
 				int x = i & 0xF, y = i >> 4;
 
-				HBRUSH hbr = CreateSolidBrush(ColorConvertFromDS(palette[i]));
-				SelectObject(hDC, hbr);
-				Rectangle(hDC, x * 16, y * 16 - vert.nPos, x * 16 + 16, y * 16 + 16 - vert.nPos);
-				DeleteObject(hbr);
+				if (y * 16 + 16 - vert.nPos >= 0 && y * 16 - vert.nPos < rcClient.bottom) {
+					HBRUSH hbr = CreateSolidBrush(ColorConvertFromDS(palette[i]));
+					SelectObject(hDC, hbr);
+					Rectangle(hDC, x * 16, y * 16 - vert.nPos, x * 16 + 16, y * 16 + 16 - vert.nPos);
+					DeleteObject(hbr);
+				}
 			}
 
 			EndPaint(hWnd, &ps);
@@ -783,7 +793,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			vert.cbSize = sizeof(vert);
 			vert.fMask = SIF_ALL;
 			GetScrollInfo(hWnd, SB_VERT, &vert);
-			pos.y -= vert.nPos;
+			pos.y += vert.nPos;
 
 			int x = pos.x / 16, y = pos.y / 16;
 			if (x < 16) {
@@ -824,6 +834,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		}
 		case WM_DESTROY:
 		{
+			data->data->hWndPaletteEditor = NULL;
 			free(data);
 			SetWindowLongPtr(hWnd, 0, 0);
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
