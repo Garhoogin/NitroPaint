@@ -200,7 +200,79 @@ typedef struct {
 	BYTE duplicate;
 } TILEDATA;
 
+int pixelCompare(void *p1, void *p2) {
+	return *(DWORD *) p1 - (*(DWORD *) p2);
+}
+
+int countColors(DWORD *px, int nPx) {
+	//sort the colors by raw RGB value. This way, same colors are grouped.
+	DWORD *copy = (DWORD *) malloc(nPx * 4);
+	memcpy(copy, px, nPx * 4);
+	qsort(copy, nPx, 4, pixelCompare);
+	int nColors = 0;
+	int hasTransparent = 0;
+	for (int i = 0; i < nPx; i++) {
+		int a = copy[i] >> 24;
+		if (!a) hasTransparent = 1;
+		else {
+			DWORD color = copy[i] & 0xFFFFFF;
+			//has this color come before?
+			int repeat = 0;
+			if(i){
+				DWORD comp = copy[i - 1] & 0xFFFFFF;
+				if (comp == color) {
+					repeat = 1;
+				}
+			}
+			if (!repeat) {
+				nColors++;
+			}
+		}
+	}
+	free(copy);
+	return nColors + hasTransparent;
+}
+
 void getColorBounds(DWORD *px, int nPx, DWORD *colorMin, DWORD *colorMax) {
+	//if only 1 or 2 colors, fill the palette with those.
+	
+	DWORD colors[2];
+	int nColors = 0;
+	for (int i = 0; i < nPx; i++) {
+		if (px[i] >> 24 < 0x80) continue;
+		if (nColors == 0) {
+			colors[0] = px[i];
+			nColors++;
+		} else if (nColors == 1) {
+			colors[1] = px[i];
+			nColors++;
+		} else {
+			nColors++;
+			break;
+		}
+	}
+	if (nColors <= 2) {
+		if (nColors == 0) {
+			*colorMin = 0;
+			*colorMax = 0;
+		} else if (nColors == 1) {
+			*colorMin = colors[0];
+			*colorMax = colors[1];
+		} else {
+			int y1, u1, v1, y2, u2, v2;
+			convertRGBToYUV(colors[0] & 0xFF, (colors[0] >> 8) & 0xFF, (colors[0] >> 16) & 0xFF, &y1, &u1, &v1);
+			convertRGBToYUV(colors[1] & 0xFF, (colors[1] >> 8) & 0xFF, (colors[1] >> 16) & 0xFF, &y2, &u2, &v2);
+			if (y1 > y2) {
+				*colorMin = colors[1];
+				*colorMax = colors[0];
+			} else {
+				*colorMin = colors[0];
+				*colorMax = colors[1];
+			}
+		}
+		return;
+	}
+
 	int minR = 0xFF, minG = 0xFF, minB = 0xFF;
 	int maxR = 0, maxG = 0, maxB = 0;
 	for (int i = 0; i < nPx; i++) {
@@ -262,13 +334,13 @@ void choosePaletteAndMode(TILEDATA *tile) {
 			tile->palette[3] = 0;
 			tile->mode = 0x4000;
 		} else {
-			createPalette_(tile->rgb, 4, 4, palette, 4);
-			palette[0] = 0;
+			createPaletteExact(tile->rgb, 4, 4, palette, 4);
+			//palette[0] = 0;
 			//swap index 3 and 0, 2 and 1
 			tile->palette[0] = ColorConvertToDS(palette[3]);
 			tile->palette[1] = ColorConvertToDS(palette[2]);
 			tile->palette[2] = ColorConvertToDS(palette[1]);
-			tile->palette[3] = 0;
+			tile->palette[3] = ColorConvertToDS(palette[0]);
 			tile->mode = 0x0000;
 		}
 	} else {

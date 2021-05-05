@@ -390,39 +390,6 @@ int isTranslucent(DWORD *px, int nWidth, int nHeight) {
 	return 0;
 }
 
-int pixelCompare(void *p1, void *p2) {
-	return *(DWORD *) p1 - (*(DWORD *) p2);
-}
-
-int countColors(DWORD *px, int nPx) {
-	//sort the colors by raw RGB value. This way, same colors are grouped.
-	DWORD *copy = (DWORD *) malloc(nPx * 4);
-	memcpy(copy, px, nPx * 4);
-	qsort(copy, nPx, 4, pixelCompare);
-	int nColors = 0;
-	int hasTransparent = 0;
-	for (int i = 0; i < nPx; i++) {
-		int a = copy[i] >> 24;
-		if (!a) hasTransparent = 1;
-		else {
-			DWORD color = copy[i] & 0xFFFFFF;
-			//has this color come before?
-			int repeat = 0;
-			if(i){
-				DWORD comp = copy[i - 1] & 0xFFFFFF;
-				if (comp == color) {
-					repeat = 1;
-				}
-			}
-			if (!repeat) {
-				nColors++;
-			}
-		}
-	}
-	free(copy);
-	return nColors + hasTransparent;
-}
-
 int guessFormat(DWORD *px, int nWidth, int nHeight) {
 	//Guess a good format for the data. Default to 4x4.
 	int fmt = CT_4x4;
