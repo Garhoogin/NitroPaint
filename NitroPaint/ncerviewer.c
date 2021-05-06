@@ -62,7 +62,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 	bits = ncerCellToBitmap(&info, ncgr, nclr, &width, &height, 1);
 	hbm = CreateBitmap(width, height, 1, 32, bits);
 	SelectObject(hCompatibleDC, hbm);
-	BitBlt(hWindowDC, 512, 256, width, height, hCompatibleDC, 0, 0, SRCCOPY);
+	BitBlt(hWindowDC, 512 - 69, 256 + 5, width, height, hCompatibleDC, 0, 0, SRCCOPY);
 	free(bits);
 	DeleteObject(hbm);
 
@@ -84,11 +84,13 @@ void UpdateEnabledControls(HWND hWnd) {
 		SetWindowLong(data->hWndVFlip, GWL_STYLE, GetWindowLong(data->hWndVFlip, GWL_STYLE) | WS_DISABLED);
 		SetWindowLong(data->hWndDisable, GWL_STYLE, GetWindowLong(data->hWndDisable, GWL_STYLE) | WS_DISABLED);
 		SetWindowLong(data->hWndMatrix, GWL_STYLE, GetWindowLong(data->hWndMatrix, GWL_STYLE) & ~WS_DISABLED);
+		SetWindowLong(data->hWndDoubleSize, GWL_STYLE, GetWindowLong(data->hWndDoubleSize, GWL_STYLE) & ~WS_DISABLED);
 	} else {
 		SetWindowLong(data->hWndHFlip, GWL_STYLE, GetWindowLong(data->hWndHFlip, GWL_STYLE) & ~WS_DISABLED);
 		SetWindowLong(data->hWndVFlip, GWL_STYLE, GetWindowLong(data->hWndVFlip, GWL_STYLE) & ~WS_DISABLED);
 		SetWindowLong(data->hWndDisable, GWL_STYLE, GetWindowLong(data->hWndDisable, GWL_STYLE) & ~WS_DISABLED);
 		SetWindowLong(data->hWndMatrix, GWL_STYLE, GetWindowLong(data->hWndMatrix, GWL_STYLE) | WS_DISABLED);
+		SetWindowLong(data->hWndDoubleSize, GWL_STYLE, GetWindowLong(data->hWndDoubleSize, GWL_STYLE) | WS_DISABLED);
 	}
 	RedrawWindow(hWnd, NULL, NULL, RDW_ALLCHILDREN | RDW_INVALIDATE);
 }
@@ -111,6 +113,9 @@ void UpdateControls(HWND hWnd) {
 		SendMessage(data->hWndMosaic, BM_SETCHECK, info.mosaic, 0);
 		SendMessage(data->hWndDisable, BM_SETCHECK, info.disable, 0);
 		SendMessage(data->hWndPaletteDropdown, CB_SETCURSEL, info.palette, 0);
+		SendMessage(data->hWndDoubleSize, BM_SETCHECK, info.doubleSize, 0);
+		SendMessage(data->hWndPriority, CB_SETCURSEL, info.priority, 0);
+		SendMessage(data->hWndType, CB_SETCURSEL, info.mode, 0);
 
 		len = wsprintfW(buffer, L"%d", info.matrix);
 		SendMessage(data->hWndMatrix, WM_SETTEXT, len, (LPARAM) buffer);
@@ -191,7 +196,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndSizeLabel = CreateWindow(L"STATIC", L"Size:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 63, 25, 21, hWnd, NULL, NULL, NULL);
 			data->hWndImportBitmap = CreateWindow(L"BUTTON", L"Import Bitmap", WS_VISIBLE | WS_CHILD, 0, 282, 164, 22, hWnd, NULL, NULL, NULL);
 			data->hWndImportReplacePalette = CreateWindow(L"BUTTON", L"Import and Replace Palette", WS_VISIBLE | WS_CHILD, 0, 304, 164, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"OBJ:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 234, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"OBJ:", WS_VISIBLE | WS_CHILD, 418, 261, 25, 22, hWnd, NULL, NULL, NULL);
 
 			CreateWindow(L"STATIC", L"X: ", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 85, 25, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Y:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 107, 25, 22, hWnd, NULL, NULL, NULL);
@@ -203,13 +208,19 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndDisable = CreateWindow(L"BUTTON", L"Disable", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 173, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Matrix:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 195, 50, 22, hWnd, NULL, NULL, NULL);
 			data->hWndMatrix = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 562, 195, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWnd8bpp = CreateWindow(L"BUTTON", L"8bpp", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 217, 25 + 20, 22, hWnd, NULL, NULL, NULL);
-			data->hWndMosaic = CreateWindow(L"BUTTON", L"Mosaic", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 537 + 20, 217, 75 - 20, 22, hWnd, NULL, NULL, NULL);
+			data->hWnd8bpp = CreateWindow(L"BUTTON", L"8bpp", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 217 + 22, 25 + 20, 22, hWnd, NULL, NULL, NULL);
+			data->hWndMosaic = CreateWindow(L"BUTTON", L"Mosaic", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 537 + 20, 217 + 22, 75 - 20, 22, hWnd, NULL, NULL, NULL);
 
 			data->hWndOamRemove = CreateWindow(L"BUTTON", L"-", WS_VISIBLE | WS_CHILD, 580, 0, 16, 21, hWnd, NULL, NULL, NULL);
 			data->hWndOamAdd = CreateWindow(L"BUTTON", L"+", WS_VISIBLE | WS_CHILD, 596, 0, 16, 21, hWnd, NULL, NULL, NULL);
 			data->hWndCellRemove = CreateWindow(L"BUTTON", L"-", WS_VISIBLE | WS_CHILD, 132, 256, 16, 21, hWnd, NULL, NULL, NULL);
 			data->hWndCellAdd = CreateWindow(L"BUTTON", L"+", WS_VISIBLE | WS_CHILD, 148, 256, 16, 21, hWnd, NULL, NULL, NULL);
+
+			data->hWndDoubleSize = CreateWindow(L"BUTTON", L"Double Size", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 239 - 22, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Priority:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 261, 50, 21, hWnd, NULL, NULL, NULL);
+			data->hWndPriority = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 512 + 50, 261, 50, 100, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Type:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 282, 30, 21, hWnd, NULL, NULL, NULL);
+			data->hWndType = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 512 + 30, 282, 70, 100, hWnd, NULL, NULL, NULL);
 
 			data->hWndSizeDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 537, 63, 75, 100, hWnd, NULL, NULL, NULL);
 			data->hWndCellBoundsCheckbox = CreateWindow(L"BUTTON", L"Show cell bounds", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 169, 256, 100, 22, hWnd, NULL, NULL, NULL);
@@ -300,6 +311,17 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				SendMessage(data->hWndCellDropdown, CB_ADDSTRING, 0, (LPARAM) size);
 			}
 			SendMessage(data->hWndCellDropdown, CB_SETCURSEL, 0, 0);
+
+			for (int i = 0; i < 4; i++) {
+				wsprintf(size, L"%d", i);
+				SendMessage(data->hWndPriority, CB_ADDSTRING, 0, (LPARAM) size);
+			}
+			SendMessage(data->hWndPriority, CB_SETCURSEL, 0, 0);
+
+			SendMessage(data->hWndType, CB_ADDSTRING, 0, (LPARAM) L"Normal");
+			SendMessage(data->hWndType, CB_ADDSTRING, 0, (LPARAM) L"Translucent");
+			SendMessage(data->hWndType, CB_ADDSTRING, 0, (LPARAM) L"Window");
+			SendMessage(data->hWndType, CB_SETCURSEL, 0, 0);
 
 			UpdateOamDropdown(hWnd);
 			UpdateControls(hWnd);
@@ -548,7 +570,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && (
 					hWndControl == data->hWnd8bpp || hWndControl == data->hWndDisable || hWndControl == data->hWndHFlip
-					|| hWndControl == data->hWndVFlip || hWndControl == data->hWndMosaic || hWndControl == data->hWndRotateScale)) {
+					|| hWndControl == data->hWndVFlip || hWndControl == data->hWndMosaic || hWndControl == data->hWndRotateScale
+					|| hWndControl == data->hWndDoubleSize)) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
 					int bit = 0, attr = 0;
@@ -556,7 +579,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					if (hWndControl == data->hWnd8bpp) {
 						bit = 13;
 						attr = 0;
-					} else if (hWndControl == data->hWndDisable) {
+					} else if (hWndControl == data->hWndDisable || hWndControl == data->hWndDoubleSize) {
 						bit = 9;
 						attr = 0;
 					} else if (hWndControl == data->hWndHFlip) {
@@ -692,6 +715,18 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellBoundsCheckbox) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					data->showCellBounds = state;
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndType) {
+					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+					NCER_CELL *cell = data->ncer.cells + data->cell;
+					WORD *attr = cell->attr + (3 * data->oam);
+					attr[0] = (attr[0] & 0xF3FF) | (sel << 10);
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndPriority) {
+					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+					NCER_CELL *cell = data->ncer.cells + data->cell;
+					WORD *attr = cell->attr + (3 * data->oam);
+					attr[2] = (attr[2] & 0xF3FF) | (sel << 10);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
 			}

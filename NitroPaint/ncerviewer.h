@@ -37,6 +37,9 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndMatrix;
 	HWND hWnd8bpp;
 	HWND hWndMosaic;
+	HWND hWndDoubleSize;
+	HWND hWndType;
+	HWND hWndPriority;
 	HWND hWndOamAdd;
 	HWND hWndOamRemove;
 	HWND hWndCellAdd;
