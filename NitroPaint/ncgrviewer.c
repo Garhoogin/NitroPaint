@@ -148,12 +148,14 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hoverX = -1;
 			data->hoverY = -1;
 			data->hoverIndex = -1;
+			data->hWnd = hWnd;
 
 			data->hWndViewer = CreateWindow(L"NcgrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 256, 256, hWnd, NULL, NULL, NULL);
 			data->hWndCharacterLabel = CreateWindow(L"STATIC", L" Character 0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteDropdown = CreateWindowEx(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 200, 100, hWnd, NULL, NULL, NULL);
 			data->hWndWidthDropdown = CreateWindowEx(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 200, 100, hWnd, NULL, NULL, NULL);
 			data->hWndWidthLabel = CreateWindow(L"STATIC", L" Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 100, 21, hWnd, NULL, NULL, NULL);
+			data->hWndExpand = CreateWindow(L"BUTTON", L"Extend", WS_CHILD | WS_VISIBLE, 0, 0, 100, 22, hWnd, NULL, NULL, NULL);
 
 			WCHAR bf[] = L"Palette 00";
 			for (int i = 0; i < 16; i++) {
@@ -185,9 +187,9 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			RECT rc = { 0 };
 			rc.right = data->frameData.contentWidth;
 			rc.bottom = data->frameData.contentHeight;
-			if (rc.right < 150) rc.right = 150;
+			if (rc.right < 255 + GetSystemMetrics(SM_CXVSCROLL) + 4) rc.right = 255 + GetSystemMetrics(SM_CXVSCROLL) + 4; //+4 to account for WS_EX_CLIENTEDGE
 			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
+			int width = rc.right - rc.left;
 			int height = rc.bottom - rc.top + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for combobox
 			width += 1, height += 1;
 			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
@@ -247,6 +249,14 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
 					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (notification == BN_CLICKED && hWndControl == data->hWndExpand) {
+					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					HWND h = CreateWindow(L"ExpandNcgrClass", L"Expand NCGR", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
+										  CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
+					ShowWindow(h, SW_SHOW);
+					SetActiveWindow(h);
+					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
+					SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -537,6 +547,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			MoveWindow(data->hWndPaletteDropdown, 0, height - 21, 150, 21, TRUE);
 			MoveWindow(data->hWndWidthDropdown, 50, height - 42, 100, 21, TRUE);
 			MoveWindow(data->hWndWidthLabel, 0, height - 42, 50, 21, FALSE);
+			MoveWindow(data->hWndExpand, 155, height - 42, 100, 22, TRUE);
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
 	}
@@ -801,6 +812,66 @@ LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	switch (msg) {
+		case NV_INITIALIZE:
+		{
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) lParam);
+			data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+			WCHAR buffer[16];
+			wsprintfW(buffer, L"%d", data->ncgr.nTiles / data->ncgr.tilesX);
+
+			CreateWindow(L"STATIC", L"Rows:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndExpandRowsInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", buffer, WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 90, 10, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndExpandButton = CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 90, 37, 75, 22, hWnd, NULL, NULL, NULL);
+			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			SetWindowSize(hWnd, 175, 69);
+			SetFocus(data->hWndExpandRowsInput);
+			break;
+		}
+		case WM_CLOSE:
+		{
+			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(data->hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			SetActiveWindow(hWndMain);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			int notification = LOWORD(wParam);
+			HWND hWndControl = (HWND) lParam;
+			if (notification == BN_CLICKED && hWndControl == data->hWndExpandButton) {
+				WCHAR buffer[16];
+				SendMessage(data->hWndExpandRowsInput, WM_GETTEXT, 16, (LPARAM) buffer);
+				int tilesX = data->ncgr.tilesX;
+				int nRows = _wtol(buffer);
+				int nOldRows = data->ncgr.nTiles / tilesX;
+				if (nRows > nOldRows) {
+					BYTE **chars = data->ncgr.tiles;
+					data->ncgr.tiles = realloc(chars, nRows * tilesX * sizeof(BYTE *));
+					for (int i = 0; i < nRows * tilesX - nOldRows * tilesX; i++) {
+						data->ncgr.tiles[i + nOldRows * tilesX] = (BYTE *) calloc(64, 1);
+					}
+				} else if (nRows < nOldRows) {
+					for (int i = 0; i < nOldRows * tilesX - nRows * tilesX; i++) {
+						free(data->ncgr.tiles[i + nRows * tilesX]);
+					}
+					data->ncgr.tiles = realloc(data->ncgr.tiles, nRows * tilesX * sizeof(BYTE *));
+				}
+				data->ncgr.nTiles = nRows * tilesX;
+				data->ncgr.tilesY = nRows;
+				SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
+				InvalidateRect(data->hWnd, NULL, FALSE);
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 VOID RegisterNcgrPreviewClass(VOID) {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -808,6 +879,19 @@ VOID RegisterNcgrPreviewClass(VOID) {
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.lpszClassName = L"NcgrPreviewClass";
 	wcex.lpfnWndProc = NcgrPreviewWndProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
+VOID RegisterNcgrExpandClass(VOID) {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"ExpandNcgrClass";
+	wcex.lpfnWndProc = NcgrExpandProc;
 	wcex.cbWndExtra = sizeof(LPVOID);
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
@@ -828,6 +912,7 @@ VOID RegisterNcgrViewerClass(VOID) {
 	RegisterClassEx(&wcex);
 	RegisterNcgrPreviewClass();
 	RegisterTileEditorClass();
+	RegisterNcgrExpandClass();
 }
 
 HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {

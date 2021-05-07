@@ -22,6 +22,10 @@ typedef struct {
 	HWND hWndWidthLabel;
 	HWND hWndWidthDropdown;
 	HWND hWndTileEditorWindow;
+	HWND hWndExpand;
+	HWND hWnd;
+	HWND hWndExpandRowsInput;
+	HWND hWndExpandButton;
 } NCGRVIEWERDATA;
 
 VOID RegisterNcgrViewerClass(VOID);
