@@ -158,10 +158,16 @@ int getOamFromPoint(NCER_CELL *cell, int x, int y) {
 	for (int i = 0; i < cell->nAttribs; i++) {
 		NCER_CELL_INFO info;
 		decodeAttributesEx(&info, cell, i);
-		if ((x >= info.x && y >= info.y && x < info.x + info.width && y < info.y + info.height) || 
-			(x + 512 >= info.x && y >= info.y && x + 512 < info.x + info.width && y < info.y + info.height) ||
-			(x >= info.x && y + 256 >= info.y && x < info.x + info.width && y + 256 < info.y + info.height) ||
-			(x + 512 >= info.x && y + 256 >= info.y && x + 512 < info.x + info.width && y + 256 < info.y + info.height)) {
+
+		//take into account double size!
+		int width = info.width << info.doubleSize;
+		int height = info.height << info.doubleSize;
+
+		//this is ugly, but it takes wrapping into account.
+		if ((x >= info.x && y >= info.y && x < info.x + width && y < info.y + height) || 
+			(x + 512 >= info.x && y >= info.y && x + 512 < info.x + width && y < info.y + height) ||
+			(x >= info.x && y + 256 >= info.y && x < info.x + width && y + 256 < info.y + height) ||
+			(x + 512 >= info.x && y + 256 >= info.y && x + 512 < info.x + width && y + 256 < info.y + height)) {
 			oam = i;
 			break;
 		}
@@ -526,15 +532,21 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								} else {
 									character = characterBase[cellX / 8 + (cellY / 8) * ncgr->tilesX];
 								}
-								int x = (cellX + info.x + translateX) & 0x1FF;
-								int y = (cellY + info.y + translateY) & 0xFF;
+
+								int totalWidth = info.width << info.doubleSize;
+								int totalHeight = info.height << info.doubleSize;
+								int padX = (totalWidth - info.width) / 2;
+								int padY = (totalHeight - info.height) / 2;
+
+								int x = (cellX + info.x + translateX + padX) & 0x1FF;
+								int y = (cellY + info.y + translateY + padY) & 0xFF;
 								
 								//adjust x and y if the cell is flipped
 								if (info.flipX) {
-									x = (info.width - 1 - (x - info.x) + info.x) & 0x1FF;
+									x = (totalWidth - 1 - (x - info.x) + info.x) & 0x1FF;
 								}
 								if (info.flipY) {
-									y = (info.height - 1 - (y - info.y) + info.y) & 0xFF;
+									y = (totalHeight - 1 - (y - info.y) + info.y) & 0xFF;
 								}
 
 								if (x < width && y < height) {

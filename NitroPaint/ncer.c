@@ -321,20 +321,13 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 		}
 
 		if (!info.disable) {
-			//outline cell?
-			if (outline == -2 || outline == i) {
-				for (int j = 0; j < info.width; j++) {
-					block[j] = 0xFE000000;
-					block[j + (info.height - 1) * info.width] = 0xFE000000;
-				}
-				for (int j = 0; j < info.height; j++) {
-					block[j * info.width] = 0xFE000000;
-					block[(j + 1) * info.width - 1] = 0xFE000000;
-				}
-			}
-
 			int x = info.x;
 			int y = info.y;
+			//adjust for double size
+			if (info.doubleSize) {
+				x += info.width / 2;
+				y += info.height / 2;
+			}
 			//copy data
 			for (int j = 0; j < info.height; j++) {
 				int _y = (y + j + yOffs) & 0xFF;
@@ -344,6 +337,26 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 					if (col >> 24) {
 						px[_x + _y * *width] = block[j * info.width + k];
 					}
+				}
+			}
+
+			//outline
+			if (outline == -2 || outline == i) {
+				int outlineWidth = info.width << info.doubleSize;
+				int outlineHeight = info.height << info.doubleSize;
+				for (int j = 0; j < outlineWidth; j++) {
+					int _x = (j + info.x + xOffs) & 0x1FF;
+					int _y = (info.y + yOffs) & 0xFF;
+					int _y2 = (_y + outlineHeight - 1) & 0xFF;
+					px[_x + _y * *width] = 0xFE000000;
+					px[_x + _y2 * *width] = 0xFE000000;
+				}
+				for (int j = 0; j < outlineHeight; j++) {
+					int _x = (info.x + xOffs) & 0x1FF;
+					int _y = (info.y + j + yOffs) & 0xFF;
+					int _x2 = (_x + outlineWidth - 1) & 0x1FF;
+					px[_x + _y * *width] = 0xFE000000;
+					px[_x2 + _y * *width] = 0xFE000000;
 				}
 			}
 		}
