@@ -218,21 +218,33 @@ int ncgrReadFile(NCGR *ncgr, LPWSTR path) {
 }
 
 int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker) {
-	if (x + y * ncgr->tilesX >= ncgr->nTiles) return 1;
 	BYTE * tile = ncgr->tiles[x + y * ncgr->tilesX];
 	int nTiles = ncgr->nTiles;
-	for (int i = 0; i < 64; i++) {
-		int index = tile[i];
-		if (index == 0 && drawChecker) {
-			int c = ((i & 0x7) ^ (i >> 3)) >> 2;
-			if (c) out[i] = 0xFFFFFFFF;
-			else out[i] = 0xFFC0C0C0;
-		} else if(index) {
-			COLOR w = 0;
-			if(nclr && (index + (previewPalette << ncgr->nBits)) < nclr->nColors)
-				w = nclr->colors[index + (previewPalette << ncgr->nBits)];
-			out[i] = ColorConvertFromDS(CREVERSE(w)) | 0xFF000000;
-		} else out[i] = 0;
+	if (x + y * ncgr->tilesX < nTiles) {
+		for (int i = 0; i < 64; i++) {
+			int index = tile[i];
+			if (index == 0 && drawChecker) {
+				int c = ((i & 0x7) ^ (i >> 3)) >> 2;
+				if (c) out[i] = 0xFFFFFFFF;
+				else out[i] = 0xFFC0C0C0;
+			} else if (index) {
+				COLOR w = 0;
+				if (nclr && (index + (previewPalette << ncgr->nBits)) < nclr->nColors)
+					w = nclr->colors[index + (previewPalette << ncgr->nBits)];
+				out[i] = ColorConvertFromDS(CREVERSE(w)) | 0xFF000000;
+			} else out[i] = 0;
+		}
+	} else {
+		if (!drawChecker) {
+			memset(out, 0, 64 * 4);
+		} else {
+			for (int i = 0; i < 64; i++) {
+				int c = ((i & 0x7) ^ (i >> 3)) >> 2;
+				if (c) out[i] = 0xFFFFFFFF;
+				else out[i] = 0xFFC0C0C0;
+			}
+		}
+		return 1;
 	}
 	return 0;
 }

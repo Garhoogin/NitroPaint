@@ -521,6 +521,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					for (int i = 0; i < cell->nAttribs; i++) {
 						NCER_CELL_INFO info;
 						decodeAttributesEx(&info, cell, i);
+						if (info.disable) continue;
 						
 						BYTE **characterBase = ncgr->tiles + info.characterName;
 						int nCharsX = info.width / 8, nCharsY = info.height / 8;
