@@ -367,7 +367,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 	}
 }
 
-void addTile(TILEDATA *data, int index, DWORD *px) {
+void addTile(TILEDATA *data, int index, DWORD *px, int *totalIndex) {
 	memcpy(data[index].rgb, px, 64);
 	data[index].duplicate = 0;
 	data[index].used = 1;
@@ -408,10 +408,11 @@ void addTile(TILEDATA *data, int index, DWORD *px) {
 	if (isDuplicate) {
 		memcpy(data + index, data + duplicateIndex, sizeof(TILEDATA));
 		data[index].duplicate = 1;
-		data[index].paletteIndex = duplicateIndex;
+		data[index].paletteIndex = data[duplicateIndex].paletteIndex;
 	} else {
 		//generate a palette and determine the mode.
 		choosePaletteAndMode(data + index);
+		data[index].paletteIndex = *totalIndex;
 		//is the palette and mode identical to a non-duplicate tile?
 		for (int i = 0; i < index; i++) {
 			TILEDATA *tile1 = data + i;
@@ -424,15 +425,23 @@ void addTile(TILEDATA *data, int index, DWORD *px) {
 			}
 			//palettes and modes are the same, mark as duplicate.
 			tile2->duplicate = 1;
-			tile2->paletteIndex = i;
+			tile2->paletteIndex = tile1->paletteIndex;
 			break;
 		}
+	}
+	if (!data[index].duplicate) {
+		int nPalettes = 1;
+		if (data[index].mode == 0x8000 || data[index].mode == 0x0000) {
+			nPalettes = 2;
+		}
+		*totalIndex += nPalettes;
 	}
 	_globColors++;
 }
 
 TILEDATA *createTileData(DWORD *px, int tilesX, int tilesY) {
 	TILEDATA *data = (TILEDATA *) calloc(tilesX * tilesY, sizeof(TILEDATA));
+	int paletteIndex = 0;
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			DWORD tile[16];
@@ -441,7 +450,7 @@ TILEDATA *createTileData(DWORD *px, int tilesX, int tilesY) {
 			memcpy(tile + 4, px + offs + tilesX * 4, 16);
 			memcpy(tile + 8, px + offs + tilesX * 8, 16);
 			memcpy(tile + 12, px + offs + tilesX * 12, 16);
-			addTile(data, x + y * tilesX, tile);
+			addTile(data, x + y * tilesX, tile, &paletteIndex);
 		}
 	}
 	return data;
@@ -594,7 +603,6 @@ int buildPalette(COLOR *palette, int nPalettes, TILEDATA *tileData, int tilesX, 
 			if (tile->duplicate) {
 				//the paletteIndex field of a duplicate tile is first set to the tile index it is a duplicate of.
 				//set it to an actual palette index here.
-				tile->paletteIndex = tileData[tile->paletteIndex].paletteIndex;
 				_globColors++;
 				continue;
 			}
@@ -630,7 +638,7 @@ int buildPalette(COLOR *palette, int nPalettes, TILEDATA *tileData, int tilesX, 
 					//find tiles that use colorIndex2. Set them to use colorIndex1. 
 					//then subtract from all palette indices > colorIndex2. Then we can
 					//shift over all the palette colors. Then regenerate the palette.
-					for (int i = 0; i < index; i++) {
+					for (int i = 0; i < tilesX * tilesY; i++) {
 						if (tileData[i].paletteIndex == colorIndex2 / 2) {
 							tileData[i].paletteIndex = colorIndex1 / 2;
 						} else if (tileData[i].paletteIndex > colorIndex2 / 2) {
@@ -643,7 +651,7 @@ int buildPalette(COLOR *palette, int nPalettes, TILEDATA *tileData, int tilesX, 
 					memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColorsInPalettes, nPalettes * 2 - colorIndex2 - nColorsInPalettes);
 
 					//merge those palettes that we've just combined.
-					mergePalettes(tileData, index, palette, colorIndex1 / 2, palettesMode);
+					mergePalettes(tileData, tilesX * tilesY, palette, colorIndex1 / 2, palettesMode);
 
 					//update end pointer to reflect the change.
 					firstSlot -= nColorsInPalettes;
