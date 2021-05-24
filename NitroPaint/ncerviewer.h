@@ -1,6 +1,7 @@
 #pragma once
 #include "childwindow.h"
 #include "ncer.h"
+#include "undo.h"
 
 typedef struct NCERVIEWERDATA_ {
 	FRAMEDATA frameData;
@@ -18,6 +19,7 @@ typedef struct NCERVIEWERDATA_ {
 	int oamStartX;
 	int oamStartY;
 	int showCellBounds;
+	UNDO undo;
 
 	HWND hWndCellDropdown;
 	HWND hWndCharacterOffset;

@@ -215,7 +215,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		case WM_CREATE:
 		{
 			CLIENTCREATESTRUCT createStruct;
-			createStruct.hWindowMenu = GetSubMenu(GetMenu(hWnd), 3);
+			createStruct.hWindowMenu = GetSubMenu(GetMenu(hWnd), 4);
 			createStruct.idFirstChild = 200;
 			data->hWndMdi = CreateWindowEx(WS_EX_CLIENTEDGE, L"MDICLIENT", L"MDI", WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN | WS_HSCROLL | WS_VSCROLL, 0, 0, 500, 500, hWnd, NULL, NULL, &createStruct);
 #if(g_useDarkTheme)
@@ -278,6 +278,27 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		case WM_COMMAND:
 		{
+			if (HIWORD(wParam) == 1 && lParam == 0) {
+				//translate accelerator into actual commands
+				WORD accel = LOWORD(wParam);
+				switch (accel) {
+					case ID_ACCELERATOR_UNDO:
+						PostMessage(hWnd, WM_COMMAND, ID_EDIT_UNDO, 0);
+						break;
+					case ID_ACCELERATOR_REDO:
+						PostMessage(hWnd, WM_COMMAND, ID_EDIT_REDO, 0);
+						break;
+					case ID_ACCELERATOR_SAVE:
+						PostMessage(hWnd, WM_COMMAND, ID_FILE_SAVE, 0);
+						break;
+					case ID_ACCELERATOR_SAVEALL:
+						PostMessage(hWnd, WM_COMMAND, ID_FILE_SAVEALL, 0);
+						break;
+					case ID_ACCELERATOR_EXPORT:
+						PostMessage(hWnd, WM_COMMAND, ID_FILE_EXPORT, 0);
+						break;
+				}
+			}
 			if (HIWORD(wParam) == 0 && lParam == 0) {
 				WORD menuID = LOWORD(wParam);
 				switch (menuID) {
@@ -910,6 +931,7 @@ void RegisterClasses() {
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	g_appIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
+	HACCEL hAccel = LoadAccelerators(hInstance, IDR_ACCELERATOR1);
 
 	SetConfigPath();
 	ReadConfiguration(g_configPath);
@@ -938,8 +960,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0)) {
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		if (!TranslateAccelerator(hWnd, hAccel, &msg)) {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
 	}
 	return msg.wParam;
 }

@@ -175,6 +175,88 @@ int getOamFromPoint(NCER_CELL *cell, int x, int y) {
 	return oam;
 }
 
+void ncerCreateCopy(NCER *dest, NCER *src) {
+	memcpy(dest, src, sizeof(NCER));
+	if (src->labl != NULL) {
+		dest->labl = (char *) malloc(src->lablSize);
+		memcpy(dest->labl, src->labl, src->lablSize);
+	}
+	if (src->uext != NULL) {
+		dest->uext = (char *) malloc(src->uextSize);
+		memcpy(dest->uext, src->uext, src->uextSize);
+	}
+	dest->cells = (NCER_CELL *) malloc(src->nCells * sizeof(NCER_CELL));
+	memcpy(dest->cells, src->cells, src->nCells * sizeof(NCER_CELL));
+	for (int i = 0; i < dest->nCells; i++) {
+		NCER_CELL *cell = dest->cells + i;
+		WORD *attr = cell->attr;
+		cell->attr = (WORD *) malloc(cell->nAttr * 2);
+		memcpy(cell->attr, attr, cell->nAttr * 2);
+	}
+}
+
+void ncerEditorUndoRedo(NCERVIEWERDATA *data) {
+	//write fields into main NCER copy. 
+	NCER *ncer = &data->ncer;
+	NCER *newState = (NCER *) undoGetStackPosition(&data->undo);
+
+	//free attributes for all cells
+	for (int i = 0; i < ncer->nCells; i++) {
+		free(ncer->cells[i].attr);
+		ncer->cells[i].attr = NULL;
+	}
+
+	ncer->bankAttribs = newState->bankAttribs;
+	ncer->lablSize = newState->lablSize;
+	ncer->uextSize = newState->uextSize;
+	ncer->nCells = newState->nCells;
+
+	//now make new allocations for UEXT and LABL
+	ncer->uext = realloc(ncer->uext, ncer->uextSize);
+	ncer->labl = realloc(ncer->labl, ncer->lablSize);
+	memcpy(ncer->uext, newState->uext, ncer->uextSize);
+	memcpy(ncer->labl, newState->labl, ncer->lablSize);
+
+	//reallocate cell data
+	ncer->cells = realloc(ncer->cells, ncer->nCells * sizeof(NCER_CELL));
+	memcpy(ncer->cells, newState->cells, newState->nCells * sizeof(NCER_CELL));
+	//fix it up so that the attribute pointers are duplicates. Don't want to mess up undo states here.
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = ncer->cells + i;
+		WORD *oldAttr = cell->attr;
+		cell->attr = malloc(cell->nAttr * 2);
+		memcpy(cell->attr, oldAttr, cell->nAttr * 2);
+	}
+
+	//if the selected OAM or cell is out of bounds, bring it back in-bounds.
+	if (data->cell >= data->ncer.nCells) {
+		data->cell = data->ncer.nCells - 1;
+	}
+	SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
+	if (data->oam >= data->ncer.cells[data->cell].nAttribs) {
+		data->oam = data->ncer.cells[data->cell].nAttribs - 1;
+	}
+	SendMessage(data->hWndOamDropdown, CB_SETCURSEL, data->oam, 0);
+}
+
+void ncerEditorUndo(HWND hWnd) {
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	undo(&data->undo);
+
+	ncerEditorUndoRedo(data);
+
+	UpdateControls(hWnd);
+}
+
+void ncerEditorRedo(HWND hWnd) {
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	redo(&data->undo);
+
+	ncerEditorUndoRedo(data);
+
+	UpdateControls(hWnd);
+}
+
 #define NV_INITIALIZE (WM_USER+1)
 
 LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -332,6 +414,12 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			UpdateOamDropdown(hWnd);
 			UpdateControls(hWnd);
 
+			undoInitialize(&data->undo, sizeof(NCER));
+			data->undo.freeFunction = (void (*) (void *)) ncerFree;
+			NCER copy;
+			ncerCreateCopy(&copy, &data->ncer);
+			undoAdd(&data->undo, &copy);
+
 			break;
 		}
 		case WM_LBUTTONDOWN:
@@ -358,6 +446,10 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					InvalidateRect(hWnd, NULL, TRUE);
 					SetCapture(hWnd);
 					data->mouseDown = 1;
+
+					NCER copy;
+					ncerCreateCopy(&copy, &data->ncer);
+					undoAdd(&data->undo, &copy);
 				}
 			}
 			break;
@@ -381,6 +473,10 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				int y = (data->oamStartY + dy) & 0xFF;
 				attribs[0] = (attribs[0] & 0xFF00) | y;
 				attribs[1] = (attribs[1] & 0xFE00) | x;
+
+				NCER *currentSlot = undoGetStackPosition(&data->undo);
+				memcpy(currentSlot->cells[data->cell].attr, data->ncer.cells[data->cell].attr, currentSlot->cells[data->cell].nAttr * 2);
+
 				UpdateControls(hWnd);
 				InvalidateRect(hWnd, NULL, FALSE);
 			}
@@ -391,6 +487,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT) {
 				NCER_CELL *cell = data->ncer.cells + data->cell;
 				WORD *attr = cell->attr + (3 * data->oam);
+				int change = 1;
 				switch (wParam) {
 					case VK_UP:
 						attr[0] = (attr[0] & 0xFF00) | (((attr[0] & 0xFF) - 1) & 0xFF);
@@ -404,6 +501,19 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					case VK_RIGHT:
 						attr[1] = (attr[1] & 0xFE00) | (((attr[1] & 0x1FF) + 1) & 0x1FF);
 						break;
+					default:
+						change = 0;
+						break;
+				}
+				if (change) {
+					if (!(HIWORD(lParam) & KF_REPEAT)) {
+						NCER copy;
+						ncerCreateCopy(&copy, &data->ncer);
+						undoAdd(&data->undo, &copy);
+					} else {
+						NCER *currentSlot = undoGetStackPosition(&data->undo);
+						memcpy(currentSlot->cells[data->cell].attr, data->ncer.cells[data->cell].attr, currentSlot->cells[data->cell].nAttr * 2);
+					}
 				}
 				UpdateControls(hWnd);
 				InvalidateRect(hWnd, NULL, FALSE);
@@ -423,6 +533,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 				HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+
+				int changed = 0;
 
 				if (notification == CBN_SELCHANGE && hWndControl == data->hWndCellDropdown) {
 					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
@@ -447,6 +559,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					InvalidateRect(hWnd, NULL, TRUE);
 
 					if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
+					changed = 1;
 				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndOamDropdown){
 					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 					data->oam = sel;
@@ -465,6 +578,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					attr2 |= chr & 0x3FF;
 					cell->attr[2 + 3 * data->oam] = attr2;
 					InvalidateRect(hWnd, NULL, TRUE);
+					changed = 1;
 				} else if (notification == BN_CLICKED && (hWndControl == data->hWndImportBitmap || hWndControl == data->hWndImportReplacePalette)) {
 					LPWSTR path = openFileDialog(hWnd, L"Select Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
 					if (path == NULL) break;
@@ -581,6 +695,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					InvalidateRect(hWndNclrViewer, NULL, FALSE);
 					InvalidateRect(hWndNcgrViewer, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
+					changed = 1;
 				} else if (notification == BN_CLICKED && (
 					hWndControl == data->hWnd8bpp || hWndControl == data->hWndDisable || hWndControl == data->hWndHFlip
 					|| hWndControl == data->hWndVFlip || hWndControl == data->hWndMosaic || hWndControl == data->hWndRotateScale
@@ -618,6 +733,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					InvalidateRect(hWnd, NULL, FALSE);
 					UpdateControls(hWnd);
+					changed = 1;
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndXInput) {
 					WCHAR buffer[16];
 					int len = SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) buffer);
@@ -655,6 +771,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						SendMessage(data->hWndOamDropdown, CB_DELETESTRING, cell->nAttribs, 0);
 						UpdateControls(hWnd);
 						InvalidateRect(hWnd, NULL, TRUE);
+						changed = 1;
 					}
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndOamAdd) {
 					//reallocate the attribute buffer
@@ -672,6 +789,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					SendMessage(data->hWndOamDropdown, CB_SETCURSEL, cell->nAttribs - 1, 0);
 					UpdateControls(hWnd);
 					InvalidateRect(hWnd, NULL, TRUE);
+					changed = 1;
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellRemove) {
 					NCER *ncer = &data->ncer;
 					//don't delete the last cell
@@ -690,6 +808,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						UpdateOamDropdown(hWnd);
 						UpdateControls(hWnd);
 						InvalidateRect(hWnd, NULL, TRUE);
+						changed = 1;
 					}
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellAdd) {
 					NCER *ncer = &data->ncer;
@@ -713,6 +832,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
 					UpdateControls(hWnd);
 					InvalidateRect(hWnd, NULL, TRUE);
+					changed = 1;
 				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndSizeDropdown) {
 					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 					int sizes[] = { 0, 0, 1, 0, 1, 2, 1, 2, 2, 3, 3, 3 };
@@ -725,6 +845,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					attr[1] = (attr[1] & 0x3FFF) | (size << 14);
 					UpdateControls(hWnd);
 					InvalidateRect(hWnd, NULL, TRUE);
+					changed = 1;
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellBoundsCheckbox) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					data->showCellBounds = state;
@@ -735,12 +856,21 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					WORD *attr = cell->attr + (3 * data->oam);
 					attr[0] = (attr[0] & 0xF3FF) | (sel << 10);
 					InvalidateRect(hWnd, NULL, FALSE);
+					changed = 1;
 				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndPriority) {
 					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 					NCER_CELL *cell = data->ncer.cells + data->cell;
 					WORD *attr = cell->attr + (3 * data->oam);
 					attr[2] = (attr[2] & 0xF3FF) | (sel << 10);
 					InvalidateRect(hWnd, NULL, FALSE);
+					changed = 1;
+				}
+
+				//log a change
+				if (changed) {
+					NCER copy;
+					ncerCreateCopy(&copy, &data->ncer);
+					undoAdd(&data->undo, &copy);
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -748,6 +878,16 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					case ID_FILE_SAVE:
 					{
 						ncerWrite(&data->ncer, data->szOpenFile);
+						break;
+					}
+					case ID_EDIT_UNDO:
+					{
+						ncerEditorUndo(hWnd);
+						break;
+					}
+					case ID_EDIT_REDO:
+					{
+						ncerEditorRedo(hWnd);
 						break;
 					}
 					case ID_FILE_EXPORT:
@@ -797,6 +937,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			ncerFree(&data->ncer);
 			free(data);
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
+			undoDestroy(&data->undo);
 			break;
 		}
 	}
