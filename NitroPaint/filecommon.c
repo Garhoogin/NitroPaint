@@ -59,7 +59,11 @@ int fileIdentify(char *file, int size) {
 		else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 		else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 		else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
-		else if (ntftIsValid(buffer, bufferSize)) type = FILE_TYPE_BMAP;
+		
+		//test for bin format files
+		else if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+		else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
+		else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 	}
 
 	if (buffer != file) {

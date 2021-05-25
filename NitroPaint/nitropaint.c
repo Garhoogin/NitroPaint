@@ -312,7 +312,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						break;
 					case ID_OPEN_OPENNCLR:
 					{
-						LPWSTR path = openFileDialog(hWnd, L"Open NCLR", L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0", L"nclr");
+						LPWSTR path = openFileDialog(hWnd, L"Open NCLR", L"NCLR Files (*.nclr)\0*.nclr;*ncl.bin\0All Files\0*.*\0", L"nclr");
 						if (!path) break;
 
 						//if there is already an NCLR open, close it.
@@ -327,7 +327,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_OPEN_OPENNCGR:
 					{
 						LPWSTR path;
-						if(menuID == ID_OPEN_OPENNCGR) path = openFileDialog(hWnd, L"Open NCGR", L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*\0", L"ncgr");
+						if(menuID == ID_OPEN_OPENNCGR) path = openFileDialog(hWnd, L"Open NCGR", L"NCGR Files (*.ncgr)\0*.ncgr;*ncg.bin\0All Files\0*.*\0", L"ncgr");
 						else path = openFileDialog(hWnd, L"Open NCBR", L"NCBR Files (*.ncbr)\0*.ncbr\0All Files\0*.*\0", L"ncbr");
 						if (!path) break;
 
@@ -341,7 +341,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_OPEN_OPENNSCR:
 					{
-						LPWSTR path = openFileDialog(hWnd, L"Open NSCR", L"NSCR Files (*.nscr)\0*.nscr\0All Files\0*.*\0", L"nscr");
+						LPWSTR path = openFileDialog(hWnd, L"Open NSCR", L"NSCR Files (*.nscr)\0*.nscr;*nsc.bin\0All Files\0*.*\0", L"nscr");
 						if (!path) break;
 
 						//if there is already an NSCR open, close it.

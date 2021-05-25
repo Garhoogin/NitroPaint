@@ -4,16 +4,23 @@
 
 int ncerIsValidHudson(char *buffer, int size) {
 	int nCells = *(int *) buffer;
+	if (nCells == 0) return 0;
 
+	DWORD highestOffset = 4;
 	for (int i = 0; i < nCells; i++) {
 		DWORD ofs = ((DWORD *) (buffer + 4))[i] + 4;
+		if (4 + i * 4 + 4 >= highestOffset) highestOffset = 8 + i * 4;
 		if (ofs >= size) return 0;
 		SHORT nOAM = *(SHORT *) (buffer + ofs);
 		WORD *attrs = (WORD *) (buffer + ofs + 2);
 		//attrs size: 0xA * nOAM
 		DWORD endOfs = ofs + 2 + 0xA * nOAM;
+		if (endOfs > highestOffset) highestOffset = endOfs;
 		if (endOfs > size) return 0;
 	}
+
+	//if there is much unused data at the end, this is probably not an actual cell file!
+	if (highestOffset < size) return 0;
 	return 1;
 }
 

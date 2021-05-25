@@ -10,6 +10,13 @@
 #define NSCR_FLIPY 2
 #define NSCR_FLIPXY (NSCR_FLIPX|NSCR_FLIPY)
 
+int isValidScreenSize(int nPx) {
+	if (nPx == 256 * 256 || nPx == 512 * 256 || 
+		nPx == 512 * 512 || nPx == 128 * 128 || 
+		nPx == 1024 * 1024 || nPx == 512 * 1024) return 1;
+	return 0;
+}
+
 int nscrIsValidHudson(LPBYTE buffer, int size) {
 	if (*buffer == 0x10) return 0;
 	if (size < 4) return 0;
@@ -21,12 +28,20 @@ int nscrIsValidHudson(LPBYTE buffer, int size) {
 		int tilesX = buffer[2];
 		int tilesY = buffer[3];
 		if (tilesX * tilesY * 2 + 4 != fileSize) return 0;
+		if (!isValidScreenSize(tilesX * tilesY * 64)) return 0;
 		return NSCR_TYPE_HUDSON2;
 	}
 	int tilesX = buffer[6];
 	int tilesY = buffer[7];
 	if (!tilesX || !tilesY) return 0;
+	if (!isValidScreenSize(tilesX * tilesY * 64)) return 0;
 	return NSCR_TYPE_HUDSON;
+}
+
+int nscrIsValidBin(LPBYTE buffer, int size) {
+	if (size == 0 || (size & 1)) return 0;
+	int nPx = (size >> 1) * 64;
+	return isValidScreenSize(nPx);
 }
 
 int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
@@ -67,6 +82,51 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	return 0;
 }
 
+int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
+	nscr->header.compression = COMPRESSION_NONE;
+	nscr->header.format = NSCR_TYPE_BIN;
+	nscr->header.size = sizeof(NSCR);
+	nscr->header.type = FILE_TYPE_SCREEN;
+	nscr->dataSize = dwFileSize;
+	nscr->data = malloc(dwFileSize);
+	memcpy(nscr->data, file, dwFileSize);
+	nscr->nHighestIndex = 0;
+	for (int i = 0; i < nscr->dataSize / 2; i++) {
+		WORD w = nscr->data[i];
+		w &= 0x3FF;
+		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
+	}
+
+	//guess size
+	switch ((dwFileSize >> 1) * 64) {
+		case 256*256:
+			nscr->nWidth = 256;
+			nscr->nHeight = 256;
+			break;
+		case 512*512:
+			nscr->nWidth = 512;
+			nscr->nHeight = 512;
+			break;
+		case 1024*1024:
+			nscr->nWidth = 1024;
+			nscr->nHeight = 1024;
+			break;
+		case 128*128:
+			nscr->nWidth = 128;
+			nscr->nHeight = 128;
+			break;
+		case 1024*512:
+			nscr->nWidth = 1024;
+			nscr->nHeight = 512;
+			break;
+		case 512*256:
+			nscr->nWidth = 256;
+			nscr->nHeight = 512;
+			break;
+	}
+	return 0;
+}
+
 int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	if (lz77IsCompressed(file, dwFileSize)) {
 		int uncompressedSize;
@@ -77,7 +137,10 @@ int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 		return r;
 	}
 	if (!dwFileSize) return 1;
-	if (*file == 0 || *file == 0x10) return hudsonScreenRead(nscr, file, dwFileSize);
+	if (*(DWORD *) file != 0x4E534352) {
+		if(nscrIsValidHudson(file, dwFileSize)) return hudsonScreenRead(nscr, file, dwFileSize);
+		if (nscrIsValidBin(file, dwFileSize)) return nscrReadBin(nscr, file, dwFileSize);
+	}
 	if (dwFileSize < 0x14) return 1;
 	DWORD dwFirst = *(DWORD *) file;
 	if (dwFirst != 0x5243534E && dwFirst != 0x4E534352) return 1;
@@ -339,6 +402,12 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 		}
 
 		WriteFile(hFile, nscr->data, 2 * nTotalTiles, &dwWritten, NULL);
+		CloseHandle(hFile);
+	} else if (nscr->header.format == NSCR_TYPE_BIN) {
+		DWORD dwWritten;
+
+		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		WriteFile(hFile, nscr->data, nscr->dataSize, &dwWritten, NULL);
 		CloseHandle(hFile);
 	}
 	if (nscr->header.compression != COMPRESSION_NONE) {

@@ -19,6 +19,7 @@
 #define NSCR_TYPE_NSCR		1
 #define NSCR_TYPE_HUDSON	2
 #define NSCR_TYPE_HUDSON2	3
+#define NSCR_TYPE_BIN       4
 
 typedef struct NSCR_ {
 	OBJECT_HEADER header;
@@ -31,6 +32,8 @@ typedef struct NSCR_ {
 } NSCR;
 
 int nscrIsValidHudson(LPBYTE buffer, int size);
+
+int nscrIsValidBin(LPBYTE buffer, int size);
 
 int nscrRead(NSCR * nscr, char * file, DWORD dwFileSize);
 

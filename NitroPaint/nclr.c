@@ -6,7 +6,7 @@ int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 
 	int dataLength = *(WORD *) buffer;
 	int nColors = *(WORD *) (buffer + 2);
-	
+
 	nclr->nColors = nColors;
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
@@ -15,6 +15,22 @@ int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	nclr->header.size = sizeof(*nclr);
 	nclr->header.compression = COMPRESSION_NONE;
 	memcpy(nclr->colors, buffer + 4, nColors * 2);
+	return 0;
+}
+
+int binPaletteRead(NCLR *nclr, char *buffer, int size) {
+	if (!nclrIsValidBin(buffer, size)) return 1;
+
+	int nColors = size >> 1;
+
+	nclr->nColors = nColors;
+	nclr->nBits = 4;
+	nclr->colors = (COLOR *) calloc(nColors, 2);
+	nclr->header.type = FILE_TYPE_PALETTE;
+	nclr->header.format = NCLR_TYPE_BIN;
+	nclr->header.size = sizeof(*nclr);
+	nclr->header.compression = COMPRESSION_NONE;
+	memcpy(nclr->colors, buffer, nColors * 2);
 	return 0;
 }
 
@@ -27,7 +43,10 @@ int nclrRead(NCLR *nclr, char *buffer, int size) {
 		nclr->header.compression = COMPRESSION_LZ77;
 		return r;
 	}
-	if (*buffer != 'R' && *buffer != 'N') return hudsonPaletteRead(nclr, buffer, size);
+	if (*buffer != 'R' && *buffer != 'N') {
+		if(nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
+		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
+	}
 	short nBlocks = *(short *) (buffer + 0xE);
 	buffer += 0x10;
 	int bits = *(int *) (buffer + 0x8);
@@ -66,11 +85,35 @@ int nclrIsValidHudson(LPBYTE lpFile, int size) {
 	if (*lpFile == 0x10) return 0;
 	int dataLength = *(WORD *) lpFile;
 	int nColors = *(WORD *) (lpFile + 2);
+	if (nColors == 0) return 0;
 	if (dataLength & 1) return 0;
 	if (dataLength + 4 != size) return 0;
 	if (nColors * 2 + 4 != size) return 0;
 
+	if (nColors & 0xF) return 0;
+	if (nColors > 256) {
+		if (nColors & 0xFF) return 0;
+	}
+
 	COLOR *data = lpFile + 4;
+	for (int i = 0; i < nColors; i++) {
+		COLOR w = data[i];
+		if (w & 0x8000) return 0;
+	}
+	return 1;
+}
+
+int nclrIsValidBin(LPBYTE lpFile, int size) {
+	if (size < 16) return 0;
+	if (size & 1) return 0;
+	if (size > 16 * 256 * 2) return 0;
+	int nColors = size >> 1;
+	if (nColors & 0xF) return 0;
+	if (nColors > 256) {
+		if (nColors & 0xFF) return 0;
+	}
+
+	COLOR *data = (COLOR *) lpFile;
 	for (int i = 0; i < nColors; i++) {
 		COLOR w = data[i];
 		if (w & 0x8000) return 0;
@@ -105,7 +148,7 @@ void nclrWrite(NCLR * nclr, LPWSTR name) {
 		WriteFile(hFile, fileHeader, 0x10, &dwWritten, NULL);
 		WriteFile(hFile, ttlpHeader, 0x18, &dwWritten, NULL);
 		WriteFile(hFile, nclr->colors, nclr->nColors << 1, &dwWritten, NULL);
-	} else {
+	} else if(nclr->header.format == NCLR_TYPE_HUDSON) {
 		BYTE fileHeader[] = {0, 0, 0, 0};
 		*(WORD *) fileHeader = nclr->nColors * 2;
 		*(WORD *) (fileHeader + 2) = nclr->nColors;
@@ -113,6 +156,9 @@ void nclrWrite(NCLR * nclr, LPWSTR name) {
 		DWORD dwWritten;
 		WriteFile(hFile, fileHeader, sizeof(fileHeader), &dwWritten, NULL);
 		WriteFile(hFile, nclr->colors, nclr->nColors << 1, &dwWritten, NULL);
+	} else {
+		DWORD dwWritten;
+		WriteFile(hFile, nclr->colors, nclr->nColors * 2, &dwWritten, NULL);
 	}
 	CloseHandle(hFile);
 	if (nclr->header.compression != COMPRESSION_NONE) {

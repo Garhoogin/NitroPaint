@@ -7,6 +7,7 @@
 #define NCGR_TYPE_HUDSON	2
 #define NCGR_TYPE_HUDSON2	3
 #define NCGR_TYPE_NCBR      4
+#define NCGR_TYPE_BIN       5
 
 typedef struct NCGR_{
 	OBJECT_HEADER header;
@@ -20,6 +21,8 @@ typedef struct NCGR_{
 } NCGR;
 
 int ncgrIsValidHudson(LPBYTE buffer, int size);
+
+int ncgrIsValidBin(LPBYTE buffer, int size);
 
 int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker);
 

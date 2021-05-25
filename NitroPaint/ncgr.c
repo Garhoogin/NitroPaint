@@ -25,9 +25,14 @@ int ncgrIsValidHudson(LPBYTE buffer, int size) {
 	}
 	if (buffer[4] != 1 && buffer[4] != 0) return 0;
 	dataLength -= 4;
-	
+
 	if (dataLength + 8 != size) return 0;
 	return NCGR_TYPE_HUDSON;
+}
+
+int ncgrIsValidBin(LPBYTE buffer, int size) {
+	if (size & 0x1F) return 0;
+	return NCGR_TYPE_BIN;
 }
 
 int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
@@ -98,6 +103,34 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	return 0;
 }
 
+int ncgrReadBin(NCGR *ncgr, char *buffer, int size) {
+	ncgr->header.compression = COMPRESSION_NONE;
+	ncgr->header.format = NCGR_TYPE_BIN;
+	ncgr->header.size = sizeof(NCGR);
+	ncgr->header.type = FILE_TYPE_CHARACTER;
+	ncgr->nTiles = size / 0x20;
+	ncgr->nBits = 4;
+	ncgr->mapping = 0x10;
+	ncgr->tileWidth = 8;
+	ncgr->tilesX = calculateWidth(ncgr->nTiles);
+	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+
+	BYTE **tiles = (BYTE **) calloc(ncgr->nTiles, sizeof(BYTE **));
+	for (int i = 0; i < ncgr->nTiles; i++) {
+		BYTE *tile = (BYTE *) calloc(64, 1);
+		for (int j = 0; j < 32; j++) {
+			BYTE b = *buffer;
+			tile[j * 2] = b & 0xF;
+			tile[j * 2 + 1] = b >> 4;
+			buffer++;
+		}
+		tiles[i] = tile;
+	}
+	ncgr->tiles = tiles;
+
+	return 0;
+}
+
 int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	if (lz77IsCompressed(buffer, size)) {
 		int uncompressedSize;
@@ -107,7 +140,10 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 		ncgr->header.compression = COMPRESSION_LZ77;
 		return r;
 	}
-	if (*buffer == 0x10 || *buffer == 0x00) return hudsonReadCharacter(ncgr, buffer, size);
+	if (*(DWORD *) buffer != 0x4E434752) {
+		if (ncgrIsValidHudson(buffer, size)) return hudsonReadCharacter(ncgr, buffer, size);
+		if (ncgrIsValidBin(buffer, size)) return ncgrReadBin(ncgr, buffer, size);
+	}
 	if (size < 0x10) return 1;
 	DWORD magic = *(DWORD *) buffer;
 	if (magic != 0x4E434752 && magic != 0x5247434E) return 1;
@@ -349,6 +385,19 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 					buffer[j] = b;
 				}
 				WriteFile(hFile, buffer, 32, &dwWritten, NULL);
+			}
+		}
+	} else if (ncgr->header.format == NCGR_TYPE_BIN) {
+		DWORD dwWritten;
+		for (int i = 0; i < ncgr->nTiles; i++) {
+			if (ncgr->nBits == 8) {
+				WriteFile(hFile, ncgr->tiles[i], 64, &dwWritten, NULL);
+			} else {
+				BYTE t[32];
+				for (int j = 0; j < 32; j++) {
+					t[j] = ncgr->tiles[i][j * 2] | (ncgr->tiles[i][j * 2 + 1] << 4);
+				}
+				WriteFile(hFile, t, 32, &dwWritten, NULL);
 			}
 		}
 	}

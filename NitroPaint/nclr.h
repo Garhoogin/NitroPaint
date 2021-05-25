@@ -5,6 +5,7 @@
 
 #define NCLR_TYPE_NCLR 0
 #define NCLR_TYPE_HUDSON 1
+#define NCLR_TYPE_BIN 2
 
 typedef struct NCLR_ {
 	OBJECT_HEADER header;
@@ -14,6 +15,8 @@ typedef struct NCLR_ {
 } NCLR;
 
 int nclrIsValidHudson(LPBYTE lpFile, int size);
+
+int nclrIsValidBin(LPBYTE lpFile, int size);
 
 int nclrRead(NCLR * nclr, char * buffer, int size);
 
