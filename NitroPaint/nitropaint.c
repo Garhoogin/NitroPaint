@@ -166,7 +166,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	ReadFile(hFile, buffer, dwSize, &dwRead, NULL);
 	CloseHandle(hFile);
 
-	int format = fileIdentify(buffer, dwSize);
+	int format = fileIdentify(buffer, dwSize, path);
 	switch (format) {
 		case FILE_TYPE_PALETTE:
 			//if there is already an NCLR open, close it.

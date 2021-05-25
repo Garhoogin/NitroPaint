@@ -20,6 +20,6 @@ typedef struct OBJECT_HEADER_ {
 	int compression;
 } OBJECT_HEADER;
 
-int fileIdentify(char *file, int size);
+int fileIdentify(char *file, int size, LPCWSTR path);
 
 void fileCompress(LPWSTR name, int compression);

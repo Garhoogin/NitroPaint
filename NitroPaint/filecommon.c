@@ -6,7 +6,13 @@
 #include "nsbtx.h"
 #include "ntft.h"
 
-int fileIdentify(char *file, int size) {
+int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
+	if (wcslen(substr) > wcslen(str)) return 0;
+	LPCWSTR str1 = str + wcslen(str) - wcslen(substr);
+	return !wcsicmp(str1, substr);
+}
+
+int fileIdentify(char *file, int size, LPCWSTR path) {
 	char *buffer = file;
 	int bufferSize = size;
 	if (lz77IsCompressed(file, size)) {
@@ -61,9 +67,17 @@ int fileIdentify(char *file, int size) {
 		else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
 		
 		//test for bin format files
-		else if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-		else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-		else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+		else {
+			if (nclrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"ncl.bin")) type = FILE_TYPE_PALETTE;
+			else if (nscrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"nsc.bin")) type = FILE_TYPE_SCREEN;
+			else if (ncgrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"ncg.bin")) type = FILE_TYPE_CHARACTER;
+			else {
+				//double check, without respect to the file name.
+				if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+				else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
+				else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+			}
+		}
 	}
 
 	if (buffer != file) {
