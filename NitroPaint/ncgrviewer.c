@@ -156,6 +156,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndWidthDropdown = CreateWindowEx(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 200, 100, hWnd, NULL, NULL, NULL);
 			data->hWndWidthLabel = CreateWindow(L"STATIC", L" Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 100, 21, hWnd, NULL, NULL, NULL);
 			data->hWndExpand = CreateWindow(L"BUTTON", L"Extend", WS_CHILD | WS_VISIBLE, 0, 0, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWnd8bpp = CreateWindow(L"BUTTON", L"8bpp", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 100, 22, hWnd, NULL, NULL, NULL);
 
 			WCHAR bf[] = L"Palette 00";
 			for (int i = 0; i < 16; i++) {
@@ -207,6 +208,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				}
 				nStrings++;
 			}
+			if (data->ncgr.nBits == 8) SendMessage(data->hWnd8bpp, BM_SETCHECK, 1, 0);
 
 			//guess a tile base based on an open NCGR (if any)
 			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
@@ -257,6 +259,90 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					SetActiveWindow(h);
 					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
 					SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
+				} else if (notification == BN_CLICKED && hWndControl == data->hWnd8bpp) {
+					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					if (state) {
+						//convert 4bpp graphic to 8bpp
+
+						BYTE **tiles2 = (BYTE **) calloc(data->ncgr.nTiles / 2, sizeof(BYTE **));
+						for (int i = 0; i < data->ncgr.nTiles / 2; i++) {
+							BYTE *tile1 = data->ncgr.tiles[i * 2];
+							BYTE *tile2 = data->ncgr.tiles[i * 2 + 1];
+							BYTE *dest = (BYTE *) calloc(64, 1);
+							tiles2[i] = dest;
+
+							for (int j = 0; j < 32; j++) {
+								dest[j] = tile1[j * 2] | (tile1[j * 2 + 1] << 4);
+							}
+							for (int j = 0; j < 32; j++) {
+								dest[j + 32] = tile2[j * 2] | (tile2[j * 2 + 1] << 4);
+							}
+						}
+						for (int i = 0; i < data->ncgr.nTiles; i++) {
+							free(data->ncgr.tiles[i]);
+						}
+						free(data->ncgr.tiles);
+						data->ncgr.tiles = tiles2;
+						
+						if (data->ncgr.tilesX & 1 == 0) {
+							data->ncgr.tilesX /= 2;
+							data->ncgr.nTiles /= 2;
+						} else {
+							data->ncgr.nTiles /= 2;
+							data->ncgr.tilesX = calculateWidth(data->ncgr.nTiles);
+							data->ncgr.tilesY = data->ncgr.nTiles / data->ncgr.tilesX;
+						}
+						data->ncgr.nBits = 8;
+					} else {
+						//covert 8bpp graphic to 4bpp
+
+						BYTE **tiles2 = (BYTE **) calloc(data->ncgr.nTiles * 2, sizeof(BYTE **));
+						for (int i = 0; i < data->ncgr.nTiles; i++) {
+							BYTE *tile1 = calloc(64, 1);
+							BYTE *tile2 = calloc(64, 1);
+							BYTE *src = data->ncgr.tiles[i];
+							tiles2[i * 2] = tile1;
+							tiles2[i * 2 + 1] = tile2;
+
+							for (int j = 0; j < 32; j++) {
+								tile1[j * 2] = src[j] & 0xF;
+								tile1[j * 2 + 1] = src[j] >> 4;
+							}
+							for (int j = 0; j < 32; j++) {
+								tile2[j * 2] = src[j + 32] & 0xF;
+								tile2[j * 2 + 1] = src[j + 32] >> 4;
+							}
+						}
+						for (int i = 0; i < data->ncgr.nTiles; i++) {
+							free(data->ncgr.tiles[i]);
+						}
+						free(data->ncgr.tiles);
+						data->ncgr.tiles = tiles2;
+						data->ncgr.tilesX *= 2;
+						data->ncgr.nTiles *= 2;
+						data->ncgr.nBits = 4;
+					}
+
+					SendMessage(data->hWndWidthDropdown, CB_RESETCONTENT, 0, 0);
+					int nTiles = data->ncgr.nTiles;
+					int nStrings = 0;
+					WCHAR bf[16];
+					for (int i = 1; i <= nTiles; i++) {
+						if (nTiles % i) continue;
+						wsprintfW(bf, L"%d", i);
+						SendMessage(data->hWndWidthDropdown, CB_ADDSTRING, 0, (LPARAM) bf);
+						if (i == data->ncgr.tilesX) {
+							SendMessage(data->hWndWidthDropdown, CB_SETCURSEL, (WPARAM) nStrings, 0);
+						}
+						nStrings++;
+					}
+
+					InvalidateRect(hWnd, NULL, FALSE);
+					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+					if (nitroPaintStruct->hWndNclrViewer) {
+						InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
+					}
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -548,6 +634,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			MoveWindow(data->hWndWidthDropdown, 50, height - 42, 100, 21, TRUE);
 			MoveWindow(data->hWndWidthLabel, 0, height - 42, 50, 21, FALSE);
 			MoveWindow(data->hWndExpand, 155, height - 42, 100, 22, TRUE);
+			MoveWindow(data->hWnd8bpp, 155, height - 21, 100, 21, TRUE);
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
 	}
