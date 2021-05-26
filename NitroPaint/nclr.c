@@ -205,6 +205,11 @@ void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR na
 		WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
 		WriteFile(hFile, cpal, nColors * 2, &dwWritten, NULL);
 		CloseHandle(hFile);
+	} else if (fmt == 3 || fmt == 4) {
+		DWORD dwWritten;
+		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		WriteFile(hFile, cpal, nColors * 2, &dwWritten, NULL);
+		CloseHandle(hFile);
 	}
 	free(cpal);
 

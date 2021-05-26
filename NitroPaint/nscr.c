@@ -465,6 +465,12 @@ void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalT
 		}
 		WriteFile(hFile, dataArea, 2 * nTotalTiles, &dwWritten, NULL);
 		CloseHandle(hFile);
+	} else if (fmt == 3 || fmt == 4) {
+		DWORD dwWritten;
+		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		WriteFile(hFile, dataArea, 2 * nTotalTiles, &dwWritten, NULL);
+		CloseHandle(hFile);
+		if (fmt == 4) fileCompress(name, COMPRESSION_LZ77);
 	}
 	HeapFree(GetProcessHeap(), 0, dataArea);
 }

@@ -604,6 +604,8 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 5, L"Nitro");
 			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 6, L"Hudson");
 			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 8, L"Hudson 2");
+			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 3, L"Raw");
+			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 15, L"Raw Compressed");
 			SendMessage(data->hWndFormatDropdown, CB_SETCURSEL, 0, 0);
 
 			SetWindowSize(hWnd, 330, 231);
@@ -640,14 +642,32 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					int tileBase = _wtoi(location);
 					SendMessage(data->nscrCreateInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
 
-					LPWSTR nclrLocation = saveFileDialog(hWnd, L"Save NCLR", L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*", L"nclr");
+					LPCWSTR nclrFilter = L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0";
+					LPCWSTR ncgrFilter = L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*\0";
+					LPCWSTR nscrFilter = L"NSCR Files (*.nscr)\0*.nscr\0All Files\0*.*\0";
+					switch (fmt) {
+						case 1:
+						case 2:
+							nclrFilter = L"bin files (*.bin)\0*.bin\0All Files\0*.*\0";
+							ncgrFilter = L"bin files (*.bin)\0*.bin\0All Files\0*.*\0";
+							nscrFilter = L"bin files (*.bin)\0*.bin\0All Files\0*.*\0";
+							break;
+						case 3:
+						case 4:
+							nclrFilter = L"ncl.bin files (*.bin)\0*ncl.bin\0All Files\0*.*\0";
+							ncgrFilter = L"ncg.bin files (*.bin)\0*ncg.bin\0All Files\0*.*\0";
+							nscrFilter = L"nsc.bin files (*.bin)\0*nsc.bin\0All Files\0*.*\0";
+							break;
+					}
+
+					LPWSTR nclrLocation = saveFileDialog(hWnd, L"Save NCLR", nclrFilter, L"nclr");
 					if (!nclrLocation) break;
-					LPWSTR ncgrLocation = saveFileDialog(hWnd, L"Save NCGR", L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*", L"ncgr");
+					LPWSTR ncgrLocation = saveFileDialog(hWnd, L"Save NCGR", ncgrFilter, L"ncgr");
 					if (!ncgrLocation) {
 						free(nclrLocation);
 						break;
 					}
-					LPWSTR nscrLocation = saveFileDialog(hWnd, L"Save NSCR", L"NSCR Files (*.nscr)\0*.nscr\0All Files\0*.*", L"nscr");
+					LPWSTR nscrLocation = saveFileDialog(hWnd, L"Save NSCR", nscrFilter, L"nscr");
 					if (!nscrLocation) {
 						free(nclrLocation);
 						free(ncgrLocation);

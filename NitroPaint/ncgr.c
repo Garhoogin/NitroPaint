@@ -479,6 +479,12 @@ void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int fmt) {
 		}
 		WriteFile(hFile, b, nBlocks * nBlockSize, &dwWritten, NULL);
 		CloseHandle(hFile);
+	} else if (fmt == 3 || fmt == 4) {
+		DWORD dwWritten;
+		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		WriteFile(hFile, b, nBlocks * nBlockSize, &dwWritten, NULL);
+		CloseHandle(hFile);
+		if (fmt == 4) fileCompress(name, COMPRESSION_LZ77);
 	}
 
 	HeapFree(GetProcessHeap(), 0, b);
