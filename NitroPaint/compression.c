@@ -102,7 +102,7 @@ char *lz77compress(char *buffer, int size, int *compressedSize){
 			int biggestRun = 0, biggestRunIndex = 0;
 
 			//begin searching backwards.
-			for (int j = 1; j < maxSearch; j++) {
+			for (int j = 2; j < maxSearch; j++) {
 				//compare up to 0xF bytes, at most j bytes.
 				int nCompare = 0x12;
 				if (nCompare > j) nCompare = j;
