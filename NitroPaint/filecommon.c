@@ -9,7 +9,7 @@
 int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;
 	LPCWSTR str1 = str + wcslen(str) - wcslen(substr);
-	return !wcsicmp(str1, substr);
+	return !_wcsicmp(str1, substr);
 }
 
 int fileIdentify(char *file, int size, LPCWSTR path) {
