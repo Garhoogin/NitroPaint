@@ -60,7 +60,7 @@ int convertPalette(CREATEPARAMS *params) {
 	//should we reserve a color for transparent?
 	int hasTransparent = 0;
 	for (int i = 0; i < width * height; i++) {
-		if (params->px[i] & 0xFF000000 == 0) {
+		if ((params->px[i] & 0xFF000000) == 0) {
 			hasTransparent = 1;
 			break;
 		}
