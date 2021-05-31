@@ -2,12 +2,12 @@
 #include "nclr.h"
 #include "ncgr.h"
 
-int ncerIsValidHudson(char *buffer, int size) {
-	int nCells = *(int *) buffer;
+int ncerIsValidHudson(char *buffer, unsigned int size) {
+	unsigned int nCells = *(unsigned int *) buffer;
 	if (nCells == 0) return 0;
 
 	DWORD highestOffset = 4;
-	for (int i = 0; i < nCells; i++) {
+	for (unsigned int i = 0; i < nCells; i++) {
 		DWORD ofs = ((DWORD *) (buffer + 4))[i] + 4;
 		if (4 + i * 4 + 4 >= highestOffset) highestOffset = 8 + i * 4;
 		if (ofs >= size) return 0;
@@ -177,7 +177,7 @@ int ncerRead(NCER *ncer, char *buffer, int size) {
 
 	return 0;
 }
-int ncerReadFile(NCER *ncer, LPWSTR path) {
+int ncerReadFile(NCER *ncer, LPCWSTR path) {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeHigh;
 	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);

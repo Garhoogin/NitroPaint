@@ -29,6 +29,8 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 int _fltused;
 
+long _ftol(float f);
+
 long _ftol2_sse(float f) { //ugly hack
 	return _ftol(f);
 }
@@ -43,7 +45,7 @@ extern EXCEPTION_DISPOSITION __cdecl ExceptionHandler(EXCEPTION_RECORD *exceptio
 
 HANDLE g_hEvent = NULL;
 
-LPWSTR saveFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension) {
+LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension) {
 	OPENFILENAME o = { 0 };
 	WCHAR fbuff[MAX_PATH + 1] = { 0 };
 	ZeroMemory(&o, sizeof(o));
@@ -66,7 +68,7 @@ LPWSTR saveFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension) 
 	return NULL;
 }
 
-LPWSTR openFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension) {
+LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension) {
 	OPENFILENAME o = { 0 };
 	WCHAR fname[MAX_PATH + 1] = { 0 };
 	o.lStructSize = sizeof(o);
@@ -206,7 +208,7 @@ VOID HandleSwitch(LPWSTR lpSwitch) {
 }
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NITROPAINTSTRUCT *data = GetWindowLongPtr(hWnd, 0);
+	NITROPAINTSTRUCT *data = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWnd, 0);
 	if (!data) {
 		data = (NITROPAINTSTRUCT *) calloc(1, sizeof(NITROPAINTSTRUCT));
 		SetWindowLongPtr(hWnd, 0, (LONG) data);
@@ -223,14 +225,14 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 #endif
 
 			//subclass the MDI client window.
-			OldMdiClientWndProc = SetWindowLongPtr(data->hWndMdi, GWL_WNDPROC, NewMdiClientWndProc);
+			OldMdiClientWndProc = (WNDPROC) SetWindowLongPtr(data->hWndMdi, GWL_WNDPROC, (LONG_PTR) NewMdiClientWndProc);
 			DragAcceptFiles(hWnd, TRUE);
 
 			//open command line argument's files
 			int argc;
 			wchar_t **argv;
 			wchar_t **env;
-			int *startInfo;
+			int startInfo;
 			__wgetmainargs(&argc, &argv, &env, 1, &startInfo);
 			if (argc > 1) {
 				argc--;
@@ -454,7 +456,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 				}
 			}
-			HWND hWndActive = SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);
+			HWND hWndActive = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);
 			SendMessage(hWndActive, msg, wParam, lParam);
 			break;
 		}
@@ -483,7 +485,7 @@ typedef struct {
 
 BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
 	HFONT hFont = (HFONT) lParam;
-	SendMessage(hWnd, WM_SETFONT, hFont, TRUE);
+	SendMessage(hWnd, WM_SETFONT, (WPARAM) hFont, TRUE);
 	return TRUE;
 }
 
@@ -601,11 +603,11 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 1, (LPARAM) L"4");
 			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 1, (LPARAM) L"8");
 			SendMessage(data->nscrCreateDropdown, CB_SETCURSEL, 1, 0);
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 5, L"Nitro");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 6, L"Hudson");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 8, L"Hudson 2");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 3, L"Raw");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 15, L"Raw Compressed");
+			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 5, (LPARAM) L"Nitro");
+			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 6, (LPARAM) L"Hudson");
+			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 8, (LPARAM) L"Hudson 2");
+			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 3, (LPARAM) L"Raw");
+			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 15, (LPARAM) L"Raw Compressed");
 			SendMessage(data->hWndFormatDropdown, CB_SETCURSEL, 0, 0);
 
 			SetWindowSize(hWnd, 330, 231);
@@ -931,7 +933,7 @@ VOID SetConfigPath() {
 	g_configPath = calloc(MAX_PATH + 1, 1);
 	DWORD nLength = GetModuleFileNameW(GetModuleHandleW(NULL), g_configPath, MAX_PATH);
 	int endOffset = 0;
-	for (int i = 0; i < nLength; i++) {
+	for (unsigned int i = 0; i < nLength; i++) {
 		if (g_configPath[i] == L'\\' || g_configPath[i] == '/') endOffset = i + 1;
 	}
 	memcpy(g_configPath + endOffset, name, wcslen(name) * 2 + 2);
@@ -951,7 +953,7 @@ void RegisterClasses() {
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	g_appIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
-	HACCEL hAccel = LoadAccelerators(hInstance, IDR_ACCELERATOR1);
+	HACCEL hAccel = LoadAccelerators(hInstance, (LPCWSTR) IDR_ACCELERATOR1);
 
 	SetConfigPath();
 	ReadConfiguration(g_configPath);

@@ -1,4 +1,4 @@
 #pragma once
 #include <Windows.h>
 
-void printStackTrace(void);
+void printStackTrace(CONTEXT *context, EXCEPTION_RECORD *record);

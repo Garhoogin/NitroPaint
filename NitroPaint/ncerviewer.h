@@ -52,4 +52,4 @@ typedef struct NCERVIEWERDATA_ {
 
 VOID RegisterNcerViewerClass(VOID);
 
-HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path);
+HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);

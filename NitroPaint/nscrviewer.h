@@ -44,4 +44,4 @@ void NscrViewerSetTileBase(HWND hWnd, int tileBase);
 
 VOID RegisterNscrViewerClass(VOID);
 
-HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path);
+HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);

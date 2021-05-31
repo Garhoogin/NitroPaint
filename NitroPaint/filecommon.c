@@ -19,7 +19,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 		buffer = lz77decompress(file, size, &bufferSize);
 	}
 
-	int type = FILE_TYPE_UNKNOWN;
+	int type = FILE_TYPE_INVALID;
 
 	//test Nitro formats
 	if (bufferSize >= 4) {
@@ -59,7 +59,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 	}
 
 	//no matches?
-	if (type == FILE_TYPE_UNKNOWN) {
+	if (type == FILE_TYPE_INVALID) {
 		//test other formats
 		if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 		else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;

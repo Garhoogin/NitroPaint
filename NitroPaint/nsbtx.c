@@ -50,7 +50,7 @@ int nsbtxRead(NSBTX *nsbtx, char *buffer, int size) {
 	//is it valid?
 	if (buffer[0] != 'B' || buffer[1] != 'T' || buffer[2] != 'X' || buffer[3] != '0') return 1;
 	//iterate over each section
-	int *sectionOffsets = buffer + 0x10;
+	int *sectionOffsets = (int *) (buffer + 0x10);
 	int nSections = *(short *) (buffer + 0xE);
 	//find the TEX0 section
 	char *tex0 = NULL;
@@ -107,8 +107,8 @@ int nsbtxRead(NSBTX *nsbtx, char *buffer, int size) {
 		DICTTEXDATA *texData = dictTexData + i;
 		int offset = OFFSET(texData->texImageParam);
 
-		int width = TEXS(texData->texImageParam);
-		int height = TEXT(texData->texImageParam);
+		int width = TEXW(texData->texImageParam);
+		int height = TEXH(texData->texImageParam);
 		int texelSize = getTexelSize(width, height, texData->texImageParam);
 
 		if (FORMAT(texData->texImageParam) == CT_4x4) {
@@ -166,7 +166,7 @@ int nsbtxRead(NSBTX *nsbtx, char *buffer, int size) {
 	return 0;
 }
 
-int nsbtxReadFile(NSBTX *nsbtx, LPWSTR path) {
+int nsbtxReadFile(NSBTX *nsbtx, LPCWSTR path) {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeHigh;
 	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
@@ -221,15 +221,15 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 	initializeArray(&paletteData);
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		TEXELS *texture = nsbtx->textures + i;
-		int width = TEXS(texture->texImageParam);
-		int height = TEXT(texture->texImageParam);
+		int width = TEXW(texture->texImageParam);
+		int height = TEXH(texture->texImageParam);
 		int texelSize = getTexelSize(width, height, texture->texImageParam);
 		if (FORMAT(texture->texImageParam) == CT_4x4) {
 			//write the offset in the texImageParams
 			int ofs = (tex4x4Data.length >> 3) & 0xFFFF;
 			texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ofs;
 			addBytes(&tex4x4Data, texture->texel, texelSize);
-			addBytes(&tex4x4PlttIdxData, texture->cmp, texelSize / 2);
+			addBytes(&tex4x4PlttIdxData, (BYTE *) texture->cmp, texelSize / 2);
 		} else {
 			int ofs = (texData.length >> 3) & 0xFFFF;
 			texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ofs;
@@ -240,7 +240,7 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
 		int offs = paletteData.length;
 		PALETTE *palette = nsbtx->palettes + i;
-		addBytes(&paletteData, palette->pal, palette->nColors * 2);
+		addBytes(&paletteData, (BYTE *) palette->pal, palette->nColors * 2);
 		DICTPLTTDATA *data = ((DICTPLTTDATA *) nsbtx->paletteDictionary.entry.data) + i;
 		data->offset = offs >> 3;
 	}
@@ -298,7 +298,7 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 		}
 		DWORD curpos = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
 		SetFilePointer(hFile, startpos + 2, NULL, FILE_BEGIN);
-		WORD diff = curpos - startpos;
+		WORD diff = (WORD) (curpos - startpos);
 		WriteFile(hFile, &diff, 2, &dwWritten, NULL);
 		SetFilePointer(hFile, curpos, NULL, FILE_BEGIN);
 	}
@@ -332,7 +332,7 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 		}
 		DWORD curpos = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
 		SetFilePointer(hFile, startpos + 2, NULL, FILE_BEGIN);
-		WORD diff = curpos - startpos;
+		WORD diff = (WORD) (curpos - startpos);
 		WriteFile(hFile, &diff, 2, &dwWritten, NULL);
 		SetFilePointer(hFile, curpos, NULL, FILE_BEGIN);
 	}

@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <CommCtrl.h>
+#include <stdio.h>
 
 #include "nsbtxviewer.h"
 #include "nitropaint.h"
@@ -12,8 +13,8 @@ extern HICON g_appIcon;
 extern int max16Len(char *str);
 
 HBITMAP renderTexture(TEXELS *texture, PALETTE *palette) {
-	int width = TEXS(texture->texImageParam);
-	int height = TEXT(texture->texImageParam);
+	int width = TEXW(texture->texImageParam);
+	int height = TEXH(texture->texImageParam);
 	DWORD *px = (DWORD *) calloc(width * height, 4);
 	convertTexture(px, texture, palette, 0);
 
@@ -67,7 +68,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			SendMessage(data->hWndRepeatT, CB_ADDSTRING, 9, (LPARAM) L"Repeat T");
 			SendMessage(data->hWndRepeatT, CB_ADDSTRING, 7, (LPARAM) L"Flip T");
 			SendMessage(data->hWndRepeatT, CB_SETCURSEL, 0, 0);
-			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			return 1;
 		}
 		case NV_INITIALIZE:
@@ -89,7 +90,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					buffer[j] = name[j];
 				}
 				buffer[len] = 0;
-				SendMessage(data->hWndTextureSelect, LB_ADDSTRING, 0, buffer);
+				SendMessage(data->hWndTextureSelect, LB_ADDSTRING, 0, (LPARAM) buffer);
 			}
 			for (int i = 0; i < data->nsbtx.nPalettes; i++) {
 				char *name = data->nsbtx.palettes[i].name;
@@ -98,7 +99,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					buffer[j] = name[j];
 				}
 				buffer[len] = 0;
-				SendMessage(data->hWndPaletteSelect, LB_ADDSTRING, 0, buffer);
+				SendMessage(data->hWndPaletteSelect, LB_ADDSTRING, 0, (LPARAM) buffer);
 			}
 			SendMessage(data->hWndTextureSelect, LB_SETCURSEL, 0, 0);
 			SendMessage(data->hWndPaletteSelect, LB_SETCURSEL, 0, 0);
@@ -126,15 +127,15 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 			HDC hCompat = CreateCompatibleDC(hDC);
 			SelectObject(hCompat, hBitmap);
-			BitBlt(hDC, 150, 22, TEXS(texture->texImageParam), TEXT(texture->texImageParam), hCompat, 0, 0, SRCCOPY);
+			BitBlt(hDC, 150, 22, TEXW(texture->texImageParam), TEXH(texture->texImageParam), hCompat, 0, 0, SRCCOPY);
 
 			char bf[64];
 			SelectObject(hDC, GetStockObject(DEFAULT_GUI_FONT));
 			SetBkMode(hDC, TRANSPARENT);
 			if (FORMAT(texture->texImageParam) == CT_DIRECT) {
-				sprintf(bf, "%s texture, %dx%d", stringFromFormat(FORMAT(texture->texImageParam)), TEXS(texture->texImageParam), TEXT(texture->texImageParam));
+				sprintf(bf, "%s texture, %dx%d", stringFromFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), TEXH(texture->texImageParam));
 			} else {
-				sprintf(bf, "%s texture, %dx%d; palette: %d colors", stringFromFormat(FORMAT(texture->texImageParam)), TEXS(texture->texImageParam), TEXT(texture->texImageParam), palette->nColors);
+				sprintf(bf, "%s texture, %dx%d; palette: %d colors", stringFromFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), TEXH(texture->texImageParam), palette->nColors);
 			}
 			RECT rcText;
 			rcText.left = 155;
@@ -272,7 +273,7 @@ VOID RegisterNsbtxViewerClass(VOID) {
 	RegisterClassEx(&wcex);
 }
 
-HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {
+HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	NSBTX nsbtx;
 	int n = nsbtxReadFile(&nsbtx, path);
 	if (n) {

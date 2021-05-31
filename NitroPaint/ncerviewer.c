@@ -540,7 +540,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 					data->cell = sel;
 					data->oam = 0;
-					WCHAR size[13];
 					NCER_CELL_INFO cinfo;
 					NCER_CELL *cell = data->ncer.cells + sel;
 					decodeAttributesEx(&cinfo, cell, data->oam);
@@ -669,7 +668,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 									DWORD col = pixels[x + y * width];
 									int _x = cellX % 8, _y = cellY % 8;
 									if (col >> 24 > 0x80) {
-										int closest = closestpalette(*(RGB *) &col, palette + (16 * info.palette) + 1, paletteSize - 1, NULL) + 1;
+										int closest = closestpalette(*(RGB *) &col, (RGB *) palette + (16 * info.palette) + 1, paletteSize - 1, NULL) + 1;
 										character[_x + _y * 8] = closest;
 
 										//diffuse
@@ -957,7 +956,7 @@ VOID RegisterNcerViewerClass(VOID) {
 	RegisterClassEx(&wcex);
 }
 
-HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {
+HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 
 	NCER ncer;
 	if (ncerReadFile(&ncer, path)) {

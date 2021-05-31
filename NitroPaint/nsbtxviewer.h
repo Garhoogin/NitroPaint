@@ -19,4 +19,4 @@ typedef struct {
 
 VOID RegisterNsbtxViewerClass(VOID);
 
-HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path);
+HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);

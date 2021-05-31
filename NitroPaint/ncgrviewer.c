@@ -98,7 +98,7 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	int height = data->ncgr.tilesY * 8;
 
 	NCLR *nclr = NULL;
-	HWND hWndMain = GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+	HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 	if (nitroPaintStruct->hWndNclrViewer) {
 		HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
@@ -119,12 +119,6 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	DeleteObject(hTiles);
 
 	free(px);
-}
-
-HWND getMainWindow(HWND hWnd) {
-	HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-	HWND hWndMain = (HWND) GetWindowLong(hWndMdi, GWL_HWNDPARENT);
-	return hWndMain;
 }
 
 #define NV_INITIALIZE (WM_USER+1)
@@ -284,7 +278,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						free(data->ncgr.tiles);
 						data->ncgr.tiles = tiles2;
 						
-						if (data->ncgr.tilesX & 1 == 0) {
+						if ((data->ncgr.tilesX & 1) == 0) {
 							data->ncgr.tilesX /= 2;
 							data->ncgr.nTiles /= 2;
 						} else {
@@ -468,7 +462,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 									int poffset = x * 8 + offsetX + (y * 8 + offsetY) * width;
 									DWORD pixel = pixels[poffset];
 									RGB error;
-									int closest = closestpalette(*(RGB *) &pixel, palette + 1, paletteSize - 1, &error) + 1;
+									int closest = closestpalette(*(RGB *) &pixel, (RGB *) palette + 1, paletteSize - 1, &error) + 1;
 									if ((pixel >> 24) < 127) closest = 0;
 									int errorRed = (pixel & 0xFF) - (palette[closest] & 0xFF);
 									int errorGreen = ((pixel >> 8) & 0xFF) - ((palette[closest] >> 8) & 0xFF);
@@ -639,24 +633,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
-}
-
-VOID UpdateScrollbarVisibility(HWND hWnd) {
-	SCROLLINFO scroll;
-	scroll.fMask = SIF_ALL;
-	ShowScrollBar(hWnd, SB_BOTH, TRUE);
-	GetScrollInfo(hWnd, SB_HORZ, &scroll);
-	if (scroll.nMax < scroll.nPage) {
-		EnableScrollBar(hWnd, SB_HORZ, ESB_DISABLE_BOTH);
-	} else {
-		EnableScrollBar(hWnd, SB_HORZ, ESB_ENABLE_BOTH);
-	}
-	GetScrollInfo(hWnd, SB_VERT, &scroll);
-	if (scroll.nMax < scroll.nPage) {
-		EnableScrollBar(hWnd, SB_VERT, ESB_DISABLE_BOTH);
-	} else {
-		EnableScrollBar(hWnd, SB_VERT, ESB_ENABLE_BOTH);
-	}
 }
 
 LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -912,7 +888,7 @@ LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			CreateWindow(L"STATIC", L"Rows:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 75, 22, hWnd, NULL, NULL, NULL);
 			data->hWndExpandRowsInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", buffer, WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 90, 10, 75, 22, hWnd, NULL, NULL, NULL);
 			data->hWndExpandButton = CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 90, 37, 75, 22, hWnd, NULL, NULL, NULL);
-			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			SetWindowSize(hWnd, 175, 69);
 			SetFocus(data->hWndExpandRowsInput);
 			break;
@@ -1002,7 +978,7 @@ VOID RegisterNcgrViewerClass(VOID) {
 	RegisterNcgrExpandClass();
 }
 
-HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {
+HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	/*HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"NCGR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	return h;*/
 

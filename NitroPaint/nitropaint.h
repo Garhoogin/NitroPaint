@@ -34,8 +34,8 @@ typedef struct {
 	void (*callback) (void *data); //function called once the wait is finished
 } PROGRESSDATA;
 
-LPWSTR openFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension);
+LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
 
-LPWSTR saveFileDialog(HWND hWnd, LPWSTR title, LPWSTR filter, LPWSTR extension);
+LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
 
 LPWSTR GetFileName(LPWSTR lpszPath);

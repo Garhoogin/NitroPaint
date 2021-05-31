@@ -6,8 +6,8 @@ static int startup = 0;
 
 int isTGA(BYTE *buffer, DWORD dwSize) {
 	if (dwSize < 0x12) return 0;
-	int commentLength = *buffer;
-	if (dwSize < 0x12 + commentLength) return 0;
+	BYTE commentLength = *buffer;
+	if (dwSize < commentLength + 0x12u) return 0;
 	if (buffer[1] != 0 && buffer[1] != 1) return 0;
 	if (buffer[2] > 11) return 0;
 	return 1;

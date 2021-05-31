@@ -78,7 +78,7 @@ int convertPalette(CREATEPARAMS *params) {
 		DWORD p = params->px[i];
 		int index = 0;
 		RGB error;
-		if (p & 0xFF000000) index = closestpalette(*(RGB *) &p, palette + hasTransparent, nColors - hasTransparent, &error) + hasTransparent;
+		if (p & 0xFF000000) index = closestpalette(*(RGB *) &p, (RGB *) palette + hasTransparent, nColors - hasTransparent, &error) + hasTransparent;
 		txel[i / pixelsPerByte] |= index << (bitsPerPixel * (i & (pixelsPerByte - 1)));
 		if (params->dither) {				
 			DWORD back = palette[index];
@@ -139,7 +139,7 @@ int convertTranslucent(CREATEPARAMS *params) {
 	for (int i = 0; i < width * height; i++) {
 		DWORD p = params->px[i];
 		RGB error;
-		int index = closestpalette(*(RGB *) &p, palette, nColors, &error);
+		int index = closestpalette(*(RGB *) &p, (RGB *) palette, nColors, &error);
 		int alpha = (((p >> 24) & 0xFF) * alphaMax + 127) / 255;
 		txel[i] = index | (alpha << alphaShift);
 		if (params->dither) {				
@@ -200,7 +200,7 @@ typedef struct {
 	BYTE duplicate;
 } TILEDATA;
 
-int pixelCompare(void *p1, void *p2) {
+int pixelCompare(const void *p1, const void *p2) {
 	return *(DWORD *) p1 - (*(DWORD *) p2);
 }
 
@@ -321,11 +321,11 @@ int computeLMS(DWORD *tile, DWORD *palette, int transparent) {
 void choosePaletteAndMode(TILEDATA *tile) {
 	//first try interpolated. If it's not good enough, use full color.
 	DWORD colorMin, colorMax;
-	getColorBounds(tile->rgb, 16, &colorMin, &colorMax);
+	getColorBounds((DWORD *) tile->rgb, 16, &colorMin, &colorMax);
 	if (tile->transparentPixels) {
 		DWORD mid = blend(colorMin, 4, colorMax, 4);
 		DWORD palette[] = { colorMax, mid, colorMin, 0 };
-		int error = computeLMS(tile->rgb, palette, 1);
+		int error = computeLMS((DWORD *) tile->rgb, palette, 1);
 		//if error <= 8, then these colors are good enough
 		if (error <= 8) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
@@ -334,7 +334,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 			tile->palette[3] = 0;
 			tile->mode = 0x4000;
 		} else {
-			createPaletteExact(tile->rgb, 4, 4, palette, 4);
+			createPaletteExact((DWORD *) tile->rgb, 4, 4, palette, 4);
 			//palette[0] = 0;
 			//swap index 3 and 0, 2 and 1
 			tile->palette[0] = ColorConvertToDS(palette[3]);
@@ -347,7 +347,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 		DWORD mid1 = blend(colorMin, 5, colorMax, 3);
 		DWORD mid2 = blend(colorMin, 3, colorMax, 5);
 		DWORD palette[] = { colorMax, mid2, mid1, colorMin };
-		int error = computeLMS(tile->rgb, palette, 0);
+		int error = computeLMS((DWORD *) tile->rgb, palette, 0);
 		if (error <= 8) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
@@ -355,7 +355,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 			tile->palette[3] = 0;
 			tile->mode = 0xC000;
 		} else {
-			createPalette_(tile->rgb, 4, 4, palette, 4);
+			createPalette_((DWORD *) tile->rgb, 4, 4, (DWORD *) palette, 4);
 			palette[0] = 0;
 			//swap index 3 and 0, 2 and 1
 			tile->palette[0] = ColorConvertToDS(palette[3]);
@@ -389,8 +389,8 @@ void addTile(TILEDATA *data, int index, DWORD *px, int *totalIndex) {
 	int duplicateIndex = 0;
 	for (int i = 0; i < index; i++) {
 		TILEDATA *tile = data + i;
-		DWORD *px1 = tile->rgb;
-		DWORD *px2 = data[index].rgb;
+		DWORD *px1 = (DWORD *) tile->rgb;
+		DWORD *px2 = (DWORD *) data[index].rgb;
 		int same = 1;
 		for (int j = 0; j < 16; j++) {
 			if (px1[j] != px2[j]) {
@@ -777,8 +777,8 @@ int convert4x4(CREATEPARAMS *params) {
 	memcpy(params->dest->palette.name, params->pnam, 16);
 	if (params->dest->texels.cmp) free(params->dest->texels.cmp);
 	if (params->dest->texels.texel) free(params->dest->texels.texel);
-	params->dest->texels.cmp = pidx;
-	params->dest->texels.texel = txel;
+	params->dest->texels.cmp = (short *) pidx;
+	params->dest->texels.texel = (char *) txel;
 	params->dest->texels.texImageParam = (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23) | (params->fmt << 26);
 	
 	free(tileData);
@@ -816,7 +816,7 @@ DWORD CALLBACK startConvert(LPVOID lpParam) {
 	return 0;
 }
 
-void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOOL ditherAlpha, int colorEntries, int threshold, WCHAR *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
+void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOOL ditherAlpha, int colorEntries, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
 	CREATEPARAMS *params = (CREATEPARAMS *) calloc(1, sizeof(CREATEPARAMS));
 	_globFinished = 0;
 	params->px = px;

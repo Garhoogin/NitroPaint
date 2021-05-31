@@ -1,4 +1,5 @@
 #pragma once
+#include "color.h"
 
 #define CT_A3I5 1			/*can read and write*/
 #define CT_4COLOR 2			/*can read and write*/
@@ -12,8 +13,8 @@
 #define FORMAT(p)		(((p)>>26)&7)
 #define COL0TRANS(p)	(((p)>>29)&1)
 #define OFFSET(p)		(((p)&0xFFFF)<<3)
-#define TEXS(p)			(8<<(((p)>>20)&7))
-#define TEXT(p)			(8<<(((p)>>23)&7))
+#define TEXW(p)			(8<<(((p)>>20)&7))
+#define TEXH(p)			(8<<(((p)>>23)&7))
 
 typedef struct {
 	int texImageParam;
@@ -24,7 +25,7 @@ typedef struct {
 
 typedef struct {
 	int nColors;
-	short *pal;
+	COLOR *pal;
 	char name[16]; //NOT necessarily null terminated!
 } PALETTE;
 

@@ -311,8 +311,6 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				if (chooseColor->rgbResult != rgb) {
 					chooseColor->rgbResult = rgb;
 
-					WCHAR text[5];
-
 					UpdateValues(hWnd, rgb);
 				}
 			}

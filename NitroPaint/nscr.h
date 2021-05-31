@@ -37,6 +37,8 @@ int nscrIsValidBin(LPBYTE buffer, int size);
 
 int nscrRead(NSCR * nscr, char * file, DWORD dwFileSize);
 
+int nscrReadFile(NSCR *nscr, LPCWSTR path);
+
 DWORD * toBitmap(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int * width, int * height);
 
 void nscrWrite(NSCR *nscr, LPWSTR name);

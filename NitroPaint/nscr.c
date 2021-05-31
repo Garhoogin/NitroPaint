@@ -57,11 +57,11 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 		int fileSize = 4 + *(WORD *) (file + 1);
 		tilesX = file[6];
 		tilesY = file[7];
-		srcData = file + 8;
+		srcData = (WORD *) (file + 8);
 	} else if (type == NSCR_TYPE_HUDSON2) {
 		tilesX = file[2];
 		tilesY = file[3];
-		srcData = file + 4;
+		srcData = (WORD *) (file + 4);
 	}
 
 	nscr->data = malloc(tilesX * tilesY * 2);
@@ -74,7 +74,7 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->header.size = sizeof(*nscr);
 	nscr->header.compression = COMPRESSION_NONE;
 	memcpy(nscr->data, srcData, nscr->dataSize);
-	for (int i = 0; i < nscr->dataSize / 2; i++) {
+	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		WORD w = nscr->data[i];
 		w &= 0x3FF;
 		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
@@ -91,7 +91,7 @@ int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->data = malloc(dwFileSize);
 	memcpy(nscr->data, file, dwFileSize);
 	nscr->nHighestIndex = 0;
-	for (int i = 0; i < nscr->dataSize / 2; i++) {
+	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		WORD w = nscr->data[i];
 		w &= 0x3FF;
 		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
@@ -176,7 +176,7 @@ int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->header.size = sizeof(*nscr);
 	nscr->header.compression = COMPRESSION_NONE;
 	memcpy(nscr->data, file + 0x14, dwDataSize);
-	for (int i = 0; i < dwDataSize / 2; i++) {
+	for (unsigned int i = 0; i < dwDataSize / 2; i++) {
 		WORD w = nscr->data[i];
 		w &= 0x3FF;
 		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
@@ -185,7 +185,7 @@ int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	return 0;
 }
 
-int nscrReadFile(NSCR *nscr, LPWSTR path) {
+int nscrReadFile(NSCR *nscr, LPCWSTR path) {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeHigh;
 	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
@@ -256,8 +256,8 @@ int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL checker, 
 }
 
 int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo) {
-	if (x >= nscr->nWidth / 8) return 1;
-	if (y >= nscr->nHeight / 8) return 1;
+	if (x >= (int) (nscr->nWidth / 8)) return 1;
+	if (y >= (int) (nscr->nHeight / 8)) return 1;
 	int nWidthTiles = nscr->nWidth >> 3;
 	int nHeightTiles = nscr->nHeight >> 3;
 	int iTile = y * nWidthTiles + x;
@@ -367,8 +367,8 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 
 		*(int *) (nscrHeader + 0x8) = fileSize;
 		*(int *) (nrcsHeader + 0x4) = nrcsSize;
-		*(short *) (nrcsHeader + 0x8) = nscr->nWidth;
-		*(short *) (nrcsHeader + 0xA) = nscr->nHeight;
+		*(short *) (nrcsHeader + 0x8) = (short) nscr->nWidth;
+		*(short *) (nrcsHeader + 0xA) = (short) nscr->nHeight;
 		*(int *) (nrcsHeader + 0x10) = dataSize;
 
 		*(int *) (nrcsHeader + 0xC) = nscr->fmt;
@@ -390,14 +390,14 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 			BYTE header[8] = { 0 };
 			*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
 			*(WORD *) (header + 4) = 2 * nTotalTiles;
-			header[6] = nscr->nWidth / 8;
-			header[7] = nscr->nHeight / 8;
+			header[6] = (BYTE) (nscr->nWidth / 8);
+			header[7] = (BYTE) (nscr->nHeight / 8);
 			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
 		} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
 			BYTE header[4] = { 0, 0, 0, 0 };
 			*(WORD *) header = nTotalTiles * 2;
-			header[2] = nscr->nWidth / 8;
-			header[3] = nscr->nHeight / 8;
+			header[2] = (BYTE) (nscr->nWidth / 8);
+			header[3] = (BYTE) (nscr->nHeight / 8);
 			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
 		}
 
@@ -477,7 +477,7 @@ void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalT
 
 int m(int a);
 
-#define diffuse(a,r,g,b,ap) a=m((a&0xFF)+(r))|(m(((a>>8)&0xFF)+(g))<<8)|(m(((a>>16)&0xFF)+(b))<<16)|(m(((a>>24)&0xFF)+(ap))<<24)
+#define diffuse(a,r,g,b,ap) a=m((int)((a&0xFF)+(r)))|(m((int)(((a>>8)&0xFF)+(g)))<<8)|(m((int)(((a>>16)&0xFF)+(b)))<<16)|(m((int)(((a>>24)&0xFF)+(ap)))<<24)
 
 void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, int errorRed, int errorGreen, int errorBlue, int errorAlpha, float amt) {
 	//if ((pixels[i] >> 24) < 127) return;
@@ -571,7 +571,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LP
 			int bestPalette = paletteBase;
 			int bestError = 0x7FFFFFFF;
 			for (int i = paletteBase; i < nPalettes + paletteBase; i++) {
-				int err = getPaletteError(block, 64, palette + i * paletteSize, paletteSize);
+				int err = getPaletteError((RGB *) block, 64, (RGB *) palette + i * paletteSize, paletteSize);
 				if (err < bestError) {
 					bestError = err;
 					bestPalette = i;
@@ -589,9 +589,9 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LP
 				int closest = closestpalette(*(RGB *) &d, (RGB *) (thisPalette + 1), paletteSize - 1, NULL) + 1;
 				if (((d >> 24) & 0xFF) < 127) closest = 0;
 				RGB chosen = *(RGB *) (thisPalette + closest);
-				int errorRed = -(chosen.r - (d & 0xFF));
-				int errorGreen = -(chosen.g - ((d >> 8) & 0xFF));
-				int errorBlue = -(chosen.b - ((d >> 16) & 0xFF));
+				int errorRed = (d & 0xFF) - chosen.r;
+				int errorGreen = ((d >> 8) & 0xFF) - chosen.g;
+				int errorBlue = ((d >> 16) & 0xFF) - chosen.b;
 				paletted[index] = closest; //effectively turns this pixel array into an index array.
 				if (dither && closest) {
 					float amt = 1.0f;

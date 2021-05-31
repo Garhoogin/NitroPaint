@@ -61,11 +61,11 @@ typedef struct NCER_ {
 
 int ncerIsValid(char *buffer, int size);
 
-int ncerIsValidHudson(char *buffer, int size);
+int ncerIsValidHudson(char *buffer, unsigned int size);
 
 int ncerRead(NCER *ncer, char *buffer, int size);
 
-int ncerReadFile(NCER *ncer, LPWSTR path);
+int ncerReadFile(NCER *ncer, LPCWSTR path);
 
 void getObjSize(int shape, int size, int *width, int *height);
 

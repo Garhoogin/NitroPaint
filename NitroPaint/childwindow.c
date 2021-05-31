@@ -15,11 +15,35 @@ VOID SetWindowSize(HWND hWnd, int width, int height) {
 	SetWindowPos(hWnd, HWND_TOP, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_NOMOVE);
 }
 
+VOID UpdateScrollbarVisibility(HWND hWnd) {
+	SCROLLINFO scroll;
+	scroll.fMask = SIF_ALL;
+	ShowScrollBar(hWnd, SB_BOTH, TRUE);
+	GetScrollInfo(hWnd, SB_HORZ, &scroll);
+	if (scroll.nMax < (int) scroll.nPage) {
+		EnableScrollBar(hWnd, SB_HORZ, ESB_DISABLE_BOTH);
+	} else {
+		EnableScrollBar(hWnd, SB_HORZ, ESB_ENABLE_BOTH);
+	}
+	GetScrollInfo(hWnd, SB_VERT, &scroll);
+	if (scroll.nMax < (int) scroll.nPage) {
+		EnableScrollBar(hWnd, SB_VERT, ESB_DISABLE_BOTH);
+	} else {
+		EnableScrollBar(hWnd, SB_VERT, ESB_ENABLE_BOTH);
+	}
+}
+
+HWND getMainWindow(HWND hWnd) {
+	HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+	HWND hWndMain = (HWND) GetWindowLong(hWndMdi, GWL_HWNDPARENT);
+	return hWndMain;
+}
+
 LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 		case WM_CREATE:
 		{
-			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 #if(g_useDarkTheme)
 			SetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
 #endif
@@ -126,7 +150,7 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			info.cbSize = sizeof(info);
 			info.nPage = rcClient.right - rcClient.left + 1;
 			info.fMask = SIF_PAGE;
-			if (info.nPage > frameData->contentWidth) {
+			if ((int) info.nPage > frameData->contentWidth) {
 				info.nPos = 0;
 				info.fMask |= SIF_POS;
 				repaint = TRUE;
@@ -135,7 +159,7 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 			info.fMask = SIF_PAGE;
 			info.nPage = rcClient.bottom - rcClient.top + 1 - frameData->paddingBottom;
-			if (info.nPage > frameData->contentHeight) {
+			if ((int) info.nPage > frameData->contentHeight) {
 				info.nPos = 0;
 				info.fMask |= SIF_POS;
 				repaint = TRUE;

@@ -23,7 +23,7 @@ DWORD reduce(DWORD col) {
 	return r | (g << 8) | (b << 16);
 }
 
-void createBucket(BUCKET * bucket, DWORD * colors, int nColors) {
+void createBucket(BUCKET * bucket, DWORD * colors, unsigned int nColors) {
 	bucket->colors = colors;
 	bucket->nColors = nColors;
 	if (nColors < 2) {
@@ -59,20 +59,21 @@ void createBucket(BUCKET * bucket, DWORD * colors, int nColors) {
 		}
 		//note, this isn't exactly a standard deviation, because I am square rooting the list size.
 		//I do this to strike a balance between detail and smooth colors.
-		bucket->deviation = sqrt((double) devRed / sqrt((double) nColors)) + sqrt((double) devGreen / sqrt((double) nColors)) + sqrt((double) devBlue / sqrt((double) nColors));
+		double sqrtColors = sqrt((double) nColors);
+		bucket->deviation = (float) (sqrt((double) devRed / sqrtColors) + sqrt((double) devGreen / sqrtColors) + sqrt((double) devBlue / sqrtColors));
 
 	}
 	bucket->avg = reduce(bucket->avg);
 }
 
 static int shiftBy = 0;
-int paletteCcomparator(void * d1, void * d2) {
+int paletteCcomparator(const void *d1, const void *d2) {
 	int n1 = ((*(DWORD *) d1) >> shiftBy) & 0xFF;
 	int n2 = ((*(DWORD *) d2) >> shiftBy) & 0xFF;
 	return n1 - n2;
 }
 
-int lightnessCompare(void * d1, void * d2) {
+int lightnessCompare(const void *d1, const void *d2) {
 	DWORD c1 = *(DWORD *) d1;
 	DWORD c2 = *(DWORD *) d2;
 	int y1, u1, v1, y2, u2, v2;
@@ -81,7 +82,7 @@ int lightnessCompare(void * d1, void * d2) {
 	return y1 - y2;
 }
 
-void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, int nColors) {
+void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) {
 	/* if it has alpha 0, just overwrite it to be black. */
 	for (int i = 0; i < width * height; i++) {
 		DWORD d = img[i];
@@ -89,14 +90,14 @@ void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, int nColo
 		img[i] = 0;
 	}
 	/* is this image already compressed enough? */
-	int nUniqueColors = 0, nSearched = 0;
+	unsigned int nUniqueColors = 0, nSearched = 0;
 	for (int i = 0; i < width * height; i++) {
 		DWORD d = img[i];
 		if (d == 0) continue;
 		d &= 0xFFFFFF;
 		int found = 0;
-		for (int j = 0; j < nUniqueColors; j++) {
-			if (d == pal[j] & 0xFFFFFF) {
+		for (unsigned int j = 0; j < nUniqueColors; j++) {
+			if (d == (pal[j] & 0xFFFFFF)) {
 				found = 1;
 				break;
 			}
@@ -109,7 +110,7 @@ void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, int nColo
 		nSearched++;
 	}
 	if (nSearched == width * height) {
-		for (int i = 0; i < nColors - nUniqueColors; i++) {
+		for (unsigned int i = 0; i < nColors - nUniqueColors; i++) {
 			pal[i + nUniqueColors] = 0;
 		}
 		qsort(pal, nColors, 4, lightnessCompare);
@@ -210,7 +211,7 @@ void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, int nColo
 		pal[i] = buckets[i].avg;
 	}
 	if (nBuckets < nColors) {
-		for (int i = 0; i < nColors - nBuckets; i++) {
+		for (unsigned i = 0; i < nColors - nBuckets; i++) {
 			pal[i + nBuckets] = 0;
 		}
 	}
@@ -253,7 +254,7 @@ int m(int a) {
 	return a < 0? 0: (a > 255? 255: a);
 }
 
-#define diffuse(a,r,g,b,ap) a=m((a&0xFF)+(r))|(m(((a>>8)&0xFF)+(g))<<8)|(m(((a>>16)&0xFF)+(b))<<16)|(m(((a>>24)&0xFF)+(ap))<<24)
+#define diffuse(a,r,g,b,ap) a=m((int)((a&0xFF)+(r)))|(m((int)(((a>>8)&0xFF)+(g)))<<8)|(m((int)(((a>>16)&0xFF)+(b)))<<16)|(m((int)(((a>>24)&0xFF)+(ap)))<<24)
 
 void doDiffuse(int i, int width, int height, unsigned int * pixels, int errorRed, int errorGreen, int errorBlue, int errorAlpha, float amt) {
 	//if ((pixels[i] >> 24) < 127) return;
@@ -360,7 +361,7 @@ int computeMultiPaletteError(int *closests, DWORD *blocks, int tilesX, int tiles
 		int x = i % tilesX;
 		int y = i / tilesX;
 		DWORD *block = blocks + 64 * (x + y * tilesX);
-		error += getPaletteError(block, 64, pals + closests[i] * paletteSize, paletteSize);
+		error += getPaletteError((RGB *) block, 64, (RGB *) pals + closests[i] * paletteSize, paletteSize);
 	}
 	return error;
 }

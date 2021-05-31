@@ -22,7 +22,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 
 	int previewPalette = -1;
 	HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-	NITROPAINTSTRUCT *nitroPaintStruct = GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 	int nRowsPerPalette = (1 << data->nclr.nBits) / 16;
 	if (nitroPaintStruct->hWndNcgrViewer) {
 		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLong(nitroPaintStruct->hWndNcgrViewer, 0);
@@ -107,13 +107,13 @@ int lightness(COLOR col) {
 	return (1063 * r + 3576 * g + 361 * b + 2500) / 5000;
 }
 
-int colorSortLightness(PVOID p1, PVOID p2) {
+int colorSortLightness(LPCVOID p1, LPCVOID p2) {
 	COLOR c1 = *(COLOR *) p1;
 	COLOR c2 = *(COLOR *) p2;
 	return lightness(c1) - lightness(c2);
 }
 
-int colorSortHue(PVOID p1, PVOID p2) {
+int colorSortHue(LPCVOID p1, LPCVOID p2) {
 	COLOR c1 = *(COLOR *) p1;
 	COLOR c2 = *(COLOR *) p2;
 
@@ -324,7 +324,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						HWND hWndMain = getMainWindow(hWnd);
 						CHOOSECOLOR cc = { 0 };
 						cc.lStructSize = sizeof(cc);
-						cc.hInstance = (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE);
+						cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition?
 						cc.hwndOwner = hWndMain;
 						cc.rgbResult = ColorConvertFromDS(data->nclr.colors[index]);
 						cc.lpCustColors = data->tmpCust;
@@ -586,7 +586,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						int palette = index >> data->nclr.nBits;
 						
 						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-						NITROPAINTSTRUCT *nitroPaintStruct = GetWindowLongPtr(hWndMain, 0);
+						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 						HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
 						if (hWndNcgrViewer) {
@@ -637,7 +637,7 @@ VOID RegisterNclrViewerClass(VOID) {
 	RegisterClassEx(&wcex);
 }
 
-HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {
+HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
 		RECT rc = { 0 };
 		rc.right = width;

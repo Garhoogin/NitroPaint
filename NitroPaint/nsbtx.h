@@ -51,6 +51,6 @@ typedef struct NSBTX_ {
 
 int nsbtxRead(NSBTX *nsbtx, char *buffer, int size);
 
-int nsbtxReadFile(NSBTX *nsbtx, LPWSTR path);
+int nsbtxReadFile(NSBTX *nsbtx, LPCWSTR path);
 
 void nsbtxSaveFile(LPWSTR filename, NSBTX *nsbtx);

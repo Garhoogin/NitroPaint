@@ -29,10 +29,10 @@ HBITMAP CreateTileBitmap2(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX
 	LPDWORD lpOutBits = (LPDWORD) calloc(outWidth * outHeight, 4);
 
 	//next, iterate over each tile.
-	for (int tileY = 0; tileY < tilesY; tileY++) {
-		for (int tileX = 0; tileX < tilesX; tileX++) {
+	for (unsigned int tileY = 0; tileY < tilesY; tileY++) {
+		for (unsigned int tileX = 0; tileX < tilesX; tileX++) {
 			//for this tile, create a 64-dword array to write the tile into.
-			volatile DWORD block[64];
+			DWORD block[64];
 			unsigned imgX = tileX * tileWidth;
 			unsigned imgY = tileY * tileWidth;
 			unsigned offs = imgX + imgY * nWidth;
@@ -40,7 +40,7 @@ HBITMAP CreateTileBitmap2(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX
 			//copy to block. This could be achieved by some cool rep movs-type instructions.
 			
 			unsigned stride = 4 * tileWidth;
-			for (int i = 0; i < tileWidth; i++) {
+			for (unsigned int i = 0; i < tileWidth; i++) {
 				memcpy(block + tileWidth * i, lpBits + offs + nWidth * i, stride);
 			}
 
@@ -60,8 +60,8 @@ HBITMAP CreateTileBitmap2(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX
 			}
 
 			//next, fill out each pixel in the output image.
-			for (int destY = 0; destY < tileSize; destY++) {
-				for (int destX = 0; destX < tileSize; destX++) {
+			for (unsigned int destY = 0; destY < tileSize; destY++) {
+				for (unsigned int destX = 0; destX < tileSize; destX++) {
 					//first, find destination point.
 					int x = destX + (tileX * scale * tileWidth) + tileX + 1;
 					int y = destY + (tileY * scale * tileWidth) + tileY + 1;
@@ -112,7 +112,7 @@ HBITMAP CreateTileBitmap2(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX
 	*pOutHeight = outHeight;
 
 	if (bReverseColors) {
-		for (int i = 0; i < outWidth * outHeight; i++) {
+		for (unsigned int i = 0; i < outWidth * outHeight; i++) {
 			DWORD d = lpOutBits[i];
 			d = (d & 0xFF00FF00) | ((d & 0xFF0000) >> 16) | ((d & 0xFF) << 16);
 			lpOutBits[i] = d;

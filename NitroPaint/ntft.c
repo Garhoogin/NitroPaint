@@ -10,7 +10,7 @@ int ntftRead(NTFT *ntft, char *buffer, int size) {
 	if (lz77IsCompressed(buffer, size)) {
 		int uncompressedSize;
 		char *bf = lz77decompress(buffer, size, &uncompressedSize);
-		int r = nclrRead(ntft, bf, uncompressedSize);
+		int r = ntftRead(ntft, bf, uncompressedSize);
 		free(bf);
 		ntft->header.compression = COMPRESSION_LZ77;
 		return r;

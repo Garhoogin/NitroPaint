@@ -476,7 +476,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							for (int y = tileY; y < tileY + tilesY; y++) {
 								for (int x = tileX; x < tileX + tilesX; x++) {
 									WORD d = (clip[9 + i * 4] & 0xF) | ((clip[9 + i * 4 + 1] & 0xF) << 4) | ((clip[9 + i * 4 + 2] & 0xF) << 8) | ((clip[9 + i * 4 + 3] & 0xF) << 12);
-									if (x < data->nscr.nWidth / 8 && y < data->nscr.nHeight / 8) {
+									if (x < (int) (data->nscr.nWidth / 8) && y < (int) (data->nscr.nHeight / 8)) {
 										if(x >= minX && x <= maxX && y >= minY && y <= maxY) data->nscr.data[x + y * (data->nscr.nHeight / 8)] = d;
 									}
 
@@ -753,7 +753,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				int leastError = 0x7FFFFFFF;
 				int leastIndex = 0;
 				for (int i = 0; i < nPalettes; i++) {
-					int err = getPaletteError((RGB*) block, 64, pals + i * paletteSize, paletteSize);
+					int err = getPaletteError((RGB*) block, 64, (RGB *) pals + i * paletteSize, paletteSize);
 					if (err < leastError) {
 						leastError = err;
 						leastIndex = i;
@@ -776,7 +776,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				for (int i = 0; i < 64; i++) {
 					if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
 					else {
-						int index = 1 + closestpalette(*(RGB *) &block[i], pals + leastIndex * paletteSize + 1, paletteSize - 1, NULL);
+						int index = 1 + closestpalette(*(RGB *) &block[i], (RGB *) pals + leastIndex * paletteSize + 1, paletteSize - 1, NULL);
 						if (diffuse) {
 							RGB original = *(RGB *) &block[i];
 							RGB closest = ((RGB *) (pals + leastIndex * paletteSize))[index];
@@ -873,12 +873,10 @@ DWORD WINAPI threadedNscrImportBitmapInternal(LPVOID lpParameter) {
 
 void threadedNscrImportBitmap(PROGRESSDATA *param) {
 	CreateThread(NULL, 0, threadedNscrImportBitmapInternal, param, 0, NULL);
-	//nscrImportBitmap(nclr, ncgr, nscr, px, width, height, nPalettes, paletteNumber, newPalettes, \
-					 newCharacters, diffuse, maxTilesX, maxTilesY, nscrTileX, nscrTileY);
 }
 
 LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NSCRBITMAPIMPORTDATA *data = GetWindowLongPtr(hWnd, 0);
+	NSCRBITMAPIMPORTDATA *data = (NSCRBITMAPIMPORTDATA *) GetWindowLongPtr(hWnd, 0);
 	if (data == NULL) {
 		data = calloc(1, sizeof(NSCRBITMAPIMPORTDATA));
 		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
@@ -923,7 +921,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SendMessage(data->hWndNewCharactersCheckbox, BM_SETCHECK, 1, 0);
 
 			SetWindowSize(hWnd, 355, 204);
-			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			break;
 		}
 		case NV_INITIMPORTDIALOG:
@@ -1181,8 +1179,8 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 				if (x < 0) x = 0;
 				if (y < 0) y = 0;
-				if (x >= data->nscr.nWidth / 8) x = data->nscr.nWidth / 8 - 1;
-				if (y >= data->nscr.nHeight / 8) y = data->nscr.nHeight / 8 - 1;
+				if (x >= (int) (data->nscr.nWidth / 8)) x = data->nscr.nWidth / 8 - 1;
+				if (y >= (int) (data->nscr.nHeight / 8)) y = data->nscr.nHeight / 8 - 1;
 
 				if (x != data->hoverX || y != data->hoverY) {
 					if (data->mouseDown && data->selStartX != -1 && data->selStartY != -1) {
@@ -1346,7 +1344,7 @@ VOID RegisterNscrViewerClass(VOID) {
 	RegisterNscrPreviewClass();
 }
 
-HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {
+HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	NSCR nscr;
 	int n = nscrReadFile(&nscr, path);
 	if (n) {

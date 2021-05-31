@@ -14,6 +14,10 @@ typedef struct {
 
 BOOL __stdcall SetFontProc(HWND hWnd, LPARAM lParam);
 
+VOID UpdateScrollbarVisibility(HWND hWnd);
+
+HWND getMainWindow(HWND hWnd);
+
 LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 VOID SetWindowSize(HWND hWnd, int width, int height);

@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 DWORD __stdcall GetModuleBaseRoutine(HANDLE hProcess, DWORD address) {
-	return GetModuleHandle(NULL);
+	return (DWORD) GetModuleHandle(NULL);
 }
 
 PVOID __stdcall FunctionTableAccessRoutine(HANDLE hProcess, DWORD base) {
@@ -27,7 +27,7 @@ LPWSTR GetModuleFromAddress(DWORD address, PVOID *ModuleBase) {
 		CurrentModule = CurrentModule->Flink;
 		if (CurrentModule == ModuleList) break;
 
-		ULONG_PTR Base = Entry->DllBase;
+		ULONG_PTR Base = (ULONG_PTR) Entry->DllBase;
 		if (Base > LargestBaseAddress && Base < address) {
 			LargestBaseAddress = Base;
 			ModuleName = Entry->FullDllName.Buffer;
@@ -66,13 +66,13 @@ void printStackTrace(CONTEXT *context, EXCEPTION_RECORD *record) {
 	context->ContextFlags = CONTEXT_ALL;
 
 	frame.AddrPC.Offset = context->Eip;
-	frame.AddrPC.Segment = context->SegCs;
+	frame.AddrPC.Segment = (WORD) context->SegCs;
 	frame.AddrPC.Mode = AddrModeFlat;
 	frame.AddrFrame.Offset = context->Ebp;
-	frame.AddrFrame.Segment = context->SegSs;
+	frame.AddrFrame.Segment = (WORD) context->SegSs;
 	frame.AddrFrame.Mode = AddrModeFlat;
 	frame.AddrStack.Offset = context->Esp;
-	frame.AddrStack.Segment = context->SegSs;
+	frame.AddrStack.Segment = (WORD) context->SegSs;
 	frame.AddrStack.Mode = AddrModeFlat;
 
 	LPSTR str = calloc(16384, 1);
@@ -99,7 +99,7 @@ void printStackTrace(CONTEXT *context, EXCEPTION_RECORD *record) {
 			strOffset += n;
 		} else {
 			ULONG_PTR base = 0;
-			LPWSTR dll = GetModuleFromAddress(frame.AddrPC.Offset, &base);
+			LPWSTR dll = GetModuleFromAddress(frame.AddrPC.Offset, (PVOID) &base);
 			n = sprintf(str + strOffset, "%ls+0x%X\n", dll, frame.AddrPC.Offset - base);
 			strOffset += n;
 		}

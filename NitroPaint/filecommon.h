@@ -2,7 +2,7 @@
 #include "compression.h"
 #include <Windows.h>
 
-#define FILE_TYPE_UNKNOWN    0
+#define FILE_TYPE_INVALID    0
 #define FILE_TYPE_PALETTE    1
 #define FILE_TYPE_CHARACTER  2
 #define FILE_TYPE_SCREEN     3

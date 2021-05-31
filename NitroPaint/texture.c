@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include <stdio.h>
 #include "texture.h"
 
 int getTexelSize(int width, int height, int texImageParam) {
@@ -22,10 +23,10 @@ void getrgb(unsigned short n, RGB * ret){
 	n >>= 5;
 	int b = n & 0x1F;
 	n >>= 5;
-	ret->r = (short) (r * 255 / 31);
-	ret->g = (short) (g * 255 / 31);
-	ret->b = (short) (b * 255 / 31);
-	ret->a = 255 * n;
+	ret->r = (BYTE) (r * 255 / 31);
+	ret->g = (BYTE) (g * 255 / 31);
+	ret->b = (BYTE) (b * 255 / 31);
+	ret->a = (BYTE) (255 * n);
 }
 
 int max16Len(char *str) {
@@ -46,8 +47,8 @@ char *stringFromFormat(int fmt) {
 void convertTexture(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 	int format = FORMAT(texels->texImageParam);
 	int c0xp = COL0TRANS(texels->texImageParam);
-	int width = TEXS(texels->texImageParam);
-	int height = TEXT(texels->texImageParam);
+	int width = TEXW(texels->texImageParam);
+	int height = TEXH(texels->texImageParam);
 	int nPixels = width * height;
 	int txelSize = getTexelSize(width, height, texels->texImageParam);
 	switch (format) {
@@ -249,8 +250,8 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwWritten;
 
-	int width = TEXS(texels->texImageParam);
-	int height = TEXT(texels->texImageParam);
+	int width = TEXW(texels->texImageParam);
+	int height = TEXH(texels->texImageParam);
 	DWORD *pixels = (DWORD *) calloc(width * height, 4);
 	convertTexture(pixels, texels, palette, 1);
 
@@ -448,11 +449,11 @@ int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 	}
 
 	if (frmt != CT_DIRECT) {
-		palette->pal = pcol;
+		palette->pal = (short *) pcol;
 		palette->nColors = nColors;
 		memcpy(palette->name, pnam, 16);
 	}
-	texels->cmp = pidx;
+	texels->cmp = (short *) pidx;
 	texels->texel = txel;
 	memcpy(texels->name, pnam, 16);
 	int texImageParam = 0;

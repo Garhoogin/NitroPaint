@@ -123,7 +123,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						}
 					}
 				} else if (hWndControl == data->hWndConvert) {
-					HWND hWndMain = GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 					data->hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
 														   WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME, 
 														   CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
@@ -220,7 +220,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 }
 
 LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(GetWindowLong(hWnd, GWL_HWNDPARENT), 0);
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), 0);
 	int contentWidth = 0, contentHeight = 0;
 	if (data) {
 		contentWidth = getDimension2(data->width / 4, data->showBorders, data->scale, 4);
@@ -339,7 +339,7 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hoverY = hoverY;
 			data->hoverIndex = hoverIndex;
 			if (data->hoverIndex != oldHovered) {
-				HWND hWndViewer = GetWindowLong(hWnd, GWL_HWNDPARENT);
+				HWND hWndViewer = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 				HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWndViewer, GWL_HWNDPARENT), GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLong(hWndMain, 0);
 				InvalidateRect(hWndViewer, NULL, FALSE);
@@ -440,7 +440,8 @@ int guessFormat(DWORD *px, int nWidth, int nHeight) {
 }
 void createPaletteName(WCHAR *buffer, WCHAR *file) {
 	//find the last \ or /
-	int index = -1, i;
+	int index = -1;
+	unsigned int i;
 	for (i = 0; i < wcslen(file); i++) {
 		if (file[i] == L'\\' || file[i] == L'/') index = i;
 	}
@@ -468,7 +469,7 @@ float mylog2(float d) { //UGLY!
 #define log2 mylog2
 
 int chooseColorCount(int bWidth, int bHeight) {
-	int colors = (int) (250.0f * (0.5f * log2(bWidth * bHeight) - 5.0f) + 0.5f);
+	int colors = (int) (250.0f * (0.5f * log2((float) bWidth * bHeight) - 5.0f) + 0.5f);
 	if (sqrt(bWidth * bHeight) < 83.0f) {
 		colors = (int) (4.345466990625f * sqrt(bWidth * bHeight) - 16.5098578365f);
 	}
@@ -572,7 +573,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			CreateWindow(L"STATIC", L"4x4 color entries:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"4x4 optimization:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 100, 22, hWnd, NULL, NULL, NULL);
 
-			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			SetWindowSize(hWnd, 230, 231);
 			break;
 		}
@@ -600,7 +601,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					len++;
 				}
 				bf[len] = L'\0';
-				SendMessage(data->hWndFormat, CB_ADDSTRING, len, bf);
+				SendMessage(data->hWndFormat, CB_ADDSTRING, len, (LPARAM) bf);
 			}
 
 			int format = guessFormat(data->px, data->width, data->height);
@@ -618,7 +619,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			SendMessage(data->hWndPaletteName, WM_SETTEXT, wcslen(pname), (LPARAM) pname);
 
 			updateConvertDialog(data);
-			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			break;
 		}
 		case WM_COMMAND:
@@ -680,7 +681,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-HWND CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -689,7 +690,7 @@ HWND CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			SendMessage(hWndProgress, PBM_DELTAPOS, 1, 0);
 			SetWindowLong(hWnd, 0, (LONG) hWndProgress);
 			SetWindowSize(hWnd, 420, 74);
-			EnumChildWindows(hWnd, SetFontProc, GetStockObject(DEFAULT_GUI_FONT));
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 
 			SetTimer(hWnd, 1, 16, NULL);
 			break;
@@ -805,7 +806,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					HWND hWndMain = getMainWindow(hWnd);
 					CHOOSECOLOR cc = { 0 };
 					cc.lStructSize = sizeof(cc);
-					cc.hInstance = (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE);
+					cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition
 					cc.hwndOwner = hWndMain;
 					cc.rgbResult = ex;
 					cc.lpCustColors = data->data->tmpCust;
@@ -819,7 +820,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 						convertTexture(data->data->px, &data->data->textureData.texels, &data->data->textureData.palette, 0);
 						int param = data->data->textureData.texels.texImageParam;
-						int width = TEXS(param);
+						int width = TEXW(param);
 						int height = 8 << ((param >> 23) & 7);
 						//convertTexture outputs red and blue in the opposite order, so flip them here.
 						for (int i = 0; i < width * height; i++) {

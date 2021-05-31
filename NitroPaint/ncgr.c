@@ -240,7 +240,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 
 }
 
-int ncgrReadFile(NCGR *ncgr, LPWSTR path) {
+int ncgrReadFile(NCGR *ncgr, LPCWSTR path) {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeHigh;
 	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
@@ -415,9 +415,9 @@ void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int fmt) {
 	//_asm int 3
 	BYTE * b = (BYTE *) HeapAlloc(GetProcessHeap(), 0, nBlocks * nBlockSize);
 	for (int i = 0; i < nBlocks * nBlockSize; i++) {
-		if(nBits == 8) b[i] = blocks[i];
+		if(nBits == 8) b[i] = (BYTE) blocks[i];
 		else {
-			b[i] = blocks[i * 2] | (blocks[i * 2 + 1] << 4);
+			b[i] = (BYTE) (blocks[i * 2] | (blocks[i * 2 + 1] << 4));
 		}
 	}
 

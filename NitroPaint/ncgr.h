@@ -20,13 +20,15 @@ typedef struct NCGR_{
 	BYTE **tiles;
 } NCGR;
 
+int calculateWidth(int nTiles);
+
 int ncgrIsValidHudson(LPBYTE buffer, int size);
 
 int ncgrIsValidBin(LPBYTE buffer, int size);
 
 int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker);
 
-int ncgrReadFile(NCGR *ncgr, LPWSTR path);
+int ncgrReadFile(NCGR *ncgr, LPCWSTR path);
 
 void ncgrWrite(NCGR * ncgr, LPWSTR name);
 
