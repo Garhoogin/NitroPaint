@@ -29,7 +29,7 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 int _fltused;
 
-long _ftol(float f);
+extern long _ftol(double d);
 
 long _ftol2_sse(float f) { //ugly hack
 	return _ftol(f);
