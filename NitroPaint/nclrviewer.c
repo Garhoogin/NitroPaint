@@ -480,13 +480,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								color = (color << 4) | (palString[strOffset] & 0xF);
 								strOffset++;
 							}
-							int r = color & 0xFF;
-							int g = (color >> 8) & 0xFF;
-							int b = (color >> 16) & 0xFF;
-							r = r * 31 / 255;
-							g = g * 31 / 255;
-							b = b * 31 / 255;
-							data->nclr.colors[location] = r | (g << 5) | (b << 10);
+							data->nclr.colors[location] = ColorConvertToDS(color);
 						}
 						GlobalUnlock(hString);
 						InvalidateRect(hWnd, NULL, FALSE);
