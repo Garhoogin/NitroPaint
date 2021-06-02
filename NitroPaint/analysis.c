@@ -154,6 +154,14 @@ void getPrincipalComponent(DWORD *colors, int nColors, float *vec) {
 
 	//find eigenvector corresponding to the greatest eigenvalue
 	findGreatestEigenvectorSymmetric3x3(cov, vec);
+
+	//make the vector unit length
+	float length = (float) sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
+	if (length > 0.0f) {
+		vec[0] /= length;
+		vec[1] /= length;
+		vec[2] /= length;
+	}
 }
 
 void getColorEndPoints(DWORD *colors, int nColors, DWORD *points) {
