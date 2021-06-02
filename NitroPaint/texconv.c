@@ -1,6 +1,7 @@
 #include "palette.h"
 #include "color.h"
 #include "texconv.h"
+#include "analysis.h"
 
 #include <math.h>
 
@@ -273,21 +274,11 @@ void getColorBounds(DWORD *px, int nPx, DWORD *colorMin, DWORD *colorMax) {
 		return;
 	}
 
-	int minR = 0xFF, minG = 0xFF, minB = 0xFF;
-	int maxR = 0, maxG = 0, maxB = 0;
-	for (int i = 0; i < nPx; i++) {
-		DWORD c = px[i];
-		if ((c >> 24) < 0x80) continue;
-		int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
-		if (r > maxR) maxR = r;
-		if (r < minR) minR = r;
-		if (g > maxG) maxG = g;
-		if (g < minG) minG = g;
-		if (b > maxB) maxB = b;
-		if (b < minB) minB = b;
-	}
-	*colorMin = minR | (minG << 8) | (minB << 16);
-	*colorMax = maxR | (maxG << 8) | (maxB << 16);
+	DWORD cols[2];
+	getColorEndPoints(px, nPx, cols);
+	*colorMin = cols[0];
+	*colorMax = cols[1];
+
 }
 
 int computeColorDifference(DWORD c1, DWORD c2) {
@@ -326,8 +317,8 @@ void choosePaletteAndMode(TILEDATA *tile) {
 		DWORD mid = blend(colorMin, 4, colorMax, 4);
 		DWORD palette[] = { colorMax, mid, colorMin, 0 };
 		int error = computeLMS((DWORD *) tile->rgb, palette, 1);
-		//if error <= 8, then these colors are good enough
-		if (error <= 8) {
+		//if error <= 24, then these colors are good enough
+		if (error <= 24) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
@@ -348,7 +339,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 		DWORD mid2 = blend(colorMin, 3, colorMax, 5);
 		DWORD palette[] = { colorMax, mid2, mid1, colorMin };
 		int error = computeLMS((DWORD *) tile->rgb, palette, 0);
-		if (error <= 8) {
+		if (error <= 24) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;

@@ -1,4 +1,5 @@
 #include "palette.h"
+#include "analysis.h"
 #include <math.h>
 
 #define BIGINT unsigned long long
