@@ -346,8 +346,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 			tile->palette[3] = 0;
 			tile->mode = 0xC000;
 		} else {
-			createPalette_((DWORD *) tile->rgb, 4, 4, (DWORD *) palette, 4);
-			palette[0] = 0;
+			createPaletteExact((DWORD *) tile->rgb, 4, 4, (DWORD *) palette, 4);
 			//swap index 3 and 0, 2 and 1
 			tile->palette[0] = ColorConvertToDS(palette[3]);
 			tile->palette[1] = ColorConvertToDS(palette[2]);
