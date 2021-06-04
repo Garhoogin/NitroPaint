@@ -196,6 +196,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		case FILE_TYPE_NSBTX:
 			CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
 			break;
+		case FILE_TYPE_TEXTURE:
+			CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
 		default:
 			break;
 	}
@@ -414,9 +417,27 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						break;
 					}
 					case ID_NEW_NEWTEXTURE:
+					case ID_OPEN_OPENTEXTURE:
 					{
-						LPWSTR path = openFileDialog(hWnd, L"Open Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
+						LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
+						if (menuID == ID_OPEN_OPENTEXTURE) filter = L"Nitro TGA Files (*.tga)\0*.tga\0All Files\0*.*\0";
+
+						LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
 						if (path == NULL) break;
+						if (menuID == ID_OPEN_OPENTEXTURE) {
+							TEXELS texels = { 0 };
+							PALETTE palette = { 0 };
+							int s = nitroTgaRead(path, &texels, &palette);
+							if (texels.texel) free(texels.texel);
+							if (texels.cmp) free(texels.cmp);
+							if (palette.pal) free(palette.pal);
+
+							if (s) {
+								MessageBox(hWnd, L"Invalid Nitro TGA file.", L"Invalid Nitro TGA", MB_ICONERROR);
+								free(path);
+								break;
+							}
+						}
 
 						HWND h = CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 						free(path);

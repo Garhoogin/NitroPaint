@@ -5,6 +5,7 @@
 #include "ncer.h"
 #include "nsbtx.h"
 #include "ntft.h"
+#include "texture.h"
 
 int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;
@@ -61,7 +62,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 	//no matches?
 	if (type == FILE_TYPE_INVALID) {
 		//test other formats
-		if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+		if (nitrotgaIsValid(buffer, bufferSize)) type = FILE_TYPE_TEXTURE;
+		else if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 		else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 		else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 		else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;

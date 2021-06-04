@@ -18,6 +18,24 @@ extern HICON g_appIcon;
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
+void UpdatePaletteLabel(HWND hWnd) {
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
+
+	WCHAR bf[32];
+	int len;
+	if (data->textureData.palette.nColors) {
+		len = wsprintfW(bf, L"Palette: %d colors", data->textureData.palette.nColors);
+		data->hasPalette = TRUE;
+	} else {
+		len = wsprintfW(bf, L"No palette");
+		data->hasPalette = FALSE;
+	}
+	SendMessage(data->hWndPaletteLabel, WM_SETTEXT, len, (LPARAM) bf);
+
+	len = wsprintfW(bf, L"Format: %S", stringFromFormat(FORMAT(data->textureData.texels.texImageParam)));
+	SendMessage(data->hWndFormatLabel, WM_SETTEXT, len, (LPARAM) bf);
+}
+
 LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 	if (data == NULL) {
@@ -73,6 +91,21 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hasPalette = FALSE;
 			data->frameData.contentWidth = data->width;
 			data->frameData.contentHeight = data->height;
+
+			//check: is it a Nitro TGA?
+			if (!nitroTgaRead(data->szInitialFile, &data->textureData.texels, &data->textureData.palette)) {
+				memcpy(data->szCurrentFile, data->szInitialFile, 2 + 2 * wcslen(data->szInitialFile));
+				data->format = FORMAT(data->textureData.texels.texImageParam);
+				data->hasPalette = (data->format != CT_DIRECT && data->format != 0);
+				data->isNitro = 1;
+				convertTexture(data->px, &data->textureData.texels, &data->textureData.palette, 0);
+				for (int i = 0; i < data->width * data->height; i++) {
+					DWORD col = data->px[i];
+					data->px[i] = REVERSE(col);
+				}
+				UpdatePaletteLabel(hWnd);
+			}
+
 			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
 			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 			break;
@@ -527,24 +560,6 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	setStyle(data->hWndPaletteName, disables[3], WS_DISABLED);
 	SetFocus(data->hWndConvertDialog);
 	InvalidateRect(data->hWndConvertDialog, NULL, FALSE);
-}
-
-void UpdatePaletteLabel(HWND hWnd) {
-	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
-
-	WCHAR bf[32];
-	int len;
-	if (data->textureData.palette.nColors) {
-		len = wsprintfW(bf, L"Palette: %d colors", data->textureData.palette.nColors);
-		data->hasPalette = TRUE;
-	} else {
-		len = wsprintfW(bf, L"No palette");
-		data->hasPalette = FALSE;
-	}
-	SendMessage(data->hWndPaletteLabel, WM_SETTEXT, len, (LPARAM) bf);
-
-	len = wsprintfW(bf, L"Format: %S", stringFromFormat(FORMAT(data->textureData.texels.texImageParam)));
-	SendMessage(data->hWndFormatLabel, WM_SETTEXT, len, (LPARAM) bf);
 }
 
 void conversionCallback(void *p) {

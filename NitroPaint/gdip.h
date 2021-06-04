@@ -25,6 +25,8 @@ typedef struct {
 
 #pragma comment(lib, "gdiplus.lib")
 
+int isTGA(BYTE *buffer, DWORD dwSize);
+
 DWORD * gdipReadImage(LPWSTR lpszFileName, int * pWidth, int * pHeight);
 
 void writeImage(DWORD * pixels, int width, int height, LPWSTR lpszFileName);
