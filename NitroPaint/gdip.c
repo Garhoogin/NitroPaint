@@ -74,7 +74,6 @@ DWORD *readTga(BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight) {
 
 		free(line);
 	}
-	free(buffer - dataOffset);
 
 	return pixels;
 }
