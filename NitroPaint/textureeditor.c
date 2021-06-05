@@ -985,7 +985,16 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 							data->data->textureData.palette.pal[location] = ColorConvertToDS(color);
 						}
 						GlobalUnlock(hString);
+
+						TEXTURE *texture = &data->data->textureData;
+						convertTexture(data->data->px, &texture->texels, &texture->palette, 0);
+						for (int i = 0; i < data->data->width * data->data->height; i++) {
+							DWORD col = data->data->px[i];
+							data->data->px[i] = REVERSE(col);
+						}
+						
 						InvalidateRect(hWnd, NULL, FALSE);
+						InvalidateRect(data->data->hWnd, NULL, FALSE);
 						break;
 					}
 					case ID_PALETTEMENU_COPY:
