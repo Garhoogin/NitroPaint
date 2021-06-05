@@ -736,6 +736,10 @@ LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 typedef struct {
 	FRAMEDATA frameData;
 	TEXTUREEDITORDATA *data;
+	int hoverX;
+	int hoverY;
+	int hoverIndex;
+	int contextHoverIndex;
 }TEXTUREPALETTEEDITORDATA;
 
 LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -750,6 +754,9 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->data = (TEXTUREEDITORDATA *) lParam;
 			data->frameData.contentWidth = 256;
 			data->frameData.contentHeight = ((data->data->textureData.palette.nColors + 15) / 16) * 16;
+			data->hoverX = -1;
+			data->hoverY = -1;
+			data->hoverIndex = -1;
 
 			SCROLLINFO info;
 			info.cbSize = sizeof(info);
@@ -783,6 +790,18 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			PAINTSTRUCT ps;
 			HDC hDC = BeginPaint(hWnd, &ps);
 
+			HDC hOffDC = CreateCompatibleDC(hDC);
+			HBITMAP hBitmap = CreateCompatibleBitmap(hDC, rcClient.right, rcClient.bottom);
+			SelectObject(hOffDC, hBitmap);
+			HBRUSH hBackground = GetSysColorBrush(GetClassLong(hWnd, GCL_HBRBACKGROUND) - 1);
+			SelectObject(hOffDC, hBackground);
+			HPEN hBlackPen = SelectObject(hOffDC, GetStockObject(NULL_PEN));
+			Rectangle(hOffDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
+			SelectObject(hOffDC, hBlackPen);
+
+			HPEN hRowPen = CreatePen(PS_SOLID, 1, RGB(127, 127, 127));
+			HPEN hWhitePen = GetStockObject(WHITE_PEN);
+
 			COLOR *palette = data->data->textureData.palette.pal;
 			int nColors = data->data->textureData.palette.nColors;
 			for (int i = 0; i < nColors; i++) {
@@ -790,16 +809,92 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 				if (y * 16 + 16 - vert.nPos >= 0 && y * 16 - vert.nPos < rcClient.bottom) {
 					HBRUSH hbr = CreateSolidBrush(ColorConvertFromDS(palette[i]));
-					SelectObject(hDC, hbr);
-					Rectangle(hDC, x * 16, y * 16 - vert.nPos, x * 16 + 16, y * 16 + 16 - vert.nPos);
+					SelectObject(hOffDC, hbr);
+					if (x + y * 16 == data->hoverIndex) SelectObject(hOffDC, hWhitePen);
+					else if (y == data->hoverY) SelectObject(hOffDC, hRowPen);
+					else SelectObject(hOffDC, hBlackPen);
+					Rectangle(hOffDC, x * 16, y * 16 - vert.nPos, x * 16 + 16, y * 16 + 16 - vert.nPos);
 					DeleteObject(hbr);
 				}
 			}
 
+			BitBlt(hDC, 0, 0, rcClient.right, rcClient.bottom, hOffDC, 0, 0, SRCCOPY);
 			EndPaint(hWnd, &ps);
+
+			DeleteObject(hOffDC);
+			DeleteObject(hBitmap);
+			DeleteObject(hBackground);
+			DeleteObject(hRowPen);
+			break;
+		}
+		case WM_ERASEBKGND:
+		{
+			return 1;
+		}
+		case WM_MOUSEMOVE:
+		case WM_NCMOUSEMOVE:
+		{
+			POINT mousePos;
+			GetCursorPos(&mousePos);
+			ScreenToClient(hWnd, &mousePos);
+
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+			mousePos.x += horiz.nPos;
+			mousePos.y += vert.nPos;
+
+			TRACKMOUSEEVENT evt;
+			evt.cbSize = sizeof(evt);
+			evt.hwndTrack = hWnd;
+			evt.dwHoverTime = 0;
+			evt.dwFlags = TME_LEAVE;
+			TrackMouseEvent(&evt);
+
+		}
+		case WM_MOUSELEAVE:
+		{
+			POINT mousePos;
+			GetCursorPos(&mousePos);
+			ScreenToClient(hWnd, &mousePos);
+
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+			mousePos.x += horiz.nPos;
+			mousePos.y += vert.nPos;
+
+			int nRows = (data->data->textureData.palette.nColors + 15) / 16;
+
+			int hoverX = -1, hoverY = -1, hoverIndex = -1;
+			if (mousePos.x >= 0 && mousePos.x < 256 && mousePos.y >= 0) {
+				hoverX = mousePos.x / 16;
+				hoverY = mousePos.y / 16;
+				hoverIndex = hoverX + hoverY * 16;
+				if (hoverY >= nRows) {
+					hoverX = -1, hoverY = -1, hoverIndex = -1;
+				}
+			}
+			if (msg == WM_MOUSELEAVE) {
+				hoverX = -1, hoverY = -1, hoverIndex = -1;
+			}
+			data->hoverX = hoverX;
+			data->hoverY = hoverY;
+			data->hoverIndex = hoverIndex;
+
+			InvalidateRect(hWnd, NULL, FALSE);
 			break;
 		}
 		case WM_LBUTTONDOWN:
+		case WM_RBUTTONDOWN:
 		{
 			POINT pos;
 			GetCursorPos(&pos);
@@ -815,34 +910,120 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			if (x < 16) {
 				int index = y * 16 + x;
 				if (index < data->data->textureData.palette.nColors) {
-					COLOR c = data->data->textureData.palette.pal[index];
-					DWORD ex = ColorConvertFromDS(c);
-					
-					HWND hWndMain = getMainWindow(hWnd);
-					CHOOSECOLOR cc = { 0 };
-					cc.lStructSize = sizeof(cc);
-					cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition
-					cc.hwndOwner = hWndMain;
-					cc.rgbResult = ex;
-					cc.lpCustColors = data->data->tmpCust;
-					cc.Flags = 0x103;
-					BOOL (__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
-					if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
-					if (ChooseColorFunction(&cc)) {
-						DWORD result = cc.rgbResult;
-						data->data->textureData.palette.pal[index] = ColorConvertToDS(result);
-						InvalidateRect(hWnd, NULL, FALSE);
+					//if left click, open color editor dialogue.
+					if (msg == WM_LBUTTONDOWN) {
+						COLOR c = data->data->textureData.palette.pal[index];
+						DWORD ex = ColorConvertFromDS(c);
 
-						convertTexture(data->data->px, &data->data->textureData.texels, &data->data->textureData.palette, 0);
-						int param = data->data->textureData.texels.texImageParam;
-						int width = TEXW(param);
-						int height = 8 << ((param >> 23) & 7);
-						//convertTexture outputs red and blue in the opposite order, so flip them here.
-						for (int i = 0; i < width * height; i++) {
-							DWORD p = data->data->px[i];
-							data->data->px[i] = REVERSE(p);
+						HWND hWndMain = getMainWindow(hWnd);
+						CHOOSECOLOR cc = { 0 };
+						cc.lStructSize = sizeof(cc);
+						cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition
+						cc.hwndOwner = hWndMain;
+						cc.rgbResult = ex;
+						cc.lpCustColors = data->data->tmpCust;
+						cc.Flags = 0x103;
+						BOOL(__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
+						if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
+						if (ChooseColorFunction(&cc)) {
+							DWORD result = cc.rgbResult;
+							data->data->textureData.palette.pal[index] = ColorConvertToDS(result);
+							InvalidateRect(hWnd, NULL, FALSE);
+
+							convertTexture(data->data->px, &data->data->textureData.texels, &data->data->textureData.palette, 0);
+							int param = data->data->textureData.texels.texImageParam;
+							int width = TEXW(param);
+							int height = 8 << ((param >> 23) & 7);
+							//convertTexture outputs red and blue in the opposite order, so flip them here.
+							for (int i = 0; i < width * height; i++) {
+								DWORD p = data->data->px[i];
+								data->data->px[i] = REVERSE(p);
+							}
+							InvalidateRect(data->data->hWnd, NULL, FALSE);
 						}
-						InvalidateRect(data->data->hWnd, NULL, FALSE);
+					} else if (msg == WM_RBUTTONDOWN) {
+						//otherwise open context menu
+						data->contextHoverIndex = data->hoverIndex;
+						HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 3);
+						POINT mouse;
+						GetCursorPos(&mouse);
+						TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
+					}
+				}
+			}
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl == NULL && HIWORD(wParam) == 0) {
+				WORD notification = LOWORD(wParam);
+				switch (notification) {
+					case ID_PALETTEMENU_PASTE:
+					{
+						int offset = data->contextHoverIndex & (~15);
+
+						OpenClipboard(hWnd);
+						HANDLE hString = GetClipboardData(CF_TEXT);
+						CloseClipboard();
+						LPSTR palString = GlobalLock(hString);
+						WORD length = (palString[0] & 0xF) | ((palString[1] & 0xF) << 4) | ((palString[2] & 0xF) << 8) | ((palString[3] & 0xF) << 12);
+
+						int maxOffset = data->data->textureData.palette.nColors;
+
+						int strOffset = 4;
+						for (int i = 0; i < length; i++) {
+							int location = offset + i;
+							if (location >= maxOffset) break;
+							int row = location >> 4;
+							int col = 1 + (location & 0xF);
+							DWORD color = 0;
+							for (int j = 0; j < 8; j++) {
+								color = (color << 4) | (palString[strOffset] & 0xF);
+								strOffset++;
+							}
+							data->data->textureData.palette.pal[location] = ColorConvertToDS(color);
+						}
+						GlobalUnlock(hString);
+						InvalidateRect(hWnd, NULL, FALSE);
+						break;
+					}
+					case ID_PALETTEMENU_COPY:
+					{
+						int offset = data->contextHoverIndex & (~15);
+						int length = 16;
+						int maxOffset = data->data->textureData.palette.nColors;
+						if (offset + length >= maxOffset) {
+							length = maxOffset - offset;
+							if (length < 0) length = 0;
+						}
+						HANDLE hString = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 4 + 8 * length + 1);
+						LPSTR palString = (LPSTR) GlobalLock(hString);
+						palString[0] = 0x20 + (length & 0xF);
+						palString[1] = 0x20 + ((length >> 4) & 0xF);
+						palString[2] = 0x20 + ((length >> 8) & 0xF);
+						palString[3] = 0x20 + ((length >> 12) & 0xF);
+
+						int strOffset = 4;
+						for (int i = 0; i < length; i++) {
+							int offs = i + offset;
+							int row = offs >> 4;
+							int col = (offs & 0xF) + 1;
+							DWORD d = 0x00FFFFFF & (ColorConvertFromDS(data->data->textureData.palette.pal[offs]));
+
+							for (int j = 0; j < 8; j++) {
+								palString[strOffset] = 0x30 + ((d >> 28) & 0xF);
+								d <<= 4;
+								strOffset++;
+							}
+						}
+
+						GlobalUnlock(hString);
+						OpenClipboard(hWnd);
+						EmptyClipboard();
+						SetClipboardData(CF_TEXT, hString);
+						CloseClipboard();
+						break;
 					}
 				}
 			}
