@@ -34,7 +34,6 @@ int nscrIsValidHudson(LPBYTE buffer, int size) {
 	int tilesX = buffer[6];
 	int tilesY = buffer[7];
 	if (!tilesX || !tilesY) return 0;
-	if (!isValidScreenSize(tilesX * tilesY * 64)) return 0;
 	return NSCR_TYPE_HUDSON;
 }
 
