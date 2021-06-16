@@ -573,6 +573,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int chr = _wtoi(input);
 					NCER_CELL *cell = data->ncer.cells + data->cell;
 					WORD attr2 = cell->attr[2 + 3 * data->oam];
+					WORD attr0 = cell->attr[0 + 3 * data->oam];
+					if ((attr0 >> 13) & 1) chr >>= 1;
 					attr2 = attr2 & 0xFC00;
 					attr2 |= chr & 0x3FF;
 					cell->attr[2 + 3 * data->oam] = attr2;

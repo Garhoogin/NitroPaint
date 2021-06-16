@@ -243,6 +243,7 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	if (is8) {
 		info->characterBits = 8;
 		info->palette = 0;
+		info->characterName <<= 1;
 	}
 
 	return 0;
@@ -301,8 +302,6 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 		int entryWidth, entryHeight;
 		decodeAttributesEx(&info, cell, i);
 
-		//is 8bpp? If so, cut off the last bit.
-		if (info.characterBits == 8) info.characterName &= 0xFFFFFFFE;
 		ncerCellToBitmap2(&info, ncgr, nclr, block, &entryWidth, &entryHeight, 0);
 
 		//HV flip? Only if not affine!
