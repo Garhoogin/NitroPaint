@@ -16,10 +16,10 @@ int calculateWidth(int nTiles) {
 int ncgrIsValidHudson(LPBYTE buffer, int size) {
 	if (size < 8) return 0;
 	if (*buffer == 0x10) return 0;
-	if (*buffer != 0) return 0;
+	if (((*buffer) & 0xF0) != 0) return 0;
 	int dataLength = *(WORD *) (buffer + 1);
 	if (buffer[3] != 0) return 0;
-	if (dataLength * 32 + 4 == size) {
+	if (dataLength * 32 + 4 == size || dataLength * 64 + 4 == size) {
 		//no second header
 		return NCGR_TYPE_HUDSON2;
 	}
