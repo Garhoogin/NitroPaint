@@ -350,13 +350,13 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							//for each row
 							for (int y = selStartY; y < selStartY + selHeight; y++) {
 								//for width/2
-								for (int x = 0; x < selWidth / 2; x++) {
+								for (int x = 0; x < (selWidth + 1) / 2; x++) {
 									//swap x with selWidth-1-x
 									int t1 = x + selStartX, t2 = selWidth - 1 - x + selStartX;
 									WORD d1 = data->nscr.data[t1 + y * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPX << 10);
 									WORD d2 = data->nscr.data[t2 + y * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPX << 10);
 									data->nscr.data[t1 + y * (data->nscr.nWidth >> 3)] = d2;
-									data->nscr.data[t2 + y * (data->nscr.nWidth >> 3)] = d1;
+									if(x != selWidth) data->nscr.data[t2 + y * (data->nscr.nWidth >> 3)] = d1;
 								}
 							}
 						}
@@ -378,12 +378,12 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							//for every column
 							for (int x = selStartX; x < selStartX + selWidth; x++) {
 								//for every row/2
-								for (int y = 0; y < selHeight / 2; y++) {
+								for (int y = 0; y < (selHeight + 1) / 2; y++) {
 									int t1 = y + selStartY, t2 = selHeight - 1 - y + selStartY;
 									WORD d1 = data->nscr.data[x + t1 * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPY << 10);
 									WORD d2 = data->nscr.data[x + t2 * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPY << 10);
 									data->nscr.data[x + t1 * (data->nscr.nWidth >> 3)] = d2;
-									data->nscr.data[x + t2 * (data->nscr.nWidth >> 3)] = d1;
+									if(y != selHeight) data->nscr.data[x + t2 * (data->nscr.nWidth >> 3)] = d1;
 								}
 							}
 						}
