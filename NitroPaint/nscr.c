@@ -506,7 +506,9 @@ void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, i
 	}
 }
 
-void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, int paletteBase, int nPalettes, int fmt, int tileBase) {
+void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, 
+				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, 
+				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles) {
 	//combine similar.
 	DWORD * bits = imgBits;//combineSimilar(imgBits, width, height, 1024);
 						   //create the palette.
@@ -550,20 +552,6 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LP
 	DWORD *paletted = (DWORD *) calloc(width * height, 4);
 	CopyMemory(paletted, bits, width * height * 4);
 
-	/*for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++){
-			int i = x + y * width;
-			DWORD d = paletted[i];
-			int closest = closestpalette(*(RGB *) &d, (RGB *) (palette + 1), paletteSize - 1, NULL) + 1;
-			if (((d >> 24) & 0xFF) < 127) closest = 0;
-			RGB chosen = *(RGB *) (palette + closest);
-			int errorRed = -(chosen.r - (d & 0xFF));
-			int errorGreen = -(chosen.g - ((d >> 8) & 0xFF));
-			int errorBlue = -(chosen.b - ((d >> 16) & 0xFF));
-			paletted[i] = closest; //effectively turns this pixel array into an index array.
-			if(dither) doDiffuse(i, width, height, paletted, errorRed, errorGreen, errorBlue, 0, 1.0f);
-		}
-	}*/
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			DWORD *block = blocks + 64 * (x + y * tilesX);
@@ -629,37 +617,40 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, LP
 		indices[i] = i;
 	}
 	BYTE * modes = calloc(width * height, 1);
-	//start by merging duplicates.
-	for (int i = 0; i < nBlocks; i++) {
-		DWORD * block1 = blocks + i * (64);
-		//test for up to i
-		for (int j = 0; j < i; j++) {
-			//test - is block i equal to block j?
-			DWORD * block2 = blocks + j * 64;
-			int dup = isDuplicate(block1, block2);
-			if (!dup) continue;
-			//modes[i] = dup - 1;
-			//is a duplicate.
-			//point indices[i] to j. 
-			//indices[i] = j;
-			//this leaves i unused as an index. 
-			//decrement all indices greater than i.
-			for (int k = 0; k < nTotalTiles; k++) {
 
-				//point all references to i to references to j.
-				if (indices[k] == i) {
-					indices[k] = j;
-					modes[k] = dup - 1;
+	//start by merging duplicates.
+	if (mergeTiles) {
+		for (int i = 0; i < nBlocks; i++) {
+			DWORD * block1 = blocks + i * (64);
+			//test for up to i
+			for (int j = 0; j < i; j++) {
+				//test - is block i equal to block j?
+				DWORD * block2 = blocks + j * 64;
+				int dup = isDuplicate(block1, block2);
+				if (!dup) continue;
+				//modes[i] = dup - 1;
+				//is a duplicate.
+				//point indices[i] to j. 
+				//indices[i] = j;
+				//this leaves i unused as an index. 
+				//decrement all indices greater than i.
+				for (int k = 0; k < nTotalTiles; k++) {
+
+					//point all references to i to references to j.
+					if (indices[k] == i) {
+						indices[k] = j;
+						modes[k] = dup - 1;
+					}
 				}
+				for (int k = 0; k < nTotalTiles; k++) {
+					if (indices[k] > i) indices[k]--;
+				}
+				//now, remove block i, by sliding the rest over it.
+				MoveMemory(blocks + i * 64, blocks + 64 + i * 64, (nBlocks - 1 - i) * 256);
+				nBlocks--;
+				i--;
+				break;
 			}
-			for (int k = 0; k < nTotalTiles; k++) {
-				if (indices[k] > i) indices[k]--;
-			}
-			//now, remove block i, by sliding the rest over it.
-			MoveMemory(blocks + i * 64, blocks + 64 + i * 64, (nBlocks - 1 - i) * 256);
-			nBlocks--;
-			i--;
-			break;
 		}
 	}
 
