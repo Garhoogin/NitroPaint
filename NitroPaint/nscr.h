@@ -21,6 +21,8 @@
 #define NSCR_TYPE_HUDSON2	3
 #define NSCR_TYPE_BIN       4
 
+extern LPCWSTR screenFormatNames[];
+
 typedef struct NSCR_ {
 	OBJECT_HEADER header;
 	DWORD nWidth;

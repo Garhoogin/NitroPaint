@@ -2,6 +2,8 @@
 #include "nclr.h"
 #include "ncgr.h"
 
+LPCWSTR cellFormatNames[] = { "Invalid", L"NCER", L"Hudson", NULL };
+
 int ncerIsValidHudson(char *buffer, unsigned int size) {
 	unsigned int nCells = *(unsigned int *) buffer;
 	if (nCells == 0) return 0;

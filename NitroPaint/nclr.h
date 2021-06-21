@@ -3,9 +3,12 @@
 #include "color.h"
 #include "filecommon.h"
 
-#define NCLR_TYPE_NCLR 0
-#define NCLR_TYPE_HUDSON 1
-#define NCLR_TYPE_BIN 2
+#define NCLR_TYPE_INVALID 0
+#define NCLR_TYPE_NCLR 1
+#define NCLR_TYPE_HUDSON 2
+#define NCLR_TYPE_BIN 3
+
+extern LPCWSTR paletteFormatNames[];
 
 typedef struct NCLR_ {
 	OBJECT_HEADER header;

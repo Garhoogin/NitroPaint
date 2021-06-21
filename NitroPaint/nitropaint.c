@@ -98,8 +98,16 @@ LPWSTR GetFileName(LPWSTR lpszPath) {
 	return current + 1;
 }
 
+typedef struct EDITORDATA_ {
+	FRAMEDATA frameData;
+	WCHAR szOpenFile[MAX_PATH];
+	OBJECT_HEADER objectHeader;
+} EDITORDATA;
+
 CONFIGURATIONSTRUCT g_configuration;
 LPWSTR g_configPath;
+
+#define NV_SETDATA (WM_USER+2)
 
 WNDPROC OldMdiClientWndProc = NULL;
 LRESULT WINAPI NewMdiClientWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -443,6 +451,23 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						free(path);
 						break;
 					}
+					case ID_FILE_CONVERTTO:
+					{
+						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
+						if (hWndFocused == NULL) break;
+						if (hWndFocused != data->hWndNclrViewer && hWndFocused != data->hWndNcgrViewer
+							&& hWndFocused != data->hWndNscrViewer && hWndFocused != data->hWndNcerViewer) break;
+
+						EDITORDATA *editorData = (EDITORDATA *) GetWindowLongPtr(hWndFocused, 0);
+						LPCWSTR *formats = getFormatNamesFromType(editorData->objectHeader.type);
+						if (formats == NULL || formats[0] == NULL)  break;
+
+						HWND h = CreateWindow(L"ConvertFormatDialogClass", L"Convert Format", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						SendMessage(h, NV_SETDATA, 0, (LPARAM) editorData);
+						SetActiveWindow(h);
+						SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_DISABLED);
+						break;
+					}
 					case ID_HELP_ABOUT:
 					{
 						MessageBox(hWnd, L"GUI NCLR/NCGR Editor/NSCR Viewer. Made by Garhoogin with help from Gericom, Xgone, and ProfessorDoktorGamer.", L"About NitroPaint", MB_ICONINFORMATION);
@@ -523,8 +548,6 @@ typedef struct {
 	HWND hWndMain;
 	DWORD *bbits;
 } CREATENSCRDATA;
-
-#define NV_SETDATA (WM_USER+2)
 
 void nscrCreateCallback(void *data) {
 	CREATENSCRDATA *createData = (CREATENSCRDATA *) data;
@@ -939,6 +962,81 @@ void RegisterNtftConvertDialogClass() {
 	RegisterClassEx(&wcex);
 }
 
+LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch (msg) {
+		case WM_CREATE:
+		{
+			SetWindowSize(hWnd, 230, 96);
+			break;
+		}
+		case NV_SETDATA:
+		{
+			EDITORDATA *editorData = (EDITORDATA *) lParam;
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) editorData);
+
+			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Compression:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			HWND hWndFormatCombobox = CreateWindow(WC_COMBOBOXW, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 10, 100, 100, hWnd, NULL, NULL, NULL);
+			HWND hWndCompressionCombobox = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 37, 100, 100, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
+
+			LPCWSTR *formats = getFormatNamesFromType(editorData->objectHeader.type);
+			formats++; //skip invalid
+			while (*formats != NULL) {
+				SendMessage(hWndFormatCombobox, CB_ADDSTRING, wcslen(*formats), (LPARAM) *formats);
+				formats++;
+			}
+			SendMessage(hWndFormatCombobox, CB_SETCURSEL, editorData->objectHeader.format - 1, 0);
+			LPCWSTR *compressions = compressionNames;
+			while (*compressions != NULL) {
+				SendMessage(hWndCompressionCombobox, CB_ADDSTRING, wcslen(*compressions), (LPARAM) *compressions);
+				compressions++;
+			}
+			SendMessage(hWndCompressionCombobox, CB_SETCURSEL, editorData->objectHeader.compression, 0);
+
+			SetWindowLong(hWnd, sizeof(LPVOID), (LONG) hWndFormatCombobox);
+			SetWindowLong(hWnd, sizeof(LPVOID) * 2, (LONG) hWndCompressionCombobox);
+			SetGUIFont(hWnd);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl && HIWORD(wParam) == BN_CLICKED) {
+				int fmt = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID)), CB_GETCURSEL, 0, 0) + 1;
+				int comp = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID) * 2), CB_GETCURSEL, 0, 0);
+				EDITORDATA *editorData = (EDITORDATA *) GetWindowLongPtr(hWnd, 0);
+				editorData->objectHeader.format = fmt;
+				editorData->objectHeader.compression = comp;
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+		case WM_CLOSE:
+		{
+			HWND hWndMain = GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			SetActiveWindow(hWndMain);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+void RegisterFormatConversionClass() {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"ConvertFormatDialogClass";
+	wcex.lpfnWndProc = ConvertFormatDialogProc;
+	wcex.cbWndExtra = sizeof(LPVOID) * 3;
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
 VOID ReadConfiguration(LPWSTR lpszPath) {
 	DWORD dwAttributes = GetFileAttributes(lpszPath);
 	if (dwAttributes == INVALID_FILE_ATTRIBUTES) {
@@ -979,6 +1077,7 @@ void RegisterClasses() {
 	RegisterProgressWindowClass();
 	RegisterNtftConvertDialogClass();
 	RegisterTextureEditorClass();
+	RegisterFormatConversionClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {

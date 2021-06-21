@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <math.h>
 
+LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"Hudson", L"Hudson 2", L"Binary", NULL };
+
 #define NSCR_FLIPNONE 0
 #define NSCR_FLIPX 1
 #define NSCR_FLIPY 2
@@ -28,7 +30,6 @@ int nscrIsValidHudson(LPBYTE buffer, int size) {
 		int tilesX = buffer[2];
 		int tilesY = buffer[3];
 		if (tilesX * tilesY * 2 + 4 != fileSize) return 0;
-		if (!isValidScreenSize(tilesX * tilesY * 64)) return 0;
 		return NSCR_TYPE_HUDSON2;
 	}
 	int tilesX = buffer[6];

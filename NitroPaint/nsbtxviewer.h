@@ -5,8 +5,8 @@
 
 typedef struct {
 	FRAMEDATA frameData;
-	NSBTX nsbtx;
 	WCHAR szOpenFile[MAX_PATH];
+	NSBTX nsbtx;
 	int showBorders;
 	int scale;
 

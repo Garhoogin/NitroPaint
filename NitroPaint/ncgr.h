@@ -9,6 +9,8 @@
 #define NCGR_TYPE_NCBR      4
 #define NCGR_TYPE_BIN       5
 
+extern LPCWSTR characterFormatNames[];
+
 typedef struct NCGR_{
 	OBJECT_HEADER header;
 	int nTiles;

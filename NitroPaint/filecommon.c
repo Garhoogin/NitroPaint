@@ -7,10 +7,27 @@
 #include "ntft.h"
 #include "texture.h"
 
+LPCWSTR compressionNames[] = { L"None", L"LZ77", NULL };
+
 int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;
 	LPCWSTR str1 = str + wcslen(str) - wcslen(substr);
 	return !_wcsicmp(str1, substr);
+}
+
+LPCWSTR *getFormatNamesFromType(int type) {
+	switch (type) {
+		case FILE_TYPE_PALETTE:
+			return paletteFormatNames;
+		case FILE_TYPE_CHAR:
+			return characterFormatNames;
+		case FILE_TYPE_SCREEN:
+			return screenFormatNames;
+		case FILE_TYPE_CELL:
+			return cellFormatNames;
+		default:
+			return NULL;
+	}
 }
 
 int fileIdentify(char *file, int size, LPCWSTR path) {

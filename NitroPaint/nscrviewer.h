@@ -4,8 +4,8 @@
 
 typedef struct {
 	FRAMEDATA frameData;
-	NSCR nscr;
 	WCHAR szOpenFile[MAX_PATH];
+	NSCR nscr;
 	int showBorders;
 	int scale;
 

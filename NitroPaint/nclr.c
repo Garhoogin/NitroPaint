@@ -1,6 +1,8 @@
 #include "nclr.h"
 #include <stdio.h>
 
+LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", NULL };
+
 int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	if (size < 4) return 1;
 

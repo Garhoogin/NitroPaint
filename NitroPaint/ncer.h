@@ -3,8 +3,11 @@
 #include "ncgr.h"
 #include "nclr.h"
 
-#define NCER_TYPE_NCER 0
-#define NCER_TYPE_HUDSON 1
+#define NCER_TYPE_INVALID 0
+#define NCER_TYPE_NCER 1
+#define NCER_TYPE_HUDSON 2
+
+extern LPCWSTR cellFormatNames[];
 
 typedef struct NCER_CELL_ {
 	int nAttribs;

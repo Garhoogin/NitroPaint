@@ -4,6 +4,8 @@
 #include "color.h"
 #include <stdio.h>
 
+LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"Hudson", L"Hudson 2", L"NCBR", L"Binary", NULL };
+
 int calculateWidth(int nTiles) {
 	int width = 1;
 	for (int i = 1; i < nTiles; i++) {
