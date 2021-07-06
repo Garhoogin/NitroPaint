@@ -509,7 +509,8 @@ void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, i
 
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, 
 				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, 
-				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles) {
+				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
+				int paletteSize, int paletteOffset) {
 	//combine similar.
 	DWORD * bits = imgBits;//combineSimilar(imgBits, width, height, 1024);
 						   //create the palette.
@@ -540,12 +541,15 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 	DWORD * palette = (DWORD *) calloc(1024, 1);
 	if (nBits < 5) nBits = 4;
 	else nBits = 8;
-	int paletteSize = 1 << nBits;
 	if (nPalettes == 1) {
-		createPalette_(bits, width, height, palette + paletteBase * paletteSize, paletteSize);
+		if (paletteOffset) {
+			createPaletteExact(bits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize);
+		} else {
+			createPalette_(bits, width, height, palette + (paletteBase << nBits), paletteSize);
+		}
 	} else {
 		
-		createMultiplePalettes(blocks, avgs, width, tilesX, tilesY, palette + paletteBase * paletteSize, nPalettes, paletteSize);
+		createMultiplePalettes(blocks, avgs, width, tilesX, tilesY, palette + (paletteBase << nBits), nPalettes, 1 << nBits, paletteSize, paletteOffset);
 
 	}
 	//apply the palette to the image. 
@@ -559,7 +563,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 			int bestPalette = paletteBase;
 			int bestError = 0x7FFFFFFF;
 			for (int i = paletteBase; i < nPalettes + paletteBase; i++) {
-				int err = getPaletteError((RGB *) block, 64, (RGB *) palette + i * paletteSize, paletteSize);
+				int err = getPaletteError((RGB *) block, 64, (RGB *) palette + (i << nBits) + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
 				if (err < bestError) {
 					bestError = err;
 					bestPalette = i;
@@ -567,14 +571,15 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 			}
 			paletteIndices[x + y * tilesX] = bestPalette;
 
-			DWORD *thisPalette = palette + bestPalette * paletteSize;
+			DWORD *thisPalette = palette + (bestPalette << nBits);
 			for (int i = 0; i < 64; i++) {
 				int tileX = i % 8;
 				int tileY = i / 8;
 				int index = x * 8 + tileX + (y * 8 + tileY) * width;
 				DWORD d = paletted[index];
 
-				int closest = closestpalette(*(RGB *) &d, (RGB *) (thisPalette + 1), paletteSize - 1, NULL) + 1;
+				int useOffset = paletteOffset ? paletteOffset : 1;
+				int closest = closestpalette(*(RGB *) &d, (RGB *) (thisPalette + useOffset), paletteSize - !paletteOffset, NULL) + useOffset;
 				if (((d >> 24) & 0xFF) < 127) closest = 0;
 				RGB chosen = *(RGB *) (thisPalette + closest);
 				int errorRed = (d & 0xFF) - chosen.r;
@@ -658,19 +663,10 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 	//see how many are left
 	nBlocks;
 	if (nBlocks + tileBase > 1024) {
-		char bf[32];// = "Too many tiles! Tiles: \0\0\0\0\0";
-		//sprintf(bf, "Too many tiles! Tiles: %d", nBlocks);
-		//itoa(nBlocks, bf + 23, 10);
+		char bf[32];
 		sprintf(bf, "Too many tiles! Tiles: %d", nBlocks);
 		MessageBoxA(NULL, bf, "Warning", MB_ICONWARNING);
 	}
-	//_asm int 3
-	//round up nBlocks to a multiple of 16.
-	//int nMisaligned = nBlocks & 0xF;
-	//int nMisalignedBlocks = nBlocks;
-	//int nAdded = 0;
-	//if (nMisaligned) nBlocks += (0x10 - nMisaligned), nAdded = (0x10 - nMisaligned);
-	//ZeroMemory(blocks + 64 * nMisalignedBlocks, 64 * nAdded * 4);
 
 	for (int i = 0; i < nTotalTiles; i++) {
 		indices[i] += tileBase;
