@@ -338,15 +338,15 @@ int textureDimensionIsValid(int x) {
 	return 1;
 }
 
-int nitrotgaIsValid(unsigned char *buffer, int size) {
+int nitrotgaIsValid(unsigned char *buffer, unsigned int size) {
 	//is the file even big enough to hold a TGA header and comment?
 	if (size < 0x16) return 0;
-
+	
 	int commentLength = *buffer;
 	if (commentLength < 4) return 0;
-	int ptrOffset = 0x12 + commentLength - 4;
+	unsigned int ptrOffset = 0x12 + commentLength - 4;
 	if (ptrOffset + 4 > size) return 0;
-	int ptr = *(int *) (buffer + ptrOffset);
+	unsigned int ptr = *(unsigned int *) (buffer + ptrOffset);
 	if (ptr + 0xC > size) return 0;
 
 	//process sections. When any anomalies are found, return 0.
@@ -358,7 +358,7 @@ int nitrotgaIsValid(unsigned char *buffer, int size) {
 		//all sections must start with nns_.
 		if (*(int *) curr != 0x5F736E6E) return 0;
 		int section = *(int *) (curr + 4);
-		int sectionSize = *(int *) (curr + 8);
+		unsigned int sectionSize = *(unsigned int *) (curr + 8);
 
 		//does the section size make sense?
 		if (sectionSize < 0xC) return 0;
