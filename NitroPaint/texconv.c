@@ -285,11 +285,10 @@ int computeColorDifference(DWORD c1, DWORD c2) {
 	int r1 = c1 & 0xFF, g1 = (c1 >> 8) & 0xFF, b1 = (c1 >> 16) & 0xFF;
 	int r2 = c2 & 0xFF, g2 = (c2 >> 8) & 0xFF, b2 = (c2 >> 16) & 0xFF;
 
-	int y1, u1, v1, y2, u2, v2;
-	convertRGBToYUV(r1, g1, b1, &y1, &u1, &v1);
-	convertRGBToYUV(r2, g2, b2, &y2, &u2, &v2);
+	int dy, du, dv;
+	//property of linear transformations :)
+	convertRGBToYUV(r2 - r1, g2 - g1, b2 - b1, &dy, &du, &dv);
 
-	int dy = y2 - y1, du = u2 - u1, dv = v2 - v1;
 	return 4 * dy * dy + du * du + dv * dv;
 }
 
