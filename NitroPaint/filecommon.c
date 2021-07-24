@@ -88,6 +88,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 		//test for bin format files
 		else {
 			if (nclrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"ncl.bin")) type = FILE_TYPE_PALETTE;
+			else if (nclrIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
 			else if (nscrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"nsc.bin")) type = FILE_TYPE_SCREEN;
 			else if (ncgrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"ncg.bin")) type = FILE_TYPE_CHARACTER;
 			else {
@@ -95,6 +96,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+				else if (nclrIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 #include "nclr.h"
 #include <stdio.h>
 
-LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", NULL };
+LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", NULL };
 
 int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	if (size < 4) return 1;
@@ -21,15 +21,15 @@ int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 }
 
 int binPaletteRead(NCLR *nclr, char *buffer, int size) {
-	if (!nclrIsValidBin(buffer, size)) return 1;
-
+	if (!nclrIsValidNtfp(buffer, size)) return 1; //this function is being reused for NTFP as well
+	
 	int nColors = size >> 1;
 
 	nclr->nColors = nColors;
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
 	nclr->header.type = FILE_TYPE_PALETTE;
-	nclr->header.format = NCLR_TYPE_BIN;
+	nclr->header.format = nclrIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP;
 	nclr->header.size = sizeof(*nclr);
 	nclr->header.compression = COMPRESSION_NONE;
 	memcpy(nclr->colors, buffer, nColors * 2);
@@ -48,6 +48,7 @@ int nclrRead(NCLR *nclr, char *buffer, int size) {
 	if (*buffer != 'R' && *buffer != 'N') {
 		if(nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
 		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
+		if (nclrIsValidNtfp(buffer, size)) return binPaletteRead(nclr, buffer, size);
 	}
 	short nBlocks = *(short *) (buffer + 0xE);
 	buffer += 0x10;
@@ -123,6 +124,15 @@ int nclrIsValidBin(LPBYTE lpFile, int size) {
 	return 1;
 }
 
+int nclrIsValidNtfp(LPBYTE lpFile, int size) {
+	if (size & 1) return 0;
+	for (int i = 0; i < size >> 1; i++) {
+		COLOR c = *(COLOR *) (lpFile + i * 2);
+		if (c & 0x8000) return 0;
+	}
+	return 1;
+}
+
 int nclrIsValid(LPBYTE lpFile, int size) {
 	if (size < 40) return 0;
 	DWORD first = *(DWORD *) lpFile;
@@ -158,7 +168,7 @@ void nclrWrite(NCLR * nclr, LPWSTR name) {
 		DWORD dwWritten;
 		WriteFile(hFile, fileHeader, sizeof(fileHeader), &dwWritten, NULL);
 		WriteFile(hFile, nclr->colors, nclr->nColors << 1, &dwWritten, NULL);
-	} else {
+	} else if(nclr->header.format == NCLR_TYPE_BIN || nclr->header.format == NCLR_TYPE_NTFP) {
 		DWORD dwWritten;
 		WriteFile(hFile, nclr->colors, nclr->nColors * 2, &dwWritten, NULL);
 	}

@@ -7,6 +7,7 @@
 #define NCLR_TYPE_NCLR 1
 #define NCLR_TYPE_HUDSON 2
 #define NCLR_TYPE_BIN 3
+#define NCLR_TYPE_NTFP 4
 
 extern LPCWSTR paletteFormatNames[];
 
@@ -20,6 +21,8 @@ typedef struct NCLR_ {
 int nclrIsValidHudson(LPBYTE lpFile, int size);
 
 int nclrIsValidBin(LPBYTE lpFile, int size);
+
+int nclrIsValidNtfp(LPBYTE lpFile, int size);
 
 int nclrRead(NCLR * nclr, char * buffer, int size);
 

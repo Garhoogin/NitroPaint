@@ -56,6 +56,7 @@ int convertPalette(CREATEPARAMS *params) {
 			break;
 	}
 	int pixelsPerByte = 8 / bitsPerPixel;
+	if (params->useFixedPalette) nColors = min(nColors, params->colorEntries);
 	DWORD *palette = (DWORD *) calloc(nColors, 4);
 
 	//should we reserve a color for transparent?
@@ -67,8 +68,14 @@ int convertPalette(CREATEPARAMS *params) {
 		}
 	}
 
-	//generate a palette, making sure to leave a transparent color, if applicable.
-	createPaletteExact(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
+	if (!params->useFixedPalette) {
+		//generate a palette, making sure to leave a transparent color, if applicable.
+		createPaletteExact(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
+	} else {
+		for (int i = 0; i < nColors; i++) {
+			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
+		}
+	}
 
 	//allocate texel space.
 	int nBytes = width * height * bitsPerPixel / 8;
@@ -127,10 +134,17 @@ int convertTranslucent(CREATEPARAMS *params) {
 			alphaMax = 31;
 			break;
 	}
+	if (params->useFixedPalette) nColors = min(nColors, params->colorEntries);
 	DWORD *palette = (DWORD *) calloc(nColors, 4);
 
-	//generate a palette, making sure to leave a transparent color, if applicable.
-	createPaletteExact(params->px, width, height, palette, nColors);
+	if (!params->useFixedPalette) {
+		//generate a palette, making sure to leave a transparent color, if applicable.
+		createPaletteExact(params->px, width, height, palette, nColors);
+	} else {
+		for (int i = 0; i < nColors; i++) {
+			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
+		}
+	}
 
 	//allocate texel space.
 	int nBytes = width * height;
@@ -714,6 +728,7 @@ WORD findOptimalPidx(DWORD *px, int hasTransparent, COLOR *palette, int nColors)
 int convert4x4(CREATEPARAMS *params) {
 	//3-stage compression. First stage builds tile data, second stage builds palettes, third stage builds the final texture.
 	if (params->colorEntries < 16) params->colorEntries = 16;
+	params->colorEntries = (params->colorEntries + 7) & 0xFFFFFFF8;
 	int width = params->width, height = params->height;
 	int tilesX = width / 4, tilesY = height / 4;
 	_globFinal = tilesX * tilesY * 3;
@@ -722,7 +737,14 @@ int convert4x4(CREATEPARAMS *params) {
 
 	//build the palettes.
 	COLOR *nnsPal = (COLOR *) calloc(params->colorEntries, sizeof(COLOR));
-	int nUsedColors = buildPalette(nnsPal, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold);
+	int nUsedColors;
+	if (!params->useFixedPalette) {
+		nUsedColors = buildPalette(nnsPal, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold);
+	} else {
+		nUsedColors = params->colorEntries;
+		memcpy(nnsPal, params->fixedPalette, params->colorEntries * 2);
+		_globColors += tilesX * tilesY;
+	}
 	if (nUsedColors & 7) nUsedColors += 8 - (nUsedColors & 7);
 	if (nUsedColors < 16) nUsedColors = 16;
 
@@ -802,10 +824,11 @@ DWORD CALLBACK startConvert(LPVOID lpParam) {
 	}
 	_globFinished = 1;
 	if(params->callback) params->callback(params->callbackParam);
+	if (params->useFixedPalette) free(params->fixedPalette);
 	return 0;
 }
 
-void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOOL ditherAlpha, int colorEntries, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
+void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOOL ditherAlpha, int colorEntries, BOOL useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
 	CREATEPARAMS *params = (CREATEPARAMS *) calloc(1, sizeof(CREATEPARAMS));
 	_globFinished = 0;
 	params->px = px;
@@ -819,6 +842,8 @@ void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOO
 	params->dest = dest;
 	params->callback = callback;
 	params->callbackParam = callbackParam;
+	params->useFixedPalette = useFixedPalette;
+	params->fixedPalette = useFixedPalette ? fixedPalette : NULL;
 	memcpy(params->pnam, pnam, strlen(pnam) + 1);
 	CreateThread(NULL, 0, startConvert, (LPVOID) params, 0, NULL);
 }

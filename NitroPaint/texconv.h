@@ -10,6 +10,8 @@ typedef struct {
 	int dither;
 	int ditherAlpha;
 	int colorEntries;
+	BOOL useFixedPalette;
+	COLOR *fixedPalette;
 	int threshold;
 	TEXTURE *dest;
 	void (*callback) (void *);
@@ -35,4 +37,4 @@ int convert4x4(CREATEPARAMS *params);
 //to convert a texture directly. lpParam is a CREATEPARAMS struct pointer.
 DWORD CALLBACK startConvert(LPVOID lpParam);
 
-void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOOL ditherAlpha, int colorEntries, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam);
+void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOOL ditherAlpha, int colorEntries, BOOL useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam);

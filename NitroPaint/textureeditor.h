@@ -41,6 +41,9 @@ typedef struct {
 	HWND hWndDoConvertButton;
 	HWND hWndOptimizationSlider;
 	HWND hWndOptimizationLabel;
+	HWND hWndFixedPalette;
+	HWND hWndPaletteInput;
+	HWND hWndPaletteBrowse;
 
 	HWND hWndProgress;
 

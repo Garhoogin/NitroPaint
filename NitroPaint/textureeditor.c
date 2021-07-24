@@ -7,6 +7,8 @@
 #include "tiler.h"
 #include "gdip.h"
 #include "texconv.h"
+#include "nclr.h"
+
 #include <commctrl.h>
 #include <math.h>
 
@@ -523,9 +525,10 @@ void setStyle(HWND hWnd, BOOL set, DWORD style) {
 void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	HWND hWndFormat = data->hWndFormat;
 	int sel = SendMessage(hWndFormat, CB_GETCURSEL, 0, 0);
+	int fixedPalette = SendMessage(data->hWndFixedPalette, BM_GETCHECK, 0, 0) == BST_CHECKED;
 	int fmt = sel + 1;
 	//some things are only applicable to certain formats!
-	BOOL disables[] = {TRUE, FALSE, TRUE, FALSE};
+	BOOL disables[] = {TRUE, FALSE, TRUE, FALSE, FALSE, FALSE};
 	switch (fmt) {
 		case CT_A3I5:
 		case CT_A5I3:
@@ -550,14 +553,25 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 			disables[1] = FALSE;
 			disables[2] = TRUE;
 			disables[3] = TRUE;
+			disables[4] = TRUE;
+			disables[5] = TRUE;
 			break;
 		}
+	}
+	if (!disables[4]) {
+		if (!fixedPalette) disables[5] = TRUE;
+	}
+	if (fixedPalette && !disables[5]) {
+		disables[2] = TRUE;
 	}
 	setStyle(data->hWndDitherAlpha, disables[0], WS_DISABLED);
 	setStyle(data->hWndDither, disables[1], WS_DISABLED);
 	setStyle(data->hWndColorEntries, disables[2], WS_DISABLED);
 	setStyle(data->hWndOptimizationSlider, disables[2], WS_DISABLED);
 	setStyle(data->hWndPaletteName, disables[3], WS_DISABLED);
+	setStyle(data->hWndFixedPalette, disables[4], WS_DISABLED);
+	setStyle(data->hWndPaletteInput, disables[5], WS_DISABLED);
+	setStyle(data->hWndPaletteBrowse, disables[5], WS_DISABLED);
 	SetFocus(data->hWndConvertDialog);
 	InvalidateRect(data->hWndConvertDialog, NULL, FALSE);
 }
@@ -583,26 +597,31 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		{
 			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Palette name:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Dither:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Dither alpha:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"4x4 color entries:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"4x4 optimization:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Fixed palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Palette file:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Dither:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Dither alpha:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"4x4 color entries:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 172, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"4x4 optimization:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 199, 100, 22, hWnd, NULL, NULL, NULL);
 
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
-			SetWindowSize(hWnd, 230, 231);
+			SetWindowSize(hWnd, 230, 285);
 			break;
 		}
 		case NV_INITIALIZE:
 		{
-			data->hWndDoConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 199, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDoConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 253, 100, 22, hWnd, NULL, NULL, NULL);
 
 			data->hWndFormat = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 120, 10, 100, 100, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteName = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 37, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDither = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 64, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDitherAlpha = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 91, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColorEntries = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 118, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndOptimizationSlider = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD | TBS_NOTIFYBEFOREMOVE, 10, 172, 210, 22, hWnd, NULL, NULL, NULL);
-			data->hWndOptimizationLabel = CreateWindow(L"STATIC", L"0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, 120, 145, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndFixedPalette = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 64, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 91, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteBrowse = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 120 + 75, 91, 25, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDither = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 118, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDitherAlpha = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 145, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndColorEntries = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 172, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndOptimizationSlider = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD | TBS_NOTIFYBEFOREMOVE, 10, 226, 210, 22, hWnd, NULL, NULL, NULL);
+			data->hWndOptimizationLabel = CreateWindow(L"STATIC", L"0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, 120, 199, 100, 22, hWnd, NULL, NULL, NULL);
 
 			//populate the dropdown list
 			WCHAR bf[16];
@@ -644,8 +663,32 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				int controlCode = HIWORD(wParam);
 				if (hWndControl == data->hWndFormat && controlCode == LBN_SELCHANGE) {
 					updateConvertDialog(data);
+				} else if (hWndControl == data->hWndFixedPalette && controlCode == BN_CLICKED) {
+					updateConvertDialog(data);
+				} else if (hWndControl == data->hWndPaletteBrowse && controlCode == BN_CLICKED) {
+					LPWSTR path = openFileDialog(hWnd, L"Select palette", L"Palette Files\0*.nclr;*ncl.bin;*.ntfp\0All Files\0*.*\0\0", "");
+					if (path != NULL) {
+						SendMessage(data->hWndPaletteInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+						free(path);
+					}
 				} else if (hWndControl == data->hWndDoConvertButton && controlCode == BN_CLICKED) {
 					int fmt = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+					BOOL fixedPalette = SendMessage(data->hWndFixedPalette, BM_GETCHECK, 0, 0) == BST_CHECKED;
+
+					WCHAR path[MAX_PATH];
+					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH, (LPARAM) path);
+
+					NCLR paletteFile = { 0 };
+					if (fixedPalette) {
+						int status = 1;
+						if (path[0]) {
+							status = nclrReadFile(&paletteFile, path);
+						}
+						if (status) {
+							MessageBox(hWnd, L"Invalid palette file.", L"Invalid file", MB_ICONERROR);
+							break;
+						}
+					}
 
 					WCHAR bf[32];
 					SendMessage(data->hWndColorEntries, WM_GETTEXT, 31, (LPARAM) bf);
@@ -664,8 +707,8 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 													  CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, NULL, NULL, NULL, NULL);
 					ShowWindow(data->hWndProgress, SW_SHOW);
 					SetActiveWindow(data->hWndProgress);
-					threadedConvert(data->px, data->width, data->height, fmt, dither, ditherAlpha, colorEntries, optimization, mbpnam,
-									&data->textureData, conversionCallback, (void *) data);
+					threadedConvert(data->px, data->width, data->height, fmt, dither, ditherAlpha, fixedPalette ? paletteFile.nColors : colorEntries, 
+									fixedPalette, paletteFile.colors, optimization, mbpnam, &data->textureData, conversionCallback, (void *) data);
 					DestroyWindow(hWnd);
 				}
 			}
@@ -1032,6 +1075,24 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						EmptyClipboard();
 						SetClipboardData(CF_TEXT, hString);
 						CloseClipboard();
+						break;
+					}
+					case ID_FILE_EXPORT:
+					{
+						//export as NTFP
+						COLOR *colors = data->data->textureData.palette.pal;
+						int nColors = data->data->textureData.palette.nColors;
+
+						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(data->data->hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						LPWSTR path = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
+						if (path == NULL) break;
+
+						DWORD dwWritten;
+						HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+						WriteFile(hFile, colors, nColors * 2, &dwWritten, NULL);
+						CloseHandle(hFile);
+
+						free(path);
 						break;
 					}
 				}
