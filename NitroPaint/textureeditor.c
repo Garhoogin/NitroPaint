@@ -233,6 +233,43 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						writeNitroTGA(data->szCurrentFile, &data->textureData.texels, &data->textureData.palette);
 						break;
 					}
+					case ID_FILE_EXPORT:
+					{
+						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						//if not in any format, it cannot be exported.
+						if (!data->isNitro) {
+							MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
+							break;
+						}
+
+						LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0All Files\0*.*\0\0", L"ntft");
+						if (ntftPath == NULL) break;
+
+						LPWSTR ntfiPath = NULL;
+						if (FORMAT(data->textureData.texels.texImageParam) == CT_4x4) {
+							ntfiPath = saveFileDialog(hWndMain, L"Save NTFI", L"NTFI Files (*.ntfi)\0All Files\0*.*\0\0", L"ntfi");
+							if (ntfiPath == NULL) {
+								free(ntftPath);
+								break;
+							}
+						}
+
+						DWORD dwWritten;
+						int texImageParam = data->textureData.texels.texImageParam;
+						int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+						HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+						WriteFile(hFile, data->textureData.texels.texel, texelSize, &dwWritten, NULL);
+						CloseHandle(hFile);
+						free(ntftPath);
+
+						if (ntfiPath != NULL) {
+							hFile = CreateFile(ntfiPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+							WriteFile(hFile, data->textureData.texels.cmp, texelSize / 2, &dwWritten, NULL);
+							CloseHandle(hFile);
+							free(ntfiPath);
+						}
+						break;
+					}
 				}
 			}
 			break;
