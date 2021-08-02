@@ -510,7 +510,7 @@ void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, i
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, 
 				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, 
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
-				int paletteSize, int paletteOffset) {
+				int paletteSize, int paletteOffset, int rowLimit) {
 	//combine similar.
 	DWORD * bits = imgBits;//combineSimilar(imgBits, width, height, 1024);
 						   //create the palette.
@@ -673,7 +673,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 	}
 
 	//create nclr
-	nclrCreate(palette, 256, nBits, 0, lpszNclrLocation, fmt);
+	nclrCreate(palette, rowLimit ? (nBits == 4 ? ((paletteBase + nPalettes) << 4) : (paletteOffset + paletteSize)) : 256, nBits, 0, lpszNclrLocation, fmt);
 	//create ngr
 	ncgrCreate(blocks, nBlocks, nBits, lpszNcgrLocation, fmt);
 	//create nscr

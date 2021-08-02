@@ -530,6 +530,7 @@ typedef struct {
 	HWND hWndMergeTiles;
 	HWND hWndPaletteSize;
 	HWND hWndPaletteOffset;
+	HWND hWndRowLimit;
 } CREATEDIALOGDATA;
 
 BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
@@ -583,6 +584,7 @@ typedef struct {
 	int mergeTiles;
 	int paletteSize;
 	int paletteOffset;
+	int rowLimit;
 } THREADEDNSCRCREATEPARAMS;
 
 DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
@@ -590,13 +592,14 @@ DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	nscrCreate(params->bbits, params->width, params->height, params->bits, params->dither,
 			   params->createData->szNclrPath, params->createData->szNcgrPath, params->createData->szNscrPath,
 			   params->palette, params->nPalettes, params->fmt, params->tileBase, params->mergeTiles,
-			   params->paletteSize, params->paletteOffset);
+			   params->paletteSize, params->paletteOffset, params->rowLimit);
 	params->data->waitOn = 1;
 	return 0;
 }
 
 void threadedNscrCreate(PROGRESSDATA *data, DWORD *bbits, int width, int height, int bits, int dither, CREATENSCRDATA *createData, 
-						int palette, int nPalettes, int fmt, int tileBase, int mergeTiles, int paletteSize, int paletteOffset) {
+						int palette, int nPalettes, int fmt, int tileBase, int mergeTiles, int paletteSize, int paletteOffset,
+						int rowLimit) {
 	THREADEDNSCRCREATEPARAMS *params = calloc(1, sizeof(*params));
 	params->data = data;
 	params->bbits = bbits;
@@ -612,6 +615,7 @@ void threadedNscrCreate(PROGRESSDATA *data, DWORD *bbits, int width, int height,
 	params->mergeTiles = mergeTiles;
 	params->paletteSize = paletteSize;
 	params->paletteOffset = paletteOffset;
+	params->rowLimit = rowLimit;
 	CreateThread(NULL, 0, threadedNscrCreateInternal, (LPVOID) params, 0, NULL);
 }
 
@@ -634,22 +638,24 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			CreateWindow(L"STATIC", L"Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Size:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Offset:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 172, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Tile base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 199, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Merge tiles", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 226, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 253, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Row limit:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 199, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Tile base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 226, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Merge tiles", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 253, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 280, 50, 22, hWnd, NULL, NULL, NULL);
 
 			data->nscrCreateInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", NULL, WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 10, 200, 22, hWnd, NULL, NULL, NULL);
 			data->nscrCreateInputButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 270, 10, 50, 22, hWnd, NULL, NULL, NULL);
 			data->nscrCreateDither = CreateWindow(L"BUTTON", NULL, WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 70, 64, 22, 22, hWnd, NULL, NULL, NULL);
 			data->nscrCreateDropdown = CreateWindow(WC_COMBOBOX, NULL, WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 70, 37, 100, 100, hWnd, NULL, NULL, NULL);
-			data->nscrCreateButton = CreateWindow(L"BUTTON", L"Create", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 280, 100, 22, hWnd, NULL, NULL, NULL);
+			data->nscrCreateButton = CreateWindow(L"BUTTON", L"Create", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 307, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPalettesInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 70, 91, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 70, 118, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 70, 199, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndMergeTiles = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 70, 226, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFormatDropdown = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 70, 253, 100, 100, hWnd, NULL, NULL, NULL);
+			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 70, 226, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndMergeTiles = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 70, 253, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndFormatDropdown = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 70, 280, 100, 100, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteSize = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 70, 145, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteOffset = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 70, 172, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndRowLimit = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 70, 199, 22, 22, hWnd, NULL, NULL, NULL);
 
 			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 1, (LPARAM) L"4");
 			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 1, (LPARAM) L"8");
@@ -662,7 +668,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			SendMessage(data->hWndFormatDropdown, CB_SETCURSEL, 0, 0);
 			SendMessage(data->hWndMergeTiles, BM_SETCHECK, BST_CHECKED, 0);
 
-			SetWindowSize(hWnd, 330, 312);
+			SetWindowSize(hWnd, 330, 339);
 			SetGUIFont(hWnd);
 			return 1;
 		}
@@ -686,6 +692,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					WCHAR location[MAX_PATH + 1];
 					int dither = SendMessage(data->nscrCreateDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int merge = SendMessage(data->hWndMergeTiles, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int rowLimit = SendMessage(data->hWndRowLimit, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int fmt = SendMessage(data->hWndFormatDropdown, CB_GETCURSEL, 0, 0);
 					int bitsOptions[] = {4, 8};
 					int bits = bitsOptions[SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0)];
@@ -753,7 +760,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					progressData->callback = nscrCreateCallback;
 					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
 
-					threadedNscrCreate(progressData, bbits, width, height, bits, dither, createData, palette, nPalettes, fmt, tileBase, merge, paletteSize, paletteOffset);
+					threadedNscrCreate(progressData, bbits, width, height, bits, dither, createData, palette, nPalettes, fmt, tileBase, merge, paletteSize, paletteOffset, rowLimit);
 
 					free(nclrLocation);
 					free(ncgrLocation);
