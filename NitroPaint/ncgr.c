@@ -61,7 +61,7 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	ncgr->header.compression = COMPRESSION_NONE;
 	ncgr->nTiles = nCharacters;
 	ncgr->tileWidth = 8;
-	ncgr->mapping = 0x10;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nBits = 8;
 	ncgr->tilesX = -1;
 	ncgr->tilesY = -1;
@@ -112,7 +112,7 @@ int ncgrReadBin(NCGR *ncgr, char *buffer, int size) {
 	ncgr->header.type = FILE_TYPE_CHARACTER;
 	ncgr->nTiles = size / 0x20;
 	ncgr->nBits = 4;
-	ncgr->mapping = 0x10;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = calculateWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
@@ -155,7 +155,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	unsigned short tilesY = *(unsigned short *) (buffer + 0x8);
 	unsigned short tilesX = *(unsigned short *) (buffer + 0xA);
 	int depth = *(int *) (buffer + 0xC);
-	int mapping = *(short *) (buffer + 0x10);
+	int mapping = *(int *) (buffer + 0x10);
 	depth = 1 << (depth - 1);
 	int tileDataSize = *(int *) (buffer + 0x18);
 	int type = *(int *) (buffer + 0x14);
@@ -167,7 +167,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 
 
 	int tileCount = tilesX * tilesY;
-	if (mapping == 0x10) {
+	if (NCGR_1D(mapping)) {
 		tileCount = tileDataSize >> 5;
 		if (depth == 8) tileCount >>= 1;
 		tilesX = calculateWidth(tileCount);
@@ -233,7 +233,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
-	ncgr->mapping = mapping;
+	ncgr->mappingMode = mapping;
 	ncgr->header.type = FILE_TYPE_CHARACTER;
 	ncgr->header.format = format;
 	ncgr->header.size = sizeof(*ncgr);
@@ -256,7 +256,8 @@ int ncgrReadFile(NCGR *ncgr, LPCWSTR path) {
 }
 
 int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker) {
-	BYTE * tile = ncgr->tiles[x + y * ncgr->tilesX];
+	int nIndex = x + y * ncgr->tilesX;
+	BYTE * tile = ncgr->tiles[nIndex];
 	int nTiles = ncgr->nTiles;
 	if (x + y * ncgr->tilesX < nTiles) {
 		for (int i = 0; i < 64; i++) {
@@ -304,9 +305,9 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 
 		if (ncgr->nBits == 8) *(int *) (charHeader + 0xC) = 4;
 		else if (ncgr->nBits == 4) *(int *) (charHeader + 0xC) = 3;
-		*(int *) (charHeader + 0x10) = ncgr->mapping;
+		*(int *) (charHeader + 0x10) = ncgr->mappingMode;
 		*(int *) (charHeader + 0x4) = sectionSize;
-		if (ncgr->mapping == 0) {
+		if (NCGR_2D(ncgr->mappingMode)) {
 			*(unsigned short *) (charHeader + 0x8) = ncgr->tilesY;
 			*(unsigned short *) (charHeader + 0xA) = ncgr->tilesX;
 		} else {

@@ -638,12 +638,12 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						decodeAttributesEx(&info, cell, i);
 						if (info.disable) continue;
 						
-						BYTE **characterBase = ncgr->tiles + info.characterName;
+						BYTE **characterBase = ncgr->tiles + (info.characterName * NCGR_BOUNDARY(ncgr));
 						int nCharsX = info.width / 8, nCharsY = info.height / 8;
 						for (int cellY = 0; cellY < info.height; cellY++) {
 							for (int cellX = 0; cellX < info.width; cellX++) {
 								BYTE *character;
-								if (ncgr->mapping == 0x10) {
+								if (NCGR_1D(ncgr->mappingMode)) {
 									character = characterBase[cellX / 8 + nCharsX * (cellY / 8)];
 								} else {
 									character = characterBase[cellX / 8 + (cellY / 8) * ncgr->tilesX];

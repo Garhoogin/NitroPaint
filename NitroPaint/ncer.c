@@ -255,7 +255,7 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, DWORD *out,
 	*width = info->width;
 	*height = info->height;
 
-	int ncgrStart = info->characterName;
+	int ncgrStart = info->characterName * NCGR_BOUNDARY(ncgr);
 
 	int tilesX = *width / 8;
 	int tilesY = *height / 8;
@@ -266,7 +266,7 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, DWORD *out,
 				DWORD block[64];
 
 				int bitsOffset = x * 8 + (y * 8 * tilesX * 8);
-				if (ncgr->mapping == 0) {
+				if (NCGR_2D(ncgr->mappingMode)) {
 					int startX = ncgrStart % ncgr->tilesX;
 					int startY = ncgrStart / ncgr->tilesX;
 					int ncx = x + startX;

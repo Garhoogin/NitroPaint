@@ -9,6 +9,17 @@
 #define NCGR_TYPE_NCBR      4
 #define NCGR_TYPE_BIN       5
 
+#define GX_OBJVRAMMODE_CHAR_2D        0x000000
+#define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
+#define GX_OBJVRAMMODE_CHAR_1D_64K    0x100010
+#define GX_OBJVRAMMODE_CHAR_1D_128K   0x200010
+#define GX_OBJVRAMMODE_CHAR_1D_256K   0x300010
+
+#define NCGR_2D(m)              ((m)==GX_OBJVRAMMODE_CHAR_2D)
+#define NCGR_1D(m)              (!NCGR_2D(m))
+#define NCGR_BYTE_BOUNDARY(m)   (1<<((((m)>>20)&0x7)+5))
+#define NCGR_BOUNDARY(n)        (NCGR_BYTE_BOUNDARY((n)->mappingMode)/((n)->nBits<<3))
+
 extern LPCWSTR characterFormatNames[];
 
 typedef struct NCGR_{
@@ -16,7 +27,7 @@ typedef struct NCGR_{
 	int nTiles;
 	int tilesX;
 	int tilesY;
-	int mapping;
+	int mappingMode;
 	int nBits;
 	int tileWidth;
 	BYTE **tiles;
