@@ -12,6 +12,7 @@
 #include "nclrviewer.h"
 #include "nscrviewer.h"
 #include "ncerviewer.h"
+#include "nanrviewer.h"
 #include "exceptions.h"
 #include "gdip.h"
 #include "tileeditor.h"
@@ -206,6 +207,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			break;
 		case FILE_TYPE_TEXTURE:
 			CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
+		case FILE_TYPE_NANR:
+			CreateNanrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
 		default:
 			break;
@@ -1096,6 +1100,7 @@ void RegisterClasses() {
 	RegisterNtftConvertDialogClass();
 	RegisterTextureEditorClass();
 	RegisterFormatConversionClass();
+	RegisterNanrViewerClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {

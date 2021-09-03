@@ -5,6 +5,7 @@
 #include "ncer.h"
 #include "nsbtx.h"
 #include "ntft.h"
+#include "nanr.h"
 #include "texture.h"
 
 LPCWSTR compressionNames[] = { L"None", L"LZ77", NULL };
@@ -25,6 +26,8 @@ LPCWSTR *getFormatNamesFromType(int type) {
 			return screenFormatNames;
 		case FILE_TYPE_CELL:
 			return cellFormatNames;
+		case FILE_TYPE_NANR:
+			return cellAnimationFormatNames;
 		default:
 			return NULL;
 	}
@@ -71,6 +74,12 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 			case '0XTB':
 			{
 				type = FILE_TYPE_NSBTX;
+				break;
+			}
+			case 'NANR':
+			case 'RNAN':
+			{
+				type = FILE_TYPE_NANR;
 				break;
 			}
 		}

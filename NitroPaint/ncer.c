@@ -255,12 +255,11 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, DWORD *out,
 	*width = info->width;
 	*height = info->height;
 
-	int ncgrStart = info->characterName * NCGR_BOUNDARY(ncgr);
-
 	int tilesX = *width / 8;
 	int tilesY = *height / 8;
 
 	if (ncgr != NULL) {
+		int ncgrStart = info->characterName * NCGR_BOUNDARY(ncgr);
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 				DWORD block[64];
@@ -294,10 +293,7 @@ DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int *width
 	return bits;
 }
 
-DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int *width, int *height, int checker, int outline) {
-	*width = 512, *height = 256;
-	DWORD *px = (DWORD *) calloc(*width * *height, 4);
-
+DWORD *ncerRenderWholeCell2(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline) {
 	DWORD *block = (DWORD *) calloc(64 * 64, 4);
 	for (int i = cell->nAttribs - 1; i >= 0; i--) {
 		NCER_CELL_INFO info;
@@ -343,7 +339,7 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 					int _x = (x + k + xOffs) & 0x1FF;
 					DWORD col = block[j * info.width + k];
 					if (col >> 24) {
-						px[_x + _y * *width] = block[j * info.width + k];
+						px[_x + _y * 512] = block[j * info.width + k];
 					}
 				}
 			}
@@ -356,15 +352,15 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 					int _x = (j + info.x + xOffs) & 0x1FF;
 					int _y = (info.y + yOffs) & 0xFF;
 					int _y2 = (_y + outlineHeight - 1) & 0xFF;
-					px[_x + _y * *width] = 0xFE000000;
-					px[_x + _y2 * *width] = 0xFE000000;
+					px[_x + _y * 512] = 0xFE000000;
+					px[_x + _y2 * 512] = 0xFE000000;
 				}
 				for (int j = 0; j < outlineHeight; j++) {
 					int _x = (info.x + xOffs) & 0x1FF;
 					int _y = (info.y + j + yOffs) & 0xFF;
 					int _x2 = (_x + outlineWidth - 1) & 0x1FF;
-					px[_x + _y * *width] = 0xFE000000;
-					px[_x2 + _y * *width] = 0xFE000000;
+					px[_x + _y * 512] = 0xFE000000;
+					px[_x2 + _y * 512] = 0xFE000000;
 				}
 			}
 		}
@@ -373,9 +369,9 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 
 	//apply checker background
 	if (checker) {
-		for (int y = 0; y < *height; y++) {
-			for (int x = 0; x < *width; x++) {
-				int index = y * *width + x;
+		for (int y = 0; y < 256; y++) {
+			for (int x = 0; x < 512; x++) {
+				int index = y * 512 + x;
 				if (px[index] >> 24 == 0) {
 					int p = ((x >> 2) ^ (y >> 2)) & 1;
 					if (p) {
@@ -387,6 +383,14 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 			}
 		}
 	}
+	return px;
+}
+
+DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int *width, int *height, int checker, int outline) {
+	*width = 512, *height = 256;
+	DWORD *px = (DWORD *) calloc(*width * *height, 4);
+
+	ncerRenderWholeCell2(px, cell, ncgr, nclr, xOffs, yOffs, checker, outline);
 	return px;
 }
 
