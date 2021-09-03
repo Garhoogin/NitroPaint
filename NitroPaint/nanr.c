@@ -220,3 +220,15 @@ void nanrWrite(NANR *nanr, LPWSTR path) {
 	CloseHandle(hFile);
 	return 0;
 }
+
+void nanrFree(NANR *nanr) {
+	for (int i = 0; i < nanr->nSequences; i++) {
+		NANR_SEQUENCE *sequence = nanr->sequences + i;
+		for (int j = 0; j < sequence->nFrames; j++) {
+			FRAME_DATA *f = sequence->frames + j;
+			free(f->animationData);
+		}
+		free(sequence->frames);
+	}
+	free(nanr->sequences);
+}

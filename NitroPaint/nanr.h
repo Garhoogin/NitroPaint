@@ -61,3 +61,5 @@ int nanrRead(NANR *nanr, LPBYTE lpFile, int size);
 int nanrReadFile(NANR *nanr, LPWSTR path);
 
 void nanrWrite(NANR *nanr, LPWSTR path);
+
+void nanrFree(NANR *nanr);
