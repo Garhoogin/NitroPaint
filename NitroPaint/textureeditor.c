@@ -518,8 +518,8 @@ void createPaletteName(WCHAR *buffer, WCHAR *file) {
 		if (file[i] == L'\\' || file[i] == L'/') index = i;
 	}
 	file += index + 1;
-	//copy up to 13 characters of the file name
-	for (i = 0; i < 13; i++) {
+	//copy up to 12 characters of the file name
+	for (i = 0; i < 12; i++) {
 		WCHAR c = file[i];
 		if (c == L'\0' || c == L'.') break;
 		buffer[i] = c;
@@ -685,7 +685,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			SendMessage(data->hWndOptimizationSlider, TBM_SETPOS, 0, 0);
 
 			//fill palette name
-			WCHAR pname[17] = { 0 };
+			WCHAR pname[16] = { 0 };
 			createPaletteName(pname, data->szInitialFile);
 			SendMessage(data->hWndPaletteName, WM_SETTEXT, wcslen(pname), (LPARAM) pname);
 
@@ -731,13 +731,13 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					SendMessage(data->hWndColorEntries, WM_GETTEXT, 31, (LPARAM) bf);
 					int colorEntries = _wtol(bf);
 					int optimization = SendMessage(data->hWndOptimizationSlider, TBM_GETPOS, 0, 0);
-					SendMessage(data->hWndPaletteName, WM_GETTEXT, 17, (LPARAM) bf);
+					SendMessage(data->hWndPaletteName, WM_GETTEXT, 16, (LPARAM) bf);
 
 					BOOL dither = SendMessage(data->hWndDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					BOOL ditherAlpha = SendMessage(data->hWndDitherAlpha, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
-					char mbpnam[17];
-					for (int i = 0; i < 17; i++) {
+					char mbpnam[16];
+					for (int i = 0; i < 16; i++) {
 						mbpnam[i] = (char) bf[i];
 					}
 					data->hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), 
