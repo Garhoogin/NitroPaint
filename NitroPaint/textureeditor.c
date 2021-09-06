@@ -621,8 +621,8 @@ void conversionCallback(void *p) {
 	HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(data->hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 	setStyle(hWndMain, FALSE, WS_DISABLED);
 	SendMessage(data->hWndProgress, WM_CLOSE, 0, 0);
+	SetForegroundWindow(hWndMain);
 	data->hWndProgress = NULL;
-	SetActiveWindow(hWndMain);
 
 	UpdatePaletteLabel(data->hWnd);
 }
@@ -740,13 +740,17 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					for (int i = 0; i < 16; i++) {
 						mbpnam[i] = (char) bf[i];
 					}
+
+					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					data->hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), 
-													  CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, NULL, NULL, NULL, NULL);
+													  CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, hWndMain, NULL, NULL, NULL);
 					ShowWindow(data->hWndProgress, SW_SHOW);
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					SetActiveWindow(data->hWndProgress);
 					threadedConvert(data->px, data->width, data->height, fmt, dither, ditherAlpha, fixedPalette ? paletteFile.nColors : colorEntries, 
 									fixedPalette, paletteFile.colors, optimization, mbpnam, &data->textureData, conversionCallback, (void *) data);
-					DestroyWindow(hWnd);
+
+					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
 				}
 			}
 			break;
@@ -759,13 +763,6 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				 int len = wsprintfW(bf, L"%d", SendMessage(hWndControl, TBM_GETPOS, 0, 0));
 				 SendMessage(data->hWndOptimizationLabel, WM_SETTEXT, len, (LPARAM) bf);
 			 }
-			break;
-		}
-		case WM_CLOSE:
-		{
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
-			SetActiveWindow(hWndMain);
 			break;
 		}
 		case WM_DESTROY:
