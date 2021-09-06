@@ -48,22 +48,36 @@ void freeDictionary(DICTIONARY *dictionary) {
 
 int nsbtxRead(NSBTX *nsbtx, char *buffer, int size) {
 	//is it valid?
-	if (buffer[0] != 'B' || buffer[1] != 'T' || buffer[2] != 'X' || buffer[3] != '0') return 1;
+	if ((buffer[0] != 'B' || buffer[1] != 'T' || buffer[2] != 'X' || buffer[3] != '0') &&
+		(buffer[0] != 'B' || buffer[1] != 'M' || buffer[2] != 'D' || buffer[3] != '0')) return 1;
 	//iterate over each section
 	int *sectionOffsets = (int *) (buffer + 0x10);
 	int nSections = *(short *) (buffer + 0xE);
 	//find the TEX0 section
 	char *tex0 = NULL;
 	int tex0Offset = 0;
+	nsbtx->mdl0 = NULL;
+	nsbtx->mdl0Size = 0;
 	for (int i = 0; i < nSections; i++) {
 		char *sect = buffer + sectionOffsets[i];
 		if (sect[0] == 'T' && sect[1] == 'E' && sect[2] == 'X' && sect[3] == '0') {
 			tex0 = sect;
 			tex0Offset = sect - buffer;
 			break;
+		} else if (sect[0] == 'M' && sect[1] == 'D' && sect[2] == 'L' && sect[3] == '0') {
+			nsbtx->mdl0Size = *(DWORD *) (sect + 4) - 8;
+			nsbtx->mdl0 = malloc(nsbtx->mdl0Size);
+			memcpy(nsbtx->mdl0, sect + 8, nsbtx->mdl0Size);
 		}
 	}
-	if (tex0 == NULL) return 1;
+	if (tex0 == NULL) {
+		if (nsbtx->mdl0 != NULL) {
+			free(nsbtx->mdl0);
+			nsbtx->mdl0 = NULL;
+			nsbtx->mdl0Size = 0;
+		}
+		return 1;
+	}
 
 	//next, process the tex0 section.
 	int blockSize = *(int *) (tex0 + 0x4);
@@ -208,8 +222,24 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwWritten;
 
-	BYTE fileHeader[] = { 'B', 'T', 'X', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 1, 0, 0x14, 0, 0, 0 };
-	WriteFile(hFile, fileHeader, sizeof(fileHeader), &dwWritten, NULL);
+	if (nsbtx->mdl0 != NULL) {
+		BYTE fileHeader[] = { 'B', 'M', 'D', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 2, 0, 0x18, 0, 0, 0, 0, 0, 0, 0 };
+
+		WriteFile(hFile, fileHeader, sizeof(fileHeader), &dwWritten, NULL);
+	} else {
+		BYTE fileHeader[] = { 'B', 'T', 'X', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 1, 0, 0x14, 0, 0, 0 };
+
+		WriteFile(hFile, fileHeader, sizeof(fileHeader), &dwWritten, NULL);
+	}
+
+	if (nsbtx->mdl0 != NULL) {
+		BYTE mdl0Header[] = { 'M', 'D', 'L', '0', 0, 0, 0, 0 };
+		*(DWORD *) (mdl0Header + 4) = nsbtx->mdl0Size + 8;
+		WriteFile(hFile, mdl0Header, sizeof(mdl0Header), &dwWritten, NULL);
+		WriteFile(hFile, nsbtx->mdl0, nsbtx->mdl0Size, &dwWritten, NULL);
+	}
+	
+	DWORD tex0Offset = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
 
 	BYTE tex0Header[] = { 'T', 'E', 'X', '0', 0, 0, 0, 0 };
 	WriteFile(hFile, tex0Header, sizeof(tex0Header), &dwWritten, NULL);
@@ -346,12 +376,22 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 
 	//write back the proper sizes
 	DWORD endPos = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
-	int size = endPos;
-	int tex0Size = endPos - 0x14;
 	SetFilePointer(hFile, 8, NULL, FILE_BEGIN);
-	WriteFile(hFile, &size, 4, &dwWritten, NULL);
-	SetFilePointer(hFile, 0x18, NULL, FILE_BEGIN);
-	WriteFile(hFile, &tex0Size, 4, &dwWritten, NULL);
+	WriteFile(hFile, &endPos, 4, &dwWritten, NULL);
+	if (nsbtx->mdl0 == NULL) {
+		int tex0Size = endPos - 0x14;
+
+		SetFilePointer(hFile, tex0Offset + 4, NULL, FILE_BEGIN);
+		WriteFile(hFile, &tex0Size, 4, &dwWritten, NULL);
+	} else {
+		int mdl0Size = 8 + nsbtx->mdl0Size;
+		int tex0Size = endPos - 0x18 - mdl0Size;
+
+		SetFilePointer(hFile, tex0Offset + 4, NULL, FILE_BEGIN);
+		WriteFile(hFile, &tex0Size, 4, &dwWritten, NULL);
+		SetFilePointer(hFile, 0x14, NULL, FILE_BEGIN);
+		WriteFile(hFile, &tex0Offset, 4, &dwWritten, NULL);
+	}
 
 	CloseHandle(hFile);
 }

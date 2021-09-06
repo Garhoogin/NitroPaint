@@ -72,6 +72,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 			}
 			case 'BTX0':
 			case '0XTB':
+			case 'BMD0':
+			case '0DMB':
 			{
 				type = FILE_TYPE_NSBTX;
 				break;
