@@ -4,6 +4,14 @@
 
 #define BIGINT unsigned long long
 
+//global variable that determines the palette algorithm to use
+static int g_paletteAlgorithm = PALETTE_SLOW;
+
+//list of palette creation functions
+static void (*g_paletteAlgorithms[]) (DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) = {
+	createPaletteSlow, createPaletteFast
+};
+
 typedef struct BUCKET_ {
 	DWORD * colors;
 	int nColors;
@@ -83,7 +91,19 @@ int lightnessCompare(const void *d1, const void *d2) {
 	return y1 - y2;
 }
 
+void setPaletteAlgorithm(int alg) {
+	g_paletteAlgorithm = alg;
+}
+
 void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) {
+	g_paletteAlgorithms[g_paletteAlgorithm](img, width, height, pal, nColors);
+}
+
+void createPaletteEx(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors, int alg) {
+	g_paletteAlgorithms[alg](img, width, height, pal, nColors);
+}
+
+void createPaletteFast(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) {
 	/* if it has alpha 0, just overwrite it to be black. */
 	for (int i = 0; i < width * height; i++) {
 		DWORD d = img[i];
