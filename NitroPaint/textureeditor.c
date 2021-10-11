@@ -703,7 +703,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				} else if (hWndControl == data->hWndFixedPalette && controlCode == BN_CLICKED) {
 					updateConvertDialog(data);
 				} else if (hWndControl == data->hWndPaletteBrowse && controlCode == BN_CLICKED) {
-					LPWSTR path = openFileDialog(hWnd, L"Select palette", L"Palette Files\0*.nclr;*ncl.bin;*.ntfp\0All Files\0*.*\0\0", "");
+					LPWSTR path = openFileDialog(hWnd, L"Select palette", L"Palette Files\0*.nclr;*ncl.bin;*.ntfp\0All Files\0*.*\0\0", L"");
 					if (path != NULL) {
 						SendMessage(data->hWndPaletteInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
 						free(path);

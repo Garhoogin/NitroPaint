@@ -12,6 +12,8 @@ DWORD reduce(DWORD col);
 
 int lightnessCompare(const void *d1, const void *d2);
 
+int createPaletteSlow(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors);
+
 void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors);
 
 void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors);

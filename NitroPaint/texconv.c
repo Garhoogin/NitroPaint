@@ -70,7 +70,7 @@ int convertPalette(CREATEPARAMS *params) {
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		createPaletteExact(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
+		createPaletteSlow(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
 	} else {
 		for (int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
@@ -139,7 +139,7 @@ int convertTranslucent(CREATEPARAMS *params) {
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		createPaletteExact(params->px, width, height, palette, nColors);
+		createPaletteSlow(params->px, width, height, palette, nColors);
 	} else {
 		for (int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
