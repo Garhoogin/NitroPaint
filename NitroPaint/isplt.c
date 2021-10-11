@@ -12,16 +12,14 @@ typedef struct HIST_ENTRY_ {
 	int q;
 	int a;
 	struct HIST_ENTRY_ *next;
-	int unk6;
 	double weight;
 	double value;
 } HIST_ENTRY;
 
 //structure for a node in the color tree
-typedef struct COLOR_BLOCK_ {
+typedef struct COLOR_NODE_ {
 	BOOL isLeaf;
-	int unk2;
-	double unk3;
+	double weight;
 	double priority;
 	int y;
 	int i;
@@ -30,10 +28,9 @@ typedef struct COLOR_BLOCK_ {
 	int pivotIndex;
 	int startIndex;
 	int endIndex;
-	struct COLOR_BLOCK_ *left;
-	struct COLOR_BLOCK_ *right;
-	int unk8;
-} COLOR_BLOCK;
+	struct COLOR_NODE_ *left;
+	struct COLOR_NODE_ *right;
+} COLOR_NODE;
 
 //allocator for allocating the linked lists
 typedef struct ALLOCATOR_ {
@@ -59,10 +56,9 @@ typedef struct REDUCTION_ {
 	int optimization;
 	HISTOGRAM *histogram;
 	HIST_ENTRY **histogramFlat;
-	COLOR_BLOCK *colorTreeHead;
-	COLOR_BLOCK *colorBlocks[0x2000];
+	COLOR_NODE *colorTreeHead;
+	COLOR_NODE *colorBlocks[0x2000];
 	BYTE paletteRgb[256][3];
-	BYTE paletteA[256];
 	double lumaTable[512];
 	double gamma;
 } REDUCTION;
@@ -241,9 +237,9 @@ void decodeColor(int *rgb, int *out) {
 	g = min(max(g, 0), 255);
 	b = min(max(b, 0), 255);
 
-	rgb[2] = r;
+	rgb[0] = r;
 	rgb[1] = g;
-	rgb[0] = b;
+	rgb[2] = b;
 }
 
 void computeHistogram(REDUCTION *reduction, DWORD *img, int width, int height) {
@@ -290,7 +286,7 @@ void computeHistogram(REDUCTION *reduction, DWORD *img, int width, int height) {
 	}
 }
 
-void freeColorTree(COLOR_BLOCK *colorBlock, BOOL freeThis) {
+void freeColorTree(COLOR_NODE *colorBlock, BOOL freeThis) {
 	if (colorBlock->left != NULL) {
 		freeColorTree(colorBlock->left, TRUE);
 		colorBlock->left = NULL;
@@ -304,7 +300,7 @@ void freeColorTree(COLOR_BLOCK *colorBlock, BOOL freeThis) {
 	}
 }
 
-int getNumberOfTreeLeaves(COLOR_BLOCK *tree) {
+int getNumberOfTreeLeaves(COLOR_NODE *tree) {
 	int count = 0;
 	if (tree->left == NULL && tree->right == NULL) return 1; //doesn't necessarily have to be a leaf
 
@@ -317,7 +313,7 @@ int getNumberOfTreeLeaves(COLOR_BLOCK *tree) {
 	return count;
 }
 
-void createLeaves(COLOR_BLOCK *tree, int pivotIndex) {
+void createLeaves(COLOR_NODE *tree, int pivotIndex) {
 	if (tree->left == NULL && tree->right == NULL) {
 		if (pivotIndex > tree->startIndex && pivotIndex >= tree->endIndex) {
 			pivotIndex = tree->endIndex - 1;
@@ -327,7 +323,7 @@ void createLeaves(COLOR_BLOCK *tree, int pivotIndex) {
 		}
 
 		if (pivotIndex > tree->startIndex && pivotIndex < tree->endIndex) {
-			COLOR_BLOCK *newNode = (COLOR_BLOCK *) calloc(1, sizeof(COLOR_BLOCK));
+			COLOR_NODE *newNode = (COLOR_NODE *) calloc(1, sizeof(COLOR_NODE));
 			
 			newNode->a = 0xFF;
 			newNode->isLeaf = TRUE;
@@ -335,7 +331,7 @@ void createLeaves(COLOR_BLOCK *tree, int pivotIndex) {
 			newNode->endIndex = pivotIndex;
 			tree->left = newNode;
 
-			newNode = (COLOR_BLOCK *) calloc(1, sizeof(COLOR_BLOCK));
+			newNode = (COLOR_NODE *) calloc(1, sizeof(COLOR_NODE));
 			newNode->a = 0xFF;
 			newNode->isLeaf = TRUE;
 			newNode->startIndex = pivotIndex;
@@ -346,12 +342,12 @@ void createLeaves(COLOR_BLOCK *tree, int pivotIndex) {
 	tree->isLeaf = FALSE;
 }
 
-COLOR_BLOCK *getLeaf(COLOR_BLOCK *tree) {
+COLOR_NODE *getLeaf(COLOR_NODE *tree) {
 	if (tree->left == NULL && tree->right == NULL) {
 		if (tree->isLeaf) return tree;
 		return NULL;
 	}
-	COLOR_BLOCK *leafLeft = NULL, *leafRight = NULL;
+	COLOR_NODE *leafLeft = NULL, *leafRight = NULL;
 	if (tree->left != NULL) {
 		leafLeft = getLeaf(tree->left);
 	}
@@ -515,7 +511,7 @@ double lengthSquared(double x, double y, double z) {
 	return x * x + y * y + z * z;
 }
 
-void setupLeaf(REDUCTION *reduction, COLOR_BLOCK *colorBlock) {
+void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 	//calculate the pivot index, as well as average YIQA values.
 	if (colorBlock->endIndex - colorBlock->startIndex < 2) {
 		HIST_ENTRY *entry = reduction->histogramFlat[colorBlock->startIndex];
@@ -523,7 +519,7 @@ void setupLeaf(REDUCTION *reduction, COLOR_BLOCK *colorBlock) {
 		colorBlock->i = entry->i;
 		colorBlock->q = entry->q;
 		colorBlock->a = entry->a;
-		colorBlock->unk3 = entry->weight;
+		colorBlock->weight = entry->weight;
 		colorBlock->isLeaf = FALSE;
 		return;
 	}
@@ -614,7 +610,7 @@ void setupLeaf(REDUCTION *reduction, COLOR_BLOCK *colorBlock) {
 	colorBlock->i = initI;
 	colorBlock->q = initQ;
 	colorBlock->a = initA;
-	colorBlock->unk3 = totalWeight;
+	colorBlock->weight = totalWeight;
 
 	double adjustedWeight = 1.0;
 	if (!reduction->enhanceColors) {
@@ -659,7 +655,7 @@ DWORD maskColor(DWORD color) {
 
 void optimizePalette(REDUCTION *reduction) {
 	//do it
-	COLOR_BLOCK *treeHead = (COLOR_BLOCK *) calloc(1, sizeof(COLOR_BLOCK));
+	COLOR_NODE *treeHead = (COLOR_NODE *) calloc(1, sizeof(COLOR_NODE));
 	treeHead->isLeaf = TRUE;
 	treeHead->a = 0xFF;
 	treeHead->endIndex = reduction->histogram->nEntries;
@@ -680,19 +676,16 @@ void optimizePalette(REDUCTION *reduction) {
 	}
 
 	if (numberOfTreeElements < reduction->nPaletteColors) {
-		COLOR_BLOCK *colorBlock;
+		COLOR_NODE *colorBlock;
 		while ((colorBlock = getLeaf(treeHead)) != NULL) {
 			createLeaves(colorBlock, colorBlock->pivotIndex);
 
-			COLOR_BLOCK *leftBlock = colorBlock->left, *rightBlock = colorBlock->right;
+			COLOR_NODE *leftBlock = colorBlock->left, *rightBlock = colorBlock->right;
 			if (leftBlock != NULL) {
 				setupLeaf(reduction, leftBlock);
-				int rgb[4];
-				int yiq[] = { leftBlock->y, leftBlock->i, leftBlock->q, leftBlock->a };
-				decodeColor(rgb, yiq);
 
 				//destroy this node?
-				if (leftBlock->unk3 < 1.0) {
+				if (leftBlock->weight < 1.0) {
 					if (leftBlock->left != NULL) {
 						freeColorTree(leftBlock->left, TRUE);
 						leftBlock->left = NULL;
@@ -707,12 +700,9 @@ void optimizePalette(REDUCTION *reduction) {
 
 			if (rightBlock != NULL) {
 				setupLeaf(reduction, rightBlock);
-				int yiq[] = { rightBlock->y, rightBlock->i, rightBlock->q };
-				int rgb[4];
-				decodeColor(rgb, yiq);
 
 				//destroy this node?
-				if (rightBlock->unk3 < 1.0) {
+				if (rightBlock->weight < 1.0) {
 					if (rightBlock->left != NULL) {
 						freeColorTree(rightBlock->left, TRUE);
 						rightBlock->left = NULL;
@@ -732,8 +722,8 @@ void optimizePalette(REDUCTION *reduction) {
 				decodeColor(decodedRight, &colorBlock->right->y);
 				int leftAlpha = colorBlock->left->a;
 				int rightAlpha = colorBlock->right->a;
-				DWORD leftRgb = decodedLeft[2] | (decodedLeft[1] << 8) | (decodedLeft[0] << 16);
-				DWORD rightRgb = decodedRight[2] | (decodedRight[1] << 8) | (decodedRight[0] << 16);
+				DWORD leftRgb = decodedLeft[0] | (decodedLeft[1] << 8) | (decodedLeft[2] << 16);
+				DWORD rightRgb = decodedRight[0] | (decodedRight[1] << 8) | (decodedRight[2] << 16);
 				DWORD maskedLeft = maskColor(leftRgb), maskedRight = maskColor(rightRgb);
 
 				if (maskedLeft == maskedRight && leftAlpha == rightAlpha) {
@@ -790,7 +780,7 @@ void optimizePalette(REDUCTION *reduction) {
 	}
 }
 
-COLOR_BLOCK **addColorBlocks(COLOR_BLOCK *colorBlock, COLOR_BLOCK **colorBlockList) {
+COLOR_NODE **addColorBlocks(COLOR_NODE *colorBlock, COLOR_NODE **colorBlockList) {
 	if (colorBlock->left == NULL && colorBlock->right == NULL) {
 		*colorBlockList = colorBlock;
 		return colorBlockList + 1;
@@ -808,7 +798,7 @@ void paletteToArray(REDUCTION *reduction) {
 	if (reduction->colorTreeHead == NULL) return;
 
 	//flatten
-	COLOR_BLOCK **colorBlockPtr = reduction->colorBlocks;
+	COLOR_NODE **colorBlockPtr = reduction->colorBlocks;
 	memset(colorBlockPtr, 0, sizeof(reduction->colorBlocks));
 	addColorBlocks(reduction->colorTreeHead, colorBlockPtr);
 
@@ -816,15 +806,15 @@ void paletteToArray(REDUCTION *reduction) {
 	int ofs = 0;
 	for (int i = 0; i < reduction->nPaletteColors; i++) {
 		if (colorBlockPtr[i] != NULL) {
-			COLOR_BLOCK *block = colorBlockPtr[i];
+			COLOR_NODE *block = colorBlockPtr[i];
 			int y = block->y, i = block->i, q = block->q;
 			int yiq[] = { y, i, q, 0xFF };
 			int rgb[4];
 			decodeColor(rgb, yiq);
 			
-			reduction->paletteRgb[ofs][0] = rgb[2];
+			reduction->paletteRgb[ofs][0] = rgb[0];
 			reduction->paletteRgb[ofs][1] = rgb[1];
-			reduction->paletteRgb[ofs][2] = rgb[0];
+			reduction->paletteRgb[ofs][2] = rgb[2];
 			ofs++;
 		}
 	}
