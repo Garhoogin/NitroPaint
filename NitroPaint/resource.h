@@ -78,13 +78,16 @@
 #define ID_PALETTEMENU_COPY             40077
 #define ID_PALETTEMENU_PASTE            40078
 #define ID_FILE_CONVERTTO               40079
+#define ID_EDIT_PALETTEALGORITHM        40080
+#define ID_PALETTEALGORITHM_SLOW        40081
+#define ID_PALETTEALGORITHM_FAST        40082
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40080
+#define _APS_NEXT_COMMAND_VALUE         40083
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

@@ -70,7 +70,7 @@ int convertPalette(CREATEPARAMS *params) {
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		createPaletteSlow(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
+		createPaletteExact(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
 	} else {
 		for (int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
@@ -139,7 +139,7 @@ int convertTranslucent(CREATEPARAMS *params) {
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		createPaletteSlow(params->px, width, height, palette, nColors);
+		createPaletteExact(params->px, width, height, palette, nColors);
 	} else {
 		for (int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
@@ -214,39 +214,6 @@ typedef struct {
 	BYTE transparentPixels;
 	BYTE duplicate;
 } TILEDATA;
-
-int pixelCompare(const void *p1, const void *p2) {
-	return *(DWORD *) p1 - (*(DWORD *) p2);
-}
-
-int countColors(DWORD *px, int nPx) {
-	//sort the colors by raw RGB value. This way, same colors are grouped.
-	DWORD *copy = (DWORD *) malloc(nPx * 4);
-	memcpy(copy, px, nPx * 4);
-	qsort(copy, nPx, 4, pixelCompare);
-	int nColors = 0;
-	int hasTransparent = 0;
-	for (int i = 0; i < nPx; i++) {
-		int a = copy[i] >> 24;
-		if (!a) hasTransparent = 1;
-		else {
-			DWORD color = copy[i] & 0xFFFFFF;
-			//has this color come before?
-			int repeat = 0;
-			if(i){
-				DWORD comp = copy[i - 1] & 0xFFFFFF;
-				if (comp == color) {
-					repeat = 1;
-				}
-			}
-			if (!repeat) {
-				nColors++;
-			}
-		}
-	}
-	free(copy);
-	return nColors + hasTransparent;
-}
 
 void getColorBounds(DWORD *px, int nPx, DWORD *colorMin, DWORD *colorMax) {
 	//if only 1 or 2 colors, fill the palette with those.

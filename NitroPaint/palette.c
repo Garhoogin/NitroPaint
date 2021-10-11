@@ -492,3 +492,36 @@ void convertRGBToYUV(int r, int g, int b, int *y, int *u, int *v) {
 	*u = (int) (-0.1684 * r - 0.3316 * g + 0.5000 * b);
 	*v = (int) ( 0.5000 * r - 0.4187 * g - 0.0813 * b);
 }
+
+int pixelCompare(const void *p1, const void *p2) {
+	return *(DWORD *) p1 - (*(DWORD *) p2);
+}
+
+int countColors(DWORD *px, int nPx) {
+	//sort the colors by raw RGB value. This way, same colors are grouped.
+	DWORD *copy = (DWORD *) malloc(nPx * 4);
+	memcpy(copy, px, nPx * 4);
+	qsort(copy, nPx, 4, pixelCompare);
+	int nColors = 0;
+	int hasTransparent = 0;
+	for (int i = 0; i < nPx; i++) {
+		int a = copy[i] >> 24;
+		if (!a) hasTransparent = 1;
+		else {
+			DWORD color = copy[i] & 0xFFFFFF;
+			//has this color come before?
+			int repeat = 0;
+			if(i){
+				DWORD comp = copy[i - 1] & 0xFFFFFF;
+				if (comp == color) {
+					repeat = 1;
+				}
+			}
+			if (!repeat) {
+				nColors++;
+			}
+		}
+	}
+	free(copy);
+	return nColors + hasTransparent;
+}
