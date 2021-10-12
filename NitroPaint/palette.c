@@ -256,7 +256,14 @@ closestpalette(RGB rgb, RGB * palette, int paletteSize, RGB * error) {
 		int dr = entry.r - rgb.r;
 		int dg = entry.g - rgb.g;
 		int db = entry.b - rgb.b;
-		int dst = dr * dr + dg * dg + db * db;
+		int dst;
+		if(g_paletteAlgorithm == PALETTE_SLOW) {
+			int y, u, v;
+			convertRGBToYUV(dr, dg, db, &y, &u, &v);
+			dst = 4 * y * y + u * u + v * v;
+		} else {
+			dst = dr * dr + dg * dg + db * db;
+		}
 		if (dst < smallestDistance) {
 			index = i;
 			smallestDistance = dst;
