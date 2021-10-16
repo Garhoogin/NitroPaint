@@ -604,6 +604,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_DESTROY:
 		{
 			free(data->nclr.colors);
+			if (data->nclr.idxTable != NULL) free(data->nclr.idxTable);
 			free(data);
 			HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 			HWND hWndMain = (HWND) GetWindowLong(hWndMdi, GWL_HWNDPARENT);

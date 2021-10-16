@@ -1,4 +1,5 @@
 #include "nclr.h"
+#include "g2dfile.h"
 #include <stdio.h>
 
 LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", NULL };
@@ -50,23 +51,35 @@ int nclrRead(NCLR *nclr, char *buffer, int size) {
 		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
 		if (nclrIsValidNtfp(buffer, size)) return binPaletteRead(nclr, buffer, size);
 	}
-	short nBlocks = *(short *) (buffer + 0xE);
-	buffer += 0x10;
-	int bits = *(int *) (buffer + 0x8);
+	char *pltt = g2dGetSectionByMagic(buffer, size, 'PLTT');
+	char *pcmp = g2dGetSectionByMagic(buffer, size, 'PCMP');
+	if (pltt == NULL) return 1;
+
+	int bits = *(int *) (pltt + 0x8);
 	bits = 1 << (bits - 1);
-	int dataSize = *(int *) (buffer + 0x10);
-	int sectionSize = *(int *) (buffer + 0x4);
-	int dataOffset = 8 + *(int *) (buffer + 0x14);
+	int dataSize = *(int *) (pltt + 0x10);
+	int sectionSize = *(int *) (pltt + 0x4);
+	int dataOffset = 8 + *(int *) (pltt + 0x14);
 	int nColors = (sectionSize - dataOffset) >> 1;
 
 	nclr->nColors = nColors;
 	nclr->nBits = bits;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
+	nclr->extPalette = *(int *) (pltt + 0xC);
+	nclr->totalSize = *(int *) (pltt + 0x10);
+	nclr->nPalettes = 0;
+	nclr->idxTable = NULL;
 	nclr->header.type = FILE_TYPE_PALETTE;
 	nclr->header.format = NCLR_TYPE_NCLR;
 	nclr->header.size = sizeof(*nclr);
 	nclr->header.compression = COMPRESSION_NONE;
-	memcpy(nclr->colors, buffer + dataOffset, nColors * 2);
+	
+	if (pcmp != NULL) {
+		nclr->nPalettes = *(unsigned short *) (pcmp + 8);
+		nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
+		memcpy(nclr->idxTable, pcmp + 8 + *(unsigned int *) (pcmp + 0xC), nclr->nPalettes * 2);
+	}
+	memcpy(nclr->colors, pltt + dataOffset, nColors * 2);
 	return 0;
 }
 
@@ -134,32 +147,45 @@ int nclrIsValidNtfp(LPBYTE lpFile, int size) {
 }
 
 int nclrIsValid(LPBYTE lpFile, int size) {
+	if (!g2dIsValid(lpFile, size)) return 0;
+
 	if (size < 40) return 0;
 	DWORD first = *(DWORD *) lpFile;
 	if (first != 0x4E434C52) return 0;
 	return 1;
 }
 
-void nclrWrite(NCLR * nclr, LPWSTR name) {
+void nclrWrite(NCLR *nclr, LPWSTR name) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (nclr->header.format == NCLR_TYPE_NCLR) {
 		BYTE fileHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
-		//BYTE pmcpHeader[] = {'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 0, 0, 0, 0, 0xEF, 0xBE, 0x8, 0}; 
-		//no need to make PMCP likely.
+		BYTE pmcpHeader[] = { 'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
+		
 
 		int sectionSize = 0x18 + (nclr->nColors << 1);
+		int pcmpSize = nclr->nPalettes ? (0x10 + 2 * nclr->nPalettes) : 0;
+		int nSections = 1 + (pcmpSize != 0);
 		*(int *) (ttlpHeader + 0x4) = sectionSize;
 		if (nclr->nBits == 8) *(int *) (ttlpHeader + 0x8) = 4;
 		else *(int *) (ttlpHeader + 0x8) = 3;
-		*(int *) (ttlpHeader + 0x10) = sectionSize - 0x18;
+		*(int *) (ttlpHeader + 0x10) = nclr->totalSize;
+		*(int *) (ttlpHeader + 0xC) = nclr->extPalette;
 
-		*(int *) (fileHeader + 0x8) = sectionSize + 0x10;
+		*(int *) (fileHeader + 0x8) = sectionSize + 0x10 + pcmpSize;
+		*(short *) (fileHeader + 0xE) = nSections;
+
+		*(short *) (pmcpHeader + 8) = nclr->nPalettes;
+		*(int *) (pmcpHeader + 4) = 0x10 + 2 * nclr->nPalettes;
 
 		DWORD dwWritten;
 		WriteFile(hFile, fileHeader, 0x10, &dwWritten, NULL);
 		WriteFile(hFile, ttlpHeader, 0x18, &dwWritten, NULL);
 		WriteFile(hFile, nclr->colors, nclr->nColors << 1, &dwWritten, NULL);
+		if (pcmpSize) {
+			WriteFile(hFile, pmcpHeader, sizeof(pmcpHeader), &dwWritten, NULL);
+			WriteFile(hFile, nclr->idxTable, nclr->nPalettes * 2, &dwWritten, NULL);
+		}
 	} else if(nclr->header.format == NCLR_TYPE_HUDSON) {
 		BYTE fileHeader[] = {0, 0, 0, 0};
 		*(WORD *) fileHeader = nclr->nColors * 2;

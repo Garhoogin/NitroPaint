@@ -15,6 +15,10 @@ typedef struct NCLR_ {
 	OBJECT_HEADER header;
 	int nBits;
 	int nColors;
+	int nPalettes; //for compressed palettes
+	int totalSize; //for extended palettes
+	int extPalette;
+	short *idxTable;
 	COLOR *colors;
 } NCLR;
 
