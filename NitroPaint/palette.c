@@ -378,21 +378,12 @@ unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize) {
 		int er = closest.r - thisColor.r;
 		int eg = closest.g - thisColor.g;
 		int eb = closest.b - thisColor.b;
-		error += er * er + eg * eg + eb * eb;
-	}
-	return error;
-}
-
-int computeMultiPaletteError(int *closests, DWORD *blocks, int tilesX, int tilesY, int width, DWORD *pals, int nPalettes, int paletteSize, int usePaletteSize, int paletteOffset) {
-	int error = 0;
-	for (int i = 0; i < tilesX * tilesY; i++) {
-		int x = i % tilesX;
-		int y = i / tilesX;
-		DWORD *block = blocks + 64 * (x + y * tilesX);
-		if (paletteOffset == 0) {
-			error += getPaletteError((RGB *) block, 64, (RGB *) pals + closests[i] * paletteSize, usePaletteSize);
+		if (g_paletteAlgorithm == PALETTE_SLOW) {
+			int y, u, v;
+			convertRGBToYUV(er, eg, eb, &y, &u, &v);
+			error += 4 * y * y + u * u + v * v;
 		} else {
-			error += getPaletteError((RGB *) block, 64, (RGB *) pals + closests[i] * paletteSize + paletteOffset - 1, usePaletteSize + 1);
+			error += er * er + eg * eg + eb * eb;
 		}
 	}
 	return error;
@@ -445,49 +436,6 @@ void createMultiplePalettes(DWORD *blocks, DWORD *avgs, int width, int tilesX, i
 		}
 	}
 	free(avgPals);
-
-	//refine the choice of palettes.
-	{
-		//create an array for temporary work.
-		int *tempClosests = calloc(tilesX * tilesY, sizeof(int));
-		int tempUseCounts[16];
-		int bestError = computeMultiPaletteError(closests, blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize, usePaletteSize, paletteOffset);
-
-		while (1) {
-			int nChanged = 0;
-			for (int i = 0; i < tilesX * tilesY; i++) {
-				int x = i % tilesX;
-				int y = i / tilesX;
-				DWORD *block = blocks + 64 * (x + y * tilesX);
-
-				//go over each group to see if this tile works better in another.
-				for (int j = 0; j < nPalettes; j++) {
-					if (j == closests[i]) continue;
-					memcpy(tempClosests, closests, tilesX * tilesY * sizeof(int));
-					memcpy(tempUseCounts, useCounts, sizeof(useCounts));
-
-					tempClosests[i] = j;
-					tempUseCounts[j]++;
-					tempUseCounts[closests[i]]--;
-					createMultiPalettes(blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests, usePaletteSize, paletteOffset);
-
-					//compute total error
-					int error = computeMultiPaletteError(tempClosests, blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize, usePaletteSize, paletteOffset);
-					if (error < bestError) {
-						bestError = error;
-						int oldClosest = closests[i];
-						closests[i] = j;
-						useCounts[j]++;
-						useCounts[oldClosest]--;
-						nChanged++;
-					}
-				}
-			}
-			if (nChanged == 0) break;
-		}
-
-		free(tempClosests);
-	}
 
 	//now, create a new bitmap for each set of tiles that share a palette.
 	createMultiPalettes(blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests, usePaletteSize, paletteOffset);
