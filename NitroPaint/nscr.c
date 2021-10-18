@@ -511,9 +511,29 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, 
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffset, int rowLimit) {
-	//combine similar.
-	DWORD * bits = imgBits;//combineSimilar(imgBits, width, height, 1024);
-						   //create the palette.
+
+	//cursory sanity checks
+	if (nBits == 4) {
+		if (paletteBase >= 16) paletteBase = 15;
+		else if (paletteBase < 0) paletteBase = 0;
+		if (nPalettes > 16) nPalettes = 16;
+		else if (nPalettes < 1) nPalettes = 1;
+		if (paletteBase + nPalettes > 16) nPalettes = 16 - paletteBase;
+
+		if (paletteOffset < 0) paletteOffset = 0;
+		else if (paletteOffset >= 16) paletteOffset = 15;
+		if (paletteOffset + paletteSize > 16) paletteSize = 16 - paletteOffset;
+	} else {
+		paletteBase = 0;
+		nPalettes = 1;
+
+		if (paletteOffset < 0) paletteOffset = 0;
+		if (paletteSize < 1) paletteSize = 1;
+		if (paletteOffset >= 256) paletteOffset = 255;
+		if (paletteSize >= 256) paletteSize = 255;
+		if (paletteOffset + paletteSize > 256) paletteSize = 256 - paletteOffset;
+	}
+	if (paletteSize < 1) paletteSize = 1;
 
 	int tilesX = width / 8;
 	int tilesY = height / 8;
@@ -525,14 +545,14 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 		for (int x = 0; x < tilesX; x++) {
 			int srcOffset = x * 8 + y * 8 * (width);
 			DWORD *block = blocks + 64 * (x + y * tilesX);
-			CopyMemory(block, imgBits + srcOffset, 32);
-			CopyMemory(block + 8, imgBits + srcOffset + width, 32);
-			CopyMemory(block + 16, imgBits + srcOffset + width * 2, 32);
-			CopyMemory(block + 24, imgBits + srcOffset + width * 3, 32);
-			CopyMemory(block + 32, imgBits + srcOffset + width * 4, 32);
-			CopyMemory(block + 40, imgBits + srcOffset + width * 5, 32);
-			CopyMemory(block + 48, imgBits + srcOffset + width * 6, 32);
-			CopyMemory(block + 56, imgBits + srcOffset + width * 7, 32);
+			memcpy(block, imgBits + srcOffset, 32);
+			memcpy(block + 8, imgBits + srcOffset + width, 32);
+			memcpy(block + 16, imgBits + srcOffset + width * 2, 32);
+			memcpy(block + 24, imgBits + srcOffset + width * 3, 32);
+			memcpy(block + 32, imgBits + srcOffset + width * 4, 32);
+			memcpy(block + 40, imgBits + srcOffset + width * 5, 32);
+			memcpy(block + 48, imgBits + srcOffset + width * 6, 32);
+			memcpy(block + 56, imgBits + srcOffset + width * 7, 32);
 			DWORD avg = averageColor(block, 64);
 			avgs[x + y * tilesX] = avg;
 		}
@@ -543,9 +563,9 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 	else nBits = 8;
 	if (nPalettes == 1) {
 		if (paletteOffset) {
-			createPaletteExact(bits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize);
+			createPaletteExact(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize);
 		} else {
-			createPalette_(bits, width, height, palette + (paletteBase << nBits), paletteSize);
+			createPalette_(imgBits, width, height, palette + (paletteBase << nBits), paletteSize);
 		}
 	} else {
 		
@@ -555,7 +575,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 	//apply the palette to the image. 
 	BYTE *paletteIndices = (BYTE *) calloc(tilesX * tilesY, 1);
 	DWORD *paletted = (DWORD *) calloc(width * height, 4);
-	CopyMemory(paletted, bits, width * height * 4);
+	memcpy(paletted, imgBits, width * height * 4);
 
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
@@ -598,21 +618,18 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 		for (int x = 0; x < tilesX; x++) {
 			int srcOffset = x * 8 + y * 8 * (width);
 			DWORD *block = blocks + 64 * (x + y * tilesX);
-			CopyMemory(block, paletted + srcOffset, 32);
-			CopyMemory(block + 8, paletted + srcOffset + width, 32);
-			CopyMemory(block + 16, paletted + srcOffset + width * 2, 32);
-			CopyMemory(block + 24, paletted + srcOffset + width * 3, 32);
-			CopyMemory(block + 32, paletted + srcOffset + width * 4, 32);
-			CopyMemory(block + 40, paletted + srcOffset + width * 5, 32);
-			CopyMemory(block + 48, paletted + srcOffset + width * 6, 32);
-			CopyMemory(block + 56, paletted + srcOffset + width * 7, 32);
+			memcpy(block, paletted + srcOffset, 32);
+			memcpy(block + 8, paletted + srcOffset + width, 32);
+			memcpy(block + 16, paletted + srcOffset + width * 2, 32);
+			memcpy(block + 24, paletted + srcOffset + width * 3, 32);
+			memcpy(block + 32, paletted + srcOffset + width * 4, 32);
+			memcpy(block + 40, paletted + srcOffset + width * 5, 32);
+			memcpy(block + 48, paletted + srcOffset + width * 6, 32);
+			memcpy(block + 56, paletted + srcOffset + width * 7, 32);
 			DWORD avg = averageColor(block, 64);
 			avgs[x + y * tilesX] = avg;
 		}
 	}
-
-	int nToAllocate = tilesX * tilesY;
-	if (nToAllocate & 0xF) nToAllocate += (0x10 - (nToAllocate & 0xF));
 
 	//blocks is now an array of blocks. Next, we need to find duplicate blocks. 
 	int nBlocks = tilesX * tilesY; //number of generated tiles
@@ -634,11 +651,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 				DWORD * block2 = blocks + j * 64;
 				int dup = isDuplicate(block1, block2);
 				if (!dup) continue;
-				//modes[i] = dup - 1;
-				//is a duplicate.
-				//point indices[i] to j. 
-				//indices[i] = j;
-				//this leaves i unused as an index. 
+
 				//decrement all indices greater than i.
 				for (int k = 0; k < nTotalTiles; k++) {
 
@@ -652,7 +665,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 					if (indices[k] > i) indices[k]--;
 				}
 				//now, remove block i, by sliding the rest over it.
-				MoveMemory(blocks + i * 64, blocks + 64 + i * 64, (nBlocks - 1 - i) * 256);
+				memmove(blocks + i * 64, blocks + 64 + i * 64, (nBlocks - 1 - i) * 256);
 				nBlocks--;
 				i--;
 				break;
