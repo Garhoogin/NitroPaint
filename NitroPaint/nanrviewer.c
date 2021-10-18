@@ -89,7 +89,7 @@ void setFrameTranslate(FRAME_DATA *frame, int px, int py, int element) {
 }
 
 int getDrawFrameIndex(NANR_SEQUENCE *sequence, int frame) {
-	if (sequence == NULL) return 0;
+	if (sequence == NULL || sequence->nFrames == 0) return 0;
 	int drawFrameIndex = sequence->startFrameIndex + frame;
 	int mode = sequence->mode;
 	int nSequenceFrames = getTotalFrameCount(sequence);
@@ -202,14 +202,16 @@ VOID PaintNanrFrame(HWND hWnd, HDC hDC) {
 		int frame = data->frame;
 		int sequence = data->sequence;
 
-		nanrDrawFrame(data->frameBuffer, nclr, ncgr, ncer, nanr, sequence, frame);
+		if (nanr->sequences[sequence].nFrames > 0) {
+			nanrDrawFrame(data->frameBuffer, nclr, ncgr, ncer, nanr, sequence, frame);
 
-		HBITMAP hBitmap = CreateBitmap(512, 256, 1, 32, data->frameBuffer);
-		HDC hOffDC = CreateCompatibleDC(hDC);
-		SelectObject(hOffDC, hBitmap);
-		BitBlt(hDC, 0, 0, 512, 256, hOffDC, 0, 0, SRCCOPY);
-		DeleteObject(hOffDC);
-		DeleteObject(hBitmap);
+			HBITMAP hBitmap = CreateBitmap(512, 256, 1, 32, data->frameBuffer);
+			HDC hOffDC = CreateCompatibleDC(hDC);
+			SelectObject(hOffDC, hBitmap);
+			BitBlt(hDC, 0, 0, 512, 256, hOffDC, 0, 0, SRCCOPY);
+			DeleteObject(hOffDC);
+			DeleteObject(hBitmap);
+		}
 	}
 }
 
@@ -253,8 +255,10 @@ void nanrViewerSetFrame(HWND hWnd, int n, BOOL updateListBox) {
 	SendMessage(data->hWndFrameCounter, WM_SETTEXT, len, (LPARAM) bf);
 	len = wsprintfW(bf, L"%d", sequence->frames[n].nFrames);
 	SendMessage(data->hWndFrameCount, WM_SETTEXT, len, (LPARAM) bf);
-	len = wsprintfW(bf, L"%d", ((ANIM_DATA *) (sequence->frames[n].animationData))->index);
-	SendMessage(data->hWndIndex, WM_SETTEXT, len, (LPARAM) bf);
+	if (n < sequence->nFrames && n >= 0) {
+		len = wsprintfW(bf, L"%d", ((ANIM_DATA *) (sequence->frames[n].animationData))->index);
+		SendMessage(data->hWndIndex, WM_SETTEXT, len, (LPARAM) bf);
+	}
 	
 	int element = sequence->type & 0xFFFF;
 	if (element > 0) {
@@ -556,6 +560,9 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				WORD notif = HIWORD(wParam);
 				if (hWndControl == data->hWndAnimationDropdown && notif == CBN_SELCHANGE) {
 					int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+
+					data->playing = 0;
+					SendMessage(data->hWndPauseButton, WM_SETTEXT, 4, (LPARAM) L"Play");
 
 					nanrViewerSetSequence(hWnd, idx);
 				} else if (hWndControl == data->hWndPauseButton && notif == BN_CLICKED) {
