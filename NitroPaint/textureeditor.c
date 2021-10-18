@@ -20,6 +20,15 @@ extern HICON g_appIcon;
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
+int getTexelVramSize(int texImageParam) {
+	int w = TEXW(texImageParam);
+	int h = TEXH(texImageParam);
+	int fmt = FORMAT(texImageParam);
+
+	int bpps[] = { 0, 8, 2, 4, 8, 3, 8, 16 };
+	return bpps[fmt] * w * h / 8;
+}
+
 void UpdatePaletteLabel(HWND hWnd) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 
@@ -36,6 +45,21 @@ void UpdatePaletteLabel(HWND hWnd) {
 
 	len = wsprintfW(bf, L"Format: %S", stringFromFormat(FORMAT(data->textureData.texels.texImageParam)));
 	SendMessage(data->hWndFormatLabel, WM_SETTEXT, len, (LPARAM) bf);
+
+	int nColors = countColors(data->px, data->width * data->height);
+	len = wsprintfW(bf, L"Colors: %d", nColors);
+	SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) bf);
+
+	int texelVram = getTexelVramSize(data->textureData.texels.texImageParam);
+	int paletteVram = data->textureData.palette.nColors * 2;
+	
+	//this code is ugly due to being unable to just use %.2f
+	len = wsprintfW(bf, L"Texel: %d.%d%dKB", texelVram / 1024, (texelVram * 10 / 1024) % 10,
+		((texelVram * 100 + 512) / 1024) % 10);
+	SendMessage(data->hWndTexelVram, WM_SETTEXT, len, (LPARAM) bf);
+	len = wsprintfW(bf, L"Palette: %d.%d%dKB", paletteVram / 1024, (paletteVram * 10 / 1024) % 10,
+		((paletteVram * 100 + 512) / 1024) % 10);
+	SendMessage(data->hWndPaletteVram, WM_SETTEXT, len, (LPARAM) bf);
 }
 
 LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -66,6 +90,10 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hWndConvert = CreateWindow(L"BUTTON", L"Convert To...", WS_VISIBLE | WS_CHILD, 310, 37, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteLabel = CreateWindow(L"STATIC", L"No palette", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 69, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndEditPalette = CreateWindow(L"BUTTON", L"Edit Palette", WS_VISIBLE | WS_CHILD, 310, 96, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndUniqueColors = CreateWindow(L"STATIC", L"Colors: 0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 128, 100, 22, hWnd, NULL, NULL, NULL);
+
+			data->hWndTexelVram = CreateWindow(L"STATIC", L"Texel: 0KB", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 155, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteVram = CreateWindow(L"STATIC", L"Palette: 0KB", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 182, 110, 22, hWnd, NULL, NULL, NULL);
 			break;
 		}
 		case WM_PAINT:
@@ -82,6 +110,9 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			MoveWindow(data->hWndConvert, rcClient.right - 110, 37, 100, 22, TRUE);
 			MoveWindow(data->hWndPaletteLabel, rcClient.right - 110, 69, 100, 22, TRUE);
 			MoveWindow(data->hWndEditPalette, rcClient.right - 110, 96, 100, 22, TRUE);
+			MoveWindow(data->hWndUniqueColors, rcClient.right - 110, 128, 100, 22, TRUE);
+			MoveWindow(data->hWndTexelVram, rcClient.right - 110, 155, 100, 22, TRUE);
+			MoveWindow(data->hWndPaletteVram, rcClient.right - 110, 182, 110, 22, TRUE);
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
 		case NV_INITIALIZE:
@@ -107,6 +138,11 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				}
 				UpdatePaletteLabel(hWnd);
 			}
+
+			WCHAR buffer[16];
+			int nColors = countColors(data->px, data->width * data->height);
+			int len = wsprintfW(buffer, L"Colors: %d", nColors);
+			SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) buffer);
 
 			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
 			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);

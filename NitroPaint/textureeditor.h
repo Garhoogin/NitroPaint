@@ -32,6 +32,9 @@ typedef struct {
 	HWND hWndConvert;
 	HWND hWndTileEditor;
 	HWND hWndConvertDialog;
+	HWND hWndUniqueColors;
+	HWND hWndTexelVram;
+	HWND hWndPaletteVram;
 
 	HWND hWndFormat;
 	HWND hWndPaletteName;
