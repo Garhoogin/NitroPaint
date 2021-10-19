@@ -530,7 +530,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 		if (paletteOffset < 0) paletteOffset = 0;
 		if (paletteSize < 1) paletteSize = 1;
 		if (paletteOffset >= 256) paletteOffset = 255;
-		if (paletteSize >= 256) paletteSize = 255;
+		if (paletteSize > 256) paletteSize = 256;
 		if (paletteOffset + paletteSize > 256) paletteSize = 256 - paletteOffset;
 	}
 	if (paletteSize < 1) paletteSize = 1;
