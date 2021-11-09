@@ -33,6 +33,8 @@ DWORD averageColor(DWORD *cols, int nColors);
 
 unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize);
 
-void createMultiplePalettes(DWORD *blocks, DWORD *avgs, int width, int tilesX, int tilesY, DWORD *pals, int nPalettes, int paletteSize, int usePaletteSize, int paletteOffset);
+void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest, int paletteBase, int nPalettes, int paletteSize, int nColsPerPalette, int paletteOffset);
 
 void convertRGBToYUV(int r, int g, int b, int *y, int *u, int *v);
+
+int countColors(DWORD *px, int nPx);

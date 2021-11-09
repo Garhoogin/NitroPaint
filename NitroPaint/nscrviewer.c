@@ -718,8 +718,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 
 	//generate an nPalettes color palette
 	if (newPalettes) {
-		
-		createMultiplePalettes(blocks, avgs, width, tilesX, tilesY, pals, nPalettes, paletteSize, paletteSize, 0);
+		createMultiplePalettes(px, tilesX, tilesY, pals, paletteNumber, nPalettes, paletteSize, paletteSize, 0);
 	} else {
 		COLOR *destPalette = nclr->colors + paletteNumber * paletteSize;
 		int nColors = nPalettes * paletteSize;

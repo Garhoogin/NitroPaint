@@ -49,10 +49,12 @@ typedef struct HISTOGRAM_ {
 //reduction workspace structure
 typedef struct REDUCTION_ {
 	int nPaletteColors;
+	int nUsedColors;
 	int balance;
 	int colorBalance;
 	int shiftColorBalance;
 	BOOL enhanceColors;
+	BOOL maskColors;
 	int optimization;
 	HISTOGRAM *histogram;
 	HIST_ENTRY **histogramFlat;
@@ -84,6 +86,7 @@ void initReduction(REDUCTION *reduction, int balance, int colorBalance, int opti
 	reduction->enhanceColors = enhanceColors;
 	reduction->nPaletteColors = nColors;
 	reduction->gamma = 1.27;
+	reduction->maskColors = TRUE;
 
 	for (int i = 0; i < 512; i++) {
 		reduction->lumaTable[i] = pow((double) i / 511.0, 1.27) * 511.0;
@@ -242,6 +245,22 @@ void decodeColor(int *rgb, int *out) {
 	rgb[2] = b;
 }
 
+void flattenHistogram(REDUCTION *reduction) {
+	if (reduction->histogramFlat != NULL) free(reduction->histogram);
+
+	reduction->histogramFlat = (HIST_ENTRY **) calloc(reduction->histogram->nEntries, sizeof(HIST_ENTRY *));
+	HIST_ENTRY **pos = reduction->histogramFlat;
+
+	for (int i = 0; i < 0x20000; i++) {
+		HIST_ENTRY *entry = reduction->histogram->entries[i];
+
+		while (entry != NULL) {
+			*(pos++) = entry;
+			entry = entry->next;
+		}
+	}
+}
+
 void computeHistogram(REDUCTION *reduction, DWORD *img, int width, int height) {
 	int iMask = 0xFFFFFFFF, qMask = 0xFFFFFFFF;
 	if (reduction->optimization < 5) {
@@ -251,7 +270,7 @@ void computeHistogram(REDUCTION *reduction, DWORD *img, int width, int height) {
 		}
 	}
 
-	reduction->histogram = (HISTOGRAM *) calloc(1, sizeof(HISTOGRAM));
+	if(reduction->histogram == NULL) reduction->histogram = (HISTOGRAM *) calloc(1, sizeof(HISTOGRAM));
 
 	for (int y = 0; y < height; y++) {
 		int yiqLeft[4];
@@ -269,20 +288,6 @@ void computeHistogram(REDUCTION *reduction, DWORD *img, int width, int height) {
 			histogramAddColor(reduction->histogram, yiq[0], yiq[1] & iMask, yiq[2] & qMask, yiq[3], weight);
 			yLeft = yiq[0];
 		}
-	}
-
-	//"flatten" the histogram
-	reduction->histogramFlat = (HIST_ENTRY **) calloc(reduction->histogram->nEntries, sizeof(HIST_ENTRY *));
-	HIST_ENTRY **pos = reduction->histogramFlat;
-
-	for (int i = 0; i < 0x20000; i++) {
-		HIST_ENTRY *entry = reduction->histogram->entries[i];
-
-		while (entry != NULL) {
-			*(pos++) = entry;
-			entry = entry->next;
-		}
-
 	}
 }
 
@@ -675,6 +680,7 @@ void optimizePalette(REDUCTION *reduction) {
 		}
 	}
 
+	reduction->nUsedColors = 1;
 	if (numberOfTreeElements < reduction->nPaletteColors) {
 		COLOR_NODE *colorBlock;
 		while ((colorBlock = getLeaf(treeHead)) != NULL) {
@@ -725,6 +731,7 @@ void optimizePalette(REDUCTION *reduction) {
 				DWORD leftRgb = decodedLeft[0] | (decodedLeft[1] << 8) | (decodedLeft[2] << 16);
 				DWORD rightRgb = decodedRight[0] | (decodedRight[1] << 8) | (decodedRight[2] << 16);
 				DWORD maskedLeft = maskColor(leftRgb), maskedRight = maskColor(rightRgb);
+				if (!reduction->maskColors) maskedLeft = leftRgb, maskedRight = rightRgb;
 
 				if (maskedLeft == maskedRight && leftAlpha == rightAlpha) {
 					leftBlock = colorBlock->left, rightBlock = colorBlock->right;
@@ -778,6 +785,7 @@ void optimizePalette(REDUCTION *reduction) {
 			if (numberOfTreeElements >= reduction->nPaletteColors) break;
 		}
 	}
+	reduction->nUsedColors = numberOfTreeElements;
 }
 
 COLOR_NODE **addColorBlocks(COLOR_NODE *colorBlock, COLOR_NODE **colorBlockList) {
@@ -835,8 +843,23 @@ void destroyReduction(REDUCTION *reduction) {
 		freeAllocations(&reduction->histogram->allocator);
 		free(reduction->histogram);
 	}
-	if(reduction->colorBlocks != NULL) freeColorTree(reduction->colorTreeHead, FALSE);
+	if(reduction->colorTreeHead != NULL) freeColorTree(reduction->colorTreeHead, FALSE);
 	free(reduction->colorTreeHead);
+}
+
+void resetHistogram(REDUCTION *reduction) {
+	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
+	reduction->histogramFlat = NULL;
+	if (reduction->histogram != NULL) {
+		freeAllocations(&reduction->histogram->allocator);
+		free(reduction->histogram);
+		reduction->histogram = NULL;
+	}
+	if (reduction->colorTreeHead != NULL) freeColorTree(reduction->colorTreeHead, FALSE);
+	free(reduction->colorTreeHead);
+	reduction->colorTreeHead = NULL;
+	reduction->nUsedColors = 0;
+	memset(reduction->paletteRgb, 0, sizeof(reduction->paletteRgb));
 }
 
 extern int lightnessCompare(const void *d1, const void *d2);
@@ -845,6 +868,7 @@ int createPaletteSlow(DWORD *img, int width, int height, DWORD *pal, unsigned in
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
 	initReduction(reduction, 20, 20, 15, FALSE, nColors);
 	computeHistogram(reduction, img, width, height);
+	flattenHistogram(reduction);
 	optimizePalette(reduction);
 	paletteToArray(reduction);
 	
@@ -859,4 +883,287 @@ int createPaletteSlow(DWORD *img, int width, int height, DWORD *pal, unsigned in
 	free(reduction);
 	qsort(pal, nColors, 4, lightnessCompare);
 	return 0;
+}
+
+typedef struct {
+	DWORD rgb[64];
+	BYTE indices[64];
+	int palette[16][4]; //YIQ
+	int useCounts[16];
+	unsigned short palIndex; //points to the index of the tile that is maintaining the palette this tile uses
+	unsigned short nUsedColors; //number of filled slots
+	unsigned short nSwallowed;
+} TILE;
+
+void copyTile(TILE *dest, DWORD *pxOrigin, int width) {
+	for (int y = 0; y < 8; y++) {
+		memcpy(dest->rgb + y * 8, pxOrigin + y * width, 32);
+	}
+}
+
+int findClosestPaletteColor(int *palette, int nColors, int *col, int *outDiff) {
+	int y, u, v;
+	int rgb[4];
+	decodeColor(rgb, col);
+	convertRGBToYUV(rgb[0], rgb[1], rgb[2], &y, &u, &v);
+
+	int leastDiff = 0x7FFFFFFF;
+	int leastIndex = 0;
+	for (int i = 0; i < nColors; i++) {
+		int y2, u2, v2;
+		decodeColor(rgb, palette + i * 4);
+		convertRGBToYUV(rgb[0], rgb[1], rgb[2], &y2, &u2, &v2);
+
+		int dy = y2 - y, du = u2 - u, dv = v2 - v;
+		int diff = dy * dy * 2 + du * du + dv * dv;
+		if (diff < leastDiff) {
+			leastDiff = diff;
+			leastIndex = i;
+		}
+	}
+	if (outDiff != NULL) *outDiff = leastDiff;
+	return leastIndex;
+}
+
+int findClosestPaletteColorRGB(int *palette, int nColors, DWORD col, int *outDiff) {
+	int yiq[4];
+	encodeColor(col, yiq);
+	return findClosestPaletteColor(palette, nColors, yiq, outDiff);
+}
+
+int computeTilePaletteDifference(REDUCTION *reduction, TILE *tile1, TILE *tile2) {
+	//are the palettes identical?
+	if (tile1->nUsedColors == tile2->nUsedColors && memcmp(tile1->palette, tile2->palette, tile1->nUsedColors * sizeof(tile1->palette[0])) == 0) return 0;
+
+	//map each color from tile2 to one of tile1
+	double totalDiff = 0.0;
+	for (int i = 0; i < tile2->nUsedColors; i++) {
+		int *yiq = &tile2->palette[i][0];
+		int diff = 0;
+		int closest = findClosestPaletteColor(&tile1->palette[0][0], tile1->nUsedColors, yiq, &diff);
+
+		if (diff > 0) {
+			totalDiff += sqrt(diff) * tile2->useCounts[i];
+		}
+
+	}
+
+	if (totalDiff == 0.0 && tile2->nUsedColors <= tile1->nUsedColors) return 0;
+	if (totalDiff == 0.0 || tile2->nUsedColors > tile1->nUsedColors) totalDiff += 1.0;
+
+	if ((tile1->nUsedColors + tile2->nUsedColors) <= reduction->nPaletteColors) {
+		if (tile2->nUsedColors <= reduction->nPaletteColors / 2) {
+			totalDiff = totalDiff * (double) tile2->nUsedColors / reduction->nPaletteColors;
+		}
+	} else {
+		totalDiff += 2.0 * (tile1->nUsedColors + tile2->nUsedColors - reduction->nPaletteColors);
+	}
+
+	totalDiff += 15.0 * sqrt(tile1->nSwallowed * tile2->nSwallowed);
+	if (totalDiff >= 0x7FFFFFFF) return 0x7FFFFFFF;
+	return (int) totalDiff;
+}
+
+int findSimilarTiles(TILE *tiles, int *similarities, int nTiles, int *i1, int *i2) {
+	//find a pair of tiles. Both must be representative tiles.
+
+	int leastDiff = 0x7FFFFFFF;
+	int best1 = 0, best2 = 1;
+	for (int i = 0; i < nTiles; i++) {
+		TILE *tile1 = tiles + i;
+		if (tile1->palIndex != i) continue;
+
+		for (int j = 0; j < nTiles; j++) {
+			TILE *tile2 = tiles + j;
+
+			if (tile2->palIndex != j) continue;
+			if (i == j) continue;
+
+			//test difference
+			if (similarities[i * nTiles + j] <= leastDiff) {
+				leastDiff = similarities[i * nTiles + j];
+				best1 = i;
+				best2 = j;
+				if (!leastDiff) goto done;
+			}
+		}
+	}
+
+done:
+	*i1 = best1;
+	*i2 = best2;
+	return leastDiff;
+}
+
+void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest, int paletteBase, int nPalettes,
+							  int paletteSize, int nColsPerPalette, int paletteOffset) {
+	if (nPalettes == 0) return;
+	if (nPalettes == 1) {
+		if (paletteOffset) {
+			createPaletteExact(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset, paletteSize);
+		} else {
+			createPalette_(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize), paletteSize);
+		}
+		return;
+	}
+
+	if (nColsPerPalette >= 16) nColsPerPalette = 15;
+
+	//3 stage algorithm:
+	//	1 - split into tiles
+	//	2 - map similarities
+	//	3 - palette merging
+
+	//------------STAGE 1
+	int nTiles = tilesX * tilesY;
+	TILE *tiles = (TILE *) calloc(nTiles, sizeof(TILE));
+	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
+	initReduction(reduction, 20, 20, 15, FALSE, nColsPerPalette);
+	reduction->maskColors = FALSE;
+	DWORD palBuf[16];
+	for (int y = 0; y < tilesY; y++) {
+		for (int x = 0; x < tilesX; x++) {
+			TILE *tile = tiles + x + (y * tilesX);
+			DWORD *pxOrigin = imgBits + x * 8 + (y * 8 * tilesX * 8);
+			copyTile(tile, pxOrigin, tilesX * 8);
+
+			//createPaletteSlow(tile->rgb, 8, 8, palBuf + 1, 15);
+			resetHistogram(reduction);
+			computeHistogram(reduction, tile->rgb, 8, 8);
+			flattenHistogram(reduction);
+			optimizePalette(reduction);
+			paletteToArray(reduction);
+			for (int i = 0; i < 16; i++) {
+				BYTE *col = &reduction->paletteRgb[i][0];
+				palBuf[i] = col[0] | (col[1] << 8) | (col[2] << 16);
+			}
+
+			for (int i = 0; i < 16; i++) {
+				int yiq[4];
+				encodeColor(palBuf[i], yiq);
+				tile->palette[i][0] = yiq[0];
+				tile->palette[i][1] = yiq[1];
+				tile->palette[i][2] = yiq[2];
+			}
+			tile->nUsedColors = reduction->nUsedColors;
+
+			//match pixels to palette indices
+			for (int i = 0; i < 64; i++) {
+				int index = findClosestPaletteColorRGB(&tile->palette[0][0], tile->nUsedColors, tile->rgb[i], NULL);
+				if ((tile->rgb[i] >> 24) == 0) index = 15;
+				tile->indices[i] = index;
+				tile->useCounts[index]++;
+			}
+			tile->palIndex = x + y * tilesX;
+			tile->nSwallowed = 1;
+		}
+	}
+
+	//-------------STAGE 2
+	int *diffBuff = (int *) calloc(nTiles * nTiles, sizeof(int));
+	for (int i = 0; i < nTiles; i++) {
+		TILE *tile1 = tiles + i;
+		for (int j = 0; j < nTiles; j++) {
+			TILE *tile2 = tiles + j;
+
+			//write difference
+			if (i == j) diffBuff[i + j * nTiles] = 0;
+			else {
+				diffBuff[i + j * nTiles] = computeTilePaletteDifference(reduction, tile1, tile2);
+			}
+		}
+	}
+
+	//-----------STAGE 3
+	int nCurrentPalettes = nTiles;
+	while (nCurrentPalettes > nPalettes) {
+
+		int index1, index2;
+		int diff = findSimilarTiles(tiles, diffBuff, nTiles, &index1, &index2);
+
+		//find all  instances of index2, replace with index1
+		int nSwitched = 0;
+		for (int i = 0; i < nTiles; i++) {
+			if (tiles[i].palIndex == index2) {
+				tiles[i].palIndex = index1;
+				nSwitched++;
+			}
+		}
+
+		//build new palette
+		resetHistogram(reduction);
+		for (int i = 0; i < nTiles; i++) {
+			if (tiles[i].palIndex == index1) {
+				computeHistogram(reduction, tiles[i].rgb, 8, 8);
+			}
+		}
+		flattenHistogram(reduction);
+		optimizePalette(reduction);
+		paletteToArray(reduction);
+
+		//write over the palette of the tile
+		TILE *palTile = tiles + index1;
+		DWORD palBuf[16];
+		for (int i = 0; i < 15; i++) {
+			int *yiqDest = &palTile->palette[i][0];
+			BYTE *srcRgb = &reduction->paletteRgb[i][0];
+			DWORD rgb = srcRgb[0] | (srcRgb[1] << 8) | (srcRgb[2] << 16);
+			palBuf[i] = rgb;
+			encodeColor(rgb, yiqDest);
+		}
+		palTile->nUsedColors = reduction->nUsedColors;
+		palTile->nSwallowed += nSwitched;
+
+		//get new use count
+		TILE *rep = tiles + index1;
+		memset(rep->useCounts, 0, sizeof(rep->useCounts));
+		for (int i = 0; i < nTiles; i++) {
+			TILE *tile = tiles + i;
+			if (tile->palIndex != index1) continue;
+
+			for (int j = 0; j < 64; j++) {
+				DWORD col = tile->rgb[j];
+				int index = findClosestPaletteColorRGB(&tile->palette[0][0], tile->nUsedColors, tile->rgb[i], NULL);
+				if ((col >> 24) == 0) index = 15;
+				tile->indices[j] = index;
+				rep->useCounts[index]++;
+			}
+		}
+
+		//recompute differences for index1 and representative tiles
+		for (int i = 0; i < nTiles; i++) {
+			TILE *t = tiles + i;
+			if (t->palIndex != i) continue;
+			int diff1 = computeTilePaletteDifference(reduction, t, rep);
+			int diff2 = computeTilePaletteDifference(reduction, rep, t);
+			diffBuff[i + index1 * nTiles] = diff1;
+			diffBuff[index1 + i * nTiles] = diff2;
+		}
+
+		nCurrentPalettes--;
+	}
+
+	//write palettes
+	int nPalettesWritten = 0;
+	int outputOffs = max(paletteOffset, 1);
+	for (int i = 0; i < nTiles; i++) {
+		TILE *t = tiles + i;
+		if (t->palIndex != i) continue;
+		
+		DWORD palBuf[16] = { 0 };
+		if(paletteOffset == 0) palBuf[0] = 0xFF00FF;
+		for (int j = 0; j < 15; j++) {
+			int rgb[4];
+			decodeColor(rgb, &t->palette[j][0]);
+			palBuf[j + outputOffs] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+		}
+		qsort(palBuf + 1, nColsPerPalette, 4, lightnessCompare);
+		memcpy(dest + 16 * (nPalettesWritten + paletteBase), palBuf, sizeof(palBuf));
+		nPalettesWritten++;
+	}
+
+	destroyReduction(reduction);
+	free(reduction);
+	free(tiles);
+	free(diffBuff);
 }

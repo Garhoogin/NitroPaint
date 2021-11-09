@@ -389,59 +389,6 @@ unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize) {
 	return error;
 }
 
-void createMultiPalettes(DWORD *blocks, int tilesX, int tilesY, int width, DWORD *pals, int nPalettes, int paletteSize, int *useCounts, int *closests, int usePaletteSize, int paletteOffset) {
-	//compute the palettes from how the tiles are divided.
-	DWORD **groups = (DWORD **) calloc(nPalettes, sizeof(DWORD *));
-	for (int i = 0; i < nPalettes; i++) {
-		groups[i] = (DWORD *) calloc(useCounts[i] * 64, 4);
-	}
-	int written[16] = { 0 };
-	for (int y = 0; y < tilesY; y++) {
-		for (int x = 0; x < tilesX; x++) {
-			int uses = closests[x + y * tilesX];
-			DWORD *block = groups[uses] + written[uses] * 64;
-			CopyMemory(block, blocks + 64 * (x + y * tilesX), 256);
-			written[uses]++;
-		}
-	}
-
-	for (int i = 0; i < nPalettes; i++) {
-		if (!paletteOffset) {
-			createPalette_(groups[i], 8, written[i] * 8, pals + i * paletteSize, usePaletteSize);
-		} else {
-			createPaletteExact(groups[i], 8, written[i] * 8, pals + i * paletteSize + paletteOffset, usePaletteSize);
-		}
-		free(groups[i]);
-	}
-	free(groups);
-}
-
-void createMultiplePalettes(DWORD *blocks, DWORD *avgs, int width, int tilesX, int tilesY, DWORD *pals, int nPalettes, int paletteSize, int usePaletteSize, int paletteOffset) {
-	DWORD *avgPals = (DWORD *) calloc(nPalettes + 1, 4);
-	createPalette_(avgs, tilesX, tilesY, avgPals, nPalettes + 1); //+1 because 1 color is reserved
-
-	int useCounts[16] = { 0 };
-	int *closests = calloc(tilesX * tilesY, sizeof(int));
-
-	//form a best guess of how to divide the tiles amonng the palettes.
-	//for each tile, see which color in avgPals (excluding entry 0) matches a tile's average.
-	for (int y = 0; y < tilesY; y++) {
-		for (int x = 0; x < tilesX; x++) {
-			DWORD *block = blocks + 64 * (x + y * tilesX);
-			DWORD avg = averageColor(block, 64);
-			int closest = 0;
-			if (avg & 0xFF000000) closest = closestpalette(*(RGB *) &avg, (RGB*) (avgPals + 1), nPalettes, NULL);
-			useCounts[closest]++;
-			closests[x + y * tilesX] = closest;
-		}
-	}
-	free(avgPals);
-
-	//now, create a new bitmap for each set of tiles that share a palette.
-	createMultiPalettes(blocks, tilesX, tilesY, width, pals, nPalettes, paletteSize, useCounts, closests, usePaletteSize, paletteOffset);
-	free(closests);
-}
-
 void convertRGBToYUV(int r, int g, int b, int *y, int *u, int *v) {
 	*y = (int) ( 0.2990 * r + 0.5870 * g + 0.1140 * b);
 	*u = (int) (-0.1684 * r - 0.3316 * g + 0.5000 * b);

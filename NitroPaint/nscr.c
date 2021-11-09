@@ -568,8 +568,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 			createPalette_(imgBits, width, height, palette + (paletteBase << nBits), paletteSize);
 		}
 	} else {
-		
-		createMultiplePalettes(blocks, avgs, width, tilesX, tilesY, palette + (paletteBase << nBits), nPalettes, 1 << nBits, paletteSize, paletteOffset);
+		createMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset);
 
 	}
 	//apply the palette to the image. 
