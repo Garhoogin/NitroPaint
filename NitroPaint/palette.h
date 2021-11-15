@@ -21,6 +21,8 @@ void createPaletteFast(DWORD *img, int width, int height, DWORD *pal, unsigned i
 
 void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors);
 
+int createPaletteSlowEx(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors, int balance, int colorBalance, BOOL enhanceColors, BOOL sortOnlyUsed);
+
 void createPalette_(DWORD * img, int width, int height, DWORD * pal, int nColors);
 
 void setPaletteAlgorithm(int alg);

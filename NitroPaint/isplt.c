@@ -1167,3 +1167,32 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 	free(tiles);
 	free(diffBuff);
 }
+
+int createPaletteSlowEx(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors, int balance, int colorBalance, BOOL enhanceColors, BOOL sortOnlyUsed) {
+	REDUCTION *reduction = (REDUCTION *) calloc(sizeof(REDUCTION), 1);
+
+	initReduction(reduction, balance, colorBalance, 15, enhanceColors, nColors);
+	computeHistogram(reduction, img, width, height);
+	flattenHistogram(reduction);
+	optimizePalette(reduction);
+	paletteToArray(reduction);
+
+	for (unsigned int i = 0; i < nColors; i++) {
+		BYTE r = reduction->paletteRgb[i][0];
+		BYTE g = reduction->paletteRgb[i][1];
+		BYTE b = reduction->paletteRgb[i][2];
+		pal[i] = r | (g << 8) | (b << 16);
+	}
+	destroyReduction(reduction);
+
+	int nProduced = reduction->nUsedColors;
+	free(reduction);
+
+	if (sortOnlyUsed) {
+		qsort(pal, nProduced, sizeof(DWORD), lightnessCompare);
+	} else {
+		qsort(pal, nColors, sizeof(DWORD), lightnessCompare);
+	}
+
+	return nProduced;
+}

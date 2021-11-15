@@ -27,6 +27,15 @@ typedef struct {
 	int rowDragging;
 
 	COLORREF tmpCust[16];
+
+	HWND hWndFileInput;
+	HWND hWndBrowse;
+	HWND hWndReserve;
+	HWND hWndColors;
+	HWND hWndBalance;
+	HWND hWndColorBalance;
+	HWND hWndEnhanceColors;
+	HWND hWndGenerate;
 } NCLRVIEWERDATA;
 
 VOID RegisterNclrViewerClass(VOID);

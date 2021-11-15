@@ -6,6 +6,8 @@
 #include "ncerviewer.h"
 #include "colorchooser.h"
 #include "resource.h"
+#include "palette.h"
+#include "gdip.h"
 
 extern HICON g_appIcon;
 
@@ -597,6 +599,18 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						break;
 					}
+					case ID_MENU_CREATE:
+					{
+						int index = data->contextHoverX + data->contextHoverY;
+						int palette = index >> data->nclr.nBits;
+
+						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND hWndPaletteDialog = CreateWindow(L"PaletteGeneratorClass", L"Generate Palette", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT, 200, 200, hWndMain, NULL, NULL, NULL);
+						SendMessage(hWndPaletteDialog, NV_INITIALIZE, 0, (LPARAM) data);
+						ShowWindow(hWndPaletteDialog, SW_SHOW);
+						SetActiveWindow(hWndPaletteDialog);
+						break;
+					}
 				}
 			}
 			break;
@@ -619,7 +633,110 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	switch (msg) {
+		case WM_CREATE:
+		{
+			SetWindowSize(hWnd, 305, 214);	
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			data = (NCLRVIEWERDATA *) lParam;
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			CreateWindow(L"STATIC", L"Bitmap:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndFileInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 10, 150, 22, hWnd, NULL, NULL, NULL);
+			data->hWndBrowse = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 270, 10, 25, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Colors:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndColors = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"16", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Reserve first:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndReserve = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 64, 22, 22, hWnd, NULL, NULL, NULL);
+			SendMessage(data->hWndReserve, BM_SETCHECK, 1, 0);
+
+			//palette options
+			CreateWindow(L"STATIC", L"Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 96, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndBalance = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"20", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 120, 96, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Color balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 123, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndColorBalance = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"20", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 123, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Enhance colors:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 150, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndEnhanceColors = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 150, 22, 22, hWnd, NULL, NULL, NULL);
+
+			data->hWndGenerate = CreateWindow(L"BUTTON", L"Generate", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 182, 100, 22, hWnd, NULL, NULL, NULL);
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			WORD notif = HIWORD(wParam);
+			if (notif == BN_CLICKED && hWndControl == data->hWndBrowse) {
+				LPWSTR path = openFileDialog(hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+				if (path != NULL) {
+					SendMessage(data->hWndFileInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+					free(path);
+				}
+			} else if (notif == BN_CLICKED && hWndControl == data->hWndGenerate) {
+				int width, height;
+				WCHAR bf[MAX_PATH + 1];
+				SendMessage(data->hWndFileInput, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
+				DWORD *bits = gdipReadImage(bf, &width, &height);
+
+				SendMessage(data->hWndColors, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
+				int nColors = _wtol(bf);
+				SendMessage(data->hWndBalance, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
+				int balance = _wtol(bf);
+				SendMessage(data->hWndColorBalance, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
+				int colorBalance = _wtol(bf);
+
+				BOOL enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
+				BOOL reserveFirst = SendMessage(data->hWndReserve, BM_GETCHECK, 0, 0) == BST_CHECKED;
+
+				//create palette copy
+				int nTotalColors = data->nclr.nColors;
+				int index = data->contextHoverX + data->contextHoverY * 16;
+				DWORD *paletteCopy = (DWORD *) calloc(nColors, 4);
+				createPaletteSlowEx(bits, width, height, paletteCopy + reserveFirst, nColors - reserveFirst, balance, colorBalance, enhanceColors, FALSE);
+
+				//write back
+				for (int i = 0; i < nColors; i++) {
+					data->nclr.colors[i + index] = ColorConvertToDS(paletteCopy[i]);
+				}
+				free(paletteCopy);
+				free(bits);
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				InvalidateRect((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), NULL, FALSE);
+			}
+			break;
+		}
+		case WM_CLOSE:
+		{
+			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			SetActiveWindow(hWndMain);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+VOID RegisterPaletteGenerationClass(VOID) {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"PaletteGeneratorClass";
+	wcex.lpfnWndProc = PaletteGeneratorDialogProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
 VOID RegisterNclrViewerClass(VOID) {
+	RegisterPaletteGenerationClass();
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
 	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
