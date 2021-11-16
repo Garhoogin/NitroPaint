@@ -1,3 +1,6 @@
+#include <Windows.h>
+#include <CommCtrl.h>
+
 #include "nclrviewer.h"
 #include "childwindow.h"
 #include "nitropaint.h"
@@ -609,6 +612,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						SendMessage(hWndPaletteDialog, NV_INITIALIZE, 0, (LPARAM) data);
 						ShowWindow(hWndPaletteDialog, SW_SHOW);
 						SetActiveWindow(hWndPaletteDialog);
+						SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
 						break;
 					}
 				}
@@ -638,7 +642,7 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			SetWindowSize(hWnd, 305, 214);	
+			SetWindowSize(hWnd, 355, 214);	
 			break;
 		}
 		case NV_INITIALIZE:
@@ -647,8 +651,8 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
 
 			CreateWindow(L"STATIC", L"Bitmap:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFileInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 10, 150, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBrowse = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 270, 10, 25, 22, hWnd, NULL, NULL, NULL);
+			data->hWndFileInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 10, 200, 22, hWnd, NULL, NULL, NULL);
+			data->hWndBrowse = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 320, 10, 25, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Colors:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndColors = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"16", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 37, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Reserve first:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
@@ -657,14 +661,23 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 
 			//palette options
 			CreateWindow(L"STATIC", L"Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 96, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBalance = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"20", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 120, 96, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Lightness", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, 120, 96, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Color", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 170 + 150, 96, 50, 22, hWnd, NULL, NULL, NULL);
+			data->hWndBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, 170, 96, 150, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Color balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 123, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColorBalance = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"20", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 123, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Green", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, 120, 123, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Red", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 170 + 150, 123, 50, 22, hWnd, NULL, NULL, NULL);
+			data->hWndColorBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, 170, 123, 150, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Enhance colors:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 150, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndEnhanceColors = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 150, 22, 22, hWnd, NULL, NULL, NULL);
 
 			data->hWndGenerate = CreateWindow(L"BUTTON", L"Generate", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 182, 100, 22, hWnd, NULL, NULL, NULL);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+
+			SendMessage(data->hWndBalance, TBM_SETRANGE, TRUE, 0 | (40 << 16));
+			SendMessage(data->hWndColorBalance, TBM_SETRANGE, TRUE, 0 | (40 << 16));
+			SendMessage(data->hWndBalance, TBM_SETPOS, TRUE, 20);
+			SendMessage(data->hWndColorBalance, TBM_SETPOS, TRUE, 20);
 			break;
 		}
 		case WM_COMMAND:
@@ -685,10 +698,8 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 
 				SendMessage(data->hWndColors, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
 				int nColors = _wtol(bf);
-				SendMessage(data->hWndBalance, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
-				int balance = _wtol(bf);
-				SendMessage(data->hWndColorBalance, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
-				int colorBalance = _wtol(bf);
+				int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
+				int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
 
 				BOOL enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
 				BOOL reserveFirst = SendMessage(data->hWndReserve, BM_GETCHECK, 0, 0) == BST_CHECKED;
