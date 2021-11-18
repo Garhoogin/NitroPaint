@@ -645,6 +645,7 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	setStyle(data->hWndFixedPalette, disables[4], WS_DISABLED);
 	setStyle(data->hWndPaletteInput, disables[5], WS_DISABLED);
 	setStyle(data->hWndPaletteBrowse, disables[5], WS_DISABLED);
+	setStyle(data->hWndDiffuseAmount, !disables[2], WS_DISABLED);
 	SetFocus(data->hWndConvertDialog);
 	InvalidateRect(data->hWndConvertDialog, NULL, FALSE);
 }
@@ -673,17 +674,19 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			CreateWindow(L"STATIC", L"Fixed palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Palette file:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Dither:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Diffusion:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 172, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"%", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 120 + 50 + 5, 172, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Dither alpha:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"4x4 color entries:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 172, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"4x4 optimization:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 199, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"4x4 color entries:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 199, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"4x4 optimization:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 226, 100, 22, hWnd, NULL, NULL, NULL);
 
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
-			SetWindowSize(hWnd, 230, 285);
+			SetWindowSize(hWnd, 230, 285 + 27);
 			break;
 		}
 		case NV_INITIALIZE:
 		{
-			data->hWndDoConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 253, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDoConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 280, 100, 22, hWnd, NULL, NULL, NULL);
 
 			data->hWndFormat = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 120, 10, 100, 100, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteName = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 37, 100, 22, hWnd, NULL, NULL, NULL);
@@ -691,10 +694,11 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hWndPaletteInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 91, 75, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteBrowse = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 120 + 75, 91, 25, 22, hWnd, NULL, NULL, NULL);
 			data->hWndDither = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 118, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDiffuseAmount = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 172, 50, 22, hWnd, NULL, NULL, NULL);
 			data->hWndDitherAlpha = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 145, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColorEntries = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 172, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndOptimizationSlider = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD | TBS_NOTIFYBEFOREMOVE, 10, 226, 210, 22, hWnd, NULL, NULL, NULL);
-			data->hWndOptimizationLabel = CreateWindow(L"STATIC", L"0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, 120, 199, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndColorEntries = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 199, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndOptimizationSlider = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD | TBS_NOTIFYBEFOREMOVE, 10, 253, 210, 22, hWnd, NULL, NULL, NULL);
+			data->hWndOptimizationLabel = CreateWindow(L"STATIC", L"0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, 120, 226, 100, 22, hWnd, NULL, NULL, NULL);
 
 			//populate the dropdown list
 			WCHAR bf[16];
@@ -766,6 +770,8 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					WCHAR bf[32];
 					SendMessage(data->hWndColorEntries, WM_GETTEXT, 31, (LPARAM) bf);
 					int colorEntries = _wtol(bf);
+					SendMessage(data->hWndDiffuseAmount, WM_GETTEXT, 31, (LPARAM) bf);
+					float diffuse = _wtol(bf) / 100.0f;
 					int optimization = SendMessage(data->hWndOptimizationSlider, TBM_GETPOS, 0, 0);
 					SendMessage(data->hWndPaletteName, WM_GETTEXT, 16, (LPARAM) bf);
 
@@ -783,7 +789,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					ShowWindow(data->hWndProgress, SW_SHOW);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					SetActiveWindow(data->hWndProgress);
-					threadedConvert(data->px, data->width, data->height, fmt, dither, ditherAlpha, fixedPalette ? paletteFile.nColors : colorEntries, 
+					threadedConvert(data->px, data->width, data->height, fmt, dither, diffuse, ditherAlpha, fixedPalette ? paletteFile.nColors : colorEntries, 
 									fixedPalette, paletteFile.colors, optimization, mbpnam, &data->textureData, conversionCallback, (void *) data);
 
 					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);

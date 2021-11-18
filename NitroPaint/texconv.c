@@ -30,7 +30,7 @@ int convertDirect(CREATEPARAMS *params) {
 			int errorRed = (back & 0xFF) - (p & 0xFF);
 			int errorGreen = ((back >> 8) & 0xFF) - ((p >> 8) & 0xFF);
 			int errorBlue = ((back >> 16) & 0xFF) - ((back >> 16) & 0xFF);
-			doDiffuse(i, width, height, px, -errorRed, -errorGreen, -errorBlue, 0, 1.0f);
+			doDiffuse(i, width, height, px, -errorRed, -errorGreen, -errorBlue, 0, params->diffuseAmount);
 		}
 		txel[i] = c;
 	}
@@ -93,7 +93,7 @@ int convertPalette(CREATEPARAMS *params) {
 			int errorRed = (back & 0xFF) - (p & 0xFF);
 			int errorGreen = ((back >> 8) & 0xFF) - ((p >> 8) & 0xFF);
 			int errorBlue = ((back >> 16) & 0xFF) - ((p >> 16) & 0xFF);
-			doDiffuse(i, width, height, params->px, -errorRed, -errorGreen, -errorBlue, 0, 1.0f);
+			doDiffuse(i, width, height, params->px, -errorRed, -errorGreen, -errorBlue, 0, params->diffuseAmount);
 		}
 	}
 
@@ -163,7 +163,7 @@ int convertTranslucent(CREATEPARAMS *params) {
 			int errorGreen = ((back >> 8) & 0xFF) - ((p >> 8) & 0xFF);
 			int errorBlue = ((back >> 16) & 0xFF) - ((p >> 16) & 0xFF);
 			int errorAlpha = ((back >> 24) & 0xFF) - ((p >> 24) & 0xFF);
-			doDiffuse(i, width, height, params->px, -errorRed, -errorGreen, -errorBlue, params->ditherAlpha ? -errorAlpha : 0, 1.0f);
+			doDiffuse(i, width, height, params->px, -errorRed, -errorGreen, -errorBlue, params->ditherAlpha ? -errorAlpha : 0, params->diffuseAmount);
 		}
 	}
 
@@ -795,7 +795,7 @@ DWORD CALLBACK startConvert(LPVOID lpParam) {
 	return 0;
 }
 
-void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOOL ditherAlpha, int colorEntries, BOOL useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
+void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, float diffuse, BOOL ditherAlpha, int colorEntries, BOOL useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
 	CREATEPARAMS *params = (CREATEPARAMS *) calloc(1, sizeof(CREATEPARAMS));
 	_globFinished = 0;
 	params->px = px;
@@ -803,6 +803,7 @@ void threadedConvert(DWORD *px, int width, int height, int fmt, BOOL dither, BOO
 	params->height = height;
 	params->fmt = fmt;
 	params->dither = dither;
+	params->diffuseAmount = diffuse;
 	params->ditherAlpha = ditherAlpha;
 	params->colorEntries = colorEntries;
 	params->threshold = threshold;

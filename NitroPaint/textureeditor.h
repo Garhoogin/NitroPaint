@@ -39,6 +39,7 @@ typedef struct {
 	HWND hWndFormat;
 	HWND hWndPaletteName;
 	HWND hWndDither;
+	HWND hWndDiffuseAmount;
 	HWND hWndDitherAlpha;
 	HWND hWndColorEntries;
 	HWND hWndDoConvertButton;
