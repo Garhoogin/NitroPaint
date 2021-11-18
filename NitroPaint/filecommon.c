@@ -7,6 +7,7 @@
 #include "ntft.h"
 #include "nanr.h"
 #include "texture.h"
+#include "gdip.h"
 
 LPCWSTR compressionNames[] = { L"None", L"LZ77", NULL };
 
@@ -89,6 +90,14 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 
 	//no matches?
 	if (type == FILE_TYPE_INVALID) {
+		//image file?
+		int width, height;
+		DWORD *bits = gdipReadImage(path, &width, &height);
+		if (bits != NULL && width && height) {
+			free(bits);
+			return FILE_TYPE_IMAGE;
+		}
+
 		//test other formats
 		if (nitrotgaIsValid(buffer, bufferSize)) type = FILE_TYPE_TEXTURE;
 		else if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
