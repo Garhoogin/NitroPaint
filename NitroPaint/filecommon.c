@@ -90,33 +90,37 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 
 	//no matches?
 	if (type == FILE_TYPE_INVALID) {
-		//image file?
-		int width, height;
-		DWORD *bits = gdipReadImage(path, &width, &height);
-		if (bits != NULL && width && height) {
-			free(bits);
-			return FILE_TYPE_IMAGE;
-		}
+		if (nitrotgaIsValid(buffer, bufferSize)) {
+			type = FILE_TYPE_TEXTURE;
+		} else {
+			//image file?
+			int width, height;
+			DWORD *bits = gdipReadImage(path, &width, &height);
+			if (bits != NULL && width && height) {
+				free(bits);
+				type = FILE_TYPE_IMAGE;
+			} else {
 
-		//test other formats
-		if (nitrotgaIsValid(buffer, bufferSize)) type = FILE_TYPE_TEXTURE;
-		else if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-		else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-		else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-		else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
-		
-		//test for bin format files
-		else {
-			if (nclrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"ncl.bin")) type = FILE_TYPE_PALETTE;
-			else if (nclrIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
-			else if (nscrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"nsc.bin")) type = FILE_TYPE_SCREEN;
-			else if (ncgrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"ncg.bin")) type = FILE_TYPE_CHARACTER;
-			else {
-				//double check, without respect to the file name.
-				if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-				else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-				else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-				else if (nclrIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+				//test other formats
+				if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+				else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
+				else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+				else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
+
+				//test for bin format files
+				else {
+					if (nclrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"ncl.bin")) type = FILE_TYPE_PALETTE;
+					else if (nclrIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
+					else if (nscrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"nsc.bin")) type = FILE_TYPE_SCREEN;
+					else if (ncgrIsValidBin(buffer, bufferSize) && pathEndsWith(path, L"ncg.bin")) type = FILE_TYPE_CHARACTER;
+					else {
+						//double check, without respect to the file name.
+						if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+						else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
+						else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+						else if (nclrIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+					}
+				}
 			}
 		}
 	}
