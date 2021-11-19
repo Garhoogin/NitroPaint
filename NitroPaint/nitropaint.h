@@ -5,7 +5,6 @@
 typedef struct {
 	BOOL useDarkTheme;
 	BOOL fullPaths;
-	int paletteAlgorithm;
 	struct {
 		BOOL useDSColorPicker;
 	} nclrViewerConfiguration;

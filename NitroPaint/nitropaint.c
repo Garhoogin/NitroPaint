@@ -273,10 +273,6 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (g_configuration.fullPaths) {
 				CheckMenuItem(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_CHECKED);
 			}
-			int ids[] = { ID_PALETTEALGORITHM_SLOW, ID_PALETTEALGORITHM_FAST };
-			for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-				CheckMenuItem(GetMenu(hWnd), ids[i], i == g_configuration.paletteAlgorithm ? MF_CHECKED : MF_UNCHECKED);
-			}
 			return 1;
 		}
 		case WM_PAINT:
@@ -509,30 +505,6 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							CheckMenuItem(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_UNCHECKED);
 						}
 						g_configuration.fullPaths = state;
-						break;
-					}
-					case ID_PALETTEALGORITHM_FAST:
-					case ID_PALETTEALGORITHM_SLOW:
-					{
-						int alg = PALETTE_SLOW;
-						switch (menuID) {
-							case ID_PALETTEALGORITHM_SLOW:
-								alg = PALETTE_SLOW;
-								break;
-							case ID_PALETTEALGORITHM_FAST:
-								alg = PALETTE_FAST;
-								break;
-						}
-						
-						int ids[] = { ID_PALETTEALGORITHM_SLOW, ID_PALETTEALGORITHM_FAST };
-						for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-							CheckMenuItem(GetMenu(hWnd), ids[i], i == alg ? MF_CHECKED : MF_UNCHECKED);
-						}
-						WCHAR bf[4];
-						wsprintfW(bf, L"%d", alg);
-						setPaletteAlgorithm(alg);
-						WritePrivateProfileStringW(L"NitroPaint", L"PaletteAlgorithm", bf, g_configPath);
-						g_configuration.paletteAlgorithm = alg;
 						break;
 					}
 				}
@@ -1108,10 +1080,6 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 	g_configuration.ncgrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NcgrViewer", L"Gridlines", 1, lpszPath);
 	g_configuration.nscrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NscrViewer", L"Gridlines", 0, lpszPath);
 	g_configuration.fullPaths = GetPrivateProfileInt(L"NitroPaint", L"FullPaths", 1, lpszPath);
-	g_configuration.paletteAlgorithm = GetPrivateProfileInt(L"NitroPaint", L"PaletteAlgorithm", PALETTE_SLOW, lpszPath);
-
-	if (g_configuration.paletteAlgorithm > PALETTE_FAST) g_configuration.paletteAlgorithm = PALETTE_FAST;
-	setPaletteAlgorithm(g_configuration.paletteAlgorithm);
 }
 
 VOID SetConfigPath() {

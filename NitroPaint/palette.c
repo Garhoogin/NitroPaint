@@ -2,86 +2,6 @@
 #include "analysis.h"
 #include <math.h>
 
-#define BIGINT unsigned long long
-
-//global variable that determines the palette algorithm to use
-static int g_paletteAlgorithm = PALETTE_SLOW;
-
-//list of palette creation functions
-static void (*g_paletteAlgorithms[]) (DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) = {
-	createPaletteSlow, createPaletteFast
-};
-
-typedef struct BUCKET_ {
-	DWORD * colors;
-	int nColors;
-	float deviation;
-	DWORD avg;
-} BUCKET;
-
-/*
-* reduce a color to its nearest 15-bit color, and convert back to 24-bit color.
-*/
-DWORD reduce(DWORD col) {
-	int r = col & 0xFF;
-	int g = (col >> 8) & 0xFF;
-	int b = (col >> 16) & 0xFF;
-	r = ((r + 4) * 31 / 255) * 255 / 31;
-	g = ((g + 4) * 31 / 255) * 255 / 31;
-	b = ((b + 4) * 31 / 255) * 255 / 31;
-	return r | (g << 8) | (b << 16);
-}
-
-void createBucket(BUCKET * bucket, DWORD * colors, unsigned int nColors) {
-	bucket->colors = colors;
-	bucket->nColors = nColors;
-	if (nColors < 2) {
-		bucket->deviation = 0.0f;
-		if (nColors == 1) {
-			bucket->avg = *colors;
-		} else {
-			bucket->avg = 0;
-		}
-	} else {
-		unsigned long long devRed = 0, devGreen = 0, devBlue = 0;
-		DWORD * array = colors;
-		unsigned avgr = 0, avgg = 0, avgb = 0;
-		for (unsigned i = 0; i < nColors; i++) {
-			DWORD col = colors[i];
-			avgr += col & 0xFF;
-			avgg += (col >> 8) & 0xFF;
-			avgb += (col >> 16) & 0xFF;
-		}
-		avgr = (avgr + (nColors >> 1)) / nColors;
-		avgg = (avgg + (nColors >> 1)) / nColors;
-		avgb = (avgb + (nColors >> 1)) / nColors;
-		bucket->avg = avgr | (avgg << 8) | (avgb << 16);
-		for (unsigned i = 0; i < nColors; i++) {
-			DWORD c = colors[i];
-			int diffr = (c & 0xFF) - avgr;
-			int diffg = ((c >> 8) & 0xFF) - avgg;
-			int diffb = ((c >> 16) & 0xFF) - avgb;
-			devRed += diffr * diffr;
-			devGreen += diffg * diffg;
-			devBlue += diffb * diffb;
-
-		}
-		//note, this isn't exactly a standard deviation, because I am square rooting the list size.
-		//I do this to strike a balance between detail and smooth colors.
-		double sqrtColors = sqrt((double) nColors);
-		bucket->deviation = (float) (sqrt((double) devRed / sqrtColors) + sqrt((double) devGreen / sqrtColors) + sqrt((double) devBlue / sqrtColors));
-
-	}
-	bucket->avg = reduce(bucket->avg);
-}
-
-static int shiftBy = 0;
-int paletteCcomparator(const void *d1, const void *d2) {
-	int n1 = ((*(DWORD *) d1) >> shiftBy) & 0xFF;
-	int n2 = ((*(DWORD *) d2) >> shiftBy) & 0xFF;
-	return n1 - n2;
-}
-
 int lightnessCompare(const void *d1, const void *d2) {
 	DWORD c1 = *(DWORD *) d1;
 	DWORD c2 = *(DWORD *) d2;
@@ -91,155 +11,8 @@ int lightnessCompare(const void *d1, const void *d2) {
 	return y1 - y2;
 }
 
-void setPaletteAlgorithm(int alg) {
-	g_paletteAlgorithm = alg;
-}
-
 void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) {
-	g_paletteAlgorithms[g_paletteAlgorithm](img, width, height, pal, nColors);
-}
-
-void createPaletteEx(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors, int alg) {
-	g_paletteAlgorithms[alg](img, width, height, pal, nColors);
-}
-
-void createPaletteFast(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) {
-	/* if it has alpha 0, just overwrite it to be black. */
-	for (int i = 0; i < width * height; i++) {
-		DWORD d = img[i];
-		if (d >> 24) continue;
-		img[i] = 0;
-	}
-	/* is this image already compressed enough? */
-	unsigned int nUniqueColors = 0, nSearched = 0;
-	for (int i = 0; i < width * height; i++) {
-		DWORD d = img[i];
-		if (d == 0) continue;
-		d &= 0xFFFFFF;
-		int found = 0;
-		for (unsigned int j = 0; j < nUniqueColors; j++) {
-			if (d == (pal[j] & 0xFFFFFF)) {
-				found = 1;
-				break;
-			}
-		}
-		if (!found) {
-			if (nUniqueColors >= nColors) break;
-			pal[nUniqueColors] = d;
-			nUniqueColors++;
-		}
-		nSearched++;
-	}
-	if (nSearched == width * height) {
-		for (unsigned int i = 0; i < nColors - nUniqueColors; i++) {
-			pal[i + nUniqueColors] = 0;
-		}
-		qsort(pal, nColors, 4, lightnessCompare);
-		return;
-	}
-	/* create a copy. This way, we can modify it. */
-	DWORD *copy = (DWORD *) calloc(width * height, sizeof(DWORD));
-	unsigned scaleTo = 0;
-	unsigned nPixels = width * height;
-	for (unsigned i = 0; i < nPixels; i++) {
-		DWORD d = img[i];
-		if (d >> 24) {
-			copy[scaleTo] = d;
-			scaleTo++;
-		}
-	}
-
-
-	unsigned nBuckets = 1;
-	BUCKET *buckets = (BUCKET *) calloc(nColors, sizeof(BUCKET));
-	createBucket(buckets, copy, scaleTo);
-	unsigned nDesired = nColors;
-	while (nBuckets < nDesired) {
-
-		float largestDeviation = 0.0f;
-		unsigned largestIndex = 0;
-		/* determine the bucket with the greatest deviation */
-		for (unsigned j = 0; j < nBuckets; j++) {
-			float dev = buckets[j].deviation;
-			if (dev > largestDeviation) {
-				largestDeviation = dev;
-				largestIndex = j;
-			}
-		}
-		/* break if there is no way to further divide the palette */
-		if (largestDeviation == 0.0f) break;
-
-		/* split the chosen bucket in half. */
-		BUCKET popped = buckets[largestIndex];
-		nBuckets--;
-		DWORD *asArray = popped.colors;
-		unsigned length = popped.nColors;
-		memmove(buckets + largestIndex, buckets + largestIndex + 1, sizeof(BUCKET) * (nColors - largestIndex - 1)); /* remove it */
-
-		int maxes[] = { 0, 0, 0 };
-		int mins[] = { 255, 255, 255 };
-		for (unsigned k = 0; k < length; k++) {
-			DWORD c = asArray[k];
-			int r = c & 0xFF;
-			int g = (c >> 8) & 0xFF;
-			int b = (c >> 16) & 0xFF;
-			if (r > maxes[0]) maxes[0] = r;
-			if (g > maxes[1]) maxes[1] = g;
-			if (b > maxes[2]) maxes[2] = b;
-			if (r < mins[0]) mins[0] = r;
-			if (g < mins[1]) mins[1] = g;
-			if (b < mins[2]) mins[2] = b;
-		}
-		int range[] = {maxes[0] - mins[0], maxes[1] - mins[1], maxes[2] - mins[2]};
-		if ((range[0] >= range[1]) && (range[0] >= range[2])) {
-			shiftBy = 0;
-		} else if ((range[1] >= range[0]) && (range[1] >= range[2])) {
-			shiftBy = 8;
-		} else {
-			shiftBy = 16;
-		}
-		qsort(asArray, length, 4, paletteCcomparator);
-
-		unsigned length1 = length >> 1;
-		unsigned length2 = length - length1;
-		createBucket(buckets + nBuckets, asArray, length1);
-		nBuckets++;
-		createBucket(buckets + nBuckets, asArray + length1, length2);
-		nBuckets++;
-		/* in images with large amounts of one color, that one color may get too many entries. */
-		/* try to mitigate this by checking for multiple buckets with a deviation of 0 and the  */
-		/* same average. */
-		if (nBuckets >= nDesired) {
-			for (unsigned i = 0; i < nBuckets; i++) {
-				//if (buckets[i].deviation != 0) continue;
-				DWORD avg = buckets[i].avg;
-				// bucket's deviation is 0! check all future buckets for duplication.
-				for (unsigned j = i + 1; j < nBuckets; j++) {
-					BUCKET *b = buckets + j;
-					//if (b->deviation != 0) continue;
-					DWORD avg2 = b->avg;
-					if (avg2 != avg) continue;
-					//a match. Delete this bucket. Delete it.
-					MoveMemory(b, b + 1, (nBuckets - j - 1) * sizeof(BUCKET));
-					nBuckets--;
-					j--;
-				}
-			}
-		}
-	}
-	/* write the averages into the output palette */
-	for (unsigned i = 0; i < nBuckets; i++) {
-		pal[i] = buckets[i].avg;
-	}
-	if (nBuckets < nColors) {
-		for (unsigned i = 0; i < nColors - nBuckets; i++) {
-			pal[i + nBuckets] = 0;
-		}
-	}
-	free(copy);
-	free(buckets);
-
-	qsort(pal, nColors, 4, lightnessCompare);
+	createPaletteSlow(img, width, height, pal, nColors);
 }
 
 void createPalette_(DWORD *img, int width, int height, DWORD *pal, int nColors) {
@@ -251,19 +24,17 @@ void createPalette_(DWORD *img, int width, int height, DWORD *pal, int nColors) 
 closestpalette(RGB rgb, RGB * palette, int paletteSize, RGB * error) {
 	int smallestDistance = 1 << 24;
 	int index = 0, i = 0;
+	int ey, eu, ev;
+
 	for (; i < paletteSize; i++) {
 		RGB entry = palette[i];
 		int dr = entry.r - rgb.r;
 		int dg = entry.g - rgb.g;
 		int db = entry.b - rgb.b;
-		int dst;
-		if(g_paletteAlgorithm == PALETTE_SLOW) {
-			int y, u, v;
-			convertRGBToYUV(dr, dg, db, &y, &u, &v);
-			dst = 4 * y * y + u * u + v * v;
-		} else {
-			dst = dr * dr + dg * dg + db * db;
-		}
+
+		convertRGBToYUV(dr, dg, db, &ey, &eu, &ev);
+		int dst = 4 * ey * ey + eu * eu + ev * ev;
+
 		if (dst < smallestDistance) {
 			index = i;
 			smallestDistance = dst;
@@ -371,6 +142,8 @@ DWORD averageColor(DWORD *cols, int nColors) {
 
 unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize) {
 	unsigned int error = 0;
+	int ey, eu, ev;
+
 	for (int i = 0; i < nPx; i++) {
 		RGB thisColor = px[i];
 		if (thisColor.a == 0) continue;
@@ -378,13 +151,9 @@ unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize) {
 		int er = closest.r - thisColor.r;
 		int eg = closest.g - thisColor.g;
 		int eb = closest.b - thisColor.b;
-		if (g_paletteAlgorithm == PALETTE_SLOW) {
-			int y, u, v;
-			convertRGBToYUV(er, eg, eb, &y, &u, &v);
-			error += 4 * y * y + u * u + v * v;
-		} else {
-			error += er * er + eg * eg + eb * eb;
-		}
+
+		convertRGBToYUV(er, eg, eb, &ey, &eu, &ev);
+		error += 4 * ey * ey + eu * eu + ev * ev;
 	}
 	return error;
 }

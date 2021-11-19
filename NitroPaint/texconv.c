@@ -70,7 +70,7 @@ int convertPalette(CREATEPARAMS *params) {
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		createPaletteExact(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
+		createPaletteSlow(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
 	} else {
 		for (int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
@@ -139,7 +139,7 @@ int convertTranslucent(CREATEPARAMS *params) {
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		createPaletteExact(params->px, width, height, palette, nColors);
+		createPaletteSlow(params->px, width, height, palette, nColors);
 	} else {
 		for (int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
@@ -305,7 +305,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 			tile->palette[3] = 0;
 			tile->mode = 0x4000;
 		} else {
-			createPaletteExact((DWORD *) tile->rgb, 4, 4, palette, 4);
+			createPaletteSlow((DWORD *) tile->rgb, 4, 4, palette, 4);
 			//palette[0] = 0;
 			//swap index 3 and 0, 2 and 1
 			tile->palette[0] = ColorConvertToDS(palette[3]);
@@ -326,7 +326,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 			tile->palette[3] = 0;
 			tile->mode = 0xC000;
 		} else {
-			createPaletteExact((DWORD *) tile->rgb, 4, 4, (DWORD *) palette, 4);
+			createPaletteSlow((DWORD *) tile->rgb, 4, 4, (DWORD *) palette, 4);
 			//swap index 3 and 0, 2 and 1
 			tile->palette[0] = ColorConvertToDS(palette[3]);
 			tile->palette[1] = ColorConvertToDS(palette[2]);
@@ -521,8 +521,7 @@ void mergePalettes(TILEDATA *tileData, int nTiles, COLOR *palette, int paletteIn
 	DWORD expandPal[4];
 	if (palettesMode == 0x0000) {
 		//transparent, full color
-		createPalette_(px, nUsedTiles, 16, expandPal, 4);
-		expandPal[0] = 0;
+		createPaletteSlow(px, 4, 4 * nUsedTiles, expandPal + 1, 3);
 		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[3]);
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[2]);
 		palette[paletteIndex * 2 + 2] = ColorConvertToDS(expandPal[1]);
@@ -551,7 +550,7 @@ void mergePalettes(TILEDATA *tileData, int nTiles, COLOR *palette, int paletteIn
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(r2 | (g2 << 8) | (b2 << 16));
 	} else if (palettesMode == 0x8000) {
 		//opaque, full color
-		createPaletteExact(px, nUsedTiles, 16, expandPal, 4);
+		createPaletteSlow(px, 4, 4 * nUsedTiles, expandPal, 4);
 		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[3]);
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[2]);
 		palette[paletteIndex * 2 + 2] = ColorConvertToDS(expandPal[1]);
