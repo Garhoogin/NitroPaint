@@ -8,7 +8,6 @@
 #define FILE_TYPE_SCREEN     3
 #define FILE_TYPE_CELL       4
 #define FILE_TYPE_NSBTX      5
-#define FILE_TYPE_BMAP       6
 #define FILE_TYPE_TEXTURE    7
 #define FILE_TYPE_NANR       8
 #define FILE_TYPE_IMAGE      9

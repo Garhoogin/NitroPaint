@@ -118,7 +118,7 @@
       <Optimization>MinSpace</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <FavorSizeOrSpeed>Size</FavorSizeOrSpeed>
       <StringPooling>true</StringPooling>
       <ExceptionHandling>false</ExceptionHandling>
@@ -137,7 +137,7 @@
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
       <AdditionalOptions>/EMITPOGOPHASEINFO /PDBALTPATH:NitroPaint.pdb %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>C:\users\patri_000\Documents\tcc\asm\lib\msvcrt-light.lib;uxtheme.lib;gdiplus.lib;comctl32.lib;dbghelp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>C:\users\patri_000\Documents\tcc\asm\lib\msvcrt-light.lib;uxtheme.lib;version.lib;gdiplus.lib;comctl32.lib;dbghelp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <DelayLoadDLLs>dbghelp.dll</DelayLoadDLLs>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -160,13 +160,18 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="analysis.c" />
     <ClCompile Include="childwindow.c" />
     <ClCompile Include="color.c" />
     <ClCompile Include="colorchooser.c" />
     <ClCompile Include="exceptions.c" />
     <ClCompile Include="filecommon.c" />
+    <ClCompile Include="g2dfile.c" />
     <ClCompile Include="gdip.c" />
     <ClCompile Include="compression.c" />
+    <ClCompile Include="isplt.c" />
+    <ClCompile Include="nanr.c" />
+    <ClCompile Include="nanrviewer.c" />
     <ClCompile Include="ncer.c" />
     <ClCompile Include="ncerviewer.c" />
     <ClCompile Include="ncgr.c" />
@@ -179,18 +184,25 @@
     <ClCompile Include="nscr.c" />
     <ClCompile Include="nscrviewer.c" />
     <ClCompile Include="palette.c" />
+    <ClCompile Include="texconv.c" />
     <ClCompile Include="texture.c" />
+    <ClCompile Include="textureeditor.c" />
     <ClCompile Include="tileeditor.c" />
     <ClCompile Include="tiler.c" />
+    <ClCompile Include="undo.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="analysis.h" />
     <ClInclude Include="childwindow.h" />
     <ClInclude Include="color.h" />
     <ClInclude Include="colorchooser.h" />
     <ClInclude Include="compression.h" />
     <ClInclude Include="exceptions.h" />
     <ClInclude Include="filecommon.h" />
+    <ClInclude Include="g2dfile.h" />
     <ClInclude Include="gdip.h" />
+    <ClInclude Include="nanr.h" />
+    <ClInclude Include="nanrviewer.h" />
     <ClInclude Include="ncer.h" />
     <ClInclude Include="ncerviewer.h" />
     <ClInclude Include="ncgr.h" />
@@ -204,9 +216,12 @@
     <ClInclude Include="nscrviewer.h" />
     <ClInclude Include="palette.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="texconv.h" />
     <ClInclude Include="texture.h" />
+    <ClInclude Include="textureeditor.h" />
     <ClInclude Include="tileeditor.h" />
     <ClInclude Include="tiler.h" />
+    <ClInclude Include="undo.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="NitroPaint.rc" />

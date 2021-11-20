@@ -81,6 +81,30 @@
     <ClCompile Include="filecommon.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="textureeditor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="texconv.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="undo.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="analysis.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nanr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nanrviewer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="isplt.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="g2dfile.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tiler.h">
@@ -150,6 +174,27 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="compression.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="textureeditor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="texconv.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="undo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="analysis.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nanr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nanrviewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="g2dfile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

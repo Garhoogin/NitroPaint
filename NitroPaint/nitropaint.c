@@ -18,7 +18,6 @@
 #include "tileeditor.h"
 #include "textureeditor.h"
 #include "nsbtx.h"
-#include "ntft.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -391,33 +390,6 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
 
 						free(path);
-						break;
-					}
-					case ID_NTFT_IMAGE:
-					{
-						LPWSTR path = openFileDialog(hWnd, L"Open Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
-						if (!path) break;
-						LPWSTR dest = saveFileDialog(hWnd, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
-						if (!dest) {
-							free(path);
-							break;
-						}
-
-						int width, height;
-						NTFT ntft;
-						DWORD *bits = gdipReadImage(path, &width, &height);
-						ntftCreate(&ntft, bits, width * height);
-						ntftWrite(&ntft, dest);
-						free(ntft.px);
-
-						free(path);
-						free(dest);
-						break;
-					}
-					case ID_NTFT_NTFT:
-					{
-						//create window
-						CreateWindow(L"NtftConvertDialogClass", L"Convert NTFT", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
 						break;
 					}
 					case ID_FILE_SAVEALL:
@@ -908,22 +880,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					if (!path) break;
 					SendMessage(data->hWndFileInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
 
-					//try to guess a size
-					NTFT ntft;
-					int r = ntftReadFile(&ntft, path);
-					if (!r) {
-						int nPx = ntft.nPx;
-						free(ntft.px);
-						int guessWidth = 8;
-						while (1) {
-							if (nPx / guessWidth <= guessWidth) break;
-							guessWidth *= 2;
-						}
-
-						WCHAR buffer[16];
-						int len = wsprintfW(buffer, L"%d", guessWidth);
-						SendMessage(data->hWndWidthInput, WM_SETTEXT, len, (LPARAM) buffer);
-					}
+					
 
 					free(path);
 				} else if (hWndControl == data->hWndConvertButton) {
@@ -933,22 +890,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
 					int width = _wtol(src);
 					SendMessage(data->hWndFileInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
-
-					NTFT ntft;
-					ntftReadFile(&ntft, src);
-					int nPx = ntft.nPx;
-
-					DWORD *px = (DWORD *) malloc(nPx * 4);
-					for (int i = 0; i < nPx; i++){
-						COLOR c = ntft.px[i];
-						DWORD converted = ColorConvertFromDS(c);
-						if (c & 0x8000) converted |= 0xFF000000;
-						px[i] = REVERSE(converted);
-					}
-
-					writeImage(px, width, nPx / width, out);
-					free(ntft.px);
-					free(px);
+					
 					free(out);
 					DestroyWindow(hWnd);
 				}

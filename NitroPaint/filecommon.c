@@ -4,7 +4,6 @@
 #include "nscr.h"
 #include "ncer.h"
 #include "nsbtx.h"
-#include "ntft.h"
 #include "nanr.h"
 #include "texture.h"
 #include "gdip.h"
