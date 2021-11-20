@@ -278,12 +278,12 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 							break;
 						}
 
-						LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0All Files\0*.*\0\0", L"ntft");
+						LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0\0", L"ntft");
 						if (ntftPath == NULL) break;
 
 						LPWSTR ntfiPath = NULL;
 						if (FORMAT(data->textureData.texels.texImageParam) == CT_4x4) {
-							ntfiPath = saveFileDialog(hWndMain, L"Save NTFI", L"NTFI Files (*.ntfi)\0All Files\0*.*\0\0", L"ntfi");
+							ntfiPath = saveFileDialog(hWndMain, L"Save NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0\0", L"ntfi");
 							if (ntfiPath == NULL) {
 								free(ntftPath);
 								break;

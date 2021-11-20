@@ -479,6 +479,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						g_configuration.fullPaths = state;
 						break;
 					}
+					case ID_NTFT_NTFT40084:
+					{
+						CreateWindow(L"NtftConvertDialogClass", L"NTFT To Nitro TGA", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						break;
+					}
 				}
 			}
 			HWND hWndActive = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);
@@ -843,11 +848,18 @@ void RegisterProgressWindowClass() {
 }
 
 typedef struct {
-	HWND hWndFileInput;
-	HWND hWndBrowseButton;
+	HWND hWndNtftInput;
+	HWND hWndNtftBrowseButton;
+	HWND hWndNtfpInput;
+	HWND hWndNtfpBrowseButton;
+	HWND hWndNtfiInput;
+	HWND hWndNtfiBrowseButton;
+	HWND hWndFormat;
 	HWND hWndWidthInput;
 	HWND hWndConvertButton;
 } NTFTCONVERTDATA;
+
+extern int ilog2(int x);
 
 LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NTFTCONVERTDATA *data = (NTFTCONVERTDATA *) GetWindowLongPtr(hWnd, 0);
@@ -858,14 +870,38 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	switch (msg) {
 		case WM_CREATE:
 		{
-			SetWindowSize(hWnd, 50 + 10 + 200 + 10 + 10, 10 + 10 + 22 + 5 + 22 + 5 + 22);
-			CreateWindow(L"STATIC", L"Input:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFileInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 10, 170, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 10, 30, 22, hWnd, NULL, NULL, NULL);
-			data->hWndWidthInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"8", WS_VISIBLE | WS_CHILD | ES_NUMBER, 70, 37, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			SetWindowSize(hWnd, 280, 177);
+			CreateWindow(L"STATIC", L"NTFT:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"NTFP:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"NTFI:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 50, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtftInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 10, 170, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtftBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 10, 30, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtfpInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 37, 170, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtfpBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 37, 30, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtfiInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 64, 170, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtfiBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 64, 30, 22, hWnd, NULL, NULL, NULL);
+			data->hWndFormat = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 70, 91, 100, 100, hWnd, NULL, NULL, NULL);
+			data->hWndWidthInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"8", WS_VISIBLE | WS_CHILD | ES_NUMBER, 70, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 145, 100, 22, hWnd, NULL, NULL, NULL);
 			SetGUIFont(hWnd);
+
+			//populate the dropdown list
+			WCHAR bf[16];
+			int len;
+			for (int i = 1; i <= CT_DIRECT; i++) {
+				char *str = stringFromFormat(i);
+				len = 0;
+				while (*str) {
+					bf[len] = *str;
+					str++;
+					len++;
+				}
+				bf[len] = L'\0';
+				SendMessage(data->hWndFormat, CB_ADDSTRING, len, (LPARAM) bf);
+			}
+			SendMessage(data->hWndFormat, CB_SETCURSEL, 6, 0);
 			
 			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
@@ -875,24 +911,131 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl) {
-				if (hWndControl == data->hWndBrowseButton) {
+				if (hWndControl == data->hWndNtftBrowseButton) {
 					LPWSTR path = openFileDialog(hWnd, L"Open NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
 					if (!path) break;
-					SendMessage(data->hWndFileInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
-
-					
-
+					SendMessage(data->hWndNtftInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+					free(path);
+				} else if (hWndControl == data->hWndNtfpBrowseButton) {
+					LPWSTR path = openFileDialog(hWnd, L"Open NTFP", L"NTFP Files (*.ntfp)\0*.ntfp\0All Files\0*.*\0", L"ntfp");
+					if (!path) break;
+					SendMessage(data->hWndNtfpInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+					free(path);
+				} else if (hWndControl == data->hWndNtfiBrowseButton) {
+					LPWSTR path = openFileDialog(hWnd, L"Open NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0", L"ntfi");
+					if (!path) break;
+					SendMessage(data->hWndNtfiInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
 					free(path);
 				} else if (hWndControl == data->hWndConvertButton) {
-					LPWSTR out = saveFileDialog(hWnd, L"Save Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
-					if (!out) break;
 					WCHAR src[MAX_PATH + 1];
 					SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
 					int width = _wtol(src);
-					SendMessage(data->hWndFileInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
+					int format = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+
+					int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+					int bpp = bppArray[format];
+
+					int ntftSize = 0, ntfpSize = 0, ntfiSize = 0;
+					BYTE *ntft = NULL, *ntfp = NULL, *ntfi = NULL;
 					
-					free(out);
+					//read files
+					DWORD dwSizeHigh, dwRead;
+					char palName[16] = { 0 };
+					SendMessage(data->hWndNtftInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
+					if (wcslen(src)) {
+						HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+						ntftSize = GetFileSize(hFile, &dwSizeHigh);
+						ntft = malloc(ntftSize);
+						ReadFile(hFile, ntft, ntftSize, &dwRead, NULL);
+						CloseHandle(hFile);
+					}
+
+					SendMessage(data->hWndNtfpInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
+					if (wcslen(src)) {
+						HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+						ntfpSize = GetFileSize(hFile, &dwSizeHigh);
+						ntfp = malloc(ntfpSize);
+						ReadFile(hFile, ntfp, ntfpSize, &dwRead, NULL);
+						CloseHandle(hFile);
+
+						//populate palette name. Scan for last \ or /
+						int lastIndex = -1;
+						int i;
+						for (i = 0; i < wcslen(src); i++) {
+							if (src[i] == '\\' || src[i] == '/') lastIndex = i;
+						}
+						LPCWSTR end = src + lastIndex + 1;
+
+						//copy until first ., NUL, or 12 characters are copied
+						for (i = 0; i < 12; i++) {
+							WCHAR c = end[i];
+							if (c == L'.' || c == L'\0') break;
+							palName[i] = (char) c;
+						}
+						memcpy(palName + i, "_pl", 3);
+					}
+
+					SendMessage(data->hWndNtfiInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
+					if (wcslen(src)) {
+						HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+						ntfiSize = GetFileSize(hFile, &dwSizeHigh);
+						ntfi = malloc(ntfiSize);
+						ReadFile(hFile, ntfi, ntfiSize, &dwRead, NULL);
+						CloseHandle(hFile);
+					}
+
+					//sort out texture format requirements
+					BOOL requiresNtft = TRUE;
+					BOOL requiresNtfp = (format != CT_DIRECT);
+					BOOL requiresNtfi = (format == CT_4x4);
+
+					BOOL abortConvert = FALSE;
+					if (requiresNtft && ntft == NULL) {
+						MessageBox(hWnd, L"Texture format requires NTFT.", L"Requires NTFT", MB_ICONERROR);
+						abortConvert = TRUE;
+					}
+					if (requiresNtfp && ntfp == NULL) {
+						MessageBox(hWnd, L"Texture format requires NTFP.", L"Requires NTFP", MB_ICONERROR);
+						abortConvert = TRUE;
+					}
+					if (requiresNtfi && ntfi == NULL) {
+						MessageBox(hWnd, L"Texture format requires NTFI.", L"Requires NTFI", MB_ICONERROR);
+						abortConvert = TRUE;
+					}
+					if (abortConvert) {
+						if (ntft != NULL) free(ntft);
+						if (ntfp != NULL) free(ntfp);
+						if (ntfi != NULL) free(ntfi);
+						break;
+					}
+
+					//ok now actually convert
+					int height = ntftSize * 8 / bpp / width;
+					TEXTURE texture = { 0 };
+					texture.palette.pal = (COLOR *) ntfp;
+					texture.palette.nColors = ntfpSize / 2;
+					texture.texels.texel = ntft;
+					texture.texels.cmp = (short *) ntfi;
+					texture.texels.texImageParam = (format << 26) | ((ilog2(width) - 3) << 20) | ((ilog2(height) - 3) << 23);
+					memcpy(&texture.palette.name, palName, 16);
+
+					LPWSTR out = saveFileDialog(hWnd, L"Save Nitro TGA", L"TGA Files\0*.tga\0All Files\0*.*\0", L"tga");
+					if (!out) {
+						if (ntft != NULL) free(ntft);
+						if (ntfp != NULL) free(ntfp);
+						if (ntfi != NULL) free(ntfi);
+						break;
+					}
+					writeNitroTGA(out, &texture.texels, &texture.palette);
+
+					if (ntft != NULL) free(ntft);
+					if (ntfp != NULL) free(ntfp);
+					if (ntfi != NULL) free(ntfi);
+
+					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					DestroyWindow(hWnd);
+					OpenFileByName(hWndMain, out);
+					free(out);
 				}
 			}
 			break;

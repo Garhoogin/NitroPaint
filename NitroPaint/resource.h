@@ -82,13 +82,14 @@
 #define ID_PALETTEALGORITHM_SLOW        40081
 #define ID_PALETTEALGORITHM_FAST        40082
 #define ID_MENU_CREATE                  40083
+#define ID_NTFT_NTFT40084               40084
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40084
+#define _APS_NEXT_COMMAND_VALUE         40085
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
