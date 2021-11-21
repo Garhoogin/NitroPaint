@@ -700,6 +700,7 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 				int nColors = _wtol(bf);
 				int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
 				int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
+				if (nColors > 256) nColors = 256;
 
 				BOOL enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
 				BOOL reserveFirst = SendMessage(data->hWndReserve, BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -712,6 +713,7 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 
 				//write back
 				for (int i = 0; i < nColors; i++) {
+					if (i + index >= nTotalColors) break;
 					data->nclr.colors[i + index] = ColorConvertToDS(paletteCopy[i]);
 				}
 				free(paletteCopy);
