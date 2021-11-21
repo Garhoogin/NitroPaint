@@ -11,6 +11,7 @@ int isTGA(BYTE *buffer, DWORD dwSize) {
 	if (buffer[1] != 0 && buffer[1] != 1) return 0;
 	if (buffer[2] > 11) return 0;
 	if (*(WORD *) (buffer + 5) != 0) return 0; //we don't support color table TGAs
+	if (buffer[2] != 2 && buffer[2] != 10) return 0; //only RGB and RLE are supported
 	return 1;
 }
 
