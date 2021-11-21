@@ -37,6 +37,24 @@ int ncgrIsValidBin(LPBYTE buffer, int size) {
 	return NCGR_TYPE_BIN;
 }
 
+void ncgrFree(OBJECT_HEADER *header) {
+	NCGR *ncgr = (NCGR *) header;
+	if (ncgr->tiles != NULL) {
+		for (int i = 0; i < ncgr->nTiles; i++) {
+			free(ncgr->tiles[i]);
+		}
+		free(ncgr->tiles);
+	}
+	ncgr->tiles = NULL;
+
+	COMBO2D *combo = ncgr->combo2d;
+	if (ncgr->combo2d != NULL) {
+		ncgr->combo2d->ncgr = NULL;
+		if (combo->nclr == NULL && combo->ncgr == NULL && combo->nscr == NULL) free(combo);
+	}
+	ncgr->combo2d = NULL;
+}
+
 int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	if (size < 8) return 1; //file too small
 	if (*buffer == 0x10) return 1; //TODO: LZ77 decompress
@@ -59,12 +77,14 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	ncgr->header.format = type;
 	ncgr->header.size = sizeof(*ncgr);
 	ncgr->header.compression = COMPRESSION_NONE;
+	ncgr->header.dispose = ncgrFree;
 	ncgr->nTiles = nCharacters;
 	ncgr->tileWidth = 8;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nBits = 8;
 	ncgr->tilesX = -1;
 	ncgr->tilesY = -1;
+	ncgr->combo2d = NULL;
 
 	if (type == NCGR_TYPE_HUDSON) {
 		if (buffer[4] == 0) {
@@ -105,17 +125,55 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	return 0;
 }
 
+int ncgrReadCombo(NCGR *ncgr, char *buffer, int size) {
+	ncgr->header.compression = COMPRESSION_NONE;
+	ncgr->header.dispose = ncgrFree;
+	ncgr->header.size = sizeof(NCGR);
+	ncgr->header.type = FILE_TYPE_CHARACTER;
+	ncgr->header.format = NCGR_TYPE_COMBO;
+	ncgr->nTiles = *(int *) (buffer + 0xA08);
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
+	ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
+	ncgr->tilesX = calculateWidth(ncgr->nTiles);
+	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ncgr->combo2d = NULL;
+
+	int nTiles = ncgr->nTiles;
+	BYTE **tiles = (BYTE **) calloc(nTiles, sizeof(BYTE *));
+	for (int i = 0; i < nTiles; i++) {
+		BYTE *tile = (BYTE *) calloc(64, 1);
+		tiles[i] = tile;
+
+		if (ncgr->nBits == 8) {
+			memcpy(tile, buffer + 0xA0C + i * 0x40, 0x40);
+		} else {
+			BYTE *src = buffer + 0xA0C + i * 0x20;
+			for (int j = 0; j < 32; j++) {
+				BYTE b = src[j];
+				tile[j * 2] = b & 0xF;
+				tile[j * 2 + 1] = b >> 4;
+			}
+		}
+	}
+
+
+	ncgr->tiles = tiles;
+	return 0;
+}
+
 int ncgrReadBin(NCGR *ncgr, char *buffer, int size) {
 	ncgr->header.compression = COMPRESSION_NONE;
 	ncgr->header.format = NCGR_TYPE_BIN;
 	ncgr->header.size = sizeof(NCGR);
 	ncgr->header.type = FILE_TYPE_CHARACTER;
+	ncgr->header.dispose = ncgrFree;
 	ncgr->nTiles = size / 0x20;
 	ncgr->nBits = 4;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = calculateWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ncgr->combo2d = NULL;
 
 	BYTE **tiles = (BYTE **) calloc(ncgr->nTiles, sizeof(BYTE **));
 	for (int i = 0; i < ncgr->nTiles; i++) {
@@ -145,6 +203,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	if (*(DWORD *) buffer != 0x4E434752) {
 		if (ncgrIsValidHudson(buffer, size)) return hudsonReadCharacter(ncgr, buffer, size);
 		if (ncgrIsValidBin(buffer, size)) return ncgrReadBin(ncgr, buffer, size);
+		if (combo2dIsValid(buffer, size)) return ncgrReadCombo(ncgr, buffer, size);
 	}
 	if (size < 0x10) return 1;
 	DWORD magic = *(DWORD *) buffer;
@@ -234,10 +293,12 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
 	ncgr->mappingMode = mapping;
+	ncgr->combo2d = NULL;
 	ncgr->header.type = FILE_TYPE_CHARACTER;
 	ncgr->header.format = format;
 	ncgr->header.size = sizeof(*ncgr);
 	ncgr->header.compression = COMPRESSION_NONE;
+	ncgr->header.dispose = ncgrFree;
 	return 0;
 
 }
@@ -289,6 +350,10 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 }
 
 void ncgrWrite(NCGR * ncgr, LPWSTR name) {
+	if (ncgr->header.format == NCGR_TYPE_COMBO) {
+		combo2dWrite(ncgr->combo2d, name);
+		return;
+	}
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (ncgr->header.format == NCGR_TYPE_NCGR || ncgr->header.format == NCGR_TYPE_NCBR) {
 		BYTE ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, 0x1, 0 };

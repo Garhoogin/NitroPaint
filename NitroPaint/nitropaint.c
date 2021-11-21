@@ -213,6 +213,40 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		case FILE_TYPE_IMAGE:
 			CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
+		case FILE_TYPE_COMBO2D:
+		{
+			//if there is already an NCLR open, close it.
+			if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
+			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
+
+			//if there is already an NCGR open, close it.
+			if (data->hWndNcgrViewer) DestroyWindow(data->hWndNcgrViewer);
+			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
+			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+
+			//if there is already an NSCR open, close it.
+			if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
+			data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+
+			//create a combo frame
+			COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
+			NCLR *nclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
+			NCGR *ncgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
+			NSCR *nscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->nscr;
+			combo->nclr = nclr;
+			combo->ncgr = ncgr;
+			combo->nscr = nscr;
+			nclr->combo2d = combo;
+			ncgr->combo2d = combo;
+			nscr->combo2d = combo;
+
+			combo->header.compression = COMPRESSION_NONE;
+			combo->header.dispose = NULL;
+			combo->header.size = sizeof(COMBO2D);
+			combo->header.type = FILE_TYPE_COMBO2D;
+			combo->header.format = combo2dIsValid(buffer, dwSize);
+			break;
+		}
 		default:
 			break;
 	}

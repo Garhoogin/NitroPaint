@@ -8,6 +8,7 @@
 #define NCGR_TYPE_HUDSON2	3
 #define NCGR_TYPE_NCBR      4
 #define NCGR_TYPE_BIN       5
+#define NCGR_TYPE_COMBO     6
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
@@ -31,7 +32,10 @@ typedef struct NCGR_{
 	int nBits;
 	int tileWidth;
 	BYTE **tiles;
+	struct COMBO2D_ *combo2d; //for combination files
 } NCGR;
+
+#include "combo2d.h"
 
 int calculateWidth(int nTiles);
 

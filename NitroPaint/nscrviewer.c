@@ -617,7 +617,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_DESTROY:
 		{
 			if (data->hWndTileEditor) DestroyWindow(data->hWndTileEditor);
-			free(data->nscr.data);
+			fileFree((OBJECT_HEADER *) &data->nscr);
 			free(data);
 			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);

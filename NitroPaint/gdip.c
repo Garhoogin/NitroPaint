@@ -10,6 +10,7 @@ int isTGA(BYTE *buffer, DWORD dwSize) {
 	if (dwSize < commentLength + 0x12u) return 0;
 	if (buffer[1] != 0 && buffer[1] != 1) return 0;
 	if (buffer[2] > 11) return 0;
+	if (*(WORD *) (buffer + 5) != 0) return 0; //we don't support color table TGAs
 	return 1;
 }
 

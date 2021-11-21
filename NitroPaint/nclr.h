@@ -8,6 +8,7 @@
 #define NCLR_TYPE_HUDSON 2
 #define NCLR_TYPE_BIN 3
 #define NCLR_TYPE_NTFP 4
+#define NCLR_TYPE_COMBO 5
 
 extern LPCWSTR paletteFormatNames[];
 
@@ -20,7 +21,10 @@ typedef struct NCLR_ {
 	int extPalette;
 	short *idxTable;
 	COLOR *colors;
+	struct COMBO2D_ *combo2d; //for part of a combination file
 } NCLR;
+
+#include "combo2d.h"
 
 int nclrIsValidHudson(LPBYTE lpFile, int size);
 

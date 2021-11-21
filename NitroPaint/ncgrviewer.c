@@ -604,15 +604,12 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_DESTROY:
 		{
-			for (int i = 0; i < data->ncgr.nTiles; i++) {
-				free(data->ncgr.tiles[i]);
-			}
+			fileFree((OBJECT_HEADER *) &data->ncgr);
 			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 			nitroPaintStruct->hWndNcgrViewer = NULL;
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 			if (data->hWndTileEditorWindow) DestroyWindow(data->hWndTileEditorWindow);
-			free(data->ncgr.tiles);
 			free(data);
 			SetWindowLongPtr(hWnd, 0, 0);
 			break;

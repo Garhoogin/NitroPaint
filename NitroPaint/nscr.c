@@ -44,6 +44,19 @@ int nscrIsValidBin(LPBYTE buffer, int size) {
 	return isValidScreenSize(nPx);
 }
 
+void nscrFree(OBJECT_HEADER *header) {
+	NSCR *nscr = (NSCR *) header;
+	if (nscr->data != NULL) free(nscr->data);
+	nscr->data = NULL;
+
+	COMBO2D *combo = nscr->combo2d;
+	if (nscr->combo2d != NULL) {
+		nscr->combo2d->nscr = NULL;
+		if (combo->nclr == NULL && combo->ncgr == NULL && combo->nscr == NULL) free(combo);
+	}
+	nscr->combo2d = NULL;
+}
+
 int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	if (*file == 0x10) return 1; //TODO: implement LZ77 decompression
 	if (dwFileSize < 8) return 1; //file too small
@@ -69,10 +82,12 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->nHeight = tilesY * 8;
 	nscr->dataSize = tilesX * tilesY * 2;
 	nscr->nHighestIndex = 0;
+	nscr->combo2d = NULL;
 	nscr->header.type = FILE_TYPE_SCREEN;
 	nscr->header.format = type;
 	nscr->header.size = sizeof(*nscr);
 	nscr->header.compression = COMPRESSION_NONE;
+	nscr->header.dispose = nscrFree;
 	memcpy(nscr->data, srcData, nscr->dataSize);
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		WORD w = nscr->data[i];
@@ -87,8 +102,10 @@ int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->header.format = NSCR_TYPE_BIN;
 	nscr->header.size = sizeof(NSCR);
 	nscr->header.type = FILE_TYPE_SCREEN;
+	nscr->header.dispose = nscrFree;
 	nscr->dataSize = dwFileSize;
 	nscr->data = malloc(dwFileSize);
+	nscr->combo2d = NULL;
 	memcpy(nscr->data, file, dwFileSize);
 	nscr->nHighestIndex = 0;
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
@@ -127,6 +144,28 @@ int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
 	return 0;
 }
 
+int nscrReadCombo(NSCR *nscr, char *file, DWORD dwFileSize) {
+	nscr->header.compression = COMPRESSION_NONE;
+	nscr->header.dispose = nscrFree;
+	nscr->header.size = sizeof(NSCR);
+	nscr->header.type = FILE_TYPE_SCREEN;
+	nscr->header.format = NSCR_TYPE_COMBO;
+	nscr->dataSize = 2048;
+	nscr->nHeight = 256;
+	nscr->nWidth = 256;
+	nscr->data = (WORD *) calloc(1024, 2);
+	nscr->combo2d = NULL;
+	memcpy(nscr->data, file + 0x208, 2048);
+
+	nscr->nHighestIndex = 0;
+	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+		WORD w = nscr->data[i];
+		w &= 0x3FF;
+		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
+	}
+	return 0;
+}
+
 int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	if (lz77IsCompressed(file, dwFileSize)) {
 		int uncompressedSize;
@@ -140,6 +179,7 @@ int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	if (*(DWORD *) file != 0x4E534352) {
 		if(nscrIsValidHudson(file, dwFileSize)) return hudsonScreenRead(nscr, file, dwFileSize);
 		if (nscrIsValidBin(file, dwFileSize)) return nscrReadBin(nscr, file, dwFileSize);
+		if (combo2dIsValid(file, dwFileSize)) return nscrReadCombo(nscr, file, dwFileSize);
 	}
 	if (dwFileSize < 0x14) return 1;
 	DWORD dwFirst = *(DWORD *) file;
@@ -171,10 +211,12 @@ int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->nHeight = nHeight;
 	nscr->dataSize = dwDataSize;
 	nscr->nHighestIndex = 0;
+	nscr->combo2d = NULL;
 	nscr->header.type = FILE_TYPE_SCREEN;
 	nscr->header.format = NSCR_TYPE_NSCR;
 	nscr->header.size = sizeof(*nscr);
 	nscr->header.compression = COMPRESSION_NONE;
+	nscr->header.dispose = nscrFree;
 	memcpy(nscr->data, file + 0x14, dwDataSize);
 	for (unsigned int i = 0; i < dwDataSize / 2; i++) {
 		WORD w = nscr->data[i];
@@ -356,6 +398,10 @@ int isDuplicate(DWORD * block1, DWORD * block2) {
 }
 
 void nscrWrite(NSCR *nscr, LPWSTR name) {
+	if (nscr->header.format == NSCR_TYPE_COMBO) {
+		combo2dWrite(nscr->combo2d, name);
+		return;
+	}
 	DWORD dwWritten;
 	if (nscr->header.format == NSCR_TYPE_NSCR) {
 		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };

@@ -101,7 +101,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 			} else {
 
 				//test other formats
-				if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+				if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
+				else if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
@@ -153,4 +154,8 @@ void fileCompress(LPWSTR name, int compression) {
 	CloseHandle(hFile);
 	if (compressedBuffer != buffer) free(compressedBuffer);
 	free(buffer);
+}
+
+void fileFree(OBJECT_HEADER *header) {
+	if(header->dispose != NULL) header->dispose(header);
 }

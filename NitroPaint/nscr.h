@@ -1,4 +1,5 @@
 #pragma once
+#include <Windows.h>
 #include "ncgr.h"
 #include "nclr.h"
 
@@ -20,6 +21,7 @@
 #define NSCR_TYPE_HUDSON	2
 #define NSCR_TYPE_HUDSON2	3
 #define NSCR_TYPE_BIN       4
+#define NSCR_TYPE_COMBO     5
 
 extern LPCWSTR screenFormatNames[];
 
@@ -31,7 +33,10 @@ typedef struct NSCR_ {
 	WORD *data;
 	int fmt;
 	int nHighestIndex;//weird hack
+	struct COMBO2D_ *combo2d; //for combination files
 } NSCR;
+
+#include "combo2d.h"
 
 int nscrIsValidHudson(LPBYTE buffer, int size);
 
