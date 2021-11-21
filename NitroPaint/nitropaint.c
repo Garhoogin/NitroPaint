@@ -250,6 +250,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		default:
 			break;
 	}
+	free(buffer);
 }
 
 VOID HandleSwitch(LPWSTR lpSwitch) {
