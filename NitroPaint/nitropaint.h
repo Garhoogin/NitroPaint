@@ -32,6 +32,13 @@ typedef struct {
 	int waitOn;
 	void *data; //data passed to callback once the progress has finished
 	void (*callback) (void *data); //function called once the wait is finished
+	int progress1;
+	int progress1Max;
+	int progress2;
+	int progress2Max;
+
+	HWND hWndProgress1;
+	HWND hWndProgress2;
 } PROGRESSDATA;
 
 LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);

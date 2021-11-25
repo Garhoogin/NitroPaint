@@ -613,7 +613,8 @@ DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	nscrCreate(params->bbits, params->width, params->height, params->bits, params->dither,
 			   params->createData->szNclrPath, params->createData->szNcgrPath, params->createData->szNscrPath,
 			   params->palette, params->nPalettes, params->fmt, params->tileBase, params->mergeTiles,
-			   params->paletteSize, params->paletteOffset, params->rowLimit, params->nMaxChars);
+			   params->paletteSize, params->paletteOffset, params->rowLimit, params->nMaxChars,
+			   &params->data->progress1, &params->data->progress1Max, &params->data->progress2, &params->data->progress2Max);
 	params->data->waitOn = 1;
 	return 0;
 }
@@ -843,8 +844,10 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateWindow(L"STATIC", L"In progress...", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			SetTimer(hWnd, 1, 50, NULL);
+			CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Character compression:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 69, 150, 22, hWnd, NULL, NULL, NULL);
+			SetWindowSize(hWnd, 520, 128);
+			SetTimer(hWnd, 1, 100, NULL);
 			SetGUIFont(hWnd);
 			break;
 		}
@@ -852,6 +855,16 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 		{
 			PROGRESSDATA *data = (PROGRESSDATA *) GetWindowLongPtr(hWnd, 0);
 			if (data) {
+				if (data->progress1 == NULL) {
+					data->hWndProgress1 = CreateWindow(PROGRESS_CLASSW, L"", WS_VISIBLE | WS_CHILD, 10, 42, 500, 22, hWnd, NULL, NULL, NULL);
+				}
+				if (data->progress2 == NULL) {
+					data->hWndProgress2 = CreateWindow(PROGRESS_CLASSW, L"", WS_VISIBLE | WS_CHILD, 10, 96, 500, 22, hWnd, NULL, NULL, NULL);
+				}
+				SendMessage(data->hWndProgress1, PBM_SETRANGE, 0, 0 | (data->progress1Max << 16));
+				SendMessage(data->hWndProgress2, PBM_SETRANGE, 0, 0 | (data->progress2Max << 16));
+				SendMessage(data->hWndProgress1, PBM_SETPOS, data->progress1, 0);
+				SendMessage(data->hWndProgress2, PBM_SETPOS, data->progress2, 0);
 				if (data->waitOn) {
 					KillTimer(hWnd, 1);
 					if (data->callback) data->callback(data->data);

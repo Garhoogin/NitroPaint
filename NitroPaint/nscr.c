@@ -578,7 +578,8 @@ void bgAddTileToTotal(DWORD *pxBlock, BGTILE *tile) {
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation,
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
-				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars) {
+				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
+				int *progress1, int *progress1Max, int *progress2, int *progress2Max) {
 
 	//cursory sanity checks
 	if (nBits == 4) {
@@ -608,6 +609,10 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 	int nTiles = tilesX * tilesY;
 	BGTILE *tiles = (BGTILE *) calloc(nTiles, sizeof(BGTILE));
 
+	//initialize progress
+	*progress1Max = nTiles * 2; //2 passes
+	*progress2Max = 1000;
+
 	//split image into 8x8 tiles.
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
@@ -635,8 +640,9 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 			createPalette_(imgBits, width, height, palette + (paletteBase << nBits), paletteSize);
 		}
 	} else {
-		createMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset);
+		createMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, progress1);
 	}
+	*progress1 = nTiles * 2; //make sure it's done
 
 	//match palettes to tiles
 	for (int i = 0; i < nTiles; i++) {
@@ -701,6 +707,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 				diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
 				flips[j + i * nTiles] = flips[i + j * nTiles];
 			}
+			*progress2 = i * i * 500 / (nTiles * nTiles);
 		}
 
 		//first, combine tiles with a difference of 0.
@@ -724,6 +731,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 						}
 					}
 					nChars--;
+					*progress2 = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
 				}
 			}
 		}
@@ -774,6 +782,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 					}
 				}
 				nChars--;
+				*progress2 = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
 			}
 		}
 
@@ -859,6 +868,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 			break;
 		}
 	}
+	*progress2 = 1000;
 
 	//scrunch down masterTile indices
 	int nFoundMasters = 0;

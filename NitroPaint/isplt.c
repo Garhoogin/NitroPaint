@@ -996,7 +996,7 @@ done:
 }
 
 void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest, int paletteBase, int nPalettes,
-							  int paletteSize, int nColsPerPalette, int paletteOffset) {
+							  int paletteSize, int nColsPerPalette, int paletteOffset, int *progress) {
 	if (nPalettes == 0) return;
 	if (nPalettes == 1) {
 		if (paletteOffset) {
@@ -1072,6 +1072,7 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 				diffBuff[i + j * nTiles] = computeTilePaletteDifference(reduction, tile1, tile2);
 			}
 		}
+		(*progress)++;
 	}
 
 	//-----------STAGE 3
@@ -1141,6 +1142,7 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 		}
 
 		nCurrentPalettes--;
+		(*progress)++;
 	}
 
 	//write palettes
@@ -1160,6 +1162,7 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 		qsort(palBuf + 1, nColsPerPalette, 4, lightnessCompare);
 		memcpy(dest + 16 * (nPalettesWritten + paletteBase), palBuf, sizeof(palBuf));
 		nPalettesWritten++;
+		(*progress)++;
 	}
 
 	destroyReduction(reduction);

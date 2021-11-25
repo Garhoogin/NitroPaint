@@ -686,12 +686,14 @@ typedef struct {
 } NSCRBITMAPIMPORTDATA;
 
 void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, int height, int tileBase, int nPalettes, int paletteNumber, BOOL newPalettes,
-					  BOOL newCharacters, BOOL diffuse, int maxTilesX, int maxTilesY, int nscrTileX, int nscrTileY) {
+					  BOOL newCharacters, BOOL diffuse, int maxTilesX, int maxTilesY, int nscrTileX, int nscrTileY, int *progress, int *progressMax) {
 	int tilesX = width / 8;
 	int tilesY = height / 8;
 	int paletteSize = ncgr->nBits == 4 ? 16 : 256;
 	if (tilesX > maxTilesX) tilesX = maxTilesX;
 	if (tilesY > maxTilesY) tilesY = maxTilesY;
+
+	*progressMax = tilesX * tilesY * 2;
 
 	DWORD *blocks = (DWORD *) calloc(tilesX * tilesY, 64 * 4);
 	DWORD *pals = calloc(nPalettes * paletteSize, 4);
@@ -718,7 +720,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 
 	//generate an nPalettes color palette
 	if (newPalettes) {
-		createMultiplePalettes(px, tilesX, tilesY, pals, paletteNumber, nPalettes, paletteSize, paletteSize, 0);
+		createMultiplePalettes(px, tilesX, tilesY, pals, paletteNumber, nPalettes, paletteSize, paletteSize, 0, progress);
 	} else {
 		COLOR *destPalette = nclr->colors + paletteNumber * paletteSize;
 		int nColors = nPalettes * paletteSize;
@@ -865,7 +867,8 @@ DWORD WINAPI threadedNscrImportBitmapInternal(LPVOID lpParameter) {
 	nscrImportBitmap(importData->nclr, importData->ncgr, importData->nscr, importData->px,
 					 importData->width, importData->height, importData->tileBase, importData->nPalettes, importData->paletteNumber,
 					 importData->newPalettes, importData->newCharacters, importData->diffuse,
-					 importData->maxTilesX, importData->maxTilesY, importData->nscrTileX, importData->nscrTileY);
+					 importData->maxTilesX, importData->maxTilesY, importData->nscrTileX, importData->nscrTileY,
+					 &progressData->progress1, &progressData->progress1Max);
 	progressData->waitOn = 1;
 	return 0;
 }
