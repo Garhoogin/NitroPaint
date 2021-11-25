@@ -358,45 +358,6 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 
 }
 
-int isDuplicateAbsolute(DWORD * block1, DWORD * block2) {
-	for (int i = 0; i < 64; i++) {
-		if (block1[i] != block2[i]) return 0;
-	}
-	return 1;
-}
-
-int isDuplicateFlipped(DWORD * block1, DWORD * block2) {
-	//test for flipX
-	flipX(block2);
-	if (isDuplicateAbsolute(block1, block2)) {
-		flipX(block2);
-		return TILE_FLIPX + 1;
-	}
-	flipX(block2);
-	//test for flipY
-	flipY(block2);
-	if (isDuplicateAbsolute(block1, block2)) {
-		flipY(block2);
-		return TILE_FLIPY + 1;
-	}
-	//test flipXY
-	flipX(block2);
-	if (isDuplicateAbsolute(block1, block2)) {
-		flipX(block2);
-		flipY(block2);
-		return TILE_FLIPXY + 1;
-	}
-	flipX(block2);
-	flipY(block2);
-	return 0;
-}
-
-
-int isDuplicate(DWORD * block1, DWORD * block2) {
-	if (isDuplicateAbsolute(block1, block2)) return 1;
-	return isDuplicateFlipped(block1, block2);
-}
-
 void nscrWrite(NSCR *nscr, LPWSTR name) {
 	if (nscr->header.format == NSCR_TYPE_COMBO) {
 		combo2dWrite(nscr->combo2d, name);
@@ -521,42 +482,103 @@ void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalT
 	HeapFree(GetProcessHeap(), 0, dataArea);
 }
 
-int m(int a);
+typedef struct BGTILE_ {
+	BYTE indices[64];
+	DWORD px[64]; //redundant, speed
+	int masterTile;
+	int nRepresents;
+	int flipMode;
+} BGTILE;
 
-#define diffuse(a,r,g,b,ap) a=m((int)((a&0xFF)+(r)))|(m((int)(((a>>8)&0xFF)+(g)))<<8)|(m((int)(((a>>16)&0xFF)+(b)))<<16)|(m((int)(((a>>24)&0xFF)+(ap)))<<24)
+int tileDifferenceFlip(BGTILE *t1, BGTILE *t2, BYTE mode) {
+	int err = 0;
+	DWORD *px1 = t1->px;
+	for (int y = 0; y < 8; y++) {
+		for (int x = 0; x < 8; x++) {
 
-void doDiffuseRespectTile(int i, int width, int height, unsigned int * pixels, int errorRed, int errorGreen, int errorBlue, int errorAlpha, float amt) {
-	//if ((pixels[i] >> 24) < 127) return;
-	if (i % width < width - 1) {
-		unsigned int right = pixels[i + 1];
-		diffuse(right, errorRed * 7 * amt / 16, errorGreen * 7 * amt / 16, errorBlue * 7 * amt / 16, errorAlpha * 7 * amt / 16);
-		pixels[i + 1] = right;
+			int x2 = (mode & TILE_FLIPX) ? (7 - x) : x;
+			int y2 = (mode & TILE_FLIPY) ? (7 - y) : y;
+			DWORD c1 = *(px1++);
+			DWORD c2 = t2->px[x2 + y2 * 8];
+
+			int dr = (c1 & 0xFF) - (c2 & 0xFF);
+			int dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
+			int db = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
+			int da = ((c1 >> 24) & 0xFF) - ((c2 >> 24) & 0xFF);
+			int dy, du, dv;
+			convertRGBToYUV(dr, dg, db, &dy, &du, &dv);
+
+			err += 4 * dy * dy + du * du + dv * dv + 16 * da * da;
+
+		}
 	}
-	if (i / width < height - 1) {
-		if (i % width > 0) {//downleft
-			if ((i % width) % 8 != 0 || (i / width) % 8 == 7) {
-				unsigned int right = pixels[i + width - 1];
-				diffuse(right, errorRed * 3 * amt / 16, errorGreen * 3 * amt / 16, errorBlue * 3 * amt / 16, errorAlpha * 3 * amt / 16);
-				pixels[i + width - 1] = right;
-			}
-		}
-		if (1) {//down
-			unsigned int right = pixels[i + width];
-			diffuse(right, errorRed * 5 * amt / 16, errorGreen * 5 * amt / 16, errorBlue * 5 * amt / 16, errorAlpha * 5 * amt / 16);
-			pixels[i + width] = right;
-		}
-		if (i % width < width - 1) {
-			unsigned int right = pixels[i + width + 1];
-			diffuse(right, errorRed * 1 * amt / 16, errorGreen * 1 * amt / 16, errorBlue * 1 * amt / 16, errorAlpha * 1 * amt / 16);
-			pixels[i + width + 1] = right;
+
+	return err;
+}
+
+int tileDifference(BGTILE *t1, BGTILE *t2, BYTE *flipMode) {
+	int err = tileDifferenceFlip(t1, t2, 0);
+	if (err == 0) {
+		*flipMode = 0;
+		return err;
+	}
+	int err2 = tileDifferenceFlip(t1, t2, TILE_FLIPX);
+	if (err2 == 0) {
+		*flipMode = TILE_FLIPX;
+		return err2;
+	}
+	int err3 = tileDifferenceFlip(t1, t2, TILE_FLIPY);
+	if (err3 == 0) {
+		*flipMode = TILE_FLIPY;
+		return err3;
+	}
+	int err4 = tileDifferenceFlip(t1, t2, TILE_FLIPXY);
+	if (err4 == 0) {
+		*flipMode = TILE_FLIPXY;
+		return err4;
+	}
+
+	if (err <= err2 && err <= err3 && err <= err4) {
+		*flipMode = 0;
+		return err;
+	}
+	if (err2 <= err && err2 <= err3 && err2 <= err4) {
+		*flipMode = TILE_FLIPX;
+		return err2;
+	}
+	if (err3 <= err && err3 <= err2 && err3 <= err4) {
+		*flipMode = TILE_FLIPY;
+		return err3;
+	}
+	if (err4 <= err && err4 <= err2 && err4 <= err3) {
+		*flipMode = TILE_FLIPXY;
+		return err4;
+	}
+	*flipMode = 0;
+	return err;
+}
+
+void bgAddTileToTotal(DWORD *pxBlock, BGTILE *tile) {
+	for (int y = 0; y < 8; y++) {
+		for (int x = 0; x < 8; x++) {
+			DWORD col = tile->px[x + y * 8];
+			
+			int x2 = (tile->flipMode & TILE_FLIPX) ? (7 - x) : x;
+			int y2 = (tile->flipMode & TILE_FLIPY) ? (7 - y) : y;
+			DWORD *dest = pxBlock + 4 * (x2 + y2 * 8);
+
+			dest[0] += col & 0xFF;
+			dest[1] += (col >> 8) & 0xFF;
+			dest[2] += (col >> 16) & 0xFF;
+			dest[3] += (col >> 24) & 0xFF;
 		}
 	}
 }
 
-void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, 
-				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, 
+void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
+				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation,
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
-				int paletteSize, int paletteOffset, int rowLimit) {
+				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars) {
 
 	//cursory sanity checks
 	if (nBits == 4) {
@@ -583,14 +605,15 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 
 	int tilesX = width / 8;
 	int tilesY = height / 8;
-	DWORD *blocks = (DWORD *) calloc(tilesX * tilesY, 64 * 4);
+	int nTiles = tilesX * tilesY;
+	BGTILE *tiles = (BGTILE *) calloc(nTiles, sizeof(BGTILE));
 
-	//split image into 8x8 chunks, and find the average color in each.
-	DWORD *avgs = calloc(tilesX * tilesY, 4);
+	//split image into 8x8 tiles.
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			int srcOffset = x * 8 + y * 8 * (width);
-			DWORD *block = blocks + 64 * (x + y * tilesX);
+			DWORD *block = tiles[x + y * tilesX].px;
+
 			memcpy(block, imgBits + srcOffset, 32);
 			memcpy(block + 8, imgBits + srcOffset + width, 32);
 			memcpy(block + 16, imgBits + srcOffset + width * 2, 32);
@@ -599,12 +622,10 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 			memcpy(block + 40, imgBits + srcOffset + width * 5, 32);
 			memcpy(block + 48, imgBits + srcOffset + width * 6, 32);
 			memcpy(block + 56, imgBits + srcOffset + width * 7, 32);
-			DWORD avg = averageColor(block, 64);
-			avgs[x + y * tilesX] = avg;
 		}
 	}
 
-	DWORD * palette = (DWORD *) calloc(1024, 1);
+	DWORD *palette = (DWORD *) calloc(256, 4);
 	if (nBits < 5) nBits = 4;
 	else nBits = 8;
 	if (nPalettes == 1) {
@@ -615,131 +636,271 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 		}
 	} else {
 		createMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset);
-
 	}
-	//apply the palette to the image. 
-	BYTE *paletteIndices = (BYTE *) calloc(tilesX * tilesY, 1);
-	DWORD *paletted = (DWORD *) calloc(width * height, 4);
-	memcpy(paletted, imgBits, width * height * 4);
 
-	for (int y = 0; y < tilesY; y++) {
-		for (int x = 0; x < tilesX; x++) {
-			DWORD *block = blocks + 64 * (x + y * tilesX);
-			int bestPalette = paletteBase;
-			int bestError = 0x7FFFFFFF;
-			for (int i = paletteBase; i < nPalettes + paletteBase; i++) {
-				int err = getPaletteError((RGB *) block, 64, (RGB *) palette + (i << nBits) + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
-				if (err < bestError) {
-					bestError = err;
-					bestPalette = i;
-				}
-			}
-			paletteIndices[x + y * tilesX] = bestPalette;
+	//match palettes to tiles
+	for (int i = 0; i < nTiles; i++) {
+		BGTILE *tile = tiles + i;
 
-			DWORD *thisPalette = palette + (bestPalette << nBits);
-			for (int i = 0; i < 64; i++) {
-				int tileX = i % 8;
-				int tileY = i / 8;
-				int index = x * 8 + tileX + (y * 8 + tileY) * width;
-				DWORD d = paletted[index];
+		int bestPalette = paletteBase;
+		int bestError = 0x7FFFFFFF;
+		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
+			DWORD *pal = palette + (j << nBits);
+			int err = getPaletteError((RGB *) tile->px, 64, (RGB *) pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
 
-				int useOffset = paletteOffset ? paletteOffset : 1;
-				int closest = closestpalette(*(RGB *) &d, (RGB *) (thisPalette + useOffset), paletteSize - !paletteOffset, NULL) + useOffset;
-				if (((d >> 24) & 0xFF) < 127) closest = 0;
-				RGB chosen = *(RGB *) (thisPalette + closest);
-				int errorRed = (d & 0xFF) - chosen.r;
-				int errorGreen = ((d >> 8) & 0xFF) - chosen.g;
-				int errorBlue = ((d >> 16) & 0xFF) - chosen.b;
-				paletted[index] = closest; //effectively turns this pixel array into an index array.
-				if (dither && closest) {
-					float amt = 1.0f;
-					doDiffuseRespectTile(index, width, height, paletted, errorRed, errorGreen, errorBlue, 0, amt);
-				}
+			if (err < bestError) {
+				bestError = err;
+				bestPalette = j;
 			}
 		}
-	}
-	//split into 8x8 blocks.
-	for (int y = 0; y < tilesY; y++) {
-		for (int x = 0; x < tilesX; x++) {
-			int srcOffset = x * 8 + y * 8 * (width);
-			DWORD *block = blocks + 64 * (x + y * tilesX);
-			memcpy(block, paletted + srcOffset, 32);
-			memcpy(block + 8, paletted + srcOffset + width, 32);
-			memcpy(block + 16, paletted + srcOffset + width * 2, 32);
-			memcpy(block + 24, paletted + srcOffset + width * 3, 32);
-			memcpy(block + 32, paletted + srcOffset + width * 4, 32);
-			memcpy(block + 40, paletted + srcOffset + width * 5, 32);
-			memcpy(block + 48, paletted + srcOffset + width * 6, 32);
-			memcpy(block + 56, paletted + srcOffset + width * 7, 32);
-			DWORD avg = averageColor(block, 64);
-			avgs[x + y * tilesX] = avg;
+
+		//match colors
+		DWORD *pal = palette + (bestPalette << nBits);
+		for (int j = 0; j < 64; j++) {
+			DWORD col = tile->px[j];
+			int index = 0;
+			if (((col >> 24) & 0xFF) > 127) {
+				index = closestpalette(*(RGB *) &col, (RGB *) pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, NULL) 
+					+ !paletteOffset + paletteOffset;
+			}
+			if (nBits == 4) {
+				tile->indices[j] = (bestPalette << 4) | index;
+			} else {
+				tile->indices[j] = index;
+			}
+			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
+
+			//diffuse
+			if (dither && index) {
+				float amt = 1.0f;
+				DWORD chosen = pal[index];
+
+				int er = (col & 0xFF) - (chosen & 0xFF);
+				int eg = ((col >> 8) & 0xFF) - ((chosen >> 8) & 0xFF);
+				int eb = ((col >> 16) & 0xFF) - ((chosen >> 16) & 0xFF);
+
+				doDiffuse(j, 8, 8, tile->px, er, eg, eb, 0, amt);
+			}
 		}
+		tile->masterTile = i;
+		tile->nRepresents = 1;
 	}
 
-	//blocks is now an array of blocks. Next, we need to find duplicate blocks. 
-	int nBlocks = tilesX * tilesY; //number of generated tiles
-	int nTotalTiles = nBlocks; //number of output tiles
-							   //first, merge duplicates. Then, merge similar blocks until nBlocks <= 0x400.
-	WORD * indices = (WORD *) calloc(width * height, 2);
-	for (int i = 0; i < width * height; i++) {
-		indices[i] = i;
-	}
-	BYTE * modes = calloc(width * height, 1);
-
-	//start by merging duplicates.
+	//match tiles to each other
+	int nChars = nTiles;
 	if (mergeTiles) {
-		for (int i = 0; i < nBlocks; i++) {
-			DWORD * block1 = blocks + i * (64);
-			//test for up to i
+		int *diffBuff = (int *) calloc(nTiles * nTiles, sizeof(int));
+		BYTE *flips = (BYTE *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
+
+		for (int i = 0; i < nTiles; i++) {
+			BGTILE *t1 = tiles + i;
 			for (int j = 0; j < i; j++) {
-				//test - is block i equal to block j?
-				DWORD * block2 = blocks + j * 64;
-				int dup = isDuplicate(block1, block2);
-				if (!dup) continue;
+				BGTILE *t2 = tiles + j;
 
-				//decrement all indices greater than i.
-				for (int k = 0; k < nTotalTiles; k++) {
+				diffBuff[i + j * nTiles] = tileDifference(t1, t2, &flips[i + j * nTiles]);
+				diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
+				flips[j + i * nTiles] = flips[i + j * nTiles];
+			}
+		}
 
-					//point all references to i to references to j.
-					if (indices[k] == i) {
-						indices[k] = j;
-						modes[k] = dup - 1;
+		//first, combine tiles with a difference of 0.
+
+		for (int i = 0; i < nTiles; i++) {
+			BGTILE *t1 = tiles + i;
+			if (t1->masterTile != i) continue;
+
+			for (int j = 0; j < i; j++) {
+				BGTILE *t2 = tiles + j;
+				if (t2->masterTile != j) continue;
+
+				if (diffBuff[i + j * nTiles] == 0) {
+					//merge all tiles with master index i to j
+					for (int k = 0; k < nTiles; k++) {
+						if (tiles[k].masterTile == i) {
+							tiles[k].masterTile = j;
+							tiles[k].flipMode ^= flips[i + j * nTiles];
+							tiles[k].nRepresents = 0;
+							tiles[j].nRepresents++;
+						}
+					}
+					nChars--;
+				}
+			}
+		}
+
+		//still too many? 
+		if (nChars > nMaxChars) {
+			//damn
+
+			//keep finding the most similar tile until we get character count down
+			while (nChars > nMaxChars) {
+				unsigned long long int leastError = 0x7FFFFFFF;
+				int tile1 = 0, tile2 = 1;
+
+				for (int i = 0; i < nTiles; i++) {
+					BGTILE *t1 = tiles + i;
+					if (t1->masterTile != i) continue;
+
+					for (int j = 0; j < i; j++) {
+						BGTILE *t2 = tiles + j;
+						if (t2->masterTile != j) continue;
+						unsigned long long int thisError = diffBuff[i + j * nTiles] * t1->nRepresents * t2->nRepresents;
+
+						if (thisError < leastError) {
+							//if (nBits == 8 || ((t2->indices[0] >> 4) == (t1->indices[0] >> 4))) { //make sure they're the same palette
+								tile1 = j;
+								tile2 = i;
+								leastError = thisError;
+							//}
+						}
 					}
 				}
-				for (int k = 0; k < nTotalTiles; k++) {
-					if (indices[k] > i) indices[k]--;
+
+				//should we swap tile1 and tile2? tile2 should have <= tile1's nRepresents
+				if (tiles[tile2].nRepresents > tiles[tile1].nRepresents) {
+					int t = tile1;
+					tile1 = tile2;
+					tile2 = t;
 				}
-				//now, remove block i, by sliding the rest over it.
-				memmove(blocks + i * 64, blocks + 64 + i * 64, (nBlocks - 1 - i) * 256);
-				nBlocks--;
-				i--;
-				break;
+
+				//merge tile1 and tile2. All tile2 tiles become tile1 tiles
+				BYTE flipDiff = flips[tile1 + tile2 * nTiles];
+				for (int i = 0; i < nTiles; i++) {
+					if (tiles[i].masterTile == tile2) {
+						tiles[i].masterTile = tile1;
+						tiles[i].flipMode ^= flipDiff;
+						tiles[i].nRepresents = 0;
+						tiles[tile1].nRepresents++;
+					}
+				}
+				nChars--;
+			}
+		}
+
+		free(flips);
+		free(diffBuff);
+
+		//try to make the compressed result look less bad
+		for (int i = 0; i < nTiles; i++) {
+			if (tiles[i].masterTile != i) continue;
+			if (tiles[i].nRepresents <= 1) continue; //no averaging required for just one tile
+			BGTILE *tile = tiles + i;
+
+			//average all tiles that use this master tile.
+			DWORD pxBlock[64 * 4] = { 0 };
+			int nRep = tile->nRepresents;
+			for (int j = 0; j < nTiles; j++) {
+				if (tiles[j].masterTile != i) continue;
+				BGTILE *tile2 = tiles + j;
+				bgAddTileToTotal(pxBlock, tile2);
+			}
+			for (int j = 0; j < 64 * 4; j++) {
+				pxBlock[j] = (pxBlock[j] + (nRep >> 1)) / nRep;
+			}
+			for (int j = 0; j < 64; j++) {
+				tile->px[j] = pxBlock[j * 4] | (pxBlock[j * 4 + 1] << 8) | (pxBlock[j * 4 + 2] << 16) | (pxBlock[j * 4 + 3] << 24);
+			}
+
+			//try to determine the most optimal palette. Child tiles can be different palettes.
+			int bestPalette = paletteBase;
+			int bestError = 0x7FFFFFFF;
+			for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
+				DWORD *pal = palette + (j << nBits);
+				int err = getPaletteError((RGB *) tile->px, 64, (RGB *) pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
+
+				if (err < bestError) {
+					bestError = err;
+					bestPalette = j;
+				}
+			}
+
+			//now, match colors to indices.
+			DWORD *pal = palette + (bestPalette << nBits);
+			for (int j = 0; j < 64; j++) {
+				DWORD col = tile->px[j];
+				int index = 0;
+				if (((col >> 24) & 0xFF) > 127) {
+					index = closestpalette(*(RGB *) &col, (RGB *) pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, NULL)
+						+ !paletteOffset + paletteOffset;
+				}
+				if (nBits == 4) {
+					tile->indices[j] = (bestPalette << 4) | index;
+				} else {
+					tile->indices[j] = index;
+				}
+				tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
+			}
+
+			//lastly, copy tile->indices to all child tile->indices, just to make sure palette and character are in synch.
+			for (int j = 0; j < nTiles; j++) {
+				if (tiles[j].masterTile != i) continue;
+				if (j == i) continue;
+				BGTILE *tile2 = tiles + j;
+
+				memcpy(tile2->indices, tile->indices, 64);
 			}
 		}
 	}
 
-	//see how many are left
-	nBlocks;
-	if (nBlocks + tileBase > 1024) {
-		char bf[32];
-		sprintf(bf, "Too many tiles! Tiles: %d", nBlocks);
-		MessageBoxA(NULL, bf, "Warning", MB_ICONWARNING);
+	DWORD *blocks = (DWORD *) calloc(64 * nChars, sizeof(DWORD));
+	int writeIndex = 0;
+	for (int i = 0; i < nTiles; i++) {
+		if (tiles[i].masterTile != i) continue;
+		BGTILE *t = tiles + i;
+		DWORD *dest = blocks + 64 * writeIndex;
+
+		for (int j = 0; j < 64; j++) {
+			if (nBits == 4) dest[j] = t->indices[j] & 0xF;
+			else dest[j] = t->indices[j];
+		}
+
+		writeIndex++;
+		if (writeIndex >= nTiles) {
+			break;
+		}
 	}
 
-	for (int i = 0; i < nTotalTiles; i++) {
-		indices[i] += tileBase;
+	//scrunch down masterTile indices
+	int nFoundMasters = 0;
+	for (int i = 0; i < nTiles; i++) {
+		int master = tiles[i].masterTile;
+		if (master != i) continue;
+
+		//a master tile. Overwrite all tiles that use this master with nFoundMasters with bit 31 set (just in case)
+		for (int j = 0; j < nTiles; j++) {
+			if (tiles[j].masterTile == master) tiles[j].masterTile = nFoundMasters | 0x40000000;
+		}
+		nFoundMasters++;
+	}
+	for (int i = 0; i < nTiles; i++) {
+		tiles[i].masterTile &= 0xFFFF;
+	}
+
+	//prep data output
+	WORD *indices = (WORD *) calloc(nTiles, 2);
+	for (int i = 0; i < nTiles; i++) {
+		indices[i] = tiles[i].masterTile + tileBase;
+	}
+	BYTE *modes = (BYTE *) calloc(nTiles, 1);
+	for (int i = 0; i < nTiles; i++) {
+		modes[i] = tiles[i].flipMode;
+	}
+	BYTE *paletteIndices = (BYTE *) calloc(nTiles, 1);
+	if (nBits == 4) {
+		for (int i = 0; i < nTiles; i++) {
+			paletteIndices[i] = tiles[i].indices[0] >> 4;
+		}
 	}
 
 	//create nclr
 	nclrCreate(palette, rowLimit ? (nBits == 4 ? ((paletteBase + nPalettes) << 4) : (paletteOffset + paletteSize)) : 256, nBits, 0, lpszNclrLocation, fmt);
 	//create ngr
-	ncgrCreate(blocks, nBlocks, nBits, lpszNcgrLocation, fmt);
+	ncgrCreate(blocks, nChars, nBits, lpszNcgrLocation, fmt);
 	//create nscr
-	nscrCreate_(indices, modes, paletteIndices, nTotalTiles, width, height, nBits, lpszNscrLocation, fmt);
+	nscrCreate_(indices, modes, paletteIndices, nTiles, width, height, nBits, lpszNscrLocation, fmt);
 	free(modes);
 	free(blocks);
 	free(indices);
 	free(palette);
-	free(avgs);
 	free(paletteIndices);
 }
