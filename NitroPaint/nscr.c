@@ -707,7 +707,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 				diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
 				flips[j + i * nTiles] = flips[i + j * nTiles];
 			}
-			*progress2 = i * i * 500 / (nTiles * nTiles);
+			*progress2 = (i * i) / nTiles * 500 / nTiles;
 		}
 
 		//first, combine tiles with a difference of 0.
