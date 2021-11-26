@@ -351,6 +351,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_ACCELERATOR_EXPORT:
 						PostMessage(hWnd, WM_COMMAND, ID_FILE_EXPORT, 0);
 						break;
+					case ID_ACCELERATOR_OPEN:
+						PostMessage(hWnd, WM_COMMAND, ID_FILE_OPEN40085, 0);
+						break;
 				}
 			}
 			if (HIWORD(wParam) == 0 && lParam == 0) {
@@ -364,66 +367,23 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_FILE_EXIT:
 						PostQuitMessage(0);
 						break;
-					case ID_OPEN_OPENNCLR:
+					case ID_FILE_OPEN40085:
 					{
-						LPWSTR path = openFileDialog(hWnd, L"Open NCLR", L"NCLR Files (*.nclr)\0*.nclr;*.rlcn;*ncl.bin\0All Files\0*.*\0", L"nclr");
-						if (!path) break;
+						LPWSTR path = openFileDialog(hWnd, L"Open", 
+													 L"All Supported Files\0*.nclr;*.rlcn;*.ntfp;*.bin;*.ncgr;*.rgcn;*.ncbr*.nscr;*.rcsn;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.tga\0"
+													 L"Palette Files (*.nclr, *.rlcn, *ncl.bin, *.ntfp, *.bin)\0*.nclr;*.rlcn;*ncl.bin;*.ntfp;*.bin\0"
+													 L"Graphics Files (*.ncgr, *.rgcn, *.ncbr, *ncg.bin, *.bin)\0*.ncgr;*.rgcn;*.ncbr;*ncg.bin;*.bin\0"
+													 L"Screen Files (*.nscr, *.rcsn, *nsc.bin, *.bin)\0*.nscr;*.rcsn;*.nsc.bin;*.bin\0"
+													 L"Cell Files (*.ncer, *.recn, *.bin)\0*.ncer;*.recn;*.bin\0"
+													 L"Animation Files (*.nanr, *.rnan)\0*.nanr;*.rnan\0"
+													 L"Combination Files (*.dat)\0*.dat\0"
+													 L"Texture Archives (*.nsbtx, *.nsbmd)\0*.nsbtx;*.nsbmd\0"
+													 L"Textures (*.tga)\0*.tga\0"
+													 L"All Files (*.*)\0*.*\0",
+													 L"");
+						if (path == NULL) break;
 
-						//if there is already an NCLR open, close it.
-						if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
-						data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
-
-						if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
-						free(path);
-						break;
-					}
-					case ID_OPEN_OPENNCBR:
-					case ID_OPEN_OPENNCGR:
-					{
-						LPWSTR path;
-						if(menuID == ID_OPEN_OPENNCGR) path = openFileDialog(hWnd, L"Open NCGR", L"NCGR Files (*.ncgr)\0*.ncgr;*.rgcn;*ncg.bin\0All Files\0*.*\0", L"ncgr");
-						else path = openFileDialog(hWnd, L"Open NCBR", L"NCBR Files (*.ncbr)\0*.ncbr\0All Files\0*.*\0", L"ncbr");
-						if (!path) break;
-
-						//if there is already an NCGR open, close it.
-						if (data->hWndNcgrViewer) DestroyWindow(data->hWndNcgrViewer);
-						data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
-						if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-
-						free(path);
-						break;
-					}
-					case ID_OPEN_OPENNSCR:
-					{
-						LPWSTR path = openFileDialog(hWnd, L"Open NSCR", L"NSCR Files (*.nscr)\0*.nscr;*.rcsn;*nsc.bin\0All Files\0*.*\0", L"nscr");
-						if (!path) break;
-
-						//if there is already an NSCR open, close it.
-						if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
-						data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-
-						free(path);
-						break;
-					}
-					case ID_OPEN_OPENNCER:
-					{
-						LPWSTR path = openFileDialog(hWnd, L"Open NCER", L"NCER Files (*.ncer)\0*.ncer;*.recn\0All Files\0*.*\0", L"ncer");
-						if (!path) break;
-
-						if (data->hWndNcerViewer) DestroyWindow(data->hWndNcerViewer);
-						data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-
-						if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-						free(path);
-						break;
-					}
-					case ID_OPEN_OPENNSBTX:
-					{
-						LPWSTR path = openFileDialog(hWnd, L"Open NSBTX", L"NSBTX Files (*.nsbtx)\0*.nsbtx\0All Files\0*.*\0", L"nsbtx");
-						if (!path) break;
-
-						CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
-
+						OpenFileByName(hWnd, path);
 						free(path);
 						break;
 					}
@@ -439,27 +399,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						break;
 					}
 					case ID_NEW_NEWTEXTURE:
-					case ID_OPEN_OPENTEXTURE:
 					{
 						LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
-						if (menuID == ID_OPEN_OPENTEXTURE) filter = L"Nitro TGA Files (*.tga)\0*.tga\0All Files\0*.*\0";
 
 						LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
 						if (path == NULL) break;
-						if (menuID == ID_OPEN_OPENTEXTURE) {
-							TEXELS texels = { 0 };
-							PALETTE palette = { 0 };
-							int s = nitroTgaRead(path, &texels, &palette);
-							if (texels.texel) free(texels.texel);
-							if (texels.cmp) free(texels.cmp);
-							if (palette.pal) free(palette.pal);
-
-							if (s) {
-								MessageBox(hWnd, L"Invalid Nitro TGA file.", L"Invalid Nitro TGA", MB_ICONERROR);
-								free(path);
-								break;
-							}
-						}
 
 						HWND h = CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 						free(path);

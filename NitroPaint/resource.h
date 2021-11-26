@@ -83,13 +83,17 @@
 #define ID_PALETTEALGORITHM_FAST        40082
 #define ID_MENU_CREATE                  40083
 #define ID_NTFT_NTFT40084               40084
+#define ID_FILE_OPEN40085               40085
+#define ID_ACCELERATOR_OEN              40086
+#define ID_ACCELERATOR40087             40087
+#define ID_ACCELERATOR_OPEN             40089
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40085
+#define _APS_NEXT_COMMAND_VALUE         40091
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
