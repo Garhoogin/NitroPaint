@@ -13,8 +13,6 @@ typedef struct {
 	HWND hWndTextureSelect;
 	HWND hWndPaletteSelect;
 	HWND hWndReplaceButton;
-	HWND hWndRepeatS;
-	HWND hWndRepeatT;
 } NSBTXVIEWERDATA;
 
 VOID RegisterNsbtxViewerClass(VOID);
