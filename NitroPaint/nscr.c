@@ -575,7 +575,7 @@ void bgAddTileToTotal(DWORD *pxBlock, BGTILE *tile) {
 	}
 }
 
-void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
+void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse,
 				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation,
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
@@ -678,14 +678,13 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 
 			//diffuse
 			if (dither && index) {
-				float amt = 1.0f;
 				DWORD chosen = pal[index];
 
 				int er = (col & 0xFF) - (chosen & 0xFF);
 				int eg = ((col >> 8) & 0xFF) - ((chosen >> 8) & 0xFF);
 				int eb = ((col >> 16) & 0xFF) - ((chosen >> 16) & 0xFF);
 
-				doDiffuse(j, 8, 8, tile->px, er, eg, eb, 0, amt);
+				doDiffuse(j, 8, 8, tile->px, er, eg, eb, 0, diffuse);
 			}
 		}
 		tile->masterTile = i;
@@ -731,7 +730,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither,
 						}
 					}
 					nChars--;
-					*progress2 = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
+					if(nTiles > nMaxChars) *progress2 = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
 				}
 			}
 		}

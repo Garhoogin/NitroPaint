@@ -54,7 +54,7 @@ int nscrGetTile(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL chceke
 
 int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo);
 
-void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, 
+void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse, 
 				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, 
 				int palette, int nPalettes, int bin, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffsetm, int rowLimit, int nMaxChars,
