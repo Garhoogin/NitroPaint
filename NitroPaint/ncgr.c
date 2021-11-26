@@ -226,9 +226,10 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 
 
 	int tileCount = tilesX * tilesY;
-	if (NCGR_1D(mapping)) {
-		tileCount = tileDataSize >> 5;
-		if (depth == 8) tileCount >>= 1;
+	int nPresentTiles = tileDataSize >> 5;
+	if (depth == 8) nPresentTiles >>= 1;
+	if (NCGR_1D(mapping) || tileCount != nPresentTiles) {
+		tileCount = nPresentTiles;
 		tilesX = calculateWidth(tileCount);
 		tilesY = tileCount / tilesX;
 	}
