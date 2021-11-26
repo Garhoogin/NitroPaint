@@ -8,6 +8,7 @@ typedef struct {
 	NSCR nscr;
 	int showBorders;
 	int scale;
+	int transparent;
 
 	HWND hWndTileEditor;
 	HWND hWndPreview;

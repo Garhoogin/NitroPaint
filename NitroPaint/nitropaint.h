@@ -5,6 +5,7 @@
 typedef struct {
 	BOOL useDarkTheme;
 	BOOL fullPaths;
+	BOOL renderTransparent;
 	struct {
 		BOOL useDSColorPicker;
 	} nclrViewerConfiguration;

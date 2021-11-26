@@ -87,13 +87,14 @@
 #define ID_ACCELERATOR_OEN              40086
 #define ID_ACCELERATOR40087             40087
 #define ID_ACCELERATOR_OPEN             40089
+#define ID_VIEW_RENDERTRANSPARENCY      40091
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40091
+#define _APS_NEXT_COMMAND_VALUE         40092
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

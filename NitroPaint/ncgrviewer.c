@@ -11,7 +11,7 @@
 
 extern HICON g_appIcon;
 
-DWORD * renderNcgrBits(NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL drawChecker, int * width, int * height, int markX, int markY, int previewPalette) {
+DWORD * renderNcgrBits(NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL drawChecker, int * width, int * height, int markX, int markY, int previewPalette, BOOL transparent) {
 	int xTiles = renderNcgr->tilesX;
 	int yTiles = renderNcgr->tilesY;
 	int bitmapWidth = xTiles << 3;
@@ -28,7 +28,7 @@ DWORD * renderNcgrBits(NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL
 
 	for (int y = 0; y < yTiles; y++) {
 		for (int x = 0; x < xTiles; x++) {
-			ncgrGetTile(renderNcgr, renderNclr, x, y, block, previewPalette, drawChecker);
+			ncgrGetTile(renderNcgr, renderNclr, x, y, block, previewPalette, drawChecker, transparent);
 			if (x == markX && y == markY) {
 				for (int i = 0; i < 64; i++) {
 					DWORD d = block[i];
@@ -55,7 +55,7 @@ DWORD * renderNcgrBits(NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL
 	return bits;
 }
 
-DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor) {
+DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor, BOOL transparent) {
 	int width = ncgr->tilesX * 8;
 	DWORD *bits = (DWORD *) malloc(ncgr->tilesX * ncgr->tilesY * 64 * 4);
 
@@ -64,7 +64,7 @@ DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor) 
 		for (int x = 0; x < ncgr->tilesX; x++) {
 			BYTE *tile = ncgr->tiles[tileNumber];
 			DWORD block[64];
-			ncgrGetTile(ncgr, nclr, x, y, block, usePalette, TRUE);
+			ncgrGetTile(ncgr, nclr, x, y, block, usePalette, TRUE, transparent);
 			if (highlightColor != -1) {
 				for (int i = 0; i < 64; i++) {
 					if (tile[i] != highlightColor) continue;
@@ -108,7 +108,7 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 
 	int highlightColor = data->verifyColor % (1 << data->ncgr.nBits);
 	if ((data->verifyFrames & 1) == 0) highlightColor = -1;
-	DWORD *px = NcgrToBitmap(&data->ncgr, data->selectedPalette, nclr, highlightColor);
+	DWORD *px = NcgrToBitmap(&data->ncgr, data->selectedPalette, nclr, highlightColor, data->transparent);
 	int outWidth, outHeight;
 	HBITMAP hTiles = CreateTileBitmap(px, width, height, data->hoverX, data->hoverY, &outWidth, &outHeight, data->scale, data->showBorders);
 
@@ -142,6 +142,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hoverX = -1;
 			data->hoverY = -1;
 			data->hoverIndex = -1;
+			data->transparent = g_configuration.renderTransparent;
 			data->hWnd = hWnd;
 
 			data->hWndViewer = CreateWindow(L"NcgrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 256, 256, hWnd, NULL, NULL, NULL);
@@ -508,7 +509,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						ncgr = &data->ncgr;
 
-						DWORD * bits = renderNcgrBits(ncgr, nclr, FALSE, FALSE, &width, &height, -1, -1, data->selectedPalette);
+						DWORD * bits = renderNcgrBits(ncgr, nclr, FALSE, FALSE, &width, &height, -1, -1, data->selectedPalette, data->transparent);
 
 						writeImage(bits, width, height, location);
 						free(bits);

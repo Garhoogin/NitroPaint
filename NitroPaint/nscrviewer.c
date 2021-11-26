@@ -17,7 +17,7 @@ extern HICON g_appIcon;
 #define NV_INITIMPORTDIALOG (WM_USER+3)
 #define NV_RECALCULATE (WM_USER+4)
 
-DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY) {
+DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
 	int bWidth = renderNscr->nWidth;
 	int bHeight = renderNscr->nHeight;
 	if (drawGrid) {
@@ -47,7 +47,7 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 			if (drawGrid) offsetX = x * 9 + 1;
 
 			int tileNo = -1;
-			nscrGetTileEx(renderNscr, renderNcgr, renderNclr, tileBase, x, y, checker, block, &tileNo);
+			nscrGetTileEx(renderNscr, renderNcgr, renderNclr, tileBase, x, y, checker, block, &tileNo, transparent);
 			DWORD dwDest = x * 8 + y * 8 * bWidth;
 
 			if (tileMarks != -1 && tileMarks == tileNo) {
@@ -125,10 +125,10 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 	return bits;
 }
 
-HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int highlightColor, int scale, int selStartX, int selStartY, int selEndX, int selEndY) {
+HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int highlightColor, int scale, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
 	if (renderNcgr != NULL) {
 		if (highlightNclr != -1) highlightNclr += tileBase;
-		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, tileBase, FALSE, TRUE, width, height, highlightNclr, highlightTile, highlightColor, selStartX, selStartY, selEndX, selEndY);
+		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, tileBase, FALSE, TRUE, width, height, highlightNclr, highlightTile, highlightColor, selStartX, selStartY, selEndX, selEndY, transparent);
 
 		//HBITMAP hBitmap = CreateBitmap(*width, *height, 1, 32, bits);
 		HBITMAP hBitmap = CreateTileBitmap(bits, *width, *height, -1, -1, width, height, scale, drawGrid);
@@ -163,6 +163,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->selEndY = -1;
 			data->hoverX = -1;
 			data->hoverY = -1;
+			data->transparent = g_configuration.renderTransparent;
 
 			data->hWndPreview = CreateWindow(L"NscrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
 			//Character: \n Palette: 
@@ -328,7 +329,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						nscr = &data->nscr;
 
-						DWORD * bits = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &width, &height, -1, -1, -1, -1, -1, -1, -1);
+						DWORD *bits = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &width, &height, -1, -1, -1, -1, -1, -1, -1, data->transparent);
 						
 						writeImage(bits, width, height, location);
 						free(bits);
@@ -1100,7 +1101,7 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 			int highlightColor = data->verifyColor;
 			if ((data->verifyFrames & 1) == 0) highlightColor = -1;
-			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->tileBase, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale, data->selStartX, data->selStartY, data->selEndX, data->selEndY);
+			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->tileBase, data->showBorders, &bitmapWidth, &bitmapHeight, hoveredNcgrTile, hoveredNscrTile, highlightColor, data->scale, data->selStartX, data->selStartY, data->selEndX, data->selEndY, data->transparent);
 
 			HDC hDC = CreateCompatibleDC(hWindowDC);
 			SelectObject(hDC, hBitmap);

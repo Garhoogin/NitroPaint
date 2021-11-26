@@ -240,7 +240,7 @@ int nscrReadFile(NSCR *nscr, LPCWSTR path) {
 	return n;
 }
 
-DWORD * toBitmap(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int * width, int * height) {
+DWORD *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, BOOL transparent) {
 	*width = nscr->nWidth;
 	*height = nscr->nHeight;
 	DWORD * px = (DWORD *) calloc(*width * *height, 4);
@@ -253,7 +253,7 @@ DWORD * toBitmap(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int * width, int * heigh
 	DWORD block[64];
 	for (int x = 0; x < tilesX; x++) {
 		for (int y = 0; y < tilesY; y++) {
-			nscrGetTile(nscr, ncgr, nclr, x, y, TRUE, block);
+			nscrGetTile(nscr, ncgr, nclr, x, y, TRUE, block, transparent);
 			int destOffset = y * 8 * nscr->nWidth + x * 8;
 			memcpy(px + destOffset, block, 32);
 			memcpy(px + destOffset + nscr->nWidth, block + 8, 32);
@@ -293,11 +293,11 @@ void flipY(DWORD * block) {
 	}
 }
 
-int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL checker, DWORD * out) {
-	return nscrGetTileEx(nscr, ncgr, nclr, 0, x, y, checker, out, NULL);
+int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL checker, DWORD *out, BOOL transparent) {
+	return nscrGetTileEx(nscr, ncgr, nclr, 0, x, y, checker, out, NULL, transparent);
 }
 
-int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo) {
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo, BOOL transparent) {
 	if (x >= (int) (nscr->nWidth / 8)) return 1;
 	if (y >= (int) (nscr->nHeight / 8)) return 1;
 	int nWidthTiles = nscr->nWidth >> 3;
@@ -320,12 +320,19 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 		tileNumber -= tileBase;
 		if (ncgr) {
 			if (tileNumber >= ncgr->nTiles || tileNumber < 0) { //? let's just paint a transparent square
-				if (!checker) FillMemory(out, 64 * 4, 0);
-				else {
+				if (!transparent) {
+					DWORD bg = ColorConvertFromDS(CREVERSE(palette[0])) | 0xFF000000;
 					for (int i = 0; i < 64; i++) {
-						int c = ((i & 0x7) ^ (i >> 3)) >> 2;
-						if (c) out[i] = 0xFFFFFFFF;
-						else out[i] = 0xFFC0C0C0;
+						out[i] = bg;
+					}
+				} else {
+					if (!checker) FillMemory(out, 64 * 4, 0);
+					else {
+						for (int i = 0; i < 64; i++) {
+							int c = ((i & 0x7) ^ (i >> 3)) >> 2;
+							if (c) out[i] = 0xFFFFFFFF;
+							else out[i] = 0xFFC0C0C0;
+						}
 					}
 				}
 				return 0;
@@ -333,7 +340,7 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 			BYTE * ncgrTile = ncgr->tiles[tileNumber];
 
 			for (int i = 0; i < 64; i++) {
-				if (ncgrTile[i]) {
+				if (ncgrTile[i] || !transparent) {
 					COLOR c = palette[ncgrTile[i]];
 					out[i] = ColorConvertFromDS(CREVERSE(c)) | 0xFF000000;
 				} else {

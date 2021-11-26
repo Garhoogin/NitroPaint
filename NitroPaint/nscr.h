@@ -46,13 +46,13 @@ int nscrRead(NSCR * nscr, char * file, DWORD dwFileSize);
 
 int nscrReadFile(NSCR *nscr, LPCWSTR path);
 
-DWORD * toBitmap(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int * width, int * height);
+DWORD *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, BOOL transparent);
 
 void nscrWrite(NSCR *nscr, LPWSTR name);
 
-int nscrGetTile(NSCR * nscr, NCGR * ncgr, NCLR * nclr, int x, int y, BOOL chceker, DWORD * out);
+int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL chceker, DWORD *out, BOOL transparent);
 
-int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo);
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo, BOOL transparent);
 
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse, 
 				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, 

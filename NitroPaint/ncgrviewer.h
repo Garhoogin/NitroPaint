@@ -16,6 +16,7 @@ typedef struct {
 	int selectedPalette;
 	int verifyColor;
 	int verifyFrames;
+	int transparent;
 	HWND hWndViewer;
 	HWND hWndCharacterLabel;
 	HWND hWndPaletteDropdown;

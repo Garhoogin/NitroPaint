@@ -307,6 +307,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (g_configuration.fullPaths) {
 				CheckMenuItem(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_CHECKED);
 			}
+			if (g_configuration.renderTransparent) {
+				CheckMenuItem(GetMenu(hWnd), ID_VIEW_RENDERTRANSPARENCY, MF_CHECKED);
+			}
 			return 1;
 		}
 		case WM_PAINT:
@@ -456,6 +459,32 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							CheckMenuItem(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_UNCHECKED);
 						}
 						g_configuration.fullPaths = state;
+						break;
+					}
+					case ID_VIEW_RENDERTRANSPARENCY:
+					{
+						int state = GetMenuState(GetMenu(hWnd), ID_VIEW_RENDERTRANSPARENCY, MF_BYCOMMAND);
+						state = !state;
+						if (state) {
+							WritePrivateProfileStringW(L"NitroPaint", L"RenderTransparent", L"1", g_configPath);
+							CheckMenuItem(GetMenu(hWnd), ID_VIEW_RENDERTRANSPARENCY, MF_CHECKED);
+						} else {
+							WritePrivateProfileStringW(L"NitroPaint", L"RenderTransparent", L"0", g_configPath);
+							CheckMenuItem(GetMenu(hWnd), ID_VIEW_RENDERTRANSPARENCY, MF_UNCHECKED);
+						}
+						g_configuration.renderTransparent = state;
+
+						//update viewers
+						if (data->hWndNcgrViewer != NULL) {
+							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0);
+							ncgrViewerData->transparent = state;
+							InvalidateRect(data->hWndNcgrViewer, NULL, FALSE);
+						}
+						if (data->hWndNscrViewer != NULL) {
+							NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0);
+							nscrViewerData->transparent = state;
+							InvalidateRect(data->hWndNscrViewer, NULL, FALSE);
+						}
 						break;
 					}
 					case ID_NTFT_NTFT40084:
@@ -1176,11 +1205,13 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 		result = result && WritePrivateProfileStringW(L"NscrViewer", L"Gridlines", L"0", lpszPath);
 		result = result && WritePrivateProfileStringW(L"NitroPaint", L"FullPaths", L"1", lpszPath);
 		result = result && WritePrivateProfileStringW(L"NitroPaint", L"PaletteAlgorithm", L"0", lpszPath);
+		result = result && WritePrivateProfileString(L"NitroPaint", L"RenderTransparent", L"1", lpszPath);
 	}
 	g_configuration.nclrViewerConfiguration.useDSColorPicker = GetPrivateProfileInt(L"NclrViewer", L"UseDSColorPicker", 0, lpszPath);
 	g_configuration.ncgrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NcgrViewer", L"Gridlines", 1, lpszPath);
 	g_configuration.nscrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NscrViewer", L"Gridlines", 0, lpszPath);
 	g_configuration.fullPaths = GetPrivateProfileInt(L"NitroPaint", L"FullPaths", 1, lpszPath);
+	g_configuration.renderTransparent = GetPrivateProfileInt(L"NitroPaint", L"RenderTransparent", 1, lpszPath);
 }
 
 VOID SetConfigPath() {

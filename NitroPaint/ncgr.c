@@ -317,18 +317,18 @@ int ncgrReadFile(NCGR *ncgr, LPCWSTR path) {
 	return n;
 }
 
-int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker) {
+int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker, BOOL transparent) {
 	int nIndex = x + y * ncgr->tilesX;
 	BYTE * tile = ncgr->tiles[nIndex];
 	int nTiles = ncgr->nTiles;
 	if (x + y * ncgr->tilesX < nTiles) {
 		for (int i = 0; i < 64; i++) {
 			int index = tile[i];
-			if (index == 0 && drawChecker) {
+			if ((index == 0 && drawChecker) && transparent) {
 				int c = ((i & 0x7) ^ (i >> 3)) >> 2;
 				if (c) out[i] = 0xFFFFFFFF;
 				else out[i] = 0xFFC0C0C0;
-			} else if (index) {
+			} else if (index || !transparent) {
 				COLOR w = 0;
 				if (nclr && (index + (previewPalette << ncgr->nBits)) < nclr->nColors)
 					w = nclr->colors[index + (previewPalette << ncgr->nBits)];

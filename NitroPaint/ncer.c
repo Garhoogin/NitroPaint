@@ -270,12 +270,12 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, DWORD *out,
 					int startY = ncgrStart / ncgr->tilesX;
 					int ncx = x + startX;
 					int ncy = y + startY;
-					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
+					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker, TRUE);
 				} else {
 					int index = ncgrStart + x + y * tilesX;
 					int ncx = index % ncgr->tilesX;
 					int ncy = index / ncgr->tilesX;
-					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker);
+					ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker, TRUE);
 				}
 				for (int i = 0; i < 8; i++) {
 					memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);

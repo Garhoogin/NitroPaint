@@ -76,14 +76,16 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				nclr = &nclrViewerData->nclr;
 			}
 			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+			int transparent = 1;
 			if (hWndNcgrViewer) {
 				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
 				ncgr = &ncgrViewerData->ncgr;
 				usedPalette = ncgrViewerData->selectedPalette;
+				transparent = ncgrViewerData->transparent;
 			}
 			
 			DWORD tileBits[64];
-			ncgrGetTile(ncgr, nclr, data->tileX, data->tileY, tileBits, usedPalette, FALSE);
+			ncgrGetTile(ncgr, nclr, data->tileX, data->tileY, tileBits, usedPalette, FALSE, transparent);
 			int width, height;
 			HBITMAP hBitmap = CreateTileBitmap(tileBits, 8, 8, -1, -1, &width, &height, 32, FALSE);
 			HDC hCompat = CreateCompatibleDC(hDC);
