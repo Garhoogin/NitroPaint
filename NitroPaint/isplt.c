@@ -74,7 +74,6 @@ typedef struct {
 	double partialSumWeights;
 	double weightedSquares;
 	double weight;
-	double unused;
 } COLOR_INFO; 
 
 void initReduction(REDUCTION *reduction, int balance, int colorBalance, int optimization, BOOL enhanceColors, unsigned int nColors) {
@@ -156,13 +155,13 @@ void histogramAddColor(HISTOGRAM *histogram, int y, int i, int q, int a, double 
 }
 
 void encodeColor(DWORD rgb, int *yiq) {
-	double doubleR = (double) ((rgb & 0xFF) << 1);
-	double doubleG = (double) (((rgb >> 8) & 0xFF) << 1);
-	double doubleB = (double) (((rgb >> 16) & 0xFF) << 1);
+	double doubleR = (double) (rgb & 0xFF);
+	double doubleG = (double) ((rgb >> 8) & 0xFF);
+	double doubleB = (double) ((rgb >> 16) & 0xFF);
 
-	double y = (doubleR * 19595 + doubleG * 38470 + doubleB * 7471) * 0.00001526;
-	double i = (doubleR * 39059 - doubleG * 17957 - doubleB * 21103) * 0.00001526;
-	double q = (doubleR * 13828 - doubleG * 34210 + doubleB * 20382) * 0.00001526;
+	double y = 2.0 * (doubleR * 0.29900 + doubleG * 0.58700 + doubleB * 0.11400);
+	double i = 2.0 * (doubleR * 0.59604 - doubleG * 0.27402 - doubleB * 0.32203);
+	double q = 2.0 * (doubleR * 0.21102 - doubleG * 0.52204 + doubleB * 0.31103);
 	double iCopy = i;
 
 	if(iCopy > 245.0) {
@@ -188,30 +187,30 @@ void encodeColor(DWORD rgb, int *yiq) {
 	}
 
 	//round to integers
-	int iqInt = (int) (iqProd + 0.5);
+	int yInt = (int) (iqProd + 0.5);
 	int iInt = (int) (i + (i < 0.0 ? -0.5 : 0.5));
 	int qInt = (int) (q + (q < 0.0 ? -0.5 : 0.5));
 
 	//clamp variables to good ranges
-	iqInt = min(max(iqInt, 0), 511);
+	yInt = min(max(yInt, 0), 511);
 	iInt = min(max(iInt, -320), 319);
 	qInt = min(max(qInt, -270), 269);
 
 	//write output
-	yiq[0] = iqInt;
+	yiq[0] = yInt;
 	yiq[1] = iInt;
 	yiq[2] = qInt;
 	yiq[3] = 0xFF;
 }
 
-void decodeColor(int *rgb, int *out) {
-	double i = (double) out[1];
-	double q = (double) out[2];
+void decodeColor(int *rgb, int *in) {
+	double i = (double) in[1];
+	double q = (double) in[2];
 	double y;
 	if(i >= 0.0 || q <= 0.0) {
-		y = (double) out[0];
+		y = (double) in[0];
 	} else {
-		y = ((double) out[0]) + (q * i) * 0.00195313;
+		y = ((double) in[0]) + (q * i) * 0.00195313;
 	}
 	if(y >= 0.0) {
 		if(y > 511.0) {
@@ -232,9 +231,9 @@ void decodeColor(int *rgb, int *out) {
 		q = (q + 215.0) * 3.0 * 0.5 - 215.0;
 	}
 
-	int r = (int) ((65536 * y + 62629 * i + 40822 * q) * 0.00000763 + 0.5);
-	int g = (int) ((65536 * y - 17836 * i - 42489 * q) * 0.00000763 + 0.5);
-	int b = (int) ((65536 * y - 72428 * i + 111714 * q) * 0.00000763 + 0.5);
+	int r = (int) (y * 0.5 + i * 0.477791 + q * 0.311426 + 0.5);
+	int g = (int) (y * 0.5 - i * 0.136066 - q * 0.324141 + 0.5);
+	int b = (int) (y * 0.5 - i * 0.552535 + q * 0.852230 + 0.5);
 
 	r = min(max(r, 0), 255);
 	g = min(max(g, 0), 255);
@@ -512,7 +511,7 @@ int histEntryComparator(const void *p1, const void *p2) {
 	return 0;
 }
 
-double lengthSquared(double x, double y, double z) {
+double __inline lengthSquared(double x, double y, double z) {
 	return x * x + y * y + z * z;
 }
 
@@ -624,7 +623,7 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 
 	//determine pivot index
 	int pivotIndex = 0;
-	double leastThing = 1e30;
+	double leastVariance = 1e30;
 	for (int i = 0; i < nColors; i++) {
 		COLOR_INFO *entry = colorInfo + i;
 		if (entry->weight > 0.0) {
@@ -632,12 +631,12 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 			if (weightAfter <= 0.0) {
 				weightAfter = 0.0001;
 			}
-			double length = lengthSquared(entry->y, entry->i, entry->q);
-			double subLength = lengthSquared(totalY - entry->y, totalI - entry->i, totalQ - entry->q);
-			double thing = sumWeightedSquares - length / entry->partialSumWeights - subLength / weightAfter;
-			
-			if (thing <= leastThing) {
-				leastThing = thing;
+			double averageLeftSquared = lengthSquared(entry->y, entry->i, entry->q) / entry->partialSumWeights;
+			double averageRightSquared = lengthSquared(totalY - entry->y, totalI - entry->i, totalQ - entry->q) / weightAfter;
+			double varianceTotal = sumWeightedSquares - averageLeftSquared - averageRightSquared;
+
+			if (varianceTotal <= leastVariance) {
+				leastVariance = varianceTotal;
 				pivotIndex = i + 1;
 			}
 		}
@@ -649,8 +648,8 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 	pivotIndex = pivotIndex + colorBlock->startIndex;
 	colorBlock->pivotIndex = pivotIndex;
 
-	double length = lengthSquared(totalY / totalWeight, totalI / totalWeight, totalQ / totalWeight);
-	colorBlock->priority = (sumWeightedSquares - length * totalWeight - leastThing) / adjustedWeight;
+	double averageSquares = lengthSquared(totalY, totalI, totalQ) / totalWeight;
+	colorBlock->priority = (sumWeightedSquares - averageSquares - leastVariance) / adjustedWeight;
 	free(colorInfo);
 }
 
@@ -901,11 +900,10 @@ void copyTile(TILE *dest, DWORD *pxOrigin, int width) {
 	}
 }
 
-int findClosestPaletteColor(int *palette, int nColors, int *col, int *outDiff) {
-	int y, u, v;
+int findClosestPaletteColorRGB(int *palette, int nColors, DWORD col, int *outDiff) {
 	int rgb[4];
-	decodeColor(rgb, col);
-	convertRGBToYUV(rgb[0], rgb[1], rgb[2], &y, &u, &v);
+	int y, u, v;
+	convertRGBToYUV(col & 0xFF, (col >> 8) & 0xFF, (col >> 16) & 0xFF, &y, &u, &v);
 
 	int leastDiff = 0x7FFFFFFF;
 	int leastIndex = 0;
@@ -925,10 +923,10 @@ int findClosestPaletteColor(int *palette, int nColors, int *col, int *outDiff) {
 	return leastIndex;
 }
 
-int findClosestPaletteColorRGB(int *palette, int nColors, DWORD col, int *outDiff) {
-	int yiq[4];
-	encodeColor(col, yiq);
-	return findClosestPaletteColor(palette, nColors, yiq, outDiff);
+int findClosestPaletteColor(int *palette, int nColors, int *col, int *outDiff) {
+	int rgb[4];
+	decodeColor(rgb, col);
+	return findClosestPaletteColorRGB(palette, nColors, rgb[0] | (rgb[1] << 8) | (rgb[2] << 16), outDiff);
 }
 
 int computeTilePaletteDifference(REDUCTION *reduction, TILE *tile1, TILE *tile2) {
