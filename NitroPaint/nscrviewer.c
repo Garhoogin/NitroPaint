@@ -666,7 +666,10 @@ int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int ch
 		int dg = g - mg;
 		int db = b - mb;
 		int da = a - ma;
-		error += (int) sqrt(dr * dr + dg * dg + db * db + da * da);
+
+		int dy, du, dv;
+		convertRGBToYUV(dr, dg, db, &dy, &du, &dv);
+		error += dy * dy * 4 + du * du + dv * dv + da * da * 16;
 	}
 	return error;
 }
@@ -678,6 +681,7 @@ typedef struct {
 	HWND hWndPalettesInput;
 	HWND hWndImportButton;
 	HWND hWndDitherCheckbox;
+	HWND hWndDiffuseAmount;
 	HWND hWndNewPaletteCheckbox;
 	HWND hWndNewCharactersCheckbox;
 
@@ -687,7 +691,7 @@ typedef struct {
 } NSCRBITMAPIMPORTDATA;
 
 void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, int height, int tileBase, int nPalettes, int paletteNumber, BOOL newPalettes,
-					  BOOL newCharacters, BOOL diffuse, int maxTilesX, int maxTilesY, int nscrTileX, int nscrTileY, int *progress, int *progressMax) {
+					  BOOL newCharacters, BOOL dither, float diffuse, int maxTilesX, int maxTilesY, int nscrTileX, int nscrTileY, int *progress, int *progressMax) {
 	int tilesX = width / 8;
 	int tilesY = height / 8;
 	int paletteSize = ncgr->nBits == 4 ? 16 : 256;
@@ -779,13 +783,13 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 					if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
 					else {
 						int index = 1 + closestpalette(*(RGB *) &block[i], (RGB *) pals + leastIndex * paletteSize + 1, paletteSize - 1, NULL);
-						if (diffuse) {
+						if (dither) {
 							RGB original = *(RGB *) &block[i];
 							RGB closest = ((RGB *) (pals + leastIndex * paletteSize))[index];
 							int er = closest.r - original.r;
 							int eg = closest.g - original.g;
 							int eb = closest.b - original.b;
-							doDiffuse(i, 8, 8, block, -er, -eg, -eb, 0, 1.0f);
+							doDiffuse(i, 8, 8, block, -er, -eg, -eb, 0, diffuse);
 						}
 						ncgrTile[i] = index;
 					}
@@ -842,7 +846,8 @@ typedef struct {
 	int paletteNumber;
 	int newPalettes;
 	int newCharacters;
-	int diffuse;
+	int dither;
+	float diffuse;
 	int maxTilesX;
 	int maxTilesY;
 	int nscrTileX;
@@ -867,7 +872,7 @@ DWORD WINAPI threadedNscrImportBitmapInternal(LPVOID lpParameter) {
 	NSCRIMPORTDATA *importData = (NSCRIMPORTDATA *) progressData->data;
 	nscrImportBitmap(importData->nclr, importData->ncgr, importData->nscr, importData->px,
 					 importData->width, importData->height, importData->tileBase, importData->nPalettes, importData->paletteNumber,
-					 importData->newPalettes, importData->newCharacters, importData->diffuse,
+					 importData->newPalettes, importData->newCharacters, importData->dither, importData->diffuse,
 					 importData->maxTilesX, importData->maxTilesY, importData->nscrTileX, importData->nscrTileY,
 					 &progressData->progress1, &progressData->progress1Max);
 	progressData->waitOn = 1;
@@ -902,17 +907,19 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Palettes:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Dither:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Create new palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Overwrite characters:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Diffuse:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Create new palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 145, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Overwrite characters:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 172, 100, 22, hWnd, NULL, NULL, NULL);
 
 			data->hWndBitmapName = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 120, 10, 200, 22, hWnd, NULL, NULL, NULL);
 			data->hWndBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 320, 10, 25, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteInput = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 120, 37, 100, 200, hWnd, NULL, NULL, NULL);
 			data->hWndPalettesInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndDitherCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 91, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndImportButton = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 172, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNewPaletteCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 118, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNewCharactersCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 145, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDiffuseAmount = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 120, 118, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndImportButton = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 199, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNewPaletteCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 145, 22, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNewCharactersCheckbox = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 172, 22, 22, hWnd, NULL, NULL, NULL);
 
 			for (int i = 0; i < 16; i++) {
 				WCHAR textBuffer[4];
@@ -923,7 +930,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SendMessage(data->hWndNewPaletteCheckbox, BM_SETCHECK, 1, 0);
 			SendMessage(data->hWndNewCharactersCheckbox, BM_SETCHECK, 1, 0);
 
-			SetWindowSize(hWnd, 355, 204);
+			SetWindowSize(hWnd, 355, 231);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			break;
 		}
@@ -959,11 +966,14 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int width, height;
 					DWORD *px = gdipReadImage(textBuffer, &width, &height);
 
+					SendMessage(data->hWndDiffuseAmount, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
+					float diffuse = ((float) _wtoi(textBuffer)) * 0.01f;
+
 					SendMessage(data->hWndPalettesInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
 					int nPalettes = _wtoi(textBuffer);
 					if (nPalettes > 16) nPalettes = 16;
 					int paletteNumber = SendMessage(data->hWndPaletteInput, CB_GETCURSEL, 0, 0);
-					int diffuse = SendMessage(data->hWndDitherCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int dither = SendMessage(data->hWndDitherCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int newPalettes = SendMessage(data->hWndNewPaletteCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int newCharacters = SendMessage(data->hWndNewCharactersCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
@@ -995,6 +1005,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					nscrImportData->paletteNumber = paletteNumber;
 					nscrImportData->newPalettes = newPalettes;
 					nscrImportData->newCharacters = newCharacters;
+					nscrImportData->dither = dither;
 					nscrImportData->diffuse = diffuse;
 					nscrImportData->maxTilesX = maxTilesX;
 					nscrImportData->maxTilesY = maxTilesY;
