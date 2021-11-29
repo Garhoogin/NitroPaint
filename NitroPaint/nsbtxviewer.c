@@ -12,19 +12,23 @@ extern HICON g_appIcon;
 
 extern int max16Len(char *str);
 
-HBITMAP renderTexture(TEXELS *texture, PALETTE *palette) {
+HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	int width = TEXW(texture->texImageParam);
 	int height = TEXH(texture->texImageParam);
-	DWORD *px = (DWORD *) calloc(width * height, 4);
+	DWORD *px = (DWORD *) calloc(width * zoom * height * zoom, 4);
 	convertTexture(px, texture, palette, 0);
 
 	//perform alpha blending
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++) {
+	int scaleWidth = width * zoom, scaleHeight = height * zoom;
+	for (int yDest = scaleHeight - 1; yDest >= 0; yDest--) {
+		int y = yDest / zoom;
+		for (int xDest = scaleWidth - 1; xDest >= 0; xDest--) {
+			int x = xDest / zoom;
+
 			DWORD pixel = px[x + y * width];
 			int a = pixel >> 24;
 			if (a != 255) {
-				int s = ((x >> 3) ^ (y >> 3)) & 1;
+				int s = ((xDest >> 3) ^ (yDest >> 3)) & 1;
 				int shades[] = {255, 192};
 				int shade = shades[s];
 				int r = pixel & 0xFF;
@@ -35,12 +39,14 @@ HBITMAP renderTexture(TEXELS *texture, PALETTE *palette) {
 				g = (g * a + shade * (255 - a)) / 255;
 				b = (b * a + shade * (255 - a)) / 255;
 
-				px[x + y * width] = r | (g << 8) | (b << 16) | 0xFF000000;
+				px[xDest + yDest * scaleWidth] = r | (g << 8) | (b << 16) | 0xFF000000;
+			} else {
+				px[xDest + yDest * scaleWidth] = pixel;
 			}
 		}
 	}
 	
-	HBITMAP hBitmap = CreateBitmap(width, height, 1, 32, px);
+	HBITMAP hBitmap = CreateBitmap(width * zoom, height * zoom, 1, 32, px);
 	free(px);
 	return hBitmap;
 }
@@ -58,6 +64,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			data->hWndPaletteSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 100, 150, 100, hWnd, NULL, NULL, NULL);
 			data->hWndReplaceButton = CreateWindow(L"BUTTON", L"Replace", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 150, 300 - 22, 100, 22, hWnd, NULL, NULL, NULL);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			data->scale = 1;
 			return 1;
 		}
 		case NV_INITIALIZE:
@@ -103,11 +110,11 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			int p = SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0);
 			TEXELS *texture = data->nsbtx.textures + t;
 			PALETTE *palette = data->nsbtx.palettes + p;
-			HBITMAP hBitmap = renderTexture(texture, palette);
+			HBITMAP hBitmap = renderTexture(texture, palette, data->scale);
 
 			HDC hCompat = CreateCompatibleDC(hDC);
 			SelectObject(hCompat, hBitmap);
-			BitBlt(hDC, 150, 22, TEXW(texture->texImageParam), TEXH(texture->texImageParam), hCompat, 0, 0, SRCCOPY);
+			BitBlt(hDC, 150, 22, TEXW(texture->texImageParam) * data->scale, TEXH(texture->texImageParam) * data->scale, hCompat, 0, 0, SRCCOPY);
 
 			char bf[64];
 			SelectObject(hDC, GetStockObject(DEFAULT_GUI_FONT));
@@ -132,16 +139,49 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		case WM_COMMAND:
 		{
 			if (lParam == 0 && HIWORD(wParam) == 0) {
-				if (LOWORD(wParam) == ID_FILE_EXPORT) {
-					LPWSTR location = saveFileDialog(hWnd, L"Save Texture", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
-					if (!location) break;
 
-					writeNitroTGA(location, data->nsbtx.textures + SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0),
-								  data->nsbtx.palettes + SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0));
+				switch (LOWORD(wParam)) {
+					case ID_FILE_EXPORT:
+					{
+						LPWSTR location = saveFileDialog(hWnd, L"Save Texture", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
+						if (!location) break;
 
-					free(location);
-				} else if (LOWORD(wParam) == ID_FILE_SAVE) {
-					nsbtxSaveFile(data->szOpenFile, &data->nsbtx);
+						writeNitroTGA(location, data->nsbtx.textures + SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0),
+									  data->nsbtx.palettes + SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0));
+
+						free(location);
+						break;
+					}
+					case ID_FILE_SAVE:
+						nsbtxSaveFile(data->szOpenFile, &data->nsbtx);
+						break;
+					case ID_ZOOM_100:
+					case ID_ZOOM_200:
+					case ID_ZOOM_400:
+					case ID_ZOOM_800:
+					{
+						if (LOWORD(wParam) == ID_ZOOM_100) data->scale = 1;
+						if (LOWORD(wParam) == ID_ZOOM_200) data->scale = 2;
+						if (LOWORD(wParam) == ID_ZOOM_400) data->scale = 4;
+						if (LOWORD(wParam) == ID_ZOOM_800) data->scale = 8;
+
+						int checkBox = ID_ZOOM_100;
+						if (data->scale == 2) {
+							checkBox = ID_ZOOM_200;
+						} else if (data->scale == 4) {
+							checkBox = ID_ZOOM_400;
+						} else if (data->scale == 8) {
+							checkBox = ID_ZOOM_800;
+						}
+						int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
+						for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
+							int id = ids[i];
+							CheckMenuItem(GetMenu(getMainWindow(hWnd)), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
+						}
+
+						InvalidateRect(hWnd, NULL, TRUE);
+						break;
+					}
 				}
 			}
 			if (lParam) {
@@ -196,6 +236,30 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			MoveWindow(data->hWndTextureSelect, 0, 0, 150, height / 2, TRUE);
 			MoveWindow(data->hWndPaletteSelect, 0, height / 2, 150, height / 2, TRUE);
 			MoveWindow(data->hWndReplaceButton, 150, height - 22, 100, 22, TRUE);
+			break;
+		}
+		case WM_MDIACTIVATE:
+		{
+			HWND hWndMain = getMainWindow(hWnd);
+			if ((HWND) lParam == hWnd) {
+				if (data->showBorders)
+					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
+				else
+					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+				int checkBox = ID_ZOOM_100;
+				if (data->scale == 2) {
+					checkBox = ID_ZOOM_200;
+				} else if (data->scale == 4) {
+					checkBox = ID_ZOOM_400;
+				} else if (data->scale == 8) {
+					checkBox = ID_ZOOM_800;
+				}
+				int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
+				for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
+					int id = ids[i];
+					CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
+				}
+			}
 			break;
 		}
 		case WM_DESTROY:
