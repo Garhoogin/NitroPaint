@@ -373,10 +373,10 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_FILE_OPEN40085:
 					{
 						LPWSTR path = openFileDialog(hWnd, L"Open", 
-													 L"All Supported Files\0*.nclr;*.rlcn;*.ntfp;*.bin;*.ncgr;*.rgcn;*.ncbr*.nscr;*.rcsn;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.tga\0"
-													 L"Palette Files (*.nclr, *.rlcn, *ncl.bin, *.ntfp, *.bin)\0*.nclr;*.rlcn;*ncl.bin;*.ntfp;*.bin\0"
-													 L"Graphics Files (*.ncgr, *.rgcn, *.ncbr, *ncg.bin, *.bin)\0*.ncgr;*.rgcn;*.ncbr;*ncg.bin;*.bin\0"
-													 L"Screen Files (*.nscr, *.rcsn, *nsc.bin, *.bin)\0*.nscr;*.rcsn;*.nsc.bin;*.bin\0"
+													 L"All Supported Files\0*.nclr;*.rlcn;*.ntfp;*.nbfp;*.bin;*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.nscr;*.rcsn;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.tga\0"
+													 L"Palette Files (*.nclr, *.rlcn, *ncl.bin, *.ntfp, *.nbfp, *.bin)\0*.nclr;*.rlcn;*ncl.bin;*.ntfp;*.nbfp;*.bin\0"
+													 L"Graphics Files (*.ncgr, *.rgcn, *.ncbr, *ncg.bin, *.nbfc, *.bin)\0*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.bin\0"
+													 L"Screen Files (*.nscr, *.rcsn, *nsc.bin, *.nbfs, *.bin)\0*.nscr;*.rcsn;*.nbfs;*.bin\0"
 													 L"Cell Files (*.ncer, *.recn, *.bin)\0*.ncer;*.recn;*.bin\0"
 													 L"Animation Files (*.nanr, *.rnan)\0*.nanr;*.rnan\0"
 													 L"Combination Files (*.dat)\0*.dat\0"
