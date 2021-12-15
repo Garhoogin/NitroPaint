@@ -100,16 +100,7 @@ int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
 }
 
 int nanrReadFile(NANR *nanr, LPWSTR path) {
-	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwSizeHigh;
-	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
-	LPBYTE lpBuffer = (LPBYTE) malloc(dwSize);
-	DWORD dwRead;
-	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
-	CloseHandle(hFile);
-	int n = nanrRead(nanr, lpBuffer, dwSize);
-	free(lpBuffer);
-	return n;
+	return fileRead(path, (OBJECT_HEADER *) nanr, (OBJECT_READER) nanrRead);
 }
 
 DWORD nanrGetAbnkSize(NANR *nanr, int *pAnimFramesSize, int *pFrameDataSize) {
