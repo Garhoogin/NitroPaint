@@ -125,16 +125,7 @@ int nclrRead(NCLR *nclr, char *buffer, int size) {
 }
 
 int nclrReadFile(NCLR *nclr, LPWSTR path) {
-	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwSizeHigh;
-	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
-	LPBYTE lpBuffer = (LPBYTE) malloc(dwSize);
-	DWORD dwRead;
-	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
-	CloseHandle(hFile);
-	int n = nclrRead(nclr, lpBuffer, dwSize);
-	free(lpBuffer);
-	return n;
+	return fileRead(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) nclrRead);
 }
 
 int nclrIsValidHudson(LPBYTE lpFile, int size) {

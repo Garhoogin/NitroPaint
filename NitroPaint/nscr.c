@@ -228,16 +228,7 @@ int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 }
 
 int nscrReadFile(NSCR *nscr, LPCWSTR path) {
-	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwSizeHigh;
-	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
-	LPBYTE lpBuffer = (LPBYTE) malloc(dwSize);
-	DWORD dwRead;
-	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
-	CloseHandle(hFile);
-	int n = nscrRead(nscr, lpBuffer, dwSize);
-	free(lpBuffer);
-	return n;
+	return fileRead(path, (OBJECT_HEADER *) nscr, (OBJECT_READER) nscrRead);
 }
 
 DWORD *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, BOOL transparent) {

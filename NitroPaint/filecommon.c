@@ -159,3 +159,16 @@ void fileCompress(LPWSTR name, int compression) {
 void fileFree(OBJECT_HEADER *header) {
 	if(header->dispose != NULL) header->dispose(header);
 }
+
+int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
+	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	DWORD dwSizeLow, dwSizeHigh, dwRead;
+	dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
+	char *buffer = (char *) malloc(dwSizeLow);
+	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
+	CloseHandle(hFile);
+
+	int status = reader(object, buffer, dwSizeLow);
+	free(buffer);
+	return status;
+}

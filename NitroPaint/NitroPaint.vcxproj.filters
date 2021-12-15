@@ -108,6 +108,9 @@
     <ClCompile Include="combo2d.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="bstream.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tiler.h">
@@ -201,6 +204,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="combo2d.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bstream.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

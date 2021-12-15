@@ -1,5 +1,6 @@
 #pragma once
 #include "compression.h"
+#include "bstream.h"
 #include <Windows.h>
 
 #define FILE_TYPE_INVALID    0
@@ -24,6 +25,8 @@ typedef struct OBJECT_HEADER_ {
 	void (*dispose) (struct OBJECT_HEADER_ *);
 } OBJECT_HEADER;
 
+typedef int (*OBJECT_READER) (OBJECT_HEADER *object, char *buffer, int size);
+
 extern LPCWSTR compressionNames[];
 
 LPCWSTR *getFormatNamesFromType(int type);
@@ -33,3 +36,5 @@ int fileIdentify(char *file, int size, LPCWSTR path);
 void fileCompress(LPWSTR name, int compression);
 
 void fileFree(OBJECT_HEADER *header);
+
+int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);

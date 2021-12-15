@@ -180,16 +180,7 @@ int ncerRead(NCER *ncer, char *buffer, int size) {
 	return 0;
 }
 int ncerReadFile(NCER *ncer, LPCWSTR path) {
-	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwSizeHigh;
-	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
-	LPBYTE lpBuffer = (LPBYTE) malloc(dwSize);
-	DWORD dwRead;
-	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
-	CloseHandle(hFile);
-	int n = ncerRead(ncer, lpBuffer, dwSize);
-	free(lpBuffer);
-	return n;
+	return fileRead(path, (OBJECT_HEADER *) ncer, (OBJECT_READER) ncerRead);
 }
 
 int decodeAttributes(NCER_CELL_INFO *info, NCER_CELL *cell) {
