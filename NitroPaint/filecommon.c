@@ -111,8 +111,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				else {
 					if (nclrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"ncl.bin") || pathEndsWith(path, L".nbfp"))) type = FILE_TYPE_PALETTE;
 					else if (nclrIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
-					else if (nscrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"nsc.bin") || pathEndsWith(path, L".nbfc"))) type = FILE_TYPE_SCREEN;
-					else if (ncgrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"ncg.bin") || pathEndsWith(path, L".nbfs"))) type = FILE_TYPE_CHARACTER;
+					else if (nscrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"nsc.bin") || pathEndsWith(path, L".nbfs"))) type = FILE_TYPE_SCREEN;
+					else if (ncgrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"ncg.bin") || pathEndsWith(path, L".nbfc"))) type = FILE_TYPE_CHARACTER;
 					else {
 						//double check, without respect to the file name.
 						if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
