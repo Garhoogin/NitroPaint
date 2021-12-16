@@ -361,7 +361,9 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 		combo2dWrite(nscr->combo2d, name);
 		return;
 	}
-	DWORD dwWritten;
+	
+	BSTREAM stream;
+	bstreamCreate(&stream, NULL, 0);
 	if (nscr->header.format == NSCR_TYPE_NSCR) {
 		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
@@ -375,21 +377,13 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 		*(short *) (nrcsHeader + 0x8) = (short) nscr->nWidth;
 		*(short *) (nrcsHeader + 0xA) = (short) nscr->nHeight;
 		*(int *) (nrcsHeader + 0x10) = dataSize;
-
 		*(int *) (nrcsHeader + 0xC) = nscr->fmt;
-		/*if (nBits == 4) {
-			*(int *) (nrcsHeader + 0xC) = 0;
-		}*/
-
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, nscrHeader, sizeof(nscrHeader), &dwWritten, NULL);
-		WriteFile(hFile, nrcsHeader, sizeof(nrcsHeader), &dwWritten, NULL);
-		WriteFile(hFile, nscr->data, dataSize, &dwWritten, NULL);
-		CloseHandle(hFile);
-	} else if(nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		
+		bstreamWrite(&stream, nscrHeader, sizeof(nscrHeader));
+		bstreamWrite(&stream, nrcsHeader, sizeof(nrcsHeader));
+		bstreamWrite(&stream, nscr->data, dataSize);
+	} else if(nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
+
 		int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
 		if (nscr->header.format == NSCR_TYPE_HUDSON) {
 			BYTE header[8] = { 0 };
@@ -397,27 +391,30 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 			*(WORD *) (header + 4) = 2 * nTotalTiles;
 			header[6] = (BYTE) (nscr->nWidth / 8);
 			header[7] = (BYTE) (nscr->nHeight / 8);
-			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+			bstreamWrite(&stream, header, sizeof(header));
 		} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
 			BYTE header[4] = { 0, 0, 0, 0 };
 			*(WORD *) header = nTotalTiles * 2;
 			header[2] = (BYTE) (nscr->nWidth / 8);
 			header[3] = (BYTE) (nscr->nHeight / 8);
-			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+			bstreamWrite(&stream, header, sizeof(header));
 		}
 
-		WriteFile(hFile, nscr->data, 2 * nTotalTiles, &dwWritten, NULL);
-		CloseHandle(hFile);
+		bstreamWrite(&stream, nscr->data, 2 * nTotalTiles);
 	} else if (nscr->header.format == NSCR_TYPE_BIN) {
-		DWORD dwWritten;
+		bstreamWrite(&stream, nscr->data, nscr->dataSize);
+	}
 
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, nscr->data, nscr->dataSize, &dwWritten, NULL);
-		CloseHandle(hFile);
-	}
 	if (nscr->header.compression != COMPRESSION_NONE) {
-		fileCompress(name, nscr->header.compression);
+		bstreamCompress(&stream, nscr->header.compression, 0, 0);
 	}
+
+	DWORD dwWritten;
+	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
+	CloseHandle(hFile);
+	bstreamFree(&stream);
+
 }
 
 void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalTiles, int width, int height, int nBits, LPWSTR name, int fmt) {

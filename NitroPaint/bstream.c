@@ -3,12 +3,10 @@
 #include <stdlib.h>
 
 #include "bstream.h"
+#include "filecommon.h"
 
-void bstreamCreate(BSTREAM *stream, unsigned char *init, int initSize) {
-	if (stream->buffer != NULL) {
-		free(stream->buffer);
-		stream->buffer = NULL;
-	}
+void bstreamCreate(BSTREAM *stream, void *init, int initSize) {
+	stream->buffer = NULL;
 	stream->bufferSize = 0;
 	stream->size = 0;
 	stream->pos = 0;
@@ -33,7 +31,7 @@ void bstreamFree(BSTREAM *stream) {
 	stream->bufferSize = 0;
 }
 
-void bstreamWrite(BSTREAM *stream, unsigned char *data, int dataSize) {
+void bstreamWrite(BSTREAM *stream, void *data, int dataSize) {
 	if (data == NULL || dataSize == 0) return;
 
 	//determine required size for buffer. Can write in the middle of the stream, beware!
@@ -43,7 +41,7 @@ void bstreamWrite(BSTREAM *stream, unsigned char *data, int dataSize) {
 		//keep expanding by 1.5x until it's big enough
 		int newSize = stream->bufferSize;
 		while (newSize < requiredSize) {
-			newSize = (stream->bufferSize + 2) * 3 / 2;
+			newSize = (newSize + 2) * 3 / 2;
 		}
 		stream->bufferSize = newSize;
 		stream->buffer = realloc(stream->buffer, newSize);
@@ -66,4 +64,44 @@ int bstreamSeek(BSTREAM *stream, int pos, int relative) {
 
 	stream->pos = newPos;
 	return newPos;
+}
+
+int bstreamCompress(BSTREAM *stream, int algorithm, int start, int size) {
+	//checks
+	if (size == 0) {
+		size = stream->size - start;
+	}
+	if (start + size > stream->size) {
+		size = stream->size - start;
+	}
+	char *src = stream->buffer + start;
+
+	//compress section
+	char *compressed = NULL;
+	int compressedSize = size;
+	switch (algorithm) {
+		case COMPRESSION_LZ77:
+			compressed = lz77compress(src, size, &compressedSize);
+			break;
+		default:
+			compressed = malloc(size);
+			memcpy(compressed, src, size);
+			break;
+	}
+
+	//insert section
+	int beforeCompressed = start;
+	int afterCompressed = stream->size - start - size;
+	int bufferSize = beforeCompressed + compressedSize + afterCompressed;
+	char *newBuffer = malloc(bufferSize);
+	memcpy(newBuffer, stream->buffer, beforeCompressed);
+	memcpy(newBuffer + beforeCompressed, compressed, compressedSize);
+	memcpy(newBuffer + beforeCompressed + compressedSize, stream->buffer + start + size, afterCompressed);
+	free(stream->buffer);
+	stream->buffer = newBuffer;
+	stream->bufferSize = bufferSize;
+	stream->size = bufferSize;
+
+	if (compressed != NULL) free(compressed);
+	return compressedSize;
 }

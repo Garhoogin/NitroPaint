@@ -397,9 +397,10 @@ int ncerFree(NCER *ncer) {
 }
 
 void ncerWrite(NCER * ncer, LPWSTR name) {
-	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	BSTREAM stream;
+	bstreamCreate(&stream, NULL, 0);
+
 	if (ncer->header.format == NCER_TYPE_NCER) {
-		DWORD dwWritten;
 		int hasLabl = ncer->labl != NULL;
 		int hasUext = ncer->uext != NULL;
 		int nSections = 1 + hasLabl + hasUext;
@@ -421,7 +422,7 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 
 		BYTE ncerHeader[] = { 'R', 'E', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, nSections, 0 };
 		*(DWORD *) (ncerHeader + 8) = fileSize;
-		WriteFile(hFile, ncerHeader, sizeof(ncerHeader), &dwWritten, NULL);
+		bstreamWrite(&stream, ncerHeader, sizeof(ncerHeader));
 		//write the KBEC header
 		BYTE kbecHeader[] = {'K', 'B', 'E', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0x18, 0, 0, 0
 			, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -429,14 +430,15 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 		*(WORD *) (kbecHeader + 10) = attr;
 		*(DWORD *) (kbecHeader + 4) = kbecSize;
 
-		WriteFile(hFile, kbecHeader, sizeof(kbecHeader), &dwWritten, NULL);
+		bstreamWrite(&stream, kbecHeader, sizeof(kbecHeader));
 
 		//write out each cell. Keep track of the offsets of OAM data.
 		int oamOffset = 0;
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
 			BYTE data[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-			*(DWORD *) data = cell->nAttr / 3;
+			*(WORD *) data = cell->nAttr / 3;
+			*(WORD *) (data + 2) = cell->cellAttr;
 			*(DWORD *) (data + 4) = oamOffset;
 			if (cellSize > 8) {
 				*(SHORT *) (data + 8) = cell->maxX;
@@ -445,42 +447,41 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 				*(SHORT *) (data + 14) = cell->minY;
 			}
 
-			WriteFile(hFile, data, cellSize, &dwWritten, NULL);
+			bstreamWrite(&stream, data, cellSize);
 			oamOffset += cell->nAttr * 2;
 		}
 
 		//write each cell's OAM
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
-			WriteFile(hFile, cell->attr, cell->nAttr * 2, &dwWritten, NULL);
+			bstreamWrite(&stream, cell->attr, cell->nAttr * 2);
 		}
 
 		if (hasLabl) {
 			BYTE lablHeader[] = {'L', 'B', 'A', 'L', 0, 0, 0, 0};
 			*(DWORD *) (lablHeader + 4) = ncer->lablSize + 8;
-			WriteFile(hFile, lablHeader, sizeof(lablHeader), &dwWritten, NULL);
-			WriteFile(hFile, ncer->labl, ncer->lablSize, &dwWritten, NULL);
+			bstreamWrite(&stream, lablHeader, sizeof(lablHeader));
+			bstreamWrite(&stream, ncer->labl, ncer->lablSize);
 		}
 		if (hasUext) {
 			BYTE uextHeader[] = {'T', 'X', 'E', 'U', 0, 0, 0, 0};
 			*(DWORD *) (uextHeader + 4) = ncer->uextSize + 8;
-			WriteFile(hFile, uextHeader, sizeof(uextHeader), &dwWritten, NULL);
-			WriteFile(hFile, ncer->uext, ncer->uextSize, &dwWritten, NULL);
+			bstreamWrite(&stream, uextHeader, sizeof(uextHeader));
+			bstreamWrite(&stream, ncer->uext, ncer->uextSize);
 		}
 
 	} else {
-		DWORD dwWritten;
-		WriteFile(hFile, &ncer->nCells, 4, &dwWritten, NULL);
+		bstreamWrite(&stream, &ncer->nCells, 4);
 		int ofs = 4 * ncer->nCells;
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
 			int attrsSize = cell->nAttribs * 0xA + 2;
-			WriteFile(hFile, &ofs, 4, &dwWritten, NULL);
+			bstreamWrite(&stream, &ofs, 4);
 			ofs += attrsSize;
 		}
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
-			WriteFile(hFile, &cell->nAttribs, 2, &dwWritten, NULL);
+			bstreamWrite(&stream, &cell->nAttribs, 2);
 			for (int j = 0; j < cell->nAttribs; j++) {
 				NCER_CELL_INFO info;
 				decodeAttributesEx(&info, cell, j);
@@ -493,13 +494,19 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 				if (pos[1] & 0x80) {
 					pos[1] |= 0xFF00;
 				}
-				WriteFile(hFile, cell->attr + j * 3, 6, &dwWritten, NULL);
-				WriteFile(hFile, pos, 4, &dwWritten, NULL);
+				bstreamWrite(&stream, cell->attr + j * 3, 6);
+				bstreamWrite(&stream, pos, 4);
 			}
 		}
 	}
-	CloseHandle(hFile);
+
 	if (ncer->header.compression != COMPRESSION_NONE) {
-		fileCompress(name, ncer->header.compression);
+		bstreamCompress(&stream, ncer->header.compression, 0, 0);
 	}
+
+	DWORD dwWritten;
+	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
+	CloseHandle(hFile);
+	bstreamFree(&stream);
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "compression.h"
 
 typedef struct BTREAM_ {
 	unsigned char *buffer;
@@ -7,11 +8,12 @@ typedef struct BTREAM_ {
 	int pos;
 } BSTREAM;
 
-void bstreamCreate(BSTREAM *stream, unsigned char *init, int initSize);
+void bstreamCreate(BSTREAM *stream, void *init, int initSize);
 
 void bstreamFree(BSTREAM *stream);
 
-void bstreamWrite(BSTREAM *stream, unsigned char *data, int size);
+void bstreamWrite(BSTREAM *stream, void *data, int size);
 
 int bstreamSeek(BSTREAM *stream, int pos, int relative);
 
+int bstreamCompress(BSTREAM *stream, int algorithm, int start, int size);

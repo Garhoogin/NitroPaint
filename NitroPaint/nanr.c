@@ -134,8 +134,8 @@ int nanrCountFrames(NANR *nanr) {
 }
 
 void nanrWrite(NANR *nanr, LPWSTR path) {
-	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwWritten;
+	BSTREAM stream;
+	bstreamCreate(&stream, NULL, 0);
 
 	BYTE nanrHeader[] = { 'R', 'N', 'A', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 0, 0 };
 	WORD nSections = 1 + (nanr->labl != NULL) + (nanr->uext != NULL);
@@ -147,7 +147,7 @@ void nanrWrite(NANR *nanr, LPWSTR path) {
 		(nanr->uext != NULL ? (8 + nanr->uextSize) : 0);
 	*(DWORD *) (nanrHeader + 8) = fileSize;
 	*(WORD *) (nanrHeader + 0xE) = nSections;
-	WriteFile(hFile, nanrHeader, sizeof(nanrHeader), &dwWritten, NULL);
+	bstreamWrite(&stream, nanrHeader, sizeof(nanrHeader));
 
 
 	BYTE abnkHeader[] = { 'K', 'N', 'B', 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -157,13 +157,13 @@ void nanrWrite(NANR *nanr, LPWSTR path) {
 	*(DWORD *) (abnkHeader + 0xC) = 0x18;
 	*(DWORD *) (abnkHeader + 0x10) = 0x18 + sequencesSize;
 	*(DWORD *) (abnkHeader + 0x14) = 0x18 + sequencesSize + animFramesSize;
-	WriteFile(hFile, abnkHeader, sizeof(abnkHeader), &dwWritten, NULL);
+	bstreamWrite(&stream, abnkHeader, sizeof(abnkHeader));
 
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE seq;
 		memcpy(&seq, nanr->sequences + i, sizeof(NANR_SEQUENCE));
 		seq.frames = (FRAME_DATA *) (i * sizeof(FRAME_DATA));
-		WriteFile(hFile, &seq, sizeof(seq), &dwWritten, NULL);
+		bstreamWrite(&stream, &seq, sizeof(seq));
 	}
 
 	DWORD currentAnimationDataPos = 0;
@@ -178,7 +178,7 @@ void nanrWrite(NANR *nanr, LPWSTR path) {
 			memcpy(&frame, frames + j, sizeof(FRAME_DATA));
 			frame.animationData = (void *) currentAnimationDataPos;
 			currentAnimationDataPos += sizes[element];
-			WriteFile(hFile, &frame, sizeof(frame), &dwWritten, NULL);
+			bstreamWrite(&stream, &frame, sizeof(frame));
 		}
 	}
 
@@ -189,7 +189,7 @@ void nanrWrite(NANR *nanr, LPWSTR path) {
 		int element = sequence->type & 0xFFFF;
 		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_SRT) };
 		for (int j = 0; j < sequence->nFrames; j++) {
-			WriteFile(hFile, frames[j].animationData, sizes[element], &dwWritten, NULL);
+			bstreamWrite(&stream, frames[j].animationData, sizes[element]);
 		}
 	}
 
@@ -197,19 +197,26 @@ void nanrWrite(NANR *nanr, LPWSTR path) {
 	if (nanr->labl != NULL) {
 		BYTE lablHeader[] = { 'L', 'B', 'A', 'L', 0, 0, 0, 0 };
 		*(DWORD *) (lablHeader + 4) = 8 + nanr->lablSize;
-		WriteFile(hFile, lablHeader, sizeof(lablHeader), &dwWritten, NULL);
-		WriteFile(hFile, nanr->labl, nanr->lablSize, &dwWritten, NULL);
+		bstreamWrite(&stream, lablHeader, sizeof(lablHeader));
+		bstreamWrite(&stream, nanr->labl, nanr->lablSize);
 	}
 
 	if (nanr->uext != NULL) {
 		BYTE uextHeader[] = { 'T', 'X', 'E', 'U', 0, 0, 0, 0 };
 		*(DWORD *) (uextHeader + 4) = 8 + nanr->uextSize;
-		WriteFile(hFile, uextHeader, sizeof(uextHeader), &dwWritten, NULL);
-		WriteFile(hFile, nanr->uext, nanr->uextSize, &dwWritten, NULL);
+		bstreamWrite(&stream, uextHeader, sizeof(uextHeader));
+		bstreamWrite(&stream, nanr->uext, nanr->uextSize);
 	}
 
+	if (nanr->header.compression != COMPRESSION_NONE) {
+		bstreamCompress(&stream, nanr->header.compression, 0, 0);
+	}
+
+	DWORD dwWritten;
+	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
 	CloseHandle(hFile);
-	return 0;
+	bstreamFree(&stream);
 }
 
 void nanrFree(NANR *nanr) {
