@@ -153,7 +153,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						break;
 					}
 					case ID_FILE_SAVE:
-						nsbtxSaveFile(data->szOpenFile, &data->nsbtx);
+						nsbtxWriteFile(&data->nsbtx, data->szOpenFile);
 						break;
 					case ID_ZOOM_100:
 					case ID_ZOOM_200:

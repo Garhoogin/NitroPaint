@@ -47,10 +47,15 @@ typedef struct NSBTX_ {
 	PALETTE *palettes;
 	DICTIONARY textureDictionary;
 	DICTIONARY paletteDictionary;
+
+	void *mdl0;			//for handling NSBMD files as well
+	int mdl0Size;
 } NSBTX;
 
 int nsbtxRead(NSBTX *nsbtx, char *buffer, int size);
 
 int nsbtxReadFile(NSBTX *nsbtx, LPCWSTR path);
 
-void nsbtxSaveFile(LPWSTR filename, NSBTX *nsbtx);
+int nsbtxWriteFile(NSBTX *nsbtx, LPWSTR filename);
+
+int nsbtxWrite(NSBTX *nsbtx, BSTREAM *stream);

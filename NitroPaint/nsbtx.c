@@ -209,31 +209,28 @@ void addBytes(BYTEARRAY *arr, BYTE *bytes, int length) {
 	arr->length += length;
 }
 
-void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
-	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwWritten;
-
+int nsbtxWrite(NSBTX *nsbtx, BSTREAM *stream) {
 	if (nsbtx->mdl0 != NULL) {
 		BYTE fileHeader[] = { 'B', 'M', 'D', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 2, 0, 0x18, 0, 0, 0, 0, 0, 0, 0 };
 
-		WriteFile(hFile, fileHeader, sizeof(fileHeader), &dwWritten, NULL);
+		bstreamWrite(stream, fileHeader, sizeof(fileHeader));
 	} else {
 		BYTE fileHeader[] = { 'B', 'T', 'X', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 1, 0, 0x14, 0, 0, 0 };
 
-		WriteFile(hFile, fileHeader, sizeof(fileHeader), &dwWritten, NULL);
+		bstreamWrite(stream, fileHeader, sizeof(fileHeader));
 	}
 
 	if (nsbtx->mdl0 != NULL) {
 		BYTE mdl0Header[] = { 'M', 'D', 'L', '0', 0, 0, 0, 0 };
 		*(DWORD *) (mdl0Header + 4) = nsbtx->mdl0Size + 8;
-		WriteFile(hFile, mdl0Header, sizeof(mdl0Header), &dwWritten, NULL);
-		WriteFile(hFile, nsbtx->mdl0, nsbtx->mdl0Size, &dwWritten, NULL);
+		bstreamWrite(stream, mdl0Header, sizeof(mdl0Header));
+		bstreamWrite(stream, nsbtx->mdl0, nsbtx->mdl0Size);
 	}
 	
-	DWORD tex0Offset = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
+	DWORD tex0Offset = stream->pos;
 
 	BYTE tex0Header[] = { 'T', 'E', 'X', '0', 0, 0, 0, 0 };
-	WriteFile(hFile, tex0Header, sizeof(tex0Header), &dwWritten, NULL);
+	bstreamWrite(stream, tex0Header, sizeof(tex0Header));
 
 	BYTEARRAY texData, tex4x4Data, tex4x4PlttIdxData, paletteData;
 	initializeArray(&texData);
@@ -270,29 +267,29 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 	*(WORD *) (texInfo + 6) = 60;
 	*(WORD *) (texInfo + 4) = texData.length >> 3;
 	*(DWORD *) (texInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24;
-	WriteFile(hFile, texInfo, sizeof(texInfo), &dwWritten, NULL);
+	bstreamWrite(stream, texInfo, sizeof(texInfo));
 
 	BYTE tex4x4Info[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	*(WORD *) (tex4x4Info + 6) = 60;
 	*(WORD *) (tex4x4Info + 4) = tex4x4Data.length >> 3;
 	*(DWORD *) (tex4x4Info + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.length;
 	*(DWORD *) (tex4x4Info + 16) = (*(DWORD *) (tex4x4Info + 12)) + tex4x4Data.length;
-	WriteFile(hFile, tex4x4Info, sizeof(tex4x4Info), &dwWritten, NULL);
+	bstreamWrite(stream, tex4x4Info, sizeof(tex4x4Info));
 
 	BYTE plttInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	*(WORD *) (plttInfo + 8) = 76 + nsbtx->nTextures * 28;
 	*(WORD *) (plttInfo + 4) = paletteData.length >> 3;
 	*(DWORD *) (plttInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.length + tex4x4Data.length + tex4x4PlttIdxData.length;
-	WriteFile(hFile, plttInfo, sizeof(plttInfo), &dwWritten, NULL);
+	bstreamWrite(stream, plttInfo, sizeof(plttInfo));
 
 	{
 		BYTE dictHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 		//write dictTex
-		DWORD startpos = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
+		DWORD startpos = stream->pos;
 		dictHeader[1] = nsbtx->nTextures;
 		*(WORD *) (dictHeader + 4) = 8;
 		*(WORD *) (dictHeader + 6) = (nsbtx->nTextures + 1) * 4 + 8;
-		WriteFile(hFile, dictHeader, sizeof(dictHeader), &dwWritten, NULL);
+		bstreamWrite(stream, dictHeader, sizeof(dictHeader));
 		for (int i = 0; i < nsbtx->nTextures + 1; i++) {
 			PTREENODE *node = nsbtx->textureDictionary.node + i;
 			BYTE nodeBits[] = { 0, 0, 0, 0 };
@@ -300,12 +297,12 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 			nodeBits[1] = node->idxLeft;
 			nodeBits[2] = node->idxRight;
 			nodeBits[3] = node->idxEntry;
-			WriteFile(hFile, nodeBits, sizeof(nodeBits), &dwWritten, NULL);
+			bstreamWrite(stream, nodeBits, sizeof(nodeBits));
 		}
 		BYTE entryBits[] = { 0, 0, 0, 0 };
 		*(WORD *) entryBits = 8;
 		*(WORD *) (entryBits + 2) = (4 + 8 * nsbtx->nTextures);
-		WriteFile(hFile, entryBits, sizeof(entryBits), &dwWritten, NULL);
+		bstreamWrite(stream, entryBits, sizeof(entryBits));
 		//write data
 		//make sure to copy the texImageParams over
 		for (int i = 0; i < nsbtx->nTextures; i++) {
@@ -313,26 +310,26 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 			TEXELS *texels = nsbtx->textures + i;
 			tex->texImageParam = texels->texImageParam;
 		}
-		WriteFile(hFile, nsbtx->textureDictionary.entry.data, nsbtx->nTextures * sizeof(DICTTEXDATA), &dwWritten, NULL);
+		bstreamWrite(stream, nsbtx->textureDictionary.entry.data, nsbtx->nTextures * sizeof(DICTTEXDATA));
 		for (int i = 0; i < nsbtx->nTextures; i++) {
-			WriteFile(hFile, nsbtx->textures[i].name, 16, &dwWritten, NULL);
+			bstreamWrite(stream, nsbtx->textures[i].name, 16);
 		}
-		DWORD curpos = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
-		SetFilePointer(hFile, startpos + 2, NULL, FILE_BEGIN);
+		DWORD curpos = stream->pos;
+		stream->pos = startpos + 2;
 		WORD diff = (WORD) (curpos - startpos);
-		WriteFile(hFile, &diff, 2, &dwWritten, NULL);
-		SetFilePointer(hFile, curpos, NULL, FILE_BEGIN);
+		bstreamWrite(stream, &diff, 2);
+		stream->pos = curpos;
 	}
 	//write dictPltt
 	{
 		BYTE dictHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 		//write dictTex
 		//long startpos = position
-		DWORD startpos = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
+		DWORD startpos = stream->pos;
 		dictHeader[1] = nsbtx->nPalettes;
 		*(WORD *) (dictHeader + 4) = 8;
 		*(WORD *) (dictHeader + 6) = (nsbtx->nPalettes + 1) * 4 + 8;
-		WriteFile(hFile, dictHeader, sizeof(dictHeader), &dwWritten, NULL);
+		bstreamWrite(stream, dictHeader, sizeof(dictHeader));
 		for (int i = 0; i < nsbtx->nPalettes + 1; i++) {
 			PTREENODE *node = nsbtx->paletteDictionary.node + i;
 			BYTE nodeBits[] = { 0, 0, 0, 0 };
@@ -340,49 +337,53 @@ void nsbtxSaveFile(LPWSTR name, NSBTX *nsbtx) {
 			nodeBits[1] = node->idxLeft;
 			nodeBits[2] = node->idxRight;
 			nodeBits[3] = node->idxEntry;
-			WriteFile(hFile, nodeBits, sizeof(nodeBits), &dwWritten, NULL);
+			bstreamWrite(stream, nodeBits, sizeof(nodeBits));
 		}
 		BYTE entryBits[] = { 0, 0, 0, 0 };
 		*(WORD *) entryBits = 4;
 		*(WORD *) (entryBits + 2) = (4 + 4 * nsbtx->nPalettes);
-		WriteFile(hFile, entryBits, sizeof(entryBits), &dwWritten, NULL);
+		bstreamWrite(stream, entryBits, sizeof(entryBits));
 		//write data
-		WriteFile(hFile, nsbtx->paletteDictionary.entry.data, nsbtx->nPalettes * sizeof(DICTPLTTDATA), &dwWritten, NULL);
+		bstreamWrite(stream, nsbtx->paletteDictionary.entry.data, nsbtx->nPalettes * sizeof(DICTPLTTDATA));
 		for (int i = 0; i < nsbtx->nPalettes; i++) {
-			WriteFile(hFile, nsbtx->palettes[i].name, 16, &dwWritten, NULL);
+			bstreamWrite(stream, nsbtx->palettes[i].name, 16);
 		}
-		DWORD curpos = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
-		SetFilePointer(hFile, startpos + 2, NULL, FILE_BEGIN);
+		DWORD curpos = stream->pos;
+		stream->pos = startpos + 2;
 		WORD diff = (WORD) (curpos - startpos);
-		WriteFile(hFile, &diff, 2, &dwWritten, NULL);
-		SetFilePointer(hFile, curpos, NULL, FILE_BEGIN);
+		bstreamWrite(stream, &diff, 2);
+		stream->pos = curpos;
 	}
 
 
 	//write texData, tex4x4Data, tex4x4PlttIdxData, paletteData
-	WriteFile(hFile, texData.ptr, texData.length, &dwWritten, NULL);
-	WriteFile(hFile, tex4x4Data.ptr, tex4x4Data.length, &dwWritten, NULL);
-	WriteFile(hFile, tex4x4PlttIdxData.ptr, tex4x4PlttIdxData.length, &dwWritten, NULL);
-	WriteFile(hFile, paletteData.ptr, paletteData.length, &dwWritten, NULL);
+	bstreamWrite(stream, texData.ptr, texData.length);
+	bstreamWrite(stream, tex4x4Data.ptr, tex4x4Data.length);
+	bstreamWrite(stream, tex4x4PlttIdxData.ptr, tex4x4PlttIdxData.length);
+	bstreamWrite(stream, paletteData.ptr, paletteData.length);
 
 	//write back the proper sizes
-	DWORD endPos = SetFilePointer(hFile, 0, NULL, FILE_CURRENT);
-	SetFilePointer(hFile, 8, NULL, FILE_BEGIN);
-	WriteFile(hFile, &endPos, 4, &dwWritten, NULL);
+	DWORD endPos = stream->pos;
+	stream->pos = 8;
+	bstreamWrite(stream, &endPos, 4);
 	if (nsbtx->mdl0 == NULL) {
 		int tex0Size = endPos - 0x14;
 
-		SetFilePointer(hFile, tex0Offset + 4, NULL, FILE_BEGIN);
-		WriteFile(hFile, &tex0Size, 4, &dwWritten, NULL);
+		stream->pos = tex0Offset + 4;
+		bstreamWrite(stream, &tex0Size, 4);
 	} else {
 		int mdl0Size = 8 + nsbtx->mdl0Size;
 		int tex0Size = endPos - 0x18 - mdl0Size;
 
-		SetFilePointer(hFile, tex0Offset + 4, NULL, FILE_BEGIN);
-		WriteFile(hFile, &tex0Size, 4, &dwWritten, NULL);
-		SetFilePointer(hFile, 0x14, NULL, FILE_BEGIN);
-		WriteFile(hFile, &tex0Offset, 4, &dwWritten, NULL);
+		stream->pos = tex0Offset + 4;
+		bstreamWrite(stream, &tex0Size, 4);
+		stream->pos = 0x14;
+		bstreamWrite(stream, &tex0Offset, 4);
 	}
 
-	CloseHandle(hFile);
+	return 0;
+}
+
+int nsbtxWriteFile(NSBTX *nsbtx, LPWSTR name) {
+	return fileWrite(name, (OBJECT_HEADER *) nsbtx, (OBJECT_WRITER) nsbtxWrite);
 }
