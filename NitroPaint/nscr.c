@@ -356,9 +356,8 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 
 }
 
-void nscrWrite(NSCR *nscr, LPWSTR name) {
-	BSTREAM stream;
-	bstreamCreate(&stream, NULL, 0);
+int nscrWrite(NSCR *nscr, BSTREAM *stream) {
+	int status = 0;
 
 	if (nscr->header.format == NSCR_TYPE_NSCR) {
 		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
@@ -375,9 +374,9 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 		*(int *) (nrcsHeader + 0x10) = dataSize;
 		*(int *) (nrcsHeader + 0xC) = nscr->fmt;
 		
-		bstreamWrite(&stream, nscrHeader, sizeof(nscrHeader));
-		bstreamWrite(&stream, nrcsHeader, sizeof(nrcsHeader));
-		bstreamWrite(&stream, nscr->data, dataSize);
+		bstreamWrite(stream, nscrHeader, sizeof(nscrHeader));
+		bstreamWrite(stream, nrcsHeader, sizeof(nrcsHeader));
+		bstreamWrite(stream, nscr->data, dataSize);
 	} else if(nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
 
 		int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
@@ -387,32 +386,27 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 			*(WORD *) (header + 4) = 2 * nTotalTiles;
 			header[6] = (BYTE) (nscr->nWidth / 8);
 			header[7] = (BYTE) (nscr->nHeight / 8);
-			bstreamWrite(&stream, header, sizeof(header));
+			bstreamWrite(stream, header, sizeof(header));
 		} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
 			BYTE header[4] = { 0, 0, 0, 0 };
 			*(WORD *) header = nTotalTiles * 2;
 			header[2] = (BYTE) (nscr->nWidth / 8);
 			header[3] = (BYTE) (nscr->nHeight / 8);
-			bstreamWrite(&stream, header, sizeof(header));
+			bstreamWrite(stream, header, sizeof(header));
 		}
 
-		bstreamWrite(&stream, nscr->data, 2 * nTotalTiles);
+		bstreamWrite(stream, nscr->data, 2 * nTotalTiles);
 	} else if (nscr->header.format == NSCR_TYPE_BIN) {
-		bstreamWrite(&stream, nscr->data, nscr->dataSize);
+		bstreamWrite(stream, nscr->data, nscr->dataSize);
 	} else if (nscr->header.format == NSCR_TYPE_COMBO) {
-		combo2dWrite(nscr->combo2d, &stream);
+		status = combo2dWrite(nscr->combo2d, stream);
 	}
 
-	if (nscr->header.compression != COMPRESSION_NONE) {
-		bstreamCompress(&stream, nscr->header.compression, 0, 0);
-	}
+	return status;
+}
 
-	DWORD dwWritten;
-	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
-	CloseHandle(hFile);
-	bstreamFree(&stream);
-
+int nscrWriteFile(NSCR *nscr, LPWSTR name) {
+	return fileWrite(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) nscrWrite);
 }
 
 void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalTiles, int width, int height, int nBits, LPWSTR name, int fmt) {

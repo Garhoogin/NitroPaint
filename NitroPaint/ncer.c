@@ -396,9 +396,8 @@ int ncerFree(NCER *ncer) {
 	return 0;
 }
 
-void ncerWrite(NCER * ncer, LPWSTR name) {
-	BSTREAM stream;
-	bstreamCreate(&stream, NULL, 0);
+int ncerWrite(NCER *ncer, BSTREAM *stream) {
+	int status = 0;
 
 	if (ncer->header.format == NCER_TYPE_NCER) {
 		int hasLabl = ncer->labl != NULL;
@@ -422,7 +421,7 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 
 		BYTE ncerHeader[] = { 'R', 'E', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, nSections, 0 };
 		*(DWORD *) (ncerHeader + 8) = fileSize;
-		bstreamWrite(&stream, ncerHeader, sizeof(ncerHeader));
+		bstreamWrite(stream, ncerHeader, sizeof(ncerHeader));
 		//write the KBEC header
 		BYTE kbecHeader[] = {'K', 'B', 'E', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0x18, 0, 0, 0
 			, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -430,7 +429,7 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 		*(WORD *) (kbecHeader + 10) = attr;
 		*(DWORD *) (kbecHeader + 4) = kbecSize;
 
-		bstreamWrite(&stream, kbecHeader, sizeof(kbecHeader));
+		bstreamWrite(stream, kbecHeader, sizeof(kbecHeader));
 
 		//write out each cell. Keep track of the offsets of OAM data.
 		int oamOffset = 0;
@@ -447,41 +446,41 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 				*(SHORT *) (data + 14) = cell->minY;
 			}
 
-			bstreamWrite(&stream, data, cellSize);
+			bstreamWrite(stream, data, cellSize);
 			oamOffset += cell->nAttr * 2;
 		}
 
 		//write each cell's OAM
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
-			bstreamWrite(&stream, cell->attr, cell->nAttr * 2);
+			bstreamWrite(stream, cell->attr, cell->nAttr * 2);
 		}
 
 		if (hasLabl) {
 			BYTE lablHeader[] = {'L', 'B', 'A', 'L', 0, 0, 0, 0};
 			*(DWORD *) (lablHeader + 4) = ncer->lablSize + 8;
-			bstreamWrite(&stream, lablHeader, sizeof(lablHeader));
-			bstreamWrite(&stream, ncer->labl, ncer->lablSize);
+			bstreamWrite(stream, lablHeader, sizeof(lablHeader));
+			bstreamWrite(stream, ncer->labl, ncer->lablSize);
 		}
 		if (hasUext) {
 			BYTE uextHeader[] = {'T', 'X', 'E', 'U', 0, 0, 0, 0};
 			*(DWORD *) (uextHeader + 4) = ncer->uextSize + 8;
-			bstreamWrite(&stream, uextHeader, sizeof(uextHeader));
-			bstreamWrite(&stream, ncer->uext, ncer->uextSize);
+			bstreamWrite(stream, uextHeader, sizeof(uextHeader));
+			bstreamWrite(stream, ncer->uext, ncer->uextSize);
 		}
 
 	} else {
-		bstreamWrite(&stream, &ncer->nCells, 4);
+		bstreamWrite(stream, &ncer->nCells, 4);
 		int ofs = 4 * ncer->nCells;
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
 			int attrsSize = cell->nAttribs * 0xA + 2;
-			bstreamWrite(&stream, &ofs, 4);
+			bstreamWrite(stream, &ofs, 4);
 			ofs += attrsSize;
 		}
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
-			bstreamWrite(&stream, &cell->nAttribs, 2);
+			bstreamWrite(stream, &cell->nAttribs, 2);
 			for (int j = 0; j < cell->nAttribs; j++) {
 				NCER_CELL_INFO info;
 				decodeAttributesEx(&info, cell, j);
@@ -494,19 +493,15 @@ void ncerWrite(NCER * ncer, LPWSTR name) {
 				if (pos[1] & 0x80) {
 					pos[1] |= 0xFF00;
 				}
-				bstreamWrite(&stream, cell->attr + j * 3, 6);
-				bstreamWrite(&stream, pos, 4);
+				bstreamWrite(stream, cell->attr + j * 3, 6);
+				bstreamWrite(stream, pos, 4);
 			}
 		}
 	}
 
-	if (ncer->header.compression != COMPRESSION_NONE) {
-		bstreamCompress(&stream, ncer->header.compression, 0, 0);
-	}
+	return status;
+}
 
-	DWORD dwWritten;
-	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
-	CloseHandle(hFile);
-	bstreamFree(&stream);
+int ncerWriteFile(NCER *ncer, LPWSTR name) {
+	return fileWrite(name, (OBJECT_HEADER *) ncer, (OBJECT_WRITER) ncerWrite);
 }

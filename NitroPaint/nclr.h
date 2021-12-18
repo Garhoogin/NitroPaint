@@ -34,7 +34,7 @@ int nclrIsValidNtfp(LPBYTE lpFile, int size);
 
 int nclrRead(NCLR * nclr, char * buffer, int size);
 
-void nclrWrite(NCLR * nclr, LPWSTR name);
+int nclrWriteFile(NCLR *nclr, LPWSTR name);
 
 void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int fmt);
 

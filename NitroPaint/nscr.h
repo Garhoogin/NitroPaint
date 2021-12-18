@@ -48,7 +48,9 @@ int nscrReadFile(NSCR *nscr, LPCWSTR path);
 
 DWORD *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, BOOL transparent);
 
-void nscrWrite(NSCR *nscr, LPWSTR name);
+int nscrWrite(NSCR *nscr, BSTREAM *stream);
+
+int nscrWriteFile(NSCR *nscr, LPWSTR name);
 
 int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL chceker, DWORD *out, BOOL transparent);
 

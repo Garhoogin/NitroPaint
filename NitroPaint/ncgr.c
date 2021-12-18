@@ -341,9 +341,8 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 	return 0;
 }
 
-void ncgrWrite(NCGR * ncgr, LPWSTR name) {
-	BSTREAM stream;
-	bstreamCreate(&stream, NULL, 0);
+int ncgrWrite(NCGR *ncgr, BSTREAM *stream) {
+	int status = 0;
 
 	if (ncgr->header.format == NCGR_TYPE_NCGR || ncgr->header.format == NCGR_TYPE_NCBR) {
 		BYTE ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, 0x1, 0 };
@@ -373,12 +372,12 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 
 		*(int *) (ncgrHeader + 0x8) = fileSize;
 
-		bstreamWrite(&stream, ncgrHeader, sizeof(ncgrHeader));
-		bstreamWrite(&stream, charHeader, sizeof(charHeader));
+		bstreamWrite(stream, ncgrHeader, sizeof(ncgrHeader));
+		bstreamWrite(stream, charHeader, sizeof(charHeader));
 		if (ncgr->header.format == NCGR_TYPE_NCGR) {
 			for (int i = 0; i < ncgr->nTiles; i++) {
 				if (ncgr->nBits == 8) {
-					bstreamWrite(&stream, ncgr->tiles[i], 64);
+					bstreamWrite(stream, ncgr->tiles[i], 64);
 				} else {
 					BYTE buffer[32];
 					for (int j = 0; j < 32; j++) {
@@ -386,7 +385,7 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 
 						buffer[j] = b;
 					}
-					bstreamWrite(&stream, buffer, 32);
+					bstreamWrite(stream, buffer, 32);
 				}
 			}
 		} else if (ncgr->header.format == NCGR_TYPE_NCBR) {
@@ -410,7 +409,7 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 					}
 				}
 			}
-			bstreamWrite(&stream, bmp, nTiles * 8 * ncgr->nBits);
+			bstreamWrite(stream, bmp, nTiles * 8 * ncgr->nBits);
 			free(bmp);
 		}
 	} else if(ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
@@ -423,16 +422,16 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 			if (ncgr->nBits == 4) nCharacterBytes >>= 1;
 			*(WORD *) (header + 1) = nCharacterBytes + 4;
 
-			bstreamWrite(&stream, header, sizeof(header));
+			bstreamWrite(stream, header, sizeof(header));
 		} else if(ncgr->header.format == NCGR_TYPE_HUDSON2) {
 			BYTE header[] = { 0, 0, 0, 0 };
 			*(WORD *) (header + 1) = ncgr->nTiles;
-			bstreamWrite(&stream, header, sizeof(header));
+			bstreamWrite(stream, header, sizeof(header));
 		}
 
 		for (int i = 0; i < ncgr->nTiles; i++) {
 			if (ncgr->nBits == 8) {
-				bstreamWrite(&stream, ncgr->tiles[i], 64);
+				bstreamWrite(stream, ncgr->tiles[i], 64);
 			} else {
 				BYTE buffer[32];
 				for (int j = 0; j < 32; j++) {
@@ -440,34 +439,30 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 
 					buffer[j] = b;
 				}
-				bstreamWrite(&stream, buffer, 32);
+				bstreamWrite(stream, buffer, 32);
 			}
 		}
 	} else if (ncgr->header.format == NCGR_TYPE_BIN) {
 		for (int i = 0; i < ncgr->nTiles; i++) {
 			if (ncgr->nBits == 8) {
-				bstreamWrite(&stream, ncgr->tiles[i], 64);
+				bstreamWrite(stream, ncgr->tiles[i], 64);
 			} else {
 				BYTE t[32];
 				for (int j = 0; j < 32; j++) {
 					t[j] = ncgr->tiles[i][j * 2] | (ncgr->tiles[i][j * 2 + 1] << 4);
 				}
-				bstreamWrite(&stream, t, 32);
+				bstreamWrite(stream, t, 32);
 			}
 		}
 	} else if (ncgr->header.format == NCGR_TYPE_COMBO) {
-		combo2dWrite(ncgr->combo2d, &stream);
+		status = combo2dWrite(ncgr->combo2d, stream);
 	}
 
-	if (ncgr->header.compression != COMPRESSION_NONE) {
-		bstreamCompress(&stream, ncgr->header.compression, 0, 0);
-	}
+	return status;
+}
 
-	DWORD dwWritten;
-	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
-	CloseHandle(hFile);
-	bstreamFree(&stream);
+int ncgrWriteFile(NCGR *ncgr, LPWSTR name) {
+	return fileWrite(name, (OBJECT_HEADER *) ncgr, (OBJECT_WRITER) ncgrWrite);
 }
 
 void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int fmt) {

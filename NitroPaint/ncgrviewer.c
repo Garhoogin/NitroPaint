@@ -486,7 +486,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_FILE_SAVE:
 					{
-						ncgrWrite(&data->ncgr, data->szOpenFile);
+						ncgrWriteFile(&data->ncgr, data->szOpenFile);
 						break;
 					}
 					case ID_FILE_EXPORT:

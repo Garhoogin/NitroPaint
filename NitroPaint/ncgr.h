@@ -47,6 +47,8 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 
 int ncgrReadFile(NCGR *ncgr, LPCWSTR path);
 
-void ncgrWrite(NCGR * ncgr, LPWSTR name);
+int ncgrWrite(NCGR *ncgr, BSTREAM *stream);
+
+int ncgrWriteFile(NCGR * ncgr, LPWSTR name);
 
 void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int fmt);

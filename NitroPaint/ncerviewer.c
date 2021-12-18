@@ -878,7 +878,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				switch (LOWORD(wParam)) {
 					case ID_FILE_SAVE:
 					{
-						ncerWrite(&data->ncer, data->szOpenFile);
+						ncerWriteFile(&data->ncer, data->szOpenFile);
 						break;
 					}
 					case ID_EDIT_UNDO:

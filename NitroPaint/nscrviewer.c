@@ -393,7 +393,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_FILE_SAVE:
 					{
-						nscrWrite(&data->nscr, data->szOpenFile);
+						nscrWriteFile(&data->nscr, data->szOpenFile);
 						break;
 					}
 					case ID_NSCRMENU_IMPORTBITMAPHERE:

@@ -544,7 +544,7 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				switch (LOWORD(wParam)) {
 					case ID_FILE_SAVE:
 					{
-						nanrWrite(&data->nanr, data->szOpenFile);
+						nanrWriteFile(&data->nanr, data->szOpenFile);
 						break;
 					}
 				}

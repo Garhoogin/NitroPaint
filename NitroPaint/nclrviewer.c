@@ -576,7 +576,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_FILE_SAVE:
 					{
-						nclrWrite(&data->nclr, data->szOpenFile);
+						nclrWriteFile(&data->nclr, data->szOpenFile);
 						break;
 					}
 					case ID_MENU_VERIFYCOLOR:

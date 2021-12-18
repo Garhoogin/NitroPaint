@@ -187,9 +187,8 @@ int nclrIsValid(LPBYTE lpFile, int size) {
 	return 1;
 }
 
-void nclrWrite(NCLR *nclr, LPWSTR name) {
-	BSTREAM stream;
-	bstreamCreate(&stream, NULL, 0);
+int nclrWrite(NCLR *nclr, BSTREAM *stream) {
+	int status = 0;
 
 	if (nclr->header.format == NCLR_TYPE_NCLR) {
 		BYTE fileHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
@@ -212,39 +211,31 @@ void nclrWrite(NCLR *nclr, LPWSTR name) {
 		*(short *) (pmcpHeader + 8) = nclr->nPalettes;
 		*(int *) (pmcpHeader + 4) = 0x10 + 2 * nclr->nPalettes;
 
-		bstreamWrite(&stream, fileHeader, sizeof(fileHeader));
-		bstreamWrite(&stream, ttlpHeader, sizeof(ttlpHeader));
-		bstreamWrite(&stream, nclr->colors, nclr->nColors * 2);
+		bstreamWrite(stream, fileHeader, sizeof(fileHeader));
+		bstreamWrite(stream, ttlpHeader, sizeof(ttlpHeader));
+		bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
 		if (pcmpSize) {
-			bstreamWrite(&stream, pmcpHeader, sizeof(pmcpHeader));
-			bstreamWrite(&stream, nclr->idxTable, nclr->nPalettes * 2);
+			bstreamWrite(stream, pmcpHeader, sizeof(pmcpHeader));
+			bstreamWrite(stream, nclr->idxTable, nclr->nPalettes * 2);
 		}
 	} else if (nclr->header.format == NCLR_TYPE_HUDSON) {
 		BYTE fileHeader[] = { 0, 0, 0, 0 };
 		*(WORD *) fileHeader = nclr->nColors * 2;
 		*(WORD *) (fileHeader + 2) = nclr->nColors;
 
-		bstreamWrite(&stream, fileHeader, sizeof(fileHeader));
-		bstreamWrite(&stream, nclr->colors, nclr->nColors * 2);
+		bstreamWrite(stream, fileHeader, sizeof(fileHeader));
+		bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
 	} else if (nclr->header.format == NCLR_TYPE_BIN || nclr->header.format == NCLR_TYPE_NTFP) {
-		bstreamWrite(&stream, nclr->colors, nclr->nColors * 2);
+		bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
 	} else if (nclr->header.format == NCLR_TYPE_COMBO) {
-		combo2dWrite(nclr->combo2d, &stream);
+		status = combo2dWrite(nclr->combo2d, stream);
 	}
 
-	if (nclr->header.compression != COMPRESSION_NONE) {
-		bstreamCompress(&stream, nclr->header.compression, 0, 0);
-	}
+	return status;
+}
 
-	DWORD dwWritten;
-	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
-	CloseHandle(hFile);
-	bstreamFree(&stream);
-
-	if (nclr->header.compression != COMPRESSION_NONE) {
-		fileCompress(name, nclr->header.compression);
-	}
+int nclrWriteFile(NCLR *nclr, LPWSTR name) {
+	return fileWrite(name, (OBJECT_HEADER *) nclr, (OBJECT_WRITER) nclrWrite);
 }
 
 void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int fmt) {
