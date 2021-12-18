@@ -180,3 +180,23 @@ int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
 	free(buffer);
 	return status;
 }
+
+int fileWrite(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
+	BSTREAM stream;
+	bstreamCreate(&stream, NULL, 0);
+	int status = writer(object, &stream);
+
+	if (status == 0) {
+		if (object->compression != COMPRESSION_NONE) {
+			bstreamCompress(&stream, object->compression, 0, 0);
+		}
+
+		DWORD dwWritten;
+		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
+		CloseHandle(hFile);
+	}
+
+	bstreamFree(&stream);
+	return status;
+}

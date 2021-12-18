@@ -26,6 +26,7 @@ typedef struct OBJECT_HEADER_ {
 } OBJECT_HEADER;
 
 typedef int (*OBJECT_READER) (OBJECT_HEADER *object, char *buffer, int size);
+typedef int (*OBJECT_WRITER) (OBJECT_HEADER *object, BSTREAM *stream);
 
 extern LPCWSTR compressionNames[];
 
@@ -38,3 +39,5 @@ void fileCompress(LPWSTR name, int compression);
 void fileFree(OBJECT_HEADER *header);
 
 int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);
+
+int fileWrite(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer);

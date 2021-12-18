@@ -357,13 +357,9 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 }
 
 void nscrWrite(NSCR *nscr, LPWSTR name) {
-	if (nscr->header.format == NSCR_TYPE_COMBO) {
-		combo2dWrite(nscr->combo2d, name);
-		return;
-	}
-	
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
+
 	if (nscr->header.format == NSCR_TYPE_NSCR) {
 		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
@@ -403,6 +399,8 @@ void nscrWrite(NSCR *nscr, LPWSTR name) {
 		bstreamWrite(&stream, nscr->data, 2 * nTotalTiles);
 	} else if (nscr->header.format == NSCR_TYPE_BIN) {
 		bstreamWrite(&stream, nscr->data, nscr->dataSize);
+	} else if (nscr->header.format == NSCR_TYPE_COMBO) {
+		combo2dWrite(nscr->combo2d, &stream);
 	}
 
 	if (nscr->header.compression != COMPRESSION_NONE) {

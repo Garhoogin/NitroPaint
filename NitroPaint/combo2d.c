@@ -28,24 +28,24 @@ int combo2dIsValid(BYTE *file, int size) {
 	return 0;
 }
 
-void combo2dWrite(COMBO2D *combo, LPWSTR path) {
-	if (combo->nclr == NULL || combo->ncgr == NULL || combo->nscr == NULL) return;
-	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwWritten = 0, dummy = 0;
+int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
+	if (combo->nclr == NULL || combo->ncgr == NULL || combo->nscr == NULL) return 1;
 
 	//write out 
 	if (combo->header.format == COMBO2D_TYPE_TIMEACE) {
 		BOOL is8bpp = combo->ncgr->nBits == 8;
-		WriteFile(hFile, &is8bpp, sizeof(is8bpp), &dwWritten, NULL);
-		WriteFile(hFile, combo->nclr->colors, 2 * combo->nclr->nColors, &dwWritten, NULL);
-		WriteFile(hFile, &dummy, sizeof(dummy), &dwWritten, NULL);
-		WriteFile(hFile, combo->nscr->data, combo->nscr->dataSize, &dwWritten, NULL);
-		WriteFile(hFile, &combo->ncgr->nTiles, 4, &dwWritten, NULL);
+		int dummy = 0;
+
+		bstreamWrite(stream, &is8bpp, sizeof(is8bpp));
+		bstreamWrite(stream, combo->nclr->colors, 2 * combo->nclr->nColors);
+		bstreamWrite(stream, &dummy, sizeof(dummy));
+		bstreamWrite(stream, combo->nscr->data, combo->nscr->dataSize);
+		bstreamWrite(stream, &combo->ncgr->nTiles, 4);
 
 		NCGR *ncgr = combo->ncgr;
 		if (ncgr->nBits == 8) {
 			for (int i = 0; i < ncgr->nTiles; i++) {
-				WriteFile(hFile, ncgr->tiles[i], 64, &dwWritten, NULL);
+				bstreamWrite(stream, ncgr->tiles[i], 64);
 			}
 		} else {
 			BYTE buffer[32];
@@ -53,13 +53,14 @@ void combo2dWrite(COMBO2D *combo, LPWSTR path) {
 				for (int j = 0; j < 32; j++) {
 					buffer[j] = ncgr->tiles[i][j * 2] | (ncgr->tiles[i][j * 2 + 1] << 4);
 				}
+				bstreamWrite(stream, buffer, sizeof(buffer));
 			}
-			WriteFile(hFile, buffer, sizeof(buffer), &dwWritten, NULL);
 		}
 	}
 
-	CloseHandle(hFile);
-	if (combo->header.compression != COMPRESSION_NONE) {
-		fileCompress(path, combo->header.compression);
-	}
+	return 0;
+}
+
+int combo2dWriteFile(COMBO2D *combo, LPWSTR path) {
+	return fileWrite(path, (OBJECT_HEADER *) combo, (OBJECT_WRITER) combo2dWrite);
 }

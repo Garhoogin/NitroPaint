@@ -188,12 +188,9 @@ int nclrIsValid(LPBYTE lpFile, int size) {
 }
 
 void nclrWrite(NCLR *nclr, LPWSTR name) {
-	if (nclr->header.format == NCLR_TYPE_COMBO) {
-		combo2dWrite(nclr->combo2d, name);
-		return;
-	}
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
+
 	if (nclr->header.format == NCLR_TYPE_NCLR) {
 		BYTE fileHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 		BYTE ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
@@ -231,6 +228,8 @@ void nclrWrite(NCLR *nclr, LPWSTR name) {
 		bstreamWrite(&stream, nclr->colors, nclr->nColors * 2);
 	} else if (nclr->header.format == NCLR_TYPE_BIN || nclr->header.format == NCLR_TYPE_NTFP) {
 		bstreamWrite(&stream, nclr->colors, nclr->nColors * 2);
+	} else if (nclr->header.format == NCLR_TYPE_COMBO) {
+		combo2dWrite(nclr->combo2d, &stream);
 	}
 
 	if (nclr->header.compression != COMPRESSION_NONE) {
@@ -242,6 +241,10 @@ void nclrWrite(NCLR *nclr, LPWSTR name) {
 	WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
 	CloseHandle(hFile);
 	bstreamFree(&stream);
+
+	if (nclr->header.compression != COMPRESSION_NONE) {
+		fileCompress(name, nclr->header.compression);
+	}
 }
 
 void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int fmt) {

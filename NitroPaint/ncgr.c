@@ -342,11 +342,6 @@ int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int preview
 }
 
 void ncgrWrite(NCGR * ncgr, LPWSTR name) {
-	if (ncgr->header.format == NCGR_TYPE_COMBO) {
-		combo2dWrite(ncgr->combo2d, name);
-		return;
-	}
-
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
 
@@ -460,6 +455,8 @@ void ncgrWrite(NCGR * ncgr, LPWSTR name) {
 				bstreamWrite(&stream, t, 32);
 			}
 		}
+	} else if (ncgr->header.format == NCGR_TYPE_COMBO) {
+		combo2dWrite(ncgr->combo2d, &stream);
 	}
 
 	if (ncgr->header.compression != COMPRESSION_NONE) {

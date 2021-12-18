@@ -21,4 +21,6 @@ typedef struct COMBO2D_ {
 
 int combo2dIsValid(BYTE *buffer, int size);
 
-void combo2dWrite(COMBO2D *combo, LPWSTR path);
+int combo2dWrite(COMBO2D *combo, BSTREAM *stream);
+
+int combo2dWriteFile(COMBO2D *combo, LPWSTR path);
