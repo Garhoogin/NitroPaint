@@ -251,7 +251,6 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, DWORD *out,
 
 	if (ncgr != NULL) {
 		int ncgrStart = NCGR_BOUNDARY(ncgr, info->characterName);
-		printf("Map: %08X\n", ncgr->mappingMode);
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 				DWORD block[64];
