@@ -16,6 +16,11 @@ int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	return !_wcsicmp(str1, substr);
 }
 
+int pathStartsWith(LPCWSTR str, LPCWSTR substr) {
+	if (wcslen(substr) > wcslen(str)) return 1;
+	return !_wcsnicmp(str, substr, wcslen(substr));
+}
+
 LPCWSTR *getFormatNamesFromType(int type) {
 	switch (type) {
 		case FILE_TYPE_PALETTE:
@@ -168,15 +173,32 @@ void fileFree(OBJECT_HEADER *header) {
 	if(header->dispose != NULL) header->dispose(header);
 }
 
-int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
+void *fileReadWhole(LPCWSTR name, int *size) {
 	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwSizeLow, dwSizeHigh, dwRead;
-	dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
-	char *buffer = (char *) malloc(dwSizeLow);
-	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
-	CloseHandle(hFile);
+	DWORD dwRead, dwSizeLow, dwSizeHigh = 0;
 
-	int status = reader(object, buffer, dwSizeLow);
+	void *buffer;
+	if (pathStartsWith(name, L"\\\\.\\pipe\\")) {
+		//pipe protocol: first 4 bytes file size, followed by file data.
+		ReadFile(hFile, &dwSizeLow, 4, &dwRead, NULL);
+		buffer = malloc(dwSizeLow);
+		ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
+	} else {
+		dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
+		buffer = malloc(dwSizeLow);
+		ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
+	}
+
+	CloseHandle(hFile);
+	*size = dwSizeLow;
+	return buffer;
+}
+
+int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
+	int size;
+	void *buffer = fileReadWhole(name, &size);
+	int status = reader(object, buffer, size);
+
 	free(buffer);
 	return status;
 }

@@ -170,11 +170,8 @@ BOOL CALLBACK SaveAllProc(HWND hWnd, LPARAM lParam) {
 
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	NITROPAINTSTRUCT *data = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWnd, 0);
-	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwSize = GetFileSize(hFile, NULL), dwRead;
-	LPBYTE buffer = (LPBYTE) calloc(dwSize, 1);
-	ReadFile(hFile, buffer, dwSize, &dwRead, NULL);
-	CloseHandle(hFile);
+	DWORD dwSize = 0;
+	char *buffer = (char *) fileReadWhole(path, &dwSize);
 
 	int format = fileIdentify(buffer, dwSize, path);
 	switch (format) {

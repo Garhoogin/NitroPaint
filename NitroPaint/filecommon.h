@@ -38,6 +38,8 @@ void fileCompress(LPWSTR name, int compression);
 
 void fileFree(OBJECT_HEADER *header);
 
+void *fileReadWhole(LPCWSTR name, int *size);
+
 int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);
 
 int fileWrite(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer);
