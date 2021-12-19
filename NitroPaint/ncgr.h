@@ -19,7 +19,7 @@
 #define NCGR_2D(m)              ((m)==GX_OBJVRAMMODE_CHAR_2D)
 #define NCGR_1D(m)              (!NCGR_2D(m))
 #define NCGR_BYTE_BOUNDARY(m)   (1<<((((m)>>20)&0x7)+5))
-#define NCGR_BOUNDARY(n)        (NCGR_BYTE_BOUNDARY((n)->mappingMode)/((n)->nBits<<3))
+#define NCGR_BOUNDARY(n,x)      (NCGR_BYTE_BOUNDARY((n)->mappingMode)*(x)/(((n)->nBits)<<3))
 
 extern LPCWSTR characterFormatNames[];
 

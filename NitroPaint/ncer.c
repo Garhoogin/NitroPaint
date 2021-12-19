@@ -236,7 +236,7 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	if (is8) {
 		info->characterBits = 8;
 		info->palette = 0;
-		info->characterName <<= 1;
+		//info->characterName <<= 1;
 	}
 
 	return 0;
@@ -250,7 +250,8 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, DWORD *out,
 	int tilesY = *height / 8;
 
 	if (ncgr != NULL) {
-		int ncgrStart = info->characterName * NCGR_BOUNDARY(ncgr);
+		int ncgrStart = NCGR_BOUNDARY(ncgr, info->characterName);
+		printf("Map: %08X\n", ncgr->mappingMode);
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 				DWORD block[64];
