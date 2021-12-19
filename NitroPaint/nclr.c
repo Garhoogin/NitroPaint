@@ -76,14 +76,6 @@ int comboReadPalette(NCLR *nclr, char *buffer, int size) {
 }
 
 int nclrRead(NCLR *nclr, char *buffer, int size) {
-	if (lz77IsCompressed(buffer, size)) {
-		int uncompressedSize;
-		char *bf = lz77decompress(buffer, size, &uncompressedSize);
-		int r = nclrRead(nclr, bf, uncompressedSize);
-		free(bf);
-		nclr->header.compression = COMPRESSION_LZ77;
-		return r;
-	}
 	if (*buffer != 'R' && *buffer != 'N') {
 		if(nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
 		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);

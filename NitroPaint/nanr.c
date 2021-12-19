@@ -15,14 +15,6 @@ int nanrIsValid(LPBYTE lpFile, int size) {
 }
 
 int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
-	if (lz77IsCompressed(buffer, size)) {
-		int uncompressedSize;
-		char *bf = lz77decompress(buffer, size, &uncompressedSize);
-		int r = nanrRead(nanr, bf, uncompressedSize);
-		free(bf);
-		nanr->header.compression = COMPRESSION_LZ77;
-		return r;
-	}
 	if (!nanrIsValid(buffer, size)) return 1;
 
 	LPBYTE abnk = buffer + 0x10;

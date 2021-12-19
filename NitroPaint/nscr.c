@@ -167,14 +167,6 @@ int nscrReadCombo(NSCR *nscr, char *file, DWORD dwFileSize) {
 }
 
 int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
-	if (lz77IsCompressed(file, dwFileSize)) {
-		int uncompressedSize;
-		char *bf = lz77decompress(file, dwFileSize, &uncompressedSize);
-		int r = nscrRead(nscr, bf, uncompressedSize);
-		free(bf);
-		nscr->header.compression = COMPRESSION_LZ77;
-		return r;
-	}
 	if (!dwFileSize) return 1;
 	if (*(DWORD *) file != 0x4E534352) {
 		if(nscrIsValidHudson(file, dwFileSize)) return hudsonScreenRead(nscr, file, dwFileSize);

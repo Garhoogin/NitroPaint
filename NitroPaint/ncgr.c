@@ -192,14 +192,6 @@ int ncgrReadBin(NCGR *ncgr, char *buffer, int size) {
 }
 
 int ncgrRead(NCGR *ncgr, char *buffer, int size) {
-	if (lz77IsCompressed(buffer, size)) {
-		int uncompressedSize;
-		char *bf = lz77decompress(buffer, size, &uncompressedSize);
-		int r = ncgrRead(ncgr, bf, uncompressedSize);
-		free(bf);
-		ncgr->header.compression = COMPRESSION_LZ77;
-		return r;
-	}
 	if (*(DWORD *) buffer != 0x4E434752) {
 		if (ncgrIsValidHudson(buffer, size)) return hudsonReadCharacter(ncgr, buffer, size);
 		if (ncgrIsValidBin(buffer, size)) return ncgrReadBin(ncgr, buffer, size);

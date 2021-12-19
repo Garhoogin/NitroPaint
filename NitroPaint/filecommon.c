@@ -41,8 +41,8 @@ LPCWSTR *getFormatNamesFromType(int type) {
 int fileIdentify(char *file, int size, LPCWSTR path) {
 	char *buffer = file;
 	int bufferSize = size;
-	if (lz77IsCompressed(file, size)) {
-		buffer = lz77decompress(file, size, &bufferSize);
+	if (getCompressionType(file, size) != COMPRESSION_NONE) {
+		buffer = decompress(file, size, &bufferSize);
 	}
 
 	int type = FILE_TYPE_INVALID;
@@ -197,7 +197,18 @@ void *fileReadWhole(LPCWSTR name, int *size) {
 int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
 	int size;
 	void *buffer = fileReadWhole(name, &size);
-	int status = reader(object, buffer, size);
+
+	int status;
+	int compType = getCompressionType(buffer, size);
+	if (compType == COMPRESSION_NONE) {
+		status = reader(object, buffer, size);
+	} else {
+		int decompressedSize;
+		void *decompressed = decompress(buffer, size, &decompressedSize);
+		status = reader(object, decompressed, decompressedSize);
+		free(decompressed);
+		object->compression = compType;
+	}
 
 	free(buffer);
 	return status;

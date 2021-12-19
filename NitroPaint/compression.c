@@ -1,6 +1,29 @@
 #include <stdlib.h>
+#include <string.h>
 
 #include "compression.h"
+
+int getCompressionType(char *buffer, int size) {
+	if (lz77IsCompressed(buffer, size)) return COMPRESSION_LZ77;
+
+	return COMPRESSION_NONE;
+}
+
+char *decompress(char *buffer, int size, int *uncompressedSize) {
+	int type = getCompressionType(buffer, size);
+	switch (type) {
+		case COMPRESSION_NONE:
+		{
+			void *copy = malloc(size);
+			memcpy(copy, buffer, size);
+			*uncompressedSize = size;
+			return copy;
+		}
+		case COMPRESSION_LZ77:
+			return lz77decompress(buffer, size, uncompressedSize);
+	}
+	return NULL;
+}
 
 char *lz77decompress(char *buffer, int size, int *uncompressedSize){
 	//decompress the input buffer. 

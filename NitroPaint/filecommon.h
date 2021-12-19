@@ -14,9 +14,6 @@
 #define FILE_TYPE_IMAGE      9
 #define FILE_TYPE_COMBO2D    10
 
-#define COMPRESSION_NONE     0
-#define COMPRESSION_LZ77     1
-
 typedef struct OBJECT_HEADER_ {
 	int size;
 	int type;

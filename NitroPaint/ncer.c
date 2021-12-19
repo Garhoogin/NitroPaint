@@ -78,14 +78,6 @@ int ncerReadHudson(NCER *ncer, char *buffer, int size) {
 }
 
 int ncerRead(NCER *ncer, char *buffer, int size) {
-	if (lz77IsCompressed(buffer, size)) {
-		int uncompressedSize;
-		char *bf = lz77decompress(buffer, size, &uncompressedSize);
-		int r = ncerRead(ncer, bf, uncompressedSize);
-		free(bf);
-		ncer->header.compression = COMPRESSION_LZ77;
-		return r;
-	}
 	if (size < 16) return 1;
 	DWORD dwMagic = *(DWORD *) buffer;
 	if (dwMagic != 0x5245434E && dwMagic != 0x4E434552) return ncerReadHudson(ncer, buffer, size);

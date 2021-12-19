@@ -1,5 +1,9 @@
 #pragma once
 
+#define COMPRESSION_NONE     0
+#define COMPRESSION_LZ77     1
+#define COMPRESSION_DUMMY    2
+
 /*
 * char * lz77Decompress(char * buffer, int size, int * uncompressedSize)
 *
@@ -34,3 +38,7 @@ char *lz77compress(char *buffer, int size, int *compressedSize);
 *  1 if the buffer does contain valid lz77 compressed data
 */
 int lz77IsCompressed(char *buffer, unsigned size);
+
+int getCompressionType(char *buffer, int size);
+
+char *decompress(char *buffer, int size, int *uncompressedSize);
