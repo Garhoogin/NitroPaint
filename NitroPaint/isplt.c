@@ -1197,3 +1197,239 @@ int createPaletteSlowEx(DWORD *img, int width, int height, DWORD *pal, unsigned 
 
 	return nProduced;
 }
+
+int diffuseCurveY(int x) {
+	if (x < 0) return -diffuseCurveY(-x);
+	if (x <= 8) return x;
+	return (int) (8.5f + pow(x - 8, 0.9) * 0.94140625);
+}
+
+int diffuseCurveI(int x) {
+	if (x < 0) return -diffuseCurveI(-x);
+	if (x <= 8) return x;
+	return (int) (8.5f + pow(x - 8, 0.85) * 0.98828125);
+}
+
+int diffuseCurveQ(int x) {
+	if (x < 0) return -diffuseCurveQ(-x);
+	if (x <= 8) return x;
+	return (int) (8.5f + pow(x - 8, 0.85) * 0.89453125);
+}
+
+int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, DWORD *palette, int nColors) {
+	double yw2 = reduction->balance * reduction->balance;
+	double iw2 = reduction->colorBalance * reduction->colorBalance;
+	double qw2 = reduction->shiftColorBalance * reduction->shiftColorBalance;
+
+	double minDistance = 1e32;
+	int minIndex = 0;
+	for (int i = 0; i < nColors; i++) {
+		DWORD rgb = palette[i];
+		int yiq[4];
+		encodeColor(rgb, yiq);
+
+		double dy = reduction->lumaTable[yiq[0]] - reduction->lumaTable[yiqColor[0]];
+		double di = yiq[1] - yiqColor[1];
+		double dq = yiq[2] - yiqColor[2];
+		double dst = dy * dy * yw2 + di * di * iw2 + dq * dq * qw2;
+		if (dst < minDistance) {
+			minDistance = dst;
+			minIndex = i;
+			if (minDistance == 0.0) return i;
+		}
+	}
+
+	return minIndex;
+}
+
+void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int nColors, BOOL touchAlpha, int c0xp, float diffuse) {
+	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
+	initReduction(reduction, 20, 20, 15, FALSE, nColors);
+
+	//allocate row buffers for color and diffuse.
+	int *thisRow = (int *) calloc(width + 2, 16);
+	int *lastRow = (int *) calloc(width + 2, 16);
+	int *thisDiffuse = (int *) calloc(width + 2, 16);
+	int *nextDiffuse = (int *) calloc(width + 2, 16);
+
+	//fill the last row with the first row, just to make sure we don't run out of bounds
+	for (int i = 0; i < width; i++) {
+		encodeColor(img[i], lastRow + 4 * (i + 1));
+	}
+	memcpy(lastRow, lastRow + 4, 16);
+	memcpy(lastRow + 4 * (width + 1), lastRow + 4 * width, 16);
+
+	//start dithering, do so in a serpentine path.
+	for (int y = 0; y < height; y++) {
+
+		//which direction?
+		int hDirection = (y & 1) ? -1 : 1;
+		DWORD *rgbRow = img + y * width;
+		for (int x = 0; x < width; x++) {
+			encodeColor(rgbRow[x], thisRow + 4 * (x + 1));
+		}
+		memcpy(thisRow, thisRow + 4, 16);
+		memcpy(thisRow + 4 * (width + 1), thisRow + 4 * width, 16);
+
+		//scan across
+		int startPos = (hDirection == 1) ? 0 : (width - 1);
+		int x = startPos;
+		for (int xPx = 0; xPx < width; xPx++) {
+			//take a sample of pixels nearby. This will be a gauge of variance around this pixel, and help
+			//determine if dithering should happen. Weight the sampled pixels with respect to distance from center.
+
+			int colorY = (thisRow[(x + 1) * 4 + 0] * 3 + thisRow[(x + 2) * 4 + 0] * 3 + thisRow[x * 4 + 0] * 3 + lastRow[(x + 1) * 4 + 0] * 3
+						  + lastRow[x * 4 + 0] * 2 + lastRow[(x + 2) * 4 + 0] * 2) / 16;
+			int colorI = (thisRow[(x + 1) * 4 + 1] * 3 + thisRow[(x + 2) * 4 + 1] * 3 + thisRow[x * 4 + 1] * 3 + lastRow[(x + 1) * 4 + 1] * 3
+						  + lastRow[x * 4 + 1] * 2 + lastRow[(x + 2) * 4 + 1] * 2) / 16;
+			int colorQ = (thisRow[(x + 1) * 4 + 2] * 3 + thisRow[(x + 2) * 4 + 2] * 3 + thisRow[x * 4 + 2] * 3 + lastRow[(x + 1) * 4 + 2] * 3
+						  + lastRow[x * 4 + 2] * 2 + lastRow[(x + 2) * 4 + 2] * 2) / 16;
+			int colorA = thisRow[(x + 1) * 4 + 3];
+
+			if (touchAlpha && c0xp) {
+				if (colorA < 128) {
+					colorY = 0;
+					colorI = 0;
+					colorQ = 0;
+					colorA = 0;
+				}
+			}
+
+			//match it to a palette color. We'll measure distance to it as well.
+			int colorRgb[4];
+			int colorYiq[] = { colorY, colorI, colorQ, colorA };
+			decodeColor(colorRgb, colorYiq);
+			DWORD sampleRgb = colorRgb[0] | (colorRgb[1] << 8) | (colorRgb[2] << 16);
+			int matched = c0xp + closestPaletteYiq(reduction, colorYiq, palette + c0xp, nColors - c0xp);
+			if (colorA == 0 && c0xp) matched = 0;
+
+			//measure distance. From middle color to sampled color, and from palette color to sampled color.
+			int matchedYiq[4];
+			encodeColor(palette[matched], matchedYiq);
+			double paletteDy = reduction->lumaTable[matchedYiq[0]] - reduction->lumaTable[colorY];
+			int paletteDi = matchedYiq[1] - colorI;
+			int paletteDq = matchedYiq[2] - colorQ;
+			double paletteDistance = paletteDy * paletteDy * reduction->balance * reduction->balance +
+				paletteDi * paletteDi * reduction->colorBalance * reduction->colorBalance +
+				paletteDq * paletteDq * reduction->shiftColorBalance * reduction->shiftColorBalance;
+
+			//now measure distance from the actual color to its average surroundings
+			int centerY = thisRow[(x + 1) * 4 + 0];
+			int centerI = thisRow[(x + 1) * 4 + 1];
+			int centerQ = thisRow[(x + 1) * 4 + 2];
+			int centerA = thisRow[(x + 1) * 4 + 3];
+			int centerYiq[] = { centerY, centerI, centerQ, centerA };
+
+			double centerDy = reduction->lumaTable[centerY] - reduction->lumaTable[colorY];
+			int centerDi = centerI - colorI;
+			int centerDq = centerQ - colorQ;
+			double centerDistance = centerDy * centerDy * reduction->balance * reduction->balance +
+				centerDi * centerDi * reduction->colorBalance * reduction->colorBalance +
+				centerDq * centerDq * reduction->shiftColorBalance * reduction->shiftColorBalance;
+
+			//now test: Should we dither?
+			double balanceSquare = reduction->balance * reduction->balance;
+			if (centerDistance < 110.0 * balanceSquare && paletteDistance >  2.0 * balanceSquare) {
+				//Yes, we should dither :)
+
+				int diffuseY = thisDiffuse[(x + 1) * 4 + 0] * diffuse / 16; //correct for Floyd-Steinberg coefficients
+				int diffuseI = thisDiffuse[(x + 1) * 4 + 1] * diffuse / 16;
+				int diffuseQ = thisDiffuse[(x + 1) * 4 + 2] * diffuse / 16;
+				int diffuseA = thisDiffuse[(x + 1) * 4 + 3] * diffuse / 16;
+
+				if (!touchAlpha || c0xp) diffuseA = 0; //don't diffuse alpha if no alpha channel, or we're told not to
+
+				colorY += diffuseCurveY(diffuseY);
+				colorI += diffuseCurveI(diffuseI);
+				colorQ += diffuseCurveQ(diffuseQ);
+				colorA += diffuseA;
+				if (colorY < 0) { //clamp just in case
+					colorY = 0;
+					colorI = 0;
+					colorQ = 0;
+				}
+				else if (colorY > 511) {
+					colorY = 511;
+					colorI = 0;
+					colorQ = 0;
+				}
+
+				if (colorA < 0) colorA = 0;
+				else if (colorA > 255) colorA = 255;
+
+				//match to palette color
+				int diffusedYiq[] = { colorY, colorI, colorQ, colorA };
+				matched = c0xp + closestPaletteYiq(reduction, diffusedYiq, palette + c0xp, nColors - c0xp);
+				if (diffusedYiq[3] < 128 && c0xp) matched = 0;
+				DWORD chosen = (palette[matched] & 0xFFFFFF) | (colorA << 24);
+				img[x + y * width] = chosen;
+
+				int chosenYiq[4];
+				encodeColor(chosen, chosenYiq);
+				int offY = colorY - chosenYiq[0];
+				int offI = colorI - chosenYiq[1];
+				int offQ = colorQ - chosenYiq[2];
+				int offA = colorA - chosenYiq[3];
+
+				//now diffuse to neighbors
+				int *diffNextPixel = thisDiffuse + (x + 1 + hDirection) * 4 + 0;
+				int *diffDownPixel = nextDiffuse + (x + 1) * 4 + 0;
+				int *diffNextDownPixel = nextDiffuse + (x + 1 + hDirection) * 4 + 0;
+				int *diffBackDownPixel = nextDiffuse + (x + 1 - hDirection) * 4 + 0;
+
+				diffNextPixel[0] += offY * 7;
+				diffNextPixel[1] += offI * 7;
+				diffNextPixel[2] += offQ * 7;
+				diffNextPixel[3] += offA * 7;
+				diffDownPixel[0] += offY * 5;
+				diffDownPixel[1] += offI * 5;
+				diffDownPixel[2] += offQ * 5;
+				diffDownPixel[3] += offA * 5;
+				diffBackDownPixel[0] += offY * 3;
+				diffBackDownPixel[1] += offI * 3;
+				diffBackDownPixel[2] += offQ * 3;
+				diffBackDownPixel[3] += offA * 3;
+				diffNextDownPixel[0] += offY * 1;
+				diffNextDownPixel[1] += offI * 1;
+				diffNextDownPixel[2] += offQ * 1;
+				diffNextDownPixel[3] += offA * 1;
+
+			} else {
+				//anomaly in the picture, just match the original color. Don't diffuse, it'll cause issues.
+				//That or the color is pretty homogeneous here, so dithering is bad anyway.
+				if (c0xp && touchAlpha) {
+					if (centerYiq[3] < 128) {
+						centerYiq[0] = 0;
+						centerYiq[1] = 0;
+						centerYiq[2] = 0;
+						centerYiq[3] = 0;
+					}
+				}
+
+				matched = c0xp + closestPaletteYiq(reduction, centerYiq, palette + c0xp, nColors - c0xp);
+				if (c0xp && centerYiq[3] < 128) matched = 0;
+				DWORD chosen = (palette[matched] & 0xFFFFFF) | (centerYiq[3] << 24);
+				img[x + y * width] = chosen;
+			}
+
+			x += hDirection;
+		}
+
+		//swap row buffers
+		int *temp = thisRow;
+		thisRow = lastRow;
+		lastRow = temp;
+		temp = nextDiffuse;
+		nextDiffuse = thisDiffuse;
+		thisDiffuse = temp;
+		memset(nextDiffuse, 0, 16 * (width + 2));
+	}
+
+	free(thisRow);
+	free(lastRow);
+	free(thisDiffuse);
+	free(nextDiffuse);
+
+	destroyReduction(reduction);
+	free(reduction);
+}

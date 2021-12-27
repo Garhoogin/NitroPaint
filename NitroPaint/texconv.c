@@ -80,6 +80,7 @@ int convertPalette(CREATEPARAMS *params) {
 	//allocate texel space.
 	int nBytes = width * height * bitsPerPixel / 8;
 	BYTE *txel = (BYTE *) calloc(nBytes, 1);
+	if (params->dither) ditherImagePalette(params->px, width, height, palette, nColors, FALSE, hasTransparent, params->diffuseAmount);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
@@ -88,13 +89,6 @@ int convertPalette(CREATEPARAMS *params) {
 		RGB error;
 		if (p & 0xFF000000) index = closestpalette(*(RGB *) &p, (RGB *) palette + hasTransparent, nColors - hasTransparent, &error) + hasTransparent;
 		txel[i / pixelsPerByte] |= index << (bitsPerPixel * (i & (pixelsPerByte - 1)));
-		if (params->dither) {				
-			DWORD back = palette[index];
-			int errorRed = (back & 0xFF) - (p & 0xFF);
-			int errorGreen = ((back >> 8) & 0xFF) - ((p >> 8) & 0xFF);
-			int errorBlue = ((back >> 16) & 0xFF) - ((p >> 16) & 0xFF);
-			doDiffuse(i, width, height, params->px, -errorRed, -errorGreen, -errorBlue, 0, params->diffuseAmount);
-		}
 	}
 
 	//update texture info
@@ -149,6 +143,7 @@ int convertTranslucent(CREATEPARAMS *params) {
 	//allocate texel space.
 	int nBytes = width * height;
 	BYTE *txel = (BYTE *) calloc(nBytes, 1);
+	if (params->dither) ditherImagePalette(params->px, width, height, palette, nColors, FALSE, FALSE, params->diffuseAmount);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
@@ -159,11 +154,8 @@ int convertTranslucent(CREATEPARAMS *params) {
 		txel[i] = index | (alpha << alphaShift);
 		if (params->dither) {				
 			DWORD back = palette[index];
-			int errorRed = (back & 0xFF) - (p & 0xFF);
-			int errorGreen = ((back >> 8) & 0xFF) - ((p >> 8) & 0xFF);
-			int errorBlue = ((back >> 16) & 0xFF) - ((p >> 16) & 0xFF);
 			int errorAlpha = ((back >> 24) & 0xFF) - ((p >> 24) & 0xFF);
-			doDiffuse(i, width, height, params->px, -errorRed, -errorGreen, -errorBlue, params->ditherAlpha ? -errorAlpha : 0, params->diffuseAmount);
+			doDiffuse(i, width, height, params->px, 0, 0, 0, params->ditherAlpha ? -errorAlpha : 0, params->diffuseAmount);
 		}
 	}
 

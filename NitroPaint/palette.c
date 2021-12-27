@@ -164,6 +164,12 @@ void convertRGBToYUV(int r, int g, int b, int *y, int *u, int *v) {
 	*v = (int) ( 0.5000 * r - 0.4187 * g - 0.0813 * b);
 }
 
+void convertYUVToRGB(int y, int u, int v, int *r, int *g, int *b) {
+	*r = (int) (y - 0.00004f * u + 1.40199f * v);
+	*g = (int) (y - 0.34408f * u - 0.71389f * v);
+	*b = (int) (y + 1.77180f * u - 0.00126f * v);
+}
+
 int pixelCompare(const void *p1, const void *p2) {
 	return *(DWORD *) p1 - (*(DWORD *) p2);
 }
