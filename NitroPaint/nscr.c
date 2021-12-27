@@ -641,6 +641,9 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 
 		//match colors
 		DWORD *pal = palette + (bestPalette << nBits);
+
+		//do optional dithering (also matches colors at the same time)
+		if(dither) ditherImagePalette(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse);
 		for (int j = 0; j < 64; j++) {
 			DWORD col = tile->px[j];
 			int index = 0;
@@ -654,17 +657,6 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 				tile->indices[j] = index;
 			}
 			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
-
-			//diffuse
-			if (dither && index) {
-				DWORD chosen = pal[index];
-
-				int er = (col & 0xFF) - (chosen & 0xFF);
-				int eg = ((col >> 8) & 0xFF) - ((chosen >> 8) & 0xFF);
-				int eb = ((col >> 16) & 0xFF) - ((chosen >> 16) & 0xFF);
-
-				doDiffuse(j, 8, 8, tile->px, er, eg, eb, 0, diffuse);
-			}
 		}
 		tile->masterTile = i;
 		tile->nRepresents = 1;

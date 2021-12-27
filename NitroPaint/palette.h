@@ -25,7 +25,7 @@ closestpalette(RGB rgb, RGB * palette, int paletteSize, RGB * error);
 
 void doDiffuse(int i, int width, int height, unsigned int * pixels, int errorRed, int errorGreen, int errorBlue, int errorAlpha, float amt);
 
-void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int nColors, BOOL touchAlpha, int c0xp, float diffuse);
+void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int nColors, BOOL touchAlpha, BOOL binaryAlpha, int c0xp, float diffuse);
 
 DWORD averageColor(DWORD *cols, int nColors);
 

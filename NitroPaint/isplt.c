@@ -112,6 +112,7 @@ void *allocateEntry(ALLOCATOR *allocator, int size) {
 }
 
 void histogramAddColor(HISTOGRAM *histogram, int y, int i, int q, int a, double weight) {
+	if (a == 0) return;
 	int slotIndex = (q + (y * 64 + i) * 4 + 0x60E + a) & 0x1FFFF;
 
 	HIST_ENTRY *slot = histogram->entries[slotIndex];
@@ -200,7 +201,7 @@ void encodeColor(DWORD rgb, int *yiq) {
 	yiq[0] = yInt;
 	yiq[1] = iInt;
 	yiq[2] = qInt;
-	yiq[3] = 0xFF;
+	yiq[3] = (rgb >> 24) & 0xFF;
 }
 
 void decodeColor(int *rgb, int *in) {
@@ -665,6 +666,10 @@ void optimizePalette(REDUCTION *reduction) {
 	treeHead->endIndex = reduction->histogram->nEntries;
 
 	reduction->colorTreeHead = treeHead;
+	if (reduction->histogram->nEntries == 0) {
+		reduction->nUsedColors = 0;
+		return;
+	}
 	setupLeaf(reduction, treeHead);
 
 	int numberOfTreeElements = 0;
@@ -1242,7 +1247,7 @@ int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, DWORD *palette, int n
 	return minIndex;
 }
 
-void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int nColors, BOOL touchAlpha, int c0xp, float diffuse) {
+void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int nColors, BOOL touchAlpha, BOOL binaryAlpha, int c0xp, float diffuse) {
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
 	initReduction(reduction, 20, 20, 15, FALSE, nColors);
 
@@ -1286,7 +1291,7 @@ void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int n
 						  + lastRow[x * 4 + 2] * 2 + lastRow[(x + 2) * 4 + 2] * 2) / 16;
 			int colorA = thisRow[(x + 1) * 4 + 3];
 
-			if (touchAlpha && c0xp) {
+			if (touchAlpha && binaryAlpha) {
 				if (colorA < 128) {
 					colorY = 0;
 					colorI = 0;
@@ -1337,7 +1342,7 @@ void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int n
 				int diffuseQ = thisDiffuse[(x + 1) * 4 + 2] * diffuse / 16;
 				int diffuseA = thisDiffuse[(x + 1) * 4 + 3] * diffuse / 16;
 
-				if (!touchAlpha || c0xp) diffuseA = 0; //don't diffuse alpha if no alpha channel, or we're told not to
+				if (!touchAlpha || binaryAlpha) diffuseA = 0; //don't diffuse alpha if no alpha channel, or we're told not to
 
 				colorY += diffuseCurveY(diffuseY);
 				colorI += diffuseCurveI(diffuseI);
@@ -1377,22 +1382,24 @@ void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int n
 				int *diffNextDownPixel = nextDiffuse + (x + 1 + hDirection) * 4 + 0;
 				int *diffBackDownPixel = nextDiffuse + (x + 1 - hDirection) * 4 + 0;
 
-				diffNextPixel[0] += offY * 7;
-				diffNextPixel[1] += offI * 7;
-				diffNextPixel[2] += offQ * 7;
-				diffNextPixel[3] += offA * 7;
-				diffDownPixel[0] += offY * 5;
-				diffDownPixel[1] += offI * 5;
-				diffDownPixel[2] += offQ * 5;
-				diffDownPixel[3] += offA * 5;
-				diffBackDownPixel[0] += offY * 3;
-				diffBackDownPixel[1] += offI * 3;
-				diffBackDownPixel[2] += offQ * 3;
-				diffBackDownPixel[3] += offA * 3;
-				diffNextDownPixel[0] += offY * 1;
-				diffNextDownPixel[1] += offI * 1;
-				diffNextDownPixel[2] += offQ * 1;
-				diffNextDownPixel[3] += offA * 1;
+				if (colorA >= 128 || !binaryAlpha) { //don't dither if there's no alpha channel and this is transparent!
+					diffNextPixel[0] += offY * 7;
+					diffNextPixel[1] += offI * 7;
+					diffNextPixel[2] += offQ * 7;
+					diffNextPixel[3] += offA * 7;
+					diffDownPixel[0] += offY * 5;
+					diffDownPixel[1] += offI * 5;
+					diffDownPixel[2] += offQ * 5;
+					diffDownPixel[3] += offA * 5;
+					diffBackDownPixel[0] += offY * 3;
+					diffBackDownPixel[1] += offI * 3;
+					diffBackDownPixel[2] += offQ * 3;
+					diffBackDownPixel[3] += offA * 3;
+					diffNextDownPixel[0] += offY * 1;
+					diffNextDownPixel[1] += offI * 1;
+					diffNextDownPixel[2] += offQ * 1;
+					diffNextDownPixel[3] += offA * 1;
+				}
 
 			} else {
 				//anomaly in the picture, just match the original color. Don't diffuse, it'll cause issues.

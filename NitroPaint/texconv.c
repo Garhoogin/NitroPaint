@@ -80,7 +80,7 @@ int convertPalette(CREATEPARAMS *params) {
 	//allocate texel space.
 	int nBytes = width * height * bitsPerPixel / 8;
 	BYTE *txel = (BYTE *) calloc(nBytes, 1);
-	if (params->dither) ditherImagePalette(params->px, width, height, palette, nColors, FALSE, hasTransparent, params->diffuseAmount);
+	if (params->dither) ditherImagePalette(params->px, width, height, palette, nColors, FALSE, TRUE, hasTransparent, params->diffuseAmount);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
@@ -143,7 +143,7 @@ int convertTranslucent(CREATEPARAMS *params) {
 	//allocate texel space.
 	int nBytes = width * height;
 	BYTE *txel = (BYTE *) calloc(nBytes, 1);
-	if (params->dither) ditherImagePalette(params->px, width, height, palette, nColors, FALSE, FALSE, params->diffuseAmount);
+	if (params->dither) ditherImagePalette(params->px, width, height, palette, nColors, FALSE, FALSE, FALSE, params->diffuseAmount);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
