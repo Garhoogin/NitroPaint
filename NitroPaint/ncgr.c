@@ -267,8 +267,8 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 					BYTE *indices = buffer + offset;
 					for (int j = 0; j < 8; j++) {
 						for (int i = 0; i < 4; i++) {
-							tile[i * 2 + j * 8] = indices[i + j * 4] & 0xF;
-							tile[i * 2 + 1 + j * 8] = indices[i + j * 4] >> 4;
+							tile[i * 2 + j * 8] = indices[i + j * 4 * tilesX] & 0xF;
+							tile[i * 2 + 1 + j * 8] = indices[i + j * 4 * tilesX] >> 4;
 						}
 					}
 				}
