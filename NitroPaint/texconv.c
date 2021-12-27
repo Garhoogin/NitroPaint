@@ -248,7 +248,8 @@ void getColorBounds(DWORD *px, int nPx, DWORD *colorMin, DWORD *colorMax) {
 	}
 
 	DWORD cols[2];
-	getColorEndPoints(px, nPx, cols);
+	int nCol = createPaletteSlowEx(px, 4, nPx / 4, cols, 2, 20, 20, FALSE, TRUE);
+	if (nCol < 2) cols[1] = cols[0];
 	*colorMin = cols[0];
 	*colorMax = cols[1];
 
