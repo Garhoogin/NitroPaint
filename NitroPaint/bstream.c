@@ -79,15 +79,7 @@ int bstreamCompress(BSTREAM *stream, int algorithm, int start, int size) {
 	//compress section
 	char *compressed = NULL;
 	int compressedSize = size;
-	switch (algorithm) {
-		case COMPRESSION_LZ77:
-			compressed = lz77compress(src, size, &compressedSize);
-			break;
-		default:
-			compressed = malloc(size);
-			memcpy(compressed, src, size);
-			break;
-	}
+	compressed = compress(src, size, algorithm, &compressedSize);
 
 	//insert section
 	int beforeCompressed = start;

@@ -8,7 +8,7 @@
 #include "texture.h"
 #include "gdip.h"
 
-LPCWSTR compressionNames[] = { L"None", L"LZ77", NULL };
+LPCWSTR compressionNames[] = { L"None", L"LZ77", L"LZ11", L"LZ11 COMP", NULL };
 
 int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;
@@ -153,15 +153,8 @@ void fileCompress(LPWSTR name, int compression) {
 	CloseHandle(hFile);
 	int compressedSize;
 	char *compressedBuffer;
-	switch (compression) {
-		case COMPRESSION_NONE:
-			compressedBuffer = buffer;
-			compressedSize = dwSizeLow;
-			break;
-		case COMPRESSION_LZ77:
-			compressedBuffer = lz77compress(buffer, dwSizeLow, &compressedSize);
-			break;
-	}
+	compressedBuffer = compress(buffer, dwSizeLow, compression, &compressedSize);
+
 	hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	WriteFile(hFile, compressedBuffer, compressedSize, &dwWritten, NULL);
 	CloseHandle(hFile);
