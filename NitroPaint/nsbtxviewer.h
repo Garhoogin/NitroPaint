@@ -12,6 +12,7 @@ typedef struct {
 
 	HWND hWndTextureSelect;
 	HWND hWndPaletteSelect;
+	HWND hWndExportAll;
 	HWND hWndReplaceButton;
 } NSBTXVIEWERDATA;
 
