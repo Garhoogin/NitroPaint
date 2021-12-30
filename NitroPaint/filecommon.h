@@ -29,14 +29,39 @@ extern LPCWSTR compressionNames[];
 
 LPCWSTR *getFormatNamesFromType(int type);
 
+//
+// Identify the type of a file based on its bytes and file name. File name is
+// is only used as a fallback when regular detection becomes too vague to rely
+// on.
+//
 int fileIdentify(char *file, int size, LPCWSTR path);
 
+//
+// Compute CRC16 checksum for an array of bytes.
+//
+unsigned short computeCrc16(unsigned char *data, int length, unsigned short init);
+
+//
+// Compress a file given its path using the specified compression type.
+//
 void fileCompress(LPWSTR name, int compression);
 
+//
+// Free the resources held by an open file, after which it can be safely freed
+//
 void fileFree(OBJECT_HEADER *header);
 
+//
+// Read an entire file into memory from path. No decompression is performed.
+//
 void *fileReadWhole(LPCWSTR name, int *size);
 
+//
+// Reads a file into the specified object with the given reader function.
+//
 int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);
 
+//
+// Writes a file to the disk using a provided writer function.
+//
 int fileWrite(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer);

@@ -212,6 +212,8 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			break;
 		case FILE_TYPE_COMBO2D:
 		{
+			int type = combo2dIsValid(buffer, dwSize);
+
 			//if there is already an NCLR open, close it.
 			if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
 			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
@@ -222,20 +224,28 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 
 			//if there is already an NSCR open, close it.
-			if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
-			data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			if (type == COMBO2D_TYPE_TIMEACE) {
+				if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
+				data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			}
 
 			//create a combo frame
 			COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-			NCLR *nclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
-			NCGR *ncgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
-			NSCR *nscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->nscr;
+			combo2dRead(combo, buffer, dwSize);
+			NCLR *nclr = NULL;
+			NCGR *ncgr = NULL;
+			NSCR *nscr = NULL;
+
+			if (combo2dFormatHasPalette(type)) nclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
+			if (combo2dFormatHasCharacter(type)) ncgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
+			if (combo2dFormatHasScreen(type)) nscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->nscr;
+
 			combo->nclr = nclr;
 			combo->ncgr = ncgr;
 			combo->nscr = nscr;
-			nclr->combo2d = combo;
-			ncgr->combo2d = combo;
-			nscr->combo2d = combo;
+			if(nclr != NULL) nclr->combo2d = combo;
+			if(ncgr != NULL) ncgr->combo2d = combo;
+			if(nscr != NULL) nscr->combo2d = combo;
 
 			combo->header.compression = COMPRESSION_NONE;
 			combo->header.dispose = NULL;
@@ -370,13 +380,13 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_FILE_OPEN40085:
 					{
 						LPWSTR path = openFileDialog(hWnd, L"Open", 
-													 L"All Supported Files\0*.nclr;*.rlcn;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.char;*.nscr;*.rcsn;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.tga\0"
+													 L"All Supported Files\0*.nclr;*.rlcn;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.char;*.nscr;*.rcsn;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bnr;*.tga\0"
 													 L"Palette Files (*.nclr, *.rlcn, *ncl.bin, *icl.bin, *.ntfp, *.nbfp, *.pltt, *.bin)\0*.nclr;*.rlcn;*ncl.bin;*.ntfp;*.nbfp;*.pltt;*.bin\0"
 													 L"Graphics Files (*.ncgr, *.rgcn, *.ncbr, *ncg.bin, *icg.bin, *.nbfc, *.char, *.bin)\0*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.char;*.bin\0"
 													 L"Screen Files (*.nscr, *.rcsn, *nsc.bin, *isc.bin, *.nbfs, *.bin)\0*.nscr;*.rcsn;*.nbfs;*.bin\0"
 													 L"Cell Files (*.ncer, *.recn, *.bin)\0*.ncer;*.recn;*.bin\0"
 													 L"Animation Files (*.nanr, *.rnan)\0*.nanr;*.rnan\0"
-													 L"Combination Files (*.dat)\0*.dat\0"
+													 L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0"
 													 L"Texture Archives (*.nsbtx, *.nsbmd)\0*.nsbtx;*.nsbmd\0"
 													 L"Textures (*.tga)\0*.tga\0"
 													 L"All Files (*.*)\0*.*\0",

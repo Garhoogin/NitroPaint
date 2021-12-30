@@ -50,7 +50,10 @@ void ncgrFree(OBJECT_HEADER *header) {
 	COMBO2D *combo = ncgr->combo2d;
 	if (ncgr->combo2d != NULL) {
 		ncgr->combo2d->ncgr = NULL;
-		if (combo->nclr == NULL && combo->ncgr == NULL && combo->nscr == NULL) free(combo);
+		if (combo->nclr == NULL && combo->ncgr == NULL && combo->nscr == NULL) {
+			combo2dFree(combo);
+			free(combo);
+		}
 	}
 	ncgr->combo2d = NULL;
 }
@@ -126,17 +129,40 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 }
 
 int ncgrReadCombo(NCGR *ncgr, char *buffer, int size) {
+	int format = combo2dIsValid(buffer, size);
+
 	ncgr->header.compression = COMPRESSION_NONE;
 	ncgr->header.dispose = ncgrFree;
 	ncgr->header.size = sizeof(NCGR);
 	ncgr->header.type = FILE_TYPE_CHARACTER;
 	ncgr->header.format = NCGR_TYPE_COMBO;
-	ncgr->nTiles = *(int *) (buffer + 0xA08);
-	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
-	ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
-	ncgr->tilesX = calculateWidth(ncgr->nTiles);
-	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-	ncgr->combo2d = NULL;
+
+	int charOffset = 0;
+	switch (format) {
+		case COMBO2D_TYPE_TIMEACE:
+		{
+			ncgr->nTiles = *(int *) (buffer + 0xA08);
+			ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
+			ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
+			ncgr->tilesX = calculateWidth(ncgr->nTiles);
+			ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+			ncgr->combo2d = NULL;
+			charOffset = 0xA0C;
+			break;
+		}
+		case COMBO2D_TYPE_BANNER:
+		{
+			ncgr->nTiles = 16;
+			ncgr->tileWidth = 8;
+			ncgr->tilesX = 4;
+			ncgr->tilesY = 4;
+			ncgr->nBits = 4;
+			ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+			ncgr->combo2d = NULL;
+			charOffset = 0x20;
+			break;
+		}
+	}
 
 	int nTiles = ncgr->nTiles;
 	BYTE **tiles = (BYTE **) calloc(nTiles, sizeof(BYTE *));
@@ -145,9 +171,9 @@ int ncgrReadCombo(NCGR *ncgr, char *buffer, int size) {
 		tiles[i] = tile;
 
 		if (ncgr->nBits == 8) {
-			memcpy(tile, buffer + 0xA0C + i * 0x40, 0x40);
+			memcpy(tile, buffer + charOffset + i * 0x40, 0x40);
 		} else {
-			BYTE *src = buffer + 0xA0C + i * 0x20;
+			BYTE *src = buffer + charOffset + i * 0x20;
 			for (int j = 0; j < 32; j++) {
 				BYTE b = src[j];
 				tile[j * 2] = b & 0xF;
@@ -155,9 +181,8 @@ int ncgrReadCombo(NCGR *ncgr, char *buffer, int size) {
 			}
 		}
 	}
-
-
 	ncgr->tiles = tiles;
+
 	return 0;
 }
 
@@ -194,8 +219,8 @@ int ncgrReadBin(NCGR *ncgr, char *buffer, int size) {
 int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	if (*(DWORD *) buffer != 0x4E434752) {
 		if (ncgrIsValidHudson(buffer, size)) return hudsonReadCharacter(ncgr, buffer, size);
-		if (ncgrIsValidBin(buffer, size)) return ncgrReadBin(ncgr, buffer, size);
 		if (combo2dIsValid(buffer, size)) return ncgrReadCombo(ncgr, buffer, size);
+		if (ncgrIsValidBin(buffer, size)) return ncgrReadBin(ncgr, buffer, size);
 	}
 	if (size < 0x10) return 1;
 	DWORD magic = *(DWORD *) buffer;

@@ -144,6 +144,23 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 	return type;
 }
 
+unsigned short computeCrc16(unsigned char *data, int length, unsigned short init) {
+	unsigned short r = init;
+	unsigned short tbl[] = { 
+		0x0000, 0xCC01, 0xD801, 0x1400, 
+		0xF001, 0x3C00, 0x2800, 0xE401, 
+		0xA001, 0x6C00, 0x7800, 0xB401, 
+		0x5000, 0x9C01, 0x8801, 0x4400 
+	};
+
+	for (int i = 0; i < length; i++) {
+		unsigned short c = (tbl[*data & 0xF] ^ (r >> 4)) ^ tbl[r & 0xF];
+		r = (tbl[*data >> 4] ^ (c >> 4)) ^ tbl[c & 0xF];
+		data++;
+	}
+	return r;
+}
+
 void fileCompress(LPWSTR name, int compression) {
 	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeLow, dwSizeHigh, dwRead, dwWritten;

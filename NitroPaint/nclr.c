@@ -14,7 +14,10 @@ void nclrFree(OBJECT_HEADER *header) {
 	COMBO2D *combo2d = nclr->combo2d;
 	if (nclr->combo2d != NULL) {
 		nclr->combo2d->nclr = NULL;
-		if (combo2d->nclr == NULL && combo2d->ncgr == NULL && combo2d->nscr == NULL) free(combo2d);
+		if (combo2d->nclr == NULL && combo2d->ncgr == NULL && combo2d->nscr == NULL) {
+			combo2dFree(combo2d);
+			free(combo2d);
+		}
 	}
 	nclr->combo2d = NULL;
 }
@@ -57,20 +60,37 @@ int binPaletteRead(NCLR *nclr, char *buffer, int size) {
 }
 
 int comboReadPalette(NCLR *nclr, char *buffer, int size) {
+	int type = combo2dIsValid(buffer, size);
+
 	nclr->header.compression = COMPRESSION_NONE;
 	nclr->header.dispose = nclrFree;
 	nclr->header.size = sizeof(NCLR);
 	nclr->header.type = FILE_TYPE_PALETTE;
 	nclr->header.format = NCLR_TYPE_COMBO;
-	nclr->nColors = 256;
-	nclr->extPalette = 0;
-	nclr->idxTable = NULL;
-	nclr->nBits = 4;
-	nclr->nPalettes = 0;
-	nclr->totalSize = 256;
-	nclr->combo2d = NULL;
-	nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
-	memcpy(nclr->colors, buffer + 4, 512);
+	switch (type) {
+		case COMBO2D_TYPE_TIMEACE:
+			nclr->nColors = 256;
+			nclr->extPalette = 0;
+			nclr->idxTable = NULL;
+			nclr->nBits = 4;
+			nclr->nPalettes = 0;
+			nclr->totalSize = 256;
+			nclr->combo2d = NULL;
+			nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
+			memcpy(nclr->colors, buffer + 4, 512);
+			break;
+		case COMBO2D_TYPE_BANNER:
+			nclr->nColors = 16;
+			nclr->extPalette = 0;
+			nclr->idxTable = NULL;
+			nclr->nBits = 4;
+			nclr->nPalettes = 0;
+			nclr->totalSize = 16;
+			nclr->combo2d = NULL;
+			nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
+			memcpy(nclr->colors, buffer + 0x220, 32);
+			break;
+	}
 
 	return 0;
 }
