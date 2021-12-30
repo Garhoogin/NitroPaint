@@ -1,4 +1,3 @@
-#include <Windows.h>
 #include <math.h>
 
 #include "color.h"
@@ -18,7 +17,7 @@ typedef struct HIST_ENTRY_ {
 
 //structure for a node in the color tree
 typedef struct COLOR_NODE_ {
-	BOOL isLeaf;
+	int isLeaf;
 	double weight;
 	double priority;
 	int y;
@@ -53,8 +52,8 @@ typedef struct REDUCTION_ {
 	int balance;
 	int colorBalance;
 	int shiftColorBalance;
-	BOOL enhanceColors;
-	BOOL maskColors;
+	int enhanceColors;
+	int maskColors;
 	int optimization;
 	HISTOGRAM *histogram;
 	HIST_ENTRY **histogramFlat;
@@ -76,7 +75,7 @@ typedef struct {
 	double weight;
 } COLOR_INFO; 
 
-void initReduction(REDUCTION *reduction, int balance, int colorBalance, int optimization, BOOL enhanceColors, unsigned int nColors) {
+void initReduction(REDUCTION *reduction, int balance, int colorBalance, int optimization, int enhanceColors, unsigned int nColors) {
 	memset(reduction, 0, sizeof(REDUCTION));
 	reduction->balance = 60 - balance;
 	reduction->colorBalance = colorBalance;
@@ -155,7 +154,7 @@ void histogramAddColor(HISTOGRAM *histogram, int y, int i, int q, int a, double 
 	}
 }
 
-void encodeColor(DWORD rgb, int *yiq) {
+void encodeColor(COLOR32 rgb, int *yiq) {
 	double doubleR = (double) (rgb & 0xFF);
 	double doubleG = (double) ((rgb >> 8) & 0xFF);
 	double doubleB = (double) ((rgb >> 16) & 0xFF);
@@ -261,7 +260,7 @@ void flattenHistogram(REDUCTION *reduction) {
 	}
 }
 
-void computeHistogram(REDUCTION *reduction, DWORD *img, int width, int height) {
+void computeHistogram(REDUCTION *reduction, COLOR32 *img, int width, int height) {
 	int iMask = 0xFFFFFFFF, qMask = 0xFFFFFFFF;
 	if (reduction->optimization < 5) {
 		qMask = 0xFFFFFFFE;
@@ -291,7 +290,7 @@ void computeHistogram(REDUCTION *reduction, DWORD *img, int width, int height) {
 	}
 }
 
-void freeColorTree(COLOR_NODE *colorBlock, BOOL freeThis) {
+void freeColorTree(COLOR_NODE *colorBlock, int freeThis) {
 	if (colorBlock->left != NULL) {
 		freeColorTree(colorBlock->left, TRUE);
 		colorBlock->left = NULL;
@@ -654,7 +653,7 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 	free(colorInfo);
 }
 
-DWORD maskColor(DWORD color) {
+COLOR32 maskColor(COLOR32 color) {
 	return ColorConvertFromDS(ColorConvertToDS(color & 0xFFFFFF));
 }
 
@@ -732,9 +731,9 @@ void optimizePalette(REDUCTION *reduction) {
 				decodeColor(decodedRight, &colorBlock->right->y);
 				int leftAlpha = colorBlock->left->a;
 				int rightAlpha = colorBlock->right->a;
-				DWORD leftRgb = decodedLeft[0] | (decodedLeft[1] << 8) | (decodedLeft[2] << 16);
-				DWORD rightRgb = decodedRight[0] | (decodedRight[1] << 8) | (decodedRight[2] << 16);
-				DWORD maskedLeft = maskColor(leftRgb), maskedRight = maskColor(rightRgb);
+				COLOR32 leftRgb = decodedLeft[0] | (decodedLeft[1] << 8) | (decodedLeft[2] << 16);
+				COLOR32 rightRgb = decodedRight[0] | (decodedRight[1] << 8) | (decodedRight[2] << 16);
+				COLOR32 maskedLeft = maskColor(leftRgb), maskedRight = maskColor(rightRgb);
 				if (!reduction->maskColors) maskedLeft = leftRgb, maskedRight = rightRgb;
 
 				if (maskedLeft == maskedRight && leftAlpha == rightAlpha) {
@@ -868,7 +867,7 @@ void resetHistogram(REDUCTION *reduction) {
 
 extern int lightnessCompare(const void *d1, const void *d2);
 
-int createPaletteSlow(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) {
+int createPaletteSlow(COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors) {
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
 	initReduction(reduction, 20, 20, 15, FALSE, nColors);
 	computeHistogram(reduction, img, width, height);
@@ -890,7 +889,7 @@ int createPaletteSlow(DWORD *img, int width, int height, DWORD *pal, unsigned in
 }
 
 typedef struct {
-	DWORD rgb[64];
+	COLOR32 rgb[64];
 	BYTE indices[64];
 	int palette[16][4]; //YIQ
 	int useCounts[16];
@@ -899,13 +898,13 @@ typedef struct {
 	unsigned short nSwallowed;
 } TILE;
 
-void copyTile(TILE *dest, DWORD *pxOrigin, int width) {
+void copyTile(TILE *dest, COLOR32 *pxOrigin, int width) {
 	for (int y = 0; y < 8; y++) {
 		memcpy(dest->rgb + y * 8, pxOrigin + y * width, 32);
 	}
 }
 
-int findClosestPaletteColorRGB(int *palette, int nColors, DWORD col, int *outDiff) {
+int findClosestPaletteColorRGB(int *palette, int nColors, COLOR32 col, int *outDiff) {
 	int rgb[4];
 	int y, u, v;
 	convertRGBToYUV(col & 0xFF, (col >> 8) & 0xFF, (col >> 16) & 0xFF, &y, &u, &v);
@@ -998,7 +997,7 @@ done:
 	return leastDiff;
 }
 
-void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest, int paletteBase, int nPalettes,
+void createMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
 							  int paletteSize, int nColsPerPalette, int paletteOffset, int *progress) {
 	if (nPalettes == 0) return;
 	if (nPalettes == 1) {
@@ -1023,11 +1022,11 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
 	initReduction(reduction, 20, 20, 15, FALSE, nColsPerPalette);
 	reduction->maskColors = FALSE;
-	DWORD palBuf[16];
+	COLOR32 palBuf[16];
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			TILE *tile = tiles + x + (y * tilesX);
-			DWORD *pxOrigin = imgBits + x * 8 + (y * 8 * tilesX * 8);
+			COLOR32 *pxOrigin = imgBits + x * 8 + (y * 8 * tilesX * 8);
 			copyTile(tile, pxOrigin, tilesX * 8);
 
 			//createPaletteSlow(tile->rgb, 8, 8, palBuf + 1, 15);
@@ -1107,11 +1106,11 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 
 		//write over the palette of the tile
 		TILE *palTile = tiles + index1;
-		DWORD palBuf[16];
+		COLOR32 palBuf[16];
 		for (int i = 0; i < 15; i++) {
 			int *yiqDest = &palTile->palette[i][0];
 			BYTE *srcRgb = &reduction->paletteRgb[i][0];
-			DWORD rgb = srcRgb[0] | (srcRgb[1] << 8) | (srcRgb[2] << 16);
+			COLOR32 rgb = srcRgb[0] | (srcRgb[1] << 8) | (srcRgb[2] << 16);
 			palBuf[i] = rgb;
 			encodeColor(rgb, yiqDest);
 		}
@@ -1126,7 +1125,7 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 			if (tile->palIndex != index1) continue;
 
 			for (int j = 0; j < 64; j++) {
-				DWORD col = tile->rgb[j];
+				COLOR32 col = tile->rgb[j];
 				int index = findClosestPaletteColorRGB(&tile->palette[0][0], tile->nUsedColors, tile->rgb[i], NULL);
 				if ((col >> 24) == 0) index = 15;
 				tile->indices[j] = index;
@@ -1155,7 +1154,7 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 		TILE *t = tiles + i;
 		if (t->palIndex != i) continue;
 		
-		DWORD palBuf[16] = { 0 };
+		COLOR32 palBuf[16] = { 0 };
 		if(paletteOffset == 0) palBuf[0] = 0xFF00FF;
 		for (int j = 0; j < 15; j++) {
 			int rgb[4];
@@ -1174,7 +1173,7 @@ void createMultiplePalettes(DWORD *imgBits, int tilesX, int tilesY, DWORD *dest,
 	free(diffBuff);
 }
 
-int createPaletteSlowEx(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors, int balance, int colorBalance, BOOL enhanceColors, BOOL sortOnlyUsed) {
+int createPaletteSlowEx(COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, int sortOnlyUsed) {
 	REDUCTION *reduction = (REDUCTION *) calloc(sizeof(REDUCTION), 1);
 
 	initReduction(reduction, balance, colorBalance, 15, enhanceColors, nColors);
@@ -1195,9 +1194,9 @@ int createPaletteSlowEx(DWORD *img, int width, int height, DWORD *pal, unsigned 
 	free(reduction);
 
 	if (sortOnlyUsed) {
-		qsort(pal, nProduced, sizeof(DWORD), lightnessCompare);
+		qsort(pal, nProduced, sizeof(COLOR32), lightnessCompare);
 	} else {
-		qsort(pal, nColors, sizeof(DWORD), lightnessCompare);
+		qsort(pal, nColors, sizeof(COLOR32), lightnessCompare);
 	}
 
 	return nProduced;
@@ -1221,7 +1220,7 @@ int diffuseCurveQ(int x) {
 	return (int) (8.5f + pow(x - 8, 0.85) * 0.89453125);
 }
 
-int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, DWORD *palette, int nColors) {
+int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, COLOR32 *palette, int nColors) {
 	double yw2 = reduction->balance * reduction->balance;
 	double iw2 = reduction->colorBalance * reduction->colorBalance;
 	double qw2 = reduction->shiftColorBalance * reduction->shiftColorBalance;
@@ -1229,7 +1228,7 @@ int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, DWORD *palette, int n
 	double minDistance = 1e32;
 	int minIndex = 0;
 	for (int i = 0; i < nColors; i++) {
-		DWORD rgb = palette[i];
+		COLOR32 rgb = palette[i];
 		int yiq[4];
 		encodeColor(rgb, yiq);
 
@@ -1247,7 +1246,7 @@ int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, DWORD *palette, int n
 	return minIndex;
 }
 
-void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int nColors, BOOL touchAlpha, BOOL binaryAlpha, int c0xp, float diffuse) {
+void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse) {
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
 	initReduction(reduction, 20, 20, 15, FALSE, nColors);
 
@@ -1269,7 +1268,7 @@ void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int n
 
 		//which direction?
 		int hDirection = (y & 1) ? -1 : 1;
-		DWORD *rgbRow = img + y * width;
+		COLOR32 *rgbRow = img + y * width;
 		for (int x = 0; x < width; x++) {
 			encodeColor(rgbRow[x], thisRow + 4 * (x + 1));
 		}
@@ -1304,7 +1303,7 @@ void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int n
 			int colorRgb[4];
 			int colorYiq[] = { colorY, colorI, colorQ, colorA };
 			decodeColor(colorRgb, colorYiq);
-			DWORD sampleRgb = colorRgb[0] | (colorRgb[1] << 8) | (colorRgb[2] << 16);
+			COLOR32 sampleRgb = colorRgb[0] | (colorRgb[1] << 8) | (colorRgb[2] << 16);
 			int matched = c0xp + closestPaletteYiq(reduction, colorYiq, palette + c0xp, nColors - c0xp);
 			if (colorA == 0 && c0xp) matched = 0;
 
@@ -1337,10 +1336,10 @@ void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int n
 			if (centerDistance < 110.0 * balanceSquare && paletteDistance >  2.0 * balanceSquare) {
 				//Yes, we should dither :)
 
-				int diffuseY = thisDiffuse[(x + 1) * 4 + 0] * diffuse / 16; //correct for Floyd-Steinberg coefficients
-				int diffuseI = thisDiffuse[(x + 1) * 4 + 1] * diffuse / 16;
-				int diffuseQ = thisDiffuse[(x + 1) * 4 + 2] * diffuse / 16;
-				int diffuseA = thisDiffuse[(x + 1) * 4 + 3] * diffuse / 16;
+				int diffuseY = (int) (thisDiffuse[(x + 1) * 4 + 0] * diffuse / 16); //correct for Floyd-Steinberg coefficients
+				int diffuseI = (int) (thisDiffuse[(x + 1) * 4 + 1] * diffuse / 16);
+				int diffuseQ = (int) (thisDiffuse[(x + 1) * 4 + 2] * diffuse / 16);
+				int diffuseA = (int) (thisDiffuse[(x + 1) * 4 + 3] * diffuse / 16);
 
 				if (!touchAlpha || binaryAlpha) diffuseA = 0; //don't diffuse alpha if no alpha channel, or we're told not to
 
@@ -1366,7 +1365,7 @@ void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int n
 				int diffusedYiq[] = { colorY, colorI, colorQ, colorA };
 				matched = c0xp + closestPaletteYiq(reduction, diffusedYiq, palette + c0xp, nColors - c0xp);
 				if (diffusedYiq[3] < 128 && c0xp) matched = 0;
-				DWORD chosen = (palette[matched] & 0xFFFFFF) | (colorA << 24);
+				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (colorA << 24);
 				img[x + y * width] = chosen;
 
 				int chosenYiq[4];
@@ -1415,7 +1414,7 @@ void ditherImagePalette(DWORD *img, int width, int height, DWORD *palette, int n
 
 				matched = c0xp + closestPaletteYiq(reduction, centerYiq, palette + c0xp, nColors - c0xp);
 				if (c0xp && centerYiq[3] < 128) matched = 0;
-				DWORD chosen = (palette[matched] & 0xFFFFFF) | (centerYiq[3] << 24);
+				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (centerYiq[3] << 24);
 				img[x + y * width] = chosen;
 			}
 

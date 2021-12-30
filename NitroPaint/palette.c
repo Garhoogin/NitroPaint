@@ -3,25 +3,25 @@
 #include <math.h>
 
 int lightnessCompare(const void *d1, const void *d2) {
-	DWORD c1 = *(DWORD *) d1;
-	DWORD c2 = *(DWORD *) d2;
+	COLOR32 c1 = *(COLOR32 *) d1;
+	COLOR32 c2 = *(COLOR32 *) d2;
 	int y1, u1, v1, y2, u2, v2;
 	convertRGBToYUV(c1 & 0xFF, (c1 >> 8) & 0xFF, (c1 >> 16) & 0xFF, &y1, &u1, &v1);
 	convertRGBToYUV(c2 & 0xFF, (c2 >> 8) & 0xFF, (c2 >> 16) & 0xFF, &y2, &u2, &v2);
 	return y1 - y2;
 }
 
-void createPaletteExact(DWORD *img, int width, int height, DWORD *pal, unsigned int nColors) {
+void createPaletteExact(COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors) {
 	createPaletteSlow(img, width, height, pal, nColors);
 }
 
-void createPalette_(DWORD *img, int width, int height, DWORD *pal, int nColors) {
+void createPalette_(COLOR32 *img, int width, int height, COLOR32 *pal, int nColors) {
 	createPaletteExact(img, width, height, pal + 1, nColors - 1);
 	*pal = 0xFF00FF;
 }
 
 
-closestpalette(RGB rgb, RGB * palette, int paletteSize, RGB * error) {
+int closestpalette(RGB rgb, RGB *palette, int paletteSize, RGB *error) {
 	int smallestDistance = 1 << 24;
 	int index = 0, i = 0;
 	int ey, eu, ev;
@@ -81,44 +81,11 @@ void doDiffuse(int i, int width, int height, unsigned int * pixels, int errorRed
 	}
 }
 
-
-int chunkDeviation(DWORD *block, int width) {
-	//find the average.
-	int nPx = width * width;
-	int avgr = 0, avgg = 0, avgb = 0;
-	for (int i = 0; i < nPx; i++) {
-		DWORD p = block[i];
-		//if (p & 0xFF000000 == 0) continue;
-		avgr += p & 0xFF;
-		avgg += (p >> 8) & 0xFF;
-		avgb += (p >> 16) & 0xFF;
-	}
-	avgr /= nPx;
-	avgg /= nPx;
-	avgb /= nPx;
-
-	//calculate the deviation
-	unsigned int deviation = 0;
-	for (int i = 0; i < nPx; i++) {
-		DWORD p = block[i];
-		int r = p & 0xFF;
-		int g = (p >> 8) & 0xFF;
-		int b = (p >> 16) & 0xFF;
-		int dr = r - avgr;
-		int dg = g - avgg;
-		int db = b - avgb;
-		int c = dr * dr + dg * dg + db * db;
-		deviation += c;
-	}
-	deviation /= nPx;
-	return deviation;
-}
-
-DWORD averageColor(DWORD *cols, int nColors) {
+COLOR32 averageColor(COLOR32 *cols, int nColors) {
 	int tr = 0, tg = 0, tb = 0, ta = 0;
 
 	for (int i = 0; i < nColors; i++) {
-		DWORD c = cols[i];
+		COLOR32 c = cols[i];
 		int a = c >> 24;
 		if (a == 0) continue;
 		ta += a;
@@ -171,12 +138,12 @@ void convertYUVToRGB(int y, int u, int v, int *r, int *g, int *b) {
 }
 
 int pixelCompare(const void *p1, const void *p2) {
-	return *(DWORD *) p1 - (*(DWORD *) p2);
+	return *(COLOR32 *) p1 - (*(COLOR32 *) p2);
 }
 
-int countColors(DWORD *px, int nPx) {
+int countColors(COLOR32 *px, int nPx) {
 	//sort the colors by raw RGB value. This way, same colors are grouped.
-	DWORD *copy = (DWORD *) malloc(nPx * 4);
+	COLOR32 *copy = (COLOR32 *) malloc(nPx * 4);
 	memcpy(copy, px, nPx * 4);
 	qsort(copy, nPx, 4, pixelCompare);
 	int nColors = 0;
@@ -185,11 +152,11 @@ int countColors(DWORD *px, int nPx) {
 		int a = copy[i] >> 24;
 		if (!a) hasTransparent = 1;
 		else {
-			DWORD color = copy[i] & 0xFFFFFF;
+			COLOR32 color = copy[i] & 0xFFFFFF;
 			//has this color come before?
 			int repeat = 0;
 			if(i){
-				DWORD comp = copy[i - 1] & 0xFFFFFF;
+				COLOR32 comp = copy[i - 1] & 0xFFFFFF;
 				if (comp == color) {
 					repeat = 1;
 				}

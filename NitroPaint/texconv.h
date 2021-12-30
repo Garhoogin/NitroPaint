@@ -20,7 +20,7 @@ typedef struct {
 	char pnam[17];
 } CREATEPARAMS;
 
-int countColors(DWORD *px, int nPx);
+int countColors(COLOR32 *px, int nPx);
 
 int convertDirect(CREATEPARAMS *params);
 

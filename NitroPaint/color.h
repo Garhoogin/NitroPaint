@@ -1,6 +1,9 @@
 #pragma once
 
-typedef unsigned short COLOR;
+#include <stdint.h>
+
+typedef uint16_t COLOR;
+typedef uint32_t COLOR32;
 
 #define COLOR_CHANNEL_R 0
 #define COLOR_CHANNEL_G 1
@@ -19,8 +22,8 @@ typedef unsigned short COLOR;
 
 #define ColorCreate(r,g,b) ((COLOR)((r)|((g)<<5)|((b)<<10)))
 
-COLOR ColorConvertToDS(unsigned long c);
+COLOR ColorConvertToDS(COLOR32 c);
 
-unsigned long ColorConvertFromDS(COLOR c);
+COLOR32 ColorConvertFromDS(COLOR c);
 
 COLOR ColorInterpolate(COLOR c1, COLOR c2, float amt);
