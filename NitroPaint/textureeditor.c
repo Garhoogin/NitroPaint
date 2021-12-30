@@ -1278,7 +1278,7 @@ HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndPa
 	return h;
 }
 
-HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPWSTR path) {
+HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	int bWidth, bHeight;
 	DWORD *bits = gdipReadImage(path, &bWidth, &bHeight);
 	if (bits == NULL) {

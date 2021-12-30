@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 
-int g2dIsValid(char *buffer, int size) {
+int g2dIsValid(char *buffer, unsigned int size) {
 	if (size < 0x10) return 0;
 	unsigned short endianness = *(unsigned short *) (buffer + 4);
 	if (endianness != 0xFFFE && endianness != 0xFEFF) return 0;
@@ -22,11 +22,11 @@ int g2dIsValid(char *buffer, int size) {
 	return 1;
 }
 
-int g2dGetNumberOfSections(char *buffer, int size) {
+int g2dGetNumberOfSections(char *buffer, unsigned int size) {
 	return *(unsigned short *) (buffer + 0xE);
 }
 
-char *g2dGetSectionByIndex(char *buffer, int size, int index) {
+char *g2dGetSectionByIndex(char *buffer, unsigned int size, int index) {
 	if (index >= g2dGetNumberOfSections(buffer, size)) return NULL;
 
 	unsigned int offset = *(unsigned short *) (buffer + 0xC);
@@ -40,7 +40,7 @@ char *g2dGetSectionByIndex(char *buffer, int size, int index) {
 	return NULL;
 }
 
-char *g2dGetSectionByMagic(char *buffer, int size, unsigned int sectionMagic) {
+char *g2dGetSectionByMagic(char *buffer, unsigned int size, unsigned int sectionMagic) {
 	int nSections = g2dGetNumberOfSections(buffer, size);
 	unsigned int offset = *(unsigned short *) (buffer + 0xC);
 

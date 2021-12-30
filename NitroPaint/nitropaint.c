@@ -1012,7 +1012,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 						//populate palette name. Scan for last \ or /
 						int lastIndex = -1;
-						int i;
+						unsigned int i;
 						for (i = 0; i < wcslen(src); i++) {
 							if (src[i] == '\\' || src[i] == '/') lastIndex = i;
 						}

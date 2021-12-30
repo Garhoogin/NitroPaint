@@ -58,7 +58,7 @@ int nanrIsValid(LPBYTE lpFile, int size);
 
 int nanrRead(NANR *nanr, LPBYTE lpFile, int size);
 
-int nanrReadFile(NANR *nanr, LPWSTR path);
+int nanrReadFile(NANR *nanr, LPCWSTR path);
 
 int nanrWrite(NANR *nanr, BSTREAM *stream);
 

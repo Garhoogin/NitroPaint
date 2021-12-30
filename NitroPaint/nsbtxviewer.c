@@ -446,7 +446,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							int pltt = guessTexPlttByName(name, palNames, data->nsbtx.nPalettes, &data->nsbtx.textures[i], data->nsbtx.palettes);
 
 							//copy texture name to the end of `path`
-							for (int j = 0; j < strlen(name) + 1; j++) {
+							for (unsigned int j = 0; j < strlen(name) + 1; j++) {
 								path[j + pathLen] = (WCHAR) name[j];
 							}
 							//suffix ".tga"

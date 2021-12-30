@@ -188,12 +188,12 @@ VOID PaintNanrFrame(HWND hWnd, HDC hDC) {
 	}
 	if (nitroPaintStruct->hWndNcgrViewer) {
 		HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-		NCGRVIEWERDATA *ncgrViewerData = (NCLRVIEWERDATA *) GetWindowLong(hWndNcgrViewer, 0);
+		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLong(hWndNcgrViewer, 0);
 		ncgr = &ncgrViewerData->ncgr;
 	}
 	if (nitroPaintStruct->hWndNcerViewer) {
 		HWND hWndNcerViewer = nitroPaintStruct->hWndNcerViewer;
-		NCERVIEWERDATA *ncerViewerData = (NCLRVIEWERDATA *) GetWindowLong(hWndNcerViewer, 0);
+		NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) GetWindowLong(hWndNcerViewer, 0);
 		ncer = &ncerViewerData->ncer;
 	}
 

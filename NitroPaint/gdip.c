@@ -80,7 +80,7 @@ DWORD *readTga(BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight) {
 	return pixels;
 }
 
-DWORD *gdipReadImage(LPWSTR lpszFileName, int *pWidth, int *pHeight) {
+DWORD *gdipReadImage(LPCWSTR lpszFileName, int *pWidth, int *pHeight) {
 	if (!startup) {
 		STARTUPINPUT si = { 0 };
 		si.GdiplusVersion = 1;
@@ -127,7 +127,7 @@ DWORD *gdipReadImage(LPWSTR lpszFileName, int *pWidth, int *pHeight) {
 	return px;
 }
 
-void writeImage(DWORD *px, int width, int height, LPWSTR name) {
+void writeImage(DWORD *px, int width, int height, LPCWSTR name) {
 	if (!startup) {
 		STARTUPINPUT si = { 0 };
 		si.GdiplusVersion = 1;

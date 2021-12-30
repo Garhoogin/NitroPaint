@@ -45,6 +45,11 @@ void combo2dFree(COMBO2D *combo);
 int combo2dIsValid(BYTE *buffer, int size);
 
 //
+// Read a COMBO2D extra data from a buffer, if there is any.
+//
+int combo2dRead(COMBO2D *combo, char *buffer, int size);
+
+//
 // Writes a COMBO2D to a BSTREAM.
 //
 int combo2dWrite(COMBO2D *combo, BSTREAM *stream);

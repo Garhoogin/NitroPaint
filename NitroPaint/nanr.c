@@ -91,7 +91,7 @@ int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
 	return 0;
 }
 
-int nanrReadFile(NANR *nanr, LPWSTR path) {
+int nanrReadFile(NANR *nanr, LPCWSTR path) {
 	return fileRead(path, (OBJECT_HEADER *) nanr, (OBJECT_READER) nanrRead);
 }
 

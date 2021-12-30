@@ -57,4 +57,4 @@ typedef struct {
 
 VOID RegisterTextureEditorClass(VOID);
 
-HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPWSTR path);
+HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
