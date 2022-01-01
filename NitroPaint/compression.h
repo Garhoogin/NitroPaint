@@ -4,6 +4,8 @@
 #define COMPRESSION_LZ77             1
 #define COMPRESSION_LZ11             2
 #define COMPRESSION_LZ11_COMP_HEADER 3
+#define COMPRESSION_HUFFMAN_4        4
+#define COMPRESSION_HUFFMAN_8        5
 
 /*
 * char * lz77Decompress(char * buffer, int size, int * uncompressedSize)
