@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "compression.h"
+#include "bstream.h"
 
 char *lz77decompress(char *buffer, int size, int *uncompressedSize){
 	//decompress the input buffer. 
@@ -259,7 +260,7 @@ char *lz77compress(char *buffer, int size, int *compressedSize){
 }//22999
 
 char *lz11compress(char *buffer, int size, int *compressedSize) {
-	int compressedMaxSize = 4 + 9 * ((size + 7) >> 3);
+	int compressedMaxSize = 7 + 9 * ((size + 7) >> 3);
 	char *compressed = (char *) malloc(compressedMaxSize);
 	char *compressedBase = compressed;
 	*(unsigned *) compressed = size << 8;
@@ -350,6 +351,12 @@ char *lz11compress(char *buffer, int size, int *compressedSize) {
 		}
 		*headLocation = head;
 		if (nProcessedBytes >= size) break;
+	}
+
+done:
+	while (nSize & 3) {
+		*(compressed++) = 0;
+		nSize++;
 	}
 	*compressedSize = nSize;
 	return realloc(compressedBase, nSize);
@@ -628,7 +635,7 @@ int lz11IsCompressed(char *buffer, unsigned size) {
 	unsigned int dstOffset = 0;
 	while(1){
 		if (offset >= size) return 0;
-		unsigned char head = buffer[offset];
+		unsigned char head = buffer[offset]; unsigned char origHead = head;
 		offset++;
 
 		//loop 8 times
@@ -710,37 +717,88 @@ int lz11CompHeaderIsValid(char *buffer, unsigned size) {
 	if (size < 0x18) return 0;
 	unsigned magic = *(unsigned *) buffer;
 	if (magic != 'COMP' && magic != 'PMOC') return 0;
-	unsigned payloadLength = *(unsigned *) (buffer + 0xC);
-	if (payloadLength != *(unsigned *) (buffer + 0x10)) return 0;
-	if (payloadLength + 0x14 != size) return 0;
-	if (!lz11IsCompressed(buffer + 0x14, size - 0x14)) return 0;
+	
+	//validate headers
+	unsigned int nSegments = *(unsigned *) (buffer + 0x8);
+	unsigned int headerSize = 0x10 + 4 * nSegments;
+	unsigned int offset = headerSize;
+	unsigned int uncompSize = 0;
+	if (nSegments == 0) return 0;
+	for (unsigned int i = 0; i < nSegments; i++) {
+		unsigned int thisSegmentLength = *(unsigned *) (buffer + 0x10 + i * 4);
+		if (offset + thisSegmentLength > size) return 0;
+		if (!lz11IsCompressed(buffer + offset, thisSegmentLength)) {
+			printf("Faulty segment %d\n\tOffset: %08X\n\tLength: %08X\n", i, offset, thisSegmentLength);
+			return 0;
+		}
+		uncompSize += *(unsigned *) (buffer + offset) >> 8;
+		offset += thisSegmentLength;
+	}
+	if(uncompSize != *(unsigned *) (buffer + 0x4)) return 0;
 
-	int uncompLength = *(unsigned *) (buffer + 0x14) >> 8;
-	if (uncompLength != *(unsigned *) (buffer + 4)) return 0;
 	return 1;
 }
 
 char *lz11CompHeaderDecompress(char *buffer, int size, int *uncompressedSize) {
-	if (size < 0x18) return NULL;
-	return lz11decompress(buffer + 0x14, size - 0x14, uncompressedSize);
+	unsigned int totalSize = *(unsigned *) (buffer + 0x4);
+	unsigned int nSegments = *(unsigned *) (buffer + 0x8);
+	*uncompressedSize = totalSize;
+
+	char *out = (char *) malloc(totalSize);
+	unsigned int dstOffs = 0;
+	unsigned int offset = 0x10 + 4 * nSegments;
+	for (unsigned int i = 0; i < nSegments; i++) {
+		unsigned int thisSegmentSize = *(unsigned *) (buffer + 0x10 + i * 4);
+		unsigned int thisSegmentUncompressedSize;
+		char *thisSegment = lz11decompress(buffer + offset, thisSegmentSize, &thisSegmentUncompressedSize);
+		memcpy(out + dstOffs, thisSegment, thisSegmentUncompressedSize);
+		dstOffs += thisSegmentUncompressedSize;
+		offset += thisSegmentSize;
+		free(thisSegment);
+	}
+
+	return out;
 }
 
 char *lz11CompHeaderCompress(char *buffer, int size, int *compressedSize) {
-	char header[] = { 'P', 'M', 'O', 'C',  0, 0, 0, 0,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0 };
+	unsigned int nSegments = (size + 0xFFF) / 0x1000;  //following LEGO Battles precedent
+	unsigned int headerSize = 0x10 + 4 * nSegments;
+	char *header = (char *) calloc(headerSize, 1);
+
+	*(unsigned *) (header + 0) = 'COMP';
 	*(unsigned *) (header + 4) = size;
+	*(unsigned *) (header + 8) = nSegments;
 
-	int payloadSize;
-	char *lz11 = lz11compress(buffer, size, &payloadSize);
-	*(unsigned *) (header + 0xC) = payloadSize;
-	*(unsigned *) (header + 0x10) = payloadSize;
+	BSTREAM stream;
+	bstreamCreate(&stream, NULL, 0);
+	bstreamWrite(&stream, header, headerSize); //bstreamCreate bug workaround
+	free(header);
 
-	char *finished = malloc(sizeof(header) + payloadSize);
-	memcpy(finished, header, sizeof(header));
-	memcpy(finished + sizeof(header), lz11, payloadSize);
-	free(lz11);
+	unsigned longestCompress = 0;
+	unsigned bytesRemaining = size;
 
-	*compressedSize = payloadSize + sizeof(header);
-	return finished;
+	int i = 0;
+	unsigned int offs = 0;
+	while (bytesRemaining > 0) {
+		unsigned thisRunLength = 0x1000;
+		if (thisRunLength > bytesRemaining) thisRunLength = bytesRemaining;
+
+		unsigned int thisRunCompressedSize;
+		char *thisRunCompressed = lz11compress(buffer + offs, thisRunLength, &thisRunCompressedSize);
+		bstreamWrite(&stream, thisRunCompressed, thisRunCompressedSize);
+		free(thisRunCompressed);
+
+		if (thisRunCompressedSize > longestCompress) longestCompress = thisRunCompressedSize;
+		bytesRemaining -= thisRunLength;
+
+		*(unsigned *) (stream.buffer + 0x10 + i * 4) = thisRunCompressedSize;
+		offs += thisRunLength;
+		i++;
+	}
+	*(unsigned *) (stream.buffer + 0xC) = longestCompress;
+	
+	*compressedSize = stream.size;
+	return stream.buffer;
 }
 
 int getCompressionType(char *buffer, int size) {
