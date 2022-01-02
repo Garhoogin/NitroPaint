@@ -727,10 +727,7 @@ int lz11CompHeaderIsValid(char *buffer, unsigned size) {
 	for (unsigned int i = 0; i < nSegments; i++) {
 		unsigned int thisSegmentLength = *(unsigned *) (buffer + 0x10 + i * 4);
 		if (offset + thisSegmentLength > size) return 0;
-		if (!lz11IsCompressed(buffer + offset, thisSegmentLength)) {
-			printf("Faulty segment %d\n\tOffset: %08X\n\tLength: %08X\n", i, offset, thisSegmentLength);
-			return 0;
-		}
+		if (!lz11IsCompressed(buffer + offset, thisSegmentLength)) return 0;
 		uncompSize += *(unsigned *) (buffer + offset) >> 8;
 		offset += thisSegmentLength;
 	}
