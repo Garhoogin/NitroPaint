@@ -76,7 +76,7 @@ int decodeAttributes(NCER_CELL_INFO *info, NCER_CELL *cell);
 
 int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
 
-int ncerFree(NCER *ncer);
+int ncerFree(OBJECT_HEADER *header);
 
 DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR * ncgr, NCLR * nclr, int * width, int * height, int checker);
 

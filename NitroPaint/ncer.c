@@ -4,6 +4,12 @@
 
 LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Hudson", NULL };
 
+void ncerInit(NCER *ncer, int format) {
+	ncer->header.size = sizeof(NCER);
+	fileInitCommon((OBJECT_HEADER *) ncer, FILE_TYPE_CELL, format);
+	ncer->header.dispose = ncerFree;
+}
+
 int ncerIsValidHudson(char *buffer, unsigned int size) {
 	unsigned int nCells = *(unsigned int *) buffer;
 	if (nCells == 0) return 0;
@@ -35,16 +41,13 @@ int ncerIsValid(char *buffer, int size) {
 
 int ncerReadHudson(NCER *ncer, char *buffer, int size) {
 	int nCells = *(int *) buffer;
+	ncerInit(ncer, NCER_TYPE_HUDSON);
 	ncer->labl = NULL;
 	ncer->lablSize = 0;
 	ncer->uext = NULL;
 	ncer->uextSize = 0;
 	ncer->nCells = nCells;
 	ncer->bankAttribs = 0;
-	ncer->header.type = FILE_TYPE_CELL;
-	ncer->header.format = NCER_TYPE_HUDSON;
-	ncer->header.size = sizeof(*ncer);
-	ncer->header.compression = COMPRESSION_NONE;
 	
 	NCER_CELL *cells = (NCER_CELL *) calloc(nCells, sizeof(NCER_CELL));
 	ncer->cells = cells;
@@ -82,15 +85,12 @@ int ncerRead(NCER *ncer, char *buffer, int size) {
 	DWORD dwMagic = *(DWORD *) buffer;
 	if (dwMagic != 0x5245434E && dwMagic != 0x4E434552) return ncerReadHudson(ncer, buffer, size);
 
+	ncerInit(ncer, NCER_TYPE_NCER);
 	ncer->nCells = 0;
 	ncer->uextSize = 0;
 	ncer->lablSize = 0;
 	ncer->uext = NULL;
 	ncer->labl = NULL;
-	ncer->header.type = FILE_TYPE_CELL;
-	ncer->header.format = NCER_TYPE_NCER;
-	ncer->header.size = sizeof(*ncer);
-	ncer->header.compression = COMPRESSION_NONE;
 
 	char *end = buffer + size;
 	buffer += 0x10;
@@ -377,7 +377,8 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 	return px;
 }
 
-int ncerFree(NCER *ncer) {
+int ncerFree(OBJECT_HEADER *header) {
+	NCER *ncer = (NCER *) header;
 	if (ncer->uext) free(ncer->uext);
 	if (ncer->labl) free(ncer->labl);
 	for (int i = 0; i < ncer->nCells; i++) {

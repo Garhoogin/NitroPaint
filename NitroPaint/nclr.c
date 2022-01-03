@@ -22,21 +22,23 @@ void nclrFree(OBJECT_HEADER *header) {
 	nclr->combo2d = NULL;
 }
 
+void nclrInit(NCLR *nclr, int format) {
+	nclr->header.size = sizeof(NCLR);
+	fileInitCommon((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
+	nclr->header.dispose = nclrFree;
+	nclr->combo2d = NULL;
+}
+
 int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	if (size < 4) return 1;
 
 	int dataLength = *(WORD *) buffer;
 	int nColors = *(WORD *) (buffer + 2);
 
+	nclrInit(nclr, NCLR_TYPE_HUDSON);
 	nclr->nColors = nColors;
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
-	nclr->header.type = FILE_TYPE_PALETTE;
-	nclr->header.format = NCLR_TYPE_HUDSON;
-	nclr->header.size = sizeof(*nclr);
-	nclr->header.compression = COMPRESSION_NONE;
-	nclr->header.dispose = nclrFree;
-	nclr->combo2d = NULL;
 	memcpy(nclr->colors, buffer + 4, nColors * 2);
 	return 0;
 }
@@ -46,15 +48,10 @@ int binPaletteRead(NCLR *nclr, char *buffer, int size) {
 	
 	int nColors = size >> 1;
 
+	nclrInit(nclr, nclrIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP);
 	nclr->nColors = nColors;
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
-	nclr->combo2d = NULL;
-	nclr->header.type = FILE_TYPE_PALETTE;
-	nclr->header.format = nclrIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP;
-	nclr->header.size = sizeof(*nclr);
-	nclr->header.compression = COMPRESSION_NONE;
-	nclr->header.dispose = nclrFree;
 	memcpy(nclr->colors, buffer, nColors * 2);
 	return 0;
 }
@@ -62,11 +59,7 @@ int binPaletteRead(NCLR *nclr, char *buffer, int size) {
 int comboReadPalette(NCLR *nclr, char *buffer, int size) {
 	int type = combo2dIsValid(buffer, size);
 
-	nclr->header.compression = COMPRESSION_NONE;
-	nclr->header.dispose = nclrFree;
-	nclr->header.size = sizeof(NCLR);
-	nclr->header.type = FILE_TYPE_PALETTE;
-	nclr->header.format = NCLR_TYPE_COMBO;
+	nclrInit(nclr, NCLR_TYPE_COMBO);
 	switch (type) {
 		case COMBO2D_TYPE_TIMEACE:
 			nclr->nColors = 256;
@@ -75,7 +68,6 @@ int comboReadPalette(NCLR *nclr, char *buffer, int size) {
 			nclr->nBits = 4;
 			nclr->nPalettes = 0;
 			nclr->totalSize = 256;
-			nclr->combo2d = NULL;
 			nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
 			memcpy(nclr->colors, buffer + 4, 512);
 			break;
@@ -86,7 +78,6 @@ int comboReadPalette(NCLR *nclr, char *buffer, int size) {
 			nclr->nBits = 4;
 			nclr->nPalettes = 0;
 			nclr->totalSize = 16;
-			nclr->combo2d = NULL;
 			nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
 			memcpy(nclr->colors, buffer + 0x220, 32);
 			break;
@@ -113,6 +104,7 @@ int nclrRead(NCLR *nclr, char *buffer, int size) {
 	int dataOffset = 8 + *(int *) (pltt + 0x14);
 	int nColors = (sectionSize - dataOffset) >> 1;
 
+	nclrInit(nclr, NCLR_TYPE_NCLR);
 	nclr->nColors = nColors;
 	nclr->nBits = bits;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
@@ -120,12 +112,6 @@ int nclrRead(NCLR *nclr, char *buffer, int size) {
 	nclr->totalSize = *(int *) (pltt + 0x10);
 	nclr->nPalettes = 0;
 	nclr->idxTable = NULL;
-	nclr->combo2d = NULL;
-	nclr->header.type = FILE_TYPE_PALETTE;
-	nclr->header.format = NCLR_TYPE_NCLR;
-	nclr->header.size = sizeof(*nclr);
-	nclr->header.compression = COMPRESSION_NONE;
-	nclr->header.dispose = nclrFree;
 	
 	if (pcmp != NULL) {
 		nclr->nPalettes = *(unsigned short *) (pcmp + 8);
@@ -248,53 +234,4 @@ int nclrWrite(NCLR *nclr, BSTREAM *stream) {
 
 int nclrWriteFile(NCLR *nclr, LPWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) nclr, (OBJECT_WRITER) nclrWrite);
-}
-
-void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int fmt) {
-	COLOR *cpal = (WORD *) calloc(nColors, 2);
-	for (int i = 0; i < nColors; i++) {
-		DWORD d = palette[i];
-		cpal[i] = ColorConvertToDS(d);
-	}
-
-	if (fmt == 0) {
-		BYTE nclrHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0x0, 0x1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-		BYTE ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
-		//BYTE pmcpHeader[] = {'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 1, 0, 0xEF, 0xBE, 8, 0, 0, 0, 0, 0};
-
-		int dataSize = nColors << 1;
-		int ttlpSize = dataSize + 0x18;
-		int fileSize = ttlpSize + 0x10;
-
-		*(int *) (nclrHeader + 0x8) = fileSize;
-		*(int *) (ttlpHeader + 0x4) = ttlpSize;
-		*(int *) (ttlpHeader + 0x8) = nBits == 8 ? 4 : 3;
-		*(int *) (ttlpHeader + 0xC) = !!extended;
-		*(int *) (ttlpHeader + 0x10) = dataSize;
-
-
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, nclrHeader, sizeof(nclrHeader), &dwWritten, NULL);
-		WriteFile(hFile, ttlpHeader, sizeof(ttlpHeader), &dwWritten, NULL);
-		WriteFile(hFile, cpal, nColors * 2, &dwWritten, NULL);
-		CloseHandle(hFile);
-	} else if(fmt == 1 || fmt == 2) {
-		BYTE header[4];
-		*(WORD *) header = 2 * nColors;
-		*(WORD *) (header + 2) = nColors;
-
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-		WriteFile(hFile, cpal, nColors * 2, &dwWritten, NULL);
-		CloseHandle(hFile);
-	} else if (fmt == 3 || fmt == 4) {
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, cpal, nColors * 2, &dwWritten, NULL);
-		CloseHandle(hFile);
-	}
-	free(cpal);
-
 }

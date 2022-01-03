@@ -26,16 +26,37 @@ typedef struct NCLR_ {
 
 #include "combo2d.h"
 
+//
+// Initialize an NCLR structure with sensible defaults given a format.
+//
+void nclrInit(NCLR *nclr, int format);
+
+//
+// Determines if an byte array represents a valid Hudson palette file.
+//
 int nclrIsValidHudson(LPBYTE lpFile, int size);
 
+//
+// Determines if a byte array represents a valid raw palette file.
+//
 int nclrIsValidBin(LPBYTE lpFile, int size);
 
+//
+// Determines if a byte array represents a valid NTFP file.
+//
 int nclrIsValidNtfp(LPBYTE lpFile, int size);
 
+//
+// Reads an palette file from a byte array.
+//
 int nclrRead(NCLR * nclr, char * buffer, int size);
 
+//
+// Writes a palette to a file.
+//
 int nclrWriteFile(NCLR *nclr, LPWSTR name);
 
-void nclrCreate(DWORD * palette, int nColors, int nBits, int extended, LPWSTR name, int fmt);
-
+//
+// Reads a palette from a file.
+//
 int nclrReadFile(NCLR *nclr, LPWSTR path);

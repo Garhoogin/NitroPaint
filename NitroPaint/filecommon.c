@@ -38,6 +38,13 @@ LPCWSTR *getFormatNamesFromType(int type) {
 	}
 }
 
+void fileInitCommon(OBJECT_HEADER *header, int type, int format) {
+	memset(header, 0, header->size);
+	header->type = type;
+	header->format = format;
+	header->compression = COMPRESSION_NONE;
+}
+
 int fileIdentify(char *file, int size, LPCWSTR path) {
 	char *buffer = file;
 	int bufferSize = size;

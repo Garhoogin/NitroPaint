@@ -405,7 +405,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEW_NEWNCGR40015: //NCGR+NSCR
 					{
-						HWND h = CreateWindow(L"CreateDialogClass", L"Create NSCR", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						HWND h = CreateWindow(L"CreateDialogClass", L"Create BG", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
 						break;
 					}
 					case ID_NEW_NEWTEXTURE:
@@ -670,7 +670,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 1, (LPARAM) L"4");
 			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 1, (LPARAM) L"8");
 			SendMessage(data->nscrCreateDropdown, CB_SETCURSEL, 1, 0);
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 5, (LPARAM) L"Nitro");
+			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 5, (LPARAM) L"NITRO-System");
 			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 6, (LPARAM) L"Hudson");
 			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 8, (LPARAM) L"Hudson 2");
 			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 3, (LPARAM) L"Raw");
@@ -722,6 +722,11 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					float diffuse = ((float) _wtoi(location)) * 0.01f;
 					SendMessage(data->nscrCreateInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
 
+					if (*location == L'\0') {
+						MessageBox(hWnd, L"No image input specified.", L"No Input", MB_ICONERROR);
+						break;
+					}
+
 					LPCWSTR nclrFilter = L"NCLR Files (*.nclr)\0*.nclr;*.rlcn\0All Files\0*.*\0";
 					LPCWSTR ncgrFilter = L"NCGR Files (*.ncgr)\0*.ncgr;*.rgcn\0All Files\0*.*\0";
 					LPCWSTR nscrFilter = L"NSCR Files (*.nscr)\0*.nscr;*.rcsn\0All Files\0*.*\0";
@@ -734,20 +739,20 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 							break;
 						case 3:
 						case 4:
-							nclrFilter = L"ncl.bin files (*.bin)\0*ncl.bin\0All Files\0*.*\0";
-							ncgrFilter = L"ncg.bin files (*.bin)\0*ncg.bin\0All Files\0*.*\0";
-							nscrFilter = L"nsc.bin files (*.bin)\0*nsc.bin\0All Files\0*.*\0";
+							nclrFilter = L"Palette files (*ncl.bin, *icl.bin, *.nbfp)\0*ncl.bin;*icl.bin;*.nbfp\0All Files\0*.*\0";
+							ncgrFilter = L"Character files (*ncg.bin, *icg.bin, *.nbfc)\0*ncg.bin;*icg.bin;*.nbfc\0All Files\0*.*\0";
+							nscrFilter = L"Screen files (*nsc.bin, *isc.bin, *.nbfs)\0*nsc.bin;*isc.bin;*.nbfs\0All Files\0*.*\0";
 							break;
 					}
 
-					LPWSTR nclrLocation = saveFileDialog(hWnd, L"Save NCLR", nclrFilter, L"nclr");
+					LPWSTR nclrLocation = saveFileDialog(hWnd, L"Save Palette", nclrFilter, L"nclr");
 					if (!nclrLocation) break;
-					LPWSTR ncgrLocation = saveFileDialog(hWnd, L"Save NCGR", ncgrFilter, L"ncgr");
+					LPWSTR ncgrLocation = saveFileDialog(hWnd, L"Save Character", ncgrFilter, L"ncgr");
 					if (!ncgrLocation) {
 						free(nclrLocation);
 						break;
 					}
-					LPWSTR nscrLocation = saveFileDialog(hWnd, L"Save NSCR", nscrFilter, L"nscr");
+					LPWSTR nscrLocation = saveFileDialog(hWnd, L"Save Screen", nscrFilter, L"nscr");
 					if (!nscrLocation) {
 						free(nclrLocation);
 						free(ncgrLocation);

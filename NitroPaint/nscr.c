@@ -60,6 +60,13 @@ void nscrFree(OBJECT_HEADER *header) {
 	nscr->combo2d = NULL;
 }
 
+void nscrInit(NSCR *nscr, int format) {
+	nscr->header.size = sizeof(NSCR);
+	fileInitCommon((OBJECT_HEADER *) nscr, FILE_TYPE_SCREEN, format);
+	nscr->header.dispose = nscrFree;
+	nscr->combo2d = NULL;
+}
+
 int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	if (*file == 0x10) return 1; //TODO: implement LZ77 decompression
 	if (dwFileSize < 8) return 1; //file too small
@@ -80,17 +87,12 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 		srcData = (WORD *) (file + 4);
 	}
 
+	nscrInit(nscr, type);
 	nscr->data = malloc(tilesX * tilesY * 2);
 	nscr->nWidth = tilesX * 8;
 	nscr->nHeight = tilesY * 8;
 	nscr->dataSize = tilesX * tilesY * 2;
 	nscr->nHighestIndex = 0;
-	nscr->combo2d = NULL;
-	nscr->header.type = FILE_TYPE_SCREEN;
-	nscr->header.format = type;
-	nscr->header.size = sizeof(*nscr);
-	nscr->header.compression = COMPRESSION_NONE;
-	nscr->header.dispose = nscrFree;
 	memcpy(nscr->data, srcData, nscr->dataSize);
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		WORD w = nscr->data[i];
@@ -101,11 +103,7 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 }
 
 int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
-	nscr->header.compression = COMPRESSION_NONE;
-	nscr->header.format = NSCR_TYPE_BIN;
-	nscr->header.size = sizeof(NSCR);
-	nscr->header.type = FILE_TYPE_SCREEN;
-	nscr->header.dispose = nscrFree;
+	nscrInit(nscr, NSCR_TYPE_BIN);
 	nscr->dataSize = dwFileSize;
 	nscr->data = malloc(dwFileSize);
 	nscr->combo2d = NULL;
@@ -148,16 +146,11 @@ int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
 }
 
 int nscrReadCombo(NSCR *nscr, char *file, DWORD dwFileSize) {
-	nscr->header.compression = COMPRESSION_NONE;
-	nscr->header.dispose = nscrFree;
-	nscr->header.size = sizeof(NSCR);
-	nscr->header.type = FILE_TYPE_SCREEN;
-	nscr->header.format = NSCR_TYPE_COMBO;
+	nscrInit(nscr, NSCR_TYPE_COMBO);
 	nscr->dataSize = 2048;
 	nscr->nHeight = 256;
 	nscr->nWidth = 256;
 	nscr->data = (WORD *) calloc(1024, 2);
-	nscr->combo2d = NULL;
 	memcpy(nscr->data, file + 0x208, 2048);
 
 	nscr->nHighestIndex = 0;
@@ -200,18 +193,12 @@ int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	DWORD dwDataSize = *(DWORD *) (file + 0x10);
 	//printf("%dx%d, %d bytes\n", nWidth, nHeight, dwDataSize);
 
-	//now, I'm pretty sure the data area is just 2-byte indices.
+	nscrInit(nscr, NSCR_TYPE_NSCR);
 	nscr->data = malloc(dwDataSize);
 	nscr->nWidth = nWidth;
 	nscr->nHeight = nHeight;
 	nscr->dataSize = dwDataSize;
 	nscr->nHighestIndex = 0;
-	nscr->combo2d = NULL;
-	nscr->header.type = FILE_TYPE_SCREEN;
-	nscr->header.format = NSCR_TYPE_NSCR;
-	nscr->header.size = sizeof(*nscr);
-	nscr->header.compression = COMPRESSION_NONE;
-	nscr->header.dispose = nscrFree;
 	memcpy(nscr->data, file + 0x14, dwDataSize);
 	for (unsigned int i = 0; i < dwDataSize / 2; i++) {
 		WORD w = nscr->data[i];
@@ -402,66 +389,6 @@ int nscrWrite(NSCR *nscr, BSTREAM *stream) {
 
 int nscrWriteFile(NSCR *nscr, LPWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) nscrWrite);
-}
-
-void nscrCreate_(WORD * indices, BYTE * modes, BYTE *paletteIndices, int nTotalTiles, int width, int height, int nBits, LPWSTR name, int fmt) {
-	WORD * dataArea = (WORD *) (HeapAlloc(GetProcessHeap(), 0, nTotalTiles * 2));
-
-	for (int i = 0; i < nTotalTiles; i++) {
-		dataArea[i] = (indices[i] & 0x3FF) | ((modes[i] & 0x3) << 10) | ((paletteIndices[i] & 0xF) << 12);
-	}
-
-	if (fmt == 0) {
-		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-		BYTE nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
-
-		int dataSize = nTotalTiles << 1;
-		int nrcsSize = dataSize + 0x14;
-		int fileSize = nrcsSize + 0x10;
-
-		*(int *) (nscrHeader + 0x8) = fileSize;
-		*(int *) (nrcsHeader + 0x4) = nrcsSize;
-		*(short *) (nrcsHeader + 0x8) = width;
-		*(short *) (nrcsHeader + 0xA) = height;
-		*(int *) (nrcsHeader + 0x10) = dataSize;
-
-		if (nBits == 4) {
-			*(int *) (nrcsHeader + 0xC) = 0;
-		}
-
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, nscrHeader, sizeof(nscrHeader), &dwWritten, NULL);
-		WriteFile(hFile, nrcsHeader, sizeof(nrcsHeader), &dwWritten, NULL);
-		WriteFile(hFile, dataArea, 2 * nTotalTiles, &dwWritten, NULL);
-		CloseHandle(hFile);
-	} else if(fmt == 1 || fmt == 2) {
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (fmt == 1) {
-			BYTE header[8] = { 0 };
-			*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
-			*(WORD *) (header + 4) = 2 * nTotalTiles;
-			header[6] = width / 8;
-			header[7] = height / 8;
-			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-		} else {
-			BYTE header[4] = { 0 };
-			*(WORD *) (header) = 2 * nTotalTiles;
-			header[2] = width / 8;
-			header[3] = height / 8;
-			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-		}
-		WriteFile(hFile, dataArea, 2 * nTotalTiles, &dwWritten, NULL);
-		CloseHandle(hFile);
-	} else if (fmt == 3 || fmt == 4) {
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, dataArea, 2 * nTotalTiles, &dwWritten, NULL);
-		CloseHandle(hFile);
-		if (fmt == 4) fileCompress(name, COMPRESSION_LZ77);
-	}
-	HeapFree(GetProcessHeap(), 0, dataArea);
 }
 
 typedef struct BGTILE_ {
@@ -875,12 +802,87 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 		}
 	}
 
-	//create nclr
-	nclrCreate(palette, rowLimit ? (nBits == 4 ? ((paletteBase + nPalettes) << 4) : (paletteOffset + paletteSize)) : 256, nBits, 0, lpszNclrLocation, fmt);
-	//create ngr
-	ncgrCreate(blocks, nChars, nBits, lpszNcgrLocation, fmt);
-	//create nscr
-	nscrCreate_(indices, modes, paletteIndices, nTiles, width, height, nBits, lpszNscrLocation, fmt);
+	//create output
+	int paletteFormat = NCLR_TYPE_NCLR, characterFormat = NCGR_TYPE_NCGR, screenFormat = NSCR_TYPE_NSCR;
+	int compressPalette = 0, compressCharacter = 0, compressScreen = 0;
+	switch (fmt) {
+		case 0:
+			paletteFormat = NCLR_TYPE_NCLR;
+			characterFormat = NCGR_TYPE_NCGR;
+			screenFormat = NSCR_TYPE_NSCR;
+			break;
+		case 1:
+			paletteFormat = NCLR_TYPE_HUDSON;
+			characterFormat = NCGR_TYPE_HUDSON;
+			screenFormat = NSCR_TYPE_HUDSON;
+			break;
+		case 2:
+			paletteFormat = NCLR_TYPE_HUDSON;
+			characterFormat = NCGR_TYPE_HUDSON2;
+			screenFormat = NSCR_TYPE_HUDSON2;
+			break;
+		case 3:
+		case 4:
+			paletteFormat = NCLR_TYPE_BIN;
+			characterFormat = NCGR_TYPE_BIN;
+			screenFormat = NSCR_TYPE_BIN;
+			if (fmt == 5) {
+				compressCharacter = COMPRESSION_LZ77;
+				compressScreen = COMPRESSION_LZ77;
+			}
+			break;
+	}
+
+	NCLR nclr;
+	NCGR ncgr;
+	NSCR nscr;
+	nclrInit(&nclr, paletteFormat);
+	ncgrInit(&ncgr, characterFormat);
+	nscrInit(&nscr, screenFormat);
+	nclr.header.compression = compressPalette;
+	ncgr.header.compression = compressCharacter;
+	nscr.header.compression = compressScreen;
+
+	nclr.nBits = nBits;
+	nclr.nColors = rowLimit ? (nBits == 4 ? ((paletteBase + nPalettes) << 4) : (paletteOffset + paletteSize)) : 256;
+	nclr.totalSize = nclr.nColors * 2;
+	nclr.colors = (COLOR *) calloc(nclr.nColors, 2);
+	for (int i = 0; i < nclr.nColors; i++) {
+		nclr.colors[i] = ColorConvertToDS(palette[i]);
+	}
+
+	ncgr.nBits = nBits;
+	ncgr.mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	ncgr.nTiles = nChars;
+	ncgr.tileWidth = 8;
+	ncgr.tilesX = calculateWidth(ncgr.nTiles);
+	ncgr.tilesY = ncgr.nTiles / ncgr.tilesX;
+	ncgr.tiles = (BYTE **) calloc(nChars, sizeof(BYTE *));
+	int charSize = nBits == 4 ? 32 : 64;
+	for (int j = 0; j < nChars; j++) {
+		BYTE *b = (BYTE *) calloc(64, 1);
+		for (int i = 0; i < 64; i++) {
+			b[i] = (BYTE) blocks[i + j * 64];
+		}
+		ncgr.tiles[j] = b;
+	}
+
+	nscr.nWidth = width;
+	nscr.nHeight = height;
+	nscr.fmt = nBits == 4 ? SCREENCOLORMODE_16x16 : SCREENCOLORMODE_256x1;
+	nscr.dataSize = nTiles * 2;
+	nscr.data = (WORD *) malloc(nscr.dataSize);
+	for (int i = 0; i < nTiles; i++) {
+		nscr.data[i] = indices[i] | (modes[i] << 10) | (paletteIndices[i] << 12);
+	}
+
+	nclrWriteFile(&nclr, lpszNclrLocation);
+	ncgrWriteFile(&ncgr, lpszNcgrLocation);
+	nscrWriteFile(&nscr, lpszNscrLocation);
+	fileFree((OBJECT_HEADER *) &nclr);
+	fileFree((OBJECT_HEADER *) &ncgr);
+	fileFree((OBJECT_HEADER *) &nscr);
+
 	free(modes);
 	free(blocks);
 	free(indices);

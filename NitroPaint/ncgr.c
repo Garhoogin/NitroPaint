@@ -58,6 +58,13 @@ void ncgrFree(OBJECT_HEADER *header) {
 	ncgr->combo2d = NULL;
 }
 
+void ncgrInit(NCGR *ncgr, int format) {
+	ncgr->header.size = sizeof(NCGR);
+	fileInitCommon((OBJECT_HEADER *) ncgr, FILE_TYPE_CHARACTER, format);
+	ncgr->header.dispose = ncgrFree;
+	ncgr->combo2d = NULL;
+}
+
 int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 	if (size < 8) return 1; //file too small
 	if (*buffer == 0x10) return 1; //TODO: LZ77 decompress
@@ -76,18 +83,13 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 		nCharacters = *(WORD *) (buffer + 1);
 	}
 
-	ncgr->header.type = FILE_TYPE_CHARACTER;
-	ncgr->header.format = type;
-	ncgr->header.size = sizeof(*ncgr);
-	ncgr->header.compression = COMPRESSION_NONE;
-	ncgr->header.dispose = ncgrFree;
+	ncgrInit(ncgr, type);
 	ncgr->nTiles = nCharacters;
 	ncgr->tileWidth = 8;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nBits = 8;
 	ncgr->tilesX = -1;
 	ncgr->tilesY = -1;
-	ncgr->combo2d = NULL;
 
 	if (type == NCGR_TYPE_HUDSON) {
 		if (buffer[4] == 0) {
@@ -130,12 +132,7 @@ int hudsonReadCharacter(NCGR *ncgr, char *buffer, int size) {
 
 int ncgrReadCombo(NCGR *ncgr, char *buffer, int size) {
 	int format = combo2dIsValid(buffer, size);
-
-	ncgr->header.compression = COMPRESSION_NONE;
-	ncgr->header.dispose = ncgrFree;
-	ncgr->header.size = sizeof(NCGR);
-	ncgr->header.type = FILE_TYPE_CHARACTER;
-	ncgr->header.format = NCGR_TYPE_COMBO;
+	ncgrInit(ncgr, NCGR_TYPE_COMBO);
 
 	int charOffset = 0;
 	switch (format) {
@@ -146,7 +143,6 @@ int ncgrReadCombo(NCGR *ncgr, char *buffer, int size) {
 			ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
 			ncgr->tilesX = calculateWidth(ncgr->nTiles);
 			ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-			ncgr->combo2d = NULL;
 			charOffset = 0xA0C;
 			break;
 		}
@@ -158,7 +154,6 @@ int ncgrReadCombo(NCGR *ncgr, char *buffer, int size) {
 			ncgr->tilesY = 4;
 			ncgr->nBits = 4;
 			ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-			ncgr->combo2d = NULL;
 			charOffset = 0x20;
 			break;
 		}
@@ -187,18 +182,13 @@ int ncgrReadCombo(NCGR *ncgr, char *buffer, int size) {
 }
 
 int ncgrReadBin(NCGR *ncgr, char *buffer, int size) {
-	ncgr->header.compression = COMPRESSION_NONE;
-	ncgr->header.format = NCGR_TYPE_BIN;
-	ncgr->header.size = sizeof(NCGR);
-	ncgr->header.type = FILE_TYPE_CHARACTER;
-	ncgr->header.dispose = ncgrFree;
+	ncgrInit(ncgr, NCGR_TYPE_BIN);
 	ncgr->nTiles = size / 0x20;
 	ncgr->nBits = 4;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = calculateWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-	ncgr->combo2d = NULL;
 
 	BYTE **tiles = (BYTE **) calloc(ncgr->nTiles, sizeof(BYTE **));
 	for (int i = 0; i < ncgr->nTiles; i++) {
@@ -303,7 +293,7 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	}
 
 
-	//_asm int 3
+	ncgrInit(ncgr, format);
 	ncgr->nBits = depth;
 	ncgr->nTiles = tileCount;
 	ncgr->tiles = tiles;
@@ -311,12 +301,6 @@ int ncgrRead(NCGR *ncgr, char *buffer, int size) {
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
 	ncgr->mappingMode = mapping;
-	ncgr->combo2d = NULL;
-	ncgr->header.type = FILE_TYPE_CHARACTER;
-	ncgr->header.format = format;
-	ncgr->header.size = sizeof(*ncgr);
-	ncgr->header.compression = COMPRESSION_NONE;
-	ncgr->header.dispose = ncgrFree;
 	return 0;
 
 }
@@ -480,86 +464,4 @@ int ncgrWrite(NCGR *ncgr, BSTREAM *stream) {
 
 int ncgrWriteFile(NCGR *ncgr, LPWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) ncgr, (OBJECT_WRITER) ncgrWrite);
-}
-
-void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int fmt) {
-
-	int nBlockSize = 64;
-	if (nBits == 4) nBlockSize = 32;
-	//_asm int 3
-	BYTE * b = (BYTE *) HeapAlloc(GetProcessHeap(), 0, nBlocks * nBlockSize);
-	for (int i = 0; i < nBlocks * nBlockSize; i++) {
-		if(nBits == 8) b[i] = (BYTE) blocks[i];
-		else {
-			b[i] = (BYTE) (blocks[i * 2] | (blocks[i * 2 + 1] << 4));
-		}
-	}
-
-	if (fmt == 0) {
-		BYTE ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 1, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-		BYTE rahcHeader[] = { 'R', 'A', 'H', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x18, 0, 0, 0 };
-		//BYTE sopcHeader[] = {'S', 'O', 'P', 'C', 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-		int dataSize = nBlocks * nBlockSize;
-		int rahcSize = dataSize + 0x20;
-		int fileSize = rahcSize + 0x10;
-
-		int tilesX = 0, tilesY = 0;
-
-		{
-			tilesX = 1, tilesY = nBlocks;
-			for (int i = 1; i < nBlocks; i++) {
-				if (nBlocks % i) continue;
-				int other = nBlocks / i;
-				if (i > other) {
-					tilesX = i;
-					tilesY = other;
-					break;
-				}
-			}
-		}
-
-
-		*(int *) (rahcHeader + 0x4) = rahcSize;
-		*(int *) (rahcHeader + 0x8) = tilesY | (tilesX << 16);
-		*(int *) (rahcHeader + 0xC) = nBits == 8 ? 4 : 3;
-		*(int *) (rahcHeader + 0x10) = 0;
-		*(int *) (rahcHeader + 0x18) = dataSize;
-
-		*(int *) (ncgrHeader + 0x8) = fileSize;
-
-		//*(int *) (sopcHeader + 0xC) = tilesX | (tilesY << 16);
-
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, ncgrHeader, sizeof(ncgrHeader), &dwWritten, NULL);
-		WriteFile(hFile, rahcHeader, sizeof(rahcHeader), &dwWritten, NULL);
-		WriteFile(hFile, b, nBlocks * nBlockSize, &dwWritten, NULL);
-		CloseHandle(hFile);
-	} else if(fmt == 1 || fmt == 2) {
-
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (fmt == 1) {
-			BYTE header[8] = { 0 };
-			*(WORD *) (header + 1) = nBlocks * nBlockSize + 4;
-			if(nBits == 8) header[4] = 1;
-			*(WORD *) (header + 5) = nBlocks;
-			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-		} else {
-			BYTE header[4] = { 0 };
-			*(WORD *) (header + 1) = nBlocks;
-			WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-		}
-		WriteFile(hFile, b, nBlocks * nBlockSize, &dwWritten, NULL);
-		CloseHandle(hFile);
-	} else if (fmt == 3 || fmt == 4) {
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, b, nBlocks * nBlockSize, &dwWritten, NULL);
-		CloseHandle(hFile);
-		if (fmt == 4) fileCompress(name, COMPRESSION_LZ77);
-	}
-
-	HeapFree(GetProcessHeap(), 0, b);
 }

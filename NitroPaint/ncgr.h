@@ -37,18 +37,42 @@ typedef struct NCGR_{
 
 #include "combo2d.h"
 
+//
+// Calculates a sensible width given a character count.
+//
 int calculateWidth(int nTiles);
 
+//
+// Initialize an NCGR structure with sensible values.
+//
+void ncgrInit(NCGR *ncgr, int format);
+
+//
+// Determines if a byte array represents a valid Hudson character graphics file
+//
 int ncgrIsValidHudson(LPBYTE buffer, int size);
 
+//
+// Determines if a byte array represents a valid raw character graphics file.
+//
 int ncgrIsValidBin(LPBYTE buffer, int size);
 
+//
+// Get a 32-bit color render of graphics data
+//
 int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker, BOOL transparent);
 
+//
+// Read character graphics from a file.
+//
 int ncgrReadFile(NCGR *ncgr, LPCWSTR path);
 
+//
+// Write character graphics to a stream.
+//
 int ncgrWrite(NCGR *ncgr, BSTREAM *stream);
 
+//
+// Write character graphics to a file.
+//
 int ncgrWriteFile(NCGR * ncgr, LPWSTR name);
-
-void ncgrCreate(DWORD * blocks, int nBlocks, int nBits, LPWSTR name, int fmt);

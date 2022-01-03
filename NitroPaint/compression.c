@@ -119,7 +119,7 @@ char *huffmanDecompress(unsigned char *buffer, int size, int *uncompressedSize) 
 	int outSize = (*(unsigned *) buffer) >> 8;
 	char *out = (char *) malloc((outSize + 3) & ~3);
 	*uncompressedSize = outSize;
-	
+
 	unsigned char *treeBase = buffer + 4;
 	int symSize = *buffer & 0xF;
 	int bufferFill = 0;
@@ -561,7 +561,7 @@ char *huffmanCompress(unsigned char *buffer, int size, int *compressedSize, int 
 			huffmanWriteSymbol(&stream, buffer[i] >> 4, nodes);
 		}
 	}
-	
+
 	//combine into one
 	unsigned int outSize = 4 + treeSize + stream.nWords * 4;
 	char *finBuf = (char *) malloc(outSize);
@@ -571,7 +571,7 @@ char *huffmanCompress(unsigned char *buffer, int size, int *compressedSize, int 
 	free(tree);
 	free(nodes);
 	bitStreamFree(&stream);
-	
+
 	*compressedSize = outSize;
 	return finBuf;
 }
@@ -717,7 +717,7 @@ int lz11CompHeaderIsValid(char *buffer, unsigned size) {
 	if (size < 0x18) return 0;
 	unsigned magic = *(unsigned *) buffer;
 	if (magic != 'COMP' && magic != 'PMOC') return 0;
-	
+
 	//validate headers
 	unsigned int nSegments = *(unsigned *) (buffer + 0x8);
 	unsigned int headerSize = 0x10 + 4 * nSegments;
@@ -793,7 +793,7 @@ char *lz11CompHeaderCompress(char *buffer, int size, int *compressedSize) {
 		i++;
 	}
 	*(unsigned *) (stream.buffer + 0xC) = longestCompress;
-	
+
 	*compressedSize = stream.size;
 	return stream.buffer;
 }

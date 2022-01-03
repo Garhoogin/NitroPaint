@@ -42,6 +42,12 @@ int fileIdentify(char *file, int size, LPCWSTR path);
 unsigned short computeCrc16(unsigned char *data, int length, unsigned short init);
 
 //
+// Initialize a file's OBJECT_HEADER. The size field must be set before calling
+// this function to the size of the whole file object.
+//
+void fileInitCommon(OBJECT_HEADER *header, int type, int format);
+
+//
 // Compress a file given its path using the specified compression type.
 //
 void fileCompress(LPWSTR name, int compression);
