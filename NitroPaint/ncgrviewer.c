@@ -123,6 +123,7 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 
 #define NV_INITIALIZE (WM_USER+1)
 #define NV_RECALCULATE (WM_USER+2)
+#define NV_INITIALIZE_IMMEDIATE (WM_USER+3)
 
 LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
@@ -168,15 +169,21 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			break;
 		}
 		case NV_INITIALIZE:
+		case NV_INITIALIZE_IMMEDIATE:
 		{
-			LPWSTR path = (LPWSTR) wParam;
-			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-			memcpy(&data->ncgr, (NCGR *) lParam, sizeof(NCGR));
-			WCHAR titleBuffer[MAX_PATH + 15];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - NCGR Viewer", 30);
-			SetWindowText(hWnd, titleBuffer);
+			if (msg == NV_INITIALIZE) {
+				LPWSTR path = (LPWSTR) wParam;
+				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+				memcpy(&data->ncgr, (NCGR *) lParam, sizeof(NCGR));
+				WCHAR titleBuffer[MAX_PATH + 15];
+				if (!g_configuration.fullPaths) path = GetFileName(path);
+				memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
+				memcpy(titleBuffer + wcslen(titleBuffer), L" - NCGR Viewer", 30);
+				SetWindowText(hWnd, titleBuffer);
+			} else {
+				NCGR *ncgr = (NCGR *) lParam;
+				memcpy(&data->ncgr, ncgr, sizeof(NCGR));
+			}
 			data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
 
@@ -486,6 +493,24 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_FILE_SAVE:
 					{
+						if (data->szOpenFile[0] == L'\0') {
+							LPCWSTR filter = L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*\0";
+							switch (data->ncgr.header.format) {
+								case NCGR_TYPE_BIN:
+								case NCGR_TYPE_HUDSON:
+								case NCGR_TYPE_HUDSON2:
+									filter = L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0All Files\0*.*\0";
+									break;
+								case NCGR_TYPE_COMBO:
+									filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";
+									break;
+							}
+							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncgr");
+							if (path != NULL) {
+								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+								free(path);
+							}
+						}
 						ncgrWriteFile(&data->ncgr, data->szOpenFile);
 						break;
 					}
@@ -979,9 +1004,6 @@ VOID RegisterNcgrViewerClass(VOID) {
 }
 
 HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	/*HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"NCGR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	return h;*/
-
 	NCGR ncgr;
 	int n = ncgrReadFile(&ncgr, path);
 	if (n) {
@@ -1008,5 +1030,29 @@ HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 	}
 	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"NCGR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
+	return h;
+}
+
+HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCGR *ncgr) {
+	width = ncgr->tilesX * 8;
+	height = ncgr->tilesY * 8;
+
+	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
+		RECT rc = { 0 };
+		if (width < 150) width = 150;
+		rc.right = width;
+		rc.bottom = height;
+		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
+		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
+		height = rc.bottom - rc.top + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for the combobox
+		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"NCGR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncgr);
+		if (ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
+			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+		}
+		return h;
+	}
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"NCGR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncgr);
 	return h;
 }

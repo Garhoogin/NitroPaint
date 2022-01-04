@@ -41,3 +41,5 @@ typedef struct {
 VOID RegisterNclrViewerClass(VOID);
 
 HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
+
+HWND CreateNclrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCLR *nclr);

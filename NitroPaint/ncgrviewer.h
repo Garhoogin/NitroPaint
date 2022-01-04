@@ -33,3 +33,5 @@ typedef struct {
 VOID RegisterNcgrViewerClass(VOID);
 
 HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
+
+HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCGR *ncgr);

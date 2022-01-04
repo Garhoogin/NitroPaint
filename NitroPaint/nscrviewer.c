@@ -16,6 +16,7 @@ extern HICON g_appIcon;
 #define NV_SETDATA (WM_USER+2)
 #define NV_INITIMPORTDIALOG (WM_USER+3)
 #define NV_RECALCULATE (WM_USER+4)
+#define NV_INITIALIZE_IMMEDIATE (WM_USER+5)
 
 DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
 	int bWidth = renderNscr->nWidth;
@@ -219,15 +220,21 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			break;
 		}
 		case NV_INITIALIZE:
+		case NV_INITIALIZE_IMMEDIATE:
 		{
-			LPWSTR path = (LPWSTR) wParam;
-			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-			memcpy(&data->nscr, (NSCR *) lParam, sizeof(NSCR));
-			WCHAR titleBuffer[MAX_PATH + 15];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - NSCR Viewer", 30);
-			SetWindowText(hWnd, titleBuffer);
+			if (msg == NV_INITIALIZE) {
+				LPWSTR path = (LPWSTR) wParam;
+				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+				memcpy(&data->nscr, (NSCR *) lParam, sizeof(NSCR));
+				WCHAR titleBuffer[MAX_PATH + 15];
+				if (!g_configuration.fullPaths) path = GetFileName(path);
+				memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
+				memcpy(titleBuffer + wcslen(titleBuffer), L" - NSCR Viewer", 30);
+				SetWindowText(hWnd, titleBuffer);
+			} else {
+				NSCR *nscr = (NSCR *) wParam;
+				memcpy(&data->nscr, nscr, sizeof(NSCR));
+			}
 			data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
 
@@ -393,6 +400,24 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_FILE_SAVE:
 					{
+						if (data->szOpenFile[0] == L'\0') {
+							LPCWSTR filter = L"NSCR Files (*.nscr)\0*.nscr\0All Files\0*.*\0";
+							switch (data->nscr.header.format) {
+								case NSCR_TYPE_BIN:
+								case NSCR_TYPE_HUDSON:
+								case NSCR_TYPE_HUDSON2:
+									filter = L"Screen Files (*.bin, *nsc.bin, *isc.bin, *.nbfs)\0*.bin;*.nbfs\0All Files\0*.*\0";
+									break;
+								case NSCR_TYPE_COMBO:
+									filter = L"Combination Files (*.dat, *.bin)\0*.dat;*.bin\0";
+									break;
+							}
+							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nscr");
+							if (path != NULL) {
+								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+								free(path);
+							}
+						}
 						nscrWriteFile(&data->nscr, data->szOpenFile);
 						break;
 					}
@@ -1387,5 +1412,29 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 	}
 	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"NSCR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
+	return h;
+}
+
+HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr) {
+	width = nscr->nWidth;
+	height = nscr->nHeight;
+
+	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
+		RECT rc = { 0 };
+		rc.right = width;
+		rc.bottom = height;
+		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
+		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200; //+4 to account for WS_EX_CLIENTEDGE
+		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22;
+		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"NSCR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+		SendMessage(h, NV_INITIALIZE_IMMEDIATE, (WPARAM) nscr, 0);
+
+		if (nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
+			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+		}
+		return h;
+	}
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"NSCR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	SendMessage(h, NV_INITIALIZE_IMMEDIATE, (WPARAM) nscr, 0);
 	return h;
 }

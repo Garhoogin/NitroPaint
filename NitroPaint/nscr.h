@@ -90,7 +90,7 @@ int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL chceker, 
 int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo, BOOL transparent);
 
 //
-// Writes a screen output to a file given parameters:
+// Generates a BG with the parameters:
 //  - imgBits: source image
 //  - width: width of image
 //  - height: height of image
@@ -108,7 +108,7 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 //  - nMaxChars: Maximum character count of resulting graphics
 //
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse, 
-				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation, 
 				int palette, int nPalettes, int bin, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffsetm, int rowLimit, int nMaxChars,
-				int *progress1, int *progress1Max, int *progress2, int *progress2Max);
+				int *progress1, int *progress1Max, int *progress2, int *progress2Max,
+				NCLR *nclr, NCGR *ncgr, NSCR *nscr);

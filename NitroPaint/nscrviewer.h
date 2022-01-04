@@ -46,3 +46,5 @@ void NscrViewerSetTileBase(HWND hWnd, int tileBase);
 VOID RegisterNscrViewerClass(VOID);
 
 HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
+
+HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr);

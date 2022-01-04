@@ -546,11 +546,12 @@ VOID SetGUIFont(HWND hWnd) {
 }
 
 typedef struct {
-	WCHAR szNclrPath[MAX_PATH + 1];
-	WCHAR szNcgrPath[MAX_PATH + 1];
-	WCHAR szNscrPath[MAX_PATH + 1];
 	HWND hWndMain;
 	DWORD *bbits;
+
+	NCLR nclr;
+	NCGR ncgr;
+	NSCR nscr;
 } CREATENSCRDATA;
 
 void nscrCreateCallback(void *data) {
@@ -562,9 +563,9 @@ void nscrCreateCallback(void *data) {
 	if (nitroPaintStruct->hWndNscrViewer) DestroyWindow(nitroPaintStruct->hWndNscrViewer);
 	if (nitroPaintStruct->hWndNcgrViewer) DestroyWindow(nitroPaintStruct->hWndNcgrViewer);
 	if (nitroPaintStruct->hWndNclrViewer) DestroyWindow(nitroPaintStruct->hWndNclrViewer);
-	nitroPaintStruct->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, createData->szNclrPath);
-	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, createData->szNcgrPath);
-	nitroPaintStruct->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, createData->szNscrPath);
+	nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, &createData->nclr);
+	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->ncgr);
+	nitroPaintStruct->hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
 
 	free(createData->bbits);
 	free(data);
@@ -593,10 +594,10 @@ typedef struct {
 DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	THREADEDNSCRCREATEPARAMS *params = lpParameter;
 	nscrCreate(params->bbits, params->width, params->height, params->bits, params->dither, params->diffuse,
-			   params->createData->szNclrPath, params->createData->szNcgrPath, params->createData->szNscrPath,
 			   params->palette, params->nPalettes, params->fmt, params->tileBase, params->mergeTiles,
 			   params->paletteSize, params->paletteOffset, params->rowLimit, params->nMaxChars,
-			   &params->data->progress1, &params->data->progress1Max, &params->data->progress2, &params->data->progress2Max);
+			   &params->data->progress1, &params->data->progress1Max, &params->data->progress2, &params->data->progress2Max,
+			   &params->createData->nclr, &params->createData->ncgr, &params->createData->nscr);
 	params->data->waitOn = 1;
 	return 0;
 }
@@ -727,38 +728,6 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 						break;
 					}
 
-					LPCWSTR nclrFilter = L"NCLR Files (*.nclr)\0*.nclr;*.rlcn\0All Files\0*.*\0";
-					LPCWSTR ncgrFilter = L"NCGR Files (*.ncgr)\0*.ncgr;*.rgcn\0All Files\0*.*\0";
-					LPCWSTR nscrFilter = L"NSCR Files (*.nscr)\0*.nscr;*.rcsn\0All Files\0*.*\0";
-					switch (fmt) {
-						case 1:
-						case 2:
-							nclrFilter = L"bin files (*.bin)\0*.bin\0All Files\0*.*\0";
-							ncgrFilter = L"bin files (*.bin)\0*.bin\0All Files\0*.*\0";
-							nscrFilter = L"bin files (*.bin)\0*.bin\0All Files\0*.*\0";
-							break;
-						case 3:
-						case 4:
-							nclrFilter = L"Palette files (*ncl.bin, *icl.bin, *.nbfp)\0*ncl.bin;*icl.bin;*.nbfp\0All Files\0*.*\0";
-							ncgrFilter = L"Character files (*ncg.bin, *icg.bin, *.nbfc)\0*ncg.bin;*icg.bin;*.nbfc\0All Files\0*.*\0";
-							nscrFilter = L"Screen files (*nsc.bin, *isc.bin, *.nbfs)\0*nsc.bin;*isc.bin;*.nbfs\0All Files\0*.*\0";
-							break;
-					}
-
-					LPWSTR nclrLocation = saveFileDialog(hWnd, L"Save Palette", nclrFilter, L"nclr");
-					if (!nclrLocation) break;
-					LPWSTR ncgrLocation = saveFileDialog(hWnd, L"Save Character", ncgrFilter, L"ncgr");
-					if (!ncgrLocation) {
-						free(nclrLocation);
-						break;
-					}
-					LPWSTR nscrLocation = saveFileDialog(hWnd, L"Save Screen", nscrFilter, L"nscr");
-					if (!nscrLocation) {
-						free(nclrLocation);
-						free(ncgrLocation);
-						break;
-					}
-
 					int width, height;
 					DWORD * bbits = gdipReadImage(location, &width, &height);
 
@@ -769,9 +738,6 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
 					ShowWindow(hWndProgress, SW_SHOW);
 					CREATENSCRDATA *createData = (CREATENSCRDATA *) calloc(1, sizeof(CREATENSCRDATA));
-					CopyMemory(createData->szNclrPath, nclrLocation, 2 * (wcslen(nclrLocation) + 1));
-					CopyMemory(createData->szNcgrPath, ncgrLocation, 2 * (wcslen(ncgrLocation) + 1));
-					CopyMemory(createData->szNscrPath, nscrLocation, 2 * (wcslen(nscrLocation) + 1));
 					createData->hWndMain = hWndMain;
 					createData->bbits = bbits;
 					PROGRESSDATA *progressData = (PROGRESSDATA *) calloc(1, sizeof(PROGRESSDATA));
@@ -780,10 +746,6 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
 
 					threadedNscrCreate(progressData, bbits, width, height, bits, dither, diffuse, createData, palette, nPalettes, fmt, tileBase, merge, paletteSize, paletteOffset, rowLimit, nMaxChars);
-
-					free(nclrLocation);
-					free(ncgrLocation);
-					free(nscrLocation);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					SetActiveWindow(hWndProgress);

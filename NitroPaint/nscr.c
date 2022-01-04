@@ -485,10 +485,10 @@ void bgAddTileToTotal(DWORD *pxBlock, BGTILE *tile) {
 }
 
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse,
-				LPWSTR lpszNclrLocation, LPWSTR lpszNcgrLocation, LPWSTR lpszNscrLocation,
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
-				int *progress1, int *progress1Max, int *progress2, int *progress2Max) {
+				int *progress1, int *progress1Max, int *progress2, int *progress2Max,
+				NCLR *nclr, NCGR *ncgr, NSCR *nscr) {
 
 	//cursory sanity checks
 	if (nBits == 4) {
@@ -833,55 +833,45 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 			break;
 	}
 
-	NCLR nclr;
-	NCGR ncgr;
-	NSCR nscr;
-	nclrInit(&nclr, paletteFormat);
-	ncgrInit(&ncgr, characterFormat);
-	nscrInit(&nscr, screenFormat);
-	nclr.header.compression = compressPalette;
-	ncgr.header.compression = compressCharacter;
-	nscr.header.compression = compressScreen;
+	nclrInit(nclr, paletteFormat);
+	ncgrInit(ncgr, characterFormat);
+	nscrInit(nscr, screenFormat);
+	nclr->header.compression = compressPalette;
+	ncgr->header.compression = compressCharacter;
+	nscr->header.compression = compressScreen;
 
-	nclr.nBits = nBits;
-	nclr.nColors = rowLimit ? (nBits == 4 ? ((paletteBase + nPalettes) << 4) : (paletteOffset + paletteSize)) : 256;
-	nclr.totalSize = nclr.nColors * 2;
-	nclr.colors = (COLOR *) calloc(nclr.nColors, 2);
-	for (int i = 0; i < nclr.nColors; i++) {
-		nclr.colors[i] = ColorConvertToDS(palette[i]);
+	nclr->nBits = nBits;
+	nclr->nColors = rowLimit ? (nBits == 4 ? ((paletteBase + nPalettes) << 4) : (paletteOffset + paletteSize)) : 256;
+	nclr->totalSize = nclr->nColors * 2;
+	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
+	for (int i = 0; i < nclr->nColors; i++) {
+		nclr->colors[i] = ColorConvertToDS(palette[i]);
 	}
 
-	ncgr.nBits = nBits;
-	ncgr.mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-	ncgr.nTiles = nChars;
-	ncgr.tileWidth = 8;
-	ncgr.tilesX = calculateWidth(ncgr.nTiles);
-	ncgr.tilesY = ncgr.nTiles / ncgr.tilesX;
-	ncgr.tiles = (BYTE **) calloc(nChars, sizeof(BYTE *));
+	ncgr->nBits = nBits;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	ncgr->nTiles = nChars;
+	ncgr->tileWidth = 8;
+	ncgr->tilesX = calculateWidth(ncgr->nTiles);
+	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ncgr->tiles = (BYTE **) calloc(nChars, sizeof(BYTE *));
 	int charSize = nBits == 4 ? 32 : 64;
 	for (int j = 0; j < nChars; j++) {
 		BYTE *b = (BYTE *) calloc(64, 1);
 		for (int i = 0; i < 64; i++) {
 			b[i] = (BYTE) blocks[i + j * 64];
 		}
-		ncgr.tiles[j] = b;
+		ncgr->tiles[j] = b;
 	}
 
-	nscr.nWidth = width;
-	nscr.nHeight = height;
-	nscr.fmt = nBits == 4 ? SCREENCOLORMODE_16x16 : SCREENCOLORMODE_256x1;
-	nscr.dataSize = nTiles * 2;
-	nscr.data = (WORD *) malloc(nscr.dataSize);
+	nscr->nWidth = width;
+	nscr->nHeight = height;
+	nscr->fmt = nBits == 4 ? SCREENCOLORMODE_16x16 : SCREENCOLORMODE_256x1;
+	nscr->dataSize = nTiles * 2;
+	nscr->data = (WORD *) malloc(nscr->dataSize);
 	for (int i = 0; i < nTiles; i++) {
-		nscr.data[i] = indices[i] | (modes[i] << 10) | (paletteIndices[i] << 12);
+		nscr->data[i] = indices[i] | (modes[i] << 10) | (paletteIndices[i] << 12);
 	}
-
-	nclrWriteFile(&nclr, lpszNclrLocation);
-	ncgrWriteFile(&ncgr, lpszNcgrLocation);
-	nscrWriteFile(&nscr, lpszNscrLocation);
-	fileFree((OBJECT_HEADER *) &nclr);
-	fileFree((OBJECT_HEADER *) &ncgr);
-	fileFree((OBJECT_HEADER *) &nscr);
 
 	free(modes);
 	free(blocks);
