@@ -15,6 +15,11 @@ VOID SetWindowSize(HWND hWnd, int width, int height) {
 	SetWindowPos(hWnd, HWND_TOP, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_NOMOVE);
 }
 
+VOID DestroyChild(HWND hWnd) {
+	SendMessage(hWnd, WM_CLOSE, 0, 0);
+	if (IsWindow(hWnd)) DestroyWindow(hWnd);
+}
+
 VOID UpdateScrollbarVisibility(HWND hWnd) {
 	SCROLLINFO scroll;
 	scroll.fMask = SIF_ALL;

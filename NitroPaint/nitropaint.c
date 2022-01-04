@@ -177,24 +177,24 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	switch (format) {
 		case FILE_TYPE_PALETTE:
 			//if there is already an NCLR open, close it.
-			if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
+			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
 			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
 			if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
 			break;
 		case FILE_TYPE_CHARACTER:
 			//if there is already an NCGR open, close it.
-			if (data->hWndNcgrViewer) DestroyWindow(data->hWndNcgrViewer);
+			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
 			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
 			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 			break;
 		case FILE_TYPE_SCREEN:
 			//if there is already an NSCR open, close it.
-			if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
+			if (data->hWndNscrViewer) DestroyChild(data->hWndNscrViewer);
 			data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
 			break;
 		case FILE_TYPE_CELL:
 			//if there is already an NCER open, close it.
-			if (data->hWndNcerViewer) DestroyWindow(data->hWndNcerViewer);
+			if (data->hWndNcerViewer) DestroyChild(data->hWndNcerViewer);
 			data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
 			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 			break;
@@ -215,17 +215,17 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			int type = combo2dIsValid(buffer, dwSize);
 
 			//if there is already an NCLR open, close it.
-			if (data->hWndNclrViewer) DestroyWindow(data->hWndNclrViewer);
+			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
 			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
 
 			//if there is already an NCGR open, close it.
-			if (data->hWndNcgrViewer) DestroyWindow(data->hWndNcgrViewer);
+			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
 			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
 			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 
 			//if there is already an NSCR open, close it.
 			if (type == COMBO2D_TYPE_TIMEACE) {
-				if (data->hWndNscrViewer) DestroyWindow(data->hWndNscrViewer);
+				if (data->hWndNscrViewer) DestroyChild(data->hWndNscrViewer);
 				data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
 			}
 
@@ -560,9 +560,9 @@ void nscrCreateCallback(void *data) {
 	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 	HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
-	if (nitroPaintStruct->hWndNscrViewer) DestroyWindow(nitroPaintStruct->hWndNscrViewer);
-	if (nitroPaintStruct->hWndNcgrViewer) DestroyWindow(nitroPaintStruct->hWndNcgrViewer);
-	if (nitroPaintStruct->hWndNclrViewer) DestroyWindow(nitroPaintStruct->hWndNclrViewer);
+	if (nitroPaintStruct->hWndNscrViewer) DestroyChild(nitroPaintStruct->hWndNscrViewer);
+	if (nitroPaintStruct->hWndNcgrViewer) DestroyChild(nitroPaintStruct->hWndNcgrViewer);
+	if (nitroPaintStruct->hWndNclrViewer) DestroyChild(nitroPaintStruct->hWndNclrViewer);
 	nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, &createData->nclr);
 	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->ncgr);
 	nitroPaintStruct->hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
