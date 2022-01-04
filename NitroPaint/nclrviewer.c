@@ -175,10 +175,10 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 				int n = nclrReadFile(&data->nclr, path);
 				if (n) return 0;
-				WCHAR titleBuffer[MAX_PATH + 15];
+				WCHAR titleBuffer[MAX_PATH + 19];
 				if (!g_configuration.fullPaths) path = GetFileName(path);
 				memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-				memcpy(titleBuffer + wcslen(titleBuffer), L" - NCLR Viewer", 30);
+				memcpy(titleBuffer + wcslen(titleBuffer), L" - Palette Viewer", 38);
 				SetWindowText(hWnd, titleBuffer);
 			} else {
 				NCLR *nclr = (NCLR *) wParam;
@@ -794,7 +794,7 @@ HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4;
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"NCLR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"Palette Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 		if (!SendMessage(h, NV_INITIALIZE, (WPARAM) path, 0)) {
 			DestroyWindow(h);
 			MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
@@ -802,7 +802,7 @@ HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		}
 		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"NCLR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"Palette Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, 0);
 	return h;
 }
@@ -815,11 +815,11 @@ HWND CreateNclrViewerImmediate(int x, int y, int width, int height, HWND hWndPar
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4;
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"NCLR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"Palette Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE_IMMEDIATE, (WPARAM) nclr, 0);
 		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"NCLR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"Palette Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	SendMessage(h, NV_INITIALIZE_IMMEDIATE, (WPARAM) nclr, 0);
 	return h;
 }
