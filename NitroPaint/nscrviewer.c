@@ -405,9 +405,10 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
+					case ID_FILE_SAVEAS:
 					case ID_FILE_SAVE:
 					{
-						if (data->szOpenFile[0] == L'\0') {
+						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
 							LPCWSTR filter = L"NSCR Files (*.nscr)\0*.nscr\0All Files\0*.*\0";
 							switch (data->nscr.header.format) {
 								case NSCR_TYPE_BIN:

@@ -15,6 +15,7 @@
 extern HICON g_appIcon;
 
 #define NV_INITIALIZE (WM_USER+1)
+#define NV_SETTITLE (WM_USER+2)
 
 #define NANRVIEWER_TIMER_TICK 1
 
@@ -503,16 +504,22 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			EndPaint(hWnd, &ps);
 			break;
 		}
+		case NV_SETTITLE:
+		{
+			LPWSTR path = (LPWSTR) lParam;
+			WCHAR titleBuffer[MAX_PATH + 15];
+			if (!g_configuration.fullPaths) path = GetFileName(path);
+			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
+			memcpy(titleBuffer + wcslen(titleBuffer), L" - NANR Editor", 30);
+			SetWindowText(hWnd, titleBuffer);
+			break;
+		}
 		case NV_INITIALIZE:
 		{
 			LPWSTR path = (LPWSTR) wParam;
 			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 			memcpy(&data->nanr, (NANR *) lParam, sizeof(NANR));
-			WCHAR titleBuffer[MAX_PATH + 15];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - NANR Viewer", 30);
-			SetWindowText(hWnd, titleBuffer);
+			SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 
 			for (int i = 0; i < data->nanr.nSequences; i++) {
 				WCHAR buf[16];
@@ -542,8 +549,18 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl == NULL && HIWORD(wParam) == 0) {
 				switch (LOWORD(wParam)) {
+					case ID_FILE_SAVEAS:
 					case ID_FILE_SAVE:
 					{
+						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
+							LPCWSTR filter = L"NANR Files (*.nanr)\0*.nanr\0All Files\0*.*\0";
+							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nanr");
+							if (path != NULL) {
+								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+								free(path);
+							} else break;
+						}
 						nanrWriteFile(&data->nanr, data->szOpenFile);
 						break;
 					}

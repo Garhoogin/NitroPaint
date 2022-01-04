@@ -91,13 +91,14 @@
 #define ID_TOOLS_SHTXDS                 40092
 #define ID_SHTXDS_NITROTGA              40093
 #define ID_SHTXDS_SHTXDS                40094
+#define ID_FILE_SAVEAS                  40095
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40095
+#define _APS_NEXT_COMMAND_VALUE         40096
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

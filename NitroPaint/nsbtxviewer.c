@@ -10,6 +10,7 @@
 extern HICON g_appIcon;
 
 #define NV_INITIALIZE (WM_USER+1)
+#define NV_SETTITLE (WM_USER+2)
 
 extern int max16Len(char *str);
 
@@ -246,16 +247,22 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			data->scale = 1;
 			return 1;
 		}
-		case NV_INITIALIZE:
+		case NV_SETTITLE:
 		{
-			LPWSTR path = (LPWSTR) wParam;
-			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-			memcpy(&data->nsbtx, (NSBTX *) lParam, sizeof(NSBTX));
+			LPWSTR path = (LPWSTR) lParam;
 			WCHAR titleBuffer[MAX_PATH + 15];
 			if (!g_configuration.fullPaths) path = GetFileName(path);
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
 			memcpy(titleBuffer + wcslen(titleBuffer), L" - NSBTX Viewer", 32);
 			SetWindowText(hWnd, titleBuffer);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			LPWSTR path = (LPWSTR) wParam;
+			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+			memcpy(&data->nsbtx, (NSBTX *) lParam, sizeof(NSBTX));
+			SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 
 			WCHAR buffer[17];
 			for (int i = 0; i < data->nsbtx.nTextures; i++) {
@@ -331,9 +338,21 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						free(location);
 						break;
 					}
+					case ID_FILE_SAVEAS:
 					case ID_FILE_SAVE:
+					{
+						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
+							LPCWSTR filter = L"NSBTX Files (*.nsbtx)\0*.nsbtx\0All Files\0*.*\0";
+							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nsbtx");
+							if (path != NULL) {
+								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+								free(path);
+							} else break;
+						}
 						nsbtxWriteFile(&data->nsbtx, data->szOpenFile);
 						break;
+					}
 					case ID_ZOOM_100:
 					case ID_ZOOM_200:
 					case ID_ZOOM_400:
@@ -548,7 +567,7 @@ HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPC
 		return NULL;
 	}
 
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NsbtxViewerClass", L"NSBTX Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NsbtxViewerClass", L"NSBTX Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nsbtx);
 	return h;
 }

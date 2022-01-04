@@ -258,6 +258,7 @@ void ncerEditorRedo(HWND hWnd) {
 }
 
 #define NV_INITIALIZE (WM_USER+1)
+#define NV_SETTITLE (WM_USER+2)
 
 LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
@@ -321,16 +322,22 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				return HTBORDER;
 			return ht;
 		}
-		case NV_INITIALIZE:
+		case NV_SETTITLE:
 		{
-			LPWSTR path = (LPWSTR) wParam;
-			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-			memcpy(&data->ncer, (NCER *) lParam, sizeof(NCER));
+			LPWSTR path = (LPWSTR) lParam;
 			WCHAR titleBuffer[MAX_PATH + 15];
 			if (!g_configuration.fullPaths) path = GetFileName(path);
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
 			memcpy(titleBuffer + wcslen(titleBuffer), L" - Cell Editor", 30);
 			SetWindowText(hWnd, titleBuffer);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			LPWSTR path = (LPWSTR) wParam;
+			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+			memcpy(&data->ncer, (NCER *) lParam, sizeof(NCER));
+			SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 			data->frameData.contentWidth = 612;
 			data->frameData.contentHeight = 326;
 
@@ -876,8 +883,23 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {
 				switch (LOWORD(wParam)) {
+					case ID_FILE_SAVEAS:
 					case ID_FILE_SAVE:
 					{
+						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
+							LPCWSTR filter = L"NCER Files (*.ncer)\0*.ncer\0All Files\0*.*\0";
+							switch (data->ncer.header.format) {
+								case NCER_TYPE_HUDSON:
+									filter = L"Cell Files (*.bin)\0*.bin;\0All Files\0*.*\0";
+									break;
+							}
+							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncer");
+							if (path != NULL) {
+								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+								free(path);
+							} else break;
+						}
 						ncerWriteFile(&data->ncer, data->szOpenFile);
 						break;
 					}

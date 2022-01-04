@@ -134,6 +134,7 @@ int colorSortHue(LPCVOID p1, LPCVOID p2) {
 #define NV_INITIALIZE (WM_USER+1)
 #define NV_INITIALIZE_IMMEDIATE (WM_USER+2)
 #define NV_SETTITLE (WM_USER+3)
+#define NV_PICKFILE (WM_USER+4)
 
 LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
@@ -473,6 +474,26 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			return GetClassLong(hWnd, GCL_HBRBACKGROUND);
 		}
+		case NV_PICKFILE:
+		{
+			LPCWSTR filter = L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0";
+			switch (data->nclr.header.format) {
+				case NCLR_TYPE_BIN:
+				case NCLR_TYPE_HUDSON:
+					filter = L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp)\0*.bin;*.nbfp\0All Files\0*.*\0";
+					break;
+				case NCLR_TYPE_COMBO:
+					filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";
+					break;
+			}
+			LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nclr");
+			if (path != NULL) {
+				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+				free(path);
+			}
+			break;
+		}
 		case WM_COMMAND:
 		{
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -590,26 +611,12 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 					case ID_FILE_SAVE:
+					case ID_FILE_SAVEAS:
 					{
-						if (data->szOpenFile[0] == L'\0') {
-							LPCWSTR filter = L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0";
-							switch (data->nclr.header.format) {
-								case NCLR_TYPE_BIN:
-								case NCLR_TYPE_HUDSON:
-									filter = L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp)\0*.bin;*.nbfp\0All Files\0*.*\0";
-									break;
-								case NCLR_TYPE_COMBO:
-									filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";
-									break;
-							}
-							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nclr");
-							if (path != NULL) {
-								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
-								free(path);
-							}
+						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
+							SendMessage(hWnd, NV_PICKFILE, 0, 0);
 						}
-						nclrWriteFile(&data->nclr, data->szOpenFile);
+						if (data->szOpenFile[0] != L'\0') nclrWriteFile(&data->nclr, data->szOpenFile);;
 						break;
 					}
 					case ID_MENU_VERIFYCOLOR:

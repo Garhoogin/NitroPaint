@@ -498,9 +498,10 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (nitroPaintStruct->hWndNcerViewer) InvalidateRect(nitroPaintStruct->hWndNcerViewer, NULL, FALSE);
 						break;
 					}
+					case ID_FILE_SAVEAS:
 					case ID_FILE_SAVE:
 					{
-						if (data->szOpenFile[0] == L'\0') {
+						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
 							LPCWSTR filter = L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*\0";
 							switch (data->ncgr.header.format) {
 								case NCGR_TYPE_BIN:
@@ -517,7 +518,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 								free(path);
-							}
+							} else break;
 						}
 						ncgrWriteFile(&data->ncgr, data->szOpenFile);
 						break;
