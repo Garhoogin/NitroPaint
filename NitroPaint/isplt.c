@@ -1126,7 +1126,7 @@ void createMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *d
 
 			for (int j = 0; j < 64; j++) {
 				COLOR32 col = tile->rgb[j];
-				int index = findClosestPaletteColorRGB(&tile->palette[0][0], tile->nUsedColors, tile->rgb[i], NULL);
+				int index = findClosestPaletteColorRGB(&tile->palette[0][0], tile->nUsedColors, tile->rgb[j], NULL);
 				if ((col >> 24) == 0) index = 15;
 				tile->indices[j] = index;
 				rep->useCounts[index]++;
