@@ -168,6 +168,8 @@ BOOL CALLBACK SaveAllProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
+VOID CreateImageDialog(HWND hWnd, LPCWSTR path);
+
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	NITROPAINTSTRUCT *data = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWnd, 0);
 	DWORD dwSize = 0;
@@ -208,7 +210,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			CreateNanrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
 		case FILE_TYPE_IMAGE:
-			CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			CreateImageDialog(hWnd, path);
 			break;
 		case FILE_TYPE_COMBO2D:
 		{
@@ -1153,6 +1155,93 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+VOID CreateImageDialog(HWND hWnd, LPCWSTR path) {
+	HWND h = CreateWindow(L"ImageDialogClass", L"Image Conversion", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWnd, NULL, NULL, NULL);
+	SendMessage(h, NV_SETDATA, 0, (LPARAM) path);
+	ShowWindow(h, SW_SHOW);
+	SetForegroundWindow(h);
+	SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_DISABLED);
+}
+
+typedef struct {
+	WCHAR szPath[MAX_PATH + 1];
+	HWND hWndBg;
+	HWND hWndTexture;
+} IMAGEDLGDATA;
+
+LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	IMAGEDLGDATA *data = (IMAGEDLGDATA *) GetWindowLongPtr(hWnd, 0);
+	if (data == NULL) {
+		data = (IMAGEDLGDATA *) calloc(1, sizeof(IMAGEDLGDATA));
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+	}
+	switch (msg) {
+		case NV_SETDATA:
+		{
+			LPWSTR path = (LPWSTR) lParam;
+			memcpy(data->szPath, path, 2 * (wcslen(path) + 1));
+
+			CreateWindow(L"STATIC", GetFileName(path), WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 200, 22, hWnd, NULL, NULL, NULL);
+			data->hWndBg = CreateWindow(L"BUTTON", L"Create BG", WS_VISIBLE | WS_CHILD, 10, 42, 200, 22, hWnd, NULL, NULL, NULL);
+			data->hWndTexture = CreateWindow(L"BUTTON", L"Create Texture", WS_VISIBLE | WS_CHILD, 10, 74, 200, 22, hWnd, NULL, NULL, NULL);
+			SetWindowSize(hWnd, 220, 106);
+			SetGUIFont(hWnd);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			HWND hWndMdi = nitroPaintStruct->hWndMdi;
+
+			if (hWndControl != NULL) {
+				if (hWndControl == data->hWndBg) {
+					HWND h = CreateWindow(L"CreateDialogClass", L"Create BG", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
+
+					//pre-populate path
+					CREATEDIALOGDATA *cdData = (CREATEDIALOGDATA *) GetWindowLongPtr(h, 0);
+					SendMessage(cdData->nscrCreateInput, WM_SETTEXT, wcslen(data->szPath), (LPARAM) data->szPath);
+
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					SetForegroundWindow(h);
+					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
+				} else if (hWndControl == data->hWndTexture) {
+					CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, data->szPath);
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
+				}
+			}
+			break;
+		}
+		case WM_CLOSE:
+		{
+			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			SetForegroundWindow(hWndMain);
+			break;
+		}
+		case WM_DESTROY:
+		{
+			free(data);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+void RegisterImageDialogClass() {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"ImageDialogClass";
+	wcex.lpfnWndProc = ImageDialogProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
 void RegisterFormatConversionClass() {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -1211,6 +1300,7 @@ void RegisterClasses() {
 	RegisterTextureEditorClass();
 	RegisterFormatConversionClass();
 	RegisterNanrViewerClass();
+	RegisterImageDialogClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
