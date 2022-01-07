@@ -62,6 +62,8 @@ typedef struct NCER_ {
 	char *labl;
 } NCER;
 
+void ncerInit(NCER *ncer, int format);
+
 int ncerIsValid(char *buffer, int size);
 
 int ncerIsValidHudson(char *buffer, unsigned int size);

@@ -427,6 +427,23 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						ShowWindow(h, SW_SHOW);
 						break;
 					}
+					case ID_NEW_NEWCELLBANK:
+					{
+						if (data->hWndNcerViewer != NULL) DestroyChild(data->hWndNcerViewer);
+						data->hWndNcerViewer = NULL;
+
+						NCER ncer;
+						ncerInit(&ncer, NCER_TYPE_NCER);
+						ncer.nCells = 1;
+						ncer.cells = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
+						ncer.cells[0].attr = (WORD *) calloc(3, 2);
+						ncer.cells[0].nAttr = 3;
+						ncer.cells[0].nAttribs = 1;
+						ncer.cells[0].cellAttr = 0;
+
+						data->hWndNcerViewer = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 50, data->hWndMdi, &ncer);
+						break;
+					}
 					case ID_FILE_CONVERTTO:
 					{
 						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
@@ -1320,7 +1337,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					ncgr.tilesX = 32;
 					ncgr.tilesY = height;
 					ncgr.nTiles = ncgr.tilesX * ncgr.tilesY;
-					ncgr.tiles = (BYTE *) calloc(ncgr.nTiles, sizeof(BYTE *));
+					ncgr.tiles = (BYTE **) calloc(ncgr.nTiles, sizeof(BYTE *));
 					for (int i = 0; i < ncgr.nTiles; i++) {
 						ncgr.tiles[i] = (BYTE *) calloc(64, 1);
 					}

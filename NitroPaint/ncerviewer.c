@@ -259,6 +259,7 @@ void ncerEditorRedo(HWND hWnd) {
 
 #define NV_INITIALIZE (WM_USER+1)
 #define NV_SETTITLE (WM_USER+2)
+#define NV_INITIALIZE_IMMEDIATE (WM_USER+3)
 
 LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
@@ -332,12 +333,18 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SetWindowText(hWnd, titleBuffer);
 			break;
 		}
+		case NV_INITIALIZE_IMMEDIATE:
 		case NV_INITIALIZE:
 		{
-			LPWSTR path = (LPWSTR) wParam;
-			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-			memcpy(&data->ncer, (NCER *) lParam, sizeof(NCER));
-			SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+			if (msg == NV_INITIALIZE) {
+				LPWSTR path = (LPWSTR) wParam;
+				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+				memcpy(&data->ncer, (NCER *) lParam, sizeof(NCER));
+				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+			} else {
+				NCER *ncer = (NCER *) lParam;
+				memcpy(&data->ncer, ncer, sizeof(NCER));
+			}
 			data->frameData.contentWidth = 612;
 			data->frameData.contentHeight = 326;
 
@@ -999,6 +1006,27 @@ HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcerViewerClass", L"Cell Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncer);
 		if (ncer.header.format == NCER_TYPE_HUDSON) {
+			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+		}
+		return h;
+	}
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcerViewerClass", L"Cell Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	//SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
+	return h;
+}
+
+HWND CreateNcerViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCER *ncer) {
+	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
+		RECT rc = { 0 };
+		if (width < 150) width = 150;
+		rc.right = width;
+		rc.bottom = height;
+		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
+		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
+		height = rc.bottom - rc.top + 4;
+		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcerViewerClass", L"Cell Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncer);
+		if (ncer->header.format == NCER_TYPE_HUDSON) {
 			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
 		}
 		return h;
