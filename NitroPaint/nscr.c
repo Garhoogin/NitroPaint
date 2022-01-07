@@ -869,9 +869,12 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	nscr->fmt = nBits == 4 ? SCREENCOLORMODE_16x16 : SCREENCOLORMODE_256x1;
 	nscr->dataSize = nTiles * 2;
 	nscr->data = (WORD *) malloc(nscr->dataSize);
+	int nHighestIndex = 0;
 	for (int i = 0; i < nTiles; i++) {
 		nscr->data[i] = indices[i] | (modes[i] << 10) | (paletteIndices[i] << 12);
+		if (indices[i] > nHighestIndex) nHighestIndex = indices[i];
 	}
+	nscr->nHighestIndex = nHighestIndex;
 
 	free(modes);
 	free(blocks);
