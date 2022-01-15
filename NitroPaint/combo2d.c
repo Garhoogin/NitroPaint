@@ -50,6 +50,11 @@ void combo2dFree(COMBO2D *combo) {
 		combo->nscr = NULL;
 	}
 	if (combo->extraData != NULL) {
+		if (combo->header.format == COMBO2D_TYPE_DATAFILE) {
+			DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
+			if (dfc->data != NULL) free(dfc->data);
+			dfc->data = NULL;
+		}
 		free(combo->extraData);
 		combo->extraData = NULL;
 	}
@@ -181,6 +186,40 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		if (info->version >= 2) header[2] = computeCrc16(stream->buffer + 0x20, 0x920, 0xFFFF);
 		if (info->version >= 3) header[3] = computeCrc16(stream->buffer + 0x20, 0xA20, 0xFFFF);
 		bstreamWrite(stream, header, sizeof(header));
+	} else if (combo->header.format == COMBO2D_TYPE_DATAFILE) {
+		//the original data is in combo->extraData->data, but has key replacements
+
+		DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
+		char *copy = (char *) malloc(dfc->size);
+		memcpy(copy, dfc->data, dfc->size);
+
+		if (combo->nclr != NULL) {
+			int palDataSize = combo->nclr->nColors * 2;
+			if (palDataSize <= dfc->pltSize) {
+				memcpy(copy + dfc->pltOffset, combo->nclr->colors, 2 * combo->nclr->nColors);
+			}
+		}
+		if (combo->ncgr != NULL) {
+			//take the easy way, temporarily change the format of the NCGR to raw and write
+			BSTREAM chrStream;
+			bstreamCreate(&chrStream, NULL, 0);
+			combo->ncgr->header.format = NCGR_TYPE_BIN;
+			ncgrWrite(combo->ncgr, &chrStream);
+			combo->ncgr->header.format = NCGR_TYPE_COMBO;
+			if (chrStream.size <= dfc->chrSize) {
+				memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
+			}
+			bstreamFree(&chrStream);
+		}
+		if (combo->nscr != NULL) {
+			int scrDataSize = combo->nscr->dataSize;
+			if (scrDataSize <= dfc->scrSize) {
+				memcpy(copy + dfc->scrOffset, combo->nscr->data, scrDataSize);
+			}
+		}
+
+		bstreamWrite(stream, copy, dfc->size);
+		free(copy);
 	}
 
 	return 0;

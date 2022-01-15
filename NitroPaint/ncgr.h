@@ -63,6 +63,11 @@ int ncgrIsValidBin(LPBYTE buffer, int size);
 int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker, BOOL transparent);
 
 //
+// Read character graphics from a byte array.
+//
+int ncgrRead(NCGR *ncgr, char *buffer, int size);
+
+//
 // Read character graphics from a file.
 //
 int ncgrReadFile(NCGR *ncgr, LPCWSTR path);

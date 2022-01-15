@@ -4,6 +4,7 @@
 #define COMBO2D_TYPE_INVALID     0
 #define COMBO2D_TYPE_TIMEACE     1
 #define COMBO2D_TYPE_BANNER      2
+#define COMBO2D_TYPE_DATAFILE    3
 
 //structure that manages a linkage of palette, graphics, and screen.
 typedef struct COMBO2D_ {
@@ -13,6 +14,17 @@ typedef struct COMBO2D_ {
 	struct NSCR_ *nscr;
 	void *extraData; //depends on the type, store data we're not interested in particularly
 } COMBO2D;
+
+typedef struct DATAFILECOMBO_ {
+	char *data;
+	int size;
+	int pltOffset;
+	int pltSize;
+	int chrOffset;
+	int chrSize;
+	int scrOffset;
+	int scrSize;
+} DATAFILECOMBO; //structure to maintain a file with embedded graphics data (sizes and offsets)
 
 //these lines cause chaos :(
 //#include "nclr.h"
