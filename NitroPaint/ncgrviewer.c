@@ -434,6 +434,12 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						memcpy(cidata->path, path, 2 * (wcslen(path) + 1));
 						if(createPalette) SendMessage(cidata->hWndOverwritePalette, BM_SETCHECK, BST_CHECKED, 0);
 
+						//populate inputs with sensible defaults
+						WCHAR bf[16];
+						if (data->ncgr.nBits == 4) SendMessage(cidata->hWndPaletteSize, WM_SETTEXT, 2, (LPARAM) L"16");
+						wsprintfW(bf, L"%d", data->ncgr.nTiles - (data->contextHoverX + data->contextHoverY * data->ncgr.tilesX));
+						SendMessage(cidata->hWndMaxChars, WM_SETTEXT, wcslen(bf), (LPARAM) bf);
+
 						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 						NCLR *nclr = NULL;
@@ -955,6 +961,7 @@ int charImportCallback(void *data) {
 
 	SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
 	SetForegroundWindow(hWndMain);
+	return 0;
 }
 
 void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int paletteNumber, int paletteSize, int paletteBase, BOOL dither, float diffuse, BOOL import1D, BOOL charCompression, int nMaxChars, int originX, int originY, int *progress) {
@@ -999,6 +1006,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 	}
 
 	//index image with given parameters.
+	if (!dither) diffuse = 0.0f;
 	ditherImagePalette(pixels, width, height, palette, paletteSize, 0, 1, 0, diffuse);
 
 	//now, write out indices. 
@@ -1049,7 +1057,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 
 		//character compression
 		int nChars = tilesX * tilesY;
-		if (compress) {
+		if (charCompression) {
 			//create dummy whole palette that the character compression functions expect
 			COLOR32 dummyFull[256] = { 0 };
 			memcpy(dummyFull + paletteBase, palette, paletteSize * 4);
