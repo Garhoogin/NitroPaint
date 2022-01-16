@@ -391,14 +391,6 @@ int nscrWriteFile(NSCR *nscr, LPWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) nscrWrite);
 }
 
-typedef struct BGTILE_ {
-	BYTE indices[64];
-	DWORD px[64]; //redundant, speed
-	int masterTile;
-	int nRepresents;
-	int flipMode;
-} BGTILE;
-
 int tileDifferenceFlip(BGTILE *t1, BGTILE *t2, BYTE mode) {
 	int err = 0;
 	DWORD *px1 = t1->px;
@@ -484,6 +476,205 @@ void bgAddTileToTotal(DWORD *pxBlock, BGTILE *tile) {
 	}
 }
 
+int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int *progress) {
+	int nChars = nTiles;
+	int *diffBuff = (int *) calloc(nTiles * nTiles, sizeof(int));
+	BYTE *flips = (BYTE *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
+
+	for (int i = 0; i < nTiles; i++) {
+		BGTILE *t1 = tiles + i;
+		for (int j = 0; j < i; j++) {
+			BGTILE *t2 = tiles + j;
+
+			diffBuff[i + j * nTiles] = tileDifference(t1, t2, &flips[i + j * nTiles]);
+			diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
+			flips[j + i * nTiles] = flips[i + j * nTiles];
+		}
+		*progress = (i * i) / nTiles * 500 / nTiles;
+	}
+
+	//first, combine tiles with a difference of 0.
+
+	for (int i = 0; i < nTiles; i++) {
+		BGTILE *t1 = tiles + i;
+		if (t1->masterTile != i) continue;
+
+		for (int j = 0; j < i; j++) {
+			BGTILE *t2 = tiles + j;
+			if (t2->masterTile != j) continue;
+
+			if (diffBuff[i + j * nTiles] == 0) {
+				//merge all tiles with master index i to j
+				for (int k = 0; k < nTiles; k++) {
+					if (tiles[k].masterTile == i) {
+						tiles[k].masterTile = j;
+						tiles[k].flipMode ^= flips[i + j * nTiles];
+						tiles[k].nRepresents = 0;
+						tiles[j].nRepresents++;
+					}
+				}
+				nChars--;
+				if(nTiles > nMaxChars) *progress = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
+			}
+		}
+	}
+
+	//still too many? 
+	if (nChars > nMaxChars) {
+		//damn
+
+		//keep finding the most similar tile until we get character count down
+		while (nChars > nMaxChars) {
+			unsigned long long int leastError = 0x7FFFFFFF;
+			int tile1 = 0, tile2 = 1;
+
+			for (int i = 0; i < nTiles; i++) {
+				BGTILE *t1 = tiles + i;
+				if (t1->masterTile != i) continue;
+
+				for (int j = 0; j < i; j++) {
+					BGTILE *t2 = tiles + j;
+					if (t2->masterTile != j) continue;
+					unsigned long long int thisError = diffBuff[i + j * nTiles] * t1->nRepresents * t2->nRepresents;
+
+					if (thisError < leastError) {
+						//if (nBits == 8 || ((t2->indices[0] >> 4) == (t1->indices[0] >> 4))) { //make sure they're the same palette
+						tile1 = j;
+						tile2 = i;
+						leastError = thisError;
+						//}
+					}
+				}
+			}
+
+			//should we swap tile1 and tile2? tile2 should have <= tile1's nRepresents
+			if (tiles[tile2].nRepresents > tiles[tile1].nRepresents) {
+				int t = tile1;
+				tile1 = tile2;
+				tile2 = t;
+			}
+
+			//merge tile1 and tile2. All tile2 tiles become tile1 tiles
+			BYTE flipDiff = flips[tile1 + tile2 * nTiles];
+			for (int i = 0; i < nTiles; i++) {
+				if (tiles[i].masterTile == tile2) {
+					tiles[i].masterTile = tile1;
+					tiles[i].flipMode ^= flipDiff;
+					tiles[i].nRepresents = 0;
+					tiles[tile1].nRepresents++;
+				}
+			}
+			nChars--;
+			*progress = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
+		}
+	}
+
+	free(flips);
+	free(diffBuff);
+
+	//try to make the compressed result look less bad
+	for (int i = 0; i < nTiles; i++) {
+		if (tiles[i].masterTile != i) continue;
+		if (tiles[i].nRepresents <= 1) continue; //no averaging required for just one tile
+		BGTILE *tile = tiles + i;
+
+		//average all tiles that use this master tile.
+		DWORD pxBlock[64 * 4] = { 0 };
+		int nRep = tile->nRepresents;
+		for (int j = 0; j < nTiles; j++) {
+			if (tiles[j].masterTile != i) continue;
+			BGTILE *tile2 = tiles + j;
+			bgAddTileToTotal(pxBlock, tile2);
+		}
+		for (int j = 0; j < 64 * 4; j++) {
+			pxBlock[j] = (pxBlock[j] + (nRep >> 1)) / nRep;
+		}
+		for (int j = 0; j < 64; j++) {
+			tile->px[j] = pxBlock[j * 4] | (pxBlock[j * 4 + 1] << 8) | (pxBlock[j * 4 + 2] << 16) | (pxBlock[j * 4 + 3] << 24);
+		}
+
+		//try to determine the most optimal palette. Child tiles can be different palettes.
+		int bestPalette = paletteBase;
+		int bestError = 0x7FFFFFFF;
+		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
+			DWORD *pal = palette + (j << nBits);
+			int err = getPaletteError((RGB *) tile->px, 64, (RGB *) pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
+
+			if (err < bestError) {
+				bestError = err;
+				bestPalette = j;
+			}
+		}
+
+		//now, match colors to indices.
+		DWORD *pal = palette + (bestPalette << nBits);
+		for (int j = 0; j < 64; j++) {
+			DWORD col = tile->px[j];
+			int index = 0;
+			if (((col >> 24) & 0xFF) > 127) {
+				index = closestpalette(*(RGB *) &col, (RGB *) pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, NULL)
+					+ !paletteOffset + paletteOffset;
+			}
+			if (nBits == 4) {
+				tile->indices[j] = (bestPalette << 4) | index;
+			} else {
+				tile->indices[j] = index;
+			}
+			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
+		}
+
+		//lastly, copy tile->indices to all child tile->indices, just to make sure palette and character are in synch.
+		for (int j = 0; j < nTiles; j++) {
+			if (tiles[j].masterTile != i) continue;
+			if (j == i) continue;
+			BGTILE *tile2 = tiles + j;
+
+			memcpy(tile2->indices, tile->indices, 64);
+		}
+	}
+	return nChars;
+}
+
+void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse) {
+	for (int i = 0; i < nTiles; i++) {
+		BGTILE *tile = tiles + i;
+
+		int bestPalette = paletteBase;
+		int bestError = 0x7FFFFFFF;
+		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
+			DWORD *pal = palette + (j << nBits);
+			int err = getPaletteError((RGB *) tile->px, 64, (RGB *) pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
+
+			if (err < bestError) {
+				bestError = err;
+				bestPalette = j;
+			}
+		}
+
+		//match colors
+		DWORD *pal = palette + (bestPalette << nBits);
+
+		//do optional dithering (also matches colors at the same time)
+		if(dither) ditherImagePalette(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse);
+		for (int j = 0; j < 64; j++) {
+			DWORD col = tile->px[j];
+			int index = 0;
+			if (((col >> 24) & 0xFF) > 127) {
+				index = closestpalette(*(RGB *) &col, (RGB *) pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, NULL) 
+					+ !paletteOffset + paletteOffset;
+			}
+			if (nBits == 4) {
+				tile->indices[j] = (bestPalette << 4) | index;
+			} else {
+				tile->indices[j] = index;
+			}
+			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
+		}
+		tile->masterTile = i;
+		tile->nRepresents = 1;
+	}
+}
+
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse,
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
@@ -522,6 +713,20 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	*progress1Max = nTiles * 2; //2 passes
 	*progress2Max = 1000;
 
+	DWORD *palette = (DWORD *) calloc(256, 4);
+	if (nBits < 5) nBits = 4;
+	else nBits = 8;
+	if (nPalettes == 1) {
+		if (paletteOffset) {
+			createPaletteExact(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize);
+		} else {
+			createPalette_(imgBits, width, height, palette + (paletteBase << nBits), paletteSize);
+		}
+	} else {
+		createMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, progress1);
+	}
+	*progress1 = nTiles * 2; //make sure it's done
+
 	//split image into 8x8 tiles.
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
@@ -539,216 +744,13 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 		}
 	}
 
-	DWORD *palette = (DWORD *) calloc(256, 4);
-	if (nBits < 5) nBits = 4;
-	else nBits = 8;
-	if (nPalettes == 1) {
-		if (paletteOffset) {
-			createPaletteExact(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize);
-		} else {
-			createPalette_(imgBits, width, height, palette + (paletteBase << nBits), paletteSize);
-		}
-	} else {
-		createMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, progress1);
-	}
-	*progress1 = nTiles * 2; //make sure it's done
-
 	//match palettes to tiles
-	for (int i = 0; i < nTiles; i++) {
-		BGTILE *tile = tiles + i;
-
-		int bestPalette = paletteBase;
-		int bestError = 0x7FFFFFFF;
-		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
-			DWORD *pal = palette + (j << nBits);
-			int err = getPaletteError((RGB *) tile->px, 64, (RGB *) pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
-
-			if (err < bestError) {
-				bestError = err;
-				bestPalette = j;
-			}
-		}
-
-		//match colors
-		DWORD *pal = palette + (bestPalette << nBits);
-
-		//do optional dithering (also matches colors at the same time)
-		if(dither) ditherImagePalette(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse);
-		for (int j = 0; j < 64; j++) {
-			DWORD col = tile->px[j];
-			int index = 0;
-			if (((col >> 24) & 0xFF) > 127) {
-				index = closestpalette(*(RGB *) &col, (RGB *) pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, NULL) 
-					+ !paletteOffset + paletteOffset;
-			}
-			if (nBits == 4) {
-				tile->indices[j] = (bestPalette << 4) | index;
-			} else {
-				tile->indices[j] = index;
-			}
-			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
-		}
-		tile->masterTile = i;
-		tile->nRepresents = 1;
-	}
+	setupBgTiles(tiles, nTiles, nBits, palette, paletteSize, nPalettes, paletteBase, paletteOffset, dither, diffuse);
 
 	//match tiles to each other
 	int nChars = nTiles;
 	if (mergeTiles) {
-		int *diffBuff = (int *) calloc(nTiles * nTiles, sizeof(int));
-		BYTE *flips = (BYTE *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
-
-		for (int i = 0; i < nTiles; i++) {
-			BGTILE *t1 = tiles + i;
-			for (int j = 0; j < i; j++) {
-				BGTILE *t2 = tiles + j;
-
-				diffBuff[i + j * nTiles] = tileDifference(t1, t2, &flips[i + j * nTiles]);
-				diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
-				flips[j + i * nTiles] = flips[i + j * nTiles];
-			}
-			*progress2 = (i * i) / nTiles * 500 / nTiles;
-		}
-
-		//first, combine tiles with a difference of 0.
-
-		for (int i = 0; i < nTiles; i++) {
-			BGTILE *t1 = tiles + i;
-			if (t1->masterTile != i) continue;
-
-			for (int j = 0; j < i; j++) {
-				BGTILE *t2 = tiles + j;
-				if (t2->masterTile != j) continue;
-
-				if (diffBuff[i + j * nTiles] == 0) {
-					//merge all tiles with master index i to j
-					for (int k = 0; k < nTiles; k++) {
-						if (tiles[k].masterTile == i) {
-							tiles[k].masterTile = j;
-							tiles[k].flipMode ^= flips[i + j * nTiles];
-							tiles[k].nRepresents = 0;
-							tiles[j].nRepresents++;
-						}
-					}
-					nChars--;
-					if(nTiles > nMaxChars) *progress2 = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
-				}
-			}
-		}
-
-		//still too many? 
-		if (nChars > nMaxChars) {
-			//damn
-
-			//keep finding the most similar tile until we get character count down
-			while (nChars > nMaxChars) {
-				unsigned long long int leastError = 0x7FFFFFFF;
-				int tile1 = 0, tile2 = 1;
-
-				for (int i = 0; i < nTiles; i++) {
-					BGTILE *t1 = tiles + i;
-					if (t1->masterTile != i) continue;
-
-					for (int j = 0; j < i; j++) {
-						BGTILE *t2 = tiles + j;
-						if (t2->masterTile != j) continue;
-						unsigned long long int thisError = diffBuff[i + j * nTiles] * t1->nRepresents * t2->nRepresents;
-
-						if (thisError < leastError) {
-							//if (nBits == 8 || ((t2->indices[0] >> 4) == (t1->indices[0] >> 4))) { //make sure they're the same palette
-								tile1 = j;
-								tile2 = i;
-								leastError = thisError;
-							//}
-						}
-					}
-				}
-
-				//should we swap tile1 and tile2? tile2 should have <= tile1's nRepresents
-				if (tiles[tile2].nRepresents > tiles[tile1].nRepresents) {
-					int t = tile1;
-					tile1 = tile2;
-					tile2 = t;
-				}
-
-				//merge tile1 and tile2. All tile2 tiles become tile1 tiles
-				BYTE flipDiff = flips[tile1 + tile2 * nTiles];
-				for (int i = 0; i < nTiles; i++) {
-					if (tiles[i].masterTile == tile2) {
-						tiles[i].masterTile = tile1;
-						tiles[i].flipMode ^= flipDiff;
-						tiles[i].nRepresents = 0;
-						tiles[tile1].nRepresents++;
-					}
-				}
-				nChars--;
-				*progress2 = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
-			}
-		}
-
-		free(flips);
-		free(diffBuff);
-
-		//try to make the compressed result look less bad
-		for (int i = 0; i < nTiles; i++) {
-			if (tiles[i].masterTile != i) continue;
-			if (tiles[i].nRepresents <= 1) continue; //no averaging required for just one tile
-			BGTILE *tile = tiles + i;
-
-			//average all tiles that use this master tile.
-			DWORD pxBlock[64 * 4] = { 0 };
-			int nRep = tile->nRepresents;
-			for (int j = 0; j < nTiles; j++) {
-				if (tiles[j].masterTile != i) continue;
-				BGTILE *tile2 = tiles + j;
-				bgAddTileToTotal(pxBlock, tile2);
-			}
-			for (int j = 0; j < 64 * 4; j++) {
-				pxBlock[j] = (pxBlock[j] + (nRep >> 1)) / nRep;
-			}
-			for (int j = 0; j < 64; j++) {
-				tile->px[j] = pxBlock[j * 4] | (pxBlock[j * 4 + 1] << 8) | (pxBlock[j * 4 + 2] << 16) | (pxBlock[j * 4 + 3] << 24);
-			}
-
-			//try to determine the most optimal palette. Child tiles can be different palettes.
-			int bestPalette = paletteBase;
-			int bestError = 0x7FFFFFFF;
-			for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
-				DWORD *pal = palette + (j << nBits);
-				int err = getPaletteError((RGB *) tile->px, 64, (RGB *) pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
-
-				if (err < bestError) {
-					bestError = err;
-					bestPalette = j;
-				}
-			}
-
-			//now, match colors to indices.
-			DWORD *pal = palette + (bestPalette << nBits);
-			for (int j = 0; j < 64; j++) {
-				DWORD col = tile->px[j];
-				int index = 0;
-				if (((col >> 24) & 0xFF) > 127) {
-					index = closestpalette(*(RGB *) &col, (RGB *) pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, NULL)
-						+ !paletteOffset + paletteOffset;
-				}
-				if (nBits == 4) {
-					tile->indices[j] = (bestPalette << 4) | index;
-				} else {
-					tile->indices[j] = index;
-				}
-				tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
-			}
-
-			//lastly, copy tile->indices to all child tile->indices, just to make sure palette and character are in synch.
-			for (int j = 0; j < nTiles; j++) {
-				if (tiles[j].masterTile != i) continue;
-				if (j == i) continue;
-				BGTILE *tile2 = tiles + j;
-
-				memcpy(tile2->indices, tile->indices, 64);
-			}
-		}
+		nChars = performCharacterCompression(tiles, nTiles, nBits, nMaxChars, palette, paletteSize, nPalettes, paletteBase, paletteOffset, progress2);
 	}
 
 	DWORD *blocks = (DWORD *) calloc(64 * nChars, sizeof(DWORD));

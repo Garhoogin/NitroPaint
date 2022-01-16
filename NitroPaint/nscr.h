@@ -39,6 +39,18 @@ typedef struct NSCR_ {
 #include "combo2d.h"
 
 //
+// Structure used for character compression. Fill them out and pass them to
+// performCharacterCompression.
+//
+typedef struct BGTILE_ {
+	BYTE indices[64];
+	COLOR32 px[64]; //redundant, speed
+	int masterTile;
+	int nRepresents;
+	int flipMode;
+} BGTILE;
+
+//
 // Initialize an NSCR structure with sensible values.
 //
 void nscrInit(NSCR *nscr, int format);
@@ -88,6 +100,20 @@ int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL chceker, 
 // base for quirks in some game setups.
 //
 int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo, BOOL transparent);
+
+//
+// Call this function after filling out the RGB color info in the tile array.
+// The function will associate each tile with its best fitting palette, index
+// the tile with that palette, and perform optional dithering.
+//
+void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse);
+
+//
+// Perform character compresion on the input array of tiles. After tiles are
+// combined, the bit depth and palette settings are used to finalize the
+// result in the tile array. progress must not be NULL, and ranges from 0-1000.
+//
+int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int *progress);
 
 //
 // Generates a BG with the parameters:
