@@ -105,13 +105,17 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 				int color = highlightColor % (1 << renderNcgr->nBits);
 				int highlightPalette = highlightColor / (1 << renderNcgr->nBits);
 				WORD nscrData = renderNscr->data[x + y * (renderNscr->nWidth / 8)];
+				int flip = (nscrData >> 10) & 3;
 				if (((nscrData >> 12) & 0xF) == highlightPalette) {
 					int charBase = tileBase;
 					int tileIndex = nscrData & 0x3FF;
 					if (tileIndex - charBase >= 0) {
 						BYTE *tile = renderNcgr->tiles[tileIndex - charBase];
 						for (int i = 0; i < 64; i++) {
-							if (tile[i] == color) {
+							int bIndex = i;
+							if (flip & TILE_FLIPX) bIndex ^= 7;
+							if (flip & TILE_FLIPY) bIndex ^= 7 << 3;
+							if (tile[bIndex] == color) {
 								block[i] = 0xFFFFFFFF;
 							}
 						}
