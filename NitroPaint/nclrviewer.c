@@ -619,6 +619,24 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (data->szOpenFile[0] != L'\0') nclrWriteFile(&data->nclr, data->szOpenFile);;
 						break;
 					}
+					case ID_FILE_EXPORT:
+					{
+						LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Export Palette", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
+						if (path == NULL) break;
+
+						//construct bitmap
+						int width = 16;
+						int height = (data->nclr.nColors + 15) / 16;
+						COLOR32 *bits = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+						for (int i = 0; i < data->nclr.nColors; i++) {
+							COLOR32 as32 = ColorConvertFromDS(data->nclr.colors[i]) | 0xFF000000;
+							bits[i] = REVERSE(as32);
+						}
+						writeImage(bits, width, height, path);
+						free(path);
+
+						break;
+					}
 					case ID_MENU_VERIFYCOLOR:
 					{
 						int index = data->contextHoverX + data->contextHoverY * 16;
