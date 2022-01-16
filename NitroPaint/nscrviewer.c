@@ -78,6 +78,7 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 				}
 			}
 
+			//highlight selection
 			if (x >= selX && y >= selY && x <= selRight && y <= selBottom) {
 				for (int i = 0; i < 64; i++) {
 					DWORD d = block[i];
@@ -89,7 +90,15 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 					b = (b * 3 + 0) >> 2;
 					block[i] = (d & 0xFF000000) | b | (g << 8) | (r << 16);
 				}
-
+				//highlight edges for better visibility
+				if (x == selX || x == selRight) {
+					if (x == selX) for (int i = 0; i < 8; i++) block[i * 8] = 0xFFFFFF00;
+					if (x == selRight) for (int i = 0; i < 8; i++) block[i * 8 + 7] = 0xFFFFFF00;
+				}
+				if (y == selY || y == selBottom) {
+					if (y == selY) for (int i = 0; i < 8; i++) block[i] = 0xFFFFFF00;
+					if (y == selBottom) for (int i = 0; i < 8; i++) block[i + 7 * 8] = 0xFFFFFF00;
+				}
 			}
 
 			if (highlightColor != -1) {
