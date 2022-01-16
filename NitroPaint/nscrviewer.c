@@ -674,10 +674,14 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
-int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int charNumber) {
+int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int flip) {
 	int error = 0;
-	for (int i = 0; i < 64; i++) {
-		DWORD col = block[i];
+	for (int i = 0; i < 64; i++) { //0b111 111
+		int srcIndex = i;
+		if (flip & TILE_FLIPX) srcIndex ^= 7;
+		if (flip & TILE_FLIPY) srcIndex ^= 7 << 3;
+
+		DWORD col = block[srcIndex];
 		int r = col & 0xFF;
 		int g = (col >> 8) & 0xFF;
 		int b = (col >> 16) & 0xFF;
@@ -706,6 +710,44 @@ int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int ch
 		error += dy * dy * 4 + du * du + dv * dv + da * da * 16;
 	}
 	return error;
+}
+
+int calculateBestPaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int *flip) {
+	int e00 = calculatePaletteCharError(block, pals, character, TILE_FLIPNONE);
+	if (e00 == 0) {
+		*flip = TILE_FLIPNONE;
+		return e00;
+	}
+	int e01 = calculatePaletteCharError(block, pals, character, TILE_FLIPX);
+	if (e01 == 0) {
+		*flip = TILE_FLIPX;
+		return e01;
+	}
+	int e10 = calculatePaletteCharError(block, pals, character, TILE_FLIPY);
+	if (e10 == 0) {
+		*flip = TILE_FLIPY;
+		return e10;
+	}
+	int e11 = calculatePaletteCharError(block, pals, character, TILE_FLIPXY);
+	if (e11 == 0) {
+		*flip = TILE_FLIPXY;
+		return e11;
+	}
+
+	if (e00 <= e01 && e00 <= e10 && e00 <= e11) {
+		*flip = TILE_FLIPNONE;
+		return e00;
+	}
+	if (e01 <= e00 && e01 <= e10 && e01 <= e11) {
+		*flip = TILE_FLIPX;
+		return e01;
+	}
+	if (e10 <= e00 && e10 <= e01 && e10 <= e11) {
+		*flip = TILE_FLIPY;
+		return e10;
+	}
+	*flip = TILE_FLIPXY;
+	return e11;
 }
 
 typedef struct {
@@ -838,16 +880,17 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				DWORD *block = blocks + 64 * (x + y * tilesX);
 
 				//find what combination of palette and character minimizes the error.
-				int chosenCharacter = 0, chosenPalette = 0;
+				int chosenCharacter = 0, chosenPalette = 0, chosenFlip = TILE_FLIPNONE;
 				int minError = 0x7FFFFFFF;
 				for (int i = 0; i < nPalettes; i++) {
 					for (int j = 0; j < ncgr->nTiles; j++) {
-						int charId = j;
-						int err = calculatePaletteCharError(block, pals + i * paletteSize, ncgr->tiles[charId], charId);
+						int charId = j, mode;
+						int err = calculateBestPaletteCharError(block, pals + i * paletteSize, ncgr->tiles[charId], &mode);
 						if (err < minError) {
 							chosenCharacter = charId;
 							chosenPalette = i;
 							minError = err;
+							chosenFlip = mode;
 						}
 					}
 				}
@@ -855,11 +898,13 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				int nscrX = x + nscrTileX;
 				int nscrY = y + nscrTileY;
 
-				WORD d = nscrData[nscrX + nscrY * (nscr->nWidth >> 3)];
+				//WORD d = nscrData[nscrX + nscrY * (nscr->nWidth >> 3)];
+				WORD d = 0;
 				d = d & 0xFFF;
 				d |= (chosenPalette + paletteNumber) << 12;
 				d &= 0xFC00;
 				d |= (chosenCharacter + charBase);
+				d |= chosenFlip << 10;
 				nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
 			}
 		}
