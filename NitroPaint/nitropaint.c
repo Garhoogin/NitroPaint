@@ -254,12 +254,112 @@ void parseOffsetSizePair(const char *pair, int *offset, int *size) {
 	*size = tmpSize;
 }
 
+int specIsSpec(char *buffer, int size) {
+	char *refName = propGetProperty(buffer, size, "File");
+	if (refName == NULL) return 0;
+	free(refName);
+	return 1;
+}
+
 VOID CreateImageDialog(HWND hWnd, LPCWSTR path);
 
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	NITROPAINTSTRUCT *data = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWnd, 0);
 	DWORD dwSize = 0;
 	char *buffer = (char *) fileReadWhole(path, &dwSize);
+
+	//test: Is this a specification file to open a file with?
+	if (specIsSpec(buffer, dwSize)) {
+		char *refName = propGetProperty(buffer, dwSize, "File");
+		char *pltRef = propGetProperty(buffer, dwSize, "PLT");
+		char *chrRef = propGetProperty(buffer, dwSize, "CHR");
+		char *scrRef = propGetProperty(buffer, dwSize, "SCR");
+		if (refName == NULL || pltRef == NULL || chrRef == NULL || scrRef == NULL) {
+			if (refName != NULL) free(refName);
+			if (pltRef != NULL) free(pltRef);
+			if (chrRef != NULL) free(chrRef);
+			if (scrRef != NULL) free(scrRef);
+		} else {
+			int pltOffset, pltSize, chrOffset, chrSize, scrOffset, scrSize;
+			parseOffsetSizePair(pltRef, &pltOffset, &pltSize); free(pltRef);
+			parseOffsetSizePair(chrRef, &chrOffset, &chrSize); free(chrRef);
+			parseOffsetSizePair(scrRef, &scrOffset, &scrSize); free(scrRef);
+
+			//determine the actual path of the referenced file.
+			int lastSlash = -1;
+			for (unsigned i = 0; i < wcslen(path); i++) {
+				if (path[i] == '\\' || path[i] == '/') lastSlash = i;
+			}
+			int pathLen = lastSlash + 1;
+			int relFileLen = strlen(refName);
+			WCHAR *pathBuffer = (WCHAR *) calloc(pathLen + relFileLen + 1, 2);
+			memcpy(pathBuffer, path, 2 * pathLen);
+			for (int i = 0; i < relFileLen; i++) {
+				pathBuffer[i + pathLen] = refName[i];
+			}
+
+			unsigned comboSize;
+			void *fp = fileReadWhole(pathBuffer, &comboSize);
+
+			//refName is the name of the file to read.
+			COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
+			combo->header.format = COMBO2D_TYPE_DATAFILE;
+			combo->header.size = sizeof(COMBO2D);
+			combo->header.type = FILE_TYPE_COMBO2D;
+			combo->header.dispose = NULL;
+			combo->header.compression = COMPRESSION_NONE;
+			combo->extraData = (DATAFILECOMBO *) calloc(1, sizeof(DATAFILECOMBO));
+			DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
+			dfc->pltOffset = pltOffset;
+			dfc->pltSize = pltSize;
+			dfc->chrOffset = chrOffset;
+			dfc->chrSize = chrSize;
+			dfc->scrOffset = scrOffset;
+			dfc->scrSize = scrSize;
+			dfc->data = fp;
+			dfc->size = comboSize;
+
+			NCLR nclr;
+			NCGR ncgr;
+			NSCR nscr;
+
+			nclrRead(&nclr, dfc->data + pltOffset, pltSize); nclr.header.format = NCLR_TYPE_COMBO;
+			ncgrRead(&ncgr, dfc->data + chrOffset, chrSize); ncgr.header.format = NCGR_TYPE_COMBO;
+			nscrRead(&nscr, dfc->data + scrOffset, scrSize); nscr.header.format = NSCR_TYPE_COMBO;
+			nclr.combo2d = combo;
+			ncgr.combo2d = combo;
+			nscr.combo2d = combo;
+
+			//if there is already an NCLR open, close it.
+			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
+			data->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, &nclr);
+
+			//if there is already an NCGR open, close it.
+			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
+			data->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, &ncgr);
+			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+
+			//if there is already an NSCR open, close it.
+			if (data->hWndNscrViewer) DestroyChild(data->hWndNscrViewer);
+			data->hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, &nscr);
+
+			//link structs
+			NCGR *pNcgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
+			NCLR *pNclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
+			NSCR *pNscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->nscr;
+			combo->nclr = pNclr;
+			combo->ncgr = pNcgr;
+			combo->nscr = pNscr;
+
+			//set file paths (creation of immediate editor doesn't do this automatically)
+			memcpy(((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
+			memcpy(((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
+			memcpy(((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
+			free(pathBuffer);
+
+			goto cleanup;
+		}
+	}
 
 	int format = fileIdentify(buffer, dwSize, path);
 	switch (format) {
@@ -343,96 +443,8 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			break;
 		}
 	}
-	if (format == FILE_TYPE_INVALID) {
-		//test: Is this a specification file to open a file with?
-		char *refName = propGetProperty(buffer, dwSize, "File");
-		char *pltRef = propGetProperty(buffer, dwSize, "PLT");
-		char *chrRef = propGetProperty(buffer, dwSize, "CHR");
-		char *scrRef = propGetProperty(buffer, dwSize, "SCR");
-		if (refName == NULL || pltRef == NULL || chrRef == NULL || scrRef == NULL) {
-			if (refName != NULL) free(refName);
-			if (pltRef != NULL) free(pltRef);
-			if (chrRef != NULL) free(chrRef);
-			if (scrRef != NULL) free(scrRef);
-		} else {
-			int pltOffset, pltSize, chrOffset, chrSize, scrOffset, scrSize;
-			parseOffsetSizePair(pltRef, &pltOffset, &pltSize); free(pltRef);
-			parseOffsetSizePair(chrRef, &chrOffset, &chrSize); free(chrRef);
-			parseOffsetSizePair(scrRef, &scrOffset, &scrSize); free(scrRef);
 
-			//determine the actual path of the referenced file.
-			int lastSlash = -1;
-			for (unsigned i = 0; i < wcslen(path); i++) {
-				if (path[i] == '\\' || path[i] == '/') lastSlash = i;
-			}
-			int pathLen = lastSlash + 1;
-			int relFileLen = strlen(refName);
-			WCHAR *pathBuffer = (WCHAR *) calloc(pathLen + relFileLen + 1, 2);
-			memcpy(pathBuffer, path, 2 * pathLen);
-			for (int i = 0; i < relFileLen; i++) {
-				pathBuffer[i + pathLen] = refName[i];
-			}
-
-			unsigned comboSize;
-			void *fp = fileReadWhole(pathBuffer, &comboSize);
-
-			//refName is the name of the file to read.
-			COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-			combo->header.format = COMBO2D_TYPE_DATAFILE;
-			combo->header.size = sizeof(COMBO2D);
-			combo->header.type = FILE_TYPE_COMBO2D;
-			combo->header.dispose = NULL;
-			combo->header.compression = COMPRESSION_NONE;
-			combo->extraData = (DATAFILECOMBO *) calloc(1, sizeof(DATAFILECOMBO));
-			DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
-			dfc->pltOffset = pltOffset;
-			dfc->pltSize = pltSize;
-			dfc->chrOffset = chrOffset;
-			dfc->chrSize = chrSize;
-			dfc->scrOffset = scrOffset;
-			dfc->scrSize = scrSize;
-			dfc->data = fp;
-			dfc->size = comboSize;
-
-			NCLR nclr;
-			NCGR ncgr;
-			NSCR nscr;
-
-			nclrRead(&nclr, dfc->data + pltOffset, pltSize); nclr.header.format = NCLR_TYPE_COMBO;
-			ncgrRead(&ncgr, dfc->data + chrOffset, chrSize); ncgr.header.format = NCGR_TYPE_COMBO;
-			nscrRead(&nscr, dfc->data + scrOffset, scrSize); nscr.header.format = NSCR_TYPE_COMBO;
-			nclr.combo2d = combo;
-			ncgr.combo2d = combo;
-			nscr.combo2d = combo;
-
-			//if there is already an NCLR open, close it.
-			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
-			data->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, &nclr);
-
-			//if there is already an NCGR open, close it.
-			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
-			data->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, &ncgr);
-			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-
-			//if there is already an NSCR open, close it.
-			if (data->hWndNscrViewer) DestroyChild(data->hWndNscrViewer);
-			data->hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, &nscr);
-			
-			//link structs
-			NCGR *pNcgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
-			NCLR *pNclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
-			NSCR *pNscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->nscr;
-			combo->nclr = pNclr;
-			combo->ncgr = pNcgr;
-			combo->nscr = pNscr;
-
-			//set file paths (creation of immediate editor doesn't do this automatically)
-			memcpy(((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
-			memcpy(((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
-			memcpy(((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
-			free(pathBuffer);
-		}
-	}
+cleanup:
 	free(buffer);
 }
 
