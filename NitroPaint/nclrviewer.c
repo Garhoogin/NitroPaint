@@ -637,6 +637,24 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 						break;
 					}
+					case ID_MENU_IMPORT:
+					{
+						LPWSTR path = openFileDialog(getMainWindow(hWnd), L"Import Palette", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+						if (path == NULL) break;
+
+						int width, height;
+						COLOR32 *colors = gdipReadImage(path, &width, &height);
+						int nColors = width * height;
+						int startIndex = data->contextHoverX + data->contextHoverY * 16;
+						int nCopyColors = min(nColors, data->nclr.nColors - startIndex);
+						for (int i = 0; i < nCopyColors; i++) {
+							data->nclr.colors[i + startIndex] = ColorConvertToDS(colors[i]);
+						}
+						free(colors);
+
+						free(path);
+						break;
+					}
 					case ID_MENU_VERIFYCOLOR:
 					{
 						int index = data->contextHoverX + data->contextHoverY * 16;
