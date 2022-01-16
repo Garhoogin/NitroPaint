@@ -405,6 +405,26 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
+					case ID_NSCRMENU_MAKEIDENTITY:
+					{
+						//each element use palette 0, increasing char index
+						int selStartX = min(data->selStartX, data->selEndX), selEndX = max(data->selStartX, data->selEndX);
+						int selStartY = min(data->selStartY, data->selEndY), selEndY = max(data->selStartY, data->selEndY);
+						int selWidth = selEndX + 1 - selStartX;
+						int selHeight = selEndY + 1 - selStartY;
+
+						int index = 0;
+						//for every row
+						for (int y = 0; y < selHeight; y++) {
+							//for every column
+							for (int x = selStartX; x < selStartX + selWidth; x++) {
+								data->nscr.data[x + (y + selStartY) * (data->nscr.nWidth >> 3)] = index & 0x3FF;
+								index++;
+							}
+						}
+						InvalidateRect(hWnd, NULL, FALSE);
+						break;
+					}
 					case ID_FILE_SAVEAS:
 					case ID_FILE_SAVE:
 					{
