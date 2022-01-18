@@ -12,6 +12,8 @@ int calculateWidth(int nTiles) {
 		if (i * i > nTiles) break;
 		if (nTiles % i == 0) width = i;
 	}
+	int height = nTiles / width;
+	if (width > height) return height; //prioritize wide over tall output
 	return width;
 }
 
