@@ -181,10 +181,15 @@ char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
 		//search for colon
 		const char *key = ptr;
 		while (*ptr != ':' && ptr != end && *ptr != '\r' && *ptr != '\n') ptr++;
+		if (ptr == end) return NULL;
+		if (*ptr == '\r' || *ptr == '\n') {
+			while (ptr != end && (*ptr == '\r' || *ptr == '\n')) ptr++;
+			continue;
+		}
 		if (*ptr == ':') {
 			int keyLen = ptr - key;
 			ptr++;
-			while (*ptr == ' ' || *ptr == '\t') ptr++;
+			while ((*ptr == ' ' || *ptr == '\t') && ptr != end) ptr++;
 			const char *value = ptr;
 
 			if (_strnicmp(key, name, keyLen) == 0) {
