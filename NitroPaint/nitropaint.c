@@ -192,7 +192,7 @@ char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
 			while ((*ptr == ' ' || *ptr == '\t') && ptr != end) ptr++;
 			const char *value = ptr;
 
-			if (_strnicmp(key, name, keyLen) == 0) {
+			if (_strnicmp(key, name, keyLen) == 0 && keyLen == strlen(name)) {
 				//take length of value. Read until null terminator or CR/LF
 				while (ptr != end && *ptr != '\r' && *ptr != '\n') ptr++;
 				int valLen = ptr - value;
