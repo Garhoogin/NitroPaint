@@ -521,26 +521,9 @@ void mergePalettes(TILEDATA *tileData, int nTiles, COLOR *palette, int paletteIn
 		palette[paletteIndex * 2 + 3] = 0;
 	} else if (palettesMode == 0x4000 || palettesMode == 0xC000) {
 		//transparent, interpolated, and opaque, interpolated
-		//just average all the palettes consumed.
-		int r1 = 0, g1 = 0, b1 = 0, r2 = 0, g2 = 0, b2 = 0;
-		for (int i = 0; i < nTiles; i++) {
-			if (tileData[i].paletteIndex != paletteIndex) continue;
-			DWORD c1 = ColorConvertFromDS(tileData[i].palette[0]), c2 = ColorConvertFromDS(tileData[i].palette[1]);
-			r1 += c1 & 0xFF;
-			r2 += c2 & 0xFF;
-			g1 += (c1 >> 8) & 0xFF;
-			g2 += (c2 >> 8) & 0xFF;
-			b1 += (c1 >> 16) & 0xFF;
-			b2 += (c2 >> 16) & 0xFF;
-		}
-		r1 = (r1 + (nUsedTiles >> 1)) / nUsedTiles;
-		g1 = (g1 + (nUsedTiles >> 1)) / nUsedTiles;
-		b1 = (b1 + (nUsedTiles >> 1)) / nUsedTiles;
-		r2 = (r2 + (nUsedTiles >> 1)) / nUsedTiles;
-		g2 = (g2 + (nUsedTiles >> 1)) / nUsedTiles;
-		b2 = (b2 + (nUsedTiles >> 1)) / nUsedTiles;
-		palette[paletteIndex * 2 + 0] = ColorConvertToDS(r1 | (g1 << 8) | (b1 << 16));
-		palette[paletteIndex * 2 + 1] = ColorConvertToDS(r2 | (g2 << 8) | (b2 << 16));
+		getColorBounds(px, 16 * nUsedTiles, &expandPal[0], &expandPal[1]);
+		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[1]);
+		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[0]);
 	} else if (palettesMode == 0x8000) {
 		//opaque, full color
 		createPaletteSlow(px, 4, 4 * nUsedTiles, expandPal, 4);
@@ -659,7 +642,7 @@ void expandPalette(COLOR *nnsPal, WORD mode, DWORD *dest, int *nOpaque) {
 
 WORD findOptimalPidx(DWORD *px, int hasTransparent, COLOR *palette, int nColors) {
 	//yes, iterate over every possible palette and mode.
-	int leastError = 0x10000000;
+	unsigned long long leastError = 0xFFFFFFFFFFFFFFFFull;
 	WORD leastPidx = 0;
 	for (int i = 0; i < nColors; i += 2) {
 		COLOR *thisPalette = palette + i;
@@ -674,9 +657,10 @@ WORD findOptimalPidx(DWORD *px, int hasTransparent, COLOR *palette, int nColors)
 			expandPalette(thisPalette, mode, expand, &nConsumed);
 			if (hasTransparent && nConsumed == 4) continue;
 
-			int dst = computeLMS(px, expand, nConsumed == 3);
+			//unsigned long long dst = computeLMS(px, expand, nConsumed == 3); //35.36s
+			unsigned long long dst = computePaletteError(px, 16, expand, 4 - (nConsumed == 3), 128, leastError); //22.26s, lot faster
 			if (dst < leastError) {
-				leastPidx = mode | (i / 2);
+				leastPidx = mode | (i >> 1);
 				leastError = dst;
 			}
 		}

@@ -78,3 +78,11 @@ void convertYUVToRGB(int y, int u, int v, int *r, int *g, int *b);
 // Count the number of unique colors in an image (counting transparent as a color), and otherwise ignoring the alpha channel.
 //
 int countColors(COLOR32 *px, int nPx);
+
+//
+// Compute palette error for a block of pixels. The alpha threshold is used to
+// determine which pixels should be treated as transparent and ignored for the 
+// calculation. nMaxError specifies the maximum error to calculate before 
+// stopping.
+//
+unsigned long long computePaletteError(COLOR32 *px, int nPx, COLOR32 *pal, int nColors, int alphaThreshold, unsigned long long nMaxError);

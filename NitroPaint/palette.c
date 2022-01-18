@@ -169,3 +169,26 @@ int countColors(COLOR32 *px, int nPx) {
 	free(copy);
 	return nColors + hasTransparent;
 }
+
+unsigned long long computePaletteError(COLOR32 *px, int nPx, COLOR32 *pal, int nColors, int alphaThreshold, unsigned long long nMaxError) {
+	if (nMaxError == 0) nMaxError = 0xFFFFFFFFFFFFFFFFull;
+	unsigned long long error = 0;
+
+	for (int i = 0; i < nPx; i++) {
+		COLOR32 p = px[i];
+		int a = (p >> 24) & 0xFF;
+		if (a < alphaThreshold) continue;
+		int best = closestpalette(*(RGB *) &(px[i]), (RGB *) pal, nColors, NULL);
+		COLOR32 chosen = pal[best];
+		int dr = (chosen & 0xFF) - (p & 0xFF);
+		int dg = ((chosen >> 8) & 0xFF) - ((p >> 8) & 0xFF);
+		int db = ((chosen >> 16) & 0xFF) - ((p >> 16) & 0xFF);
+		int dy, du, dv;
+		convertRGBToYUV(dr, dg, db, &dy, &du, &dv);
+		error += 4 * dy * dy;
+		if (error >= nMaxError) return nMaxError;
+		error += du * du + dv * dv;
+		if (error >= nMaxError) return nMaxError;
+	}
+	return error;
+}
