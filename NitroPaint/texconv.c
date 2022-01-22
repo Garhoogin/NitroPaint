@@ -284,47 +284,50 @@ int computeLMS(DWORD *tile, DWORD *palette, int transparent) {
 
 void choosePaletteAndMode(TILEDATA *tile) {
 	//first try interpolated. If it's not good enough, use full color.
-	DWORD colorMin, colorMax;
+	COLOR32 colorMin, colorMax;
 	getColorBounds((DWORD *) tile->rgb, 16, &colorMin, &colorMax);
 	if (tile->transparentPixels) {
-		DWORD mid = blend(colorMin, 4, colorMax, 4);
-		DWORD palette[] = { colorMax, mid, colorMin, 0 };
-		int error = computeLMS((DWORD *) tile->rgb, palette, 1);
+		COLOR32 mid = blend(colorMin, 4, colorMax, 4);
+		COLOR32 palette[] = { colorMax, mid, colorMin, 0 };
+		COLOR32 paletteFull[4];
+
+		int error = computeLMS((COLOR32 *) tile->rgb, palette, 1);
+		int nFull = createPaletteSlowEx((COLOR32 *) tile->rgb, 4, 4, paletteFull, 3, 20, 20, 0, 0);
 		//if error <= 24, then these colors are good enough
-		if (error <= 24) {
+		if (error <= 24 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
 			tile->palette[3] = 0;
 			tile->mode = 0x4000;
 		} else {
-			createPaletteSlow((DWORD *) tile->rgb, 4, 4, palette, 4);
-			//palette[0] = 0;
 			//swap index 3 and 0, 2 and 1
-			tile->palette[0] = ColorConvertToDS(palette[3]);
-			tile->palette[1] = ColorConvertToDS(palette[2]);
-			tile->palette[2] = ColorConvertToDS(palette[1]);
-			tile->palette[3] = ColorConvertToDS(palette[0]);
+			tile->palette[0] = ColorConvertToDS(paletteFull[3]);
+			tile->palette[1] = ColorConvertToDS(paletteFull[2]);
+			tile->palette[2] = ColorConvertToDS(paletteFull[1]);
+			tile->palette[3] = ColorConvertToDS(paletteFull[0]);
 			tile->mode = 0x0000;
 		}
 	} else {
-		DWORD mid1 = blend(colorMin, 5, colorMax, 3);
-		DWORD mid2 = blend(colorMin, 3, colorMax, 5);
-		DWORD palette[] = { colorMax, mid2, mid1, colorMin };
-		int error = computeLMS((DWORD *) tile->rgb, palette, 0);
-		if (error <= 24) {
+		COLOR32 mid1 = blend(colorMin, 5, colorMax, 3);
+		COLOR32 mid2 = blend(colorMin, 3, colorMax, 5);
+		COLOR32 palette[] = { colorMax, mid2, mid1, colorMin };
+		COLOR32 paletteFull[4];
+
+		int error = computeLMS((COLOR32 *) tile->rgb, palette, 0);
+		int nFull = createPaletteSlowEx((COLOR32 *) tile->rgb, 4, 4, paletteFull, 4, 20, 20, 0, 0);
+		if (error <= 24 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
 			tile->palette[3] = 0;
 			tile->mode = 0xC000;
 		} else {
-			createPaletteSlow((DWORD *) tile->rgb, 4, 4, (DWORD *) palette, 4);
 			//swap index 3 and 0, 2 and 1
-			tile->palette[0] = ColorConvertToDS(palette[3]);
-			tile->palette[1] = ColorConvertToDS(palette[2]);
-			tile->palette[2] = ColorConvertToDS(palette[1]);
-			tile->palette[3] = ColorConvertToDS(palette[0]);;
+			tile->palette[0] = ColorConvertToDS(paletteFull[3]);
+			tile->palette[1] = ColorConvertToDS(paletteFull[2]);
+			tile->palette[2] = ColorConvertToDS(paletteFull[1]);
+			tile->palette[3] = ColorConvertToDS(paletteFull[0]);
 			tile->mode = 0x8000;
 		}
 	}
@@ -433,11 +436,13 @@ WORD getModeFromTable(BYTE type) {
 	return 0;
 }
 
-int computePaletteDifference(DWORD *pal1, DWORD *pal2, int nColors) {
+int computePaletteDifference(DWORD *pal1, DWORD *pal2, int nColors, int nMaxError) {
 	int total = 0;
 	
 	for (int i = 0; i < nColors; i++) {
 		total += computeColorDifference(pal1[i], pal2[i]);
+		if (total >= nMaxError) return nMaxError;
+		if (nColors == 2 && total * 2 >= nMaxError) return nMaxError;
 	}
 
 	if (nColors == 2) total *= 2;
@@ -449,7 +454,7 @@ int findClosestPalettes(COLOR *palette, BYTE *colorTable, int nColors, int *colo
 	int leastDistance = 0x10000000;
 	int idx1 = 0;
 
-	while (idx1 <= nColors) {
+	while (idx1 < nColors) {
 		BYTE type1 = colorTable[idx1];
 		if (type1 == 0) break;
 		int nColorsInThisPalette = 2;
@@ -475,7 +480,7 @@ int findClosestPalettes(COLOR *palette, BYTE *colorTable, int nColors, int *colo
 				expandPal1[i] = ColorConvertFromDS(palette[idx1 + i]);
 				expandPal2[i] = ColorConvertFromDS(palette[idx2 + i]);
 			}
-			int dst = computePaletteDifference(expandPal1, expandPal2, nColorsInThisPalette);
+			int dst = computePaletteDifference(expandPal1, expandPal2, nColorsInThisPalette, leastDistance);
 			if (dst < leastDistance) {
 				leastDistance = dst;
 				*colorIndex1 = idx1;
