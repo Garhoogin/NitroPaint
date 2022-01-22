@@ -599,6 +599,8 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	HWND hWndFormat = data->hWndFormat;
 	int sel = SendMessage(hWndFormat, CB_GETCURSEL, 0, 0);
 	int fixedPalette = SendMessage(data->hWndFixedPalette, BM_GETCHECK, 0, 0) == BST_CHECKED;
+	int dither = SendMessage(data->hWndDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
+	int ditherAlpha = SendMessage(data->hWndDitherAlpha, BM_GETCHECK, 0, 0) == BST_CHECKED;
 	int fmt = sel + 1;
 	//some things are only applicable to certain formats!
 	BOOL disables[] = {TRUE, FALSE, TRUE, FALSE, FALSE, FALSE};
@@ -615,7 +617,6 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 		case CT_4x4:
 		{
 			disables[0] = TRUE;
-			disables[1] = TRUE;
 			disables[2] = FALSE;
 			disables[3] = FALSE;
 			break;
@@ -645,7 +646,8 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	setStyle(data->hWndFixedPalette, disables[4], WS_DISABLED);
 	setStyle(data->hWndPaletteInput, disables[5], WS_DISABLED);
 	setStyle(data->hWndPaletteBrowse, disables[5], WS_DISABLED);
-	setStyle(data->hWndDiffuseAmount, !disables[2], WS_DISABLED);
+
+	setStyle(data->hWndDiffuseAmount, !((dither && !disables[1]) || (ditherAlpha && !disables[0])), WS_DISABLED);
 	SetFocus(data->hWndConvertDialog);
 	InvalidateRect(data->hWndConvertDialog, NULL, FALSE);
 }
@@ -741,6 +743,10 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				if (hWndControl == data->hWndFormat && controlCode == LBN_SELCHANGE) {
 					updateConvertDialog(data);
 				} else if (hWndControl == data->hWndFixedPalette && controlCode == BN_CLICKED) {
+					updateConvertDialog(data);
+				} else if (hWndControl == data->hWndDither && controlCode == BN_CLICKED) {
+					updateConvertDialog(data);
+				} else if (hWndControl == data->hWndDitherAlpha && controlCode == BN_CLICKED) {
 					updateConvertDialog(data);
 				} else if (hWndControl == data->hWndPaletteBrowse && controlCode == BN_CLICKED) {
 					LPWSTR path = openFileDialog(hWnd, L"Select palette", L"Palette Files\0*.nclr;*ncl.bin;*.ntfp\0All Files\0*.*\0\0", L"");

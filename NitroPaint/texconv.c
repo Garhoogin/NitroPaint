@@ -715,6 +715,9 @@ int convert4x4(CREATEPARAMS *params) {
 		int paletteSize;
 		expandPalette(thisPalette, mode, palette, &paletteSize);
 
+		//if dither is enabled, do so here.
+		if (params->dither) ditherImagePalette((COLOR32 *) tileData[i].rgb, 4, 4, palette, paletteSize, 0, 1, 0, params->diffuseAmount);
+
 		for (int j = 0; j < 16; j++) {
 			int index = 0;
 			COLOR32 col = ((COLOR32 *) tileData[i].rgb)[j];
