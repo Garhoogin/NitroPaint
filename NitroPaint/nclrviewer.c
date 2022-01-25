@@ -53,6 +53,13 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 	if (!data->rowDragging) {
 		srcIndex = (data->dragStart.x / 16) + 16 * (data->dragStart.y >> 4);
 		dstIndex = (data->dragPoint.x / 16) + 16 * (data->dragPoint.y >> 4);
+
+		if (data->preserveDragging) {
+			int paletteMask = nRowsPerPalette == 1 ? 0xF0 : 0x00;
+			if ((srcIndex & paletteMask) != (dstIndex & paletteMask)) {
+				dstIndex = (srcIndex & paletteMask) | (dstIndex & ~paletteMask);
+			}
+		}
 	} else {
 		srcIndex = 16 * (data->dragStart.y >> 4);
 		dstIndex = 16 * (data->dragPoint.y >> 4);
@@ -381,6 +388,17 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 				HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
 				if (!data->rowDragging) {
+					//test for preserve dragging to adjust destination 
+					if (data->preserveDragging && hWndNcgrViewer != NULL) {
+						NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+						NCGR *ncgr = &ncgrViewerData->ncgr;
+
+						int paletteMask = 0xFF << ncgr->nBits;
+						if ((srcIndex & paletteMask) != (dstIndex & paletteMask)) {
+							dstIndex = (srcIndex & paletteMask) | (dstIndex & ~paletteMask);
+						}
+					}
+
 					if (dstIndex < data->nclr.nColors) {
 						WORD *pal = data->nclr.colors;
 						WORD src = pal[srcIndex];
