@@ -864,7 +864,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			CreateWindow(L"STATIC", L"Offset:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 199, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Row limit:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 226, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Tile base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 253, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Merge tiles", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 280, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Compress:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 280, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Maximum:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 307, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 334, 50, 22, hWnd, NULL, NULL, NULL);
 
