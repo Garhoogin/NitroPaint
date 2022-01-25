@@ -285,6 +285,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			ScreenToClient(hWnd, &mousePos);
 
 			int ctrlPressed = GetKeyState(VK_CONTROL) >> 15;
+			int shiftPressed = GetKeyState(VK_SHIFT) >> 15;
 
 			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < 256) {
 				int x = mousePos.x / 16;
@@ -294,6 +295,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					data->mouseDown = 1;
 					data->dragging = 0;
 					data->rowDragging = !!ctrlPressed;
+					data->preserveDragging = !!shiftPressed;
 
 					SCROLLINFO horiz, vert;
 					horiz.cbSize = sizeof(horiz);
@@ -373,12 +375,68 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					srcIndex = 16 * (data->dragStart.y >> 4);
 					dstIndex = 16 * (data->dragPoint.y >> 4);
 				}
+
+				HWND hWndMain = getMainWindow(hWnd);
+				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+				HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+				HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
 				if (!data->rowDragging) {
 					if (dstIndex < data->nclr.nColors) {
 						WORD *pal = data->nclr.colors;
 						WORD src = pal[srcIndex];
 						pal[srcIndex] = pal[dstIndex];
 						pal[dstIndex] = src;
+
+						//if preserve mode, update associated graphics data.
+						if (data->preserveDragging) {
+
+							if (hWndNcgrViewer != NULL) {
+								NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+								NCGR *ncgr = &ncgrViewerData->ncgr;
+
+								//if no screen, just swap the indices if the palette numbers line up.
+								int nclrPalette = srcIndex >> ncgr->nBits;
+								int mask = ncgr->nBits == 8 ? 0xFF : 0xF;
+								if (hWndNscrViewer == NULL) {
+									int ncgrPalette = ncgrViewerData->selectedPalette;
+									if (ncgrPalette == nclrPalette) {
+
+										for (int i = 0; i < ncgr->nTiles; i++) {
+											BYTE *tile = ncgr->tiles[i];
+											for (int j = 0; j < 64; j++) {
+												if (tile[j] == (srcIndex & mask)) tile[j] = dstIndex & mask;
+												else if (tile[j] == (dstIndex & mask)) tile[j] = srcIndex & mask;
+											}
+										}
+									}
+								} else {
+									//with screen, so do the above but only for tiles referenced by it.
+									NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+									NSCR *nscr = &nscrViewerData->nscr;
+									
+									//this is messy. To avoid "fxing" a tile twice, keep track of which ones have been "fixed".
+									BYTE *fixBuffer = (BYTE *) calloc(ncgr->nTiles, 1);
+									for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+										WORD d = nscr->data[i];
+										int chr = d & 0x3FF;
+										int pal = (d >> 12) & 0xF;
+
+										if (pal == nclrPalette) {
+											int cIndex = chr - nscrViewerData->tileBase;
+											if (cIndex >= 0 && cIndex < ncgr->nTiles && !fixBuffer[cIndex]) {
+												BYTE *tile = ncgr->tiles[cIndex];
+												for (int j = 0; j < 64; j++) {
+													if (tile[j] == (srcIndex & mask)) tile[j] = dstIndex & mask;
+													else if (tile[j] == (dstIndex & mask)) tile[j] = srcIndex & mask;
+												}
+												fixBuffer[cIndex] = 1;
+											}
+										}
+									}
+									free(fixBuffer);
+								}
+							}
+						}
 					}
 				} else {
 					if (dstIndex + 15 < data->nclr.nColors) {
@@ -388,6 +446,25 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						memcpy(pal + srcIndex, pal + dstIndex, 32);
 						memcpy(pal + dstIndex, tmp, 32);
 
+						//if screen is present and we're in preserve mode, then switch relevant tile palettes as well.
+						if (data->preserveDragging) {
+							if (hWndNscrViewer != NULL) {
+								NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+								NSCR *nscr = &nscrViewerData->nscr;
+
+								//doing this only really makes sense for 4-bit graphics, but who are we to disagree with the user
+								int srcPalette = srcIndex >> 4;
+								int dstPalette = dstIndex >> 4;
+								for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+									WORD d = nscr->data[i];
+									int pal = (d >> 12) & 0xF;
+									if (pal == srcPalette) pal = dstPalette;
+									else if (pal == dstPalette) pal = srcPalette;
+									d = (d & 0xFFF) | (pal << 12);
+									nscr->data[i] = d;
+								}
+							}
+						}
 					}
 				}
 				InvalidateRect(hWnd, NULL, FALSE);

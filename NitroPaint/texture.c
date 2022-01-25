@@ -17,16 +17,11 @@ typedef struct {
 } RGB;
 
 void getrgb(unsigned short n, RGB * ret){
-	int r = n & 0x1F;
-	n >>= 5;
-	int g = n & 0x1F;
-	n >>= 5;
-	int b = n & 0x1F;
-	n >>= 5;
-	ret->r = (BYTE) (r * 255 / 31);
-	ret->g = (BYTE) (g * 255 / 31);
-	ret->b = (BYTE) (b * 255 / 31);
-	ret->a = (BYTE) (255 * n);
+	COLOR32 conv = ColorConvertFromDS(n);
+	ret->r = conv & 0xFF;
+	ret->g = (conv >> 8) & 0xFF;
+	ret->b = (conv >> 16) & 0xFF;
+	ret->a = (BYTE) (255 * (n >> 15));
 }
 
 int max16Len(char *str) {

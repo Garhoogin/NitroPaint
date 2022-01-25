@@ -25,6 +25,7 @@ typedef struct {
 	int dragging;
 	int draggingIndex;
 	int rowDragging;
+	int preserveDragging; //Shift+Drag, can combine with row drag for screen.
 
 	COLORREF tmpCust[16];
 
