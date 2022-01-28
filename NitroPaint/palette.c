@@ -25,8 +25,18 @@ int closestpalette(RGB rgb, RGB *palette, int paletteSize, RGB *error) {
 	int smallestDistance = 1 << 24;
 	int index = 0, i = 0;
 	int ey, eu, ev;
+	RGB entry;
 
-	for (; i < paletteSize; i++) {
+	//test exact matches
+	for (i = 0; i < paletteSize; i++) {
+		if (((*(COLOR32 *) &rgb) & 0xFFFFFF) == (((COLOR32 *) palette)[i] & 0xFFFFFF)) {
+			index = i;
+			goto setErrorAndReturn;
+		}
+	}
+
+	//else
+	for (i = 0; i < paletteSize; i++) {
 		RGB entry = palette[i];
 		int dr = entry.r - rgb.r;
 		int dg = entry.g - rgb.g;
@@ -40,7 +50,9 @@ int closestpalette(RGB rgb, RGB *palette, int paletteSize, RGB *error) {
 			smallestDistance = dst;
 		}
 	}
-	RGB entry = palette[index];
+
+setErrorAndReturn:
+	entry = palette[index];
 	if (error) {
 		error->r = -(rgb.r - entry.r);
 		error->g = -(rgb.g - entry.g);

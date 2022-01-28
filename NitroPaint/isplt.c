@@ -1220,7 +1220,7 @@ int diffuseCurveQ(int x) {
 	return (int) (8.5f + pow(x - 8, 0.85) * 0.89453125);
 }
 
-int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, COLOR32 *palette, int nColors) {
+int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, int *palette, int nColors) {
 	double yw2 = reduction->balance * reduction->balance;
 	double iw2 = reduction->colorBalance * reduction->colorBalance;
 	double qw2 = reduction->shiftColorBalance * reduction->shiftColorBalance;
@@ -1228,9 +1228,7 @@ int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, COLOR32 *palette, int
 	double minDistance = 1e32;
 	int minIndex = 0;
 	for (int i = 0; i < nColors; i++) {
-		COLOR32 rgb = palette[i];
-		int yiq[4];
-		encodeColor(rgb, yiq);
+		int *yiq = palette + i * 4;
 
 		double dy = reduction->lumaTable[yiq[0]] - reduction->lumaTable[yiqColor[0]];
 		double di = yiq[1] - yiqColor[1];
@@ -1249,6 +1247,12 @@ int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, COLOR32 *palette, int
 void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse) {
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
 	initReduction(reduction, 20, 20, 15, FALSE, nColors);
+
+	//convert palette to YIQ
+	int *yiqPalette = (int *) calloc(nColors, 4 * sizeof(int));
+	for (int i = 0; i < nColors; i++) {
+		encodeColor(palette[i], yiqPalette + i * 4);
+	}
 
 	//allocate row buffers for color and diffuse.
 	int *thisRow = (int *) calloc(width + 2, 16);
@@ -1300,16 +1304,12 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 			}
 
 			//match it to a palette color. We'll measure distance to it as well.
-			int colorRgb[4];
 			int colorYiq[] = { colorY, colorI, colorQ, colorA };
-			decodeColor(colorRgb, colorYiq);
-			COLOR32 sampleRgb = colorRgb[0] | (colorRgb[1] << 8) | (colorRgb[2] << 16);
-			int matched = c0xp + closestPaletteYiq(reduction, colorYiq, palette + c0xp, nColors - c0xp);
+			int matched = c0xp + closestPaletteYiq(reduction, colorYiq, yiqPalette + c0xp * 4, nColors - c0xp);
 			if (colorA == 0 && c0xp) matched = 0;
 
 			//measure distance. From middle color to sampled color, and from palette color to sampled color.
-			int matchedYiq[4];
-			encodeColor(palette[matched], matchedYiq);
+			int *matchedYiq = yiqPalette + matched * 4;
 			double paletteDy = reduction->lumaTable[matchedYiq[0]] - reduction->lumaTable[colorY];
 			int paletteDi = matchedYiq[1] - colorI;
 			int paletteDq = matchedYiq[2] - colorQ;
@@ -1351,8 +1351,7 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 					colorY = 0;
 					colorI = 0;
 					colorQ = 0;
-				}
-				else if (colorY > 511) {
+				} else if (colorY > 511) {
 					colorY = 511;
 					colorI = 0;
 					colorQ = 0;
@@ -1363,13 +1362,12 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 
 				//match to palette color
 				int diffusedYiq[] = { colorY, colorI, colorQ, colorA };
-				matched = c0xp + closestPaletteYiq(reduction, diffusedYiq, palette + c0xp, nColors - c0xp);
+				matched = c0xp + closestPaletteYiq(reduction, diffusedYiq, yiqPalette + c0xp * 4, nColors - c0xp);
 				if (diffusedYiq[3] < 128 && c0xp) matched = 0;
 				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (colorA << 24);
 				img[x + y * width] = chosen;
 
-				int chosenYiq[4];
-				encodeColor(chosen, chosenYiq);
+				int *chosenYiq = yiqPalette + matched * 4;
 				int offY = colorY - chosenYiq[0];
 				int offI = colorI - chosenYiq[1];
 				int offQ = colorQ - chosenYiq[2];
@@ -1412,7 +1410,7 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 					}
 				}
 
-				matched = c0xp + closestPaletteYiq(reduction, centerYiq, palette + c0xp, nColors - c0xp);
+				matched = c0xp + closestPaletteYiq(reduction, centerYiq, yiqPalette + c0xp * 4, nColors - c0xp);
 				if (c0xp && centerYiq[3] < 128) matched = 0;
 				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (centerYiq[3] << 24);
 				img[x + y * width] = chosen;
@@ -1431,6 +1429,7 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 		memset(nextDiffuse, 0, 16 * (width + 2));
 	}
 
+	free(yiqPalette);
 	free(thisRow);
 	free(lastRow);
 	free(thisDiffuse);
