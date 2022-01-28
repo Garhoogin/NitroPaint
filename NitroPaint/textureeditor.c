@@ -818,6 +818,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			HWND hWndEditor = data->hWnd;
 			HWND hWndMain = getMainWindow(hWndEditor);
 			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			SetActiveWindow(hWndMain);
 			break;
 		}
 		case WM_DESTROY:
