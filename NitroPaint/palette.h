@@ -86,3 +86,116 @@ int countColors(COLOR32 *px, int nPx);
 // stopping.
 //
 unsigned long long computePaletteError(COLOR32 *px, int nPx, COLOR32 *pal, int nColors, int alphaThreshold, unsigned long long nMaxError);
+
+//----------structures used by palette generator
+
+//histogram linked list entry as secondary sorting
+typedef struct HIST_ENTRY_ {
+	int y;
+	int i;
+	int q;
+	int a;
+	struct HIST_ENTRY_ *next;
+	double weight;
+	double value;
+} HIST_ENTRY;
+
+//structure for a node in the color tree
+typedef struct COLOR_NODE_ {
+	int isLeaf;
+	double weight;
+	double priority;
+	int y;
+	int i;
+	int q;
+	int a;
+	int pivotIndex;
+	int startIndex;
+	int endIndex;
+	struct COLOR_NODE_ *left;
+	struct COLOR_NODE_ *right;
+} COLOR_NODE;
+
+//allocator for allocating the linked lists
+typedef struct ALLOCATOR_ {
+	void *allocation;
+	int nextEntryOffset;
+	struct ALLOCATOR_ *next;
+} ALLOCATOR;
+
+//histogram structure
+typedef struct HISTOGRAM_ {
+	ALLOCATOR allocator;
+	HIST_ENTRY *entries[0x20000];
+	int nEntries;
+} HISTOGRAM;
+
+//reduction workspace structure
+typedef struct REDUCTION_ {
+	int nPaletteColors;
+	int nUsedColors;
+	int balance;
+	int colorBalance;
+	int shiftColorBalance;
+	int enhanceColors;
+	int maskColors;
+	int optimization;
+	HISTOGRAM *histogram;
+	HIST_ENTRY **histogramFlat;
+	COLOR_NODE *colorTreeHead;
+	COLOR_NODE *colorBlocks[0x2000];
+	uint8_t paletteRgb[256][3];
+	double lumaTable[512];
+	double gamma;
+} REDUCTION;
+
+//
+// Encode an RGBA color to a YIQA color.
+//
+void rgbToYiq(COLOR32 rgb, int *yiq);
+
+//
+// Decode a YIQ color to RGB.
+//
+void yiqToRgb(int *rgb, int *yiq);
+
+//
+// Initialize a REDUCTION structure with palette parameters.
+//
+void initReduction(REDUCTION *reduction, int balance, int colorBalance, int optimization, int enhanceColors, unsigned int nColors);
+
+//
+// Add a YIQA color to a REDUCTION's histogram.
+//
+void histogramAddColor(HISTOGRAM *histogram, int y, int i, int q, int a, double weight);
+
+//
+// Add an image's color data to a REDUCTION's histogram.
+//
+void computeHistogram(REDUCTION *reduction, COLOR32 *img, int width, int height);
+
+//
+// Clears out a REDUCTION's histogram. Can be used to create multiple palettes.
+//
+void resetHistogram(REDUCTION *reduction);
+
+//
+// Flatten a REDUCTION's histogram. Do this once the histogram is complete.
+//
+void flattenHistogram(REDUCTION *reduction);
+
+//
+// Optimize a REDUCTION's flattened hitogram into a color palette.
+//
+void optimizePalette(REDUCTION *reduction);
+
+//
+// Flatten's a REDUCTION's palette into an array of RGB colors. Do this once
+// the palette is optimized.
+//
+void paletteToArray(REDUCTION *reduction);
+
+//
+// Free all resources consumed by a REDUCTION.
+//
+void destroyReduction(REDUCTION *reduction);

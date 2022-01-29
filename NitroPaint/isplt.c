@@ -4,66 +4,6 @@
 #include "palette.h"
 #include "analysis.h"
 
-//histogram linked list entry as secondary sorting
-typedef struct HIST_ENTRY_ {
-	int y;
-	int i;
-	int q;
-	int a;
-	struct HIST_ENTRY_ *next;
-	double weight;
-	double value;
-} HIST_ENTRY;
-
-//structure for a node in the color tree
-typedef struct COLOR_NODE_ {
-	int isLeaf;
-	double weight;
-	double priority;
-	int y;
-	int i;
-	int q;
-	int a;
-	int pivotIndex;
-	int startIndex;
-	int endIndex;
-	struct COLOR_NODE_ *left;
-	struct COLOR_NODE_ *right;
-} COLOR_NODE;
-
-//allocator for allocating the linked lists
-typedef struct ALLOCATOR_ {
-	void *allocation;
-	int nextEntryOffset;
-	struct ALLOCATOR_ *next;
-} ALLOCATOR;
-
-//histogram structure
-typedef struct HISTOGRAM_ {
-	ALLOCATOR allocator;
-	HIST_ENTRY *entries[0x20000];
-	int nEntries;
-} HISTOGRAM;
-
-//reduction workspace structure
-typedef struct REDUCTION_ {
-	int nPaletteColors;
-	int nUsedColors;
-	int balance;
-	int colorBalance;
-	int shiftColorBalance;
-	int enhanceColors;
-	int maskColors;
-	int optimization;
-	HISTOGRAM *histogram;
-	HIST_ENTRY **histogramFlat;
-	COLOR_NODE *colorTreeHead;
-	COLOR_NODE *colorBlocks[0x2000];
-	BYTE paletteRgb[256][3];
-	double lumaTable[512];
-	double gamma;
-} REDUCTION;
-
 //struct for internal processing of color leaves
 typedef struct {
 	double y;
@@ -154,7 +94,7 @@ void histogramAddColor(HISTOGRAM *histogram, int y, int i, int q, int a, double 
 	}
 }
 
-void encodeColor(COLOR32 rgb, int *yiq) {
+void rgbToYiq(COLOR32 rgb, int *yiq) {
 	double doubleR = (double) (rgb & 0xFF);
 	double doubleG = (double) ((rgb >> 8) & 0xFF);
 	double doubleB = (double) ((rgb >> 16) & 0xFF);
@@ -203,14 +143,14 @@ void encodeColor(COLOR32 rgb, int *yiq) {
 	yiq[3] = (rgb >> 24) & 0xFF;
 }
 
-void decodeColor(int *rgb, int *in) {
-	double i = (double) in[1];
-	double q = (double) in[2];
+void yiqToRgb(int *rgb, int *yiq) {
+	double i = (double) yiq[1];
+	double q = (double) yiq[2];
 	double y;
 	if(i >= 0.0 || q <= 0.0) {
-		y = (double) in[0];
+		y = (double) yiq[0];
 	} else {
-		y = ((double) in[0]) + (q * i) * 0.00195313;
+		y = ((double) yiq[0]) + (q * i) * 0.00195313;
 	}
 	if(y >= 0.0) {
 		if(y > 511.0) {
@@ -273,12 +213,12 @@ void computeHistogram(REDUCTION *reduction, COLOR32 *img, int width, int height)
 
 	for (int y = 0; y < height; y++) {
 		int yiqLeft[4];
-		encodeColor(img[y * width], yiqLeft);
+		rgbToYiq(img[y * width], yiqLeft);
 		int yLeft = yiqLeft[0];
 
 		for (int x = 0; x < width; x++) {
 			int yiq[4];
-			encodeColor(img[x + y * width], yiq);
+			rgbToYiq(img[x + y * width], yiq);
 
 			int dy = yiq[0] - yLeft;
 			double weight = (double) (16 - abs(16 - abs(dy)) / 8);
@@ -727,8 +667,8 @@ void optimizePalette(REDUCTION *reduction) {
 
 			if (colorBlock->left != NULL && colorBlock->right != NULL) {
 				int decodedLeft[4], decodedRight[4];
-				decodeColor(decodedLeft, &colorBlock->left->y);
-				decodeColor(decodedRight, &colorBlock->right->y);
+				yiqToRgb(decodedLeft, &colorBlock->left->y);
+				yiqToRgb(decodedRight, &colorBlock->right->y);
 				int leftAlpha = colorBlock->left->a;
 				int rightAlpha = colorBlock->right->a;
 				COLOR32 leftRgb = decodedLeft[0] | (decodedLeft[1] << 8) | (decodedLeft[2] << 16);
@@ -821,7 +761,7 @@ void paletteToArray(REDUCTION *reduction) {
 			int y = block->y, i = block->i, q = block->q;
 			int yiq[] = { y, i, q, 0xFF };
 			int rgb[4];
-			decodeColor(rgb, yiq);
+			yiqToRgb(rgb, yiq);
 			
 			reduction->paletteRgb[ofs][0] = rgb[0];
 			reduction->paletteRgb[ofs][1] = rgb[1];
@@ -913,7 +853,7 @@ int findClosestPaletteColorRGB(int *palette, int nColors, COLOR32 col, int *outD
 	int leastIndex = 0;
 	for (int i = 0; i < nColors; i++) {
 		int y2, u2, v2;
-		decodeColor(rgb, palette + i * 4);
+		yiqToRgb(rgb, palette + i * 4);
 		convertRGBToYUV(rgb[0], rgb[1], rgb[2], &y2, &u2, &v2);
 
 		int dy = y2 - y, du = u2 - u, dv = v2 - v;
@@ -929,7 +869,7 @@ int findClosestPaletteColorRGB(int *palette, int nColors, COLOR32 col, int *outD
 
 int findClosestPaletteColor(int *palette, int nColors, int *col, int *outDiff) {
 	int rgb[4];
-	decodeColor(rgb, col);
+	yiqToRgb(rgb, col);
 	return findClosestPaletteColorRGB(palette, nColors, rgb[0] | (rgb[1] << 8) | (rgb[2] << 16), outDiff);
 }
 
@@ -1042,7 +982,7 @@ void createMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *d
 
 			for (int i = 0; i < 16; i++) {
 				int yiq[4];
-				encodeColor(palBuf[i], yiq);
+				rgbToYiq(palBuf[i], yiq);
 				tile->palette[i][0] = yiq[0];
 				tile->palette[i][1] = yiq[1];
 				tile->palette[i][2] = yiq[2];
@@ -1112,7 +1052,7 @@ void createMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *d
 			BYTE *srcRgb = &reduction->paletteRgb[i][0];
 			COLOR32 rgb = srcRgb[0] | (srcRgb[1] << 8) | (srcRgb[2] << 16);
 			palBuf[i] = rgb;
-			encodeColor(rgb, yiqDest);
+			rgbToYiq(rgb, yiqDest);
 		}
 		palTile->nUsedColors = reduction->nUsedColors;
 		palTile->nSwallowed += nSwitched;
@@ -1158,7 +1098,7 @@ void createMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *d
 		if(paletteOffset == 0) palBuf[0] = 0xFF00FF;
 		for (int j = 0; j < 15; j++) {
 			int rgb[4];
-			decodeColor(rgb, &t->palette[j][0]);
+			yiqToRgb(rgb, &t->palette[j][0]);
 			palBuf[j + outputOffs] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
 		}
 		qsort(palBuf + 1, nColsPerPalette, 4, lightnessCompare);
@@ -1251,7 +1191,7 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 	//convert palette to YIQ
 	int *yiqPalette = (int *) calloc(nColors, 4 * sizeof(int));
 	for (int i = 0; i < nColors; i++) {
-		encodeColor(palette[i], yiqPalette + i * 4);
+		rgbToYiq(palette[i], yiqPalette + i * 4);
 	}
 
 	//allocate row buffers for color and diffuse.
@@ -1262,7 +1202,7 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 
 	//fill the last row with the first row, just to make sure we don't run out of bounds
 	for (int i = 0; i < width; i++) {
-		encodeColor(img[i], lastRow + 4 * (i + 1));
+		rgbToYiq(img[i], lastRow + 4 * (i + 1));
 	}
 	memcpy(lastRow, lastRow + 4, 16);
 	memcpy(lastRow + 4 * (width + 1), lastRow + 4 * width, 16);
@@ -1274,7 +1214,7 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 		int hDirection = (y & 1) ? -1 : 1;
 		COLOR32 *rgbRow = img + y * width;
 		for (int x = 0; x < width; x++) {
-			encodeColor(rgbRow[x], thisRow + 4 * (x + 1));
+			rgbToYiq(rgbRow[x], thisRow + 4 * (x + 1));
 		}
 		memcpy(thisRow, thisRow + 4, 16);
 		memcpy(thisRow + 4 * (width + 1), thisRow + 4 * width, 16);
