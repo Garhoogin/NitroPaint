@@ -707,7 +707,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
-int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int flip) {
+int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int flip, int nMaxError) {
 	int error = 0;
 	for (int i = 0; i < 64; i++) { //0b111 111
 		int srcIndex = i;
@@ -740,28 +740,32 @@ int calculatePaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int fl
 
 		int dy, du, dv;
 		convertRGBToYUV(dr, dg, db, &dy, &du, &dv);
-		error += dy * dy * 4 + du * du + dv * dv + da * da * 16;
+		error += 4 * dy * dy;
+		if (da) error += da * da * 16;
+		if (error >= nMaxError) return nMaxError;
+		error += du * du + dv * dv;
+		if (error >= nMaxError) return nMaxError;
 	}
 	return error;
 }
 
-int calculateBestPaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int *flip) {
-	int e00 = calculatePaletteCharError(block, pals, character, TILE_FLIPNONE);
+int calculateBestPaletteCharError(DWORD *block, DWORD *pals, BYTE *character, int *flip, int nMaxError) {
+	int e00 = calculatePaletteCharError(block, pals, character, TILE_FLIPNONE, nMaxError);
 	if (e00 == 0) {
 		*flip = TILE_FLIPNONE;
 		return e00;
 	}
-	int e01 = calculatePaletteCharError(block, pals, character, TILE_FLIPX);
+	int e01 = calculatePaletteCharError(block, pals, character, TILE_FLIPX, nMaxError);
 	if (e01 == 0) {
 		*flip = TILE_FLIPX;
 		return e01;
 	}
-	int e10 = calculatePaletteCharError(block, pals, character, TILE_FLIPY);
+	int e10 = calculatePaletteCharError(block, pals, character, TILE_FLIPY, nMaxError);
 	if (e10 == 0) {
 		*flip = TILE_FLIPY;
 		return e10;
 	}
-	int e11 = calculatePaletteCharError(block, pals, character, TILE_FLIPXY);
+	int e11 = calculatePaletteCharError(block, pals, character, TILE_FLIPXY, nMaxError);
 	if (e11 == 0) {
 		*flip = TILE_FLIPXY;
 		return e11;
@@ -918,7 +922,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				for (int i = 0; i < nPalettes; i++) {
 					for (int j = 0; j < ncgr->nTiles; j++) {
 						int charId = j, mode;
-						int err = calculateBestPaletteCharError(block, pals + i * paletteSize, ncgr->tiles[charId], &mode);
+						int err = calculateBestPaletteCharError(block, pals + i * paletteSize, ncgr->tiles[charId], &mode, minError);
 						if (err < minError) {
 							chosenCharacter = charId;
 							chosenPalette = i;
