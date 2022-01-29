@@ -152,10 +152,10 @@ int convertTranslucent(CREATEPARAMS *params) {
 		int index = closestpalette(*(RGB *) &p, (RGB *) palette, nColors, &error);
 		int alpha = (((p >> 24) & 0xFF) * alphaMax + 127) / 255;
 		txel[i] = index | (alpha << alphaShift);
-		if (params->dither) {				
-			COLOR32 back = palette[index];
-			int errorAlpha = ((back >> 24) & 0xFF) - ((p >> 24) & 0xFF);
-			doDiffuse(i, width, height, params->px, 0, 0, 0, params->ditherAlpha ? -errorAlpha : 0, params->diffuseAmount);
+		if (params->ditherAlpha) {				
+			int backAlpha = (alpha * 255 + (alphaMax >> 1)) / alphaMax;
+			int errorAlpha = backAlpha - ((p >> 24) & 0xFF);
+			doDiffuse(i, width, height, params->px, 0, 0, 0, -errorAlpha, params->diffuseAmount);
 		}
 	}
 
