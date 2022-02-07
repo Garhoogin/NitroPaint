@@ -17,10 +17,10 @@ typedef struct {
 
 void initReduction(REDUCTION *reduction, int balance, int colorBalance, int optimization, int enhanceColors, unsigned int nColors) {
 	memset(reduction, 0, sizeof(REDUCTION));
-	reduction->balance = 60 - balance;
-	reduction->colorBalance = colorBalance;
+	reduction->yWeight = 60 - balance;
+	reduction->iWeight = colorBalance;
 	reduction->optimization = optimization;
-	reduction->shiftColorBalance = 40 - colorBalance;
+	reduction->qWeight = 40 - colorBalance;
 	reduction->enhanceColors = enhanceColors;
 	reduction->nPaletteColors = nColors;
 	reduction->gamma = 1.27;
@@ -317,9 +317,9 @@ double approximatePrincipalComponent(REDUCTION *reduction, int startIndex, int e
 		HIST_ENTRY *entry = reduction->histogramFlat[i];
 
 		double scaledA = entry->a * 40;
-		double scaledY = reduction->balance * reduction->lumaTable[entry->y];
-		double scaledI = reduction->colorBalance * entry->i;
-		double scaledQ = reduction->shiftColorBalance * entry->q;
+		double scaledY = reduction->yWeight * reduction->lumaTable[entry->y];
+		double scaledI = reduction->iWeight * entry->i;
+		double scaledQ = reduction->qWeight * entry->q;
 		double weight = entry->weight;
 
 		mtx[0][0] += weight * scaledY * scaledY;
@@ -474,17 +474,17 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 	double principal[4];
 	approximatePrincipalComponent(reduction, colorBlock->startIndex, colorBlock->endIndex, principal);
 
-	int balance = reduction->balance;
-	int colorBalance = reduction->colorBalance;
-	int shiftColorBalance = reduction->shiftColorBalance;
-	int alphaScale = 40;
+	int yWeight = reduction->yWeight;
+	int iWeight = reduction->iWeight;
+	int qWeight = reduction->qWeight;
+	int aWeight = 40;
 
 	for (int i = colorBlock->startIndex; i < colorBlock->endIndex; i++) {
 		HIST_ENTRY *histEntry = reduction->histogramFlat[i];
-		double value = histEntry->i * colorBalance * principal[1]
-			+ histEntry->q * shiftColorBalance * principal[2]
-			+ histEntry->a * alphaScale * principal[3]
-			+ reduction->lumaTable[histEntry->y] * balance * principal[0];
+		double value = histEntry->i * iWeight * principal[1]
+			+ histEntry->q * qWeight * principal[2]
+			+ histEntry->a * aWeight * principal[3]
+			+ reduction->lumaTable[histEntry->y] * yWeight * principal[0];
 			
 		histEntry->value = value;
 		if (value >= greatestValue) {
@@ -513,9 +513,9 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 	for (int i = 0; i < nColors; i++) {
 		HIST_ENTRY *entry = thisHistogram[i];
 		double weight = entry->weight;
-		double cy = reduction->balance * reduction->lumaTable[entry->y];
-		double ci = reduction->colorBalance * entry->i;
-		double cq = reduction->shiftColorBalance * entry->q;
+		double cy = reduction->yWeight * reduction->lumaTable[entry->y];
+		double ci = reduction->iWeight * entry->i;
+		double cq = reduction->qWeight * entry->q;
 
 		colorInfo[i].y = weight * cy;
 		colorInfo[i].i = weight * ci;
@@ -542,13 +542,13 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 		entry->a = totalA;
 	}
 	double avgY = totalY / totalWeight;
-	avgY = pow((avgY / (double) reduction->balance) * 0.00195695, 1.0 / reduction->gamma);
+	avgY = pow((avgY / (double) reduction->yWeight) * 0.00195695, 1.0 / reduction->gamma);
 
 	//compute average color
-	int initA = (int) ((totalA / totalWeight) / 40.0 + 0.5);
-	int initQ = (int) ((totalQ / totalWeight) / reduction->shiftColorBalance + 0.5);
-	int initI = (int) ((totalI / totalWeight) / reduction->colorBalance + 0.5);
 	int initY = (int) (avgY * 511.0 + 0.5);
+	int initI = (int) ((totalI / totalWeight) / reduction->iWeight + 0.5);
+	int initQ = (int) ((totalQ / totalWeight) / reduction->qWeight + 0.5);
+	int initA = (int) ((totalA / totalWeight) / 40.0 + 0.5);
 
 	colorBlock->y = initY;
 	colorBlock->i = initI;
@@ -1161,9 +1161,9 @@ int diffuseCurveQ(int x) {
 }
 
 int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, int *palette, int nColors) {
-	double yw2 = reduction->balance * reduction->balance;
-	double iw2 = reduction->colorBalance * reduction->colorBalance;
-	double qw2 = reduction->shiftColorBalance * reduction->shiftColorBalance;
+	double yw2 = reduction->yWeight * reduction->yWeight;
+	double iw2 = reduction->iWeight * reduction->iWeight;
+	double qw2 = reduction->qWeight * reduction->qWeight;
 
 	double minDistance = 1e32;
 	int minIndex = 0;
@@ -1253,9 +1253,9 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 			double paletteDy = reduction->lumaTable[matchedYiq[0]] - reduction->lumaTable[colorY];
 			int paletteDi = matchedYiq[1] - colorI;
 			int paletteDq = matchedYiq[2] - colorQ;
-			double paletteDistance = paletteDy * paletteDy * reduction->balance * reduction->balance +
-				paletteDi * paletteDi * reduction->colorBalance * reduction->colorBalance +
-				paletteDq * paletteDq * reduction->shiftColorBalance * reduction->shiftColorBalance;
+			double paletteDistance = paletteDy * paletteDy * reduction->yWeight * reduction->yWeight +
+				paletteDi * paletteDi * reduction->iWeight * reduction->iWeight +
+				paletteDq * paletteDq * reduction->qWeight * reduction->qWeight;
 
 			//now measure distance from the actual color to its average surroundings
 			int centerY = thisRow[(x + 1) * 4 + 0];
@@ -1267,12 +1267,12 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 			double centerDy = reduction->lumaTable[centerY] - reduction->lumaTable[colorY];
 			int centerDi = centerI - colorI;
 			int centerDq = centerQ - colorQ;
-			double centerDistance = centerDy * centerDy * reduction->balance * reduction->balance +
-				centerDi * centerDi * reduction->colorBalance * reduction->colorBalance +
-				centerDq * centerDq * reduction->shiftColorBalance * reduction->shiftColorBalance;
+			double centerDistance = centerDy * centerDy * reduction->yWeight * reduction->yWeight +
+				centerDi * centerDi * reduction->iWeight * reduction->iWeight +
+				centerDq * centerDq * reduction->qWeight * reduction->qWeight;
 
 			//now test: Should we dither?
-			double balanceSquare = reduction->balance * reduction->balance;
+			double balanceSquare = reduction->yWeight * reduction->yWeight;
 			if (centerDistance < 110.0 * balanceSquare && paletteDistance >  2.0 * balanceSquare) {
 				//Yes, we should dither :)
 

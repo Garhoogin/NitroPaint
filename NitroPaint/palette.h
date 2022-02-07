@@ -134,9 +134,9 @@ typedef struct HISTOGRAM_ {
 typedef struct REDUCTION_ {
 	int nPaletteColors;
 	int nUsedColors;
-	int balance;
-	int colorBalance;
-	int shiftColorBalance;
+	int yWeight;
+	int iWeight;
+	int qWeight;
 	int enhanceColors;
 	int maskColors;
 	int optimization;
