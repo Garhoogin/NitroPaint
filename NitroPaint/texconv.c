@@ -302,7 +302,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 			tile->mode = 0x4000;
 		} else {
 			//swap index 3 and 0, 2 and 1
-			tile->palette[0] = ColorConvertToDS(paletteFull[3]);
+			tile->palette[0] = ColorConvertToDS(paletteFull[2]); //entry 3 empty, double up entry 2
 			tile->palette[1] = ColorConvertToDS(paletteFull[1]);
 			tile->palette[2] = ColorConvertToDS(paletteFull[2]);
 			tile->palette[3] = ColorConvertToDS(paletteFull[0]);
@@ -324,6 +324,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 			tile->mode = 0xC000;
 		} else {
 			//swap index 3 and 0, 2 and 1
+			if (nFull < 4) paletteFull[0] = paletteFull[1];
 			tile->palette[0] = ColorConvertToDS(paletteFull[3]);
 			tile->palette[1] = ColorConvertToDS(paletteFull[1]);
 			tile->palette[2] = ColorConvertToDS(paletteFull[2]);
@@ -520,10 +521,10 @@ void mergePalettes(TILEDATA *tileData, int nTiles, COLOR *palette, int paletteIn
 	if (palettesMode == 0x0000) {
 		//transparent, full color
 		createPaletteSlow(px, 4, 4 * nUsedTiles, expandPal + 1, 3);
-		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[3]);
+		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[2]); //don't waste this slot
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[1]);
 		palette[paletteIndex * 2 + 2] = ColorConvertToDS(expandPal[2]);
-		palette[paletteIndex * 2 + 3] = 0;
+		palette[paletteIndex * 2 + 3] = ColorConvertToDS(expandPal[0]);
 	} else if (palettesMode == 0x4000 || palettesMode == 0xC000) {
 		//transparent, interpolated, and opaque, interpolated
 		getColorBounds(px, 16 * nUsedTiles, &expandPal[0], &expandPal[1]);
@@ -531,7 +532,9 @@ void mergePalettes(TILEDATA *tileData, int nTiles, COLOR *palette, int paletteIn
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[0]);
 	} else if (palettesMode == 0x8000) {
 		//opaque, full color
-		createPaletteSlow(px, 4, 4 * nUsedTiles, expandPal, 4);
+		//int nFull = createPaletteSlow(px, 4, 4 * nUsedTiles, expandPal, 4);
+		int nFull = createPaletteSlowEx(px, 4, 4 * nUsedTiles, expandPal, 4, 20, 20, 0, 0);
+		if (nFull < 4) expandPal[0] = expandPal[1];
 		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[3]);
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[1]);
 		palette[paletteIndex * 2 + 2] = ColorConvertToDS(expandPal[2]);
