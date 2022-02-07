@@ -116,7 +116,10 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 							if (flip & TILE_FLIPX) bIndex ^= 7;
 							if (flip & TILE_FLIPY) bIndex ^= 7 << 3;
 							if (tile[bIndex] == color) {
-								block[i] = 0xFFFFFFFF;
+								DWORD col = block[i];
+								int lightness = (col & 0xFF) + ((col >> 8) & 0xFF) + ((col >> 16) & 0xFF);
+								if(lightness < 383) block[i] = 0xFFFFFFFF;
+								else block[i] = 0xFF000000;
 							}
 						}
 					}
@@ -124,7 +127,7 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 			}
 
 			for (int i = 0; i < 8; i++) {
-				CopyMemory(bits + dwDest + i * bWidth, block + (i << 3), 32);
+				memcpy(bits + dwDest + i * bWidth, block + (i << 3), 32);
 			}
 		}
 	}
