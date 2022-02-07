@@ -5,10 +5,15 @@
 int lightnessCompare(const void *d1, const void *d2) {
 	COLOR32 c1 = *(COLOR32 *) d1;
 	COLOR32 c2 = *(COLOR32 *) d2;
-	int y1, u1, v1, y2, u2, v2;
-	convertRGBToYUV(c1 & 0xFF, (c1 >> 8) & 0xFF, (c1 >> 16) & 0xFF, &y1, &u1, &v1);
-	convertRGBToYUV(c2 & 0xFF, (c2 >> 8) & 0xFF, (c2 >> 16) & 0xFF, &y2, &u2, &v2);
-	return y1 - y2;
+	if (c1 == c2) return 0;
+	
+	//by properties of linear transformations, this is valid
+	int dr = (c1 & 0xFF) - (c2 & 0xFF);
+	int dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
+	int db = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
+	int dy = dr * 299 + dg * 587 + db * 114;
+
+	return dy;
 }
 
 void createPaletteExact(COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors) {
