@@ -62,42 +62,34 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 		switch (magic) {
 			case 'NCLR':
 			case 'RLCN':
-			{
 				type = FILE_TYPE_PALETTE;
 				break;
-			}
 			case 'NCGR':
 			case 'RGCN':
-			{
 				type = FILE_TYPE_CHARACTER;
 				break;
-			}
 			case 'NSCR':
 			case 'RCSN':
-			{
 				type = FILE_TYPE_SCREEN;
 				break;
-			}
 			case 'NCER':
 			case 'RECN':
-			{
 				type = FILE_TYPE_CELL;
 				break;
-			}
 			case 'BTX0':
 			case '0XTB':
 			case 'BMD0':
 			case '0DMB':
-			{
 				type = FILE_TYPE_NSBTX;
 				break;
-			}
 			case 'NANR':
 			case 'RNAN':
-			{
 				type = FILE_TYPE_NANR;
 				break;
-			}
+			case 'NMCR':
+			case 'RCMN':
+				type = FILE_TYPE_NMCR;
+				break;
 		}
 	}
 

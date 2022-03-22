@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <CommCtrl.h>
+#include <math.h>
 
 #include "nanrviewer.h"
 #include "nclrviewer.h"
@@ -123,7 +124,7 @@ int getDrawFrameIndex(NANR_SEQUENCE *sequence, int frame) {
 	return drawFrameIndex;
 }
 
-DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *nanr, int sequenceIndex, int frame) {
+DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *nanr, int sequenceIndex, int frame, int checker, int ofsX, int ofsY) {
 	if (frameBuffer == NULL || ncgr == NULL || ncer == NULL || nanr == NULL) return NULL;
 	NANR_SEQUENCE *sequence = nanr->sequences + sequenceIndex;
 	int mode = sequence->mode;
@@ -140,12 +141,14 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 	int frameIndex = getAnimationFrameFromFrame(sequence, drawFrameIndex);
 	FRAME_DATA *frameData = sequence->frames + frameIndex;
 
-	for (int i = 0; i < 256 * 512; i++) {
-		int x = i % 512;
-		int y = i / 512;
-		int p = ((x >> 2) ^ (y >> 2)) & 1;
-		DWORD c = p ? 0xFFFFFF : 0xC0C0C0;
-		frameBuffer[i] = c;
+	if (checker) {
+		for (int i = 0; i < 256 * 512; i++) {
+			int x = i % 512;
+			int y = i / 512;
+			int p = ((x >> 2) ^ (y >> 2)) & 1;
+			DWORD c = p ? 0xFFFFFF : 0xC0C0C0;
+			frameBuffer[i] = c;
+		}
 	}
 
 	//now, determine the type of frame and how to draw it.
@@ -155,20 +158,32 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		ncerRenderWholeCell2(frameBuffer, cell, ncgr, nclr, translateX, translateY, 0, -1);
+		ncerRenderWholeCell2(frameBuffer, cell, ncgr, nclr, translateX + ofsX, translateY + ofsY, 0, -1);
 	} else if (animType == 1) { //SRT
 		ANIM_DATA_SRT *animData = (ANIM_DATA_SRT *) frameData->animationData;
 
 		//TODO: implement SRT
+		float rotation = ((float) animData->rotZ) / 65536.0f * (2.0f * 3.14159f);
+		float scaleX = ((float) animData->sx) / 4096.0f;
+		float scaleY = ((float) animData->sy) / 4096.0f;
+
+		//compute transformation matrix (don't bother simulating OAM matrix slots)
+		float sinR = sin(rotation);
+		float cosR = cos(rotation);
+		float a = cosR / scaleX;
+		float b = sinR / scaleX;
+		float c = -sinR / scaleY;
+		float d = cosR / scaleY;
+
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		ncerRenderWholeCell2(frameBuffer, cell, ncgr, nclr, translateX + animData->px, translateY + animData->py, 0, -1);
+		ncerRenderWholeCell3(frameBuffer, cell, ncgr, nclr, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, a, b, c, d);
 	} else if (animType == 2) { //index+translation
 		ANIM_DATA_T *animData = (ANIM_DATA_T *) frameData->animationData;
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		ncerRenderWholeCell2(frameBuffer, cell, ncgr, nclr, translateX + animData->px, translateY + animData->py, 0, -1);
+		ncerRenderWholeCell2(frameBuffer, cell, ncgr, nclr, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1);
 	}
 
 	return frameBuffer;
@@ -204,7 +219,7 @@ VOID PaintNanrFrame(HWND hWnd, HDC hDC) {
 		int sequence = data->sequence;
 
 		if (nanr->sequences[sequence].nFrames > 0) {
-			nanrDrawFrame(data->frameBuffer, nclr, ncgr, ncer, nanr, sequence, frame);
+			nanrDrawFrame(data->frameBuffer, nclr, ncgr, ncer, nanr, sequence, frame, 1, 0, 0);
 
 			HBITMAP hBitmap = CreateBitmap(512, 256, 1, 32, data->frameBuffer);
 			HDC hOffDC = CreateCompatibleDC(hDC);

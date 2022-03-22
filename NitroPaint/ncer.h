@@ -86,6 +86,8 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 
 DWORD *ncerRenderWholeCell2(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline);
 
+DWORD *ncerRenderWholeCell3(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d);
+
 int ncerWrite(NCER *ncer, BSTREAM *stream);
 
 int ncerWriteFile(NCER *ncer, LPWSTR name);

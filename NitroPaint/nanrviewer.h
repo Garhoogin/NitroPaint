@@ -1,5 +1,8 @@
 #pragma once
 #include "nanr.h"
+#include "ncer.h"
+#include "ncgr.h"
+#include "nclr.h"
 #include "childwindow.h"
 
 #include <Windows.h>
@@ -40,6 +43,8 @@ typedef struct {
 
 	HWND hWnd;
 } NANRVIEWERDATA;
+
+DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *nanr, int sequenceIndex, int frame, int checker, int ofsX, int ofsY);
 
 VOID RegisterNanrViewerClass(VOID);
 

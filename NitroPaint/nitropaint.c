@@ -18,6 +18,7 @@
 #include "tileeditor.h"
 #include "textureeditor.h"
 #include "nsbtx.h"
+#include "nmcrviewer.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -398,7 +399,10 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
 		case FILE_TYPE_NANR:
-			CreateNanrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			data->hWndNanrViewer = CreateNanrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
+		case FILE_TYPE_NMCR:
+			data->hWndNmcrViewer = CreateNmcrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
 		case FILE_TYPE_IMAGE:
 			CreateImageDialog(hWnd, path);
@@ -1647,6 +1651,7 @@ void RegisterClasses() {
 	RegisterNanrViewerClass();
 	RegisterImageDialogClass();
 	RegisterSpriteSheetDialogClass();
+	RegisterNmcrViewerClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {

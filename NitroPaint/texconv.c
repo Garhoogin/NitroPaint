@@ -252,7 +252,6 @@ void getColorBounds(COLOR32 *px, int nPx, COLOR32 *colorMin, COLOR32 *colorMax) 
 	if (nCol < 2) cols[1] = cols[0];
 	*colorMin = cols[0];
 	*colorMax = cols[1];
-
 }
 
 int computeColorDifference(COLOR32 c1, COLOR32 c2) {

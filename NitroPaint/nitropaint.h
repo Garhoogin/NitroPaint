@@ -26,6 +26,8 @@ typedef struct {
 	HWND hWndNcgrViewer;
 	HWND hWndNscrViewer;
 	HWND hWndNcerViewer;
+	HWND hWndNanrViewer;
+	HWND hWndNmcrViewer;
 	HWND hWndNsbtxViewer;
 } NITROPAINTSTRUCT;
 

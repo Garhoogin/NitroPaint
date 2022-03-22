@@ -277,6 +277,10 @@ DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int *width
 }
 
 DWORD *ncerRenderWholeCell2(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline) {
+	return ncerRenderWholeCell3(px, cell, ncgr, nclr, xOffs, yOffs, checker, outline, 1.0f, 0.0f, 0.0f, 1.0f);
+}
+
+DWORD *ncerRenderWholeCell3(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d) {
 	DWORD *block = (DWORD *) calloc(64 * 64, 4);
 	for (int i = cell->nAttribs - 1; i >= 0; i--) {
 		NCER_CELL_INFO info;
@@ -316,13 +320,42 @@ DWORD *ncerRenderWholeCell2(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, 
 				y += info.height / 2;
 			}
 			//copy data
-			for (int j = 0; j < info.height; j++) {
-				int _y = (y + j + yOffs) & 0xFF;
-				for (int k = 0; k < info.width; k++) {
-					int _x = (x + k + xOffs) & 0x1FF;
-					DWORD col = block[j * info.width + k];
-					if (col >> 24) {
-						px[_x + _y * 512] = block[j * info.width + k];
+			if (!info.rotateScale) {
+				for (int j = 0; j < info.height; j++) {
+					int _y = (y + j + yOffs) & 0xFF;
+					for (int k = 0; k < info.width; k++) {
+						int _x = (x + k + xOffs) & 0x1FF;
+						DWORD col = block[j * info.width + k];
+						if (col >> 24) {
+							px[_x + _y * 512] = block[j * info.width + k];
+						}
+					}
+				}
+			} else {
+				//transform about center
+				int realWidth = info.width << info.doubleSize;
+				int realHeight = info.height << info.doubleSize;
+				int cx = realWidth / 2;
+				int cy = realHeight / 2;
+				int realX = x - (realWidth - info.width) / 2;
+				int realY = y - (realHeight - info.height) / 2;
+				for (int j = 0; j < realHeight; j++) {
+					int destY = (realY + j + yOffs) & 0xFF;
+					for (int k = 0; k < realWidth; k++) {
+						int destX = (realX + k + xOffs) & 0x1FF;
+
+						int srcX = (int) ((k - cx) * a + (j - cy) * b) + cx;
+						int srcY = (int) ((k - cx) * c + (j - cy) * d) + cy;
+
+						if (info.doubleSize) {
+							srcX -= realWidth / 4;
+							srcY -= realHeight / 4;
+						}
+						if (srcX >= 0 && srcY >= 0 && srcX < info.width && srcY < info.height) {
+							DWORD src = block[srcY * info.width + srcX];
+							if(src >> 24) px[destX + destY * 512] = src;
+						}
+
 					}
 				}
 			}
