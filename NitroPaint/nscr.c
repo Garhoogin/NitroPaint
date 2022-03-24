@@ -514,7 +514,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 					}
 				}
 				nChars--;
-				if(nTiles > nMaxChars) *progress = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
+				if(nTiles > nMaxChars) *progress = 500 + (int) (500 * sqrt((float) (nTiles - nChars) / (nTiles - nMaxChars)));
 			}
 		}
 	}
@@ -535,8 +535,11 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 				for (int j = 0; j < i; j++) {
 					BGTILE *t2 = tiles + j;
 					if (t2->masterTile != j) continue;
-					unsigned long long int thisError = diffBuff[i + j * nTiles] * t1->nRepresents * t2->nRepresents;
+					int thisErrorEntry = diffBuff[i + j * nTiles];
+					unsigned long long int thisError = thisErrorEntry;
+					if (thisError >= leastError) continue;
 
+					thisError = thisErrorEntry * t1->nRepresents * t2->nRepresents;
 					if (thisError < leastError) {
 						//if (nBits == 8 || ((t2->indices[0] >> 4) == (t1->indices[0] >> 4))) { //make sure they're the same palette
 						tile1 = j;
@@ -565,7 +568,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 				}
 			}
 			nChars--;
-			*progress = 500 + (nTiles - nChars) * 500 / (nTiles - nMaxChars);
+			*progress = 500 + (int) (500 * sqrt((float) (nTiles - nChars) / (nTiles - nMaxChars)));
 		}
 	}
 
