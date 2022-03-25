@@ -593,8 +593,47 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 	free(colorInfo);
 }
 
+double addPriorities(COLOR_NODE *n1, COLOR_NODE *n2, REDUCTION *reduction) {
+	double p1 = n1->priority, p2 = n2->priority;
+	double adjustedWeight = 1.0;
+	if (!reduction->enhanceColors) {
+		p1 *= sqrt(n1->weight);
+		p2 *= sqrt(n2->weight);
+		adjustedWeight = sqrt(n1->weight + n2->weight);
+	}
+	return (p1 + p2) / adjustedWeight;
+}
+
 COLOR32 maskColor(COLOR32 color) {
 	return ColorConvertFromDS(ColorConvertToDS(color & 0xFFFFFF));
+}
+
+COLOR_NODE *findNodeByColor(COLOR_NODE *treeHead, COLOR_NODE *src, int maskColors) {
+	if (treeHead == NULL || treeHead == src) return NULL;
+
+	if (treeHead->left != NULL || treeHead->right != NULL) {
+		COLOR_NODE *foundLeft = findNodeByColor(treeHead->left, src, maskColors);
+		if (foundLeft != NULL) return foundLeft;
+
+		COLOR_NODE *foundRight = findNodeByColor(treeHead->right, src, maskColors);
+		return foundRight;
+	}
+
+	//is leaf, does this match?
+	int rgb[4];
+	int yiq[] = { src->y, src->i, src->q };
+	yiqToRgb(rgb, yiq);
+	COLOR32 compare = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+	if(maskColors) compare = maskColor(compare);
+
+	yiq[0] = treeHead->y;
+	yiq[1] = treeHead->i;
+	yiq[2] = treeHead->q;
+	yiqToRgb(rgb, yiq);
+	COLOR32 thisRgb = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+	if(maskColors) thisRgb = maskColor(thisRgb);
+
+	return (compare == thisRgb) ? treeHead : NULL;
 }
 
 void optimizePalette(REDUCTION *reduction) {
@@ -633,34 +672,52 @@ void optimizePalette(REDUCTION *reduction) {
 			if (leftBlock != NULL) {
 				setupLeaf(reduction, leftBlock);
 
-				//destroy this node?
-				if (leftBlock->weight < 1.0) {
-					if (leftBlock->left != NULL) {
-						freeColorTree(leftBlock->left, TRUE);
-						leftBlock->left = NULL;
-					}
-					if (leftBlock->right != NULL) {
-						freeColorTree(leftBlock->right, TRUE);
-						leftBlock->right = NULL;
-					}
+				//test for node duplication
+				COLOR_NODE *foundNode = findNodeByColor(treeHead, colorBlock->left, reduction->maskColors);
+				if (colorBlock->left != NULL && foundNode != NULL) {
+					foundNode->priority = addPriorities(foundNode, colorBlock->left, reduction);
+					freeColorTree(colorBlock->left, TRUE);
 					colorBlock->left = NULL;
+				} else {
+
+					//destroy this node?
+					if (leftBlock->weight < 1.0) {
+						if (leftBlock->left != NULL) {
+							freeColorTree(leftBlock->left, TRUE);
+							leftBlock->left = NULL;
+						}
+						if (leftBlock->right != NULL) {
+							freeColorTree(leftBlock->right, TRUE);
+							leftBlock->right = NULL;
+						}
+						colorBlock->left = NULL;
+					}
 				}
 			}
 
 			if (rightBlock != NULL) {
 				setupLeaf(reduction, rightBlock);
 
-				//destroy this node?
-				if (rightBlock->weight < 1.0) {
-					if (rightBlock->left != NULL) {
-						freeColorTree(rightBlock->left, TRUE);
-						rightBlock->left = NULL;
-					}
-					if (rightBlock->right != NULL) {
-						freeColorTree(rightBlock->right, TRUE);
-						rightBlock->right = NULL;
-					}
+				//test for node duplication
+				COLOR_NODE *foundNode = findNodeByColor(treeHead, colorBlock->right, reduction->maskColors);
+				if (colorBlock->right != NULL && foundNode != NULL) {
+					foundNode->priority = addPriorities(foundNode, colorBlock->right, reduction);
+					freeColorTree(colorBlock->right, TRUE);
 					colorBlock->right = NULL;
+				} else {
+
+					//destroy this node?
+					if (rightBlock->weight < 1.0) {
+						if (rightBlock->left != NULL) {
+							freeColorTree(rightBlock->left, TRUE);
+							rightBlock->left = NULL;
+						}
+						if (rightBlock->right != NULL) {
+							freeColorTree(rightBlock->right, TRUE);
+							rightBlock->right = NULL;
+						}
+						colorBlock->right = NULL;
+					}
 				}
 			}
 			//it is possible to end up with a branch with no leaves, if they all die :(
