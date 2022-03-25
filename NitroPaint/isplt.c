@@ -636,6 +636,28 @@ COLOR_NODE *findNodeByColor(COLOR_NODE *treeHead, COLOR_NODE *src, int maskColor
 	return (compare == thisRgb) ? treeHead : NULL;
 }
 
+COLOR_NODE *findNodeByChild(COLOR_NODE *treeHead, COLOR_NODE *child) {
+	if (treeHead == NULL) return NULL;
+	if (treeHead->left == child || treeHead->right == child) return treeHead;
+
+	COLOR_NODE *foundLeft = findNodeByChild(treeHead->left, child);
+	if (foundLeft != NULL) return foundLeft;
+
+	return findNodeByChild(treeHead->right, child);
+}
+
+COLOR_NODE *findNodeByIndex(COLOR_NODE *treeHead, int index) {
+	if (treeHead == NULL) return NULL;
+	if (treeHead->left == NULL && treeHead->right == NULL) return treeHead;
+	if (treeHead->left == NULL) return findNodeByIndex(treeHead->right, index);
+	if (treeHead->right == NULL) return findNodeByIndex(treeHead->left, index);
+
+	//count nodes left. If greater than index, search left, else search right
+	int nodesLeft = getNumberOfTreeLeaves(treeHead->left);
+	if (nodesLeft >= index) return findNodeByIndex(treeHead->left, index);
+	return findNodeByIndex(treeHead->right, index - nodesLeft);
+}
+
 void optimizePalette(REDUCTION *reduction) {
 	//do it
 	COLOR_NODE *treeHead = (COLOR_NODE *) calloc(1, sizeof(COLOR_NODE));
@@ -672,52 +694,34 @@ void optimizePalette(REDUCTION *reduction) {
 			if (leftBlock != NULL) {
 				setupLeaf(reduction, leftBlock);
 
-				//test for node duplication
-				COLOR_NODE *foundNode = findNodeByColor(treeHead, colorBlock->left, reduction->maskColors);
-				if (colorBlock->left != NULL && foundNode != NULL) {
-					foundNode->priority = addPriorities(foundNode, colorBlock->left, reduction);
-					freeColorTree(colorBlock->left, TRUE);
-					colorBlock->left = NULL;
-				} else {
-
-					//destroy this node?
-					if (leftBlock->weight < 1.0) {
-						if (leftBlock->left != NULL) {
-							freeColorTree(leftBlock->left, TRUE);
-							leftBlock->left = NULL;
-						}
-						if (leftBlock->right != NULL) {
-							freeColorTree(leftBlock->right, TRUE);
-							leftBlock->right = NULL;
-						}
-						colorBlock->left = NULL;
+				//destroy this node?
+				if (leftBlock->weight < 1.0) {
+					if (leftBlock->left != NULL) {
+						freeColorTree(leftBlock->left, TRUE);
+						leftBlock->left = NULL;
 					}
+					if (leftBlock->right != NULL) {
+						freeColorTree(leftBlock->right, TRUE);
+						leftBlock->right = NULL;
+					}
+					colorBlock->left = NULL;
 				}
 			}
 
 			if (rightBlock != NULL) {
 				setupLeaf(reduction, rightBlock);
 
-				//test for node duplication
-				COLOR_NODE *foundNode = findNodeByColor(treeHead, colorBlock->right, reduction->maskColors);
-				if (colorBlock->right != NULL && foundNode != NULL) {
-					foundNode->priority = addPriorities(foundNode, colorBlock->right, reduction);
-					freeColorTree(colorBlock->right, TRUE);
-					colorBlock->right = NULL;
-				} else {
-
-					//destroy this node?
-					if (rightBlock->weight < 1.0) {
-						if (rightBlock->left != NULL) {
-							freeColorTree(rightBlock->left, TRUE);
-							rightBlock->left = NULL;
-						}
-						if (rightBlock->right != NULL) {
-							freeColorTree(rightBlock->right, TRUE);
-							rightBlock->right = NULL;
-						}
-						colorBlock->right = NULL;
+				//destroy this node?
+				if (rightBlock->weight < 1.0) {
+					if (rightBlock->left != NULL) {
+						freeColorTree(rightBlock->left, TRUE);
+						rightBlock->left = NULL;
 					}
+					if (rightBlock->right != NULL) {
+						freeColorTree(rightBlock->right, TRUE);
+						rightBlock->right = NULL;
+					}
+					colorBlock->right = NULL;
 				}
 			}
 			//it is possible to end up with a branch with no leaves, if they all die :(
@@ -782,9 +786,41 @@ void optimizePalette(REDUCTION *reduction) {
 				}
 			}
 
-			if (numberOfTreeElements >= reduction->nPaletteColors) break;
+			if (numberOfTreeElements >= reduction->nPaletteColors) {
+
+				//duplicate color test
+				int prunedNode = 0;
+				for (int i = 0; i < numberOfTreeElements; i++) {
+					COLOR_NODE *node = findNodeByIndex(treeHead, i);
+					COLOR_NODE *dup = findNodeByColor(treeHead, node, reduction->maskColors);
+					if (dup != NULL) {
+						double p1 = node->priority, p2 = dup->priority;
+						double total = addPriorities(node, dup, reduction);
+						COLOR_NODE *toDelete = dup, *toKeep = node, *parent = NULL;
+
+						//find which node should keep, which to remove using priority
+						if (p1 < p2) {
+							toDelete = node;
+							toKeep = dup;
+						}
+						parent = findNodeByChild(treeHead, toDelete);
+						toKeep->priority = total;
+
+						//remove node from existence
+						freeColorTree(toDelete, TRUE);
+						if (parent->left == toDelete) parent->left = NULL;
+						if (parent->right == toDelete) parent->right = NULL;
+						numberOfTreeElements--;
+						prunedNode = 1;
+						break;
+					}
+				}
+
+				if(!prunedNode) break;
+			}
 		}
 	}
+
 	reduction->nUsedColors = numberOfTreeElements;
 }
 
