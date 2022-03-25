@@ -213,9 +213,9 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
 
 			RECT rc = { 0 };
-			rc.right = data->frameData.contentWidth;
+			rc.right = data->frameData.contentWidth + GetSystemMetrics(SM_CXVSCROLL);
 			rc.bottom = data->frameData.contentHeight;
-			if (rc.right < 255 + GetSystemMetrics(SM_CXVSCROLL) + 4) rc.right = 255 + GetSystemMetrics(SM_CXVSCROLL) + 4; //+4 to account for WS_EX_CLIENTEDGE
+			if (rc.right < 255 + 4) rc.right = 255 + 4;
 			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 			int width = rc.right - rc.left;
 			int height = rc.bottom - rc.top + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for combobox
