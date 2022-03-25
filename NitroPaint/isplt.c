@@ -855,10 +855,13 @@ void paletteToArray(REDUCTION *reduction) {
 			int yiq[] = { y, i, q, 0xFF };
 			int rgb[4];
 			yiqToRgb(rgb, yiq);
+
+			COLOR32 rgb32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+			if (reduction->maskColors) rgb32 = maskColor(rgb32);
 			
-			reduction->paletteRgb[ofs][0] = rgb[0];
-			reduction->paletteRgb[ofs][1] = rgb[1];
-			reduction->paletteRgb[ofs][2] = rgb[2];
+			reduction->paletteRgb[ofs][0] = rgb32 & 0xFF;
+			reduction->paletteRgb[ofs][1] = (rgb32 >> 8) & 0xFF;
+			reduction->paletteRgb[ofs][2] = (rgb32 >> 16) & 0xFF;
 			ofs++;
 		}
 	}
