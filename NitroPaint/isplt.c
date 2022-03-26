@@ -857,7 +857,7 @@ void paletteToArray(REDUCTION *reduction) {
 			yiqToRgb(rgb, yiq);
 
 			COLOR32 rgb32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
-			if (reduction->maskColors) rgb32 = maskColor(rgb32);
+			//if (reduction->maskColors) rgb32 = maskColor(rgb32);
 			
 			reduction->paletteRgb[ofs][0] = rgb32 & 0xFF;
 			reduction->paletteRgb[ofs][1] = (rgb32 >> 8) & 0xFF;
