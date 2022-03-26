@@ -896,7 +896,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				if (charOrigin - charBase < 0) continue;
 				BYTE *ncgrTile = ncgr->tiles[charOrigin - charBase];
 
-				if(dither) ditherImagePalette(block, 8, 8, pals + leastIndex * paletteSize, paletteSize - 1, FALSE, TRUE, TRUE, diffuse);
+				if(dither) ditherImagePalette(block, 8, 8, pals + leastIndex * paletteSize, paletteSize, FALSE, TRUE, TRUE, diffuse);
 				for (int i = 0; i < 64; i++) {
 					if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
 					else {
