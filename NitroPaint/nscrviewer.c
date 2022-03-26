@@ -1152,7 +1152,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) & ~WS_DISABLED);
-			SetFocus(hWndParent);
+			SetActiveWindow(hWndParent);
 			break;
 		}
 		case WM_DESTROY:

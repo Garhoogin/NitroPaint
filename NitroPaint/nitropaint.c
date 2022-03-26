@@ -1042,6 +1042,10 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				if (data->waitOn) {
 					KillTimer(hWnd, 1);
 					if (data->callback) data->callback(data->data);
+
+					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+					SetActiveWindow(hWndMain);
 					DestroyWindow(hWnd);
 				}
 			}
