@@ -196,6 +196,12 @@ void optimizePalette(REDUCTION *reduction);
 void paletteToArray(REDUCTION *reduction);
 
 //
+// Find the closest YIQA color to a specified YIQA color with a provided
+// reduction context.
+//
+int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, int *palette, int nColors);
+
+//
 // Free all resources consumed by a REDUCTION.
 //
 void destroyReduction(REDUCTION *reduction);

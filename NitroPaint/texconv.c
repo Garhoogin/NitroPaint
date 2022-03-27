@@ -80,7 +80,8 @@ int convertPalette(CREATEPARAMS *params) {
 	//allocate texel space.
 	int nBytes = width * height * bitsPerPixel / 8;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
-	if (params->dither) ditherImagePalette(params->px, width, height, palette, nColors, FALSE, TRUE, hasTransparent, params->diffuseAmount);
+	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
+	ditherImagePalette(params->px, width, height, palette, nColors, FALSE, TRUE, hasTransparent, diffuse);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
@@ -143,7 +144,8 @@ int convertTranslucent(CREATEPARAMS *params) {
 	//allocate texel space.
 	int nBytes = width * height;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
-	if (params->dither) ditherImagePalette(params->px, width, height, palette, nColors, FALSE, FALSE, FALSE, params->diffuseAmount);
+	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
+	ditherImagePalette(params->px, width, height, palette, nColors, FALSE, FALSE, FALSE, diffuse);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
@@ -703,6 +705,7 @@ int convert4x4(CREATEPARAMS *params) {
 
 	//generate texel data.
 	uint32_t *txel = (uint32_t *) calloc(tilesX * tilesY, 4);
+	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
 	for (int i = 0; i < tilesX * tilesY; i++) {
 		uint32_t texel = 0;
 
@@ -718,7 +721,7 @@ int convert4x4(CREATEPARAMS *params) {
 		expandPalette(thisPalette, mode, palette, &paletteSize);
 
 		//if dither is enabled, do so here.
-		if (params->dither) ditherImagePalette((COLOR32 *) tileData[i].rgb, 4, 4, palette, paletteSize, 0, 1, 0, params->diffuseAmount);
+		ditherImagePalette((COLOR32 *) tileData[i].rgb, 4, 4, palette, paletteSize, 0, 1, 0, diffuse);
 
 		for (int j = 0; j < 16; j++) {
 			int index = 0;

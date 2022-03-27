@@ -639,6 +639,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 }
 
 void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse) {
+	if (!dither) diffuse = 0.0f;
 	for (int i = 0; i < nTiles; i++) {
 		BGTILE *tile = tiles + i;
 
@@ -658,7 +659,7 @@ void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 		DWORD *pal = palette + (bestPalette << nBits);
 
 		//do optional dithering (also matches colors at the same time)
-		if(dither) ditherImagePalette(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse);
+		ditherImagePalette(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse);
 		for (int j = 0; j < 64; j++) {
 			DWORD col = tile->px[j];
 			int index = 0;

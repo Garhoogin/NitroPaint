@@ -963,7 +963,7 @@ int findClosestPaletteColorRGB(int *palette, int nColors, COLOR32 col, int *outD
 	return leastIndex;
 }
 
-int findClosestPaletteColor(int *palette, int nColors, int *col, int *outDiff) {
+int findClosestPaletteColor(REDUCTION *reduction, int *palette, int nColors, int *col, int *outDiff) {
 	int rgb[4];
 	yiqToRgb(rgb, col);
 	return findClosestPaletteColorRGB(palette, nColors, rgb[0] | (rgb[1] << 8) | (rgb[2] << 16), outDiff);
@@ -978,7 +978,7 @@ int computeTilePaletteDifference(REDUCTION *reduction, TILE *tile1, TILE *tile2)
 	for (int i = 0; i < tile2->nUsedColors; i++) {
 		int *yiq = &tile2->palette[i][0];
 		int diff = 0;
-		int closest = findClosestPaletteColor(&tile1->palette[0][0], tile1->nUsedColors, yiq, &diff);
+		int closest = findClosestPaletteColor(reduction, &tile1->palette[0][0], tile1->nUsedColors, yiq, &diff);
 
 		if (diff > 0) {
 			totalDiff += sqrt(diff) * tile2->useCounts[i];
