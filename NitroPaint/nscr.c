@@ -15,7 +15,8 @@ LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"Hudson", L"Hudson 2", L"B
 int isValidScreenSize(int nPx) {
 	if (nPx == 256 * 256 || nPx == 512 * 256 || 
 		nPx == 512 * 512 || nPx == 128 * 128 || 
-		nPx == 1024 * 1024 || nPx == 512 * 1024) return 1;
+		nPx == 1024 * 1024 || nPx == 512 * 1024 ||
+		nPx == 256 * 192) return 1;
 	return 0;
 }
 
