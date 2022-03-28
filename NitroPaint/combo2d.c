@@ -18,11 +18,13 @@ typedef struct BANNER_INFO_ {
 } BANNER_INFO;
 
 int combo2dFormatHasPalette(int format) {
-	return 1;
+	return format == COMBO2D_TYPE_BANNER
+		|| format == COMBO2D_TYPE_TIMEACE;
 }
 
 int combo2dFormatHasCharacter(int format) {
-	return 1;
+	return format == COMBO2D_TYPE_BANNER
+		|| format == COMBO2D_TYPE_TIMEACE;
 }
 
 int combo2dFormatHasScreen(int format) {
@@ -195,9 +197,8 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 
 		if (combo->nclr != NULL) {
 			int palDataSize = combo->nclr->nColors * 2;
-			if (palDataSize <= dfc->pltSize) {
-				memcpy(copy + dfc->pltOffset, combo->nclr->colors, 2 * combo->nclr->nColors);
-			}
+			if (palDataSize > dfc->pltSize) palDataSize = dfc->pltSize;
+			memcpy(copy + dfc->pltOffset, combo->nclr->colors, 2 * combo->nclr->nColors);
 		}
 		if (combo->ncgr != NULL) {
 			//take the easy way, temporarily change the format of the NCGR to raw and write
@@ -206,16 +207,15 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 			combo->ncgr->header.format = NCGR_TYPE_BIN;
 			ncgrWrite(combo->ncgr, &chrStream);
 			combo->ncgr->header.format = NCGR_TYPE_COMBO;
-			if (chrStream.size <= dfc->chrSize) {
-				memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
-			}
+
+			if (chrStream.size > dfc->chrSize) chrStream.size = dfc->chrSize;
+			memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
 			bstreamFree(&chrStream);
 		}
 		if (combo->nscr != NULL) {
 			int scrDataSize = combo->nscr->dataSize;
-			if (scrDataSize <= dfc->scrSize) {
-				memcpy(copy + dfc->scrOffset, combo->nscr->data, scrDataSize);
-			}
+			if (scrDataSize > dfc->scrSize) scrDataSize = dfc->scrSize;
+			memcpy(copy + dfc->scrOffset, combo->nscr->data, scrDataSize);
 		}
 
 		bstreamWrite(stream, copy, dfc->size);
