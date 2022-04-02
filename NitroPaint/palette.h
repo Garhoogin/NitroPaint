@@ -2,6 +2,10 @@
 
 #include "color.h"
 
+#define BALANCE_DEFAULT  20
+#define BALANCE_MIN      1
+#define BALANCE_MAX      39
+
 typedef struct RGB_ {
 	uint8_t r;
 	uint8_t g;
@@ -63,6 +67,13 @@ unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize);
 // Creates multiple palettes for an image for character map color reduction.
 //
 void createMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *dest, int paletteBase, int nPalettes, int paletteSize, int nColsPerPalette, int paletteOffset, int *progress);
+
+
+//
+// Creates multiple palettes for an image for character map color reduction
+// with user-provided balance, color balance, and color enhancement settings.
+//
+void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *dest, int paletteBase, int nPalettes, int paletteSize, int nColsPerPalette, int paletteOffset, int balance, int colorBalance, int enhanceColors, int *progress);
 
 //
 // Convert an RGB color to YUV space.

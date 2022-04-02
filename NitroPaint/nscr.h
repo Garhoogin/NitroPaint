@@ -136,5 +136,6 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse, 
 				int palette, int nPalettes, int bin, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffsetm, int rowLimit, int nMaxChars,
+				int balance, int colorBalance, int enhanceColors,
 				int *progress1, int *progress1Max, int *progress2, int *progress2Max,
 				NCLR *nclr, NCGR *ncgr, NSCR *nscr);

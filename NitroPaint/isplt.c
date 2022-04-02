@@ -1034,13 +1034,21 @@ done:
 }
 
 void createMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
-							  int paletteSize, int nColsPerPalette, int paletteOffset, int *progress) {
+							int paletteSize, int nColsPerPalette, int paletteOffset, int *progress) {
+	createMultiplePalettesEx(imgBits, tilesX, tilesY, dest, paletteBase, nPalettes, paletteSize, nColsPerPalette, 
+							 paletteOffset, BALANCE_DEFAULT, BALANCE_DEFAULT, 0, progress);
+}
+
+void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
+							  int paletteSize, int nColsPerPalette, int paletteOffset, int balance, 
+							  int colorBalance, int enhanceColors, int *progress) {
 	if (nPalettes == 0) return;
 	if (nPalettes == 1) {
 		if (paletteOffset) {
-			createPaletteExact(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset, paletteSize);
+			createPaletteSlowEx(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset, paletteSize, balance, colorBalance, enhanceColors, 0);
 		} else {
-			createPalette_(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize), paletteSize);
+			createPaletteSlowEx(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset + 1, paletteSize - 1, balance, colorBalance, enhanceColors, 0);
+			dest[(paletteBase * paletteSize) + paletteOffset] = 0xFF00FF; //transparent fill
 		}
 		return;
 	}
@@ -1056,7 +1064,7 @@ void createMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *d
 	int nTiles = tilesX * tilesY;
 	TILE *tiles = (TILE *) calloc(nTiles, sizeof(TILE));
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
-	initReduction(reduction, 20, 20, 15, FALSE, nColsPerPalette);
+	initReduction(reduction, balance, colorBalance, 15, enhanceColors, nColsPerPalette);
 	reduction->maskColors = FALSE;
 	COLOR32 palBuf[16];
 	for (int y = 0; y < tilesY; y++) {

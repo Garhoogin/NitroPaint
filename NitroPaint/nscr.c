@@ -683,6 +683,7 @@ void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse,
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
+				int balance, int colorBalance, int enhanceColors,
 				int *progress1, int *progress1Max, int *progress2, int *progress2Max,
 				NCLR *nclr, NCGR *ncgr, NSCR *nscr) {
 
@@ -708,6 +709,8 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 		if (paletteOffset + paletteSize > 256) paletteSize = 256 - paletteOffset;
 	}
 	if (paletteSize < 1) paletteSize = 1;
+	if (balance <= 0) balance = BALANCE_DEFAULT;
+	if (colorBalance <= 0) colorBalance = BALANCE_DEFAULT;
 
 	int tilesX = width / 8;
 	int tilesY = height / 8;
@@ -723,12 +726,13 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	else nBits = 8;
 	if (nPalettes == 1) {
 		if (paletteOffset) {
-			createPaletteExact(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize);
+			createPaletteSlowEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize, balance, colorBalance, enhanceColors, 0);
 		} else {
-			createPalette_(imgBits, width, height, palette + (paletteBase << nBits), paletteSize);
+			createPaletteSlowEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset + 1, paletteSize - 1, balance, colorBalance, enhanceColors, 0);
+			palette[(paletteBase << nBits) + paletteOffset] = 0xFF00FF; //transparent fill color
 		}
 	} else {
-		createMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, progress1);
+		createMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, balance, colorBalance, enhanceColors, progress1);
 	}
 	*progress1 = nTiles * 2; //make sure it's done
 
