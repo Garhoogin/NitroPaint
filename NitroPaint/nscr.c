@@ -846,7 +846,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 			paletteFormat = NCLR_TYPE_BIN;
 			characterFormat = NCGR_TYPE_BIN;
 			screenFormat = NSCR_TYPE_BIN;
-			if (fmt == 5) {
+			if (fmt == 4) {
 				compressCharacter = COMPRESSION_LZ77;
 				compressScreen = COMPRESSION_LZ77;
 			}
