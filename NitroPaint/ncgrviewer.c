@@ -212,10 +212,10 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
 
-			RECT rc = { 0 };
-			rc.right = data->frameData.contentWidth + GetSystemMetrics(SM_CXVSCROLL) + 4;
-			rc.bottom = data->frameData.contentHeight + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for combobox;
-			SetWindowSize(hWnd, rc.right, rc.bottom);
+			int width = data->frameData.contentWidth + GetSystemMetrics(SM_CXVSCROLL) + 4;
+			int height = data->frameData.contentHeight + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for combobox;
+			if (width < 255 + 4) width = 255 + 4; //min width for controls
+			SetWindowSize(hWnd, width, height);
 
 
 			int nTiles = data->ncgr.nTiles;
