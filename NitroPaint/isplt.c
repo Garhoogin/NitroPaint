@@ -1377,7 +1377,7 @@ void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, i
 
 			//now test: Should we dither?
 			double balanceSquare = reduction->yWeight * reduction->yWeight;
-			if (centerDistance < 110.0 * balanceSquare && paletteDistance >  2.0 * balanceSquare) {
+			if (centerDistance < 110.0 * balanceSquare && paletteDistance >  2.0 * balanceSquare && diffuse > 0.0f) {
 				//Yes, we should dither :)
 
 				int diffuseY = (int) (thisDiffuse[(x + 1) * 4 + 0] * diffuse / 16); //correct for Floyd-Steinberg coefficients

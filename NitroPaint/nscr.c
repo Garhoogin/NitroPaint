@@ -612,6 +612,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 
 		//now, match colors to indices.
 		DWORD *pal = palette + (bestPalette << nBits);
+		ditherImagePalette(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, 0, 1, 0, 0.0f);
 		for (int j = 0; j < 64; j++) {
 			DWORD col = tile->px[j];
 			int index = 0;
@@ -675,6 +676,7 @@ void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 			}
 			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
 		}
+
 		tile->masterTile = i;
 		tile->nRepresents = 1;
 	}
@@ -735,6 +737,13 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 		createMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, balance, colorBalance, enhanceColors, progress1);
 	}
 	*progress1 = nTiles * 2; //make sure it's done
+
+	//by default the palette generator only enforces palette density, but not
+	//the actual truncating of RGB values. Do that here. This will also be
+	//important when fixed palettes are allowed.
+	for (int i = 0; i < 256; i++) {
+		palette[i] = ColorConvertFromDS(ColorConvertToDS(palette[i]));
+	}
 
 	//split image into 8x8 tiles.
 	for (int y = 0; y < tilesY; y++) {

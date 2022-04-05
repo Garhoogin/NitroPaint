@@ -901,14 +901,6 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 					if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
 					else {
 						int index = 1 + closestpalette(*(RGB *) &block[i], (RGB *) pals + leastIndex * paletteSize + 1, paletteSize - 1, NULL);
-						if (dither) {
-							RGB original = *(RGB *) &block[i];
-							RGB closest = ((RGB *) (pals + leastIndex * paletteSize))[index];
-							int er = closest.r - original.r;
-							int eg = closest.g - original.g;
-							int eb = closest.b - original.b;
-							doDiffuse(i, 8, 8, block, -er, -eg, -eb, 0, diffuse);
-						}
 						ncgrTile[i] = index;
 					}
 				}
