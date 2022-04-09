@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "compression.h"
 #include "bstream.h"
@@ -714,21 +715,33 @@ int huffman8IsCompressed(unsigned char *buffer, unsigned size) {
 }
 
 int lz11CompHeaderIsValid(char *buffer, unsigned size) {
-	if (size < 0x18) return 0;
+	if (size < 0x14) return 0;
 	unsigned magic = *(unsigned *) buffer;
 	if (magic != 'COMP' && magic != 'PMOC') return 0;
 
 	//validate headers
-	unsigned int nSegments = *(unsigned *) (buffer + 0x8);
+	uint32_t nSegments = *(uint32_t *) (buffer + 0x8);
 	unsigned int headerSize = 0x10 + 4 * nSegments;
 	unsigned int offset = headerSize;
 	unsigned int uncompSize = 0;
 	if (nSegments == 0) return 0;
 	for (unsigned int i = 0; i < nSegments; i++) {
-		unsigned int thisSegmentLength = *(unsigned *) (buffer + 0x10 + i * 4);
+
+		//parse segment length & compression setting
+		int32_t thisSegmentLength = *(int32_t *) (buffer + 0x10 + i * 4);
+		int segCompressed = thisSegmentLength >= 0; //length >= 0 means segment is compressed
+		if (thisSegmentLength < 0) {
+			thisSegmentLength = -thisSegmentLength;
+		}
 		if (offset + thisSegmentLength > size) return 0;
-		if (!lz11IsCompressed(buffer + offset, thisSegmentLength)) return 0;
-		uncompSize += *(unsigned *) (buffer + offset) >> 8;
+
+		//decompression (if applicable)
+		if (segCompressed) {
+			if (!lz11IsCompressed(buffer + offset, thisSegmentLength)) return 0;
+			uncompSize += *(unsigned *) (buffer + offset) >> 8;
+		} else {
+			uncompSize += thisSegmentLength;
+		}
 		offset += thisSegmentLength;
 	}
 	if(uncompSize != *(unsigned *) (buffer + 0x4)) return 0;
@@ -745,13 +758,27 @@ char *lz11CompHeaderDecompress(char *buffer, int size, int *uncompressedSize) {
 	unsigned int dstOffs = 0;
 	unsigned int offset = 0x10 + 4 * nSegments;
 	for (unsigned int i = 0; i < nSegments; i++) {
-		unsigned int thisSegmentSize = *(unsigned *) (buffer + 0x10 + i * 4);
+
+		//parse segment length & compression setting
+		int segCompressed = 1;
+		int32_t thisSegmentSize = *(int32_t *) (buffer + 0x10 + i * 4);
+		if (thisSegmentSize < 0) {
+			segCompressed = 0;
+			thisSegmentSize = -thisSegmentSize;
+		}
+
+		//decompress (if applicable)
 		unsigned int thisSegmentUncompressedSize;
-		char *thisSegment = lz11decompress(buffer + offset, thisSegmentSize, &thisSegmentUncompressedSize);
-		memcpy(out + dstOffs, thisSegment, thisSegmentUncompressedSize);
+		if (segCompressed) {
+			char *thisSegment = lz11decompress(buffer + offset, thisSegmentSize, &thisSegmentUncompressedSize);
+			memcpy(out + dstOffs, thisSegment, thisSegmentUncompressedSize);
+			free(thisSegment);
+		} else {
+			thisSegmentUncompressedSize = thisSegmentSize;
+			memcpy(out + dstOffs, buffer + offset, thisSegmentSize);
+		}
 		dstOffs += thisSegmentUncompressedSize;
 		offset += thisSegmentSize;
-		free(thisSegment);
 	}
 
 	return out;
