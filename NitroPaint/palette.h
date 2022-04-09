@@ -54,6 +54,12 @@ void doDiffuse(int i, int width, int height, unsigned int * pixels, int errorRed
 void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse);
 
 //
+// Apply dithering to a whole image using adaptive error diffusion, while
+// allowing use of specific balance settings.
+//
+void ditherImagePaletteEx(COLOR32 *img, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse, int balance, int colorBalance, int enhanceColors);
+
+//
 // Calculate the average color from a list of colors
 //
 COLOR32 averageColor(COLOR32 *cols, int nColors);
