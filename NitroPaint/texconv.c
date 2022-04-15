@@ -365,18 +365,12 @@ void addTile(TILEDATA *data, int index, COLOR32 *px, int *totalIndex) {
 	//is it a duplicate?
 	int isDuplicate = 0;
 	int duplicateIndex = 0;
-	for (int i = 0; i < index; i++) {
+	for (int i = index - 1; i >= 0; i--) {
 		TILEDATA *tile = data + i;
 		COLOR32 *px1 = (COLOR32 *) tile->rgb;
 		COLOR32 *px2 = (COLOR32 *) data[index].rgb;
-		int same = 1;
-		for (int j = 0; j < 16; j++) {
-			if (px1[j] != px2[j]) {
-				same = 0;
-				break;
-			}
-		}
-		if (same) {
+
+		if (!memcmp(px1, px2, 16 * sizeof(COLOR32))) {
 			isDuplicate = 1;
 			duplicateIndex = i;
 			break;
@@ -392,7 +386,7 @@ void addTile(TILEDATA *data, int index, COLOR32 *px, int *totalIndex) {
 		choosePaletteAndMode(data + index);
 		data[index].paletteIndex = *totalIndex;
 		//is the palette and mode identical to a non-duplicate tile?
-		for (int i = 0; i < index; i++) {
+		for (int i = index - 1; i >= 0; i--) {
 			TILEDATA *tile1 = data + i;
 			TILEDATA *tile2 = data + index;
 			if (tile1->duplicate) continue;
@@ -448,11 +442,16 @@ uint16_t getModeFromTable(uint8_t type) {
 	return 0;
 }
 
-int computePaletteDifference(COLOR32 *pal1, COLOR32 *pal2, int nColors, int nMaxError) {
+int computePaletteDifference(COLOR *pal1, COLOR *pal2, int nColors, int nMaxError) {
 	int total = 0;
 	
 	for (int i = 0; i < nColors; i++) {
-		total += computeColorDifference(pal1[i], pal2[i]);
+		if (pal1[i] != pal2[i]) {
+			COLOR32 c1 = ColorConvertFromDS(pal1[i]);
+			COLOR32 c2 = ColorConvertFromDS(pal2[i]);
+			total += computeColorDifference(c1, c2);
+		}
+
 		if (total >= nMaxError) return nMaxError;
 		if (nColors == 2 && total * 2 >= nMaxError) return nMaxError;
 	}
@@ -486,13 +485,7 @@ int findClosestPalettes(COLOR *palette, uint8_t *colorTable, int nColors, int *c
 			}
 
 			//same type, let's compare.
-			COLOR32 expandPal1[4], expandPal2[4];
-			uint16_t mode = getModeFromTable(type1);
-			for (int i = 0; i < nColorsInThisPalette; i++) {
-				expandPal1[i] = ColorConvertFromDS(palette[idx1 + i]);
-				expandPal2[i] = ColorConvertFromDS(palette[idx2 + i]);
-			}
-			int dst = computePaletteDifference(expandPal1, expandPal2, nColorsInThisPalette, leastDistance);
+			int dst = computePaletteDifference(palette + idx1, palette + idx2, nColorsInThisPalette, leastDistance);
 			if (dst < leastDistance) {
 				leastDistance = dst;
 				*colorIndex1 = idx1;
