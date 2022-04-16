@@ -219,7 +219,27 @@ typedef struct {
 	uint8_t duplicate;         //is duplicate?
 } TILEDATA;
 
-void getColorBounds(COLOR32 *px, int nPx, COLOR32 *colorMin, COLOR32 *colorMax) {
+int createPaletteFromHistogram(REDUCTION *reduction, int nColors, COLOR32 *out) {
+	reduction->nPaletteColors = nColors;
+	flattenHistogram(reduction);
+	optimizePalette(reduction);
+	paletteToArray(reduction);
+
+	int nUsed = reduction->nUsedColors;
+	for (int i = 0; i < nColors; i++) {
+		if (i < nUsed) {
+			uint8_t *c = &reduction->paletteRgb[i][0];
+			out[i] = c[0] | (c[1] << 8) | (c[2] << 16);
+		} else {
+			out[i] = 0;
+		}
+	}
+
+	qsort(out, nColors, sizeof(COLOR32), lightnessCompare);
+	return nUsed;
+}
+
+void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMin, COLOR32 *colorMax) {
 	//if only 1 or 2 colors, fill the palette with those.
 	
 	COLOR32 colors[2];
@@ -260,8 +280,10 @@ void getColorBounds(COLOR32 *px, int nPx, COLOR32 *colorMin, COLOR32 *colorMax) 
 	}
 
 	COLOR32 cols[2];
-	int nCol = createPaletteSlowEx(px, 4, nPx / 4, cols, 2, 20, 20, FALSE, TRUE);
-	if (nCol < 2) cols[1] = cols[0];
+	resetHistogram(reduction);
+	computeHistogram(reduction, px, 4, nPx / 4);
+	int nCol = createPaletteFromHistogram(reduction, 2, cols);
+	if (nCol < 2) cols[0] = cols[1];
 	*colorMin = cols[0];
 	*colorMax = cols[1];
 }
@@ -293,17 +315,19 @@ int computeLMS(COLOR32 *tile, COLOR32 *palette, int transparent) {
 	return total / nCount;
 }
 
-void choosePaletteAndMode(TILEDATA *tile) {
+void choosePaletteAndMode(REDUCTION *reduction, TILEDATA *tile) {
 	//first try interpolated. If it's not good enough, use full color.
 	COLOR32 colorMin, colorMax;
-	getColorBounds((COLOR32 *) tile->rgb, 16, &colorMin, &colorMax);
+	getColorBounds(reduction, (COLOR32 *) tile->rgb, 16, &colorMin, &colorMax);
 	if (tile->transparentPixels) {
 		COLOR32 mid = blend(colorMin, 4, colorMax, 4);
 		COLOR32 palette[] = { colorMax, mid, colorMin, 0 };
 		COLOR32 paletteFull[4];
 
 		int error = computeLMS((COLOR32 *) tile->rgb, palette, 1);
-		int nFull = createPaletteSlowEx((COLOR32 *) tile->rgb, 4, 4, paletteFull, 3, 20, 20, 0, 0);
+		resetHistogram(reduction);
+		computeHistogram(reduction, (COLOR32 *) tile->rgb, 4, 4);
+		int nFull = createPaletteFromHistogram(reduction, 3, paletteFull);
 		//if error <= 24, then these colors are good enough
 		if (error <= 24 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
@@ -326,7 +350,9 @@ void choosePaletteAndMode(TILEDATA *tile) {
 		COLOR32 paletteFull[4];
 
 		int error = computeLMS((COLOR32 *) tile->rgb, palette, 0);
-		int nFull = createPaletteSlowEx((COLOR32 *) tile->rgb, 4, 4, paletteFull, 4, 20, 20, 0, 0);
+		resetHistogram(reduction);
+		computeHistogram(reduction, (COLOR32 *) tile->rgb, 4, 4);
+		int nFull = createPaletteFromHistogram(reduction, 4, paletteFull);
 		if (error <= 24 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
@@ -345,7 +371,7 @@ void choosePaletteAndMode(TILEDATA *tile) {
 	}
 }
 
-void addTile(TILEDATA *data, int index, COLOR32 *px, int *totalIndex) {
+void addTile(REDUCTION *reduction, TILEDATA *data, int index, COLOR32 *px, int *totalIndex) {
 	memcpy(data[index].rgb, px, 64);
 	data[index].duplicate = 0;
 	data[index].used = 1;
@@ -383,7 +409,7 @@ void addTile(TILEDATA *data, int index, COLOR32 *px, int *totalIndex) {
 		data[index].paletteIndex = data[duplicateIndex].paletteIndex;
 	} else {
 		//generate a palette and determine the mode.
-		choosePaletteAndMode(data + index);
+		choosePaletteAndMode(reduction, data + index);
 		data[index].paletteIndex = *totalIndex;
 		//is the palette and mode identical to a non-duplicate tile?
 		for (int i = index - 1; i >= 0; i--) {
@@ -411,7 +437,7 @@ void addTile(TILEDATA *data, int index, COLOR32 *px, int *totalIndex) {
 	_globColors++;
 }
 
-TILEDATA *createTileData(COLOR32 *px, int tilesX, int tilesY) {
+TILEDATA *createTileData(REDUCTION *reduction, COLOR32 *px, int tilesX, int tilesY) {
 	TILEDATA *data = (TILEDATA *) calloc(tilesX * tilesY, sizeof(TILEDATA));
 	int paletteIndex = 0;
 	for (int y = 0; y < tilesY; y++) {
@@ -422,7 +448,7 @@ TILEDATA *createTileData(COLOR32 *px, int tilesX, int tilesY) {
 			memcpy(tile + 4, px + offs + tilesX * 4, 16);
 			memcpy(tile + 8, px + offs + tilesX * 8, 16);
 			memcpy(tile + 12, px + offs + tilesX * 12, 16);
-			addTile(data, x + y * tilesX, tile, &paletteIndex);
+			addTile(reduction, data, x + y * tilesX, tile, &paletteIndex);
 		}
 	}
 	return data;
@@ -501,53 +527,67 @@ int findClosestPalettes(COLOR *palette, uint8_t *colorTable, int nColors, int *c
 	return leastDistance;
 }
 
-void mergePalettes(TILEDATA *tileData, int nTiles, COLOR *palette, int paletteIndex, uint16_t palettesMode) {
+void mergePalettes(REDUCTION *reduction, TILEDATA *tileData, int nTiles, COLOR *palette, int paletteIndex, uint16_t palettesMode) {
 	//count the number of tiles that use this palette.
 	int nUsedTiles = 0;
 	for (int i = 0; i < nTiles; i++) {
 		if (tileData[i].paletteIndex == paletteIndex) nUsedTiles++;
 	}
 
-	//allocate space for all of the color data
-	COLOR32 *px = (COLOR32 *) calloc(nUsedTiles, 16 * 4);
-
-	//copy tiles into the buffer
-	int copiedTiles = 0;
-	for (int i = 0; i < nTiles; i++) {
-		if (tileData[i].paletteIndex == paletteIndex) {
-			memcpy(px + copiedTiles * 16, tileData[i].rgb, 16 * 4);
-			copiedTiles++;
-		}
-	}
-
 	//use the mode to determine the appropriate method of creating the palette.
 	COLOR32 expandPal[4];
 	if (palettesMode == 0x0000) {
 		//transparent, full color
-		createPaletteSlow(px, 4, 4 * nUsedTiles, expandPal + 1, 3);
+		resetHistogram(reduction);
+		for (int i = 0; i < nTiles; i++) {
+			if (tileData[i].paletteIndex == paletteIndex) {
+				computeHistogram(reduction, (COLOR32 *) tileData[i].rgb, 4, 4);
+			}
+		}
+		createPaletteFromHistogram(reduction, 3, expandPal + 1);
+
 		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[2]); //don't waste this slot
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[1]);
 		palette[paletteIndex * 2 + 2] = ColorConvertToDS(expandPal[2]);
 		palette[paletteIndex * 2 + 3] = ColorConvertToDS(expandPal[0]);
 	} else if (palettesMode == 0x4000 || palettesMode == 0xC000) {
 		//transparent, interpolated, and opaque, interpolated
-		getColorBounds(px, 16 * nUsedTiles, &expandPal[0], &expandPal[1]);
+
+		//allocate space for all of the color data
+		COLOR32 *px = (COLOR32 *) calloc(nUsedTiles, 16 * 4);
+
+		//copy tiles into the buffer
+		int copiedTiles = 0;
+		for (int i = 0; i < nTiles; i++) {
+			if (tileData[i].paletteIndex == paletteIndex) {
+				memcpy(px + copiedTiles * 16, tileData[i].rgb, 16 * 4);
+				copiedTiles++;
+			}
+		}
+		getColorBounds(reduction, px, 16 * nUsedTiles, &expandPal[0], &expandPal[1]);
+		free(px);
+
 		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[1]);
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[0]);
 	} else if (palettesMode == 0x8000) {
 		//opaque, full color
-		//int nFull = createPaletteSlow(px, 4, 4 * nUsedTiles, expandPal, 4);
-		int nFull = createPaletteSlowEx(px, 4, 4 * nUsedTiles, expandPal, 4, 20, 20, 0, 0);
+		resetHistogram(reduction);
+		for (int i = 0; i < nTiles; i++) {
+			if (tileData[i].paletteIndex == paletteIndex) {
+				computeHistogram(reduction, (COLOR32 *) tileData[i].rgb, 4, 4);
+			}
+		}
+		int nFull = createPaletteFromHistogram(reduction, 4, expandPal);
+
 		if (nFull < 4) expandPal[0] = expandPal[1];
 		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[3]);
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[1]);
 		palette[paletteIndex * 2 + 2] = ColorConvertToDS(expandPal[2]);
 		palette[paletteIndex * 2 + 3] = ColorConvertToDS(expandPal[0]);
 	}
-	free(px);
 }
 
-int buildPalette(COLOR *palette, int nPalettes, TILEDATA *tileData, int tilesX, int tilesY, int threshold) {
+int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *tileData, int tilesX, int tilesY, int threshold) {
 	//iterate over all non-duplicate tiles, adding the palettes.
 	//colorTable keeps track of how each color is intended to be used.
 	//00 - unused. 01 - mode 0x0000. 02 - mode 0x4000. 04 - mode 0x8000. 08 - mode 0xC000.
@@ -608,7 +648,7 @@ int buildPalette(COLOR *palette, int nPalettes, TILEDATA *tileData, int tilesX, 
 					memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColorsInPalettes, nPalettes * 2 - colorIndex2 - nColorsInPalettes);
 
 					//merge those palettes that we've just combined.
-					mergePalettes(tileData, tilesX * tilesY, palette, colorIndex1 / 2, palettesMode);
+					mergePalettes(reduction, tileData, tilesX * tilesY, palette, colorIndex1 / 2, palettesMode);
 
 					//update end pointer to reflect the change.
 					firstSlot -= nColorsInPalettes;
@@ -652,9 +692,9 @@ void expandPalette(COLOR *nnsPal, uint16_t mode, COLOR32 *dest, int *nOpaque) {
 	}
 }
 
-uint16_t findOptimalPidx(COLOR32 *px, int hasTransparent, COLOR *palette, int nColors) {
+uint16_t findOptimalPidx(REDUCTION *reduction, COLOR32 *px, int hasTransparent, COLOR *palette, int nColors) {
 	//yes, iterate over every possible palette and mode.
-	unsigned long long leastError = 0xFFFFFFFFFFFFFFFFull;
+	double leastError = 1e32;
 	uint16_t leastPidx = 0;
 	for (int i = 0; i < nColors; i += 2) {
 		COLOR *thisPalette = palette + i;
@@ -670,7 +710,8 @@ uint16_t findOptimalPidx(COLOR32 *px, int hasTransparent, COLOR *palette, int nC
 			if (hasTransparent && nConsumed == 4) continue;
 
 			//unsigned long long dst = computeLMS(px, expand, nConsumed == 3); //35.36s
-			unsigned long long dst = computePaletteError(px, 16, expand, 4 - (nConsumed == 3), 128, leastError); //22.26s, lot faster
+			//unsigned long long dst = computePaletteError(px, 16, expand, 4 - (nConsumed == 3), 128, leastError); //22.26s, lot faster
+			double dst = computePaletteErrorYiq(reduction, px, 16, expand, 4 - (nConsumed == 3), 128, leastError);
 			if (dst < leastError) {
 				leastPidx = mode | (i >> 1);
 				leastError = dst;
@@ -688,13 +729,17 @@ int convert4x4(CREATEPARAMS *params) {
 	int tilesX = width / 4, tilesY = height / 4;
 	_globFinal = tilesX * tilesY * 3;
 	_globColors = 0;
-	TILEDATA *tileData = createTileData(params->px, tilesX, tilesY);
+
+	//create tile data
+	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
+	initReduction(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, 0, 4);
+	TILEDATA *tileData = createTileData(reduction, params->px, tilesX, tilesY);
 
 	//build the palettes.
 	COLOR *nnsPal = (COLOR *) calloc(params->colorEntries, sizeof(COLOR));
 	int nUsedColors;
 	if (!params->useFixedPalette) {
-		nUsedColors = buildPalette(nnsPal, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold);
+		nUsedColors = buildPalette(reduction, nnsPal, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold);
 	} else {
 		nUsedColors = params->colorEntries;
 		memcpy(nnsPal, params->fixedPalette, params->colorEntries * 2);
@@ -713,7 +758,7 @@ int convert4x4(CREATEPARAMS *params) {
 		uint32_t texel = 0;
 
 		//double check that these settings are the most optimal for this tile.
-		uint16_t idx = findOptimalPidx((COLOR32 *) tileData[i].rgb, tileData[i].transparentPixels, nnsPal, nUsedColors);
+		uint16_t idx = findOptimalPidx(reduction, (COLOR32 *) tileData[i].rgb, tileData[i].transparentPixels, nnsPal, nUsedColors);
 		uint16_t mode = idx & 0xC000;
 		uint16_t index = idx & 0x3FFF;
 		COLOR *thisPalette = nnsPal + (index * 2);
@@ -739,6 +784,8 @@ int convert4x4(CREATEPARAMS *params) {
 		txel[i] = texel;
 		_globColors++;
 	}
+	destroyReduction(reduction);
+	free(reduction);
 
 	//set fields in the texture
 	params->dest->palette.nColors = nUsedColors;

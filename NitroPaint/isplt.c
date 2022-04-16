@@ -1486,3 +1486,45 @@ void ditherImagePaletteEx(COLOR32 *img, int width, int height, COLOR32 *palette,
 	destroyReduction(reduction);
 	free(reduction);
 }
+
+double computePaletteErrorYiq(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *pal, int nColors, int alphaThreshold, double nMaxError) {
+	if (nMaxError == 0) nMaxError = 1e32;
+	double error = 0;
+
+	int paletteYiqStack[16 * 4]; //small palettes
+	int *paletteYiq = paletteYiqStack;
+	if (nColors > 16) {
+		paletteYiq = (int *) calloc(nColors, 4 * sizeof(int));
+	}
+
+	//palette to YIQ
+	for (int i = 0; i < nColors; i++) {
+		rgbToYiq(pal[i], paletteYiq + i * 4);
+	}
+
+	double yw2 = reduction->yWeight * reduction->yWeight;
+	double iw2 = reduction->iWeight * reduction->iWeight;
+	double qw2 = reduction->qWeight * reduction->qWeight;
+	for (int i = 0; i < nPx; i++) {
+		COLOR32 p = px[i];
+		int a = (p >> 24) & 0xFF;
+		if (a < alphaThreshold) continue;
+
+		int yiq[4];
+		rgbToYiq(px[i], yiq);
+		int best = closestPaletteYiq(reduction, yiq, paletteYiq, nColors);
+		int *chosen = paletteYiq + best * 4;
+
+		double dy = reduction->lumaTable[yiq[0]] - reduction->lumaTable[chosen[0]];
+		double di = yiq[1] - chosen[1];
+		double dq = yiq[2] - chosen[2];
+
+		error += dy * dy * yw2;
+		if (error >= nMaxError) return nMaxError;
+		error += di * di * iw2 + dq * dq * qw2;
+		if (error >= nMaxError) return nMaxError;
+	}
+
+	if (paletteYiq != paletteYiqStack) free(paletteYiq);
+	return error;
+}

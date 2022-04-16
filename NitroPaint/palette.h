@@ -219,6 +219,11 @@ void paletteToArray(REDUCTION *reduction);
 int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, int *palette, int nColors);
 
 //
+// Compute palette error on a bitmap given a specified reduction context.
+//
+double computePaletteErrorYiq(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *pal, int nColors, int alphaThreshold, double nMaxError);
+
+//
 // Free all resources consumed by a REDUCTION.
 //
 void destroyReduction(REDUCTION *reduction);
