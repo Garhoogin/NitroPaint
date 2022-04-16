@@ -285,10 +285,12 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 		WriteFile(hFile, &pnamLength, 4, &dwWritten, NULL);
 		WriteFile(hFile, palette->name, pnamLength - 0xC, &dwWritten, NULL);
 
+		int nColors = palette->nColors;
+		if (FORMAT(texels->texImageParam) == CT_4COLOR && nColors > 4) nColors = 4;
 		WriteFile(hFile, "nns_pcol", 8, &dwWritten, NULL);
-		DWORD pcolLength = palette->nColors * 2 + 0xC;
+		DWORD pcolLength = nColors * 2 + 0xC;
 		WriteFile(hFile, &pcolLength, 4, &dwWritten, NULL);
-		WriteFile(hFile, palette->pal, palette->nColors * 2, &dwWritten, NULL);
+		WriteFile(hFile, palette->pal, nColors * 2, &dwWritten, NULL);
 	}
 
 	BYTE gnam[] = {'n', 'n', 's', '_', 'g', 'n', 'a', 'm', 22, 0, 0, 0, 'N', 'i', 't', 'r', 'o', 'P', 'a', 'i', 'n', 't'};

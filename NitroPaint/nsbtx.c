@@ -196,6 +196,13 @@ void initializeArray(BYTEARRAY *arr) {
 	arr->bufferSize = 1024;
 }
 
+void freeArray(BYTEARRAY *arr) {
+	if (arr->ptr != NULL) free(arr->ptr);
+	arr->ptr = NULL;
+	arr->length = 0;
+	arr->bufferSize = 0;
+}
+
 void addBytes(BYTEARRAY *arr, BYTE *bytes, int length) {
 	if (arr->length + length >= arr->bufferSize) {
 		int newSize = arr->bufferSize;
@@ -258,7 +265,14 @@ int nsbtxWrite(NSBTX *nsbtx, BSTREAM *stream) {
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
 		int offs = paletteData.length;
 		PALETTE *palette = nsbtx->palettes + i;
-		addBytes(&paletteData, (BYTE *) palette->pal, palette->nColors * 2);
+
+		//add bytes, make sure to align to a multiple of 16 bytes if more than 4 colors! (or if it's the last palette)
+		int nColors = palette->nColors;
+		addBytes(&paletteData, (BYTE *) palette->pal, nColors * 2);
+		if (nColors <= 4 && ((i == nsbtx->nPalettes - 1) || (nsbtx->palettes[i + 1].nColors > 4))) {
+			BYTE padding[16] = { 0 };
+			addBytes(&paletteData, padding, 16 - nColors * 2);
+		}
 		DICTPLTTDATA *data = ((DICTPLTTDATA *) nsbtx->paletteDictionary.entry.data) + i;
 		data->offset = offs >> 3;
 	}
@@ -380,6 +394,12 @@ int nsbtxWrite(NSBTX *nsbtx, BSTREAM *stream) {
 		stream->pos = 0x14;
 		bstreamWrite(stream, &tex0Offset, 4);
 	}
+
+	//free resources
+	freeArray(&texData);
+	freeArray(&tex4x4Data);
+	freeArray(&tex4x4PlttIdxData);
+	freeArray(&paletteData);
 
 	return 0;
 }
