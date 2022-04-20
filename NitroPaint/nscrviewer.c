@@ -875,7 +875,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				int leastError = 0x7FFFFFFF;
 				int leastIndex = 0;
 				for (int i = 0; i < nPalettes; i++) {
-					int err = getPaletteError((RGB*) block, 64, (RGB *) pals + i * paletteSize, paletteSize);
+					int err = getPaletteError(block, 64, pals + i * paletteSize, paletteSize);
 					if (err < leastError) {
 						leastError = err;
 						leastIndex = i;
@@ -900,7 +900,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				for (int i = 0; i < 64; i++) {
 					if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
 					else {
-						int index = 1 + closestpalette(*(RGB *) &block[i], (RGB *) pals + leastIndex * paletteSize + 1, paletteSize - 1, NULL);
+						int index = 1 + closestPalette(block[i], pals + leastIndex * paletteSize + 1, paletteSize - 1);
 						ncgrTile[i] = index;
 					}
 				}

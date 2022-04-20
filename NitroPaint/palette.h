@@ -6,13 +6,6 @@
 #define BALANCE_MIN      1
 #define BALANCE_MAX      39
 
-typedef struct RGB_ {
-	uint8_t r;
-	uint8_t g;
-	uint8_t b;
-	uint8_t a;
-} RGB;
-
 //
 // Comparator for use with qsort, sortrs an array of colors by lightness.
 //
@@ -41,7 +34,7 @@ void createPalette_(COLOR32 *img, int width, int height, COLOR32 *pal, int nColo
 //
 // Finds the closest color in a palette to the specified color, optionally writing out the error.
 //
-int closestpalette(RGB rgb, RGB *palette, int paletteSize, RGB *error);
+int closestPalette(COLOR32 rgb, COLOR32 *palette, int paletteSize);
 
 //
 // Apply Floyd-Steinberg dithering to a pixel's surroundings.
@@ -65,9 +58,9 @@ void ditherImagePaletteEx(COLOR32 *img, int width, int height, COLOR32 *palette,
 COLOR32 averageColor(COLOR32 *cols, int nColors);
 
 //
-// Computes total squared error for a palette being applied to an image.
+// Computes the total squared error for a palette being applied to an image.
 //
-unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize);
+unsigned int getPaletteError(COLOR32 *px, int nPx, COLOR32 *pal, int paletteSize);
 
 //
 // Creates multiple palettes for an image for character map color reduction.

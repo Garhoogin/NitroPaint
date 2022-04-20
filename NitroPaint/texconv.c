@@ -92,8 +92,7 @@ int convertPalette(CREATEPARAMS *params) {
 	for (int i = 0; i < width * height; i++) {
 		COLOR32 p = params->px[i];
 		int index = 0;
-		RGB error;
-		if (p & 0xFF000000) index = closestpalette(*(RGB *) &p, (RGB *) palette + hasTransparent, nColors - hasTransparent, &error) + hasTransparent;
+		if (p & 0xFF000000) index = closestPalette(p, palette + hasTransparent, nColors - hasTransparent) + hasTransparent;
 		txel[i / pixelsPerByte] |= index << (bitsPerPixel * (i & (pixelsPerByte - 1)));
 	}
 
@@ -160,8 +159,7 @@ int convertTranslucent(CREATEPARAMS *params) {
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
 		COLOR32 p = params->px[i];
-		RGB error;
-		int index = closestpalette(*(RGB *) &p, (RGB *) palette, nColors, &error);
+		int index = closestPalette(p, palette, nColors);
 		int alpha = (((p >> 24) & 0xFF) * alphaMax + 127) / 255;
 		txel[i] = index | (alpha << alphaShift);
 		if (params->ditherAlpha) {				
@@ -305,7 +303,7 @@ int computeLMS(COLOR32 *tile, COLOR32 *palette, int transparent) {
 	for (int i = 0; i < 16; i++) {
 		COLOR32 c = tile[i];
 		if (!transparent || (c >> 24) >= 0x80) {
-			int closest = closestpalette(*(RGB *) &c, (RGB *) palette, 4 - transparent, NULL);
+			int closest = closestPalette(c, palette, 4 - transparent);
 			COLOR32 chosen = palette[closest];
 			total += computeColorDifference(c, chosen);
 			nCount++;
@@ -777,7 +775,7 @@ int convert4x4(CREATEPARAMS *params) {
 			if ((col >> 24) < 0x80) {
 				index = 3;
 			} else {
-				index = closestpalette(*(RGB *) &col, (RGB *) palette, paletteSize, NULL);
+				index = closestPalette(col, palette, paletteSize);
 			}
 			texel |= index << (j * 2);
 		}

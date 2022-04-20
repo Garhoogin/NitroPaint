@@ -684,7 +684,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 									DWORD col = pixels[x + y * width];
 									int _x = cellX % 8, _y = cellY % 8;
 									if (col >> 24 > 0x80) {
-										int closest = closestpalette(*(RGB *) &col, (RGB *) palette + (16 * info.palette) + 1, paletteSize - 1, NULL) + 1;
+										int closest = closestPalette(col, palette + (16 * info.palette) + 1, paletteSize - 1) + 1;
 										character[_x + _y * 8] = closest;
 
 										//diffuse

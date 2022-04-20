@@ -602,7 +602,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		int bestError = 0x7FFFFFFF;
 		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
 			DWORD *pal = palette + (j << nBits);
-			int err = getPaletteError((RGB *) tile->px, 64, (RGB *) pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
+			int err = getPaletteError(tile->px, 64, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
 
 			if (err < bestError) {
 				bestError = err;
@@ -617,7 +617,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 			DWORD col = tile->px[j];
 			int index = 0;
 			if (((col >> 24) & 0xFF) > 127) {
-				index = closestpalette(*(RGB *) &col, (RGB *) pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, NULL)
+				index = closestPalette(col, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset)
 					+ !paletteOffset + paletteOffset;
 			}
 			if (nBits == 4) {
@@ -653,7 +653,7 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 		int bestError = 0x7FFFFFFF;
 		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
 			DWORD *pal = palette + (j << nBits);
-			int err = getPaletteError((RGB *) tile->px, 64, (RGB *) pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
+			int err = getPaletteError(tile->px, 64, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
 
 			if (err < bestError) {
 				bestError = err;
@@ -670,7 +670,7 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 			DWORD col = tile->px[j];
 			int index = 0;
 			if (((col >> 24) & 0xFF) > 127) {
-				index = closestpalette(*(RGB *) &col, (RGB *) pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, NULL) 
+				index = closestPalette(col, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset) 
 					+ !paletteOffset + paletteOffset;
 			}
 			if (nBits == 4) {

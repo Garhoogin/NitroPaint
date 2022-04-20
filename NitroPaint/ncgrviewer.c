@@ -1029,7 +1029,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 					int poffset = x * 8 + offsetX + (y * 8 + offsetY) * width;
 					DWORD pixel = pixels[poffset];
 
-					int closest = closestpalette(*(RGB *) &pixel, (RGB *) palette, paletteSize, NULL) + paletteBase;
+					int closest = closestPalette(pixel, palette, paletteSize) + paletteBase;
 					if ((pixel >> 24) < 127) closest = 0;
 					tile[i] = closest;
 				}
@@ -1100,7 +1100,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 			for (int j = 0; j < 64; j++) {
 				COLOR32 pixel = srcTile[j];
 
-				int closest = closestpalette(*(RGB *) &pixel, (RGB *) palette, paletteSize, NULL) + paletteBase;
+				int closest = closestPalette(pixel, palette, paletteSize) + paletteBase;
 				if ((pixel >> 24) < 127) closest = 0;
 				tile[j] = closest;
 			}

@@ -26,42 +26,32 @@ void createPalette_(COLOR32 *img, int width, int height, COLOR32 *pal, int nColo
 }
 
 
-int closestpalette(RGB rgb, RGB *palette, int paletteSize, RGB *error) {
+int closestPalette(COLOR32 rgb, COLOR32 *palette, int paletteSize) {
 	int smallestDistance = 1 << 24;
 	int index = 0, i = 0;
 	int ey, eu, ev;
-	RGB entry;
 
 	//test exact matches
 	for (i = 0; i < paletteSize; i++) {
-		if (((*(COLOR32 *) &rgb) & 0xFFFFFF) == (((COLOR32 *) palette)[i] & 0xFFFFFF)) {
-			index = i;
-			goto setErrorAndReturn;
+		if ((rgb & 0xFFFFFF) == (palette[i] & 0xFFFFFF)) {
+			return i;
 		}
 	}
 
 	//else
 	for (i = 0; i < paletteSize; i++) {
-		RGB entry = palette[i];
-		int dr = entry.r - rgb.r;
-		int dg = entry.g - rgb.g;
-		int db = entry.b - rgb.b;
+		COLOR32 entry = palette[i];
+		int dr = (entry & 0xFF) - (rgb & 0xFF);
+		int dg = ((entry >> 8) & 0xFF) - ((rgb >> 8) & 0xFF);
+		int db = ((entry >> 16) & 0xFF) - ((rgb >> 16) & 0xFF);
 
-		convertRGBToYUV(dr, dg, db, &ey, &eu, &ev);
+		convertRGBToYUV(-dr, -dg, -db, &ey, &eu, &ev);
 		int dst = 4 * ey * ey + eu * eu + ev * ev;
 
 		if (dst < smallestDistance) {
 			index = i;
 			smallestDistance = dst;
 		}
-	}
-
-setErrorAndReturn:
-	entry = palette[index];
-	if (error) {
-		error->r = -(rgb.r - entry.r);
-		error->g = -(rgb.g - entry.g);
-		error->b = -(rgb.b - entry.b);
 	}
 	return index;
 }
@@ -124,17 +114,18 @@ COLOR32 averageColor(COLOR32 *cols, int nColors) {
 	return tr | (tg << 8) | (tb << 16) | 0xFF000000;
 }
 
-unsigned int getPaletteError(RGB *px, int nPx, RGB *pal, int paletteSize) {
+unsigned int getPaletteError(COLOR32 *px, int nPx, COLOR32 *pal, int paletteSize) {
 	unsigned int error = 0;
 	int ey, eu, ev;
 
 	for (int i = 0; i < nPx; i++) {
-		RGB thisColor = px[i];
-		if (thisColor.a == 0) continue;
-		RGB closest = pal[closestpalette(px[i], pal + 1, paletteSize - 1, NULL) + 1];
-		int er = closest.r - thisColor.r;
-		int eg = closest.g - thisColor.g;
-		int eb = closest.b - thisColor.b;
+		COLOR32 thisColor = px[i];
+		if ((thisColor >> 24) == 0) continue;
+
+		COLOR32 closest = pal[closestPalette(px[i], pal + 1, paletteSize - 1) + 1];
+		int er = (closest & 0xFF) - (thisColor & 0xFF);
+		int eg = ((closest >> 8) & 0xFF) - ((thisColor >> 8) & 0xFF);
+		int eb = ((closest >> 16) & 0xFF) - ((thisColor >> 16) & 0xFF);
 
 		convertRGBToYUV(er, eg, eb, &ey, &eu, &ev);
 		error += 4 * ey * ey + eu * eu + ev * ev;
@@ -195,7 +186,7 @@ unsigned long long computePaletteError(COLOR32 *px, int nPx, COLOR32 *pal, int n
 		COLOR32 p = px[i];
 		int a = (p >> 24) & 0xFF;
 		if (a < alphaThreshold) continue;
-		int best = closestpalette(*(RGB *) &(px[i]), (RGB *) pal, nColors, NULL);
+		int best = closestPalette(px[i], pal, nColors);
 		COLOR32 chosen = pal[best];
 		int dr = (chosen & 0xFF) - (p & 0xFF);
 		int dg = ((chosen >> 8) & 0xFF) - ((p >> 8) & 0xFF);
