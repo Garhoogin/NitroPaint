@@ -25,7 +25,6 @@ void createPalette_(COLOR32 *img, int width, int height, COLOR32 *pal, int nColo
 	*pal = 0xFF00FF;
 }
 
-
 int closestPalette(COLOR32 rgb, COLOR32 *palette, int paletteSize) {
 	int smallestDistance = 1 << 24;
 	int index = 0, i = 0;
@@ -41,11 +40,11 @@ int closestPalette(COLOR32 rgb, COLOR32 *palette, int paletteSize) {
 	//else
 	for (i = 0; i < paletteSize; i++) {
 		COLOR32 entry = palette[i];
-		int dr = (entry & 0xFF) - (rgb & 0xFF);
-		int dg = ((entry >> 8) & 0xFF) - ((rgb >> 8) & 0xFF);
+		int dr = ((entry >>  0) & 0xFF) - ((rgb >>  0) & 0xFF);
+		int dg = ((entry >>  8) & 0xFF) - ((rgb >>  8) & 0xFF);
 		int db = ((entry >> 16) & 0xFF) - ((rgb >> 16) & 0xFF);
 
-		convertRGBToYUV(-dr, -dg, -db, &ey, &eu, &ev);
+		convertRGBToYUV(dr, dg, db, &ey, &eu, &ev);
 		int dst = 4 * ey * ey + eu * eu + ev * ev;
 
 		if (dst < smallestDistance) {
@@ -53,6 +52,7 @@ int closestPalette(COLOR32 rgb, COLOR32 *palette, int paletteSize) {
 			smallestDistance = dst;
 		}
 	}
+
 	return index;
 }
 

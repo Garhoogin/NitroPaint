@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdint.h>
 
 #include "color.h"
 #include "palette.h"
@@ -474,17 +475,17 @@ void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 	double principal[4];
 	approximatePrincipalComponent(reduction, colorBlock->startIndex, colorBlock->endIndex, principal);
 
-	int yWeight = reduction->yWeight;
-	int iWeight = reduction->iWeight;
-	int qWeight = reduction->qWeight;
-	int aWeight = 40;
+	double yWeight = principal[0] * reduction->yWeight;
+	double iWeight = principal[1] * reduction->iWeight;
+	double qWeight = principal[2] * reduction->qWeight;
+	double aWeight = principal[3] * 40.0;
 
 	for (int i = colorBlock->startIndex; i < colorBlock->endIndex; i++) {
 		HIST_ENTRY *histEntry = reduction->histogramFlat[i];
-		double value = histEntry->i * iWeight * principal[1]
-			+ histEntry->q * qWeight * principal[2]
-			+ histEntry->a * aWeight * principal[3]
-			+ reduction->lumaTable[histEntry->y] * yWeight * principal[0];
+		double value = reduction->lumaTable[histEntry->y] * yWeight
+			+ histEntry->i * iWeight
+			+ histEntry->q * qWeight
+			+ histEntry->a * aWeight;
 			
 		histEntry->value = value;
 		if (value >= greatestValue) {
@@ -772,7 +773,6 @@ void optimizePalette(REDUCTION *reduction) {
 				}
 			}
 
-
 			//count number of leaves
 			numberOfTreeElements = 0;
 			if (treeHead->left == NULL && treeHead->right == NULL) {
@@ -912,9 +912,9 @@ int createPaletteSlow(COLOR32 *img, int width, int height, COLOR32 *pal, unsigne
 	paletteToArray(reduction);
 	
 	for (unsigned int i = 0; i < nColors; i++) {
-		BYTE r = reduction->paletteRgb[i][0];
-		BYTE g = reduction->paletteRgb[i][1];
-		BYTE b = reduction->paletteRgb[i][2];
+		uint8_t r = reduction->paletteRgb[i][0];
+		uint8_t g = reduction->paletteRgb[i][1];
+		uint8_t b = reduction->paletteRgb[i][2];
 		pal[i] = r | (g << 8) | (b << 16);
 	}
 
@@ -926,7 +926,7 @@ int createPaletteSlow(COLOR32 *img, int width, int height, COLOR32 *pal, unsigne
 
 typedef struct {
 	COLOR32 rgb[64];
-	BYTE indices[64];
+	uint8_t indices[64];
 	int palette[16][4]; //YIQ
 	int useCounts[16];
 	unsigned short palIndex; //points to the index of the tile that is maintaining the palette this tile uses
@@ -1080,7 +1080,7 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 			optimizePalette(reduction);
 			paletteToArray(reduction);
 			for (int i = 0; i < 16; i++) {
-				BYTE *col = &reduction->paletteRgb[i][0];
+				uint8_t *col = &reduction->paletteRgb[i][0];
 				palBuf[i] = col[0] | (col[1] << 8) | (col[2] << 16);
 			}
 
@@ -1153,7 +1153,7 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 		COLOR32 palBuf[16];
 		for (int i = 0; i < 15; i++) {
 			int *yiqDest = &palTile->palette[i][0];
-			BYTE *srcRgb = &reduction->paletteRgb[i][0];
+			uint8_t *srcRgb = &reduction->paletteRgb[i][0];
 			COLOR32 rgb = srcRgb[0] | (srcRgb[1] << 8) | (srcRgb[2] << 16);
 			palBuf[i] = rgb;
 			rgbToYiq(rgb, yiqDest);
@@ -1227,9 +1227,9 @@ int createPaletteSlowEx(COLOR32 *img, int width, int height, COLOR32 *pal, unsig
 	paletteToArray(reduction);
 
 	for (unsigned int i = 0; i < nColors; i++) {
-		BYTE r = reduction->paletteRgb[i][0];
-		BYTE g = reduction->paletteRgb[i][1];
-		BYTE b = reduction->paletteRgb[i][2];
+		uint8_t r = reduction->paletteRgb[i][0];
+		uint8_t g = reduction->paletteRgb[i][1];
+		uint8_t b = reduction->paletteRgb[i][2];
 		pal[i] = r | (g << 8) | (b << 16);
 	}
 	destroyReduction(reduction);
