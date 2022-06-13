@@ -23,6 +23,11 @@
 #define NSCR_TYPE_BIN       4
 #define NSCR_TYPE_COMBO     5
 
+#define BG_COLOR0_FIXED     0
+#define BG_COLOR0_AVERAGE   1
+#define BG_COLOR0_EDGE      2
+#define BG_COLOR0_CONTRAST  3
+
 extern LPCWSTR screenFormatNames[];
 
 typedef struct NSCR_ {
@@ -138,10 +143,11 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 //  - paletteOffset: First color slot to output in each palette
 //  - rowLimit: 1/0 to cut off/not cut off unused end colors
 //  - nMaxChars: Maximum character count of resulting graphics
+//  - color0Mode: change how color 0 is determined
 //
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse, 
 				int palette, int nPalettes, int bin, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffsetm, int rowLimit, int nMaxChars,
-				int balance, int colorBalance, int enhanceColors,
+				int color0Mode, int balance, int colorBalance, int enhanceColors,
 				int *progress1, int *progress1Max, int *progress2, int *progress2Max,
 				NCLR *nclr, NCGR *ncgr, NSCR *nscr);

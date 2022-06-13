@@ -778,6 +778,7 @@ typedef struct {
 	HWND hWndBalance;
 	HWND hWndColorBalance;
 	HWND hWndEnhanceColors;
+	HWND hWndColor0Setting;
 } CREATEDIALOGDATA;
 
 BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
@@ -835,6 +836,7 @@ typedef struct {
 	int paletteOffset;
 	int rowLimit;
 	int nMaxChars;
+	int color0Setting;
 	int balance;
 	int colorBalance;
 	int enhanceColors;
@@ -845,7 +847,7 @@ DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	nscrCreate(params->bbits, params->width, params->height, params->bits, params->dither, params->diffuse,
 			   params->palette, params->nPalettes, params->fmt, params->tileBase, params->mergeTiles,
 			   params->paletteSize, params->paletteOffset, params->rowLimit, params->nMaxChars,
-			   params->balance, params->colorBalance, params->enhanceColors,
+			   params->color0Setting, params->balance, params->colorBalance, params->enhanceColors,
 			   &params->data->progress1, &params->data->progress1Max, &params->data->progress2, &params->data->progress2Max,
 			   &params->createData->nclr, &params->createData->ncgr, &params->createData->nscr);
 	params->data->waitOn = 1;
@@ -854,8 +856,8 @@ DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 
 void threadedNscrCreate(PROGRESSDATA *data, DWORD *bbits, int width, int height, int bits, int dither, float diffuse, 
 						CREATENSCRDATA *createData, int palette, int nPalettes, int fmt, int tileBase, int mergeTiles, 
-						int paletteSize, int paletteOffset, int rowLimit, int nMaxChars, int balance, int colorBalance,
-						int enhanceColors) {
+						int paletteSize, int paletteOffset, int rowLimit, int nMaxChars, int color0Setting, int balance, 
+						int colorBalance, int enhanceColors) {
 	THREADEDNSCRCREATEPARAMS *params = calloc(1, sizeof(*params));
 	params->data = data;
 	params->bbits = bbits;
@@ -873,6 +875,7 @@ void threadedNscrCreate(PROGRESSDATA *data, DWORD *bbits, int width, int height,
 	params->paletteOffset = paletteOffset;
 	params->rowLimit = rowLimit;
 	params->nMaxChars = nMaxChars;
+	params->color0Setting = color0Setting;
 	params->diffuse = diffuse;
 	params->balance = balance;
 	params->colorBalance = colorBalance;
@@ -893,7 +896,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
 
 			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
-			int boxHeight = 5 * 27 - 5 + 10 + 10 + 10; //first row height
+			int boxHeight = 6 * 27 - 5 + 10 + 10 + 10; //first row height
 			int boxHeight2 = 2 * 27 - 5 + 10 + 10 + 10; //second row height
 			int boxHeight3 = 3 * 27 - 5 + 10 + 10 + 10; //third row height
 			int width = 30 + 2 * boxWidth; //window width
@@ -917,7 +920,9 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndPaletteSize = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 55, topY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Offset: ", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27 * 3, 50, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteOffset = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 55, topY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndRowLimit = CreateWindow(L"BUTTON", L"Compress", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY + 27 * 4, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Color 0:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27 * 4, 50, 22, hWnd, NULL, NULL, NULL);
+			data->hWndColor0Setting = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, leftX + 55, topY + 27 * 4, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndRowLimit = CreateWindow(L"BUTTON", L"Compress", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY + 27 * 5, 100, 22, hWnd, NULL, NULL, NULL);
 
 			data->hWndMergeTiles = CreateWindow(L"BUTTON", L"Compress", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, middleY, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Max Characters:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27, 100, 22, hWnd, NULL, NULL, NULL);
@@ -962,6 +967,11 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 3, (LPARAM) L"Raw");
 			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 15, (LPARAM) L"Raw Compressed");
 			SendMessage(data->hWndFormatDropdown, CB_SETCURSEL, 0, 0);
+			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 5, (LPARAM) L"Fixed");
+			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 7, (LPARAM) L"Average");
+			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 4, (LPARAM) L"Edge");
+			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 11, (LPARAM) L"Contrasting");
+			SendMessage(data->hWndColor0Setting, CB_SETCURSEL, 0, 0);
 			SendMessage(data->hWndMergeTiles, BM_SETCHECK, BST_CHECKED, 0);
 
 			SendMessage(data->hWndBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
@@ -1015,6 +1025,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
 					int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
 					int enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int color0Setting = SendMessage(data->hWndColor0Setting, CB_GETCURSEL, 0, 0);
 
 					if (*location == L'\0') {
 						MessageBox(hWnd, L"No image input specified.", L"No Input", MB_ICONERROR);
@@ -1040,7 +1051,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 					threadedNscrCreate(progressData, bbits, width, height, bits, dither, diffuse, createData, palette,
 									   nPalettes, fmt, tileBase, merge, paletteSize, paletteOffset, rowLimit, nMaxChars,
-									   balance, colorBalance, enhanceColors);
+									   color0Setting, balance, colorBalance, enhanceColors);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					SetActiveWindow(hWndProgress);

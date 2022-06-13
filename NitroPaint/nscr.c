@@ -686,10 +686,113 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 	}
 }
 
+int findLeastDistanceToColor(COLOR32 *px, int nPx, int destR, int destG, int destB) {
+	int leastDistance = 0x7FFFFFFF;
+	for (int i = 0; i < nPx; i++) {
+		COLOR32 c = px[i];
+		if ((c >> 24) < 0x80) continue;
+
+		int dr = (c & 0xFF) - destR;
+		int dg = ((c >> 8) & 0xFF) - destG;
+		int db = ((c >> 16) & 0xFF) - destB;
+		int dy, du, dv;
+		convertRGBToYUV(dr, dg, db, &dy, &du, &dv);
+		int dd = 4 * dy * dy + du * du + dv * dv;
+		if (dd < leastDistance) {
+			leastDistance = dd;
+		}
+	}
+	return leastDistance;
+}
+
+COLOR32 chooseBGColor0(COLOR32 *px, int width, int height, int mode) {
+	//based on mode, determine color 0 mode
+	if (mode == BG_COLOR0_FIXED) return 0xFF00FF;
+
+	if (mode == BG_COLOR0_AVERAGE || mode == BG_COLOR0_EDGE) {
+		int totalR = 0, totalG = 0, totalB = 0, nColors = 0;
+		for (int i = 0; i < height; i++) {
+			for (int j = 0; j < width; j++) {
+				int index = j + i * width;
+				COLOR32 c = px[index];
+
+				int add = 0;
+				if (mode == BG_COLOR0_AVERAGE) {
+					add = 1;
+				} else if (mode == BG_COLOR0_EDGE) {
+
+					//must be opaque and on the edge of opaque pixels
+					if ((c >> 24) >= 0x80) {
+						if (i == 0 || i == height - 1 || j == 0 || j == width - 1) add = 1;
+						else {
+							int up = px[index - width] >> 24;
+							int down = px[index + width] >> 24;
+							int left = px[index - 1] >> 24;
+							int right = px[index + 1] >> 24;
+
+							if (up < 0x80 || down < 0x80 || left < 0x80 || right < 0x80) add = 1;
+						}
+					}
+
+				}
+
+				if (add) {
+					totalR += c & 0xFF;
+					totalG += (c >> 8) & 0xFF;
+					totalB += (c >> 16) & 0xFF;
+					nColors++;
+				}
+			}
+		}
+		
+		if (nColors > 0) {
+			totalR = (totalR + nColors / 2) / nColors;
+			totalG = (totalG + nColors / 2) / nColors;
+			totalB = (totalB + nColors / 2) / nColors;
+			return totalR | (totalG << 8) | (totalB << 16);
+		}
+	}
+
+	//use an octree to find the most different one
+	float centerR = 127.5f, centerG = 127.5f, centerB = 127.5f;
+	float size = 127.5f;
+	for (int i = 0; i < 4; i++) {
+		int mostError = 0, mostErrorCoordinate = 0;
+		for (int x = 0; x < 2; x++) {
+			for (int y = 0; y < 2; y++) {
+				for (int z = 0; z < 2; z++) {
+					int r = (int) (centerR + (2 * x - 1) * size + 0.5f);
+					int g = (int) (centerG + (2 * x - 1) * size + 0.5f);
+					int b = (int) (centerB + (2 * x - 1) * size + 0.5f);
+					int err = findLeastDistanceToColor(px, width * height, r, g, b);
+					if (err > mostError) {
+						mostError = err;
+						mostErrorCoordinate = x | (y << 1) | (z << 2);
+					}
+				}
+			}
+		}
+
+		centerR -= size * 0.5f;
+		centerG -= size * 0.5f;
+		centerB -= size * 0.5f;
+		if ((mostErrorCoordinate >> 0) & 1) centerR += size;
+		if ((mostErrorCoordinate >> 1) & 1) centerG += size;
+		if ((mostErrorCoordinate >> 1) & 1) centerB += size;
+
+		size *= 0.5f;
+	}
+
+	int r = (int) (centerR + 0.5f);
+	int g = (int) (centerG + 0.5f);
+	int b = (int) (centerB + 0.5f);
+	return r | (g << 8) | (b << 16);
+}
+
 void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse,
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
-				int balance, int colorBalance, int enhanceColors,
+				int color0Mode, int balance, int colorBalance, int enhanceColors,
 				int *progress1, int *progress1Max, int *progress2, int *progress2Max,
 				NCLR *nclr, NCGR *ncgr, NSCR *nscr) {
 
@@ -727,7 +830,8 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	*progress1Max = nTiles * 2; //2 passes
 	*progress2Max = 1000;
 
-	DWORD *palette = (DWORD *) calloc(256, 4);
+	COLOR32 *palette = (COLOR32 *) calloc(256, 4);
+	COLOR32 color0 = chooseBGColor0(imgBits, width, height, color0Mode);
 	if (nBits < 5) nBits = 4;
 	else nBits = 8;
 	if (nPalettes == 1) {
@@ -735,10 +839,13 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 			createPaletteSlowEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize, balance, colorBalance, enhanceColors, 0);
 		} else {
 			createPaletteSlowEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset + 1, paletteSize - 1, balance, colorBalance, enhanceColors, 0);
-			palette[(paletteBase << nBits) + paletteOffset] = 0xFF00FF; //transparent fill color
+			palette[(paletteBase << nBits) + paletteOffset] = color0; //transparent fill color
 		}
 	} else {
 		createMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, balance, colorBalance, enhanceColors, progress1);
+		if (paletteOffset == 0) {
+			for (int i = paletteBase; i < paletteBase + nPalettes; i++) palette[i * 16] = color0;
+		}
 	}
 	*progress1 = nTiles * 2; //make sure it's done
 
