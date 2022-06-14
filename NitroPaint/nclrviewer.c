@@ -70,12 +70,12 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 			int index = nColors;
 			if (data->dragging && data->mouseDown) {
 				if (!data->rowDragging) {
-					if (dstIndex < data->nclr.nColors) {
+					if (dstIndex < data->nclr.nColors && dstIndex >= 0) {
 						if (index == srcIndex) index = dstIndex;
 						else if (index == dstIndex) index = srcIndex;
 					}
 				} else {
-					if (dstIndex + 15 < data->nclr.nColors) {
+					if (dstIndex + 15 < data->nclr.nColors && dstIndex >= 0) {
 						if (index >= srcIndex && index < srcIndex + 16) index = dstIndex + (index & 0xF);
 						else if (index >= dstIndex && index < dstIndex + 16) index = srcIndex + (index & 0xF);
 					}
@@ -350,7 +350,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int x = mousePos.x / 16;
 					int y = mousePos.y / 16;
 					int index = y * 16 + x;
-					if (index < data->nclr.nColors) {
+					if (index < data->nclr.nColors && index >= 0) {
 						HWND hWndMain = getMainWindow(hWnd);
 						CHOOSECOLOR cc = { 0 };
 						cc.lStructSize = sizeof(cc);
@@ -399,7 +399,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 					}
 
-					if (dstIndex < data->nclr.nColors) {
+					if (dstIndex < data->nclr.nColors && dstIndex >= 0) {
 						WORD *pal = data->nclr.colors;
 						WORD src = pal[srcIndex];
 						pal[srcIndex] = pal[dstIndex];
@@ -457,7 +457,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 					}
 				} else {
-					if (dstIndex + 15 < data->nclr.nColors) {
+					if (dstIndex + 15 < data->nclr.nColors && dstIndex >= 0) {
 						WORD tmp[16];
 						WORD *pal = data->nclr.colors;
 						memcpy(tmp, pal + srcIndex, 32);
