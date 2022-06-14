@@ -7,6 +7,7 @@
 #include "nanr.h"
 #include "texture.h"
 #include "gdip.h"
+#include "g2dfile.h"
 
 LPCWSTR compressionNames[] = { L"None", L"LZ77", L"LZ11", L"LZ11 COMP", L"Huffman 4", L"Huffman 8", NULL };
 
@@ -57,7 +58,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 	int type = FILE_TYPE_INVALID;
 
 	//test Nitro formats
-	if (bufferSize >= 4) {
+	if (g2dIsValid(buffer, bufferSize)) {
 		unsigned int magic = *(unsigned int *) buffer;
 		switch (magic) {
 			case 'NCLR':

@@ -1,6 +1,8 @@
+#include <stdio.h>
+#include <stdint.h>
+
 #include "nclr.h"
 #include "g2dfile.h"
-#include <stdio.h>
 
 LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", NULL };
 
@@ -32,8 +34,8 @@ void nclrInit(NCLR *nclr, int format) {
 int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	if (size < 4) return 1;
 
-	int dataLength = *(WORD *) buffer;
-	int nColors = *(WORD *) (buffer + 2);
+	int dataLength = *(uint16_t *) buffer;
+	int nColors = *(uint16_t *) (buffer + 2);
 
 	nclrInit(nclr, NCLR_TYPE_HUDSON);
 	nclr->nColors = nColors;
@@ -87,7 +89,7 @@ int comboReadPalette(NCLR *nclr, char *buffer, int size) {
 }
 
 int nclrRead(NCLR *nclr, char *buffer, int size) {
-	if (*buffer != 'R' && *buffer != 'N') {
+	if (!g2dIsValid(buffer, size)) {
 		if(nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
 		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
 		if (nclrIsValidNtfp(buffer, size)) return binPaletteRead(nclr, buffer, size);
@@ -129,8 +131,8 @@ int nclrReadFile(NCLR *nclr, LPWSTR path) {
 int nclrIsValidHudson(LPBYTE lpFile, int size) {
 	if (size < 4) return 0;
 	if (*lpFile == 0x10) return 0;
-	int dataLength = *(WORD *) lpFile;
-	int nColors = *(WORD *) (lpFile + 2);
+	int dataLength = *(uint16_t *) lpFile;
+	int nColors = *(uint16_t *) (lpFile + 2);
 	if (nColors == 0) return 0;
 	if (dataLength & 1) return 0;
 	if (dataLength + 4 != size) return 0;
@@ -176,23 +178,32 @@ int nclrIsValidNtfp(LPBYTE lpFile, int size) {
 	return 1;
 }
 
-int nclrIsValid(LPBYTE lpFile, int size) {
+int nclrIsValidNclr(LPBYTE lpFile, int size) {
 	if (!g2dIsValid(lpFile, size)) return 0;
+	uint32_t magic = *(uint32_t *) lpFile;
+	if (magic != 'NCLR' && magic != 'RLCN') return 0;
 
-	if (size < 40) return 0;
-	DWORD first = *(DWORD *) lpFile;
-	if (first != 0x4E434C52) return 0;
+	char *pltt = g2dGetSectionByMagic(lpFile, size, 'PLTT');
+	char *ttlp = g2dGetSectionByMagic(lpFile, size, 'TTLP');
+	if (pltt == NULL && ttlp == NULL) return 0;
 	return 1;
+}
+
+int nclrIsValid(LPBYTE lpFile, int size) {
+	if (nclrIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
+	if (nclrIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
+	if (nclrIsValidBin(lpFile, size)) return NCLR_TYPE_BIN;
+	if (nclrIsValidNtfp(lpFile, size)) return NCLR_TYPE_NTFP;
+	return NCLR_TYPE_INVALID;
 }
 
 int nclrWrite(NCLR *nclr, BSTREAM *stream) {
 	int status = 0;
 
 	if (nclr->header.format == NCLR_TYPE_NCLR) {
-		BYTE fileHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-		BYTE ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
-		BYTE pmcpHeader[] = { 'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
-
+		uint8_t fileHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
+		uint8_t ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
+		uint8_t pmcpHeader[] = { 'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
 
 		int sectionSize = 0x18 + (nclr->nColors << 1);
 		int pcmpSize = nclr->nPalettes ? (0x10 + 2 * nclr->nPalettes) : 0;
@@ -217,9 +228,9 @@ int nclrWrite(NCLR *nclr, BSTREAM *stream) {
 			bstreamWrite(stream, nclr->idxTable, nclr->nPalettes * 2);
 		}
 	} else if (nclr->header.format == NCLR_TYPE_HUDSON) {
-		BYTE fileHeader[] = { 0, 0, 0, 0 };
-		*(WORD *) fileHeader = nclr->nColors * 2;
-		*(WORD *) (fileHeader + 2) = nclr->nColors;
+		uint16_t fileHeader[] = { 0, 0 };
+		fileHeader[0] = nclr->nColors * 2;
+		fileHeader[1] = nclr->nColors;
 
 		bstreamWrite(stream, fileHeader, sizeof(fileHeader));
 		bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
