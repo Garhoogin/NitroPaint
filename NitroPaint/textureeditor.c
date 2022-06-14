@@ -530,8 +530,8 @@ int guessFormat(DWORD *px, int nWidth, int nHeight) {
 		} else {
 			//weigh 16-color, 256-color, and 4x4. 
 			//take the number of pixels per color. 
-			int pixelsPerColor = nWidth * nHeight / nColors;
-			if (pixelsPerColor >= 2 && !(nWidth * nHeight >= 1024 * 512)) {
+			int pixelsPerColor = 2 * nWidth * nHeight / nColors;
+			if (pixelsPerColor >= 3 && !(nWidth * nHeight >= 1024 * 512)) {
 				fmt = CT_4x4;
 			} else {
 				//otherwise, 4x4 probably isn't a good option.
@@ -577,9 +577,9 @@ float mylog2(float d) { //UGLY!
 #define log2 mylog2
 
 int chooseColorCount(int bWidth, int bHeight) {
-	int colors = (int) (250.0f * (0.5f * log2((float) bWidth * bHeight) - 5.0f) + 0.5f);
+	int colors = (int) (500.0f * (0.5f * log2((float) bWidth * bHeight) - 5.0f) + 0.5f);
 	if (sqrt(bWidth * bHeight) < 83.0f) {
-		colors = (int) (4.345466990625f * sqrt(bWidth * bHeight) - 16.5098578365f);
+		colors = (int) (8.69f * sqrt(bWidth * bHeight) - 33.02f);
 	}
 	if (colors & 7) {
 		colors += 8 - (colors & 7);
