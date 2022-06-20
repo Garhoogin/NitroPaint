@@ -115,18 +115,19 @@ LRESULT WINAPI NewMdiClientWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 	switch (msg) {
 		case WM_ERASEBKGND:
 		{
-			if (!g_useDarkTheme) break;
+			if (!g_useDarkTheme && g_configuration.hbrBackground == NULL) break;
 			HDC hDC = (HDC) wParam;
 
 			RECT rc;
 			GetClientRect(hWnd, &rc);
 
 			SelectObject(hDC, GetStockObject(NULL_PEN));
-			HBRUSH black = CreateSolidBrush(RGB(64, 64, 64));
+			HBRUSH black = g_configuration.hbrBackground;
+			if(black == NULL) black = CreateSolidBrush(RGB(64, 64, 64));
 			HBRUSH oldBrush = SelectObject(hDC, black);
 			Rectangle(hDC, 0, 0, rc.right - rc.left + 1, rc.bottom - rc.top + 1);
 			SelectObject(hDC, oldBrush);
-			DeleteObject(black);
+			if(black != g_configuration.hbrBackground) DeleteObject(black);
 			return 1;
 		}
 		//scrollbars on MDI clients are weird. This makes them a little less weird.
@@ -1714,6 +1715,20 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 	g_configuration.nscrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NscrViewer", L"Gridlines", 0, lpszPath);
 	g_configuration.fullPaths = GetPrivateProfileInt(L"NitroPaint", L"FullPaths", 1, lpszPath);
 	g_configuration.renderTransparent = GetPrivateProfileInt(L"NitroPaint", L"RenderTransparent", 1, lpszPath);
+	g_configuration.backgroundPath = (LPWSTR) calloc(MAX_PATH, sizeof(WCHAR));
+	GetPrivateProfileString(L"NitroPaint", L"Background", L"", g_configuration.backgroundPath, MAX_PATH, lpszPath);
+
+	//load background image
+	if (g_configuration.backgroundPath[0] != L'\0') {
+		int width = 0, height = 0;
+		COLOR32 *bits = gdipReadImage(g_configuration.backgroundPath, &width, &height);
+		if (bits != NULL) {
+			for (int i = 0; i < width * height; i++) bits[i] = REVERSE(bits[i]);
+			HBITMAP hbm = CreateBitmap(width, height, 1, 32, bits);
+			g_configuration.hbrBackground = CreatePatternBrush(hbm);
+			free(bits);
+		}
+	}
 }
 
 VOID SetConfigPath() {
