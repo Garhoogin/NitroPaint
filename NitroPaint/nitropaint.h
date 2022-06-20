@@ -46,8 +46,37 @@ typedef struct {
 	HWND hWndProgress2;
 } PROGRESSDATA;
 
+//
+// Create an open file dialog
+//
 LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
 
+//
+// Create a save file dialog
+//
 LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
 
+//
+// Get the current zoom level
+//
+int MainGetZoom(HWND hWnd);
+
+//
+// Set the current zoom level
+//
+void MainSetZoom(HWND hWnd, int zoom);
+
+//
+// Zoom in the main window
+//
+VOID MainZoomIn(HWND hWnd);
+
+//
+// Zoom out the main window
+//
+VOID MainZoomOut(HWND hWnd);
+
+//
+// Get a file name from a file path (does not edit the source string)
+//
 LPWSTR GetFileName(LPWSTR lpszPath);

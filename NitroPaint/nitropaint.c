@@ -481,6 +481,40 @@ cleanup:
 	free(buffer);
 }
 
+int MainGetZoom(HWND hWnd) {
+	HMENU hMenu = GetMenu(hWnd);
+	if (GetMenuState(hMenu, ID_ZOOM_100, MF_BYCOMMAND)) return 1;
+	if (GetMenuState(hMenu, ID_ZOOM_200, MF_BYCOMMAND)) return 2;
+	if (GetMenuState(hMenu, ID_ZOOM_400, MF_BYCOMMAND)) return 4;
+	if (GetMenuState(hMenu, ID_ZOOM_800, MF_BYCOMMAND)) return 8;
+	return 0;
+}
+
+void MainSetZoom(HWND hWnd, int zoom) {
+	if (!zoom) return;
+	int menuIndex = -1;
+	while (zoom) {
+		menuIndex++;
+		zoom >>= 1;
+	}
+	int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800 };
+	SendMessage(hWnd, WM_COMMAND, ids[menuIndex], 0);
+}
+
+VOID MainZoomIn(HWND hWnd) {
+	int zoom = MainGetZoom(hWnd);
+	zoom *= 2;
+	if (zoom > 8) zoom = 8;
+	MainSetZoom(hWnd, zoom);
+}
+
+VOID MainZoomOut(HWND hWnd) {
+	int zoom = MainGetZoom(hWnd);
+	zoom /= 2;
+	if (zoom < 1) zoom = 1;
+	MainSetZoom(hWnd, zoom);
+}
+
 VOID HandleSwitch(LPWSTR lpSwitch) {
 	if (!wcsncmp(lpSwitch, L"EVENT:", 6)) {
 		g_hEvent = (HANDLE) _wtol(lpSwitch + 6);
@@ -584,6 +618,12 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						break;
 					case ID_ACCELERATOR_OPEN:
 						PostMessage(hWnd, WM_COMMAND, ID_FILE_OPEN40085, 0);
+						break;
+					case ID_ACCELERATOR_ZOOMIN:
+						MainZoomIn(hWnd);
+						break;
+					case ID_ACCELERATOR_ZOOMOUT:
+						MainZoomOut(hWnd);
 						break;
 				}
 			}
