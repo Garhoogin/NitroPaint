@@ -53,6 +53,15 @@ typedef struct {
 
 	HWND hWndPaletteEditor;
 	DWORD tmpCust[16];
+
+	//tile editor
+	int selectedColor;
+	int selectedAlpha;
+	int tileMouseDown;
+
+	HWND hWndInterpolate;
+	HWND hWndTransparent;
+	HWND hWndPaletteBase;
 } TEXTUREEDITORDATA;
 
 VOID RegisterTextureEditorClass(VOID);

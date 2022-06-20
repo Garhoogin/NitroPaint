@@ -327,6 +327,418 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
+HWND CreateTextureTileEditor(HWND hWndParent, int tileX, int tileY) {
+	HWND hWndMdi = (HWND) GetWindowLongPtr(hWndParent, GWL_HWNDPARENT);
+	
+	HWND hWnd = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TextureTileEditorClass", L"T", 
+							   WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION, CW_USEDEFAULT, CW_USEDEFAULT,
+							   500, 300, hWndMdi, NULL, NULL, NULL);
+	SetWindowLongPtr(hWnd, 0, (LONG_PTR) hWndParent);
+	SetWindowLongPtr(hWnd, sizeof(LONG_PTR), (LONG_PTR) tileX);
+	SetWindowLongPtr(hWnd, 2 * sizeof(LONG_PTR), (LONG_PTR) tileY);
+	SendMessage(hWnd, NV_INITIALIZE, 0, 0);
+	ShowWindow(hWnd, SW_SHOW);
+	return hWnd;
+}
+
+int getTextureOffsetByTileCoordinates(TEXELS *texel, int x, int y) {
+	int fmt = FORMAT(texel->texImageParam);
+	int width = TEXW(texel->texImageParam);
+	int height = TEXH(texel->texImageParam);
+
+	int bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+
+	if(fmt != CT_4x4){
+		int pxX = x * 4;
+		int pxY = y * 4;
+		return (pxX + pxY * width) * bits[fmt] / 8;
+	}
+
+	int tileNumber = x + (width / 4) * y;
+	int tileOffset = tileNumber * 4;
+	return tileOffset;
+}
+
+int ilog2(int x);
+
+void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, float alpha, int x, int y) {
+	HPEN hOldPen = (HPEN) SelectObject(hDC, hOutline);
+	HPEN hNullPen = GetStockObject(NULL_PEN);
+	HBRUSH hNullBrush = GetStockObject(NULL_BRUSH);
+	HBRUSH hOldBrush = (HBRUSH) SelectObject(hDC, hNullBrush);
+
+	if (alpha == 1.0f) {
+		HBRUSH hBg = CreateSolidBrush((COLORREF) ColorConvertFromDS(color));
+		SelectObject(hDC, hBg);
+		Rectangle(hDC, x, y, x + 16, y + 16);
+		DeleteObject(hBg);
+	} else {
+		COLOR32 c = ColorConvertFromDS(color);
+		int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
+
+		int wr = (int) (r * alpha + 255 * (1.0f - alpha) + 0.5f);
+		int wg = (int) (g * alpha + 255 * (1.0f - alpha) + 0.5f);
+		int wb = (int) (b * alpha + 255 * (1.0f - alpha) + 0.5f);
+		int gr = (int) (r * alpha + 192 * (1.0f - alpha) + 0.5f);
+		int gg = (int) (g * alpha + 192 * (1.0f - alpha) + 0.5f);
+		int gb = (int) (b * alpha + 192 * (1.0f - alpha) + 0.5f);
+		HBRUSH hbrWhite = CreateSolidBrush(RGB(wr, wg, wb));
+		HBRUSH hbrGray = CreateSolidBrush(RGB(gr, gg, gb));
+
+		SelectObject(hDC, hbrWhite);
+		Rectangle(hDC, x, y, x + 16, y + 16);
+		SelectObject(hDC, hbrGray);
+		SelectObject(hDC, hNullPen);
+		Rectangle(hDC, x + 8, y + 1, x + 16, y + 9);
+		Rectangle(hDC, x + 1, y + 8, x + 9, y + 16);
+
+		DeleteObject(hbrWhite);
+		DeleteObject(hbrGray);
+	}
+
+	SelectObject(hDC, hOldPen);
+	SelectObject(hDC, hOldBrush);
+}
+
+void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int colorIndex, int alphaIndex) {
+	//first paint 4x4 tile (scaled 32x)
+	unsigned char tileBuffer[128]; //big enough for an 8x8 texture of any format
+	unsigned short indexBuffer[4] = { 0 }; //big enough for an 8x8 4x4 texture
+	COLOR32 rendered[64];
+
+	int param = texture->texels.texImageParam;
+	int format = FORMAT(param), width = TEXW(param), height = TEXH(param);
+	int offset = getTextureOffsetByTileCoordinates(&texture->texels, tileX, tileY);
+	unsigned char *texelSrc = texture->texels.texel + offset;
+	if (format == CT_4x4) indexBuffer[0] = texture->texels.cmp[offset / 4];
+
+	int bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+	int nBytesPerRow = 8 * bits[format] / 8;
+
+	if (format != CT_4x4) {
+		for (int y = 0; y < 4; y++) {
+			memcpy(tileBuffer + y * nBytesPerRow, texelSrc + (y * width * bits[format] / 8), nBytesPerRow / 2);
+		}
+	} else {
+		memcpy(tileBuffer, texelSrc, 4);
+	}
+
+	//assemble texture struct
+	TEXTURE temp;
+	temp.texels.cmp = indexBuffer;
+	temp.texels.texel = tileBuffer;
+	temp.texels.texImageParam = format << 26;
+	temp.palette.nColors = texture->palette.nColors;
+	temp.palette.pal = texture->palette.pal;
+	convertTexture(rendered, &temp.texels, &temp.palette, 0);
+
+	//convert back to 4x4
+	memmove(rendered + 0, rendered + 0, 16);
+	memmove(rendered + 4, rendered + 8, 16);
+	memmove(rendered + 8, rendered + 16, 16);
+	memmove(rendered + 12, rendered + 24, 16);
+
+	const scale = 32;
+	COLOR32 *preview = (COLOR32 *) calloc(4 * 4 * scale * scale, sizeof(COLOR32));
+	for (int y = 0; y < 4 * scale; y++) {
+		for (int x = 0; x < 4 * scale; x++) {
+			int sampleX = x / scale;
+			int sampleY = y / scale;
+			COLOR32 c = rendered[sampleX + sampleY * 4];
+
+			int gray = ((x / 4) ^ (y / 4)) & 1;
+			gray = gray ? 255 : 192;
+			int alpha = (c >> 24) & 0xFF;
+			if (alpha == 0) {
+				preview[x + y * 4 * scale] = gray | (gray << 8) | (gray << 16);
+			} else if (alpha == 255) {
+				preview[x + y * 4 * scale] = c & 0xFFFFFF;
+			} else {
+				int r = c & 0xFF;
+				int g = (c >> 8) & 0xFF;
+				int b = (c >> 16) & 0xFF;
+				r = (r * alpha + gray * (255 - alpha) + 127) / 255;
+				g = (g * alpha + gray * (255 - alpha) + 127) / 255;
+				b = (b * alpha + gray * (255 - alpha) + 127) / 255;
+				preview[x + y * 4 * scale] = r | (g << 8) | (b << 16);
+			}
+		}
+	}
+
+	HBITMAP hBitmap = CreateBitmap(4 * scale, 4 * scale, 1, 32, preview);
+	HDC hOffDC = CreateCompatibleDC(hDC);
+	SelectObject(hOffDC, hBitmap);
+	BitBlt(hDC, 0, 0, 4 * scale, 4 * scale, hOffDC, 0, 0, SRCCOPY);
+	DeleteObject(hOffDC);
+	DeleteObject(hBitmap);
+	free(preview);
+
+	//draw palette
+	int nColors = texture->palette.nColors, transparentIndex = COL0TRANS(texture->texels.texImageParam) - 1;
+	COLOR *pal = texture->palette.pal;
+	COLOR stackPaletteBuffer[4];
+	if (format == CT_4x4) {
+		unsigned short mode = indexBuffer[0] & 0xC000;
+		pal = stackPaletteBuffer;
+		nColors = 4;
+		transparentIndex = (mode == 0x0000 || mode == 0x4000) ? 3 : -1;
+		int paletteIndex = (indexBuffer[0] & 0x3FFF) << 1;
+		COLOR *palSrc = texture->palette.pal + paletteIndex;
+
+		pal[0] = palSrc[0];
+		pal[1] = palSrc[1];
+		switch (mode) {
+			case 0x0000:
+				pal[2] = palSrc[2];
+				pal[3] = 0;
+				break;
+			case 0x4000:
+				pal[2] = ColorInterpolate(pal[0], pal[1], 0.5f);
+				pal[3] = 0;
+				break;
+			case 0x8000:
+				pal[2] = palSrc[2];
+				pal[3] = palSrc[3];
+				break;
+			case 0xC000:
+				pal[2] = ColorInterpolate(pal[0], pal[1], 0.375f);
+				pal[3] = ColorInterpolate(pal[0], pal[1], 0.625f);
+				break;
+		}
+	}
+
+	//draw palette entries if not direct
+	int selectedColor = colorIndex;
+	HPEN hBlack = (HPEN) GetStockObject(BLACK_PEN);
+	HPEN hWhite = (HPEN) GetStockObject(WHITE_PEN);
+	if (format != CT_DIRECT) {
+		for (int i = 0; i < nColors; i++) {
+			if(i != selectedColor) SelectObject(hDC, hBlack);
+			else SelectObject(hDC, hWhite);
+
+			int x = 4 * scale + 10 + (i % 16) * 16;
+			int y = (i / 16) * 16;
+			DrawColorEntryAlpha(hDC, (i != selectedColor) ? hBlack : hWhite, pal[i], i == transparentIndex ? 0.0f : 1.0f, x, y);
+		}
+	}
+
+	//draw alpha levels if a3i5 or a5i3
+	int selectedAlpha = alphaIndex;
+	if (format == CT_A3I5 || format == CT_A5I3) {
+		COLOR selected = pal[selectedColor];
+		int nLevels = (format == CT_A3I5) ? 8 : 32;
+		for (int i = 0; i < nLevels; i++) {
+			int x = 4 * scale + 10 + (i % 16) * 16;
+			int y = 42 + (i / 16) * 16;
+			float alpha = ((float) i) / (nLevels - 1);
+			DrawColorEntryAlpha(hDC, (i != selectedAlpha) ? hBlack : hWhite, selected, alpha, x, y);
+		}
+	}
+}
+
+void swapRedBlueChannels(COLOR32 *px, int nPx) {
+	for (int i = 0; i < nPx; i++) {
+		COLOR32 c = px[i];
+		px[i] = REVERSE(c);
+	}
+}
+
+LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndTextureEditor = (HWND) GetWindowLongPtr(hWnd, 0);
+	if (hWndTextureEditor == NULL) return DefMDIChildProc(hWnd, msg, wParam, lParam);
+
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWndTextureEditor, 0);
+	int tileX = GetWindowLongPtr(hWnd, sizeof(LONG_PTR));
+	int tileY = GetWindowLongPtr(hWnd, 2 * sizeof(LONG_PTR));
+
+	switch (msg) {
+		case WM_CREATE:
+			SetWindowSize(hWnd, 398, 260);
+			break;
+		case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hDC = BeginPaint(hWnd, &ps);
+			
+			if(hWndTextureEditor != NULL)
+				PaintTextureTileEditor(hDC, &data->textureData, tileX, tileY, data->selectedColor, data->selectedAlpha);
+
+			EndPaint(hWnd, &ps);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			SetWindowSize(hWnd, 398, 260);
+
+			TEXELS *texels = &data->textureData.texels;
+			int format = FORMAT(texels->texImageParam);
+			if (format == CT_4x4) {
+				data->hWndInterpolate = CreateWindow(L"BUTTON", L"Interpolate", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 5, 133, 100, 22, hWnd, NULL, NULL, NULL);
+				data->hWndTransparent = CreateWindow(L"BUTTON", L"Transparent", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 5, 160, 100, 22, hWnd, NULL, NULL, NULL);
+				CreateWindow(L"STATIC", L"Palette base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 5, 187, 60, 22, hWnd, NULL, NULL, NULL);
+				data->hWndPaletteBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER, 70, 187, 50, 22, hWnd, NULL, NULL, NULL);
+				EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
+
+				//populate fields
+				WCHAR buffer[8];
+				int tilesX = TEXW(texels->texImageParam) / 4;
+				uint16_t idx = texels->cmp[tileX + tileY * tilesX];
+				if (!(idx & 0x8000))
+					SendMessage(data->hWndTransparent, BM_SETCHECK, 1, 0);
+				if (idx & 0x4000)
+					SendMessage(data->hWndInterpolate, BM_SETCHECK, 1, 0);
+				wsprintfW(buffer, L"%d", idx & 0x3FFF);
+				SendMessage(data->hWndPaletteBase, WM_SETTEXT, wcslen(buffer), (LPARAM) buffer);
+			}
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl != NULL) {
+				TEXELS *texels = &data->textureData.texels;
+				int width = TEXW(texels->texImageParam), height = TEXH(texels->texImageParam);
+				int nPx = width * height, tilesX = width / 4;
+				uint16_t *pIdx = &texels->cmp[tileX + tileY * tilesX];
+
+				int notification = HIWORD(wParam);
+				if (notification == BN_CLICKED && hWndControl == data->hWndTransparent) {
+					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
+					convertTexture(data->px, texels, &data->textureData.palette, 0);
+					swapRedBlueChannels(data->px, nPx);
+					InvalidateRect(data->hWnd, NULL, FALSE);
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
+					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
+					convertTexture(data->px, texels, &data->textureData.palette, 0);
+					swapRedBlueChannels(data->px, nPx);
+					InvalidateRect(data->hWnd, NULL, FALSE);
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (notification == EN_CHANGE && hWndControl == data->hWndPaletteBase) {
+					WCHAR buffer[8];
+					SendMessage(hWndControl, WM_GETTEXT, 8, (LPARAM) buffer);
+					*pIdx = ((*pIdx) & 0xC000) | (_wtol(buffer) & 0x3FFF);
+					convertTexture(data->px, texels, &data->textureData.palette, 0);
+					swapRedBlueChannels(data->px, nPx);
+					InvalidateRect(data->hWnd, NULL, FALSE);
+					InvalidateRect(hWnd, NULL, FALSE);
+				}
+			}
+			break;
+		}
+		case WM_NCHITTEST:
+		{
+			int ht = DefMDIChildProc(hWnd, msg, wParam, lParam);
+			if (ht == HTTOP || ht == HTBOTTOM || ht == HTLEFT || ht == HTRIGHT || ht == HTTOPLEFT || ht == HTTOPRIGHT
+				|| ht == HTBOTTOMLEFT || ht == HTBOTTOMRIGHT) {
+				return HTBORDER;
+			}
+			return ht;
+		}
+		case WM_LBUTTONDOWN:
+		{
+			SetCapture(hWnd);
+			data->tileMouseDown = 1;
+		}
+		case WM_MOUSEMOVE:
+		{
+			if (!data->tileMouseDown) break;
+
+			TEXELS *texels = &data->textureData.texels;
+			PALETTE *palette = &data->textureData.palette;
+			int format = FORMAT(texels->texImageParam);
+			int width = TEXW(texels->texImageParam);
+			int height = TEXH(texels->texImageParam);
+
+			POINT pt;
+			GetCursorPos(&pt);
+			ScreenToClient(hWnd, &pt);
+
+			if (pt.x >= 0 && pt.y >= 0 && pt.x < 128 && pt.y < 128) { //draw pixel
+				int masks[] = { 0, 0xFF, 0x03, 0x0F, 0xFF, 0x03, 0xFF, 0xFFFF };
+				int depths[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+				int x = pt.x / 32;
+				int y = pt.y / 32;
+
+				//get pointer to containing u32
+				int offset = getTextureOffsetByTileCoordinates(texels, tileX, tileY);
+				unsigned char *pTile = texels->texel + offset;
+				if (format == CT_4x4) {
+					int index = x + y * 4;
+					uint32_t *pTileCmp = (uint32_t *) pTile;
+					*pTileCmp = ((*pTileCmp) & ~(3 << (index * 2))) | (data->selectedColor << (index * 2));
+				} else {
+					if (format == CT_A3I5 || format == CT_A5I3) {
+						int alphaShift = (format == CT_A3I5) ? 5 : 3;
+						int value = data->selectedColor | (data->selectedAlpha << alphaShift);
+						unsigned char *pPx = pTile + y * width + x;
+						*pPx = value;
+					} else if (format == CT_4COLOR || format == CT_16COLOR || format == CT_256COLOR) {
+						int depth = depths[format];
+						unsigned char *pTexel = pTile + (y * width * depth / 8) + x * depth / 8;
+						int pxAdvance = x % (8 / depth);
+						int mask = (1 << depth) - 1;
+						*pTexel = ((*pTexel) & ~(mask << (pxAdvance * depth))) | (data->selectedColor << (pxAdvance * depth));
+					} else {
+						if (msg == WM_LBUTTONDOWN) { //we don't really want click+drag for this one
+							HWND hWndMain = getMainWindow(hWnd);
+							COLOR *color = (COLOR *) (pTile + y * width * 2 + x * 2);
+							CHOOSECOLOR cc = { 0 };
+							cc.lStructSize = sizeof(cc);
+							cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition?
+							cc.hwndOwner = hWndMain;
+							cc.rgbResult = ColorConvertFromDS(*color);
+							cc.lpCustColors = data->tmpCust;
+							cc.Flags = 0x103;
+							BOOL(__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
+							if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
+							if (ChooseColorFunction(&cc)) {
+								COLOR32 result = cc.rgbResult;
+								*color = 0x8000 | ColorConvertToDS(result);
+							}
+						}
+					}
+				}
+				convertTexture(data->px, texels, &data->textureData.palette, 0);
+				swapRedBlueChannels(data->px, width * height);
+				InvalidateRect(data->hWnd, NULL, FALSE);
+				InvalidateRect(hWnd, NULL, FALSE);
+			} else if (pt.x >= 138 && pt.y >= 0) { //select palette/alpha
+				int nColors = palette->nColors;
+				if (format == CT_4x4) nColors = 4;
+				
+				int x = (pt.x - 138) / 16;
+				int y = pt.y / 16;
+				int index = x + y * 16;
+				if (index < nColors) {
+					data->selectedColor = index;
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if((format == CT_A3I5 || format == CT_A5I3) && pt.y >= 42)  {
+					int nLevels = (format == CT_A3I5) ? 8 : 32;
+					y = (pt.y - 42) / 16;
+					index = x + y * 16;
+					if (index < nLevels) {
+						data->selectedAlpha = index;
+						InvalidateRect(hWnd, NULL, FALSE);
+					}
+				}
+			}
+			
+			
+			break;
+		}
+		case WM_LBUTTONUP:
+		{
+			data->tileMouseDown = 0;
+			ReleaseCapture();
+			break;
+		}
+	}
+	return DefMDIChildProc(hWnd, msg, wParam, lParam);
+}
+
 LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), 0);
 	int contentWidth = 0, contentHeight = 0;
@@ -387,6 +799,52 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			DeleteObject(hOffBitmap);
 
 			EndPaint(hWnd, &ps);
+			break;
+		}
+		case WM_LBUTTONDOWN:
+		{
+			POINT mousePos;
+			SCROLLINFO horiz, vert;
+			horiz.cbSize = sizeof(horiz);
+			vert.cbSize = sizeof(vert);
+			horiz.fMask = SIF_ALL;
+			vert.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_HORZ, &horiz);
+			GetScrollInfo(hWnd, SB_VERT, &vert);
+			GetCursorPos(&mousePos);
+			ScreenToClient(hWnd, &mousePos);
+			mousePos.x += horiz.nPos;
+			mousePos.y += vert.nPos;
+
+			//find the tile coordinates.
+			int x = 0, y = 0;
+			if (data->showBorders) {
+				mousePos.x -= 1;
+				mousePos.y -= 1;
+				if (mousePos.x < 0) mousePos.x = 0;
+				if (mousePos.y < 0) mousePos.y = 0;
+				int cellWidth = 4 * data->scale + 1;
+				mousePos.x /= cellWidth;
+				mousePos.y /= cellWidth;
+				x = mousePos.x;
+				y = mousePos.y;
+			} else {
+				int cellWidth = 4 * data->scale;
+				mousePos.x /= cellWidth;
+				mousePos.y /= cellWidth;
+				x = mousePos.x;
+				y = mousePos.y;
+			}
+
+			int texImageParam = data->textureData.texels.texImageParam;
+			int tilesX = TEXW(texImageParam) / 4;
+			int tilesY = TEXH(texImageParam) / 4;
+			if (x >= 0 && y >= 0 && x < tilesX && y < tilesY) {
+				HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+				
+				if (data->hWndTileEditor != NULL) DestroyChild(data->hWndTileEditor);
+				data->hWndTileEditor = CreateTextureTileEditor(hWndEditor, x, y);
+			}
 			break;
 		}
 		case WM_MOUSEMOVE:
@@ -664,6 +1122,9 @@ void conversionCallback(void *p) {
 	data->hWndProgress = NULL;
 
 	UpdatePaletteLabel(data->hWnd);
+	int fmt = FORMAT(data->textureData.texels.texImageParam);
+	data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
+	data->selectedColor = 0;
 }
 
 LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1261,6 +1722,20 @@ VOID RegisterTexturePaletteEditorClass(VOID) {
 	RegisterClassEx(&wcex);
 }
 
+VOID RegisterTextureTileEditorClass(VOID) {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"TextureTileEditorClass";
+	wcex.lpfnWndProc = TextureTileEditorWndProc;
+	wcex.cbWndExtra = 3 * sizeof(LONG_PTR);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
 VOID RegisterTextureEditorClass(VOID) {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -1277,6 +1752,7 @@ VOID RegisterTextureEditorClass(VOID) {
 	RegisterConvertDialogClass();
 	RegisterCompressionProgressClass();
 	RegisterTexturePaletteEditorClass();
+	RegisterTextureTileEditorClass();
 }
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data) {
