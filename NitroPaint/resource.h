@@ -97,15 +97,15 @@
 #define ID_NSCRMENU_MAKEIDENTITY        40098
 #define ID_MENU_IMPORT                  40099
 #define ID_ACCELERATOR_ZOOMIN           40100
-#define ID_ACCELERATOR40101             40101
 #define ID_ACCELERATOR_ZOOMOUT          40101
+#define ID_TOOLS_COLORPICKER            40103
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40103
+#define _APS_NEXT_COMMAND_VALUE         40104
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

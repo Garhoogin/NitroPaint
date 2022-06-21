@@ -19,6 +19,7 @@
 #include "textureeditor.h"
 #include "nsbtx.h"
 #include "nmcrviewer.h"
+#include "colorchooser.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -781,6 +782,17 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_NTFT_NTFT40084:
 					{
 						CreateWindow(L"NtftConvertDialogClass", L"NTFT To Nitro TGA", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						break;
+					}
+					case ID_TOOLS_COLORPICKER:
+					{
+						CHOOSECOLOR cc = { 0 };
+						cc.lStructSize = sizeof(cc);
+						cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition?
+						cc.hwndOwner = hWnd;
+						cc.rgbResult = 0;
+						cc.Flags = 0x103;
+						CustomChooseColor(&cc);
 						break;
 					}
 				}
