@@ -8,7 +8,8 @@
 #define NCLR_TYPE_HUDSON 2
 #define NCLR_TYPE_BIN 3
 #define NCLR_TYPE_NTFP 4
-#define NCLR_TYPE_COMBO 5
+#define NCLR_TYPE_NC 5
+#define NCLR_TYPE_COMBO 6
 
 extern LPCWSTR paletteFormatNames[];
 
@@ -21,6 +22,7 @@ typedef struct NCLR_ {
 	int extPalette;
 	short *idxTable;
 	COLOR *colors;
+	char *comment;
 	struct COMBO2D_ *combo2d; //for part of a combination file
 } NCLR;
 

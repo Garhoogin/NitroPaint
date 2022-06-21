@@ -4,7 +4,7 @@
 #include "nclr.h"
 #include "g2dfile.h"
 
-LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", NULL };
+LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", L"NCL", NULL };
 
 void nclrFree(OBJECT_HEADER *header) {
 	NCLR *nclr = (NCLR *) header;
@@ -12,6 +12,8 @@ void nclrFree(OBJECT_HEADER *header) {
 	nclr->colors = NULL;
 	if (nclr->idxTable != NULL) free(nclr->idxTable);
 	nclr->idxTable = NULL;
+	if (nclr->comment != NULL) free(nclr->comment);
+	nclr->comment = NULL;
 
 	COMBO2D *combo2d = nclr->combo2d;
 	if (nclr->combo2d != NULL) {
@@ -29,103 +31,6 @@ void nclrInit(NCLR *nclr, int format) {
 	fileInitCommon((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
 	nclr->header.dispose = nclrFree;
 	nclr->combo2d = NULL;
-}
-
-int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
-	if (size < 4) return 1;
-
-	int dataLength = *(uint16_t *) buffer;
-	int nColors = *(uint16_t *) (buffer + 2);
-
-	nclrInit(nclr, NCLR_TYPE_HUDSON);
-	nclr->nColors = nColors;
-	nclr->nBits = 4;
-	nclr->colors = (COLOR *) calloc(nColors, 2);
-	memcpy(nclr->colors, buffer + 4, nColors * 2);
-	return 0;
-}
-
-int binPaletteRead(NCLR *nclr, char *buffer, int size) {
-	if (!nclrIsValidNtfp(buffer, size)) return 1; //this function is being reused for NTFP as well
-	
-	int nColors = size >> 1;
-
-	nclrInit(nclr, nclrIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP);
-	nclr->nColors = nColors;
-	nclr->nBits = 4;
-	nclr->colors = (COLOR *) calloc(nColors, 2);
-	memcpy(nclr->colors, buffer, nColors * 2);
-	return 0;
-}
-
-int comboReadPalette(NCLR *nclr, char *buffer, int size) {
-	int type = combo2dIsValid(buffer, size);
-
-	nclrInit(nclr, NCLR_TYPE_COMBO);
-	switch (type) {
-		case COMBO2D_TYPE_TIMEACE:
-			nclr->nColors = 256;
-			nclr->extPalette = 0;
-			nclr->idxTable = NULL;
-			nclr->nBits = 4;
-			nclr->nPalettes = 0;
-			nclr->totalSize = 256;
-			nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
-			memcpy(nclr->colors, buffer + 4, 512);
-			break;
-		case COMBO2D_TYPE_BANNER:
-			nclr->nColors = 16;
-			nclr->extPalette = 0;
-			nclr->idxTable = NULL;
-			nclr->nBits = 4;
-			nclr->nPalettes = 0;
-			nclr->totalSize = 16;
-			nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
-			memcpy(nclr->colors, buffer + 0x220, 32);
-			break;
-	}
-
-	return 0;
-}
-
-int nclrRead(NCLR *nclr, char *buffer, int size) {
-	if (!g2dIsValid(buffer, size)) {
-		if(nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
-		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
-		if (nclrIsValidNtfp(buffer, size)) return binPaletteRead(nclr, buffer, size);
-		if (combo2dIsValid(buffer, size)) return comboReadPalette(nclr, buffer, size);
-	}
-	char *pltt = g2dGetSectionByMagic(buffer, size, 'PLTT');
-	char *pcmp = g2dGetSectionByMagic(buffer, size, 'PCMP');
-	if (pltt == NULL) return 1;
-
-	int bits = *(int *) (pltt + 0x8);
-	bits = 1 << (bits - 1);
-	int dataSize = *(int *) (pltt + 0x10);
-	int sectionSize = *(int *) (pltt + 0x4);
-	int dataOffset = 8 + *(int *) (pltt + 0x14);
-	int nColors = (sectionSize - dataOffset) >> 1;
-
-	nclrInit(nclr, NCLR_TYPE_NCLR);
-	nclr->nColors = nColors;
-	nclr->nBits = bits;
-	nclr->colors = (COLOR *) calloc(nColors, 2);
-	nclr->extPalette = *(int *) (pltt + 0xC);
-	nclr->totalSize = *(int *) (pltt + 0x10);
-	nclr->nPalettes = 0;
-	nclr->idxTable = NULL;
-	
-	if (pcmp != NULL) {
-		nclr->nPalettes = *(unsigned short *) (pcmp + 8);
-		nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
-		memcpy(nclr->idxTable, pcmp + 8 + *(unsigned int *) (pcmp + 0xC), nclr->nPalettes * 2);
-	}
-	memcpy(nclr->colors, pltt + dataOffset, nColors * 2);
-	return 0;
-}
-
-int nclrReadFile(NCLR *nclr, LPWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) nclrRead);
 }
 
 int nclrIsValidHudson(LPBYTE lpFile, int size) {
@@ -189,12 +94,148 @@ int nclrIsValidNclr(LPBYTE lpFile, int size) {
 	return 1;
 }
 
+int nclrIsValidNcl(LPBYTE lpFile, int size) {
+	if (!g2dIsValid(lpFile, size)) return 0;
+	uint32_t magic = *(uint32_t *) lpFile;
+	if (magic != 'NCCL' && magic != 'LCCN') return 0;
+
+	char *palt = g2dGetSectionByMagic(lpFile, size, 'PALT');
+	char *tlap = g2dGetSectionByMagic(lpFile, size, 'TLAP');
+	if (palt == NULL && tlap == NULL) return 0;
+	return 1;
+}
+
 int nclrIsValid(LPBYTE lpFile, int size) {
 	if (nclrIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
+	if (nclrIsValidNcl(lpFile, size)) return NCLR_TYPE_NC;
 	if (nclrIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
 	if (nclrIsValidBin(lpFile, size)) return NCLR_TYPE_BIN;
 	if (nclrIsValidNtfp(lpFile, size)) return NCLR_TYPE_NTFP;
 	return NCLR_TYPE_INVALID;
+}
+
+int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
+	if (size < 4) return 1;
+
+	int dataLength = *(uint16_t *) buffer;
+	int nColors = *(uint16_t *) (buffer + 2);
+
+	nclrInit(nclr, NCLR_TYPE_HUDSON);
+	nclr->nColors = nColors;
+	nclr->nBits = 4;
+	nclr->colors = (COLOR *) calloc(nColors, 2);
+	memcpy(nclr->colors, buffer + 4, nColors * 2);
+	return 0;
+}
+
+int binPaletteRead(NCLR *nclr, char *buffer, int size) {
+	if (!nclrIsValidNtfp(buffer, size)) return 1; //this function is being reused for NTFP as well
+	
+	int nColors = size >> 1;
+
+	nclrInit(nclr, nclrIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP);
+	nclr->nColors = nColors;
+	nclr->nBits = 4;
+	nclr->colors = (COLOR *) calloc(nColors, 2);
+	memcpy(nclr->colors, buffer, nColors * 2);
+	return 0;
+}
+
+int comboReadPalette(NCLR *nclr, char *buffer, int size) {
+	int type = combo2dIsValid(buffer, size);
+
+	nclrInit(nclr, NCLR_TYPE_COMBO);
+	switch (type) {
+		case COMBO2D_TYPE_TIMEACE:
+			nclr->nColors = 256;
+			nclr->extPalette = 0;
+			nclr->idxTable = NULL;
+			nclr->nBits = 4;
+			nclr->nPalettes = 0;
+			nclr->totalSize = 256;
+			nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
+			memcpy(nclr->colors, buffer + 4, 512);
+			break;
+		case COMBO2D_TYPE_BANNER:
+			nclr->nColors = 16;
+			nclr->extPalette = 0;
+			nclr->idxTable = NULL;
+			nclr->nBits = 4;
+			nclr->nPalettes = 0;
+			nclr->totalSize = 16;
+			nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
+			memcpy(nclr->colors, buffer + 0x220, 32);
+			break;
+	}
+
+	return 0;
+}
+
+int ncPaletteRead(NCLR *nclr, char *buffer, int size) {
+	if (!nclrIsValidNcl(buffer, size)) return 1;
+
+	nclrInit(nclr, NCLR_TYPE_NC);
+
+	char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
+	if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
+	char *cmnt = g2dGetSectionByMagic(buffer, size, 'CMNT');
+	if (cmnt == NULL) cmnt = g2dGetSectionByMagic(buffer, size, 'TNMC');
+
+	nclr->nPalettes = *(uint32_t *) (palt + 0xC);
+	nclr->nColors = nclr->nPalettes * *(uint32_t *) (palt + 0x8);
+	nclr->extPalette = nclr->nColors > 256;
+	nclr->nBits = *(uint32_t *) (palt + 0x8) > 16 ? 8 : 4;
+	nclr->totalSize = nclr->nColors;
+	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
+	memcpy(nclr->colors, palt + 0x10, nclr->nColors * 2);
+	if (cmnt != NULL) {
+		int cmntLength = (*(uint32_t *) (cmnt + 4)) - 4;
+		nclr->comment = (char *) calloc(cmntLength, 1);
+		memcpy(nclr->comment, cmnt + 8, cmntLength);
+	}
+
+	return 0;
+}
+
+int nclrRead(NCLR *nclr, char *buffer, int size) {
+	if (!nclrIsValidNclr(buffer, size)) {
+		if (nclrIsValidNcl(buffer, size)) return ncPaletteRead(nclr, buffer, size);
+		if (nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
+		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
+		if (nclrIsValidNtfp(buffer, size)) return binPaletteRead(nclr, buffer, size);
+		if (combo2dIsValid(buffer, size)) return comboReadPalette(nclr, buffer, size);
+	}
+	char *pltt = g2dGetSectionByMagic(buffer, size, 'PLTT');
+	char *pcmp = g2dGetSectionByMagic(buffer, size, 'PCMP');
+	if (pltt == NULL) return 1;
+
+	int bits = *(int *) (pltt + 0x8);
+	bits = 1 << (bits - 1);
+	int dataSize = *(int *) (pltt + 0x10);
+	int sectionSize = *(int *) (pltt + 0x4);
+	int dataOffset = 8 + *(int *) (pltt + 0x14);
+	int nColors = (sectionSize - dataOffset) >> 1;
+
+	nclrInit(nclr, NCLR_TYPE_NCLR);
+	nclr->nColors = nColors;
+	nclr->nBits = bits;
+	nclr->colors = (COLOR *) calloc(nColors, 2);
+	nclr->extPalette = *(int *) (pltt + 0xC);
+	nclr->totalSize = *(int *) (pltt + 0x10);
+	nclr->nPalettes = 0;
+	nclr->idxTable = NULL;
+	
+	if (pcmp != NULL) {
+		nclr->nPalettes = *(unsigned short *) (pcmp + 8);
+		nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
+		memcpy(nclr->idxTable, pcmp + 8 + *(unsigned int *) (pcmp + 0xC), nclr->nPalettes * 2);
+	}
+	memcpy(nclr->colors, pltt + dataOffset, nColors * 2);
+	return 0;
+}
+
+int nclrReadFile(NCLR *nclr, LPWSTR path) {
+	return fileRead(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) nclrRead);
 }
 
 int nclrWrite(NCLR *nclr, BSTREAM *stream) {
@@ -226,6 +267,32 @@ int nclrWrite(NCLR *nclr, BSTREAM *stream) {
 		if (pcmpSize) {
 			bstreamWrite(stream, pmcpHeader, sizeof(pmcpHeader));
 			bstreamWrite(stream, nclr->idxTable, nclr->nPalettes * 2);
+		}
+	} else if (nclr->header.format == NCLR_TYPE_NC) {
+		uint8_t fileHeader[] = { 'N', 'C', 'C', 'L', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
+		uint8_t paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+		uint8_t cmntHeader[] = { 'C', 'M', 'N', 'T', 0xC, 0, 0, 0 };
+
+		int paltSize = nclr->nColors * 2 + sizeof(paltHeader);
+		int commentLength = nclr->comment == NULL ? 0 : ((strlen(nclr->comment) + 4) & ~3);
+		int cmntSize = commentLength ? (commentLength + sizeof(cmntHeader)) : 0;
+		int fileSize = paltSize + cmntSize + sizeof(fileHeader);
+
+		*(uint32_t *) (fileHeader + 8) = fileSize;
+		*(uint16_t *) (fileHeader + 14) = 1 + (cmntSize != 0);
+		*(uint32_t *) (paltHeader + 4) = paltSize;
+		*(uint32_t *) (paltHeader + 8) = nclr->nColors / nclr->nPalettes;
+		*(uint32_t *) (paltHeader + 12) = nclr->nPalettes;
+		*(uint32_t *) (cmntHeader + 4) = cmntSize;
+
+		bstreamWrite(stream, fileHeader, sizeof(fileHeader));
+		bstreamWrite(stream, paltHeader, sizeof(paltHeader));
+		bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
+		if (cmntSize != 0) {
+			uint32_t padding = 0;
+			bstreamWrite(stream, cmntHeader, sizeof(cmntHeader));
+			bstreamWrite(stream, nclr->comment, strlen(nclr->comment) + 1);
+			bstreamWrite(stream, &padding, commentLength - (strlen(nclr->comment) + 1));
 		}
 	} else if (nclr->header.format == NCLR_TYPE_HUDSON) {
 		uint16_t fileHeader[] = { 0, 0 };

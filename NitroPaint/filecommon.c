@@ -63,6 +63,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 		switch (magic) {
 			case 'NCLR':
 			case 'RLCN':
+			case 'NCCL':
+			case 'LCCN':
 				type = FILE_TYPE_PALETTE;
 				break;
 			case 'NCGR':
