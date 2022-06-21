@@ -18,7 +18,7 @@ HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	int width = TEXW(texture->texImageParam);
 	int height = TEXH(texture->texImageParam);
 	DWORD *px = (DWORD *) calloc(width * zoom * height * zoom, 4);
-	convertTexture(px, texture, palette, 0);
+	textureRender(px, texture, palette, 0);
 
 	//perform alpha blending
 	int scaleWidth = width * zoom, scaleHeight = height * zoom;

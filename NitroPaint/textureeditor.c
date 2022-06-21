@@ -131,7 +131,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				data->format = FORMAT(data->textureData.texels.texImageParam);
 				data->hasPalette = (data->format != CT_DIRECT && data->format != 0);
 				data->isNitro = 1;
-				convertTexture(data->px, &data->textureData.texels, &data->textureData.palette, 0);
+				textureRender(data->px, &data->textureData.texels, &data->textureData.palette, 0);
 				for (int i = 0; i < data->width * data->height; i++) {
 					DWORD col = data->px[i];
 					data->px[i] = REVERSE(col);
@@ -430,7 +430,7 @@ void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int
 	temp.texels.texImageParam = format << 26;
 	temp.palette.nColors = texture->palette.nColors;
 	temp.palette.pal = texture->palette.pal;
-	convertTexture(rendered, &temp.texels, &temp.palette, 0);
+	textureRender(rendered, &temp.texels, &temp.palette, 0);
 
 	//convert back to 4x4
 	memmove(rendered + 0, rendered + 0, 16);
@@ -605,14 +605,14 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				if (notification == BN_CLICKED && hWndControl == data->hWndTransparent) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
-					convertTexture(data->px, texels, &data->textureData.palette, 0);
+					textureRender(data->px, texels, &data->textureData.palette, 0);
 					swapRedBlueChannels(data->px, nPx);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
-					convertTexture(data->px, texels, &data->textureData.palette, 0);
+					textureRender(data->px, texels, &data->textureData.palette, 0);
 					swapRedBlueChannels(data->px, nPx);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
@@ -620,7 +620,7 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 					WCHAR buffer[8];
 					SendMessage(hWndControl, WM_GETTEXT, 8, (LPARAM) buffer);
 					*pIdx = ((*pIdx) & 0xC000) | (_wtol(buffer) & 0x3FFF);
-					convertTexture(data->px, texels, &data->textureData.palette, 0);
+					textureRender(data->px, texels, &data->textureData.palette, 0);
 					swapRedBlueChannels(data->px, nPx);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
@@ -701,7 +701,7 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 						}
 					}
 				}
-				convertTexture(data->px, texels, &data->textureData.palette, 0);
+				textureRender(data->px, texels, &data->textureData.palette, 0);
 				swapRedBlueChannels(data->px, width * height);
 				InvalidateRect(data->hWnd, NULL, FALSE);
 				InvalidateRect(hWnd, NULL, FALSE);
@@ -1256,7 +1256,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					ShowWindow(data->hWndProgress, SW_SHOW);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					SetActiveWindow(data->hWndProgress);
-					threadedConvert(data->px, data->width, data->height, fmt, dither, diffuse, ditherAlpha, fixedPalette ? paletteFile.nColors : colorEntries, 
+					textureConvertThreaded(data->px, data->width, data->height, fmt, dither, diffuse, ditherAlpha, fixedPalette ? paletteFile.nColors : colorEntries, 
 									fixedPalette, paletteFile.colors, optimization, mbpnam, &data->textureData, conversionCallback, (void *) data);
 
 					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
@@ -1524,11 +1524,11 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 							data->data->textureData.palette.pal[index] = ColorConvertToDS(result);
 							InvalidateRect(hWnd, NULL, FALSE);
 
-							convertTexture(data->data->px, &data->data->textureData.texels, &data->data->textureData.palette, 0);
+							textureRender(data->data->px, &data->data->textureData.texels, &data->data->textureData.palette, 0);
 							int param = data->data->textureData.texels.texImageParam;
 							int width = TEXW(param);
 							int height = 8 << ((param >> 23) & 7);
-							//convertTexture outputs red and blue in the opposite order, so flip them here.
+							//textureRender outputs red and blue in the opposite order, so flip them here.
 							for (int i = 0; i < width * height; i++) {
 								DWORD p = data->data->px[i];
 								data->data->px[i] = REVERSE(p);
@@ -1581,7 +1581,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						GlobalUnlock(hString);
 
 						TEXTURE *texture = &data->data->textureData;
-						convertTexture(data->data->px, &texture->texels, &texture->palette, 0);
+						textureRender(data->data->px, &texture->texels, &texture->palette, 0);
 						for (int i = 0; i < data->data->width * data->data->height; i++) {
 							DWORD col = data->data->px[i];
 							data->data->px[i] = REVERSE(col);

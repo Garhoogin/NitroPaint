@@ -39,7 +39,7 @@ char *stringFromFormat(int fmt) {
 	return fmts[fmt];
 }
 
-void convertTexture(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
+void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 	int format = FORMAT(texels->texImageParam);
 	int c0xp = COL0TRANS(texels->texImageParam);
 	int width = TEXW(texels->texImageParam);
@@ -248,7 +248,7 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 	int width = TEXW(texels->texImageParam);
 	int height = TEXH(texels->texImageParam);
 	DWORD *pixels = (DWORD *) calloc(width * height, 4);
-	convertTexture(pixels, texels, palette, 1);
+	textureRender(pixels, texels, palette, 1);
 
 	BYTE header[] = {0x14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 8,
 		'N', 'N', 'S', '_', 'T', 'g', 'a', ' ', 'V', 'e', 'r', ' ', '1', '.', '0', 0, 0, 0, 0, 0};

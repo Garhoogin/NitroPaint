@@ -31,19 +31,19 @@ int countColors(COLOR32 *px, int nPx);
 //
 // Convert an image to a direct mode texture
 //
-int convertDirect(CREATEPARAMS *params);
+int textureConvertDirect(CREATEPARAMS *params);
 
 //
 // Convert an image to a paletted texture
 //
-int convertPalette(CREATEPARAMS *params);
+int textureConvertPalette(CREATEPARAMS *params);
 
 //
 // Convert an image to a translucent (a3i5 or a5i3) texture
 //
-int convertTranslucent(CREATEPARAMS *params);
+int textureConvertTranslucent(CREATEPARAMS *params);
 
-//progress markers for convert4x4.
+//progress markers for textureConvert4x4.
 extern volatile _globColors;
 extern volatile _globFinal;
 extern volatile _globFinished;
@@ -51,9 +51,14 @@ extern volatile _globFinished;
 //
 // Convert an image to a 4x4 compressed texture
 //
-int convert4x4(CREATEPARAMS *params);
+int textureConvert4x4(CREATEPARAMS *params);
 
-//to convert a texture directly. lpParam is a CREATEPARAMS struct pointer.
-DWORD CALLBACK startConvert(LPVOID lpParam);
+//
+// Convert a texture given some input parameters.
+//
+int textureConvert(CREATEPARAMS *params);
 
-void threadedConvert(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam);
+//
+// Begin a texture conversion in a new thread, returning a handle to the thread.
+//
+HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam);

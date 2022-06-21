@@ -7,7 +7,7 @@
 
 int ilog2(int x);
 
-int convertDirect(CREATEPARAMS *params) {
+int textureConvertDirect(CREATEPARAMS *params) {
 	//convert to direct color.
 	int width = params->width, height = params->height;
 	COLOR32 *px = params->px;
@@ -37,7 +37,7 @@ int convertDirect(CREATEPARAMS *params) {
 	return 0;
 }
 
-int convertPalette(CREATEPARAMS *params) {
+int textureConvertPalette(CREATEPARAMS *params) {
 	//convert to translucent. First, generate a palette of colors.
 	int nColors = 0, bitsPerPixel = 0;
 	int width = params->width, height = params->height;
@@ -117,7 +117,7 @@ int convertPalette(CREATEPARAMS *params) {
 	return 0;
 }
 
-int convertTranslucent(CREATEPARAMS *params) {
+int textureConvertTranslucent(CREATEPARAMS *params) {
 	//convert to translucent. First, generate a palette of colors.
 	int nColors = 0, alphaShift = 0, alphaMax = 0;
 	int width = params->width, height = params->height;
@@ -719,7 +719,7 @@ uint16_t findOptimalPidx(REDUCTION *reduction, COLOR32 *px, int hasTransparent, 
 	return leastPidx;
 }
 
-int convert4x4(CREATEPARAMS *params) {
+int textureConvert4x4(CREATEPARAMS *params) {
 	//3-stage compression. First stage builds tile data, second stage builds palettes, third stage builds the final texture.
 	if (params->colorEntries < 16) params->colorEntries = 16;
 	params->colorEntries = (params->colorEntries + 7) & 0xFFFFFFF8;
@@ -800,28 +800,27 @@ int convert4x4(CREATEPARAMS *params) {
 	return 0;
 }
 
-DWORD CALLBACK startConvert(LPVOID lpParam) {
-	CREATEPARAMS *params = (CREATEPARAMS *) lpParam;
+int textureConvert(CREATEPARAMS *params) {
 	//begin conversion.
 	switch (params->fmt) {
 		case CT_DIRECT:
-			convertDirect(params);
+			textureConvertDirect(params);
 			break;
 		case CT_4COLOR:
 		case CT_16COLOR:
 		case CT_256COLOR:
-			convertPalette(params);
+			textureConvertPalette(params);
 			break;
 		case CT_A3I5:
 		case CT_A5I3:
-			convertTranslucent(params);
+			textureConvertTranslucent(params);
 			break;
 		case CT_4x4:
-			convert4x4(params);
+			textureConvert4x4(params);
 			break;
 	}
-	convertTexture(params->px, &params->dest->texels, &params->dest->palette, 0);
-	//convertTexture outputs red and blue in the opposite order, so flip them here.
+	textureRender(params->px, &params->dest->texels, &params->dest->palette, 0);
+	//textureRender outputs red and blue in the opposite order, so flip them here.
 	for (int i = 0; i < params->width * params->height; i++) {
 		COLOR32 p = params->px[i];
 		params->px[i] = REVERSE(p);
@@ -832,7 +831,12 @@ DWORD CALLBACK startConvert(LPVOID lpParam) {
 	return 0;
 }
 
-void threadedConvert(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
+DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
+	CREATEPARAMS *params = (CREATEPARAMS *) lpParam;
+	return textureConvert(params);
+}
+
+HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
 	CREATEPARAMS *params = (CREATEPARAMS *) calloc(1, sizeof(CREATEPARAMS));
 	_globFinished = 0;
 	params->px = px;
@@ -850,5 +854,5 @@ void threadedConvert(COLOR32 *px, int width, int height, int fmt, int dither, fl
 	params->useFixedPalette = useFixedPalette;
 	params->fixedPalette = useFixedPalette ? fixedPalette : NULL;
 	memcpy(params->pnam, pnam, strlen(pnam) + 1);
-	CreateThread(NULL, 0, startConvert, (LPVOID) params, 0, NULL);
+	return CreateThread(NULL, 0, textureStartConvertThreadEntry, (LPVOID) params, 0, NULL);
 }
