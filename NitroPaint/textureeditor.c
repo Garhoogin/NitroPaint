@@ -1646,6 +1646,12 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						free(path);
 						break;
 					}
+					case ID_FILE_SAVE:
+					case ID_FILE_SAVEAS:
+					{
+						SendMessage(data->data->hWnd, msg, notification, 0);
+						break;
+					}
 				}
 			}
 			break;
