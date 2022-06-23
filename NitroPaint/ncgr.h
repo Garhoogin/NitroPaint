@@ -8,7 +8,8 @@
 #define NCGR_TYPE_HUDSON2	3
 #define NCGR_TYPE_NCBR      4
 #define NCGR_TYPE_BIN       5
-#define NCGR_TYPE_COMBO     6
+#define NCGR_TYPE_NC        6
+#define NCGR_TYPE_COMBO     7
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
@@ -31,6 +32,11 @@ typedef struct NCGR_{
 	int mappingMode;
 	int nBits;
 	int tileWidth;
+	char *comment;		//null terminated
+	char *link;			//linked NCL file, null terminated
+	unsigned char *attr; //unused by most things
+	int attrWidth;		//width of ATTR
+	int attrHeight;		//height of ATTR
 	BYTE **tiles;
 	struct COMBO2D_ *combo2d; //for combination files
 } NCGR;
