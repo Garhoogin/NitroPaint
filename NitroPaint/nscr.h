@@ -1,5 +1,7 @@
 #pragma once
 #include <Windows.h>
+#include <stdint.h>
+
 #include "ncgr.h"
 #include "nclr.h"
 
@@ -21,7 +23,8 @@
 #define NSCR_TYPE_HUDSON	2
 #define NSCR_TYPE_HUDSON2	3
 #define NSCR_TYPE_BIN       4
-#define NSCR_TYPE_COMBO     5
+#define NSCR_TYPE_NC        5
+#define NSCR_TYPE_COMBO     6
 
 #define BG_COLOR0_FIXED     0
 #define BG_COLOR0_AVERAGE   1
@@ -32,12 +35,18 @@ extern LPCWSTR screenFormatNames[];
 
 typedef struct NSCR_ {
 	OBJECT_HEADER header;
-	DWORD nWidth;
-	DWORD nHeight;
-	DWORD dataSize;
-	WORD *data;
+	unsigned int nWidth;
+	unsigned int nHeight;
+	unsigned int dataSize;
+	uint16_t *data;
 	int fmt;
 	int nHighestIndex;//weird hack
+	uint16_t clearValue; //default tile value
+	char *comment; //null terminated
+	char *link; //null terminated, linked NCG
+	int showGrid;     //for NC
+	short gridWidth;  //for NC
+	short gridHeight; //for NC
 	struct COMBO2D_ *combo2d; //for combination files
 } NSCR;
 

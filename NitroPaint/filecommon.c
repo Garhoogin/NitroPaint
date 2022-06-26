@@ -75,6 +75,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				break;
 			case 'NSCR':
 			case 'RCSN':
+			case 'NCSC':
+			case 'CSCN':
 				type = FILE_TYPE_SCREEN;
 				break;
 			case 'NCER':

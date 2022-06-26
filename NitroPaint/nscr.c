@@ -1,11 +1,13 @@
 #include "nscr.h"
 #include "palette.h"
 #include "ncgr.h"
+#include "g2dfile.h"
+
 #include <Windows.h>
 #include <stdio.h>
 #include <math.h>
 
-LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"Hudson", L"Hudson 2", L"Binary", NULL };
+LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"Hudson", L"Hudson 2", L"Binary", L"NSC", NULL };
 
 #define NSCR_FLIPNONE 0
 #define NSCR_FLIPX 1
@@ -45,10 +47,29 @@ int nscrIsValidBin(LPBYTE buffer, int size) {
 	return isValidScreenSize(nPx);
 }
 
+int nscrIsValidNsc(LPBYTE buffer, int size) {
+	if (!g2dIsValid(buffer, size)) return 0;
+
+	unsigned char *scrn = g2dGetSectionByMagic(buffer, size, 'SCRN');
+	if (scrn == NULL) scrn = g2dGetSectionByMagic(buffer, size, 'NRCS');
+	if (scrn == NULL) return 0;
+
+	return 1;
+}
+
 void nscrFree(OBJECT_HEADER *header) {
 	NSCR *nscr = (NSCR *) header;
 	if (nscr->data != NULL) free(nscr->data);
 	nscr->data = NULL;
+
+	if (nscr->link != NULL) {
+		free(nscr->link);
+		nscr->link = NULL;
+	}
+	if (nscr->comment != NULL) {
+		free(nscr->comment);
+		nscr->comment = NULL;
+	}
 
 	COMBO2D *combo = nscr->combo2d;
 	if (nscr->combo2d != NULL) {
@@ -75,17 +96,17 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	int type = nscrIsValidHudson(file, dwFileSize);
 
 	int tilesX = 0, tilesY = 0;
-	WORD *srcData = NULL;
+	uint16_t *srcData = NULL;
 
 	if (type == NSCR_TYPE_HUDSON) {
 		int fileSize = 4 + *(WORD *) (file + 1);
 		tilesX = file[6];
 		tilesY = file[7];
-		srcData = (WORD *) (file + 8);
+		srcData = (uint16_t *) (file + 8);
 	} else if (type == NSCR_TYPE_HUDSON2) {
 		tilesX = file[2];
 		tilesY = file[3];
-		srcData = (WORD *) (file + 4);
+		srcData = (uint16_t *) (file + 4);
 	}
 
 	nscrInit(nscr, type);
@@ -96,7 +117,7 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->nHighestIndex = 0;
 	memcpy(nscr->data, srcData, nscr->dataSize);
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-		WORD w = nscr->data[i];
+		uint16_t w = nscr->data[i];
 		w &= 0x3FF;
 		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
 	}
@@ -111,7 +132,7 @@ int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
 	memcpy(nscr->data, file, dwFileSize);
 	nscr->nHighestIndex = 0;
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-		WORD w = nscr->data[i];
+		uint16_t w = nscr->data[i];
 		w &= 0x3FF;
 		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
 	}
@@ -151,22 +172,77 @@ int nscrReadCombo(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->dataSize = 2048;
 	nscr->nHeight = 256;
 	nscr->nWidth = 256;
-	nscr->data = (WORD *) calloc(1024, 2);
+	nscr->data = (uint16_t *) calloc(1024, 2);
 	memcpy(nscr->data, file + 0x208, 2048);
 
 	nscr->nHighestIndex = 0;
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-		WORD w = nscr->data[i];
+		uint16_t w = nscr->data[i];
 		w &= 0x3FF;
 		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
 	}
 	return 0;
 }
 
+int nscrReadNsc(NSCR *nscr, char *file, int size) {
+	nscrInit(nscr, NSCR_TYPE_NC);
+
+	unsigned char *scrn = g2dGetSectionByMagic(file, size, 'SCRN');
+	if (scrn == NULL) scrn = g2dGetSectionByMagic(file, size, 'NRCS');
+	unsigned char *escr = g2dGetSectionByMagic(file, size, 'ESCR');
+	if (escr == NULL) escr = g2dGetSectionByMagic(file, size, 'RCSE'); //xxxxFFxxxxxxPPPPCCCCCCCCCCCCCCCC
+	unsigned char *clrf = g2dGetSectionByMagic(file, size, 'CLRF');
+	if (clrf == NULL) clrf = g2dGetSectionByMagic(file, size, 'FRLC');
+	unsigned char *clrc = g2dGetSectionByMagic(file, size, 'CLRC');
+	if (clrc == NULL) clrc = g2dGetSectionByMagic(file, size, 'CRLC');
+	unsigned char *grid = g2dGetSectionByMagic(file, size, 'GRID');
+	if (grid == NULL) grid = g2dGetSectionByMagic(file, size, 'DIRG');
+	unsigned char *link = g2dGetSectionByMagic(file, size, 'LINK');
+	if (link == NULL) link = g2dGetSectionByMagic(file, size, 'KNIL');
+	unsigned char *cmnt = g2dGetSectionByMagic(file, size, 'CMNT');
+	if (cmnt == NULL) cmnt = g2dGetSectionByMagic(file, size, 'TNMC');
+
+	nscr->dataSize = *(uint32_t *) (scrn + 0x4) - 0x18;
+	nscr->nWidth = *(uint32_t *) (scrn + 0x8) * 8;
+	nscr->nHeight = *(uint32_t *) (scrn + 0xC) * 8;
+	nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
+	memcpy(nscr->data, scrn + 0x18, nscr->dataSize);
+
+	if (link != NULL) {
+		int len = *(uint32_t *) (link + 4) - 8;
+		nscr->link = (char *) calloc(len, 1);
+		memcpy(nscr->link, link + 8, len);
+	}
+	if (cmnt != NULL) {
+		int len = *(uint32_t *) (cmnt + 4) - 8;
+		nscr->comment = (char *) calloc(len, 1);
+		memcpy(nscr->comment, cmnt + 8, len);
+	}
+	if (clrc != NULL) {
+		nscr->clearValue = *(uint16_t *) (clrc + 8);
+	}
+	if (grid != NULL) {
+		nscr->showGrid = *(uint32_t *) (grid + 0x8);
+		nscr->gridWidth = *(uint16_t *) (grid + 0xC);
+		nscr->gridHeight = *(uint16_t *) (grid + 0xE);
+	}
+
+	//calculate highest index
+	nscr->nHighestIndex = 0;
+	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+		uint16_t w = nscr->data[i];
+		w &= 0x3FF;
+		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
+	}
+
+	return 0;
+}
+
 int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	if (!dwFileSize) return 1;
 	if (*(DWORD *) file != 0x4E534352) {
-		if(nscrIsValidHudson(file, dwFileSize)) return hudsonScreenRead(nscr, file, dwFileSize);
+		if (nscrIsValidNsc(file, dwFileSize)) return nscrReadNsc(nscr, file, dwFileSize);
+		if (nscrIsValidHudson(file, dwFileSize)) return hudsonScreenRead(nscr, file, dwFileSize);
 		if (nscrIsValidBin(file, dwFileSize)) return nscrReadBin(nscr, file, dwFileSize);
 		if (combo2dIsValid(file, dwFileSize)) return nscrReadCombo(nscr, file, dwFileSize);
 	}
@@ -244,26 +320,26 @@ DWORD *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, BOO
 	return px;
 }
 
-void flipX(DWORD * block) {
+void charFlipX(COLOR32 *block) {
 	//DWORD halfLine[4];
 	for (int i = 0; i < 8; i++) {
-		DWORD * line = block + i * 8;
+		COLOR32 *line = block + i * 8;
 		for (int j = 0; j < 4; j++) {
-			DWORD p1 = line[j];
+			COLOR32 p1 = line[j];
 			line[j] = line[7 - j];
 			line[7 - j] = p1;
 		}
 	}
 }
 
-void flipY(DWORD * block) {
-	DWORD lineBuffer[8];
+void charFlipY(COLOR32 *block) {
+	COLOR32 lineBuffer[8];
 	for (int i = 0; i < 4; i++) {
-		DWORD * line1 = block + i * 8;
-		DWORD * line2 = block + (7 - i) * 8;
-		CopyMemory(lineBuffer, line2, 32);
-		CopyMemory(line2, line1, 32);
-		CopyMemory(line1, lineBuffer, 32);
+		COLOR32 *line1 = block + i * 8;
+		COLOR32 *line2 = block + (7 - i) * 8;
+		memcpy(lineBuffer, line2, 32);
+		memcpy(line2, line1, 32);
+		memcpy(line1, lineBuffer, 32);
 	}
 }
 
@@ -277,7 +353,7 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 	int nWidthTiles = nscr->nWidth >> 3;
 	int nHeightTiles = nscr->nHeight >> 3;
 	int iTile = y * nWidthTiles + x;
-	WORD tileData = nscr->data[iTile];
+	uint16_t tileData = nscr->data[iTile];
 
 	int tileNumber = tileData & 0x3FF;
 	int transform = (tileData >> 10) & 0x3;
@@ -288,14 +364,14 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 		int bitness = ncgr->nBits;
 		int paletteSize = 16;
 		if (bitness == 8) paletteSize = 256;
-		COLOR* palette = nclr->colors + paletteSize * paletteNumber;
+		COLOR *palette = nclr->colors + paletteSize * paletteNumber;
 		int tileSize = 32;
 		if (bitness == 8) tileSize = 64;
 		tileNumber -= tileBase;
 		if (ncgr) {
 			if (tileNumber >= ncgr->nTiles || tileNumber < 0) { //? let's just paint a transparent square
 				if (!transparent) {
-					DWORD bg = ColorConvertFromDS(CREVERSE(palette[0])) | 0xFF000000;
+					COLOR32 bg = ColorConvertFromDS(CREVERSE(palette[0])) | 0xFF000000;
 					for (int i = 0; i < 64; i++) {
 						out[i] = bg;
 					}
@@ -311,7 +387,7 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 				}
 				return 0;
 			}
-			BYTE * ncgrTile = ncgr->tiles[tileNumber];
+			BYTE *ncgrTile = ncgr->tiles[tileNumber];
 
 			for (int i = 0; i < 64; i++) {
 				if (ncgrTile[i] || !transparent) {
@@ -321,8 +397,8 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 					out[i] = 0;
 				}
 			}
-			if (transform & TILE_FLIPX) flipX(out);
-			if (transform & TILE_FLIPY) flipY(out);
+			if (transform & TILE_FLIPX) charFlipX(out);
+			if (transform & TILE_FLIPY) charFlipY(out);
 			if (checker) {
 				for (int i = 0; i < 64; i++) {
 					DWORD px = out[i];
@@ -339,53 +415,142 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 
 }
 
-int nscrWrite(NSCR *nscr, BSTREAM *stream) {
-	int status = 0;
+int nscrWriteNscr(NSCR *nscr, BSTREAM *stream) {
+	unsigned char nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
+	unsigned char nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
 
-	if (nscr->header.format == NSCR_TYPE_NSCR) {
-		BYTE nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-		BYTE nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
+	int dataSize = ((nscr->nWidth * nscr->nHeight) >> 6) << 1;
+	int nrcsSize = dataSize + 0x14;
+	int fileSize = nrcsSize + 0x10;
 
-		int dataSize = ((nscr->nWidth * nscr->nHeight) >> 6) << 1;
-		int nrcsSize = dataSize + 0x14;
-		int fileSize = nrcsSize + 0x10;
+	*(uint32_t *) (nscrHeader + 0x8) = fileSize;
+	*(uint32_t *) (nrcsHeader + 0x4) = nrcsSize;
+	*(uint16_t *) (nrcsHeader + 0x8) = nscr->nWidth;
+	*(uint16_t *) (nrcsHeader + 0xA) = nscr->nHeight;
+	*(uint32_t *) (nrcsHeader + 0x10) = dataSize;
+	*(uint32_t *) (nrcsHeader + 0xC) = nscr->fmt;
 
-		*(int *) (nscrHeader + 0x8) = fileSize;
-		*(int *) (nrcsHeader + 0x4) = nrcsSize;
-		*(short *) (nrcsHeader + 0x8) = (short) nscr->nWidth;
-		*(short *) (nrcsHeader + 0xA) = (short) nscr->nHeight;
-		*(int *) (nrcsHeader + 0x10) = dataSize;
-		*(int *) (nrcsHeader + 0xC) = nscr->fmt;
-		
-		bstreamWrite(stream, nscrHeader, sizeof(nscrHeader));
-		bstreamWrite(stream, nrcsHeader, sizeof(nrcsHeader));
-		bstreamWrite(stream, nscr->data, dataSize);
-	} else if(nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
+	bstreamWrite(stream, nscrHeader, sizeof(nscrHeader));
+	bstreamWrite(stream, nrcsHeader, sizeof(nrcsHeader));
+	bstreamWrite(stream, nscr->data, dataSize);
+	return 0;
+}
 
-		int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
-		if (nscr->header.format == NSCR_TYPE_HUDSON) {
-			BYTE header[8] = { 0 };
-			*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
-			*(WORD *) (header + 4) = 2 * nTotalTiles;
-			header[6] = (BYTE) (nscr->nWidth / 8);
-			header[7] = (BYTE) (nscr->nHeight / 8);
-			bstreamWrite(stream, header, sizeof(header));
-		} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
-			BYTE header[4] = { 0, 0, 0, 0 };
-			*(WORD *) header = nTotalTiles * 2;
-			header[2] = (BYTE) (nscr->nWidth / 8);
-			header[3] = (BYTE) (nscr->nHeight / 8);
-			bstreamWrite(stream, header, sizeof(header));
-		}
+int nscrWriteNsc(NSCR *nscr, BSTREAM *stream) {
+	unsigned char ncscHeader[] = { 'N', 'C', 'S', 'C', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
+	unsigned char scrnHeader[] = { 'S', 'C', 'R', 'N', 0x18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char escrHeader[] = { 'E', 'S', 'C', 'R', 0x18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char clrfHeader[] = { 'C', 'L', 'R', 'F', 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char clrcHeader[] = { 'C', 'L', 'R', 'C', 0x0C, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char gridHeader[] = { 'G', 'R', 'I', 'D', 0x18, 0, 0, 0 };
+	unsigned char linkHeader[] = { 'L', 'I', 'N', 'K', 0x08, 0, 0, 0 };
+	unsigned char cmntHeader[] = { 'C', 'M', 'N', 'T', 0x08, 0, 0, 0 };
 
-		bstreamWrite(stream, nscr->data, 2 * nTotalTiles);
-	} else if (nscr->header.format == NSCR_TYPE_BIN) {
-		bstreamWrite(stream, nscr->data, nscr->dataSize);
-	} else if (nscr->header.format == NSCR_TYPE_COMBO) {
-		status = combo2dWrite(nscr->combo2d, stream);
+	*(uint32_t *) (scrnHeader + 0x04) = nscr->dataSize + sizeof(scrnHeader);
+	*(uint32_t *) (scrnHeader + 0x08) = nscr->nWidth / 8;
+	*(uint32_t *) (scrnHeader + 0x0C) = nscr->nHeight / 8;
+	*(uint32_t *) (escrHeader + 0x04) = nscr->dataSize * 2 + sizeof(escrHeader);
+	*(uint32_t *) (escrHeader + 0x08) = nscr->nWidth / 8;
+	*(uint32_t *) (escrHeader + 0x0C) = nscr->nHeight / 8;
+	*(uint32_t *) (escrHeader + 0x10) = (nscr->clearValue & 0x3FF) | ((nscr->clearValue & 0xF000) << 4) | ((nscr->clearValue & 0x0C00) << 16);
+	*(uint32_t *) (clrfHeader + 0x04) = nscr->nWidth * nscr->nHeight / 512 + sizeof(clrfHeader);
+	*(uint32_t *) (clrfHeader + 0x08) = nscr->nWidth / 8;
+	*(uint32_t *) (clrfHeader + 0x0C) = nscr->nHeight / 8;
+	*(uint32_t *) (clrcHeader + 0x08) = nscr->clearValue;
+	*(uint32_t *) (gridHeader + 0x08) = nscr->showGrid;
+	*(uint16_t *) (gridHeader + 0x0C) = nscr->gridWidth;
+	*(uint16_t *) (gridHeader + 0x0E) = nscr->gridHeight;
+
+	int scrnSize = nscr->dataSize + sizeof(scrnHeader);
+	int escrSize = nscr->dataSize * 2 + sizeof(escrHeader);
+	int clrfSize = nscr->nWidth * nscr->nHeight / 512 + sizeof(clrfHeader);
+	int clrcSize = sizeof(clrcHeader);
+	int gridSize = nscr->gridWidth == 0 ? 0 : sizeof(gridHeader);
+	int linkSize = nscr->link == NULL ? 0 : (((strlen(nscr->link) + 4) & ~3) + sizeof(linkHeader));
+	int cmntSize = nscr->comment == NULL ? 0 : (((strlen(nscr->comment) + 4) & ~3) + sizeof(cmntHeader));
+	int totalSize = scrnSize + escrSize + clrfSize + clrcSize + gridSize + linkSize + cmntSize + sizeof(ncscHeader);
+	*(uint32_t *) (ncscHeader + 0x08) = totalSize;
+	*(uint16_t *) (ncscHeader + 0x0E) = !!scrnSize + !!escrSize + !!clrfSize + !!clrcSize + !!gridSize + !!linkSize + !!cmntSize;
+
+	void *dummyClrf = calloc(clrfSize - sizeof(clrfHeader), 1);
+	uint32_t *escr = (uint32_t *) calloc(nscr->nWidth * nscr->nHeight / 64, 4);
+	bstreamWrite(stream, ncscHeader, sizeof(ncscHeader));
+	bstreamWrite(stream, scrnHeader, sizeof(scrnHeader));
+	bstreamWrite(stream, nscr->data, nscr->dataSize);
+	bstreamWrite(stream, escrHeader, sizeof(escrHeader));
+	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+		uint16_t t = nscr->data[i];
+		int chr = t & 0x03FF;
+		int pal = t & 0xF000;
+		int hvf = t & 0x0C00;
+		escr[i] = chr | (pal << 4) | (hvf << 16);
+	}
+	bstreamWrite(stream, escr, nscr->nWidth * nscr->nHeight / 64 * 4);
+	bstreamWrite(stream, clrfHeader, sizeof(clrfHeader));
+	bstreamWrite(stream, dummyClrf, clrfSize - sizeof(clrfHeader));
+	bstreamWrite(stream, clrcHeader, sizeof(clrcHeader));
+	if (gridSize) {
+		bstreamWrite(stream, gridHeader, sizeof(gridHeader));
+	}
+	if (linkSize) {
+		bstreamWrite(stream, linkHeader, sizeof(linkHeader));
+		bstreamWrite(stream, nscr->link, linkSize - sizeof(linkHeader));
+	}
+	if (cmntSize) {
+		bstreamWrite(stream, cmntHeader, sizeof(cmntHeader));
+		bstreamWrite(stream, nscr->comment, cmntSize - sizeof(cmntHeader));
+	}
+	free(dummyClrf);
+	free(escr);
+	return 0;
+}
+
+int nscrWriteHudson(NSCR *nscr, BSTREAM *stream) {
+	int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
+	if (nscr->header.format == NSCR_TYPE_HUDSON) {
+		BYTE header[8] = { 0 };
+		*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
+		*(WORD *) (header + 4) = 2 * nTotalTiles;
+		header[6] = (BYTE) (nscr->nWidth / 8);
+		header[7] = (BYTE) (nscr->nHeight / 8);
+		bstreamWrite(stream, header, sizeof(header));
+	} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
+		BYTE header[4] = { 0, 0, 0, 0 };
+		*(WORD *) header = nTotalTiles * 2;
+		header[2] = (BYTE) (nscr->nWidth / 8);
+		header[3] = (BYTE) (nscr->nHeight / 8);
+		bstreamWrite(stream, header, sizeof(header));
 	}
 
-	return status;
+	bstreamWrite(stream, nscr->data, 2 * nTotalTiles);
+	return 0;
+}
+
+int nscrWriteBin(NSCR *nscr, BSTREAM *stream) {
+	bstreamWrite(stream, nscr->data, nscr->dataSize);
+	return 0;
+}
+
+int nscrWriteCombo(NSCR *nscr, BSTREAM *stream) {
+	return combo2dWrite(nscr->combo2d, stream);
+}
+
+int nscrWrite(NSCR *nscr, BSTREAM *stream) {
+	switch (nscr->header.format) {
+		case NSCR_TYPE_NSCR:
+			return nscrWriteNscr(nscr, stream);
+		case NSCR_TYPE_NC:
+			return nscrWriteNsc(nscr, stream);
+		case NSCR_TYPE_HUDSON:
+		case NSCR_TYPE_HUDSON2:
+			return nscrWriteHudson(nscr, stream);
+		case NSCR_TYPE_BIN:
+			return nscrWriteBin(nscr, stream);
+		case NSCR_TYPE_COMBO:
+			return nscrWriteCombo(nscr, stream);
+	}
+
+	return 1;
 }
 
 int nscrWriteFile(NSCR *nscr, LPWSTR name) {
@@ -394,14 +559,14 @@ int nscrWriteFile(NSCR *nscr, LPWSTR name) {
 
 int tileDifferenceFlip(BGTILE *t1, BGTILE *t2, BYTE mode) {
 	int err = 0;
-	DWORD *px1 = t1->px;
+	COLOR32 *px1 = t1->px;
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
 
 			int x2 = (mode & TILE_FLIPX) ? (7 - x) : x;
 			int y2 = (mode & TILE_FLIPY) ? (7 - y) : y;
-			DWORD c1 = *(px1++);
-			DWORD c2 = t2->px[x2 + y2 * 8];
+			COLOR32 c1 = *(px1++);
+			COLOR32 c2 = t2->px[x2 + y2 * 8];
 
 			int dr = (c1 & 0xFF) - (c2 & 0xFF);
 			int dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
@@ -460,14 +625,14 @@ int tileDifference(BGTILE *t1, BGTILE *t2, BYTE *flipMode) {
 	return err;
 }
 
-void bgAddTileToTotal(DWORD *pxBlock, BGTILE *tile) {
+void bgAddTileToTotal(COLOR32 *pxBlock, BGTILE *tile) {
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
-			DWORD col = tile->px[x + y * 8];
+			COLOR32 col = tile->px[x + y * 8];
 			
 			int x2 = (tile->flipMode & TILE_FLIPX) ? (7 - x) : x;
 			int y2 = (tile->flipMode & TILE_FLIPY) ? (7 - y) : y;
-			DWORD *dest = pxBlock + 4 * (x2 + y2 * 8);
+			COLOR32 *dest = pxBlock + 4 * (x2 + y2 * 8);
 
 			dest[0] += col & 0xFF;
 			dest[1] += (col >> 8) & 0xFF;
