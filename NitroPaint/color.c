@@ -7,10 +7,17 @@ COLOR ColorConvertToDS(COLOR32 c) {
 	return r | (g << 5) | (b << 10);
 }
 
+static uint8_t colorConversionLookup[] = {
+	0,   8,   16,  25,  33,  41,  49,  58,
+	66,  74,  82,  90,  99,  107, 115, 123,
+	132, 140, 148, 156, 165, 173, 181, 189,
+	197, 206, 214, 222, 230, 239, 247, 255
+};
+
 COLOR32 ColorConvertFromDS(COLOR c) {
-	int r = (GetR(c) * 510 + 31) / 62;
-	int g = (GetG(c) * 510 + 31) / 62;
-	int b = (GetB(c) * 510 + 31) / 62;
+	int r = colorConversionLookup[GetR(c)];
+	int g = colorConversionLookup[GetG(c)];
+	int b = colorConversionLookup[GetB(c)];
 	return r | (g << 8) | (b << 16);
 }
 

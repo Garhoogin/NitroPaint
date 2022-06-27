@@ -138,6 +138,7 @@ typedef struct HISTOGRAM_ {
 	ALLOCATOR allocator;
 	HIST_ENTRY *entries[0x20000];
 	int nEntries;
+	int firstSlot;
 } HISTOGRAM;
 
 //reduction workspace structure

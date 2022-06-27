@@ -54,6 +54,7 @@ void *allocateEntry(ALLOCATOR *allocator, int size) {
 void histogramAddColor(HISTOGRAM *histogram, int y, int i, int q, int a, double weight) {
 	if (a == 0) return;
 	int slotIndex = (q + (y * 64 + i) * 4 + 0x60E + a) & 0x1FFFF;
+	if (slotIndex < histogram->firstSlot) histogram->firstSlot = slotIndex;
 
 	HIST_ENTRY *slot = histogram->entries[slotIndex];
 
@@ -191,7 +192,7 @@ void flattenHistogram(REDUCTION *reduction) {
 	reduction->histogramFlat = (HIST_ENTRY **) calloc(reduction->histogram->nEntries, sizeof(HIST_ENTRY *));
 	HIST_ENTRY **pos = reduction->histogramFlat;
 
-	for (int i = 0; i < 0x20000; i++) {
+	for (int i = reduction->histogram->firstSlot; i < 0x20000; i++) {
 		HIST_ENTRY *entry = reduction->histogram->entries[i];
 
 		while (entry != NULL) {
@@ -210,7 +211,10 @@ void computeHistogram(REDUCTION *reduction, COLOR32 *img, int width, int height)
 		}
 	}
 
-	if(reduction->histogram == NULL) reduction->histogram = (HISTOGRAM *) calloc(1, sizeof(HISTOGRAM));
+	if (reduction->histogram == NULL) {
+		reduction->histogram = (HISTOGRAM *) calloc(1, sizeof(HISTOGRAM));
+		reduction->histogram->firstSlot = 0x20000;
+	}
 
 	for (int y = 0; y < height; y++) {
 		int yiqLeft[4];
