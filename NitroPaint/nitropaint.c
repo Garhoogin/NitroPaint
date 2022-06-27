@@ -476,6 +476,13 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			combo->header.format = combo2dIsValid(buffer, dwSize);
 			break;
 		}
+		default: //unrecognized file
+		{
+			WCHAR bf[MAX_PATH + 19];
+			wsprintfW(bf, L"Unrecognied file %s.", GetFileName(path));
+			MessageBox(hWnd, bf, L"Unrecognized File", MB_ICONERROR);
+			break;
+		}
 	}
 
 cleanup:
