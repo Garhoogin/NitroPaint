@@ -461,6 +461,8 @@ int nscrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	*(uint32_t *) (gridHeader + 0x08) = nscr->showGrid;
 	*(uint16_t *) (gridHeader + 0x0C) = nscr->gridWidth;
 	*(uint16_t *) (gridHeader + 0x0E) = nscr->gridHeight;
+	*(uint32_t *) (linkHeader + 0x04) = (nscr->link == NULL) ? 0x0C : (((strlen(nscr->link) + 4) & ~3) + sizeof(linkHeader));
+	*(uint32_t *) (cmntHeader + 0x04) = (nscr->comment == NULL) ? 0x0C : (((strlen(nscr->comment) + 4) & ~3) + sizeof(cmntHeader));
 
 	int scrnSize = nscr->dataSize + sizeof(scrnHeader);
 	int escrSize = nscr->dataSize * 2 + sizeof(escrHeader);
