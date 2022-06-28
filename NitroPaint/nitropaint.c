@@ -207,7 +207,7 @@ char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
 			}
 
 			//scan to and past end of line
-			while (*ptr != '\r' && *ptr != '\n' && ptr != end) ptr++;
+			while (ptr != end && *ptr != '\r' && *ptr != '\n') ptr++;
 			while (ptr != end && (*ptr == '\r' || *ptr == '\n')) ptr++;
 		}
 	}

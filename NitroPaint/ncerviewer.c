@@ -615,7 +615,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					BOOL createPalette = hWndControl == data->hWndImportReplacePalette;
 					BOOL dither = MessageBox(hWnd, L"Use dithering?", L"Dither", MB_ICONQUESTION | MB_YESNO) == IDYES;
 
-					DWORD *palette = (DWORD *) calloc(256, 4);
+					DWORD *palette = (DWORD *) calloc(nclr->nColors, 4);
 					COLOR *nitroPalette = nclr->colors;
 					int paletteSize = 1 << ncgr->nBits;
 					for (int i = 0; i < nclr->nColors; i++) {
@@ -684,7 +684,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 									DWORD col = pixels[x + y * width];
 									int _x = cellX % 8, _y = cellY % 8;
 									if (col >> 24 > 0x80) {
-										int closest = closestPalette(col, palette + (16 * info.palette) + 1, paletteSize - 1) + 1;
+										int closest = closestPalette(col, palette + (info.palette << ncgr->nBits) + 1, paletteSize - 1) + 1;
 										character[_x + _y * 8] = closest;
 
 										//diffuse

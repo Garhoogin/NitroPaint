@@ -227,7 +227,7 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	info->characterBits = 4;
 	if (is8) {
 		info->characterBits = 8;
-		info->palette = 0;
+		//info->palette = 0;
 		//info->characterName <<= 1;
 	}
 
