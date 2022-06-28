@@ -38,6 +38,7 @@ int nscrIsValidHudson(LPBYTE buffer, int size) {
 	int tilesX = buffer[6];
 	int tilesY = buffer[7];
 	if (!tilesX || !tilesY) return 0;
+	if (tilesX * tilesY * 2 + 8 != fileSize) return 0;
 	return NSCR_TYPE_HUDSON;
 }
 
