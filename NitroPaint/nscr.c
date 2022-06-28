@@ -1102,27 +1102,32 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	int paletteFormat = NCLR_TYPE_NCLR, characterFormat = NCGR_TYPE_NCGR, screenFormat = NSCR_TYPE_NSCR;
 	int compressPalette = 0, compressCharacter = 0, compressScreen = 0;
 	switch (fmt) {
-		case 0:
+		case BGGEN_FORMAT_NITROSYSTEM:
 			paletteFormat = NCLR_TYPE_NCLR;
 			characterFormat = NCGR_TYPE_NCGR;
 			screenFormat = NSCR_TYPE_NSCR;
 			break;
-		case 1:
+		case BGGEN_FORMAT_HUDSON:
 			paletteFormat = NCLR_TYPE_HUDSON;
 			characterFormat = NCGR_TYPE_HUDSON;
 			screenFormat = NSCR_TYPE_HUDSON;
 			break;
-		case 2:
+		case BGGEN_FORMAT_HUDSON2:
 			paletteFormat = NCLR_TYPE_HUDSON;
 			characterFormat = NCGR_TYPE_HUDSON2;
 			screenFormat = NSCR_TYPE_HUDSON2;
 			break;
-		case 3:
-		case 4:
+		case BGGEN_FORMAT_NITROCHARACTER:
+			paletteFormat = NCLR_TYPE_NC;
+			characterFormat = NCGR_TYPE_NC;
+			screenFormat = NSCR_TYPE_NC;
+			break;
+		case BGGEN_FORMAT_BIN:
+		case BGGEN_FORMAT_BIN_COMPRESSED:
 			paletteFormat = NCLR_TYPE_BIN;
 			characterFormat = NCGR_TYPE_BIN;
 			screenFormat = NSCR_TYPE_BIN;
-			if (fmt == 4) {
+			if (fmt == BGGEN_FORMAT_BIN_COMPRESSED) {
 				compressCharacter = COMPRESSION_LZ77;
 				compressScreen = COMPRESSION_LZ77;
 			}
@@ -1139,6 +1144,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	nclr->nBits = nBits;
 	nclr->nColors = rowLimit ? (nBits == 4 ? ((paletteBase + nPalettes) << 4) : (paletteOffset + paletteSize)) : 256;
 	nclr->totalSize = nclr->nColors * 2;
+	nclr->nPalettes = nBits == 8 ? 1 : (rowLimit ? (paletteBase + nPalettes) : (nclr->nColors / 16));
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
 	for (int i = 0; i < nclr->nColors; i++) {
 		nclr->colors[i] = ColorConvertToDS(palette[i]);
@@ -1159,12 +1165,25 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 		}
 		ncgr->tiles[j] = b;
 	}
+	ncgr->attr = (unsigned char *) calloc(nTiles, 1);
+	ncgr->attrWidth = ncgr->tilesX;
+	ncgr->attrHeight = ncgr->tilesY;
+	for (int i = 0; i < ncgr->nTiles; i++) {
+		int attr = paletteBase;
+		for (int j = 0; j < nTiles; j++) {
+			if (indices[j] == i) {
+				attr = paletteIndices[j];
+				break;
+			}
+		}
+		ncgr->attr[i] = attr;
+	}
 
 	nscr->nWidth = width;
 	nscr->nHeight = height;
 	nscr->fmt = nBits == 4 ? SCREENCOLORMODE_16x16 : SCREENCOLORMODE_256x1;
 	nscr->dataSize = nTiles * 2;
-	nscr->data = (WORD *) malloc(nscr->dataSize);
+	nscr->data = (uint16_t *) malloc(nscr->dataSize);
 	int nHighestIndex = 0;
 	for (int i = 0; i < nTiles; i++) {
 		nscr->data[i] = indices[i] | (modes[i] << 10) | (paletteIndices[i] << 12);
