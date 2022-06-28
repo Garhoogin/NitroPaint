@@ -580,6 +580,9 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				case NCLR_TYPE_COMBO:
 					filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";
 					break;
+				case NCLR_TYPE_NC:
+					filter = L"NCL Files (*.ncl)\0*.ncl\0All Files\0*.*\0";
+					break;
 			}
 			LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nclr");
 			if (path != NULL) {

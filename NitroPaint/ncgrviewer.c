@@ -465,6 +465,9 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								case NCGR_TYPE_COMBO:
 									filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";
 									break;
+								case NCGR_TYPE_NC:
+									filter = L"NCG Files (*.ncg)\0*.ncg\0All Files\0*.*\0";
+									break;
 							}
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncgr");
 							if (path != NULL) {
