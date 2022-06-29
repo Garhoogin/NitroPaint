@@ -66,7 +66,7 @@ int ncgrIsValidBin(LPBYTE buffer, int size);
 //
 // Get a 32-bit color render of graphics data
 //
-int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker, BOOL transparent);
+int ncgrGetTile(NCGR *ncgr, NCLR *nclr, int x, int y, COLOR32 *out, int previewPalette, BOOL drawChecker, BOOL transparent);
 
 //
 // Read character graphics from a byte array.

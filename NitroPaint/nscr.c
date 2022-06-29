@@ -25,10 +25,10 @@ int isValidScreenSize(int nPx) {
 int nscrIsValidHudson(LPBYTE buffer, int size) {
 	if (*buffer == 0x10) return 0;
 	if (size < 4) return 0;
-	int fileSize = 4 + *(WORD *) (buffer + 1);
+	int fileSize = 4 + *(uint16_t *) (buffer + 1);
 	if (fileSize != size) {
 		//might be format 2
-		fileSize = 4 + *(WORD *) buffer;
+		fileSize = 4 + *(uint16_t *) buffer;
 		if (fileSize != size) return 0;
 		int tilesX = buffer[2];
 		int tilesY = buffer[3];
@@ -100,7 +100,7 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	uint16_t *srcData = NULL;
 
 	if (type == NSCR_TYPE_HUDSON) {
-		int fileSize = 4 + *(WORD *) (file + 1);
+		int fileSize = 4 + *(uint16_t *) (file + 1);
 		tilesX = file[6];
 		tilesY = file[7];
 		srcData = (uint16_t *) (file + 8);
@@ -241,34 +241,34 @@ int nscrReadNsc(NSCR *nscr, char *file, int size) {
 
 int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	if (!dwFileSize) return 1;
-	if (*(DWORD *) file != 0x4E534352) {
+	if (*(uint32_t *) file != 0x4E534352) {
 		if (nscrIsValidNsc(file, dwFileSize)) return nscrReadNsc(nscr, file, dwFileSize);
 		if (nscrIsValidHudson(file, dwFileSize)) return hudsonScreenRead(nscr, file, dwFileSize);
 		if (nscrIsValidBin(file, dwFileSize)) return nscrReadBin(nscr, file, dwFileSize);
 		if (combo2dIsValid(file, dwFileSize)) return nscrReadCombo(nscr, file, dwFileSize);
 	}
 	if (dwFileSize < 0x14) return 1;
-	DWORD dwFirst = *(DWORD *) file;
+	uint32_t dwFirst = *(uint32_t *) file;
 	if (dwFirst != 0x5243534E && dwFirst != 0x4E534352) return 1;
-	WORD endianness = *(WORD *) (file + 0x4);
+	uint16_t endianness = *(uint16_t *) (file + 0x4);
 	if (endianness != 0xFFFE && endianness != 0xFEFF) return 1;
-	DWORD dwSize = *(DWORD *) (file + 0x8);
+	uint32_t dwSize = *(uint32_t *) (file + 0x8);
 	if (dwSize < dwFileSize) return 1;
-	WORD wHeaderSize = *(WORD *) (file + 0xC);
+	uint16_t wHeaderSize = *(uint16_t *) (file + 0xC);
 	if (wHeaderSize < 0x10) return 1;
-	WORD nSections = *(WORD *) (file + 0xE);
+	uint16_t nSections = *(uint16_t *) (file + 0xE);
 	if (nSections == 0) return 1;
 	file += wHeaderSize;
 
 	//NSCR data
-	DWORD nrcsMagic = *(DWORD *) (file);
+	uint32_t nrcsMagic = *(uint32_t *) (file);
 	if (nrcsMagic != 0x5343524E) return 1;
-	DWORD dwSectionSize = *(DWORD *) (file + 0x4);
+	uint32_t dwSectionSize = *(uint32_t *) (file + 0x4);
 	if (!dwSectionSize) return 1;
-	WORD nWidth = *(WORD *) (file + 0x8);
-	WORD nHeight = *(WORD *) (file + 0xA);
+	uint16_t nWidth = *(uint16_t *) (file + 0x8);
+	uint16_t nHeight = *(uint16_t *) (file + 0xA);
 	nscr->fmt = *(int *) (file + 0xC);
-	DWORD dwDataSize = *(DWORD *) (file + 0x10);
+	uint32_t dwDataSize = *(uint32_t *) (file + 0x10);
 	//printf("%dx%d, %d bytes\n", nWidth, nHeight, dwDataSize);
 
 	nscrInit(nscr, NSCR_TYPE_NSCR);
@@ -279,7 +279,7 @@ int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	nscr->nHighestIndex = 0;
 	memcpy(nscr->data, file + 0x14, dwDataSize);
 	for (unsigned int i = 0; i < dwDataSize / 2; i++) {
-		WORD w = nscr->data[i];
+		uint16_t w = nscr->data[i];
 		w &= 0x3FF;
 		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
 	}
@@ -344,11 +344,11 @@ void charFlipY(COLOR32 *block) {
 	}
 }
 
-int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL checker, DWORD *out, BOOL transparent) {
+int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL checker, COLOR32 *out, BOOL transparent) {
 	return nscrGetTileEx(nscr, ncgr, nclr, 0, x, y, checker, out, NULL, transparent);
 }
 
-int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo, BOOL transparent) {
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, COLOR32 *out, int *tileNo, BOOL transparent) {
 	if (x >= (int) (nscr->nWidth / 8)) return 1;
 	if (y >= (int) (nscr->nHeight / 8)) return 1;
 	int nWidthTiles = nscr->nWidth >> 3;
@@ -402,7 +402,7 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 			if (transform & TILE_FLIPY) charFlipY(out);
 			if (checker) {
 				for (int i = 0; i < 64; i++) {
-					DWORD px = out[i];
+					COLOR32 px = out[i];
 					if (!(px >> 24)) {
 						int c = ((i & 0x7) ^ (i >> 3)) >> 2;
 						if (c) out[i] = 0xFFFFFFFF;
@@ -443,7 +443,7 @@ int nscrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	unsigned char escrHeader[] = { 'E', 'S', 'C', 'R', 0x18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	unsigned char clrfHeader[] = { 'C', 'L', 'R', 'F', 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	unsigned char clrcHeader[] = { 'C', 'L', 'R', 'C', 0x0C, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char gridHeader[] = { 'G', 'R', 'I', 'D', 0x18, 0, 0, 0 };
+	unsigned char gridHeader[] = { 'G', 'R', 'I', 'D', 0x18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	unsigned char linkHeader[] = { 'L', 'I', 'N', 'K', 0x08, 0, 0, 0 };
 	unsigned char cmntHeader[] = { 'C', 'M', 'N', 'T', 0x08, 0, 0, 0 };
 
@@ -511,17 +511,17 @@ int nscrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 int nscrWriteHudson(NSCR *nscr, BSTREAM *stream) {
 	int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
 	if (nscr->header.format == NSCR_TYPE_HUDSON) {
-		BYTE header[8] = { 0 };
-		*(WORD *) (header + 1) = 2 * nTotalTiles + 4;
-		*(WORD *) (header + 4) = 2 * nTotalTiles;
-		header[6] = (BYTE) (nscr->nWidth / 8);
-		header[7] = (BYTE) (nscr->nHeight / 8);
+		unsigned char header[8] = { 0 };
+		*(uint16_t *) (header + 1) = 2 * nTotalTiles + 4;
+		*(uint16_t *) (header + 4) = 2 * nTotalTiles;
+		header[6] = nscr->nWidth / 8;
+		header[7] = nscr->nHeight / 8;
 		bstreamWrite(stream, header, sizeof(header));
 	} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
-		BYTE header[4] = { 0, 0, 0, 0 };
-		*(WORD *) header = nTotalTiles * 2;
-		header[2] = (BYTE) (nscr->nWidth / 8);
-		header[3] = (BYTE) (nscr->nHeight / 8);
+		unsigned char header[4] = { 0, 0, 0, 0 };
+		*(uint16_t *) header = nTotalTiles * 2;
+		header[2] = nscr->nWidth / 8;
+		header[3] = nscr->nHeight / 8;
 		bstreamWrite(stream, header, sizeof(header));
 	}
 
@@ -648,7 +648,7 @@ void bgAddTileToTotal(COLOR32 *pxBlock, BGTILE *tile) {
 int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int *progress) {
 	int nChars = nTiles;
 	int *diffBuff = (int *) calloc(nTiles * nTiles, sizeof(int));
-	BYTE *flips = (BYTE *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
+	unsigned char *flips = (unsigned char *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
 
 	for (int i = 0; i < nTiles; i++) {
 		BGTILE *t1 = tiles + i;
@@ -727,7 +727,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 			}
 
 			//merge tile1 and tile2. All tile2 tiles become tile1 tiles
-			BYTE flipDiff = flips[tile1 + tile2 * nTiles];
+			unsigned char flipDiff = flips[tile1 + tile2 * nTiles];
 			for (int i = 0; i < nTiles; i++) {
 				if (tiles[i].masterTile == tile2) {
 					tiles[i].masterTile = tile1;
@@ -751,7 +751,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		BGTILE *tile = tiles + i;
 
 		//average all tiles that use this master tile.
-		DWORD pxBlock[64 * 4] = { 0 };
+		uint32_t pxBlock[64 * 4] = { 0 };
 		int nRep = tile->nRepresents;
 		for (int j = 0; j < nTiles; j++) {
 			if (tiles[j].masterTile != i) continue;
@@ -769,7 +769,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		int bestPalette = paletteBase;
 		int bestError = 0x7FFFFFFF;
 		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
-			DWORD *pal = palette + (j << nBits);
+			COLOR32 *pal = palette + (j << nBits);
 			int err = getPaletteError(tile->px, 64, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
 
 			if (err < bestError) {
@@ -779,10 +779,10 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		}
 
 		//now, match colors to indices.
-		DWORD *pal = palette + (bestPalette << nBits);
+		COLOR32 *pal = palette + (bestPalette << nBits);
 		ditherImagePalette(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, 0, 1, 0, 0.0f);
 		for (int j = 0; j < 64; j++) {
-			DWORD col = tile->px[j];
+			COLOR32 col = tile->px[j];
 			int index = 0;
 			if (((col >> 24) & 0xFF) > 127) {
 				index = closestPalette(col, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset)
@@ -820,7 +820,7 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 		int bestPalette = paletteBase;
 		int bestError = 0x7FFFFFFF;
 		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
-			DWORD *pal = palette + (j << nBits);
+			COLOR32 *pal = palette + (j << nBits);
 			int err = getPaletteError(tile->px, 64, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
 
 			if (err < bestError) {
@@ -830,12 +830,12 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 		}
 
 		//match colors
-		DWORD *pal = palette + (bestPalette << nBits);
+		COLOR32 *pal = palette + (bestPalette << nBits);
 
 		//do optional dithering (also matches colors at the same time)
 		ditherImagePaletteEx(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse, balance, colorBalance, enhanceColors);
 		for (int j = 0; j < 64; j++) {
-			DWORD col = tile->px[j];
+			COLOR32 col = tile->px[j];
 			int index = 0;
 			if (((col >> 24) & 0xFF) > 127) {
 				index = closestPalette(col, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset) 
@@ -1028,7 +1028,7 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			int srcOffset = x * 8 + y * 8 * (width);
-			DWORD *block = tiles[x + y * tilesX].px;
+			COLOR32 *block = tiles[x + y * tilesX].px;
 
 			memcpy(block, imgBits + srcOffset, 32);
 			memcpy(block + 8, imgBits + srcOffset + width, 32);
@@ -1086,15 +1086,15 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	}
 
 	//prep data output
-	WORD *indices = (WORD *) calloc(nTiles, 2);
+	uint16_t *indices = (uint16_t *) calloc(nTiles, 2);
 	for (int i = 0; i < nTiles; i++) {
 		indices[i] = tiles[i].masterTile + tileBase;
 	}
-	BYTE *modes = (BYTE *) calloc(nTiles, 1);
+	unsigned char *modes = (unsigned char *) calloc(nTiles, 1);
 	for (int i = 0; i < nTiles; i++) {
 		modes[i] = tiles[i].flipMode;
 	}
-	BYTE *paletteIndices = (BYTE *) calloc(nTiles, 1);
+	unsigned char *paletteIndices = (unsigned char *) calloc(nTiles, 1);
 	if (nBits == 4) {
 		for (int i = 0; i < nTiles; i++) {
 			paletteIndices[i] = tiles[i].indices[0] >> 4;

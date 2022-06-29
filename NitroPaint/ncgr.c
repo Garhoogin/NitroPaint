@@ -395,9 +395,9 @@ int ncgrReadFile(NCGR *ncgr, LPCWSTR path) {
 	return fileRead(path, (OBJECT_HEADER *) ncgr, (OBJECT_READER) ncgrRead);
 }
 
-int ncgrGetTile(NCGR * ncgr, NCLR * nclr, int x, int y, DWORD * out, int previewPalette, BOOL drawChecker, BOOL transparent) {
+int ncgrGetTile(NCGR *ncgr, NCLR *nclr, int x, int y, COLOR32 *out, int previewPalette, BOOL drawChecker, BOOL transparent) {
 	int nIndex = x + y * ncgr->tilesX;
-	BYTE * tile = ncgr->tiles[nIndex];
+	BYTE *tile = ncgr->tiles[nIndex];
 	int nTiles = ncgr->nTiles;
 	if (x + y * ncgr->tilesX < nTiles) {
 		for (int i = 0; i < 64; i++) {

@@ -114,13 +114,13 @@ int nscrWriteFile(NSCR *nscr, LPWSTR name);
 //
 // Render a single tile of a screen to 32-bit output.
 //
-int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL chceker, DWORD *out, BOOL transparent);
+int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL chceker, COLOR32 *out, BOOL transparent);
 
 //
 // Render a single tile of a screen to 32-bit output, with respect to character
 // base for quirks in some game setups.
 //
-int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, DWORD *out, int *tileNo, BOOL transparent);
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, COLOR32 *out, int *tileNo, BOOL transparent);
 
 //
 // Call this function after filling out the RGB color info in the tile array.
