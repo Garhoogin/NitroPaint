@@ -528,8 +528,17 @@ int ncgrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	bstreamWrite(stream, ncgHeader, sizeof(ncgHeader));
 	bstreamWrite(stream, charHeader, sizeof(charHeader));
 	ncgrWriteBin(ncgr, stream);
-	bstreamWrite(stream, attrHeader, sizeof(attrHeader));
-	bstreamWrite(stream, ncgr->attr, ncgr->attrWidth * ncgr->attrHeight);
+	if (ncgr->tilesX == ncgr->attrWidth && ncgr->tilesY == ncgr->attrHeight) {
+		bstreamWrite(stream, attrHeader, sizeof(attrHeader));
+		bstreamWrite(stream, ncgr->attr, ncgr->attrWidth * ncgr->attrHeight);
+	} else {
+		unsigned char *dummy = (unsigned char *) calloc(ncgr->tilesX * ncgr->tilesY, 1);
+		*(uint32_t *) (attrHeader + 0x8) = ncgr->tilesX;
+		*(uint32_t *) (attrHeader + 0xC) = ncgr->tilesY;
+		bstreamWrite(stream, attrHeader, sizeof(attrHeader));
+		bstreamWrite(stream, dummy, ncgr->tilesX * ncgr->tilesY);
+		free(dummy);
+	}
 	if (linkSize) {
 		bstreamWrite(stream, linkHeader, sizeof(linkHeader));
 		bstreamWrite(stream, ncgr->link, linkSize - sizeof(linkHeader));
