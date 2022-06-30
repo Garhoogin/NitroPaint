@@ -48,6 +48,156 @@ void fileInitCommon(OBJECT_HEADER *header, int type, int format) {
 	header->size = size;
 }
 
+int screenCharComparator(const void *v1, const void *v2) {
+	uint16_t u1 = *(const uint16_t *) v1;
+	uint16_t u2 = *(const uint16_t *) v2;
+	return ((int) u1) - ((int) u2);
+}
+
+//
+// Attempt to guess if a file is a palette, character graphics, or screen.
+//
+int fileGuessPltChrScr(unsigned char *ptr, int size) {
+	int canBePalette = 1, canBeChar = 1, canBeScreen = 1;
+	int n16 = size / 2;
+
+	if (size & 1 || size > 32768) canBePalette = 0;
+	if (size & 0x1F || !size) canBeChar = 0;
+	if (!nscrIsValidBin(ptr, size)) canBeScreen = 0;
+
+	if(canBePalette) {
+		COLOR *asColors = (COLOR *) ptr;
+		for (int i = 0; i < n16; i++) {
+			if (asColors[i] & 0x8000) {
+				canBePalette = 0;
+				break;
+			}
+		}
+	}
+
+	if (canBePalette && !canBeChar && !canBeScreen) return FILE_TYPE_PALETTE;
+	if (!canBePalette && canBeChar && !canBeScreen) return FILE_TYPE_CHARACTER;
+	if (!canBePalette && !canBeChar && canBeScreen) return FILE_TYPE_SCREEN;
+
+	//Use some heuristics. Check the flip bytes for screen.
+	if (canBeScreen) {
+		int nFlipped = 0;
+		uint16_t *screen = (uint16_t *) ptr;
+		for (int i = 0; i < n16; i++) {
+			int f = (screen[i] >> 10) & 3;
+			if (f) nFlipped++;
+		}
+		if (nFlipped > (size / 2) / 4) {
+			canBeScreen--;
+			if (canBeScreen < 0) canBeScreen = 0;
+		}
+	}
+
+	//double check valid returns
+	if (canBePalette && !canBeChar && !canBeScreen) return FILE_TYPE_PALETTE;
+	if (!canBePalette && canBeChar && !canBeScreen) return FILE_TYPE_CHARACTER;
+
+	//heuristics for palettes
+	if (canBePalette) {
+		//
+	}
+
+	//Try a different heuristic for screens. Check number of tiles with a
+	//character index greater than the previous one.
+	if (canBeScreen) {
+		uint16_t *screen = (uint16_t *) ptr;
+		int lastChar = -1, nIncreasing = 0;
+		for (int i = 0; i < n16; i++) {
+			int c = screen[i] & 0x3FF;
+			if (c >= lastChar) {
+				lastChar = c;
+				nIncreasing++;
+			}
+		}
+
+		if (nIncreasing * 2 < n16) {
+			canBeScreen--;
+			if (canBeScreen < 0) canBeScreen = 0;
+		}
+		if (nIncreasing * 4 >= 3 * n16) {
+			canBeScreen++;
+		}
+	}
+
+	//Try another heuristic for screens. Find min and max char, and check total usage.
+	if (canBeScreen) {
+		uint16_t *screen = (uint16_t *) ptr;
+
+		uint16_t *sorted = (uint16_t *) calloc(size, 1);
+		memcpy(sorted, ptr, size);
+		qsort(sorted, size / 2, 2, screenCharComparator);
+		int minChar = sorted[0] & 0x3FF;
+		int maxChar = sorted[n16 - 1] & 0x3FF;
+		int charRange = maxChar - minChar + 1;
+
+		int lastChar = minChar - 1;
+		int nCounted = 0;
+		for (int i = 0; i < n16; i++) {
+			int chr = sorted[i] & 0x3FF;
+
+			if (chr != lastChar) {
+				nCounted++;
+				lastChar = chr;
+			}
+		}
+
+		//shoot for >=25%
+		if (nCounted * 4 < charRange) {
+			canBeScreen--;
+			if (canBeScreen < 0) canBeScreen = 0;
+		}
+		if (nCounted * 4 >= 3 * charRange) {
+			canBeScreen++;
+		}
+		free(sorted);
+	}
+
+	//double check valid returns
+	if (!canBePalette && canBeChar && !canBeScreen) return FILE_TYPE_CHARACTER;
+	if (!canBePalette && !canBeChar && canBeScreen) return FILE_TYPE_SCREEN;
+
+	//heuristics for character
+	if (canBeChar) {
+		//check for identical runs of nonzero bytes
+		int runLength = 0;
+		for (int i = 0; i < size; i++) {
+			unsigned char c = ptr[i];
+			if (!c) continue;
+
+			int len = 1;
+			for (; i < size; i++) {
+				unsigned char c2 = ptr[i];
+				if (c2 == c) len++;
+				else break;
+			}
+			if (len > runLength) runLength = len;
+		}
+		if (runLength < 0x10) {
+			canBeChar--;
+			if (canBeChar < 0) canBeChar = 0;
+		}
+		if (runLength >= 0x18) {
+			canBeChar++;
+		}
+	}
+
+	//final judgement
+	if (canBePalette > canBeScreen && canBePalette > canBeChar) return FILE_TYPE_PALETTE;
+	if (canBeScreen > canBePalette && canBeScreen > canBeChar) return FILE_TYPE_SCREEN;
+	if (canBeChar > canBePalette && canBeChar > canBeScreen) return FILE_TYPE_CHAR;
+	if (canBePalette) return FILE_TYPE_PALETTE;
+	if (canBeScreen) return FILE_TYPE_SCREEN;
+	if (canBeChar) return FILE_TYPE_CHAR;
+
+	//when in doubt, it's character graphics
+	return FILE_TYPE_CHAR;
+}
+
 int fileIdentify(char *file, int size, LPCWSTR path) {
 	char *buffer = file;
 	int bufferSize = size;
@@ -136,10 +286,15 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 																	pathEndsWith(path, L".nbfc"))) type = FILE_TYPE_CHARACTER;
 					else {
 						//double check, without respect to the file name.
-						if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-						else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-						else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-						else if (nclrIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+						type = fileGuessPltChrScr(buffer, bufferSize);
+
+						//last ditch effort
+						if (type == FILE_TYPE_INVALID) {
+							if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+							else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
+							else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+							else if (nclrIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+						}
 					}
 				}
 			}
