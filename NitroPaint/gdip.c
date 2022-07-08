@@ -80,7 +80,11 @@ DWORD *readTga(BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight) {
 	return pixels;
 }
 
-DWORD *gdipReadImage(LPCWSTR lpszFileName, int *pWidth, int *pHeight) {
+COLOR32 *gdipReadImage(LPCWSTR lpszFileName, int *pWidth, int *pHeight) {
+	return gdipReadImageEx(lpszFileName, pWidth, pHeight, NULL, NULL);
+}
+
+COLOR32 *gdipReadImageEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, COLOR32 **pImagePalette, int *pPaletteSize) {
 	if (!startup) {
 		STARTUPINPUT si = { 0 };
 		si.GdiplusVersion = 1;
@@ -100,7 +104,7 @@ DWORD *gdipReadImage(LPCWSTR lpszFileName, int *pWidth, int *pHeight) {
 	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
 	CloseHandle(hFile);
 	if (isTGA(buffer, dwSizeLow)) {
-		DWORD *pixels = NULL;
+		COLOR32 *pixels = NULL;
 		pixels = readTga(buffer, dwSizeLow, pWidth, pHeight);
 		free(buffer);
 		return pixels;
@@ -110,16 +114,36 @@ DWORD *gdipReadImage(LPCWSTR lpszFileName, int *pWidth, int *pHeight) {
 	RECT r = { 0 };
 	BYTE *gp = NULL;
 	BITMAPDATA bm;
+	INT paletteSize = 0;
+	ColorPalette *palette = NULL;
 	GdipCreateBitmapFromFile(lpszFileName, (void *) &gp);
 	GdipGetImageWidth(gp, (INT *) &(r.right));
 	GdipGetImageHeight(gp, (INT *) &(r.bottom));
 	GdipBitmapLockBits(gp, (void *) &r, 3, 0x0026200A, (void *) &bm);
-	DWORD *px = (DWORD *) calloc(r.right * r.bottom, 4);
+
+	GdipGetImagePaletteSize(gp, &paletteSize);
+	palette = (ColorPalette *) calloc(1, paletteSize);
+	if (palette != NULL && (GdipGetImagePalette(gp, palette, paletteSize), palette->Count > 0)) {
+		COLOR32 *colors = (COLOR32 *) palette->Entries;
+		if (pImagePalette != NULL) {
+			*pImagePalette = (COLOR32 *) calloc(palette->Count, sizeof(COLOR32));
+			memcpy(*pImagePalette, colors, palette->Count * sizeof(COLOR32));
+		}
+		if (pPaletteSize != NULL) {
+			*pPaletteSize = palette->Count;
+		}
+	} else {
+		if (pImagePalette != NULL) *pImagePalette = NULL;
+		if (pPaletteSize != NULL) *pPaletteSize = 0;
+	}
+	if (palette != NULL) free(palette);
+
+	COLOR32 *px = (COLOR32 *) calloc(r.right * r.bottom, 4);
 	*pWidth = r.right;
 	*pHeight = r.bottom;
-	DWORD *scan0 = (DWORD *) bm.d1[4];
+	COLOR32 *scan0 = (COLOR32 *) bm.d1[4];
 	for (int i = 0; i < r.right * r.bottom; i++) {
-		DWORD d = scan0[i];
+		COLOR32 d = scan0[i];
 		d = ((d & 0xFF) << 16) | (d & 0xFF00FF00) | ((d >> 16) & 0xFF);
 		px[i] = d;
 	}
