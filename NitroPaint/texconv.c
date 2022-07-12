@@ -277,13 +277,27 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 		return;
 	}
 
-	COLOR32 cols[2];
+	//use principal component analysis to determine endpoints
+	int yiq1[4], yiq2[4], rgb1[4], rgb2[4];
+	HIST_ENTRY *firstEntry, *lastEntry;
 	resetHistogram(reduction);
 	computeHistogram(reduction, px, 4, nPx / 4);
-	int nCol = createPaletteFromHistogram(reduction, 2, cols);
-	if (nCol < 2) cols[0] = cols[1];
-	*colorMin = cols[0];
-	*colorMax = cols[1];
+	flattenHistogram(reduction);
+	sortHistogram(reduction, 0, reduction->histogram->nEntries);
+
+	//choose first and last colors along the principal axis (greatest Y is at the end)
+	firstEntry = reduction->histogramFlat[0];
+	lastEntry = reduction->histogramFlat[reduction->histogram->nEntries - 1];
+	yiq1[0] = firstEntry->y, yiq1[1] = firstEntry->i, yiq1[2] = firstEntry->q, yiq1[3] = 0xFF;
+	yiq2[0] = lastEntry->y, yiq2[1] = lastEntry->i, yiq2[2] = lastEntry->q, yiq2[3] = 0xFF;
+	yiqToRgb(rgb1, yiq1);
+	yiqToRgb(rgb2, yiq2);
+
+	//round to nearest colors. TODO: refinement?
+	COLOR32 c1 = rgb1[0] | (rgb1[1] << 8) | (rgb1[2] << 16);
+	COLOR32 c2 = rgb2[0] | (rgb2[1] << 8) | (rgb2[2] << 16);
+	*colorMin = ColorConvertFromDS(ColorConvertToDS(c1));
+	*colorMax = ColorConvertFromDS(ColorConvertToDS(c2));
 }
 
 int computeColorDifference(COLOR32 c1, COLOR32 c2) {

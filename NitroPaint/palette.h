@@ -186,6 +186,11 @@ void histogramAddColor(HISTOGRAM *histogram, int y, int i, int q, int a, double 
 void computeHistogram(REDUCTION *reduction, COLOR32 *img, int width, int height);
 
 //
+// Sort a histogram's colors by their principal component.
+//
+void sortHistogram(REDUCTION *reduction, int startIndex, int endIndex);
+
+//
 // Clears out a REDUCTION's histogram. Can be used to create multiple palettes.
 //
 void resetHistogram(REDUCTION *reduction);

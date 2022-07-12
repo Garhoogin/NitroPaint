@@ -460,6 +460,39 @@ double __inline lengthSquared(double x, double y, double z) {
 	return x * x + y * y + z * z;
 }
 
+void sortHistogram(REDUCTION *reduction, int startIndex, int endIndex) {
+	double principal[4];
+	int nColors = endIndex - startIndex;
+	HIST_ENTRY **thisHistogram = reduction->histogramFlat + startIndex;
+	approximatePrincipalComponent(reduction, startIndex, endIndex, principal);
+
+	//check principal component, make sure principal[0] >= 0
+	if (principal[0] < 0) {
+		principal[0] = -principal[0];
+		principal[1] = -principal[1];
+		principal[2] = -principal[2];
+		principal[3] = -principal[3];
+	}
+
+	double yWeight = principal[0] * reduction->yWeight;
+	double iWeight = principal[1] * reduction->iWeight;
+	double qWeight = principal[2] * reduction->qWeight;
+	double aWeight = principal[3] * 40.0;
+
+	for (int i = startIndex; i < endIndex; i++) {
+		HIST_ENTRY *histEntry = reduction->histogramFlat[i];
+		double value = reduction->lumaTable[histEntry->y] * yWeight
+			+ histEntry->i * iWeight
+			+ histEntry->q * qWeight
+			+ histEntry->a * aWeight;
+
+		histEntry->value = value;
+	}
+
+	//sort colors by dot product with the vector
+	qsort(thisHistogram, nColors, sizeof(HIST_ENTRY *), histEntryComparator);
+}
+
 void setupLeaf(REDUCTION *reduction, COLOR_NODE *colorBlock) {
 	//calculate the pivot index, as well as average YIQA values.
 	if (colorBlock->endIndex - colorBlock->startIndex < 2) {
