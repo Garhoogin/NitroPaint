@@ -772,10 +772,12 @@ void optimizePalette(REDUCTION *reduction) {
 				int rightAlpha = colorBlock->right->a;
 				COLOR32 leftRgb = decodedLeft[0] | (decodedLeft[1] << 8) | (decodedLeft[2] << 16);
 				COLOR32 rightRgb = decodedRight[0] | (decodedRight[1] << 8) | (decodedRight[2] << 16);
-				COLOR32 maskedLeft = maskColor(leftRgb), maskedRight = maskColor(rightRgb);
-				if (!reduction->maskColors) maskedLeft = leftRgb, maskedRight = rightRgb;
+				if (reduction->maskColors && numberOfTreeElements >= 4) { //don't prune too quickly
+					leftRgb = maskColor(leftRgb);
+					rightRgb = maskColor(rightRgb);
+				}
 
-				if (maskedLeft == maskedRight && leftAlpha == rightAlpha) {
+				if (leftRgb == rightRgb && leftAlpha == rightAlpha) {
 					leftBlock = colorBlock->left, rightBlock = colorBlock->right;
 
 					//prune left
