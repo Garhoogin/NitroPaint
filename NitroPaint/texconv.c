@@ -716,6 +716,10 @@ uint16_t findOptimalPidx(REDUCTION *reduction, COLOR32 *px, int hasTransparent, 
 			int nConsumed = 2;
 			if (j == 0 || j == 2) nConsumed = 4;
 			if (i + nConsumed > nColors) continue;
+
+			//nothing to gain from these modes sometimes
+			if (!hasTransparent && j == 0) continue;
+			if (hasTransparent && j >= 2) break;
 			
 			uint16_t mode = j << 14;
 			expandPalette(thisPalette, mode, expand, &nConsumed);
