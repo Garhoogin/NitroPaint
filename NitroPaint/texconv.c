@@ -86,7 +86,7 @@ int textureConvertPalette(CREATEPARAMS *params) {
 	int nBytes = width * height * bitsPerPixel / 8;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
-	ditherImagePalette(params->px, width, height, palette, nColors, FALSE, TRUE, hasTransparent, diffuse);
+	ditherImagePalette(params->px, width, height, palette, nColors, TRUE, TRUE, hasTransparent, diffuse);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
