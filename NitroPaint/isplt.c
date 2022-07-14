@@ -659,7 +659,7 @@ COLOR_NODE *findNodeByColor(COLOR_NODE *treeHead, COLOR_NODE *src, int maskColor
 
 	//is leaf, does this match?
 	int rgb[4];
-	int yiq[] = { src->y, src->i, src->q };
+	int yiq[] = { src->y, src->i, src->q, 0 };
 	yiqToRgb(rgb, yiq);
 	COLOR32 compare = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
 	if(maskColors) compare = maskColor(compare);
@@ -692,8 +692,19 @@ COLOR_NODE *findNodeByIndex(COLOR_NODE *treeHead, int index) {
 
 	//count nodes left. If greater than index, search left, else search right
 	int nodesLeft = getNumberOfTreeLeaves(treeHead->left);
-	if (nodesLeft >= index) return findNodeByIndex(treeHead->left, index);
+	if (nodesLeft > index) return findNodeByIndex(treeHead->left, index);
 	return findNodeByIndex(treeHead->right, index - nodesLeft);
+}
+
+void cleanEmptyNode(COLOR_NODE *treeHead, COLOR_NODE *node) {
+	//trace up the tree clearing out empty non-leaf nodes
+	COLOR_NODE *parent = findNodeByChild(treeHead, node);
+	if (parent != NULL) {
+		if (parent->left == node) parent->left = NULL;
+		if (parent->right == node) parent->right = NULL;
+		if (parent->left == NULL && parent->right == NULL) cleanEmptyNode(treeHead, parent);
+	}
+	freeColorTree(node, TRUE);
 }
 
 void optimizePalette(REDUCTION *reduction) {
@@ -772,7 +783,7 @@ void optimizePalette(REDUCTION *reduction) {
 				int rightAlpha = colorBlock->right->a;
 				COLOR32 leftRgb = decodedLeft[0] | (decodedLeft[1] << 8) | (decodedLeft[2] << 16);
 				COLOR32 rightRgb = decodedRight[0] | (decodedRight[1] << 8) | (decodedRight[2] << 16);
-				if (reduction->maskColors && numberOfTreeElements >= 4) { //don't prune too quickly
+				if (reduction->maskColors && numberOfTreeElements > 2) { //don't prune too quickly
 					leftRgb = maskColor(leftRgb);
 					rightRgb = maskColor(rightRgb);
 				}
@@ -849,6 +860,7 @@ void optimizePalette(REDUCTION *reduction) {
 						freeColorTree(toDelete, TRUE);
 						if (parent->left == toDelete) parent->left = NULL;
 						if (parent->right == toDelete) parent->right = NULL;
+						if (parent->right == NULL && parent->left == NULL) cleanEmptyNode(treeHead, parent);
 						numberOfTreeElements--;
 						prunedNode = 1;
 						break;
