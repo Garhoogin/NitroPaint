@@ -1149,8 +1149,12 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	nclr->totalSize = nclr->nColors * 2;
 	nclr->nPalettes = nBits == 8 ? 1 : (rowLimit ? (paletteBase + nPalettes) : (nclr->nColors / 16));
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
+	nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
 	for (int i = 0; i < nclr->nColors; i++) {
 		nclr->colors[i] = ColorConvertToDS(palette[i]);
+	}
+	for (int i = 0; i < nclr->nPalettes; i++) {
+		nclr->idxTable[i] = i;
 	}
 
 	ncgr->nBits = nBits;

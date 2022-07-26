@@ -244,7 +244,7 @@ int nclrSaveNclr(NCLR *nclr, BSTREAM *stream) {
 	uint8_t pmcpHeader[] = { 'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
 
 	int sectionSize = 0x18 + (nclr->nColors << 1);
-	int pcmpSize = nclr->nPalettes ? (0x10 + 2 * nclr->nPalettes) : 0;
+	int pcmpSize = (nclr->nPalettes && nclr->idxTable != NULL) ? (0x10 + 2 * nclr->nPalettes) : 0;
 	int nSections = 1 + (pcmpSize != 0);
 	*(int *) (ttlpHeader + 0x4) = sectionSize;
 	if (nclr->nBits == 8) *(int *) (ttlpHeader + 0x8) = 4;
