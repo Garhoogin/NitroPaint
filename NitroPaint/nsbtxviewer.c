@@ -524,21 +524,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		case WM_DESTROY:
 		{
 			NSBTX *nsbtx = &data->nsbtx;
-			for (int i = 0; i < nsbtx->nTextures; i++) {
-				free(nsbtx->textures[i].texel);
-				if (nsbtx->textures[i].cmp) free(nsbtx->textures[i].cmp);
-			}
-			for (int i = 0; i < nsbtx->nPalettes; i++) {
-				free(nsbtx->palettes[i].pal);
-			}
-			if (nsbtx->mdl0 != NULL) {
-				free(nsbtx->mdl0);
-			}
-			free(nsbtx->textureDictionary.entry.data);
-			free(nsbtx->paletteDictionary.entry.data);
-			free(nsbtx->palettes);
-			free(nsbtx->textures);
-			free(data);
+			fileFree((OBJECT_HEADER *) nsbtx);
 			break;
 		}
 	}

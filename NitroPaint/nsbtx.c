@@ -14,10 +14,19 @@ void freeDictionary(DICTIONARY *dictionary) {
 void nsbtxFree(OBJECT_HEADER *header) {
 	NSBTX *nsbtx = (NSBTX *) header;
 	if (nsbtx->textures != NULL) {
+		for (int i = 0; i < nsbtx->nTextures; i++) {
+			TEXELS *texture = nsbtx->textures + i;
+			if (texture->texel != NULL) free(texture->texel);
+			if (texture->cmp != NULL) free(texture->cmp);
+		}
 		free(nsbtx->textures);
 		nsbtx->textures = NULL;
 	}
 	if (nsbtx->palettes != NULL) {
+		for (int i = 0; i < nsbtx->nPalettes; i++) {
+			PALETTE *palette = nsbtx->palettes + i;
+			if (palette->pal != NULL) free(palette->pal);
+		}
 		free(nsbtx->palettes);
 		nsbtx->palettes = NULL;
 	}
@@ -185,18 +194,18 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 	int blockSize = *(int *) (tex0 + 0x4);
 
 	//texture header
-	int textureDataSize = (*(WORD *) (tex0 + 0xC)) << 3;
-	int textureInfoOffset = *(WORD *) (tex0 + 0xE); //dictionary
-	int textureDataOffset = *(int *) (tex0 + 0x14); //ofsTex
+	int textureDataSize = (*(uint16_t *) (tex0 + 0xC)) << 3;
+	int textureInfoOffset = *(uint16_t *) (tex0 + 0xE); //dictionary
+	int textureDataOffset = *(uint32_t *) (tex0 + 0x14); //ofsTex
 
-	int compressedTextureDataSize = (*(WORD *) (tex0 + 0x1C)) << 3;
-	int compressedTextureInfoOffset = *(WORD *) (tex0 + 0x1E); //dictionary
-	int compressedTextureDataOffset = *(int *) (tex0 + 0x24); //ofsTex
-	int compressedTextureInfoDataOffset = *(int *) (tex0 + 0x28); //ofsTexPlttIdx
+	int compressedTextureDataSize = (*(uint16_t *) (tex0 + 0x1C)) << 3;
+	int compressedTextureInfoOffset = *(uint16_t *) (tex0 + 0x1E); //dictionary
+	int compressedTextureDataOffset = *(uint32_t *) (tex0 + 0x24); //ofsTex
+	int compressedTextureInfoDataOffset = *(uint32_t *) (tex0 + 0x28); //ofsTexPlttIdx
 
-	int paletteDataSize = (*(WORD *) (tex0 + 0x30)) << 3;
-	int paletteInfoOffset = *(int *) (tex0 + 0x34); //dictionary
-	int paletteDataOffset = *(int *) (tex0 + 0x38);
+	int paletteDataSize = (*(uint16_t *) (tex0 + 0x30)) << 3;
+	int paletteInfoOffset = *(uint32_t *) (tex0 + 0x34); //dictionary
+	int paletteDataOffset = *(uint32_t *) (tex0 + 0x38);
 
 	char *texInfo = tex0 + textureInfoOffset;
 	char *palInfo = tex0 + paletteInfoOffset;
