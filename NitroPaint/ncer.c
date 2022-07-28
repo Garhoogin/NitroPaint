@@ -482,18 +482,29 @@ int ncerWrite(NCER *ncer, BSTREAM *stream) {
 			bstreamWrite(stream, cell->attr, cell->nAttr * 2);
 		}
 
+		//align
+		uint32_t endPos = stream->pos;
+		uint32_t zero = 0;
+		if (stream->pos & 3) {
+			bstreamWrite(stream, &zero, 4 - (stream->pos & 3));
+		}
+
 		if (hasLabl) {
 			BYTE lablHeader[] = {'L', 'B', 'A', 'L', 0, 0, 0, 0};
 			*(DWORD *) (lablHeader + 4) = ncer->lablSize + 8;
 			bstreamWrite(stream, lablHeader, sizeof(lablHeader));
 			bstreamWrite(stream, ncer->labl, ncer->lablSize);
+			endPos = stream->pos;
 		}
 		if (hasUext) {
 			BYTE uextHeader[] = {'T', 'X', 'E', 'U', 0, 0, 0, 0};
 			*(DWORD *) (uextHeader + 4) = ncer->uextSize + 8;
 			bstreamWrite(stream, uextHeader, sizeof(uextHeader));
 			bstreamWrite(stream, ncer->uext, ncer->uextSize);
+			endPos = stream->pos;
 		}
+		bstreamSeek(stream, 8, 0);
+		bstreamWrite(stream, &endPos, sizeof(endPos));
 
 	} else {
 		bstreamWrite(stream, &ncer->nCells, 4);
