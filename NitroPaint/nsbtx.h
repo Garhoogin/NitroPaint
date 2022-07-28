@@ -3,6 +3,10 @@
 #include "texture.h"
 #include "filecommon.h"
 
+#define NSBTX_TYPE_INVALID   0
+#define NSBTX_TYPE_NNS       1
+#define NSBTX_TYPE_BMD       2
+
 typedef struct DICTENTRY_ {
 	int sizeUnit;
 	int offsetName;
@@ -39,7 +43,25 @@ typedef struct DICTPLTTDATA_ {
 	WORD flag;
 } DICTPLTTDATA;
 
-typedef struct NSBTX_ {
+
+typedef struct BMD_DATA_ {
+	int scale;
+	int nBones;
+	int nDisplaylists;
+	int nMaterials;
+	int materialsSize;
+	int preTextureSize;
+	int boneOffset;
+	int displaylistOffset;
+	int transformOffset;
+	void *bones;
+	void *displaylists;
+	void *materials;
+	void *preTexture;
+} BMD_DATA;
+
+
+typedef struct NSBTX_ { //these should not be converted to other formats
 	OBJECT_HEADER header;
 	int nTextures;
 	int nPalettes;
@@ -50,9 +72,12 @@ typedef struct NSBTX_ {
 
 	void *mdl0;			//for handling NSBMD files as well
 	int mdl0Size;
+	BMD_DATA *bmdData;	//for handling BMD files
 } NSBTX;
 
 int nsbtxRead(NSBTX *nsbtx, char *buffer, int size);
+
+int nsbtxIsValidBmd(char *buffer, unsigned int size);
 
 int nsbtxReadFile(NSBTX *nsbtx, LPCWSTR path);
 

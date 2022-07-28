@@ -264,7 +264,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 			} else {
 
 				//test other formats
-				if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
+				if (nsbtxIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
+				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
 				else if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
