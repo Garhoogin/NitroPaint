@@ -6,7 +6,10 @@ int g2dIsValid(char *buffer, unsigned int size) {
 	unsigned short endianness = *(unsigned short *) (buffer + 4);
 	if (endianness != 0xFFFE && endianness != 0xFEFF) return 0;
 	int fileSize = *(int *) (buffer + 8);
-	if (fileSize != size) return 0;
+	if (fileSize != size) {
+		fileSize = (fileSize + 3) & ~3; 
+		if (fileSize != size) return 0;
+	}
 	unsigned short headerSize = *(unsigned short *) (buffer + 0xC);
 	if (headerSize < 0x10) return 0;
 	int nSections = *(unsigned short *) (buffer + 0xE);

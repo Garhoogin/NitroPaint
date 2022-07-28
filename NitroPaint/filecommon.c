@@ -249,7 +249,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				break;
 		}
 	}
-
+	
 	//no matches?
 	if (type == FILE_TYPE_INVALID) {
 		if (nitrotgaIsValid(buffer, bufferSize)) {
