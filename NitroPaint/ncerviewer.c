@@ -595,20 +595,28 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					InvalidateRect(hWnd, NULL, TRUE);
 					changed = 1;
 				} else if (notification == BN_CLICKED && (hWndControl == data->hWndImportBitmap || hWndControl == data->hWndImportReplacePalette)) {
-					LPWSTR path = openFileDialog(hWnd, L"Select Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
-					if (path == NULL) break;
-
 					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 					HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-					NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
 					NCLR *nclr = NULL;
-					NCGR *ncgr = &ncgrViewerData->ncgr;
+					NCGR *ncgr = NULL;
+					if (hWndNcgrViewer) {
+						NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+						ncgr = &ncgrViewerData->ncgr;
+					}
 					if (hWndNclrViewer) {
 						NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
 						nclr = &nclrViewerData->nclr;
 					}
+
+					if (nclr == NULL || ncgr == NULL) {
+						MessageBox(hWnd, L"Open palette and character graphics are required to import.", L"No NCLR", MB_ICONERROR);
+						break;
+					}
+
+					LPWSTR path = openFileDialog(hWnd, L"Select Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
+					if (path == NULL) break;
 
 					NCER_CELL *cell = data->ncer.cells + data->cell;
 
