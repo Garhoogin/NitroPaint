@@ -22,8 +22,27 @@ typedef uint32_t COLOR32;
 
 #define ColorCreate(r,g,b) ((COLOR)((r)|((g)<<5)|((b)<<10)))
 
+//
+// Convert 24-bit RGB color to 15-bit color
+//
 COLOR ColorConvertToDS(COLOR32 c);
 
+//
+// Convert 15-bit RGB color to 24-bit color
+//
 COLOR32 ColorConvertFromDS(COLOR c);
 
+//
+// Round a 24-bit RGB color to the nearest 15-bit representable 24-bit color
+//
+COLOR32 ColorRoundToDS15(COLOR32 c);
+
+//
+// Round a 24-bit RGB color to the nearest 18-bit representable 24-bit color
+//
+COLOR32 ColorRoundToDS18(COLOR32 c);
+
+//
+// Interpolate between two 15-bit colors
+//
 COLOR ColorInterpolate(COLOR c1, COLOR c2, float amt);

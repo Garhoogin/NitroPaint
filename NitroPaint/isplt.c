@@ -642,10 +642,6 @@ double addPriorities(COLOR_NODE *n1, COLOR_NODE *n2, REDUCTION *reduction) {
 	return (p1 + p2) / adjustedWeight;
 }
 
-COLOR32 maskColor(COLOR32 color) {
-	return ColorConvertFromDS(ColorConvertToDS(color & 0xFFFFFF));
-}
-
 COLOR_NODE *findNodeByColor(COLOR_NODE *treeHead, COLOR_NODE *src, int maskColors) {
 	if (treeHead == NULL || treeHead == src) return NULL;
 
@@ -662,14 +658,14 @@ COLOR_NODE *findNodeByColor(COLOR_NODE *treeHead, COLOR_NODE *src, int maskColor
 	int yiq[] = { src->y, src->i, src->q, 0 };
 	yiqToRgb(rgb, yiq);
 	COLOR32 compare = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
-	if(maskColors) compare = maskColor(compare);
+	if (maskColors) compare = ColorRoundToDS15(compare);
 
 	yiq[0] = treeHead->y;
 	yiq[1] = treeHead->i;
 	yiq[2] = treeHead->q;
 	yiqToRgb(rgb, yiq);
 	COLOR32 thisRgb = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
-	if(maskColors) thisRgb = maskColor(thisRgb);
+	if (maskColors) thisRgb = ColorRoundToDS15(thisRgb);
 
 	return (compare == thisRgb) ? treeHead : NULL;
 }
@@ -784,8 +780,8 @@ void optimizePalette(REDUCTION *reduction) {
 				COLOR32 leftRgb = decodedLeft[0] | (decodedLeft[1] << 8) | (decodedLeft[2] << 16);
 				COLOR32 rightRgb = decodedRight[0] | (decodedRight[1] << 8) | (decodedRight[2] << 16);
 				if (reduction->maskColors && numberOfTreeElements > 2) { //don't prune too quickly
-					leftRgb = maskColor(leftRgb);
-					rightRgb = maskColor(rightRgb);
+					leftRgb = ColorRoundToDS15(leftRgb);
+					rightRgb = ColorRoundToDS15(rightRgb);
 				}
 
 				if (leftRgb == rightRgb && leftAlpha == rightAlpha) {
@@ -908,7 +904,7 @@ void paletteToArray(REDUCTION *reduction) {
 			yiqToRgb(rgb, yiq);
 
 			COLOR32 rgb32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
-			//if (reduction->maskColors) rgb32 = maskColor(rgb32);
+			//if (reduction->maskColors) rgb32 = ColorRoundToDS15(rgb32);
 			
 			reduction->paletteRgb[ofs][0] = rgb32 & 0xFF;
 			reduction->paletteRgb[ofs][1] = (rgb32 >> 8) & 0xFF;
@@ -1340,10 +1336,10 @@ int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, int *palette, int nCo
 }
 
 void ditherImagePalette(COLOR32 *img, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse) {
-	ditherImagePaletteEx(img, width, height, palette, nColors, touchAlpha, binaryAlpha, c0xp, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
+	ditherImagePaletteEx(img, NULL, width, height, palette, nColors, touchAlpha, binaryAlpha, c0xp, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
 }
 
-void ditherImagePaletteEx(COLOR32 *img, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse, int balance, int colorBalance, int enhanceColors) {
+void ditherImagePaletteEx(COLOR32 *img, int *indices, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse, int balance, int colorBalance, int enhanceColors) {
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
 	initReduction(reduction, balance, colorBalance, 15, enhanceColors, nColors);
 
@@ -1465,6 +1461,7 @@ void ditherImagePaletteEx(COLOR32 *img, int width, int height, COLOR32 *palette,
 				if (diffusedYiq[3] < 128 && c0xp) matched = 0;
 				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (colorA << 24);
 				img[x + y * width] = chosen;
+				if (indices != NULL) indices[x + y * width] = matched;
 
 				int *chosenYiq = yiqPalette + matched * 4;
 				int offY = colorY - chosenYiq[0];
@@ -1513,6 +1510,7 @@ void ditherImagePaletteEx(COLOR32 *img, int width, int height, COLOR32 *palette,
 				if (c0xp && centerYiq[3] < 128) matched = 0;
 				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (centerYiq[3] << 24);
 				img[x + y * width] = chosen;
+				if (indices != NULL) indices[x + y * width] = matched;
 			}
 
 			x += hDirection;

@@ -833,7 +833,7 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 		COLOR32 *pal = palette + (bestPalette << nBits);
 
 		//do optional dithering (also matches colors at the same time)
-		ditherImagePaletteEx(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse, balance, colorBalance, enhanceColors);
+		ditherImagePaletteEx(tile->px, NULL, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse, balance, colorBalance, enhanceColors);
 		for (int j = 0; j < 64; j++) {
 			COLOR32 col = tile->px[j];
 			int index = 0;
