@@ -66,6 +66,7 @@ typedef struct NSCR_ {
 typedef struct BGTILE_ {
 	BYTE indices[64];
 	COLOR32 px[64]; //redundant, speed
+	int pxYuv[64][4];
 	int masterTile;
 	int nRepresents;
 	int flipMode;

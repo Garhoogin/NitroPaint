@@ -568,18 +568,14 @@ int tileDifferenceFlip(BGTILE *t1, BGTILE *t2, BYTE mode) {
 
 			int x2 = (mode & TILE_FLIPX) ? (7 - x) : x;
 			int y2 = (mode & TILE_FLIPY) ? (7 - y) : y;
-			COLOR32 c1 = *(px1++);
-			COLOR32 c2 = t2->px[x2 + y2 * 8];
 
-			int dr = (c1 & 0xFF) - (c2 & 0xFF);
-			int dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
-			int db = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
-			int da = ((c1 >> 24) & 0xFF) - ((c2 >> 24) & 0xFF);
-			int dy, du, dv;
-			convertRGBToYUV(dr, dg, db, &dy, &du, &dv);
-
+			int *yuv1 = t1->pxYuv + (x + y * 8);
+			int *yuv2 = t2->pxYuv + (x2 + y2 * 8);
+			int dy = yuv1[0] - yuv2[0];
+			int du = yuv1[1] - yuv2[1];
+			int dv = yuv1[2] - yuv2[2];
+			int da = yuv1[3] - yuv2[3];
 			err += 4 * dy * dy + du * du + dv * dv + 16 * da * da;
-
 		}
 	}
 
@@ -847,6 +843,14 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 				tile->indices[j] = index;
 			}
 			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
+
+			//YUV color
+			int y, u, v;
+			convertRGBToYUV(col & 0xFF, (col >> 8) & 0xFF, (col >> 16) & 0xFF, &y, &u, &v);
+			tile->pxYuv[j][0] = y;
+			tile->pxYuv[j][1] = u;
+			tile->pxYuv[j][2] = v;
+			tile->pxYuv[j][3] = col >> 24;
 		}
 
 		tile->masterTile = i;
