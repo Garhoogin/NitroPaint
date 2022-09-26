@@ -641,6 +641,103 @@ void bgAddTileToTotal(COLOR32 *pxBlock, BGTILE *tile) {
 	}
 }
 
+typedef struct TILE_DIFF_ {
+	int tile1;
+	int tile2;
+	unsigned long long diff;		//pre-biased
+} TILE_DIFF;
+
+typedef struct TILE_DIFF_LIST_ {
+	TILE_DIFF *diffBuff;
+	int diffBuffSize;
+	int diffBuffLength;
+	unsigned long long minDiff;
+	unsigned long long maxDiff;
+} TILE_DIFF_LIST;
+
+void tdlInit(TILE_DIFF_LIST *list, int nEntries) {
+	list->diffBuffSize = nEntries;
+	list->diffBuffLength = 0;
+	list->minDiff = 0x7FFFFFFFFFFFFFFF;
+	list->maxDiff = 0;
+	list->diffBuff = (TILE_DIFF *) calloc(list->diffBuffSize, sizeof(TILE_DIFF));
+}
+
+void tdlFree(TILE_DIFF_LIST *list) {
+	free(list->diffBuff);
+	list->diffBuff = NULL;
+	list->diffBuffLength = 0;
+	list->diffBuffSize = 0;
+}
+
+void tdlAdd(TILE_DIFF_LIST *list, int tile1, int tile2, unsigned long long diff) {
+	if (list->diffBuffLength == list->diffBuffSize && diff >= list->maxDiff) return;
+
+	//find an insertion point
+	//TODO: binary search
+	int destIndex = list->diffBuffLength;
+	if (diff < list->minDiff) {
+		destIndex = 0;
+	} else {
+		for (int i = 0; i < list->diffBuffLength; i++) {
+			if (diff < list->diffBuff[i].diff) {
+				destIndex = i;
+				break;
+			}
+		}
+	}
+
+	//insert
+	int nEntriesToMove = list->diffBuffLength - destIndex;
+	int added = 1; //was a new entry created?
+	if (destIndex + 1 + nEntriesToMove > list->diffBuffSize) {
+		nEntriesToMove = list->diffBuffSize - destIndex - 1;
+		added = 0;
+	}
+	memmove(list->diffBuff + destIndex + 1, list->diffBuff + destIndex, nEntriesToMove * sizeof(TILE_DIFF));
+	list->diffBuff[destIndex].tile1 = tile1;
+	list->diffBuff[destIndex].tile2 = tile2;
+	list->diffBuff[destIndex].diff = diff;
+	if (added) {
+		list->diffBuffLength++;
+	}
+	list->minDiff = list->diffBuff[0].diff;
+	list->maxDiff = list->diffBuff[list->diffBuffLength - 1].diff;
+}
+
+void tdlRemoveAll(TILE_DIFF_LIST *list, int tile1, int tile2) {
+	//remove all diffs involving tile1 and tile2
+	for (int i = 0; i < list->diffBuffLength; i++) {
+		TILE_DIFF *td = list->diffBuff + i;
+		if (td->tile1 == tile1 || td->tile2 == tile1 || td->tile1 == tile2 || td->tile2 == tile2) {
+			memmove(td, td + 1, (list->diffBuffLength - i - 1) * sizeof(TILE_DIFF));
+			list->diffBuffLength--;
+			i--;
+		}
+	}
+	if (list->diffBuffLength > 0) {
+		list->minDiff = list->diffBuff[0].diff;
+		list->maxDiff = list->diffBuff[list->diffBuffLength - 1].diff;
+	}
+}
+
+void tdlPop(TILE_DIFF_LIST *list, TILE_DIFF *out) {
+	if (list->diffBuffLength > 0) {
+		memcpy(out, list->diffBuff, sizeof(TILE_DIFF));
+		memmove(list->diffBuff, list->diffBuff + 1, (list->diffBuffLength - 1) * sizeof(TILE_DIFF));
+		list->diffBuffLength--;
+		if (list->diffBuffLength > 0) {
+			list->minDiff = list->diffBuff[0].diff;
+		}
+	}
+}
+
+void tdlReset(TILE_DIFF_LIST *list) {
+	list->diffBuffLength = 0;
+	list->maxDiff = 0;
+	list->minDiff = 0x7FFFFFFFFFFFFFFF;
+}
+
 int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int *progress) {
 	int nChars = nTiles;
 	int *diffBuff = (int *) calloc(nTiles * nTiles, sizeof(int));
@@ -688,11 +785,14 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 	if (nChars > nMaxChars) {
 		//damn
 
+		//create a rolling buffer of similar tiles. 
+		//when tiles are combined, combinations that involve affected tiles in the array are removed.
+		//fill it to capacity initially, then keep using it until it's empty, then fill again.
+		TILE_DIFF_LIST tdl;
+		tdlInit(&tdl, 64);
+
 		//keep finding the most similar tile until we get character count down
 		while (nChars > nMaxChars) {
-			unsigned long long int leastError = 0x7FFFFFFF;
-			int tile1 = 0, tile2 = 1;
-
 			for (int i = 0; i < nTiles; i++) {
 				BGTILE *t1 = tiles + i;
 				if (t1->masterTile != i) continue;
@@ -700,41 +800,50 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 				for (int j = 0; j < i; j++) {
 					BGTILE *t2 = tiles + j;
 					if (t2->masterTile != j) continue;
+
 					int thisErrorEntry = diffBuff[i + j * nTiles];
 					unsigned long long int thisError = thisErrorEntry;
-					if (thisError >= leastError) continue;
-
 					thisError = thisErrorEntry * t1->nRepresents * t2->nRepresents;
-					if (thisError < leastError) {
-						//if (nBits == 8 || ((t2->indices[0] >> 4) == (t1->indices[0] >> 4))) { //make sure they're the same palette
-						tile1 = j;
-						tile2 = i;
-						leastError = thisError;
-						//}
+					tdlAdd(&tdl, j, i, thisError);
+				}
+			}
+			
+			//now merge tiles while we can
+			int tile1, tile2;
+			while (tdl.diffBuffLength > 0 && nChars > nMaxChars) {
+				TILE_DIFF td;
+				tdlPop(&tdl, &td);
+
+				//tile merging
+				tile1 = td.tile1;
+				tile2 = td.tile2;
+
+				//should we swap tile1 and tile2? tile2 should have <= tile1's nRepresents
+				if (tiles[tile2].nRepresents > tiles[tile1].nRepresents) {
+					int t = tile1;
+					tile1 = tile2;
+					tile2 = t;
+				}
+
+				//merge tile1 and tile2. All tile2 tiles become tile1 tiles
+				unsigned char flipDiff = flips[tile1 + tile2 * nTiles];
+				for (int i = 0; i < nTiles; i++) {
+					if (tiles[i].masterTile == tile2) {
+						tiles[i].masterTile = tile1;
+						tiles[i].flipMode ^= flipDiff;
+						tiles[i].nRepresents = 0;
+						tiles[tile1].nRepresents++;
 					}
 				}
-			}
 
-			//should we swap tile1 and tile2? tile2 should have <= tile1's nRepresents
-			if (tiles[tile2].nRepresents > tiles[tile1].nRepresents) {
-				int t = tile1;
-				tile1 = tile2;
-				tile2 = t;
-			}
+				nChars--;
+				*progress = 500 + (int) (500 * sqrt((float) (nTiles - nChars) / (nTiles - nMaxChars)));
 
-			//merge tile1 and tile2. All tile2 tiles become tile1 tiles
-			unsigned char flipDiff = flips[tile1 + tile2 * nTiles];
-			for (int i = 0; i < nTiles; i++) {
-				if (tiles[i].masterTile == tile2) {
-					tiles[i].masterTile = tile1;
-					tiles[i].flipMode ^= flipDiff;
-					tiles[i].nRepresents = 0;
-					tiles[tile1].nRepresents++;
-				}
+				tdlRemoveAll(&tdl, td.tile1, td.tile2);
 			}
-			nChars--;
-			*progress = 500 + (int) (500 * sqrt((float) (nTiles - nChars) / (nTiles - nMaxChars)));
+			tdlReset(&tdl);
 		}
+		tdlFree(&tdl);
 	}
 
 	free(flips);
