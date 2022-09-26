@@ -803,7 +803,10 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 
 					int thisErrorEntry = diffBuff[i + j * nTiles];
 					unsigned long long int thisError = thisErrorEntry;
-					thisError = thisErrorEntry * t1->nRepresents * t2->nRepresents;
+					int bias = t1->nRepresents + t2->nRepresents;
+					bias *= bias;
+
+					thisError = thisErrorEntry * bias;
 					tdlAdd(&tdl, j, i, thisError);
 				}
 			}
