@@ -6,6 +6,7 @@ typedef struct {
 	BOOL useDarkTheme;
 	BOOL fullPaths;
 	BOOL renderTransparent;
+	BOOL dpiAware;
 	HBRUSH hbrBackground;
 	LPWSTR backgroundPath;
 	struct {
