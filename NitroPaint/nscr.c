@@ -560,8 +560,8 @@ int nscrWriteFile(NSCR *nscr, LPWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) nscrWrite);
 }
 
-int tileDifferenceFlip(BGTILE *t1, BGTILE *t2, BYTE mode) {
-	int err = 0;
+unsigned int tileDifferenceFlip(BGTILE *t1, BGTILE *t2, BYTE mode) {
+	unsigned int err = 0;
 	COLOR32 *px1 = t1->px;
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
@@ -582,23 +582,23 @@ int tileDifferenceFlip(BGTILE *t1, BGTILE *t2, BYTE mode) {
 	return err;
 }
 
-int tileDifference(BGTILE *t1, BGTILE *t2, BYTE *flipMode) {
-	int err = tileDifferenceFlip(t1, t2, 0);
+unsigned int tileDifference(BGTILE *t1, BGTILE *t2, BYTE *flipMode) {
+	unsigned int err = tileDifferenceFlip(t1, t2, 0);
 	if (err == 0) {
 		*flipMode = 0;
 		return err;
 	}
-	int err2 = tileDifferenceFlip(t1, t2, TILE_FLIPX);
+	unsigned int err2 = tileDifferenceFlip(t1, t2, TILE_FLIPX);
 	if (err2 == 0) {
 		*flipMode = TILE_FLIPX;
 		return err2;
 	}
-	int err3 = tileDifferenceFlip(t1, t2, TILE_FLIPY);
+	unsigned int err3 = tileDifferenceFlip(t1, t2, TILE_FLIPY);
 	if (err3 == 0) {
 		*flipMode = TILE_FLIPY;
 		return err3;
 	}
-	int err4 = tileDifferenceFlip(t1, t2, TILE_FLIPXY);
+	unsigned int err4 = tileDifferenceFlip(t1, t2, TILE_FLIPXY);
 	if (err4 == 0) {
 		*flipMode = TILE_FLIPXY;
 		return err4;
@@ -740,7 +740,7 @@ void tdlReset(TILE_DIFF_LIST *list) {
 
 int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int *progress) {
 	int nChars = nTiles;
-	int *diffBuff = (int *) calloc(nTiles * nTiles, sizeof(int));
+	unsigned int *diffBuff = (unsigned int *) calloc(nTiles * nTiles, sizeof(unsigned int));
 	unsigned char *flips = (unsigned char *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
 
 	for (int i = 0; i < nTiles; i++) {
@@ -801,12 +801,15 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 					BGTILE *t2 = tiles + j;
 					if (t2->masterTile != j) continue;
 
-					int thisErrorEntry = diffBuff[i + j * nTiles];
+					unsigned int thisErrorEntry = diffBuff[i + j * nTiles];
 					unsigned long long int thisError = thisErrorEntry;
-					int bias = t1->nRepresents + t2->nRepresents;
+					unsigned int bias = t1->nRepresents + t2->nRepresents;
 					bias *= bias;
 
 					thisError = thisErrorEntry * bias;
+					if (thisError < thisErrorEntry) {
+						thisError = 0xFFFFFFFF;
+					}
 					tdlAdd(&tdl, j, i, thisError);
 				}
 			}
