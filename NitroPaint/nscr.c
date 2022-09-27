@@ -560,45 +560,49 @@ int nscrWriteFile(NSCR *nscr, LPWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) nscrWrite);
 }
 
-unsigned int tileDifferenceFlip(BGTILE *t1, BGTILE *t2, BYTE mode) {
-	unsigned int err = 0;
+float tileDifferenceFlip(REDUCTION *reduction, BGTILE *t1, BGTILE *t2, BYTE mode) {
+	double err = 0.0;
 	COLOR32 *px1 = t1->px;
+	double yw2 = reduction->yWeight * reduction->yWeight;
+	double iw2 = reduction->iWeight * reduction->iWeight;
+	double qw2 = reduction->qWeight * reduction->qWeight;
+
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
 
 			int x2 = (mode & TILE_FLIPX) ? (7 - x) : x;
 			int y2 = (mode & TILE_FLIPY) ? (7 - y) : y;
 
-			int *yuv1 = t1->pxYuv + (x + y * 8);
-			int *yuv2 = t2->pxYuv + (x2 + y2 * 8);
-			int dy = yuv1[0] - yuv2[0];
-			int du = yuv1[1] - yuv2[1];
-			int dv = yuv1[2] - yuv2[2];
-			int da = yuv1[3] - yuv2[3];
-			err += 4 * dy * dy + du * du + dv * dv + 16 * da * da;
+			int *yiq1 = &t1->pxYiq[x + y * 8][0];
+			int *yiq2 = &t2->pxYiq[x2 + y2 * 8][0];
+			double dy = reduction->lumaTable[yiq1[0]] - reduction->lumaTable[yiq2[0]];
+			double di = yiq1[1] - yiq2[1];
+			double dq = yiq1[2] - yiq2[2];
+			double da = yiq1[3] - yiq2[3];
+			err += yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + 1600 * da * da;
 		}
 	}
 
-	return err;
+	return (float) err;
 }
 
-unsigned int tileDifference(BGTILE *t1, BGTILE *t2, BYTE *flipMode) {
-	unsigned int err = tileDifferenceFlip(t1, t2, 0);
+float tileDifference(REDUCTION *reduction, BGTILE *t1, BGTILE *t2, BYTE *flipMode) {
+	float err = tileDifferenceFlip(reduction, t1, t2, 0);
 	if (err == 0) {
 		*flipMode = 0;
 		return err;
 	}
-	unsigned int err2 = tileDifferenceFlip(t1, t2, TILE_FLIPX);
+	float err2 = tileDifferenceFlip(reduction, t1, t2, TILE_FLIPX);
 	if (err2 == 0) {
 		*flipMode = TILE_FLIPX;
 		return err2;
 	}
-	unsigned int err3 = tileDifferenceFlip(t1, t2, TILE_FLIPY);
+	float err3 = tileDifferenceFlip(reduction, t1, t2, TILE_FLIPY);
 	if (err3 == 0) {
 		*flipMode = TILE_FLIPY;
 		return err3;
 	}
-	unsigned int err4 = tileDifferenceFlip(t1, t2, TILE_FLIPXY);
+	float err4 = tileDifferenceFlip(reduction, t1, t2, TILE_FLIPXY);
 	if (err4 == 0) {
 		*flipMode = TILE_FLIPXY;
 		return err4;
@@ -624,19 +628,21 @@ unsigned int tileDifference(BGTILE *t1, BGTILE *t2, BYTE *flipMode) {
 	return err;
 }
 
-void bgAddTileToTotal(COLOR32 *pxBlock, BGTILE *tile) {
+void bgAddTileToTotal(REDUCTION *reduction, int *pxBlock, BGTILE *tile) {
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
 			COLOR32 col = tile->px[x + y * 8];
 			
 			int x2 = (tile->flipMode & TILE_FLIPX) ? (7 - x) : x;
 			int y2 = (tile->flipMode & TILE_FLIPY) ? (7 - y) : y;
-			COLOR32 *dest = pxBlock + 4 * (x2 + y2 * 8);
+			int *dest = pxBlock + 4 * (x2 + y2 * 8);
 
-			dest[0] += col & 0xFF;
-			dest[1] += (col >> 8) & 0xFF;
-			dest[2] += (col >> 16) & 0xFF;
-			dest[3] += (col >> 24) & 0xFF;
+			int yiq[4];
+			rgbToYiq(col, yiq);
+			dest[0] += (int) (16.0 * reduction->lumaTable[yiq[0]] + 0.5f);
+			dest[1] += yiq[1];
+			dest[2] += yiq[2];
+			dest[3] += yiq[3];
 		}
 	}
 }
@@ -644,21 +650,21 @@ void bgAddTileToTotal(COLOR32 *pxBlock, BGTILE *tile) {
 typedef struct TILE_DIFF_ {
 	int tile1;
 	int tile2;
-	unsigned long long diff;		//pre-biased
+	double diff;		//post-biased
 } TILE_DIFF;
 
 typedef struct TILE_DIFF_LIST_ {
 	TILE_DIFF *diffBuff;
 	int diffBuffSize;
 	int diffBuffLength;
-	unsigned long long minDiff;
-	unsigned long long maxDiff;
+	double minDiff;
+	double maxDiff;
 } TILE_DIFF_LIST;
 
 void tdlInit(TILE_DIFF_LIST *list, int nEntries) {
 	list->diffBuffSize = nEntries;
 	list->diffBuffLength = 0;
-	list->minDiff = 0x7FFFFFFFFFFFFFFF;
+	list->minDiff = 1e32;
 	list->maxDiff = 0;
 	list->diffBuff = (TILE_DIFF *) calloc(list->diffBuffSize, sizeof(TILE_DIFF));
 }
@@ -670,7 +676,7 @@ void tdlFree(TILE_DIFF_LIST *list) {
 	list->diffBuffSize = 0;
 }
 
-void tdlAdd(TILE_DIFF_LIST *list, int tile1, int tile2, unsigned long long diff) {
+void tdlAdd(TILE_DIFF_LIST *list, int tile1, int tile2, double diff) {
 	if (list->diffBuffLength == list->diffBuffSize && diff >= list->maxDiff) return;
 
 	//find an insertion point
@@ -735,20 +741,23 @@ void tdlPop(TILE_DIFF_LIST *list, TILE_DIFF *out) {
 void tdlReset(TILE_DIFF_LIST *list) {
 	list->diffBuffLength = 0;
 	list->maxDiff = 0;
-	list->minDiff = 0x7FFFFFFFFFFFFFFF;
+	list->minDiff = 1e32;
 }
 
 int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int *progress) {
 	int nChars = nTiles;
-	unsigned int *diffBuff = (unsigned int *) calloc(nTiles * nTiles, sizeof(unsigned int));
+	int balance = BALANCE_DEFAULT, colorBalance = BALANCE_DEFAULT;
+	float *diffBuff = (float *) calloc(nTiles * nTiles, sizeof(float));
 	unsigned char *flips = (unsigned char *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
 
+	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
+	initReduction(reduction, balance, colorBalance, 15, 0, 255);
 	for (int i = 0; i < nTiles; i++) {
 		BGTILE *t1 = tiles + i;
 		for (int j = 0; j < i; j++) {
 			BGTILE *t2 = tiles + j;
 
-			diffBuff[i + j * nTiles] = tileDifference(t1, t2, &flips[i + j * nTiles]);
+			diffBuff[i + j * nTiles] = tileDifference(reduction, t1, t2, &flips[i + j * nTiles]);
 			diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
 			flips[j + i * nTiles] = flips[i + j * nTiles];
 		}
@@ -792,8 +801,10 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		tdlInit(&tdl, 64);
 
 		//keep finding the most similar tile until we get character count down
+		int direction = 0;
 		while (nChars > nMaxChars) {
-			for (int i = 0; i < nTiles; i++) {
+			for (int iOuter = 0; iOuter < nTiles; iOuter++) {
+				int i = direction ? (nTiles - 1 - iOuter) : iOuter; //criss cross the direction
 				BGTILE *t1 = tiles + i;
 				if (t1->masterTile != i) continue;
 
@@ -801,15 +812,12 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 					BGTILE *t2 = tiles + j;
 					if (t2->masterTile != j) continue;
 
-					unsigned int thisErrorEntry = diffBuff[i + j * nTiles];
-					unsigned long long int thisError = thisErrorEntry;
-					unsigned int bias = t1->nRepresents + t2->nRepresents;
+					double thisErrorEntry = diffBuff[i + j * nTiles];
+					double thisError = thisErrorEntry;
+					double bias = t1->nRepresents + t2->nRepresents;
 					bias *= bias;
 
 					thisError = thisErrorEntry * bias;
-					if (thisError < thisErrorEntry) {
-						thisError = 0xFFFFFFFF;
-					}
 					tdlAdd(&tdl, j, i, thisError);
 				}
 			}
@@ -847,6 +855,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 
 				tdlRemoveAll(&tdl, td.tile1, td.tile2);
 			}
+			direction = !direction;
 			tdlReset(&tdl);
 		}
 		tdlFree(&tdl);
@@ -862,26 +871,47 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		BGTILE *tile = tiles + i;
 
 		//average all tiles that use this master tile.
-		uint32_t pxBlock[64 * 4] = { 0 };
+		int pxBlock[64 * 4] = { 0 };
 		int nRep = tile->nRepresents;
 		for (int j = 0; j < nTiles; j++) {
 			if (tiles[j].masterTile != i) continue;
 			BGTILE *tile2 = tiles + j;
-			bgAddTileToTotal(pxBlock, tile2);
+			bgAddTileToTotal(reduction, pxBlock, tile2);
 		}
+
+		//divide by count, convert to 32-bit RGB
 		for (int j = 0; j < 64 * 4; j++) {
-			pxBlock[j] = (pxBlock[j] + (nRep >> 1)) / nRep;
+			int ch = pxBlock[j];
+
+			//proper round to nearest
+			if (ch >= 0) {
+				ch = (ch * 2 + nRep) / (nRep * 2);
+			} else {
+				ch = (ch * 2 - nRep) / (nRep * 2);
+			}
+			pxBlock[j] = ch;
 		}
 		for (int j = 0; j < 64; j++) {
-			tile->px[j] = pxBlock[j * 4] | (pxBlock[j * 4 + 1] << 8) | (pxBlock[j * 4 + 2] << 16) | (pxBlock[j * 4 + 3] << 24);
+			int cy = pxBlock[j * 4 + 0]; //times 16
+			int ci = pxBlock[j * 4 + 1];
+			int cq = pxBlock[j * 4 + 2];
+			int ca = pxBlock[j * 4 + 3];
+
+			double dcy = ((double) cy) / 16.0;
+			cy = (int) (pow(dcy * 0.00195695, 1.0 / reduction->gamma) * 511.0);
+			int yiq[] = { cy, ci, cq, ca };
+			int rgb[4];
+			yiqToRgb(rgb, yiq);
+
+			tile->px[j] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16) | (ca << 24);
 		}
 
 		//try to determine the most optimal palette. Child tiles can be different palettes.
 		int bestPalette = paletteBase;
-		int bestError = 0x7FFFFFFF;
+		double bestError = 1e32;
 		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
-			COLOR32 *pal = palette + (j << nBits);
-			int err = getPaletteError(tile->px, 64, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
+			COLOR32 *pal = palette + (j << nBits) + paletteOffset + !paletteOffset;
+			double err = computePaletteErrorYiq(reduction, tile->px, 64, pal, paletteSize - !paletteOffset, 128, bestError);
 
 			if (err < bestError) {
 				bestError = err;
@@ -891,7 +921,8 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 
 		//now, match colors to indices.
 		COLOR32 *pal = palette + (bestPalette << nBits);
-		ditherImagePalette(tile->px, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, 0, 1, 0, 0.0f);
+		ditherImagePaletteEx(tile->px, NULL, 8, 8, pal + paletteOffset + !paletteOffset, 
+			paletteSize - !paletteOffset, 0, 1, 0, 0.0f, balance, colorBalance, 0);
 		for (int j = 0; j < 64; j++) {
 			COLOR32 col = tile->px[j];
 			int index = 0;
@@ -916,6 +947,9 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 			memcpy(tile2->indices, tile->indices, 64);
 		}
 	}
+
+	destroyReduction(reduction);
+	free(reduction);
 	return nChars;
 }
 
@@ -959,13 +993,8 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 			}
 			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
 
-			//YUV color
-			int y, u, v;
-			convertRGBToYUV(col & 0xFF, (col >> 8) & 0xFF, (col >> 16) & 0xFF, &y, &u, &v);
-			tile->pxYuv[j][0] = y;
-			tile->pxYuv[j][1] = u;
-			tile->pxYuv[j][2] = v;
-			tile->pxYuv[j][3] = col >> 24;
+			//YIQ color
+			rgbToYiq(col, &tile->pxYiq[j][0]);
 		}
 
 		tile->masterTile = i;
