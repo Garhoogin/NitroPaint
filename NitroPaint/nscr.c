@@ -744,9 +744,9 @@ void tdlReset(TILE_DIFF_LIST *list) {
 	list->minDiff = 1e32;
 }
 
-int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int *progress) {
+int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
+								int paletteBase, int paletteOffset, int balance, int colorBalance, int *progress) {
 	int nChars = nTiles;
-	int balance = BALANCE_DEFAULT, colorBalance = BALANCE_DEFAULT;
 	float *diffBuff = (float *) calloc(nTiles * nTiles, sizeof(float));
 	unsigned char *flips = (unsigned char *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
 
@@ -1195,7 +1195,8 @@ void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, fl
 	//match tiles to each other
 	int nChars = nTiles;
 	if (mergeTiles) {
-		nChars = performCharacterCompression(tiles, nTiles, nBits, nMaxChars, palette, paletteSize, nPalettes, paletteBase, paletteOffset, progress2);
+		nChars = performCharacterCompression(tiles, nTiles, nBits, nMaxChars, palette, paletteSize, nPalettes, paletteBase, 
+			paletteOffset, balance, colorBalance, progress2);
 	}
 
 	DWORD *blocks = (DWORD *) calloc(64 * nChars, sizeof(DWORD));

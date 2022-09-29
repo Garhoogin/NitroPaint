@@ -141,7 +141,8 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 // combined, the bit depth and palette settings are used to finalize the
 // result in the tile array. progress must not be NULL, and ranges from 0-1000.
 //
-int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int *progress);
+int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
+	int paletteBase, int paletteOffset, int balance, int colorBalance, int *progress);
 
 //
 // Generates a BG with the parameters:

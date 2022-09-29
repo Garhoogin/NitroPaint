@@ -1074,7 +1074,8 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 			}
 			int nTiles = nChars;
 			setupBgTiles(bgTiles, nChars, ncgr->nBits, dummyFull, paletteSize, 1, 0, paletteBase, 0, 0.0f);
-			nChars = performCharacterCompression(bgTiles, nChars, ncgr->nBits, nMaxChars, dummyFull, paletteSize, 1, 0, paletteBase, progress);
+			nChars = performCharacterCompression(bgTiles, nChars, ncgr->nBits, nMaxChars, dummyFull, paletteSize, 1, 0, paletteBase, 
+				BALANCE_DEFAULT, BALANCE_DEFAULT, progress);
 
 			//read back result
 			int outIndex = 0;
