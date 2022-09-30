@@ -22,7 +22,7 @@ int isValidScreenSize(int nPx) {
 	return 0;
 }
 
-int nscrIsValidHudson(LPBYTE buffer, int size) {
+int nscrIsValidHudson(unsigned char *buffer, unsigned int size) {
 	if (*buffer == 0x10) return 0;
 	if (size < 4) return 0;
 	int fileSize = 4 + *(uint16_t *) (buffer + 1);
@@ -42,13 +42,13 @@ int nscrIsValidHudson(LPBYTE buffer, int size) {
 	return NSCR_TYPE_HUDSON;
 }
 
-int nscrIsValidBin(LPBYTE buffer, int size) {
+int nscrIsValidBin(unsigned char *buffer, unsigned int size) {
 	if (size == 0 || (size & 1)) return 0;
 	int nPx = (size >> 1) * 64;
 	return isValidScreenSize(nPx);
 }
 
-int nscrIsValidNsc(LPBYTE buffer, int size) {
+int nscrIsValidNsc(unsigned char *buffer, unsigned int size) {
 	if (!g2dIsValid(buffer, size)) return 0;
 
 	unsigned char *scrn = g2dGetSectionByMagic(buffer, size, 'SCRN');
@@ -90,7 +90,7 @@ void nscrInit(NSCR *nscr, int format) {
 	nscr->combo2d = NULL;
 }
 
-int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
+int hudsonScreenRead(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	if (*file == 0x10) return 1; //TODO: implement LZ77 decompression
 	if (dwFileSize < 8) return 1; //file too small
 	//if (file[4] != 0) return 1; //not a screen file
@@ -125,7 +125,7 @@ int hudsonScreenRead(NSCR *nscr, char *file, DWORD dwFileSize) {
 	return 0;
 }
 
-int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
+int nscrReadBin(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	nscrInit(nscr, NSCR_TYPE_BIN);
 	nscr->dataSize = dwFileSize;
 	nscr->data = malloc(dwFileSize);
@@ -168,7 +168,7 @@ int nscrReadBin(NSCR *nscr, char *file, DWORD dwFileSize) {
 	return 0;
 }
 
-int nscrReadCombo(NSCR *nscr, char *file, DWORD dwFileSize) {
+int nscrReadCombo(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	nscrInit(nscr, NSCR_TYPE_COMBO);
 	nscr->dataSize = 2048;
 	nscr->nHeight = 256;
@@ -185,7 +185,7 @@ int nscrReadCombo(NSCR *nscr, char *file, DWORD dwFileSize) {
 	return 0;
 }
 
-int nscrReadNsc(NSCR *nscr, char *file, int size) {
+int nscrReadNsc(NSCR *nscr, unsigned char *file, unsigned int size) {
 	nscrInit(nscr, NSCR_TYPE_NC);
 
 	unsigned char *scrn = g2dGetSectionByMagic(file, size, 'SCRN');
@@ -239,7 +239,7 @@ int nscrReadNsc(NSCR *nscr, char *file, int size) {
 	return 0;
 }
 
-int nscrRead(NSCR *nscr, char *file, DWORD dwFileSize) {
+int nscrRead(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	if (!dwFileSize) return 1;
 	if (*(uint32_t *) file != 0x4E534352) {
 		if (nscrIsValidNsc(file, dwFileSize)) return nscrReadNsc(nscr, file, dwFileSize);
@@ -291,17 +291,17 @@ int nscrReadFile(NSCR *nscr, LPCWSTR path) {
 	return fileRead(path, (OBJECT_HEADER *) nscr, (OBJECT_READER) nscrRead);
 }
 
-DWORD *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, BOOL transparent) {
+COLOR32 *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, int transparent) {
 	*width = nscr->nWidth;
 	*height = nscr->nHeight;
-	DWORD * px = (DWORD *) calloc(*width * *height, 4);
+	COLOR32 *px = (COLOR32 *) calloc(*width * *height, 4);
 
 	int tilesX = nscr->nWidth >> 3;
 	int tilesY = nscr->nHeight >> 3;
 	int tilesStored = nscr->dataSize >> 1;
 	//printf("%dx%d, expected %d\n", tilesX, tilesY, tilesStored);
 
-	DWORD block[64];
+	COLOR32 block[64];
 	for (int x = 0; x < tilesX; x++) {
 		for (int y = 0; y < tilesY; y++) {
 			nscrGetTile(nscr, ncgr, nclr, x, y, TRUE, block, transparent);
@@ -344,11 +344,11 @@ void charFlipY(COLOR32 *block) {
 	}
 }
 
-int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL checker, COLOR32 *out, BOOL transparent) {
+int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, int checker, COLOR32 *out, int transparent) {
 	return nscrGetTileEx(nscr, ncgr, nclr, 0, x, y, checker, out, NULL, transparent);
 }
 
-int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, COLOR32 *out, int *tileNo, BOOL transparent) {
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, int checker, COLOR32 *out, int *tileNo, int transparent) {
 	if (x >= (int) (nscr->nWidth / 8)) return 1;
 	if (y >= (int) (nscr->nHeight / 8)) return 1;
 	int nWidthTiles = nscr->nWidth >> 3;
@@ -388,7 +388,7 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 				}
 				return 0;
 			}
-			BYTE *ncgrTile = ncgr->tiles[tileNumber];
+			uint8_t *ncgrTile = ncgr->tiles[tileNumber];
 
 			for (int i = 0; i < 64; i++) {
 				if (ncgrTile[i] || !transparent) {
@@ -556,11 +556,11 @@ int nscrWrite(NSCR *nscr, BSTREAM *stream) {
 	return 1;
 }
 
-int nscrWriteFile(NSCR *nscr, LPWSTR name) {
+int nscrWriteFile(NSCR *nscr, LPCWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) nscrWrite);
 }
 
-float tileDifferenceFlip(REDUCTION *reduction, BGTILE *t1, BGTILE *t2, BYTE mode) {
+float tileDifferenceFlip(REDUCTION *reduction, BGTILE *t1, BGTILE *t2, unsigned char mode) {
 	double err = 0.0;
 	COLOR32 *px1 = t1->px;
 	double yw2 = reduction->yWeight * reduction->yWeight;
@@ -586,7 +586,7 @@ float tileDifferenceFlip(REDUCTION *reduction, BGTILE *t1, BGTILE *t2, BYTE mode
 	return (float) err;
 }
 
-float tileDifference(REDUCTION *reduction, BGTILE *t1, BGTILE *t2, BYTE *flipMode) {
+float tileDifference(REDUCTION *reduction, BGTILE *t1, BGTILE *t2, unsigned char *flipMode) {
 	float err = tileDifferenceFlip(reduction, t1, t2, 0);
 	if (err == 0) {
 		*flipMode = 0;
@@ -1105,7 +1105,7 @@ COLOR32 chooseBGColor0(COLOR32 *px, int width, int height, int mode) {
 	return r | (g << 8) | (b << 16);
 }
 
-void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse,
+void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse,
 				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
 				int color0Mode, int balance, int colorBalance, int enhanceColors,

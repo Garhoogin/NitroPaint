@@ -36,29 +36,29 @@ void nclrInit(NCLR *nclr, int format);
 //
 // Determines if an byte array represents a valid Hudson palette file.
 //
-int nclrIsValidHudson(LPBYTE lpFile, int size);
+int nclrIsValidHudson(unsigned char *lpFile, unsigned int size);
 
 //
 // Determines if a byte array represents a valid raw palette file.
 //
-int nclrIsValidBin(LPBYTE lpFile, int size);
+int nclrIsValidBin(unsigned char *lpFile, unsigned int size);
 
 //
 // Determines if a byte array represents a valid NTFP file.
 //
-int nclrIsValidNtfp(LPBYTE lpFile, int size);
+int nclrIsValidNtfp(unsigned char *lpFile, unsigned int size);
 
 //
 // Reads an palette file from a byte array.
 //
-int nclrRead(NCLR * nclr, char * buffer, int size);
+int nclrRead(NCLR *nclr, unsigned char *buffer, unsigned int size);
 
 //
 // Writes a palette to a file.
 //
-int nclrWriteFile(NCLR *nclr, LPWSTR name);
+int nclrWriteFile(NCLR *nclr, LPCWSTR name);
 
 //
 // Reads a palette from a file.
 //
-int nclrReadFile(NCLR *nclr, LPWSTR path);
+int nclrReadFile(NCLR *nclr, LPCWSTR path);

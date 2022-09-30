@@ -56,22 +56,22 @@ void ncgrInit(NCGR *ncgr, int format);
 //
 // Determines if a byte array represents a valid Hudson character graphics file
 //
-int ncgrIsValidHudson(LPBYTE buffer, int size);
+int ncgrIsValidHudson(unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid raw character graphics file.
 //
-int ncgrIsValidBin(LPBYTE buffer, int size);
+int ncgrIsValidBin(unsigned char *buffer, unsigned int size);
 
 //
 // Get a 32-bit color render of graphics data
 //
-int ncgrGetTile(NCGR *ncgr, NCLR *nclr, int x, int y, COLOR32 *out, int previewPalette, BOOL drawChecker, BOOL transparent);
+int ncgrGetTile(NCGR *ncgr, NCLR *nclr, int x, int y, COLOR32 *out, int previewPalette, int drawChecker, int transparent);
 
 //
 // Read character graphics from a byte array.
 //
-int ncgrRead(NCGR *ncgr, char *buffer, int size);
+int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size);
 
 //
 // Read character graphics from a file.
@@ -86,4 +86,4 @@ int ncgrWrite(NCGR *ncgr, BSTREAM *stream);
 //
 // Write character graphics to a file.
 //
-int ncgrWriteFile(NCGR * ncgr, LPWSTR name);
+int ncgrWriteFile(NCGR *ncgr, LPCWSTR name);

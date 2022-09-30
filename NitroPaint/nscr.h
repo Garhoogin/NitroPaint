@@ -80,17 +80,17 @@ void nscrInit(NSCR *nscr, int format);
 //
 // Determines if a byte array represents a valid Hudson screen file.
 //
-int nscrIsValidHudson(LPBYTE buffer, int size);
+int nscrIsValidHudson(unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid raw screen file.
 //
-int nscrIsValidBin(LPBYTE buffer, int size);
+int nscrIsValidBin(unsigned char *buffer, unsigned int size);
 
 //
 // Reads a screen file from an array.
 //
-int nscrRead(NSCR * nscr, char * file, DWORD dwFileSize);
+int nscrRead(NSCR *nscr, unsigned char *file, unsigned int dwFileSize);
 
 //
 // Reads a screen from a file.
@@ -100,7 +100,7 @@ int nscrReadFile(NSCR *nscr, LPCWSTR path);
 //
 // Renders a screenwith character and palette data to 32-bit output.
 //
-DWORD *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, BOOL transparent);
+COLOR32 *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, int transparent);
 
 //
 // Write a screen to a stream.
@@ -110,18 +110,18 @@ int nscrWrite(NSCR *nscr, BSTREAM *stream);
 //
 // Write a screen to a file.
 //
-int nscrWriteFile(NSCR *nscr, LPWSTR name);
+int nscrWriteFile(NSCR *nscr, LPCWSTR name);
 
 //
 // Render a single tile of a screen to 32-bit output.
 //
-int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, BOOL chceker, COLOR32 *out, BOOL transparent);
+int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, int chceker, COLOR32 *out, int transparent);
 
 //
 // Render a single tile of a screen to 32-bit output, with respect to character
 // base for quirks in some game setups.
 //
-int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, BOOL checker, COLOR32 *out, int *tileNo, BOOL transparent);
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, int checker, COLOR32 *out, int *tileNo, int transparent);
 
 //
 // Call this function after filling out the RGB color info in the tile array.
@@ -163,7 +163,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 //  - nMaxChars: Maximum character count of resulting graphics
 //  - color0Mode: change how color 0 is determined
 //
-void nscrCreate(DWORD *imgBits, int width, int height, int nBits, int dither, float diffuse, 
+void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse, 
 				int palette, int nPalettes, int bin, int tileBase, int mergeTiles,
 				int paletteSize, int paletteOffsetm, int rowLimit, int nMaxChars,
 				int color0Mode, int balance, int colorBalance, int enhanceColors,

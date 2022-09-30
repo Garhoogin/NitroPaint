@@ -33,7 +33,7 @@ void nclrInit(NCLR *nclr, int format) {
 	nclr->combo2d = NULL;
 }
 
-int nclrIsValidHudson(LPBYTE lpFile, int size) {
+int nclrIsValidHudson(unsigned char *lpFile, unsigned int size) {
 	if (size < 4) return 0;
 	if (*lpFile == 0x10) return 0;
 	int dataLength = *(uint16_t *) lpFile;
@@ -56,7 +56,7 @@ int nclrIsValidHudson(LPBYTE lpFile, int size) {
 	return 1;
 }
 
-int nclrIsValidBin(LPBYTE lpFile, int size) {
+int nclrIsValidBin(unsigned char *lpFile, unsigned int size) {
 	if (size < 16) return 0;
 	if (size & 1) return 0;
 	if (size > 16 * 256 * 2) return 0;
@@ -74,16 +74,16 @@ int nclrIsValidBin(LPBYTE lpFile, int size) {
 	return 1;
 }
 
-int nclrIsValidNtfp(LPBYTE lpFile, int size) {
+int nclrIsValidNtfp(unsigned char *lpFile, unsigned int size) {
 	if (size & 1) return 0;
-	for (int i = 0; i < size >> 1; i++) {
+	for (unsigned int i = 0; i < size >> 1; i++) {
 		COLOR c = *(COLOR *) (lpFile + i * 2);
 		if (c & 0x8000) return 0;
 	}
 	return 1;
 }
 
-int nclrIsValidNclr(LPBYTE lpFile, int size) {
+int nclrIsValidNclr(unsigned char *lpFile, unsigned int size) {
 	if (!g2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NCLR' && magic != 'RLCN') return 0;
@@ -94,7 +94,7 @@ int nclrIsValidNclr(LPBYTE lpFile, int size) {
 	return 1;
 }
 
-int nclrIsValidNcl(LPBYTE lpFile, int size) {
+int nclrIsValidNcl(unsigned char *lpFile, unsigned int size) {
 	if (!g2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NCCL' && magic != 'LCCN') return 0;
@@ -105,7 +105,7 @@ int nclrIsValidNcl(LPBYTE lpFile, int size) {
 	return 1;
 }
 
-int nclrIsValid(LPBYTE lpFile, int size) {
+int nclrIsValid(unsigned char *lpFile, unsigned int size) {
 	if (nclrIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
 	if (nclrIsValidNcl(lpFile, size)) return NCLR_TYPE_NC;
 	if (nclrIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
@@ -114,7 +114,7 @@ int nclrIsValid(LPBYTE lpFile, int size) {
 	return NCLR_TYPE_INVALID;
 }
 
-int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
+int hudsonPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	if (size < 4) return 1;
 
 	int dataLength = *(uint16_t *) buffer;
@@ -128,7 +128,7 @@ int hudsonPaletteRead(NCLR *nclr, char *buffer, int size) {
 	return 0;
 }
 
-int binPaletteRead(NCLR *nclr, char *buffer, int size) {
+int binPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	if (!nclrIsValidNtfp(buffer, size)) return 1; //this function is being reused for NTFP as well
 	
 	int nColors = size >> 1;
@@ -141,7 +141,7 @@ int binPaletteRead(NCLR *nclr, char *buffer, int size) {
 	return 0;
 }
 
-int comboReadPalette(NCLR *nclr, char *buffer, int size) {
+int comboReadPalette(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	int type = combo2dIsValid(buffer, size);
 
 	nclrInit(nclr, NCLR_TYPE_COMBO);
@@ -171,7 +171,7 @@ int comboReadPalette(NCLR *nclr, char *buffer, int size) {
 	return 0;
 }
 
-int ncPaletteRead(NCLR *nclr, char *buffer, int size) {
+int ncPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	if (!nclrIsValidNcl(buffer, size)) return 1;
 
 	nclrInit(nclr, NCLR_TYPE_NC);
@@ -197,7 +197,7 @@ int ncPaletteRead(NCLR *nclr, char *buffer, int size) {
 	return 0;
 }
 
-int nclrRead(NCLR *nclr, char *buffer, int size) {
+int nclrRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	if (!nclrIsValidNclr(buffer, size)) {
 		if (nclrIsValidNcl(buffer, size)) return ncPaletteRead(nclr, buffer, size);
 		if (nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
@@ -234,7 +234,7 @@ int nclrRead(NCLR *nclr, char *buffer, int size) {
 	return 0;
 }
 
-int nclrReadFile(NCLR *nclr, LPWSTR path) {
+int nclrReadFile(NCLR *nclr, LPCWSTR path) {
 	return fileRead(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) nclrRead);
 }
 
@@ -333,6 +333,6 @@ int nclrWrite(NCLR *nclr, BSTREAM *stream) {
 	return 1;
 }
 
-int nclrWriteFile(NCLR *nclr, LPWSTR name) {
+int nclrWriteFile(NCLR *nclr, LPCWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) nclr, (OBJECT_WRITER) nclrWrite);
 }
