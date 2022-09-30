@@ -38,6 +38,45 @@ VOID UpdateScrollbarVisibility(HWND hWnd) {
 	}
 }
 
+BOOL CALLBACK ScaleInterfaceProc(HWND hWnd, LPARAM lParam) {
+	EnumChildWindows(hWnd, ScaleInterfaceProc, lParam);
+	float scale = *(float *) lParam;
+
+	//get bounding size
+	RECT rcWindow;
+	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	GetWindowRect(hWnd, &rcWindow);
+	POINT topLeft = { rcWindow.left, rcWindow.top };
+	POINT bottomRight = { rcWindow.right, rcWindow.bottom };
+	ScreenToClient(hWndParent, &topLeft);
+	ScreenToClient(hWndParent, &bottomRight);
+
+	//scale appropriately
+	topLeft.x = (int) (topLeft.x * scale + 0.5f);
+	topLeft.y = (int) (topLeft.y * scale + 0.5f);
+	bottomRight.x = (int) (bottomRight.x * scale + 0.5f);
+	bottomRight.y = (int) (bottomRight.y * scale + 0.5f);
+
+	//set position
+	int width = bottomRight.x - topLeft.x;
+	int height = bottomRight.y - topLeft.y;
+	SetWindowPos(hWnd, hWnd, topLeft.x, topLeft.y, width, height, SWP_NOZORDER);
+
+	return TRUE;
+}
+
+VOID ScaleInterface(HWND hWnd, float scale) {
+	//iterate child windows recursively
+	EnumChildWindows(hWnd, ScaleInterfaceProc, (LPARAM) &scale);
+
+	//resize parent
+	RECT rcClient;
+	GetClientRect(hWnd, &rcClient);
+	int width = (int) (rcClient.right * scale + 0.5f);
+	int height = (int) (rcClient.bottom * scale + 0.5f);
+	SetWindowPos(hWnd, hWnd, 0, 0, width, height, SWP_NOZORDER | SWP_NOMOVE);
+}
+
 HWND getMainWindow(HWND hWnd) {
 	HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 	HWND hWndMain = (HWND) GetWindowLong(hWndMdi, GWL_HWNDPARENT);

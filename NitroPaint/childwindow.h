@@ -16,6 +16,8 @@ BOOL __stdcall SetFontProc(HWND hWnd, LPARAM lParam);
 
 VOID UpdateScrollbarVisibility(HWND hWnd);
 
+VOID ScaleInterface(HWND hWnd, float scale);
+
 VOID DestroyChild(HWND hWnd);
 
 HWND getMainWindow(HWND hWnd);
