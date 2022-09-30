@@ -75,6 +75,7 @@ int fileGuessPltChrScr(unsigned char *ptr, int size) {
 		}
 	}
 
+	if (!canBePalette && !canBeChar && !canBeScreen) return FILE_TYPE_INVALID;
 	if (canBePalette && !canBeChar && !canBeScreen) return FILE_TYPE_PALETTE;
 	if (!canBePalette && canBeChar && !canBeScreen) return FILE_TYPE_CHARACTER;
 	if (!canBePalette && !canBeChar && canBeScreen) return FILE_TYPE_SCREEN;
@@ -87,7 +88,10 @@ int fileGuessPltChrScr(unsigned char *ptr, int size) {
 			int f = (screen[i] >> 10) & 3;
 			if (f) nFlipped++;
 		}
-		if (nFlipped > (size / 2) / 4) {
+		if (nFlipped <= (size / 2) / 4) {
+			canBeScreen++;
+		}
+		if (nFlipped > (size / 2) / 2) {
 			canBeScreen--;
 			if (canBeScreen < 0) canBeScreen = 0;
 		}
@@ -110,9 +114,9 @@ int fileGuessPltChrScr(unsigned char *ptr, int size) {
 		for (int i = 0; i < n16; i++) {
 			int c = screen[i] & 0x3FF;
 			if (c >= lastChar) {
-				lastChar = c;
 				nIncreasing++;
 			}
+			lastChar = c;
 		}
 
 		if (nIncreasing * 2 < n16) {
@@ -142,8 +146,8 @@ int fileGuessPltChrScr(unsigned char *ptr, int size) {
 
 			if (chr != lastChar) {
 				nCounted++;
-				lastChar = chr;
 			}
+			lastChar = chr;
 		}
 
 		//shoot for >=25%
