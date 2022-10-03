@@ -111,6 +111,15 @@
     <ClCompile Include="bstream.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="nmcr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nmcrviewer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="palops.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tiler.h">
@@ -207,6 +216,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="bstream.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nmcr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nmcrviewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="palops.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

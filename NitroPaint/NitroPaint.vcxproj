@@ -127,6 +127,7 @@
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
       <WholeProgramOptimization>false</WholeProgramOptimization>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -181,11 +182,14 @@
     <ClCompile Include="nclr.c" />
     <ClCompile Include="nclrviewer.c" />
     <ClCompile Include="nitropaint.c" />
+    <ClCompile Include="nmcr.c" />
+    <ClCompile Include="nmcrviewer.c" />
     <ClCompile Include="nsbtx.c" />
     <ClCompile Include="nsbtxviewer.c" />
     <ClCompile Include="nscr.c" />
     <ClCompile Include="nscrviewer.c" />
     <ClCompile Include="palette.c" />
+    <ClCompile Include="palops.c" />
     <ClCompile Include="texconv.c" />
     <ClCompile Include="texture.c" />
     <ClCompile Include="textureeditor.c" />
@@ -214,11 +218,14 @@
     <ClInclude Include="nclr.h" />
     <ClInclude Include="nclrviewer.h" />
     <ClInclude Include="nitropaint.h" />
+    <ClInclude Include="nmcr.h" />
+    <ClInclude Include="nmcrviewer.h" />
     <ClInclude Include="nsbtx.h" />
     <ClInclude Include="nsbtxviewer.h" />
     <ClInclude Include="nscr.h" />
     <ClInclude Include="nscrviewer.h" />
     <ClInclude Include="palette.h" />
+    <ClInclude Include="palops.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="texconv.h" />
     <ClInclude Include="texture.h" />

@@ -24,6 +24,8 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 	HPEN previewOutline = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
 	HPEN highlightCellOutline = GetStockObject(WHITE_PEN);
 	HPEN ncerOutline = CreatePen(PS_SOLID, 1, RGB(0, 192, 32));
+	HPEN opSrcOutline = CreatePen(PS_SOLID, 1, RGB(255, 255, 0));
+	HPEN opDstOutline = CreatePen(PS_DOT, 1, RGB(0, 192, 128));
 
 	int previewPalette = -1;
 	HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
@@ -46,6 +48,15 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 	int nclrRowsPerPalette = nRowsPerPalette; //(1 << data->nclr.nBits) / 16; //16 in 4, 256 in 8
 	int highlightRowStart = previewPalette * nclrRowsPerPalette;
 	int highlightRowEnd = highlightRowStart + nRowsPerPalette;
+	
+	int palOpSrcIndex = -1, palOpSrcLength = 0, palOpDstIndex = -1, palOpStrideLength = 0, palOpBlocks = 0;
+	if (data->palOpDialog) {
+		palOpSrcIndex = data->palOp.srcIndex;
+		palOpSrcLength = data->palOp.srcLength;
+		palOpDstIndex = data->palOp.dstOffset * data->palOp.dstStride + data->palOp.srcIndex;
+		palOpStrideLength = data->palOp.dstStride;
+		palOpBlocks = data->palOp.dstCount;
+	}
 
 	int nColors = 0;
 
@@ -65,6 +76,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 		dstIndex = 16 * (data->dragPoint.y >> 4);
 	}
 
+	SetBkColor(hDC, RGB(0, 0, 0));
 	for (int y = 0; y < nRows; y++) {
 		for (int x = 0; x < 16; x++) {
 			int index = nColors;
@@ -81,13 +93,29 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 					}
 				}
 			}
-			WORD col = cols[index];
-			DWORD rgb = ColorConvertFromDS(col);
+			COLOR col = cols[index];
+			COLOR32 rgb = ColorConvertFromDS(col);
 
 			HBRUSH hbr = CreateSolidBrush(rgb);
 			SelectObject(hDC, hbr);
 
-			if (nColors == data->hoverIndex) {
+			//is in palette operation destination area?
+			int isInPalOpDest = 0;
+			if (data->palOpDialog) {
+				int dstRel = x + y * 16 - palOpDstIndex;
+				if (dstRel >= 0 && dstRel < (palOpBlocks - 1) * palOpStrideLength + palOpSrcLength) {
+					dstRel %= palOpStrideLength;
+					if (dstRel < palOpSrcLength) {
+						isInPalOpDest = 1;
+					}
+				}
+			}
+
+			if (y * 16 + x >= palOpSrcIndex && y * 16 + x < palOpSrcIndex + palOpSrcLength) {
+				SelectObject(hDC, opSrcOutline);
+			} else if (isInPalOpDest) {
+				SelectObject(hDC, opDstOutline);
+			} else if (nColors == data->hoverIndex) {
 				SelectObject(hDC, highlightCellOutline);
 			} else if (previewPalette != -1 && (y >= highlightRowStart && y < highlightRowEnd)) {
 				SelectObject(hDC, previewOutline);
@@ -110,6 +138,17 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 	DeleteObject(highlightRowOutline);
 	DeleteObject(previewOutline);
 	DeleteObject(ncerOutline);
+	DeleteObject(opSrcOutline);
+	DeleteObject(opDstOutline);
+}
+
+void NclrViewerPalOpUpdateCallback(PAL_OP *palOp) {
+	HWND hWnd = (HWND) palOp->param;
+	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+
+	PalopRunOperation(data->tempPalette, data->nclr.colors, data->nclr.nColors, palOp);
+
+	InvalidateRect(hWnd, NULL, FALSE);
 }
 
 int lightness(COLOR col) {
@@ -157,6 +196,17 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hoverX = -1;
 			data->hoverY = -1;
 			data->hoverIndex = -1;
+
+			PAL_OP *palOp = &data->palOp;
+			HWND hWndMain = getMainWindow(hWnd);
+			palOp->hWndParent = hWndMain;
+			palOp->param = (void *) hWnd;
+			palOp->dstOffset = 1;
+			palOp->ignoreFirst = 1;
+			palOp->dstCount = 1;
+			palOp->dstStride = 16;
+			palOp->srcLength = 16;
+			palOp->updateCallback = NclrViewerPalOpUpdateCallback;
 
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
@@ -787,6 +837,31 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						ShowWindow(hWndPaletteDialog, SW_SHOW);
 						SetActiveWindow(hWndPaletteDialog);
 						SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
+						break;
+					}
+					case ID_MENU_ANIMATEPALETTE:
+					{
+						data->tempPalette = (COLOR *) calloc(data->nclr.nColors, sizeof(COLOR));
+						memcpy(data->tempPalette, data->nclr.colors, data->nclr.nColors * sizeof(COLOR));
+
+						PAL_OP *palOp = &data->palOp;
+						palOp->srcIndex = data->contextHoverY * 16;
+						data->palOpDialog = 1;
+						int n = SelectPaletteOperation(palOp);
+						data->palOpDialog = 0;
+
+						memcpy(data->nclr.colors, data->tempPalette, data->nclr.nColors * sizeof(COLOR));
+						free(data->tempPalette);
+						data->tempPalette = NULL;
+
+						//apply modifier
+						if (n) {
+							COLOR *cpy = (COLOR *) calloc(data->nclr.nColors, sizeof(COLOR));
+							PalopRunOperation(data->nclr.colors, cpy, data->nclr.nColors, palOp);
+							memcpy(data->nclr.colors, cpy, data->nclr.nColors * sizeof(COLOR));
+							free(cpy);
+						}
+						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
 				}
