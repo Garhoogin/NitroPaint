@@ -1777,7 +1777,7 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 	g_configuration.fullPaths = GetPrivateProfileInt(L"NitroPaint", L"FullPaths", 1, lpszPath);
 	g_configuration.renderTransparent = GetPrivateProfileInt(L"NitroPaint", L"RenderTransparent", 1, lpszPath);
 	g_configuration.backgroundPath = (LPWSTR) calloc(MAX_PATH, sizeof(WCHAR));
-	g_configuration.dpiAware = GetPrivateProfileInt(L"NitroPaint", L"DPIAware", 0, lpszPath);
+	g_configuration.dpiAware = GetPrivateProfileInt(L"NitroPaint", L"DPIAware", 1, lpszPath);
 	GetPrivateProfileString(L"NitroPaint", L"Background", L"", g_configuration.backgroundPath, MAX_PATH, lpszPath);
 
 	//load background image
