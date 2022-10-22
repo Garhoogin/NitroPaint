@@ -49,6 +49,11 @@ char *lz77decompress(char *buffer, int size, int *uncompressedSize){
 	return result;
 }
 
+char *lz77HeaderDecompress(char *buffer, int size, int *uncompressedSize) {
+	if (size < 8) return NULL;
+	return lz77decompress(buffer + 4, size - 4, uncompressedSize);
+}
+
 char *lz11decompress(char *buffer, int size, int *uncompressedSize){
 	//decompress the input buffer. 
 	if(size < 4) return NULL;
@@ -259,6 +264,19 @@ char *lz77compress(char *buffer, int size, int *compressedSize){
 	return realloc(compressedBase, nSize);
 
 }//22999
+
+char *lz77HeaderCompress(char *buffer, int size, int *compressedSize) {
+	char *compressed = lz77compress(buffer, size, compressedSize);
+	if (compressed == NULL) return NULL;
+	*compressedSize += 4;
+	compressed = realloc(compressed, *compressedSize);
+	memmove(compressed + 4, compressed, *compressedSize - 4);
+	compressed[0] = 'L';
+	compressed[1] = 'Z';
+	compressed[2] = '7';
+	compressed[3] = '7';
+	return compressed;
+}
 
 char *lz11compress(char *buffer, int size, int *compressedSize) {
 	int compressedMaxSize = 7 + 9 * ((size + 7) >> 3);
@@ -625,6 +643,12 @@ int lz77IsCompressed(char *buffer, unsigned size) {
 	return 1;
 }
 
+int lz77HeaderIsCompressed(unsigned char *buffer, unsigned size) {
+	if (size < 8) return 0;
+	if (buffer[0] != 'L' || buffer[1] != 'Z' || buffer[2] != '7' || buffer[3] != '7') return 0;
+	return lz77IsCompressed(buffer + 4, size - 4);
+}
+
 int lz11IsCompressed(char *buffer, unsigned size) {
 	if (size < 4) return 0;
 	if (*buffer != 0x11) return 0;
@@ -826,6 +850,7 @@ char *lz11CompHeaderCompress(char *buffer, int size, int *compressedSize) {
 }
 
 int getCompressionType(char *buffer, int size) {
+	if (lz77HeaderIsCompressed(buffer, size)) return COMPRESSION_LZ77_HEADER;
 	if (lz77IsCompressed(buffer, size)) return COMPRESSION_LZ77;
 	if (lz11IsCompressed(buffer, size)) return COMPRESSION_LZ11;
 	if (lz11CompHeaderIsValid(buffer, size)) return COMPRESSION_LZ11_COMP_HEADER;
@@ -854,6 +879,8 @@ char *decompress(char *buffer, int size, int *uncompressedSize) {
 		case COMPRESSION_HUFFMAN_4:
 		case COMPRESSION_HUFFMAN_8:
 			return huffmanDecompress(buffer, size, uncompressedSize);
+		case COMPRESSION_LZ77_HEADER:
+			return lz77HeaderDecompress(buffer, size, uncompressedSize);
 	}
 	return NULL;
 }
@@ -877,6 +904,8 @@ char *compress(char *buffer, int size, int compression, int *compressedSize) {
 			return huffman4Compress(buffer, size, compressedSize);
 		case COMPRESSION_HUFFMAN_8:
 			return huffman8Compress(buffer, size, compressedSize);
+		case COMPRESSION_LZ77_HEADER:
+			return lz77HeaderCompress(buffer, size, compressedSize);
 	}
 	return NULL;
 }
