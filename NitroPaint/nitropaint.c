@@ -788,7 +788,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NTFT_NTFT40084:
 					{
-						CreateWindow(L"NtftConvertDialogClass", L"NTFT To Nitro TGA", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						CreateWindow(L"NtftConvertDialogClass", L"NTFT To Texture", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
 						break;
 					}
 					case ID_TOOLS_COLORPICKER:

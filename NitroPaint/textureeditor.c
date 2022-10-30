@@ -179,6 +179,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
 			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			UpdatePaletteLabel(hWnd);
 			break;
 		}
 		case NV_SETPATH:
