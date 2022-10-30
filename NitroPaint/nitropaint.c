@@ -1409,23 +1409,13 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					texture.texels.texImageParam = (format << 26) | ((ilog2(width) - 3) << 20) | ((ilog2(height) - 3) << 23);
 					memcpy(&texture.palette.name, palName, 16);
 
-					LPWSTR out = saveFileDialog(hWnd, L"Save Nitro TGA", L"TGA Files\0*.tga\0All Files\0*.*\0", L"tga");
-					if (!out) {
-						if (ntft != NULL) free(ntft);
-						if (ntfp != NULL) free(ntfp);
-						if (ntfi != NULL) free(ntfi);
-						break;
-					}
-					writeNitroTGA(out, &texture.texels, &texture.palette);
+					//texture editor takes ownership of texture data, no need to free
+					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+					HWND hWndMdi = nitroPaintStruct->hWndMdi;
+					CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, &texture);
 
-					if (ntft != NULL) free(ntft);
-					if (ntfp != NULL) free(ntfp);
-					if (ntfi != NULL) free(ntfi);
-
-					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					DestroyWindow(hWnd);
-					OpenFileByName(hWndMain, out);
-					free(out);
 				}
 			}
 			break;

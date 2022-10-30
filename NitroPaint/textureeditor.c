@@ -17,6 +17,7 @@ extern HICON g_appIcon;
 #define NV_INITIALIZE (WM_USER+1)
 #define NV_RECALCULATE (WM_USER+2)
 #define NV_SETPATH (WM_USER+3)
+#define NV_INITIALIZE_IMMEDIATE (WM_USER+4)
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
@@ -139,6 +140,38 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				UpdatePaletteLabel(hWnd);
 			}
 
+			WCHAR buffer[16];
+			int nColors = countColors(data->px, data->width * data->height);
+			int len = wsprintfW(buffer, L"Colors: %d", nColors);
+			SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) buffer);
+
+			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			break;
+		}
+		case NV_INITIALIZE_IMMEDIATE:
+		{
+			//set texture data directly
+			TEXTURE *texture = (TEXTURE *) lParam;
+			memcpy(&data->textureData, texture, sizeof(TEXTURE));
+			data->isNitro = 1;
+			data->hasPalette = FORMAT(texture->texels.texImageParam) != CT_DIRECT;
+			data->format = FORMAT(texture->texels.texImageParam);
+			data->width = TEXW(texture->texels.texImageParam);
+			data->height = TEXH(texture->texels.texImageParam);
+			data->frameData.contentWidth = data->width;
+			data->frameData.contentHeight = data->height;
+			data->px = (COLOR32 *) calloc(data->width * data->height, sizeof(COLOR32));
+
+			//decode texture data for preview
+			int nPx = data->width * data->height;
+			textureRender(data->px, &texture->texels, &texture->palette, 0);
+			for (int i = 0; i < nPx; i++) {
+				COLOR32 p = data->px[i];
+				data->px[i] = REVERSE(p);
+			}
+
+			//update UI
 			WCHAR buffer[16];
 			int nColors = countColors(data->px, data->width * data->height);
 			int len = wsprintfW(buffer, L"Colors: %d", nColors);
@@ -1782,5 +1815,12 @@ HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, L
 	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TextureEditorClass", L"Texture Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
 	SendMessage(h, NV_INITIALIZE, bWidth | (bHeight << 16), (LPARAM) bits);
+	return h;
+}
+
+HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TEXTURE *texture) {
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TextureEditorClass", L"Texture Editor", 
+		WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) texture);
 	return h;
 }
