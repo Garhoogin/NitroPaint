@@ -422,7 +422,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 						free(path);
 					} else if (hWndControl == data->hWndExportAll) {
-						CoInitialize(NULL); //required for SHBrowseForFolder
 						WCHAR path[MAX_PATH]; //we will overwrite this with the *real* path
 
 						BROWSEINFO bf;
@@ -479,8 +478,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							free(palNames[i]);
 						}
 						free(palNames);
-
-						CoUninitialize();
 					}
 				}
 			}

@@ -138,7 +138,7 @@
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
       <AdditionalOptions>/EMITPOGOPHASEINFO /PDBALTPATH:NitroPaint.pdb %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>C:\users\patri_000\Documents\tcc\asm\lib\msvcrt-light.lib;uxtheme.lib;version.lib;gdiplus.lib;comctl32.lib;dbghelp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>C:\users\patri_000\Documents\tcc\asm\lib\msvcrt-light.lib;uxtheme.lib;version.lib;windowscodecs.lib;comctl32.lib;dbghelp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <DelayLoadDLLs>dbghelp.dll</DelayLoadDLLs>
       <GenerateDebugInformation>true</GenerateDebugInformation>

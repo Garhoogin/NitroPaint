@@ -1824,6 +1824,7 @@ void RegisterClasses() {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	g_appIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
 	HACCEL hAccel = LoadAccelerators(hInstance, (LPCWSTR) IDR_ACCELERATOR1);
+	CoInitialize(NULL);
 
 	SetConfigPath();
 	ReadConfiguration(g_configPath);
