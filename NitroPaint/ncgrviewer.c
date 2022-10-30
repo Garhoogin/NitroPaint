@@ -121,6 +121,41 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	free(px);
 }
 
+void ncgrExportImage(NCGR *ncgr, NCLR *nclr, int paletteIndex, LPCWSTR path) {
+	//convert to bitmap layout
+	int tilesX = ncgr->tilesX, tilesY = ncgr->tilesY;
+	int width = tilesX * 8, height = tilesY * 8;
+	unsigned char *bits = (unsigned char *) calloc(width * height, 1);
+	for (int tileY = 0; tileY < tilesY; tileY++) {
+		for (int tileX = 0; tileX < tilesX; tileX++) {
+			BYTE *tile = ncgr->tiles[tileX + tileY * tilesX];
+			for (int y = 0; y < 8; y++) {
+				memcpy(bits + tileX * 8 + (tileY * 8 + y) * width, tile + y * 8, 8);
+			}
+		}
+	}
+
+	//convert palette
+	int depth = ncgr->nBits;
+	int paletteSize = 1 << depth;
+	int paletteStart = paletteIndex << depth;
+	if (paletteStart + paletteSize > nclr->nColors) {
+		paletteSize = nclr->nColors - paletteStart;
+	}
+	if (paletteSize < 0) paletteSize = 0;
+	COLOR32 *pal = (COLOR32 *) calloc(paletteSize, sizeof(COLOR32));
+	for (int i = 0; i < paletteSize; i++) {
+		COLOR32 c = ColorConvertFromDS(nclr->colors[paletteStart + i]);
+		if (i) c |= 0xFF000000;
+		pal[i] = c;
+	}
+
+	imageWriteIndexed(bits, width, height, pal, paletteSize, path);
+
+	free(bits);
+	free(pal);
+}
+
 #define NV_INITIALIZE (WM_USER+1)
 #define NV_RECALCULATE (WM_USER+2)
 #define NV_INITIALIZE_IMMEDIATE (WM_USER+3)
@@ -483,7 +518,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					{
 						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 						if (!location) break;
-						int width, height;
 
 						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
@@ -499,10 +533,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						ncgr = &data->ncgr;
 
-						DWORD * bits = renderNcgrBits(ncgr, nclr, FALSE, FALSE, &width, &height, -1, -1, data->selectedPalette, data->transparent);
-
-						writeImage(bits, width, height, location);
-						free(bits);
+						ncgrExportImage(ncgr, nclr, data->selectedPalette, location);
 						free(location);
 						break;
 					}

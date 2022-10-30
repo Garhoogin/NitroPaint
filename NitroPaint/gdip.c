@@ -341,14 +341,14 @@ HRESULT imageWriteIndexed(unsigned char *bits, int width, int height, COLOR32 *p
 	COLOR32 *paletteCopy = (COLOR32 *) calloc(paletteSize, 4);
 	for (int i = 0; i < paletteSize; i++) {
 		COLOR32 c = palette[i];
-		c = (c & 0x00FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF);
+		c = (c & 0xFF00FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF);
 		paletteCopy[i] = c;
 	}
 
 	//GUID allocated on the stack since it must be writable for some reason
 	WICPixelFormatGUID format;
 	memcpy(&format, depth == 4 ? &GUID_WICPixelFormat4bppIndexed : &GUID_WICPixelFormat8bppIndexed, sizeof(format));
-	HRESULT result = imageWriteInternal(path, scan0, &format, width, height, stride, scan0Size, palette, paletteSize);
+	HRESULT result = imageWriteInternal(path, scan0, &format, width, height, stride, scan0Size, paletteCopy, paletteSize);
 	free(scan0);
 	free(paletteCopy);
 	return result;
