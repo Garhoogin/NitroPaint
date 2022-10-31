@@ -132,14 +132,47 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 		}
 	}
 
-	/*for (int i = 0; i < bWidth * bHeight; i++) {
-		DWORD d = bits[i];
-		int r = d & 0xFF;
-		int g = (d >> 8) & 0xFF;
-		int b = (d >> 16) & 0xFF;
-		int a = (d >> 24) & 0xFF;
-		bits[i] = b | (g << 8) | (r << 16) | (a << 24);
-	}*/
+	return bits;
+}
+
+unsigned char *renderNscrIndexed(NSCR *nscr, NCGR *ncgr, int tileBase, int *width, int *height, BOOL transparent) {
+	int bWidth = nscr->nWidth;
+	int bHeight = nscr->nHeight;
+	*width = bWidth;
+	*height = bHeight;
+
+	unsigned char *bits = (unsigned char *) calloc(bWidth * bHeight, 1);
+
+	int tilesX = nscr->nWidth >> 3;
+	int tilesY = nscr->nHeight >> 3;
+
+	unsigned char block[64];
+	for (int y = 0; y < tilesY; y++) {
+		int offsetY = y * 8;
+		for (int x = 0; x < tilesX; x++) {
+			int offsetX = x * 8;
+
+			//fetch screen info
+			uint16_t scr = nscr->data[x + y * tilesX];
+			int chr = scr & 0x3FF;
+			int flip = scr >> 10;
+			int pal = scr >> 12;
+			unsigned char *chrData = ncgr->tiles[chr];
+			for (int i = 0; i < 64; i++) {
+				int tileX = i % 8;
+				int tileY = i / 8;
+				if (flip & TILE_FLIPX) tileX ^= 7;
+				if (flip & TILE_FLIPY) tileY ^= 7;
+				block[i] = chrData[tileX + tileY * 8] | (pal << 4);
+			}
+			
+			int destOffset = x * 8 + y * 8 * tilesX * 8;
+			for (int i = 0; i < 8; i++) {
+				memcpy(bits + destOffset + i * bWidth, block + i * 8, 8);
+			}
+		}
+	}
+
 	return bits;
 }
 
@@ -359,9 +392,20 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						nscr = &data->nscr;
 
-						DWORD *bits = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &width, &height, -1, -1, -1, -1, -1, -1, -1, data->transparent);
-						
-						writeImage(bits, width, height, location);
+						//write 8bpp indexed
+						COLOR32 palette[256] = { 0 };
+						int transparentOutput = 1;
+						int paletteSize = 1 << ncgr->nBits;
+						if (nclr != NULL) {
+							for (int i = 0; i < min(nclr->nColors, 256); i++) {
+								int makeTransparent = transparentOutput && ((i % paletteSize) == 0);
+
+								palette[i] = ColorConvertFromDS(nclr->colors[i]);
+								if (!makeTransparent) palette[i] |= 0xFF000000;
+							}
+						}
+						unsigned char *bits = renderNscrIndexed(nscr, ncgr, data->tileBase, &width, &height, TRUE);
+						imageWriteIndexed(bits, width, height, palette, 256, location);
 						free(bits);
 						free(location);
 						break;
