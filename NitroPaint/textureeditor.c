@@ -21,6 +21,79 @@ extern HICON g_appIcon;
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
+void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
+	//export as PNG
+	//if texture is palette4, palette16 or palette256, output indexed image with appropriate color 0
+	//if texture is direct or 4x4, output non-indexed
+	//if texture is a3i5 or a5i3, use a 256-color palette that repeats the palette at varying alphas
+	int texImageParam = texture->texels.texImageParam;
+	int format = FORMAT(texImageParam);
+	int width = TEXW(texImageParam);
+	int height = TEXH(texImageParam);
+
+	//buffer to hold converted palette
+	int paletteSize = 0;
+	COLOR32 palette[256] = { 0 };
+	if (format != CT_DIRECT) {
+		//convert to 24-bit
+		paletteSize = texture->palette.nColors;
+		for (int i = 0; i < paletteSize; i++) {
+			palette[i] = ColorConvertFromDS(texture->palette.pal[i]);
+		}
+
+		//for a3i5 and a5i3, build up varying levels of alpha
+		if (format == CT_A3I5 || format == CT_A5I3) {
+			int nAlphaLevels = format == CT_A3I5 ? 8 : 32;
+			int nColorsPerAlpha = 256 / nAlphaLevels;
+
+			for (int i = 1; i < nAlphaLevels; i++) {
+				int alpha = (i * 510 + nAlphaLevels - 1) / (2 * nAlphaLevels - 2); //rounding to nearest
+				for (int j = 0; j < paletteSize; j++) {
+					COLOR32 c = palette[j];
+					c |= alpha << 24;
+					palette[j + i * nColorsPerAlpha] = c;
+				}
+			}
+			paletteSize = 256;
+		} else if (format == CT_4COLOR || format == CT_16COLOR || format == CT_256COLOR) {
+			//make palette opaque except first color if c0xp
+			int c0xp = COL0TRANS(texImageParam);
+			for (int i = 0; i < paletteSize; i++) {
+				if (i || !c0xp) palette[i] |= 0xFF000000;
+			}
+		} else {
+			//else we can't export an indexed image unfortunately (4x4 and direct)
+			paletteSize = 0;
+		}
+	}
+
+	if (format == CT_256COLOR || format == CT_A3I5 || format == CT_A5I3) {
+		//prepare image output. For palette256, a3i5 and a5i3, we can export the data as it already is.
+		imageWriteIndexed((unsigned char *) texture->texels.texel, width, height, palette, paletteSize, path);
+	} else if (format == CT_4x4 || format == CT_DIRECT) {
+		//else if 4x4 or direct, just export full-color image
+		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+		textureRender(px, &texture->texels, &texture->palette, 0);
+		imageWrite(px, width, height, path);
+		free(px);
+	} else {
+		//palette16 or palette4, will need to convert the bit depth
+		unsigned char *bits = (unsigned char *) calloc(width * height, 1);
+		int depth = format == CT_4COLOR ? 2 : 4;
+		int mask = depth == 2 ? 0x3 : 0xF;
+
+		for (int y = 0; y < height; y++) {
+			unsigned char *rowSrc = texture->texels.texel + y * width * depth / 8;
+			unsigned char *rowDst = bits + y * width;
+			for (int x = 0; x < width; x++) {
+				rowDst[x] = (rowSrc[x * depth / 8] >> ((x * depth) % 8)) & mask;
+			}
+		}
+		imageWriteIndexed(bits, width, height, palette, paletteSize, path);
+		free(bits);
+	}
+}
+
 int getTexelVramSize(int texImageParam) {
 	int w = TEXW(texImageParam);
 	int h = TEXH(texImageParam);
@@ -90,11 +163,12 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hWndFormatLabel = CreateWindow(L"STATIC", L"Format: none", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 10, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndConvert = CreateWindow(L"BUTTON", L"Convert To...", WS_VISIBLE | WS_CHILD, 310, 37, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteLabel = CreateWindow(L"STATIC", L"No palette", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 69, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndEditPalette = CreateWindow(L"BUTTON", L"Edit Palette", WS_VISIBLE | WS_CHILD, 310, 96, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndUniqueColors = CreateWindow(L"STATIC", L"Colors: 0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 128, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndEditPalette = CreateWindow(L"BUTTON", L"Edit Palette", WS_VISIBLE | WS_CHILD, 310, 123, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndExportNTF = CreateWindow(L"BUTTON", L"Export NTF", WS_VISIBLE | WS_CHILD, 310, 150, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndUniqueColors = CreateWindow(L"STATIC", L"Colors: 0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 155, 100, 22, hWnd, NULL, NULL, NULL);
 
-			data->hWndTexelVram = CreateWindow(L"STATIC", L"Texel: 0KB", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 155, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteVram = CreateWindow(L"STATIC", L"Palette: 0KB", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 182, 110, 22, hWnd, NULL, NULL, NULL);
+			data->hWndTexelVram = CreateWindow(L"STATIC", L"Texel: 0KB", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 182, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteVram = CreateWindow(L"STATIC", L"Palette: 0KB", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 209, 110, 22, hWnd, NULL, NULL, NULL);
 			break;
 		}
 		case WM_PAINT:
@@ -111,9 +185,10 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			MoveWindow(data->hWndConvert, rcClient.right - 110, 37, 100, 22, TRUE);
 			MoveWindow(data->hWndPaletteLabel, rcClient.right - 110, 69, 100, 22, TRUE);
 			MoveWindow(data->hWndEditPalette, rcClient.right - 110, 96, 100, 22, TRUE);
-			MoveWindow(data->hWndUniqueColors, rcClient.right - 110, 128, 100, 22, TRUE);
-			MoveWindow(data->hWndTexelVram, rcClient.right - 110, 155, 100, 22, TRUE);
-			MoveWindow(data->hWndPaletteVram, rcClient.right - 110, 182, 110, 22, TRUE);
+			MoveWindow(data->hWndExportNTF, rcClient.right - 110, 123, 100, 22, TRUE);
+			MoveWindow(data->hWndUniqueColors, rcClient.right - 110, 155, 100, 22, TRUE);
+			MoveWindow(data->hWndTexelVram, rcClient.right - 110, 182, 100, 22, TRUE);
+			MoveWindow(data->hWndPaletteVram, rcClient.right - 110, 209, 110, 22, TRUE);
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
 		case NV_INITIALIZE:
@@ -236,6 +311,57 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					ShowWindow(data->hWndConvertDialog, SW_SHOW);
 					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
 					SendMessage(data->hWndConvertDialog, NV_INITIALIZE, 0, 0);
+				} else if (hWndControl == data->hWndExportNTF) {
+					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					//if not in any format, it cannot be exported.
+					if (!data->isNitro) {
+						MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
+						break;
+					}
+
+					LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0\0", L"ntft");
+					if (ntftPath == NULL) break;
+
+					LPWSTR ntfiPath = NULL;
+					if (FORMAT(data->textureData.texels.texImageParam) == CT_4x4) {
+						ntfiPath = saveFileDialog(hWndMain, L"Save NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0\0", L"ntfi");
+						if (ntfiPath == NULL) {
+							free(ntftPath);
+							break;
+						}
+					}
+
+					DWORD dwWritten;
+					int texImageParam = data->textureData.texels.texImageParam;
+					int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+					HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+					WriteFile(hFile, data->textureData.texels.texel, texelSize, &dwWritten, NULL);
+					CloseHandle(hFile);
+					free(ntftPath);
+
+					if (ntfiPath != NULL) {
+						hFile = CreateFile(ntfiPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+						WriteFile(hFile, data->textureData.texels.cmp, texelSize / 2, &dwWritten, NULL);
+						CloseHandle(hFile);
+						free(ntfiPath);
+					}
+
+					//palette export
+					if (data->textureData.palette.pal != NULL) {
+						COLOR *colors = data->textureData.palette.pal;
+						int nColors = data->textureData.palette.nColors;
+
+						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						LPWSTR ntfpPath = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
+						if (ntfpPath == NULL) break;
+
+						DWORD dwWritten;
+						HANDLE hFile = CreateFile(ntfpPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+						WriteFile(hFile, colors, nColors * 2, &dwWritten, NULL);
+						CloseHandle(hFile);
+
+						free(ntfpPath);
+					}
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -305,39 +431,13 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					}
 					case ID_FILE_EXPORT:
 					{
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-						//if not in any format, it cannot be exported.
-						if (!data->isNitro) {
-							MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
-							break;
-						}
+						//PNG export
+						HWND hWndMain = getMainWindow(hWnd);
+						LPWSTR path = saveFileDialog(hWndMain, L"Export Texture", L"PNG files (*.png)\0*.png\0All Files\0*.*\0", L".png");
+						if (path == NULL) break;
 
-						LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0\0", L"ntft");
-						if (ntftPath == NULL) break;
-
-						LPWSTR ntfiPath = NULL;
-						if (FORMAT(data->textureData.texels.texImageParam) == CT_4x4) {
-							ntfiPath = saveFileDialog(hWndMain, L"Save NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0\0", L"ntfi");
-							if (ntfiPath == NULL) {
-								free(ntftPath);
-								break;
-							}
-						}
-
-						DWORD dwWritten;
-						int texImageParam = data->textureData.texels.texImageParam;
-						int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
-						HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-						WriteFile(hFile, data->textureData.texels.texel, texelSize, &dwWritten, NULL);
-						CloseHandle(hFile);
-						free(ntftPath);
-
-						if (ntfiPath != NULL) {
-							hFile = CreateFile(ntfiPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-							WriteFile(hFile, data->textureData.texels.cmp, texelSize / 2, &dwWritten, NULL);
-							CloseHandle(hFile);
-							free(ntfiPath);
-						}
+						exportTextureImage(path, &data->textureData);
+						free(path);
 						break;
 					}
 				}

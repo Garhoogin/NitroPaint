@@ -35,6 +35,7 @@ typedef struct {
 	HWND hWndUniqueColors;
 	HWND hWndTexelVram;
 	HWND hWndPaletteVram;
+	HWND hWndExportNTF;
 
 	HWND hWndFormat;
 	HWND hWndPaletteName;
