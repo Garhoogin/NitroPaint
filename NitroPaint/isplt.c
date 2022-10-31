@@ -1241,15 +1241,26 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 	//write palettes
 	int nPalettesWritten = 0;
 	int outputOffs = max(paletteOffset, 1);
+	reduction->maskColors = TRUE;
 	for (int i = 0; i < nTiles; i++) {
 		TILE *t = tiles + i;
 		if (t->palIndex != i) continue;
+
+		//rebuild palette but with masking enabled
+		resetHistogram(reduction);
+		for (int j = 0; j < nTiles; j++) {
+			if (tiles[j].palIndex == t->palIndex) {
+				computeHistogram(reduction, tiles[j].rgb, 8, 8);
+			}
+		}
+		flattenHistogram(reduction);
+		optimizePalette(reduction);
+		paletteToArray(reduction);
 		
 		COLOR32 palBuf[16] = { 0 };
 		if(paletteOffset == 0) palBuf[0] = 0xFF00FF;
 		for (int j = 0; j < 15; j++) {
-			int rgb[4];
-			yiqToRgb(rgb, &t->palette[j][0]);
+			uint8_t *rgb = &reduction->paletteRgb[j][0];
 			palBuf[j + outputOffs] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
 		}
 		qsort(palBuf + 1, nColsPerPalette, 4, lightnessCompare);
