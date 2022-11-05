@@ -71,9 +71,13 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 		//prepare image output. For palette256, a3i5 and a5i3, we can export the data as it already is.
 		imageWriteIndexed((unsigned char *) texture->texels.texel, width, height, palette, paletteSize, path);
 	} else if (format == CT_4x4 || format == CT_DIRECT) {
-		//else if 4x4 or direct, just export full-color image
+		//else if 4x4 or direct, just export full-color image. Red/blue must be swapped here
 		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
 		textureRender(px, &texture->texels, &texture->palette, 0);
+		for (int i = 0; i < width * height; i++) {
+			COLOR32 c = px[i];
+			px[i] = REVERSE(c);
+		}
 		imageWrite(px, width, height, path);
 		free(px);
 	} else {
@@ -436,7 +440,12 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						LPWSTR path = saveFileDialog(hWndMain, L"Export Texture", L"PNG files (*.png)\0*.png\0All Files\0*.*\0", L".png");
 						if (path == NULL) break;
 
-						exportTextureImage(path, &data->textureData);
+						//if texture is in DS format, export from texture data
+						if (data->isNitro) {
+							exportTextureImage(path, &data->textureData);
+						} else {
+							imageWrite(data->px, data->width, data->height, path);
+						}
 						free(path);
 						break;
 					}
