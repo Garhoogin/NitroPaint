@@ -355,18 +355,10 @@ HRESULT imageWriteIndexed(unsigned char *bits, int width, int height, COLOR32 *p
 }
 
 HRESULT imageWrite(COLOR32 *px, int width, int height, LPCWSTR path) {
-	COLOR32 *bits = (COLOR32 *) calloc(height, width * 4);
-	for (int i = 0; i < width * height; i++) {
-		COLOR32 c = px[i];
-		c = (c & 0xFF00FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF);
-		bits[i] = c;
-	}
-
 	int stride = width * 4;
 	WICPixelFormatGUID format;
 	memcpy(&format, &GUID_WICPixelFormat32bppBGRA, sizeof(format));
-	HRESULT result = imageWriteInternal(path, bits, &format, width, height, stride, stride * height, NULL, 0);
-	free(bits);
+	HRESULT result = imageWriteInternal(path, px, &format, width, height, stride, stride * height, NULL, 0);
 	return result;
 }
 
