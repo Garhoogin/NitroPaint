@@ -257,10 +257,6 @@ void ncerEditorRedo(HWND hWnd) {
 	UpdateControls(hWnd);
 }
 
-#define NV_INITIALIZE (WM_USER+1)
-#define NV_SETTITLE (WM_USER+2)
-#define NV_INITIALIZE_IMMEDIATE (WM_USER+3)
-
 LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
 	if (!data) {
@@ -978,6 +974,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			undoDestroy(&data->undo);
 			break;
 		}
+		case NV_GETTYPE:
+			return FILE_TYPE_CELL;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }

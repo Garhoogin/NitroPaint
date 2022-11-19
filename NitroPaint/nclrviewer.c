@@ -177,10 +177,31 @@ int colorSortHue(LPCVOID p1, LPCVOID p2) {
 	return h1 - h2;
 }
 
-#define NV_INITIALIZE (WM_USER+1)
-#define NV_INITIALIZE_IMMEDIATE (WM_USER+2)
-#define NV_SETTITLE (WM_USER+3)
-#define NV_PICKFILE (WM_USER+4)
+BOOL ValidateColorsNscrProc(HWND hWnd, void *param) {
+	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	nscrViewerData->verifyColor = (int) param;
+	nscrViewerData->verifyFrames = 10;
+	SetTimer(hWnd, 1, 100, NULL);
+	return TRUE;
+}
+
+BOOL SwapNscrPalettesProc(HWND hWnd, void *param) {
+	int *srcDest = (int *) param;
+	int srcPalette = srcDest[0];
+	int dstPalette = srcDest[1];
+
+	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NSCR *nscr = &nscrViewerData->nscr;
+	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+		uint16_t d = nscr->data[i];
+		int pal = (d >> 12) & 0xF;
+		if (pal == srcPalette) pal = dstPalette;
+		else if (pal == dstPalette) pal = srcPalette;
+		d = (d & 0xFFF) | (pal << 12);
+		nscr->data[i] = d;
+	}
+	return TRUE;
+}
 
 LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
@@ -251,11 +272,9 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				memcpy(&data->nclr, nclr, sizeof(NCLR));
 			}
 
-			HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			HWND hWndMain = (HWND) GetWindowLong(hWndMdi, GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
-			if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
+			HWND hWndMain = getMainWindow(hWnd);
+			InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
+			InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 
 			if (data->nclr.header.format == NCLR_TYPE_HUDSON) {
 				SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
@@ -327,12 +346,11 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hoverY = hoverY;
 			data->hoverIndex = hoverIndex;
 
-			InvalidateRect(hWnd, NULL, FALSE);
 			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
-			if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
-			if (nitroPaintStruct->hWndNcerViewer) InvalidateRect(nitroPaintStruct->hWndNcerViewer, NULL, FALSE);
+			InvalidateRect(hWnd, NULL, FALSE);
+			InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
+			InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
+			InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 			break;
 		}
 		case WM_LBUTTONDOWN:
@@ -416,10 +434,9 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							data->nclr.colors[index] = ColorConvertToDS(result);
 							InvalidateRect(hWnd, NULL, FALSE);
 							
-							NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-							if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
-							if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
-							if (nitroPaintStruct->hWndNcerViewer) InvalidateRect(nitroPaintStruct->hWndNcerViewer, NULL, FALSE);
+							InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
+							InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
+							InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 						}
 					}
 				}
@@ -436,7 +453,6 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				HWND hWndMain = getMainWindow(hWnd);
 				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 				HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-				HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
 				if (!data->rowDragging) {
 					//test for preserve dragging to adjust destination 
 					if (data->preserveDragging && hWndNcgrViewer != NULL) {
@@ -465,7 +481,8 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								//if no screen, just swap the indices if the palette numbers line up.
 								int nclrPalette = srcIndex >> ncgr->nBits;
 								int mask = ncgr->nBits == 8 ? 0xFF : 0xF;
-								if (hWndNscrViewer == NULL) {
+								int nNscrEditors;
+								if ((nNscrEditors = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0)) == 0) {
 									int ncgrPalette = ncgrViewerData->selectedPalette;
 									if (ncgrPalette == nclrPalette) {
 
@@ -478,60 +495,57 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 										}
 									}
 								} else {
-									//with screen, so do the above but only for tiles referenced by it.
-									NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
-									NSCR *nscr = &nscrViewerData->nscr;
-									
 									//this is messy. To avoid "fxing" a tile twice, keep track of which ones have been "fixed".
 									BYTE *fixBuffer = (BYTE *) calloc(ncgr->nTiles, 1);
-									for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-										WORD d = nscr->data[i];
-										int chr = d & 0x3FF;
-										int pal = (d >> 12) & 0xF;
 
-										if (pal == nclrPalette) {
-											int cIndex = chr - nscrViewerData->tileBase;
-											if (cIndex >= 0 && cIndex < ncgr->nTiles && !fixBuffer[cIndex]) {
-												BYTE *tile = ncgr->tiles[cIndex];
-												for (int j = 0; j < 64; j++) {
-													if (tile[j] == (srcIndex & mask)) tile[j] = dstIndex & mask;
-													else if (tile[j] == (dstIndex & mask)) tile[j] = srcIndex & mask;
+									//check each open screen file
+									HWND *nscrViewers = (HWND *) calloc(nNscrEditors, sizeof(HWND));
+									GetAllEditors(hWndMain, FILE_TYPE_SCREEN, nscrViewers, nNscrEditors);
+									for (int nscrId = 0; nscrId < nNscrEditors; nscrId++) {
+										//with screen, so do the above but only for tiles referenced by it.
+										HWND hWndNscrViewer = nscrViewers[nscrId];
+										NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+										NSCR *nscr = &nscrViewerData->nscr;
+
+										for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+											WORD d = nscr->data[i];
+											int chr = d & 0x3FF;
+											int pal = (d >> 12) & 0xF;
+
+											if (pal == nclrPalette) {
+												int cIndex = chr - nscrViewerData->tileBase;
+												if (cIndex >= 0 && cIndex < ncgr->nTiles && !fixBuffer[cIndex]) {
+													BYTE *tile = ncgr->tiles[cIndex];
+													for (int j = 0; j < 64; j++) {
+														if (tile[j] == (srcIndex & mask)) tile[j] = dstIndex & mask;
+														else if (tile[j] == (dstIndex & mask)) tile[j] = srcIndex & mask;
+													}
+													fixBuffer[cIndex] = 1;
 												}
-												fixBuffer[cIndex] = 1;
 											}
 										}
 									}
 									free(fixBuffer);
+									free(nscrViewers);
 								}
 							}
 						}
 					}
 				} else {
 					if (dstIndex + 15 < data->nclr.nColors && dstIndex >= 0) {
-						WORD tmp[16];
-						WORD *pal = data->nclr.colors;
+						COLOR tmp[16];
+						COLOR *pal = data->nclr.colors;
 						memcpy(tmp, pal + srcIndex, 32);
 						memcpy(pal + srcIndex, pal + dstIndex, 32);
 						memcpy(pal + dstIndex, tmp, 32);
 
 						//if screen is present and we're in preserve mode, then switch relevant tile palettes as well.
 						if (data->preserveDragging) {
-							if (hWndNscrViewer != NULL) {
-								NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
-								NSCR *nscr = &nscrViewerData->nscr;
-
-								//doing this only really makes sense for 4-bit graphics, but who are we to disagree with the user
-								int srcPalette = srcIndex >> 4;
-								int dstPalette = dstIndex >> 4;
-								for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-									WORD d = nscr->data[i];
-									int pal = (d >> 12) & 0xF;
-									if (pal == srcPalette) pal = dstPalette;
-									else if (pal == dstPalette) pal = srcPalette;
-									d = (d & 0xFFF) | (pal << 12);
-									nscr->data[i] = d;
-								}
-							}
+							//doing this only really makes sense for 4-bit graphics, but who are we to disagree with the user
+							int srcPalette = srcIndex >> 4;
+							int dstPalette = dstIndex >> 4;
+							int srcDest[] = { srcPalette, dstPalette };
+							EnumAllEditors(hWndMain, FILE_TYPE_SCREEN, SwapNscrPalettesProc, srcDest);
 						}
 					}
 				}
@@ -673,10 +687,10 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						GlobalUnlock(hString);
 						InvalidateRect(hWnd, NULL, FALSE);
+
 						HWND hWndMain = getMainWindow(hWnd);
-						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-						if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
-						if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
+						InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
+						InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 						break;
 					}
 					case ID_MENU_COPY:
@@ -808,22 +822,16 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						int index = data->contextHoverX + data->contextHoverY * 16;
 						int palette = index >> data->nclr.nBits;
 						
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND hWndMain = getMainWindow(hWnd);
 						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-						HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
 						if (hWndNcgrViewer) {
 							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
 							ncgrViewerData->verifyColor = index;
 							ncgrViewerData->verifyFrames = 10;
 							SetTimer(hWndNcgrViewer, 1, 100, NULL);
 						}
-						if (hWndNscrViewer) {
-							NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
-							nscrViewerData->verifyColor = index;
-							nscrViewerData->verifyFrames = 10;
-							SetTimer(hWndNscrViewer, 1, 100, NULL);
-						}
+						EnumAllEditors(hWndMain, FILE_TYPE_SCREEN, ValidateColorsNscrProc, (void *) index);
 						break;
 					}
 					case ID_MENU_CREATE:
@@ -873,15 +881,17 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			fileFree((OBJECT_HEADER *) &data->nclr);
 			if (data->nclr.idxTable != NULL) free(data->nclr.idxTable);
 			free(data);
-			HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			HWND hWndMain = (HWND) GetWindowLong(hWndMdi, GWL_HWNDPARENT);
+
+			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 			nitroPaintStruct->hWndNclrViewer = NULL;
-			if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
-			if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
-			if (nitroPaintStruct->hWndNcerViewer) InvalidateRect(nitroPaintStruct->hWndNcerViewer, NULL, FALSE); 
+			InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
+			InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
+			InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 			break;
 		}
+		case NV_GETTYPE:
+			return FILE_TYPE_PALETTE;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }

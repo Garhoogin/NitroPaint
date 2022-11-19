@@ -156,11 +156,6 @@ void ncgrExportImage(NCGR *ncgr, NCLR *nclr, int paletteIndex, LPCWSTR path) {
 	free(pal);
 }
 
-#define NV_INITIALIZE (WM_USER+1)
-#define NV_RECALCULATE (WM_USER+2)
-#define NV_INITIALIZE_IMMEDIATE (WM_USER+3)
-#define NV_SETTITLE (WM_USER+4)
-
 typedef struct CHARIMPORTDATA_ {
 	WCHAR path[MAX_PATH];
 	NCLR *nclr;
@@ -267,18 +262,24 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			if (data->ncgr.nBits == 8) SendMessage(data->hWnd8bpp, BM_SETCHECK, 1, 0);
 
-			//guess a tile base based on an open NCGR (if any)
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
-			if (hWndNscrViewer) {
-				NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
-				NSCR *nscr = &nscrViewerData->nscr;
-				if (nscr->nHighestIndex >= data->ncgr.nTiles) {
-					NscrViewerSetTileBase(hWndNscrViewer, nscr->nHighestIndex + 1 - data->ncgr.nTiles);
-				} else {
-					NscrViewerSetTileBase(hWndNscrViewer, 0);
+			//guess a tile base for open NSCR (if any)
+			HWND hWndMain = getMainWindow(hWnd);
+			int nNscrEditors = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
+			if (nNscrEditors > 0) {
+				//for each editor
+				HWND *nscrEditors = (HWND *) calloc(nNscrEditors, sizeof(HWND));
+				GetAllEditors(hWndMain, FILE_TYPE_SCREEN, nscrEditors, nNscrEditors);
+				for (int i = 0; i < nNscrEditors; i++) {
+					HWND hWndNscrViewer = nscrEditors[i];
+					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+					NSCR *nscr = &nscrViewerData->nscr;
+					if (nscr->nHighestIndex >= data->ncgr.nTiles) {
+						NscrViewerSetTileBase(hWndNscrViewer, nscr->nHighestIndex + 1 - data->ncgr.nTiles);
+					} else {
+						NscrViewerSetTileBase(hWndNscrViewer, 0);
+					}
 				}
+				free(nscrEditors);
 			}
 			break;
 		}
@@ -650,6 +651,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			MoveWindow(data->hWnd8bpp, 155, height - 21, 100, 21, TRUE);
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
+		case NV_GETTYPE:
+			return FILE_TYPE_CHAR;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
@@ -715,9 +718,8 @@ LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			DeleteObject(hBitmap);
 			if (data->hWndTileEditorWindow) InvalidateRect(data->hWndTileEditorWindow, NULL, FALSE);
 
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWndNcgrViewer, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLong(hWndMain, 0);
-			if (nitroPaintStruct->hWndNscrViewer) InvalidateRect(nitroPaintStruct->hWndNscrViewer, NULL, FALSE);
+			HWND hWndMain = getMainWindow(hWndNcgrViewer);
+			InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 
 			InvalidateRect(data->hWndWidthLabel, NULL, FALSE);
 			break;
@@ -977,15 +979,10 @@ typedef struct {
 int charImportCallback(void *data) {
 	CHARIMPORT *cim = (CHARIMPORT *) data;
 	HWND hWndMain = cim->hWndMain;
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-	HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-	HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-	HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
-	HWND hWndNcerViewer = nitroPaintStruct->hWndNcerViewer;
-	if (hWndNclrViewer != NULL) InvalidateRect(hWndNclrViewer, NULL, FALSE);
-	if (hWndNcgrViewer != NULL) InvalidateRect(hWndNcgrViewer, NULL, FALSE);
-	if (hWndNscrViewer != NULL) InvalidateRect(hWndNscrViewer, NULL, FALSE);
-	if (hWndNcerViewer != NULL) InvalidateRect(hWndNcerViewer, NULL, FALSE);
+	InvalidateAllEditors(hWndMain, FILE_TYPE_PALETTE);
+	InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
+	InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+	InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
 	free(data);
 
 	SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
@@ -1267,7 +1264,7 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
 					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
 					ShowWindow(hWndProgress, SW_SHOW);
-					SendMessage(hWndProgress, WM_USER + 2, 0, (LPARAM) progressData);
+					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
 					threadedCharImport(progressData);
 
 					DestroyWindow(hWnd);

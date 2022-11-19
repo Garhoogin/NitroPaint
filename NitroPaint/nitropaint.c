@@ -109,8 +109,6 @@ typedef struct EDITORDATA_ {
 CONFIGURATIONSTRUCT g_configuration;
 LPWSTR g_configPath;
 
-#define NV_SETDATA (WM_USER+2)
-
 WNDPROC OldMdiClientWndProc = NULL;
 LRESULT WINAPI NewMdiClientWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
@@ -183,7 +181,7 @@ char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
 
 		//search for colon
 		const char *key = ptr;
-		while (*ptr != ':' && ptr != end && *ptr != '\r' && *ptr != '\n') ptr++;
+		while (ptr != end  && *ptr != ':' && *ptr != '\r' && *ptr != '\n') ptr++;
 		if (ptr == end) return NULL;
 		if (*ptr == '\r' || *ptr == '\n') {
 			while (ptr != end && (*ptr == '\r' || *ptr == '\n')) ptr++;
@@ -374,14 +372,13 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			memcpy(((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
 		}
 
-		//if there is already an NSCR open, close it.
+		//create NSCR editor and make it active
 		if (scrRef != NULL) {
-			if (data->hWndNscrViewer) DestroyChild(data->hWndNscrViewer);
-			data->hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, &nscr);
+			HWND hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, &nscr);
 
-			NSCR *pNscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->nscr;
+			NSCR *pNscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->nscr;
 			combo->nscr = pNscr;
-			memcpy(((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
+			memcpy(((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
 		}
 		free(pathBuffer);
 
@@ -407,9 +404,8 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 			break;
 		case FILE_TYPE_SCREEN:
-			//if there is already an NSCR open, close it.
-			if (data->hWndNscrViewer) DestroyChild(data->hWndNscrViewer);
-			data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			//create editor
+			CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
 			break;
 		case FILE_TYPE_CELL:
 			//if there is already an NCER open, close it.
@@ -445,10 +441,10 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
 			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 
-			//if there is already an NSCR open, close it.
-			if (type == COMBO2D_TYPE_TIMEACE) {
-				if (data->hWndNscrViewer) DestroyChild(data->hWndNscrViewer);
-				data->hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			//create NSCR and make it active
+			HWND hWndNscrViewer = NULL;
+			if (combo2dFormatHasScreen(type)) {
+				hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
 			}
 
 			//create a combo frame
@@ -460,7 +456,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 			if (combo2dFormatHasPalette(type)) nclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
 			if (combo2dFormatHasCharacter(type)) ncgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
-			if (combo2dFormatHasScreen(type)) nscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0))->nscr;
+			if (combo2dFormatHasScreen(type)) nscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->nscr;
 
 			combo->nclr = nclr;
 			combo->ncgr = ncgr;
@@ -521,6 +517,62 @@ VOID MainZoomOut(HWND hWnd) {
 	zoom /= 2;
 	if (zoom < 1) zoom = 1;
 	MainSetZoom(hWnd, zoom);
+}
+
+//general editor utilities for main window
+
+int GetEditorType(HWND hWndEditor) {
+	return SendMessage(hWndEditor, NV_GETTYPE, 0, 0);
+}
+
+BOOL CALLBACK InvalidateAllEditorsProc(HWND hWnd, LPARAM lParam) {
+	int editorType = GetEditorType(hWnd);
+	if (editorType == lParam || (editorType != FILE_TYPE_INVALID && lParam == FILE_TYPE_INVALID)) {
+		InvalidateRect(hWnd, NULL, FALSE);
+	}
+	return TRUE;
+}
+
+void InvalidateAllEditors(HWND hWndMain, int type) {
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	HWND hWndMdi = nitroPaintStruct->hWndMdi;
+	EnumChildWindows(hWndMdi, InvalidateAllEditorsProc, type);
+}
+
+BOOL CALLBACK EnumAllEditorsProc(HWND hWnd, LPARAM lParam) {
+	struct { BOOL (*pfn) (HWND, void *); void *param; int type; } *data = (void *) lParam;
+	int type = GetEditorType(hWnd);
+	if (type == data->type || (type != FILE_TYPE_INVALID && data->type == FILE_TYPE_INVALID)) {
+		return data->pfn(hWnd, data->param);
+	}
+	return TRUE;
+}
+
+void EnumAllEditors(HWND hWndMain, int type, BOOL (*pfn) (HWND, void *), void *param) {
+	struct { BOOL (*pfn) (HWND, void *); void *param; int type; } data = { pfn, param, type };
+	EnumChildWindows(hWndMain, EnumAllEditorsProc, (LPARAM) &data);
+}
+
+BOOL GetAllEditorsProc(HWND hWnd, void *param) {
+	struct { int nCounted; HWND *buffer; int bufferSize; } *work = param;
+	if (work->nCounted < work->bufferSize) {
+		work->buffer[work->nCounted] = hWnd;
+	}
+	work->nCounted++;
+	return TRUE;
+}
+
+int GetAllEditors(HWND hWndMain, int type, HWND *editors, int bufferSize) {
+	struct { int nCounted; HWND *buffer; int bufferSize; } param = { 0, editors, bufferSize };
+	EnumAllEditors(hWndMain, type, GetAllEditorsProc, (void *) &param);
+	return param.nCounted;
+}
+
+BOOL SetNscrEditorTransparentProc(HWND hWnd, void *param) {
+	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	int state = (int) param;
+	nscrViewerData->transparent = state;
+	return TRUE;
 }
 
 VOID HandleSwitch(LPWSTR lpSwitch) {
@@ -715,8 +767,10 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					{
 						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
 						if (hWndFocused == NULL) break;
-						if (hWndFocused != data->hWndNclrViewer && hWndFocused != data->hWndNcgrViewer
-							&& hWndFocused != data->hWndNscrViewer && hWndFocused != data->hWndNcerViewer) break;
+
+						int editorType = GetEditorType(hWndFocused);
+						if (editorType != FILE_TYPE_PALETTE && editorType != FILE_TYPE_CHAR
+							&& editorType != FILE_TYPE_SCREEN && editorType != FILE_TYPE_CELL) break;
 
 						EDITORDATA *editorData = (EDITORDATA *) GetWindowLongPtr(hWndFocused, 0);
 						LPCWSTR *formats = getFormatNamesFromType(editorData->objectHeader.type);
@@ -777,13 +831,10 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						if (data->hWndNcgrViewer != NULL) {
 							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0);
 							ncgrViewerData->transparent = state;
-							InvalidateRect(data->hWndNcgrViewer, NULL, FALSE);
 						}
-						if (data->hWndNscrViewer != NULL) {
-							NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(data->hWndNscrViewer, 0);
-							nscrViewerData->transparent = state;
-							InvalidateRect(data->hWndNscrViewer, NULL, FALSE);
-						}
+						InvalidateAllEditors(hWnd, FILE_TYPE_CHAR);
+						EnumAllEditors(hWnd, FILE_TYPE_SCREEN, SetNscrEditorTransparentProc, (void *) state);
+						InvalidateAllEditors(hWnd, FILE_TYPE_SCREEN);
 						break;
 					}
 					case ID_NTFT_NTFT40084:
@@ -867,12 +918,11 @@ void nscrCreateCallback(void *data) {
 	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 	HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
-	if (nitroPaintStruct->hWndNscrViewer) DestroyChild(nitroPaintStruct->hWndNscrViewer);
 	if (nitroPaintStruct->hWndNcgrViewer) DestroyChild(nitroPaintStruct->hWndNcgrViewer);
 	if (nitroPaintStruct->hWndNclrViewer) DestroyChild(nitroPaintStruct->hWndNclrViewer);
 	nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, &createData->nclr);
 	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->ncgr);
-	nitroPaintStruct->hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
+	CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
 
 	free(createData->bbits);
 	free(data);

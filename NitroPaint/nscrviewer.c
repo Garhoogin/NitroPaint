@@ -12,13 +12,6 @@
 
 extern HICON g_appIcon;
 
-#define NV_INITIALIZE (WM_USER+1)
-#define NV_SETDATA (WM_USER+2)
-#define NV_INITIMPORTDIALOG (WM_USER+3)
-#define NV_RECALCULATE (WM_USER+4)
-#define NV_INITIALIZE_IMMEDIATE (WM_USER+5)
-#define NV_SETTITLE (WM_USER+6)
-
 DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
 	int bWidth = renderNscr->nWidth;
 	int bHeight = renderNscr->nHeight;
@@ -517,6 +510,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					{
 						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 						HWND h = CreateWindow(L"NscrBitmapImportClass", L"Import Bitmap", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
+						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) hWnd);
 						WORD d = data->nscr.data[data->contextHoverX + data->contextHoverY * (data->nscr.nWidth >> 3)];
 						SendMessage(h, NV_INITIMPORTDIALOG, d, data->contextHoverX | (data->contextHoverY << 16));
 						ShowWindow(h, SW_SHOW);
@@ -737,9 +731,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			if (data->hWndTileEditor) DestroyWindow(data->hWndTileEditor);
 			fileFree((OBJECT_HEADER *) &data->nscr);
 			free(data);
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			nitroPaintStruct->hWndNscrViewer = NULL;
 			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
@@ -753,6 +744,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SendMessage(data->hWndSelectionSize, WM_SETTEXT, 0, (LPARAM) L"");
 			break;
 		}
+		case NV_GETTYPE:
+			return FILE_TYPE_SCREEN;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
@@ -838,6 +831,7 @@ int calculateBestPaletteCharError(DWORD *block, DWORD *pals, BYTE *character, in
 }
 
 typedef struct {
+	HWND hWndEditor;
 	HWND hWndBitmapName;
 	HWND hWndBrowseButton;
 	HWND hWndPaletteInput;
@@ -866,8 +860,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 	DWORD *blocks = (DWORD *) calloc(tilesX * tilesY, 64 * 4);
 	DWORD *pals = calloc(nPalettes * paletteSize, 4);
 
-	//split image into 8x8 chunks, and find the average color in each.
-	DWORD *avgs = calloc(tilesX * tilesY, 4);
+	//split image into 8x8 chunks
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			int srcOffset = x * 8 + y * 8 * (width);
@@ -880,15 +873,13 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 			CopyMemory(block + 40, px + srcOffset + width * 5, 32);
 			CopyMemory(block + 48, px + srcOffset + width * 6, 32);
 			CopyMemory(block + 56, px + srcOffset + width * 7, 32);
-			DWORD avg = averageColor(block, 64);
-			avgs[x + y * tilesX] = avg;
 		}
 	}
 
 
 	//generate an nPalettes color palette
 	if (newPalettes) {
-		createMultiplePalettes(px, tilesX, tilesY, pals, paletteNumber, nPalettes, paletteSize, paletteSize, 0, progress);
+		createMultiplePalettes(px, tilesX, tilesY, pals, 0, nPalettes, paletteSize, paletteSize, 0, progress);
 	} else {
 		COLOR *destPalette = nclr->colors + paletteNumber * paletteSize;
 		int nColors = nPalettes * paletteSize;
@@ -915,14 +906,17 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 	//next, start palette matching. See which palette best fits a tile, set it in the NSCR, then write the bits to the NCGR.
 	WORD *nscrData = nscr->data;
 	if (newCharacters) {
+		//create dummy reduction to setup parameters for color matching
+		REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
+		initReduction(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, 0, paletteSize);
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 				DWORD *block = blocks + 64 * (x + y * tilesX);
 
-				int leastError = 0x7FFFFFFF;
+				double leastError = 1e32;
 				int leastIndex = 0;
 				for (int i = 0; i < nPalettes; i++) {
-					int err = getPaletteError(block, 64, pals + i * paletteSize, paletteSize);
+					double err = computePaletteErrorYiq(reduction, block, 64, pals + i * paletteSize, paletteSize, 128, leastError);
 					if (err < leastError) {
 						leastError = err;
 						leastIndex = i;
@@ -943,7 +937,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				if (charOrigin - charBase < 0) continue;
 				BYTE *ncgrTile = ncgr->tiles[charOrigin - charBase];
 
-				if(dither) ditherImagePalette(block, 8, 8, pals + leastIndex * paletteSize, paletteSize, FALSE, TRUE, TRUE, diffuse);
+				if (dither) ditherImagePalette(block, 8, 8, pals + leastIndex * paletteSize, paletteSize, FALSE, TRUE, TRUE, diffuse);
 				for (int i = 0; i < 64; i++) {
 					if ((block[i] & 0xFF000000) == 0) ncgrTile[i] = 0;
 					else {
@@ -953,6 +947,8 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 				}
 			}
 		}
+		destroyReduction(reduction);
+		free(reduction);
 	} else {
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
@@ -991,7 +987,6 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, DWORD *px, int width, 
 
 	free(blocks);
 	free(pals);
-	free(avgs);
 }
 
 typedef struct {
@@ -1094,6 +1089,11 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			break;
 		}
+		case NV_INITIALIZE:
+		{
+			data->hWndEditor = (HWND) lParam;
+			break;
+		}
 		case NV_INITIMPORTDIALOG:
 		{
 			WORD d = wParam;
@@ -1142,7 +1142,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 					NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
 					NCGR *ncgr = &ncgrViewerData->ncgr;
-					HWND hWndNscrViewer = nitroPaintStruct->hWndNscrViewer;
+					HWND hWndNscrViewer = data->hWndEditor;
 					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
 					NSCR *nscr = &nscrViewerData->nscr;
 					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;

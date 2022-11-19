@@ -27,7 +27,6 @@ typedef struct {
 	HWND hWndMdi;
 	HWND hWndNclrViewer;
 	HWND hWndNcgrViewer;
-	HWND hWndNscrViewer;
 	HWND hWndNcerViewer;
 	HWND hWndNanrViewer;
 	HWND hWndNmcrViewer;
@@ -81,3 +80,40 @@ VOID MainZoomOut(HWND hWnd);
 // Get a file name from a file path (does not edit the source string)
 //
 LPWSTR GetFileName(LPWSTR lpszPath);
+
+//
+// Get the type of editor by its window handle. It may return one of the macros
+// starting with FILE_TYPE.
+//
+int GetEditorType(HWND hWndEditor);
+
+//
+// Invalidate all editor windows of a specified type. Alternatively, specify
+// FILE_TYPE_UNKNOWN for type to invalidate all editor windows that are editing
+// a valid file.
+//
+void InvalidateAllEditors(HWND hWndMain, int type);
+
+//
+// Enumerate all editor windows of a specified type.
+//
+void EnumAllEditors(HWND hWndMain, int type, BOOL (*pfn) (HWND, void *), void *param);
+
+//
+// Get a list of editors of a certain type into an array. Returns the total
+// number of open editor windows of the specified type. Can pass in a length of
+// of 0 to retrieve only the editor count.
+//
+int GetAllEditors(HWND hWndMain, int type, HWND *editors, int bufferSize);
+
+
+//common viewer window messages
+#define NV_INITIALIZE (WM_USER+1)
+#define NV_SETTITLE (WM_USER+2)
+#define NV_INITIALIZE_IMMEDIATE (WM_USER+3)
+#define NV_RECALCULATE (WM_USER+4)
+#define NV_PICKFILE (WM_USER+5)
+#define NV_SETDATA (WM_USER+6)
+#define NV_INITIMPORTDIALOG (WM_USER+7)
+#define NV_SETPATH (WM_USER+8)
+#define NV_GETTYPE (WM_USER+9)

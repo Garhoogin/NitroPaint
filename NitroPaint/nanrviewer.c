@@ -15,9 +15,6 @@
 
 extern HICON g_appIcon;
 
-#define NV_INITIALIZE (WM_USER+1)
-#define NV_SETTITLE (WM_USER+2)
-
 #define NANRVIEWER_TIMER_TICK 1
 
 int getTotalFrameCount(NANR_SEQUENCE *sequence) {
@@ -828,6 +825,8 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			destroyWindowAnimationTick(hWnd);
 			break;
 		}
+		case NV_GETTYPE:
+			return FILE_TYPE_NANR;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }

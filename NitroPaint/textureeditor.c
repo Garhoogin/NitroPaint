@@ -14,11 +14,6 @@
 
 extern HICON g_appIcon;
 
-#define NV_INITIALIZE (WM_USER+1)
-#define NV_RECALCULATE (WM_USER+2)
-#define NV_SETPATH (WM_USER+3)
-#define NV_INITIALIZE_IMMEDIATE (WM_USER+4)
-
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
 void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
@@ -466,6 +461,8 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
+		case NV_GETTYPE:
+			return FILE_TYPE_TEXTURE;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }

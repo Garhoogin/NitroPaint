@@ -9,9 +9,6 @@
 
 extern HICON g_appIcon;
 
-#define NV_INITIALIZE (WM_USER+1)
-#define NV_SETTITLE (WM_USER+2)
-
 extern int max16Len(char *str);
 
 HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
@@ -524,6 +521,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			fileFree((OBJECT_HEADER *) nsbtx);
 			break;
 		}
+		case NV_GETTYPE:
+			return FILE_TYPE_NSBTX;
 	}
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }

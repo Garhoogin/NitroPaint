@@ -10,8 +10,6 @@
 
 extern HICON g_appIcon;
 
-#define NV_INITIALIZE (WM_USER+1)
-
 HBITMAP RenderNmcrFrame(NMCR *nmcr, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *nanr, int cellIndex, int frame) {
 	DWORD *px = (DWORD *) calloc(256 * 512, 4);
 
@@ -131,6 +129,8 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			free(data);
 			break;
 		}
+		case NV_GETTYPE:
+			return FILE_TYPE_NMCR;
 	}
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
