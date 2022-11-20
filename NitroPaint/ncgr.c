@@ -10,13 +10,20 @@ LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"Hudson", L"Hudson 2", 
 
 int calculateWidth(int nTiles) {
 	int width = 1;
+
+	//if tile count is a multiple of 32, use it
+	if (nTiles % 32 == 0) {
+		return 32;
+	}
+
+	//iterate factors
 	for (int i = 1; i < nTiles; i++) {
 		if (i * i > nTiles) break;
 		if (nTiles % i == 0) width = i;
 	}
 	int height = nTiles / width;
-	if (width > height) return height; //prioritize wide over tall output
-	return width;
+	if (width > height) return width; //prioritize wide over tall output
+	return height;
 }
 
 int ncgrIsValidHudson(unsigned char *buffer, unsigned int size) {
