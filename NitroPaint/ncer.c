@@ -453,7 +453,7 @@ int ncerWrite(NCER *ncer, BSTREAM *stream) {
 			, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 		*(WORD *) (kbecHeader + 8) = ncer->nCells;
 		*(WORD *) (kbecHeader + 10) = attr;
-		*(DWORD *) (kbecHeader + 4) = kbecSize;
+		*(DWORD *) (kbecHeader + 4) = (kbecSize + 3) & ~3;
 
 		bstreamWrite(stream, kbecHeader, sizeof(kbecHeader));
 
