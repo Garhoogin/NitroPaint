@@ -958,15 +958,18 @@ void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 }
 
 void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
+	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
+	initReduction(reduction, balance, colorBalance, 15, enhanceColors, paletteSize);
+
 	if (!dither) diffuse = 0.0f;
 	for (int i = 0; i < nTiles; i++) {
 		BGTILE *tile = tiles + i;
 
 		int bestPalette = paletteBase;
-		int bestError = 0x7FFFFFFF;
+		double bestError = 1e32;
 		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
 			COLOR32 *pal = palette + (j << nBits);
-			int err = getPaletteError(tile->px, 64, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
+			double err = computePaletteErrorYiq(reduction, tile->px, 64, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, 128, bestError);
 
 			if (err < bestError) {
 				bestError = err;
@@ -1000,6 +1003,8 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 		tile->masterTile = i;
 		tile->nRepresents = 1;
 	}
+	destroyReduction(reduction);
+	free(reduction);
 }
 
 int findLeastDistanceToColor(COLOR32 *px, int nPx, int destR, int destG, int destB) {
