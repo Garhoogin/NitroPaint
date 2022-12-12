@@ -101,7 +101,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 
 			//is in palette operation destination area?
 			int isInPalOpDest = 0;
-			if (data->palOpDialog) {
+			if (data->palOpDialog && palOpStrideLength) {
 				int dstRel = x + y * 16 - palOpDstIndex;
 				if (dstRel >= 0 && dstRel < (palOpBlocks - 1) * palOpStrideLength + palOpSrcLength) {
 					dstRel %= palOpStrideLength;
