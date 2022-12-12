@@ -169,6 +169,13 @@ BOOL CALLBACK SaveAllProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
+BOOL CALLBACK CloseAllProc(HWND hWnd, LPARAM lParam) {
+	HWND hWndMdi = (HWND) lParam;
+	if ((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT) != hWndMdi) return TRUE;
+	DestroyChild(hWnd);
+	return TRUE;
+}
+
 char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
 	//lookup value in file of Key: Value pairs
 	const char *end = ptr + size;
@@ -673,6 +680,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_ACCELERATOR_SAVEALL:
 						PostMessage(hWnd, WM_COMMAND, ID_FILE_SAVEALL, 0);
 						break;
+					case ID_ACCELERATOR_CLOSEALL:
+						PostMessage(hWnd, WM_COMMAND, ID_FILE_CLOSEALL, 0);
+						break;
 					case ID_ACCELERATOR_EXPORT:
 						PostMessage(hWnd, WM_COMMAND, ID_FILE_EXPORT, 0);
 						break;
@@ -722,6 +732,12 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					{
 						HWND hWndMdi = data->hWndMdi;
 						EnumChildWindows(hWndMdi, SaveAllProc, (LPARAM) hWndMdi);
+						break;
+					}
+					case ID_FILE_CLOSEALL:
+					{
+						HWND hWndMdi = data->hWndMdi;
+						EnumChildWindows(hWndMdi, CloseAllProc, (LPARAM) hWndMdi);
 						break;
 					}
 					case ID_NEW_NEWNCGR40015: //NCGR+NSCR

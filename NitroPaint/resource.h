@@ -100,13 +100,15 @@
 #define ID_ACCELERATOR_ZOOMOUT          40101
 #define ID_TOOLS_COLORPICKER            40103
 #define ID_MENU_ANIMATEPALETTE          40104
+#define ID_FILE_CLOSEALL                40105
+#define ID_ACCELERATOR_CLOSEALL         40106
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40105
+#define _APS_NEXT_COMMAND_VALUE         40108
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
