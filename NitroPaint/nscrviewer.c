@@ -147,16 +147,21 @@ unsigned char *renderNscrIndexed(NSCR *nscr, NCGR *ncgr, int tileBase, int *widt
 
 			//fetch screen info
 			uint16_t scr = nscr->data[x + y * tilesX];
-			int chr = scr & 0x3FF;
+			int chr = (scr & 0x3FF) - tileBase;
 			int flip = scr >> 10;
 			int pal = scr >> 12;
-			unsigned char *chrData = ncgr->tiles[chr];
-			for (int i = 0; i < 64; i++) {
-				int tileX = i % 8;
-				int tileY = i / 8;
-				if (flip & TILE_FLIPX) tileX ^= 7;
-				if (flip & TILE_FLIPY) tileY ^= 7;
-				block[i] = chrData[tileX + tileY * 8] | (pal << 4);
+
+			if (chr >= 0 && chr < ncgr->nTiles) {
+				unsigned char *chrData = ncgr->tiles[chr];
+				for (int i = 0; i < 64; i++) {
+					int tileX = i % 8;
+					int tileY = i / 8;
+					if (flip & TILE_FLIPX) tileX ^= 7;
+					if (flip & TILE_FLIPY) tileY ^= 7;
+					block[i] = chrData[tileX + tileY * 8] | (pal << 4);
+				}
+			} else {
+				memset(block, 0, sizeof(block));
 			}
 			
 			int destOffset = x * 8 + y * 8 * tilesX * 8;
