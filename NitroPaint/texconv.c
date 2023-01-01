@@ -221,7 +221,6 @@ int createPaletteFromHistogram(REDUCTION *reduction, int nColors, COLOR32 *out) 
 	reduction->nPaletteColors = nColors;
 	flattenHistogram(reduction);
 	optimizePalette(reduction);
-	paletteToArray(reduction);
 
 	int nUsed = reduction->nUsedColors;
 	for (int i = 0; i < nColors; i++) {

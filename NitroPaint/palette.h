@@ -106,6 +106,7 @@ typedef struct HIST_ENTRY_ {
 	int q;
 	int a;
 	struct HIST_ENTRY_ *next;
+	int entry;
 	double weight;
 	double value;
 } HIST_ENTRY;
@@ -204,12 +205,6 @@ void flattenHistogram(REDUCTION *reduction);
 // Optimize a REDUCTION's flattened hitogram into a color palette.
 //
 void optimizePalette(REDUCTION *reduction);
-
-//
-// Flatten's a REDUCTION's palette into an array of RGB colors. Do this once
-// the palette is optimized.
-//
-void paletteToArray(REDUCTION *reduction);
 
 //
 // Find the closest YIQA color to a specified YIQA color with a provided

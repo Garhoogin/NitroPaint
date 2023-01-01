@@ -703,6 +703,45 @@ void cleanEmptyNode(COLOR_NODE *treeHead, COLOR_NODE *node) {
 	freeColorTree(node, TRUE);
 }
 
+COLOR_NODE **addColorBlocks(COLOR_NODE *colorBlock, COLOR_NODE **colorBlockList) {
+	if (colorBlock->left == NULL && colorBlock->right == NULL) {
+		*colorBlockList = colorBlock;
+		return colorBlockList + 1;
+	}
+	if (colorBlock->left != NULL) {
+		colorBlockList = addColorBlocks(colorBlock->left, colorBlockList);
+	}
+	if (colorBlock->right != NULL) {
+		colorBlockList = addColorBlocks(colorBlock->right, colorBlockList);
+	}
+	return colorBlockList;
+}
+
+void paletteToArray(REDUCTION *reduction) {
+	if (reduction->colorTreeHead == NULL) return;
+
+	//convert to RGB
+	int ofs = 0;
+	COLOR_NODE **colorBlockPtr = reduction->colorBlocks;
+	for (int i = 0; i < reduction->nPaletteColors; i++) {
+		if (colorBlockPtr[i] != NULL) {
+			COLOR_NODE *block = colorBlockPtr[i];
+			int y = block->y, i = block->i, q = block->q;
+			int yiq[] = { y, i, q, 0xFF };
+			int rgb[4];
+			yiqToRgb(rgb, yiq);
+
+			COLOR32 rgb32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+			if (reduction->maskColors) rgb32 = ColorRoundToDS15(rgb32);
+
+			reduction->paletteRgb[ofs][0] = rgb32 & 0xFF;
+			reduction->paletteRgb[ofs][1] = (rgb32 >> 8) & 0xFF;
+			reduction->paletteRgb[ofs][2] = (rgb32 >> 16) & 0xFF;
+			ofs++;
+		}
+	}
+}
+
 void optimizePalette(REDUCTION *reduction) {
 	//do it
 	COLOR_NODE *treeHead = (COLOR_NODE *) calloc(1, sizeof(COLOR_NODE));
@@ -869,49 +908,14 @@ void optimizePalette(REDUCTION *reduction) {
 	}
 
 	reduction->nUsedColors = numberOfTreeElements;
-}
-
-COLOR_NODE **addColorBlocks(COLOR_NODE *colorBlock, COLOR_NODE **colorBlockList) {
-	if (colorBlock->left == NULL && colorBlock->right == NULL) {
-		*colorBlockList = colorBlock;
-		return colorBlockList + 1;
-	}
-	if(colorBlock->left != NULL) {
-		colorBlockList = addColorBlocks(colorBlock->left, colorBlockList);
-	}
-	if (colorBlock->right != NULL) {
-		colorBlockList = addColorBlocks(colorBlock->right, colorBlockList);
-	}
-	return colorBlockList;
-}
-
-void paletteToArray(REDUCTION *reduction) {
-	if (reduction->colorTreeHead == NULL) return;
 
 	//flatten
 	COLOR_NODE **colorBlockPtr = reduction->colorBlocks;
 	memset(colorBlockPtr, 0, sizeof(reduction->colorBlocks));
 	addColorBlocks(reduction->colorTreeHead, colorBlockPtr);
 
-	//convert to RGB
-	int ofs = 0;
-	for (int i = 0; i < reduction->nPaletteColors; i++) {
-		if (colorBlockPtr[i] != NULL) {
-			COLOR_NODE *block = colorBlockPtr[i];
-			int y = block->y, i = block->i, q = block->q;
-			int yiq[] = { y, i, q, 0xFF };
-			int rgb[4];
-			yiqToRgb(rgb, yiq);
-
-			COLOR32 rgb32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
-			//if (reduction->maskColors) rgb32 = ColorRoundToDS15(rgb32);
-			
-			reduction->paletteRgb[ofs][0] = rgb32 & 0xFF;
-			reduction->paletteRgb[ofs][1] = (rgb32 >> 8) & 0xFF;
-			reduction->paletteRgb[ofs][2] = (rgb32 >> 16) & 0xFF;
-			ofs++;
-		}
-	}
+	//to array
+	paletteToArray(reduction);
 }
 
 void freeAllocations(ALLOCATOR *allocator) {
@@ -956,7 +960,6 @@ int createPaletteSlow(COLOR32 *img, int width, int height, COLOR32 *pal, unsigne
 	computeHistogram(reduction, img, width, height);
 	flattenHistogram(reduction);
 	optimizePalette(reduction);
-	paletteToArray(reduction);
 	
 	for (unsigned int i = 0; i < nColors; i++) {
 		uint8_t r = reduction->paletteRgb[i][0];
@@ -1125,7 +1128,6 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 			computeHistogram(reduction, tile->rgb, 8, 8);
 			flattenHistogram(reduction);
 			optimizePalette(reduction);
-			paletteToArray(reduction);
 			for (int i = 0; i < 16; i++) {
 				uint8_t *col = &reduction->paletteRgb[i][0];
 				palBuf[i] = col[0] | (col[1] << 8) | (col[2] << 16);
@@ -1193,7 +1195,6 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 		}
 		flattenHistogram(reduction);
 		optimizePalette(reduction);
-		paletteToArray(reduction);
 
 		//write over the palette of the tile
 		TILE *palTile = tiles + index1;
@@ -1255,7 +1256,6 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 		}
 		flattenHistogram(reduction);
 		optimizePalette(reduction);
-		paletteToArray(reduction);
 		
 		COLOR32 palBuf[16] = { 0 };
 		if(paletteOffset == 0) palBuf[0] = 0xFF00FF;
@@ -1282,7 +1282,6 @@ int createPaletteSlowEx(COLOR32 *img, int width, int height, COLOR32 *pal, unsig
 	computeHistogram(reduction, img, width, height);
 	flattenHistogram(reduction);
 	optimizePalette(reduction);
-	paletteToArray(reduction);
 
 	for (unsigned int i = 0; i < nColors; i++) {
 		uint8_t r = reduction->paletteRgb[i][0];
