@@ -1239,9 +1239,11 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 		(*progress)++;
 	}
 
-	//write palettes
+	//get palette output from previous step
 	int nPalettesWritten = 0;
 	int outputOffs = max(paletteOffset, 1);
+	COLOR32 palettes[16 * 16] = { 0 };
+	int paletteIndices[16] = { 0 };
 	reduction->maskColors = TRUE;
 	for (int i = 0; i < nTiles; i++) {
 		TILE *t = tiles + i;
@@ -1257,16 +1259,64 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 		flattenHistogram(reduction);
 		optimizePalette(reduction);
 		
-		COLOR32 palBuf[16] = { 0 };
-		if(paletteOffset == 0) palBuf[0] = 0xFF00FF;
 		for (int j = 0; j < 15; j++) {
 			uint8_t *rgb = &reduction->paletteRgb[j][0];
-			palBuf[j + outputOffs] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+			palettes[j + nPalettesWritten * 16] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
 		}
-		qsort(palBuf + 1, nColsPerPalette, 4, lightnessCompare);
-		memcpy(dest + 16 * (nPalettesWritten + paletteBase), palBuf, sizeof(palBuf));
+		paletteIndices[nPalettesWritten] = i;
 		nPalettesWritten++;
 		(*progress)++;
+	}
+
+	//palette refinement
+	if (0) { //TODO: make this viable
+		int nRefinements = 2;
+		int *bestPalettes = (int *) calloc(nTiles, sizeof(int));
+		for (int k = 0; k < nRefinements; k++) {
+			//find best palette for each tile again
+			for (int i = 0; i < nTiles; i++) {
+				TILE *t = tiles + i;
+				COLOR32 *px = t->rgb;
+				int best = 0;
+				double bestError = 1e32;
+
+				//determine which palette is best for this tile for remap
+				for (int j = 0; j < nPalettes; j++) {
+					double error = computePaletteErrorYiq(reduction, px, 64, palettes + j * 16, nColsPerPalette, 128, bestError);
+					if (error < bestError) {
+						bestError = error;
+						best = j;
+					}
+				}
+				bestPalettes[i] = best;
+			}
+
+			//now that we have the new best palette indices, begin regenerating the palettes
+			//in a way pretty similar to before
+			for (int i = 0; i < nPalettes; i++) {
+				resetHistogram(reduction);
+				for (int j = 0; j < nTiles; j++) {
+					if (bestPalettes[j] != i) continue;
+					computeHistogram(reduction, tiles[j].rgb, 8, 8);
+				}
+				flattenHistogram(reduction);
+				optimizePalette(reduction);
+
+				//write back
+				for (int j = 0; j < nColsPerPalette; j++) {
+					uint8_t *rgb = &reduction->paletteRgb[j][0];
+					palettes[j + i * 16] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+				}
+			}
+		}
+		free(bestPalettes);
+	}
+
+	//write palettes
+	for (int i = 0; i < nPalettes; i++) {
+		qsort(palettes + i * 16, nColsPerPalette, 4, lightnessCompare);
+		memcpy(dest + 16 * (i + paletteBase) + outputOffs, palettes + i * 16, nColsPerPalette * sizeof(COLOR32));
+		if (paletteOffset == 0) dest[i * 16] = 0xFF00FF;
 	}
 
 	destroyReduction(reduction);
