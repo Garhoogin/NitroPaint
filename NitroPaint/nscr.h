@@ -164,7 +164,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 //  - color0Mode: change how color 0 is determined
 //
 void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse, 
-				int palette, int nPalettes, int bin, int tileBase, int mergeTiles,
+				int palette, int nPalettes, int bin, int tileBase, int mergeTiles, int alignment,
 				int paletteSize, int paletteOffsetm, int rowLimit, int nMaxChars,
 				int color0Mode, int balance, int colorBalance, int enhanceColors,
 				int *progress1, int *progress1Max, int *progress2, int *progress2Max,

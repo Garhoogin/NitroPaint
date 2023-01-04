@@ -1111,7 +1111,7 @@ COLOR32 chooseBGColor0(COLOR32 *px, int width, int height, int mode) {
 }
 
 void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse,
-				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles,
+				int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles, int alignment,
 				int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
 				int color0Mode, int balance, int colorBalance, int enhanceColors,
 				int *progress1, int *progress1Max, int *progress2, int *progress2Max,
@@ -1311,18 +1311,21 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 		nclr->idxTable[i] = i;
 	}
 
+	int nCharsFile = ((nChars + alignment - 1) / alignment) * alignment;
 	ncgr->nBits = nBits;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-	ncgr->nTiles = nChars;
+	ncgr->nTiles = nCharsFile;
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = calculateWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-	ncgr->tiles = (BYTE **) calloc(nChars, sizeof(BYTE *));
+	ncgr->tiles = (BYTE **) calloc(nCharsFile, sizeof(BYTE *));
 	int charSize = nBits == 4 ? 32 : 64;
-	for (int j = 0; j < nChars; j++) {
+	for (int j = 0; j < nCharsFile; j++) {
 		BYTE *b = (BYTE *) calloc(64, 1);
-		for (int i = 0; i < 64; i++) {
-			b[i] = (BYTE) blocks[i + j * 64];
+		if (j < nChars) {
+			for (int i = 0; i < 64; i++) {
+				b[i] = (BYTE) blocks[i + j * 64];
+			}
 		}
 		ncgr->tiles[j] = b;
 	}

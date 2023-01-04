@@ -906,6 +906,8 @@ typedef struct {
 	HWND hWndColorBalance;
 	HWND hWndEnhanceColors;
 	HWND hWndColor0Setting;
+	HWND hWndAlignmentCheckbox;
+	HWND hWndAlignment;
 } CREATEDIALOGDATA;
 
 BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
@@ -958,6 +960,7 @@ typedef struct {
 	int fmt;
 	int tileBase;
 	int mergeTiles;
+	int alignment;
 	int paletteSize;
 	int paletteOffset;
 	int rowLimit;
@@ -971,7 +974,7 @@ typedef struct {
 DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	THREADEDNSCRCREATEPARAMS *params = lpParameter;
 	nscrCreate(params->bbits, params->width, params->height, params->bits, params->dither, params->diffuse,
-			   params->palette, params->nPalettes, params->fmt, params->tileBase, params->mergeTiles,
+			   params->palette, params->nPalettes, params->fmt, params->tileBase, params->mergeTiles, params->alignment,
 			   params->paletteSize, params->paletteOffset, params->rowLimit, params->nMaxChars,
 			   params->color0Setting, params->balance, params->colorBalance, params->enhanceColors,
 			   &params->data->progress1, &params->data->progress1Max, &params->data->progress2, &params->data->progress2Max,
@@ -981,9 +984,9 @@ DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 }
 
 void threadedNscrCreate(PROGRESSDATA *data, DWORD *bbits, int width, int height, int bits, int dither, float diffuse, 
-						CREATENSCRDATA *createData, int palette, int nPalettes, int fmt, int tileBase, int mergeTiles, 
-						int paletteSize, int paletteOffset, int rowLimit, int nMaxChars, int color0Setting, int balance, 
-						int colorBalance, int enhanceColors) {
+						CREATENSCRDATA *createData, int palette, int nPalettes, int fmt, int tileBase, int mergeTiles,
+						int alignment, int paletteSize, int paletteOffset, int rowLimit, int nMaxChars, int color0Setting,
+						int balance, int colorBalance, int enhanceColors) {
 	THREADEDNSCRCREATEPARAMS *params = calloc(1, sizeof(*params));
 	params->data = data;
 	params->bbits = bbits;
@@ -997,6 +1000,7 @@ void threadedNscrCreate(PROGRESSDATA *data, DWORD *bbits, int width, int height,
 	params->fmt = fmt;
 	params->tileBase = tileBase;
 	params->mergeTiles = mergeTiles;
+	params->alignment = alignment;
 	params->paletteSize = paletteSize;
 	params->paletteOffset = paletteOffset;
 	params->rowLimit = rowLimit;
@@ -1061,6 +1065,8 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndDiffuse = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, rightX + 55, topY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Tile Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY + 27 * 3, 50, 22, hWnd, NULL, NULL, NULL);
 			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, rightX + 55, topY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndAlignmentCheckbox = CreateWindow(L"BUTTON", L"Align Size: ", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, topY + 27 * 4, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndAlignment = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"32", WS_VISIBLE | WS_CHILD | ES_NUMBER, rightX + 75, topY + 27 * 4, 80, 22, hWnd, NULL, NULL, NULL);
 
 			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, middleY, 50, 22, hWnd, NULL, NULL, NULL);
 			data->hWndFormatDropdown = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, rightX + 55, middleY, 150, 22, hWnd, NULL, NULL, NULL);
@@ -1100,6 +1106,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 11, (LPARAM) L"Contrasting");
 			SendMessage(data->hWndColor0Setting, CB_SETCURSEL, 0, 0);
 			SendMessage(data->hWndMergeTiles, BM_SETCHECK, BST_CHECKED, 0);
+			SendMessage(data->hWndAlignmentCheckbox, BM_SETCHECK, BST_CHECKED, 0);
 
 			SendMessage(data->hWndBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
 			SendMessage(data->hWndBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
@@ -1126,13 +1133,14 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					if (!location) break;
 					SendMessage(data->nscrCreateInput, WM_SETTEXT, (WPARAM) wcslen(location), (LPARAM) location);
 					free(location);
-				}  else if (hWndControl == data->nscrCreateButton) {
+				} else if (hWndControl == data->nscrCreateButton) {
 					WCHAR location[MAX_PATH + 1];
 					int dither = SendMessage(data->nscrCreateDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int merge = SendMessage(data->hWndMergeTiles, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int rowLimit = SendMessage(data->hWndRowLimit, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int doAlign = SendMessage(data->hWndAlignmentCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					int fmt = SendMessage(data->hWndFormatDropdown, CB_GETCURSEL, 0, 0);
-					int bitsOptions[] = {4, 8};
+					int bitsOptions[] = { 4, 8 };
 					int bits = bitsOptions[SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0)];
 					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH + 1, (LPARAM) location);
 					int palette = _wtoi(location);
@@ -1146,6 +1154,8 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					int paletteOffset = _wtoi(location);
 					SendMessage(data->hWndMaxChars, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
 					int nMaxChars = _wtoi(location);
+					SendMessage(data->hWndAlignment, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
+					int alignment = doAlign ? _wtoi(location) : 1;
 					SendMessage(data->hWndDiffuse, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
 					float diffuse = ((float) _wtoi(location)) * 0.01f;
 					SendMessage(data->nscrCreateInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
@@ -1177,8 +1187,8 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
 
 					threadedNscrCreate(progressData, bbits, width, height, bits, dither, diffuse, createData, palette,
-									   nPalettes, fmt, tileBase, merge, paletteSize, paletteOffset, rowLimit, nMaxChars,
-									   color0Setting, balance, colorBalance, enhanceColors);
+						nPalettes, fmt, tileBase, merge, alignment, paletteSize, paletteOffset, rowLimit, nMaxChars,
+						color0Setting, balance, colorBalance, enhanceColors);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					SetActiveWindow(hWndProgress);
@@ -1192,6 +1202,16 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 						SetWindowLong(hWndMaxChars, GWL_STYLE, GetWindowLong(hWndMaxChars, GWL_STYLE) & ~WS_DISABLED);
 					} else {
 						SetWindowLong(hWndMaxChars, GWL_STYLE, GetWindowLong(hWndMaxChars, GWL_STYLE) | WS_DISABLED);
+					}
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (hWndControl == data->hWndAlignmentCheckbox) {
+					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+
+					HWND hWndAlignment = data->hWndAlignment;
+					if (state) {
+						SetWindowLong(hWndAlignment, GWL_STYLE, GetWindowLong(hWndAlignment, GWL_STYLE) & ~WS_DISABLED);
+					} else {
+						SetWindowLong(hWndAlignment, GWL_STYLE, GetWindowLong(hWndAlignment, GWL_STYLE) | WS_DISABLED);
 					}
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
