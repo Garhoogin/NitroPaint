@@ -236,13 +236,63 @@ int createPaletteFromHistogram(REDUCTION *reduction, int nColors, COLOR32 *out) 
 	return nUsed;
 }
 
+double computeInterpolatedError(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR c1, COLOR c2, int transparent, double maxError) {
+	//expand palette
+	COLOR32 col0 = ColorConvertFromDS(c1);
+	COLOR32 col1 = ColorConvertFromDS(c2);
+	COLOR32 col2 = 0, col3 = 0;
+	if (!transparent) {
+		col2 = blend(col0, 3, col1, 5);
+		col3 = blend(col0, 5, col1, 3);
+	} else {
+		col2 = blend(col0, 4, col1, 4);
+	}
+	int nColors = 3 + !transparent;
+	COLOR32 palette[] = { col0, col1, col2, col3 };
+
+	return computePaletteErrorYiq(reduction, px, nPx, palette, nColors, 128, maxError);
+}
+
+double testBlockAdd(REDUCTION *reduction, COLOR32 *px, int nPx, int transparent, COLOR *pc1, COLOR *pc2, int amt, int cshift, double error) {
+	//try adding to color 1
+	int channel = (*pc1 >> cshift) & 0x1F;
+	if ((amt < 0 && channel >= -amt) || (amt > 0 && channel <= 31 - amt)) { //check for over/underflows
+		*pc1 -= (amt << cshift);
+		double err2 = computeInterpolatedError(reduction, px, nPx, *pc1, *pc2, transparent, error);
+		if (err2 < error) {
+			error = err2;
+		} else {
+			*pc1 += (amt << cshift);
+		}
+	}
+
+	//now try adding to color 2
+	channel = (*pc2 >> cshift) & 0x1F;
+	if ((amt < 0 && channel >= -amt) || (amt > 0 && channel <= 31 - amt)) { //check for over/underflows
+		*pc2 -= (amt << cshift);
+		double err2 = computeInterpolatedError(reduction, px, nPx, *pc1, *pc2, transparent, error);
+		if (err2 < error) {
+			error = err2;
+		} else {
+			*pc2 += (amt << cshift);
+		}
+	}
+
+	//whatever error we settled on...
+	return error;
+}
+
 void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMin, COLOR32 *colorMax) {
 	//if only 1 or 2 colors, fill the palette with those.
 	
 	COLOR32 colors[2];
 	int nColors = 0;
+	int transparent = 0;
 	for (int i = 0; i < nPx; i++) {
-		if (px[i] >> 24 < 0x80) continue;
+		if ((px[i] >> 24) < 0x80) {
+			transparent = 1;
+			continue;
+		}
 		if (nColors == 0) {
 			colors[0] = px[i];
 			nColors++;
@@ -293,10 +343,34 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 	yiqToRgb(rgb2, yiq2);
 
 	//round to nearest colors. TODO: refinement?
-	COLOR32 c1 = rgb1[0] | (rgb1[1] << 8) | (rgb1[2] << 16);
-	COLOR32 c2 = rgb2[0] | (rgb2[1] << 8) | (rgb2[2] << 16);
-	*colorMin = ColorConvertFromDS(ColorConvertToDS(c1));
-	*colorMax = ColorConvertFromDS(ColorConvertToDS(c2));
+	COLOR32 full1 = rgb1[0] | (rgb1[1] << 8) | (rgb1[2] << 16);
+	COLOR32 full2 = rgb2[0] | (rgb2[1] << 8) | (rgb2[2] << 16);
+	COLOR c1 = ColorConvertToDS(full1);
+	COLOR c2 = ColorConvertToDS(full2);
+
+	//try out varying the RGB values. Start G, then R, then B
+	double error = computeInterpolatedError(reduction, px, nPx, c1, c2, transparent, 1e32);
+	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, 1, 5, error);    //+G (shift 5)
+	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, -1, 5, error);   //-G
+	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, 1, 0, error);    //+R (shift 0)
+	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, -1, 0, error);   //-R
+	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, 1, 10, error);   //+B (shift 10)
+	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, -1, 10, error);  //-B
+
+	//sanity check: impose color ordering (high Y must come first)
+	int y1, u1, v1, y2, u2, v2;
+	full1 = ColorConvertFromDS(c1);
+	full2 = ColorConvertFromDS(c2);
+	convertRGBToYUV(full1 & 0xFF, (full1 >> 8) & 0xFF, (full1 >> 16) & 0xFF, &y1, &u1, &v1);
+	convertRGBToYUV(full2 & 0xFF, (full2 >> 8) & 0xFF, (full2 >> 16) & 0xFF, &y2, &u2, &v2);
+	if (y2 > y1) {
+		//swap order to keep me sane
+		COLOR32 temp = full2;
+		full2 = full1;
+		full1 = temp;
+	}
+	*colorMin = full1;
+	*colorMax = full2;
 }
 
 int computeColorDifference(COLOR32 c1, COLOR32 c2) {
