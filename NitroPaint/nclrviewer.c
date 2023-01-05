@@ -792,7 +792,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						COLOR32 *bits = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
 						for (int i = 0; i < data->nclr.nColors; i++) {
 							COLOR32 as32 = ColorConvertFromDS(data->nclr.colors[i]) | 0xFF000000;
-							bits[i] = REVERSE(as32);
+							bits[i] = as32;
 						}
 						writeImage(bits, width, height, path);
 						free(path);
