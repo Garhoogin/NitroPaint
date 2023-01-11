@@ -282,6 +282,16 @@ double testBlockAdd(REDUCTION *reduction, COLOR32 *px, int nPx, int transparent,
 	return error;
 }
 
+double testBlockStep(REDUCTION *reduction, COLOR32 *px, int nPx, int transparent, COLOR *c1, COLOR *c2, int channel, double error) {
+	double newErr = testBlockAdd(reduction, px, nPx, transparent, c1, c2, 1, 5 * channel, error); //add
+	if (newErr < error) {
+		error = newErr;
+	} else {
+		error = testBlockAdd(reduction, px, nPx, transparent, c1, c2, -1, 5 * channel, error);   //subtract
+	}
+	return error;
+}
+
 void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMin, COLOR32 *colorMax) {
 	//if only 1 or 2 colors, fill the palette with those.
 	
@@ -342,20 +352,19 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 	yiqToRgb(rgb1, yiq1);
 	yiqToRgb(rgb2, yiq2);
 
-	//round to nearest colors. TODO: refinement?
+	//round to nearest colors.
 	COLOR32 full1 = rgb1[0] | (rgb1[1] << 8) | (rgb1[2] << 16);
 	COLOR32 full2 = rgb2[0] | (rgb2[1] << 8) | (rgb2[2] << 16);
 	COLOR c1 = ColorConvertToDS(full1);
 	COLOR c2 = ColorConvertToDS(full2);
 
-	//try out varying the RGB values. Start G, then R, then B
+	//try out varying the RGB values. Start G, then R, then B. Do this a few times.
 	double error = computeInterpolatedError(reduction, px, nPx, c1, c2, transparent, 1e32);
-	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, 1, 5, error);    //+G (shift 5)
-	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, -1, 5, error);   //-G
-	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, 1, 0, error);    //+R (shift 0)
-	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, -1, 0, error);   //-R
-	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, 1, 10, error);   //+B (shift 10)
-	error = testBlockAdd(reduction, px, nPx, transparent, &c1, &c2, -1, 10, error);  //-B
+	for (int i = 0; i < 2; i++) {
+		error = testBlockStep(reduction, px, nPx, transparent, &c1, &c2, COLOR_CHANNEL_G, error);
+		error = testBlockStep(reduction, px, nPx, transparent, &c1, &c2, COLOR_CHANNEL_R, error);
+		error = testBlockStep(reduction, px, nPx, transparent, &c1, &c2, COLOR_CHANNEL_B, error);
+	}
 
 	//sanity check: impose color ordering (high Y must come first)
 	int y1, u1, v1, y2, u2, v2;
