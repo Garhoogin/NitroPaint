@@ -686,6 +686,7 @@ int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *
 	//colorTable keeps track of how each color is intended to be used.
 	//00 - unused. 01 - mode 0x0000. 02 - mode 0x4000. 04 - mode 0x8000. 08 - mode 0xC000.
 	uint8_t *colorTable = (uint8_t *) calloc(nPalettes * 2, 1);
+	int diffThreshold = threshold * threshold * 52; //threshold 0-100, square normalized to 0-1040400/2
 	int firstSlot = 0;
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
@@ -721,7 +722,7 @@ int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *
 					int colorIndex1 = -1, colorIndex2 = -1;
 					int distance = findClosestPalettes(palette, colorTable, firstSlot, &colorIndex1, &colorIndex2);
 					if (colorIndex1 == -1) break;
-					if (fits && (distance > threshold * 10 || firstSlot < 8)) break;
+					if (fits && (distance > diffThreshold || firstSlot < 8)) break;
 					int nColorsInPalettes = getColorsFromTable(colorTable[colorIndex1]);
 					uint16_t palettesMode = getModeFromTable(colorTable[colorIndex1]);
 
