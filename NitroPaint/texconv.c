@@ -320,7 +320,7 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 			*colorMax = 0;
 		} else if (nColors == 1) {
 			*colorMin = colors[0];
-			*colorMax = colors[1];
+			*colorMax = colors[0]; //color 1 doesn't exist dumbass!
 		} else {
 			int y1, u1, v1, y2, u2, v2;
 			convertRGBToYUV(colors[0] & 0xFF, (colors[0] >> 8) & 0xFF, (colors[0] >> 16) & 0xFF, &y1, &u1, &v1);
