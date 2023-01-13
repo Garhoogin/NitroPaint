@@ -428,14 +428,14 @@ void choosePaletteAndMode(REDUCTION *reduction, TILEDATA *tile) {
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
 			tile->palette[3] = 0;
-			tile->mode = 0x4000;
+			tile->mode = COMP_TRANSPARENT | COMP_INTERPOLATE;
 		} else {
 			//swap index 3 and 0, 2 and 1
 			tile->palette[0] = ColorConvertToDS(paletteFull[2]); //entry 3 empty, double up entry 2
 			tile->palette[1] = ColorConvertToDS(paletteFull[1]);
 			tile->palette[2] = ColorConvertToDS(paletteFull[2]);
 			tile->palette[3] = ColorConvertToDS(paletteFull[0]);
-			tile->mode = 0x0000;
+			tile->mode = COMP_TRANSPARENT | COMP_FULL;
 		}
 	} else {
 		COLOR32 mid1 = blend(colorMin, 5, colorMax, 3);
@@ -452,7 +452,7 @@ void choosePaletteAndMode(REDUCTION *reduction, TILEDATA *tile) {
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
 			tile->palette[3] = 0;
-			tile->mode = 0xC000;
+			tile->mode = COMP_OPAQUE | COMP_INTERPOLATE;
 		} else {
 			//swap index 3 and 0, 2 and 1
 			if (nFull < 4) paletteFull[0] = paletteFull[1];
@@ -460,7 +460,7 @@ void choosePaletteAndMode(REDUCTION *reduction, TILEDATA *tile) {
 			tile->palette[1] = ColorConvertToDS(paletteFull[1]);
 			tile->palette[2] = ColorConvertToDS(paletteFull[2]);
 			tile->palette[3] = ColorConvertToDS(paletteFull[0]);
-			tile->mode = 0x8000;
+			tile->mode = COMP_OPAQUE | COMP_FULL;
 		}
 	}
 }
@@ -512,7 +512,7 @@ void addTile(REDUCTION *reduction, TILEDATA *data, int index, COLOR32 *px, int *
 			if (tile1->duplicate) continue;
 			if (tile1->mode != tile2->mode) continue;
 			if (tile1->palette[0] != tile2->palette[0] || tile1->palette[1] != tile2->palette[1]) continue;
-			if (tile1->mode == 0x0000 || tile1->mode == 0x8000) {
+			if (!(tile1->mode & COMP_INTERPOLATE)) {
 				if (tile1->palette[2] != tile2->palette[2] || tile1->palette[3] != tile2->palette[3]) continue;
 			}
 			//palettes and modes are the same, mark as duplicate.
@@ -523,7 +523,7 @@ void addTile(REDUCTION *reduction, TILEDATA *data, int index, COLOR32 *px, int *
 	}
 	if (!data[index].duplicate) {
 		int nPalettes = 1;
-		if (data[index].mode == 0x8000 || data[index].mode == 0x0000) {
+		if (!(data[index].mode & COMP_INTERPOLATE)) {
 			nPalettes = 2;
 		}
 		*totalIndex += nPalettes;
@@ -555,11 +555,11 @@ int getColorsFromTable(uint8_t type) {
 }
 
 uint16_t getModeFromTable(uint8_t type) {
-	if (type == 1) return 0x0000;
-	if (type == 2) return 0x4000;
-	if (type == 4) return 0x8000;
-	if (type == 8) return 0xC000;
-	return 0;
+	if (type == 1) return COMP_TRANSPARENT | COMP_FULL;
+	if (type == 2) return COMP_TRANSPARENT | COMP_INTERPOLATE;
+	if (type == 4) return COMP_OPAQUE | COMP_FULL;
+	if (type == 8) return COMP_OPAQUE | COMP_INTERPOLATE;
+	return COMP_TRANSPARENT | COMP_FULL;
 }
 
 int computePaletteDifference(COLOR *pal1, COLOR *pal2, int nColors, int nMaxError) {
@@ -630,7 +630,7 @@ void mergePalettes(REDUCTION *reduction, TILEDATA *tileData, int nTiles, COLOR *
 
 	//use the mode to determine the appropriate method of creating the palette.
 	COLOR32 expandPal[4];
-	if (palettesMode == 0x0000) {
+	if (palettesMode == (COMP_TRANSPARENT | COMP_FULL)) {
 		//transparent, full color
 		resetHistogram(reduction);
 		for (int i = 0; i < nTiles; i++) {
@@ -644,7 +644,7 @@ void mergePalettes(REDUCTION *reduction, TILEDATA *tileData, int nTiles, COLOR *
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[1]);
 		palette[paletteIndex * 2 + 2] = ColorConvertToDS(expandPal[2]);
 		palette[paletteIndex * 2 + 3] = ColorConvertToDS(expandPal[0]);
-	} else if (palettesMode == 0x4000 || palettesMode == 0xC000) {
+	} else if (palettesMode & COMP_INTERPOLATE) {
 		//transparent, interpolated, and opaque, interpolated
 
 		//allocate space for all of the color data
@@ -663,7 +663,7 @@ void mergePalettes(REDUCTION *reduction, TILEDATA *tileData, int nTiles, COLOR *
 
 		palette[paletteIndex * 2 + 0] = ColorConvertToDS(expandPal[1]);
 		palette[paletteIndex * 2 + 1] = ColorConvertToDS(expandPal[0]);
-	} else if (palettesMode == 0x8000) {
+	} else if (palettesMode == (COMP_OPAQUE | COMP_FULL)) {
 		//opaque, full color
 		resetHistogram(reduction);
 		for (int i = 0; i < nTiles; i++) {
@@ -700,8 +700,7 @@ int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *
 
 			//how many color entries does this consume?
 			int nConsumed = 4;
-			if (tile->mode == 0x4000) nConsumed = 2;
-			if (tile->mode == 0xC000) nConsumed = 2;
+			if (tile->mode & COMP_INTERPOLATE) nConsumed = 2;
 
 			//does it fit?
 			int fits = 0;
@@ -767,20 +766,20 @@ int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *
 void expandPalette(COLOR *nnsPal, uint16_t mode, COLOR32 *dest, int *nOpaque) {
 	dest[0] = ColorConvertFromDS(nnsPal[0]);
 	dest[1] = ColorConvertFromDS(nnsPal[1]);
-	mode &= 0xC000;
-	if (mode == 0x8000 || mode == 0xC000) *nOpaque = 4;
+	mode &= COMP_MODE_MASK;
+	if (mode & COMP_OPAQUE) *nOpaque = 4;
 	else *nOpaque = 3;
 	
-	if (mode == 0x8000) {
+	if (mode == (COMP_OPAQUE | COMP_FULL)) {
 		dest[2] = ColorConvertFromDS(nnsPal[2]);
 		dest[3] = ColorConvertFromDS(nnsPal[3]);
-	} else if (mode == 0x0000) {
+	} else if (mode == (COMP_TRANSPARENT | COMP_FULL)) {
 		dest[2] = ColorConvertFromDS(nnsPal[2]);
 		dest[3] = 0;
-	} else if (mode == 0x4000) {
+	} else if (mode == (COMP_TRANSPARENT | COMP_INTERPOLATE)) {
 		dest[2] = blend(dest[0], 4, dest[1], 4);
 		dest[3] = 0;
-	} else if (mode == 0xC000) {
+	} else if (mode == (COMP_OPAQUE | COMP_INTERPOLATE)) {
 		dest[2] = blend(dest[0], 5, dest[1], 3);
 		dest[3] = blend(dest[0], 3, dest[1], 5);
 	}

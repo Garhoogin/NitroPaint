@@ -157,8 +157,8 @@ void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 				unsigned texel = *(unsigned *) (texels->texel + (i << 2));
 				unsigned short data = *(unsigned short *) (texels->cmp + i);
 
-				int address = (data & 0x3FFF) << 1;
-				int mode = (data >> 14) & 0x3;
+				int address = COMP_INDEX(data);
+				int mode = (data & COMP_MODE_MASK) >> 14;
 				if (address < palette->nColors) {
 					unsigned short * base = ((unsigned short *) palette->pal) + address;
 					getrgb(base[0], colors);

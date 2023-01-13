@@ -16,6 +16,15 @@
 #define TEXW(p)			(8<<(((p)>>20)&7))
 #define TEXH(p)			(8<<(((p)>>23)&7))
 
+//4x4 compression macros
+#define COMP_INTERPOLATE   0x4000
+#define COMP_FULL          0x0000
+#define COMP_OPAQUE        0x8000
+#define COMP_TRANSPARENT   0x0000
+#define COMP_MODE_MASK     0xC000
+#define COMP_INDEX_MASK    0x3FFF
+#define COMP_INDEX(c)      (((c)&COMP_INDEX_MASK)<<1)
+
 typedef struct {
 	int texImageParam;
 	char *texel;
