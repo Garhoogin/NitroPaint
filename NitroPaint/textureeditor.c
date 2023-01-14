@@ -1092,15 +1092,15 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-int isTranslucent(DWORD *px, int nWidth, int nHeight) {
+int isTranslucent(COLOR32 *px, int nWidth, int nHeight) {
 	for (int i = 0; i < nWidth * nHeight; i++) {
 		int a = px[i] >> 24;
-		if (a && a != 255) return 1;
+		if (a >= 5 && a <= 250) return 1;
 	}
 	return 0;
 }
 
-int guessFormat(DWORD *px, int nWidth, int nHeight) {
+int guessFormat(COLOR32 *px, int nWidth, int nHeight) {
 	//Guess a good format for the data. Default to 4x4.
 	int fmt = CT_4x4;
 	
@@ -1131,13 +1131,9 @@ int guessFormat(DWORD *px, int nWidth, int nHeight) {
 			int pixelsPerColor = 2 * nWidth * nHeight / nColors;
 			if (pixelsPerColor >= 3 && !(nWidth * nHeight >= 1024 * 512)) {
 				fmt = CT_4x4;
-			} else {
+			} else if (nColors < 32) {
 				//otherwise, 4x4 probably isn't a good option.
-				if (nColors < 32) {
-					fmt = CT_16COLOR;
-				} else {
-					fmt = CT_256COLOR;
-				}
+				fmt = CT_16COLOR;
 			}
 		}
 	}
