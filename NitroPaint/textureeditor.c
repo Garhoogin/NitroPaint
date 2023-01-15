@@ -1171,14 +1171,17 @@ float mylog2(float d) { //UGLY!
 #define log2 mylog2
 
 int chooseColorCount(int bWidth, int bHeight) {
-	int colors = (int) (500.0f * (0.5f * log2((float) bWidth * bHeight) - 5.0f) + 0.5f);
-	if (sqrt(bWidth * bHeight) < 83.0f) {
-		colors = (int) (8.69f * sqrt(bWidth * bHeight) - 33.02f);
+	int area = bWidth * bHeight;
+
+	//for textures smaller than 256x256, use 8*sqrt(area)
+	if (area < 256 * 256) {
+		int nColors = (int) (8 * sqrt((float) area));
+		nColors = (nColors + 15) & ~15;
+		return nColors;
 	}
-	if (colors & 7) {
-		colors += 8 - (colors & 7);
-	}
-	return colors;
+
+	//larger sizes, increase by 256 every width/height increment
+	return (int) (256 * (log2((float) area) - 10));
 }
 
 void setStyle(HWND hWnd, BOOL set, DWORD style) {
