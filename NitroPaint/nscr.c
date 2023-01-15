@@ -1329,7 +1329,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 		}
 		ncgr->tiles[j] = b;
 	}
-	ncgr->attr = (unsigned char *) calloc(nTiles, 1);
+	ncgr->attr = (unsigned char *) calloc(ncgr->nTiles, 1);
 	ncgr->attrWidth = ncgr->tilesX;
 	ncgr->attrHeight = ncgr->tilesY;
 	for (int i = 0; i < ncgr->nTiles; i++) {
