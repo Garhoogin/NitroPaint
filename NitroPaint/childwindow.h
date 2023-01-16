@@ -18,6 +18,8 @@ VOID UpdateScrollbarVisibility(HWND hWnd);
 
 VOID ScaleInterface(HWND hWnd, float scale);
 
+void setStyle(HWND hWnd, BOOL set, DWORD style);
+
 VOID DestroyChild(HWND hWnd);
 
 HWND getMainWindow(HWND hWnd);

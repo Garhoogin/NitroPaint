@@ -1184,14 +1184,6 @@ int chooseColorCount(int bWidth, int bHeight) {
 	return (int) (256 * (log2((float) area) - 10));
 }
 
-void setStyle(HWND hWnd, BOOL set, DWORD style) {
-	if (set) {
-		SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | style);
-	} else {
-		SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) & ~style);
-	}
-}
-
 void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	HWND hWndFormat = data->hWndFormat;
 	int sel = SendMessage(hWndFormat, CB_GETCURSEL, 0, 0);

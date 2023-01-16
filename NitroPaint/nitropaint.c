@@ -1347,18 +1347,18 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_CREATE:
 		{
 			SetWindowSize(hWnd, 280, 177);
-			CreateWindow(L"STATIC", L"NTFT:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"NTFP:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"NTFI:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"NTFT:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"NTFP:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"NTFI:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 50, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtftInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 10, 170, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtftBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 10, 30, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtfpInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 37, 170, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtfpBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 37, 30, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtfiInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 64, 170, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtfiBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 64, 30, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFormat = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 70, 91, 100, 100, hWnd, NULL, NULL, NULL);
+			data->hWndFormat = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 70, 10, 100, 100, hWnd, NULL, NULL, NULL);
+			data->hWndNtftInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 37, 170, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtftBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 37, 30, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtfpInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 64, 170, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtfpBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 64, 30, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtfiInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 91, 170, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtfiBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 91, 30, 22, hWnd, NULL, NULL, NULL);
 			data->hWndWidthInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"8", WS_VISIBLE | WS_CHILD | ES_NUMBER, 70, 118, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 145, 100, 22, hWnd, NULL, NULL, NULL);
 			SetGUIFont(hWnd);
@@ -1377,7 +1377,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				bf[len] = L'\0';
 				SendMessage(data->hWndFormat, CB_ADDSTRING, len, (LPARAM) bf);
 			}
-			SendMessage(data->hWndFormat, CB_SETCURSEL, 6, 0);
+			SendMessage(data->hWndFormat, CB_SETCURSEL, CT_4x4 - 1, 0);
 			
 			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
@@ -1386,6 +1386,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
+			int notif = HIWORD(wParam);
 			if (hWndControl) {
 				if (hWndControl == data->hWndNtftBrowseButton) {
 					LPWSTR path = openFileDialog(hWnd, L"Open NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
@@ -1402,6 +1403,22 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					if (!path) break;
 					SendMessage(data->hWndNtfiInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
 					free(path);
+				} else if (hWndControl == data->hWndFormat && notif == CBN_SELCHANGE) {
+					//every format needs NTFT. But not all NTFI or NTFP
+					int fmt = SendMessage(hWndControl, CB_GETCURSEL, 0, 0) + 1; //1-based since entry 0 corresponds to format 1
+					
+					//only 4x4 needs NTFI.
+					int needsNtfi = fmt == CT_4x4;
+					setStyle(data->hWndNtfiInput, !needsNtfi, WS_DISABLED);
+					setStyle(data->hWndNtfiBrowseButton, !needsNtfi, WS_DISABLED);
+
+					//only direct doesn't need and NTFP.
+					int needsNtfp = fmt != CT_DIRECT;
+					setStyle(data->hWndNtfpInput, !needsNtfp, WS_DISABLED);
+					setStyle(data->hWndNtfpBrowseButton, !needsNtfp, WS_DISABLED);
+
+					//update
+					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->hWndConvertButton) {
 					WCHAR src[MAX_PATH + 1];
 					SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
