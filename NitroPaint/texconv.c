@@ -299,17 +299,18 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 	int nColors = 0;
 	int transparent = 0;
 	for (int i = 0; i < nPx; i++) {
-		if ((px[i] >> 24) < 0x80) {
+		COLOR32 col = px[i];
+		if ((col >> 24) < 0x80) {
 			transparent = 1;
 			continue;
 		}
 		if (nColors == 0) {
-			colors[0] = px[i];
+			colors[0] = col;
 			nColors++;
-		} else if (nColors == 1) {
-			colors[1] = px[i];
+		} else if (nColors == 1 && col != colors[0]) {
+			colors[1] = col;
 			nColors++;
-		} else {
+		} else if (nColors == 2 && col != colors[0] && col != colors[1]) {
 			nColors++;
 			break;
 		}
