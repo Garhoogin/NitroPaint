@@ -690,9 +690,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						PostMessage(hWnd, WM_COMMAND, ID_FILE_OPEN40085, 0);
 						break;
 					case ID_ACCELERATOR_ZOOMIN:
+					case ID_ACCELERATOR_ZOOMIN2:
 						MainZoomIn(hWnd);
 						break;
 					case ID_ACCELERATOR_ZOOMOUT:
+					case ID_ACCELERATOR_ZOOMOUT2:
 						MainZoomOut(hWnd);
 						break;
 				}
