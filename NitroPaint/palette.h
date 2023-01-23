@@ -6,6 +6,8 @@
 #define BALANCE_MIN      1
 #define BALANCE_MAX      39
 
+#define RECLUSTER_DEFAULT 8
+
 //
 // Comparator for use with qsort, sortrs an array of colors by lightness.
 //
@@ -142,6 +144,15 @@ typedef struct HISTOGRAM_ {
 	int firstSlot;
 } HISTOGRAM;
 
+//struct for totaling a bucket in reclustering
+typedef struct {
+	double y;
+	double i;
+	double q;
+	double a;
+	double weight;
+} TOTAL_BUFFER;
+
 //reduction workspace structure
 typedef struct REDUCTION_ {
 	int nPaletteColors;
@@ -150,13 +161,16 @@ typedef struct REDUCTION_ {
 	int iWeight;
 	int qWeight;
 	int enhanceColors;
+	int nReclusters;
 	int maskColors;
 	int optimization;
 	HISTOGRAM *histogram;
 	HIST_ENTRY **histogramFlat;
+	TOTAL_BUFFER blockTotals[256];
 	COLOR_NODE *colorTreeHead;
 	COLOR_NODE *colorBlocks[0x2000];
 	uint8_t paletteRgb[256][3];
+	int paletteYiq[256][4];
 	double lumaTable[512];
 	double gamma;
 } REDUCTION;

@@ -23,6 +23,7 @@ void initReduction(REDUCTION *reduction, int balance, int colorBalance, int opti
 	reduction->optimization = optimization;
 	reduction->qWeight = 40 - colorBalance;
 	reduction->enhanceColors = enhanceColors;
+	reduction->nReclusters = RECLUSTER_DEFAULT;
 	reduction->nPaletteColors = nColors;
 	reduction->gamma = 1.27;
 	reduction->maskColors = TRUE;
@@ -726,19 +727,109 @@ void paletteToArray(REDUCTION *reduction) {
 	for (int i = 0; i < reduction->nPaletteColors; i++) {
 		if (colorBlockPtr[i] != NULL) {
 			COLOR_NODE *block = colorBlockPtr[i];
-			int y = block->y, i = block->i, q = block->q;
-			int yiq[] = { y, i, q, 0xFF };
+			int y = block->y, i = block->i, q = block->q, a = block->a;
+			int yiq[] = { y, i, q, a };
 			int rgb[4];
 			yiqToRgb(rgb, yiq);
 
 			COLOR32 rgb32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
 			if (reduction->maskColors) rgb32 = ColorRoundToDS15(rgb32);
 
+			//write RGB
 			reduction->paletteRgb[ofs][0] = rgb32 & 0xFF;
 			reduction->paletteRgb[ofs][1] = (rgb32 >> 8) & 0xFF;
 			reduction->paletteRgb[ofs][2] = (rgb32 >> 16) & 0xFF;
+
+			//write YIQ (with any loss of information to RGB)
+			rgbToYiq(rgb32, &reduction->paletteYiq[ofs][0]);
 			ofs++;
 		}
+	}
+}
+
+void iterateRecluster(REDUCTION *reduction) {
+	//simple termination conditions
+	int nIterations = reduction->nReclusters;
+	if (nIterations <= 0) return;
+	if (reduction->nUsedColors < reduction->nPaletteColors) return;
+	if (reduction->nUsedColors >= reduction->histogram->nEntries) return;
+
+	int nHistEntries = reduction->histogram->nEntries;
+	double yw2 = reduction->yWeight * reduction->yWeight;
+	double iw2 = reduction->iWeight * reduction->iWeight;
+	double qw2 = reduction->qWeight * reduction->qWeight;
+
+	//iterate up to n times
+	for (int k = 0; k < nIterations; k++) {
+		//reset block totals
+		TOTAL_BUFFER *totalsBuffer = reduction->blockTotals;
+		memset(totalsBuffer, 0, sizeof(reduction->blockTotals));
+
+		//voronoi iteration
+		for (int i = 0; i < nHistEntries; i++) {
+			HIST_ENTRY *entry = reduction->histogramFlat[i];
+			double weight = entry->weight;
+			int hy = entry->y, hi = entry->i, hq = entry->q, ha = entry->a;
+
+			double bestDistance = 1e30;
+			int bestIndex = 0;
+			for (int j = 0; j < reduction->nUsedColors; j++) {
+				int *pyiq = &reduction->paletteYiq[j][0];
+
+				double dy = hy - pyiq[0];
+				double di = hi - pyiq[1];
+				double dq = hq - pyiq[2];
+				double diff = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
+				if (diff < bestDistance) {
+					bestDistance = diff;
+					bestIndex = j;
+				}
+			}
+
+			//add to total
+			totalsBuffer[bestIndex].weight += weight;
+			totalsBuffer[bestIndex].y += reduction->lumaTable[hy] * weight;
+			totalsBuffer[bestIndex].i += hi * weight;
+			totalsBuffer[bestIndex].q += hq * weight;
+			totalsBuffer[bestIndex].a += ha * weight;
+		}
+
+		//quick sanity check of bucket weights (if any are 0, terminate)
+		for (int i = 0; i < reduction->nUsedColors; i++) {
+			if (totalsBuffer[i].weight <= 0.0) return;
+		}
+
+		//average out the colors in the new partitions
+		for (int i = 0; i < reduction->nUsedColors; i++) {
+			double weight = totalsBuffer[i].weight;
+			double avgY = totalsBuffer[i].y / weight;
+			double avgI = totalsBuffer[i].i / weight;
+			double avgQ = totalsBuffer[i].q / weight;
+			double avgA = totalsBuffer[i].a / weight;
+
+			//delinearize Y
+			avgY = 511.0 * pow(avgY * 0.00195695, 1.0 / reduction->gamma);
+
+			//convert to integer YIQ
+			int iy = (int) (avgY + 0.5);
+			int ii = (int) (avgI + (avgI < 0 ? -0.5 : 0.5));
+			int iq = (int) (avgQ + (avgQ < 0 ? -0.5 : 0.5));
+			int ia = (int) (avgA + 0.5);
+
+			//to RGB
+			int rgb[4];
+			int yiq[] = { iy, ii, iq, ia };
+			yiqToRgb(rgb, yiq);
+			COLOR32 as32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+			if (reduction->maskColors) as32 = ColorRoundToDS15(as32);
+
+			reduction->paletteRgb[i][0] = as32 & 0xFF;
+			reduction->paletteRgb[i][1] = (as32 >> 8) & 0xFF;
+			reduction->paletteRgb[i][2] = (as32 >> 16) & 0xFF;
+			rgbToYiq(as32, &reduction->paletteYiq[i][0]);
+		}
+
+		//TODO: check collisions (rounding to 15-bit makes this possible)
 	}
 }
 
@@ -916,6 +1007,9 @@ void optimizePalette(REDUCTION *reduction) {
 
 	//to array
 	paletteToArray(reduction);
+
+	//perform voronoi iteration
+	iterateRecluster(reduction);
 }
 
 void freeAllocations(ALLOCATOR *allocator) {
