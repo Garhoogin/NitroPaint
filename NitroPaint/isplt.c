@@ -23,7 +23,7 @@ void initReduction(REDUCTION *reduction, int balance, int colorBalance, int opti
 	reduction->optimization = optimization;
 	reduction->qWeight = 40 - colorBalance;
 	reduction->enhanceColors = enhanceColors;
-	reduction->nReclusters = RECLUSTER_DEFAULT;
+	reduction->nReclusters = nColors <= 32 ? RECLUSTER_DEFAULT : 0;
 	reduction->nPaletteColors = nColors;
 	reduction->gamma = 1.27;
 	reduction->maskColors = TRUE;
