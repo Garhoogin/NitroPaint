@@ -1074,40 +1074,58 @@ COLOR32 chooseBGColor0(COLOR32 *px, int width, int height, int mode) {
 		}
 	}
 
-	//use an octree to find the most different one
-	float centerR = 127.5f, centerG = 127.5f, centerB = 127.5f;
-	float size = 127.5f;
-	for (int i = 0; i < 4; i++) {
-		int mostError = 0, mostErrorCoordinate = 0;
-		for (int x = 0; x < 2; x++) {
-			for (int y = 0; y < 2; y++) {
-				for (int z = 0; z < 2; z++) {
-					int r = (int) (centerR + (2 * x - 1) * size + 0.5f);
-					int g = (int) (centerG + (2 * x - 1) * size + 0.5f);
-					int b = (int) (centerB + (2 * x - 1) * size + 0.5f);
-					int err = findLeastDistanceToColor(px, width * height, r, g, b);
-					if (err > mostError) {
-						mostError = err;
-						mostErrorCoordinate = x | (y << 1) | (z << 2);
+	//use an octree to find the space with the least weight
+	//in the event of a tie, favor the order RGB, RGb, rGB, rGb, RgB, Rgb, rgB, rgb
+	int rMin = 0, rMax = 256, gMin = 0, gMax = 256, bMin = 0, bMax = 256;
+	int rMid, gMid, bMid, boxSize = 256;
+	for (int i = 0; i < 7; i++) {
+		int octreeScores[2][2][2] = { 0 }; //[r][g][b]
+		rMid = (rMin + rMax) / 2;
+		gMid = (gMin + gMax) / 2;
+		bMid = (bMin + bMax) / 2;
+		for (int j = 0; j < width * height; j++) {
+			COLOR32 c = px[j];
+			int a = (c >> 24) & 0xFF;
+			if (a < 128) continue;
+
+			//add to bucket if it fits
+			int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
+			if (r < (rMin - boxSize / 2) || r >= (rMax + boxSize / 2)) continue;
+			if (g < (gMin - boxSize / 2) || g >= (gMax + boxSize / 2)) continue;
+			if (b < (bMin - boxSize / 2) || b >= (bMax + boxSize / 2)) continue;
+
+			//which bucket?
+			octreeScores[r >= rMid][g >= gMid][b >= bMid]++;
+		}
+
+		//find winner
+		int bestScore = 0x7FFFFFFF;
+		int bestIndex = 0;
+		for (int g = 1; g >= 0; g--) {
+			for (int b = 1; b >= 0; b--) {
+				for (int r = 1; r >= 0; r--) {
+					int score = octreeScores[r][g][b];
+					if (score < bestScore) {
+						bestScore = score;
+						bestIndex = r | (g << 1) | (b << 2);
 					}
 				}
 			}
 		}
 
-		centerR -= size * 0.5f;
-		centerG -= size * 0.5f;
-		centerB -= size * 0.5f;
-		if ((mostErrorCoordinate >> 0) & 1) centerR += size;
-		if ((mostErrorCoordinate >> 1) & 1) centerG += size;
-		if ((mostErrorCoordinate >> 1) & 1) centerB += size;
-
-		size *= 0.5f;
+		//shrink box
+		if ((bestIndex >> 0) & 1) rMin = rMid;
+		else rMax = rMid;
+		if ((bestIndex >> 1) & 1) gMin = gMid;
+		else gMax = gMid;
+		if ((bestIndex >> 2) & 1) bMin = bMid;
+		else bMax = bMid;
+		boxSize /= 2;
 	}
-
-	int r = (int) (centerR + 0.5f);
-	int g = (int) (centerG + 0.5f);
-	int b = (int) (centerB + 0.5f);
-	return r | (g << 8) | (b << 16);
+	
+	//retrieve midpoint as final color
+	COLOR32 pt = rMid | (gMid << 8) | (bMid << 8);
+	return pt;
 }
 
 void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse,
