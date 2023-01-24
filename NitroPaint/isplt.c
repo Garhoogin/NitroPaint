@@ -1410,7 +1410,7 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 	for (int i = 0; i < nPalettes; i++) {
 		qsort(palettes + i * 16, nColsPerPalette, 4, lightnessCompare);
 		memcpy(dest + 16 * (i + paletteBase) + outputOffs, palettes + i * 16, nColsPerPalette * sizeof(COLOR32));
-		if (paletteOffset == 0) dest[i * 16] = 0xFF00FF;
+		if (paletteOffset == 0) dest[(i + paletteBase) * 16] = 0xFF00FF;
 	}
 
 	destroyReduction(reduction);
