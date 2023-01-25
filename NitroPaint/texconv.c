@@ -423,8 +423,8 @@ void choosePaletteAndMode(REDUCTION *reduction, TILEDATA *tile) {
 		resetHistogram(reduction);
 		computeHistogram(reduction, (COLOR32 *) tile->rgb, 4, 4);
 		int nFull = createPaletteFromHistogram(reduction, 3, paletteFull);
-		//if error <= 24, then these colors are good enough
-		if (error <= 24 || nFull <= 2) {
+		//if error <= 64, then these colors are good enough
+		if (error <= 64 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
@@ -448,7 +448,7 @@ void choosePaletteAndMode(REDUCTION *reduction, TILEDATA *tile) {
 		resetHistogram(reduction);
 		computeHistogram(reduction, (COLOR32 *) tile->rgb, 4, 4);
 		int nFull = createPaletteFromHistogram(reduction, 4, paletteFull);
-		if (error <= 24 || nFull <= 2) {
+		if (error <= 64 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
@@ -739,8 +739,9 @@ int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *
 					}
 
 					//move entries in palette and colorTable.
-					memmove(palette + colorIndex2, palette + colorIndex2 + nColorsInPalettes, (nPalettes * 2 - colorIndex2 - nColorsInPalettes) * sizeof(COLOR));
-					memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColorsInPalettes, nPalettes * 2 - colorIndex2 - nColorsInPalettes);
+					int nToShift = nPalettes * 2 - colorIndex2 - nColorsInPalettes;
+					memmove(palette + colorIndex2, palette + colorIndex2 + nColorsInPalettes, nToShift * sizeof(COLOR));
+					memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColorsInPalettes, nToShift);
 
 					//merge those palettes that we've just combined.
 					mergePalettes(reduction, tileData, tilesX * tilesY, palette, colorIndex1 / 2, palettesMode);
