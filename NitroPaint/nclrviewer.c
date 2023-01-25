@@ -155,7 +155,7 @@ int lightness(COLOR col) {
 	int r = GetR(col);
 	int g = GetG(col);
 	int b = GetB(col);
-	return (1063 * r + 3576 * g + 361 * b + 2500) / 5000;
+	return 1063 * r + 3576 * g + 361 * b;
 }
 
 int colorSortLightness(LPCVOID p1, LPCVOID p2) {
