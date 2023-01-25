@@ -1069,6 +1069,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, rightX + 55, topY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndAlignmentCheckbox = CreateWindow(L"BUTTON", L"Align Size: ", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, topY + 27 * 4, 75, 22, hWnd, NULL, NULL, NULL);
 			data->hWndAlignment = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"32", WS_VISIBLE | WS_CHILD | ES_NUMBER, rightX + 75, topY + 27 * 4, 80, 22, hWnd, NULL, NULL, NULL);
+			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
 
 			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, middleY, 50, 22, hWnd, NULL, NULL, NULL);
 			data->hWndFormatDropdown = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, rightX + 55, middleY, 150, 22, hWnd, NULL, NULL, NULL);
@@ -1197,24 +1198,19 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
 
 				} else if (hWndControl == data->hWndMergeTiles) {
+					//enable/disable max chars field
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
-
-					HWND hWndMaxChars = data->hWndMaxChars;
-					if (state) {
-						SetWindowLong(hWndMaxChars, GWL_STYLE, GetWindowLong(hWndMaxChars, GWL_STYLE) & ~WS_DISABLED);
-					} else {
-						SetWindowLong(hWndMaxChars, GWL_STYLE, GetWindowLong(hWndMaxChars, GWL_STYLE) | WS_DISABLED);
-					}
+					setStyle(data->hWndMaxChars, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->hWndAlignmentCheckbox) {
+					//enable/disable alignment amount field
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
-
-					HWND hWndAlignment = data->hWndAlignment;
-					if (state) {
-						SetWindowLong(hWndAlignment, GWL_STYLE, GetWindowLong(hWndAlignment, GWL_STYLE) & ~WS_DISABLED);
-					} else {
-						SetWindowLong(hWndAlignment, GWL_STYLE, GetWindowLong(hWndAlignment, GWL_STYLE) | WS_DISABLED);
-					}
+					setStyle(data->hWndAlignment, !state, WS_DISABLED);
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (hWndControl == data->nscrCreateDither) {
+					//enable/disable diffusion amount field
+					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					setStyle(data->hWndDiffuse, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
 			} else if (HIWORD(wParam) == CBN_SELCHANGE) {
