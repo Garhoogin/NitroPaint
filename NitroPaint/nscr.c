@@ -1124,7 +1124,7 @@ COLOR32 chooseBGColor0(COLOR32 *px, int width, int height, int mode) {
 	}
 	
 	//retrieve midpoint as final color
-	COLOR32 pt = rMid | (gMid << 8) | (bMid << 8);
+	COLOR32 pt = rMid | (gMid << 8) | (bMid << 16);
 	return pt;
 }
 
