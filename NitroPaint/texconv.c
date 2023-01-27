@@ -324,6 +324,8 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 			*colorMax = colors[0]; //color 1 doesn't exist dumbass!
 		} else {
 			int y1, u1, v1, y2, u2, v2;
+			colors[0] = ColorRoundToDS15(colors[0]);
+			colors[1] = ColorRoundToDS15(colors[1]);
 			convertRGBToYUV(colors[0] & 0xFF, (colors[0] >> 8) & 0xFF, (colors[0] >> 16) & 0xFF, &y1, &u1, &v1);
 			convertRGBToYUV(colors[1] & 0xFF, (colors[1] >> 8) & 0xFF, (colors[1] >> 16) & 0xFF, &y2, &u2, &v2);
 			if (y1 > y2) {
@@ -379,8 +381,8 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 		full2 = full1;
 		full1 = temp;
 	}
-	*colorMin = full1;
-	*colorMax = full2;
+	*colorMin = full2;
+	*colorMax = full1;
 }
 
 int computeColorDifference(COLOR32 c1, COLOR32 c2) {
