@@ -484,6 +484,16 @@ void addTile(REDUCTION *reduction, TILEDATA *data, int index, COLOR32 *px, int *
 		if (a < 0x80) nTransparentPixels++;
 	}
 	data[index].transparentPixels = nTransparentPixels;
+
+	//is fully transparent?
+	if (nTransparentPixels == 16) {
+		data[index].used = 0;
+		data[index].paletteIndex = 0;
+		data[index].mode = COMP_TRANSPARENT | COMP_INTERPOLATE;
+		data[index].palette[0] = 0;
+		data[index].palette[1] = 0;
+		return;
+	}
 	
 	//is it a duplicate?
 	int isDuplicate = 0;
@@ -628,7 +638,7 @@ void mergePalettes(REDUCTION *reduction, TILEDATA *tileData, int nTiles, COLOR *
 	//count the number of tiles that use this palette.
 	int nUsedTiles = 0;
 	for (int i = 0; i < nTiles; i++) {
-		if (tileData[i].paletteIndex == paletteIndex) nUsedTiles++;
+		if (tileData[i].paletteIndex == paletteIndex && tileData[i].used) nUsedTiles++;
 	}
 
 	//use the mode to determine the appropriate method of creating the palette.
@@ -637,7 +647,7 @@ void mergePalettes(REDUCTION *reduction, TILEDATA *tileData, int nTiles, COLOR *
 		//transparent, full color
 		resetHistogram(reduction);
 		for (int i = 0; i < nTiles; i++) {
-			if (tileData[i].paletteIndex == paletteIndex) {
+			if (tileData[i].paletteIndex == paletteIndex && tileData[i].used) {
 				computeHistogram(reduction, (COLOR32 *) tileData[i].rgb, 4, 4);
 			}
 		}
@@ -656,7 +666,7 @@ void mergePalettes(REDUCTION *reduction, TILEDATA *tileData, int nTiles, COLOR *
 		//copy tiles into the buffer
 		int copiedTiles = 0;
 		for (int i = 0; i < nTiles; i++) {
-			if (tileData[i].paletteIndex == paletteIndex) {
+			if (tileData[i].paletteIndex == paletteIndex && tileData[i].used) {
 				memcpy(px + copiedTiles * 16, tileData[i].rgb, 16 * 4);
 				copiedTiles++;
 			}
@@ -670,7 +680,7 @@ void mergePalettes(REDUCTION *reduction, TILEDATA *tileData, int nTiles, COLOR *
 		//opaque, full color
 		resetHistogram(reduction);
 		for (int i = 0; i < nTiles; i++) {
-			if (tileData[i].paletteIndex == paletteIndex) {
+			if (tileData[i].paletteIndex == paletteIndex && tileData[i].used) {
 				computeHistogram(reduction, (COLOR32 *) tileData[i].rgb, 4, 4);
 			}
 		}
@@ -695,7 +705,7 @@ int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *
 		for (int x = 0; x < tilesX; x++) {
 			int index = x + y * tilesX;
 			TILEDATA *tile = tileData + index;
-			if (tile->duplicate) {
+			if (tile->duplicate || !tile->used) {
 				//the paletteIndex field of a duplicate tile is first set to the tile index it is a duplicate of.
 				//set it to an actual palette index here.
 				_globColors++;
