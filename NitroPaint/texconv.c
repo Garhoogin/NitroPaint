@@ -489,7 +489,7 @@ void addTile(REDUCTION *reduction, TILEDATA *data, int index, COLOR32 *px, int *
 	if (nTransparentPixels == 16) {
 		data[index].used = 0;
 		data[index].paletteIndex = 0;
-		data[index].mode = COMP_TRANSPARENT | COMP_INTERPOLATE;
+		data[index].mode = COMP_TRANSPARENT | COMP_FULL;
 		data[index].palette[0] = 0;
 		data[index].palette[1] = 0;
 		return;
@@ -800,15 +800,28 @@ void expandPalette(COLOR *nnsPal, uint16_t mode, COLOR32 *dest, int *nOpaque) {
 	}
 }
 
-uint16_t findOptimalPidx(REDUCTION *reduction, COLOR32 *px, int hasTransparent, COLOR *palette, int nColors) {
+double computeTilePidxError(REDUCTION *reduction, COLOR32 *px, COLOR *palette, uint16_t mode, double maxError) {
+	int nOpaque;
+	COLOR32 expandPal[4];
+	expandPalette(palette + COMP_INDEX(mode), mode, expandPal, &nOpaque);
+	return computePaletteErrorYiq(reduction, px, 16, expandPal, nOpaque, 128, maxError);
+}
+
+uint16_t findOptimalPidx(REDUCTION *reduction, TILEDATA *tile, COLOR *palette, int nColors) {
+	COLOR32 *px = (COLOR32 *) tile->rgb;
+	int hasTransparent = tile->transparentPixels;
+
+	//start with default values
+	uint16_t leastPidx = tile->mode | tile->paletteIndex;
+	double leastError = computeTilePidxError(reduction, px, palette, leastPidx, 1e32);
+	if (tile->transparentPixels == 16 || leastError == 0.0) {
+		return leastPidx;
+	}
+
 	//yes, iterate over every possible palette and mode.
-	double leastError = 1e32;
-	uint16_t leastPidx = 0;
 	for (int i = 0; i < nColors; i += 2) {
-		COLOR *thisPalette = palette + i;
-		COLOR32 expand[4];
-		
 		for (int j = 0; j < 4; j++) {
+			//check that we don't run off the end of the palette
 			int nConsumed = 2;
 			if (j == 0 || j == 2) nConsumed = 4;
 			if (i + nConsumed > nColors) continue;
@@ -817,15 +830,10 @@ uint16_t findOptimalPidx(REDUCTION *reduction, COLOR32 *px, int hasTransparent, 
 			if (!hasTransparent && j == 0) continue;
 			if (hasTransparent && j >= 2) break;
 			
-			uint16_t mode = j << 14;
-			expandPalette(thisPalette, mode, expand, &nConsumed);
-			if (hasTransparent && nConsumed == 4) continue;
-
-			//unsigned long long dst = computeLMS(px, expand, nConsumed == 3); //35.36s
-			//unsigned long long dst = computePaletteError(px, 16, expand, 4 - (nConsumed == 3), 128, leastError); //22.26s, lot faster
-			double dst = computePaletteErrorYiq(reduction, px, 16, expand, 4 - (nConsumed == 3), 128, leastError);
+			uint16_t mode = (j << 14) | (i >> 1);
+			double dst = computeTilePidxError(reduction, px, palette, mode, leastError);
 			if (dst < leastError) {
-				leastPidx = mode | (i >> 1);
+				leastPidx = mode;
 				leastError = dst;
 			}
 		}
@@ -870,7 +878,7 @@ int textureConvert4x4(CREATEPARAMS *params) {
 		uint32_t texel = 0;
 
 		//double check that these settings are the most optimal for this tile.
-		uint16_t idx = findOptimalPidx(reduction, (COLOR32 *) tileData[i].rgb, tileData[i].transparentPixels, nnsPal, nUsedColors);
+		uint16_t idx = findOptimalPidx(reduction, tileData + i, nnsPal, nUsedColors);
 		uint16_t mode = idx & 0xC000;
 		uint16_t index = idx & 0x3FFF;
 		COLOR *thisPalette = nnsPal + (index * 2);
