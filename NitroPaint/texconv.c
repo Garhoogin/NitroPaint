@@ -203,9 +203,9 @@ COLOR32 blend(COLOR32 col1, int weight1, COLOR32 col2, int weight2) {
 	return r3 | (g3 << 8) | (b3 << 16);
 }
 
-volatile _globColors = 0;
-volatile _globFinal = 0;
-volatile _globFinished = 0;
+volatile g_texCompressionProgress = 0;
+volatile g_texCompressionProgressMax = 0;
+volatile g_texCompressionFinished = 0;
 
 typedef struct {
 	uint8_t rgb[64];           //the tile's initial RGBA color data
@@ -364,9 +364,13 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 	//try out varying the RGB values. Start G, then R, then B. Do this a few times.
 	double error = computeInterpolatedError(reduction, px, nPx, c1, c2, transparent, 1e32);
 	for (int i = 0; i < 2; i++) {
+		COLOR old1 = c1, old2 = c2;
 		error = testBlockStep(reduction, px, nPx, transparent, &c1, &c2, COLOR_CHANNEL_G, error);
 		error = testBlockStep(reduction, px, nPx, transparent, &c1, &c2, COLOR_CHANNEL_R, error);
 		error = testBlockStep(reduction, px, nPx, transparent, &c1, &c2, COLOR_CHANNEL_B, error);
+
+		//early breakout check: are we doing anything?
+		if (old1 == c1 && old2 == c2) break;
 	}
 
 	//sanity check: impose color ordering (high Y must come first)
@@ -541,7 +545,7 @@ void addTile(REDUCTION *reduction, TILEDATA *data, int index, COLOR32 *px, int *
 		}
 		*totalIndex += nPalettes;
 	}
-	_globColors++;
+	g_texCompressionProgress++;
 }
 
 TILEDATA *createTileData(REDUCTION *reduction, COLOR32 *px, int tilesX, int tilesY) {
@@ -708,7 +712,7 @@ int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *
 			if (tile->duplicate || !tile->used) {
 				//the paletteIndex field of a duplicate tile is first set to the tile index it is a duplicate of.
 				//set it to an actual palette index here.
-				_globColors++;
+				g_texCompressionProgress++;
 				continue;
 			}
 
@@ -771,7 +775,7 @@ int buildPalette(REDUCTION *reduction, COLOR *palette, int nPalettes, TILEDATA *
 					firstSlot += nConsumed;
 				}
 			}
-			_globColors++;
+			g_texCompressionProgress++;
 		}
 	}
 	free(colorTable);
@@ -847,8 +851,8 @@ int textureConvert4x4(CREATEPARAMS *params) {
 	params->colorEntries = (params->colorEntries + 7) & 0xFFFFFFF8;
 	int width = params->width, height = params->height;
 	int tilesX = width / 4, tilesY = height / 4;
-	_globFinal = tilesX * tilesY * 3;
-	_globColors = 0;
+	g_texCompressionProgressMax = tilesX * tilesY * 3;
+	g_texCompressionProgress = 0;
 
 	//create tile data
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
@@ -863,7 +867,7 @@ int textureConvert4x4(CREATEPARAMS *params) {
 	} else {
 		nUsedColors = params->colorEntries;
 		memcpy(nnsPal, params->fixedPalette, params->colorEntries * 2);
-		_globColors += tilesX * tilesY;
+		g_texCompressionProgress += tilesX * tilesY;
 	}
 	if (nUsedColors & 7) nUsedColors += 8 - (nUsedColors & 7);
 	if (nUsedColors < 16) nUsedColors = 16;
@@ -902,7 +906,7 @@ int textureConvert4x4(CREATEPARAMS *params) {
 			texel |= index << (j * 2);
 		}
 		txel[i] = texel;
-		_globColors++;
+		g_texCompressionProgress++;
 	}
 	destroyReduction(reduction);
 	free(reduction);
@@ -947,7 +951,7 @@ int textureConvert(CREATEPARAMS *params) {
 		COLOR32 p = params->px[i];
 		params->px[i] = REVERSE(p);
 	}
-	_globFinished = 1;
+	g_texCompressionFinished = 1;
 	if(params->callback) params->callback(params->callbackParam);
 	if (params->useFixedPalette) free(params->fixedPalette);
 	return 0;
@@ -960,7 +964,7 @@ DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
 
 HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
 	CREATEPARAMS *params = (CREATEPARAMS *) calloc(1, sizeof(CREATEPARAMS));
-	_globFinished = 0;
+	g_texCompressionFinished = 0;
 	params->px = px;
 	params->width = width;
 	params->height = height;

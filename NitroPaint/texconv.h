@@ -44,9 +44,9 @@ int textureConvertPalette(CREATEPARAMS *params);
 int textureConvertTranslucent(CREATEPARAMS *params);
 
 //progress markers for textureConvert4x4.
-extern volatile _globColors;
-extern volatile _globFinal;
-extern volatile _globFinished;
+extern volatile g_texCompressionProgress;
+extern volatile g_texCompressionProgressMax;
+extern volatile g_texCompressionFinished;
 
 //
 // Convert an image to a 4x4 compressed texture

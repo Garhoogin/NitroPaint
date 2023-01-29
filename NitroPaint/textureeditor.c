@@ -1437,16 +1437,16 @@ LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 		}
 		case WM_TIMER:
 		{
-			if (_globFinal) {
+			if (g_texCompressionProgressMax) {
 				HWND hWndProgress = (HWND) GetWindowLong(hWnd, 0);
-				SendMessage(hWndProgress, PBM_SETRANGE, 0, _globFinal << 16);
-				SendMessage(hWndProgress, PBM_SETPOS, _globColors, 0);
+				SendMessage(hWndProgress, PBM_SETRANGE, 0, g_texCompressionProgressMax << 16);
+				SendMessage(hWndProgress, PBM_SETPOS, g_texCompressionProgress, 0);
 			}
 			break;
 		}
 		case WM_CLOSE:
 		{
-			if (_globFinished) {
+			if (g_texCompressionFinished) {
 				KillTimer(hWnd, 1);
 				break;
 			} else {
