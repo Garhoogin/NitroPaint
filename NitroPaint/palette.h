@@ -151,6 +151,7 @@ typedef struct {
 	double q;
 	double a;
 	double weight;
+	double error;
 } TOTAL_BUFFER;
 
 //reduction workspace structure
@@ -170,7 +171,9 @@ typedef struct REDUCTION_ {
 	COLOR_NODE *colorTreeHead;
 	COLOR_NODE *colorBlocks[0x2000];
 	uint8_t paletteRgb[256][3];
+	uint8_t paletteRgbCopy[256][3];
 	int paletteYiq[256][4];
+	int paletteYiqCopy[256][4];
 	double lumaTable[512];
 	double gamma;
 } REDUCTION;

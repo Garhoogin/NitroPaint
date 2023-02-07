@@ -23,7 +23,7 @@ void initReduction(REDUCTION *reduction, int balance, int colorBalance, int opti
 	reduction->optimization = optimization;
 	reduction->qWeight = 40 - colorBalance;
 	reduction->enhanceColors = enhanceColors;
-	reduction->nReclusters = nColors <= 32 ? RECLUSTER_DEFAULT : 0;
+	reduction->nReclusters = RECLUSTER_DEFAULT;// nColors <= 32 ? RECLUSTER_DEFAULT : 0;
 	reduction->nPaletteColors = nColors;
 	reduction->gamma = 1.27;
 	reduction->maskColors = TRUE;
@@ -759,6 +759,13 @@ void iterateRecluster(REDUCTION *reduction) {
 	double iw2 = reduction->iWeight * reduction->iWeight;
 	double qw2 = reduction->qWeight * reduction->qWeight;
 
+	//keep track of error. Used to abort if we mess up the palette
+	double error = 0.0, lastError = 1e32;
+
+	//copy main palette to palette copy
+	memcpy(reduction->paletteYiqCopy, reduction->paletteYiq, sizeof(reduction->paletteYiq));
+	memcpy(reduction->paletteRgbCopy, reduction->paletteRgb, sizeof(reduction->paletteRgb));
+
 	//iterate up to n times
 	for (int k = 0; k < nIterations; k++) {
 		//reset block totals
@@ -774,7 +781,7 @@ void iterateRecluster(REDUCTION *reduction) {
 			double bestDistance = 1e30;
 			int bestIndex = 0;
 			for (int j = 0; j < reduction->nUsedColors; j++) {
-				int *pyiq = &reduction->paletteYiq[j][0];
+				int *pyiq = &reduction->paletteYiqCopy[j][0];
 
 				double dy = hy - pyiq[0];
 				double di = hi - pyiq[1];
@@ -792,12 +799,28 @@ void iterateRecluster(REDUCTION *reduction) {
 			totalsBuffer[bestIndex].i += hi * weight;
 			totalsBuffer[bestIndex].q += hq * weight;
 			totalsBuffer[bestIndex].a += ha * weight;
+			totalsBuffer[bestIndex].error += bestDistance * weight;
+			entry->entry = bestIndex;
+
+			error += bestDistance * weight;
 		}
 
 		//quick sanity check of bucket weights (if any are 0, terminate)
 		for (int i = 0; i < reduction->nUsedColors; i++) {
-			if (totalsBuffer[i].weight <= 0.0) return;
+			if (totalsBuffer[i].weight <= 0.0) return; //TODO: try some sort of reassignment here instead
 		}
+
+		//also check palette error; if we've started rising, we passed our locally optimal palette
+		if (error > lastError) {
+			return;
+		}
+
+		//weight check succeeded, copy this palette to the main palette.
+		memcpy(reduction->paletteYiq, reduction->paletteYiqCopy, sizeof(reduction->paletteYiqCopy));
+		memcpy(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgbCopy));
+
+		//if this is the last iteration, skip the new block totals since they won't affect anything
+		if (k == nIterations - 1) break;
 
 		//average out the colors in the new partitions
 		for (int i = 0; i < reduction->nUsedColors; i++) {
@@ -823,13 +846,14 @@ void iterateRecluster(REDUCTION *reduction) {
 			COLOR32 as32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
 			if (reduction->maskColors) as32 = ColorRoundToDS15(as32);
 
-			reduction->paletteRgb[i][0] = as32 & 0xFF;
-			reduction->paletteRgb[i][1] = (as32 >> 8) & 0xFF;
-			reduction->paletteRgb[i][2] = (as32 >> 16) & 0xFF;
-			rgbToYiq(as32, &reduction->paletteYiq[i][0]);
+			reduction->paletteRgbCopy[i][0] = as32 & 0xFF;
+			reduction->paletteRgbCopy[i][1] = (as32 >> 8) & 0xFF;
+			reduction->paletteRgbCopy[i][2] = (as32 >> 16) & 0xFF;
+			rgbToYiq(as32, &reduction->paletteYiqCopy[i][0]);
 		}
 
-		//TODO: check collisions (rounding to 15-bit makes this possible)
+		lastError = error;
+		error = 0.0;
 	}
 }
 
