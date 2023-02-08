@@ -747,6 +747,17 @@ void paletteToArray(REDUCTION *reduction) {
 	}
 }
 
+double __inline computeColorDifferenceYiq(REDUCTION *reduction, int *yiq1, int *yiq2) {
+	double yw2 = reduction->yWeight * reduction->yWeight;
+	double iw2 = reduction->iWeight * reduction->iWeight;
+	double qw2 = reduction->qWeight * reduction->qWeight;
+
+	double dy = reduction->lumaTable[yiq1[0]] - reduction->lumaTable[yiq2[0]];
+	double di = yiq1[1] - yiq2[1];
+	double dq = yiq1[2] - yiq2[2];
+	return yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
+}
+
 void iterateRecluster(REDUCTION *reduction) {
 	//simple termination conditions
 	int nIterations = reduction->nReclusters;
@@ -767,9 +778,10 @@ void iterateRecluster(REDUCTION *reduction) {
 	memcpy(reduction->paletteRgbCopy, reduction->paletteRgb, sizeof(reduction->paletteRgb));
 
 	//iterate up to n times
+	int nRecomputes = 0;
+	TOTAL_BUFFER *totalsBuffer = reduction->blockTotals;
 	for (int k = 0; k < nIterations; k++) {
 		//reset block totals
-		TOTAL_BUFFER *totalsBuffer = reduction->blockTotals;
 		memset(totalsBuffer, 0, sizeof(reduction->blockTotals));
 
 		//voronoi iteration
@@ -805,9 +817,68 @@ void iterateRecluster(REDUCTION *reduction) {
 			error += bestDistance * weight;
 		}
 
-		//quick sanity check of bucket weights (if any are 0, terminate)
+		//quick sanity check of bucket weights (if any are 0, find another color for it.)
+		int doRecompute = 0;
 		for (int i = 0; i < reduction->nUsedColors; i++) {
-			if (totalsBuffer[i].weight <= 0.0) return; //TODO: try some sort of reassignment here instead
+			if (totalsBuffer[i].weight <= 0.0) {
+				//find the bucket with the highest error
+				double largestError = 0.0;
+				int largestErrorIndex = 0;
+				for (int j = 0; j < reduction->nUsedColors; j++) {
+					if (reduction->blockTotals[j].error > largestError) {
+						largestError = totalsBuffer[j].error;
+						largestError = j;
+					}
+				}
+
+				//find the color farthest from this center
+				double largestDifference = 0.0;
+				int farthestIndex = 0;
+				int *yiq1 = &reduction->paletteYiqCopy[largestErrorIndex][0];
+				for (int j = 0; j < nHistEntries; j++) {
+					HIST_ENTRY *entry = reduction->histogramFlat[j];
+					if (entry->entry != largestErrorIndex) continue;
+
+					int yiq2[] = { entry->y, entry->i, entry->q, 0xFF };
+					double diff = computeColorDifferenceYiq(reduction, yiq1, yiq2) * entry->weight;
+					if (diff > largestDifference) {
+						largestDifference = diff;
+						farthestIndex = j;
+					}
+				}
+
+				//get RGB of new point
+				HIST_ENTRY *entry = reduction->histogramFlat[farthestIndex];
+				int rgb[4] = { 0 };
+				int yiq[4] = { entry->y, entry->i, entry->q, 0xFF };
+				yiqToRgb(rgb, yiq);
+				COLOR32 as32 = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16) | 0xFF000000;
+				if (reduction->maskColors) as32 = ColorRoundToDS15(as32) | 0xFF000000;
+				
+				//set this node's center to the point
+				rgbToYiq(as32, &reduction->paletteYiqCopy[i][0]);
+				reduction->paletteRgbCopy[i][0] = as32 & 0xFF;
+				reduction->paletteRgbCopy[i][1] = (as32 >> 8) & 0xFF;
+				reduction->paletteRgbCopy[i][2] = (as32 >> 8) & 0xFF;
+				
+				//now that we've changed the palette copy, we need to recompute boundaries.
+				doRecompute = 1;
+				break;
+			}
+		}
+
+		//if we need to recompute boundaries, do so now. Be careful!! Doing this dumbly has a
+		//risk of looping forever! For now just limit the number of recomputations
+		if (doRecompute && nRecomputes < 2) {
+			nRecomputes++;
+			k--;
+			continue;
+		}
+		nRecomputes = 0;
+
+		//after recomputing bounds, now let's see if we're wasting any slots.
+		for (int i = 0; i < reduction->nUsedColors; i++) {
+			if (totalsBuffer[i].weight <= 0.0) return;
 		}
 
 		//also check palette error; if we've started rising, we passed our locally optimal palette
