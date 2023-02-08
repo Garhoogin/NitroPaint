@@ -886,6 +886,11 @@ void iterateRecluster(REDUCTION *reduction) {
 			return;
 		}
 
+		//check: is the palette the same after this iteration as lst?
+		if (error == lastError)
+			if (memcmp(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgb)) == 0)
+				return;
+
 		//weight check succeeded, copy this palette to the main palette.
 		memcpy(reduction->paletteYiq, reduction->paletteYiqCopy, sizeof(reduction->paletteYiqCopy));
 		memcpy(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgbCopy));
