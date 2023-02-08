@@ -17,6 +17,9 @@ typedef struct {
 	int useFixedPalette;
 	COLOR *fixedPalette;
 	int threshold;
+	int balance;
+	int colorBalance;
+	int enhanceColors;
 	TEXTURE *dest;
 	void (*callback) (void *);
 	void *callbackParam;
@@ -61,4 +64,4 @@ int textureConvert(CREATEPARAMS *params);
 //
 // Begin a texture conversion in a new thread, returning a handle to the thread.
 //
-HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam);
+HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, int balance, int colorBalance, int enhanceColors, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam);

@@ -57,6 +57,7 @@ int textureConvertPalette(CREATEPARAMS *params) {
 	}
 	int pixelsPerByte = 8 / bitsPerPixel;
 	if (params->useFixedPalette) nColors = min(nColors, params->colorEntries);
+	else if (params->colorEntries < nColors) nColors = params->colorEntries;
 	COLOR32 *palette = (COLOR32 *) calloc(nColors, 4);
 
 	//should we reserve a color for transparent?
@@ -70,7 +71,8 @@ int textureConvertPalette(CREATEPARAMS *params) {
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		createPaletteSlow(params->px, width, height, palette + hasTransparent, nColors - hasTransparent);
+		createPaletteSlowEx(params->px, width, height, palette + hasTransparent, nColors - hasTransparent,
+			params->balance, params->colorBalance, params->enhanceColors, TRUE);
 
 		//reduce palette color depth
 		for (int i = 0; i < nColors; i++) {
@@ -86,7 +88,8 @@ int textureConvertPalette(CREATEPARAMS *params) {
 	int nBytes = width * height * bitsPerPixel / 8;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
-	ditherImagePalette(params->px, width, height, palette, nColors, TRUE, TRUE, hasTransparent, diffuse);
+	ditherImagePaletteEx(params->px, NULL, width, height, palette, nColors, TRUE, TRUE, hasTransparent, diffuse, 
+		params->balance, params->colorBalance, params->enhanceColors);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
@@ -134,11 +137,13 @@ int textureConvertTranslucent(CREATEPARAMS *params) {
 			break;
 	}
 	if (params->useFixedPalette) nColors = min(nColors, params->colorEntries);
+	else if (params->colorEntries < nColors) nColors = params->colorEntries;
 	COLOR32 *palette = (COLOR32 *) calloc(nColors, 4);
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		createPaletteSlow(params->px, width, height, palette, nColors);
+		createPaletteSlowEx(params->px, width, height, palette, nColors,
+			params->balance, params->colorBalance, params->enhanceColors, TRUE);
 
 		//reduce palette color depth
 		for (int i = 0; i < nColors; i++) {
@@ -154,7 +159,8 @@ int textureConvertTranslucent(CREATEPARAMS *params) {
 	int nBytes = width * height;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
-	ditherImagePalette(params->px, width, height, palette, nColors, FALSE, FALSE, FALSE, diffuse);
+	ditherImagePaletteEx(params->px, NULL, width, height, palette, nColors, FALSE, FALSE, FALSE, diffuse,
+		params->balance, params->colorBalance, params->enhanceColors);
 
 	//write texel data.
 	for (int i = 0; i < width * height; i++) {
@@ -856,7 +862,7 @@ int textureConvert4x4(CREATEPARAMS *params) {
 
 	//create tile data
 	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
-	initReduction(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, 0, 4);
+	initReduction(reduction, params->balance, params->colorBalance, 15, params->enhanceColors, 4);
 	TILEDATA *tileData = createTileData(reduction, params->px, tilesX, tilesY);
 
 	//build the palettes.
@@ -962,7 +968,7 @@ DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
 	return textureConvert(params);
 }
 
-HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
+HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, int balance, int colorBalance, int enhanceColors, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
 	CREATEPARAMS *params = (CREATEPARAMS *) calloc(1, sizeof(CREATEPARAMS));
 	g_texCompressionFinished = 0;
 	params->px = px;
@@ -974,6 +980,9 @@ HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int d
 	params->ditherAlpha = ditherAlpha;
 	params->colorEntries = colorEntries;
 	params->threshold = threshold;
+	params->balance = balance;
+	params->colorBalance = colorBalance;
+	params->enhanceColors = enhanceColors;
 	params->dest = dest;
 	params->callback = callback;
 	params->callbackParam = callbackParam;
