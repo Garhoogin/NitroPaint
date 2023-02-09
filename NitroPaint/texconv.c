@@ -24,7 +24,7 @@ int textureConvertDirect(CREATEPARAMS *params) {
 	for (int i = 0; i < width * height; i++) {
 		COLOR32 p = px[i];
 		COLOR c = ColorConvertToDS(p);
-		if (px[i] & 0xFF000000) c |= 0x8000;
+		if ((px[i] >> 24) >= 0x80) c |= 0x8000;
 		if (params->dither) {
 			COLOR32 back = ColorConvertFromDS(c);
 			int errorRed = (back & 0xFF) - (p & 0xFF);
@@ -63,7 +63,7 @@ int textureConvertPalette(CREATEPARAMS *params) {
 	//should we reserve a color for transparent?
 	int hasTransparent = 0;
 	for (int i = 0; i < width * height; i++) {
-		if ((params->px[i] & 0xFF000000) == 0) {
+		if ((params->px[i] >> 24) < 0x80) {
 			hasTransparent = 1;
 			break;
 		}
@@ -95,7 +95,7 @@ int textureConvertPalette(CREATEPARAMS *params) {
 	for (int i = 0; i < width * height; i++) {
 		COLOR32 p = params->px[i];
 		int index = 0;
-		if (p & 0xFF000000) index = closestPalette(p, palette + hasTransparent, nColors - hasTransparent) + hasTransparent;
+		if ((p >> 24) >= 0x80) index = closestPalette(p, palette + hasTransparent, nColors - hasTransparent) + hasTransparent;
 		txel[i / pixelsPerByte] |= index << (bitsPerPixel * (i & (pixelsPerByte - 1)));
 	}
 
