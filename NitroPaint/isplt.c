@@ -821,23 +821,13 @@ void iterateRecluster(REDUCTION *reduction) {
 		int doRecompute = 0;
 		for (int i = 0; i < reduction->nUsedColors; i++) {
 			if (totalsBuffer[i].weight <= 0.0) {
-				//find the bucket with the highest error
-				double largestError = 0.0;
-				int largestErrorIndex = 0;
-				for (int j = 0; j < reduction->nUsedColors; j++) {
-					if (reduction->blockTotals[j].error > largestError) {
-						largestError = totalsBuffer[j].error;
-						largestError = j;
-					}
-				}
-
 				//find the color farthest from this center
 				double largestDifference = 0.0;
 				int farthestIndex = 0;
-				int *yiq1 = &reduction->paletteYiqCopy[largestErrorIndex][0];
 				for (int j = 0; j < nHistEntries; j++) {
 					HIST_ENTRY *entry = reduction->histogramFlat[j];
-					if (entry->entry != largestErrorIndex) continue;
+					int bucket = entry->entry;
+					int *yiq1 = &reduction->paletteYiqCopy[bucket][0];
 
 					int yiq2[] = { entry->y, entry->i, entry->q, 0xFF };
 					double diff = computeColorDifferenceYiq(reduction, yiq1, yiq2) * entry->weight;
