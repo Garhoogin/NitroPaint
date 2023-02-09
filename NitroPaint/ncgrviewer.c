@@ -301,8 +301,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int selected = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 					SendMessage(hWndControl, CB_GETLBTEXT, (WPARAM) selected, (LPARAM) text);
 					int width = _wtol(text);
-					data->ncgr.tilesX = width;
-					data->ncgr.tilesY = data->ncgr.nTiles / width;
+					ncgrChangeWidth(&data->ncgr, width);
 
 					RECT rcClient;
 					GetClientRect(hWnd, &rcClient);

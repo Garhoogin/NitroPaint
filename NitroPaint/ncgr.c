@@ -435,6 +435,51 @@ int ncgrGetTile(NCGR *ncgr, NCLR *nclr, int x, int y, COLOR32 *out, int previewP
 	return 0;
 }
 
+void ncgrChangeWidth(NCGR *ncgr, int width) {
+	//unimplemented right now
+	if (ncgr->nTiles % width) return;
+
+	//only matters for bitmap graphics
+	if (ncgr->header.format != NCGR_TYPE_NCBR) {
+		ncgr->tilesX = width;
+		ncgr->tilesY = ncgr->nTiles / width;
+		return;
+	}
+
+	//use a temporary buffer to unswizzle and reswizzle
+	BYTE *bmp = (BYTE *) calloc(ncgr->tilesX * ncgr->tilesY * 64, 1);
+	int bmpWidth = ncgr->tilesX * 8, bmpHeight = ncgr->tilesY * 8;
+	for (int y = 0; y < ncgr->tilesY; y++) {
+		for (int x = 0; x < ncgr->tilesX; x++) {
+			BYTE *tile = ncgr->tiles[y * ncgr->tilesX + x];
+			int bmpX = x * 8;
+			int bmpY = y * 8;
+
+			for (int i = 0; i < 8; i++) {
+				memcpy(bmp + bmpX + (bmpY + i) * bmpWidth, tile + i * 8, 8);
+			}
+		}
+	}
+
+	//update width and height, then reswizzle
+	ncgr->tilesX = width;
+	ncgr->tilesY = ncgr->nTiles / width;
+	bmpWidth = ncgr->tilesX * 8, bmpHeight = ncgr->tilesY * 8;
+	for (int y = 0; y < ncgr->tilesY; y++) {
+		for (int x = 0; x < ncgr->tilesX; x++) {
+			BYTE *tile = ncgr->tiles[y * ncgr->tilesX + x];
+			int bmpX = x * 8;
+			int bmpY = y * 8;
+
+			for (int i = 0; i < 8; i++) {
+				memcpy(tile + i * 8, bmp + bmpX + (bmpY + i) * bmpWidth, 8);
+			}
+		}
+	}
+
+	free(bmp);
+}
+
 int ncgrWriteBin(NCGR *ncgr, BSTREAM *stream) {
 	for (int i = 0; i < ncgr->nTiles; i++) {
 		if (ncgr->nBits == 8) {

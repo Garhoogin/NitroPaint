@@ -69,6 +69,11 @@ int ncgrIsValidBin(unsigned char *buffer, unsigned int size);
 int ncgrGetTile(NCGR *ncgr, NCLR *nclr, int x, int y, COLOR32 *out, int previewPalette, int drawChecker, int transparent);
 
 //
+// Update the width of graphics data. Useful for bitmapped graphics.
+//
+void ncgrChangeWidth(NCGR *ncgr, int width);
+
+//
 // Read character graphics from a byte array.
 //
 int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size);
