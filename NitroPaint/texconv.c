@@ -203,9 +203,9 @@ COLOR32 blend(COLOR32 col1, int weight1, COLOR32 col2, int weight2) {
 	int r2 = col2 & 0xFF;
 	int g2 = (col2 >> 8) & 0xFF;
 	int b2 = (col2 >> 16) & 0xFF;
-	int r3 = (r1 * weight1 + r2 * weight2) >> 3;
-	int g3 = (g1 * weight1 + g2 * weight2) >> 3;
-	int b3 = (b1 * weight1 + b2 * weight2) >> 3;
+	int r3 = (r1 * weight1 + r2 * weight2 + 4) >> 3;
+	int g3 = (g1 * weight1 + g2 * weight2 + 4) >> 3;
+	int b3 = (b1 * weight1 + b2 * weight2 + 4) >> 3;
 	return ColorRoundToDS18(r3 | (g3 << 8) | (b3 << 16));
 }
 
