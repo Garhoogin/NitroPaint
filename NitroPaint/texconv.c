@@ -369,7 +369,7 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 
 	//try out varying the RGB values. Start G, then R, then B. Do this a few times.
 	double error = computeInterpolatedError(reduction, px, nPx, c1, c2, transparent, 1e32);
-	for (int i = 0; i < 2; i++) {
+	for (int i = 0; i < 10; i++) {
 		COLOR old1 = c1, old2 = c2;
 		error = testBlockStep(reduction, px, nPx, transparent, &c1, &c2, COLOR_CHANNEL_G, error);
 		error = testBlockStep(reduction, px, nPx, transparent, &c1, &c2, COLOR_CHANNEL_R, error);
