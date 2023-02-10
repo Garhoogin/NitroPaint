@@ -90,6 +90,34 @@ LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extensio
 	return NULL;
 }
 
+void copyBitmap(COLOR32 *img, int width, int height) {
+	HGLOBAL hDib = NULL;
+	int dibSize = width * height * 3 + sizeof(BITMAPINFOHEADER);
+	hDib = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, dibSize);
+
+	//populate common info
+	BITMAPINFOHEADER *bmi = (BITMAPINFOHEADER *) GlobalLock(hDib);
+	BYTE *bmiBits = (BYTE *) (bmi + 1);
+	bmi->biSize = sizeof(BITMAPINFOHEADER);
+	bmi->biCompression = BI_RGB;
+	bmi->biHeight = height;
+	bmi->biWidth = width;
+	bmi->biPlanes = 1;
+	bmi->biBitCount = 24;
+
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++) {
+			COLOR32 c = img[x + (height - 1 - y) * width];
+			bmiBits[(x + y * width) * 3 + 0] = (c >> 16) & 0xFF;
+			bmiBits[(x + y * width) * 3 + 1] = (c >> 8) & 0xFF;
+			bmiBits[(x + y * width) * 3 + 2] = (c >> 0) & 0xFF;
+		}
+	}
+
+	GlobalUnlock(hDib);
+	SetClipboardData(CF_DIB, hDib);
+}
+
 LPWSTR GetFileName(LPWSTR lpszPath) {
 	WCHAR *current = lpszPath;
 	while (*lpszPath) {

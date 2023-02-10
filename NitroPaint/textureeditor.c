@@ -987,6 +987,14 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 			break;
 		}
+		case WM_RBUTTONDOWN:
+		{
+			POINT mouse;
+			GetCursorPos(&mouse);
+			HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 4);
+			TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
+			break;
+		}
 		case WM_MOUSEMOVE:
 		case WM_NCMOUSEMOVE:
 		{
@@ -1068,6 +1076,22 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			GetClientRect(hWnd, &rcClient);
 			SendMessage(hWnd, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
 			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl == NULL && HIWORD(wParam) == 0) {
+				switch (LOWORD(wParam)) {
+					case ID_TEXTUREMENU_COPY:
+					{
+						OpenClipboard(hWnd);
+						EmptyClipboard();
+						copyBitmap(data->px, data->width, data->height);
+						CloseClipboard();
+						break;
+					}
+				}
+			}
 		}
 		case WM_ERASEBKGND:
 			return 1;

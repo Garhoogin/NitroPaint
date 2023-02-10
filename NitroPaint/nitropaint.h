@@ -1,4 +1,5 @@
 #pragma once
+#include "color.h"
 
 #define g_useDarkTheme 0
 
@@ -55,6 +56,11 @@ LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extensio
 // Create a save file dialog
 //
 LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
+
+//
+// Copy a bitmap to the clipboard.
+//
+void copyBitmap(COLOR32 *img, int width, int height);
 
 //
 // Get the current zoom level
