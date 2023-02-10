@@ -206,7 +206,7 @@ COLOR32 blend(COLOR32 col1, int weight1, COLOR32 col2, int weight2) {
 	int r3 = (r1 * weight1 + r2 * weight2) >> 3;
 	int g3 = (g1 * weight1 + g2 * weight2) >> 3;
 	int b3 = (b1 * weight1 + b2 * weight2) >> 3;
-	return r3 | (g3 << 8) | (b3 << 16);
+	return ColorRoundToDS18(r3 | (g3 << 8) | (b3 << 16));
 }
 
 volatile g_texCompressionProgress = 0;

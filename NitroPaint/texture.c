@@ -160,7 +160,7 @@ void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 				int address = COMP_INDEX(data);
 				int mode = (data & COMP_MODE_MASK) >> 14;
 				if (address < palette->nColors) {
-					unsigned short * base = ((unsigned short *) palette->pal) + address;
+					COLOR *base = ((COLOR *) palette->pal) + address;
 					getrgb(base[0], colors);
 					getrgb(base[1], colors + 1);
 					colors[0].a = 255;
@@ -172,9 +172,9 @@ void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 					} else if (mode == 1) {
 						RGB col0 = *colors;
 						RGB col1 = *(colors + 1);
-						colors[2].r = (col0.r + col1.r) >> 1;
-						colors[2].g = (col0.g + col1.g) >> 1;
-						colors[2].b = (col0.b + col1.b) >> 1;
+						colors[2].r = (col0.r + col1.r + 1) >> 1;
+						colors[2].g = (col0.g + col1.g + 1) >> 1;
+						colors[2].b = (col0.b + col1.b + 1) >> 1;
 						colors[2].a = 255;
 						colors[3] = transparent;
 					} else if (mode == 2) {
@@ -185,13 +185,13 @@ void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 					} else {
 						RGB col0 = *colors;
 						RGB col1 = *(colors + 1);
-						colors[2].r = (col0.r * 5 + col1.r * 3) >> 3;
-						colors[2].g = (col0.g * 5 + col1.g * 3) >> 3;
-						colors[2].b = (col0.b * 5 + col1.b * 3) >> 3;
+						colors[2].r = (col0.r * 5 + col1.r * 3 + 4) >> 3;
+						colors[2].g = (col0.g * 5 + col1.g * 3 + 4) >> 3;
+						colors[2].b = (col0.b * 5 + col1.b * 3 + 4) >> 3;
 						colors[2].a = 255;
-						colors[3].r = (col0.r * 3 + col1.r * 5) >> 3;
-						colors[3].g = (col0.g * 3 + col1.g * 5) >> 3;
-						colors[3].b = (col0.b * 3 + col1.b * 5) >> 3;
+						colors[3].r = (col0.r * 3 + col1.r * 5 + 4) >> 3;
+						colors[3].g = (col0.g * 3 + col1.g * 5 + 4) >> 3;
+						colors[3].b = (col0.b * 3 + col1.b * 5 + 4) >> 3;
 						colors[3].a = 255;
 					}
 				}
@@ -200,7 +200,7 @@ void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 					texel >>= 2;
 					RGB rgb = colors[pVal];
 					int offs = ((i & ((width >> 2) - 1)) << 2) + (j & 3) + (((i / (width >> 2)) << 2) + (j  >> 2)) * width;
-					px[offs] = rgb.b | (rgb.g << 8) | (rgb.r << 16) | (rgb.a << 24);
+					px[offs] = ColorRoundToDS18(rgb.b | (rgb.g << 8) | (rgb.r << 16)) | (rgb.a << 24);
 				}
 			}
 			break;
