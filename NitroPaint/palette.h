@@ -235,6 +235,16 @@ int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, int *palette, int nCo
 double computePaletteErrorYiq(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *pal, int nColors, int alphaThreshold, double nMaxError);
 
 //
+// Compute palette error on a histogram.
+//
+double computeHistogramPaletteError(REDUCTION *reduction, COLOR32 *palette, int nColors, double maxError);
+
+//
+// Compute palette error on a histogram for a YIQ palette.
+//
+double computeHistogramPaletteErrorYiq(REDUCTION *reduction, int *yiqPalette, int nColors, double maxError);
+
+//
 // Free all resources consumed by a REDUCTION.
 //
 void destroyReduction(REDUCTION *reduction);

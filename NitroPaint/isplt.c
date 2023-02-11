@@ -1197,6 +1197,48 @@ int findClosestPaletteColorRGB(int *palette, int nColors, COLOR32 col, int *outD
 	return leastIndex;
 }
 
+double computeHistogramPaletteErrorYiq(REDUCTION *reduction, int *yiqPalette, int nColors, double maxError) {
+	double error = 0.0;
+
+	//sum total weighted squared differences
+	double yw2 = reduction->yWeight * reduction->yWeight;
+	double iw2 = reduction->iWeight * reduction->iWeight;
+	double qw2 = reduction->qWeight * reduction->qWeight;
+	for (int i = 0; i < reduction->histogram->nEntries; i++) {
+		HIST_ENTRY *entry = reduction->histogramFlat[i];
+		int cy = entry->y, ci = entry->i, cq = entry->q;
+		int yiq[] = { cy, ci, cq, 0xFF };
+		
+		int closest = closestPaletteYiq(reduction, yiq, yiqPalette, nColors);
+		int *closestYiq = yiqPalette + 4 * closest;
+		int dy = cy - closestYiq[0];
+		int di = ci - closestYiq[1];
+		int dq = cq - closestYiq[2];
+		error += (yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq) * entry->weight;
+
+		if (error >= maxError) return maxError;
+	}
+	return error;
+}
+
+double computeHistogramPaletteError(REDUCTION *reduction, COLOR32 *palette, int nColors, double maxError) {
+	int yiqPaletteStack[16 * 4];
+	int *yiqPalette = yiqPaletteStack;
+	if (nColors > 16) {
+		yiqPalette = (int *) calloc(nColors, 4 * sizeof(int));
+	}
+
+	//convert palette colors
+	for (int i = 0; i < nColors; i++) {
+		rgbToYiq(palette[i], yiqPalette + 4 * i);
+	}
+
+	double error = computeHistogramPaletteErrorYiq(reduction, yiqPalette, nColors, maxError);
+
+	if (yiqPalette != yiqPaletteStack) free(yiqPalette);
+	return error;
+}
+
 int findClosestPaletteColor(REDUCTION *reduction, int *palette, int nColors, int *col, int *outDiff) {
 	int rgb[4];
 	yiqToRgb(rgb, col);
@@ -1445,7 +1487,7 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 		
 		for (int j = 0; j < 15; j++) {
 			uint8_t *rgb = &reduction->paletteRgb[j][0];
-			palettes[j + nPalettesWritten * 16] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+			palettes[j + nPalettesWritten * 16] = ColorRoundToDS15(rgb[0] | (rgb[1] << 8) | (rgb[2] << 16));
 		}
 		paletteIndices[nPalettesWritten] = i;
 		nPalettesWritten++;
@@ -1453,10 +1495,18 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 	}
 
 	//palette refinement
-	if (0) { //TODO: make this viable
-		int nRefinements = 2;
+	if (1) {
+		int nRefinements = 4;
 		int *bestPalettes = (int *) calloc(nTiles, sizeof(int));
+		int *yiqPalette = (int *) calloc(nPalettes, 16 * 4 * sizeof(int));
 		for (int k = 0; k < nRefinements; k++) {
+			//palette to YIQ
+			for (int i = 0; i < nPalettes; i++) {
+				for (int j = 0; j < nColsPerPalette; j++) {
+					rgbToYiq(palettes[i * 16 + j], yiqPalette + 4 * (i * 16 + j));
+				}
+			}
+
 			//find best palette for each tile again
 			for (int i = 0; i < nTiles; i++) {
 				TILE *t = tiles + i;
@@ -1464,9 +1514,14 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 				int best = 0;
 				double bestError = 1e32;
 
+				//compute histogram for the tile
+				resetHistogram(reduction);
+				computeHistogram(reduction, px, 8, 8);
+				flattenHistogram(reduction);
+
 				//determine which palette is best for this tile for remap
 				for (int j = 0; j < nPalettes; j++) {
-					double error = computePaletteErrorYiq(reduction, px, 64, palettes + j * 16, nColsPerPalette, 128, bestError);
+					double error = computeHistogramPaletteErrorYiq(reduction, yiqPalette + 4 * (j * 16), nColsPerPalette, bestError);
 					if (error < bestError) {
 						bestError = error;
 						best = j;
@@ -1489,10 +1544,11 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 				//write back
 				for (int j = 0; j < nColsPerPalette; j++) {
 					uint8_t *rgb = &reduction->paletteRgb[j][0];
-					palettes[j + i * 16] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16);
+					palettes[j + i * 16] = ColorRoundToDS15(rgb[0] | (rgb[1] << 8) | (rgb[2] << 16));
 				}
 			}
 		}
+		free(yiqPalette);
 		free(bestPalettes);
 	}
 
