@@ -965,11 +965,16 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 	for (int i = 0; i < nTiles; i++) {
 		BGTILE *tile = tiles + i;
 
+		//create histogram for tile
+		resetHistogram(reduction);
+		computeHistogram(reduction, tile->px, 8, 8);
+		flattenHistogram(reduction);
+
 		int bestPalette = paletteBase;
 		double bestError = 1e32;
 		for (int j = paletteBase; j < paletteBase + nPalettes; j++) {
 			COLOR32 *pal = palette + (j << nBits);
-			double err = computePaletteErrorYiq(reduction, tile->px, 64, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, 128, bestError);
+			double err = computeHistogramPaletteError(reduction, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, bestError);
 
 			if (err < bestError) {
 				bestError = err;
