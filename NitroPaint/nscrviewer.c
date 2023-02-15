@@ -877,9 +877,15 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	if (paletteOffset >= maxPaletteSize) paletteOffset = maxPaletteSize - 1;
 	if (paletteSize > maxPaletteSize) paletteSize = maxPaletteSize;
 	if (paletteOffset + paletteSize > maxPaletteSize) paletteSize = maxPaletteSize - paletteOffset;
+
+	//if no write screen, still set some proper bounds.
 	if (!writeScreen) {
 		paletteNumber = 0;
-		nPalettes = 16;
+		if (ncgr->nBits == 4) {
+			nPalettes = nclr->nColors / 16;
+		} else {
+			nPalettes = 1;
+		}
 	}
 
 	*progressMax = tilesX * tilesY * 2;
@@ -921,7 +927,11 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			//due to this, we can't respect user-set palette base and count. We're at the whim of the screen's
 			//existing data. Iterate all 16 palettes. If tiles in our region use them, construct a histogram and
 			//write its palette data.
-			for (int palNo = 0; palNo < 16; palNo++) {
+			//first read in original palette, we'll write over it.
+			for (int i = 0; i < nclr->nColors; i++) {
+				pals[i] = ColorConvertFromDS(nclr->colors[i]);
+			}
+			for (int palNo = 0; palNo < nPalettes; palNo++) {
 				int nTilesHistogram = 0;
 
 				for (int y = 0; y < tilesY; y++) {
