@@ -1321,14 +1321,15 @@ void createMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 
 	if (nPalettes == 0) return;
 	if (nPalettes == 1) {
 		if (paletteOffset) {
-			createPaletteSlowEx(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset, paletteSize, balance, colorBalance, enhanceColors, 0);
+			createPaletteSlowEx(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset, nColsPerPalette, balance, colorBalance, enhanceColors, 0);
 		} else {
-			createPaletteSlowEx(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset + 1, paletteSize - 1, balance, colorBalance, enhanceColors, 0);
+			createPaletteSlowEx(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset + 1, nColsPerPalette - 1, balance, colorBalance, enhanceColors, 0);
 			dest[(paletteBase * paletteSize) + paletteOffset] = 0xFF00FF; //transparent fill
 		}
 		return;
 	}
 
+	if (paletteOffset == 0) nColsPerPalette--;
 	if (nColsPerPalette >= 16) nColsPerPalette = 15;
 
 	//3 stage algorithm:
