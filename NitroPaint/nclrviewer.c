@@ -14,6 +14,94 @@
 
 extern HICON g_appIcon;
 
+//IS.Colors4
+typedef struct NC_CLIPBOARD_PALETTE_HEADER_ {
+	DWORD magic; //0xC208B8
+	BOOL is1D;
+	int originRow;
+	int originCol;
+	int unused[2];
+	int nCols;
+	int nRows;
+} NC_CLIPBOARD_PALETTE_HEADER;
+
+typedef struct NC_CLIPBOARD_PALETTE_FOOTER_ {
+	uint8_t field0[8]; //no idea how these work
+} NC_CLIPBOARD_PALETTE_FOOTER;
+
+//OPX_PALETTE
+typedef struct OP_CLIPBOARD_PALETTE_HEADER_ {
+	short three; //3
+	short nColors;
+} OP_CLIPBOARD_PALETTE_HEADER;
+
+static int g_ncClipboardFormat = 0;
+static int g_opClipboardFormat = 0;
+
+VOID NclrViewerEnsureClipboardFormats(VOID) {
+	if (g_ncClipboardFormat == 0) {
+		g_ncClipboardFormat = RegisterClipboardFormat(L"IS.Colors4");
+		g_opClipboardFormat = RegisterClipboardFormat(L"OPX_PALETTE");
+	}
+}
+
+VOID CopyPalette(COLOR *palette, int nColors) {
+	NclrViewerEnsureClipboardFormats();
+
+	//NC and OPX formats
+	int ncSize = sizeof(NC_CLIPBOARD_PALETTE_HEADER) + nColors * 8 + sizeof(NC_CLIPBOARD_PALETTE_FOOTER);
+	int opSize = sizeof(OP_CLIPBOARD_PALETTE_HEADER) + nColors * 4;
+	HGLOBAL hNc = GlobalAlloc(GMEM_ZEROINIT | GMEM_MOVEABLE, ncSize);
+	HGLOBAL hOp = GlobalAlloc(GMEM_ZEROINIT | GMEM_MOVEABLE, opSize);
+	NC_CLIPBOARD_PALETTE_HEADER *ncData = (NC_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hNc);
+	OP_CLIPBOARD_PALETTE_HEADER *opData = (OP_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hOp);
+	COLOR32 *ncPalette = (COLOR32 *) (ncData + 1);
+	COLOR32 *opPalette = (COLOR32 *) (opData + 1);
+	ncData->magic = 0xC208B8;
+	ncData->is1D = 1;
+	ncData->nCols = nColors;
+	ncData->nRows = 1;
+	opData->three = 3;
+	opData->nColors = nColors;
+	for (int i = 0; i < nColors; i++) {
+		ncPalette[i] = ColorConvertFromDS(palette[i]);
+		ncPalette[i + nColors] = ColorConvertFromDS(palette[i]);
+		opPalette[i] = ColorConvertFromDS(palette[i]);
+	}
+	GlobalUnlock(hNc);
+	GlobalUnlock(hOp);
+	SetClipboardData(g_ncClipboardFormat, hNc);
+	SetClipboardData(g_opClipboardFormat, hOp);
+}
+
+VOID PastePalette(COLOR *dest, int nMax) {
+	NclrViewerEnsureClipboardFormats();
+
+	HGLOBAL hNc = GetClipboardData(g_ncClipboardFormat);
+	HGLOBAL hOp = GetClipboardData(g_opClipboardFormat);
+	COLOR32 *src = NULL;
+	int nCols = 0;
+
+	if (hNc != NULL) {
+		NC_CLIPBOARD_PALETTE_HEADER *ncData = (NC_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hNc);
+		nCols = ncData->nCols * ncData->nRows;
+		src = (COLOR32 *) (ncData + 1);
+	} else if (hOp != NULL) {
+		OP_CLIPBOARD_PALETTE_HEADER *opData = (OP_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hOp);
+		nCols = opData->nColors;
+		src = (COLOR32 *) (opData + 1);
+	} else {
+		return;
+	}
+
+	if (nCols > nMax) nCols = nMax;
+	for (int i = 0; i < nCols; i++) {
+		dest[i] = ColorConvertToDS(src[i]);
+	}
+	if (hNc != NULL) GlobalUnlock(hNc);
+	if (hOp != NULL) GlobalUnlock(hOp);
+}
+
 VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 
 	WORD *cols = data->nclr.colors;
@@ -665,32 +753,13 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						int offset = data->contextHoverY * 16;
 
 						OpenClipboard(hWnd);
-						HANDLE hString = GetClipboardData(CF_TEXT);
+						PastePalette(data->nclr.colors + offset, data->nclr.nColors - offset);
 						CloseClipboard();
-						LPSTR palString = GlobalLock(hString);
-						WORD length = (palString[0] & 0xF) | ((palString[1] & 0xF) << 4) | ((palString[2] & 0xF) << 8) | ((palString[3] & 0xF) << 12);
-
-						int maxOffset = data->nclr.nColors;
-
-						int strOffset = 4;
-						for (int i = 0; i < length; i++) {
-							int location = offset + i;
-							if (location >= maxOffset) break;
-							int row = location >> 4;
-							int col = 1 + (location & 0xF);
-							DWORD color = 0;
-							for (int j = 0; j < 8; j++) {
-								color = (color << 4) | (palString[strOffset] & 0xF);
-								strOffset++;
-							}
-							data->nclr.colors[location] = ColorConvertToDS(color);
-						}
-						GlobalUnlock(hString);
-						InvalidateRect(hWnd, NULL, FALSE);
 
 						HWND hWndMain = getMainWindow(hWnd);
 						InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
 						InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
 					case ID_MENU_COPY:
@@ -702,31 +771,10 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							length = maxOffset - offset;
 							if (length < 0) length = 0;
 						}
-						HANDLE hString = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 4 + 8 * length + 1);
-						LPSTR palString = (LPSTR) GlobalLock(hString);
-						palString[0] = 0x20 + (length & 0xF);
-						palString[1] = 0x20 + ((length >> 4) & 0xF);
-						palString[2] = 0x20 + ((length >> 8) & 0xF);
-						palString[3] = 0x20 + ((length >> 12) & 0xF);
 
-						int strOffset = 4;
-						for (int i = 0; i < length; i++) {
-							int offs = i + offset;
-							int row = offs >> 4;
-							int col = (offs & 0xF) + 1;
-							DWORD d = 0x00FFFFFF & (ColorConvertFromDS(data->nclr.colors[offs]));
-
-							for (int j = 0; j < 8; j++) {
-								palString[strOffset] = 0x30 + ((d >> 28) & 0xF);
-								d <<= 4;
-								strOffset++;
-							}
-						}
-
-						GlobalUnlock(hString);
 						OpenClipboard(hWnd);
 						EmptyClipboard();
-						SetClipboardData(CF_TEXT, hString);
+						CopyPalette(data->nclr.colors + offset, length);
 						CloseClipboard();
 						break;
 					}
