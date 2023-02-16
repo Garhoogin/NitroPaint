@@ -1,3 +1,6 @@
+#include <Windows.h>
+#include <CommCtrl.h>
+
 #include "ncgrviewer.h"
 #include "nclrviewer.h"
 #include "nscrviewer.h"
@@ -172,6 +175,9 @@ typedef struct CHARIMPORTDATA_ {
 	HWND hWndCompression;
 	HWND hWndMaxChars;
 	HWND hWndImport;
+	HWND hWndBalance;
+	HWND hWndColorBalance;
+	HWND hWndEnhanceColors;
 } CHARIMPORTDATA;
 
 LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -969,6 +975,9 @@ typedef struct {
 	int originX;
 	int originY;
 	int paletteNumber;
+	int balance;
+	int colorBalance;
+	int enhanceColors;
 	NCLR *nclr;
 	NCGR *ncgr;
 	HWND hWndMain;
@@ -989,7 +998,9 @@ int charImportCallback(void *data) {
 	return 0;
 }
 
-void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int paletteNumber, int paletteSize, int paletteBase, BOOL dither, float diffuse, BOOL import1D, BOOL charCompression, int nMaxChars, int originX, int originY, int *progress) {
+void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int paletteNumber, int paletteSize, int paletteBase, 
+	BOOL dither, float diffuse, BOOL import1D, BOOL charCompression, int nMaxChars, int originX, int originY, 
+	int balance, int colorBalance, int enhanceColors, int *progress) {
 	int maxPaletteSize = 1 << ncgr->nBits;
 
 	//if we start at base 0, increment by 1. We'll put a placeholder color in slot 0.
@@ -1006,24 +1017,24 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 	}
 
 	COLOR *nitroPalette = nclr->colors + firstColorIndex;
-	DWORD *palette = (DWORD *) calloc(paletteSize, 4);
+	COLOR32 *palette = (COLOR32 *) calloc(paletteSize, 4);
 
 	int width, height;
-	DWORD *pixels = gdipReadImage(imgPath, &width, &height);
+	COLOR32 *pixels = gdipReadImage(imgPath, &width, &height);
 
 	//if we use an existing palette, decode the palette values.
 	//if we do not use an existing palette, generate one.
 	if (!createPalette) {
 		//decode the palette
 		for (int i = 0; i < paletteSize; i++) {
-			DWORD col = ColorConvertFromDS(nitroPalette[i]);
+			COLOR32 col = ColorConvertFromDS(nitroPalette[i]);
 			palette[i] = col;
 		}
 	} else {
 		//create a palette, then encode them to the nclr
-		createPaletteExact(pixels, width, height, palette, paletteSize);
+		createPaletteSlowEx(pixels, width, height, palette, paletteSize, balance, colorBalance, enhanceColors, 0);
 		for (int i = 0; i < paletteSize; i++) {
-			DWORD d = palette[i];
+			COLOR32 d = palette[i];
 			COLOR ds = ColorConvertToDS(d);
 			nitroPalette[i] = ds;
 			palette[i] = ColorConvertFromDS(ds);
@@ -1032,7 +1043,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 
 	//index image with given parameters.
 	if (!dither) diffuse = 0.0f;
-	ditherImagePalette(pixels, width, height, palette, paletteSize, 0, 1, 0, diffuse);
+	ditherImagePaletteEx(pixels, NULL, width, height, palette, paletteSize, 0, 1, 0, diffuse, balance, colorBalance, enhanceColors);
 
 	//now, write out indices. 
 	int originOffset = originX + originY * ncgr->tilesX;
@@ -1050,14 +1061,14 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 				int offset = (y + originY) * ncgr->tilesX + x + originX;
-				BYTE * tile = ncgr->tiles[offset];
+				BYTE *tile = ncgr->tiles[offset];
 
 				//write out this tile using the palette. Diffuse any error accordingly.
 				for (int i = 0; i < 64; i++) {
 					int offsetX = i & 0x7;
 					int offsetY = i >> 3;
 					int poffset = x * 8 + offsetX + (y * 8 + offsetY) * width;
-					DWORD pixel = pixels[poffset];
+					COLOR32 pixel = pixels[poffset];
 
 					int closest = closestPalette(pixel, palette, paletteSize) + paletteBase;
 					if ((pixel >> 24) < 127) closest = 0;
@@ -1093,16 +1104,16 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 			for (int y = 0; y < tilesY; y++) {
 				for (int x = 0; x < tilesX; x++) {
 					int srcOffset = x * 8 + y * 8 * (width);
-					DWORD *block = bgTiles[x + y * tilesX].px;
+					COLOR32 *block = bgTiles[x + y * tilesX].px;
 
 					int index = x + y * tilesX;
 					memcpy(block, tiles + index * 64, 64 * 4);
 				}
 			}
 			int nTiles = nChars;
-			setupBgTiles(bgTiles, nChars, ncgr->nBits, dummyFull, paletteSize, 1, 0, paletteBase, 0, 0.0f);
+			setupBgTilesEx(bgTiles, nChars, ncgr->nBits, dummyFull, paletteSize, 1, 0, paletteBase, 0, 0.0f, balance, colorBalance, enhanceColors);
 			nChars = performCharacterCompression(bgTiles, nChars, ncgr->nBits, nMaxChars, dummyFull, paletteSize, 1, 0, paletteBase, 
-				BALANCE_DEFAULT, BALANCE_DEFAULT, progress);
+				balance, colorBalance, progress);
 
 			//read back result
 			int outIndex = 0;
@@ -1150,7 +1161,8 @@ DWORD WINAPI charImportInternal(LPVOID lpParameter) {
 	progress->progress1 = 100;
 	progress->progress2Max = 1000;
 	charImport(cim->nclr, cim->ncgr, cim->imgPath, cim->createPalette, cim->paletteNumber, cim->paletteSize, cim->paletteBase, 
-			   cim->dither, cim->diffuse, cim->import1D, cim->charCompression, cim->nMaxChars, cim->originX, cim->originY, &progress->progress2);
+			   cim->dither, cim->diffuse, cim->import1D, cim->charCompression, cim->nMaxChars, cim->originX, cim->originY, 
+			   cim->balance, cim->colorBalance, cim->enhanceColors, &progress->progress2);
 	progress->waitOn = 1;
 	return 0;
 }
@@ -1168,32 +1180,62 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateWindow(L"STATIC", L"Overwrite palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Palette base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 42, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Palette size:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 74, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Dither:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 106, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Diffuse:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 138, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"1D import:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 170, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Compress character:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 202, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Max chars:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 202 + 32, 100, 22, hWnd, NULL, NULL, NULL);
+			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
+			int boxHeight = 3 * 27 - 5 + 10 + 10 + 10; //first row height
+			int boxHeight2 = 3 * 27 - 5 + 10 + 10 + 10; //second row height
+			int boxHeight3 = 3 * 27 - 5 + 10 + 10 + 10; //third row height
+			int width = 30 + 2 * boxWidth; //window width
+			int height = 10 + boxHeight + 10 + boxHeight2 + 10 + boxHeight3 + 10 + 22 + 10; //window height
 
-			data->hWndOverwritePalette = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 10, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 120, 42, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteSize = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 120, 74, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDither = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 106, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDiffuse = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 120, 138, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWnd1D = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 170, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndCompression = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 120, 202, 22, 22, hWnd, NULL, NULL, NULL);
-			data->hWndMaxChars = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1024", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 120, 202 + 32, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndImport = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 234 + 32, 100, 22, hWnd, NULL, NULL, NULL);
+			int leftX = 10 + 10; //left box X
+			int rightX = 10 + boxWidth + 10 + 10; //right box X
+			int topY = 10 + 10 + 8; //top box Y
+			int middleY = 10 + boxHeight + 10 + 10 + 8; //middle box Y
+			int bottomY = 10 + boxHeight + 10 + boxHeight2 + 10 + 10 + 8; //bottom box Y
+
+			data->hWndOverwritePalette = CreateWindow(L"BUTTON", L"Write Palette", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY, 150, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Palette Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 85, topY + 27, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Palette Size:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27 * 2, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndPaletteSize = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 85, topY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
+
+			data->hWndDither = CreateWindow(L"BUTTON", L"Dither", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, topY, 150, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Diffuse:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY + 27, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDiffuse = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, rightX + 85, topY + 27, 100, 22, hWnd, NULL, NULL, NULL);
+
+			data->hWnd1D = CreateWindow(L"BUTTON", L"1D Import", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, middleY, 150, 22, hWnd, NULL, NULL, NULL);
+			data->hWndCompression = CreateWindow(L"BUTTON", L"Compress Character", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, middleY + 27, 150, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Max chars:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27 * 2, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndMaxChars = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1024", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 85, middleY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
+
+			CreateWindow(L"STATIC", L"Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Color Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY + 27, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndEnhanceColors = CreateWindow(L"BUTTON", L"Enhance Colors", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, bottomY + 27 * 2, 200, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Lightness", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Color", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Green", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Red", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
+			data->hWndBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY, 200, 22, hWnd, NULL, NULL, NULL);
+			data->hWndColorBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY + 27, 200, 22, hWnd, NULL, NULL, NULL);
+
+			data->hWndImport = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, width / 2 - 100, height - 32, 200, 22, hWnd, NULL, NULL, NULL);
+
+			CreateWindow(L"BUTTON", L"Palette", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 10, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"BUTTON", L"Graphics", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10 + boxWidth + 10, 10, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"BUTTON", L"Dimension", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 10 + boxHeight + 10, boxWidth * 2 + 10, boxHeight2, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"BUTTON", L"Color", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 10 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3, hWnd, NULL, NULL, NULL);
 
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
-			SetWindowSize(hWnd, 230, 266 + 32);
 			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
 			SetWindowLong(data->hWndDiffuse, GWL_STYLE, GetWindowLong(data->hWndDiffuse, GWL_STYLE) | WS_DISABLED);
 			SetWindowLong(data->hWndCompression, GWL_STYLE, GetWindowLong(data->hWndCompression, GWL_STYLE) | WS_DISABLED);
 			SetWindowLong(data->hWndMaxChars, GWL_STYLE, GetWindowLong(data->hWndMaxChars, GWL_STYLE) | WS_DISABLED);
+			SendMessage(data->hWndBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
+			SendMessage(data->hWndBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
+			SendMessage(data->hWndColorBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
+			SendMessage(data->hWndColorBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
+			SetWindowSize(hWnd, width, height);
 			break;
 		}
 		case WM_COMMAND:
@@ -1236,6 +1278,9 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 					int paletteSize = _wtol(inBuffer);
 					SendMessage(data->hWndMaxChars, WM_GETTEXT, 16, (LPARAM) inBuffer);
 					int nMaxChars = _wtol(inBuffer);
+					int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
+					int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
+					BOOL enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
 					NCLR *nclr = data->nclr;
 					NCGR *ncgr = data->ncgr;
@@ -1256,6 +1301,9 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 					cimport->originX = data->contextHoverX;
 					cimport->originY = data->contextHoverY;
 					cimport->paletteNumber = data->selectedPalette;
+					cimport->balance = balance;
+					cimport->colorBalance = colorBalance;
+					cimport->enhanceColors = enhanceColors;
 					cimport->hWndMain = hWndMain;
 					memcpy(cimport->imgPath, data->path, 2 * (wcslen(data->path) + 1));
 					progressData->data = cimport;
