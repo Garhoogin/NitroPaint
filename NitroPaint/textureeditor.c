@@ -1,6 +1,7 @@
 #include "textureeditor.h"
 #include "childwindow.h"
 #include "nitropaint.h"
+#include "nclrviewer.h"
 #include "palette.h"
 #include "colorchooser.h"
 #include "resource.h"
@@ -1773,34 +1774,16 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					case ID_PALETTEMENU_PASTE:
 					{
 						int offset = data->contextHoverIndex & (~15);
-
-						OpenClipboard(hWnd);
-						HANDLE hString = GetClipboardData(CF_TEXT);
-						CloseClipboard();
-						LPSTR palString = GlobalLock(hString);
-						WORD length = (palString[0] & 0xF) | ((palString[1] & 0xF) << 4) | ((palString[2] & 0xF) << 8) | ((palString[3] & 0xF) << 12);
-
 						int maxOffset = data->data->textureData.palette.nColors;
 
-						int strOffset = 4;
-						for (int i = 0; i < length; i++) {
-							int location = offset + i;
-							if (location >= maxOffset) break;
-							int row = location >> 4;
-							int col = 1 + (location & 0xF);
-							DWORD color = 0;
-							for (int j = 0; j < 8; j++) {
-								color = (color << 4) | (palString[strOffset] & 0xF);
-								strOffset++;
-							}
-							data->data->textureData.palette.pal[location] = ColorConvertToDS(color);
-						}
-						GlobalUnlock(hString);
+						OpenClipboard(hWnd);
+						PastePalette(data->data->textureData.palette.pal + offset, maxOffset - offset);
+						CloseClipboard();
 
 						TEXTURE *texture = &data->data->textureData;
 						textureRender(data->data->px, &texture->texels, &texture->palette, 0);
 						for (int i = 0; i < data->data->width * data->data->height; i++) {
-							DWORD col = data->data->px[i];
+							COLOR32 col = data->data->px[i];
 							data->data->px[i] = REVERSE(col);
 						}
 						
@@ -1817,31 +1800,10 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 							length = maxOffset - offset;
 							if (length < 0) length = 0;
 						}
-						HANDLE hString = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 4 + 8 * length + 1);
-						LPSTR palString = (LPSTR) GlobalLock(hString);
-						palString[0] = 0x20 + (length & 0xF);
-						palString[1] = 0x20 + ((length >> 4) & 0xF);
-						palString[2] = 0x20 + ((length >> 8) & 0xF);
-						palString[3] = 0x20 + ((length >> 12) & 0xF);
 
-						int strOffset = 4;
-						for (int i = 0; i < length; i++) {
-							int offs = i + offset;
-							int row = offs >> 4;
-							int col = (offs & 0xF) + 1;
-							DWORD d = 0x00FFFFFF & (ColorConvertFromDS(data->data->textureData.palette.pal[offs]));
-
-							for (int j = 0; j < 8; j++) {
-								palString[strOffset] = 0x30 + ((d >> 28) & 0xF);
-								d <<= 4;
-								strOffset++;
-							}
-						}
-
-						GlobalUnlock(hString);
 						OpenClipboard(hWnd);
 						EmptyClipboard();
-						SetClipboardData(CF_TEXT, hString);
+						CopyPalette(data->data->textureData.palette.pal + offset, length);
 						CloseClipboard();
 						break;
 					}
