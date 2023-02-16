@@ -70,6 +70,87 @@ LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extensio
 	return NULL;
 }
 
+LPWSTR openFilesDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension) {
+	OPENFILENAME o = { 0 };
+	int bufLen = (MAX_PATH + 1) * 32;  //32 max-paths should be enough
+	LPWSTR fname = (LPWSTR) calloc(bufLen + 1, sizeof(WCHAR));
+	o.lStructSize = sizeof(o);
+	o.hwndOwner = hWnd;
+	o.nMaxFile = bufLen;
+	o.lpstrTitle = title;
+	o.lpstrFilter = filter;
+	o.nMaxCustFilter = 255;
+	o.lpstrFile = fname;
+	o.Flags = OFN_ENABLESIZING | OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_ALLOWMULTISELECT;
+	o.lpstrDefExt = extension;
+	if (GetOpenFileName(&o)) {
+		//replace all NUL characters with | (not allowed, so we use as a separator)
+		LPWSTR ptr = fname;
+		while (1) {
+			if (*ptr == L'\0' && ptr[1] == L'\0') break;
+			if (*ptr == L'\0') {
+				*ptr = L'|';
+			}
+			ptr++;
+		}
+		return fname;
+	}
+	free(fname);
+	return NULL;
+}
+
+int getPathCount(LPCWSTR paths) {
+	//count number of pipe characters
+	int nPipes = 0;
+	for (unsigned int i = 0; i < wcslen(paths); i++) {
+		if (paths[i] == L'|') nPipes++;
+	}
+	if (nPipes == 0) return 1;
+	return nPipes;
+}
+
+void getPathFromPaths(LPCWSTR paths, int index, WCHAR *path) {
+	//if no pipe, copy as is
+	int firstPipe = -1;
+	for (unsigned int i = 0; i < wcslen(paths); i++) {
+		if (paths[i] == L'|') {
+			firstPipe = i;
+			break;
+		}
+	}
+
+	//return path as-is
+	if (firstPipe == -1) {
+		memcpy(path, paths, (wcslen(paths) + 1) * sizeof(WCHAR));
+		return;
+	}
+
+	//copy up to first pipe
+	memcpy(path, paths, firstPipe * sizeof(WCHAR));
+	path[firstPipe] = L'\0';
+
+	//add \ if missing
+	if (firstPipe == 0 || path[firstPipe - 1] != L'\\' || path[firstPipe - 1] != L'/') {
+		path[firstPipe] = L'\\';
+		path[firstPipe + 1] = L'\0';
+	}
+
+	//find segment
+	int seg = 0;
+	int ofs = wcslen(path);
+	for (unsigned int i = 0; i < wcslen(paths); i++) {
+		if (paths[i] == L'|') {
+			seg++;
+			continue;
+		}
+		if (seg == index + 1) {
+			path[ofs] = paths[i];
+			ofs++;
+		}
+	}
+	path[ofs] = L'\0';
+}
+
 LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension) {
 	OPENFILENAME o = { 0 };
 	WCHAR fname[MAX_PATH + 1] = { 0 };

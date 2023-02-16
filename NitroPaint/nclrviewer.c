@@ -992,7 +992,7 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 			HWND hWndControl = (HWND) lParam;
 			WORD notif = HIWORD(wParam);
 			if (notif == BN_CLICKED && hWndControl == data->hWndBrowse) {
-				LPWSTR path = openFileDialog(hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+				LPWSTR path = openFilesDialog(hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
 				if (path != NULL) {
 					SendMessage(data->hWndFileInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
 					free(path);
@@ -1000,8 +1000,10 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 			} else if (notif == BN_CLICKED && hWndControl == data->hWndGenerate) {
 				int width, height;
 				WCHAR bf[MAX_PATH + 1];
-				SendMessage(data->hWndFileInput, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
-				DWORD *bits = gdipReadImage(bf, &width, &height);
+				LPWSTR paths = (LPWSTR) calloc((MAX_PATH + 1) * 32 + 1, sizeof(WCHAR));
+				SendMessage(data->hWndFileInput, WM_GETTEXT, (MAX_PATH + 1) * 32 + 1, (LPARAM) paths);
+				int nPaths = getPathCount(paths);
+				COLOR32 *bits = gdipReadImage(bf, &width, &height);
 
 				SendMessage(data->hWndColors, WM_GETTEXT, MAX_PATH, (LPARAM) bf);
 				int nColors = _wtol(bf);
@@ -1015,14 +1017,36 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 				//create palette copy
 				int nTotalColors = data->nclr.nColors;
 				int index = data->contextHoverX + data->contextHoverY * 16;
-				DWORD *paletteCopy = (DWORD *) calloc(nColors, 4);
-				createPaletteSlowEx(bits, width, height, paletteCopy + reserveFirst, nColors - reserveFirst, balance, colorBalance, enhanceColors, FALSE);
+				COLOR32 *paletteCopy = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
+
+				//compute histogram
+				REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
+				initReduction(reduction, balance, colorBalance, 15, enhanceColors, nColors - reserveFirst);
+				for (int i = 0; i < nPaths; i++) {
+					getPathFromPaths(paths, i, bf);
+					COLOR32 *bits = gdipReadImage(bf, &width, &height);
+					computeHistogram(reduction, bits, width, height);
+					free(bits);
+				}
+				flattenHistogram(reduction);
+
+				//create and write palette
+				optimizePalette(reduction);
+				for (int i = 0; i < nColors - reserveFirst; i++) {
+					uint8_t *c8 = &reduction->paletteRgb[i][0];
+					COLOR32 c = c8[0] | (c8[1] << 8) | (c8[2] << 16);
+					(paletteCopy + reserveFirst)[i] = c;
+				}
+				qsort(paletteCopy + reserveFirst, nColors - reserveFirst, sizeof(COLOR32), lightnessCompare);
+				destroyReduction(reduction);
+				free(reduction);
 
 				//write back
 				for (int i = 0; i < nColors; i++) {
 					if (i + index >= nTotalColors) break;
 					data->nclr.colors[i + index] = ColorConvertToDS(paletteCopy[i]);
 				}
+				free(paths);
 				free(paletteCopy);
 				free(bits);
 

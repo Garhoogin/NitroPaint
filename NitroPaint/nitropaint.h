@@ -53,9 +53,24 @@ typedef struct {
 LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
 
 //
+// Create an open files dialog
+//
+LPWSTR openFilesDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
+
+//
 // Create a save file dialog
 //
 LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
+
+//
+// Get number of paths from string
+//
+int getPathCount(LPCWSTR paths);
+
+//
+// Read a path from a multi-file string
+//
+void getPathFromPaths(LPCWSTR paths, int index, WCHAR *path);
 
 //
 // Copy a bitmap to the clipboard.
