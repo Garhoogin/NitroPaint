@@ -140,6 +140,10 @@ int nscrReadBin(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 
 	//guess size
 	switch ((dwFileSize >> 1) * 64) {
+		case 256*192:
+			nscr->nWidth = 256;
+			nscr->nHeight = 192;
+			break;
 		case 256*256:
 			nscr->nWidth = 256;
 			nscr->nHeight = 256;
