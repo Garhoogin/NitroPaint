@@ -890,6 +890,28 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						data->hWndNcerViewer = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 50, data->hWndMdi, &ncer);
 						break;
 					}
+					case ID_NEW_NEWPALETTE:
+					{
+						if (data->hWndNclrViewer != NULL) DestroyChild(data->hWndNclrViewer);
+						data->hWndNclrViewer = NULL;
+
+						NCLR nclr;
+						nclrInit(&nclr, NCLR_TYPE_NCLR);
+						nclr.nColors = 256;
+						nclr.nBits = 4;
+						nclr.nPalettes = 16;
+						nclr.colors = (COLOR *) calloc(256, sizeof(COLOR));
+						data->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, &nclr);
+						break;
+					}
+					case ID_NEW_NEWSCREEN:
+					{
+						HWND h = CreateWindow(L"NewScreenDialogClass", L"New Screen", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						ShowWindow(h, SW_SHOW);
+						SetActiveWindow(h);
+						SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_DISABLED);
+						break;
+					}
 					case ID_FILE_CONVERTTO:
 					{
 						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
@@ -1916,6 +1938,74 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct CREATESCREENDATA_ {
+	HWND hWndWidth;
+	HWND hWndHeight;
+	HWND hWndCreate;
+} CREATESCREENDATA;
+
+LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	CREATESCREENDATA *data = (CREATESCREENDATA *) GetWindowLongPtr(hWnd, 0);
+	if (data == NULL) {
+		data = (CREATESCREENDATA *) calloc(1, sizeof(CREATESCREENDATA));
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+	}
+	switch (msg) {
+		case WM_CREATE:
+		{
+			CreateWindow(L"STATIC", L"Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 75, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Height:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 75, 22, hWnd, NULL, NULL, NULL);
+
+			data->hWndWidth = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER, 85, 10, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndHeight = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER, 85, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndCreate = CreateWindow(L"BUTTON", L"Create", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 85, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 195, 96);
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl != NULL && hWndControl == data->hWndCreate) {
+				WCHAR bf[32];
+				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+
+				SendMessage(data->hWndWidth, WM_GETTEXT, 32, (LPARAM) bf);
+				int width = _wtol(bf);
+				int tilesX = width / 8;
+				SendMessage(data->hWndHeight, WM_GETTEXT, 32, (LPARAM) bf);
+				int height = _wtol(bf);
+				int tilesY = height / 8;
+
+				NSCR nscr;
+				nscrInit(&nscr, NSCR_TYPE_NSCR);
+				nscr.nWidth = tilesX * 8;
+				nscr.nHeight = tilesY * 8;
+				nscr.data = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
+				CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, nitroPaintStruct->hWndMdi, &nscr);
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+		case WM_CLOSE:
+		{
+			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			SetActiveWindow(hWndMain);
+			break;
+		}
+		case WM_DESTROY:
+		{
+			if (data != NULL) {
+				free(data);
+			}
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 void RegisterImageDialogClass() {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -1949,6 +2039,19 @@ void RegisterSpriteSheetDialogClass() {
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.lpszClassName = L"SpriteSheetDialogClass";
 	wcex.lpfnWndProc = SpriteSheetDialogProc;
+	wcex.cbWndExtra = sizeof(LPVOID);
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
+void RegisterScreenDialogClass() {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"NewScreenDialogClass";
+	wcex.lpfnWndProc = NewScreenDialogProc;
 	wcex.cbWndExtra = sizeof(LPVOID);
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
@@ -2019,6 +2122,7 @@ void RegisterClasses() {
 	RegisterImageDialogClass();
 	RegisterSpriteSheetDialogClass();
 	RegisterNmcrViewerClass();
+	RegisterScreenDialogClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
