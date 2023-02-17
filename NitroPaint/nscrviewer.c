@@ -910,6 +910,8 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	}
 
 	int charBase = tileBase;
+	int nscrTilesX = nscr->nWidth / 8;
+	int nscrTilesY = nscr->nHeight / 8;
 	uint16_t *nscrData = nscr->data;
 
 	//create dummy reduction to setup parameters for color matching
@@ -936,7 +938,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 
 				for (int y = 0; y < tilesY; y++) {
 					for (int x = 0; x < tilesX; x++) {
-						uint16_t d = nscrData[x + nscrTileX + (y + nscrTileY) * (nscr->nWidth >> 3)];
+						uint16_t d = nscrData[x + nscrTileX + (y + nscrTileY) * nscrTilesX];
 						int thisPalNo = (d & 0xF000) >> 12;
 						if (thisPalNo != palNo) continue;
 
@@ -998,7 +1000,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 				for (int x = 0; x < tilesX; x++) {
 					BGTILE *tile = blocks + x + y * tilesX;
 
-					uint16_t d = nscrData[x + nscrTileX + (y + nscrTileY) * (nscr->nWidth >> 3)];
+					uint16_t d = nscrData[x + nscrTileX + (y + nscrTileY) * nscrTilesX];
 					int charIndex = (d & 0x3FF) - charBase;
 					int palIndex = (d & 0xF000) >> 12;
 					int flip = (d & 0x0C00) >> 10;
@@ -1027,7 +1029,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 		//if we can write characters, do a normal character compression.
 		if (newCharacters) {
 			//do normal character compression.
-			setupBgTilesEx(blocks, tilesX * tilesY, ncgr->nBits, pals, paletteSize, nPalettes, paletteNumber, paletteOffset, 
+			setupBgTilesEx(blocks, tilesX * tilesY, ncgr->nBits, pals, paletteSize, nPalettes, 0, paletteOffset, 
 				dither, diffuse, balance, colorBalance, enhanceColors);
 			int nOutChars = performCharacterCompression(blocks, tilesX * tilesY, ncgr->nBits, nMaxChars, pals, paletteSize, 
 				nPalettes, paletteNumber, paletteOffset, balance, colorBalance, progress);
@@ -1046,7 +1048,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 				BYTE *destTile = ncgr->tiles[nCharsWritten + writeCharBase];
 				for (int j = 0; j < 64; j++)
 					destTile[j] = tile->indices[j] & indexMask;
-				masterMap[i] = nCharsWritten;
+				masterMap[i] = nCharsWritten + writeCharBase;
 				nCharsWritten++;
 			}
 			
@@ -1054,11 +1056,13 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			for (int y = 0; y < tilesY; y++) {
 				for (int x = 0; x < tilesX; x++) {
 					BGTILE *tile = blocks + x + y * tilesX;
-					int palette = (tile->indices[0] & ~indexMask) >> 4; //is 0 for 8bpp
+					int palette = ((tile->indices[0] & ~indexMask) >> 4) + paletteNumber; //is 0 for 8bpp
 					int charIndex = masterMap[tile->masterTile] + charBase;
 
-					uint16_t d = (tile->flipMode << 10) | (palette << 12) | charIndex;
-					nscrData[x + nscrTileX + (y + nscrTileY) * (nscr->nWidth >> 3)] = d;
+					if (x + nscrTileX < nscrTilesX && y + nscrTileY < nscrTilesY) {
+						uint16_t d = (tile->flipMode << 10) | (palette << 12) | charIndex;
+						nscrData[x + nscrTileX + (y + nscrTileY) * (nscr->nWidth >> 3)] = d;
+					}
 				}
 			}
 			free(masterMap);
@@ -1088,13 +1092,15 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					int nscrX = x + nscrTileX;
 					int nscrY = y + nscrTileY;
 
-					uint16_t d = 0;
-					d = d & 0xFFF;
-					d |= (chosenPalette + paletteNumber) << 12;
-					d &= 0xFC00;
-					d |= (chosenCharacter + charBase);
-					d |= chosenFlip << 10;
-					nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
+					if (nscrX < nscrTilesX && nscrY < nscrTilesY) {
+						uint16_t d = 0;
+						d = d & 0xFFF;
+						d |= (chosenPalette + paletteNumber) << 12;
+						d &= 0xFC00;
+						d |= (chosenCharacter + charBase);
+						d |= chosenFlip << 10;
+						nscrData[nscrX + nscrY * nscrTilesX] = d;
+					}
 				}
 			}
 		}
@@ -1121,23 +1127,25 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					int nscrX = x + nscrTileX;
 					int nscrY = y + nscrTileY;
 
-					uint16_t d = nscrData[nscrX + nscrY * (nscr->nWidth >> 3)];
-					d = d & 0x3FF;
-					d |= (leastIndex + paletteNumber) << 12;
-					nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
+					if (nscrX < nscrTilesX && nscrY < nscrTilesY) {
+						uint16_t d = nscrData[nscrX + nscrY * nscrTilesX];
+						d = d & 0x3FF;
+						d |= (leastIndex + paletteNumber) << 12;
+						nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
 
-					int charOrigin = d & 0x3FF;
-					if (charOrigin - charBase < 0) continue;
-					unsigned char *ncgrTile = ncgr->tiles[charOrigin - charBase];
+						int charOrigin = d & 0x3FF;
+						if (charOrigin - charBase < 0) continue;
+						unsigned char *ncgrTile = ncgr->tiles[charOrigin - charBase];
 
-					COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset + !paletteOffset;
-					ditherImagePaletteEx(block, NULL, 8, 8, thisPal, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, dither ? diffuse : 0.0f,
-						balance, colorBalance, enhanceColors);
-					for (int i = 0; i < 64; i++) {
-						if ((block[i] & 0xFF000000) < 0x80) ncgrTile[i] = 0;
-						else {
-							int index = paletteOffset + !paletteOffset + closestPalette(block[i], thisPal, paletteSize - !paletteOffset);
-							ncgrTile[i] = index;
+						COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset + !paletteOffset;
+						ditherImagePaletteEx(block, NULL, 8, 8, thisPal, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, dither ? diffuse : 0.0f,
+							balance, colorBalance, enhanceColors);
+						for (int i = 0; i < 64; i++) {
+							if ((block[i] & 0xFF000000) < 0x80) ncgrTile[i] = 0;
+							else {
+								int index = paletteOffset + !paletteOffset + closestPalette(block[i], thisPal, paletteSize - !paletteOffset);
+								ncgrTile[i] = index;
+							}
 						}
 					}
 				}
@@ -1150,27 +1158,31 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					int nscrX = x + nscrTileX;
 					int nscrY = y + nscrTileY;
 
-					//find what combination of palette and flip minimizes the error.
-					uint16_t oldData = nscrData[nscrX + nscrY * (nscr->nWidth >> 3)];
-					int charId = (oldData & 0x3FF) - charBase, chosenPalette = 0, chosenFlip = TILE_FLIPNONE;
-					double minError = 1e32;
-					for (int i = 0; i < nPalettes; i++) {
-						int mode;
-						double err = calculateBestPaletteCharError(reduction, block, palsYiq + i * maxPaletteSize * 4, ncgr->tiles[charId], &mode, minError);
-						if (err < minError) {
-							chosenPalette = i;
-							minError = err;
-							chosenFlip = mode;
-						}
-					}
+					//check bounds
+					if (nscrX < nscrTilesX && nscrY < nscrTilesY) {
 
-					uint16_t d = 0;
-					d = d & 0xFFF;
-					d |= (chosenPalette + paletteNumber) << 12;
-					d &= 0xFC00;
-					d |= (charId + charBase);
-					d |= chosenFlip << 10;
-					nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
+						//find what combination of palette and flip minimizes the error.
+						uint16_t oldData = nscrData[nscrX + nscrY * nscrTilesX];
+						int charId = (oldData & 0x3FF) - charBase, chosenPalette = 0, chosenFlip = TILE_FLIPNONE;
+						double minError = 1e32;
+						for (int i = 0; i < nPalettes; i++) {
+							int mode;
+							double err = calculateBestPaletteCharError(reduction, block, palsYiq + i * maxPaletteSize * 4, ncgr->tiles[charId], &mode, minError);
+							if (err < minError) {
+								chosenPalette = i;
+								minError = err;
+								chosenFlip = mode;
+							}
+						}
+
+						uint16_t d = 0;
+						d = d & 0xFFF;
+						d |= (chosenPalette + paletteNumber) << 12;
+						d &= 0xFC00;
+						d |= (charId + charBase);
+						d |= chosenFlip << 10;
+						nscrData[nscrX + nscrY * nscrTilesX] = d;
+					}
 				}
 			}
 		}
