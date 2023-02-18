@@ -109,13 +109,15 @@
 #define ID_NEW_NEWSCREEN                40114
 #define ID_ARRANGEPALETTE_NEURO         40115
 #define ID_VIEW_SINGLE                  40116
+#define ID_TOOLS_SCREEN                 40117
+#define ID_SCREEN_SPLITSCREEN           40118
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40117
+#define _APS_NEXT_COMMAND_VALUE         40119
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

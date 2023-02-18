@@ -1047,6 +1047,20 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						CustomChooseColor(&cc);
 						break;
 					}
+					case ID_SCREEN_SPLITSCREEN:
+					{
+						HWND hWndFocus = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
+						
+						//if not screen, warn user
+						if (hWndFocus == NULL || GetEditorType(hWndFocus) != FILE_TYPE_SCREEN) {
+							MessageBox(hWnd, L"NO screen active.", L"Error", MB_ICONERROR);
+							break;
+						}
+						HWND h = CreateWindow(L"ScreenSplitDialogClass", L"Split Screen", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						SetActiveWindow(h);
+						setStyle(hWnd, TRUE, WS_DISABLED);
+						break;
+					}
 				}
 			}
 			HWND hWndActive = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);
@@ -1097,6 +1111,19 @@ BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
 VOID SetGUIFont(HWND hWnd) {
 	HFONT hFont = (HFONT) GetStockObject(DEFAULT_GUI_FONT);
 	EnumChildWindows(hWnd, SetGUIFontProc, (LPARAM) hFont);
+}
+
+void RegisterGenericClass(LPCWSTR lpszClassName, WNDPROC pWndProc, int cbWndExtra) {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = lpszClassName;
+	wcex.lpfnWndProc = pWndProc;
+	wcex.cbWndExtra = cbWndExtra;
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
 }
 
 typedef struct {
@@ -1409,16 +1436,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 }
 
 void RegisterCreateDialogClass() {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"CreateDialogClass";
-	wcex.lpfnWndProc = CreateDialogWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"CreateDialogClass", CreateDialogWndProc, sizeof(LPVOID));
 }
 
 LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1717,16 +1735,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 }
 
 void RegisterNtftConvertDialogClass() {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NtftConvertDialogClass";
-	wcex.lpfnWndProc = NtftConvertDialogProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"NtftConvertDialogClass", NtftConvertDialogProc, sizeof(LPVOID));
 }
 
 LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2051,56 +2060,110 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct SCREENSPLITDIALOGDATA_ {
+	HWND hWndX;
+	HWND hWndY;
+	HWND hWndComplete;
+} SCREENSPLITDIALOGDATA;
+
+LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	SCREENSPLITDIALOGDATA *data = (SCREENSPLITDIALOGDATA *) GetWindowLongPtr(hWnd, 0);
+	if (data == NULL) {
+		data = (SCREENSPLITDIALOGDATA *) calloc(1, sizeof(SCREENSPLITDIALOGDATA));
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+	}
+	switch (msg) {
+		case WM_CREATE:
+		{
+			CreateWindow(L"STATIC", L"X Screens:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 75, 22, hWnd, NULL, NULL, NULL);
+			CreateWindow(L"STATIC", L"Y Screens:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 75, 22, hWnd, NULL, NULL, NULL);
+
+			data->hWndX = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_NUMBER, 85, 10, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndY = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_NUMBER, 85, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndComplete = CreateWindow(L"BUTTON", L"Complete", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 85, 64, 100, 22, hWnd, NULL, NULL, NULL);
+
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 195, 96);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl == data->hWndComplete) {
+				WCHAR bf[32];
+				SendMessage(data->hWndX, WM_GETTEXT, 32, (LPARAM) bf);
+				int x = _wtol(bf);
+				SendMessage(data->hWndY, WM_GETTEXT, 32, (LPARAM) bf);
+				int y = _wtol(bf);
+
+				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+				HWND hWndScreen = (HWND) SendMessage(nitroPaintStruct->hWndMdi, WM_MDIGETACTIVE, 0, 0);
+				NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndScreen, 0);
+				NSCR *nscr = &nscrViewerData->nscr;
+				int tilesX = nscr->nWidth / 8;
+				int tilesY = nscr->nHeight / 8;
+
+				int newTilesX = tilesX / x;
+				int newTilesY = tilesY / y;
+
+				NSCR newNscr;
+				nscrInit(&newNscr, nscr->header.format);
+				newNscr.nWidth = newTilesX * 8;
+				newNscr.nHeight = newTilesY * 8;
+				for (int i = 0; i < y; i++) {
+					for (int j = 0; j < x; j++) {
+						newNscr.data = (uint16_t *) calloc(newTilesX * newTilesY, sizeof(uint16_t));
+						for (int tileY = 0; tileY < newTilesY; tileY++) {
+							for (int tileX = 0; tileX < newTilesX; tileX++) {
+								uint16_t src = nscr->data[tileX + j * newTilesX + (tileY + i * newTilesY) * tilesX];
+								newNscr.data[tileX + tileY * newTilesX] = src;
+							}
+						}
+
+						CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 50, nitroPaintStruct->hWndMdi, &newNscr);
+					}
+				}
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+		case WM_CLOSE:
+		{
+			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			setStyle(hWndMain, FALSE, WS_DISABLED);
+			SetActiveWindow(hWndMain);
+			break;
+		}
+		case WM_DESTROY:
+		{
+			if (data != NULL)
+				free(data);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 void RegisterImageDialogClass() {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"ImageDialogClass";
-	wcex.lpfnWndProc = ImageDialogProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"ImageDialogClass", ImageDialogProc, sizeof(LPVOID));
 }
 
 void RegisterFormatConversionClass() {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"ConvertFormatDialogClass";
-	wcex.lpfnWndProc = ConvertFormatDialogProc;
-	wcex.cbWndExtra = sizeof(LPVOID) * 3;
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"ConvertFormatDialogClass", ConvertFormatDialogProc, 3 * sizeof(LPVOID));
 }
 
 void RegisterSpriteSheetDialogClass() {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"SpriteSheetDialogClass";
-	wcex.lpfnWndProc = SpriteSheetDialogProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"SpriteSheetDialogClass", SpriteSheetDialogProc, sizeof(LPVOID));
 }
 
 void RegisterScreenDialogClass() {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NewScreenDialogClass";
-	wcex.lpfnWndProc = NewScreenDialogProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"NewScreenDialogClass", NewScreenDialogProc, sizeof(LPVOID));
+}
+
+void RegisterScreenSplitDialogClass() {
+	RegisterGenericClass(L"ScreenSplitDialogClass", ScreenSplitDialogProc, sizeof(LPVOID));
 }
 
 VOID ReadConfiguration(LPWSTR lpszPath) {
@@ -2181,6 +2244,7 @@ void RegisterClasses() {
 	RegisterSpriteSheetDialogClass();
 	RegisterNmcrViewerClass();
 	RegisterScreenDialogClass();
+	RegisterScreenSplitDialogClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
