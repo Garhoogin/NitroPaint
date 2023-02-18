@@ -901,7 +901,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 						int type = LOWORD(wParam);
 						if (type == ID_ARRANGEPALETTE_BYLIGHTNESS || type == ID_ARRANGEPALETTE_BYHUE) {
-							qsort(pal + 1, nColors, sizeof(COLOR),
+							qsort(pal + 1, nColors - 1, sizeof(COLOR),
 								type == ID_ARRANGEPALETTE_BYLIGHTNESS ? colorSortLightness : colorSortHue);
 						} else {
 							paletteNeuroSortThreaded(hWnd, pal + 1, nColors - 1);
