@@ -8,6 +8,7 @@ typedef struct {
 	BOOL fullPaths;
 	BOOL renderTransparent;
 	BOOL dpiAware;
+	BOOL allowMultipleInstances;
 	HBRUSH hbrBackground;
 	LPWSTR backgroundPath;
 	struct {
@@ -46,6 +47,9 @@ typedef struct {
 	HWND hWndProgress1;
 	HWND hWndProgress2;
 } PROGRESSDATA;
+
+//WM_COPYDATA types
+#define NPMSG_OPENFILE       1
 
 //
 // Create an open file dialog

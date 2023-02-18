@@ -697,6 +697,39 @@ VOID HandleSwitch(LPWSTR lpSwitch) {
 	}
 }
 
+VOID OpenFileByNameRemote(HWND hWnd, LPCWSTR szFile) {
+	COPYDATASTRUCT cds = { 0 };
+	cds.dwData = NPMSG_OPENFILE;
+	cds.cbData = (wcslen(szFile) + 1) * 2;
+	cds.lpData = (PVOID) szFile;
+	SendMessage(hWnd, WM_COPYDATA, 0, (LPARAM) &cds);
+}
+
+VOID ProcessCommandLine(HWND hWnd, BOOL remoteWindow) {
+	int argc;
+	wchar_t **argv;
+	wchar_t **env;
+	int startInfo;
+	__wgetmainargs(&argc, &argv, &env, 1, &startInfo);
+	if (argc > 1) {
+		argc--;
+		argv++;
+		for (int i = 0; i < argc; i++) {
+			LPWSTR arg = argv[i];
+			if (arg[0] != L'/') {
+				if (!remoteWindow) {
+					OpenFileByName(hWnd, argv[i]);
+				} else {
+					OpenFileByNameRemote(hWnd, argv[i]);
+				}
+			} else {
+				//command line switch
+				HandleSwitch(arg + 1);
+			}
+		}
+	}
+}
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NITROPAINTSTRUCT *data = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWnd, 0);
 	if (!data) {
@@ -719,24 +752,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			DragAcceptFiles(hWnd, TRUE);
 
 			//open command line argument's files
-			int argc;
-			wchar_t **argv;
-			wchar_t **env;
-			int startInfo;
-			__wgetmainargs(&argc, &argv, &env, 1, &startInfo);
-			if (argc > 1) {
-				argc--;
-				argv++;
-				for (int i = 0; i < argc; i++) {
-					LPWSTR arg = argv[i];
-					if (arg[0] != L'/') {
-						OpenFileByName(hWnd, argv[i]);
-					} else {
-						//command line switch
-						HandleSwitch(arg + 1);
-					}
-				}
-			}
+			ProcessCommandLine(hWnd, FALSE);
 
 			//check config data
 			if (g_configuration.nclrViewerConfiguration.useDSColorPicker) {
@@ -748,7 +764,23 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (g_configuration.renderTransparent) {
 				CheckMenuItem(GetMenu(hWnd), ID_VIEW_RENDERTRANSPARENCY, MF_CHECKED);
 			}
+			if (!g_configuration.allowMultipleInstances) {
+				CheckMenuItem(GetMenu(hWnd), ID_VIEW_SINGLE, MF_CHECKED);
+			}
 			return 1;
+		}
+		case WM_COPYDATA:
+		{
+			HWND hWndOrigin = (HWND) wParam;
+			COPYDATASTRUCT *copyData = (COPYDATASTRUCT *) lParam;
+			int type = copyData->dwData;
+
+			switch (type) {
+				case NPMSG_OPENFILE:
+					OpenFileByName(hWnd, (LPCWSTR) copyData->lpData);
+					break;
+			}
+			break;
 		}
 		case WM_PAINT:
 		{
@@ -961,6 +993,19 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							CheckMenuItem(GetMenu(hWnd), ID_VIEW_FULLFILEPATHS, MF_UNCHECKED);
 						}
 						g_configuration.fullPaths = state;
+						break;
+					}
+					case ID_VIEW_SINGLE:
+					{
+						int state = GetMenuState(GetMenu(hWnd), ID_VIEW_SINGLE, MF_BYCOMMAND);
+						state = !state;
+						if (state) {
+							WritePrivateProfileStringW(L"NitroPaint", L"AllowMultiple", L"0", g_configPath);
+							CheckMenuItem(GetMenu(hWnd), ID_VIEW_SINGLE, MF_CHECKED);
+						} else {
+							WritePrivateProfileStringW(L"NitroPaint", L"AllowMultiple", L"1", g_configPath);
+							CheckMenuItem(GetMenu(hWnd), ID_VIEW_SINGLE, MF_UNCHECKED);
+						}
 						break;
 					}
 					case ID_VIEW_RENDERTRANSPARENCY:
@@ -2073,6 +2118,7 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 		result = result && WritePrivateProfileStringW(L"NitroPaint", L"PaletteAlgorithm", L"0", lpszPath);
 		result = result && WritePrivateProfileString(L"NitroPaint", L"RenderTransparent", L"1", lpszPath);
 		result = result && WritePrivateProfileStringW(L"NitroPaint", L"DPIAware", L"1", lpszPath);
+		result = result && WritePrivateProfileStringW(L"NitroPaint", L"AllowMultiple", L"0", lpszPath);
 	}
 	g_configuration.nclrViewerConfiguration.useDSColorPicker = GetPrivateProfileInt(L"NclrViewer", L"UseDSColorPicker", 0, lpszPath);
 	g_configuration.ncgrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NcgrViewer", L"Gridlines", 1, lpszPath);
@@ -2081,6 +2127,7 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 	g_configuration.renderTransparent = GetPrivateProfileInt(L"NitroPaint", L"RenderTransparent", 1, lpszPath);
 	g_configuration.backgroundPath = (LPWSTR) calloc(MAX_PATH, sizeof(WCHAR));
 	g_configuration.dpiAware = GetPrivateProfileInt(L"NitroPaint", L"DPIAware", 1, lpszPath);
+	g_configuration.allowMultipleInstances = GetPrivateProfileInt(L"NitroPaint", L"AllowMultiple", 0, lpszPath);
 	GetPrivateProfileString(L"NitroPaint", L"Background", L"", g_configuration.backgroundPath, MAX_PATH, lpszPath);
 
 	//load background image
@@ -2105,6 +2152,17 @@ VOID SetConfigPath() {
 		if (g_configPath[i] == L'\\' || g_configPath[i] == '/') endOffset = i + 1;
 	}
 	memcpy(g_configPath + endOffset, name, wcslen(name) * 2 + 2);
+}
+
+VOID CheckExistingAppWindow() {
+	if (g_configuration.allowMultipleInstances) return;
+	HWND hWndNP = FindWindow(L"NitroPaintClass", NULL);
+	if (hWndNP == NULL) return;
+
+	//forward to existing window
+	ProcessCommandLine(hWndNP, TRUE);
+	SetForegroundWindow(hWndNP);
+	ExitProcess(0);
 }
 
 void RegisterClasses() {
@@ -2132,7 +2190,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	SetConfigPath();
 	ReadConfiguration(g_configPath);
-
+	CheckExistingAppWindow();
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
 	wcex.hInstance = hInstance;
