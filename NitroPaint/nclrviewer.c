@@ -291,6 +291,83 @@ BOOL SwapNscrPalettesProc(HWND hWnd, void *param) {
 	return TRUE;
 }
 
+void paletteSwapColors(COLOR *palette, int i1, int i2) {
+	COLOR c1 = palette[i1];
+	palette[i1] = palette[i2];
+	palette[i2] = c1;
+}
+
+int paletteNeuroSortPermute(COLOR *palette, int nColors, unsigned long long bestDiff) {
+	int totalDiff = 0;
+	for (int i = 1; i < nColors; i++) {
+		COLOR32 last = ColorConvertFromDS(palette[i - 1]);
+		int nextIndex = i;
+
+		int minDiff = 0x7FFFFFFF;
+		for (int j = i; j < nColors; j++) {
+			COLOR32 test = ColorConvertFromDS(palette[j]);
+			
+			int dr, dg, db, dy, du, dv;
+			dr = (last & 0xFF) - (test & 0xFF);
+			dg = ((last >> 8) & 0xFF) - ((test >> 8) & 0xFF);
+			db = ((last >> 16) & 0xFF) - ((test >> 16) & 0xFF);
+			convertRGBToYUV(dr, dg, db, &dy, &du, &dv);
+			int diff = 4 * dy * dy + du * du + dv * dv;
+			if (diff < minDiff) {
+				nextIndex = j;
+				minDiff = diff;
+			}
+		}
+
+		paletteSwapColors(palette, i, nextIndex);
+		totalDiff += minDiff;
+		if (totalDiff >= bestDiff) return totalDiff;
+	}
+	return totalDiff;
+}
+
+typedef struct PALETTE_ARRANGE_DATA_ {
+	HWND hWndViewer;
+	COLOR *palette;
+	int nColors;
+} PALETTE_ARRANGE_DATA;
+
+DWORD CALLBACK paletteNeuroSort(LPVOID param) {
+	PALETTE_ARRANGE_DATA *data = (PALETTE_ARRANGE_DATA *) param;
+	HWND hWnd = data->hWndViewer;
+	COLOR *palette = data->palette;
+	int nColors = data->nColors;
+
+	int best = 0x7FFFFFFF;
+	COLOR *tempBuf = (COLOR *) calloc(nColors, sizeof(COLOR));
+
+	//iterate permutations
+	for (int i = 0; i < nColors; i++) {
+		memcpy(tempBuf, palette, nColors * sizeof(COLOR));
+		paletteSwapColors(tempBuf, 0, i);
+
+		int permutationError = paletteNeuroSortPermute(tempBuf, nColors, best);
+		if (permutationError < best) {
+			memcpy(palette, tempBuf, nColors * sizeof(COLOR));
+			best = permutationError;
+			PostMessage(hWnd, NV_XTINVALIDATE, 0, 0);
+		}
+	}
+
+	free(tempBuf);
+	free(data);
+	return 0;
+}
+
+void paletteNeuroSortThreaded(HWND hWnd, COLOR *palette, int nColors) {
+	PALETTE_ARRANGE_DATA *data = (PALETTE_ARRANGE_DATA *) calloc(1, sizeof(PALETTE_ARRANGE_DATA));
+	DWORD tid;
+	data->hWndViewer = hWnd;
+	data->palette = palette;
+	data->nColors = nColors;
+	CreateThread(NULL, 0, paletteNeuroSort, (LPVOID) data, 0, &tid);
+}
+
 LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
 	if (!data) {
@@ -677,6 +754,9 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			break;
 		}
+		case NV_XTINVALIDATE:
+			InvalidateRect(hWnd, NULL, FALSE);
+			break;
 		case WM_PAINT:
 		{
 			RECT rcClient;
@@ -808,15 +888,24 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_ARRANGEPALETTE_BYLIGHTNESS:
 					case ID_ARRANGEPALETTE_BYHUE:
+					case ID_ARRANGEPALETTE_NEURO:
 					{
 						int index = data->contextHoverX + data->contextHoverY * 16;
 						int palette = index >> data->nclr.nBits;
 
-						COLOR *pal = data->nclr.colors + (palette << data->nclr.nBits);
+						int nColsPerPalette = 1 << data->nclr.nBits;
+						COLOR *pal = data->nclr.colors + palette * nColsPerPalette;
+						int nColors = nColsPerPalette;
+						if ((palette + 1) * nColsPerPalette > data->nclr.nColors) 
+							nColors = data->nclr.nColors - palette * nColsPerPalette;
 
 						int type = LOWORD(wParam);
-						qsort(pal + 1, (1 << data->nclr.nBits) - 1, 2, 
-							  type == ID_ARRANGEPALETTE_BYLIGHTNESS ? colorSortLightness : colorSortHue);
+						if (type == ID_ARRANGEPALETTE_BYLIGHTNESS || type == ID_ARRANGEPALETTE_BYHUE) {
+							qsort(pal + 1, nColors, sizeof(COLOR),
+								type == ID_ARRANGEPALETTE_BYLIGHTNESS ? colorSortLightness : colorSortHue);
+						} else {
+							paletteNeuroSortThreaded(hWnd, pal + 1, nColors - 1);
+						}
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
