@@ -1325,17 +1325,20 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	ncgr->header.compression = compressCharacter;
 	nscr->header.compression = compressScreen;
 
+	int colorOutputBase = rowLimit ? (nBits == 4 ? (paletteBase * 16) : 0) : 0;
+	int nColorsOutput = rowLimit ? (nBits == 4 ? (16 * nPalettes) : (paletteOffset + paletteSize)) : (nBits == 4 ? 256 : (256 * nPalettes));
+	int nPalettesOutput = rowLimit ? (nPalettes) : (nBits == 4 ? 16 : nPalettes);
 	nclr->nBits = nBits;
-	nclr->nColors = rowLimit ? (nBits == 4 ? ((paletteBase + nPalettes) << 4) : (paletteOffset + paletteSize)) : 256;
+	nclr->nColors = nColorsOutput;
 	nclr->totalSize = nclr->nColors * 2;
-	nclr->nPalettes = nBits == 8 ? 1 : (rowLimit ? (paletteBase + nPalettes) : (nclr->nColors / 16));
+	nclr->nPalettes = nPalettesOutput;
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
 	nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
 	for (int i = 0; i < nclr->nColors; i++) {
-		nclr->colors[i] = ColorConvertToDS(palette[i]);
+		nclr->colors[i] = ColorConvertToDS(palette[i + colorOutputBase]);
 	}
 	for (int i = 0; i < nclr->nPalettes; i++) {
-		nclr->idxTable[i] = i;
+		nclr->idxTable[i] = rowLimit ? (i + paletteBase) : i;
 	}
 
 	int nCharsFile = ((nChars + alignment - 1) / alignment) * alignment;
