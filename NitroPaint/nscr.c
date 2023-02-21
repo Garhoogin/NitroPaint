@@ -376,7 +376,7 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 		if (ncgr) {
 			if (tileNumber >= ncgr->nTiles || tileNumber < 0) { //? let's just paint a transparent square
 				if (!transparent) {
-					COLOR32 bg = ColorConvertFromDS(CREVERSE(palette[0])) | 0xFF000000;
+					COLOR32 bg = ColorConvertFromDS(CREVERSE(nclr->colors[0])) | 0xFF000000;
 					for (int i = 0; i < 64; i++) {
 						out[i] = bg;
 					}
@@ -396,7 +396,12 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 
 			for (int i = 0; i < 64; i++) {
 				if (ncgrTile[i] || !transparent) {
-					COLOR c = palette[ncgrTile[i]];
+					int colIndex = ncgrTile[i];
+					COLOR c = 0;
+					if (colIndex + paletteSize * paletteNumber < nclr->nColors)
+						c = palette[colIndex];
+					if (colIndex == 0 && !transparent)
+						c = nclr->colors[0];
 					out[i] = ColorConvertFromDS(CREVERSE(c)) | 0xFF000000;
 				} else {
 					out[i] = 0;
