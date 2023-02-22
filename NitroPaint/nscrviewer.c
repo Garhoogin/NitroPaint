@@ -1056,7 +1056,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			for (int y = 0; y < tilesY; y++) {
 				for (int x = 0; x < tilesX; x++) {
 					BGTILE *tile = blocks + x + y * tilesX;
-					int palette = ((tile->indices[0] & ~indexMask) >> 4) + paletteNumber; //is 0 for 8bpp
+					int palette = tile->palette + paletteNumber;
 					int charIndex = masterMap[tile->masterTile] + charBase;
 
 					if (x + nscrTileX < nscrTilesX && y + nscrTileY < nscrTilesY) {

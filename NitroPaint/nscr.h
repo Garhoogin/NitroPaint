@@ -70,6 +70,7 @@ typedef struct BGTILE_ {
 	int masterTile;
 	int nRepresents;
 	int flipMode;
+	int palette;
 } BGTILE;
 
 //

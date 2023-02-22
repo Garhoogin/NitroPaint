@@ -939,13 +939,11 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 				index = closestPalette(col, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset)
 					+ !paletteOffset + paletteOffset;
 			}
-			if (nBits == 4) {
-				tile->indices[j] = (bestPalette << 4) | index;
-			} else {
-				tile->indices[j] = index;
-			}
+			
+			tile->indices[j] = index;
 			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
 		}
+		tile->palette = bestPalette;
 
 		//lastly, copy tile->indices to all child tile->indices, just to make sure palette and character are in synch.
 		for (int j = 0; j < nTiles; j++) {
@@ -954,6 +952,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 			BGTILE *tile2 = tiles + j;
 
 			memcpy(tile2->indices, tile->indices, 64);
+			tile2->palette = tile->palette;
 		}
 	}
 
@@ -1003,11 +1002,8 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 				index = closestPalette(col, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset) 
 					+ !paletteOffset + paletteOffset;
 			}
-			if (nBits == 4) {
-				tile->indices[j] = (bestPalette << 4) | index;
-			} else {
-				tile->indices[j] = index;
-			}
+			
+			tile->indices[j] = index;
 			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
 
 			//YIQ color
@@ -1016,6 +1012,7 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 
 		tile->masterTile = i;
 		tile->nRepresents = 1;
+		tile->palette = bestPalette;
 	}
 	destroyReduction(reduction);
 	free(reduction);
@@ -1150,20 +1147,17 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 				NCLR *nclr, NCGR *ncgr, NSCR *nscr) {
 
 	//cursory sanity checks
+	if (nPalettes > 16) nPalettes = 16;
+	else if (nPalettes < 1) nPalettes = 1;
 	if (nBits == 4) {
 		if (paletteBase >= 16) paletteBase = 15;
 		else if (paletteBase < 0) paletteBase = 0;
-		if (nPalettes > 16) nPalettes = 16;
-		else if (nPalettes < 1) nPalettes = 1;
 		if (paletteBase + nPalettes > 16) nPalettes = 16 - paletteBase;
 
 		if (paletteOffset < 0) paletteOffset = 0;
 		else if (paletteOffset >= 16) paletteOffset = 15;
 		if (paletteOffset + paletteSize > 16) paletteSize = 16 - paletteOffset;
 	} else {
-		paletteBase = 0;
-		nPalettes = 1;
-
 		if (paletteOffset < 0) paletteOffset = 0;
 		if (paletteSize < 1) paletteSize = 1;
 		if (paletteOffset >= 256) paletteOffset = 255;
@@ -1183,7 +1177,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	*progress1Max = nTiles * 2; //2 passes
 	*progress2Max = 1000;
 
-	COLOR32 *palette = (COLOR32 *) calloc(256, 4);
+	COLOR32 *palette = (COLOR32 *) calloc(256 * 16, 4);
 	COLOR32 color0 = chooseBGColor0(imgBits, width, height, color0Mode);
 	if (nBits < 5) nBits = 4;
 	else nBits = 8;
@@ -1197,7 +1191,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	} else {
 		createMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, balance, colorBalance, enhanceColors, progress1);
 		if (paletteOffset == 0) {
-			for (int i = paletteBase; i < paletteBase + nPalettes; i++) palette[i * 16] = color0;
+			for (int i = paletteBase; i < paletteBase + nPalettes; i++) palette[i << nBits] = color0;
 		}
 	}
 	*progress1 = nTiles * 2; //make sure it's done
@@ -1205,7 +1199,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	//by default the palette generator only enforces palette density, but not
 	//the actual truncating of RGB values. Do that here. This will also be
 	//important when fixed palettes are allowed.
-	for (int i = 0; i < 256; i++) {
+	for (int i = 0; i < 256 * 16; i++) {
 		palette[i] = ColorConvertFromDS(ColorConvertToDS(palette[i]));
 	}
 
@@ -1281,10 +1275,8 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 		modes[i] = tiles[i].flipMode;
 	}
 	unsigned char *paletteIndices = (unsigned char *) calloc(nTiles, 1);
-	if (nBits == 4) {
-		for (int i = 0; i < nTiles; i++) {
-			paletteIndices[i] = tiles[i].indices[0] >> 4;
-		}
+	for (int i = 0; i < nTiles; i++) {
+		paletteIndices[i] = tiles[i].palette;
 	}
 
 	//create output
@@ -1339,6 +1331,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	nclr->nPalettes = nPalettesOutput;
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
 	nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
+	nclr->extPalette = (nBits == 8 && (nPalettes > 1 || paletteBase > 0));
 	for (int i = 0; i < nclr->nColors; i++) {
 		nclr->colors[i] = ColorConvertToDS(palette[i + colorOutputBase]);
 	}
