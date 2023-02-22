@@ -102,9 +102,9 @@ VOID PastePalette(COLOR *dest, int nMax) {
 	if (hOp != NULL) GlobalUnlock(hOp);
 }
 
-VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
+VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
 
-	WORD *cols = data->nclr.colors;
+	COLOR *cols = data->nclr.colors;
 	int nRows = data->nclr.nColors / 16;
 
 	HPEN defaultOutline = GetStockObject(BLACK_PEN);
@@ -146,8 +146,6 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 		palOpBlocks = data->palOp.dstCount;
 	}
 
-	int nColors = 0;
-
 	int srcIndex, dstIndex;
 	if (!data->rowDragging) {
 		srcIndex = (data->dragStart.x / 16) + 16 * (data->dragStart.y >> 4);
@@ -165,9 +163,11 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 	}
 
 	SetBkColor(hDC, RGB(0, 0, 0));
-	for (int y = 0; y < nRows; y++) {
+	for (int y = yMin / 16; y < nRows && y < (yMax + 15) / 16; y++) {
 		for (int x = 0; x < 16; x++) {
-			int index = nColors;
+			int index = x + y * 16;
+			if (index > data->nclr.nColors) break;
+
 			if (data->dragging && data->mouseDown) {
 				if (!data->rowDragging) {
 					if (dstIndex < data->nclr.nColors && dstIndex >= 0) {
@@ -203,7 +203,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 				SelectObject(hDC, opSrcOutline);
 			} else if (isInPalOpDest) {
 				SelectObject(hDC, opDstOutline);
-			} else if (nColors == data->hoverIndex) {
+			} else if (index == data->hoverIndex) {
 				SelectObject(hDC, highlightCellOutline);
 			} else if (previewPalette != -1 && (y >= highlightRowStart && y < highlightRowEnd)) {
 				SelectObject(hDC, previewOutline);
@@ -218,8 +218,6 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC) {
 			Rectangle(hDC, x * 16, y * 16, x * 16 + 16, y * 16 + 16);
 
 			DeleteObject(hbr);
-			nColors++;
-			if (nColors > data->nclr.nColors) break;
 		}
 	}
 
@@ -377,7 +375,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data->contentWidth = 256;
+			data->contentWidth = 0; //prevent horizontal scrollbar
 			data->contentHeight = 256;
 			data->hoverX = -1;
 			data->hoverY = -1;
@@ -444,6 +442,21 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			if (data->nclr.header.format == NCLR_TYPE_HUDSON) {
 				SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
 			}
+
+			//set appropriate height
+			data->contentHeight = ((data->nclr.nColors + 15) / 16) * 16;
+			if (data->contentHeight > 256) {
+				SetWindowSize(hWnd, 256 + 4 + GetSystemMetrics(SM_CXVSCROLL), 257);
+			}
+
+			//update scroll info
+			SCROLLINFO info;
+			info.cbSize = sizeof(info);
+			info.nMin = 0;
+			info.nMax = data->contentHeight;
+			info.fMask = SIF_RANGE;
+			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			InvalidateRect(hWnd, NULL, FALSE);
 			return 1;
 		}
 		case WM_MOUSEMOVE:
@@ -784,7 +797,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SelectObject(hDC, defaultPen);
 			SelectObject(hDC, defaultBrush);
 
-			PaintNclrViewer(hWnd, data, hDC);
+			PaintNclrViewer(hWnd, data, hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
 
 			BitBlt(hWindowDC, 0, 0, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, hDC, horiz.nPos, vert.nPos, SRCCOPY);
 			EndPaint(hWnd, &ps);
