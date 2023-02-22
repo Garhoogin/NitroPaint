@@ -393,21 +393,33 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 						nscr = &data->nscr;
 
-						//write 8bpp indexed
-						COLOR32 palette[256] = { 0 };
-						int transparentOutput = 1;
-						int paletteSize = 1 << ncgr->nBits;
-						if (nclr != NULL) {
-							for (int i = 0; i < min(nclr->nColors, 256); i++) {
-								int makeTransparent = transparentOutput && ((i % paletteSize) == 0);
+						//check: should we output indexed? If palette size > 256, we can't
+						if (nclr->nColors <= 256) {
+							//write 8bpp indexed
+							COLOR32 palette[256] = { 0 };
+							int transparentOutput = 1;
+							int paletteSize = 1 << ncgr->nBits;
+							if (nclr != NULL) {
+								for (int i = 0; i < min(nclr->nColors, 256); i++) {
+									int makeTransparent = transparentOutput && ((i % paletteSize) == 0);
 
-								palette[i] = ColorConvertFromDS(nclr->colors[i]);
-								if (!makeTransparent) palette[i] |= 0xFF000000;
+									palette[i] = ColorConvertFromDS(nclr->colors[i]);
+									if (!makeTransparent) palette[i] |= 0xFF000000;
+								}
 							}
+							unsigned char *bits = renderNscrIndexed(nscr, ncgr, data->tileBase, &width, &height, TRUE);
+							imageWriteIndexed(bits, width, height, palette, 256, location);
+							free(bits);
+						} else {
+							//write direct
+							COLOR32 *bits = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &width, &height, -1, -1, -1, -1, -1, -1, -1, TRUE);
+							for (int i = 0; i < width * height; i++) {
+								COLOR32 c = bits[i];
+								bits[i] = REVERSE(c);
+							}
+							imageWrite(bits, width, height, location);
+							free(bits);
 						}
-						unsigned char *bits = renderNscrIndexed(nscr, ncgr, data->tileBase, &width, &height, TRUE);
-						imageWriteIndexed(bits, width, height, palette, 256, location);
-						free(bits);
 						free(location);
 						break;
 					}
