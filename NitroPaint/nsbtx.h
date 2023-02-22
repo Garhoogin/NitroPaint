@@ -54,6 +54,8 @@ typedef struct BMD_DATA_ {
 	int boneOffset;
 	int displaylistOffset;
 	int transformOffset;
+	int field30;
+	int field34;
 	void *bones;
 	void *displaylists;
 	void *materials;

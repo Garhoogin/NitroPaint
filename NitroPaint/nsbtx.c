@@ -301,6 +301,8 @@ int nsbtxReadBmd(NSBTX *nsbtx, unsigned char *buffer, int size) {
 	bmd->displaylistOffset = *(uint32_t *) (buffer + 0x10);
 	bmd->nMaterials = *(uint32_t *) (buffer + 0x24);
 	bmd->transformOffset = *(uint32_t *) (buffer + 0x2C);
+	bmd->field30 = *(uint32_t *) (buffer + 0x30);
+	bmd->field34 = *(uint32_t *) (buffer + 0x34);
 
 	nsbtx->nTextures = *(uint32_t *) (buffer + 0x14);
 	nsbtx->nPalettes = *(uint32_t *) (buffer + 0x1C);
@@ -732,8 +734,8 @@ int nsbtxWriteBmd(NSBTX *nsbtx, BSTREAM *stream) {
 	*(uint32_t *) (header + 0x24) = bmd->nMaterials;
 	*(uint32_t *) (header + 0x28) = materialPos;
 	*(uint32_t *) (header + 0x2C) = bmd->transformOffset;
-	*(uint32_t *) (header + 0x30) = 0;
-	*(uint32_t *) (header + 0x34) = 0;
+	*(uint32_t *) (header + 0x30) = bmd->field30;
+	*(uint32_t *) (header + 0x34) = bmd->field34;
 	*(uint32_t *) (header + 0x38) = textureDataPos;
 	bstreamWrite(stream, header, sizeof(header));
 
