@@ -32,9 +32,12 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	COLOR32 palette[256] = { 0 };
 	if (format != CT_DIRECT) {
 		//convert to 24-bit
-		paletteSize = texture->palette.nColors;
-		for (int i = 0; i < paletteSize; i++) {
-			palette[i] = ColorConvertFromDS(texture->palette.pal[i]);
+		if (format != CT_4x4) {
+			paletteSize = texture->palette.nColors;
+			if (paletteSize > 256) paletteSize = 256;
+			for (int i = 0; i < paletteSize; i++) {
+				palette[i] = ColorConvertFromDS(texture->palette.pal[i]);
+			}
 		}
 
 		//for a3i5 and a5i3, build up varying levels of alpha
