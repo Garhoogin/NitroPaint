@@ -188,7 +188,7 @@ void yiqToRgb(int *rgb, int *yiq) {
 }
 
 void flattenHistogram(REDUCTION *reduction) {
-	if (reduction->histogramFlat != NULL) free(reduction->histogram);
+	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 
 	reduction->histogramFlat = (HIST_ENTRY **) calloc(reduction->histogram->nEntries, sizeof(HIST_ENTRY *));
 	HIST_ENTRY **pos = reduction->histogramFlat;
