@@ -21,6 +21,8 @@ typedef struct NCERVIEWERDATA_ {
 	int showCellBounds;
 	UNDO undo;
 
+	COLOR32 frameBuffer[256 * 512];
+
 	HWND hWndCellDropdown;
 	HWND hWndCharacterOffset;
 	HWND hWndPaletteDropdown;

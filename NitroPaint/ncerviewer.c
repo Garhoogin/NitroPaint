@@ -32,11 +32,15 @@ VOID PaintNcerViewer(HWND hWnd) {
 	NCER_CELL *cell = data->ncer.cells + data->cell;
 	NCER_CELL_INFO info;
 	decodeAttributesEx(&info, cell, data->oam);
-	int width, height;
 
 	int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-	DWORD *bits = ncerRenderWholeCell(data->ncer.cells + data->cell, ncgr, nclr, 
-									  translateX, translateY, &width, &height, 1, data->oam);
+	memset(data->frameBuffer, 0, sizeof(data->frameBuffer));
+	NCER_VRAM_TRANSFER_ENTRY *transferEntry = NULL;
+	if (data->ncer.vramTransfer != NULL)
+		transferEntry = data->ncer.vramTransfer + data->cell;
+	DWORD *bits = ncerRenderWholeCell3(data->frameBuffer, data->ncer.cells + data->cell, ncgr, nclr, transferEntry, 
+		translateX, translateY, 1, data->oam, 1.0f, 0.0f, 0.0f, 1.0f);
+
 	//draw lines if needed
 	if (data->showCellBounds) {
 		int minX = cell->minX + translateX, maxX = cell->maxX + translateX - 1;
@@ -53,18 +57,19 @@ VOID PaintNcerViewer(HWND hWnd) {
 		}
 	}
 
-	HBITMAP hbm = CreateBitmap(width, height, 1, 32, bits);
+	HBITMAP hbm = CreateBitmap(512, 256, 1, 32, bits);
 	HDC hCompatibleDC = CreateCompatibleDC(hWindowDC);
 	SelectObject(hCompatibleDC, hbm);
-	BitBlt(hWindowDC, 0, 0, width, height, hCompatibleDC, 0, 0, SRCCOPY);
-	free(bits);
+	BitBlt(hWindowDC, 0, 0, 512, 256, hCompatibleDC, 0, 0, SRCCOPY);
 	DeleteObject(hbm);
+
+	int width, height;
 	bits = ncerCellToBitmap(&info, ncgr, nclr, &width, &height, 1);
 	hbm = CreateBitmap(width, height, 1, 32, bits);
 	SelectObject(hCompatibleDC, hbm);
 	BitBlt(hWindowDC, 512 - 69, 256 + 5, width, height, hCompatibleDC, 0, 0, SRCCOPY);
-	free(bits);
 	DeleteObject(hbm);
+	free(bits);
 
 	DeleteObject(hCompatibleDC);
 
@@ -968,10 +973,9 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 			nitroPaintStruct->hWndNcerViewer = NULL;
-			ncerFree((OBJECT_HEADER *) &data->ncer);
-			free(data);
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 			undoDestroy(&data->undo);
+			free(data);
 			break;
 		}
 		case NV_GETTYPE:

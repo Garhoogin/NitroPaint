@@ -174,7 +174,7 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		ncerRenderWholeCell3(frameBuffer, cell, ncgr, nclr, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, a, b, c, d);
+		ncerRenderWholeCell3(frameBuffer, cell, ncgr, nclr, NULL, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, a, b, c, d);
 	} else if (animType == 2) { //index+translation
 		ANIM_DATA_T *animData = (ANIM_DATA_T *) frameData->animationData;
 

@@ -50,11 +50,19 @@ typedef struct NCER_CELL_INFO_ {
 	int height;
 } NCER_CELL_INFO;
 
+typedef struct NCER_VRAM_TRANSFER_ENTRY_ {
+	uint32_t offset;
+	uint32_t size;
+} NCER_VRAM_TRANSFER_ENTRY;
+
 typedef struct NCER_ {
 	OBJECT_HEADER header;
 	int nCells;
 	int bankAttribs;
 	NCER_CELL *cells;
+
+	NCER_VRAM_TRANSFER_ENTRY *vramTransfer;
+	int nVramTransferEntries;
 
 	int uextSize;
 	char *uext;
@@ -86,7 +94,7 @@ DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, i
 
 DWORD *ncerRenderWholeCell2(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline);
 
-DWORD *ncerRenderWholeCell3(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d);
+DWORD *ncerRenderWholeCell3(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d);
 
 int ncerWrite(NCER *ncer, BSTREAM *stream);
 
