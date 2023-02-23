@@ -9,6 +9,30 @@ int getTexelSize(int width, int height, int texImageParam) {
 	return (nPx * b) >> 3;
 }
 
+int getIndexVramSize(TEXELS *texels) {
+	int texImageParam = texels->texImageParam;
+	int format = FORMAT(texImageParam);
+	int hasIndex = format == CT_4x4;
+
+	int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+	int indexSize = hasIndex ? (texelSize / 2) : 0;
+	return indexSize;
+}
+
+int getTextureVramSize(TEXELS *texels) {
+	int texImageParam = texels->texImageParam;
+	int w = TEXW(texImageParam);
+	int h = TEXH(texImageParam);
+	int fmt = FORMAT(texImageParam);
+
+	int bpps[] = { 0, 8, 2, 4, 8, 3, 8, 16 };
+	return bpps[fmt] * w * h / 8;
+}
+
+int getPaletteVramSize(PALETTE *palette) {
+	return palette->nColors * sizeof(COLOR);
+}
+
 typedef struct {
 	BYTE r;
 	BYTE g;

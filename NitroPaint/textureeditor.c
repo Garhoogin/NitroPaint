@@ -97,15 +97,6 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	}
 }
 
-int getTexelVramSize(int texImageParam) {
-	int w = TEXW(texImageParam);
-	int h = TEXH(texImageParam);
-	int fmt = FORMAT(texImageParam);
-
-	int bpps[] = { 0, 8, 2, 4, 8, 3, 8, 16 };
-	return bpps[fmt] * w * h / 8;
-}
-
 void UpdatePaletteLabel(HWND hWnd) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 
@@ -127,8 +118,8 @@ void UpdatePaletteLabel(HWND hWnd) {
 	len = wsprintfW(bf, L"Colors: %d", nColors);
 	SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) bf);
 
-	int texelVram = getTexelVramSize(data->textureData.texels.texImageParam);
-	int paletteVram = data->textureData.palette.nColors * 2;
+	int texelVram = getTextureVramSize(&data->textureData.texels);
+	int paletteVram = getPaletteVramSize(&data->textureData.palette);
 	
 	//this code is ugly due to being unable to just use %.2f
 	len = wsprintfW(bf, L"Texel: %d.%d%dKB", texelVram / 1024, (texelVram * 10 / 1024) % 10,

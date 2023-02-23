@@ -49,6 +49,12 @@ void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip);
 
 int getTexelSize(int width, int height, int texImageParam);
 
+int getTextureVramSize(TEXELS *texels);
+
+int getIndexVramSize(TEXELS *texels);
+
+int getPaletteVramSize(PALETTE *palette);
+
 void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette);
 
 int textureDimensionIsValid(int x);
