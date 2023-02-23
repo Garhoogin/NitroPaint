@@ -190,6 +190,11 @@ void yiqToRgb(int *rgb, int *yiq) {
 void flattenHistogram(REDUCTION *reduction) {
 	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 
+	if (reduction->histogram == NULL) {
+		reduction->histogramFlat = NULL;
+		return;
+	}
+
 	reduction->histogramFlat = (HIST_ENTRY **) calloc(reduction->histogram->nEntries, sizeof(HIST_ENTRY *));
 	HIST_ENTRY **pos = reduction->histogramFlat;
 
@@ -924,6 +929,11 @@ void iterateRecluster(REDUCTION *reduction) {
 }
 
 void optimizePalette(REDUCTION *reduction) {
+	if (reduction->histogramFlat == NULL) {
+		reduction->nUsedColors = 0;
+		return;
+	}
+
 	//do it
 	COLOR_NODE *treeHead = (COLOR_NODE *) calloc(1, sizeof(COLOR_NODE));
 	treeHead->isLeaf = TRUE;
