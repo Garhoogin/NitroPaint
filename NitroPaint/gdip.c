@@ -5,79 +5,166 @@
 
 #pragma comment(lib, "windowscodecs.lib")
 
-int isTGA(BYTE *buffer, DWORD dwSize) {
+#define CMAP_NONE     0
+#define CMAP_PRESENT  1
+
+#define CTYPE_NONE         0x00
+#define CTYPE_CMAP         0x01
+#define CTYPE_DIRECT       0x02
+#define CTYPE_GRAYSCALE    0x03
+#define CTYPE_FMT_MASK     0x03
+#define CTYPE_RLE          0x08
+
+int tgaIsValid(unsigned char *buffer, unsigned int dwSize) {
 	if (dwSize < 0x12) return 0;
-	BYTE commentLength = *buffer;
+
+	unsigned int commentLength = buffer[0x00];
+	int colorMapType = buffer[0x01];
+	int colorType = buffer[0x02];
+	int colorFormat = colorType & CTYPE_FMT_MASK;
+	int colorMapStart = *(uint16_t *) (buffer + 0x03);
+	int colorMapSize = *(uint16_t *) (buffer + 0x05);
+	int colorMapDepth = buffer[0x07];
+	int depth = buffer[0x10];
+	int attr = buffer[0x11];
+	
 	if (dwSize < commentLength + 0x12u) return 0;
-	if (buffer[1] != 0 && buffer[1] != 1) return 0;
-	if (buffer[2] > 11) return 0;
-	if (*(WORD *) (buffer + 5) != 0) return 0; //we don't support color table TGAs
-	if (buffer[2] != 2 && buffer[2] != 10) return 0; //only RGB and RLE are supported
+	if (colorFormat == CTYPE_NONE) return 0;
+	if (colorMapType != CMAP_NONE && colorMapType != CMAP_PRESENT) return 0;
+	if (colorFormat == CTYPE_CMAP && colorMapType != CMAP_PRESENT) return 0; //color map not present but should be?
+	if (colorType & ~(CTYPE_FMT_MASK | CTYPE_RLE)) return 0; //unallowed format
+	if (colorFormat == CTYPE_CMAP && colorMapSize == 0) return 0; //should have a color map size > 0 if required
+	if (colorFormat == CTYPE_CMAP && colorMapDepth == 0) return 0; //color depth 0??
+	if (colorMapStart > 255 || colorMapSize > 256 || (colorMapStart + colorMapSize) > 256) return 0;
+	if (colorFormat != CTYPE_DIRECT && colorFormat != CTYPE_CMAP) return 0; //only direct color and color map supported
+	if (attr & 0xC3) return 0; //unsupported pixel arrangements and alpha depths
+	if (depth & 3) return 0; //non-multiples-of-8 depths not supported right now (ever?)
 	return 1;
 }
 
-DWORD *readTga(BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight) {
-	int type = (int) *(BYTE *) (buffer + 2);
-	int width = (int) *(short *) (buffer + 0x0C);
-	int height = (int) *(short *) (buffer + 0x0E);
-	*pWidth = width;
-	*pHeight = height;
-	int dataOffset = ((int) *buffer) + 0x12;
-	int depth = ((int) *(buffer + 0x10)) >> 3;
-	buffer += dataOffset;
-	DWORD * pixels = (DWORD *) calloc(width * height, 4);
-	if (type == 2) {
-		for (int i = 0; i < width * height; i++) {
-			int x, y, ay, destIndex, offs;
-			UCHAR b, g, r, a;
-			x = i % width;
-			y = i / width;
-			ay = height - 1 - y;
-			destIndex = ay * width + x;
+void tgaReadDirect(COLOR32 *pixels, int width, int height, unsigned char *buffer, int depth, int rle) {
+	int nPx = width * height;
+	if (!rle) {
+		int offset = 0;
+		for (int i = 0; i < nPx; i++) {
+			int x = i % width, y = i / width;
+			int destIndex = y * width + x;
 
-			offs = i * depth;
-			b = buffer[offs];
-			g = buffer[offs + 1];
-			r = buffer[offs + 2];
-			a = (depth == 4) ? buffer[offs + 3] : 0xFF;
-			pixels[destIndex] = r | (g << 8) | (b << 16) | (a << 24);
-		}
-	} else if (type == 10) {
-		int nPixelsRead = 0, offset = 0, i = 0;
-		DWORD *line = (DWORD *) calloc(width, 4);
-		while (nPixelsRead < width * height) {
-			BYTE b = buffer[offset];
-			int num = (b & 0x7F) + 1;
-			offset++;
-			if (b & 0x80) {	//run-length encoded
-				DWORD col = 0;
-				if (depth == 4) col = *(DWORD *) (buffer + offset);
-				if (depth == 3) col = (*(BYTE *) (buffer + offset)) | ((*(BYTE *) (buffer + offset + 1)) << 8) | ((*(BYTE *) (buffer + offset + 2)) << 16) | 0xFF000000;
-				col = (col & 0xFF00FF00) | ((col & 0xFF) << 16) | ((col & 0xFF0000) >> 16);
-				for (i = 0; i < num; i++) pixels[nPixelsRead + i] = col;
-				offset += depth;
-			} else { //raw data
-				for (i = 0; i < num; i++) {
-					DWORD col = 0;
-					if (depth == 4) col = *(DWORD *) (buffer + offset + 4 * i);
-					if (depth == 3) col = (*(BYTE *) (buffer + offset + 3 * i)) | ((*(BYTE *) (buffer + offset + 1 + 3 * i)) << 8) | ((*(BYTE *) (buffer + offset + 2 + 3 * i)) << 16) | 0xFF000000;
-					col = (col & 0xFF00FF00) | ((col & 0xFF) << 16) | ((col & 0xFF0000) >> 16);
-					pixels[nPixelsRead + i] = col;
-				}
-				offset += depth * num;
+			//read color values
+			uint8_t *rgb = buffer + offset;
+			if (depth == 4) {
+				pixels[destIndex] = rgb[2] | (rgb[1] << 8) | (rgb[0] << 16) | (rgb[3] << 24);
+			} else if (depth == 3) {
+				pixels[destIndex] = rgb[2] | (rgb[1] << 8) | (rgb[0] << 16) | 0xFF000000;
 			}
+			offset += depth;
+		}
+	} else {
+		int nPixelsRead = 0, offset = 0, i = 0;
+		while (nPixelsRead < nPx) {
+			COLOR32 col = 0;
+			int b = buffer[offset++];
+			int num = (b & 0x7F) + 1, rlFlag = b & 0x80;
+
+			//process run of pixels
+			for (i = 0; i < num; i++) {
+				//read color values
+				uint8_t *rgb = buffer + offset;
+				if (depth == 4) {
+					col = rgb[2] | (rgb[1] << 8) | (rgb[0] << 16) | (rgb[3] << 24);
+				} else if (depth == 3) {
+					col = rgb[2] | (rgb[1] << 8) | (rgb[0] << 16) | 0xFF000000;
+				}
+
+				//write and increment
+				pixels[nPixelsRead + i] = col;
+				if (!rlFlag) offset += depth;
+			}
+			if (rlFlag) offset += depth;
 			nPixelsRead += num;
 		}
-		//flip vertically
-		for (i = 0; i < (height >> 1); i++) {
+	}
+}
+
+void tgaReadMapped(COLOR32 *px, int width, int height, unsigned char *buffer, int tableBase, int tableSize, int tableDepth, int rle) {
+	COLOR32 *palette = (COLOR32 *) calloc(tableBase + tableSize, sizeof(COLOR32));
+	int nPx = width * height;
+
+	//read palette
+	for (int i = 0; i < tableSize; i++) {
+		uint8_t *rgb = buffer + i * tableDepth;
+		if (tableDepth == 4) {
+			palette[i + tableBase] = rgb[2] | (rgb[1] << 8) | (rgb[0] << 16) | (rgb[3] << 24);
+		} else {
+			palette[i + tableBase] = rgb[2] | (rgb[1] << 8) | (rgb[0] << 16) | 0xFF000000;
+		}
+	}
+	buffer += tableSize * tableDepth;
+
+	if (!rle) {
+		//read pixel colors from palette
+		for (int i = 0; i < nPx; i++) {
+			int index = buffer[i];
+			if (index < tableBase + tableSize) {
+				px[i] = palette[index];
+			}
+		}
+	} else {
+		//TODO
+	}
+	free(palette);
+}
+
+DWORD *readTga(BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight) {
+	int dataOffset = buffer[0x00] + 0x12;
+	int colorType = buffer[0x02];
+	int depth = buffer[0x10] >> 3;
+	int attr = buffer[0x11];
+	int colorTableBase = *(uint16_t *) (buffer + 0x03);
+	int colorTableLength = *(uint16_t *) (buffer + 0x05);
+	int colorTableDepth = buffer[0x07] >> 3;
+	int width = *(uint16_t *) (buffer + 0x0C);
+	int height = *(uint16_t *) (buffer + 0x0E);
+	int colorFormat = colorType & CTYPE_FMT_MASK;
+
+	*pWidth = width;
+	*pHeight = height;
+	buffer += dataOffset;
+
+	int needsVFlip = !(attr & 0x20);  //flipped by default, we interpret this backwards for convenience
+	int needsHFlip = !!(attr & 0x10); //actual H flip
+	COLOR32 *pixels = (COLOR32 *) calloc(width * height, 4);
+	switch (colorFormat) {
+		case CTYPE_DIRECT:
+			tgaReadDirect(pixels, width, height, buffer, depth, colorType & CTYPE_RLE);
+			break;
+		case CTYPE_CMAP:
+			tgaReadMapped(pixels, width, height, buffer, colorTableBase, colorTableLength, colorTableDepth, colorType & CTYPE_RLE);
+			break;
+		case CTYPE_GRAYSCALE: //unsupported
+			break;
+	}
+
+	//perform necessary flips
+	if (needsVFlip) {
+		COLOR32 *line = (COLOR32 *) calloc(width, 4);
+		for (int i = 0; i < (height >> 1); i++) {
 			memcpy(line, pixels + (width * i), width << 2);
 			memcpy(pixels + (width * i), pixels + (width * (height - 1 - i)), width << 2);
 			memcpy(pixels + (width * (height - 1 - i)), line, width << 2);
 		}
-
 		free(line);
 	}
-
+	if (needsHFlip) {
+		for (int y = 0; y < height; y++) {
+			COLOR32 *line = pixels + y * width;
+			for (int x = 0; x < width / 2; x++) {
+				COLOR32 left = line[x];
+				line[x] = line[width - 1 - x];
+				line[width - 1 - x] = left;
+			}
+		}
+	}
 	return pixels;
 }
 
@@ -399,7 +486,7 @@ COLOR32 *gdipReadImageEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, unsign
 	BYTE *buffer = (BYTE *) calloc(dwSizeLow, 1);
 	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
 	CloseHandle(hFile);
-	if (isTGA(buffer, dwSizeLow)) {
+	if (tgaIsValid(buffer, dwSizeLow)) {
 		COLOR32 *pixels = NULL;
 		pixels = readTga(buffer, dwSizeLow, pWidth, pHeight);
 		free(buffer);

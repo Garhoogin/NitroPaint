@@ -3,7 +3,7 @@
 
 #include "color.h"
 
-int isTGA(BYTE *buffer, DWORD dwSize);
+int tgaIsValid(unsigned char *buffer, unsigned int dwSize);
 
 COLOR32 *gdipReadImage(LPCWSTR lpszFileName, int *pWidth, int *pHeight);
 
