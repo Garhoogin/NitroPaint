@@ -166,22 +166,23 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	for (int y = yMin / 16; y < nRows && y < (yMax + 15) / 16; y++) {
 		for (int x = 0; x < 16; x++) {
 			int index = x + y * 16;
+			int colorIndex = index;
 			if (index > data->nclr.nColors) break;
 
 			if (data->dragging && data->mouseDown) {
 				if (!data->rowDragging) {
 					if (dstIndex < data->nclr.nColors && dstIndex >= 0) {
-						if (index == srcIndex) index = dstIndex;
-						else if (index == dstIndex) index = srcIndex;
+						if (colorIndex == srcIndex) colorIndex = dstIndex;
+						else if (colorIndex == dstIndex) colorIndex = srcIndex;
 					}
 				} else {
 					if (dstIndex + 15 < data->nclr.nColors && dstIndex >= 0) {
-						if (index >= srcIndex && index < srcIndex + 16) index = dstIndex + (index & 0xF);
-						else if (index >= dstIndex && index < dstIndex + 16) index = srcIndex + (index & 0xF);
+						if (colorIndex >= srcIndex && colorIndex < srcIndex + 16) colorIndex = dstIndex + (colorIndex & 0xF);
+						else if (colorIndex >= dstIndex && colorIndex < dstIndex + 16) colorIndex = srcIndex + (colorIndex & 0xF);
 					}
 				}
 			}
-			COLOR col = cols[index];
+			COLOR col = cols[colorIndex];
 			COLOR32 rgb = ColorConvertFromDS(col);
 
 			HBRUSH hbr = CreateSolidBrush(rgb);
