@@ -957,7 +957,11 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 
 						int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-						DWORD *bits = ncerRenderWholeCell(cell, ncgr, nclr, translateX, translateY, &width, &height, 0, -1);
+						COLOR32 *bits = ncerRenderWholeCell(cell, ncgr, nclr, translateX, translateY, &width, &height, 0, -1);
+						for (int i = 0; i < width * height; i++) {
+							COLOR32 c = bits[i];
+							bits[i] = REVERSE(c);
+						}
 
 						writeImage(bits, width, height, location);
 						free(bits);
