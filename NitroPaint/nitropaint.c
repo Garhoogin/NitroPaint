@@ -20,6 +20,7 @@
 #include "nsbtx.h"
 #include "nmcrviewer.h"
 #include "colorchooser.h"
+#include "ui.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -1228,7 +1229,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		case WM_CREATE:
 		{
 			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
+			setStyle(hWndParent, TRUE, WS_DISABLED);
 
 			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
 			int boxHeight = 6 * 27 - 5 + 10 + 10 + 10; //first row height
@@ -1243,81 +1244,61 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			int middleY = 42 + boxHeight + 10 + 10 + 8; //middle box Y
 			int bottomY = 42 + boxHeight + 10 + boxHeight2 + 10 + 10 + 8; //bottom box Y
 
-			CreateWindow(L"STATIC", L"Bitmap: ", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
-			data->nscrCreateInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 10, width - 10 - 50 - 70, 22, hWnd, NULL, NULL, NULL);
-			data->nscrCreateInputButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, width - 10 - 50, 10, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Bitmap:", 10, 10, 50, 22);
+			data->nscrCreateInput = CreateEdit(hWnd, L"", 70, 10, width - 10 - 50 - 70, 22, FALSE);
+			data->nscrCreateInputButton = CreateButton(hWnd, L"...", width - 10 - 50, 10, 50, 22, FALSE);
 
-			CreateWindow(L"STATIC", L"Palettes:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPalettesInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 55, topY, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Base: ", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 55, topY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Size: ", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27 * 2, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteSize = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 55, topY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Offset: ", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27 * 3, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteOffset = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 55, topY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color 0:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27 * 4, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColor0Setting = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, leftX + 55, topY + 27 * 4, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndRowLimit = CreateWindow(L"BUTTON", L"Compress", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY + 27 * 5, 100, 22, hWnd, NULL, NULL, NULL);
+			LPCWSTR color0Settings[] = { L"Fixed", L"Average", L"Edge", L"Contrasting" };
+			CreateStatic(hWnd, L"Palettes:", leftX, topY, 50, 22);
+			data->hWndPalettesInput = CreateEdit(hWnd, L"1", leftX + 55, topY, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Base:", leftX, topY + 27, 50, 22);
+			data->hWndPaletteInput = CreateEdit(hWnd, L"0", leftX + 55, topY + 27, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Size:", leftX, topY + 27 * 2, 50, 22);
+			data->hWndPaletteSize = CreateEdit(hWnd, L"256", leftX + 55, topY + 27 * 2, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Offset:", leftX, topY + 27 * 3, 50, 22);
+			data->hWndPaletteOffset = CreateEdit(hWnd, L"0", leftX + 55, topY + 27 * 3, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Color 0:", leftX, topY + 27 * 4, 50, 22);
+			CreateCombobox(hWnd, color0Settings, sizeof(color0Settings) / sizeof(*color0Settings), leftX + 55, topY + 27 * 4, 100, 22, 0);
+			data->hWndRowLimit = CreateCheckbox(hWnd, L"Compress", leftX, topY + 27 * 5, 100, 22, FALSE);
 
-			data->hWndMergeTiles = CreateWindow(L"BUTTON", L"Compress", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, middleY, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Max Characters:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndMaxChars = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1024", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 105, middleY + 27, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndMergeTiles = CreateCheckbox(hWnd, L"Compress", leftX, middleY, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Max Characters:", leftX, middleY + 27, 100, 22);
+			data->hWndMaxChars = CreateEdit(hWnd, L"1024", leftX + 105, middleY + 27, 100, 22, TRUE);
 
-			CreateWindow(L"STATIC", L"Depth:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY, 50, 22, hWnd, NULL, NULL, NULL);
-			data->nscrCreateDropdown = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, rightX + 55, topY, 100, 22, hWnd, NULL, NULL, NULL);
-			data->nscrCreateDither = CreateWindow(L"BUTTON", L"Dither", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, topY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Diffuse:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY + 27 * 2, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDiffuse = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, rightX + 55, topY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Tile Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY + 27 * 3, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, rightX + 55, topY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndAlignmentCheckbox = CreateWindow(L"BUTTON", L"Align Size: ", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, topY + 27 * 4, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndAlignment = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"32", WS_VISIBLE | WS_CHILD | ES_NUMBER, rightX + 75, topY + 27 * 4, 80, 22, hWnd, NULL, NULL, NULL);
+			LPCWSTR bitDepths[] = { L"4 bit", L"8 bit" };
+			CreateStatic(hWnd, L"Depth:", rightX, topY, 50, 22);
+			data->nscrCreateDropdown = CreateCombobox(hWnd, bitDepths, sizeof(bitDepths) / sizeof(*bitDepths), rightX + 55, topY, 100, 22, 1);
+			data->nscrCreateDither = CreateCheckbox(hWnd, L"Dither", rightX, topY + 27, 100, 22, FALSE);
+			CreateStatic(hWnd, L"Diffuse:", rightX, topY + 27 * 2, 50, 22);
+			data->hWndDiffuse = CreateEdit(hWnd, L"100", rightX + 55, topY + 27 * 2, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Tile Base:", rightX, topY + 27 * 3, 50, 22);
+			data->hWndTileBase = CreateEdit(hWnd, L"0", rightX + 55, topY + 27 * 3, 100, 22, TRUE);
+			data->hWndAlignmentCheckbox = CreateCheckbox(hWnd, L"Align Size:", rightX, topY + 27 * 4, 75, 22, TRUE);
+			data->hWndAlignment = CreateEdit(hWnd, L"32", rightX + 75, topY + 27 * 4, 80, 22, TRUE);
 			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
 
-			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, middleY, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFormatDropdown = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, rightX + 55, middleY, 150, 22, hWnd, NULL, NULL, NULL);
+			LPCWSTR formatNames[] = { L"NITRO-System", L"Hudson", L"Hudson 2", L"NITRO-CHARACTER", L"Raw", L"Raw Compressed" };
+			CreateStatic(hWnd, L"Format:", rightX, middleY, 50, 22);
+			data->hWndFormatDropdown = CreateCombobox(hWnd, formatNames, sizeof(formatNames) / sizeof(*formatNames), rightX + 55, middleY, 150, 22, 0);
 
-			CreateWindow(L"STATIC", L"Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndEnhanceColors = CreateWindow(L"BUTTON", L"Enhance Colors", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, bottomY + 27 * 2, 200, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
+			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
+			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
 
-			CreateWindow(L"STATIC", L"Lightness", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Green", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Red", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY, 200, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColorBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY + 27, 200, 22, hWnd, NULL, NULL, NULL);
+			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
+			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
+			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
 
 			//not actually buttons ;)
-			CreateWindow(L"BUTTON", L"Palette", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 42, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Graphics", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10 + boxWidth + 10, 42, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Char compression", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 42 + boxHeight + 10, boxWidth, boxHeight2, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Output", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10 + boxWidth + 10, 42 + boxHeight + 10, boxWidth, boxHeight2, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Color", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 42 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3, hWnd, NULL, NULL, NULL);
-			data->nscrCreateButton = CreateWindow(L"BUTTON", L"Generate", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, width / 2 - 200 / 2, height - 32, 200, 22, hWnd, NULL, NULL, NULL);
-
-			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 5, (LPARAM) L"4 bit");
-			SendMessage(data->nscrCreateDropdown, CB_ADDSTRING, 5, (LPARAM) L"8 bit");
-			SendMessage(data->nscrCreateDropdown, CB_SETCURSEL, 1, 0);
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 5, (LPARAM) L"NITRO-System");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 6, (LPARAM) L"Hudson");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 8, (LPARAM) L"Hudson 2");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 8, (LPARAM) L"NITRO-CHARACTER");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 3, (LPARAM) L"Raw");
-			SendMessage(data->hWndFormatDropdown, CB_ADDSTRING, 15, (LPARAM) L"Raw Compressed");
-			SendMessage(data->hWndFormatDropdown, CB_SETCURSEL, 0, 0);
-			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 5, (LPARAM) L"Fixed");
-			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 7, (LPARAM) L"Average");
-			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 4, (LPARAM) L"Edge");
-			SendMessage(data->hWndColor0Setting, CB_ADDSTRING, 11, (LPARAM) L"Contrasting");
-			SendMessage(data->hWndColor0Setting, CB_SETCURSEL, 0, 0);
-			SendMessage(data->hWndMergeTiles, BM_SETCHECK, BST_CHECKED, 0);
-			SendMessage(data->hWndAlignmentCheckbox, BM_SETCHECK, BST_CHECKED, 0);
-
-			SendMessage(data->hWndBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
-			SendMessage(data->hWndBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
-			SendMessage(data->hWndColorBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
-			SendMessage(data->hWndColorBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
+			CreateGroupbox(hWnd, L"Palette", 10, 42, boxWidth, boxHeight);
+			CreateGroupbox(hWnd, L"Graphics", 10 + boxWidth + 10, 42, boxWidth, boxHeight);
+			CreateGroupbox(hWnd, L"Char compression", 10, 42 + boxHeight + 10, boxWidth, boxHeight2);
+			CreateGroupbox(hWnd, L"Output", 10 + boxWidth + 10, 42 + boxHeight + 10, boxWidth, boxHeight2);
+			CreateGroupbox(hWnd, L"Color", 10, 42 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3);
+			data->nscrCreateButton = CreateButton(hWnd, L"Generate", width / 2 - 200 / 2, height - 32, 200, 22, TRUE);
 
 			SetWindowSize(hWnd, width, height);
 			SetGUIFont(hWnd);
@@ -1326,7 +1307,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		case WM_CLOSE:
 		{
 			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) & ~WS_DISABLED);
+			setStyle(hWndParent, FALSE, WS_DISABLED);
 			SetActiveWindow(hWndParent);
 			break;
 		}
@@ -1341,33 +1322,25 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					free(location);
 				} else if (hWndControl == data->nscrCreateButton) {
 					WCHAR location[MAX_PATH + 1];
-					int dither = SendMessage(data->nscrCreateDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int merge = SendMessage(data->hWndMergeTiles, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int rowLimit = SendMessage(data->hWndRowLimit, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int doAlign = SendMessage(data->hWndAlignmentCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int dither = GetCheckboxChecked(data->nscrCreateDither);
+					int merge = GetCheckboxChecked(data->hWndMergeTiles);
+					int rowLimit = GetCheckboxChecked(data->hWndRowLimit);
+					int doAlign = GetCheckboxChecked(data->hWndAlignmentCheckbox);
 					int fmt = SendMessage(data->hWndFormatDropdown, CB_GETCURSEL, 0, 0);
 					int bitsOptions[] = { 4, 8 };
 					int bits = bitsOptions[SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0)];
-					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH + 1, (LPARAM) location);
-					int palette = _wtoi(location);
-					SendMessage(data->hWndPalettesInput, WM_GETTEXT, MAX_PATH + 1, (LPARAM) location);
-					int nPalettes = _wtoi(location);
-					SendMessage(data->hWndTileBase, WM_GETTEXT, MAX_PATH + 1, (LPARAM) location);
-					int tileBase = _wtoi(location);
-					SendMessage(data->hWndPaletteSize, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
-					int paletteSize = _wtoi(location);
-					SendMessage(data->hWndPaletteOffset, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
-					int paletteOffset = _wtoi(location);
-					SendMessage(data->hWndMaxChars, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
-					int nMaxChars = _wtoi(location);
-					SendMessage(data->hWndAlignment, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
-					int alignment = doAlign ? _wtoi(location) : 1;
-					SendMessage(data->hWndDiffuse, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
-					float diffuse = ((float) _wtoi(location)) * 0.01f;
+					int palette = GetEditNumber(data->hWndPaletteInput);
+					int nPalettes = GetEditNumber(data->hWndPalettesInput);
+					int tileBase = GetEditNumber(data->hWndTileBase);
+					int paletteSize = GetEditNumber(data->hWndPaletteSize);
+					int paletteOffset = GetEditNumber(data->hWndPaletteOffset);
+					int nMaxChars = GetEditNumber(data->hWndMaxChars);
+					int alignment = doAlign ? GetEditNumber(data->hWndAlignment) : 1;
+					float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) * 0.01f;
 					SendMessage(data->nscrCreateInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
-					int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
-					int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
-					int enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int balance = GetTrackbarPosition(data->hWndBalance);
+					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
+					int enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
 					int color0Setting = SendMessage(data->hWndColor0Setting, CB_GETCURSEL, 0, 0);
 
 					if (*location == L'\0') {
@@ -1402,17 +1375,17 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 				} else if (hWndControl == data->hWndMergeTiles) {
 					//enable/disable max chars field
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
 					setStyle(data->hWndMaxChars, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->hWndAlignmentCheckbox) {
 					//enable/disable alignment amount field
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
 					setStyle(data->hWndAlignment, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->nscrCreateDither) {
 					//enable/disable diffusion amount field
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
 					setStyle(data->hWndDiffuse, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
@@ -1443,8 +1416,8 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Character compression:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 69, 150, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Palette:", 10, 10, 100, 22);
+			CreateStatic(hWnd, L"Character compression:", 10, 69, 150, 22);
 			SetWindowSize(hWnd, 520, 128);
 			SetTimer(hWnd, 1, 100, NULL);
 			SetGUIFont(hWnd);
@@ -1469,7 +1442,7 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 					if (data->callback) data->callback(data->data);
 
 					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+					setStyle(hWndMain, FALSE, WS_DISABLED);
 					SetActiveWindow(hWndMain);
 					DestroyWindow(hWnd);
 				}
@@ -1489,7 +1462,7 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				SetWindowLongPtr(hWnd, 0, 0);
 			}
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			setStyle(hWndMain, FALSE, WS_DISABLED);
 			SetActiveWindow(hWndMain);
 			break;
 		}
@@ -1539,20 +1512,20 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_CREATE:
 		{
 			SetWindowSize(hWnd, 280, 177);
-			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"NTFT:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"NTFP:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"NTFI:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 91, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 118, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Format:", 10, 10, 50, 22);
+			CreateStatic(hWnd, L"NTFT:", 10, 37, 50, 22);
+			CreateStatic(hWnd, L"NTFP:", 10, 64, 50, 22);
+			CreateStatic(hWnd, L"NTFI:", 10, 91, 50, 22);
+			CreateStatic(hWnd, L"Width:", 10, 118, 50, 22);
 			data->hWndFormat = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 70, 10, 100, 100, hWnd, NULL, NULL, NULL);
-			data->hWndNtftInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 37, 170, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtftBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 37, 30, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtfpInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 64, 170, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtfpBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 64, 30, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtfiInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 91, 170, 22, hWnd, NULL, NULL, NULL);
-			data->hWndNtfiBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, 240, 91, 30, 22, hWnd, NULL, NULL, NULL);
-			data->hWndWidthInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"8", WS_VISIBLE | WS_CHILD | ES_NUMBER, 70, 118, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 145, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNtftInput = CreateEdit(hWnd, L"", 70, 37, 170, 22, FALSE);
+			data->hWndNtftBrowseButton = CreateButton(hWnd, L"...", 240, 37, 30, 22, FALSE);
+			data->hWndNtfpInput = CreateEdit(hWnd, L"", 70, 64, 170, 22, FALSE);
+			data->hWndNtfpBrowseButton = CreateButton(hWnd, L"...", 240, 64, 30, 22, FALSE);
+			data->hWndNtfiInput = CreateEdit(hWnd, L"", 70, 91, 170, 22, FALSE);
+			data->hWndNtfiBrowseButton = CreateButton(hWnd, L"...", 240, 91, 30, 22, FALSE);
+			data->hWndWidthInput = CreateEdit(hWnd, L"8", 70, 118, 100, 22, TRUE);
+			data->hWndConvertButton = CreateButton(hWnd, L"Convert", 70, 145, 100, 22, TRUE);
 			SetGUIFont(hWnd);
 
 			//populate the dropdown list
@@ -1572,7 +1545,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SendMessage(data->hWndFormat, CB_SETCURSEL, CT_4x4 - 1, 0);
 			
 			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
+			setStyle(hWndParent, TRUE, WS_DISABLED);
 			break;
 		}
 		case WM_COMMAND:
@@ -1750,8 +1723,8 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			EDITORDATA *editorData = (EDITORDATA *) lParam;
 			SetWindowLongPtr(hWnd, 0, (LONG_PTR) editorData);
 
-			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Compression:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Format:", 10, 10, 100, 22);
+			CreateStatic(hWnd, L"Compression:", 10, 37, 100, 22);
 			HWND hWndFormatCombobox = CreateWindow(WC_COMBOBOXW, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 10, 100, 100, hWnd, NULL, NULL, NULL);
 			HWND hWndCompressionCombobox = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 37, 100, 100, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
@@ -1826,9 +1799,9 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			LPWSTR path = (LPWSTR) lParam;
 			memcpy(data->szPath, path, 2 * (wcslen(path) + 1));
 
-			CreateWindow(L"STATIC", GetFileName(path), WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 200, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBg = CreateWindow(L"BUTTON", L"Create BG", WS_VISIBLE | WS_CHILD, 10, 42, 200, 22, hWnd, NULL, NULL, NULL);
-			data->hWndTexture = CreateWindow(L"BUTTON", L"Create Texture", WS_VISIBLE | WS_CHILD, 10, 74, 200, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, GetFileName(path), 10, 10, 200, 22);
+			data->hWndBg = CreateButton(hWnd, L"Create BG", 10, 42, 200, 22, FALSE);;
+			data->hWndTexture = CreateButton(hWnd, L"Create Texture", 10, 74, 200, 22, FALSE);
 			SetWindowSize(hWnd, 220, 106);
 			SetGUIFont(hWnd);
 			break;
@@ -1850,7 +1823,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					SetForegroundWindow(h);
-					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
+					setStyle(hWndMain, TRUE, WS_DISABLED);
 				} else if (hWndControl == data->hWndTexture) {
 					CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, data->szPath);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
@@ -1861,7 +1834,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_CLOSE:
 		{
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			setStyle(hWndMain, FALSE, WS_DISABLED);
 			SetForegroundWindow(hWndMain);
 			break;
 		}
@@ -1891,32 +1864,25 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateWindow(L"STATIC", L"8 bit:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBitDepth = CreateWindow(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 70, 10, 22, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Mapping:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 42, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndMapping = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 70, 42, 200, 100, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 74, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFormat = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 70, 74, 100, 100, hWnd, NULL, NULL, NULL);
-			data->hWndCreate = CreateWindow(L"BUTTON", L"Create", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 70, 106, 100, 22, hWnd, NULL, NULL, NULL);
+			LPCWSTR mappings[] = {
+				L"Char 2D", L"Char 1D 32K", L"Char 1D 64K", L"Char 1D 128K", L"Char 1D 256K"
+			};
+			LPCWSTR formats[] = {
+				L"NITRO-System", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed"
+			};
+
+			CreateStatic(hWnd, L"8 bit:", 10, 10, 50, 22);
+			data->hWndBitDepth = CreateCheckbox(hWnd, L"", 70, 10, 22, 22, FALSE);
+			CreateStatic(hWnd, L"Mapping:", 10, 42, 50, 22);
+			data->hWndMapping = CreateCombobox(hWnd, mappings, sizeof(mappings) / sizeof(*mappings), 70, 42, 200, 100, 0);
+			CreateStatic(hWnd, L"Format:", 10, 74, 50, 22);
+			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(*formats), 70, 74, 100, 100, 0);
+			data->hWndCreate = CreateButton(hWnd, L"Create", 70, 106, 100, 22, TRUE);
 			SetWindowSize(hWnd, 280, 138);
 			SetGUIFont(hWnd);
 
-			SendMessage(data->hWndMapping, CB_ADDSTRING, 0, (LPARAM) L"Char 2D");
-			SendMessage(data->hWndMapping, CB_ADDSTRING, 0, (LPARAM) L"Char 1D 32K");
-			SendMessage(data->hWndMapping, CB_ADDSTRING, 0, (LPARAM) L"Char 1D 64K");
-			SendMessage(data->hWndMapping, CB_ADDSTRING, 0, (LPARAM) L"Char 1D 128K");
-			SendMessage(data->hWndMapping, CB_ADDSTRING, 0, (LPARAM) L"Char 1D 256K");
-			SendMessage(data->hWndMapping, CB_SETCURSEL, 0, 0);
-
-			SendMessage(data->hWndFormat, CB_ADDSTRING, 0, (LPARAM) L"NITRO-System");
-			SendMessage(data->hWndFormat, CB_ADDSTRING, 0, (LPARAM) L"Hudson");
-			SendMessage(data->hWndFormat, CB_ADDSTRING, 0, (LPARAM) L"Hudson 2");
-			SendMessage(data->hWndFormat, CB_ADDSTRING, 0, (LPARAM) L"Raw");
-			SendMessage(data->hWndFormat, CB_ADDSTRING, 0, (LPARAM) L"Raw Compressed");
-			SendMessage(data->hWndFormat, CB_SETCURSEL, 0, 0);
-
 			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
+			setStyle(hWndParent, TRUE, WS_DISABLED);
 			break;
 		}
 		case WM_COMMAND:
@@ -1928,7 +1894,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			if (hWndControl != NULL) {
 				if (hWndControl == data->hWndCreate) {
-					int is8bpp = SendMessage(data->hWndBitDepth, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int is8bpp = GetCheckboxChecked(data->hWndBitDepth);
 					int nBits = is8bpp ? 8 : 4;
 					int mapping = SendMessage(data->hWndMapping, CB_GETCURSEL, 0, 0);
 					int mappings[] = { GX_OBJVRAMMODE_CHAR_2D, GX_OBJVRAMMODE_CHAR_1D_32K, GX_OBJVRAMMODE_CHAR_1D_64K,
@@ -1953,6 +1919,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					
 					NCGR ncgr;
 					ncgrInit(&ncgr, charFormat);
+					ncgr.header.compression = compression;
 					ncgr.tileWidth = 8;
 					ncgr.nBits = nBits;
 					ncgr.mappingMode = mapping;
@@ -1979,7 +1946,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_CLOSE:
 		{
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			setStyle(hWndMain, FALSE, WS_DISABLED);
 			SetForegroundWindow(hWndMain);
 			break;
 		}
@@ -2007,12 +1974,12 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateWindow(L"STATIC", L"Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 75, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Height:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 75, 22, hWnd, NULL, NULL, NULL);
-
-			data->hWndWidth = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER, 85, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndHeight = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER, 85, 37, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndCreate = CreateWindow(L"BUTTON", L"Create", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 85, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Width:", 10, 10, 75, 22);
+			CreateStatic(hWnd, L"Height:", 10, 37, 75, 22);
+			
+			data->hWndWidth = CreateEdit(hWnd, L"256", 85, 10, 100, 22, TRUE);
+			data->hWndHeight = CreateEdit(hWnd, L"256", 85, 37, 100, 22, TRUE);
+			data->hWndCreate = CreateButton(hWnd, L"Create", 85, 64, 100, 22, TRUE);
 			SetGUIFont(hWnd);
 			SetWindowSize(hWnd, 195, 96);
 		}
@@ -2024,11 +1991,9 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 
-				SendMessage(data->hWndWidth, WM_GETTEXT, 32, (LPARAM) bf);
-				int width = _wtol(bf);
+				int width = GetEditNumber(data->hWndWidth);
 				int tilesX = width / 8;
-				SendMessage(data->hWndHeight, WM_GETTEXT, 32, (LPARAM) bf);
-				int height = _wtol(bf);
+				int height = GetEditNumber(data->hWndHeight);
 				int tilesY = height / 8;
 
 				NSCR nscr;
@@ -2045,7 +2010,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 		case WM_CLOSE:
 		{
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			setStyle(hWndMain, FALSE, WS_DISABLED);
 			SetActiveWindow(hWndMain);
 			break;
 		}
@@ -2075,12 +2040,12 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateWindow(L"STATIC", L"X Screens:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 75, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Y Screens:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 75, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"X Screens:", 10, 10, 75, 22);
+			CreateStatic(hWnd, L"Y Screens:", 10, 37, 75, 22);
 
-			data->hWndX = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_NUMBER, 85, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndY = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_NUMBER, 85, 37, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndComplete = CreateWindow(L"BUTTON", L"Complete", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 85, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndX = CreateEdit(hWnd, L"1", 85, 10, 100, 22, TRUE);
+			data->hWndY = CreateEdit(hWnd, L"1", 85, 37, 100, 22, TRUE);
+			data->hWndComplete = CreateButton(hWnd, L"Complete", 85, 64, 100, 22, TRUE);
 
 			SetGUIFont(hWnd);
 			SetWindowSize(hWnd, 195, 96);
@@ -2090,11 +2055,8 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl == data->hWndComplete) {
-				WCHAR bf[32];
-				SendMessage(data->hWndX, WM_GETTEXT, 32, (LPARAM) bf);
-				int x = _wtol(bf);
-				SendMessage(data->hWndY, WM_GETTEXT, 32, (LPARAM) bf);
-				int y = _wtol(bf);
+				int x = GetEditNumber(data->hWndX);
+				int y = GetEditNumber(data->hWndY);
 
 				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
