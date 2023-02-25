@@ -262,7 +262,7 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_T
 				if (NCGR_2D(ncgr->mappingMode)) {
 					int ncx = x + ncgrStart % ncgr->tilesX;
 					int ncy = y + ncgrStart / ncgr->tilesX;
-					index = ncx + ncgr->tilesX + ncy;
+					index = ncx + ncgr->tilesX * ncy;
 				} else {
 					index = ncgrStart + x + y * tilesX;
 				}
