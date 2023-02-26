@@ -1987,7 +1987,6 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 		{
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl != NULL && hWndControl == data->hWndCreate) {
-				WCHAR bf[32];
 				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 

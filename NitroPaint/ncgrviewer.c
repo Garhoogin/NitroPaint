@@ -11,6 +11,7 @@
 #include "gdip.h"
 #include "palette.h"
 #include "tileeditor.h"
+#include "ui.h"
 
 extern HICON g_appIcon;
 
@@ -202,12 +203,12 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWnd = hWnd;
 
 			data->hWndViewer = CreateWindow(L"NcgrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 256, 256, hWnd, NULL, NULL, NULL);
-			data->hWndCharacterLabel = CreateWindow(L"STATIC", L" Character 0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteDropdown = CreateWindowEx(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 200, 100, hWnd, NULL, NULL, NULL);
-			data->hWndWidthDropdown = CreateWindowEx(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 200, 100, hWnd, NULL, NULL, NULL);
-			data->hWndWidthLabel = CreateWindow(L"STATIC", L" Width:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 100, 21, hWnd, NULL, NULL, NULL);
-			data->hWndExpand = CreateWindow(L"BUTTON", L"Extend", WS_CHILD | WS_VISIBLE, 0, 0, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWnd8bpp = CreateWindow(L"BUTTON", L"8bpp", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndCharacterLabel = CreateStatic(hWnd, L" Character 0", 0, 0, 100, 22);
+			data->hWndPaletteDropdown = CreateCombobox(hWnd, NULL, 0, 0, 0, 200, 100, 0);
+			data->hWndWidthDropdown = CreateCombobox(hWnd, NULL, 0, 0, 0, 200, 100, 0);
+			data->hWndWidthLabel = CreateStatic(hWnd, L" Width:", 0, 0, 100, 21);
+			data->hWndExpand = CreateButton(hWnd, L"Extend", 0, 0, 100, 22, FALSE);
+			data->hWnd8bpp = CreateCheckbox(hWnd, L"8bpp", 0, 0, 100, 22, FALSE);
 
 			WCHAR bf[] = L"Palette 00";
 			for (int i = 0; i < 16; i++) {
@@ -218,8 +219,9 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			//read config data
 			if (!g_configuration.ncgrViewerConfiguration.gridlines) {
+				HWND hWndMain = getMainWindow(hWnd);
 				data->showBorders = 0;
-				CheckMenuItem(GetMenu((HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT)), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+				CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
 			}
 			break;
 		}
@@ -320,10 +322,10 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 										  CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
 					ShowWindow(h, SW_SHOW);
 					SetActiveWindow(h);
-					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
+					setStyle(hWndMain, TRUE, WS_DISABLED);
 					SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWnd8bpp) {
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
 					if (state) {
 						//convert 4bpp graphic to 8bpp
 
@@ -401,7 +403,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 
 					InvalidateRect(hWnd, NULL, FALSE);
-					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					HWND hWndMain = getMainWindow(hWnd);
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 					if (nitroPaintStruct->hWndNclrViewer) {
 						InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
@@ -850,7 +852,7 @@ LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			data->hoverY = hoverY;
 			data->hoverIndex = hoverIndex;
 			if (data->hoverIndex != oldHovered) {
-				HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWndNcgrViewer, GWL_HWNDPARENT), GWL_HWNDPARENT);
+				HWND hWndMain = getMainWindow(hWndNcgrViewer);
 				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLong(hWndMain, 0);
 				if (nitroPaintStruct->hWndNcgrViewer) InvalidateRect(nitroPaintStruct->hWndNcgrViewer, NULL, FALSE);
 			}
@@ -913,9 +915,9 @@ LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			WCHAR buffer[16];
 			wsprintfW(buffer, L"%d", data->ncgr.nTiles / data->ncgr.tilesX);
 
-			CreateWindow(L"STATIC", L"Rows:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndExpandRowsInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", buffer, WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 90, 10, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndExpandButton = CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 90, 37, 75, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Rows:", 10, 10, 75, 22);
+			data->hWndExpandRowsInput = CreateEdit(hWnd, buffer, 90, 10, 75, 22, TRUE);
+			data->hWndExpandButton = CreateButton(hWnd, L"Set", 90, 37, 75, 22, TRUE);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			SetWindowSize(hWnd, 175, 69);
 			SetFocus(data->hWndExpandRowsInput);
@@ -923,8 +925,8 @@ LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		}
 		case WM_CLOSE:
 		{
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(data->hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			HWND hWndMain = getMainWindow(data->hWnd);
+			setStyle(hWndMain, FALSE, WS_DISABLED);
 			SetActiveWindow(hWndMain);
 			break;
 		}
@@ -933,10 +935,8 @@ LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			int notification = LOWORD(wParam);
 			HWND hWndControl = (HWND) lParam;
 			if (notification == BN_CLICKED && hWndControl == data->hWndExpandButton) {
-				WCHAR buffer[16];
-				SendMessage(data->hWndExpandRowsInput, WM_GETTEXT, 16, (LPARAM) buffer);
 				int tilesX = data->ncgr.tilesX;
-				int nRows = _wtol(buffer);
+				int nRows = GetEditNumber(data->hWndExpandRowsInput);
 				int nOldRows = data->ncgr.nTiles / tilesX;
 				if (nRows > nOldRows) {
 					BYTE **chars = data->ncgr.tiles;
@@ -993,7 +993,7 @@ int charImportCallback(void *data) {
 	InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
 	free(data);
 
-	SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+	setStyle(hWndMain, FALSE, WS_DISABLED);
 	SetForegroundWindow(hWndMain);
 	return 0;
 }
@@ -1193,48 +1193,44 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			int middleY = 10 + boxHeight + 10 + 10 + 8; //middle box Y
 			int bottomY = 10 + boxHeight + 10 + boxHeight2 + 10 + 10 + 8; //bottom box Y
 
-			data->hWndOverwritePalette = CreateWindow(L"BUTTON", L"Write Palette", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY, 150, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Palette Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 85, topY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Palette Size:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27 * 2, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteSize = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 85, topY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndOverwritePalette = CreateCheckbox(hWnd, L"Write Palette", leftX, topY, 150, 22, FALSE);
+			CreateStatic(hWnd, L"Palette Base:", leftX, topY + 27, 75, 22);
+			data->hWndPaletteBase = CreateEdit(hWnd, L"0", leftX + 85, topY + 27, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Palette Size:", leftX, topY + 27 * 2, 75, 22);
+			data->hWndPaletteSize = CreateEdit(hWnd, L"256", leftX + 85, topY + 27 * 2, 100, 22, TRUE);
 
-			data->hWndDither = CreateWindow(L"BUTTON", L"Dither", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, topY, 150, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Diffuse:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY + 27, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDiffuse = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, rightX + 85, topY + 27, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDither = CreateCheckbox(hWnd, L"Dither", rightX, topY, 150, 22, FALSE);
+			CreateStatic(hWnd, L"Diffuse:", rightX, topY + 27, 75, 22);
+			data->hWndDiffuse = CreateEdit(hWnd, L"100", rightX + 85, topY + 27, 100, 22, TRUE);
 
-			data->hWnd1D = CreateWindow(L"BUTTON", L"1D Import", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, middleY, 150, 22, hWnd, NULL, NULL, NULL);
-			data->hWndCompression = CreateWindow(L"BUTTON", L"Compress Character", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, middleY + 27, 150, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Max chars:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27 * 2, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndMaxChars = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1024", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, leftX + 85, middleY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWnd1D = CreateCheckbox(hWnd, L"1D Import", leftX, middleY, 150, 22, FALSE);
+			data->hWndCompression = CreateCheckbox(hWnd, L"Compress Character", leftX, middleY + 27, 150, 22, FALSE);
+			CreateStatic(hWnd, L"Max Chars:", leftX, middleY + 27 * 2, 75, 22);
+			data->hWndMaxChars = CreateEdit(hWnd, L"1024", leftX + 85, middleY + 27 * 2, 100, 22, TRUE);
 
-			CreateWindow(L"STATIC", L"Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndEnhanceColors = CreateWindow(L"BUTTON", L"Enhance Colors", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, bottomY + 27 * 2, 200, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Lightness", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Green", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Red", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY, 200, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColorBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY + 27, 200, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
+			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
+			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
+			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
+			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
+			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
 
-			data->hWndImport = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, width / 2 - 100, height - 32, 200, 22, hWnd, NULL, NULL, NULL);
+			data->hWndImport = CreateButton(hWnd, L"Import", width / 2 - 100, height - 32, 200, 22, TRUE);
 
-			CreateWindow(L"BUTTON", L"Palette", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 10, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Graphics", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10 + boxWidth + 10, 10, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Dimension", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 10 + boxHeight + 10, boxWidth * 2 + 10, boxHeight2, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Color", WS_VISIBLE | WS_CHILD | WS_GROUP | WS_CLIPSIBLINGS | BS_GROUPBOX, 10, 10 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3, hWnd, NULL, NULL, NULL);
+			CreateGroupbox(hWnd, L"Palette", 10, 10, boxWidth, boxHeight);
+			CreateGroupbox(hWnd, L"Graphics", 10 + boxWidth + 10, 10, boxWidth, boxHeight);
+			CreateGroupbox(hWnd, L"Dimension", 10, 10 + boxHeight + 10, boxWidth * 2 + 10, boxHeight2);
+			CreateGroupbox(hWnd, L"Color", 10, 10 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3);
 
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
-			SetWindowLong(data->hWndDiffuse, GWL_STYLE, GetWindowLong(data->hWndDiffuse, GWL_STYLE) | WS_DISABLED);
-			SetWindowLong(data->hWndCompression, GWL_STYLE, GetWindowLong(data->hWndCompression, GWL_STYLE) | WS_DISABLED);
-			SetWindowLong(data->hWndMaxChars, GWL_STYLE, GetWindowLong(data->hWndMaxChars, GWL_STYLE) | WS_DISABLED);
-			SendMessage(data->hWndBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
-			SendMessage(data->hWndBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
-			SendMessage(data->hWndColorBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
-			SendMessage(data->hWndColorBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
+			setStyle(hWndMain, TRUE, WS_DISABLED);
+			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
+			setStyle(data->hWndCompression, TRUE, WS_DISABLED);
+			setStyle(data->hWndMaxChars, TRUE, WS_DISABLED);
 			SetWindowSize(hWnd, width, height);
 			break;
 		}
@@ -1243,44 +1239,37 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl != NULL) {
 				if (hWndControl == data->hWndDither) {
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					if (state) SetWindowLong(data->hWndDiffuse, GWL_STYLE, GetWindowLong(data->hWndDiffuse, GWL_STYLE) & ~WS_DISABLED);
-					else SetWindowLong(data->hWndDiffuse, GWL_STYLE, GetWindowLong(data->hWndDiffuse, GWL_STYLE) | WS_DISABLED);
+					int state = GetCheckboxChecked(hWndControl);
+					setStyle(data->hWndDiffuse, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, TRUE);
 				} else if (hWndControl == data->hWnd1D) {
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int ccState = SendMessage(data->hWndCompression, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
+					int ccState = GetCheckboxChecked(data->hWndCompression);
 					if (state) {
-						SetWindowLong(data->hWndCompression, GWL_STYLE, GetWindowLong(data->hWndCompression, GWL_STYLE) & ~WS_DISABLED);
-						if (ccState) SetWindowLong(data->hWndMaxChars, GWL_STYLE, GetWindowLong(data->hWndMaxChars, GWL_STYLE) & ~WS_DISABLED);
+						setStyle(data->hWndCompression, FALSE, WS_DISABLED);
+						if (ccState) setStyle(data->hWndMaxChars, FALSE, WS_DISABLED);
 					} else {
-						SetWindowLong(data->hWndCompression, GWL_STYLE, GetWindowLong(data->hWndCompression, GWL_STYLE) | WS_DISABLED);
-						SetWindowLong(data->hWndMaxChars, GWL_STYLE, GetWindowLong(data->hWndMaxChars, GWL_STYLE) | WS_DISABLED);
+						setStyle(data->hWndCompression, TRUE, WS_DISABLED);
+						setStyle(data->hWndMaxChars, TRUE, WS_DISABLED);
 					}
 					InvalidateRect(hWnd, NULL, TRUE);
 				} else if(hWndControl == data->hWndCompression){
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					if (state) SetWindowLong(data->hWndMaxChars, GWL_STYLE, GetWindowLong(data->hWndMaxChars, GWL_STYLE) & ~WS_DISABLED);
-					else SetWindowLong(data->hWndMaxChars, GWL_STYLE, GetWindowLong(data->hWndMaxChars, GWL_STYLE) | WS_DISABLED);
+					int state = GetCheckboxChecked(hWndControl);
+					setStyle(data->hWndMaxChars, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, TRUE);
 				} else if (hWndControl == data->hWndImport) {
-					BOOL createPalette = SendMessage(data->hWndOverwritePalette, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					BOOL dither = SendMessage(data->hWndDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					BOOL import1D = SendMessage(data->hWnd1D, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					BOOL charCompression = SendMessage(data->hWndCompression, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					WCHAR inBuffer[16];
-					SendMessage(data->hWndDiffuse, WM_GETTEXT, 16, (LPARAM) inBuffer);
-					float diffuse = ((float) _wtol(inBuffer)) / 100.0f;
+					BOOL createPalette = GetCheckboxChecked(data->hWndOverwritePalette);
+					BOOL dither = GetCheckboxChecked(data->hWndDither);
+					BOOL import1D = GetCheckboxChecked(data->hWnd1D);
+					BOOL charCompression = GetCheckboxChecked(data->hWndCompression);
+					float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
 					if (!dither) diffuse = 0.0f;
-					SendMessage(data->hWndPaletteBase, WM_GETTEXT, 16, (LPARAM) inBuffer);
-					int paletteBase = _wtol(inBuffer);
-					SendMessage(data->hWndPaletteSize, WM_GETTEXT, 16, (LPARAM) inBuffer);
-					int paletteSize = _wtol(inBuffer);
-					SendMessage(data->hWndMaxChars, WM_GETTEXT, 16, (LPARAM) inBuffer);
-					int nMaxChars = _wtol(inBuffer);
-					int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
-					int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
-					BOOL enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int paletteBase = GetEditNumber(data->hWndPaletteBase);
+					int paletteSize = GetEditNumber(data->hWndPaletteSize);
+					int nMaxChars = GetEditNumber(data->hWndMaxChars);
+					int balance = GetTrackbarPosition(data->hWndBalance);
+					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
+					BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
 
 					NCLR *nclr = data->nclr;
 					NCGR *ncgr = data->ncgr;
@@ -1322,7 +1311,7 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		case WM_CLOSE:
 		{
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
+			setStyle(hWndMain, FALSE, WS_DISABLED);
 			SetForegroundWindow(hWndMain);
 			break;
 		}
