@@ -855,8 +855,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_FILE_OPEN40085:
 					{
 						LPWSTR path = openFileDialog(hWnd, L"Open", 
-													 L"All Supported Files\0*.nclr;*.rlcn;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.char;*.nscr;*.rcsn;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga\0"
-													 L"Palette Files (*.nclr, *.rlcn, *ncl.bin, *icl.bin, *.ntfp, *.nbfp, *.pltt, *.bin)\0*.nclr;*.rlcn;*ncl.bin;*.ntfp;*.nbfp;*.pltt;*.bin\0"
+													 L"All Supported Files\0*.nclr;*.rlcn;*.ncl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.char;*.nscr;*.rcsn;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga\0"
+													 L"Palette Files (*.nclr, *.rlcn, *.ncl, *.5pl, *.5pc, *ncl.bin, *icl.bin, *.ntfp, *.nbfp, *.pltt, *.bin)\0*.nclr;*.rlcn;*.ncl;*.5pc;*.5pl;*ncl.bin;*.ntfp;*.nbfp;*.pltt;*.bin\0"
 													 L"Graphics Files (*.ncgr, *.rgcn, *.ncbr, *ncg.bin, *icg.bin, *.nbfc, *.char, *.bin)\0*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.char;*.bin\0"
 													 L"Screen Files (*.nscr, *.rcsn, *nsc.bin, *isc.bin, *.nbfs, *.bin)\0*.nscr;*.rcsn;*.nbfs;*.bin\0"
 													 L"Cell Files (*.ncer, *.recn, *.bin)\0*.ncer;*.recn;*.bin\0"
@@ -2073,6 +2073,7 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				nscrInit(&newNscr, nscr->header.format);
 				newNscr.nWidth = newTilesX * 8;
 				newNscr.nHeight = newTilesY * 8;
+				newNscr.dataSize = newTilesX * newTilesY * sizeof(uint16_t);
 				for (int i = 0; i < y; i++) {
 					for (int j = 0; j < x; j++) {
 						newNscr.data = (uint16_t *) calloc(newTilesX * newTilesY, sizeof(uint16_t));
