@@ -9,7 +9,9 @@
 #define NCLR_TYPE_BIN 3
 #define NCLR_TYPE_NTFP 4
 #define NCLR_TYPE_NC 5
-#define NCLR_TYPE_COMBO 6
+#define NCLR_TYPE_ISTUDIO 6
+#define NCLR_TYPE_ISTUDIOC 7
+#define NCLR_TYPE_COMBO 8
 
 extern LPCWSTR paletteFormatNames[];
 

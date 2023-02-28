@@ -4,7 +4,7 @@
 #include "nclr.h"
 #include "g2dfile.h"
 
-LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", L"NCL", NULL };
+LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", L"NCL", L"5PL", L"5PC", NULL };
 
 void nclrFree(OBJECT_HEADER *header) {
 	NCLR *nclr = (NCLR *) header;
@@ -105,12 +105,36 @@ int nclrIsValidNcl(unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
+int nclrIsValidIStudio(unsigned char *lpFile, unsigned int size) {
+	if (!g2dIsValid(lpFile, size)) return 0;
+	uint32_t magic = *(uint32_t *) lpFile;
+	if (magic != 'NTPL' && magic != 'LPTN') return 0;
+
+	unsigned char *palt = g2dGetSectionByMagic(lpFile, size, 'PALT');
+	unsigned char *tlap = g2dGetSectionByMagic(lpFile, size, 'TLAP');
+	if (palt == NULL && tlap == NULL) return 0;
+	return 1;
+}
+
+int nclrIsValidIStudioCompressed(unsigned char *lpFile, unsigned int size) {
+	if (!g2dIsValid(lpFile, size)) return 0;
+	uint32_t magic = *(uint32_t *) lpFile;
+	if (magic != 'NTPC' && magic != 'CPTN') return 0;
+
+	unsigned char *palt = g2dGetSectionByMagic(lpFile, size, 'PALT');
+	unsigned char *tlap = g2dGetSectionByMagic(lpFile, size, 'TLAP');
+	if (palt == NULL && tlap == NULL) return 0;
+	return 1;
+}
+
 int nclrIsValid(unsigned char *lpFile, unsigned int size) {
 	if (nclrIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
 	if (nclrIsValidNcl(lpFile, size)) return NCLR_TYPE_NC;
 	if (nclrIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
 	if (nclrIsValidBin(lpFile, size)) return NCLR_TYPE_BIN;
 	if (nclrIsValidNtfp(lpFile, size)) return NCLR_TYPE_NTFP;
+	if (nclrIsValidIStudio(lpFile, size)) return NCLR_TYPE_ISTUDIO;
+	if (nclrIsValidIStudioCompressed(lpFile, size)) return NCLR_TYPE_ISTUDIOC;
 	return NCLR_TYPE_INVALID;
 }
 
@@ -197,9 +221,40 @@ int ncPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
+void istudioCommonReadColors(NCLR *nclr, unsigned char *buffer, unsigned int size) {
+	char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
+	if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
+
+	nclr->nColors = *(uint32_t *) (palt + 0x8);
+	nclr->nPalettes = (nclr->nColors + 15) / 16;
+	nclr->extPalette = nclr->nColors > 256;
+	nclr->nBits = 4;
+	nclr->totalSize = nclr->nColors;
+	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
+	memcpy(nclr->colors, palt + 0xC, nclr->nColors * 2);
+}
+
+int istudioPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
+	if (!nclrIsValidIStudio(buffer, size)) return 1;
+
+	nclrInit(nclr, NCLR_TYPE_ISTUDIO);
+	istudioCommonReadColors(nclr, buffer, size);
+	return 0;
+}
+
+int istudioCompressedPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
+	if (!nclrIsValidIStudioCompressed(buffer, size)) return 1;
+
+	nclrInit(nclr, NCLR_TYPE_ISTUDIOC);
+	istudioCommonReadColors(nclr, buffer, size);
+	return 0;
+}
+
 int nclrRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	if (!nclrIsValidNclr(buffer, size)) {
 		if (nclrIsValidNcl(buffer, size)) return ncPaletteRead(nclr, buffer, size);
+		if (nclrIsValidIStudio(buffer, size)) return istudioPaletteRead(nclr, buffer, size);
+		if (nclrIsValidIStudioCompressed(buffer, size)) return istudioCompressedPaletteRead(nclr, buffer, size);
 		if (nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
 		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
 		if (nclrIsValidNtfp(buffer, size)) return binPaletteRead(nclr, buffer, size);
@@ -316,12 +371,34 @@ int nclrSaveCombo(NCLR *nclr, BSTREAM *stream) {
 	return combo2dWrite(nclr->combo2d, stream);
 }
 
+int nclrSaveIStudio(NCLR *nclr, BSTREAM *stream) {
+	uint8_t fileHeader[] = { 'N', 'T', 'P', 'L', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
+	uint8_t paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
+	if (nclr->header.format == NCLR_TYPE_ISTUDIOC) fileHeader[3] = 'C'; //format otherwise identical
+
+	uint32_t paletteSize = nclr->nColors * sizeof(COLOR);
+	uint32_t paltSize = paletteSize + sizeof(paltHeader);
+	uint32_t fileSize = paltSize + sizeof(fileHeader);
+	*(uint32_t *) (fileHeader + 0x08) = fileSize;
+	*(uint32_t *) (paltHeader + 0x04) = paltSize;
+	*(uint32_t *) (paltHeader + 0x08) = nclr->nColors;
+
+	bstreamWrite(stream, fileHeader, sizeof(fileHeader));
+	bstreamWrite(stream, paltHeader, sizeof(paltHeader));
+	bstreamWrite(stream, nclr->colors, paletteSize);
+
+	return 0;
+}
+
 int nclrWrite(NCLR *nclr, BSTREAM *stream) {
 	switch (nclr->header.format) {
 		case NCLR_TYPE_NCLR:
 			return nclrSaveNclr(nclr, stream);
 		case NCLR_TYPE_NC:
 			return nclrSaveNcl(nclr, stream);
+		case NCLR_TYPE_ISTUDIO:
+		case NCLR_TYPE_ISTUDIOC:
+			return nclrSaveIStudio(nclr, stream);
 		case NCLR_TYPE_HUDSON:
 			return nclrSaveHudson(nclr, stream);
 		case NCLR_TYPE_BIN:
