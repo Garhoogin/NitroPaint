@@ -889,6 +889,8 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	if (paletteOffset >= maxPaletteSize) paletteOffset = maxPaletteSize - 1;
 	if (paletteSize > maxPaletteSize) paletteSize = maxPaletteSize;
 	if (paletteOffset + paletteSize > maxPaletteSize) paletteSize = maxPaletteSize - paletteOffset;
+	if (writeCharBase >= ncgr->nTiles) writeCharBase = ncgr->nTiles - 1;
+	if (writeCharBase + nMaxChars > ncgr->nTiles) nMaxChars = ncgr->nTiles - writeCharBase;
 
 	//if no write screen, still set some proper bounds.
 	if (!writeScreen) {
@@ -903,7 +905,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	*progressMax = tilesX * tilesY * 2;
 
 	BGTILE *blocks = (BGTILE *) calloc(tilesX * tilesY, sizeof(BGTILE));
-	COLOR32 *pals = (COLOR32 *) calloc(nPalettes * maxPaletteSize, 4);
+	COLOR32 *pals = (COLOR32 *) calloc(16 * maxPaletteSize, 4);
 
 	//split image into 8x8 chunks
 	for (int y = 0; y < tilesY; y++) {
