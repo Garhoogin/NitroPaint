@@ -1999,6 +1999,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				nscrInit(&nscr, NSCR_TYPE_NSCR);
 				nscr.nWidth = tilesX * 8;
 				nscr.nHeight = tilesY * 8;
+				nscr.dataSize = tilesX * tilesY * sizeof(uint16_t);
 				nscr.data = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
 				CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, nitroPaintStruct->hWndMdi, &nscr);
 
