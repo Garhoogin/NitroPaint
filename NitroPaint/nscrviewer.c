@@ -786,8 +786,8 @@ double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, int *pals
 		int index = character[i];
 		int *matchedYiq = pals + index * 4;
 		int matchedA = index > 0 ? 255 : 0;
-		if (matchedA == 0) {
-			matchedYiq = yiq; //to prevent superfluous non-alpha difference
+		if (matchedA == 0 && yiq[3] < 128) {
+			continue; //to prevent superfluous non-alpha difference
 		}
 
 		//diff
@@ -798,7 +798,7 @@ double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, int *pals
 		
 
 		error += dy * dy;
-		if (da > 0.0) error += da * da;
+		if (da != 0.0) error += da * da;
 		if (error >= maxError) return maxError;
 		error += di * di + dq * dq;
 		if (error >= maxError) return maxError;
