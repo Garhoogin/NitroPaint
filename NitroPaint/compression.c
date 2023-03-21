@@ -5,40 +5,42 @@
 #include "compression.h"
 #include "bstream.h"
 
-char *lz77decompress(char *buffer, int size, int *uncompressedSize){
+char *lz77decompress(char *buffer, int size, unsigned int *uncompressedSize){
 	//decompress the input buffer. 
 	//input is invalid if the size is less than 4.
-	if(size < 4) return NULL;
+	if (size < 4) return NULL;
+
 	//find the length of the decompressed buffer.
-	int length = *(int *) (buffer + 1) & 0xFFFFFF;
+	uint32_t length = *(uint32_t *) (buffer + 1) & 0xFFFFFF;
+
 	//create a buffer for the decompressed buffer
 	char *result = (char *) malloc(length);
-	if(!result) return NULL;
+	if (result == NULL) return NULL;
 	*uncompressedSize = length;
+
 	//initialize variables
-	int offset = 4;
-	int dstOffset = 0;
-	int x = 0;
-	while(1){
-		unsigned char head = buffer[offset];
+	uint32_t offset = 4;
+	uint32_t dstOffset = 0;
+	while (1) {
+		uint8_t head = buffer[offset];
 		offset++;
 		//loop 8 times
-		for(int i = 0; i < 8; i++){
+		for (int i = 0; i < 8; i++) {
 			int flag = head >> 7;
 			head <<= 1;
-			if(!flag){
+
+			if (!flag) {
 				result[dstOffset] = buffer[offset];
 				dstOffset++, offset++;
 				if(dstOffset == length) return result;
 			} else {
-				unsigned char high = buffer[offset++];
-				unsigned char low = buffer[offset++];
+				uint8_t high = buffer[offset++];
+				uint8_t low = buffer[offset++];
 
 				//length of uncompressed chunk and offset
-				int offs = (((high & 0xF) << 8) | low) + 1;
-				int len = (high >> 4) + 3;
-				x = 1;
-				for(int j = 0; j < len; j++){
+				uint32_t offs = (((high & 0xF) << 8) | low) + 1;
+				uint32_t len = (high >> 4) + 3;
+				for (uint32_t j = 0; j < len; j++) {
 					result[dstOffset] = result[dstOffset - offs];
 					dstOffset++;
 					if(dstOffset == length) return result;
@@ -54,41 +56,41 @@ char *lz77HeaderDecompress(char *buffer, int size, int *uncompressedSize) {
 	return lz77decompress(buffer + 4, size - 4, uncompressedSize);
 }
 
-char *lz11decompress(char *buffer, int size, int *uncompressedSize){
+char *lz11decompress(char *buffer, int size, int *uncompressedSize) {
 	//decompress the input buffer. 
-	if(size < 4) return NULL;
+	if (size < 4) return NULL;
 
 	//find the length of the decompressed buffer.
-	int length = *(int *) (buffer) >> 8;
+	uint32_t length = *(uint32_t *) (buffer) >> 8;
 
 	//create a buffer for the decompressed buffer
 	char *result = (char *) malloc(length);
-	if(result == NULL) return NULL;
+	if (result == NULL) return NULL;
 	*uncompressedSize = length;
 
 	//initialize variables
-	int offset = 4;
-	int dstOffset = 0;
-	int x = 0;
-	while(1){
-		unsigned char head = buffer[offset];
+	uint32_t offset = 4;
+	uint32_t dstOffset = 0;
+	while (1) {
+		uint8_t head = buffer[offset];
 		offset++;
 
 		//loop 8 times
-		for(int i = 0; i < 8; i++){
+		for (int i = 0; i < 8; i++) {
 			int flag = head >> 7;
 			head <<= 1;
-			if(!flag){
+
+			if (!flag) {
 				result[dstOffset] = buffer[offset];
 				dstOffset++, offset++;
-				if(dstOffset == length) return result;
+				if (dstOffset == length) return result;
 			} else {
-				unsigned char high = buffer[offset++];
-				unsigned char low = buffer[offset++];
-				unsigned char low2, low3;
+				uint8_t high = buffer[offset++];
+				uint8_t low = buffer[offset++];
+				uint8_t low2, low3;
 				int mode = high >> 4;
 
-				int len = 0, offs = 0;
+				uint32_t len = 0, offs = 0;
 				switch (mode) {
 					case 0:
 						low2 = buffer[offset++];
@@ -108,10 +110,10 @@ char *lz11decompress(char *buffer, int size, int *uncompressedSize){
 				}
 
 				//write back
-				for(int j = 0; j < len; j++){
+				for (uint32_t j = 0; j < len; j++) {
 					result[dstOffset] = result[dstOffset - offs];
 					dstOffset++;
-					if(dstOffset == length) return result;
+					if (dstOffset == length) return result;
 				}
 			}
 		}
@@ -122,7 +124,7 @@ char *lz11decompress(char *buffer, int size, int *uncompressedSize){
 char *huffmanDecompress(unsigned char *buffer, int size, int *uncompressedSize) {
 	if (size < 5) return NULL;
 
-	int outSize = (*(unsigned *) buffer) >> 8;
+	int outSize = (*(uint32_t *) buffer) >> 8;
 	char *out = (char *) malloc((outSize + 3) & ~3);
 	*uncompressedSize = outSize;
 
@@ -130,7 +132,7 @@ char *huffmanDecompress(unsigned char *buffer, int size, int *uncompressedSize) 
 	int symSize = *buffer & 0xF;
 	int bufferFill = 0;
 	int bufferSize = 32 / symSize;
-	unsigned int outBuffer = 0;
+	uint32_t outBuffer = 0;
 
 	int offs = ((*treeBase + 1) << 1) + 4;
 	int trOffs = 1;
@@ -138,7 +140,7 @@ char *huffmanDecompress(unsigned char *buffer, int size, int *uncompressedSize) 
 	int nWritten = 0;
 	while (nWritten < outSize) {
 
-		unsigned bits = *(unsigned *) (buffer + offs);
+		uint32_t bits = *(uint32_t *) (buffer + offs);
 		offs += 4;
 
 		for (int i = 0; i < 32; i++) {
@@ -155,7 +157,7 @@ char *huffmanDecompress(unsigned char *buffer, int size, int *uncompressedSize) 
 				bufferFill++;
 
 				if (bufferFill >= bufferSize) {
-					*(unsigned *) (out + nWritten) = outBuffer;
+					*(uint32_t *) (out + nWritten) = outBuffer;
 					nWritten += 4;
 					bufferFill = 0;
 				}
@@ -186,7 +188,7 @@ int compareMemory(char *b1, char *b2, int nMax, int nAbsoluteMax) {
 	return nSame;
 }
 
-char *lz77compress(char *buffer, int size, int *compressedSize){
+char *lz77compress(char *buffer, int size, unsigned int *compressedSize){
 	int compressedMaxSize = 4 + 9 * ((size + 7) >> 3);
 	char *compressed = (char *) malloc(compressedMaxSize);
 	char *compressedBase = compressed;
@@ -372,7 +374,6 @@ char *lz11compress(char *buffer, int size, int *compressedSize) {
 		if (nProcessedBytes >= size) break;
 	}
 
-done:
 	while (nSize & 3) {
 		*(compressed++) = 0;
 		nSize++;
@@ -562,7 +563,7 @@ char *huffmanCompress(unsigned char *buffer, int size, int *compressedSize, int 
 
 	//now we've got a proper Huffman tree. Great! 
 	unsigned char *tree = (unsigned char *) calloc(512, 1);
-	unsigned int treeSize = huffmanWriteNode(tree, 2, nodes);
+	uint32_t treeSize = huffmanWriteNode(tree, 2, nodes);
 	treeSize = (treeSize + 3) & ~3; //round up
 	tree[0] = (treeSize >> 1) - 1;
 	tree[1] = 0;
@@ -582,9 +583,9 @@ char *huffmanCompress(unsigned char *buffer, int size, int *compressedSize, int 
 	}
 
 	//combine into one
-	unsigned int outSize = 4 + treeSize + stream.nWords * 4;
+	uint32_t outSize = 4 + treeSize + stream.nWords * 4;
 	char *finBuf = (char *) malloc(outSize);
-	*(unsigned *) finBuf = 0x20 | nBits | (size << 8);
+	*(uint32_t *) finBuf = 0x20 | nBits | (size << 8);
 	memcpy(finBuf + 4, tree, treeSize);
 	memcpy(finBuf + 4 + treeSize, stream.bits, stream.nWords * 4);
 	free(tree);
@@ -603,36 +604,39 @@ char *huffman4Compress(unsigned char *buffer, int size, int *compressedSize) {
 	return huffmanCompress(buffer, size, compressedSize, 4);
 }
 
-int lz77IsCompressed(char *buffer, unsigned size) {
+int lz77IsCompressed(char *buffer, unsigned int size) {
 	if (size < 4) return 0;
 	if (*buffer != 0x10) return 0;
-	unsigned length = (*(unsigned *) buffer) >> 8;
+	uint32_t length = (*(uint32_t *) buffer) >> 8;
 	if ((length / 144) * 17 + 4 > size) return 0;
 
 	//start a dummy decompression
-	unsigned int offset = 4;
-	unsigned int dstOffset = 0;
-	while(1){
-		unsigned char head = buffer[offset];
+	uint32_t offset = 4;
+	uint32_t dstOffset = 0;
+	while (1) {
+		uint8_t head = buffer[offset];
 		offset++;
+
 		//loop 8 times
 		for(int i = 0; i < 8; i++){
 			int flag = head >> 7;
 			head <<= 1;
-			if(!flag){
+
+			if (!flag) {
 				if (dstOffset >= length || offset >= size) return 0;
 				dstOffset++, offset++;
 				if (dstOffset == length) return 1;
 			} else {
 				if (offset + 1 >= size) return 0;
-				unsigned char high = buffer[offset++];
-				unsigned char low = buffer[offset++];
+				uint8_t high = buffer[offset++];
+				uint8_t low = buffer[offset++];
 
 				//length of uncompressed chunk and offset
-				unsigned int offs = (((high & 0xF) << 8) | low) + 1;
-				unsigned int len = (high >> 4) + 3;
+				uint32_t offs = (((high & 0xF) << 8) | low) + 1;
+				uint32_t len = (high >> 4) + 3;
+
 				if (dstOffset < offs) return 0;
-				for(unsigned int j = 0; j < len; j++){
+				for (uint32_t j = 0; j < len; j++) {
 					if (dstOffset >= length) return 0;
 					dstOffset++;
 					if (dstOffset == length) return 1;
@@ -652,33 +656,36 @@ int lz77HeaderIsCompressed(unsigned char *buffer, unsigned size) {
 int lz11IsCompressed(char *buffer, unsigned size) {
 	if (size < 4) return 0;
 	if (*buffer != 0x11) return 0;
-	unsigned length = (*(unsigned *) buffer) >> 8;
+
+	uint32_t length = (*(uint32_t *) buffer) >> 8;
 	if (size > 7 + length * 9 / 8) return 0;
 
 	//perform a test decompression.
-	unsigned int offset = 4;
-	unsigned int dstOffset = 0;
-	while(1){
+	uint32_t offset = 4;
+	uint32_t dstOffset = 0;
+	while (1) {
 		if (offset >= size) return 0;
-		unsigned char head = buffer[offset]; unsigned char origHead = head;
+		uint8_t head = buffer[offset];
+		uint8_t origHead = head;
 		offset++;
 
 		//loop 8 times
-		for(int i = 0; i < 8; i++){
+		for (int i = 0; i < 8; i++) {
 			int flag = head >> 7;
 			head <<= 1;
-			if(!flag){
+
+			if (!flag) {
 				if (offset >= size || dstOffset >= length) return 0;
 				dstOffset++, offset++;
-				if(dstOffset == length) return 1;
+				if (dstOffset == length) return 1;
 			} else {
 				if (offset + 1 >= size) return 0;
-				unsigned char high = buffer[offset++];
-				unsigned char low = buffer[offset++];
-				unsigned char low2, low3;
+				uint8_t high = buffer[offset++];
+				uint8_t low = buffer[offset++];
+				uint8_t low2, low3;
 				int mode = high >> 4;
 
-				int len = 0, offs = 0;
+				uint32_t len = 0, offs = 0;
 				switch (mode) {
 					case 0:
 						if (offset >= size) return 0;
@@ -700,11 +707,11 @@ int lz11IsCompressed(char *buffer, unsigned size) {
 				}
 
 				//test write
-				if (dstOffset - offs < 0) return 0;
-				for(int j = 0; j < len; j++){
+				if (dstOffset < offs) return 0; //would we write before our buffer decompressing? (weird because unsigned)
+				for (uint32_t j = 0; j < len; j++) {
 					if (dstOffset >= length) return 0;
 					dstOffset++;
-					if(dstOffset == length) return 1;
+					if (dstOffset == length) return 1;
 				}
 			}
 		}
@@ -716,16 +723,17 @@ int lz11IsCompressed(char *buffer, unsigned size) {
 int huffmanIsCompressed(unsigned char *buffer, unsigned size) {
 	if (size < 5) return 0;
 	if (*buffer != 0x24 && *buffer != 0x28) return 0;
-	unsigned length = (*(unsigned *) buffer) >> 8;
-	unsigned bitStreamOffset = ((buffer[5] + 1) << 1) + 4;
+
+	uint32_t length = (*(uint32_t *) buffer) >> 8;
+	uint32_t bitStreamOffset = ((buffer[5] + 1) << 1) + 4;
 	if (bitStreamOffset > size) return 0;
 
 	//process huffman tree
-	unsigned dataOffset = ((buffer[4] + 1) << 1) + 4;
+	uint32_t dataOffset = ((buffer[4] + 1) << 1) + 4;
 	if (dataOffset > size) return 0;
 
 	//check if the uncompressed size makes sense
-	unsigned bitStreamLength = size - dataOffset;
+	uint32_t bitStreamLength = size - dataOffset;
 	if (bitStreamLength * 8 < length) return 0;
 	return 1;
 }
@@ -740,16 +748,17 @@ int huffman8IsCompressed(unsigned char *buffer, unsigned size) {
 
 int lz11CompHeaderIsValid(char *buffer, unsigned size) {
 	if (size < 0x14) return 0;
-	unsigned magic = *(unsigned *) buffer;
+
+	uint32_t magic = *(uint32_t *) buffer;
 	if (magic != 'COMP' && magic != 'PMOC') return 0;
 
 	//validate headers
 	uint32_t nSegments = *(uint32_t *) (buffer + 0x8);
-	unsigned int headerSize = 0x10 + 4 * nSegments;
-	unsigned int offset = headerSize;
-	unsigned int uncompSize = 0;
+	uint32_t headerSize = 0x10 + 4 * nSegments;
+	uint32_t offset = headerSize;
+	uint32_t uncompSize = 0;
 	if (nSegments == 0) return 0;
-	for (unsigned int i = 0; i < nSegments; i++) {
+	for (uint32_t i = 0; i < nSegments; i++) {
 
 		//parse segment length & compression setting
 		int32_t thisSegmentLength = *(int32_t *) (buffer + 0x10 + i * 4);
@@ -762,26 +771,26 @@ int lz11CompHeaderIsValid(char *buffer, unsigned size) {
 		//decompression (if applicable)
 		if (segCompressed) {
 			if (!lz11IsCompressed(buffer + offset, thisSegmentLength)) return 0;
-			uncompSize += *(unsigned *) (buffer + offset) >> 8;
+			uncompSize += *(uint32_t *) (buffer + offset) >> 8;
 		} else {
 			uncompSize += thisSegmentLength;
 		}
 		offset += thisSegmentLength;
 	}
-	if(uncompSize != *(unsigned *) (buffer + 0x4)) return 0;
+	if (uncompSize != *(uint32_t *) (buffer + 0x4)) return 0;
 
 	return 1;
 }
 
 char *lz11CompHeaderDecompress(char *buffer, int size, int *uncompressedSize) {
-	unsigned int totalSize = *(unsigned *) (buffer + 0x4);
-	unsigned int nSegments = *(unsigned *) (buffer + 0x8);
+	uint32_t totalSize = *(uint32_t *) (buffer + 0x4);
+	uint32_t nSegments = *(uint32_t *) (buffer + 0x8);
 	*uncompressedSize = totalSize;
 
 	char *out = (char *) malloc(totalSize);
-	unsigned int dstOffs = 0;
-	unsigned int offset = 0x10 + 4 * nSegments;
-	for (unsigned int i = 0; i < nSegments; i++) {
+	uint32_t dstOffs = 0;
+	uint32_t offset = 0x10 + 4 * nSegments;
+	for (uint32_t i = 0; i < nSegments; i++) {
 
 		//parse segment length & compression setting
 		int segCompressed = 1;
@@ -792,7 +801,7 @@ char *lz11CompHeaderDecompress(char *buffer, int size, int *uncompressedSize) {
 		}
 
 		//decompress (if applicable)
-		unsigned int thisSegmentUncompressedSize;
+		uint32_t thisSegmentUncompressedSize;
 		if (segCompressed) {
 			char *thisSegment = lz11decompress(buffer + offset, thisSegmentSize, &thisSegmentUncompressedSize);
 			memcpy(out + dstOffs, thisSegment, thisSegmentUncompressedSize);
@@ -809,29 +818,29 @@ char *lz11CompHeaderDecompress(char *buffer, int size, int *uncompressedSize) {
 }
 
 char *lz11CompHeaderCompress(char *buffer, int size, int *compressedSize) {
-	unsigned int nSegments = (size + 0xFFF) / 0x1000;  //following LEGO Battles precedent
-	unsigned int headerSize = 0x10 + 4 * nSegments;
+	uint32_t nSegments = (size + 0xFFF) / 0x1000;  //following LEGO Battles precedent
+	uint32_t headerSize = 0x10 + 4 * nSegments;
 	char *header = (char *) calloc(headerSize, 1);
 
-	*(unsigned *) (header + 0) = 'COMP';
-	*(unsigned *) (header + 4) = size;
-	*(unsigned *) (header + 8) = nSegments;
+	*(uint32_t *) (header + 0) = 'COMP';
+	*(uint32_t *) (header + 4) = size;
+	*(uint32_t *) (header + 8) = nSegments;
 
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
 	bstreamWrite(&stream, header, headerSize); //bstreamCreate bug workaround
 	free(header);
 
-	unsigned longestCompress = 0;
-	unsigned bytesRemaining = size;
+	uint32_t longestCompress = 0;
+	uint32_t bytesRemaining = size;
 
 	int i = 0;
-	unsigned int offs = 0;
+	uint32_t offs = 0;
 	while (bytesRemaining > 0) {
 		unsigned thisRunLength = 0x1000;
 		if (thisRunLength > bytesRemaining) thisRunLength = bytesRemaining;
 
-		unsigned int thisRunCompressedSize;
+		uint32_t thisRunCompressedSize;
 		char *thisRunCompressed = lz11compress(buffer + offs, thisRunLength, &thisRunCompressedSize);
 		bstreamWrite(&stream, thisRunCompressed, thisRunCompressedSize);
 		free(thisRunCompressed);
@@ -839,11 +848,11 @@ char *lz11CompHeaderCompress(char *buffer, int size, int *compressedSize) {
 		if (thisRunCompressedSize > longestCompress) longestCompress = thisRunCompressedSize;
 		bytesRemaining -= thisRunLength;
 
-		*(unsigned *) (stream.buffer + 0x10 + i * 4) = thisRunCompressedSize;
+		*(uint32_t *) (stream.buffer + 0x10 + i * 4) = thisRunCompressedSize;
 		offs += thisRunLength;
 		i++;
 	}
-	*(unsigned *) (stream.buffer + 0xC) = longestCompress;
+	*(uint32_t *) (stream.buffer + 0xC) = longestCompress;
 
 	*compressedSize = stream.size;
 	return stream.buffer;
