@@ -6,6 +6,7 @@
 #include "nsbtxviewer.h"
 #include "nitropaint.h"
 #include "resource.h"
+#include "ui.h"
 
 extern HICON g_appIcon;
 
@@ -227,6 +228,8 @@ int guessTexPlttByName(char *textureName, char **paletteNames, int nPalettes, TE
 	return 0;
 }
 
+void CreateVramUseWindow(HWND hWndParent, NSBTX *nsbtx);
+
 LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NSBTXVIEWERDATA *data = (NSBTXVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
 	if (data == NULL) {
@@ -238,7 +241,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		{
 			data->hWndTextureSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 0, 150, 100, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 100, 150, 100, hWnd, NULL, NULL, NULL);
-			data->hWndExportAll = CreateWindow(L"BUTTON", L"Export all", WS_VISIBLE | WS_CHILD, 0, 300 - 22, 150, 22, hWnd, NULL, NULL, NULL);
+			data->hWndExportAll = CreateWindow(L"BUTTON", L"Export all", WS_VISIBLE | WS_CHILD, 0, 300 - 22, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndResourceButton = CreateButton(hWnd, L"VRAM Use", 75, 300 - 22, 75, 22, FALSE);
 			data->hWndReplaceButton = CreateWindow(L"BUTTON", L"Replace", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 150, 300 - 22, 100, 22, hWnd, NULL, NULL, NULL);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			data->scale = 1;
@@ -475,6 +479,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							free(palNames[i]);
 						}
 						free(palNames);
+					} else if (hWndControl == data->hWndResourceButton) {
+						HWND hWndMain = getMainWindow(hWnd);
+						CreateVramUseWindow(hWndMain, &data->nsbtx);
 					}
 				}
 			}
@@ -487,7 +494,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			int height = rcClient.bottom;
 			MoveWindow(data->hWndTextureSelect, 0, 0, 150, height / 2 - 11, TRUE);
 			MoveWindow(data->hWndPaletteSelect, 0, height / 2 - 11, 150, height / 2 - 11, TRUE);
-			MoveWindow(data->hWndExportAll, 0, height - 22, 150, 22, TRUE);
+			MoveWindow(data->hWndExportAll, 0, height - 22, 75, 22, TRUE);
+			MoveWindow(data->hWndResourceButton, 75, height - 22, 75, 22, TRUE);
 			MoveWindow(data->hWndReplaceButton, 150, height - 22, 100, 22, TRUE);
 			break;
 		}
@@ -527,6 +535,150 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
+void CreateVramUseWindow(HWND hWndParent, NSBTX *nsbtx) {
+	HWND hWndVramViewer = CreateWindow(L"VramUseClass", L"VRAM Usage", WS_CAPTION | WS_SYSMENU | WS_THICKFRAME, CW_USEDEFAULT,
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndParent, NULL, NULL, NULL);
+	SendMessage(hWndVramViewer, NV_INITIALIZE, 0, (LPARAM) nsbtx);
+	DoModal(hWndVramViewer);
+}
+
+LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndTexLabel = (HWND) GetWindowLong(hWnd, 0 * sizeof(HWND));
+	HWND hWndPalLabel = (HWND) GetWindowLong(hWnd, 1 * sizeof(HWND));
+	HWND hWndTexList = (HWND) GetWindowLong(hWnd, 2 * sizeof(HWND));
+	HWND hWndPalList = (HWND) GetWindowLong(hWnd, 3 * sizeof(HWND));
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			int width = 350 + GetSystemMetrics(SM_CXVSCROLL);
+			HWND hWndTextureLabel = CreateStatic(hWnd, L"Texture usage: 0KB Texture, 0KB Index", 5, 0, width - 5, 22);
+
+			HWND hWndTextures = CreateListView(hWnd, 0, 22, width, 150);
+			AddListViewColumn(hWndTextures, L"Texture", 0, 125, SCA_LEFT);
+			AddListViewColumn(hWndTextures, L"Format", 1, 75, SCA_LEFT);
+			AddListViewColumn(hWndTextures, L"Texel (KB)", 2, 75, SCA_RIGHT);
+			AddListViewColumn(hWndTextures, L"Index (KB)", 3, 75, SCA_RIGHT);
+
+			HWND hWndPaletteLabel = CreateStatic(hWnd, L"Palette usage: 0KB", 5, 22 + 150, width - 5, 22);
+
+			HWND hWndPalettes = CreateListView(hWnd, 0, 22 + 22 + 150, width, 150);
+			AddListViewColumn(hWndPalettes, L"Palette", 0, 125, SCA_LEFT);
+			AddListViewColumn(hWndPalettes, L"Colors", 1, 75, SCA_RIGHT);
+			AddListViewColumn(hWndPalettes, L"Size (KB)", 2, 75, SCA_RIGHT);
+			SetWindowSize(hWnd, width, 300 + 22 + 22);
+			EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
+
+			SetWindowLong(hWnd, 0 * sizeof(HWND), (LONG) hWndTextureLabel);
+			SetWindowLong(hWnd, 1 * sizeof(HWND), (LONG) hWndPaletteLabel);
+			SetWindowLong(hWnd, 2 * sizeof(HWND), (LONG) hWndTextures);
+			SetWindowLong(hWnd, 3 * sizeof(HWND), (LONG) hWndPalettes);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			NSBTX *nsbtx = (NSBTX *) lParam;
+
+			//for all textures...
+			int nTextures = 0, nPalettes = 0;
+			int totalTexelSize = 0, totalIndexSize = 0, totalPaletteSize = 0;
+			WCHAR textBuffer[256];
+			for (int i = 0; i < nsbtx->nTextures; i++) {
+				TEXELS *tex = nsbtx->textures + i;
+				int texImageParam = tex->texImageParam;
+				int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+				int indexSize = getIndexVramSize(tex);
+
+				//copy name. Beware, not null terminated
+				for (unsigned int j = 0; j < 16; j++) {
+					textBuffer[j] = (WCHAR) tex->name[j];
+					textBuffer[j + 1] = L'\0';
+				}
+				AddListViewItem(hWndTexList, textBuffer, i, 0);
+
+				//format
+				const char *fmt = stringFromFormat(FORMAT(texImageParam));
+				for (unsigned int j = 0; j < strlen(fmt); j++) {
+					textBuffer[j] = (WCHAR) fmt[j];
+					textBuffer[j + 1] = L'\0';
+				}
+				AddListViewItem(hWndTexList, textBuffer, i, 1);
+
+				//sizes
+				wsprintfW(textBuffer, L"%d.%03d", texelSize / 1024, (texelSize % 1024) * 1000 / 1024);
+				AddListViewItem(hWndTexList, textBuffer, i, 2);
+				if (indexSize) {
+					wsprintfW(textBuffer, L"%d.%03d", indexSize / 1024, (indexSize % 1024) * 1000 / 1024);
+					AddListViewItem(hWndTexList, textBuffer, i, 3);
+				}
+
+				nTextures++;
+				totalTexelSize += texelSize;
+				totalIndexSize += indexSize;
+			}
+
+			//all palettes...
+			for (int i = 0; i < nsbtx->nPalettes; i++) {
+				PALETTE *pal = nsbtx->palettes + i;
+				int nCols = pal->nColors;
+				int paletteSize = nCols * 2;
+
+				//copy name. Beware, not null terminated
+				for (unsigned int j = 0; j < 16; j++) {
+					textBuffer[j] = (WCHAR) pal->name[j];
+					textBuffer[j + 1] = L'\0';
+				}
+				AddListViewItem(hWndPalList, textBuffer, i, 0);
+
+				//colors and size
+				wsprintfW(textBuffer, L"%d", pal->nColors);
+				AddListViewItem(hWndPalList, textBuffer, i, 1);
+				wsprintfW(textBuffer, L"%d.%03d", paletteSize / 1024, (paletteSize % 1024) * 1000 / 1024);
+				AddListViewItem(hWndPalList, textBuffer, i, 2);
+
+				totalPaletteSize += paletteSize;
+			}
+
+			//label text
+			int len = wsprintfW(textBuffer, L"Texture usage: %d.%03dKB Texture, %d.%03dKB Index",
+				totalTexelSize / 1024, (totalTexelSize % 1024) * 1000 / 1024,
+				totalIndexSize / 1024, (totalIndexSize % 1024) * 1000 / 1024);
+			SendMessage(hWndTexLabel, WM_SETTEXT, len, (LPARAM) textBuffer);
+			len = wsprintfW(textBuffer, L"Palette usage: %d.%03dKB",
+				totalPaletteSize / 1024, (totalPaletteSize % 1024) * 1000 / 1024);
+			SendMessage(hWndPalLabel, WM_SETTEXT, len, (LPARAM) textBuffer);
+			break;
+		}
+		case WM_SIZE:
+		{
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+			int width = rcClient.right, height = rcClient.bottom;
+
+			int listViewHeight = (height - (22 * 2)) / 2;
+			MoveWindow(hWndTexList, 0, 22, width, listViewHeight, TRUE);
+			MoveWindow(hWndPalLabel, 5, 22 + listViewHeight, width - 5, 22, FALSE);
+			MoveWindow(hWndPalList, 0, 44 + listViewHeight, width, height - (44 + listViewHeight), TRUE);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+VOID RegisterVramUseClass(VOID) {
+	WNDCLASSEX wcex = { 0 };
+	wcex.cbSize = sizeof(wcex);
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.hbrBackground = g_useDarkTheme ? CreateSolidBrush(RGB(32, 32, 32)) : (HBRUSH) COLOR_WINDOW;
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.lpszClassName = L"VramUseClass";
+	wcex.lpfnWndProc = VramUseWndProc;
+	wcex.cbWndExtra = 4 * sizeof(HWND); //2 labels, 2 ListViews
+	wcex.hIcon = g_appIcon;
+	wcex.hIconSm = g_appIcon;
+	RegisterClassEx(&wcex);
+}
+
 VOID RegisterNsbtxViewerClass(VOID) {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -539,6 +691,7 @@ VOID RegisterNsbtxViewerClass(VOID) {
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
 	RegisterClassEx(&wcex);
+	RegisterVramUseClass();
 }
 
 HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {

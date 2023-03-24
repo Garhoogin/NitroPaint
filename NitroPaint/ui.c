@@ -69,3 +69,77 @@ int GetEditNumber(HWND hWnd) {
 int GetTrackbarPosition(HWND hWnd) {
 	return SendMessage(hWnd, TBM_GETPOS, 0, 0);
 }
+
+HWND CreateListView(HWND hWnd, int x, int y, int width, int height) {
+	DWORD dwStyle = WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN | LVS_REPORT | LVS_EDITLABELS
+		| LVS_SINGLESEL | WS_VSCROLL | WS_BORDER;
+	HWND hWndLv = CreateWindowEx(0, WC_LISTVIEW, L"", dwStyle, x, y, width, height, hWnd, NULL, NULL, NULL);
+	SendMessage(hWndLv, LVM_SETEXTENDEDLISTVIEWSTYLE, LVS_EX_FULLROWSELECT, LVS_EX_FULLROWSELECT);
+	return hWndLv;
+}
+
+void AddListViewColumn(HWND hWnd, LPWSTR name, int col, int width, int alignment) {
+	LVCOLUMN lvc = { 0 };
+	lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM
+		| LVCF_MINWIDTH | LVCF_DEFAULTWIDTH | LVCF_IDEALWIDTH;
+	lvc.iSubItem = col;
+	lvc.pszText = name;
+	lvc.cx = lvc.cxMin = lvc.cxIdeal = lvc.cxDefault = width;
+	lvc.fmt = LVCFMT_LEFT | LVCFMT_FIXED_WIDTH;
+	if (alignment == SCA_RIGHT) lvc.fmt |= LVCFMT_RIGHT;
+	ListView_InsertColumn(hWnd, col, &lvc);
+}
+
+void AddListViewItem(HWND hWnd, LPWSTR text, int row, int col) {
+	LVITEM lvi = { 0 };
+	lvi.mask = LVIF_TEXT | LVIF_STATE;
+	lvi.pszText = text;
+	lvi.state = 0;
+	lvi.iSubItem = col;
+	lvi.iItem = row;
+	if (col == 0) {
+		ListView_InsertItem(hWnd, &lvi);
+	} else {
+		ListView_SetItem(hWnd, &lvi);
+	}
+}
+
+//subclass proc that focuses the parent on WM_CLOSE (less flicker)
+LRESULT CALLBACK ModalCloseHookProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {
+	if (msg == WM_CLOSE) {
+		//prep parent for focus
+		HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+		setStyle(hWndParent, FALSE, WS_DISABLED);
+		SetActiveWindow(hWndParent);
+		SetForegroundWindow(hWndParent);
+	}
+	return DefSubclassProc(hWnd, msg, wParam, lParam);
+}
+
+void DoModal(HWND hWnd) {
+	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	ShowWindow(hWnd, SW_SHOW);
+	SetActiveWindow(hWnd);
+	SetForegroundWindow(hWnd);
+	setStyle(hWndParent, TRUE, WS_DISABLED);
+
+	//override the WndProc. 
+	SetWindowSubclass(hWnd, ModalCloseHookProc, 1, 0);
+
+	//enter our own message loop
+	MSG msg;
+	while (GetMessage(&msg, NULL, 0, 0)) {
+		//normal dispatching
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+
+		//check the window still exists. If not, prepare the main window for focus
+		if (!IsWindow(hWnd)) {
+			break;
+		}
+	}
+
+	setStyle(hWndParent, FALSE, WS_DISABLED);
+	SetActiveWindow(hWndParent);
+	SetForegroundWindow(hWndParent);
+}

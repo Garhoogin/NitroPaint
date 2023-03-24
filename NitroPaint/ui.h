@@ -7,6 +7,16 @@
 #define SCA_CENTER  2
 
 //
+// Sets or clears a window style.
+//
+void setStyle(HWND hWnd, BOOL set, DWORD style);
+
+//
+// Do modal.
+//
+void DoModal(HWND hWnd);
+
+//
 // Create a button, optionally a default button.
 //
 HWND CreateButton(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, BOOL def);
@@ -58,3 +68,19 @@ int GetEditNumber(HWND hWnd);
 // Get trackbar position
 //
 int GetTrackbarPosition(HWND hWnd);
+
+
+//
+// Create a ListView in report mode.
+//
+HWND CreateListView(HWND hWnd, int x, int y, int width, int height);
+
+//
+// Add a column to a ListView.
+//
+void AddListViewColumn(HWND hWnd, LPWSTR name, int col, int width, int alignment);
+
+//
+// Add an item to a ListView.
+//
+void AddListViewItem(HWND hWnd, LPWSTR text, int row, int col);
