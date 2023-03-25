@@ -25,12 +25,10 @@ typedef struct DICTIONARY_ {
 	int nEntries;
 	int sizeDictBlk;
 	int ofsEntry;
-
-	PTREENODE *node;
 	int nNode;
 
 	DICTENTRY entry;
-	char **names;
+	char *namesPtr;
 } DICTIONARY;
 
 typedef struct DICTTEXDATA_ {
@@ -69,8 +67,6 @@ typedef struct NSBTX_ { //these should not be converted to other formats
 	int nPalettes;
 	TEXELS *textures;
 	PALETTE *palettes;
-	DICTIONARY textureDictionary;
-	DICTIONARY paletteDictionary;
 
 	void *mdl0;			//for handling NSBMD files as well
 	int mdl0Size;

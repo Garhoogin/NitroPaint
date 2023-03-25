@@ -5,10 +5,384 @@
 #include <Windows.h>
 #include <stdio.h>
 
+typedef struct PNODE_ {
+	int leafIndex; //to control output index for a leaf node (set by user)
+	char name[16]; //name (for leaf nodes, read by user)
+
+	//internals
+	int isLeaf;
+	int refBit;    //for leaf nodes - equal to parent refBit
+	int writtenTo; //for branch nodes - the index in the P-tree that this was written to
+	               //for leaf nodes - the index in the P-tree that holds its leaf info
+	struct PNODE_ *parent;
+
+	//for branch nodes
+	struct PNODE_ *left;
+	struct PNODE_ *right;
+} PNODE;
+
+int nnsGetResourceBit(const char *name, unsigned int bit) {
+	return (name[bit / 8] >> (bit % 8)) & 1;
+}
+
+int nnsFindBitDivergence(const char *const *names, int nNames) {
+	if (nNames <= 1) return -1;
+
+	//find a divergence. Return highest index of this.
+	for (int i = 127; i >= 0; i--) {
+		//check if any have a different value
+		int diverged = 0;
+		int b0 = nnsGetResourceBit(names[0], i);
+		for (int j = 1; j < nNames; j++) {
+			int bj = nnsGetResourceBit(names[j], i);
+			if (bj != b0) {
+				diverged = 1;
+				break;
+			}
+		}
+
+		//if we diverged here, return i.
+		if (diverged) return i;
+	}
+	return -1;
+}
+
+static int g_bitCompareBit = 0;
+int nnsBitComparator(const void *p1, const void *p2) {
+	const char *name1 = *(const char **) p1;
+	const char *name2 = *(const char **) p2;
+	int bit = g_bitCompareBit;
+
+	//p1 - p2
+	return nnsGetResourceBit(name1, bit) - nnsGetResourceBit(name2, bit);
+}
+
+PNODE *nnsConstructPTreeRecursive(const char **names, int nNames) {
+	PNODE *root = (PNODE *) calloc(1, sizeof(PNODE));
+	root->parent = NULL;
+	if (nNames == 1) {
+		root->isLeaf = 1;
+		root->refBit = 0x80;
+		memcpy(root->name, *names, 16);
+		return root;
+	}
+	root->isLeaf = 0;
+
+	//find first bit in the set of names that diverges. (duplicate resources prohibited!!)
+	int divergedBit = nnsFindBitDivergence(names, nNames);
+	root->refBit = divergedBit;
+	if (divergedBit == -1) {
+		free(root);
+		return NULL;
+	}
+
+	//trash the name list? Of course, for sorting!
+	g_bitCompareBit = divergedBit;
+	qsort((void *) names, nNames, sizeof(char *), nnsBitComparator);
+
+	//create children
+	int nLeftNodes = nNames;
+	for (int i = 0; i < nNames; i++) {
+		int b = nnsGetResourceBit(names[i], divergedBit);
+		if (b) {
+			nLeftNodes = i;
+			break;
+		}
+	}
+
+	//create left+right
+	root->left = nnsConstructPTreeRecursive(names, nLeftNodes);
+	root->right = nnsConstructPTreeRecursive(names + nLeftNodes, nNames - nLeftNodes);
+	root->left->parent = root;
+	root->right->parent = root;
+	if (root->left->isLeaf) root->left->refBit = root->refBit;
+	if (root->right->isLeaf) root->right->refBit = root->refBit;
+	return root;
+}
+
+PNODE *nnsLookupResource(PNODE *tree, const char *name) {
+	//traverse tree
+	while (!tree->isLeaf) {
+		int refBit = tree->refBit;
+		int bit = nnsGetResourceBit(name, refBit);
+
+		tree = bit ? tree->right : tree->left;
+	}
+	if (memcmp(tree->name, name, 16) == 0) return tree;
+	return NULL;
+}
+
+PNODE *nnsConstructPTree(const char *const *names, int nNames) {
+	//create buffer for sorting
+	char **namesCopy = (char **) calloc(nNames, sizeof(char *));
+	char *namesBlob = (char *) calloc(nNames, 16);
+	for (int i = 0; i < nNames; i++) {
+		char *base = namesBlob + 16 * i;
+		namesCopy[i] = base;
+
+		//copy name (NUL-pad if <16 chars)
+		int pad = 0;
+		for (int j = 0; j < 16; j++) {
+			if (!pad) {
+				base[j] = names[i][j];
+				if (base[j] == '\0') pad = 0;
+			} else {
+				base[j] = '\0';
+			}
+		}
+	}
+
+	PNODE *constructed = nnsConstructPTreeRecursive(namesCopy, nNames);
+	free(namesCopy);
+	free(namesBlob);
+
+	//set out indices
+	for (int i = 0; i < nNames; i++) {
+		PNODE *thisLeaf = nnsLookupResource(constructed, names[i]);
+		thisLeaf->leafIndex = i;
+	}
+	return constructed;
+}
+
+void nnsFreePTree(PNODE *root) {
+	if (root->left != NULL) {
+		nnsFreePTree(root->left);
+		free(root->left);
+	}
+	if (root->right != NULL) {
+		nnsFreePTree(root->right);
+		free(root->right);
+	}
+	memset(root, 0, sizeof(PNODE));
+}
+
+void nnsWritePNode(BSTREAM *stream, PNODE *node, int *baseIndex) {
+	//if this node is a leaf, don't write anything
+	node->writtenTo = -1; //not written
+	if (node->isLeaf) return;
+
+	//set node index
+	node->leafIndex = -1; //not assigned to any leaf nodes (yet)
+	node->writtenTo = *baseIndex; //was actually written
+
+	//count child leaf nodes
+	int nChildLeaves = node->left->isLeaf + node->right->isLeaf;
+
+	//prepare node output
+	uint8_t data[4] = { 0 };
+	int thisOffset = stream->pos;
+	data[0] = node->refBit;
+	bstreamWrite(stream, data, sizeof(data));
+	(*baseIndex)++;
+	
+	//write children
+	nnsWritePNode(stream, node->left, baseIndex);
+	nnsWritePNode(stream, node->right, baseIndex);
+	int afterOffset = stream->pos;
+
+	//if our children aren't leaf nodes, build references
+	if (!node->left->isLeaf) {
+		data[1] = node->left->writtenTo;
+	}
+	if (!node->right->isLeaf) {
+		data[2] = node->right->writtenTo;
+	}
+
+	//if we have a child leaf, point it here. Point right first, then left (g3dcvtr does this?)
+	if (node->right->isLeaf) {
+		node->right->writtenTo = node->writtenTo;
+		node->leafIndex = node->right->leafIndex;
+		data[2] = node->writtenTo;
+		data[3] = node->leafIndex;
+	} else if (node->left->isLeaf) {
+		node->left->writtenTo = node->writtenTo;
+		node->leafIndex = node->left->leafIndex;
+		data[1] = node->writtenTo;
+		data[3] = node->leafIndex;
+	}
+
+	//if both children are leaf nodes, only the right node will have been set. node->right->writtenTo
+	//will still be -1 by now. This will be fixed up later.
+
+	bstreamSeek(stream, thisOffset, 0);
+	bstreamWrite(stream, data, sizeof(data));
+
+	//restore to end
+	bstreamSeek(stream, afterOffset, 0);
+}
+
+PNODE *nnsFindUnassignedLeaf(PNODE *tree) {
+	//find a node with writtenTo == -1. If multiple, find the one with higher refBit.
+	if (tree->isLeaf) {
+		return tree->writtenTo == -1 ? tree : NULL;
+	}
+
+	PNODE *foundLeft = nnsFindUnassignedLeaf(tree->left);
+	PNODE *foundRight = nnsFindUnassignedLeaf(tree->right);
+	if (foundLeft == NULL && foundRight == NULL) return NULL;
+	if (foundLeft != NULL && foundRight == NULL) return foundLeft;
+	if (foundLeft == NULL && foundRight != NULL) return foundRight;
+	
+	if (foundLeft->refBit > foundRight->refBit) return foundLeft;
+	return foundRight;
+}
+
+PNODE *nnsFindUnassignedBranch(PNODE *tree) {
+	//consider all nodes, not just children. If this node is a leaf, return NULL
+	if (tree->isLeaf) return NULL;
+	if (tree->left->isLeaf && tree->right->isLeaf) {
+		return tree->leafIndex == -1 ? tree : NULL;
+	}
+
+	//search children
+	PNODE *foundLeft = nnsFindUnassignedBranch(tree->left);
+	PNODE *foundRight = nnsFindUnassignedBranch(tree->right);
+
+	PNODE *bestNode = NULL;
+	if (tree->leafIndex == -1) bestNode = tree;
+	if (foundLeft != NULL) {
+		if (bestNode == NULL || foundLeft->refBit > bestNode->refBit) bestNode = foundLeft;
+	}
+	if (foundRight != NULL) {
+		if (bestNode == NULL || foundRight->refBit > bestNode->refBit) bestNode = foundRight;
+	}
+
+	return bestNode;
+}
+
+void nnsSerializePTree(BSTREAM *stream, PNODE *tree) {
+	//write node 0 header
+	int baseOffset = stream->pos;
+	{
+		uint8_t baseHeader[4] = { 0x7F, 1, 0, 0 };
+		bstreamWrite(stream, baseHeader, sizeof(baseHeader));
+	}
+
+	//start writing each node
+	int baseIndex = 1;
+	nnsWritePNode(stream, tree, &baseIndex);
+
+	//write final node. Since we've only written branches, we need one more for a leaf.
+	int dummyNodePos = stream->pos;
+	{
+		uint8_t lastNode[4] = { 0, 0, 0, 0 };
+		bstreamWrite(stream, lastNode, sizeof(lastNode));
+	}
+	int endPos = stream->pos;
+
+	//next, fixup unassigned child nodes. Keep searching for the unassigned child node
+	//of highest refBit, then assign it a branch.
+	while (1) {
+		PNODE *unassigned = nnsFindUnassignedLeaf(tree);
+		if (unassigned == NULL) break;
+
+		//search for branch node not assigned to a leaf of highest refBit.
+		PNODE *toAssign = nnsFindUnassignedBranch(tree);
+		uint8_t idxBuffer = 0;
+		int destNodePos = dummyNodePos;
+		if (toAssign != NULL) { //a node existed, write out info to it
+			toAssign->leafIndex = unassigned->leafIndex;
+			unassigned->writtenTo = toAssign->writtenTo;
+			destNodePos = baseOffset + toAssign->writtenTo * 4;
+		}
+
+		//write back leaf index
+		idxBuffer = unassigned->leafIndex;
+		bstreamSeek(stream, destNodePos + 3, 0);
+		bstreamWrite(stream, &idxBuffer, sizeof(idxBuffer));
+
+		//if we're writing to the dummy node, set refBit to 0x7F to ensure it's interpreted as a leaf
+		if (destNodePos == dummyNodePos) {
+			uint8_t refBitBuffer = 0x7F;
+			bstreamSeek(stream, dummyNodePos, 0);
+			bstreamWrite(stream, &refBitBuffer, sizeof(refBitBuffer));
+			unassigned->writtenTo = (dummyNodePos - baseOffset) / 4;
+		}
+
+		//update parent to point to the child location (after we're sure writtenTo is set!)
+		PNODE *leafParent = unassigned->parent;
+		if (leafParent != NULL) {
+			uint8_t childIndexBuffer = unassigned->writtenTo;
+			int leftRight = leafParent->left == unassigned ? 0 : 1; //0 for left, 1 for right
+			bstreamSeek(stream, baseOffset + leafParent->writtenTo * 4 + 1 + leftRight, 0);
+			bstreamWrite(stream, &childIndexBuffer, sizeof(childIndexBuffer));
+		}
+	}
+	bstreamSeek(stream, endPos, 0);
+}
+
+void nnsConstructPTreeFromResources(BSTREAM *stream, void *items, int itemSize, int nItems, char *(*getNamePtr) (void *obj)) {
+	char **namesBuf = (char **) calloc(nItems, sizeof(char *));
+	char *namesBlob = (char *) calloc(nItems, 16);
+	for (int i = 0; i < nItems; i++) {
+		namesBuf[i] = namesBlob + i * 16;
+		void *obj = (void *) (i * itemSize + (uintptr_t) items);
+		memcpy(namesBuf[i], getNamePtr(obj), 16);
+
+		int zeroFill = 0;
+		for (int j = 0; j < 16; j++) {
+			if (namesBuf[i][j] == '\0') zeroFill = 1;
+			if (zeroFill) namesBuf[i][j] = '\0';
+		}
+	}
+
+	//create tree
+	PNODE *tree = nnsConstructPTree(namesBuf, nItems);
+	nnsSerializePTree(stream, tree);
+	free(namesBuf);
+	free(namesBlob);
+}
+
+int nnsWriteDictionary(BSTREAM *stream, void *items, int itemSize, int nItems, char *(*getNamePtr) (void *obj), int dictEntrySize) {
+	int basePos = stream->pos;
+
+	//write dummy dict header
+	uint8_t dictHeader[8] = { 0 };
+	bstreamWrite(stream, dictHeader, sizeof(dictHeader));
+
+	//write P tree
+	nnsConstructPTreeFromResources(stream, items, itemSize, nItems, getNamePtr);
+
+	//write dict entries
+	int dictEntryBase = stream->pos;
+	uint8_t dictEntriesHeader[4] = { 0 };
+	bstreamWrite(stream, dictEntriesHeader, sizeof(dictEntriesHeader));
+	char *dummyDictEntry = (char *) calloc(dictEntrySize, 1);
+	for (int i = 0; i < nItems; i++) {
+		void *data = (void *) (i * itemSize + (uintptr_t) items);
+		bstreamWrite(stream, dummyDictEntry, dictEntrySize);
+	}
+	free(dummyDictEntry);
+	
+	int namesBase = stream->pos;
+	bstreamSeek(stream, dictEntryBase, 0);
+	*(uint16_t *) (dictEntriesHeader + 0) = dictEntrySize;
+	*(uint16_t *) (dictEntriesHeader + 2) = namesBase - dictEntryBase;
+	bstreamWrite(stream, dictEntriesHeader, sizeof(dictEntriesHeader));
+	bstreamSeek(stream, namesBase, 0);
+
+	//write names
+	for (int i = 0; i < nItems; i++) {
+		void *data = (void *) (i * itemSize + (uintptr_t) items);
+		bstreamWrite(stream, getNamePtr(data), 16);
+	}
+
+	int endPos = stream->pos;
+	bstreamSeek(stream, basePos, 0);
+	dictHeader[0] = 0;
+	dictHeader[1] = nItems;
+	*(uint16_t *) (dictHeader + 2) = endPos - basePos; //dict size
+	*(uint16_t *) (dictHeader + 4) = 8; //padding?
+	*(uint16_t *) (dictHeader + 6) = dictEntryBase - basePos;
+	bstreamWrite(stream, dictHeader, sizeof(dictHeader));
+	bstreamSeek(stream, endPos, 0);
+
+	//return pointer to dictionary entries
+	return dictEntryBase + 4;
+}
+
 void freeDictionary(DICTIONARY *dictionary) {
-	free(dictionary->names[0]);
-	free(dictionary->names);
-	free(dictionary->node);
+	UNREFERENCED_PARAMETER(dictionary);
 }
 
 void nsbtxFree(OBJECT_HEADER *header) {
@@ -34,12 +408,6 @@ void nsbtxFree(OBJECT_HEADER *header) {
 		free(nsbtx->mdl0);
 		nsbtx->mdl0 = NULL;
 		nsbtx->mdl0Size = 0;
-	}
-	if (nsbtx->paletteDictionary.names != NULL) {
-		freeDictionary(&nsbtx->textureDictionary);
-	}
-	if (nsbtx->textureDictionary.names != NULL) {
-		freeDictionary(&nsbtx->paletteDictionary);
 	}
 	if (nsbtx->bmdData != NULL) {
 		BMD_DATA *bmd = nsbtx->bmdData;
@@ -68,17 +436,10 @@ char *readDictionary(DICTIONARY *dict, BYTE *base, int entrySize) {
 	dict->ofsEntry = *(WORD *) (base + 6);
 
 	BYTE *pos = base + 8;
-
-	dict->node = calloc(dict->nEntries + 1, sizeof(PTREENODE));
-	for (int i = 0; i < dict->nEntries + 1; i++) {
-		dict->node[i].refBit = *(pos++);
-		dict->node[i].idxLeft = *(pos++);
-		dict->node[i].idxRight = *(pos++);
-		dict->node[i].idxEntry = *(pos++);
-	}
+	pos += 4 * (dict->nEntries + 1);
 	dict->nNode = dict->nEntries + 1;
 
-	dict->entry.sizeUnit = *(WORD *) (pos);
+	dict->entry.sizeUnit = *(WORD *) pos;
 	pos += 2;
 	dict->entry.offsetName = *(WORD *) pos;
 	pos += 2;
@@ -86,13 +447,8 @@ char *readDictionary(DICTIONARY *dict, BYTE *base, int entrySize) {
 	memcpy(dict->entry.data, pos, entrySize * dict->nEntries);
 	pos += entrySize * dict->nEntries;
 
-	dict->names = (char **) calloc(dict->nEntries, sizeof(char *));
-	char *nameBase = (char *) calloc(16 * dict->nEntries, 1);
-	memcpy(nameBase, pos, 16 * dict->nEntries);
-	for (int i = 0; i < dict->nEntries; i++) {
-		dict->names[i] = nameBase + i * 16;
-		pos += 16;
-	}
+	dict->namesPtr = pos;
+	pos += 16 * dict->nEntries; //names
 	return pos;
 }
 
@@ -192,7 +548,7 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 
 	//next, process the tex0 section.
 	int blockSize = *(int *) (tex0 + 0x4);
-
+	
 	//texture header
 	int textureDataSize = (*(uint16_t *) (tex0 + 0xC)) << 3;
 	int textureInfoOffset = *(uint16_t *) (tex0 + 0xE); //dictionary
@@ -219,9 +575,6 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 	char *pos = readDictionary(&dictPal, tex0 + paletteInfoOffset, sizeof(DICTPLTTDATA));
 	DICTPLTTDATA *dictPalData = (DICTPLTTDATA *) dictPal.entry.data;
 	PALETTE *palettes = (PALETTE *) calloc(dictPal.nEntries, sizeof(PALETTE));
-	
-	memcpy(&nsbtx->textureDictionary, &dictTex, sizeof(DICTIONARY));
-	memcpy(&nsbtx->paletteDictionary, &dictPal, sizeof(DICTIONARY));
 
 	int baseOffsetTex = textureDataOffset;
 	int baseOffsetTex4x4 = compressedTextureDataOffset;
@@ -249,7 +602,7 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 			texels[i].texel = calloc(texelSize, 1);
 			memcpy(texels[i].texel, tex0 + offset + baseOffsetTex, texelSize);
 		}
-		memcpy(texels[i].name, dictTex.names[i], 16);
+		memcpy(texels[i].name, dictTex.namesPtr + i * 16, 16);
 	}
 
 	for (int i = 0; i < dictPal.nEntries; i++) {
@@ -264,26 +617,21 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 				offset = offset2;
 			}
 		}
+
 		int nColors = (offset - (palData->offset << 3)) >> 1;
-		
+		if (palData->flag & 0x8000) nColors = 4; //4-color flag
 		palettes[i].nColors = nColors;
-		palettes[i].pal = (short *) calloc(nColors, 2);
-		//offset == size - paletteDataOffset - (palData->offset << 3) - tex0Offset + (palData->offset << 3)
+		palettes[i].pal = (COLOR *) calloc(nColors, 2);
 		memcpy(palettes[i].pal, tex0 + paletteDataOffset + (palData->offset << 3), nColors * 2);
 
-		memcpy(palettes[i].name, dictPal.names[i], 16);
+		memcpy(palettes[i].name, dictPal.namesPtr + i * 16, 16);
 	}
 
-	//as a test, write out the first palette and texel data.
-
+	//finally write out tex and pal info
 	nsbtx->nTextures = dictTex.nEntries;
 	nsbtx->nPalettes = dictPal.nEntries;
-	nsbtx->textures = (TEXELS *) calloc(nsbtx->nTextures, sizeof(TEXELS));
-	nsbtx->palettes = (PALETTE *) calloc(nsbtx->nPalettes, sizeof(PALETTE));
-
-	memcpy(nsbtx->textures, texels, nsbtx->nTextures * sizeof(TEXELS));
-	memcpy(nsbtx->palettes, palettes, nsbtx->nPalettes * sizeof(PALETTE));
-
+	nsbtx->textures = texels;
+	nsbtx->palettes = palettes;
 	return 0;
 }
 
@@ -406,6 +754,14 @@ void freeArray(BYTEARRAY *arr) {
 	arr->bufferSize = 0;
 }
 
+static char *getTextureName(void *texels) {
+	return ((TEXELS *) texels)->name;
+}
+
+static char *getPaletteName(void *palette) {
+	return ((PALETTE *) palette)->name;
+}
+
 void addBytes(BYTEARRAY *arr, BYTE *bytes, int length) {
 	if (arr->length + length >= arr->bufferSize) {
 		int newSize = arr->bufferSize;
@@ -465,9 +821,12 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 		}
 	}
 
+	int *paletteOffsets = (int *) calloc(nsbtx->nTextures, sizeof(int));
+	int has4Color = 0;
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
 		int offs = paletteData.length;
 		PALETTE *palette = nsbtx->palettes + i;
+		paletteOffsets[i] = paletteData.length;
 
 		//add bytes, make sure to align to a multiple of 16 bytes if more than 4 colors! (or if it's the last palette)
 		int nColors = palette->nColors;
@@ -476,102 +835,67 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 			BYTE padding[16] = { 0 };
 			addBytes(&paletteData, padding, 16 - nColors * 2);
 		}
-		DICTPLTTDATA *data = ((DICTPLTTDATA *) nsbtx->paletteDictionary.entry.data) + i;
-		data->offset = offs >> 3;
+
+		//do we have 4 color?
+		if (nColors <= 4) has4Color = 1;
 	}
 
-	BYTE texInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	*(WORD *) (texInfo + 6) = 60;
-	*(WORD *) (texInfo + 4) = texData.length >> 3;
-	*(DWORD *) (texInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24;
+	uint8_t texInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	*(uint16_t *) (texInfo + 6) = 60;
+	*(uint16_t *) (texInfo + 4) = texData.length >> 3;
+	*(uint32_t *) (texInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24;
 	bstreamWrite(stream, texInfo, sizeof(texInfo));
 
-	BYTE tex4x4Info[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	*(WORD *) (tex4x4Info + 6) = 60;
-	*(WORD *) (tex4x4Info + 4) = tex4x4Data.length >> 3;
-	*(DWORD *) (tex4x4Info + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.length;
-	*(DWORD *) (tex4x4Info + 16) = (*(DWORD *) (tex4x4Info + 12)) + tex4x4Data.length;
+	uint8_t tex4x4Info[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	*(uint16_t *) (tex4x4Info + 6) = 60;
+	*(uint16_t *) (tex4x4Info + 4) = tex4x4Data.length >> 3;
+	*(uint32_t *) (tex4x4Info + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.length;
+	*(uint32_t *) (tex4x4Info + 16) = (*(uint32_t *) (tex4x4Info + 12)) + tex4x4Data.length;
 	bstreamWrite(stream, tex4x4Info, sizeof(tex4x4Info));
 
-	BYTE plttInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	*(WORD *) (plttInfo + 8) = 76 + nsbtx->nTextures * 28;
-	*(WORD *) (plttInfo + 4) = paletteData.length >> 3;
-	*(DWORD *) (plttInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.length + tex4x4Data.length + tex4x4PlttIdxData.length;
+	uint8_t plttInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	*(uint16_t *) (plttInfo + 8) = 76 + nsbtx->nTextures * 28;
+	*(uint16_t *) (plttInfo + 4) = paletteData.length >> 3;
+	*(uint16_t *) (plttInfo + 6) = has4Color ? 0x8000 : 0;
+	*(uint32_t *) (plttInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.length + tex4x4Data.length + tex4x4PlttIdxData.length;
 	bstreamWrite(stream, plttInfo, sizeof(plttInfo));
 
 	{
-		BYTE dictHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 		//write dictTex
-		DWORD startpos = stream->pos;
-		dictHeader[1] = nsbtx->nTextures;
-		*(WORD *) (dictHeader + 4) = 8;
-		*(WORD *) (dictHeader + 6) = (nsbtx->nTextures + 1) * 4 + 8;
-		bstreamWrite(stream, dictHeader, sizeof(dictHeader));
-		for (int i = 0; i < nsbtx->nTextures + 1; i++) {
-			PTREENODE *node = nsbtx->textureDictionary.node + i;
-			BYTE nodeBits[] = { 0, 0, 0, 0 };
-			nodeBits[0] = node->refBit;
-			nodeBits[1] = node->idxLeft;
-			nodeBits[2] = node->idxRight;
-			nodeBits[3] = node->idxEntry;
-			bstreamWrite(stream, nodeBits, sizeof(nodeBits));
-		}
-		BYTE entryBits[] = { 0, 0, 0, 0 };
-		*(WORD *) entryBits = 8;
-		*(WORD *) (entryBits + 2) = (4 + 8 * nsbtx->nTextures);
-		bstreamWrite(stream, entryBits, sizeof(entryBits));
-		//write data
-		//make sure to copy the texImageParams over
-		for (int i = 0; i < nsbtx->nTextures; i++) {
-			DICTTEXDATA *tex = ((DICTTEXDATA *) nsbtx->textureDictionary.entry.data) + i;
-			TEXELS *texels = nsbtx->textures + i;
-			tex->texImageParam = texels->texImageParam;
-		}
-		bstreamWrite(stream, nsbtx->textureDictionary.entry.data, nsbtx->nTextures * sizeof(DICTTEXDATA));
-		for (int i = 0; i < nsbtx->nTextures; i++) {
-			bstreamWrite(stream, nsbtx->textures[i].name, 16);
-		}
-		DWORD curpos = stream->pos;
-		stream->pos = startpos + 2;
-		WORD diff = (WORD) (curpos - startpos);
-		bstreamWrite(stream, &diff, 2);
-		stream->pos = curpos;
-	}
-	//write dictPltt
-	{
-		BYTE dictHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-		//write dictTex
-		//long startpos = position
-		DWORD startpos = stream->pos;
-		dictHeader[1] = nsbtx->nPalettes;
-		*(WORD *) (dictHeader + 4) = 8;
-		*(WORD *) (dictHeader + 6) = (nsbtx->nPalettes + 1) * 4 + 8;
-		bstreamWrite(stream, dictHeader, sizeof(dictHeader));
-		for (int i = 0; i < nsbtx->nPalettes + 1; i++) {
-			PTREENODE *node = nsbtx->paletteDictionary.node + i;
-			BYTE nodeBits[] = { 0, 0, 0, 0 };
-			nodeBits[0] = node->refBit;
-			nodeBits[1] = node->idxLeft;
-			nodeBits[2] = node->idxRight;
-			nodeBits[3] = node->idxEntry;
-			bstreamWrite(stream, nodeBits, sizeof(nodeBits));
-		}
-		BYTE entryBits[] = { 0, 0, 0, 0 };
-		*(WORD *) entryBits = 4;
-		*(WORD *) (entryBits + 2) = (4 + 4 * nsbtx->nPalettes);
-		bstreamWrite(stream, entryBits, sizeof(entryBits));
-		//write data
-		bstreamWrite(stream, nsbtx->paletteDictionary.entry.data, nsbtx->nPalettes * sizeof(DICTPLTTDATA));
-		for (int i = 0; i < nsbtx->nPalettes; i++) {
-			bstreamWrite(stream, nsbtx->palettes[i].name, 16);
-		}
-		DWORD curpos = stream->pos;
-		stream->pos = startpos + 2;
-		WORD diff = (WORD) (curpos - startpos);
-		bstreamWrite(stream, &diff, 2);
-		stream->pos = curpos;
-	}
+		int dictOfs = nnsWriteDictionary(stream, nsbtx->textures, sizeof(TEXELS), nsbtx->nTextures, getTextureName, 8);
+		int dictEndOfs = stream->pos;
 
+		//write dict data
+		//make sure to copy the texImageParams over
+		bstreamSeek(stream, dictOfs, 0);
+		for (int i = 0; i < nsbtx->nTextures; i++) {
+			uint32_t dictData[2];
+			TEXELS *texels = nsbtx->textures + i;
+			int texImageParam = texels->texImageParam;
+			dictData[0] = texImageParam;
+			dictData[1] = 0x80000000 | TEXW(texImageParam) | (TEXH(texImageParam) << 11);
+
+			bstreamWrite(stream, dictData, sizeof(dictData));
+		}
+		bstreamSeek(stream, dictEndOfs, 0);
+	}
+	{
+		//write dictPltt
+		int dictOfs = nnsWriteDictionary(stream, nsbtx->palettes, sizeof(PALETTE), nsbtx->nPalettes, getPaletteName, 4);
+		int dictEndOfs = stream->pos;
+		
+		//write data
+		bstreamSeek(stream, dictOfs, 0);
+		for (int i = 0; i < nsbtx->nTextures; i++) {
+			PALETTE *palette = nsbtx->palettes + i;
+			uint16_t dictData[2];
+			dictData[0] = paletteOffsets[i] >> 3;
+			dictData[1] = palette->nColors <= 4;
+			bstreamWrite(stream, dictData, sizeof(dictData));
+		}
+		bstreamSeek(stream, dictEndOfs, 0);
+	}
+	free(paletteOffsets);
 
 	//write texData, tex4x4Data, tex4x4PlttIdxData, paletteData
 	bstreamWrite(stream, texData.ptr, texData.length);
