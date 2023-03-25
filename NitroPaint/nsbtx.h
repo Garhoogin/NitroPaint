@@ -13,19 +13,8 @@ typedef struct DICTENTRY_ {
 	void *data;
 } DICTENTRY;
 
-typedef struct PTREENODE_{
-	int refBit;
-	int idxLeft;
-	int idxRight;
-	int idxEntry;
-} PTREENODE;
-
 typedef struct DICTIONARY_ {
-	int revision;
 	int nEntries;
-	int sizeDictBlk;
-	int ofsEntry;
-	int nNode;
 
 	DICTENTRY entry;
 	char *namesPtr;
@@ -37,8 +26,8 @@ typedef struct DICTTEXDATA_ {
 } DICTTEXDATA;
 
 typedef struct DICTPLTTDATA_ {
-	WORD offset;
-	WORD flag;
+	uint16_t offset;
+	uint16_t flag;
 } DICTPLTTDATA;
 
 

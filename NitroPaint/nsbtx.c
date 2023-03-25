@@ -5,6 +5,8 @@
 #include <Windows.h>
 #include <stdio.h>
 
+//----- BEGIN Code for constructing an NSBTX dictionary
+
 typedef struct PNODE_ {
 	int leafIndex; //to control output index for a leaf node (set by user)
 	char name[16]; //name (for leaf nodes, read by user)
@@ -381,6 +383,8 @@ int nnsWriteDictionary(BSTREAM *stream, void *items, int itemSize, int nItems, c
 	return dictEntryBase + 4;
 }
 
+//----- END Code for constructing an NSBTX dictionary
+
 void freeDictionary(DICTIONARY *dictionary) {
 	UNREFERENCED_PARAMETER(dictionary);
 }
@@ -423,32 +427,29 @@ void nsbtxFree(OBJECT_HEADER *header) {
 
 void nsbtxInit(NSBTX *nsbtx, int format) {
 	nsbtx->header.size = sizeof(NSBTX);
-	fileInitCommon((OBJECT_HEADER *) nsbtx, FILE_TYPE_SCREEN, format);
+	fileInitCommon((OBJECT_HEADER *) nsbtx, FILE_TYPE_NSBTX, format);
 	nsbtx->header.dispose = nsbtxFree;
 }
 
 //NSBTX code adapted from Gericom's code in Fvery File Explorer.
 
-char *readDictionary(DICTIONARY *dict, BYTE *base, int entrySize) {
-	dict->revision = base[0];
-	dict->nEntries = base[1];
-	dict->sizeDictBlk = *(WORD *) (base + 2);
-	dict->ofsEntry = *(WORD *) (base + 6);
+unsigned char *readDictionary(DICTIONARY *dict, unsigned char *base, int entrySize) {
+	unsigned char *pos = base;
+	int nEntries = *(uint8_t *) (pos + 1);
+	int dictSize = *(uint16_t *) (pos + 4);
+	int ofsEntry = *(uint16_t *) (pos + 6);
+	dict->nEntries = nEntries;
+	pos += ofsEntry; //skips the P tree
 
-	BYTE *pos = base + 8;
-	pos += 4 * (dict->nEntries + 1);
-	dict->nNode = dict->nEntries + 1;
+	dict->entry.sizeUnit = *(uint16_t *) (pos + 0);
+	dict->entry.offsetName = *(uint16_t *) (pos + 2);
+	pos += 4;
 
-	dict->entry.sizeUnit = *(WORD *) pos;
-	pos += 2;
-	dict->entry.offsetName = *(WORD *) pos;
-	pos += 2;
-	dict->entry.data = calloc(dict->nEntries, entrySize);
-	memcpy(dict->entry.data, pos, entrySize * dict->nEntries);
+	dict->entry.data = pos;
 	pos += entrySize * dict->nEntries;
 
 	dict->namesPtr = pos;
-	pos += 16 * dict->nEntries; //names
+	pos = base + dictSize; //end of dict
 	return pos;
 }
 
