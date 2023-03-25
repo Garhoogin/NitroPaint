@@ -581,7 +581,7 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
 			//for all textures...
 			int nTextures = 0, nPalettes = 0;
-			int totalTexelSize = 0, totalIndexSize = 0, totalPaletteSize = 0;
+			int totalTexelSize = 0, totalIndexSize = 0, totalPaletteSize = 0, totalTextureSize = 0;
 			WCHAR textBuffer[256];
 			for (int i = 0; i < nsbtx->nTextures; i++) {
 				TEXELS *tex = nsbtx->textures + i;
@@ -615,6 +615,7 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 				nTextures++;
 				totalTexelSize += texelSize;
 				totalIndexSize += indexSize;
+				totalTextureSize += texelSize + indexSize;
 			}
 
 			//all palettes...
@@ -640,7 +641,8 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			}
 
 			//label text
-			int len = wsprintfW(textBuffer, L"Texture usage: %d.%03dKB Texture, %d.%03dKB Index",
+			int len = wsprintfW(textBuffer, L"Texture usage: %d.%03dKB (%d.%03dKB Texel, %d.%03dKB Index)",
+				totalTextureSize / 1024, (totalTextureSize % 1024) * 1000 / 1024,
 				totalTexelSize / 1024, (totalTexelSize % 1024) * 1000 / 1024,
 				totalIndexSize / 1024, (totalIndexSize % 1024) * 1000 / 1024);
 			SendMessage(hWndTexLabel, WM_SETTEXT, len, (LPARAM) textBuffer);
