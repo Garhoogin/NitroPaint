@@ -619,7 +619,7 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 		}
 
 		int nColors = (offset - (palData->offset << 3)) >> 1;
-		if (palData->flag & 0x8000) nColors = 4; //4-color flag
+		if (palData->flag & 0x0001) nColors = 4; //4-color flag
 		palettes[i].nColors = nColors;
 		palettes[i].pal = (COLOR *) calloc(nColors, 2);
 		memcpy(palettes[i].pal, tex0 + paletteDataOffset + (palData->offset << 3), nColors * 2);
