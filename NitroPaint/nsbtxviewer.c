@@ -543,16 +543,18 @@ void CreateVramUseWindow(HWND hWndParent, NSBTX *nsbtx) {
 }
 
 LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HWND hWndTexLabel = (HWND) GetWindowLong(hWnd, 0 * sizeof(HWND));
-	HWND hWndPalLabel = (HWND) GetWindowLong(hWnd, 1 * sizeof(HWND));
-	HWND hWndTexList = (HWND) GetWindowLong(hWnd, 2 * sizeof(HWND));
-	HWND hWndPalList = (HWND) GetWindowLong(hWnd, 3 * sizeof(HWND));
+	HWND hWndTexLabel = (HWND) GetWindowLong(hWnd, 0 * sizeof(void *));
+	HWND hWndPalLabel = (HWND) GetWindowLong(hWnd, 1 * sizeof(void *));
+	HWND hWndTexList = (HWND) GetWindowLong(hWnd, 2 * sizeof(void *));
+	HWND hWndPalList = (HWND) GetWindowLong(hWnd, 3 * sizeof(void *));
+	HWND hWndInfoButton = (HWND) GetWindowLong(hWnd, 4 * sizeof(void *));
 
 	switch (msg) {
 		case WM_CREATE:
 		{
 			int width = 350 + GetSystemMetrics(SM_CXVSCROLL);
-			HWND hWndTextureLabel = CreateStatic(hWnd, L"Texture usage: 0KB Texture, 0KB Index", 5, 0, width - 5, 22);
+			HWND hWndTextureLabel = CreateStatic(hWnd, L"Texture usage: %d.%03dKB (%d.%03dKB Texel, %d.%03dKB Index)", 5, 0, width - 5, 22);
+			HWND hWndButton = CreateButton(hWnd, L"...", width - 25, 0, 25, 22, FALSE);
 
 			HWND hWndTextures = CreateListView(hWnd, 0, 22, width, 150);
 			AddListViewColumn(hWndTextures, L"Texture", 0, 125, SCA_LEFT);
@@ -569,10 +571,11 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			SetWindowSize(hWnd, width, 300 + 22 + 22);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
 
-			SetWindowLong(hWnd, 0 * sizeof(HWND), (LONG) hWndTextureLabel);
-			SetWindowLong(hWnd, 1 * sizeof(HWND), (LONG) hWndPaletteLabel);
-			SetWindowLong(hWnd, 2 * sizeof(HWND), (LONG) hWndTextures);
-			SetWindowLong(hWnd, 3 * sizeof(HWND), (LONG) hWndPalettes);
+			SetWindowLong(hWnd, 0 * sizeof(void *), (LONG) hWndTextureLabel);
+			SetWindowLong(hWnd, 1 * sizeof(void *), (LONG) hWndPaletteLabel);
+			SetWindowLong(hWnd, 2 * sizeof(void *), (LONG) hWndTextures);
+			SetWindowLong(hWnd, 3 * sizeof(void *), (LONG) hWndPalettes);
+			SetWindowLong(hWnd, 4 * sizeof(void *), (LONG) hWndButton);
 			break;
 		}
 		case NV_INITIALIZE:
@@ -582,10 +585,12 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			//for all textures...
 			int nTextures = 0, nPalettes = 0;
 			int totalTexelSize = 0, totalIndexSize = 0, totalPaletteSize = 0, totalTextureSize = 0;
+			int compressedTexelSize = 0, normalTexelSize = 0;
 			WCHAR textBuffer[256];
 			for (int i = 0; i < nsbtx->nTextures; i++) {
 				TEXELS *tex = nsbtx->textures + i;
 				int texImageParam = tex->texImageParam;
+				int format = FORMAT(texImageParam);
 				int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
 				int indexSize = getIndexVramSize(tex);
 
@@ -616,6 +621,8 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 				totalTexelSize += texelSize;
 				totalIndexSize += indexSize;
 				totalTextureSize += texelSize + indexSize;
+				if (format == CT_4x4) compressedTexelSize += texelSize;
+				else normalTexelSize += texelSize;
 			}
 
 			//all palettes...
@@ -649,6 +656,29 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			len = wsprintfW(textBuffer, L"Palette usage: %d.%03dKB",
 				totalPaletteSize / 1024, (totalPaletteSize % 1024) * 1000 / 1024);
 			SendMessage(hWndPalLabel, WM_SETTEXT, len, (LPARAM) textBuffer);
+
+			//set info fields
+			SetWindowLong(hWnd, 5 * sizeof(void *), (LONG) normalTexelSize);
+			SetWindowLong(hWnd, 6 * sizeof(void *), (LONG) compressedTexelSize);
+			SetWindowLong(hWnd, 7 * sizeof(void *), (LONG) totalIndexSize);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl != NULL) {
+				if (hWndControl == hWndInfoButton && HIWORD(wParam) == BN_CLICKED) {
+					WCHAR buffer[128];
+					int normalTexelSize = GetWindowLong(hWnd, 5 * sizeof(void *));
+					int compressedTexelSize = GetWindowLong(hWnd, 6 * sizeof(void *));
+					int totalIndexSize = GetWindowLong(hWnd, 7 * sizeof(void *));
+					wsprintfW(buffer, L"Texture Summary:\nNormal Texel:\t\t%d.%03dKB\nCompressed Texel:\t\t%d.%03dKB\nIndex Data:\t\t%d.%03dKB",
+						normalTexelSize / 1024, (normalTexelSize % 1024) * 1000 / 1024,
+						compressedTexelSize / 1024, (compressedTexelSize % 1024) * 1000 / 1024,
+						totalIndexSize / 1024, (totalIndexSize % 1024) * 1000 / 1024);
+					MessageBox(hWnd, buffer, L"Texture VRAM Usage", MB_ICONINFORMATION);
+				}
+			}
 			break;
 		}
 		case WM_SIZE:
@@ -658,6 +688,7 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			int width = rcClient.right, height = rcClient.bottom;
 
 			int listViewHeight = (height - (22 * 2)) / 2;
+			MoveWindow(hWndInfoButton, width - 25, 0, 25, 22, TRUE);
 			MoveWindow(hWndTexList, 0, 22, width, listViewHeight, TRUE);
 			MoveWindow(hWndPalLabel, 5, 22 + listViewHeight, width - 5, 22, FALSE);
 			MoveWindow(hWndPalList, 0, 44 + listViewHeight, width, height - (44 + listViewHeight), TRUE);
@@ -675,7 +706,8 @@ VOID RegisterVramUseClass(VOID) {
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.lpszClassName = L"VramUseClass";
 	wcex.lpfnWndProc = VramUseWndProc;
-	wcex.cbWndExtra = 4 * sizeof(HWND); //2 labels, 2 ListViews
+	wcex.cbWndExtra = 8 * sizeof(void *); //2 labels, 2 ListViews, info button
+	                                      //texel size, 4x4 texel size, index size
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
 	RegisterClassEx(&wcex);
