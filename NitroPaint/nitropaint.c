@@ -172,6 +172,74 @@ LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extensio
 	return NULL;
 }
 
+int PromptUserText(HWND hWndParent, LPCWSTR title, LPCWSTR prompt, LPWSTR text, int maxLength) {
+	//create a prompt
+	int status = 0;
+	HWND hWnd = CreateWindow(L"TextPromptClass", title, WS_SYSMENU | WS_CAPTION, CW_USEDEFAULT, CW_USEDEFAULT,
+		300, 200, hWndParent, NULL, NULL, NULL);
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) prompt, (LPARAM) text);
+	SetWindowLong(hWnd, 4 * sizeof(void *), maxLength);
+	SetWindowLong(hWnd, 0 * sizeof(void *), (LONG) &status);
+	ShowWindow(hWnd, SW_SHOW);
+	DoModal(hWnd);
+	return status;
+}
+
+void SetGUIFont(HWND hWnd);
+
+LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndOK = (HWND) GetWindowLongPtr(hWnd, 1 * sizeof(void *));
+	HWND hWndEdit = (HWND) GetWindowLongPtr(hWnd, 2 * sizeof(void *));
+	WCHAR *outBuffer = (WCHAR *) GetWindowLong(hWnd, 3 * sizeof(void *));
+
+	switch (msg) {
+		case WM_CREATE:
+			SetWindowLong(hWnd, 0 * sizeof(void *), 0); //status
+			SetWindowSize(hWnd, 225, 96);
+			break;
+		case NV_INITIALIZE:
+		{
+			LPCWSTR prompt = (LPCWSTR) wParam;
+			LPWSTR textBuffer = (LPWSTR) lParam;
+			CreateStatic(hWnd, prompt, 10, 10, 205, 22);
+			hWndEdit = CreateEdit(hWnd, textBuffer, 10, 37, 205, 22, FALSE);
+			HWND hWndCancel = CreateButton(hWnd, L"Cancel", 10, 64, 100, 22, FALSE);
+			hWndOK = CreateButton(hWnd, L"OK", 115, 64, 100, 22, TRUE);
+
+			//set focus and select all
+			SetFocus(hWndEdit);
+			SendMessage(hWndEdit, EM_SETSEL, 0, -1);
+
+			SetWindowLong(hWnd, 1 * sizeof(void *), (LONG) hWndOK);
+			SetWindowLong(hWnd, 2 * sizeof(void *), (LONG) hWndEdit);
+			SetWindowLong(hWnd, 3 * sizeof(void *), (LONG) textBuffer);
+			SetGUIFont(hWnd);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			WORD notif = HIWORD(wParam);
+			WORD idc = LOWORD(wParam);
+			if (notif == BN_CLICKED && (hWndControl != NULL || idc)) {
+				
+				//if OK, set status to 1 and copy text.
+				int *pStatus = (int *) GetWindowLong(hWnd, 0 * sizeof(void *));
+				*pStatus = 0;
+				if (hWndControl == hWndOK || idc == IDOK) {
+					int bufferLength = GetWindowLong(hWnd, 4 * sizeof(void *));
+					SendMessage(hWndEdit, WM_GETTEXT, bufferLength, (LPARAM) outBuffer);
+					*pStatus = 1;
+				}
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 void copyBitmap(COLOR32 *img, int width, int height) {
 	HGLOBAL hDib = NULL;
 	int dibSize = width * height * 3 + sizeof(BITMAPINFOHEADER);
@@ -2129,6 +2197,10 @@ void RegisterScreenSplitDialogClass() {
 	RegisterGenericClass(L"ScreenSplitDialogClass", ScreenSplitDialogProc, sizeof(LPVOID));
 }
 
+void RegisterTextPromptClass() {
+	RegisterGenericClass(L"TextPromptClass", TextInputWndProc, sizeof(LPVOID) * 5); //2 HWNDs, status, out info
+}
+
 VOID ReadConfiguration(LPWSTR lpszPath) {
 	DWORD dwAttributes = GetFileAttributes(lpszPath);
 	if (dwAttributes == INVALID_FILE_ATTRIBUTES) {
@@ -2208,6 +2280,7 @@ void RegisterClasses() {
 	RegisterNmcrViewerClass();
 	RegisterScreenDialogClass();
 	RegisterScreenSplitDialogClass();
+	RegisterTextPromptClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {

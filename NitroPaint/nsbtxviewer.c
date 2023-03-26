@@ -580,6 +580,38 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 						free(path);
 					}
+				} else if (m == LBN_DBLCLK) {
+					if (hWndControl == data->hWndTextureSelect || hWndControl == data->hWndPaletteSelect) {
+						WCHAR textBuffer[17] = { 0 }; //enforced: items <= 16 chars long
+						int sel = SendMessage(hWndControl, LB_GETCURSEL, 0, 0);
+						SendMessage(hWndControl, LB_GETTEXT, sel, (LPARAM) textBuffer);
+						
+						//make prompt
+						HWND hWndMain = getMainWindow(hWnd);
+						int n = PromptUserText(hWndMain, L"Name Entry", L"Enter a name:", textBuffer, 17);
+						if (n) {
+							//replace selected text
+							SendMessage(hWndControl, WM_SETREDRAW, FALSE, 0);
+							SendMessage(hWndControl, LB_DELETESTRING, sel, 0);
+							SendMessage(hWndControl, LB_INSERTSTRING, sel, (LPARAM) textBuffer);
+							SendMessage(hWndControl, WM_SETREDRAW, TRUE, 0);
+							RedrawWindow(hWndControl, NULL, NULL, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN);
+							SendMessage(hWndControl, LB_SETCURSEL, sel, 0);
+							SetFocus(hWndControl);
+
+							//update NSBTX
+							char *destName = NULL;
+							if (hWndControl == data->hWndTextureSelect) {
+								destName = data->nsbtx.textures[sel].name;
+							} else {
+								destName = data->nsbtx.palettes[sel].name;
+							}
+							memset(destName, 0, 16);
+							for (unsigned int i = 0; i < wcslen(textBuffer); i++) {
+								destName[i] = (char) textBuffer[i];
+							}
+						}
+					}
 				}
 			}
 			break;

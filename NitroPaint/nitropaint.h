@@ -67,6 +67,11 @@ LPWSTR openFilesDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extensi
 LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
 
 //
+// Creates a text prompt
+//
+int PromptUserText(HWND hWnd, LPCWSTR title, LPCWSTR prompt, LPWSTR text, int maxLength);
+
+//
 // Get number of paths from string
 //
 int getPathCount(LPCWSTR paths);

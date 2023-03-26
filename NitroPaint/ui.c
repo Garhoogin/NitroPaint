@@ -4,7 +4,7 @@
 #include "ui.h"
 
 HWND CreateButton(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, BOOL def) {
-	return CreateWindow(L"BUTTON", text, WS_VISIBLE | WS_CHILD | (def ? BS_DEFPUSHBUTTON : 0), x, y, width, height, hWnd, NULL, NULL, NULL);
+	return CreateWindow(L"BUTTON", text, WS_VISIBLE | WS_CHILD | WS_TABSTOP | (def ? BS_DEFPUSHBUTTON : 0), x, y, width, height, hWnd, NULL, NULL, NULL);
 }
 
 HWND CreateCheckbox(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, BOOL checked) {
@@ -19,7 +19,7 @@ HWND CreateGroupbox(HWND hWnd, LPCWSTR title, int x, int y, int width, int heigh
 }
 
 HWND CreateEdit(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, BOOL number) {
-	DWORD dwStyle = WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | (number ? ES_NUMBER : 0);
+	DWORD dwStyle = WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP | (number ? ES_NUMBER : 0);
 	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", text, dwStyle, x, y, width, height, hWnd, NULL, NULL, NULL);
 	return h;
 }
@@ -36,7 +36,7 @@ HWND CreateStaticAligned(HWND hWnd, LPCWSTR text, int x, int y, int width, int h
 }
 
 HWND CreateCombobox(HWND hWnd, LPCWSTR *items, int nItems, int x, int y, int width, int height, int def) {
-	DWORD dwStyle = WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST;
+	DWORD dwStyle = WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_TABSTOP;
 	HWND h = CreateWindow(L"COMBOBOX", L"", dwStyle, x, y, width, 100, hWnd, NULL, NULL, NULL);
 	if (items != NULL && nItems > 0) {
 		for (int i = 0; i < nItems; i++) {
@@ -49,7 +49,7 @@ HWND CreateCombobox(HWND hWnd, LPCWSTR *items, int nItems, int x, int y, int wid
 }
 
 HWND CreateTrackbar(HWND hWnd, int x, int y, int width, int height, int vMin, int vMax, int vDef) {
-	DWORD dwStyle = WS_VISIBLE | WS_CHILD;
+	DWORD dwStyle = WS_VISIBLE | WS_CHILD | WS_TABSTOP;
 	HWND h = CreateWindow(TRACKBAR_CLASS, L"", dwStyle, x, y, width, height, hWnd, NULL, NULL, NULL);
 	SendMessage(h, TBM_SETRANGE, TRUE, vMin | (vMax << 16));
 	SendMessage(h, TBM_SETPOS, TRUE, vDef);
@@ -129,9 +129,20 @@ void DoModal(HWND hWnd) {
 	//enter our own message loop
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0)) {
+		//if we're an enter key press and belongs to a child control, post IDOK
+		if (hWnd == (HWND) GetWindowLong(msg.hwnd, GWL_HWNDPARENT) && msg.message == WM_KEYDOWN) {
+			if (msg.wParam == VK_RETURN) {
+				PostMessage(hWnd, WM_COMMAND, (BN_CLICKED << 16) | IDOK, 0);
+			} else if (msg.wParam == VK_ESCAPE) {
+				PostMessage(hWnd, WM_COMMAND, (BN_CLICKED << 16) | IDCANCEL, 0);
+			}
+		}
+
 		//normal dispatching
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		if (!IsDialogMessage(hWnd, &msg)) {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
 
 		//check the window still exists. If not, prepare the main window for focus
 		if (!IsWindow(hWnd)) {
