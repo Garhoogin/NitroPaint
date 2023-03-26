@@ -1441,7 +1441,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					SendMessage(data->hWndPaletteSize, WM_GETTEXT, 31, (LPARAM) bf);
 					int paletteSize = _wtol(bf); //for non-4x4
 					int optimization = SendMessage(data->hWndOptimizationSlider, TBM_GETPOS, 0, 0);
-					SendMessage(data->hWndPaletteName, WM_GETTEXT, 16, (LPARAM) bf);
+					SendMessage(data->hWndPaletteName, WM_GETTEXT, 17, (LPARAM) bf);
 
 					BOOL dither = SendMessage(data->hWndDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					BOOL ditherAlpha = SendMessage(data->hWndDitherAlpha, BM_GETCHECK, 0, 0) == BST_CHECKED;

@@ -107,7 +107,6 @@ int textureConvertPalette(CREATEPARAMS *params) {
 	params->dest->palette.pal = (COLOR *) calloc(nColors, 2);
 	params->dest->texels.cmp = NULL;
 	params->dest->texels.texel = txel;
-	memcpy(params->dest->palette.name, params->pnam, 16);
 
 	unsigned int param = (params->fmt << 26) | (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
 	if (hasTransparent) param |= (1 << 29);
@@ -183,7 +182,6 @@ int textureConvertTranslucent(CREATEPARAMS *params) {
 	params->dest->palette.pal = (COLOR *) calloc(nColors, 2);
 	params->dest->texels.cmp = NULL;
 	params->dest->texels.texel = txel;
-	memcpy(params->dest->palette.name, params->pnam, 16);
 
 	unsigned int param = (params->fmt << 26) | (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
 	params->dest->texels.texImageParam = param;
@@ -921,7 +919,6 @@ int textureConvert4x4(CREATEPARAMS *params) {
 	params->dest->palette.nColors = nUsedColors;
 	if (params->dest->palette.pal) free(params->dest->palette.pal);
 	params->dest->palette.pal = nnsPal;
-	memcpy(params->dest->palette.name, params->pnam, 16);
 	if (params->dest->texels.cmp) free(params->dest->texels.cmp);
 	if (params->dest->texels.texel) free(params->dest->texels.texel);
 	params->dest->texels.cmp = (short *) pidx;
@@ -951,6 +948,17 @@ int textureConvert(CREATEPARAMS *params) {
 			textureConvert4x4(params);
 			break;
 	}
+
+	//copy name (null-terminated unless 16-char long)
+	if (params->fmt != CT_DIRECT) {
+		memset(params->dest->palette.name, 0, 16);
+		for (int i = 0; i < 16; i++) {
+			char c = params->pnam[i];
+			if (!c) break;
+			params->dest->palette.name[i] = c;
+		}
+	}
+
 	textureRender(params->px, &params->dest->texels, &params->dest->palette, 0);
 	//textureRender outputs red and blue in the opposite order, so flip them here.
 	for (int i = 0; i < params->width * params->height; i++) {
@@ -958,7 +966,7 @@ int textureConvert(CREATEPARAMS *params) {
 		params->px[i] = REVERSE(p);
 	}
 	g_texCompressionFinished = 1;
-	if(params->callback) params->callback(params->callbackParam);
+	if (params->callback) params->callback(params->callbackParam);
 	if (params->useFixedPalette) free(params->fixedPalette);
 	return 0;
 }
