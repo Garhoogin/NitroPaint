@@ -148,3 +148,4 @@ int GetAllEditors(HWND hWndMain, int type, HWND *editors, int bufferSize);
 #define NV_SETPATH (WM_USER+8)
 #define NV_GETTYPE (WM_USER+9)
 #define NV_XTINVALIDATE (WM_USER+10)
+#define NV_CHILDNOTIF (WM_USER+11)

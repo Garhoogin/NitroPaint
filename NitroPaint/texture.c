@@ -175,49 +175,65 @@ void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 		case CT_4x4:
 		{
 			int squares = (width * height) >> 4;
-			RGB colors[4] = { 0 };
 			RGB transparent = {0, 0, 0, 0};
 			for(int i = 0; i < squares; i++){
+				RGB colors[4] = { 0 };
 				unsigned texel = *(unsigned *) (texels->texel + (i << 2));
 				unsigned short data = *(unsigned short *) (texels->cmp + i);
 
 				int address = COMP_INDEX(data);
 				int mode = (data & COMP_MODE_MASK) >> 14;
-				if (address < palette->nColors) {
-					COLOR *base = ((COLOR *) palette->pal) + address;
+				COLOR *base = ((COLOR *) palette->pal) + address;
+				if (address + 2 <= palette->nColors) {
 					getrgb(base[0], colors);
 					getrgb(base[1], colors + 1);
-					colors[0].a = 255;
-					colors[1].a = 255;
-					if (mode == 0) {
+				}
+				colors[0].a = 255;
+				colors[1].a = 255;
+				if (mode == 0) {
+					//require 3 colors
+					if (address + 3 <= palette->nColors) {
 						getrgb(base[2], colors + 2);
-						colors[2].a = 255;
-						colors[3] = transparent;
-					} else if (mode == 1) {
-						RGB col0 = *colors;
-						RGB col1 = *(colors + 1);
-						colors[2].r = (col0.r + col1.r + 1) >> 1;
-						colors[2].g = (col0.g + col1.g + 1) >> 1;
-						colors[2].b = (col0.b + col1.b + 1) >> 1;
-						colors[2].a = 255;
-						colors[3] = transparent;
-					} else if (mode == 2) {
+					}
+					colors[2].a = 255;
+					colors[3] = transparent;
+				} else if (mode == 1) {
+					//require 2 colors
+					RGB col0 = { 0, 0, 0, 255 };
+					RGB col1 = { 0, 0, 0, 255 };
+					if (address + 2 <= palette->nColors) {
+						col0 = *colors;
+						col1 = *(colors + 1);
+					}
+					colors[2].r = (col0.r + col1.r + 1) >> 1;
+					colors[2].g = (col0.g + col1.g + 1) >> 1;
+					colors[2].b = (col0.b + col1.b + 1) >> 1;
+					colors[2].a = 255;
+					colors[3] = transparent;
+				} else if (mode == 2) {
+					//require 4 colors
+					if (address + 4 <= palette->nColors) {
 						getrgb(base[2], colors + 2);
 						getrgb(base[3], colors + 3);
-						colors[2].a = 255;
-						colors[3].a = 255;
-					} else {
-						RGB col0 = *colors;
-						RGB col1 = *(colors + 1);
-						colors[2].r = (col0.r * 5 + col1.r * 3 + 4) >> 3;
-						colors[2].g = (col0.g * 5 + col1.g * 3 + 4) >> 3;
-						colors[2].b = (col0.b * 5 + col1.b * 3 + 4) >> 3;
-						colors[2].a = 255;
-						colors[3].r = (col0.r * 3 + col1.r * 5 + 4) >> 3;
-						colors[3].g = (col0.g * 3 + col1.g * 5 + 4) >> 3;
-						colors[3].b = (col0.b * 3 + col1.b * 5 + 4) >> 3;
-						colors[3].a = 255;
 					}
+					colors[2].a = 255;
+					colors[3].a = 255;
+				} else {
+					//require 2 colors
+					RGB col0 = { 0, 0, 0, 255 };
+					RGB col1 = { 0, 0, 0, 255 };
+					if (address + 2 <= palette->nColors) {
+						col0 = *colors;
+						col1 = *(colors + 1);
+					}
+					colors[2].r = (col0.r * 5 + col1.r * 3 + 4) >> 3;
+					colors[2].g = (col0.g * 5 + col1.g * 3 + 4) >> 3;
+					colors[2].b = (col0.b * 5 + col1.b * 3 + 4) >> 3;
+					colors[2].a = 255;
+					colors[3].r = (col0.r * 3 + col1.r * 5 + 4) >> 3;
+					colors[3].g = (col0.g * 3 + col1.g * 5 + 4) >> 3;
+					colors[3].b = (col0.b * 3 + col1.b * 5 + 4) >> 3;
+					colors[3].a = 255;
 				}
 				for(int j = 0; j < 16; j++){
 					int pVal = texel & 0x3;

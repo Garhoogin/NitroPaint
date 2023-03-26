@@ -228,6 +228,16 @@ int guessTexPlttByName(char *textureName, char **paletteNames, int nPalettes, TE
 	return 0;
 }
 
+LRESULT CALLBACK ListboxDeleteSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT subclass, DWORD_PTR ref) {
+	if (msg == WM_KEYDOWN && wParam == VK_DELETE) {
+		HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+		int sel = SendMessage(hWnd, LB_GETCURSEL, 0, 0);
+		SendMessage(hWnd, LB_DELETESTRING, sel, 0);
+		SendMessage(hWndParent, NV_CHILDNOTIF, sel, (LPARAM) hWnd);
+	}
+	return DefSubclassProc(hWnd, msg, wParam, lParam);
+}
+
 void CreateVramUseWindow(HWND hWndParent, NSBTX *nsbtx);
 
 LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -241,11 +251,13 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		{
 			data->hWndTextureSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 0, 150, 100, hWnd, NULL, NULL, NULL);
 			data->hWndPaletteSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 100, 150, 100, hWnd, NULL, NULL, NULL);
-			data->hWndExportAll = CreateWindow(L"BUTTON", L"Export all", WS_VISIBLE | WS_CHILD, 0, 300 - 22, 75, 22, hWnd, NULL, NULL, NULL);
+			data->hWndExportAll = CreateButton(hWnd, L"Export All", 0, 300 - 22, 75, 22, FALSE);
 			data->hWndResourceButton = CreateButton(hWnd, L"VRAM Use", 75, 300 - 22, 75, 22, FALSE);
-			data->hWndReplaceButton = CreateWindow(L"BUTTON", L"Replace", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 150, 300 - 22, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndReplaceButton = CreateButton(hWnd, L"Replace", 150, 300 - 22, 100, 22, TRUE);
 			data->hWndAddButton = CreateButton(hWnd, L"Add", 250, 300 - 22, 100, 22, FALSE);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			SetWindowSubclass(data->hWndTextureSelect, ListboxDeleteSubclassProc, 1, 0);
+			SetWindowSubclass(data->hWndPaletteSelect, ListboxDeleteSubclassProc, 1, 0);
 			data->scale = 1;
 			return 1;
 		}
@@ -323,6 +335,34 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			DeleteObject(hCompat);
 			DeleteObject(hBitmap);
 			return 0;
+		}
+		case NV_CHILDNOTIF:
+		{
+			//if lParam is the texture or palette select, we're being notified of a deletion
+			HWND hWndControl = (HWND) lParam;
+			int sel = wParam;
+			if (hWndControl == data->hWndTextureSelect) {
+				//delete the sel-th texture
+				TEXELS *textures = data->nsbtx.textures;
+				void *texel = textures[sel].texel, *index = textures[sel].cmp;
+				memmove(textures + sel, textures + sel + 1, (data->nsbtx.nTextures - sel - 1) * sizeof(TEXELS));
+				data->nsbtx.nTextures--;
+				data->nsbtx.textures = (TEXELS *) realloc(data->nsbtx.textures, data->nsbtx.nTextures * sizeof(TEXELS));
+				//don't forget to free!
+				free(texel);
+				if (index) free(index);
+			} else if (hWndControl == data->hWndPaletteSelect) {
+				//delete the sel-th palette
+				PALETTE *palettes = data->nsbtx.palettes;
+				void *cols = palettes[sel].pal;
+				memmove(palettes + sel, palettes + sel + 1, (data->nsbtx.nPalettes - sel - 1) * sizeof(PALETTE));
+				data->nsbtx.nPalettes--;
+				data->nsbtx.palettes = (PALETTE *) realloc(data->nsbtx.palettes, data->nsbtx.nPalettes * sizeof(PALETTE));
+				free(cols);
+			}
+			SendMessage(hWndControl, LB_SETCURSEL, sel, 0);
+			InvalidateRect(hWnd, NULL, TRUE);
+			break;
 		}
 		case WM_COMMAND:
 		{
