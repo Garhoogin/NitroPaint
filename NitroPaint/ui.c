@@ -129,15 +129,6 @@ void DoModal(HWND hWnd) {
 	//enter our own message loop
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0)) {
-		//if we're an enter key press and belongs to a child control, post IDOK
-		if (hWnd == (HWND) GetWindowLong(msg.hwnd, GWL_HWNDPARENT) && msg.message == WM_KEYDOWN) {
-			if (msg.wParam == VK_RETURN) {
-				PostMessage(hWnd, WM_COMMAND, (BN_CLICKED << 16) | IDOK, 0);
-			} else if (msg.wParam == VK_ESCAPE) {
-				PostMessage(hWnd, WM_COMMAND, (BN_CLICKED << 16) | IDCANCEL, 0);
-			}
-		}
-
 		//normal dispatching
 		if (!IsDialogMessage(hWnd, &msg)) {
 			TranslateMessage(&msg);

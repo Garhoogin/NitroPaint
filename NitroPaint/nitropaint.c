@@ -227,9 +227,21 @@ LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				int *pStatus = (int *) GetWindowLong(hWnd, 0 * sizeof(void *));
 				*pStatus = 0;
 				if (hWndControl == hWndOK || idc == IDOK) {
+					//get length of user text. If it's too long, we should let them know.
+					int textLength = SendMessage(hWndEdit, WM_GETTEXTLENGTH, 0, 0);
 					int bufferLength = GetWindowLong(hWnd, 4 * sizeof(void *));
-					SendMessage(hWndEdit, WM_GETTEXT, bufferLength, (LPARAM) outBuffer);
-					*pStatus = 1;
+					if (textLength + 1 > bufferLength) {
+						WCHAR strbuf[48];
+						wsprintfW(strbuf, L"Too long. Maximum length: %d", bufferLength - 1);
+						MessageBox(hWnd, strbuf, L"Too Long", MB_ICONERROR);
+						SetFocus(hWndEdit);
+						SendMessage(hWndEdit, EM_SETSEL, 0, -1);
+						break;
+					} else {
+						//success, copy out and raise status high
+						SendMessage(hWndEdit, WM_GETTEXT, bufferLength, (LPARAM) outBuffer);
+						*pStatus = 1;
+					}
 				}
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
