@@ -1221,7 +1221,8 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	}
 
 	//match palettes to tiles
-	setupBgTiles(tiles, nTiles, nBits, palette, paletteSize, nPalettes, paletteBase, paletteOffset, dither, diffuse);
+	setupBgTilesEx(tiles, nTiles, nBits, palette, paletteSize, nPalettes, paletteBase, paletteOffset, 
+		dither, diffuse, balance, colorBalance, enhanceColors);
 
 	//match tiles to each other
 	int nChars = nTiles;
