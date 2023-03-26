@@ -265,81 +265,111 @@ void getVersion(char *buffer, int max) {
 	}
 }
 
+void nnsTgaWriteSection(HANDLE hFile, const char *section, const void *data, int size) {
+	DWORD dwWritten;
+	
+	//prepare and write
+	unsigned char header[0xC] = { 0 };
+	uint32_t dataSize = size == -1 ? strlen((const char *) data) : size;
+	memcpy(header, section, 8);
+	*(uint32_t *) (header + 0x8) = dataSize + sizeof(header);
+	WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
+	if (dataSize) {
+		WriteFile(hFile, data, dataSize, &dwWritten, NULL);
+	}
+}
+
+int imageHasTransparent(COLOR32 *px, int nPx) {
+	for (int i = 0; i < nPx; i++) {
+		COLOR32 c = px[i];
+		int a = c >> 24;
+		if (a < 255) return 1; //transparent/translucent pixel
+	}
+	return 0;
+}
+
+void nnsTgaWritePixels(HANDLE hFile, COLOR32 *rawPx, int width, int height, int depth) {
+	DWORD dwWritten;
+	if (depth == 32) {
+		//write as-is
+		WriteFile(hFile, rawPx, width * height * sizeof(COLOR32), &dwWritten, NULL);
+		return;
+	} else if (depth == 24) {
+		//convert to 24-bit
+		uint8_t *buffer = (uint8_t *) calloc(width * height, 3);
+		for (int i = 0; i < width * height; i++) {
+			COLOR32 c = rawPx[i];
+			uint8_t *pixel = buffer + i * 3;
+			pixel[0] = (c >> 0) & 0xFF;
+			pixel[1] = (c >> 8) & 0xFF;
+			pixel[2] = (c >> 16) & 0xFF;
+		}
+		WriteFile(hFile, buffer, width * height * 3, &dwWritten, NULL);
+		free(buffer);
+		return;
+	}
+	//bad
+}
+
 void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwWritten;
 
 	int width = TEXW(texels->texImageParam);
 	int height = TEXH(texels->texImageParam);
-	DWORD *pixels = (DWORD *) calloc(width * height, 4);
+	COLOR32 *pixels = (COLOR32 *) calloc(width * height, 4);
 	textureRender(pixels, texels, palette, 1);
+	int depth = imageHasTransparent(pixels, width * height) ? 32 : 24;
 
-	BYTE header[] = {0x14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 8,
+	uint8_t header[] = {0x14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 8,
 		'N', 'N', 'S', '_', 'T', 'g', 'a', ' ', 'V', 'e', 'r', ' ', '1', '.', '0', 0, 0, 0, 0, 0};
-	*(WORD *) (header + 0xC) = width;
-	*(WORD *) (header + 0xE) = height;
-	*(DWORD *) (header + 0x22) = sizeof(header) + width * height * 4;
+	*(uint16_t *) (header + 0x0C) = width;
+	*(uint16_t *) (header + 0x0E) = height;
+	*(uint8_t *) (header + 0x10) = depth;
+	*(uint32_t *) (header + 0x22) = sizeof(header) + width * height * (depth / 8);
 	WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-	WriteFile(hFile, pixels, width * height * 4, &dwWritten, NULL);
+	nnsTgaWritePixels(hFile, pixels, width, height, depth);
 
+	//format
 	char *fstr = stringFromFormat(FORMAT(texels->texImageParam));
-	WriteFile(hFile, "nns_frmt", 8, &dwWritten, NULL);
-	int flen = strlen(fstr) + 0xC;
-	WriteFile(hFile, &flen, 4, &dwWritten, NULL);
-	WriteFile(hFile, fstr, flen - 0xC, &dwWritten, NULL);
+	nnsTgaWriteSection(hFile, "nns_frmt", fstr, -1);
 
 	//texels
-	WriteFile(hFile, "nns_txel", 8, &dwWritten, NULL);
-	DWORD txelLength = getTexelSize(width, height, texels->texImageParam) + 0xC;
-	WriteFile(hFile, &txelLength, 4, &dwWritten, NULL);
-	WriteFile(hFile, texels->texel, txelLength - 0xC, &dwWritten, NULL);
+	int txelLength = getTexelSize(width, height, texels->texImageParam);
+	nnsTgaWriteSection(hFile, "nns_txel", texels->texel, txelLength);
 
 	//write 4x4 if applicable
 	if (FORMAT(texels->texImageParam) == CT_4x4) {
-		WriteFile(hFile, "nns_pidx", 8, &dwWritten, NULL);
-		DWORD pidxLength = (txelLength - 0xC) / 2 + 0xC;
-		WriteFile(hFile, &pidxLength, 4, &dwWritten, NULL);
-		WriteFile(hFile, texels->cmp, pidxLength - 0xC, &dwWritten, NULL);
+		int pidxLength = txelLength / 2;
+		nnsTgaWriteSection(hFile, "nns_pidx", texels->cmp, pidxLength);
 	}
 
 	//palette (if applicable)
 	if (FORMAT(texels->texImageParam) != CT_DIRECT) {
-		WriteFile(hFile, "nns_pnam", 8, &dwWritten, NULL);
-		DWORD pnamLength = max16Len(palette->name) + 0xC;
-		WriteFile(hFile, &pnamLength, 4, &dwWritten, NULL);
-		WriteFile(hFile, palette->name, pnamLength - 0xC, &dwWritten, NULL);
+		int pnamLength = max16Len(palette->name);
+		nnsTgaWriteSection(hFile, "nns_pnam", palette->name, pnamLength);
 
 		int nColors = palette->nColors;
 		if (FORMAT(texels->texImageParam) == CT_4COLOR && nColors > 4) nColors = 4;
-		WriteFile(hFile, "nns_pcol", 8, &dwWritten, NULL);
-		DWORD pcolLength = nColors * 2 + 0xC;
-		WriteFile(hFile, &pcolLength, 4, &dwWritten, NULL);
-		WriteFile(hFile, palette->pal, nColors * 2, &dwWritten, NULL);
+		nnsTgaWriteSection(hFile, "nns_pcol", palette->pal, nColors * sizeof(COLOR));
 	}
 
-	BYTE gnam[] = {'n', 'n', 's', '_', 'g', 'n', 'a', 'm', 22, 0, 0, 0, 'N', 'i', 't', 'r', 'o', 'P', 'a', 'i', 'n', 't'};
-	WriteFile(hFile, gnam, sizeof(gnam), &dwWritten, NULL);
-
+	//NitroPaint generator signature
 	char version[16];
 	getVersion(version, 16);
-	BYTE gver[] = {'n', 'n', 's', '_', 'g', 'v', 'e', 'r', 0, 0, 0, 0};
-	*(DWORD *) (gver + 8) = strlen(version) + 0xC;
-	WriteFile(hFile, gver, sizeof(gver), &dwWritten, NULL);
-	WriteFile(hFile, version, strlen(version), &dwWritten, NULL);
+	nnsTgaWriteSection(hFile, "nns_gnam", "NitroPaint", -1);
+	nnsTgaWriteSection(hFile, "nns_gver", version, -1);
 
-	BYTE imst[] = {'n', 'n', 's', '_', 'i', 'm', 's', 't', 0xC, 0, 0, 0};
-	WriteFile(hFile, imst, sizeof(imst), &dwWritten, NULL);
+	//dummy imagestudio data
+	nnsTgaWriteSection(hFile, "nns_imst", NULL, 0);
 
 	//if c0xp
 	if (COL0TRANS(texels->texImageParam)) {
-		BYTE c0xp[] = {'n', 'n', 's', '_', 'c', '0', 'x', 'p', 0xC, 0, 0, 0};
-		WriteFile(hFile, c0xp, sizeof(c0xp), &dwWritten, NULL);
+		nnsTgaWriteSection(hFile, "nns_c0xp", NULL, 0);
 	}
 
 	//write end
-	BYTE end[] = {'n', 'n', 's', '_', 'e', 'n', 'd', 'b', 0xC, 0, 0, 0};
-	WriteFile(hFile, end, sizeof(end), &dwWritten, NULL);
-
+	nnsTgaWriteSection(hFile, "nns_endb", NULL, 0);
 	CloseHandle(hFile);
 	free(pixels);
 }
