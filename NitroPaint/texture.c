@@ -476,14 +476,25 @@ int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 	}
 	texels->cmp = (short *) pidx;
 	texels->texel = txel;
-	memcpy(texels->name, pnam, 16);
 	int texImageParam = 0;
 	if (c0xp) texImageParam |= (1 << 29);
 	texImageParam |= (1 << 17) | (1 << 16);
 	texImageParam |= (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
 	texImageParam |= frmt << 26;
-
 	texels->texImageParam = texImageParam;
+
+	//copy texture name
+	int nameOffset = 0;
+	for (unsigned int i = 0; i < wcslen(path); i++) {
+		if (path[i] == L'/' || path[i] == L'\\') nameOffset = i + 1;
+	}
+	LPWSTR name = path + nameOffset;
+	memset(texels->name, 0, 16);
+	for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
+		if (i == 16) break;
+		if (name[i] == L'.') break;
+		texels->name[i] = (char) name[i];
+	}
 
 	return 0;
 }

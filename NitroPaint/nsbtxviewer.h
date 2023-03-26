@@ -15,6 +15,7 @@ typedef struct {
 	HWND hWndExportAll;
 	HWND hWndResourceButton;
 	HWND hWndReplaceButton;
+	HWND hWndAddButton;
 } NSBTXVIEWERDATA;
 
 VOID RegisterNsbtxViewerClass(VOID);

@@ -244,6 +244,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			data->hWndExportAll = CreateWindow(L"BUTTON", L"Export all", WS_VISIBLE | WS_CHILD, 0, 300 - 22, 75, 22, hWnd, NULL, NULL, NULL);
 			data->hWndResourceButton = CreateButton(hWnd, L"VRAM Use", 75, 300 - 22, 75, 22, FALSE);
 			data->hWndReplaceButton = CreateWindow(L"BUTTON", L"Replace", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 150, 300 - 22, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndAddButton = CreateButton(hWnd, L"Add", 250, 300 - 22, 100, 22, FALSE);
 			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
 			data->scale = 1;
 			return 1;
@@ -482,6 +483,102 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					} else if (hWndControl == data->hWndResourceButton) {
 						HWND hWndMain = getMainWindow(hWnd);
 						CreateVramUseWindow(hWndMain, &data->nsbtx);
+					} else if (hWndControl == data->hWndAddButton) {
+						LPWSTR path = openFileDialog(hWnd, L"Open Nitro TGA", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
+						if (!path) break;
+
+						//read texture
+						TEXELS texels;
+						PALETTE palette;
+						int s = nitroTgaRead(path, &texels, &palette);
+						if (s) {
+							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
+						} else {
+							//add
+							WCHAR strbuf[17] = { 0 };
+							int texImageParam = texels.texImageParam;
+							int fmt = FORMAT(texImageParam);
+							int hasPalette = fmt != CT_DIRECT;
+
+							//add texel
+							{
+								//update NSBTX
+								data->nsbtx.textures = realloc(data->nsbtx.textures, (data->nsbtx.nTextures + 1) * sizeof(TEXELS));
+								memcpy(data->nsbtx.textures + data->nsbtx.nTextures, &texels, sizeof(TEXELS));
+								data->nsbtx.nTextures++;
+
+								//update UI
+								for (int i = 0; i < 16; i++) {
+									strbuf[i] = (WCHAR) texels.name[i];
+								}
+								SendMessage(data->hWndTextureSelect, LB_ADDSTRING, 0, (LPARAM) strbuf);
+								SendMessage(data->hWndTextureSelect, LB_SETCURSEL, data->nsbtx.nTextures - 1, 0);
+							}
+
+							//add palette (if the name is the same as an existing palette, use the larger
+							//of the two palettes)
+							if (hasPalette) {
+								//check if a palette of that name already exists.
+								PALETTE *existing = NULL;
+								int existingIndex = -1;
+								for (int i = 0; i < data->nsbtx.nPalettes; i++) {
+									PALETTE *p = data->nsbtx.palettes + i;
+									if (memcmp(p->name, palette.name, 16) == 0) {
+										existing = data->nsbtx.palettes + i;
+										existingIndex = i;
+										break;
+									}
+								}
+
+								//existing?
+								PALETTE *dest = NULL;
+								int destIndex = -1;
+								if (existing != NULL) {
+									//if existing, ensure one is a subset of the other.
+									int nColsExisting = existing->nColors;
+									int nColsNew = palette.nColors;
+									int nColsCompare = min(nColsNew, nColsExisting);
+
+									//not a subset?
+									if (memcmp(palette.pal, existing->pal, nColsCompare * sizeof(COLOR)) != 0) {
+										MessageBox(hWnd, L"Palette name conflict.", L"Palette name conflict", MB_ICONERROR);
+										free(palette.pal);
+										break;
+									}
+									dest = existing;
+									destIndex = existingIndex;
+
+									//if new palette is larger, realloc
+									if (nColsNew > nColsExisting) {
+										dest->nColors = nColsNew;
+										free(dest->pal);
+										dest->pal = palette.pal;
+									} else {
+										free(palette.pal);
+									}
+								} else {
+									//increase palette count. Update NSBTX
+									data->nsbtx.palettes = realloc(data->nsbtx.palettes, (data->nsbtx.nPalettes + 1) * sizeof(PALETTE));
+									dest = data->nsbtx.palettes + data->nsbtx.nPalettes;
+									memcpy(dest, &palette, sizeof(PALETTE));
+									data->nsbtx.nPalettes++;
+
+									//add to UI
+									for (int i = 0; i < 16; i++) {
+										strbuf[i] = (WCHAR) palette.name[i];
+									}
+									SendMessage(data->hWndPaletteSelect, LB_ADDSTRING, 0, (LPARAM) strbuf);
+								}
+
+								//update UI
+								SendMessage(data->hWndPaletteSelect, LB_SETCURSEL, data->nsbtx.nPalettes - 1, 0);
+							}
+
+							//invalidate
+							InvalidateRect(hWnd, NULL, TRUE);
+						}
+
+						free(path);
 					}
 				}
 			}
@@ -497,6 +594,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			MoveWindow(data->hWndExportAll, 0, height - 22, 75, 22, TRUE);
 			MoveWindow(data->hWndResourceButton, 75, height - 22, 75, 22, TRUE);
 			MoveWindow(data->hWndReplaceButton, 150, height - 22, 100, 22, TRUE);
+			MoveWindow(data->hWndAddButton, 250, height - 22, 100, 22, TRUE);
 			break;
 		}
 		case WM_MDIACTIVATE:
