@@ -13,9 +13,10 @@ extern HICON g_appIcon;
 extern int max16Len(char *str);
 
 HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
+	if (texture == NULL) return NULL;
 	int width = TEXW(texture->texImageParam);
 	int height = TEXH(texture->texImageParam);
-	DWORD *px = (DWORD *) calloc(width * zoom * height * zoom, 4);
+	COLOR32 *px = (COLOR32 *) calloc(width * zoom * height * zoom, 4);
 	textureRender(px, texture, palette, 0);
 
 	//perform alpha blending
@@ -25,7 +26,7 @@ HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 		for (int xDest = scaleWidth - 1; xDest >= 0; xDest--) {
 			int x = xDest / zoom;
 
-			DWORD pixel = px[x + y * width];
+			COLOR32 pixel = px[x + y * width];
 			int a = pixel >> 24;
 			if (a != 255) {
 				int s = ((xDest >> 3) ^ (yDest >> 3)) & 1;
@@ -310,8 +311,20 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			int p = SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0);
 			TEXELS *texture = data->nsbtx.textures + t;
 			PALETTE *palette = data->nsbtx.palettes + p;
-			HBITMAP hBitmap = renderTexture(texture, palette, data->scale);
+			if (t >= data->nsbtx.nTextures || t < 0) texture = NULL; //catch out-of-bounds cases
+			if (p >= data->nsbtx.nPalettes || p < 0) palette = NULL;
 
+			//if no texture, we can't really render anything
+			if (texture == NULL) {
+				EndPaint(hWnd, &ps);
+				return 0;
+			}
+			if (FORMAT(texture->texImageParam) != CT_DIRECT && palette == NULL) {
+				EndPaint(hWnd, &ps);
+				return 0;
+			}
+
+			HBITMAP hBitmap = renderTexture(texture, palette, data->scale);
 			HDC hCompat = CreateCompatibleDC(hDC);
 			SelectObject(hCompat, hBitmap);
 			BitBlt(hDC, 150, 22, TEXW(texture->texImageParam) * data->scale, TEXH(texture->texImageParam) * data->scale, hCompat, 0, 0, SRCCOPY);
@@ -351,6 +364,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				//don't forget to free!
 				free(texel);
 				if (index) free(index);
+
+				//update index if it would be out of bounds
+				if (sel >= data->nsbtx.nTextures) sel = data->nsbtx.nTextures - 1;
 			} else if (hWndControl == data->hWndPaletteSelect) {
 				//delete the sel-th palette
 				PALETTE *palettes = data->nsbtx.palettes;
@@ -359,6 +375,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				data->nsbtx.nPalettes--;
 				data->nsbtx.palettes = (PALETTE *) realloc(data->nsbtx.palettes, data->nsbtx.nPalettes * sizeof(PALETTE));
 				free(cols);
+				if (sel >= data->nsbtx.nPalettes) sel = data->nsbtx.nPalettes - 1;
 			}
 			SendMessage(hWndControl, LB_SETCURSEL, sel, 0);
 			InvalidateRect(hWnd, NULL, TRUE);
