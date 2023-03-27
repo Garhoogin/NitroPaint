@@ -333,6 +333,7 @@ void nnsConstructPTreeFromResources(BSTREAM *stream, void *items, int itemSize, 
 	//create tree
 	PNODE *tree = nnsConstructPTree(namesBuf, nItems);
 	nnsSerializePTree(stream, tree);
+	nnsFreePTree(tree);
 	free(namesBuf);
 	free(namesBlob);
 }
