@@ -62,6 +62,8 @@ typedef struct NSBTX_ { //these should not be converted to other formats
 	BMD_DATA *bmdData;	//for handling BMD files
 } NSBTX;
 
+void nsbtxInit(NSBTX *nsbtx, int format);
+
 int nsbtxRead(NSBTX *nsbtx, char *buffer, int size);
 
 int nsbtxIsValidBmd(char *buffer, unsigned int size);

@@ -1025,6 +1025,15 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_DISABLED);
 						break;
 					}
+					case ID_NEW_NEWTEXTUREARCHIVE:
+					{
+						NSBTX nsbtx;
+						nsbtxInit(&nsbtx, NSBTX_TYPE_NNS);
+						
+						//no need to init further
+						CreateNsbtxViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, &nsbtx);
+						break;
+					}
 					case ID_FILE_CONVERTTO:
 					{
 						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);

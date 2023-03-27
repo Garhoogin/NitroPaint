@@ -257,8 +257,10 @@ void nnsSerializePTree(BSTREAM *stream, PNODE *tree) {
 	int baseOffset = stream->pos;
 	{
 		uint8_t baseHeader[4] = { 0x7F, 1, 0, 0 };
+		if (tree == NULL) baseHeader[1] = 0; //indicate empty tree to NNS
 		bstreamWrite(stream, baseHeader, sizeof(baseHeader));
 	}
+	if (tree == NULL) return;
 
 	//start writing each node
 	int baseIndex = 1;

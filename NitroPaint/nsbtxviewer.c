@@ -275,9 +275,11 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		case NV_INITIALIZE:
 		{
 			LPWSTR path = (LPWSTR) wParam;
-			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+			if (path != NULL) {
+				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+			}
 			memcpy(&data->nsbtx, (NSBTX *) lParam, sizeof(NSBTX));
-			SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 
 			WCHAR buffer[17];
 			for (int i = 0; i < data->nsbtx.nTextures; i++) {
@@ -925,5 +927,11 @@ HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPC
 
 	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NsbtxViewerClass", L"NSBTX Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nsbtx);
+	return h;
+}
+
+HWND CreateNsbtxViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSBTX *nsbtx) {
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NsbtxViewerClass", L"NSBTX Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	SendMessage(h, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) nsbtx);
 	return h;
 }
