@@ -367,7 +367,19 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 
 		int nColors = palette->nColors;
 		if (FORMAT(texels->texImageParam) == CT_4COLOR && nColors > 4) nColors = 4;
-		nnsTgaWriteSection(hFile, "nns_pcol", palette->pal, nColors * sizeof(COLOR));
+		if (nColors == 4 || (nColors % 8) == 0) {
+			//valid size
+			nnsTgaWriteSection(hFile, "nns_pcol", palette->pal, nColors * sizeof(COLOR));
+		} else {
+			//needs padding
+			int outPaletteSize = (nColors + 7) / 8 * 8;
+			if (nColors < 4) outPaletteSize = (nColors + 3) / 4 * 4;
+
+			COLOR *padded = (COLOR *) calloc(outPaletteSize, sizeof(COLOR));
+			memcpy(padded, palette->pal, palette->nColors * sizeof(COLOR));
+			nnsTgaWriteSection(hFile, "nns_pcol", padded, outPaletteSize * sizeof(COLOR));
+			free(padded);
+		}
 	}
 
 	//NitroPaint generator signature
