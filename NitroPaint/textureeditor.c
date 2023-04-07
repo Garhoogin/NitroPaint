@@ -2029,7 +2029,7 @@ BOOL BatchTexShouldConvert(LPCWSTR path, LPCWSTR configPath, LPCWSTR outPath) {
 	}
 
 	//if output doesn't exist or config doesn't exist, do output
-	if (hOutFile == INVALID_HANDLE_VALUE || hOutFile == INVALID_HANDLE_VALUE) {
+	if (hOutFile == INVALID_HANDLE_VALUE || hConfigFile == INVALID_HANDLE_VALUE) {
 		shouldWrite = TRUE;
 		goto cleanup;
 	}
@@ -2056,6 +2056,37 @@ cleanup:
 	if (hConfigFile != INVALID_HANDLE_VALUE) CloseHandle(hConfigFile);
 	if (hOutFile != INVALID_HANDLE_VALUE) CloseHandle(hOutFile);
 	return shouldWrite;
+}
+
+void BatchTexCheckFormatDir(LPCWSTR path, int *fmt) {
+	LPCWSTR end = path + wcslen(path);
+	int nSlashCounted = 0;
+	while (end > path) {
+		end--;
+		if (*end == L'\\') {
+			nSlashCounted++;
+			if (nSlashCounted == 2) break; //second slash from end
+		}
+	}
+	if (*end != L'\0') end++; //skip separator
+
+	WCHAR dirNameBuf[MAX_PATH] = { 0 };
+	for (unsigned int i = 0; i < wcslen(end); i++) {
+		if (end[i] == L'\\') break;
+		dirNameBuf[i] = end[i];
+	}
+
+	for (int i = CT_A3I5; i <= CT_DIRECT; i++) {
+		WCHAR wideFmt[16] = { 0 };
+		char *name = stringFromFormat(i);
+		for (unsigned int j = 0; j < strlen(name); j++) wideFmt[j] = name[j];
+		
+		//case insensitive check
+		if (_wcsicmp(dirNameBuf, wideFmt) == 0) {
+			*fmt = i;
+			break;
+		}
+	}
 }
 
 BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
@@ -2123,6 +2154,12 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	int fmt = guessFormat(px, width, height);
 	int colorEntries = chooseColorCount(width, height);
 	int threshold4x4 = 0;
+
+	//check the directory. Last directory name after base should be the name
+	//of a format.
+	BatchTexCheckFormatDir(path, &fmt);
+
+	//max color entries for the selected format
 	switch (fmt) {
 		case CT_4COLOR:
 			colorEntries = 4;
