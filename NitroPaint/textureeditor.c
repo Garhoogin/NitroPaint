@@ -2015,6 +2015,49 @@ void BatchTexWriteOptions(LPCWSTR path, int fmt, int dither, int ditherAlpha, fl
 	WritePrivateProfileString(L"Texture", L"EnhanceColors", buffer, path);
 }
 
+BOOL BatchTexShouldConvert(LPCWSTR path, LPCWSTR configPath, LPCWSTR outPath) {
+	HANDLE hTextureFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hConfigFile = CreateFile(configPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hOutFile = CreateFile(outPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	
+	//if input doesn't exist, we can't possibly 
+	BOOL shouldWrite = FALSE;
+	FILETIME srcTime = { 0 }, configTime = { 0 }, destTime = { 0 };
+	if (hTextureFile == INVALID_HANDLE_VALUE) {
+		shouldWrite = FALSE;
+		goto cleanup;
+	}
+
+	//if output doesn't exist or config doesn't exist, do output
+	if (hOutFile == INVALID_HANDLE_VALUE || hOutFile == INVALID_HANDLE_VALUE) {
+		shouldWrite = TRUE;
+		goto cleanup;
+	}
+
+	//if either of srcTime or configTime are greater than or equal to destTime, do write
+	LARGE_INTEGER srcInt, configInt, destInt;
+	GetFileTime(hTextureFile, NULL, NULL, &srcTime);
+	GetFileTime(hConfigFile, NULL, NULL, &configTime);
+	GetFileTime(hOutFile, NULL, NULL, &destTime);
+	srcInt.LowPart = srcTime.dwLowDateTime;
+	srcInt.HighPart = srcTime.dwHighDateTime;
+	configInt.LowPart = configTime.dwLowDateTime;
+	configInt.HighPart = configTime.dwHighDateTime;
+	destInt.LowPart = destTime.dwLowDateTime;
+	destInt.HighPart = destTime.dwHighDateTime;
+	if (destInt.QuadPart <= srcInt.QuadPart || destInt.QuadPart <= configInt.QuadPart) {
+		shouldWrite = TRUE;
+		goto cleanup;
+	}
+	
+
+cleanup:
+	if (hTextureFile != INVALID_HANDLE_VALUE) CloseHandle(hTextureFile);
+	if (hConfigFile != INVALID_HANDLE_VALUE) CloseHandle(hConfigFile);
+	if (hOutFile != INVALID_HANDLE_VALUE) CloseHandle(hOutFile);
+	return shouldWrite;
+}
+
 BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	//read image
 	int width, height;
@@ -2054,6 +2097,10 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 		if (configPath[i] == L'.') extensionIndex = i;
 	}
 	memcpy(configPath + extensionIndex, L".INI", 5 * sizeof(WCHAR));
+
+	//check: should we re-convert?
+	BOOL doConvert = BatchTexShouldConvert(path, configPath, outPath);
+	if (!doConvert) return TRUE; //skip
 
 	int i;
 	char pnam[17] = { 0 };
