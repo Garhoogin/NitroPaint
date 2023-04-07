@@ -1,4 +1,5 @@
 #include "textureeditor.h"
+#include "nsbtxviewer.h"
 #include "childwindow.h"
 #include "nitropaint.h"
 #include "nclrviewer.h"
@@ -1855,8 +1856,8 @@ typedef struct BATCHTEXCONVDATA_ {
 	HWND hWndClean;
 } BATCHTEXCONVDATA;
 
-int EnumAllFiles(LPCWSTR path, BOOL(CALLBACK *fileCallback) (LPCWSTR), BOOL(CALLBACK *dirCallback) (LPCWSTR),
-	BOOL(CALLBACK *preprocessDirCallback) (LPCWSTR)) {
+int EnumAllFiles(LPCWSTR path, BOOL(CALLBACK *fileCallback) (LPCWSTR, void *), BOOL(CALLBACK *dirCallback) (LPCWSTR, void *),
+	BOOL(CALLBACK *preprocessDirCallback) (LPCWSTR, void *), void *param) {
 	//copy string to add \*
 	int pathlen = wcslen(path);
 	WCHAR cpy[MAX_PATH + 2] = { 0 };
@@ -1888,31 +1889,37 @@ int EnumAllFiles(LPCWSTR path, BOOL(CALLBACK *fileCallback) (LPCWSTR), BOOL(CALL
 		//if a directory, procses it recursively. If a file, prcoess it normally.
 		DWORD attr = ffd.dwFileAttributes;
 		if (attr & FILE_ATTRIBUTE_DIRECTORY) {
-			if (preprocessDirCallback == NULL || preprocessDirCallback(fullPath)) { //nonexistent or returns TRUE, process recurse
-				status = EnumAllFiles(fullPath, fileCallback, dirCallback, preprocessDirCallback) && status; //prevent short-circuiting
+			if (preprocessDirCallback == NULL || preprocessDirCallback(fullPath, param)) { //nonexistent or returns TRUE, process recurse
+				status = EnumAllFiles(fullPath, fileCallback, dirCallback, preprocessDirCallback, param) && status; //prevent short-circuiting
 			}
 		} else {
-			status = fileCallback(fullPath) && status;
+			status = fileCallback(fullPath, param) && status;
 		}
 	} while (FindNextFile(hFind, &ffd));
 	FindClose(hFind);
 
 	//if we've succeeded, process the directory.
 	if (status) {
-		dirCallback(path);
+		dirCallback(path, param);
 	}
 	return status;
 }
 
+BOOL CALLBACK DeleteFileCallback(LPCWSTR path, void *param) {
+	return DeleteFile(path);
+}
+
+BOOL CALLBACK RemoveDirectoryCallback(LPCWSTR path, void *param) {
+	return RemoveDirectory(path);
+}
+
 int BatchTexDelete(LPCWSTR path) {
-	return EnumAllFiles(path, DeleteFile, RemoveDirectory, NULL);
+	return EnumAllFiles(path, DeleteFileCallback, RemoveDirectoryCallback, NULL, NULL);
 }
 
 //some global state for the current batch operation
-int g_batchTexNumTex = 0; //number of textures to convert
 int g_batchTexConvertedTex = 0; //number of textures converted
 LPCWSTR g_batchTexOut = NULL;
-LPCWSTR g_batchConfigFilePath = NULL; //config file for batch
 HWND g_hWndBatchTexWindow;
 
 BOOL BatchTexReadOptions(LPCWSTR path, int *fmt, int *dither, int *ditherAlpha, float *diffuse, int *paletteSize, char *pnam,
@@ -2008,7 +2015,7 @@ void BatchTexWriteOptions(LPCWSTR path, int fmt, int dither, int ditherAlpha, fl
 	WritePrivateProfileString(L"Texture", L"EnhanceColors", buffer, path);
 }
 
-BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path) {
+BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	//read image
 	int width, height;
 	COLOR32 *px = gdipReadImage(path, &width, &height);
@@ -2121,11 +2128,11 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path) {
 	return TRUE;
 }
 
-BOOL CALLBACK BatchTexConvertDirectoryCallback(LPCWSTR path) {
+BOOL CALLBACK BatchTexConvertDirectoryCallback(LPCWSTR path, void *param) {
 	return TRUE;
 }
 
-BOOL CALLBACK BatchTexConvertDirectoryExclusion(LPCWSTR path) {
+BOOL CALLBACK BatchTexConvertDirectoryExclusion(LPCWSTR path, void *param) {
 	//if name ends in converted or converted\, reject (return FALSE)
 	int len = wcslen(path);
 
@@ -2141,19 +2148,57 @@ int BatchTexConvert(LPCWSTR path, LPCWSTR convertedDir) {
 	BOOL b = CreateDirectory(convertedDir, NULL);
 	if (!b && GetLastError() != ERROR_ALREADY_EXISTS) return 0; //failure
 
-	//get path of config
-	WCHAR configPath[MAX_PATH] = { 0 };
-	int len = wcslen(path);
-	memcpy(configPath, path, 2 * len);
-	if (len > 0 && configPath[len - 1] != L'\\') configPath[len++] = L'\\';
-	memcpy(configPath + len, L"texconv.ini", 12 * 2);
-	g_batchConfigFilePath = configPath;
-
 	//recursively process all the textures in this directory. Ugh ummm
 	g_batchTexOut = convertedDir;
-	int status = EnumAllFiles(path, BatchTexConvertFileCallback, BatchTexConvertDirectoryCallback, BatchTexConvertDirectoryExclusion);
+	int status = EnumAllFiles(path, BatchTexConvertFileCallback, BatchTexConvertDirectoryCallback, BatchTexConvertDirectoryExclusion, NULL);
 	g_batchTexOut = NULL;
 	return status;
+}
+
+BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
+	NSBTX *nsbtx = (NSBTX *) param;
+
+	//read file and determine if valid
+	int size;
+	void *pf = fileReadWhole(path, &size);
+	int valid = nitrotgaIsValid(pf, size);
+	free(pf);
+	if (!valid) return TRUE;
+
+	//read texture
+	TEXELS texture = { 0 };
+	PALETTE palette = { 0 };
+	nitroTgaRead(path, &texture, &palette);
+
+	//add to NSBTX
+	int fmt = FORMAT(texture.texImageParam);
+	nsbtx->nTextures++;
+	nsbtx->textures = (TEXELS *) realloc(nsbtx->textures, nsbtx->nTextures * sizeof(TEXELS));
+	memcpy(nsbtx->textures + nsbtx->nTextures - 1, &texture, sizeof(texture));
+	if (fmt != CT_DIRECT) {
+		nsbtx->nPalettes++;
+		nsbtx->palettes = (PALETTE *) realloc(nsbtx->palettes, nsbtx->nPalettes * sizeof(PALETTE));
+		memcpy(nsbtx->palettes + nsbtx->nPalettes - 1, &palette, sizeof(palette));
+	}
+	return TRUE;
+}
+
+BOOL CALLBACK BatchTexAddDir(LPCWSTR path, void *param) {
+	//do nothing
+	return TRUE;
+}
+
+void BatchTexShowVramStatistics(HWND hWnd, LPCWSTR convertedDir) {
+	//enumerate files in this folder and construct a temporary texture archive of them
+	NSBTX nsbtx;
+	nsbtxInit(&nsbtx, NSBTX_TYPE_NNS);
+	EnumAllFiles(convertedDir, BatchTexAddTexture, BatchTexAddDir, NULL, (void *) &nsbtx);
+
+	//create dialog
+	CreateVramUseWindow(hWnd, &nsbtx);
+
+	//free
+	fileFree(&nsbtx.header);
 }
 
 LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2230,7 +2275,7 @@ LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				} else {
 					int status = BatchTexConvert(path, convertedDir);
 					if (status) {
-						MessageBox(hWnd, L"The operation completed successfully.", L"Result", MB_ICONINFORMATION);
+						BatchTexShowVramStatistics(hWnd, convertedDir);
 					} else {
 						MessageBox(hWnd, L"An error occurred.", L"Error", MB_ICONERROR);
 					}
