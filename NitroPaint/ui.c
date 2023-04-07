@@ -145,3 +145,53 @@ void DoModal(HWND hWnd) {
 	SetActiveWindow(hWndParent);
 	SetForegroundWindow(hWndParent);
 }
+
+void DoModalWait(HWND hWnd, HANDLE hWait) {
+	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	ShowWindow(hWnd, SW_SHOW);
+	SetActiveWindow(hWnd);
+	SetForegroundWindow(hWnd);
+	setStyle(hWndParent, TRUE, WS_DISABLED);
+
+	//override the WndProc. 
+	SetWindowSubclass(hWnd, ModalCloseHookProc, 1, 0);
+
+	//enter our own message loop
+	MSG msg;
+	DWORD waitResult;
+	while (1) {
+		waitResult = MsgWaitForMultipleObjects(1, &hWait, FALSE, INFINITE, QS_ALLINPUT);
+		if (waitResult == WAIT_OBJECT_0) { //event signaled
+			//destroy window cleanly
+			setStyle(hWndParent, FALSE, WS_DISABLED);
+			SetActiveWindow(hWndParent);
+			SetForegroundWindow(hWndParent);
+			DestroyWindow(hWnd);
+			break;
+		}
+
+		//BEWARE: MsgWaitForMultipleObjects only alerts us of new messages:
+		BOOL quit = FALSE;
+		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+			if (msg.message == WM_QUIT) {
+				quit = TRUE;
+				break;
+			}
+
+			//normal dispatching
+			if (!IsDialogMessage(hWnd, &msg)) {
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
+			}
+		}
+
+		//check the window still exists. If not, prepare the main window for focus
+		if (quit || !IsWindow(hWnd)) {
+			break;
+		}
+	}
+
+	setStyle(hWndParent, FALSE, WS_DISABLED);
+	SetActiveWindow(hWndParent);
+	SetForegroundWindow(hWndParent);
+}

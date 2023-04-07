@@ -112,13 +112,15 @@
 #define ID_TOOLS_SCREEN                 40117
 #define ID_SCREEN_SPLITSCREEN           40118
 #define ID_NEW_NEWTEXTUREARCHIVE        40119
+#define ID_TOOLS_BATCHPROCESSING        40120
+#define ID_BATCHPROCESSING_TEXTURECONVERSION 40121
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40120
+#define _APS_NEXT_COMMAND_VALUE         40122
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

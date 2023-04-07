@@ -1,6 +1,8 @@
 ﻿#include <Windows.h>
 #include <CommCtrl.h>
 #include <Uxtheme.h>
+#include <Shlwapi.h>
+#include <ShlObj.h>
 
 #include "nitropaint.h"
 #include "filecommon.h"
@@ -21,6 +23,7 @@
 #include "nmcrviewer.h"
 #include "colorchooser.h"
 #include "ui.h"
+#include "texconv.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -185,6 +188,7 @@ int PromptUserText(HWND hWndParent, LPCWSTR title, LPCWSTR prompt, LPWSTR text, 
 	return status;
 }
 
+int BatchTextureDialog(HWND hWndParent);
 void SetGUIFont(HWND hWnd);
 
 LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1151,6 +1155,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						setStyle(hWnd, TRUE, WS_DISABLED);
 						break;
 					}
+					case ID_BATCHPROCESSING_TEXTURECONVERSION:
+					{
+						BatchTextureDialog(hWnd);
+						break;
+					}
 				}
 			}
 			HWND hWndActive = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);
@@ -1206,7 +1215,7 @@ VOID SetGUIFont(HWND hWnd) {
 void RegisterGenericClass(LPCWSTR lpszClassName, WNDPROC pWndProc, int cbWndExtra) {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
+	wcex.hbrBackground = (HBRUSH) (COLOR_BTNFACE + 1);
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.lpszClassName = lpszClassName;
 	wcex.lpfnWndProc = pWndProc;

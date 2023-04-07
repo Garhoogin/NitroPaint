@@ -52,6 +52,16 @@ typedef struct {
 #define NPMSG_OPENFILE       1
 
 //
+// Register a generic window class.
+//
+void RegisterGenericClass(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, int cbWndExtra);
+
+//
+// Makes a window and its children use the default GUI font.
+//
+void SetGUIFont(HWND hWnd);
+
+//
 // Create an open file dialog
 //
 LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);

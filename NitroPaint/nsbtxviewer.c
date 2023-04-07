@@ -497,7 +497,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						PIDLIST_ABSOLUTE idl = SHBrowseForFolder(&bf);
 
 						if (idl == NULL) {
-							CoUninitialize();
 							break;
 						}
 						SHGetPathFromIDList(idl, path);

@@ -75,3 +75,5 @@ VOID RegisterTextureEditorClass(VOID);
 HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 
 HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TEXTURE *texture);
+
+int BatchTextureDialog(HWND hWndParent);

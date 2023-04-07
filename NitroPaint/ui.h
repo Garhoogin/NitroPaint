@@ -17,6 +17,11 @@ void setStyle(HWND hWnd, BOOL set, DWORD style);
 void DoModal(HWND hWnd);
 
 //
+// Do modal, but destroy the window when a handle is signaled.
+//
+void DoModalWait(HWND hWnd, HANDLE hWait);
+
+//
 // Create a button, optionally a default button.
 //
 HWND CreateButton(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, BOOL def);

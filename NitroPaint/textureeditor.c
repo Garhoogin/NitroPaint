@@ -10,6 +10,8 @@
 #include "texconv.h"
 #include "nclr.h"
 
+#include <Shlwapi.h>
+#include <ShlObj.h>
 #include <commctrl.h>
 #include <math.h>
 
@@ -1845,6 +1847,419 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 }
 
+
+typedef struct BATCHTEXCONVDATA_ {
+	HWND hWndDirectory;
+	HWND hWndBrowse;
+	HWND hWndConvert;
+	HWND hWndClean;
+} BATCHTEXCONVDATA;
+
+int EnumAllFiles(LPCWSTR path, BOOL(CALLBACK *fileCallback) (LPCWSTR), BOOL(CALLBACK *dirCallback) (LPCWSTR),
+	BOOL(CALLBACK *preprocessDirCallback) (LPCWSTR)) {
+	//copy string to add \*
+	int pathlen = wcslen(path);
+	WCHAR cpy[MAX_PATH + 2] = { 0 };
+	memcpy(cpy, path, 2 * (pathlen + 1));
+
+	//add \*
+	if (pathlen == 0 || cpy[pathlen - 1] != L'\\') {
+		cpy[pathlen++] = L'\\';
+	}
+	cpy[pathlen++] = L'*';
+
+	WIN32_FIND_DATA ffd;
+	HANDLE hFind = FindFirstFile(cpy, &ffd);
+
+	//process all the things (if they exist)
+	if (hFind == INVALID_HANDLE_VALUE) return 1;
+
+	int status = 1;
+	do {
+		//if name is . or .., ignore
+		if (_wcsicmp(ffd.cFileName, L".") == 0 || _wcsicmp(ffd.cFileName, L"..") == 0)
+			continue;
+
+		//get full name
+		WCHAR fullPath[MAX_PATH] = { 0 };
+		memcpy(fullPath, cpy, 2 * (pathlen - 1)); //cut off *
+		memcpy(fullPath + pathlen - 1, ffd.cFileName, 2 * (wcslen(ffd.cFileName) + 1));
+
+		//if a directory, procses it recursively. If a file, prcoess it normally.
+		DWORD attr = ffd.dwFileAttributes;
+		if (attr & FILE_ATTRIBUTE_DIRECTORY) {
+			if (preprocessDirCallback == NULL || preprocessDirCallback(fullPath)) { //nonexistent or returns TRUE, process recurse
+				status = EnumAllFiles(fullPath, fileCallback, dirCallback, preprocessDirCallback) && status; //prevent short-circuiting
+			}
+		} else {
+			status = fileCallback(fullPath) && status;
+		}
+	} while (FindNextFile(hFind, &ffd));
+	FindClose(hFind);
+
+	//if we've succeeded, process the directory.
+	if (status) {
+		dirCallback(path);
+	}
+	return status;
+}
+
+int BatchTexDelete(LPCWSTR path) {
+	return EnumAllFiles(path, DeleteFile, RemoveDirectory, NULL);
+}
+
+//some global state for the current batch operation
+int g_batchTexNumTex = 0; //number of textures to convert
+int g_batchTexConvertedTex = 0; //number of textures converted
+LPCWSTR g_batchTexOut = NULL;
+LPCWSTR g_batchConfigFilePath = NULL; //config file for batch
+HWND g_hWndBatchTexWindow;
+
+BOOL BatchTexReadOptions(LPCWSTR path, int *fmt, int *dither, int *ditherAlpha, float *diffuse, int *paletteSize, char *pnam,
+	int *balance, int *colorBalance, int *enhanceColors) {
+
+	char narrow[MAX_PATH] = { 0 };
+	WCHAR buffer[MAX_PATH] = { 0 };
+	BOOL hasMissing = FALSE; //any missing entries?
+
+	//format
+	GetPrivateProfileString(L"Texture", L"Format", L"", buffer, MAX_PATH, path);
+	for (unsigned int i = 0; i <= wcslen(buffer); i++) {
+		narrow[i] = (char) buffer[i];
+	}
+	int foundFormat = 0;
+	for (int i = CT_A3I5; i <= CT_DIRECT; i++) {
+		char *fname = stringFromFormat(i);
+		if (strcmp(fname, narrow) == 0) {
+			*fmt = i;
+			foundFormat = 1;
+			break;
+		}
+	}
+	if (!foundFormat) hasMissing = TRUE;
+
+	//dithering
+	int rawInt = GetPrivateProfileInt(L"Texture", L"Dither", -1, path);
+	if (rawInt == -1) hasMissing = TRUE;
+	else *dither = rawInt;
+	rawInt = GetPrivateProfileInt(L"Texture", L"DitherAlpha", -1, path);
+	if (rawInt == -1) hasMissing = TRUE;
+	else *ditherAlpha = rawInt;
+	rawInt = GetPrivateProfileInt(L"Texture", L"Diffuse", -1, path);
+	if (rawInt == -1) hasMissing = TRUE;
+	else *diffuse = ((float) rawInt) / 100.0f;
+
+	//palette
+	rawInt = GetPrivateProfileInt(L"Texture", L"PaletteSize", -1, path);
+	if (rawInt == -1) hasMissing = TRUE;
+	else *paletteSize = rawInt;
+	GetPrivateProfileString(L"Texture", L"PaletteName", L"", buffer, MAX_PATH, path);
+	if (*buffer == L'\0') hasMissing = TRUE;
+	else {
+		memset(pnam, 0, 17);
+		for (unsigned int i = 0; i < 16; i++) {
+			pnam[i] = (char) buffer[i];
+			if (buffer[i] == L'\0') break;
+		}
+	}
+
+	//balance
+	rawInt = GetPrivateProfileInt(L"Texture", L"Balance", -1, path);
+	if (rawInt == -1) hasMissing = TRUE;
+	else *balance = rawInt;
+	rawInt = GetPrivateProfileInt(L"Texture", L"ColorBalance", -1, path);
+	if (rawInt == -1) hasMissing = TRUE;
+	else *colorBalance = rawInt;
+	rawInt = GetPrivateProfileInt(L"Texture", L"EnhanceColors", -1, path);
+	if (rawInt == -1) hasMissing = TRUE;
+	else *enhanceColors = rawInt;
+
+	return hasMissing;
+}
+
+void BatchTexWriteOptions(LPCWSTR path, int fmt, int dither, int ditherAlpha, float diffuse, int paletteSize, char *pnam, 
+	int balance, int colorBalance, int enhanceColors) {
+
+	//format
+	WCHAR buffer[MAX_PATH] = { 0 };
+	wsprintfW(buffer, L"%S", stringFromFormat(fmt));
+	WritePrivateProfileString(L"Texture", L"Format", buffer, path);
+
+	//dithering
+	wsprintfW(buffer, L"%d", dither);
+	WritePrivateProfileString(L"Texture", L"Dither", buffer, path);
+	wsprintfW(buffer, L"%d", ditherAlpha);
+	WritePrivateProfileString(L"Texture", L"DitherAlpha", buffer, path);
+	wsprintfW(buffer, L"%d", (int) (diffuse * 100.0f + 0.5f));
+	WritePrivateProfileString(L"Texture", L"Diffuse", buffer, path);
+
+	//palette
+	wsprintfW(buffer, L"%d", paletteSize);
+	WritePrivateProfileString(L"Texture", L"PaletteSize", buffer, path);
+	wsprintfW(buffer, L"%S", pnam);
+	WritePrivateProfileString(L"Texture", L"PaletteName", buffer, path);
+
+	//balance
+	wsprintfW(buffer, L"%d", balance);
+	WritePrivateProfileString(L"Texture", L"Balance", buffer, path);
+	wsprintfW(buffer, L"%d", colorBalance);
+	WritePrivateProfileString(L"Texture", L"ColorBalance", buffer, path);
+	wsprintfW(buffer, L"%d", enhanceColors);
+	WritePrivateProfileString(L"Texture", L"EnhanceColors", buffer, path);
+}
+
+BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path) {
+	//read image
+	int width, height;
+	COLOR32 *px = gdipReadImage(path, &width, &height);
+
+	//invalid image?
+	if (px == NULL) {
+		return TRUE; //just skip the file by reporting a success
+	}
+
+	//invalid texture size?
+	if (!textureDimensionIsValid(width) || !textureDimensionIsValid(height)) {
+		if (px) free(px);
+		return FALSE; //report actual error
+	}
+
+	//construct output path (ensure .TGA extension)
+	WCHAR outPath[MAX_PATH] = { 0 };
+	LPWSTR filename = GetFileName(path);
+	int outPathLen = wcslen(g_batchTexOut);
+	memcpy(outPath, g_batchTexOut, 2 * (outPathLen + 1));
+	outPath[outPathLen++] = L'\\';
+	memcpy(outPath + outPathLen, filename, 2 * wcslen(filename) + 2);
+
+	//ensure extension
+	int extensionIndex = 0;
+	for (unsigned int i = 0; i < wcslen(outPath); i++) {
+		if (outPath[i] == L'.') extensionIndex = i;
+	}
+	memcpy(outPath + extensionIndex, L".TGA", 5 * sizeof(WCHAR));
+
+	//construct congfiguration path; used to read/write for this texture
+	WCHAR configPath[MAX_PATH] = { 0 };
+	memcpy(configPath, path, 2 * (wcslen(path) + 1));
+	extensionIndex = 0;
+	for (unsigned int i = 0; i < wcslen(configPath); i++) {
+		if (configPath[i] == L'.') extensionIndex = i;
+	}
+	memcpy(configPath + extensionIndex, L".INI", 5 * sizeof(WCHAR));
+
+	int i;
+	char pnam[17] = { 0 };
+	for (i = 0; i < 12; i++) { //add _pl, max 15 chars
+		if (filename[i] == L'\0') break;
+		if (filename[i] == L'.') break;
+		pnam[i] = (char) filename[i];
+	}
+	memcpy(pnam + i, "_pl", 4);
+
+	//setup texture params
+	int dither = 0, ditherAlpha = 0;
+	float diffuse = 0.0f;
+
+	//palette settings
+	int useFixedPalette = 0;
+	COLOR *fixedPalette = NULL;
+
+	//4x4 settings
+	int fmt = guessFormat(px, width, height);
+	int colorEntries = chooseColorCount(width, height);
+	int threshold4x4 = 0;
+	switch (fmt) {
+		case CT_4COLOR:
+			colorEntries = 4;
+			break;
+		case CT_16COLOR:
+			colorEntries = 16;
+			break;
+		case CT_256COLOR:
+			colorEntries = 256;
+			break;
+		case CT_A3I5:
+			colorEntries = 32;
+			break;
+		case CT_A5I3:
+			colorEntries = 8;
+			break;
+	}
+
+	//balance settings
+	int balance = BALANCE_DEFAULT, colorBalance = BALANCE_DEFAULT;
+	int enhanceColors = 0;
+
+	//read overrides from file.
+	BOOL hasMissing = BatchTexReadOptions(configPath, &fmt, &dither, &ditherAlpha, &diffuse, &colorEntries, pnam,
+		&balance, &colorBalance, &enhanceColors);
+
+	//write back options to file (if there were any missing entries)
+	if (hasMissing) {
+		BatchTexWriteOptions(configPath, fmt, dither, ditherAlpha, diffuse, colorEntries, pnam, balance, colorBalance, enhanceColors);
+	}
+
+	HWND hWndMain = g_hWndBatchTexWindow;
+	HWND hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
+		CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, hWndMain, NULL, NULL, NULL);
+	ShowWindow(hWndProgress, SW_SHOW);
+
+	TEXTURE texture = { 0 };
+	HANDLE hThread = textureConvertThreaded(px, width, height, fmt, dither, diffuse, ditherAlpha, colorEntries,
+		useFixedPalette, fixedPalette, threshold4x4, balance, colorBalance, enhanceColors, pnam, &texture,
+		NULL, NULL);
+	DoModalWait(hWndProgress, hThread); //modal wait progress window
+	
+	//write file out
+	writeNitroTGA(outPath, &texture.texels, &texture.palette);
+
+	//free texture memory
+	if (texture.texels.texel != NULL) free(texture.texels.texel);
+	if (texture.texels.cmp != NULL) free(texture.texels.cmp);
+	if (texture.palette.pal != NULL) free(texture.palette.pal);
+	return TRUE;
+}
+
+BOOL CALLBACK BatchTexConvertDirectoryCallback(LPCWSTR path) {
+	return TRUE;
+}
+
+BOOL CALLBACK BatchTexConvertDirectoryExclusion(LPCWSTR path) {
+	//if name ends in converted or converted\, reject (return FALSE)
+	int len = wcslen(path);
+
+	//check both endings
+	LPCWSTR end = path + len;
+	if (len >= 11 && _wcsicmp(end - 11, L"\\converted\\") == 0) return FALSE;
+	if (len >= 10 && _wcsicmp(end - 10, L"\\converted") == 0) return FALSE;
+	return TRUE;
+}
+
+int BatchTexConvert(LPCWSTR path, LPCWSTR convertedDir) {
+	//ensure output directory exists
+	BOOL b = CreateDirectory(convertedDir, NULL);
+	if (!b && GetLastError() != ERROR_ALREADY_EXISTS) return 0; //failure
+
+	//get path of config
+	WCHAR configPath[MAX_PATH] = { 0 };
+	int len = wcslen(path);
+	memcpy(configPath, path, 2 * len);
+	if (len > 0 && configPath[len - 1] != L'\\') configPath[len++] = L'\\';
+	memcpy(configPath + len, L"texconv.ini", 12 * 2);
+	g_batchConfigFilePath = configPath;
+
+	//recursively process all the textures in this directory. Ugh ummm
+	g_batchTexOut = convertedDir;
+	int status = EnumAllFiles(path, BatchTexConvertFileCallback, BatchTexConvertDirectoryCallback, BatchTexConvertDirectoryExclusion);
+	g_batchTexOut = NULL;
+	return status;
+}
+
+LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	BATCHTEXCONVDATA *data = (BATCHTEXCONVDATA *) GetWindowLongPtr(hWnd, 0);
+	if (data == NULL) {
+		data = (BATCHTEXCONVDATA *) calloc(1, sizeof(BATCHTEXCONVDATA));
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+	}
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			g_hWndBatchTexWindow = hWnd;
+			CreateGroupbox(hWnd, L"Batch Conversion", 10, 10, 350, 78);
+			CreateStatic(hWnd, L"Texture Directory:", 20, 28, 100, 22);
+			data->hWndDirectory = CreateEdit(hWnd, L"", 125, 28, 200, 22, FALSE);
+			data->hWndBrowse = CreateButton(hWnd, L"...", 325, 28, 25, 22, FALSE);
+			data->hWndConvert = CreateButton(hWnd, L"Convert", 20, 55, 100, 22, TRUE);
+			data->hWndClean = CreateButton(hWnd, L"Clean", 125, 55, 100, 22, FALSE);
+
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 370, 97);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			int notif = HIWORD(wParam);
+			if (notif == BN_CLICKED && hWndControl == data->hWndBrowse) { //browse button
+				WCHAR path[MAX_PATH]; //we will overwrite this with the *real* path
+
+				BROWSEINFO bf;
+				bf.hwndOwner = getMainWindow(hWnd);
+				bf.pidlRoot = NULL;
+				bf.pszDisplayName = path;
+				bf.lpszTitle = L"Select output folder...";
+				bf.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX | BIF_VALIDATE; //I don't much like the new dialog style
+				bf.lpfn = NULL;
+				bf.lParam = 0;
+				bf.iImage = 0;
+				PIDLIST_ABSOLUTE idl = SHBrowseForFolder(&bf);
+
+				if (idl == NULL) {
+					break;
+				}
+				SHGetPathFromIDList(idl, path);
+				CoTaskMemFree(idl);
+				SendMessage(data->hWndDirectory, WM_SETTEXT, wcslen(path), (LPARAM) path);
+			} else if (notif == BN_CLICKED && (hWndControl == data->hWndClean || hWndControl == data->hWndConvert)) { //clean and convert buttons
+				//delete directory\converted, if it exists
+				WCHAR path[MAX_PATH] = { 0 };
+				WCHAR convertedDir[MAX_PATH] = { 0 };
+				int len = SendMessage(data->hWndDirectory, WM_GETTEXT, MAX_PATH, (LPARAM) path);
+				if (len == 0) {
+					MessageBox(hWnd, L"Enter a path.", L"No path", MB_ICONERROR);
+					break;
+				}
+
+				//append \converted
+				memcpy(convertedDir, path, 2 * (len + 1));
+				if (convertedDir[len - 1] != L'\\') {
+					convertedDir[len++] = L'\\';
+				}
+				memcpy(convertedDir + len, L"converted", 22);
+				len += 10;
+
+				if (hWndControl == data->hWndClean) {
+					int status = BatchTexDelete(convertedDir);
+					if (status) {
+						MessageBox(hWnd, L"The operation completed successfully.", L"Result", MB_ICONINFORMATION);
+					} else {
+						MessageBox(hWnd, L"An error occurred.", L"Error", MB_ICONERROR);
+					}
+				} else {
+					int status = BatchTexConvert(path, convertedDir);
+					if (status) {
+						MessageBox(hWnd, L"The operation completed successfully.", L"Result", MB_ICONINFORMATION);
+					} else {
+						MessageBox(hWnd, L"An error occurred.", L"Error", MB_ICONERROR);
+					}
+				}
+			}
+			break;
+		}
+		case WM_DESTROY:
+		{
+			free(data);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+int BatchTextureDialog(HWND hWndParent) {
+	HWND hWnd = CreateWindow(L"BatchTextureClass", L"Batch Texture Conversion", WS_CAPTION | WS_SYSMENU,
+		CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWndParent, NULL, NULL, NULL);
+	ShowWindow(hWnd, SW_SHOW);
+	DoModal(hWnd);
+	return 0;
+}
+
+void RegisterBatchTextureDialogClass() {
+	RegisterGenericClass(L"BatchTextureClass", BatchTextureWndProc, sizeof(LPVOID));
+}
+
+
 VOID RegisterTexturePreviewClass(VOID) {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -1932,6 +2347,7 @@ VOID RegisterTextureEditorClass(VOID) {
 	RegisterCompressionProgressClass();
 	RegisterTexturePaletteEditorClass();
 	RegisterTextureTileEditorClass();
+	RegisterBatchTextureDialogClass();
 }
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data) {
