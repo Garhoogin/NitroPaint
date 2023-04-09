@@ -77,3 +77,5 @@ HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, L
 HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TEXTURE *texture);
 
 int BatchTextureDialog(HWND hWndParent);
+
+void BatchTexShowVramStatistics(HWND hWnd, LPCWSTR convertedDir);

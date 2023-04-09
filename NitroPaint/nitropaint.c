@@ -1160,6 +1160,31 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						BatchTextureDialog(hWnd);
 						break;
 					}
+					case ID_TOOLS_TEXTUREVRAMSUMMARY:
+					{
+						//select directory
+						WCHAR path[MAX_PATH];
+
+						BROWSEINFO bf;
+						bf.hwndOwner = getMainWindow(hWnd);
+						bf.pidlRoot = NULL;
+						bf.pszDisplayName = path;
+						bf.lpszTitle = L"Select texture folder...";
+						bf.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX | BIF_VALIDATE; //I don't much like the new dialog style
+						bf.lpfn = NULL;
+						bf.lParam = 0;
+						bf.iImage = 0;
+						PIDLIST_ABSOLUTE idl = SHBrowseForFolder(&bf);
+
+						if (idl == NULL) {
+							break;
+						}
+						SHGetPathFromIDList(idl, path);
+						CoTaskMemFree(idl);
+
+						BatchTexShowVramStatistics(hWnd, path);
+						break;
+					}
 				}
 			}
 			HWND hWndActive = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);

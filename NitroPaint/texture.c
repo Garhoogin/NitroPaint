@@ -554,5 +554,6 @@ int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 		texels->name[i] = (char) name[i];
 	}
 
+	free(lpBuffer);
 	return 0;
 }
