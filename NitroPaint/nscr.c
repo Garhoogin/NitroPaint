@@ -22,6 +22,17 @@ int isValidScreenSize(int nPx) {
 	return 0;
 }
 
+int nscrGetHighestCharacter(NSCR *nscr) {
+	int highest = 0;
+	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+		uint16_t tile = nscr->data[i];
+		int charNum = tile & 0x3FF;
+		if (charNum > highest) highest = charNum;
+	}
+	nscr->nHighestIndex = highest;
+	return highest;
+}
+
 int nscrIsValidHudson(unsigned char *buffer, unsigned int size) {
 	if (*buffer == 0x10) return 0;
 	if (size < 4) return 0;
@@ -117,11 +128,7 @@ int hudsonScreenRead(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	nscr->dataSize = tilesX * tilesY * 2;
 	nscr->nHighestIndex = 0;
 	memcpy(nscr->data, srcData, nscr->dataSize);
-	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-		uint16_t w = nscr->data[i];
-		w &= 0x3FF;
-		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
-	}
+	nscrGetHighestCharacter(nscr);
 	return 0;
 }
 
@@ -208,11 +215,7 @@ int nscrReadCombo(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	nscr->nHeight = height;
 	nscr->dataSize = dataSize;
 	nscr->nHighestIndex = 0;
-	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-		uint16_t w = nscr->data[i];
-		w &= 0x3FF;
-		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
-	}
+	nscrGetHighestCharacter(nscr);
 	return 0;
 }
 
@@ -260,13 +263,7 @@ int nscrReadNsc(NSCR *nscr, unsigned char *file, unsigned int size) {
 	}
 
 	//calculate highest index
-	nscr->nHighestIndex = 0;
-	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-		uint16_t w = nscr->data[i];
-		w &= 0x3FF;
-		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
-	}
-
+	nscrGetHighestCharacter(nscr);
 	return 0;
 }
 
@@ -309,11 +306,7 @@ int nscrRead(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	nscr->dataSize = dwDataSize;
 	nscr->nHighestIndex = 0;
 	memcpy(nscr->data, file + 0x14, dwDataSize);
-	for (unsigned int i = 0; i < dwDataSize / 2; i++) {
-		uint16_t w = nscr->data[i];
-		w &= 0x3FF;
-		if (w > nscr->nHighestIndex) nscr->nHighestIndex = w;
-	}
+	nscrGetHighestCharacter(nscr);
 
 	return 0;
 }

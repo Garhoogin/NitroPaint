@@ -251,9 +251,12 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		NCGR *ncgr = combo->ncgr;
 		NSCR *nscr = combo->nscr;
 
+		//how many characters do we write?
+		int nCharsWrite = nscrGetHighestCharacter(nscr) + 1;
+
 		int nSections = ncgr->nBits == 4 ? 3 : 2; //no flags for 8-bit images
 		int paltSize = 0xC + nclr->nColors * 2;
-		int bgdtSize = 0x1C + ncgr->nTiles * (8 * ncgr->nBits) + (nscr->nWidth / 8 * nscr->nHeight / 8) * 2;
+		int bgdtSize = 0x1C + nCharsWrite * (8 * ncgr->nBits) + (nscr->nWidth / 8 * nscr->nHeight / 8) * 2;
 		int dfplSize = nSections == 2 ? 0 : (0xC + ncgr->nTiles);
 		*(uint32_t *) (header + 0x08) = sizeof(header) + paltSize + bgdtSize + dfplSize;
 		*(uint16_t *) (header + 0x0E) = nSections;
@@ -277,14 +280,17 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		*(uint16_t *) (bgdtHeader + 0x12) = nscr->nHeight / 8;
 		*(uint16_t *) (bgdtHeader + 0x14) = ncgr->tilesX;
 		*(uint16_t *) (bgdtHeader + 0x16) = ncgr->tilesY;
-		*(uint32_t *) (bgdtHeader + 0x18) = ncgr->nTiles * (8 * ncgr->nBits);
+		*(uint32_t *) (bgdtHeader + 0x18) = nCharsWrite * (8 * ncgr->nBits);
 		bstreamWrite(stream, bgdtHeader, sizeof(bgdtHeader));
 		bstreamWrite(stream, nscr->data, nscr->dataSize);
 		
 		//quick n' dirty write graphics data
+		int nTilesOld = ncgr->nTiles;
+		ncgr->nTiles = nCharsWrite;
 		ncgr->header.format = NCGR_TYPE_BIN;
 		ncgrWrite(ncgr, stream);
 		ncgr->header.type = NCGR_TYPE_COMBO;
+		ncgr->nTiles = nTilesOld;
 
 		//write DFPL
 		if (nSections > 2) {
@@ -292,8 +298,14 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 			*(uint32_t *) (dfplHeader + 0x04) = dfplSize;
 			*(uint32_t *) (dfplHeader + 0x08) = ncgr->nTiles;
 
-			//honestly this data is probably not really important outside of iMageStudio
-			void *attr = calloc(ncgr->nTiles, 1);
+			//iterate the screen and set attributes
+			uint8_t *attr = (uint8_t *) calloc(ncgr->nTiles, 1);
+			for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+				uint16_t tile = nscr->data[i];
+				int charNum = tile & 0x3FF;
+				int palNum = tile >> 12;
+				attr[charNum] = palNum;
+			}
 			bstreamWrite(stream, dfplHeader, sizeof(dfplHeader));
 			bstreamWrite(stream, attr, ncgr->nTiles);
 			free(attr);

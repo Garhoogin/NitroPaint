@@ -674,7 +674,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			combo->header.dispose = NULL;
 			combo->header.size = sizeof(COMBO2D);
 			combo->header.type = FILE_TYPE_COMBO2D;
-			combo->header.format = combo2dIsValid(buffer, dwSize);
+			combo->header.format = type;
 			break;
 		}
 		default: //unrecognized file

@@ -125,6 +125,12 @@ int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, int chceker, C
 int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, int checker, COLOR32 *out, int *tileNo, int transparent);
 
 //
+// Computes and stores the highest character index in the screen file and
+// returns it.
+//
+int nscrGetHighestCharacter(NSCR *nscr);
+
+//
 // Call this function after filling out the RGB color info in the tile array.
 // The function will associate each tile with its best fitting palette, index
 // the tile with that palette, and perform optional dithering.
