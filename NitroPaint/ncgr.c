@@ -167,7 +167,8 @@ int ncgrReadCombo(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	int format = combo2dIsValid(buffer, size);
 	ncgrInit(ncgr, NCGR_TYPE_COMBO);
 
-	int charOffset = 0;
+	char *charSrc = NULL;
+	int freeChar = 0; //should free buffer?
 	switch (format) {
 		case COMBO2D_TYPE_TIMEACE:
 		{
@@ -176,7 +177,7 @@ int ncgrReadCombo(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 			ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
 			ncgr->tilesX = calculateWidth(ncgr->nTiles);
 			ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-			charOffset = 0xA0C;
+			charSrc = buffer + 0xA0C;
 			break;
 		}
 		case COMBO2D_TYPE_BANNER:
@@ -187,7 +188,34 @@ int ncgrReadCombo(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 			ncgr->tilesY = 4;
 			ncgr->nBits = 4;
 			ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-			charOffset = 0x20;
+			charSrc = buffer + 0x20;
+			break;
+		}
+		case COMBO2D_TYPE_5BG:
+		{
+			char *bgdt = g2dGetSectionByMagic(buffer, size, 'BGDT');
+			if (bgdt == NULL) bgdt = g2dGetSectionByMagic(buffer, size, 'TDGB');
+			char *dfpl = g2dGetSectionByMagic(buffer, size, 'DFPL');
+			if (dfpl == NULL) dfpl = g2dGetSectionByMagic(buffer, size, 'LPFD');
+
+			int chrWidth = *(uint16_t *) (bgdt + 0x14);
+			int chrHeight = *(uint16_t *) (bgdt + 0x16);
+			int scrSize = *(uint32_t *) (bgdt + 0x0C);
+			int mapping = *(uint32_t *) (bgdt + 0x08);
+			int charSize = *(uint32_t *) (bgdt + 0x18);
+			int charOffset = (bgdt - buffer) + 0x1C + scrSize;
+			int nBits = dfpl == NULL ? 8 : 4; //8-bit if no DFPL present
+			charSrc = (char *) calloc(chrWidth * chrHeight, 8 * nBits);
+			freeChar = 1; //since we allocated the buffer
+
+			//copy from file up to the size stored, the remainder are left empty
+			memcpy(charSrc, buffer + charOffset, charSize);
+
+			ncgr->nTiles = chrWidth * chrHeight;
+			ncgr->tilesX = chrWidth;
+			ncgr->tilesY = chrHeight;
+			ncgr->nBits = nBits;
+			ncgr->mappingMode = mapping;
 			break;
 		}
 	}
@@ -199,9 +227,9 @@ int ncgrReadCombo(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 		tiles[i] = tile;
 
 		if (ncgr->nBits == 8) {
-			memcpy(tile, buffer + charOffset + i * 0x40, 0x40);
+			memcpy(tile, charSrc + i * 0x40, 0x40);
 		} else {
-			BYTE *src = buffer + charOffset + i * 0x20;
+			BYTE *src = charSrc + i * 0x20;
 			for (int j = 0; j < 32; j++) {
 				BYTE b = src[j];
 				tile[j * 2] = b & 0xF;
@@ -210,6 +238,7 @@ int ncgrReadCombo(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 		}
 	}
 	ncgr->tiles = tiles;
+	if (freeChar) free(charSrc);
 
 	return 0;
 }

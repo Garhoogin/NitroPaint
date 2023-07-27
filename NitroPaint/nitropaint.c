@@ -631,7 +631,11 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			break;
 		case FILE_TYPE_COMBO2D:
 		{
-			int type = combo2dIsValid(buffer, dwSize);
+			//since we're kind of stepping around things a bit, we need to decompress here if applicable
+			int decompressedSize = dwSize;
+			char *decompressed = decompress(buffer, dwSize, &decompressedSize);
+			int type = combo2dIsValid(decompressed, decompressedSize);
+			free(decompressed);
 
 			//if there is already an NCLR open, close it.
 			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);

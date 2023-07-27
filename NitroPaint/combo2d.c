@@ -4,6 +4,7 @@
 #include "ncgr.h"
 #include "nscr.h"
 #include "combo2d.h"
+#include "g2dfile.h"
 
 typedef struct BANNER_INFO_ {
 	int version;
@@ -19,16 +20,19 @@ typedef struct BANNER_INFO_ {
 
 int combo2dFormatHasPalette(int format) {
 	return format == COMBO2D_TYPE_BANNER
-		|| format == COMBO2D_TYPE_TIMEACE;
+		|| format == COMBO2D_TYPE_TIMEACE
+		|| format == COMBO2D_TYPE_5BG;
 }
 
 int combo2dFormatHasCharacter(int format) {
 	return format == COMBO2D_TYPE_BANNER
-		|| format == COMBO2D_TYPE_TIMEACE;
+		|| format == COMBO2D_TYPE_TIMEACE
+		|| format == COMBO2D_TYPE_5BG;
 }
 
 int combo2dFormatHasScreen(int format) {
-	return format == COMBO2D_TYPE_TIMEACE;
+	return format == COMBO2D_TYPE_TIMEACE
+		|| format == COMBO2D_TYPE_5BG;
 }
 
 int combo2dCanSave(COMBO2D *combo) {
@@ -104,7 +108,26 @@ int combo2dIsValidBanner(BYTE *file, int size) {
 	return 1;
 }
 
+int combo2dIsValid5bg(BYTE *file, int size) {
+	//must be a valid G2D structured file
+	if (!g2dIsValid(file, size)) return 0;
+
+	//must have PALT section
+	char *palt = g2dGetSectionByMagic(file, size, 'PALT');
+	if (palt == NULL) palt = g2dGetSectionByMagic(file, size, 'TLAP');
+	if (palt == NULL) return 0;
+
+	//must have BGDT section
+	char *bgdt = g2dGetSectionByMagic(file, size, 'BGDT');
+	if (bgdt == NULL) bgdt = g2dGetSectionByMagic(file, size, 'TDGB');
+	if (bgdt == NULL) return 0;
+
+	//may have DFPL section
+	return 1;
+}
+
 int combo2dIsValid(BYTE *file, int size) {
+	if (combo2dIsValid5bg(file, size)) return COMBO2D_TYPE_5BG;
 	if (combo2dIsValidTimeAce(file, size)) return COMBO2D_TYPE_TIMEACE;
 	if (combo2dIsValidBanner(file, size)) return COMBO2D_TYPE_BANNER;
 	return 0;
@@ -116,6 +139,7 @@ int combo2dRead(COMBO2D *combo, char *buffer, int size) {
 
 	switch (format) {
 		case COMBO2D_TYPE_TIMEACE:
+		case COMBO2D_TYPE_5BG:
 			return 0;
 		case COMBO2D_TYPE_BANNER:
 		{
@@ -220,6 +244,61 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 
 		bstreamWrite(stream, copy, dfc->size);
 		free(copy);
+	} else if (combo->header.format == COMBO2D_TYPE_5BG) {
+		unsigned char header[] = { 'N', 'T', 'B', 'G', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 0, 0 };
+
+		NCLR *nclr = combo->nclr;
+		NCGR *ncgr = combo->ncgr;
+		NSCR *nscr = combo->nscr;
+
+		int nSections = ncgr->nBits == 4 ? 3 : 2; //no flags for 8-bit images
+		int paltSize = 0xC + nclr->nColors * 2;
+		int bgdtSize = 0x1C + ncgr->nTiles * (8 * ncgr->nBits) + (nscr->nWidth / 8 * nscr->nHeight / 8) * 2;
+		int dfplSize = nSections == 2 ? 0 : (0xC + ncgr->nTiles);
+		*(uint32_t *) (header + 0x08) = sizeof(header) + paltSize + bgdtSize + dfplSize;
+		*(uint16_t *) (header + 0x0E) = nSections;
+
+		//write header
+		bstreamWrite(stream, header, sizeof(header));
+
+		//write PALT
+		unsigned char paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
+		*(uint32_t *) (paltHeader + 0x04) = paltSize;
+		*(uint32_t *) (paltHeader + 0x08) = nclr->nColors;
+		bstreamWrite(stream, paltHeader, sizeof(paltHeader));
+		bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
+
+		//write BGDT
+		unsigned char bgdtHeader[0x1C] = { 'B', 'G', 'D', 'T' };
+		*(uint32_t *) (bgdtHeader + 0x04) = bgdtSize;
+		*(uint32_t *) (bgdtHeader + 0x08) = ncgr->mappingMode;
+		*(uint32_t *) (bgdtHeader + 0x0C) = nscr->dataSize;
+		*(uint16_t *) (bgdtHeader + 0x10) = nscr->nWidth / 8;
+		*(uint16_t *) (bgdtHeader + 0x12) = nscr->nHeight / 8;
+		*(uint16_t *) (bgdtHeader + 0x14) = ncgr->tilesX;
+		*(uint16_t *) (bgdtHeader + 0x16) = ncgr->tilesY;
+		*(uint32_t *) (bgdtHeader + 0x18) = ncgr->nTiles * (8 * ncgr->nBits);
+		bstreamWrite(stream, bgdtHeader, sizeof(bgdtHeader));
+		bstreamWrite(stream, nscr->data, nscr->dataSize);
+		
+		//quick n' dirty write graphics data
+		ncgr->header.format = NCGR_TYPE_BIN;
+		ncgrWrite(ncgr, stream);
+		ncgr->header.type = NCGR_TYPE_COMBO;
+
+		//write DFPL
+		if (nSections > 2) {
+			unsigned char dfplHeader[] = { 'D', 'F', 'P', 'L', 0, 0, 0, 0, 0, 0, 0, 0 };
+			*(uint32_t *) (dfplHeader + 0x04) = dfplSize;
+			*(uint32_t *) (dfplHeader + 0x08) = ncgr->nTiles;
+
+			//honestly this data is probably not really important outside of iMageStudio
+			void *attr = calloc(ncgr->nTiles, 1);
+			bstreamWrite(stream, dfplHeader, sizeof(dfplHeader));
+			bstreamWrite(stream, attr, ncgr->nTiles);
+			free(attr);
+		}
+
 	}
 
 	return 0;

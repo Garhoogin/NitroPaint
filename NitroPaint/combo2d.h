@@ -5,6 +5,7 @@
 #define COMBO2D_TYPE_TIMEACE     1
 #define COMBO2D_TYPE_BANNER      2
 #define COMBO2D_TYPE_DATAFILE    3
+#define COMBO2D_TYPE_5BG         4
 
 //structure that manages a linkage of palette, graphics, and screen.
 typedef struct COMBO2D_ {

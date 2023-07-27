@@ -173,13 +173,40 @@ int nscrReadBin(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 }
 
 int nscrReadCombo(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
+	int type = combo2dIsValid(file, dwFileSize);
 	nscrInit(nscr, NSCR_TYPE_COMBO);
-	nscr->dataSize = 2048;
-	nscr->nHeight = 256;
-	nscr->nWidth = 256;
-	nscr->data = (uint16_t *) calloc(1024, 2);
-	memcpy(nscr->data, file + 0x208, 2048);
 
+	int width = 0, height = 0, dataSize = 0;
+	switch (type) {
+		case COMBO2D_TYPE_TIMEACE:
+			height = 256;
+			width = 256;
+			dataSize = 2048;
+
+			nscr->data = (uint16_t *) calloc(1024, 2);
+			memcpy(nscr->data, file + 0x208, dataSize);
+			break;
+		case COMBO2D_TYPE_5BG:
+		{
+			char *bgdt = g2dGetSectionByMagic(file, dwFileSize, 'BGDT');
+			if (bgdt == NULL) bgdt = g2dGetSectionByMagic(file, dwFileSize, 'TDGB');
+
+			int scrX = *(uint16_t *) (bgdt + 0x10);
+			int scrY = *(uint16_t *) (bgdt + 0x12);
+			char *scr = bgdt + 0x1C;
+
+			width = scrX * 8;
+			height = scrY * 8;
+			dataSize = scrX * scrY * 2;
+
+			nscr->data = (uint16_t *) calloc(scrX * scrY, 2);
+			memcpy(nscr->data, scr, dataSize);
+			break;
+		}
+	}
+	nscr->nWidth = width;
+	nscr->nHeight = height;
+	nscr->dataSize = dataSize;
 	nscr->nHighestIndex = 0;
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		uint16_t w = nscr->data[i];

@@ -190,6 +190,22 @@ int comboReadPalette(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 			nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
 			memcpy(nclr->colors, buffer + 0x220, 32);
 			break;
+		case COMBO2D_TYPE_5BG:
+		{
+			char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
+			if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
+
+			int nColors = *(uint32_t *) (palt + 0x08);
+			nclr->nColors = nColors;
+			nclr->extPalette = 0;
+			nclr->idxTable = NULL;
+			nclr->nBits = 4;
+			nclr->nPalettes = 0;
+			nclr->totalSize = nColors;
+			nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+			memcpy(nclr->colors, palt + 0xC, nColors * sizeof(COLOR));
+			break;
+		}
 	}
 
 	return 0;
