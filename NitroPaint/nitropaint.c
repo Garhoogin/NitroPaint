@@ -284,11 +284,11 @@ void copyBitmap(COLOR32 *img, int width, int height) {
 	SetClipboardData(CF_DIB, hDib);
 }
 
-LPWSTR GetFileName(LPWSTR lpszPath) {
-	WCHAR *current = lpszPath;
+LPCWSTR GetFileName(LPCWSTR lpszPath) {
+	const WCHAR *current = lpszPath;
 	while (*lpszPath) {
 		WCHAR c = *lpszPath;
-		if (c == '\\' || c == '/') current = lpszPath;
+		if (c == L'\\' || c == L'/') current = lpszPath;
 		lpszPath++;
 	}
 	return current + 1;
@@ -1244,7 +1244,7 @@ VOID SetGUIFont(HWND hWnd) {
 void RegisterGenericClass(LPCWSTR lpszClassName, WNDPROC pWndProc, int cbWndExtra) {
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) (COLOR_BTNFACE + 1);
+	wcex.hbrBackground = g_useDarkTheme ? CreateSolidBrush(RGB(32, 32, 32)) : (HBRUSH) (COLOR_BTNFACE + 1);
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.lpszClassName = lpszClassName;
 	wcex.lpfnWndProc = pWndProc;

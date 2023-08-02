@@ -1,3 +1,4 @@
+#include "editor.h"
 #include "ncerviewer.h"
 #include "nitropaint.h"
 #include "ncgr.h"
@@ -263,11 +264,8 @@ void ncerEditorRedo(HWND hWnd) {
 }
 
 LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!data) {
-		data = (NCERVIEWERDATA *) calloc(1, sizeof(NCERVIEWERDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
+
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -324,16 +322,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				return HTBORDER;
 			return ht;
 		}
-		case NV_SETTITLE:
-		{
-			LPWSTR path = (LPWSTR) lParam;
-			WCHAR titleBuffer[MAX_PATH + 15];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - Cell Editor", 30);
-			SetWindowText(hWnd, titleBuffer);
-			break;
-		}
 		case NV_INITIALIZE_IMMEDIATE:
 		case NV_INITIALIZE:
 		{
@@ -341,7 +329,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				LPWSTR path = (LPWSTR) wParam;
 				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 				memcpy(&data->ncer, (NCER *) lParam, sizeof(NCER));
-				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+				EditorSetTitle(hWnd, path);
 			} else {
 				NCER *ncer = (NCER *) lParam;
 				memcpy(&data->ncer, ncer, sizeof(NCER));
@@ -912,8 +900,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncer");
 							if (path != NULL) {
 								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 								free(path);
+								EditorSetTitle(hWnd, data->szOpenFile);
 							} else break;
 						}
 						ncerWriteFile(&data->ncer, data->szOpenFile);
@@ -979,7 +967,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			nitroPaintStruct->hWndNcerViewer = NULL;
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 			undoDestroy(&data->undo);
-			free(data);
 			break;
 		}
 		case NV_GETTYPE:
@@ -989,20 +976,10 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 }
 
 VOID RegisterNcerViewerClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NcerViewerClass";
-	wcex.lpfnWndProc = NcerViewerWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	EditorRegister(L"NcerViewerClass", NcerViewerWndProc, L"Cell Editor", sizeof(NCERVIEWERDATA));
 }
 
 HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-
 	NCER ncer;
 	if (ncerReadFile(&ncer, path)) {
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
@@ -1017,16 +994,14 @@ HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4;
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcerViewerClass", L"Cell Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncer);
-		if (ncer.header.format == NCER_TYPE_HUDSON) {
-			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
-		}
-		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcerViewerClass", L"Cell Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	//SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
-	return h;
+
+	HWND hWnd = EditorCreate(L"NcerViewerClass", x, y, width, height, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncer);
+	if (ncer.header.format == NCER_TYPE_HUDSON) {
+		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+	}
+	return hWnd;
 }
 
 HWND CreateNcerViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCER *ncer) {
@@ -1038,14 +1013,12 @@ HWND CreateNcerViewerImmediate(int x, int y, int width, int height, HWND hWndPar
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4;
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcerViewerClass", L"Cell Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncer);
-		if (ncer->header.format == NCER_TYPE_HUDSON) {
-			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
-		}
-		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcerViewerClass", L"Cell Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	//SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
-	return h;
+
+	HWND hWnd = EditorCreate(L"NcerViewerClass", x, y, width, height, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncer);
+	if (ncer->header.format == NCER_TYPE_HUDSON) {
+		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+	}
+	return hWnd;
 }

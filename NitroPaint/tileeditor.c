@@ -6,8 +6,6 @@
 #include "tiler.h"
 #include "ncgr.h"
 
-extern HANDLE g_appIcon;
-
 #define NV_INITIALIZE (WM_USER+1)
 
 HWND CreateTileEditor(int x, int y, int width, int height, HWND hWndParent, int tileX, int tileY) {

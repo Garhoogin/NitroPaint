@@ -169,6 +169,7 @@
     <ClCompile Include="color.c" />
     <ClCompile Include="colorchooser.c" />
     <ClCompile Include="combo2d.c" />
+    <ClCompile Include="editor.c" />
     <ClCompile Include="exceptions.c" />
     <ClCompile Include="filecommon.c" />
     <ClCompile Include="g2dfile.c" />
@@ -208,6 +209,7 @@
     <ClInclude Include="colorchooser.h" />
     <ClInclude Include="combo2d.h" />
     <ClInclude Include="compression.h" />
+    <ClInclude Include="editor.h" />
     <ClInclude Include="exceptions.h" />
     <ClInclude Include="filecommon.h" />
     <ClInclude Include="g2dfile.h" />

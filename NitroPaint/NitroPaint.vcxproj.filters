@@ -123,6 +123,9 @@
     <ClCompile Include="ui.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="editor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tiler.h">
@@ -231,6 +234,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ui.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="editor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

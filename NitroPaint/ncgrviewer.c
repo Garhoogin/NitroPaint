@@ -1,6 +1,7 @@
 #include <Windows.h>
 #include <CommCtrl.h>
 
+#include "editor.h"
 #include "ncgrviewer.h"
 #include "nclrviewer.h"
 #include "nscrviewer.h"
@@ -106,7 +107,7 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 	if (nitroPaintStruct->hWndNclrViewer) {
 		HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-		NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLong(hWndNclrViewer, 0);
+		NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(hWndNclrViewer);
 		nclr = &nclrViewerData->nclr;
 	}
 
@@ -182,11 +183,8 @@ typedef struct CHARIMPORTDATA_ {
 } CHARIMPORTDATA;
 
 LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!data) {
-		data = (NCGRVIEWERDATA *) calloc(1, sizeof(NCGRVIEWERDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG) data);
-	}
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -225,16 +223,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			break;
 		}
-		case NV_SETTITLE:
-		{
-			LPWSTR path = (LPWSTR) lParam;
-			WCHAR titleBuffer[MAX_PATH + 20];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - Character Editor", 40);
-			SetWindowText(hWnd, titleBuffer);
-			break;
-		}
 		case NV_INITIALIZE:
 		case NV_INITIALIZE_IMMEDIATE:
 		{
@@ -242,7 +230,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				LPWSTR path = (LPWSTR) wParam;
 				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 				memcpy(&data->ncgr, (NCGR *) lParam, sizeof(NCGR));
-				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+				EditorSetTitle(hWnd, path);
 			} else {
 				NCGR *ncgr = (NCGR *) lParam;
 				memcpy(&data->ncgr, ncgr, sizeof(NCGR));
@@ -279,7 +267,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				GetAllEditors(hWndMain, FILE_TYPE_SCREEN, nscrEditors, nNscrEditors);
 				for (int i = 0; i < nNscrEditors; i++) {
 					HWND hWndNscrViewer = nscrEditors[i];
-					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
 					NSCR *nscr = &nscrViewerData->nscr;
 					if (nscr->nHighestIndex >= data->ncgr.nTiles) {
 						NscrViewerSetTileBase(hWndNscrViewer, nscr->nHighestIndex + 1 - data->ncgr.nTiles);
@@ -483,7 +471,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						NCLR *nclr = NULL;
 						NCGR *ncgr = &data->ncgr;
 						if (hWndNclrViewer) {
-							NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
+							NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(hWndNclrViewer);
 							nclr = &nclrViewerData->nclr;
 						}
 						cidata->nclr = nclr;
@@ -515,8 +503,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncgr");
 							if (path != NULL) {
 								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 								free(path);
+								EditorSetTitle(hWnd, data->szOpenFile);
 							} else break;
 						}
 						ncgrWriteFile(&data->ncgr, data->szOpenFile);
@@ -536,7 +524,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						NCLR *nclr = NULL;
 
 						if (hWndNclrViewer) {
-							NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
+							NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(hWndNclrViewer);
 							nclr = &nclrViewerData->nclr;
 						}
 						ncgr = &data->ncgr;
@@ -640,8 +628,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			nitroPaintStruct->hWndNcgrViewer = NULL;
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 			if (data->hWndTileEditorWindow) DestroyWindow(data->hWndTileEditorWindow);
-			free(data);
-			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
 		case WM_SIZE:
@@ -665,8 +651,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 }
 
 LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HWND hWndNcgrViewer = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+	HWND hWndNcgrViewer = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 	int contentWidth = 0, contentHeight = 0;
 	if (data) {
 		contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
@@ -776,7 +762,7 @@ LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 					NCLR *nclr = NULL;
 					if (nitroPaintStruct->hWndNclrViewer) {
-						NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(nitroPaintStruct->hWndNclrViewer, 0);
+						NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(nitroPaintStruct->hWndNclrViewer);
 						nclr = &nclrViewerData->nclr;
 					}
 					if (nclr != NULL) {
@@ -1325,56 +1311,20 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 }
 
 VOID RegisterNcgrPreviewClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme ? CreateSolidBrush(RGB(32, 32, 32)) : (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NcgrPreviewClass";
-	wcex.lpfnWndProc = NcgrPreviewWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"NcgrPreviewClass", NcgrPreviewWndProc, sizeof(LPVOID));
 }
 
 VOID RegisterNcgrExpandClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"ExpandNcgrClass";
-	wcex.lpfnWndProc = NcgrExpandProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"ExpandNcgrClass", NcgrExpandProc, sizeof(LPVOID));
 }
 
 VOID RegisterCharImportClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"CharImportDialog";
-	wcex.lpfnWndProc = CharImportProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"CharImportDialog", CharImportProc, sizeof(LPVOID));
 }
 
 VOID RegisterNcgrViewerClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NcgrViewerClass";
-	wcex.lpfnWndProc = NcgrViewerWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	EditorRegister(L"NcgrViewerClass", NcgrViewerWndProc, L"Character Editor", sizeof(NCGRVIEWERDATA));
+	
 	RegisterNcgrPreviewClass();
 	RegisterTileEditorClass();
 	RegisterNcgrExpandClass();
@@ -1399,16 +1349,14 @@ HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for the combobox
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"Character Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
-		if (ncgr.header.format == NCGR_TYPE_HUDSON || ncgr.header.format == NCGR_TYPE_HUDSON2) {
-			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
-		}
-		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"Character Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
-	return h;
+
+	HWND hWnd = EditorCreate(L"NcgrViewerClass", x, y, width, height, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
+	if (ncgr.header.format == NCGR_TYPE_HUDSON || ncgr.header.format == NCGR_TYPE_HUDSON2) {
+		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+	}
+	return hWnd;
 }
 
 HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCGR *ncgr) {
@@ -1423,14 +1371,12 @@ HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndPar
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for the combobox
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"Character Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncgr);
-		if (ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
-			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
-		}
-		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NcgrViewerClass", L"Character Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncgr);
-	return h;
+
+	HWND hWnd = EditorCreate(L"NcgrViewerClass", x, y, width, height, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncgr);
+	if (ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
+		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+	}
+	return hWnd;
 }

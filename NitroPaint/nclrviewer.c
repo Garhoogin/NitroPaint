@@ -1,9 +1,10 @@
 #include <Windows.h>
 #include <CommCtrl.h>
 
+#include "nitropaint.h"
+#include "editor.h"
 #include "nclrviewer.h"
 #include "childwindow.h"
-#include "nitropaint.h"
 #include "ncgrviewer.h"
 #include "nscrviewer.h"
 #include "ncerviewer.h"
@@ -121,13 +122,13 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 	int nRowsPerPalette = (1 << data->nclr.nBits) / 16;
 	if (nitroPaintStruct->hWndNcgrViewer) {
-		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLong(nitroPaintStruct->hWndNcgrViewer, 0);
+		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(nitroPaintStruct->hWndNcgrViewer);
 		previewPalette = ncgrViewerData->selectedPalette;
 		nRowsPerPalette = (1 << ncgrViewerData->ncgr.nBits) / 16;
 	}
 	int ncerPalette = -1;
 	if (nitroPaintStruct->hWndNcerViewer) {
-		NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) GetWindowLong(nitroPaintStruct->hWndNcerViewer, 0);
+		NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(nitroPaintStruct->hWndNcerViewer);
 		NCER_CELL *cell = ncerViewerData->ncer.cells + ncerViewerData->cell;
 		NCER_CELL_INFO info;
 		decodeAttributesEx(&info, cell, ncerViewerData->oam);
@@ -232,7 +233,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 
 void NclrViewerPalOpUpdateCallback(PAL_OP *palOp) {
 	HWND hWnd = (HWND) palOp->param;
-	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) EditorGetData(hWnd);
 
 	PalopRunOperation(data->tempPalette, data->nclr.colors, data->nclr.nColors, palOp);
 
@@ -266,7 +267,7 @@ int colorSortHue(LPCVOID p1, LPCVOID p2) {
 }
 
 BOOL ValidateColorsNscrProc(HWND hWnd, void *param) {
-	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWnd);
 	nscrViewerData->verifyColor = (int) param;
 	nscrViewerData->verifyFrames = 10;
 	SetTimer(hWnd, 1, 100, NULL);
@@ -278,7 +279,7 @@ BOOL SwapNscrPalettesProc(HWND hWnd, void *param) {
 	int srcPalette = srcDest[0];
 	int dstPalette = srcDest[1];
 
-	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWnd);
 	NSCR *nscr = &nscrViewerData->nscr;
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		uint16_t d = nscr->data[i];
@@ -369,11 +370,8 @@ void paletteNeuroSortThreaded(HWND hWnd, COLOR *palette, int nColors) {
 }
 
 LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!data) {
-		data = (NCLRVIEWERDATA *) calloc(1, sizeof(NCLRVIEWERDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG) data);
-	}
+	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) EditorGetData(hWnd);
+
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -412,16 +410,6 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
 			break;
 		}
-		case NV_SETTITLE:
-		{
-			LPWSTR path = (LPWSTR) lParam;
-			WCHAR titleBuffer[MAX_PATH + 19];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - Palette Editor", 38);
-			SetWindowText(hWnd, titleBuffer);
-			break;
-		}
 		case NV_INITIALIZE_IMMEDIATE:
 		case NV_INITIALIZE:
 		{
@@ -431,7 +419,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				int n = nclrReadFile(&data->nclr, path);
 				if (n) return 0;
 				
-				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+				EditorSetTitle(hWnd, path);
 			} else {
 				NCLR *nclr = (NCLR *) wParam;
 				memcpy(&data->nclr, nclr, sizeof(NCLR));
@@ -636,7 +624,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				if (!data->rowDragging) {
 					//test for preserve dragging to adjust destination 
 					if (data->preserveDragging && hWndNcgrViewer != NULL) {
-						NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+						NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 						NCGR *ncgr = &ncgrViewerData->ncgr;
 
 						int paletteMask = 0xFF << ncgr->nBits;
@@ -655,7 +643,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (data->preserveDragging) {
 
 							if (hWndNcgrViewer != NULL) {
-								NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+								NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 								NCGR *ncgr = &ncgrViewerData->ncgr;
 
 								//if no screen, just swap the indices if the palette numbers line up.
@@ -684,7 +672,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 									for (int nscrId = 0; nscrId < nNscrEditors; nscrId++) {
 										//with screen, so do the above but only for tiles referenced by it.
 										HWND hWndNscrViewer = nscrViewers[nscrId];
-										NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+										NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
 										NSCR *nscr = &nscrViewerData->nscr;
 
 										for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
@@ -834,8 +822,8 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nclr");
 			if (path != NULL) {
 				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 				free(path);
+				EditorSetTitle(hWnd, data->szOpenFile);
 			}
 			break;
 		}
@@ -978,7 +966,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 						if (hWndNcgrViewer) {
-							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 							ncgrViewerData->verifyColor = index;
 							ncgrViewerData->verifyFrames = 10;
 							SetTimer(hWndNcgrViewer, 1, 100, NULL);
@@ -1032,7 +1020,6 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			fileFree((OBJECT_HEADER *) &data->nclr);
 			if (data->nclr.idxTable != NULL) free(data->nclr.idxTable);
-			free(data);
 
 			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
@@ -1162,30 +1149,12 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 }
 
 VOID RegisterPaletteGenerationClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"PaletteGeneratorClass";
-	wcex.lpfnWndProc = PaletteGeneratorDialogProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"PaletteGeneratorClass", PaletteGeneratorDialogProc, sizeof(LPVOID));
 }
 
 VOID RegisterNclrViewerClass(VOID) {
 	RegisterPaletteGenerationClass();
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NclrViewerClass";
-	wcex.lpfnWndProc = NclrViewerWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	EditorRegister(L"NclrViewerClass", NclrViewerWndProc, L"Palette Editor", sizeof(NCLRVIEWERDATA));
 }
 
 HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
@@ -1196,17 +1165,15 @@ HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4;
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"Palette Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-		if (!SendMessage(h, NV_INITIALIZE, (WPARAM) path, 0)) {
-			DestroyWindow(h);
-			MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-			return NULL;
-		}
-		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"Palette Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) path, 0);
-	return h;
+
+	HWND hWnd = EditorCreate(L"NclrViewerClass", x, y, width, height, hWndParent);
+	if (!SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, 0)) {
+		DestroyWindow(hWnd);
+		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
+		return NULL;
+	}
+	return hWnd;
 }
 
 HWND CreateNclrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCLR *nclr) {
@@ -1217,11 +1184,9 @@ HWND CreateNclrViewerImmediate(int x, int y, int width, int height, HWND hWndPar
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4;
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"Palette Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE_IMMEDIATE, (WPARAM) nclr, 0);
-		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NclrViewerClass", L"Palette Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE_IMMEDIATE, (WPARAM) nclr, 0);
-	return h;
+
+	HWND hWnd = EditorCreate(L"NclrViewerClass", x, y, width, height, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, (WPARAM) nclr, 0);
+	return hWnd;
 }

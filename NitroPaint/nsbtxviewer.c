@@ -264,7 +264,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		}
 		case NV_SETTITLE:
 		{
-			LPWSTR path = (LPWSTR) lParam;
+			LPCWSTR path = (LPWSTR) lParam;
 			WCHAR titleBuffer[MAX_PATH + 15];
 			if (!g_configuration.fullPaths) path = GetFileName(path);
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);

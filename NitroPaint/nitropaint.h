@@ -1,7 +1,12 @@
 #pragma once
+#include <Windows.h>
+
+#include "ui.h"
 #include "color.h"
 
 #define g_useDarkTheme 0
+
+extern HICON g_appIcon;
 
 typedef struct {
 	BOOL useDarkTheme;
@@ -119,7 +124,7 @@ VOID MainZoomOut(HWND hWnd);
 //
 // Get a file name from a file path (does not edit the source string)
 //
-LPWSTR GetFileName(LPWSTR lpszPath);
+LPCWSTR GetFileName(LPCWSTR lpszPath);
 
 //
 // Get the type of editor by its window handle. It may return one of the macros

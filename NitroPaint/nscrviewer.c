@@ -2,6 +2,7 @@
 #include <CommCtrl.h>
 #include <math.h>
 
+#include "editor.h"
 #include "nscrviewer.h"
 #include "ncgrviewer.h"
 #include "nclrviewer.h"
@@ -199,11 +200,8 @@ void NscrViewerSetTileBase(HWND hWnd, int tileBase) {
 }
 
 LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!data) {
-		data = (NSCRVIEWERDATA *) calloc(1, sizeof(NSCRVIEWERDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG) data);
-	}
+	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWnd);
+
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -270,16 +268,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			InvalidateRect(data->hWndPreview, NULL, FALSE);
 			break;
 		}
-		case NV_SETTITLE:
-		{
-			LPWSTR path = (LPWSTR) lParam;
-			WCHAR titleBuffer[MAX_PATH + 18];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - Screen Editor", 36);
-			SetWindowText(hWnd, titleBuffer);
-			break;
-		}
 		case NV_INITIALIZE:
 		case NV_INITIALIZE_IMMEDIATE:
 		{
@@ -287,7 +275,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				LPWSTR path = (LPWSTR) wParam;
 				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 				memcpy(&data->nscr, (NSCR *) lParam, sizeof(NSCR));
-				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+				EditorSetTitle(hWnd, path);
 			} else {
 				NSCR *nscr = (NSCR *) wParam;
 				memcpy(&data->nscr, nscr, sizeof(NSCR));
@@ -519,8 +507,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nscr");
 							if (path != NULL) {
 								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 								free(path);
+								EditorSetTitle(hWnd, data->szOpenFile);
 							}
 						}
 						nscrWriteFile(&data->nscr, data->szOpenFile);
@@ -750,8 +738,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			if (data->hWndTileEditor) DestroyWindow(data->hWndTileEditor);
 			fileFree((OBJECT_HEADER *) &data->nscr);
-			free(data);
-			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
 		case WM_LBUTTONDOWN:
@@ -1402,7 +1388,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			HWND hWndMain = getMainWindow(hWndEditor);
 			HWND hWndNcgrEditor = NULL;
 			GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
-			NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrEditor, 0);
+			NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor);
 			NCGR *ncgr = &ncgrViewerData->ncgr;
 
 			//set appropriate fields using data from NCGR
@@ -1478,13 +1464,13 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 					HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-					NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
+					NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 					NCGR *ncgr = &ncgrViewerData->ncgr;
 					HWND hWndNscrViewer = data->hWndEditor;
-					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
 					NSCR *nscr = &nscrViewerData->nscr;
 					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-					NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
+					NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(hWndNclrViewer);
 					NCLR *nclr = &nclrViewerData->nclr;
 					int maxTilesX = (nscr->nWidth / 8) - data->nscrTileX;
 					int maxTilesY = (nscr->nHeight / 8) - data->nscrTileY;
@@ -1831,43 +1817,15 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 }
 
 VOID RegisterNscrBitmapImportClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NscrBitmapImportClass";
-	wcex.lpfnWndProc = NscrBitmapImportWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"NscrBitmapImportClass", NscrBitmapImportWndProc, sizeof(LPVOID));
 }
 
 VOID RegisterNscrPreviewClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NscrPreviewClass";
-	wcex.lpfnWndProc = NscrPreviewWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"NscrPreviewClass", NscrPreviewWndProc, sizeof(LPVOID));
 }
 
 VOID RegisterNscrViewerClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NscrViewerClass";
-	wcex.lpfnWndProc = NscrViewerWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	EditorRegister(L"NscrViewerClass", NscrViewerWndProc, L"Screen Editor", sizeof(NSCRVIEWERDATA));
 	RegisterNscrBitmapImportClass();
 	RegisterNscrPreviewClass();
 }
@@ -1889,17 +1847,14 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22;
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"Screen Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
-
-		if (nscr.header.format == NSCR_TYPE_HUDSON || nscr.header.format == NSCR_TYPE_HUDSON2) {
-			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
-		}
-		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"Screen Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
-	return h;
+
+	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, width, height, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
+	if (nscr.header.format == NSCR_TYPE_HUDSON || nscr.header.format == NSCR_TYPE_HUDSON2) {
+		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+	}
+	return hWnd;
 }
 
 HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr) {
@@ -1913,15 +1868,12 @@ HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndPar
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
 		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22;
-		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"Screen Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE_IMMEDIATE, (WPARAM) nscr, 0);
-
-		if (nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
-			SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
-		}
-		return h;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NscrViewerClass", L"Screen Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE_IMMEDIATE, (WPARAM) nscr, 0);
-	return h;
+
+	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, width, height, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, (WPARAM) nscr, 0);
+	if (nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
+		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+	}
+	return hWnd;
 }
