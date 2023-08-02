@@ -548,9 +548,10 @@ int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 	}
 	LPWSTR name = path + nameOffset;
 	memset(texels->name, 0, 16);
+	WCHAR *lastDot = wcsrchr(name, L'.');
 	for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
 		if (i == 16) break;
-		if (name[i] == L'.') break;
+		if (name + i == lastDot) break; //file extension
 		texels->name[i] = (char) name[i];
 	}
 

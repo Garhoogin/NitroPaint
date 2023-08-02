@@ -1170,10 +1170,12 @@ void createPaletteName(WCHAR *buffer, WCHAR *file) {
 		if (file[i] == L'\\' || file[i] == L'/') index = i;
 	}
 	file += index + 1;
+
+	WCHAR *lastDot = wcsrchr(file, L'.');
 	//copy up to 12 characters of the file name
 	for (i = 0; i < 12; i++) {
 		WCHAR c = file[i];
-		if (c == L'\0' || c == L'.') break;
+		if (c == L'\0' || file + i == lastDot) break;
 		buffer[i] = c;
 	}
 	//suffix _pl
