@@ -415,11 +415,10 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			if (msg == NV_INITIALIZE) {
 				LPWSTR path = (LPWSTR) wParam;
-				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 				int n = nclrReadFile(&data->nclr, path);
 				if (n) return 0;
 				
-				EditorSetTitle(hWnd, path);
+				EditorSetFile(hWnd, path);
 			} else {
 				NCLR *nclr = (NCLR *) wParam;
 				memcpy(&data->nclr, nclr, sizeof(NCLR));
@@ -797,13 +796,6 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_ERASEBKGND:
 			return 1;
-		case WM_CTLCOLORSTATIC:
-			SetBkMode((HDC) wParam, TRANSPARENT);
-			if(g_useDarkTheme) SetTextColor((HDC) wParam, RGB(255, 255, 255));
-		case WM_CTLCOLORBTN:
-		{
-			return GetClassLong(hWnd, GCL_HBRBACKGROUND);
-		}
 		case NV_PICKFILE:
 		{
 			LPCWSTR filter = L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0";
@@ -821,9 +813,8 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nclr");
 			if (path != NULL) {
-				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+				EditorSetFile(hWnd, path);
 				free(path);
-				EditorSetTitle(hWnd, data->szOpenFile);
 			}
 			break;
 		}
@@ -1029,8 +1020,6 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 			break;
 		}
-		case NV_GETTYPE:
-			return FILE_TYPE_PALETTE;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }

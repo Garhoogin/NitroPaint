@@ -1,6 +1,8 @@
 #pragma once
 #include "nitropaint.h"
+#include "childwindow.h"
 #include "ui.h"
+#include "filecommon.h"
 
 // ----- Class data slots
 #define EDITOR_CD_SLOT(n)     ((n)*sizeof(void*))
@@ -20,9 +22,21 @@
 #define EDITOR_WD_INITIALIZED EDITOR_WD_SLOT(1)
 
 
+// ----- Basic editor window data struct
+typedef struct EDITOR_DATA_ {
+	FRAMEDATA frameData;
+	WCHAR szOpenFile[MAX_PATH];
+
+	//first part of file object info
+	OBJECT_HEADER file;
+
+	//after here may vary...
+} EDITOR_DATA;
+
+
 ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize);
 
-void EditorSetTitle(HWND hWnd, LPCWSTR file);
+void EditorSetFile(HWND hWnd, LPCWSTR file);
 
 void *EditorGetData(HWND hWnd);
 

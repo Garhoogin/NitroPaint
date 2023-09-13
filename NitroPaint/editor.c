@@ -16,12 +16,23 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			SetWindowLongPtr(hWnd, EDITOR_WD_INITIALIZED, 1);
 		}
 
+		//handle common editor messages
+		EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+		switch (msg) {
+			case NV_GETTYPE:
+				if (data != NULL) {
+					return data->file.type;
+				} else {
+					return FILE_TYPE_INVALID;
+				}
+		}
+
 		//call proc
 		LRESULT res = proc(hWnd, msg, wParam, lParam);
 
 		//WM_DESTROY should free data
 		if (msg == WM_DESTROY) {
-			void *data = (void *) GetClassLongPtr(hWnd, EDITOR_WD_DATA);
+			void *data = (void *) GetWindowLongPtr(hWnd, EDITOR_WD_DATA);
 			if (data != NULL) {
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
 				free(data);
@@ -67,15 +78,18 @@ ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, s
 	return aClass;
 }
 
-void EditorSetTitle(HWND hWnd, LPCWSTR filename) {
+void EditorSetFile(HWND hWnd, LPCWSTR filename) {
 	LPCWSTR title = (LPCWSTR) GetClassLongPtr(hWnd, EDITOR_CD_TITLE);
+	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 
 	//if global config dictates, use only file name
+	LPCWSTR fullname = filename;
 	if (!g_configuration.fullPaths) filename = GetFileName(filename);
 
 	//if file is 0-length or NULL, just use title. Else, use "file - title"
 	if (filename == NULL || filename[0] == L'\0') {
 		SendMessage(hWnd, WM_SETTEXT, wcslen(title), (LPARAM) title);
+		memset(data->szOpenFile, 0, sizeof(data->szOpenFile));
 	} else {
 		int filelen = wcslen(filename), titlelen = wcslen(title);
 		int totallen = filelen + titlelen + 3;
@@ -86,6 +100,8 @@ void EditorSetTitle(HWND hWnd, LPCWSTR filename) {
 		memcpy(buffer + filelen + 3, title, (titlelen + 1) * sizeof(WCHAR));
 		SendMessage(hWnd, WM_SETTEXT, totallen, (LPARAM) buffer);
 		free(buffer);
+
+		memcpy(data->szOpenFile, fullname, (wcslen(fullname) + 1) * sizeof(WCHAR));
 	}
 }
 

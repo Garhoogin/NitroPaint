@@ -228,9 +228,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			if (msg == NV_INITIALIZE) {
 				LPWSTR path = (LPWSTR) wParam;
-				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 				memcpy(&data->ncgr, (NCGR *) lParam, sizeof(NCGR));
-				EditorSetTitle(hWnd, path);
+				EditorSetFile(hWnd, path);
 			} else {
 				NCGR *ncgr = (NCGR *) lParam;
 				memcpy(&data->ncgr, ncgr, sizeof(NCGR));
@@ -502,9 +501,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							}
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncgr");
 							if (path != NULL) {
-								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+								EditorSetFile(hWnd, path);
 								free(path);
-								EditorSetTitle(hWnd, data->szOpenFile);
 							} else break;
 						}
 						ncgrWriteFile(&data->ncgr, data->szOpenFile);
@@ -644,8 +642,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			MoveWindow(data->hWnd8bpp, 155, height - 21, 100, 21, TRUE);
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
-		case NV_GETTYPE:
-			return FILE_TYPE_CHAR;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }

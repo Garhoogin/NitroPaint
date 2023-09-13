@@ -273,9 +273,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			if (msg == NV_INITIALIZE) {
 				LPWSTR path = (LPWSTR) wParam;
-				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 				memcpy(&data->nscr, (NSCR *) lParam, sizeof(NSCR));
-				EditorSetTitle(hWnd, path);
+				EditorSetFile(hWnd, path);
 			} else {
 				NSCR *nscr = (NSCR *) wParam;
 				memcpy(&data->nscr, nscr, sizeof(NSCR));
@@ -506,9 +505,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							}
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nscr");
 							if (path != NULL) {
-								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+								EditorSetFile(hWnd, path);
 								free(path);
-								EditorSetTitle(hWnd, data->szOpenFile);
 							}
 						}
 						nscrWriteFile(&data->nscr, data->szOpenFile);
@@ -750,8 +748,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SendMessage(data->hWndSelectionSize, WM_SETTEXT, 0, (LPARAM) L"");
 			break;
 		}
-		case NV_GETTYPE:
-			return FILE_TYPE_SCREEN;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }

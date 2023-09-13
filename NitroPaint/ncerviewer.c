@@ -327,9 +327,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			if (msg == NV_INITIALIZE) {
 				LPWSTR path = (LPWSTR) wParam;
-				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 				memcpy(&data->ncer, (NCER *) lParam, sizeof(NCER));
-				EditorSetTitle(hWnd, path);
+				EditorSetFile(hWnd, path);
 			} else {
 				NCER *ncer = (NCER *) lParam;
 				memcpy(&data->ncer, ncer, sizeof(NCER));
@@ -899,9 +898,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							}
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncer");
 							if (path != NULL) {
-								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+								EditorSetFile(hWnd, path);
 								free(path);
-								EditorSetTitle(hWnd, data->szOpenFile);
 							} else break;
 						}
 						ncerWriteFile(&data->ncer, data->szOpenFile);
@@ -969,8 +967,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			undoDestroy(&data->undo);
 			break;
 		}
-		case NV_GETTYPE:
-			return FILE_TYPE_CELL;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
