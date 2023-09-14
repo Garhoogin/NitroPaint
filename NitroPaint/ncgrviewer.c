@@ -989,7 +989,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 	if (paletteBase == 0) {
 		paletteBase = 1;
 		paletteSize--;
-		nclr->colors[0] = ColorConvertToDS(0xFF00FF);
+		nclr->colors[paletteNumber << ncgr->nBits] = ColorConvertToDS(0xFF00FF);
 	}
 
 	int firstColorIndex = (paletteNumber << ncgr->nBits) + paletteBase;
