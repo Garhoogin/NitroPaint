@@ -223,6 +223,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 			case 'LPTN':
 			case 'NTPC':
 			case 'CPTN':
+			case 'NCPR':
+			case 'RPCN':
 				type = FILE_TYPE_PALETTE;
 				break;
 			case 'NCGR':

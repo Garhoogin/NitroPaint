@@ -86,7 +86,7 @@ int nclrIsValidNtfp(unsigned char *lpFile, unsigned int size) {
 int nclrIsValidNclr(unsigned char *lpFile, unsigned int size) {
 	if (!g2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
-	if (magic != 'NCLR' && magic != 'RLCN') return 0;
+	if (magic != 'NCLR' && magic != 'RLCN' && magic != 'NCPR' && magic != 'RPCN') return 0;
 
 	char *pltt = g2dGetSectionByMagic(lpFile, size, 'PLTT');
 	char *ttlp = g2dGetSectionByMagic(lpFile, size, 'TTLP');
@@ -280,10 +280,12 @@ int nclrRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	char *pcmp = g2dGetSectionByMagic(buffer, size, 'PCMP');
 	if (pltt == NULL) return 1;
 
+	int sectionSize = *(int *) (pltt + 0x4);
+	if (g2dIsOld(buffer, size)) sectionSize += 8;
+
 	int bits = *(int *) (pltt + 0x8);
 	bits = 1 << (bits - 1);
 	int dataSize = *(int *) (pltt + 0x10);
-	int sectionSize = *(int *) (pltt + 0x4);
 	int dataOffset = 8 + *(int *) (pltt + 0x14);
 	int nColors = (sectionSize - dataOffset) >> 1;
 
