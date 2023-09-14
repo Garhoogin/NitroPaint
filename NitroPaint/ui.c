@@ -66,6 +66,12 @@ int GetEditNumber(HWND hWnd) {
 	return _wtol(buffer);
 }
 
+void SetEditNumber(HWND hWnd, int n) {
+	WCHAR buffer[32];
+	int len = wsprintfW(buffer, L"%d", n);
+	SendMessage(hWnd, WM_SETTEXT, len, (LPARAM) buffer);
+}
+
 int GetTrackbarPosition(HWND hWnd) {
 	return SendMessage(hWnd, TBM_GETPOS, 0, 0);
 }

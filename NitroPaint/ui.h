@@ -70,6 +70,11 @@ int GetCheckboxChecked(HWND hWnd);
 int GetEditNumber(HWND hWnd);
 
 //
+// Set the number value of an edit control.
+//
+void SetEditNumber(HWND hWnd, int n);
+
+//
 // Get trackbar position
 //
 int GetTrackbarPosition(HWND hWnd);

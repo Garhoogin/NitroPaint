@@ -1,9 +1,11 @@
 #include <Windows.h>
 
+#include "nitropaint.h"
 #include "color.h"
 #include "palops.h"
 #include "childwindow.h"
 #include "colorchooser.h"
+#include "ui.h"
 
 typedef struct PAL_OP_DATA_ {
 	HWND hWndHue;
@@ -23,49 +25,29 @@ typedef struct PAL_OP_DATA_ {
 #define NV_SETDATA (WM_USER+1)
 
 void PalopPopulateUI(PAL_OP_DATA *data, PAL_OP *op) {
-	WCHAR buf[16];
 	SendMessage(data->hWndIgnoreFirst, BM_SETCHECK, op->ignoreFirst, 0);
-	int len = wsprintfW(buf, L"%d", op->hueRotate);
-	SendMessage(data->hWndHue, WM_SETTEXT, len, (LPARAM) buf);
-	len = wsprintfW(buf, L"%d", op->saturationAdd);
-	SendMessage(data->hWndSaturation, WM_SETTEXT, len, (LPARAM) buf);
-	len = wsprintfW(buf, L"%d", op->valueAdd);
-	SendMessage(data->hWndValue, WM_SETTEXT, len, (LPARAM) buf);
-	len = wsprintfW(buf, L"%d", op->paletteRotation);
-	SendMessage(data->hWndRotate, WM_SETTEXT, len, (LPARAM) buf);
-	len = wsprintfW(buf, L"%d", op->srcIndex);
-	SendMessage(data->hWndSrcIndex, WM_SETTEXT, len, (LPARAM) buf);
-	len = wsprintfW(buf, L"%d", op->srcLength);
-	SendMessage(data->hWndSrcLength, WM_SETTEXT, len, (LPARAM) buf);
-	len = wsprintfW(buf, L"%d", op->dstOffset);
-	SendMessage(data->hWndDestOffset, WM_SETTEXT, len, (LPARAM) buf);
-	len = wsprintfW(buf, L"%d", op->dstCount);
-	SendMessage(data->hWndDestCount, WM_SETTEXT, len, (LPARAM) buf);
-	len = wsprintfW(buf, L"%d", op->dstStride);
-	SendMessage(data->hWndDestStride, WM_SETTEXT, len, (LPARAM) buf);
+	SetEditNumber(data->hWndHue, op->hueRotate);
+	SetEditNumber(data->hWndSaturation, op->saturationAdd);
+	SetEditNumber(data->hWndValue, op->valueAdd);
+	SetEditNumber(data->hWndRotate, op->paletteRotation);
+	SetEditNumber(data->hWndSrcIndex, op->srcIndex);
+	SetEditNumber(data->hWndSrcLength, op->srcLength);
+	SetEditNumber(data->hWndDestOffset, op->dstOffset);
+	SetEditNumber(data->hWndDestCount, op->dstCount);
+	SetEditNumber(data->hWndDestStride, op->dstStride);
 }
 
 void PalopReadUI(PAL_OP_DATA *data, PAL_OP *op) {
-	WCHAR buf[16];
-	op->ignoreFirst = SendMessage(data->hWndIgnoreFirst, BM_GETCHECK, 0, 0);
-	SendMessage(data->hWndHue, WM_GETTEXT, 16, (LPARAM) buf);
-	op->hueRotate = _wtol(buf);
-	SendMessage(data->hWndSaturation, WM_GETTEXT, 16, (LPARAM) buf);
-	op->saturationAdd = _wtol(buf);
-	SendMessage(data->hWndValue, WM_GETTEXT, 16, (LPARAM) buf);
-	op->valueAdd = _wtol(buf);
-	SendMessage(data->hWndRotate, WM_GETTEXT, 16, (LPARAM) buf);
-	op->paletteRotation = _wtol(buf);
-	SendMessage(data->hWndSrcIndex, WM_GETTEXT, 16, (LPARAM) buf);
-	op->srcIndex = _wtol(buf);
-	SendMessage(data->hWndSrcLength, WM_GETTEXT, 16, (LPARAM) buf);
-	op->srcLength = _wtol(buf);
-	SendMessage(data->hWndDestOffset, WM_GETTEXT, 16, (LPARAM) buf);
-	op->dstOffset = _wtol(buf);
-	SendMessage(data->hWndDestCount, WM_GETTEXT, 16, (LPARAM) buf);
-	op->dstCount = _wtol(buf);
-	SendMessage(data->hWndDestStride, WM_GETTEXT, 16, (LPARAM) buf);
-	op->dstStride = _wtol(buf);
+	op->ignoreFirst = GetCheckboxChecked(data->hWndIgnoreFirst);
+	op->hueRotate = GetEditNumber(data->hWndHue);
+	op->saturationAdd = GetEditNumber(data->hWndSaturation);
+	op->valueAdd = GetEditNumber(data->hWndValue);
+	op->paletteRotation = GetEditNumber(data->hWndRotate);
+	op->srcIndex = GetEditNumber(data->hWndSrcIndex);
+	op->srcLength = GetEditNumber(data->hWndSrcLength);
+	op->dstOffset = GetEditNumber(data->hWndDestOffset);
+	op->dstCount = GetEditNumber(data->hWndDestCount);
+	op->dstStride = GetEditNumber(data->hWndDestStride);
 }
 
 void PalopRunOperation(COLOR *palIn, COLOR *palOut, int palSize, PAL_OP *op) {
@@ -145,29 +127,30 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			CreateWindow(L"BUTTON", L"Source", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 10, box2Y, boxWidth, box2Height, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"Destination", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 10, box3Y, boxWidth, box3Height, hWnd, NULL, NULL, NULL);
 
-			CreateWindow(L"STATIC", L"Hue Rotation:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box1Y + 18, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Saturation:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box1Y + 18 + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Value:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box1Y + 18 + 54, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Palette Rotation:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box1Y + 18 + 81, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Hue Rotation:", leftX, box1Y + 18, 100, 22);
+			CreateStatic(hWnd, L"Saturation:", leftX, box1Y + 18 + 27, 100, 22);
+			CreateStatic(hWnd, L"Value:", leftX, box1Y + 18 + 54, 100, 22);
+			CreateStatic(hWnd, L"Palette Rotation:", leftX, box1Y + 18 + 81, 100, 22);
 
-			CreateWindow(L"STATIC", L"Index:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box2Y + 18 + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Length:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box2Y + 18 + 54, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Index:", leftX, box2Y + 18 + 27, 100, 22);
+			CreateStatic(hWnd, L"Length:", leftX, box2Y + 18 + 54, 100, 22);
 
-			CreateWindow(L"STATIC", L"Offset:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box3Y + 18, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Count:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box3Y + 18 + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Stride:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, box3Y + 18 + 54, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Offset:", leftX, box3Y + 18, 100, 22);
+			CreateStatic(hWnd, L"Count:", leftX, box3Y + 18 + 27, 100, 22);
+			CreateStatic(hWnd, L"Stride:", leftX, box3Y + 18 + 54, 100, 22);
 
-			data->hWndHue = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box1Y + 18, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndSaturation = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box1Y + 18 + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndValue = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box1Y + 18 + 54, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndRotate = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box1Y + 18 + 81, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndIgnoreFirst = CreateWindow(L"BUTTON", L"Ignore First", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | WS_TABSTOP, leftX, box2Y + 18, 150, 22, hWnd, NULL, NULL, NULL);
-			data->hWndSrcIndex = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box2Y + 18 + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndSrcLength = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box2Y + 18 + 54, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDestOffset = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box3Y + 18, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDestCount = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box3Y + 18 + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDestStride = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_TABSTOP, leftX + 110, box3Y + 18 + 54, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndComplete = CreateWindow(L"BUTTON", L"Complete", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON | WS_TABSTOP, 10 + boxWidth - 150, bottomY, 150, 22, hWnd, NULL, NULL, NULL);
+			
+			data->hWndHue = CreateEdit(hWnd, L"0", leftX + 110, box1Y + 18, 50, 22, TRUE);
+			data->hWndSaturation = CreateEdit(hWnd, L"0", leftX + 110, box1Y + 18 + 27, 50, 22, TRUE);
+			data->hWndValue = CreateEdit(hWnd, L"0", leftX + 110, box1Y + 18 + 54, 50, 22, TRUE);
+			data->hWndRotate = CreateEdit(hWnd, L"0", leftX + 110, box1Y + 18 + 81, 50, 22, TRUE);
+			data->hWndIgnoreFirst = CreateCheckbox(hWnd, L"Ignore First", leftX, box2Y + 18, 150, 22, FALSE);
+			data->hWndSrcIndex = CreateEdit(hWnd, L"0", leftX + 110, box2Y + 18 + 27, 50, 22, TRUE);
+			data->hWndSrcLength = CreateEdit(hWnd, L"0", leftX + 110, box2Y + 18 + 54, 50, 22, TRUE);
+			data->hWndDestOffset = CreateEdit(hWnd, L"0", leftX + 110, box3Y + 18, 50, 22, TRUE);
+			data->hWndDestCount = CreateEdit(hWnd, L"0", leftX + 110, box3Y + 18 + 27, 50, 22, TRUE);
+			data->hWndDestStride = CreateEdit(hWnd, L"0", leftX + 110, box3Y + 18 + 54, 50, 22, TRUE);
+			data->hWndComplete = CreateButton(hWnd, L"Complete", 10 + boxWidth - 150, bottomY, 150, 22, TRUE);
 
 			PalopPopulateUI(data, palOp);
 			SetWindowSize(hWnd, 20 + boxWidth, 72 + box1Height + box2Height + box3Height);
@@ -182,12 +165,20 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
-			if (hWndControl == NULL || data == NULL) break;
-			if (!data->inited) break;
-
+			int idc = LOWORD(wParam);
 			int notif = HIWORD(wParam);
-			if (hWndControl == data->hWndComplete) {
+			if (data == NULL || !data->inited) break;
+			if (hWndControl == NULL && idc == 0) break;
+
+			//complete button
+			if (hWndControl == data->hWndComplete || idc == IDOK) {
 				palOp->result = 1;
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				break;
+			}
+
+			//exit
+			if (idc == IDCANCEL) {
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 				break;
 			}
@@ -195,7 +186,7 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			//get clas
 			WCHAR class[16];
 			GetClassName(hWndControl, class, sizeof(class) / sizeof(*class));
-			if ((_wcsicmp(class, L"EDIT") == 0 && notif == EN_CHANGE) || 
+			if ((_wcsicmp(class, L"EDIT") == 0 && notif == EN_CHANGE) ||
 				(_wcsicmp(class, L"BUTTON") == 0 && notif == BN_CLICKED)) {
 				PalopReadUI(data, palOp);
 				if (palOp->updateCallback != NULL) {
@@ -204,15 +195,6 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			break;
 		}
-		case WM_CLOSE:
-			if (palOp != NULL) {
-				SetForegroundWindow(palOp->hWndParent);
-				SetWindowLong(palOp->hWndParent, GWL_STYLE, GetWindowLong(palOp->hWndParent, GWL_STYLE) & ~WS_DISABLED);
-			}
-			break;
-		case WM_DESTROY:
-			PostQuitMessage(0);
-			break;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
@@ -221,16 +203,7 @@ int SelectPaletteOperation(PAL_OP *opStruct) {
 	//test class registration
 	static int clsRegistered = 0;
 	if (!clsRegistered) {
-		WNDCLASSEX wcex = { 0 };
-		wcex.cbSize = sizeof(wcex);
-		wcex.style = CS_HREDRAW | CS_VREDRAW;
-		wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-		wcex.hbrBackground = (HBRUSH) (COLOR_WINDOW);
-		wcex.lpszClassName = L"PaletteOperationClass";
-		wcex.lpfnWndProc = PalopWndProc;
-		wcex.cbWndExtra = sizeof(PAL_OP *) + sizeof(PAL_OP_DATA *);
-		RegisterClassEx(&wcex);
-
+		RegisterGenericClass(L"PaletteOperationClass", PalopWndProc, sizeof(PAL_OP *) + sizeof(PAL_OP_DATA *));
 		clsRegistered = 1;
 	}
 
@@ -242,17 +215,8 @@ int SelectPaletteOperation(PAL_OP *opStruct) {
 	SetWindowLongPtr(hWnd, 0, (LONG_PTR) opStruct);
 	SetWindowLongPtr(hWnd, sizeof(PAL_OP *), (LONG_PTR) data);
 	SendMessage(hWnd, NV_SETDATA, 0, 0);
-	ShowWindow(hWnd, SW_SHOW);
-	SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) | WS_DISABLED);
+	DoModal(hWnd);
 
-	MSG msg;
-	while (GetMessage(&msg, NULL, 0, 0)) {
-		if (!IsDialogMessage(hWnd, &msg)) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-	}
 	free(data);
-	SetForegroundWindow(opStruct->hWndParent);
 	return opStruct->result;
 }
