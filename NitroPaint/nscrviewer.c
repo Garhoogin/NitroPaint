@@ -575,6 +575,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if(*(DWORD *) clip == 0x30303030 && clip[4] == 'N'){
 							int tilesX = (clip[5] & 0xF) | ((clip[6] & 0xF) << 4);
 							int tilesY = (clip[7] & 0xF) | ((clip[8] & 0xF) << 4);
+							clip += 9; //advance info part
 
 							int minX = 0, minY = 0, maxX = data->nscr.nWidth / 8, maxY = data->nscr.nHeight / 8;
 							if (data->selStartX != -1 && data->selStartY != -1) {
@@ -590,15 +591,14 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								}
 							}
 
-							int i = 0;
 							for (int y = tileY; y < tileY + tilesY; y++) {
 								for (int x = tileX; x < tileX + tilesX; x++) {
-									WORD d = (clip[9 + i * 4] & 0xF) | ((clip[9 + i * 4 + 1] & 0xF) << 4) | ((clip[9 + i * 4 + 2] & 0xF) << 8) | ((clip[9 + i * 4 + 3] & 0xF) << 12);
+									uint16_t d = (clip[0] & 0xF) | ((clip[1] & 0xF) << 4) | ((clip[2] & 0xF) << 8) | ((clip[3] & 0xF) << 12);
 									if (x < (int) (data->nscr.nWidth / 8) && y < (int) (data->nscr.nHeight / 8)) {
-										if(x >= minX && x <= maxX && y >= minY && y <= maxY) data->nscr.data[x + y * (data->nscr.nHeight / 8)] = d;
+										if (x >= minX && x <= maxX && y >= minY && y <= maxY) data->nscr.data[x + y * (data->nscr.nWidth / 8)] = d;
 									}
 
-									i++;
+									clip += 4;
 								}
 							}
 							InvalidateRect(hWnd, NULL, FALSE);
