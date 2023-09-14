@@ -69,7 +69,7 @@ int nclrIsValidBin(unsigned char *lpFile, unsigned int size) {
 	COLOR *data = (COLOR *) lpFile;
 	for (int i = 0; i < nColors; i++) {
 		COLOR w = data[i];
-		if (w & 0x8000) return 0;
+		//if (w & 0x8000) return 0;
 	}
 	return 1;
 }
@@ -78,7 +78,7 @@ int nclrIsValidNtfp(unsigned char *lpFile, unsigned int size) {
 	if (size & 1) return 0;
 	for (unsigned int i = 0; i < size >> 1; i++) {
 		COLOR c = *(COLOR *) (lpFile + i * 2);
-		if (c & 0x8000) return 0;
+		//if (c & 0x8000) return 0;
 	}
 	return 1;
 }
