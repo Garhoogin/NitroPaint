@@ -9,7 +9,6 @@ extern LPCWSTR cellAnimationFormatNames[];
 
 typedef struct ANIM_DATA_ {
 	unsigned short index;
-	unsigned short pad_;
 } ANIM_DATA;
 
 typedef struct ANIM_DATA_SRT_ {

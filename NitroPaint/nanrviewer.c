@@ -165,8 +165,8 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 		float scaleY = ((float) animData->sy) / 4096.0f;
 
 		//compute transformation matrix (don't bother simulating OAM matrix slots)
-		float sinR = sin(rotation);
-		float cosR = cos(rotation);
+		float sinR = (float) sin(rotation);
+		float cosR = (float) cos(rotation);
 		float a = cosR / scaleX;
 		float b = sinR / scaleX;
 		float c = -sinR / scaleY;
@@ -650,7 +650,6 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 						sequence->frames[i].animationData = realloc(sequence->frames[i].animationData, sizes[idx]);
 						if (idx == 0) {
-							((ANIM_DATA *) sequence->frames[i].animationData)->pad_ = 0xBEEF; //in keeping with Nintendo tradition
 						} else if (idx == 1) {
 							ANIM_DATA_SRT *f = (ANIM_DATA_SRT *) sequence->frames[i].animationData;
 							f->px = px;
@@ -754,7 +753,7 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 						case 0:
 						{
 							ANIM_DATA *f = (ANIM_DATA *) newFrame;
-							f->pad_ = 0xBEEF;
+							(void) f;
 							break;
 						}
 						case 1:

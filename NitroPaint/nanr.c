@@ -104,11 +104,21 @@ DWORD nanrGetAbnkSize(NANR *nanr, int *pAnimFramesSize, int *pFrameDataSize) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;
 		int element = sequence->type & 0xFFFF;
 		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+		
+		//need alignment?
+		if (element != 0) {
+			frameDataSize = (frameDataSize + 3) & ~3;
+		}
 
 		for (int j = 0; j < sequence->nFrames; j++) {
 			animFramesSize += sizeof(FRAME_DATA);
 			frameDataSize += sizes[element];
 		}
+	}
+
+	//align end to a multiple of 4
+	if (frameDataSize & 3) {
+		frameDataSize = (frameDataSize + 3) & ~3;
 	}
 
 	if (pAnimFramesSize != NULL) *pAnimFramesSize = animFramesSize;
@@ -141,13 +151,13 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 	bstreamWrite(stream, nanrHeader, sizeof(nanrHeader));
 
 
-	BYTE abnkHeader[] = { 'K', 'N', 'B', 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	*(DWORD *) (abnkHeader + 4) = abnkSize + 8;
-	*(WORD *) (abnkHeader + 8) = nanr->nSequences;
-	*(WORD *) (abnkHeader + 0xA) = nanrCountFrames(nanr);
-	*(DWORD *) (abnkHeader + 0xC) = 0x18;
-	*(DWORD *) (abnkHeader + 0x10) = 0x18 + sequencesSize;
-	*(DWORD *) (abnkHeader + 0x14) = 0x18 + sequencesSize + animFramesSize;
+	unsigned char abnkHeader[] = { 'K', 'N', 'B', 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	*(uint32_t *) (abnkHeader + 4) = abnkSize + 8;
+	*(uint16_t *) (abnkHeader + 8) = nanr->nSequences;
+	*(uint16_t *) (abnkHeader + 0xA) = nanrCountFrames(nanr);
+	*(uint32_t *) (abnkHeader + 0xC) = 0x18;
+	*(uint32_t *) (abnkHeader + 0x10) = 0x18 + sequencesSize;
+	*(uint32_t *) (abnkHeader + 0x14) = 0x18 + sequencesSize + animFramesSize;
 	bstreamWrite(stream, abnkHeader, sizeof(abnkHeader));
 
 	int seqOffset = stream->pos;
@@ -158,11 +168,22 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 		bstreamWrite(stream, &seq, sizeof(seq));
 	}
 
+	uint32_t align0 = 0; //0-padding for alignment
+
 	DWORD currentAnimationDataPos = 0;
 	int frameDataOffset = stream->pos;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;
 		FRAME_DATA *frames = sequence->frames;
+
+		int element = sequence->type & 0xFFFF;
+		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+
+		//need alignment?
+		if (element != 0 && (stream->pos & 3)) {
+			int nPad = 4 - (stream->pos & 3);
+			currentAnimationDataPos += nPad;
+		}
 
 		//write frame data offset
 		int pos = stream->pos;
@@ -171,8 +192,6 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 		bstreamWrite(stream, &thisSequenceOffset, sizeof(thisSequenceOffset));
 		bstreamSeek(stream, pos, 0);
 
-		int element = sequence->type & 0xFFFF;
-		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
 		for (int j = 0; j < sequence->nFrames; j++) {
 			FRAME_DATA frame;
 			memcpy(&frame, frames + j, sizeof(FRAME_DATA));
@@ -188,9 +207,22 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 
 		int element = sequence->type & 0xFFFF;
 		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+
+		//need alignment?
+		if (element != 0 && (stream->pos & 3)) {
+			int nPad = 4 - (stream->pos & 3);
+			bstreamWrite(stream, &align0, nPad);
+		}
+
 		for (int j = 0; j < sequence->nFrames; j++) {
 			bstreamWrite(stream, frames[j].animationData, sizes[element]);
 		}
+	}
+
+	//need alignment?
+	if (stream->pos & 3) {
+		int nPad = 4 - (stream->pos & 3);
+		bstreamWrite(stream, &align0, nPad);
 	}
 
 
