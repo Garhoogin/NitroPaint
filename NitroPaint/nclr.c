@@ -146,6 +146,7 @@ int hudsonPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 
 	nclrInit(nclr, NCLR_TYPE_HUDSON);
 	nclr->nColors = nColors;
+	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
 	memcpy(nclr->colors, buffer + 4, nColors * 2);
@@ -159,6 +160,7 @@ int binPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 
 	nclrInit(nclr, nclrIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP);
 	nclr->nColors = nColors;
+	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
 	memcpy(nclr->colors, buffer, nColors * 2);
@@ -176,7 +178,7 @@ int comboReadPalette(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 			nclr->idxTable = NULL;
 			nclr->nBits = 4;
 			nclr->nPalettes = 0;
-			nclr->totalSize = 256;
+			nclr->totalSize = 256 * sizeof(COLOR);
 			nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
 			memcpy(nclr->colors, buffer + 4, 512);
 			break;
@@ -186,7 +188,7 @@ int comboReadPalette(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 			nclr->idxTable = NULL;
 			nclr->nBits = 4;
 			nclr->nPalettes = 0;
-			nclr->totalSize = 16;
+			nclr->totalSize = 16 * sizeof(COLOR);
 			nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
 			memcpy(nclr->colors, buffer + 0x220, 32);
 			break;
@@ -201,7 +203,7 @@ int comboReadPalette(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 			nclr->idxTable = NULL;
 			nclr->nBits = 4;
 			nclr->nPalettes = 0;
-			nclr->totalSize = nColors;
+			nclr->totalSize = nColors * sizeof(COLOR);
 			nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
 			memcpy(nclr->colors, palt + 0xC, nColors * sizeof(COLOR));
 			break;
@@ -225,7 +227,7 @@ int ncPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	nclr->nColors = nclr->nPalettes * *(uint32_t *) (palt + 0x8);
 	nclr->extPalette = nclr->nColors > 256;
 	nclr->nBits = *(uint32_t *) (palt + 0x8) > 16 ? 8 : 4;
-	nclr->totalSize = nclr->nColors;
+	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
 	memcpy(nclr->colors, palt + 0x10, nclr->nColors * 2);
 	if (cmnt != NULL) {
