@@ -1295,7 +1295,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			int bottomY = boxHeight + 10 + boxHeight2 + 10 + topY; //bottom box Y
 
 			CreateStatic(hWnd, L"Format:", leftX, topY, 75, 22);
-			data->hWndFormat = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, leftX + 85, topY, 100, 100, hWnd, NULL, NULL, NULL);
+			data->hWndFormat = CreateCombobox(hWnd, NULL, 0, leftX + 85, topY, 100, 22, 0);
 			data->hWndDither = CreateCheckbox(hWnd, L"Dither", leftX, topY + 27, 100, 22, FALSE);
 			data->hWndDitherAlpha = CreateCheckbox(hWnd, L"Dither Alpha", leftX, topY + 27 * 2, 100, 22, FALSE);
 			CreateStatic(hWnd, L"Diffusion:", leftX, topY + 27 * 3, 75, 22);
@@ -1319,13 +1319,13 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
 			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
-			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
 			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
 			CreateStatic(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22);
 			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
 			CreateStatic(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22);
 			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
 			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
 
 			CreateWindow(L"BUTTON", L"Texture", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, topY - 18, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"Palette", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, rightX - 10, topY - 18, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);

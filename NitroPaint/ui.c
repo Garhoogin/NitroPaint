@@ -8,7 +8,7 @@ HWND CreateButton(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, 
 }
 
 HWND CreateCheckbox(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, BOOL checked) {
-	HWND h = CreateWindow(L"BUTTON", text, WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, x, y, width, height, hWnd, NULL, NULL, NULL);
+	HWND h = CreateWindow(L"BUTTON", text, WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_AUTOCHECKBOX, x, y, width, height, hWnd, NULL, NULL, NULL);
 	SendMessage(h, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
 	return h;
 }
