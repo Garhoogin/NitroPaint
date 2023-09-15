@@ -300,16 +300,15 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						}
 					}
 				} else if (hWndControl == data->hWndConvert) {
-					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					HWND hWndMain = getMainWindow(hWnd);
 					data->hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
 														   WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME, 
 														   CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
 					SetWindowLongPtr(data->hWndConvertDialog, 0, (LONG_PTR) data);
-					ShowWindow(data->hWndConvertDialog, SW_SHOW);
-					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
 					SendMessage(data->hWndConvertDialog, NV_INITIALIZE, 0, 0);
+					DoModal(data->hWndConvertDialog);
 				} else if (hWndControl == data->hWndExportNTF) {
-					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+					HWND hWndMain = getMainWindow(hWnd);
 					//if not in any format, it cannot be exported.
 					if (!data->isNitro) {
 						MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
@@ -616,29 +615,29 @@ void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int
 	COLOR *pal = texture->palette.pal;
 	COLOR stackPaletteBuffer[4];
 	if (format == CT_4x4) {
-		unsigned short mode = indexBuffer[0] & 0xC000;
+		unsigned short mode = indexBuffer[0] & COMP_MODE_MASK;
 		pal = stackPaletteBuffer;
 		nColors = 4;
 		transparentIndex = (mode == 0x0000 || mode == 0x4000) ? 3 : -1;
-		int paletteIndex = (indexBuffer[0] & 0x3FFF) << 1;
+		int paletteIndex = (indexBuffer[0] & COMP_INDEX_MASK) << 1;
 		COLOR *palSrc = texture->palette.pal + paletteIndex;
 
 		pal[0] = palSrc[0];
 		pal[1] = palSrc[1];
 		switch (mode) {
-			case 0x0000:
+			case COMP_TRANSPARENT | COMP_FULL:
 				pal[2] = palSrc[2];
 				pal[3] = 0;
 				break;
-			case 0x4000:
+			case COMP_TRANSPARENT | COMP_INTERPOLATE:
 				pal[2] = ColorInterpolate(pal[0], pal[1], 0.5f);
 				pal[3] = 0;
 				break;
-			case 0x8000:
+			case COMP_OPAQUE | COMP_FULL:
 				pal[2] = palSrc[2];
 				pal[3] = palSrc[3];
 				break;
-			case 0xC000:
+			case COMP_OPAQUE | COMP_INTERPOLATE:
 				pal[2] = ColorInterpolate(pal[0], pal[1], 0.375f);
 				pal[3] = ColorInterpolate(pal[0], pal[1], 0.625f);
 				break;
@@ -711,22 +710,20 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			TEXELS *texels = &data->textureData.texels;
 			int format = FORMAT(texels->texImageParam);
 			if (format == CT_4x4) {
-				data->hWndInterpolate = CreateWindow(L"BUTTON", L"Interpolate", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 5, 133, 100, 22, hWnd, NULL, NULL, NULL);
-				data->hWndTransparent = CreateWindow(L"BUTTON", L"Transparent", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 5, 160, 100, 22, hWnd, NULL, NULL, NULL);
-				CreateWindow(L"STATIC", L"Palette base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 5, 187, 60, 22, hWnd, NULL, NULL, NULL);
-				data->hWndPaletteBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER, 70, 187, 50, 22, hWnd, NULL, NULL, NULL);
-				EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
+				data->hWndInterpolate = CreateCheckbox(hWnd, L"Interpolate", 5, 133, 100, 22, FALSE);
+				data->hWndTransparent = CreateCheckbox(hWnd, L"Transparent", 5, 160, 100, 22, FALSE);
+				CreateStatic(hWnd, L"Palette base:", 5, 187, 60, 22);
+				data->hWndPaletteBase = CreateEdit(hWnd, L"0", 70, 187, 50, 22, TRUE);
+				SetGUIFont(hWnd);
 
 				//populate fields
-				WCHAR buffer[8];
 				int tilesX = TEXW(texels->texImageParam) / 4;
 				uint16_t idx = texels->cmp[tileX + tileY * tilesX];
-				if (!(idx & 0x8000))
+				if (!(idx & COMP_OPAQUE))
 					SendMessage(data->hWndTransparent, BM_SETCHECK, 1, 0);
-				if (idx & 0x4000)
+				if (idx & COMP_INTERPOLATE)
 					SendMessage(data->hWndInterpolate, BM_SETCHECK, 1, 0);
-				wsprintfW(buffer, L"%d", idx & 0x3FFF);
-				SendMessage(data->hWndPaletteBase, WM_SETTEXT, wcslen(buffer), (LPARAM) buffer);
+				SetEditNumber(data->hWndPaletteBase, idx & COMP_INDEX_MASK);
 			}
 			break;
 		}
@@ -1273,19 +1270,7 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 
 void conversionCallback(void *p) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) p;
-	InvalidateRect(data->hWndPreview, NULL, FALSE);
-	data->isNitro = TRUE;
-
-	HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(data->hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-	setStyle(hWndMain, FALSE, WS_DISABLED);
 	SendMessage(data->hWndProgress, WM_CLOSE, 0, 0);
-	SetForegroundWindow(hWndMain);
-	data->hWndProgress = NULL;
-
-	UpdatePaletteLabel(data->hWnd);
-	int fmt = FORMAT(data->textureData.texels.texImageParam);
-	data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
-	data->selectedColor = 0;
 }
 
 LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1309,46 +1294,45 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			int middleY = boxHeight + 10 + topY; //middle box Y
 			int bottomY = boxHeight + 10 + boxHeight2 + 10 + topY; //bottom box Y
 
-			CreateWindow(L"STATIC", L"Format:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY, 75, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Format:", leftX, topY, 75, 22);
 			data->hWndFormat = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, leftX + 85, topY, 100, 100, hWnd, NULL, NULL, NULL);
-			data->hWndDither = CreateWindow(L"BUTTON", L"Dither", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDitherAlpha = CreateWindow(L"BUTTON", L"Dither Alpha", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Diffusion:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, topY + 27 * 3, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDiffuseAmount = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, leftX + 85, topY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDither = CreateCheckbox(hWnd, L"Dither", leftX, topY + 27, 100, 22, FALSE);
+			data->hWndDitherAlpha = CreateCheckbox(hWnd, L"Dither Alpha", leftX, topY + 27 * 2, 100, 22, FALSE);
+			CreateStatic(hWnd, L"Diffusion:", leftX, topY + 27 * 3, 75, 22);
+			data->hWndDiffuseAmount = CreateEdit(hWnd, L"100", leftX + 85, topY + 27 * 3, 100, 22, TRUE);
 
-			CreateWindow(L"STATIC", L"Palette Name:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteName = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, rightX + 85, topY, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFixedPalette = CreateWindow(L"BUTTON", L"Use Fixed Palette", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, topY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Palette File:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY + 27 * 2, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, rightX + 85, topY + 27 * 2, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteBrowse = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, rightX + 85 + 75, topY + 27 * 2, 25, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Colors:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, topY + 27 * 3, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteSize = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_NUMBER, rightX + 85, topY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Palette Name:", rightX, topY, 75, 22);
+			data->hWndPaletteName = CreateEdit(hWnd, L"", rightX + 85, topY, 100, 22, FALSE);
+			data->hWndFixedPalette = CreateCheckbox(hWnd, L"Use Fixed Palette", rightX, topY + 27, 100, 22, FALSE);
+			CreateStatic(hWnd, L"Palette File:", rightX, topY + 27 * 2, 75, 22);
+			data->hWndPaletteInput = CreateEdit(hWnd, L"", rightX + 85, topY + 27 * 2, 75, 22, FALSE);
+			data->hWndPaletteBrowse = CreateButton(hWnd, L"...", rightX + 85 + 75, topY + 27 * 2, 25, 22, FALSE);
+			CreateStatic(hWnd, L"Colors:", rightX, topY + 27 * 3, 75, 22);
+			data->hWndPaletteSize = CreateEdit(hWnd, L"256", rightX + 85, topY + 27 * 3, 100, 22, TRUE);
 
-			data->hWndLimitPalette = CreateWindow(L"BUTTON", L"Limit Palette Size", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, middleY, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Maximum Colors:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColorEntries = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"256", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, leftX + 110, middleY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Optimization:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndOptimizationSlider = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD | TBS_NOTIFYBEFOREMOVE, leftX + 110, middleY + 27 * 2, 210, 22, hWnd, NULL, NULL, NULL);
-			data->hWndOptimizationLabel = CreateWindow(L"STATIC", L"0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 330, middleY + 27 * 2, 50, 22, hWnd, NULL, NULL, NULL);
-			SendMessage(data->hWndLimitPalette, BM_SETCHECK, BST_CHECKED, 0);
+			data->hWndLimitPalette = CreateCheckbox(hWnd, L"Limit Palette Size", leftX, middleY, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Maximum Colors:", leftX, middleY + 27, 100, 22);
+			data->hWndColorEntries = CreateEdit(hWnd, L"256", leftX + 110, middleY + 27, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Optimization:", leftX, middleY + 27 * 2, 100, 22);
+			data->hWndOptimizationSlider = CreateTrackbar(hWnd, leftX + 110, middleY + 27 * 2, 210, 22, 0, 100, 0);
+			data->hWndOptimizationLabel = CreateStatic(hWnd, L"0", leftX + 330, middleY + 27 * 2, 50, 22);
 
-			CreateWindow(L"STATIC", L"Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndEnhanceColors = CreateWindow(L"BUTTON", L"Enhance Colors", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, bottomY + 27 * 2, 200, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Lightness", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Green", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Red", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY, 200, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColorBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY + 27, 200, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
+			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
+			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
+			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
+			CreateStatic(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22);
+			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
+			CreateStatic(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22);
+			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
 
 			CreateWindow(L"BUTTON", L"Texture", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, topY - 18, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"Palette", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, rightX - 10, topY - 18, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"4x4 Compression", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, middleY - 18, rightX + boxWidth - leftX, boxHeight2, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"Color", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, bottomY - 18, rightX + boxWidth - leftX, boxHeight2, hWnd, NULL, NULL, NULL);
 
-			data->hWndDoConvertButton = CreateWindow(L"BUTTON", L"Convert", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, width / 2 - 100, height - 32, 200, 22, hWnd, NULL, NULL, NULL);
+			data->hWndDoConvertButton = CreateButton(hWnd, L"Convert", width / 2 - 100, height - 32, 200, 22, TRUE);
 
 			//populate the dropdown list
 			WCHAR bf[16];
@@ -1370,15 +1354,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 			//pick default 4x4 color count
 			int maxColors = chooseColorCount(data->width, data->height);
-			len = wsprintfW(bf, L"%d", maxColors);
-			SendMessage(data->hWndColorEntries, WM_SETTEXT, len, (LPARAM) bf);
-			SendMessage(data->hWndOptimizationSlider, TBM_SETPOS, 0, 0);
-
-			//init balance
-			SendMessage(data->hWndBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
-			SendMessage(data->hWndBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
-			SendMessage(data->hWndColorBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
-			SendMessage(data->hWndColorBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
+			SetEditNumber(data->hWndColorEntries, maxColors);
 
 			//fill palette name
 			WCHAR pname[16] = { 0 };
@@ -1392,18 +1368,17 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
-			if (hWndControl) {
+			int idc = LOWORD(wParam);
+			if (hWndControl || idc) {
 				int controlCode = HIWORD(wParam);
 				if (hWndControl == data->hWndFormat && controlCode == LBN_SELCHANGE) {
 					updateConvertDialog(data);
 					
 					//color count - update for paletted textures
-					WCHAR buffer[4];
 					int format = SendMessage(hWndControl, CB_GETCURSEL, 0, 0) + 1;
 					if (format != CT_DIRECT && format != CT_4x4) {
 						int colorCounts[] = { 0, 32, 4, 16, 256, 0, 8, 0 };
-						int len = wsprintfW(buffer, L"%d", colorCounts[format]);
-						SendMessage(data->hWndPaletteSize, WM_SETTEXT, len, (LPARAM) buffer);
+						SetEditNumber(data->hWndPaletteSize, colorCounts[format]);
 					}
 				} else if (hWndControl == data->hWndFixedPalette && controlCode == BN_CLICKED) {
 					updateConvertDialog(data);
@@ -1419,9 +1394,9 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						SendMessage(data->hWndPaletteInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
 						free(path);
 					}
-				} else if (hWndControl == data->hWndDoConvertButton && controlCode == BN_CLICKED) {
+				} else if ((hWndControl == data->hWndDoConvertButton && controlCode == BN_CLICKED) || idc == IDOK) {
 					int fmt = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
-					BOOL fixedPalette = SendMessage(data->hWndFixedPalette, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					BOOL fixedPalette = GetCheckboxChecked(data->hWndFixedPalette);
 
 					WCHAR path[MAX_PATH];
 					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH, (LPARAM) path);
@@ -1439,21 +1414,18 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					}
 
 					WCHAR bf[32];
-					SendMessage(data->hWndColorEntries, WM_GETTEXT, 31, (LPARAM) bf);
-					int colorEntries = _wtol(bf); //for 4x4
-					SendMessage(data->hWndDiffuseAmount, WM_GETTEXT, 31, (LPARAM) bf);
-					float diffuse = _wtol(bf) / 100.0f;
-					SendMessage(data->hWndPaletteSize, WM_GETTEXT, 31, (LPARAM) bf);
-					int paletteSize = _wtol(bf); //for non-4x4
+					int colorEntries = GetEditNumber(data->hWndColorEntries); //for 4x4
+					float diffuse = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
+					int paletteSize = GetEditNumber(data->hWndPaletteSize); //for non-4x4
 					int optimization = SendMessage(data->hWndOptimizationSlider, TBM_GETPOS, 0, 0);
 					SendMessage(data->hWndPaletteName, WM_GETTEXT, 17, (LPARAM) bf);
 
-					BOOL dither = SendMessage(data->hWndDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					BOOL ditherAlpha = SendMessage(data->hWndDitherAlpha, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					BOOL dither = GetCheckboxChecked(data->hWndDither);
+					BOOL ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
 					int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
 					int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
-					BOOL enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					BOOL limitPalette = SendMessage(data->hWndLimitPalette, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
 
 					//if we set to not limit palette, set the max size to the max allowed
 					if (!limitPalette) {
@@ -1476,7 +1448,18 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 									fixedPalette, paletteFile.colors, optimization, balance, colorBalance, enhanceColors,
 									mbpnam, &data->textureData, conversionCallback, (void *) data);
 
-					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
+					//wait progress end
+					DoModal(data->hWndProgress);
+
+					InvalidateRect(data->hWndPreview, NULL, FALSE);
+					data->isNitro = TRUE;
+					data->hWndProgress = NULL;
+
+					UpdatePaletteLabel(data->hWnd);
+					data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
+					data->selectedColor = 0;
+				} else if (idc == IDCANCEL) {
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}
 			}
 			break;
@@ -1491,18 +1474,6 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			 }
 			break;
 		}
-		case WM_CLOSE:
-		{
-			HWND hWndEditor = data->hWnd;
-			HWND hWndMain = getMainWindow(hWndEditor);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
-			SetActiveWindow(hWndMain);
-			break;
-		}
-		case WM_DESTROY:
-		{
-			break;
-		}
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
@@ -1511,12 +1482,12 @@ LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateWindow(L"STATIC", L"Progress:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Progress:", 10, 10, 100, 22);
 			HWND hWndProgress = CreateWindow(PROGRESS_CLASSW, L"", WS_VISIBLE | WS_CHILD, 10, 42, 400, 22, hWnd, NULL, NULL, NULL);
 			SendMessage(hWndProgress, PBM_DELTAPOS, 1, 0);
 			SetWindowLong(hWnd, 0, (LONG) hWndProgress);
 			SetWindowSize(hWnd, 420, 74);
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 
 			SetTimer(hWnd, 1, 16, NULL);
 			break;
@@ -2392,87 +2363,27 @@ void RegisterBatchTextureDialogClass() {
 
 
 VOID RegisterTexturePreviewClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"TexturePreviewClass";
-	wcex.lpfnWndProc = TexturePreviewWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"TexturePreviewClass", TexturePreviewWndProc, sizeof(LPVOID));
 }
 
 VOID RegisterConvertDialogClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"ConvertDialogClass";
-	wcex.lpfnWndProc = ConvertDialogWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"ConvertDialogClass", ConvertDialogWndProc, sizeof(LPVOID));
 }
 
 VOID RegisterCompressionProgressClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"CompressionProgress";
-	wcex.lpfnWndProc = CompressionProgressProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"CompressionProgress", CompressionProgressProc, sizeof(LPVOID));
 }
 
 VOID RegisterTexturePaletteEditorClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"TexturePaletteEditorClass";
-	wcex.lpfnWndProc = TexturePaletteEditorWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"TexturePaletteEditorClass", TexturePaletteEditorWndProc, sizeof(LPVOID));
 }
 
 VOID RegisterTextureTileEditorClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"TextureTileEditorClass";
-	wcex.lpfnWndProc = TextureTileEditorWndProc;
-	wcex.cbWndExtra = 3 * sizeof(LONG_PTR);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"TextureTileEditorClass", TextureTileEditorWndProc, 3 * sizeof(LONG_PTR));
 }
 
 VOID RegisterTextureEditorClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"TextureEditorClass";
-	wcex.lpfnWndProc = TextureEditorWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"TextureEditorClass", TextureEditorWndProc, sizeof(LPVOID));
 	RegisterTexturePreviewClass();
 	RegisterConvertDialogClass();
 	RegisterCompressionProgressClass();
