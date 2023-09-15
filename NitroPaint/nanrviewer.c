@@ -352,6 +352,18 @@ void nanrViewerSetSequence(HWND hWnd, int n) {
 	InvalidateRect(hWnd, NULL, TRUE);
 }
 
+void nanrViewerRefreshSequences(HWND hWnd) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+
+	SendMessage(data->hWndAnimationDropdown, CB_RESETCONTENT, 0, 0);
+	for (int i = 0; i < data->nanr.nSequences; i++) {
+		WCHAR buf[16];
+		int len = wsprintfW(buf, L"%d", i);
+		SendMessage(data->hWndAnimationDropdown, CB_ADDSTRING, len, (LPARAM) buf);
+	}
+	SendMessage(data->hWndAnimationDropdown, CB_SETCURSEL, data->sequence, 0);
+}
+
 static BOOL g_tickThreadRunning = FALSE;
 static HWND *g_tickWindows = NULL;
 static int g_nTickWindows = 0;
@@ -473,6 +485,8 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndRotateLabel = CreateWindow(L"STATIC", L"Rotation:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 149 + 27 + 27, 50, 22, hWnd, NULL, NULL, NULL);
 			
 			data->hWndAnimationDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 602, 10, 100, 100, hWnd, NULL, NULL, NULL);
+			data->hWndAddSequence = CreateButton(hWnd, L"+", 724, 10, 22, 22, FALSE);
+			data->hWndDeleteSequence = CreateButton(hWnd, L"-", 702, 10, 22, 22, FALSE);
 			data->hWndPauseButton = CreateWindow(L"BUTTON", L"Play", WS_VISIBLE | WS_CHILD, 522, 37, 50, 22, hWnd, NULL, NULL, NULL);
 			data->hWndStepButton = CreateWindow(L"BUTTON", L"Step", WS_VISIBLE | WS_CHILD, 577, 37, 50, 22, hWnd, NULL, NULL, NULL);
 			data->hWndFrameCounter = CreateWindow(L"STATIC", L"Frame 0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 37, 100, 22, hWnd, NULL, NULL, NULL);
@@ -518,7 +532,7 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		}
 		case NV_SETTITLE:
 		{
-			LPWSTR path = (LPWSTR) lParam;
+			LPCWSTR path = (LPWSTR) lParam;
 			WCHAR titleBuffer[MAX_PATH + 15];
 			if (!g_configuration.fullPaths) path = GetFileName(path);
 			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
@@ -809,6 +823,67 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					nanrViewerSetSequence(hWnd, data->sequence);
 					data->frame = frame;
 					nanrViewerSetFrame(hWnd, frameIndex, TRUE);
+				} else if (hWndControl == data->hWndAddSequence && notif == BN_CLICKED) {
+					//add one sequence
+					int seqno = SendMessage(data->hWndAnimationDropdown, CB_GETCURSEL, 0, 0);
+
+					NANR *nanr = &data->nanr;
+					nanr->nSequences++;
+					nanr->sequences = (NANR_SEQUENCE *) realloc(nanr->sequences, nanr->nSequences * sizeof(NANR_SEQUENCE));
+
+					//move all sequences after seqno
+					int nSeq = nanr->nSequences;
+					if (seqno < nSeq - 2) {
+						memmove(nanr->sequences + seqno + 2, nanr->sequences + seqno + 1, (nSeq - seqno - 2) * sizeof(NANR_SEQUENCE));
+					}
+
+					//clear out sequence
+					seqno++; //point to added sequence
+					nanr->sequences[seqno].nFrames = 1;
+					nanr->sequences[seqno].frames = (FRAME_DATA *) calloc(1, sizeof(FRAME_DATA));
+					nanr->sequences[seqno].mode = 1;
+					nanr->sequences[seqno].type = 0 | (1 << 16);
+					nanr->sequences[seqno].startFrameIndex = 0;
+
+					FRAME_DATA *frame = nanr->sequences[seqno].frames;
+					frame->nFrames = 1;
+					frame->pad_ = 0xBEEF;
+					frame->animationData = (ANIM_DATA *) calloc(1, sizeof(ANIM_DATA));
+					
+					ANIM_DATA *animData = (ANIM_DATA *) frame->animationData;
+					animData->index = 0;
+
+					nanrViewerSetSequence(hWnd, seqno);
+					nanrViewerSetFrame(hWnd, 0, TRUE);
+					data->frame = 0;
+					nanrViewerRefreshSequences(hWnd);
+				} else if (hWndControl == data->hWndDeleteSequence && notif == BN_CLICKED) {
+					int seqno = SendMessage(data->hWndAnimationDropdown, CB_GETCURSEL, 0, 0);
+
+					NANR *nanr = &data->nanr;
+					NANR_SEQUENCE *sequences = nanr->sequences;
+
+					//free sequence
+					FRAME_DATA *frames = sequences[seqno].frames;
+					for (int i = 0; i < sequences[seqno].nFrames; i++) {
+						free(frames[i].animationData);
+					}
+					free(frames);
+
+					//move sequences
+					if (seqno < nanr->nSequences - 1) {
+						memmove(sequences + seqno, sequences + seqno + 1, (nanr->nSequences - seqno - 1) * sizeof(NANR_SEQUENCE));
+					}
+					nanr->nSequences--;
+					nanr->sequences = realloc(nanr->sequences, nanr->nSequences * sizeof(NANR_SEQUENCE));
+
+					data->sequence--;
+					if (data->sequence < 0) data->sequence = 0;
+
+					data->frame = 0;
+					nanrViewerSetSequence(hWnd, data->sequence);
+					nanrViewerSetFrame(hWnd, 0, TRUE);
+					nanrViewerRefreshSequences(hWnd);
 				}
 
 			}

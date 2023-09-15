@@ -40,6 +40,8 @@ typedef struct {
 
 	HWND hWndAddFrame;
 	HWND hWndDeleteFrame;
+	HWND hWndAddSequence;
+	HWND hWndDeleteSequence;
 
 	HWND hWnd;
 } NANRVIEWERDATA;
