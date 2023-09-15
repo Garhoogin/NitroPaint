@@ -150,6 +150,7 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 	*(DWORD *) (abnkHeader + 0x14) = 0x18 + sequencesSize + animFramesSize;
 	bstreamWrite(stream, abnkHeader, sizeof(abnkHeader));
 
+	int seqOffset = stream->pos;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE seq;
 		memcpy(&seq, nanr->sequences + i, sizeof(NANR_SEQUENCE));
@@ -158,9 +159,17 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 	}
 
 	DWORD currentAnimationDataPos = 0;
+	int frameDataOffset = stream->pos;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;
 		FRAME_DATA *frames = sequence->frames;
+
+		//write frame data offset
+		int pos = stream->pos;
+		int thisSequenceOffset = pos - frameDataOffset;
+		bstreamSeek(stream, seqOffset + i * sizeof(NANR_SEQUENCE) + 0xC, 0); //frame offset in this sequence
+		bstreamWrite(stream, &thisSequenceOffset, sizeof(thisSequenceOffset));
+		bstreamSeek(stream, pos, 0);
 
 		int element = sequence->type & 0xFFFF;
 		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
