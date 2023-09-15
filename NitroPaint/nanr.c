@@ -103,7 +103,7 @@ DWORD nanrGetAbnkSize(NANR *nanr, int *pAnimFramesSize, int *pFrameDataSize) {
 	for (int i = 0; i < nSequences; i++) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;
 		int element = sequence->type & 0xFFFF;
-		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_SRT) };
+		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
 
 		for (int j = 0; j < sequence->nFrames; j++) {
 			animFramesSize += sizeof(FRAME_DATA);
@@ -163,7 +163,7 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 		FRAME_DATA *frames = sequence->frames;
 
 		int element = sequence->type & 0xFFFF;
-		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_SRT) };
+		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
 		for (int j = 0; j < sequence->nFrames; j++) {
 			FRAME_DATA frame;
 			memcpy(&frame, frames + j, sizeof(FRAME_DATA));
@@ -178,7 +178,7 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 		FRAME_DATA *frames = sequence->frames;
 
 		int element = sequence->type & 0xFFFF;
-		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_SRT) };
+		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
 		for (int j = 0; j < sequence->nFrames; j++) {
 			bstreamWrite(stream, frames[j].animationData, sizes[element]);
 		}
