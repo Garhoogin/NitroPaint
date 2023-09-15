@@ -1358,7 +1358,17 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 			//fill palette name
 			WCHAR pname[16] = { 0 };
-			createPaletteName(pname, data->szInitialFile);
+			if (data->isNitro) {
+				//fill existing palette name
+				for (int i = 0; i < 16; i++) {
+					WCHAR c = (WCHAR) data->textureData.palette.name[i];
+					pname[i] = c;
+					if (c == L'\0') break;
+				}
+			} else {
+				//generate a palette name
+				createPaletteName(pname, data->szInitialFile);
+			}
 			SendMessage(data->hWndPaletteName, WM_SETTEXT, wcslen(pname), (LPARAM) pname);
 
 			updateConvertDialog(data);
