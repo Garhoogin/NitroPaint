@@ -408,14 +408,15 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						break;
 					}
 					case ID_FILE_SAVE:
+					case ID_FILE_SAVEAS:
 					{
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND hWndMain = getMainWindow(hWnd);
 						//if not in any format, it cannot be saved.
 						if (!data->isNitro) {
 							MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
 							break;
 						}
-						if (*data->szCurrentFile == L'\0') {
+						if (*data->szCurrentFile == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
 							//browse for file
 							LPWSTR path = saveFileDialog(hWndMain, L"Save Texture", L"Nitro TGA Files (*.tga)\0*.tga\0All Files\0*.*\0\0", L"tga");
 							if (!path) break;
