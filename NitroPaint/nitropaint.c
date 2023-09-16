@@ -975,6 +975,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_NEW_NEWNCGR40015: //NCGR+NSCR
 					{
 						HWND h = CreateWindow(L"CreateDialogClass", L"Create BG", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						DoModal(h);
 						break;
 					}
 					case ID_NEW_NEWTEXTURE:
@@ -1431,7 +1432,6 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
 			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
-			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
 
 			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
 			CreateStaticAligned(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
@@ -1439,6 +1439,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			CreateStaticAligned(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
 			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
 			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
 
 			//not actually buttons ;)
 			CreateGroupbox(hWnd, L"Palette", 10, 42, boxWidth, boxHeight);
@@ -1452,15 +1453,9 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			SetGUIFont(hWnd);
 			return 1;
 		}
-		case WM_CLOSE:
-		{
-			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndParent, FALSE, WS_DISABLED);
-			SetActiveWindow(hWndParent);
-			break;
-		}
 		case WM_COMMAND:
 		{
+			int idc = LOWORD(wParam);
 			if (HIWORD(wParam) == BN_CLICKED) {
 				HWND hWndControl = (HWND) lParam;
 				if (hWndControl == data->nscrCreateInputButton) {
@@ -1468,7 +1463,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					if (!location) break;
 					SendMessage(data->nscrCreateInput, WM_SETTEXT, (WPARAM) wcslen(location), (LPARAM) location);
 					free(location);
-				} else if (hWndControl == data->nscrCreateButton) {
+				} else if (hWndControl == data->nscrCreateButton || idc == IDOK) {
 					WCHAR location[MAX_PATH + 1];
 					int dither = GetCheckboxChecked(data->nscrCreateDither);
 					int merge = GetCheckboxChecked(data->hWndMergeTiles);
@@ -1503,8 +1498,9 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 					HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
-					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
-					ShowWindow(hWndProgress, SW_SHOW);
+					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", 
+						WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), 
+						CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
 					CREATENSCRDATA *createData = (CREATENSCRDATA *) calloc(1, sizeof(CREATENSCRDATA));
 					createData->hWndMain = hWndMain;
 					createData->bbits = bbits;
@@ -1518,9 +1514,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 						color0Setting, balance, colorBalance, enhanceColors);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
-					SetActiveWindow(hWndProgress);
-					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
-
+					DoModalEx(hWndProgress, FALSE);
 				} else if (hWndControl == data->hWndMergeTiles) {
 					//enable/disable max chars field
 					int state = GetCheckboxChecked(hWndControl);
@@ -1536,6 +1530,9 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					int state = GetCheckboxChecked(hWndControl);
 					setStyle(data->hWndDiffuse, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (idc == IDCANCEL) {
+					//abort
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}
 			} else if (HIWORD(wParam) == CBN_SELCHANGE) {
 				HWND hWndControl = (HWND) lParam;
@@ -1970,8 +1967,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					SendMessage(cdData->nscrCreateInput, WM_SETTEXT, wcslen(data->szPath), (LPARAM) data->szPath);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
-					SetForegroundWindow(h);
-					setStyle(hWndMain, TRUE, WS_DISABLED);
+					DoModal(h);
 				} else if (hWndControl == data->hWndTexture) {
 					CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, data->szPath);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);

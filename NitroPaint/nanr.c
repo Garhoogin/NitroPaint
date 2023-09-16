@@ -114,7 +114,7 @@ int nanrWriteFrame(BSTREAM *stream, void *data, int element) {
 		case 0:
 		case 1:
 			//both Index and Index+SRT, compare whole animation dat
-			for (i = 0; i < stream->size; i += 2) { //2-byte alignment
+			for (i = 0; i <= stream->size - size; i += 2) { //2-byte alignment
 				if (memcmp(stream->buffer + i, data, size) == 0) {
 					found = 1;
 					foundOffset = i;
@@ -126,7 +126,7 @@ int nanrWriteFrame(BSTREAM *stream, void *data, int element) {
 		{
 			//Index+T: compare all but padding
 			ANIM_DATA_T *d1 = (ANIM_DATA_T *) data;
-			for (i = 0; i < stream->size; i += 4) { //4-byte alignment
+			for (i = 0; i <= stream->size - size; i += 4) { //4-byte alignment
 				ANIM_DATA_T *d2 = (ANIM_DATA_T *) (stream->buffer + i);
 				if (d1->index == d2->index && d1->px == d2->px && d1->py == d2->py) {
 					found = 1;

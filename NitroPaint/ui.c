@@ -122,7 +122,7 @@ LRESULT CALLBACK ModalCloseHookProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	return DefSubclassProc(hWnd, msg, wParam, lParam);
 }
 
-void DoModal(HWND hWnd) {
+void DoModalEx(HWND hWnd, BOOL closeHook) {
 	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 	ShowWindow(hWnd, SW_SHOW);
 	SetActiveWindow(hWnd);
@@ -130,7 +130,7 @@ void DoModal(HWND hWnd) {
 	setStyle(hWndParent, TRUE, WS_DISABLED);
 
 	//override the WndProc. 
-	SetWindowSubclass(hWnd, ModalCloseHookProc, 1, 0);
+	if (closeHook) SetWindowSubclass(hWnd, ModalCloseHookProc, 1, 0);
 
 	//enter our own message loop
 	MSG msg;
@@ -150,6 +150,10 @@ void DoModal(HWND hWnd) {
 	setStyle(hWndParent, FALSE, WS_DISABLED);
 	SetActiveWindow(hWndParent);
 	SetForegroundWindow(hWndParent);
+}
+
+void DoModal(HWND hWnd) {
+	DoModalEx(hWnd, TRUE);
 }
 
 void DoModalWait(HWND hWnd, HANDLE hWait) {

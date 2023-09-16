@@ -17,6 +17,11 @@ void setStyle(HWND hWnd, BOOL set, DWORD style);
 void DoModal(HWND hWnd);
 
 //
+// DoModal with optional window close hook
+//
+void DoModalEx(HWND hWnd, BOOL closeHook);
+
+//
 // Do modal, but destroy the window when a handle is signaled.
 //
 void DoModalWait(HWND hWnd, HANDLE hWait);
