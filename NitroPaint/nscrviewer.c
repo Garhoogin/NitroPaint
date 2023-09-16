@@ -902,6 +902,12 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			memcpy(block + 40, px + srcOffset + width * 5, 32);
 			memcpy(block + 48, px + srcOffset + width * 6, 32);
 			memcpy(block + 56, px + srcOffset + width * 7, 32);
+
+			for (int i = 0; i < 8 * 8; i++) {
+				int a = (block[i] >> 24) & 0xFF;
+				if (a < 128) block[i] = 0; //make transparent pixels transparent black
+				else block[i] |= 0xFF000000; //opaque
+			}
 		}
 	}
 

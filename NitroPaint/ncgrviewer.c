@@ -1090,6 +1090,12 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 
 					int index = x + y * tilesX;
 					memcpy(block, tiles + index * 64, 64 * 4);
+
+					for (int i = 0; i < 8 * 8; i++) {
+						int a = (block[i] >> 24) & 0xFF;
+						if (a < 128) block[i] = 0; //make transparent pixels transparent black
+						else block[i] |= 0xFF000000; //opaque
+					}
 				}
 			}
 			int nTiles = nChars;
