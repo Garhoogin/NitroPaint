@@ -543,9 +543,11 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		case NV_INITIALIZE:
 		{
 			LPWSTR path = (LPWSTR) wParam;
-			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+			if (path != NULL) {
+				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
+				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+			}
 			memcpy(&data->nanr, (NANR *) lParam, sizeof(NANR));
-			SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
 
 			for (int i = 0; i < data->nanr.nSequences; i++) {
 				WCHAR buf[16];
@@ -928,5 +930,13 @@ HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 	}
 	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NanrViewerClass", L"NANR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nanr);
+	return h;
+}
+
+HWND CreateNanrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NANR *nanr) {
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NanrViewerClass", L"NANR Viewer", 
+		WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN,
+		x, y, width, height, hWndParent, NULL, NULL, NULL);
+	SendMessage(h, NV_INITIALIZE, 0, (LPARAM) nanr);
 	return h;
 }

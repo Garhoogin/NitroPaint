@@ -51,3 +51,5 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 VOID RegisterNanrViewerClass(VOID);
 
 HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
+
+HWND CreateNanrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NANR *nanr);
