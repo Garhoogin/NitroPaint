@@ -165,6 +165,7 @@
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsC</CompileAs>
     </ClCompile>
     <ClCompile Include="bstream.c" />
+    <ClCompile Include="cellgen.c" />
     <ClCompile Include="childwindow.c" />
     <ClCompile Include="color.c" />
     <ClCompile Include="colorchooser.c" />
@@ -204,6 +205,7 @@
   <ItemGroup>
     <ClInclude Include="analysis.h" />
     <ClInclude Include="bstream.h" />
+    <ClInclude Include="cellgen.h" />
     <ClInclude Include="childwindow.h" />
     <ClInclude Include="color.h" />
     <ClInclude Include="colorchooser.h" />

@@ -10,6 +10,8 @@
 #include "palette.h"
 #include "gdip.h"
 
+#include "cellgen.h"
+
 extern HICON g_appIcon;
 
 VOID PaintNcerViewer(HWND hWnd) {
@@ -313,6 +315,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			data->hWndSizeDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 537, 63, 75, 100, hWnd, NULL, NULL, NULL);
 			data->hWndCellBoundsCheckbox = CreateWindow(L"BUTTON", L"Show cell bounds", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 169, 256, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", 169, 256 + 22 + 5, 164, 22, FALSE);
 			break;
 		}
 		case WM_NCHITTEST:	//make the border non-sizeable
@@ -875,6 +878,36 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					attr[2] = (attr[2] & 0xF3FF) | (sel << 10);
 					InvalidateRect(hWnd, NULL, FALSE);
 					changed = 1;
+				} else if (notification == BN_CLICKED && hWndControl == data->hWndCreateCell) {
+					//check for palette and character open as well
+					int nPalettes = GetAllEditors(hWndMain, FILE_TYPE_PALETTE, NULL, 0);
+					int nChars = GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, NULL, 0);
+					if (nPalettes == 0 || nChars == 0) {
+						MessageBox(hWnd, L"Requires open palette and character.", L"Error", MB_ICONERROR);
+						break;
+					}
+
+					LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
+					LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
+					if (path == NULL) break;
+
+					int width, height;
+					COLOR32 *px = gdipReadImage(path, &width, &height);
+					free(path);
+
+					//create generator dialog
+					HWND h = CreateWindow(L"NcerCreateCellClass", L"Generate Cell", WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
+						CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
+					SendMessage(h, NV_INITIALIZE, width | (height << 16), (LPARAM) px);
+					DoModal(h);
+
+					//update UI elements
+					SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
+					UpdateOamDropdown(hWnd);
+					UpdateControls(hWnd);
+
+					//free px
+					free(px);
 				}
 
 				//log a change
@@ -971,8 +1004,322 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	COLOR32 *px = (COLOR32 *) GetWindowLongPtr(hWnd, 0 * sizeof(LONG_PTR));
+	int width = GetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR));
+	int height = GetWindowLongPtr(hWnd, 2 * sizeof(LONG_PTR));
+
+	//controls
+	HWND hWndAggressiveness = (HWND) GetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR));
+	HWND hWndOk = (HWND) GetWindowLongPtr(hWnd, 4 * sizeof(LONG_PTR));
+	HWND hWndCancel = (HWND) GetWindowLongPtr(hWnd, 5 * sizeof(LONG_PTR));
+	HWND hWndAggressivenessLabel = (HWND) GetWindowLongPtr(hWnd, 6 * sizeof(LONG_PTR));
+	HWND hWndObjLabel = (HWND) GetWindowLongPtr(hWnd, 7 * sizeof(LONG_PTR));
+	HWND hWndCharacter = (HWND) GetWindowLongPtr(hWnd, 8 * sizeof(LONG_PTR));
+	HWND hWndAffine = (HWND) GetWindowLongPtr(hWnd, 9 * sizeof(LONG_PTR));
+	HWND hWndPalette = (HWND) GetWindowLongPtr(hWnd, 10 * sizeof(LONG_PTR));
+	HWND hWndWritePalette = (HWND) GetWindowLongPtr(hWnd, 11 * sizeof(LONG_PTR));
+
+	int previewX = 21, previewY = 59;
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			SetWindowSize(hWnd, 570, 369);
+			break;
+		}
+		case WM_TIMER:
+		{
+			//invalidate update part
+			RECT rc;
+			rc.top = previewX;
+			rc.left = previewY;
+			rc.right = previewX + 512;
+			rc.bottom = previewY + 256;
+			InvalidateRect(hWnd, &rc, FALSE);
+			SetEditNumber(hWndAggressivenessLabel, GetTrackbarPosition(hWndAggressiveness));
+			break;
+		}
+		case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hDC = BeginPaint(hWnd, &ps);
+
+			//draw offscreen
+			HDC hCompatibleDC = CreateCompatibleDC(hDC);
+			HBITMAP hCompatibleBitmap = CreateCompatibleBitmap(hDC, 512, 256);
+			SelectObject(hCompatibleDC, hCompatibleBitmap);
+
+			//draw to hCompatibleDC
+			Rectangle(hCompatibleDC, 0, 0, 512, 256);
+
+			HPEN hBluePen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
+			HBRUSH hFillBrush = CreateSolidBrush(RGB(127, 127, 255));
+			SelectObject(hCompatibleDC, hBluePen);
+			SelectObject(hCompatibleDC, hFillBrush);
+
+			//must have image loaded
+			if (px != NULL) {
+				int nObj;
+				int aggressiveness = GetTrackbarPosition(hWndAggressiveness);
+				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, &nObj);
+
+				for (int i = 0; i < nObj; i++) {
+					OBJ_BOUNDS *b = bounds + i;
+					b->x -= width / 2;
+					b->y -= height / 2;
+
+					int bx = b->x + 256;
+					int by = b->y + 128;
+					Rectangle(hCompatibleDC, bx, by, bx + b->width, by + b->height);
+				}
+
+				free(bounds);
+
+				WCHAR objText[16];
+				int len = wsprintfW(objText, L"%d OBJ", nObj);
+				SendMessage(hWndObjLabel, WM_SETTEXT, len, (LPARAM) objText);
+			}
+
+			BitBlt(hDC, previewX, previewY, 512, 256, hCompatibleDC, 0, 0, SRCCOPY);
+			DeleteObject(hCompatibleDC);
+			DeleteObject(hCompatibleBitmap);
+			DeleteObject(hBluePen);
+			DeleteObject(hFillBrush);
+
+			EndPaint(hWnd, &ps);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			px = (COLOR32 *) lParam;
+			width = LOWORD(wParam);
+			height = HIWORD(wParam);
+
+			SetWindowLongPtr(hWnd, 0 * sizeof(LONG_PTR), (LONG_PTR) px);
+			SetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR), width);
+			SetWindowLongPtr(hWnd, 2 * sizeof(LONG_PTR), height);
+
+			//setup controls
+			CreateStatic(hWnd, L"Optimization:", 10, 10, 70, 22);
+			hWndAggressiveness = CreateTrackbar(hWnd, 90, 10, 150, 22, 0, 100, 100);
+			hWndAggressivenessLabel = CreateStatic(hWnd, L"100", 250, 10, 30, 22);
+			CreateStatic(hWnd, L"Character:", 290, 10, 60, 22);
+			hWndCharacter = CreateEdit(hWnd, L"0", 350, 10, 40, 22, TRUE);
+			hWndAffine = CreateCheckbox(hWnd, L"Affine", 400, 10, 50, 22, FALSE);
+			hWndPalette = CreateCombobox(hWnd, NULL, 0, 460, 10, 100, 100, 0);
+			CreateGroupbox(hWnd, L"Preview", 10, 42, 534, 285);
+			hWndObjLabel = CreateStatic(hWnd, L"0 OBJ", 10, 337, 75, 22);
+			hWndOk = CreateButton(hWnd, L"Complete", 560 - 100, 337, 100, 22, TRUE);
+			hWndCancel = CreateButton(hWnd, L"Cancel", 560 - 100 - 5 - 100, 337, 100, 22, FALSE);
+
+			//populate palette dropdown
+			for (int i = 0; i < 16; i++) {
+				WCHAR bf[16];
+				wsprintfW(bf, L"Palette %d", i);
+				SendMessage(hWndPalette, CB_ADDSTRING, 0, (LPARAM) bf);
+			}
+			SendMessage(hWndPalette, CB_SETCURSEL, 0, 0);
+
+			SetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR), (LONG_PTR) hWndAggressiveness);
+			SetWindowLongPtr(hWnd, 4 * sizeof(LONG_PTR), (LONG_PTR) hWndOk);
+			SetWindowLongPtr(hWnd, 5 * sizeof(LONG_PTR), (LONG_PTR) hWndCancel);
+			SetWindowLongPtr(hWnd, 6 * sizeof(LONG_PTR), (LONG_PTR) hWndAggressivenessLabel);
+			SetWindowLongPtr(hWnd, 7 * sizeof(LONG_PTR), (LONG_PTR) hWndObjLabel);
+			SetWindowLongPtr(hWnd, 8 * sizeof(LONG_PTR), (LONG_PTR) hWndCharacter);
+			SetWindowLongPtr(hWnd, 9 * sizeof(LONG_PTR), (LONG_PTR) hWndAffine);
+			SetWindowLongPtr(hWnd, 10 * sizeof(LONG_PTR), (LONG_PTR) hWndPalette);
+
+			//set timer
+			SetTimer(hWnd, 1, 50, NULL);
+
+			SetGUIFont(hWnd);
+
+			//lastly, try populate character base
+			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT), hWndNcgrEditor;
+			GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
+			NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor);
+			NCGR *ncgr = &ncgrViewerData->ncgr;
+
+			int lastIndex = -1;
+			unsigned char zeroChar[64] = { 0 };
+			for (int i = 0; i < ncgr->nTiles; i++) {
+				if (memcmp(ncgr->tiles[i], zeroChar, sizeof(zeroChar)) != 0) {
+					lastIndex = i;
+				}
+			}
+			SetEditNumber(hWndCharacter, lastIndex + 1);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			int notif = HIWORD(wParam);
+			int idc = LOWORD(wParam);
+
+			if (notif == BN_CLICKED && (hWndControl == hWndOk || idc == IDOK)) {
+				//generate
+				int nObj;
+				int charBase = GetEditNumber(hWndCharacter);
+				int affine = GetCheckboxChecked(hWndAffine);
+				int paletteIndex = SendMessage(hWndPalette, CB_GETCURSEL, 0, 0);
+				int aggressiveness = GetTrackbarPosition(hWndAggressiveness);
+				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, &nObj);
+
+				//bounding box of image
+				int xMin, xMax, yMin, yMax, centerX, centerY;
+				CellgenGetBounds(px, width, height, &xMin, &xMax, &yMin, &yMax);
+				centerX = (xMin + xMax) / 2, centerY = (yMin + yMax) / 2;
+
+				//chunk the image
+				OBJ_IMAGE_SLICE *slices = CellgenSliceImage(px, width, height, bounds, nObj);
+				free(bounds);
+
+				//get NCER, NCGR, NCLR
+				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+				NITROPAINTSTRUCT *npStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+
+				HWND hWndNclrViewer =  NULL, hWndNcgrViewer = NULL, hWndNcerViewer = NULL;
+				GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrViewer, 1);
+				GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrViewer, 1);
+				GetAllEditors(hWndMain, FILE_TYPE_CELL, &hWndNcerViewer, 1);
+
+				//get editor datas
+				NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(hWndNclrViewer))->nclr;
+				NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
+				NCER *ncer = &((NCERVIEWERDATA *) EditorGetData(hWndNcerViewer))->ncer;
+
+				//clear out current cell
+				NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(hWndNcerViewer);
+				int currentCellIndex = ncerViewerData->cell;
+				NCER_CELL *cell = ncer->cells + currentCellIndex;
+				cell->nAttribs = nObj;
+				cell->nAttr = cell->nAttribs * 3;
+				cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttr * sizeof(uint16_t));
+				ncerViewerData->oam = 0;
+
+				//set bounding box
+				cell->minX = xMin - centerX;
+				cell->minY = yMin - centerY;
+				cell->maxX = xMax - centerX;
+				cell->maxY = yMax - centerY;
+
+				//create palette
+				int depth = ncgr->nBits;
+				int paletteSize = (1 << depth);
+				COLOR32 *palette = (COLOR32 *) calloc(paletteSize, sizeof(COLOR32));
+				REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
+				initReduction(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, 0, paletteSize - 1);
+
+				//compute palette from pixels
+				for (int i = 0; i < nObj; i++) {
+					computeHistogram(reduction, slices[i].px, slices[i].bounds.width, slices[i].bounds.height);
+				}
+				flattenHistogram(reduction);
+				optimizePalette(reduction);
+
+				//read palette out
+				for (int i = 0; i < reduction->nUsedColors; i++) {
+					int r = reduction->paletteRgb[i][0];
+					int g = reduction->paletteRgb[i][1];
+					int b = reduction->paletteRgb[i][2];
+					palette[i + 1] = r | (g << 8) | (b << 16);
+				}
+
+				//write palette
+				for (int i = 0; i < paletteSize; i++) {
+					nclr->colors[i + (paletteIndex << depth)] = ColorConvertToDS(palette[i]);
+				}
+
+				//fill out character
+				int *indicesBuffer = (int *) calloc(64 * 64, sizeof(int));
+				for (int i = 0; i < nObj; i++) {
+					OBJ_IMAGE_SLICE *slice = slices + i;
+					int width = slice->bounds.width, height = slice->bounds.height;
+					ditherImagePaletteEx(slice->px, indicesBuffer, width, height, palette, paletteSize, 
+						1, 1, 1, 0.0f, BALANCE_DEFAULT, BALANCE_DEFAULT, 0);
+
+					//read out character
+					int nChars = slice->bounds.width * slice->bounds.height / 8 / 8;
+					for (int j = 0; j < nChars; j++) {
+						int objX = (j * 8) % slice->bounds.width;
+						int objY = (j * 8) / slice->bounds.width * 8;
+
+						BYTE *ch = ncgr->tiles[charBase + j];
+						for (int y = 0; y < 8; y++) {
+							for (int x = 0; x < 8; x++) {
+								ch[x + y * 8] = indicesBuffer[objX + x + (objY + y) * slice->bounds.width];
+							}
+						}
+					}
+
+					//get shape/size
+					int shape = 0, size = 0;
+					if (width == height) {
+						shape = 0; //square
+
+						if (width == 8) size = 0; //8
+						else if (width == 16) size = 1; //16
+						else if (width == 32) size = 2; //32
+						else if (width == 64) size = 3; //64
+					} else if (width > height) {
+						shape = 1; //wide
+
+						if (width == 16) size = 0; //16x8
+						else if (height == 8) size = 1; //32x8
+						else if (width == 32) size = 2; //32x16
+						else if (width == 64) size = 3; //64x32
+					} else if (width < height) {
+						shape = 2; //tall
+
+						if (height == 16) size = 0; //8x16
+						else if (width == 8) size = 1; //8x32
+						else if (height == 32) size = 2; //16x32
+						else if (height == 64) size = 3; //32x64
+					}
+
+					slice->bounds.x -= centerX;
+					slice->bounds.y -= centerY;
+					if (affine) {
+						slice->bounds.x -= slice->bounds.width / 2;
+						slice->bounds.y -= slice->bounds.height / 2;
+					}
+
+					//add OBJ
+					cell->attr[i * 3 + 0] = (slice->bounds.y & 0x0FF) | (affine << 8) | (affine << 9) | ((depth == 8) << 13) | (shape << 14);
+					cell->attr[i * 3 + 1] = (slice->bounds.x & 0x1FF) | (size << 14);
+					cell->attr[i * 3 + 2] = (paletteIndex << 12) | (charBase);
+
+					//increment
+					charBase += nChars;
+				}
+				free(indicesBuffer);
+
+				free(palette);
+
+				destroyReduction(reduction);
+				free(reduction);
+
+				free(slices);
+
+				//import complete, update UIs
+				InvalidateAllEditors(hWndMain, FILE_TYPE_PALETTE);
+				InvalidateAllEditors(hWndMain, FILE_TYPE_CHARACTER);
+				InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			} else if (notif == BN_CLICKED && (hWndControl == hWndCancel || idc == IDCANCEL)) {
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 VOID RegisterNcerViewerClass(VOID) {
 	EditorRegister(L"NcerViewerClass", NcerViewerWndProc, L"Cell Editor", sizeof(NCERVIEWERDATA));
+	RegisterGenericClass(L"NcerCreateCellClass", NcerCreateCellWndProc, 12 * sizeof(void *));
 }
 
 HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {

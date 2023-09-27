@@ -31,6 +31,7 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndOamDropdown;
 	HWND hWndImportBitmap;
 	HWND hWndImportReplacePalette;
+	HWND hWndCreateCell;
 
 	HWND hWndXInput;
 	HWND hWndYInput;
