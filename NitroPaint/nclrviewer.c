@@ -31,17 +31,24 @@ typedef struct NC_CLIPBOARD_PALETTE_FOOTER_ {
 	uint8_t field0[8]; //no idea how these work
 } NC_CLIPBOARD_PALETTE_FOOTER;
 
+typedef struct AC_CLIPBOARD_PALETTE_HEADER_ {
+	uint32_t nCols;
+	uint32_t nRows;
+} AC_CLIPBOARD_PALETTE_HEADER;
+
 //OPX_PALETTE
 typedef struct OP_CLIPBOARD_PALETTE_HEADER_ {
 	short three; //3
 	short nColors;
 } OP_CLIPBOARD_PALETTE_HEADER;
 
+static int g_acClipboardFormat = 0;
 static int g_ncClipboardFormat = 0;
 static int g_opClipboardFormat = 0;
 
 VOID NclrViewerEnsureClipboardFormats(VOID) {
 	if (g_ncClipboardFormat == 0) {
+		g_acClipboardFormat = RegisterClipboardFormat(L"IS.Colors2");
 		g_ncClipboardFormat = RegisterClipboardFormat(L"IS.Colors4");
 		g_opClipboardFormat = RegisterClipboardFormat(L"OPX_PALETTE");
 	}
@@ -50,28 +57,45 @@ VOID NclrViewerEnsureClipboardFormats(VOID) {
 VOID CopyPalette(COLOR *palette, int nColors) {
 	NclrViewerEnsureClipboardFormats();
 
-	//NC and OPX formats
+	//AC, NC and OPX formats
+	int acSize = sizeof(AC_CLIPBOARD_PALETTE_HEADER) + nColors * 8;
 	int ncSize = sizeof(NC_CLIPBOARD_PALETTE_HEADER) + nColors * 8 + sizeof(NC_CLIPBOARD_PALETTE_FOOTER);
 	int opSize = sizeof(OP_CLIPBOARD_PALETTE_HEADER) + nColors * 4;
+
+	HGLOBAL hAc = GlobalAlloc(GMEM_ZEROINIT | GMEM_MOVEABLE, acSize);
 	HGLOBAL hNc = GlobalAlloc(GMEM_ZEROINIT | GMEM_MOVEABLE, ncSize);
 	HGLOBAL hOp = GlobalAlloc(GMEM_ZEROINIT | GMEM_MOVEABLE, opSize);
+
+	AC_CLIPBOARD_PALETTE_HEADER *acData = (AC_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hAc);
 	NC_CLIPBOARD_PALETTE_HEADER *ncData = (NC_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hNc);
 	OP_CLIPBOARD_PALETTE_HEADER *opData = (OP_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hOp);
+
+	COLOR32 *acPalette = (COLOR32 *) (acData + 1);
 	COLOR32 *ncPalette = (COLOR32 *) (ncData + 1);
 	COLOR32 *opPalette = (COLOR32 *) (opData + 1);
+
+	acData->nRows = 1;
+	acData->nCols = nColors;
 	ncData->magic = 0xC208B8;
 	ncData->is1D = 1;
 	ncData->nCols = nColors;
 	ncData->nRows = 1;
 	opData->three = 3;
 	opData->nColors = nColors;
+
 	for (int i = 0; i < nColors; i++) {
+		acPalette[i] = ColorConvertFromDS(palette[i]);
 		ncPalette[i] = ColorConvertFromDS(palette[i]);
 		ncPalette[i + nColors] = ColorConvertFromDS(palette[i]);
+		acPalette[i + nColors] = ColorConvertFromDS(palette[i]);
 		opPalette[i] = ColorConvertFromDS(palette[i]);
 	}
+
+	GlobalUnlock(hAc);
 	GlobalUnlock(hNc);
 	GlobalUnlock(hOp);
+
+	SetClipboardData(g_acClipboardFormat, hAc);
 	SetClipboardData(g_ncClipboardFormat, hNc);
 	SetClipboardData(g_opClipboardFormat, hOp);
 }
@@ -79,12 +103,17 @@ VOID CopyPalette(COLOR *palette, int nColors) {
 VOID PastePalette(COLOR *dest, int nMax) {
 	NclrViewerEnsureClipboardFormats();
 
+	HGLOBAL hAc = GetClipboardData(g_acClipboardFormat);
 	HGLOBAL hNc = GetClipboardData(g_ncClipboardFormat);
 	HGLOBAL hOp = GetClipboardData(g_opClipboardFormat);
 	COLOR32 *src = NULL;
 	int nCols = 0;
 
-	if (hNc != NULL) {
+	if (hAc != NULL) {
+		AC_CLIPBOARD_PALETTE_HEADER *acData = (AC_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hAc);
+		nCols = acData->nRows * acData->nCols;
+		src = (COLOR32 *) (acData + 1);
+	} else if (hNc != NULL) {
 		NC_CLIPBOARD_PALETTE_HEADER *ncData = (NC_CLIPBOARD_PALETTE_HEADER *) GlobalLock(hNc);
 		nCols = ncData->nCols * ncData->nRows;
 		src = (COLOR32 *) (ncData + 1);
@@ -100,6 +129,7 @@ VOID PastePalette(COLOR *dest, int nMax) {
 	for (int i = 0; i < nCols; i++) {
 		dest[i] = ColorConvertToDS(src[i]);
 	}
+	if (hAc != NULL) GlobalUnlock(hAc);
 	if (hNc != NULL) GlobalUnlock(hNc);
 	if (hOp != NULL) GlobalUnlock(hOp);
 }
