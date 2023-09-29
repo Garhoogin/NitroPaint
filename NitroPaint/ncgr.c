@@ -141,6 +141,33 @@ void ncgrInit(NCGR *ncgr, int format) {
 	ncgr->combo2d = NULL;
 }
 
+void ncgrReadChars(NCGR *ncgr, unsigned char *buffer) {
+	int nChars = ncgr->nTiles;
+
+	unsigned char **tiles = (unsigned char **) calloc(nChars, sizeof(BYTE **));
+	for (int i = 0; i < nChars; i++) {
+		tiles[i] = (unsigned char *) calloc(64, 1);
+		unsigned char *tile = tiles[i];
+
+		if (ncgr->nBits == 8) {
+			//8-bit graphics: no need to unpack
+
+			memcpy(tile, buffer, 64);
+			buffer += 64;
+		} else if (ncgr->nBits == 4) {
+			//4-bit graphics: unpack
+
+			for (int j = 0; j < 32; j++) {
+				BYTE b = *buffer;
+				tile[j * 2] = b & 0xF;
+				tile[j * 2 + 1] = b >> 4;
+				buffer++;
+			}
+		}
+	}
+	ncgr->tiles = tiles;
+}
+
 int hudsonReadCharacter(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 1; //file too small
 	if (*buffer == 0x10) return 1; //TODO: LZ77 decompress
@@ -180,29 +207,12 @@ int hudsonReadCharacter(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	tilesX = calculateWidth(nCharacters);
 	tilesY = tileCount / tilesX;
 
-	BYTE **tiles = (BYTE **) calloc(tileCount, sizeof(BYTE **));
 	buffer += 0x4;
 	if (type == NCGR_TYPE_HUDSON) buffer += 0x4;
-	for (int i = 0; i < tileCount; i++) {
-		tiles[i] = (BYTE *) calloc(8 * 8, 1);
-		BYTE * tile = tiles[i];
-		if (ncgr->nBits == 8) {
-			memcpy(tile, buffer, 64);
-			buffer += 64;
-		} else if (ncgr->nBits == 4) {
-			for (int j = 0; j < 32; j++) {
-				BYTE b = *buffer;
-				tile[j * 2] = b & 0xF;
-				tile[j * 2 + 1] = b >> 4;
-				buffer++;
-			}
-		}
-	}
 
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
-	ncgr->tiles = tiles;
-
+	ncgrReadChars(ncgr, buffer);
 	return 0;
 }
 
@@ -253,23 +263,7 @@ int ncgrReadAcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgr->nBits = depth;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 
-	BYTE **tiles = (BYTE **) calloc(nChars, sizeof(BYTE **));
-	for (int i = 0; i < nChars; i++) {
-		tiles[i] = (BYTE *) calloc(8 * 8, 1);
-		BYTE * tile = tiles[i];
-		if (ncgr->nBits == 8) {
-			memcpy(tile, buffer, 64);
-			buffer += 64;
-		} else if (ncgr->nBits == 4) {
-			for (int j = 0; j < 32; j++) {
-				BYTE b = *buffer;
-				tile[j * 2] = b & 0xF;
-				tile[j * 2 + 1] = b >> 4;
-				buffer++;
-			}
-		}
-	}
-	ncgr->tiles = tiles;
+	ncgrReadChars(ncgr, buffer);
 
 	//attr
 	ncgr->attrWidth = width;
@@ -338,24 +332,7 @@ int ncgrReadCombo(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 		}
 	}
 
-	int nTiles = ncgr->nTiles;
-	BYTE **tiles = (BYTE **) calloc(nTiles, sizeof(BYTE *));
-	for (int i = 0; i < nTiles; i++) {
-		BYTE *tile = (BYTE *) calloc(64, 1);
-		tiles[i] = tile;
-
-		if (ncgr->nBits == 8) {
-			memcpy(tile, charSrc + i * 0x40, 0x40);
-		} else {
-			BYTE *src = charSrc + i * 0x20;
-			for (int j = 0; j < 32; j++) {
-				BYTE b = src[j];
-				tile[j * 2] = b & 0xF;
-				tile[j * 2 + 1] = b >> 4;
-			}
-		}
-	}
-	ncgr->tiles = tiles;
+	ncgrReadChars(ncgr, charSrc);
 	if (freeChar) free(charSrc);
 
 	return 0;
@@ -370,18 +347,7 @@ int ncgrReadBin(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgr->tilesX = calculateWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
 
-	BYTE **tiles = (BYTE **) calloc(ncgr->nTiles, sizeof(BYTE **));
-	for (int i = 0; i < ncgr->nTiles; i++) {
-		BYTE *tile = (BYTE *) calloc(64, 1);
-		for (int j = 0; j < 32; j++) {
-			BYTE b = *buffer;
-			tile[j * 2] = b & 0xF;
-			tile[j * 2 + 1] = b >> 4;
-			buffer++;
-		}
-		tiles[i] = tile;
-	}
-	ncgr->tiles = tiles;
+	ncgrReadChars(ncgr, buffer);
 
 	return 0;
 }
@@ -405,24 +371,7 @@ int ncgrReadNcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
 	ncgr->tileWidth = 8;
 
-	BYTE **tiles = (BYTE **) calloc(ncgr->nTiles, sizeof(BYTE **));
-	buffer = sChar + 0x14;
-	for (int i = 0; i < ncgr->nTiles; i++) {
-		tiles[i] = (BYTE *) calloc(8 * 8, 1);
-		BYTE *tile = tiles[i];
-		if (ncgr->nBits == 8) {
-			memcpy(tile, buffer, 64);
-			buffer += 64;
-		} else if (ncgr->nBits == 4) {
-			for (int j = 0; j < 32; j++) {
-				BYTE b = *buffer;
-				tile[j * 2] = b & 0xF;
-				tile[j * 2 + 1] = b >> 4;
-				buffer++;
-			}
-		}
-	}
-	ncgr->tiles = tiles;
+	ncgrReadChars(ncgr, buffer);
 
 	if (sCmnt != NULL) {
 		int len = *(uint32_t *) (sCmnt + 4) - 8;
@@ -482,26 +431,14 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 		tilesY = tileCount / tilesX;
 	}
 
-	BYTE **tiles = (BYTE **) calloc(tileCount, sizeof(BYTE **));
+	ncgrInit(ncgr, format);
 	buffer += 0x20;
 
 	if (format == NCGR_TYPE_NCGR) {
-		for (int i = 0; i < tileCount; i++) {
-			tiles[i] = (BYTE *) calloc(8 * 8, 1);
-			BYTE * tile = tiles[i];
-			if (depth == 8) {
-				memcpy(tile, buffer, 64);
-				buffer += 64;
-			} else if (depth == 4) {
-				for (int j = 0; j < 32; j++) {
-					BYTE b = *buffer;
-					tile[j * 2] = b & 0xF;
-					tile[j * 2 + 1] = b >> 4;
-					buffer++;
-				}
-			}
-		}
+		ncgrReadChars(ncgr, buffer);
 	} else if (format == NCGR_TYPE_NCBR) {
+		BYTE **tiles = (BYTE **) calloc(tileCount, sizeof(BYTE **));
+
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 
@@ -531,13 +468,13 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 
 			}
 		}
+
+		ncgr->tiles = tiles;
 	}
 
 
-	ncgrInit(ncgr, format);
 	ncgr->nBits = depth;
 	ncgr->nTiles = tileCount;
-	ncgr->tiles = tiles;
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
