@@ -371,7 +371,7 @@ int ncgrReadNcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
 	ncgr->tileWidth = 8;
 
-	ncgrReadChars(ncgr, buffer);
+	ncgrReadChars(ncgr, sChar + 0x14);
 
 	if (sCmnt != NULL) {
 		int len = *(uint32_t *) (sCmnt + 4) - 8;
@@ -421,7 +421,6 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 		format = NCGR_TYPE_NCBR;
 	}
 
-
 	int tileCount = tilesX * tilesY;
 	int nPresentTiles = tileDataSize >> 5;
 	if (depth == 8) nPresentTiles >>= 1;
@@ -432,6 +431,13 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	}
 
 	ncgrInit(ncgr, format);
+	ncgr->nBits = depth;
+	ncgr->nTiles = tileCount;
+	ncgr->tileWidth = 8;
+	ncgr->tilesX = tilesX;
+	ncgr->tilesY = tilesY;
+	ncgr->mappingMode = mapping;
+
 	buffer += 0x20;
 
 	if (format == NCGR_TYPE_NCGR) {
@@ -457,7 +463,7 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 					memcpy(tile + 48, indices + 48 * tilesX, 8);
 					memcpy(tile + 56, indices + 56 * tilesX, 8);
 				} else if (depth == 4) {
-					BYTE *indices = buffer + offset;
+					unsigned char *indices = buffer + offset;
 					for (int j = 0; j < 8; j++) {
 						for (int i = 0; i < 4; i++) {
 							tile[i * 2 + j * 8] = indices[i + j * 4 * tilesX] & 0xF;
@@ -472,13 +478,6 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 		ncgr->tiles = tiles;
 	}
 
-
-	ncgr->nBits = depth;
-	ncgr->nTiles = tileCount;
-	ncgr->tileWidth = 8;
-	ncgr->tilesX = tilesX;
-	ncgr->tilesY = tilesY;
-	ncgr->mappingMode = mapping;
 	return 0;
 
 }
