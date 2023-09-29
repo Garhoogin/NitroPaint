@@ -276,6 +276,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				//test other formats
 				if (nsbtxIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
+				else if (ncgrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+				else if (nscrIsValidAsc(buffer, bufferSize))  type = FILE_TYPE_SCREEN;
 				else if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
@@ -288,7 +290,8 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 															   pathEndsWith(path, L"plt.bin") ||
 															   pathEndsWith(path, L"pal.bin") ||
 															   pathEndsWith(path, L".pltt") || 
-															   pathEndsWith(path, L".nbfp"))) type = FILE_TYPE_PALETTE;
+															   pathEndsWith(path, L".nbfp") ||
+															   pathEndsWith(path, L".acl"))) type = FILE_TYPE_PALETTE;
 					else if (nclrIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
 					else if (nscrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"nsc.bin") || 
 																	pathEndsWith(path, L"isc.bin") ||

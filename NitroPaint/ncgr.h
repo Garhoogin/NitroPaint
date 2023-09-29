@@ -9,7 +9,8 @@
 #define NCGR_TYPE_NCBR      4
 #define NCGR_TYPE_BIN       5
 #define NCGR_TYPE_NC        6
-#define NCGR_TYPE_COMBO     7
+#define NCGR_TYPE_AC        7
+#define NCGR_TYPE_COMBO     8
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
@@ -62,6 +63,11 @@ int ncgrIsValidHudson(unsigned char *buffer, unsigned int size);
 // Determines if a byte array represents a valid raw character graphics file.
 //
 int ncgrIsValidBin(unsigned char *buffer, unsigned int size);
+
+//
+// Determines if a byte array represents a valid IS-AGB-CHARACTER graphics file
+//
+int ncgrIsValidAcg(unsigned char *buffer, unsigned int size);
 
 //
 // Get a 32-bit color render of graphics data

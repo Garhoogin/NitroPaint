@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <math.h>
 
-LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"Hudson", L"Hudson 2", L"Binary", L"NSC", NULL };
+LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"Hudson", L"Hudson 2", L"Binary", L"NSC", L"ASC", NULL };
 
 #define NSCR_FLIPNONE 0
 #define NSCR_FLIPX 1
@@ -66,6 +66,50 @@ int nscrIsValidNsc(unsigned char *buffer, unsigned int size) {
 	if (scrn == NULL) scrn = g2dGetSectionByMagic(buffer, size, 'NRCS');
 	if (scrn == NULL) return 0;
 
+	return 1;
+}
+
+
+int nscrAscScanFooter(unsigned char *buffer, unsigned int size) {
+	//scan for possible locations of the footer
+	for (unsigned int i = 0; i < size - 8; i++) {
+		if (buffer[i] != 'C') continue;
+		if (memcmp(buffer + i, "CLRF", 4) != 0) continue;
+
+		//candidate location
+		int hasClrf = 0, hasLink = 0, hasCmnt = 0, hasClrc = 0, hasMode = 0, hasVer = 0, hasEnd = 0;
+
+		//scan sections
+		unsigned int offset = i;
+		while (1) {
+			char *section = buffer + offset;
+			unsigned int length = *(unsigned int *) (buffer + offset + 4);
+			offset += 8;
+
+			if (memcmp(section, "CLRF", 4) == 0) hasClrf = 1;
+			else if (memcmp(section, "LINK", 4) == 0) hasLink = 1;
+			else if (memcmp(section, "CMNT", 4) == 0) hasCmnt = 1;
+			else if (memcmp(section, "CLRC", 4) == 0) hasClrc = 1;
+			else if (memcmp(section, "MODE", 4) == 0) hasMode = 1;
+			else if (memcmp(section, "VER ", 4) == 0) hasVer = 1;
+			else if (memcmp(section, "END ", 4) == 0) hasEnd = 1;
+
+			offset += length;
+			if (offset >= size) break;
+			if (hasEnd) break;
+		}
+
+		if (hasClrf && hasLink && hasCmnt && hasClrc && hasMode && hasVer && hasEnd && offset <= size) {
+			//candidate found
+			return i;
+		}
+	}
+	return -1;
+}
+
+int nscrIsValidAsc(unsigned char *file, unsigned int size) {
+	int footerOffset = nscrAscScanFooter(file, size);
+	if (footerOffset == -1) return 0;
 	return 1;
 }
 
@@ -267,10 +311,64 @@ int nscrReadNsc(NSCR *nscr, unsigned char *file, unsigned int size) {
 	return 0;
 }
 
+int nscrReadAsc(NSCR *nscr, unsigned char *file, unsigned int size) {
+	int footerOffset = nscrAscScanFooter(file, size);
+
+	int width = 0, height = 0, depth = 4;
+
+	//process extra data
+	unsigned int offset = (unsigned int) footerOffset;
+	while (1) {
+		char *section = file + offset;
+		unsigned int len = *(unsigned int *) (section + 4);
+		unsigned char *sectionData = section + 8;
+
+		if (memcmp(section, "CLRC", 4) == 0) {
+			//CLRC
+			nscr->clearValue = *(uint16_t *) (sectionData + 0);
+		} else if (memcmp(section, "MODE", 4) == 0) {
+			//MODE
+			width = sectionData[0];
+			height = sectionData[1];
+			nscr->fmt = sectionData[2] ? SCREENFORMAT_AFFINE : SCREENFORMAT_TEXT;
+		} else if (memcmp(section, "LINK", 4) == 0) {
+			//LINK
+			if (len) {
+				int linkLen = len - 1;
+				nscr->link = (char *) calloc(linkLen + 1, 1);
+				memcpy(nscr->link, sectionData, linkLen);
+			}
+		} else if (memcmp(section, "CMNT", 4) == 0) {
+			//CMNT
+			int cmntLen = sectionData[1];
+			nscr->comment = (char *) calloc(cmntLen + 1, 1);
+			memcpy(nscr->comment, sectionData + 2, cmntLen);
+		}
+
+		offset += len + 8;
+		if (offset >= size) break;
+	}
+
+	nscrInit(nscr, NSCR_TYPE_AC);
+	nscr->nWidth = width * 8;
+	nscr->nHeight = height * 8;
+	nscr->dataSize = width * height * sizeof(uint16_t);
+	nscr->gridWidth = 8;
+	nscr->gridHeight = 8;
+	nscr->showGrid = 0;
+	nscr->data = (uint16_t *) calloc(width * height, sizeof(uint16_t));
+	memcpy(nscr->data, file, nscr->dataSize);
+
+	nscrGetHighestCharacter(nscr);
+
+	return 0;
+}
+
 int nscrRead(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	if (!dwFileSize) return 1;
 	if (*(uint32_t *) file != 0x4E534352) {
 		if (nscrIsValidNsc(file, dwFileSize)) return nscrReadNsc(nscr, file, dwFileSize);
+		if (nscrIsValidAsc(file, dwFileSize)) return nscrReadAsc(nscr, file, dwFileSize);
 		if (nscrIsValidHudson(file, dwFileSize)) return hudsonScreenRead(nscr, file, dwFileSize);
 		if (nscrIsValidBin(file, dwFileSize)) return nscrReadBin(nscr, file, dwFileSize);
 		if (combo2dIsValid(file, dwFileSize)) return nscrReadCombo(nscr, file, dwFileSize);
@@ -537,6 +635,51 @@ int nscrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	return 0;
 }
 
+int nscrWriteAsc(NSCR *nscr, BSTREAM *stream) {
+	bstreamWrite(stream, nscr->data, nscr->dataSize);
+
+	unsigned char clrfFooter[] = { 'C', 'L', 'R', 'F', 0, 0, 0, 0 };
+	unsigned char linkFooter[] = { 'L', 'I', 'N', 'K', 0, 0, 0, 0 };
+	unsigned char cmntFooter[] = { 'C', 'M', 'N', 'T', 0, 0, 0, 0, 1, 0 };
+	unsigned char clrcFooter[] = { 'C', 'L', 'R', 'C', 2, 0, 0, 0, 0, 0 };
+	unsigned char modeFooter[] = { 'M', 'O', 'D', 'E', 4, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char verFooter[] = { 'V', 'E', 'R', ' ', 0, 0, 0, 0 };
+	unsigned char endFooter[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 0 };
+
+	int linkLen = (nscr->link == NULL) ? 0 : strlen(nscr->link);
+	int commentLen = (nscr->comment == NULL) ? 0 : strlen(nscr->comment);
+
+	char *ver = "IS-ASC03";
+
+	*(uint32_t *) (clrfFooter + 0x4) = (nscr->dataSize + 15) / 16;
+	*(uint32_t *) (linkFooter + 0x4) = linkLen;
+	*(uint32_t *) (cmntFooter + 0x4) = commentLen + 2;
+	*(uint16_t *) (clrcFooter + 0x8) = nscr->clearValue;
+	cmntFooter[9] = commentLen;
+	modeFooter[0x8] = nscr->nWidth / 8;
+	modeFooter[0x9] = nscr->nHeight / 8;
+	modeFooter[0xA] = (nscr->fmt == SCREENFORMAT_AFFINE) ? 1 : 0;
+	modeFooter[0xB] = 2;
+	*(uint32_t *) (verFooter + 0x4) = strlen(ver);
+
+	bstreamWrite(stream, clrfFooter, sizeof(clrfFooter));
+	for (unsigned int i = 0; i < (nscr->dataSize + 15) / 16; i++) {
+		unsigned char f = 0x00; //not clear character
+		bstreamWrite(stream, &f, sizeof(f));
+	}
+	bstreamWrite(stream, linkFooter, sizeof(linkFooter));
+	bstreamWrite(stream, nscr->link, linkLen);
+	bstreamWrite(stream, cmntFooter, sizeof(cmntFooter));
+	bstreamWrite(stream, nscr->comment, commentLen);
+	bstreamWrite(stream, clrcFooter, sizeof(clrcFooter));
+	bstreamWrite(stream, modeFooter, sizeof(modeFooter));
+	bstreamWrite(stream, verFooter, sizeof(verFooter));
+	bstreamWrite(stream, ver, strlen(ver));
+	bstreamWrite(stream, endFooter, sizeof(endFooter));
+
+	return 0;
+}
+
 int nscrWriteHudson(NSCR *nscr, BSTREAM *stream) {
 	int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
 	if (nscr->header.format == NSCR_TYPE_HUDSON) {
@@ -573,6 +716,8 @@ int nscrWrite(NSCR *nscr, BSTREAM *stream) {
 			return nscrWriteNscr(nscr, stream);
 		case NSCR_TYPE_NC:
 			return nscrWriteNsc(nscr, stream);
+		case NSCR_TYPE_AC:
+			return nscrWriteAsc(nscr, stream);
 		case NSCR_TYPE_HUDSON:
 		case NSCR_TYPE_HUDSON2:
 			return nscrWriteHudson(nscr, stream);
@@ -1329,6 +1474,11 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 			characterFormat = NCGR_TYPE_NC;
 			screenFormat = NSCR_TYPE_NC;
 			break;
+		case BGGEN_FORMAT_AGBCHARACTER:
+			paletteFormat = NCLR_TYPE_BIN;
+			characterFormat = NCGR_TYPE_AC;
+			screenFormat = NSCR_TYPE_AC;
+			break;
 		case BGGEN_FORMAT_BIN:
 		case BGGEN_FORMAT_BIN_COMPRESSED:
 			paletteFormat = NCLR_TYPE_BIN;
@@ -1399,7 +1549,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 
 	nscr->nWidth = width;
 	nscr->nHeight = height;
-	nscr->fmt = nBits == 4 ? SCREENCOLORMODE_16x16 : SCREENCOLORMODE_256x1;
+	nscr->fmt = nBits == 4 ? SCREENFORMAT_TEXT : (nPalettes == 1 ? SCREENFORMAT_TEXT : SCREENFORMAT_AFFINEEXT);
 	nscr->dataSize = nTiles * 2;
 	nscr->data = (uint16_t *) malloc(nscr->dataSize);
 	int nHighestIndex = 0;

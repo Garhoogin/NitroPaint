@@ -22,8 +22,9 @@
 #define BGGEN_FORMAT_HUDSON          1
 #define BGGEN_FORMAT_HUDSON2         2
 #define BGGEN_FORMAT_NITROCHARACTER  3
-#define BGGEN_FORMAT_BIN             4
-#define BGGEN_FORMAT_BIN_COMPRESSED  5
+#define BGGEN_FORMAT_AGBCHARACTER    4
+#define BGGEN_FORMAT_BIN             5
+#define BGGEN_FORMAT_BIN_COMPRESSED  6
 
 #define NSCR_TYPE_INVALID	0
 #define NSCR_TYPE_NSCR		1
@@ -31,7 +32,8 @@
 #define NSCR_TYPE_HUDSON2	3
 #define NSCR_TYPE_BIN       4
 #define NSCR_TYPE_NC        5
-#define NSCR_TYPE_COMBO     6
+#define NSCR_TYPE_AC        6
+#define NSCR_TYPE_COMBO     7
 
 #define BG_COLOR0_FIXED     0
 #define BG_COLOR0_AVERAGE   1
@@ -87,6 +89,11 @@ int nscrIsValidHudson(unsigned char *buffer, unsigned int size);
 // Determines if a byte array represents a valid raw screen file.
 //
 int nscrIsValidBin(unsigned char *buffer, unsigned int size);
+
+//
+// Determines if a byte array represents a valid IS-ACG-CHARACTER screen file.
+//
+int nscrIsValidAsc(unsigned char *buffer, unsigned int size);
 
 //
 // Reads a screen file from an array.

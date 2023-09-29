@@ -502,6 +502,9 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								case NSCR_TYPE_NC:
 									filter = L"NSC Files (*.nsc)\0*.nsc\0All Files\0*.*\0";
 									break;
+								case NSCR_TYPE_AC:
+									filter = L"ASC Files (*.asc)\0*.asc\0All Files\0*.*\0";
+									break;
 							}
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nscr");
 							if (path != NULL) {

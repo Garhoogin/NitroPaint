@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"Hudson", L"Hudson 2", L"NCBR", L"Binary", L"NCG", NULL };
+LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"Hudson", L"Hudson 2", L"NCBR", L"Binary", L"NCG", L"ACG", NULL };
 
 int calculateWidth(int nTiles) {
 	int width = 1;
@@ -54,6 +54,49 @@ int ncgrIsValidNcg(unsigned char *buffer, unsigned int size) {
 	char *sChar = g2dGetSectionByMagic(buffer, size, 'CHAR');
 	if (sChar == NULL) sChar = g2dGetSectionByMagic(buffer, size, 'RAHC');
 	if (sChar == NULL) return 0;
+	return 1;
+}
+
+int ncgrAcgScanFooter(unsigned char *buffer, unsigned int size) {
+	//scan for possible locations of the footer
+	for (unsigned int i = 0; i < size - 8; i++) {
+		if (buffer[i] != 'L') continue;
+		if (memcmp(buffer + i, "LINK", 4) != 0) continue;
+		
+		//candidate location
+		int hasLink = 0, hasCmnt = 0, hasMode = 0, hasSize = 0, hasVer = 0, hasEnd = 0;
+
+		//scan sections
+		unsigned int offset = i;
+		while (1) {
+			char *section = buffer + offset;
+			unsigned int length = *(unsigned int *) (buffer + offset + 4);
+			offset += 8;
+
+			if (memcmp(section, "LINK", 4) == 0) hasLink = 1;
+			else if (memcmp(section, "CMNT", 4) == 0) hasCmnt = 1;
+			else if (memcmp(section, "MODE", 4) == 0) hasMode = 1;
+			else if (memcmp(section, "SIZE", 4) == 0) hasSize = 1;
+			else if (memcmp(section, "VER ", 4) == 0) hasVer = 1;
+			else if (memcmp(section, "END ", 4) == 0) hasEnd = 1;
+
+			offset += length;
+			if (offset >= size) break;
+			if (hasEnd) break;
+		}
+
+		if (hasLink && hasCmnt && hasMode && hasSize && hasVer && hasEnd && offset <= size) {
+			//candidate found
+			return i;
+		}
+	}
+	return -1;
+}
+
+int ncgrIsValidAcg(unsigned char *buffer, unsigned int size) {
+	int dataOffset = ncgrAcgScanFooter(buffer, size);
+	if (dataOffset == -1) return 0;
+
 	return 1;
 }
 
@@ -160,6 +203,81 @@ int hudsonReadCharacter(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgr->tilesY = tilesY;
 	ncgr->tiles = tiles;
 
+	return 0;
+}
+
+int ncgrReadAcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
+	int footerOffset = ncgrAcgScanFooter(buffer, size);
+
+	int width = 0, height = 0, depth = 4;
+
+	//process extra data
+	unsigned int offset = (unsigned int) footerOffset;
+	while (1) {
+		char *section = buffer + offset;
+		unsigned int len = *(unsigned int *) (section + 4);
+		unsigned char *sectionData = section + 8;
+
+		if (memcmp(section, "SIZE", 4) == 0) {
+			//SIZE
+			width = *(uint16_t *) (sectionData + 0);
+			height = *(uint16_t *) (sectionData + 2);
+		} else if (memcmp(section, "MODE", 4) == 0) {
+			int mode = *(int *) (sectionData + 0);
+			depth = (mode == 3 || mode == 2) ? 8 : 4;
+		} else if (memcmp(section, "LINK", 4) == 0) {
+			//LINK
+			int linkLen = sectionData[1];
+			ncgr->link = (char *) calloc(linkLen + 1, 1);
+			memcpy(ncgr->link, sectionData + 2, linkLen);
+		} else if (memcmp(section, "CMNT", 4) == 0) {
+			//CMNT
+			int cmntLen = sectionData[1];
+			ncgr->comment = (char *) calloc(cmntLen + 1, 1);
+			memcpy(ncgr->comment, sectionData + 2, cmntLen);
+		}
+
+		offset += len + 8;
+		if (offset >= size) break;
+	}
+
+	int attrSize = width * height;
+	int nChars = width * height;
+	unsigned char *attr = buffer + (nChars * 8 * depth);
+
+	ncgrInit(ncgr, NCGR_TYPE_AC);
+	ncgr->tilesX = width;
+	ncgr->tilesY = height;
+	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
+	ncgr->tileWidth = 8;
+	ncgr->nBits = depth;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+
+	BYTE **tiles = (BYTE **) calloc(nChars, sizeof(BYTE **));
+	for (int i = 0; i < nChars; i++) {
+		tiles[i] = (BYTE *) calloc(8 * 8, 1);
+		BYTE * tile = tiles[i];
+		if (ncgr->nBits == 8) {
+			memcpy(tile, buffer, 64);
+			buffer += 64;
+		} else if (ncgr->nBits == 4) {
+			for (int j = 0; j < 32; j++) {
+				BYTE b = *buffer;
+				tile[j * 2] = b & 0xF;
+				tile[j * 2 + 1] = b >> 4;
+				buffer++;
+			}
+		}
+	}
+	ncgr->tiles = tiles;
+
+	//attr
+	ncgr->attrWidth = width;
+	ncgr->attrHeight = height;
+	ncgr->attr = (unsigned char *) calloc(width * height, 1);
+	for (int i = 0; i < width * height; i++) {
+		ncgr->attr[i] = attr[i] & 0xF;
+	}
 	return 0;
 }
 
@@ -330,6 +448,7 @@ int ncgrReadNcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	if (*(DWORD *) buffer != 0x4E434752) {
 		if (ncgrIsValidNcg(buffer, size)) return ncgrReadNcg(ncgr, buffer, size);
+		if (ncgrIsValidAcg(buffer, size)) return ncgrReadAcg(ncgr, buffer, size);
 		if (ncgrIsValidHudson(buffer, size)) return hudsonReadCharacter(ncgr, buffer, size);
 		if (combo2dIsValid(buffer, size)) return ncgrReadCombo(ncgr, buffer, size);
 		if (ncgrIsValidBin(buffer, size)) return ncgrReadBin(ncgr, buffer, size);
@@ -631,6 +750,53 @@ int ncgrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	return 0;
 }
 
+int ncgrWriteAcg(NCGR *ncgr, BSTREAM *stream) {
+	int attrSize = ncgr->attrWidth * ncgr->attrHeight;
+
+	ncgrWriteBin(ncgr, stream);
+
+	//write attribute for ACG
+	for (int i = 0; i < attrSize; i++) {
+		//bstreamWrite(stream, ncgr->attr, attrSize);
+		unsigned char a = ncgr->attr[i];
+		a |= 0x20; //exists
+		a |= (ncgr->nBits == 8) ? 0x10 : 0x00;
+		bstreamWrite(stream, &a, sizeof(a));
+	}
+
+	//footer
+	unsigned char linkFooter[] = { 'L', 'I', 'N', 'K', 2, 0, 0, 0, 1, 0 };
+	unsigned char cmntFooter[] = { 'C', 'M', 'N', 'T', 2, 0, 0, 0, 1, 0 };
+	unsigned char modeFooter[] = { 'M', 'O', 'D', 'E', 4, 0, 0, 0, 1, 0, 0, 0 };
+	unsigned char sizeFooter[] = { 'S', 'I', 'Z', 'E', 4, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char verFooter[] = { 'V', 'E', 'R', ' ', 0, 0, 0, 0 };
+	unsigned char endFooter[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 0 };
+
+	char *version = "IS-ACG03";
+	int linkLen = (ncgr->link == NULL) ? 0 : strlen(ncgr->link);
+	int commentLen = (ncgr->comment == NULL) ? 0 : strlen(ncgr->comment);
+
+	*(uint32_t *) (linkFooter + 4) = linkLen + 2;
+	linkFooter[9] = (unsigned char) linkLen;
+	*(uint32_t *) (cmntFooter + 4) = commentLen + 2;
+	cmntFooter[9] = (unsigned char) commentLen;
+	*(uint32_t *) (modeFooter + 8) = (ncgr->nBits == 8) ? 3 : 1;
+	*(uint16_t *) (sizeFooter + 8) = ncgr->tilesX;
+	*(uint16_t *) (sizeFooter + 10) = ncgr->tilesY;
+	*(uint32_t *) (verFooter + 4) = strlen(version);
+
+	bstreamWrite(stream, linkFooter, sizeof(linkFooter));
+	bstreamWrite(stream, ncgr->link, linkLen);
+	bstreamWrite(stream, cmntFooter, sizeof(cmntFooter));
+	bstreamWrite(stream, ncgr->comment, commentLen);
+	bstreamWrite(stream, modeFooter, sizeof(modeFooter));
+	bstreamWrite(stream, sizeFooter, sizeof(sizeFooter));
+	bstreamWrite(stream, verFooter, sizeof(verFooter));
+	bstreamWrite(stream, version, strlen(version));
+	bstreamWrite(stream, endFooter, sizeof(endFooter));
+	return 0;
+}
+
 int ncgrWriteHudson(NCGR *ncgr, BSTREAM *stream) {
 	if (ncgr->header.format == NCGR_TYPE_HUDSON) {
 		BYTE header[] = { 0, 0, 0, 0, 1, 0, 0, 0 };
@@ -662,6 +828,8 @@ int ncgrWrite(NCGR *ncgr, BSTREAM *stream) {
 			return ncgrWriteNcgr(ncgr, stream);
 		case NCGR_TYPE_NC:
 			return ncgrWriteNcg(ncgr, stream);
+		case NCGR_TYPE_AC:
+			return ncgrWriteAcg(ncgr, stream);
 		case NCGR_TYPE_HUDSON:
 		case NCGR_TYPE_HUDSON2:
 			return ncgrWriteHudson(ncgr, stream);
