@@ -887,6 +887,14 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 
+					HWND hWndNcgrViewer;
+					GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrViewer, 1);
+					NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
+					if (ncgr->mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+						MessageBox(hWnd, L"Cannot be used with 2D mapping.", L"Error", MB_ICONERROR);
+						break;
+					}
+
 					LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
 					LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
 					if (path == NULL) break;
@@ -1198,6 +1206,24 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttr * sizeof(uint16_t));
 				ncerViewerData->oam = 0;
 
+				//OBJ VRAM granularity
+				int granularity = ncgr->mappingMode;
+				int charLShift = 0;
+				switch (ncgr->mappingMode) {
+					case GX_OBJVRAMMODE_CHAR_1D_128K:
+						granularity = 4; break;
+					case GX_OBJVRAMMODE_CHAR_1D_64K:
+						granularity = 2; break;
+					case GX_OBJVRAMMODE_CHAR_1D_32K:
+						granularity = 1; break;
+				}
+
+				//for 8-bit: since each character increment is 32*granularity bytes, 
+				//fix the low bit 0. Do this by doubling the granularity, but incrementing
+				//the left-shift.
+				granularity *= 2;
+				charLShift++;
+
 				//set bounding box
 				cell->minX = xMin - centerX;
 				cell->minY = yMin - centerY;
@@ -1286,12 +1312,14 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 
 					//add OBJ
+					int charName = (charBase / granularity) >> charLShift;
 					cell->attr[i * 3 + 0] = (slice->bounds.y & 0x0FF) | (affine << 8) | (affine << 9) | ((depth == 8) << 13) | (shape << 14);
 					cell->attr[i * 3 + 1] = (slice->bounds.x & 0x1FF) | (size << 14);
-					cell->attr[i * 3 + 2] = (paletteIndex << 12) | (charBase);
+					cell->attr[i * 3 + 2] = (paletteIndex << 12) | (charName);
 
 					//increment
 					charBase += nChars;
+					charBase = (charBase + granularity - 1) / granularity * granularity;
 				}
 				free(indicesBuffer);
 

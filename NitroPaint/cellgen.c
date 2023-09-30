@@ -186,7 +186,7 @@ static int CellgenDecideSplitDirection(COLOR32 *px, const unsigned char *account
 }
 
 static int CellgenProcessSubdivision(COLOR32 *px, unsigned char *accountBuf, int width, int height, int aggressiveness, 
-		OBJ_BOUNDS *boundBuffer, int *pCount, int index) {
+		OBJ_BOUNDS *boundBuffer, int *pCount, int index, int maxDepth) {
 	//should we give up here based on the aggressiveness parameter?
 	int area = boundBuffer[index].width * boundBuffer[index].height;
 	int nTrans = CellgenCountTransparent(px, accountBuf, width, height, boundBuffer + index);
@@ -228,11 +228,11 @@ static int CellgenProcessSubdivision(COLOR32 *px, unsigned char *accountBuf, int
 
 	//try split children
 	int split1DidCull = 0, split2DidCull = 0;
-	if (split1HasPixels) {
-		split1DidCull = CellgenProcessSubdivision(px, accountBuf, width, height, aggressiveness, boundBuffer, pCount, split1Index);
+	if (split1HasPixels && maxDepth > 1) {
+		split1DidCull = CellgenProcessSubdivision(px, accountBuf, width, height, aggressiveness, boundBuffer, pCount, split1Index, maxDepth - 1);
 	}
-	if (split2HasPixels) {
-		split2DidCull = CellgenProcessSubdivision(px, accountBuf, width, height, aggressiveness, boundBuffer, pCount, split2Index);
+	if (split2HasPixels && maxDepth > 1) {
+		split2DidCull = CellgenProcessSubdivision(px, accountBuf, width, height, aggressiveness, boundBuffer, pCount, split2Index, maxDepth - 1);
 	}
 
 	//if either child did cull, we cannot re-merge.
@@ -317,8 +317,8 @@ static int CellgenIterateAllShifts(COLOR32 *px, unsigned char *accountBuf, int w
 	return nObj;
 }
 
-static int CellgenTryIterateSplit(COLOR32 *px, unsigned char *accountBuf, int width, int height, int agr, OBJ_BOUNDS *obj, int nObj) {
-	memset(accountBuf, 0, width * height);
+static int CellgenTryIterateSplit(COLOR32 *px, unsigned char *accountBuf, int width, int height, int agr, OBJ_BOUNDS *obj, int nObj, int maxDepth) {
+	//memset(accountBuf, 0, width * height);
 
 	int nObjInit = nObj;
 	for (int i = 0; i < nObjInit; i++) {
@@ -333,7 +333,7 @@ static int CellgenTryIterateSplit(COLOR32 *px, unsigned char *accountBuf, int wi
 		memcpy(boundBuffer, bounds, sizeof(OBJ_BOUNDS));
 
 		//try subdividing to cull regions
-		int didCull = CellgenProcessSubdivision(px, accountBuf, width, height, agr, boundBuffer, &boundBufferSize, 0);
+		int didCull = CellgenProcessSubdivision(px, accountBuf, width, height, agr, boundBuffer, &boundBufferSize, 0, maxDepth);
 		if (!didCull) continue;
 
 		//did cull, so process accordingly
@@ -579,6 +579,29 @@ static int CellgenCondenseObj(COLOR32 *px, unsigned char *accountBuf, int width,
 	return nObj;
 }
 
+static int CellgenRemoveHalfRedundant(COLOR32 *px, unsigned char *accountBuf, int width, int height, OBJ_BOUNDS *obj, int nObj) {
+	//for each, add all others to account buffer and remove half
+	for (int i = 0; i < nObj; i++) {
+		memset(accountBuf, 0, width * height);
+
+		for (int j = 0; j < nObj; j++) {
+			if (j == i) continue;
+			CellgenAccountRegion(accountBuf, width, height, obj + j);
+		}
+
+		//try make split
+		int n = CellgenTryIterateSplit(px, accountBuf, width, height, 100, obj + i, 1, 1);
+		if (n == 0) {
+			//object was removed
+			memmove(obj + i, obj + i + 1, (nObj - i - 1) * sizeof(OBJ_BOUNDS));
+			nObj--;
+			i--;
+		}
+	}
+
+	return nObj;
+}
+
 static int CellgenSizeComparator(const void *v1, const void *v2) {
 	OBJ_BOUNDS *b1 = (OBJ_BOUNDS *) v1;
 	OBJ_BOUNDS *b2 = (OBJ_BOUNDS *) v2;
@@ -684,7 +707,8 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 	//run 6 rounds (maximum possible times an OBJ can be divided)
 	for (int i = 0; i < CELLGEN_MAX_DIV; i++) {
 		//next, begin the subdivision step.
-		nObj = CellgenTryIterateSplit(px, accountBuf, width, height, aggressiveness, obj, nObj);
+		memset(accountBuf, 0, width * height);
+		nObj = CellgenTryIterateSplit(px, accountBuf, width, height, aggressiveness, obj, nObj, CELLGEN_MAX_DIV);
 		nObj = CellgenTryCoalesce(obj, nObj);
 
 		//iterate OBJ shift again
@@ -708,7 +732,8 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 			memcpy(obj + nObj - i - 1, &aux, sizeof(aux));
 		}
 
-		nObj = CellgenTryIterateSplit(px, accountBuf, width, height, aggressiveness, obj, nObj);
+		memset(accountBuf, 0, width * height);
+		nObj = CellgenTryIterateSplit(px, accountBuf, width, height, aggressiveness, obj, nObj, CELLGEN_MAX_DIV);
 		nObj = CellgenTryRemoveOverlapping(px, accountBuf, width, height, obj, nObj);
 	}
 
@@ -719,6 +744,9 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 
 	//order from big->small
 	qsort(obj, nObj, sizeof(OBJ_BOUNDS), CellgenSizeComparator);
+
+	//remove objects that are over half overlapped by another, starting from big
+	nObj = CellgenRemoveHalfRedundant(px, accountBuf, width, height, obj, nObj);
 
 	//resize buffer and return
 	free(accountBuf);
