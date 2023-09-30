@@ -1168,6 +1168,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				//generate
 				int nObj;
 				int charBase = GetEditNumber(hWndCharacter);
+				int charStart = charBase; //initial
 				int affine = GetCheckboxChecked(hWndAffine);
 				int paletteIndex = SendMessage(hWndPalette, CB_GETCURSEL, 0, 0);
 				int aggressiveness = GetTrackbarPosition(hWndAggressiveness);
@@ -1258,24 +1259,58 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				//fill out character
 				int *indicesBuffer = (int *) calloc(64 * 64, sizeof(int));
+				unsigned char *indicesBuffer8 = (unsigned char *) calloc(64 * 64, sizeof(unsigned char));
 				for (int i = 0; i < nObj; i++) {
 					OBJ_IMAGE_SLICE *slice = slices + i;
 					int width = slice->bounds.width, height = slice->bounds.height;
+					int nChars = slice->bounds.width * slice->bounds.height / 8 / 8;
+
 					ditherImagePaletteEx(slice->px, indicesBuffer, width, height, palette, paletteSize, 
 						1, 1, 1, 0.0f, BALANCE_DEFAULT, BALANCE_DEFAULT, 0);
 
-					//read out character
-					int nChars = slice->bounds.width * slice->bounds.height / 8 / 8;
+					//convert to character array in indicesBuffer8
 					for (int j = 0; j < nChars; j++) {
+						unsigned char *ch = indicesBuffer8 + j * 64;
 						int objX = (j * 8) % slice->bounds.width;
 						int objY = (j * 8) / slice->bounds.width * 8;
 
-						BYTE *ch = ncgr->tiles[charBase + j];
 						for (int y = 0; y < 8; y++) {
 							for (int x = 0; x < 8; x++) {
 								ch[x + y * 8] = indicesBuffer[objX + x + (objY + y) * slice->bounds.width];
 							}
 						}
+					}
+
+					//search chars for a match
+					int foundStart = charBase, nFoundChars = 0;
+					for (int j = charStart; j < charBase; j += granularity) {
+						int nCharsCompare = nChars;
+						if (j + nCharsCompare > charBase) nCharsCompare = charBase - j;
+
+						//compare nCharsCompare chars
+						int differed = 0;
+						for (int k = 0; k < nCharsCompare; k++) {
+							if (memcmp(ncgr->tiles[j + k], indicesBuffer8 + k * 64, 64) != 0) {
+								differed = 1;
+								break;
+							}
+						}
+
+						//if differed, then no match
+						//if !differed, we matched nCharsCompare characters
+						if (!differed) {
+							foundStart = j;
+							nFoundChars = nCharsCompare;
+							break;
+						}
+					}
+
+					//read out character
+					int nCharsAdd = nChars - nFoundChars;
+					for (int j = nFoundChars; j < nChars; j++) {
+						unsigned char *ch = ncgr->tiles[foundStart + j];
+
+						memcpy(ch, indicesBuffer8 + 64 * j, 64);
 					}
 
 					//get shape/size
@@ -1311,15 +1346,16 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 
 					//add OBJ
-					int charName = (charBase / granularity) >> charLShift;
+					int charName = (foundStart / granularity) >> charLShift;
 					cell->attr[i * 3 + 0] = (slice->bounds.y & 0x0FF) | (affine << 8) | (affine << 9) | ((depth == 8) << 13) | (shape << 14);
 					cell->attr[i * 3 + 1] = (slice->bounds.x & 0x1FF) | (size << 14);
 					cell->attr[i * 3 + 2] = (paletteIndex << 12) | (charName);
 
 					//increment
-					charBase += nChars;
+					charBase += nCharsAdd;
 					charBase = (charBase + granularity - 1) / granularity * granularity;
 				}
+				free(indicesBuffer8);
 				free(indicesBuffer);
 
 				free(palette);
