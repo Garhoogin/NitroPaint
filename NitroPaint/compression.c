@@ -170,6 +170,34 @@ char *huffmanDecompress(unsigned char *buffer, int size, int *uncompressedSize) 
 	return out;
 }
 
+char *rlDecompress(unsigned char *buffer, int size, int *uncompressedSize) {
+	unsigned int uncompSize = (*(uint32_t *) buffer) >> 8;
+	char *out = (char *) calloc(uncompSize, 1);
+	*uncompressedSize = uncompSize;
+
+	unsigned int dstOfs = 0;
+	unsigned int srcOfs = 4;
+	while (dstOfs < uncompSize) {
+		unsigned char head = buffer[srcOfs++];
+
+		int compressed = head >> 7;
+		if (compressed) {
+			int chunkLen = (head & 0x7F) + 3;
+			unsigned char b = buffer[srcOfs++];
+			for (int i = 0; i < chunkLen; i++) {
+				out[dstOfs++] = b;
+			}
+		} else {
+			int chunkLen = (head & 0x7F) + 1;
+			for (int i = 0; i < chunkLen; i++) {
+				out[dstOfs++] = buffer[srcOfs++];
+			}
+		}
+	}
+
+	return out;
+}
+
 int compareMemory(char *b1, char *b2, int nMax, int nAbsoluteMax) {
 	int nSame = 0;
 	if (nMax > nAbsoluteMax) nMax = nAbsoluteMax;
@@ -380,6 +408,73 @@ char *lz11compress(char *buffer, int size, int *compressedSize) {
 	}
 	*compressedSize = nSize;
 	return realloc(compressedBase, nSize);
+}
+
+char *rlCompress(unsigned char *buffer, unsigned int size, int *compressedSize) {
+	//worst-case size: 4+size*129/128
+	int maxSize = 4 + size + (size + 127) / 128 + 3;
+	unsigned char *out = (unsigned char *) calloc(maxSize, 1);
+
+	*(uint32_t *) out = 0x30 | (size << 8);
+	unsigned int srcOfs = 0, dstOfs = 4;
+	while (srcOfs < size) {
+		unsigned char b = buffer[srcOfs];
+
+		//scan forward - if found >= 3 bytes, make RL block
+		unsigned int blockSize = 1;
+		for (unsigned int i = 1; i < 130 && (srcOfs + i) < size; i++) {
+			if (buffer[srcOfs + i] == b) {
+				blockSize++;
+			} else {
+				break;
+			}
+		}
+
+		//if blockSize >= 3, write RL block
+		if (blockSize >= 3) {
+			out[dstOfs++] = 0x80 | (blockSize - 3);
+			out[dstOfs++] = b;
+			srcOfs += blockSize;
+			continue;
+		}
+
+		//else, scan bytes until we reach a run of 3
+		int foundRun = 0;
+		unsigned int runOffset = 0;
+		for (unsigned int i = 1; i < 128 && (srcOfs + i) < size; i++) {
+			unsigned char c = buffer[srcOfs + i];
+			blockSize = 1;
+			for (unsigned int j = 1; j < 3 && (srcOfs + i + j) < size; j++) {
+				if (buffer[srcOfs + i + j] == c) {
+					blockSize++;
+				} else {
+					break;
+				}
+			}
+
+			if (blockSize == 3) {
+				foundRun = 1;
+				runOffset = i;
+				break;
+			}
+		}
+
+		//if no run found, copy max bytes
+		if (!foundRun) {
+			runOffset = 128;
+			if (srcOfs + runOffset > size) runOffset = size - srcOfs;
+		}
+
+		//write uncompressed block
+		out[dstOfs++] = (runOffset - 1) & 0x7F;
+		memcpy(out + dstOfs, buffer + srcOfs, runOffset);
+		srcOfs += runOffset;
+		dstOfs += runOffset;
+	}
+
+	*compressedSize = dstOfs;
+	out = realloc(out, dstOfs);
+	return out;
 }
 
 typedef struct HUFFNODE_ {
@@ -782,6 +877,45 @@ int lz11CompHeaderIsValid(char *buffer, unsigned size) {
 	return 1;
 }
 
+int rlIsCompressed(unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+	if (*buffer != 0x30) return 0;
+	uint32_t header = *(uint32_t *) buffer;
+	unsigned int uncompSize = header >> 8;
+
+	unsigned int dstOfs = 0;
+	unsigned int srcOfs = 4;
+	while (dstOfs < uncompSize) {
+		if (srcOfs >= size) return 0;
+		unsigned char head = buffer[srcOfs++];
+
+		int compressed = head >> 7;
+		if (compressed) {
+			int chunkLen = (head & 0x7F) + 3;
+			if (srcOfs >= size) return 0;
+			srcOfs++;
+
+			for (int i = 0; i < chunkLen; i++) {
+				dstOfs++;
+			}
+		} else {
+			int chunkLen = (head & 0x7F) + 1;
+			for (int i = 0; i < chunkLen; i++) {
+				if (srcOfs >= size) return 0;
+				dstOfs++;
+				srcOfs++;
+			}
+		}
+
+		if (dstOfs > uncompSize) return 0;
+	}
+
+	//allow up to 3 bytes padding
+	if (size - srcOfs > 3) return 0;
+
+	return 1;
+}
+
 char *lz11CompHeaderDecompress(char *buffer, int size, int *uncompressedSize) {
 	uint32_t totalSize = *(uint32_t *) (buffer + 0x4);
 	uint32_t nSegments = *(uint32_t *) (buffer + 0x8);
@@ -863,6 +997,7 @@ int getCompressionType(char *buffer, int size) {
 	if (lz77IsCompressed(buffer, size)) return COMPRESSION_LZ77;
 	if (lz11IsCompressed(buffer, size)) return COMPRESSION_LZ11;
 	if (lz11CompHeaderIsValid(buffer, size)) return COMPRESSION_LZ11_COMP_HEADER;
+	if (rlIsCompressed(buffer, size)) return COMPRESSION_RLE;
 	if (huffman4IsCompressed(buffer, size)) return COMPRESSION_HUFFMAN_4;
 	if (huffman8IsCompressed(buffer, size)) return COMPRESSION_HUFFMAN_8;
 
@@ -890,6 +1025,8 @@ char *decompress(char *buffer, int size, int *uncompressedSize) {
 			return huffmanDecompress(buffer, size, uncompressedSize);
 		case COMPRESSION_LZ77_HEADER:
 			return lz77HeaderDecompress(buffer, size, uncompressedSize);
+		case COMPRESSION_RLE:
+			return rlDecompress(buffer, size, uncompressedSize);
 	}
 	return NULL;
 }
@@ -915,6 +1052,8 @@ char *compress(char *buffer, int size, int compression, int *compressedSize) {
 			return huffman8Compress(buffer, size, compressedSize);
 		case COMPRESSION_LZ77_HEADER:
 			return lz77HeaderCompress(buffer, size, compressedSize);
+		case COMPRESSION_RLE:
+			return rlCompress(buffer, size, compressedSize);
 	}
 	return NULL;
 }

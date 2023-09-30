@@ -6,7 +6,8 @@
 #define COMPRESSION_LZ11_COMP_HEADER 3
 #define COMPRESSION_HUFFMAN_4        4
 #define COMPRESSION_HUFFMAN_8        5
-#define COMPRESSION_LZ77_HEADER      6
+#define COMPRESSION_RLE              6
+#define COMPRESSION_LZ77_HEADER      7
 
 //----- LZ77 functions
 
