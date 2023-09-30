@@ -36,18 +36,17 @@ VOID PaintNcerViewer(HWND hWnd) {
 	NCER_CELL_INFO info;
 	decodeAttributesEx(&info, cell, data->oam);
 
-	int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
 	memset(data->frameBuffer, 0, sizeof(data->frameBuffer));
 	NCER_VRAM_TRANSFER_ENTRY *transferEntry = NULL;
 	if (data->ncer.vramTransfer != NULL)
 		transferEntry = data->ncer.vramTransfer + data->cell;
 	DWORD *bits = ncerRenderWholeCell3(data->frameBuffer, data->ncer.cells + data->cell, ncgr, nclr, transferEntry, 
-		translateX, translateY, 1, data->oam, 1.0f, 0.0f, 0.0f, 1.0f);
+		256, 128, 1, data->oam, 1.0f, 0.0f, 0.0f, 1.0f);
 
 	//draw lines if needed
 	if (data->showCellBounds) {
-		int minX = cell->minX + translateX, maxX = cell->maxX + translateX - 1;
-		int minY = cell->minY + translateY, maxY = cell->maxY + translateY - 1;
+		int minX = cell->minX + 256, maxX = cell->maxX + 256 - 1;
+		int minY = cell->minY + 128, maxY = cell->maxY + 128 - 1;
 		minX &= 0x1FF, maxX &= 0x1FF, minY &= 0xFF, maxY &= 0xFF;
 
 		for (int i = 0; i < 256; i++) {
@@ -132,7 +131,7 @@ void UpdateControls(HWND hWnd) {
 	}
 	len = wsprintfW(buffer, L"%d", info.x >= 256 ? (info.x - 512) : info.x);
 	SendMessage(data->hWndXInput, WM_SETTEXT, len, (LPARAM) buffer);
-	len = wsprintfW(buffer, L"%d", info.y);
+	len = wsprintfW(buffer, L"%d", info.y >= 128 ? (info.y - 256) : info.y);
 	SendMessage(data->hWndYInput, WM_SETTEXT, len, (LPARAM) buffer);
 
 	int sizes[] = { 0, 0, 1, 0, 1, 2, 1, 2, 2, 3, 3, 3 };
@@ -435,8 +434,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SetFocus(hWnd);
 			if (pos.x >= 0 && pos.y >= 0 && pos.x < 512 && pos.y < 256) {
 				NCER_CELL *cell = data->ncer.cells + data->cell;
-				int x = (pos.x - 256 + (cell->maxX + cell->minX) / 2) & 0x1FF;
-				int y = (pos.y - 128 + (cell->maxY + cell->minY) / 2) & 0xFF;
+				int x = (pos.x - 256) & 0x1FF;
+				int y = (pos.y - 128) & 0xFF;
 				int oam = getOamFromPoint(cell, x, y);
 				if (oam != -1) {
 					NCER_CELL_INFO info;
@@ -1219,10 +1218,10 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 
 				//for 8-bit: since each character increment is 32*granularity bytes, 
-				//fix the low bit 0. Do this by doubling the granularity, but incrementing
-				//the left-shift.
-				granularity *= 2;
-				charLShift++;
+				//fix the low bit 0. Do this by incrementing the left-shift.
+				if (ncgr->nBits == 8) {
+					charLShift++;
+				}
 
 				//set bounding box
 				cell->minX = xMin - centerX;
