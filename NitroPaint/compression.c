@@ -198,6 +198,41 @@ char *rlDecompress(unsigned char *buffer, int size, int *uncompressedSize) {
 	return out;
 }
 
+char *diff8Unfilter(unsigned char *buffer, unsigned int size, int *unfilteredSize) {
+	uint32_t header = *(uint32_t *) buffer;
+	unsigned int uncompSize = header >> 8;
+	unsigned int dstOfs = 0, srcOfs = 4;;
+	*unfilteredSize = uncompSize;
+
+	char *out = (char *) calloc(uncompSize, 1);
+
+	unsigned char last = 0;
+	while (dstOfs < uncompSize) {
+		last += buffer[srcOfs++];
+		out[dstOfs++] = last;
+	}
+
+	return out;
+}
+
+char *diff16Unfilter(unsigned char *buffer, unsigned int size, int *unfilteredSize) {
+	uint32_t header = *(uint32_t *) buffer;
+	unsigned int uncompSize = header >> 8;
+	unsigned int dstOfs = 0, srcOfs = 4;;
+	*unfilteredSize = uncompSize;
+
+	char *out = (char *) calloc(uncompSize, 1);
+	uint16_t last = 0;
+	while (dstOfs < uncompSize) {
+		last += *(uint16_t *) (buffer + srcOfs);
+		srcOfs += 2;
+		*(uint16_t *) (out + dstOfs) = last;
+		dstOfs += 2;
+	}
+
+	return out;
+}
+
 int compareMemory(char *b1, char *b2, int nMax, int nAbsoluteMax) {
 	int nSame = 0;
 	if (nMax > nAbsoluteMax) nMax = nAbsoluteMax;
@@ -474,6 +509,43 @@ char *rlCompress(unsigned char *buffer, unsigned int size, int *compressedSize) 
 
 	*compressedSize = dstOfs;
 	out = realloc(out, dstOfs);
+	return out;
+}
+
+char *diff8Filter(unsigned char *buffer, unsigned int size, int *filteredSize) {
+	char *out = (char *) calloc(size + 4, 1);
+	*filteredSize = size + 4;
+
+	*(uint32_t *) out = 0x80 | (size << 8);
+
+	unsigned char last = 0;
+	for (unsigned int i = 0; i < size; i++) {
+		out[i + 4] = buffer[i] - last;
+		last = buffer[i];
+	}
+
+	return out;
+}
+
+char *diff16Filter(unsigned char *buffer, unsigned int size, int *filteredSize) {
+	unsigned int outSize = ((size + 1) & ~1) + 4; //round up to multiple of 2
+	char *out = (char *) calloc(outSize, 1);
+	*filteredSize = outSize;
+
+	*(uint32_t *) out = 0x81 | (size << 8);
+
+	uint16_t last = 0;
+	for (unsigned int i = 0; i < size; i += 2) {
+		uint16_t hw;
+		if (i + 1 < size) { //doesn't run off the end
+			hw = *(uint16_t *) (buffer + i);
+		} else {
+			hw = buffer[i];
+		}
+		*(uint16_t *) (out + 4 + i) = hw - last;
+		last = hw;
+	}
+
 	return out;
 }
 
@@ -916,6 +988,35 @@ int rlIsCompressed(unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+int diff8IsFiltered(unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+
+	uint32_t head = *(uint32_t *) buffer;
+	unsigned int uncompSize = head >> 8;
+	if (buffer[0] != 0x80) return 0;
+
+	if (uncompSize > size) return 0;
+	
+	//round up to a multiple of 4
+	if (((size - 4 + 3) & ~3) != ((uncompSize + 3) & ~3)) return 0;
+	return 1;
+}
+
+int diff16IsFiltered(unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+	if (size & 1) return 0;
+
+	uint32_t head = *(uint32_t *) buffer;
+	unsigned int uncompSize = head >> 8;
+	if (buffer[0] != 0x81) return 0;
+
+	if (uncompSize > size) return 0;
+
+	//round up to a multiple of 4
+	if (((size - 4 + 3) & ~3) != ((uncompSize + 3) & ~3)) return 0;
+	return 1;
+}
+
 char *lz11CompHeaderDecompress(char *buffer, int size, int *uncompressedSize) {
 	uint32_t totalSize = *(uint32_t *) (buffer + 0x4);
 	uint32_t nSegments = *(uint32_t *) (buffer + 0x8);
@@ -1000,6 +1101,8 @@ int getCompressionType(char *buffer, int size) {
 	if (rlIsCompressed(buffer, size)) return COMPRESSION_RLE;
 	if (huffman4IsCompressed(buffer, size)) return COMPRESSION_HUFFMAN_4;
 	if (huffman8IsCompressed(buffer, size)) return COMPRESSION_HUFFMAN_8;
+	if (diff8IsFiltered(buffer, size)) return COMPRESSION_DIFF8;
+	if (diff16IsFiltered(buffer, size)) return COMPRESSION_DIFF16;
 
 	return COMPRESSION_NONE;
 }
@@ -1027,6 +1130,10 @@ char *decompress(char *buffer, int size, int *uncompressedSize) {
 			return lz77HeaderDecompress(buffer, size, uncompressedSize);
 		case COMPRESSION_RLE:
 			return rlDecompress(buffer, size, uncompressedSize);
+		case COMPRESSION_DIFF8:
+			return diff8Unfilter(buffer, size, uncompressedSize);
+		case COMPRESSION_DIFF16:
+			return diff16Unfilter(buffer, size, uncompressedSize);
 	}
 	return NULL;
 }
@@ -1054,6 +1161,10 @@ char *compress(char *buffer, int size, int compression, int *compressedSize) {
 			return lz77HeaderCompress(buffer, size, compressedSize);
 		case COMPRESSION_RLE:
 			return rlCompress(buffer, size, compressedSize);
+		case COMPRESSION_DIFF8:
+			return diff8Filter(buffer, size, compressedSize);
+		case COMPRESSION_DIFF16:
+			return diff16Filter(buffer, size, compressedSize);
 	}
 	return NULL;
 }
