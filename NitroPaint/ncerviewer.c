@@ -315,6 +315,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndSizeDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 537, 63, 75, 100, hWnd, NULL, NULL, NULL);
 			data->hWndCellBoundsCheckbox = CreateWindow(L"BUTTON", L"Show cell bounds", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 169, 256, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", 169, 256 + 22 + 5, 164, 22, FALSE);
+			data->hWndDuplicateCell = CreateButton(hWnd, L"Duplicate Cell", 169, 256 + 22 + 5 + 22, 164, 22, FALSE);
 			break;
 		}
 		case WM_NCHITTEST:	//make the border non-sizeable
@@ -915,6 +916,33 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					//free px
 					free(px);
+				} else if (notification == BN_CLICKED && hWndControl == data->hWndDuplicateCell) {
+					//duplicate cell
+					data->ncer.nCells++;
+					data->ncer.cells = realloc(data->ncer.cells, data->ncer.nCells * sizeof(NCER_CELL));
+
+					NCER_CELL *cell = data->ncer.cells + data->cell;
+					NCER_CELL *dup = data->ncer.cells + data->ncer.nCells - 1;
+
+					//copy
+					dup->cellAttr = cell->cellAttr;
+					dup->minX = cell->minX, dup->maxX = cell->maxX;
+					dup->minY = cell->minY, dup->maxY = cell->maxY;
+					dup->nAttr = cell->nAttr, dup->nAttribs = cell->nAttribs;
+					dup->attr = (uint16_t *) calloc(cell->nAttr, sizeof(uint16_t));
+					memcpy(dup->attr, cell->attr, cell->nAttr * sizeof(uint16_t));
+
+					data->cell = data->ncer.nCells - 1;
+					data->oam = 0;
+
+					//select
+					WCHAR name[16];
+					wsprintfW(name, L"Cell %02d", data->cell);
+					SendMessage(data->hWndCellDropdown, CB_ADDSTRING, 0, (LPARAM) name);
+					SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
+
+					UpdateOamDropdown(hWnd);
+					UpdateControls(hWnd);
 				}
 
 				//log a change
