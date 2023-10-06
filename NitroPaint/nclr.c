@@ -16,9 +16,9 @@ void nclrFree(OBJECT_HEADER *header) {
 	nclr->comment = NULL;
 
 	COMBO2D *combo2d = nclr->combo2d;
-	if (nclr->combo2d != NULL) {
-		nclr->combo2d->nclr = NULL;
-		if (combo2d->nclr == NULL && combo2d->ncgr == NULL && combo2d->nscr == NULL) {
+	if (combo2d != NULL) {
+		combo2dUnlink(combo2d, &nclr->header);
+		if (combo2d->nLinks == 0) {
 			combo2dFree(combo2d);
 			free(combo2d);
 		}

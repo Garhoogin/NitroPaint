@@ -124,9 +124,9 @@ void ncgrFree(OBJECT_HEADER *header) {
 	}
 
 	COMBO2D *combo = ncgr->combo2d;
-	if (ncgr->combo2d != NULL) {
-		ncgr->combo2d->ncgr = NULL;
-		if (combo->nclr == NULL && combo->ncgr == NULL && combo->nscr == NULL) {
+	if (combo != NULL) {
+		combo2dUnlink(combo, &ncgr->header);
+		if (combo->nLinks == 0) {
 			combo2dFree(combo);
 			free(combo);
 		}

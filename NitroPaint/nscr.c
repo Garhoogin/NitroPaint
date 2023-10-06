@@ -128,9 +128,9 @@ void nscrFree(OBJECT_HEADER *header) {
 	}
 
 	COMBO2D *combo = nscr->combo2d;
-	if (nscr->combo2d != NULL) {
-		nscr->combo2d->nscr = NULL;
-		if (combo->nclr == NULL && combo->ncgr == NULL && combo->nscr == NULL) {
+	if (combo != NULL) {
+		combo2dUnlink(combo, &nscr->header);
+		if (combo->nLinks == 0) {
 			combo2dFree(combo);
 			free(combo);
 		}

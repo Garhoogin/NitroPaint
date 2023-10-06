@@ -514,12 +514,11 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 		//refName is the name of the file to read.
 		COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-		combo->header.format = COMBO2D_TYPE_DATAFILE;
-		combo->header.size = sizeof(COMBO2D);
-		combo->header.type = FILE_TYPE_COMBO2D;
+		combo2dInit(combo, COMBO2D_TYPE_DATAFILE);
 		combo->header.dispose = NULL;
 		combo->header.compression = COMPRESSION_NONE;
 		combo->extraData = (DATAFILECOMBO *) calloc(1, sizeof(DATAFILECOMBO));
+
 		DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
 		dfc->pltOffset = pltOffset;
 		dfc->pltSize = pltSize;
@@ -557,7 +556,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			data->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, &nclr);
 
 			NCLR *pNclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
-			combo->nclr = pNclr;
+			combo2dLink(combo, &pNclr->header);
 			memcpy(((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
 		}
 
@@ -569,7 +568,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 
 			NCGR *pNcgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
-			combo->ncgr = pNcgr;
+			combo2dLink(combo, &pNcgr->header);
 			memcpy(((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
 		}
 
@@ -578,7 +577,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			HWND hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, &nscr);
 
 			NSCR *pNscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->nscr;
-			combo->nscr = pNscr;
+			combo2dLink(combo, &pNscr->header);
 			memcpy(((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
 		}
 		free(pathBuffer);
@@ -663,9 +662,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			if (combo2dFormatHasCharacter(type)) ncgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
 			if (combo2dFormatHasScreen(type)) nscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->nscr;
 
-			combo->nclr = nclr;
-			combo->ncgr = ncgr;
-			combo->nscr = nscr;
+			combo2dLink(combo, &nclr->header);
+			combo2dLink(combo, &ncgr->header);
+			combo2dLink(combo, &nscr->header);
 			if(nclr != NULL) nclr->combo2d = combo;
 			if(ncgr != NULL) ncgr->combo2d = combo;
 			if(nscr != NULL) nscr->combo2d = combo;

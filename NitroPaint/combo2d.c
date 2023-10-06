@@ -1,10 +1,11 @@
 #include <Windows.h>
 #include "color.h"
+#include "combo2d.h"
+#include "g2dfile.h"
+
 #include "nclr.h"
 #include "ncgr.h"
 #include "nscr.h"
-#include "combo2d.h"
-#include "g2dfile.h"
 
 typedef struct BANNER_INFO_ {
 	int version;
@@ -17,6 +18,50 @@ typedef struct BANNER_INFO_ {
 	WCHAR titleCn[128];
 	WCHAR titleHn[128];
 } BANNER_INFO;
+
+void combo2dInit(COMBO2D *combo, int format) {
+	fileInitCommon(&combo->header, FILE_TYPE_COMBO2D, format);
+}
+
+int combo2dCount(COMBO2D *combo, int type) {
+	int count = 0;
+	for (int i = 0; i < combo->nLinks; i++) {
+		OBJECT_HEADER *header = combo->links[i];
+		if (header->type == type) count++;
+	}
+	return count;
+}
+
+OBJECT_HEADER *combo2dGet(COMBO2D *combo, int type, int index) {
+	//keep track of number of objects of this type we've counted
+	int nCounted = 0;
+	for (int i = 0; i < combo->nLinks; i++) {
+		OBJECT_HEADER *object = combo->links[i];
+		if (object->type != type) continue;
+
+		if (nCounted == index) return object;
+		nCounted++;
+	}
+	return NULL;
+}
+
+void combo2dLink(COMBO2D *combo, OBJECT_HEADER *object) {
+	combo->nLinks++;
+	combo->links = (OBJECT_HEADER **) realloc(combo->links, combo->nLinks * sizeof(OBJECT_HEADER *));
+	combo->links[combo->nLinks - 1] = object;
+}
+
+void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object) {
+	for (int i = 0; i < combo->nLinks; i++) {
+		if (combo->links[i] != object) continue;
+
+		//remove
+		memmove(combo->links + i, combo->links + i + 1, (combo->nLinks - i - 1) * sizeof(OBJECT_HEADER *));
+		combo->nLinks--;
+		combo->links = (OBJECT_HEADER **) realloc(combo->links, combo->nLinks * sizeof(OBJECT_HEADER *));
+		return;
+	}
+}
 
 int combo2dFormatHasPalette(int format) {
 	return format == COMBO2D_TYPE_BANNER
@@ -36,25 +81,28 @@ int combo2dFormatHasScreen(int format) {
 }
 
 int combo2dCanSave(COMBO2D *combo) {
-	if (combo2dFormatHasPalette(combo->header.format) && combo->nclr == NULL) return 0;
-	if (combo2dFormatHasCharacter(combo->header.format) && combo->ncgr == NULL) return 0;
-	if (combo2dFormatHasScreen(combo->header.format) && combo->nscr == NULL) return 0;
+	int nPalettes = combo2dCount(combo, FILE_TYPE_PALETTE);
+	int nCharacters = combo2dCount(combo, FILE_TYPE_CHARACTER);
+	int nScreens = combo2dCount(combo, FILE_TYPE_SCREEN);
+	if (combo2dFormatHasPalette(combo->header.format) && nPalettes == 0) return 0;
+	if (combo2dFormatHasCharacter(combo->header.format) && nCharacters == 0) return 0;
+	if (combo2dFormatHasScreen(combo->header.format) && nScreens == 0) return 0;
 	return 1;
 }
 
 void combo2dFree(COMBO2D *combo) {
-	if (combo->nclr != NULL) {
-		free(combo->nclr);
-		combo->nclr = NULL;
+	//free all links
+	for (int i = 0; i < combo->nLinks; i++) {
+		OBJECT_HEADER *object = combo->links[i];
+		fileFree(object);
+		free(object);
 	}
-	if (combo->ncgr != NULL) {
-		free(combo->ncgr);
-		combo->ncgr = NULL;
+	if (combo->links != NULL) {
+		free(combo->links);
 	}
-	if (combo->nscr != NULL) {
-		free(combo->nscr);
-		combo->nscr = NULL;
-	}
+	combo->links = NULL;
+	combo->nLinks = 0;
+
 	if (combo->extraData != NULL) {
 		if (combo->header.format == COMBO2D_TYPE_DATAFILE) {
 			DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
@@ -137,6 +185,8 @@ int combo2dRead(COMBO2D *combo, char *buffer, int size) {
 	int format = combo2dIsValid(buffer, size);
 	if (format == COMBO2D_TYPE_INVALID) return 1;
 
+	combo2dInit(combo, format);
+
 	switch (format) {
 		case COMBO2D_TYPE_TIMEACE:
 		case COMBO2D_TYPE_5BG:
@@ -160,16 +210,18 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 
 	//write out 
 	if (combo->header.format == COMBO2D_TYPE_TIMEACE) {
-		BOOL is8bpp = combo->ncgr->nBits == 8;
+		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
+		BOOL is8bpp = ncgr->nBits == 8;
 		int dummy = 0;
 
 		bstreamWrite(stream, &is8bpp, sizeof(is8bpp));
-		bstreamWrite(stream, combo->nclr->colors, 2 * combo->nclr->nColors);
+		bstreamWrite(stream, nclr->colors, 2 * nclr->nColors);
 		bstreamWrite(stream, &dummy, sizeof(dummy));
-		bstreamWrite(stream, combo->nscr->data, combo->nscr->dataSize);
-		bstreamWrite(stream, &combo->ncgr->nTiles, 4);
+		bstreamWrite(stream, nscr->data, nscr->dataSize);
+		bstreamWrite(stream, &ncgr->nTiles, 4);
 
-		NCGR *ncgr = combo->ncgr;
 		if (ncgr->nBits == 8) {
 			for (int i = 0; i < ncgr->nTiles; i++) {
 				bstreamWrite(stream, ncgr->tiles[i], 64);
@@ -184,11 +236,13 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 			}
 		}
 	} else if (combo->header.format == COMBO2D_TYPE_BANNER) {
+		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+
 		BANNER_INFO *info = (BANNER_INFO *) combo->extraData;
 		unsigned short header[16] = { 0 };
 		bstreamWrite(stream, header, sizeof(header));
 
-		NCGR *ncgr = combo->ncgr;
 		BYTE charBuffer[32];
 		for (int i = 0; i < ncgr->nTiles; i++) {
 			for (int j = 0; j < 32; j++) {
@@ -198,7 +252,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		}
 
 		//write palette
-		bstreamWrite(stream, combo->nclr->colors, 32);
+		bstreamWrite(stream, nclr->colors, 32);
 
 		//write titles
 		bstreamWrite(stream, info->titleJp, 0x600);
@@ -214,32 +268,35 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		bstreamWrite(stream, header, sizeof(header));
 	} else if (combo->header.format == COMBO2D_TYPE_DATAFILE) {
 		//the original data is in combo->extraData->data, but has key replacements
+		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
 
 		DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
 		char *copy = (char *) malloc(dfc->size);
 		memcpy(copy, dfc->data, dfc->size);
 
-		if (combo->nclr != NULL) {
-			int palDataSize = combo->nclr->nColors * 2;
+		if (nclr != NULL) {
+			int palDataSize = nclr->nColors * 2;
 			if (palDataSize > dfc->pltSize) palDataSize = dfc->pltSize;
-			memcpy(copy + dfc->pltOffset, combo->nclr->colors, 2 * combo->nclr->nColors);
+			memcpy(copy + dfc->pltOffset, nclr->colors, 2 * nclr->nColors);
 		}
-		if (combo->ncgr != NULL) {
+		if (ncgr != NULL) {
 			//take the easy way, temporarily change the format of the NCGR to raw and write
 			BSTREAM chrStream;
 			bstreamCreate(&chrStream, NULL, 0);
-			combo->ncgr->header.format = NCGR_TYPE_BIN;
-			ncgrWrite(combo->ncgr, &chrStream);
-			combo->ncgr->header.format = NCGR_TYPE_COMBO;
+			ncgr->header.format = NCGR_TYPE_BIN;
+			ncgrWrite(ncgr, &chrStream);
+			ncgr->header.format = NCGR_TYPE_COMBO;
 
 			if (chrStream.size > dfc->chrSize) chrStream.size = dfc->chrSize;
 			memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
 			bstreamFree(&chrStream);
 		}
-		if (combo->nscr != NULL) {
-			int scrDataSize = combo->nscr->dataSize;
+		if (nscr != NULL) {
+			int scrDataSize = nscr->dataSize;
 			if (scrDataSize > dfc->scrSize) scrDataSize = dfc->scrSize;
-			memcpy(copy + dfc->scrOffset, combo->nscr->data, scrDataSize);
+			memcpy(copy + dfc->scrOffset, nscr->data, scrDataSize);
 		}
 
 		bstreamWrite(stream, copy, dfc->size);
@@ -247,9 +304,9 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 	} else if (combo->header.format == COMBO2D_TYPE_5BG) {
 		unsigned char header[] = { 'N', 'T', 'B', 'G', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 0, 0 };
 
-		NCLR *nclr = combo->nclr;
-		NCGR *ncgr = combo->ncgr;
-		NSCR *nscr = combo->nscr;
+		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
 
 		//how many characters do we write?
 		int nCharsWrite = nscrGetHighestCharacter(nscr) + 1;

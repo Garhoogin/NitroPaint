@@ -10,9 +10,11 @@
 //structure that manages a linkage of palette, graphics, and screen.
 typedef struct COMBO2D_ {
 	OBJECT_HEADER header;
-	struct NCLR_ *nclr;
-	struct NCGR_ *ncgr;
-	struct NSCR_ *nscr;
+
+	//component files stored here
+	int nLinks;
+	OBJECT_HEADER **links;
+
 	void *extraData; //depends on the type, store data we're not interested in particularly
 } COMBO2D;
 
@@ -31,6 +33,16 @@ typedef struct DATAFILECOMBO_ {
 //#include "nclr.h"
 //#include "ncgr.h"
 //#include "nscr.h"
+
+void combo2dInit(COMBO2D *combo, int format);
+
+int combo2dCount(COMBO2D *combo, int type);
+
+OBJECT_HEADER *combo2dGet(COMBO2D *combo, int type, int index);
+
+void combo2dLink(COMBO2D *combo, OBJECT_HEADER *object);
+
+void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object);
 
 //
 // Returns 1 if the specified format contains palette data.
