@@ -564,18 +564,22 @@ void ncgrChangeWidth(NCGR *ncgr, int width) {
 	free(bmp);
 }
 
-int ncgrWriteBin(NCGR *ncgr, BSTREAM *stream) {
+void ncgrWriteChars(NCGR *ncgr, BSTREAM *stream) {
 	for (int i = 0; i < ncgr->nTiles; i++) {
 		if (ncgr->nBits == 8) {
 			bstreamWrite(stream, ncgr->tiles[i], 64);
 		} else {
-			BYTE t[32];
+			unsigned char t[32];
 			for (int j = 0; j < 32; j++) {
 				t[j] = ncgr->tiles[i][j * 2] | (ncgr->tiles[i][j * 2 + 1] << 4);
 			}
 			bstreamWrite(stream, t, 32);
 		}
 	}
+}
+
+int ncgrWriteBin(NCGR *ncgr, BSTREAM *stream) {
+	ncgrWriteChars(ncgr, stream);
 	return 0;
 }
 
@@ -610,7 +614,7 @@ int ncgrWriteNcgr(NCGR *ncgr, BSTREAM *stream) {
 	bstreamWrite(stream, ncgrHeader, sizeof(ncgrHeader));
 	bstreamWrite(stream, charHeader, sizeof(charHeader));
 	if (ncgr->header.format == NCGR_TYPE_NCGR) {
-		ncgrWriteBin(ncgr, stream);
+		ncgrWriteChars(ncgr, stream);
 	} else if (ncgr->header.format == NCGR_TYPE_NCBR) {
 		BYTE *bmp = (BYTE *) calloc(nTiles, 8 * ncgr->nBits);
 		int nWidth = ncgr->tilesX * 8;
@@ -663,7 +667,7 @@ int ncgrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	*(uint16_t *) (ncgHeader + 0xE) = !!charSize + !!attrSize + !!linkSize + !!cmntSize;
 	bstreamWrite(stream, ncgHeader, sizeof(ncgHeader));
 	bstreamWrite(stream, charHeader, sizeof(charHeader));
-	ncgrWriteBin(ncgr, stream);
+	ncgrWriteChars(ncgr, stream);
 	if (ncgr->tilesX == ncgr->attrWidth && ncgr->tilesY == ncgr->attrHeight) {
 		bstreamWrite(stream, attrHeader, sizeof(attrHeader));
 		bstreamWrite(stream, ncgr->attr, ncgr->attrWidth * ncgr->attrHeight);
@@ -689,7 +693,7 @@ int ncgrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 int ncgrWriteAcg(NCGR *ncgr, BSTREAM *stream) {
 	int attrSize = ncgr->attrWidth * ncgr->attrHeight;
 
-	ncgrWriteBin(ncgr, stream);
+	ncgrWriteChars(ncgr, stream);
 
 	//write attribute for ACG
 	for (int i = 0; i < attrSize; i++) {
@@ -749,7 +753,7 @@ int ncgrWriteHudson(NCGR *ncgr, BSTREAM *stream) {
 		bstreamWrite(stream, header, sizeof(header));
 	}
 
-	ncgrWriteBin(ncgr, stream);
+	ncgrWriteChars(ncgr, stream);
 	return 0;
 }
 

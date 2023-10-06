@@ -90,6 +90,11 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size);
 int ncgrReadFile(NCGR *ncgr, LPCWSTR path);
 
 //
+// Write character data to stream.
+//
+void ncgrWriteChars(NCGR *ncgr, BSTREAM *stream);
+
+//
 // Write character graphics to a stream.
 //
 int ncgrWrite(NCGR *ncgr, BSTREAM *stream);

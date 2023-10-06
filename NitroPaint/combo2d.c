@@ -222,19 +222,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		bstreamWrite(stream, nscr->data, nscr->dataSize);
 		bstreamWrite(stream, &ncgr->nTiles, 4);
 
-		if (ncgr->nBits == 8) {
-			for (int i = 0; i < ncgr->nTiles; i++) {
-				bstreamWrite(stream, ncgr->tiles[i], 64);
-			}
-		} else {
-			BYTE buffer[32];
-			for (int i = 0; i < ncgr->nTiles; i++) {
-				for (int j = 0; j < 32; j++) {
-					buffer[j] = ncgr->tiles[i][j * 2] | (ncgr->tiles[i][j * 2 + 1] << 4);
-				}
-				bstreamWrite(stream, buffer, sizeof(buffer));
-			}
-		}
+		ncgrWriteChars(ncgr, stream);
 	} else if (combo->header.format == COMBO2D_TYPE_BANNER) {
 		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
 		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
@@ -242,14 +230,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		BANNER_INFO *info = (BANNER_INFO *) combo->extraData;
 		unsigned short header[16] = { 0 };
 		bstreamWrite(stream, header, sizeof(header));
-
-		BYTE charBuffer[32];
-		for (int i = 0; i < ncgr->nTiles; i++) {
-			for (int j = 0; j < 32; j++) {
-				charBuffer[j] = ncgr->tiles[i][j * 2] | (ncgr->tiles[i][j * 2 + 1] << 4);
-			}
-			bstreamWrite(stream, charBuffer, sizeof(charBuffer));
-		}
+		ncgrWriteChars(ncgr, stream);
 
 		//write palette
 		bstreamWrite(stream, nclr->colors, 32);
@@ -268,35 +249,49 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		bstreamWrite(stream, header, sizeof(header));
 	} else if (combo->header.format == COMBO2D_TYPE_DATAFILE) {
 		//the original data is in combo->extraData->data, but has key replacements
-		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
-		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
-		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
-
 		DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
 		char *copy = (char *) malloc(dfc->size);
 		memcpy(copy, dfc->data, dfc->size);
 
-		if (nclr != NULL) {
-			int palDataSize = nclr->nColors * 2;
-			if (palDataSize > dfc->pltSize) palDataSize = dfc->pltSize;
-			memcpy(copy + dfc->pltOffset, nclr->colors, 2 * nclr->nColors);
-		}
-		if (ncgr != NULL) {
-			//take the easy way, temporarily change the format of the NCGR to raw and write
-			BSTREAM chrStream;
-			bstreamCreate(&chrStream, NULL, 0);
-			ncgr->header.format = NCGR_TYPE_BIN;
-			ncgrWrite(ncgr, &chrStream);
-			ncgr->header.format = NCGR_TYPE_COMBO;
+		//process all contained objects
+		for (int i = 0; i < combo->nLinks; i++) {
+			OBJECT_HEADER *object = combo->links[i];
+			int type = object->type;
 
-			if (chrStream.size > dfc->chrSize) chrStream.size = dfc->chrSize;
-			memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
-			bstreamFree(&chrStream);
-		}
-		if (nscr != NULL) {
-			int scrDataSize = nscr->dataSize;
-			if (scrDataSize > dfc->scrSize) scrDataSize = dfc->scrSize;
-			memcpy(copy + dfc->scrOffset, nscr->data, scrDataSize);
+			//write object
+			switch (type) {
+				case FILE_TYPE_PALETTE:
+				{
+					NCLR *nclr = (NCLR *) object;
+
+					int palDataSize = nclr->nColors * 2;
+					if (palDataSize > dfc->pltSize) palDataSize = dfc->pltSize;
+					memcpy(copy + dfc->pltOffset, nclr->colors, 2 * nclr->nColors);
+					break;
+				}
+				case FILE_TYPE_CHARACTER:
+				{
+					NCGR *ncgr = (NCGR *) object;
+
+					BSTREAM chrStream;
+					bstreamCreate(&chrStream, NULL, 0);
+					ncgrWriteChars(ncgr, &chrStream);
+
+					if (chrStream.size > dfc->chrSize) chrStream.size = dfc->chrSize;
+					memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
+					bstreamFree(&chrStream);
+					break;
+				}
+				case FILE_TYPE_SCREEN:
+				{
+					NSCR *nscr = (NSCR *) object;
+
+					int scrDataSize = nscr->dataSize;
+					if (scrDataSize > dfc->scrSize) scrDataSize = dfc->scrSize;
+					memcpy(copy + dfc->scrOffset, nscr->data, scrDataSize);
+					break;
+				}
+			}
 		}
 
 		bstreamWrite(stream, copy, dfc->size);

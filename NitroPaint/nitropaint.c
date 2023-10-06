@@ -415,6 +415,28 @@ char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
 	return NULL;
 }
 
+const char *propNextLine(const char *ptr, const char *end) {
+	while (ptr < end && *ptr != '\n' && *ptr != '\r') {
+		//scan for newline
+		ptr++;
+	}
+
+	//scan forward all whitespace
+	while (ptr < end && (*ptr <= ' ' && *ptr > '\0')) ptr++;
+	return ptr;
+}
+
+const char *propToValue(const char *ptr, const char *end) {
+	//scan for :
+	while (ptr < end && *ptr != ':') {
+		ptr++;
+	}
+
+	//scan forward all whitespace
+	while (ptr < end && (*ptr <= ' ' && *ptr > '\0')) ptr++;
+	return ptr;
+}
+
 void parseOffsetSizePair(const char *pair, int *offset, int *size) {
 	//advance past whitespace
 	const char *ptr = pair;
@@ -491,11 +513,6 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		char *chrRef = propGetProperty(buffer, dwSize, "CHR");
 		char *scrRef = propGetProperty(buffer, dwSize, "SCR");
 
-		int pltOffset = 0, pltSize = 0, chrOffset = 0, chrSize = 0, scrOffset = 0, scrSize = 0;
-		if (pltRef != NULL) parseOffsetSizePair(pltRef, &pltOffset, &pltSize);
-		if (chrRef != NULL) parseOffsetSizePair(chrRef, &chrOffset, &chrSize);
-		if (scrRef != NULL) parseOffsetSizePair(scrRef, &scrOffset, &scrSize);
-
 		//determine the actual path of the referenced file.
 		int lastSlash = -1;
 		for (unsigned i = 0; i < wcslen(path); i++) {
@@ -518,6 +535,11 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		combo->header.dispose = NULL;
 		combo->header.compression = COMPRESSION_NONE;
 		combo->extraData = (DATAFILECOMBO *) calloc(1, sizeof(DATAFILECOMBO));
+
+		int pltOffset = 0, pltSize = 0, chrOffset = 0, chrSize = 0, scrOffset = 0, scrSize = 0;
+		if (pltRef != NULL) parseOffsetSizePair(pltRef, &pltOffset, &pltSize);
+		if (chrRef != NULL) parseOffsetSizePair(chrRef, &chrOffset, &chrSize);
+		if (scrRef != NULL) parseOffsetSizePair(scrRef, &scrOffset, &scrSize);
 
 		DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
 		dfc->pltOffset = pltOffset;
