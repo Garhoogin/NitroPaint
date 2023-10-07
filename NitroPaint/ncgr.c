@@ -275,69 +275,6 @@ int ncgrReadAcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int ncgrReadCombo(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
-	int format = combo2dIsValid(buffer, size);
-	ncgrInit(ncgr, NCGR_TYPE_COMBO);
-
-	char *charSrc = NULL;
-	int freeChar = 0; //should free buffer?
-	switch (format) {
-		case COMBO2D_TYPE_TIMEACE:
-		{
-			ncgr->nTiles = *(int *) (buffer + 0xA08);
-			ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
-			ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
-			ncgr->tilesX = calculateWidth(ncgr->nTiles);
-			ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-			charSrc = buffer + 0xA0C;
-			break;
-		}
-		case COMBO2D_TYPE_BANNER:
-		{
-			ncgr->nTiles = 16;
-			ncgr->tileWidth = 8;
-			ncgr->tilesX = 4;
-			ncgr->tilesY = 4;
-			ncgr->nBits = 4;
-			ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-			charSrc = buffer + 0x20;
-			break;
-		}
-		case COMBO2D_TYPE_5BG:
-		{
-			char *bgdt = g2dGetSectionByMagic(buffer, size, 'BGDT');
-			if (bgdt == NULL) bgdt = g2dGetSectionByMagic(buffer, size, 'TDGB');
-			char *dfpl = g2dGetSectionByMagic(buffer, size, 'DFPL');
-			if (dfpl == NULL) dfpl = g2dGetSectionByMagic(buffer, size, 'LPFD');
-
-			int chrWidth = *(uint16_t *) (bgdt + 0x14);
-			int chrHeight = *(uint16_t *) (bgdt + 0x16);
-			int scrSize = *(uint32_t *) (bgdt + 0x0C);
-			int mapping = *(uint32_t *) (bgdt + 0x08);
-			int charSize = *(uint32_t *) (bgdt + 0x18);
-			int charOffset = (bgdt - buffer) + 0x1C + scrSize;
-			int nBits = dfpl == NULL ? 8 : 4; //8-bit if no DFPL present
-			charSrc = (char *) calloc(chrWidth * chrHeight, 8 * nBits);
-			freeChar = 1; //since we allocated the buffer
-
-			//copy from file up to the size stored, the remainder are left empty
-			memcpy(charSrc, buffer + charOffset, charSize);
-
-			ncgr->nTiles = chrWidth * chrHeight;
-			ncgr->tilesX = chrWidth;
-			ncgr->tilesY = chrHeight;
-			ncgr->nBits = nBits;
-			ncgr->mappingMode = mapping;
-			break;
-		}
-	}
-
-	ncgrReadChars(ncgr, charSrc);
-	if (freeChar) free(charSrc);
-
-	return 0;
-}
-
 int ncgrReadBin(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgrInit(ncgr, NCGR_TYPE_BIN);
 	ncgr->nTiles = size / 0x20;
@@ -399,7 +336,6 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 		if (ncgrIsValidNcg(buffer, size)) return ncgrReadNcg(ncgr, buffer, size);
 		if (ncgrIsValidAcg(buffer, size)) return ncgrReadAcg(ncgr, buffer, size);
 		if (ncgrIsValidHudson(buffer, size)) return hudsonReadCharacter(ncgr, buffer, size);
-		if (combo2dIsValid(buffer, size)) return ncgrReadCombo(ncgr, buffer, size);
 		if (ncgrIsValidBin(buffer, size)) return ncgrReadBin(ncgr, buffer, size);
 	}
 	if (size < 0x10) return 1;

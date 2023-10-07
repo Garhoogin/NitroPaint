@@ -223,46 +223,6 @@ int nscrReadBin(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 	return 0;
 }
 
-int nscrReadCombo(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
-	int type = combo2dIsValid(file, dwFileSize);
-	nscrInit(nscr, NSCR_TYPE_COMBO);
-
-	int width = 0, height = 0, dataSize = 0;
-	switch (type) {
-		case COMBO2D_TYPE_TIMEACE:
-			height = 256;
-			width = 256;
-			dataSize = 2048;
-
-			nscr->data = (uint16_t *) calloc(1024, 2);
-			memcpy(nscr->data, file + 0x208, dataSize);
-			break;
-		case COMBO2D_TYPE_5BG:
-		{
-			char *bgdt = g2dGetSectionByMagic(file, dwFileSize, 'BGDT');
-			if (bgdt == NULL) bgdt = g2dGetSectionByMagic(file, dwFileSize, 'TDGB');
-
-			int scrX = *(uint16_t *) (bgdt + 0x10);
-			int scrY = *(uint16_t *) (bgdt + 0x12);
-			char *scr = bgdt + 0x1C;
-
-			width = scrX * 8;
-			height = scrY * 8;
-			dataSize = scrX * scrY * 2;
-
-			nscr->data = (uint16_t *) calloc(scrX * scrY, 2);
-			memcpy(nscr->data, scr, dataSize);
-			break;
-		}
-	}
-	nscr->nWidth = width;
-	nscr->nHeight = height;
-	nscr->dataSize = dataSize;
-	nscr->nHighestIndex = 0;
-	nscrGetHighestCharacter(nscr);
-	return 0;
-}
-
 int nscrReadNsc(NSCR *nscr, unsigned char *file, unsigned int size) {
 	nscrInit(nscr, NSCR_TYPE_NC);
 
@@ -371,7 +331,6 @@ int nscrRead(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 		if (nscrIsValidAsc(file, dwFileSize)) return nscrReadAsc(nscr, file, dwFileSize);
 		if (nscrIsValidHudson(file, dwFileSize)) return hudsonScreenRead(nscr, file, dwFileSize);
 		if (nscrIsValidBin(file, dwFileSize)) return nscrReadBin(nscr, file, dwFileSize);
-		if (combo2dIsValid(file, dwFileSize)) return nscrReadCombo(nscr, file, dwFileSize);
 	}
 	if (dwFileSize < 0x14) return 1;
 	uint32_t dwFirst = *(uint32_t *) file;

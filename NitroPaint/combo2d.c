@@ -66,13 +66,15 @@ void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object) {
 int combo2dFormatHasPalette(int format) {
 	return format == COMBO2D_TYPE_BANNER
 		|| format == COMBO2D_TYPE_TIMEACE
-		|| format == COMBO2D_TYPE_5BG;
+		|| format == COMBO2D_TYPE_5BG
+		|| format == COMBO2D_TYPE_MBB;
 }
 
 int combo2dFormatHasCharacter(int format) {
 	return format == COMBO2D_TYPE_BANNER
 		|| format == COMBO2D_TYPE_TIMEACE
-		|| format == COMBO2D_TYPE_5BG;
+		|| format == COMBO2D_TYPE_5BG
+		|| format == COMBO2D_TYPE_MBB;
 }
 
 int combo2dFormatHasScreen(int format) {
@@ -132,6 +134,45 @@ int combo2dIsValidTimeAce(BYTE *file, int size) {
 	return 1;
 }
 
+int combo2dIsValidMbb(BYTE *file, unsigned int size) {
+	if (size < 0x74) return 0;
+
+	//check that offsets aren't out of bounds
+	uint32_t palofs = *(uint32_t *) (file + 0x00);
+	uint32_t chrofs = *(uint32_t *) (file + 0x04);
+	uint32_t *scrofs = (uint32_t *) (file + 0x08);
+	if (palofs < 0x70 || palofs >= size) return 0;
+	if (chrofs < 0x70 || chrofs >= size) return 0;
+
+	//check palette size
+	if (palofs + 0x200 > size) return 0; //palette always 256 colors
+
+	//check that at least one screen is valid
+	int scrBitmap = 0;
+	for (int i = 0; i < 4; i++) {
+		uint32_t scrnofs = scrofs[i];
+		if (scrnofs >= size) return 0;
+
+		if (scrnofs == 0) continue;
+		scrBitmap |= 1 << i;
+	}
+	if (scrBitmap == 0) return 0;
+
+	//validate screen datas
+	for (int i = 0; i < 4; i++) {
+		if (!(scrBitmap & (1 << i))) continue;
+
+		uint16_t scrWidth = *(uint16_t *) (file + 0x18 + i * 0x10 + 0x8);
+		uint16_t scrHeight = *(uint16_t *) (file + 0x18 + i * 0x10 + 0xA);
+		if ((scrWidth & 7) || (scrHeight & 7) || (scrWidth == 0) || (scrHeight == 0)) return 0;
+
+		int screenSize = (scrWidth / 8) * (scrHeight / 8) * 2;
+		if (scrofs[i] + screenSize > size) return 0;
+	}
+
+	return 1;
+}
+
 int combo2dIsValidBanner(BYTE *file, int size) {
 	if (size < 0x840) return 0;
 
@@ -178,6 +219,211 @@ int combo2dIsValid(BYTE *file, int size) {
 	if (combo2dIsValid5bg(file, size)) return COMBO2D_TYPE_5BG;
 	if (combo2dIsValidTimeAce(file, size)) return COMBO2D_TYPE_TIMEACE;
 	if (combo2dIsValidBanner(file, size)) return COMBO2D_TYPE_BANNER;
+	if (combo2dIsValidMbb(file, size)) return COMBO2D_TYPE_MBB;
+	return 0;
+}
+
+int combo2dReadTimeAce(COMBO2D *combo, char *buffer, int size) {
+	//add palette
+	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
+	nclrInit(nclr, NCLR_TYPE_COMBO);
+	nclr->nColors = 256;
+	nclr->extPalette = 0;
+	nclr->idxTable = NULL;
+	nclr->nBits = 4;
+	nclr->nPalettes = 0;
+	nclr->totalSize = 256 * sizeof(COLOR);
+	nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
+	memcpy(nclr->colors, buffer + 4, 512);
+	combo2dLink(combo, &nclr->header);
+
+	//add character
+	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+	ncgrInit(ncgr, NCGR_TYPE_COMBO);
+	ncgr->nTiles = *(int *) (buffer + 0xA08);
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
+	ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
+	ncgr->tilesX = calculateWidth(ncgr->nTiles);
+	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ncgrReadChars(ncgr, buffer + 0xA0C);
+	combo2dLink(combo, &ncgr->header);
+
+	//add screen
+	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
+	nscrInit(nscr, NSCR_TYPE_COMBO);
+	nscr->nWidth = 256;
+	nscr->nHeight = 256;
+	nscr->dataSize = (nscr->nWidth / 8) * (nscr->nHeight / 8) * 2;
+	nscr->nHighestIndex = 0;
+	nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
+	memcpy(nscr->data, buffer + 0x208, nscr->dataSize);
+	nscrGetHighestCharacter(nscr);
+	combo2dLink(combo, &nscr->header);
+
+	return 0;
+}
+
+int combo2dRead5bg(COMBO2D *combo, char *buffer, int size) {
+	char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
+	if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
+	char *bgdt = g2dGetSectionByMagic(buffer, size, 'BGDT');
+	if (bgdt == NULL) bgdt = g2dGetSectionByMagic(buffer, size, 'TDGB');
+	char *dfpl = g2dGetSectionByMagic(buffer, size, 'DFPL');
+	if (dfpl == NULL) dfpl = g2dGetSectionByMagic(buffer, size, 'LPFD');
+
+	int nColors = *(uint32_t *) (palt + 0x08);
+
+	int chrWidth = *(uint16_t *) (bgdt + 0x14);
+	int chrHeight = *(uint16_t *) (bgdt + 0x16);
+	int scrSize = *(uint32_t *) (bgdt + 0x0C);
+	int mapping = *(uint32_t *) (bgdt + 0x08);
+	int charSize = *(uint32_t *) (bgdt + 0x18);
+	int charOffset = 0x1C + scrSize;
+	int nBits = dfpl == NULL ? 8 : 4; //8-bit if no DFPL present
+
+	int scrX = *(uint16_t *) (bgdt + 0x10);
+	int scrY = *(uint16_t *) (bgdt + 0x12);
+	int scrDataSize = scrX * scrY * 2;
+	int scrWidth = scrX * 8;
+	int scrHeight = scrY * 8;
+
+	//addpalette
+	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
+	nclrInit(nclr, NCLR_TYPE_COMBO);
+	nclr->nColors = nColors;
+	nclr->extPalette = 0;
+	nclr->idxTable = NULL;
+	nclr->nBits = 4;
+	nclr->nPalettes = 0;
+	nclr->totalSize = nColors * sizeof(COLOR);
+	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+	memcpy(nclr->colors, palt + 0xC, nColors * sizeof(COLOR));
+	combo2dLink(combo, &nclr->header);
+
+	//add character
+	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+	ncgrInit(ncgr, NCGR_TYPE_COMBO);
+	ncgr->nTiles = chrWidth * chrHeight;
+	ncgr->tilesX = chrWidth;
+	ncgr->tilesY = chrHeight;
+	ncgr->nBits = nBits;
+	ncgr->mappingMode = mapping;
+	ncgrReadChars(ncgr, bgdt + charOffset);
+	combo2dLink(combo, &ncgr->header);
+
+	//add screen
+	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
+	nscrInit(nscr, NSCR_TYPE_COMBO);
+	nscr->nWidth = scrWidth;
+	nscr->nHeight = scrHeight;
+	nscr->dataSize = scrDataSize;
+	nscr->nHighestIndex = 0;
+	nscr->data = (uint16_t *) calloc(scrDataSize, 1);
+	memcpy(nscr->data, bgdt + 0x1C, scrDataSize);
+	nscrGetHighestCharacter(nscr);
+	combo2dLink(combo, &nscr->header);
+
+	return 0;
+}
+
+int combo2dReadBanner(COMBO2D *combo, char *buffer, int size) {
+	BANNER_INFO *info = (BANNER_INFO *) calloc(1, sizeof(BANNER_INFO));
+	combo->extraData = (void *) info;
+	info->version = *(unsigned short *) buffer;
+	memcpy(info->titleJp, buffer + 0x240, 0x600);
+	if (info->version >= 2) memcpy(info->titleCn, buffer + 0x840, 0x100);
+	if (info->version >= 3) memcpy(info->titleHn, buffer + 0x940, 0x100);
+
+	//add palette
+	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
+	nclrInit(nclr, NCLR_TYPE_COMBO);
+	nclr->nColors = 16;
+	nclr->extPalette = 0;
+	nclr->idxTable = NULL;
+	nclr->nBits = 4;
+	nclr->nPalettes = 0;
+	nclr->totalSize = 16 * sizeof(COLOR);
+	nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
+	memcpy(nclr->colors, buffer + 0x220, 32);
+	combo2dLink(combo, &nclr->header);
+
+	//add character
+	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+	ncgrInit(ncgr, FILE_TYPE_CHARACTER);
+	ncgr->nTiles = 16;
+	ncgr->tileWidth = 8;
+	ncgr->tilesX = 4;
+	ncgr->tilesY = 4;
+	ncgr->nBits = 4;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	ncgrReadChars(ncgr, buffer + 0x20);
+	combo2dLink(combo, &ncgr->header);
+
+	return 0;
+}
+
+int combo2dReadMbb(COMBO2D *combo, char *buffer, int size) {
+	MBBCOMBO *mbbInfo = (MBBCOMBO *) calloc(1, sizeof(MBBCOMBO));
+	combo->extraData = mbbInfo;
+	mbbInfo->screenBitmap = 0;
+
+	uint32_t palofs = *(uint32_t *) (buffer + 0x00);
+	uint32_t chrofs = *(uint32_t *) (buffer + 0x04);
+	uint32_t charSize = *(uint16_t *) (buffer + 0x60);
+	uint32_t *scrofs = (uint32_t *) (buffer + 0x08);
+
+	int nBits = (((unsigned char) buffer[0x59]) == 0x80) ? 8 : 4;
+	int nChars = (charSize * 0x20) / (8 * nBits);
+
+	//add palette
+	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
+	nclrInit(nclr, NCLR_TYPE_COMBO);
+	nclr->nColors = 256;
+	nclr->extPalette = 0;
+	nclr->idxTable = NULL;
+	nclr->nBits = nBits;
+	nclr->nPalettes = 0;
+	nclr->totalSize = nclr->nColors * sizeof(COLOR);
+	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+	memcpy(nclr->colors, buffer + palofs, nclr->nColors * sizeof(COLOR));
+	combo2dLink(combo, &nclr->header);
+
+	//add character
+	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+	ncgrInit(ncgr, NCGR_TYPE_COMBO);
+	ncgr->nBits = nBits;
+	ncgr->nTiles = nChars;
+	ncgr->tilesX = calculateWidth(ncgr->nTiles);
+	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ncgr->tileWidth = 8;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	ncgrReadChars(ncgr, buffer + chrofs);
+	combo2dLink(combo, &ncgr->header);
+
+	//add screen
+	for (int i = 0; i < 4; i++) {
+		uint32_t scrnofs = scrofs[i];
+		if (scrnofs == 0) continue;
+
+		int scrWidth = *(uint16_t *) (buffer + 0x18 + i * 0x10 + 0x8);
+		int scrHeight = *(uint16_t *) (buffer + 0x18 + i * 0x10 + 0xA);
+		int scrDataSize = (scrWidth / 8) * (scrHeight / 8) * 2;
+
+		//add screen
+		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
+		nscrInit(nscr, NSCR_TYPE_COMBO);
+		nscr->nWidth = scrWidth;
+		nscr->nHeight = scrHeight;
+		nscr->dataSize = scrDataSize;
+		nscr->nHighestIndex = 0;
+		nscr->data = (uint16_t *) calloc(scrDataSize, 1);
+		memcpy(nscr->data, buffer + scrnofs, scrDataSize);
+		nscrGetHighestCharacter(nscr);
+		combo2dLink(combo, &nscr->header);
+
+		mbbInfo->screenBitmap |= (1 << i);
+	}
+
 	return 0;
 }
 
@@ -186,21 +432,15 @@ int combo2dRead(COMBO2D *combo, char *buffer, int size) {
 	if (format == COMBO2D_TYPE_INVALID) return 1;
 
 	combo2dInit(combo, format);
-
 	switch (format) {
 		case COMBO2D_TYPE_TIMEACE:
+			return combo2dReadTimeAce(combo, buffer, size);
 		case COMBO2D_TYPE_5BG:
-			return 0;
+			return combo2dRead5bg(combo, buffer, size);
 		case COMBO2D_TYPE_BANNER:
-		{
-			BANNER_INFO *info = (BANNER_INFO *) calloc(1, sizeof(BANNER_INFO));
-			combo->extraData = (void *) info;
-			info->version = *(unsigned short *) buffer;
-			memcpy(info->titleJp, buffer + 0x240, 0x600);
-			if (info->version >= 2) memcpy(info->titleCn, buffer + 0x840, 0x100);
-			if (info->version >= 3) memcpy(info->titleHn, buffer + 0x940, 0x100);
-			return 0;
-		}
+			return combo2dReadBanner(combo, buffer, size);
+		case COMBO2D_TYPE_MBB:
+			return combo2dReadMbb(combo, buffer, size);
 	}
 	return 1;
 }
@@ -363,6 +603,44 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 			free(attr);
 		}
 
+	} else if (combo->header.format == COMBO2D_TYPE_MBB) {
+		MBBCOMBO *mbbInfo = (MBBCOMBO *) combo->extraData;
+		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+
+		unsigned char header[0x74] = { 0 };
+		*(uint32_t *) (header + 0x00) = sizeof(header);
+		*(uint32_t *) (header + 0x04) = sizeof(header) + 0x200;
+		*(uint16_t *) (header + 0x60) = ncgr->nTiles * (8 * ncgr->nBits) / 0x20;
+		header[0x59] = (ncgr->nBits == 8) ? 0x80 : 0;
+
+		//write screen offset infos
+		int nScreensWritten = 0;
+		uint32_t currentScreenOffset = sizeof(header) + 0x200 + ncgr->nTiles * (8 * ncgr->nBits);
+		for (int i = 0; i < 4; i++) {
+			if (!(mbbInfo->screenBitmap & (1 << i))) continue;
+
+			NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, nScreensWritten);
+			*(uint32_t *) (header + 0x08 + i * 4) = currentScreenOffset;
+			*(uint16_t *) (header + 0x18 + i * 0x10 + 0x8) = nscr->nWidth;
+			*(uint16_t *) (header + 0x18 + i * 0x10 + 0xA) = nscr->nHeight;
+			currentScreenOffset += nscr->dataSize;
+		}
+
+		bstreamWrite(stream, header, sizeof(header));
+		bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
+		ncgrWriteChars(ncgr, stream);
+
+		//write screens
+		nScreensWritten = 0;
+		for (int i = 0; i < 4; i++) {
+			if (!(mbbInfo->screenBitmap & (1 << i))) continue;
+			NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, nScreensWritten);
+
+			bstreamWrite(stream, nscr->data, nscr->dataSize);
+
+			nScreensWritten++;
+		}
 	}
 
 	return 0;

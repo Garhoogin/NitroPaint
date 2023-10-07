@@ -6,6 +6,7 @@
 #define COMBO2D_TYPE_BANNER      2
 #define COMBO2D_TYPE_DATAFILE    3
 #define COMBO2D_TYPE_5BG         4
+#define COMBO2D_TYPE_MBB         5
 
 //structure that manages a linkage of palette, graphics, and screen.
 typedef struct COMBO2D_ {
@@ -28,6 +29,10 @@ typedef struct DATAFILECOMBO_ {
 	int scrOffset;
 	int scrSize;
 } DATAFILECOMBO; //structure to maintain a file with embedded graphics data (sizes and offsets)
+
+typedef struct MBBCOMBO_ {
+	int screenBitmap; //bit for each screen present
+} MBBCOMBO;
 
 //these lines cause chaos :(
 //#include "nclr.h"

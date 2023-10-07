@@ -167,52 +167,6 @@ int binPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int comboReadPalette(NCLR *nclr, unsigned char *buffer, unsigned int size) {
-	int type = combo2dIsValid(buffer, size);
-
-	nclrInit(nclr, NCLR_TYPE_COMBO);
-	switch (type) {
-		case COMBO2D_TYPE_TIMEACE:
-			nclr->nColors = 256;
-			nclr->extPalette = 0;
-			nclr->idxTable = NULL;
-			nclr->nBits = 4;
-			nclr->nPalettes = 0;
-			nclr->totalSize = 256 * sizeof(COLOR);
-			nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
-			memcpy(nclr->colors, buffer + 4, 512);
-			break;
-		case COMBO2D_TYPE_BANNER:
-			nclr->nColors = 16;
-			nclr->extPalette = 0;
-			nclr->idxTable = NULL;
-			nclr->nBits = 4;
-			nclr->nPalettes = 0;
-			nclr->totalSize = 16 * sizeof(COLOR);
-			nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
-			memcpy(nclr->colors, buffer + 0x220, 32);
-			break;
-		case COMBO2D_TYPE_5BG:
-		{
-			char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
-			if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
-
-			int nColors = *(uint32_t *) (palt + 0x08);
-			nclr->nColors = nColors;
-			nclr->extPalette = 0;
-			nclr->idxTable = NULL;
-			nclr->nBits = 4;
-			nclr->nPalettes = 0;
-			nclr->totalSize = nColors * sizeof(COLOR);
-			nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
-			memcpy(nclr->colors, palt + 0xC, nColors * sizeof(COLOR));
-			break;
-		}
-	}
-
-	return 0;
-}
-
 int ncPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	if (!nclrIsValidNcl(buffer, size)) return 1;
 
@@ -276,7 +230,6 @@ int nclrRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 		if (nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
 		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
 		if (nclrIsValidNtfp(buffer, size)) return binPaletteRead(nclr, buffer, size);
-		if (combo2dIsValid(buffer, size)) return comboReadPalette(nclr, buffer, size);
 	}
 	char *pltt = g2dGetSectionByMagic(buffer, size, 'PLTT');
 	char *pcmp = g2dGetSectionByMagic(buffer, size, 'PCMP');

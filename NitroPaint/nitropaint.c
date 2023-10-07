@@ -24,6 +24,7 @@
 #include "colorchooser.h"
 #include "ui.h"
 #include "texconv.h"
+#include "editor.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -658,44 +659,57 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			int type = combo2dIsValid(decompressed, decompressedSize);
 			free(decompressed);
 
-			//if there is already an NCLR open, close it.
-			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
-			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
-
-			//if there is already an NCGR open, close it.
-			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
-			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
-			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-
-			//create NSCR and make it active
-			HWND hWndNscrViewer = NULL;
-			if (combo2dFormatHasScreen(type)) {
-				hWndNscrViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-			}
-
-			//create a combo frame
+			//read combo
 			COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
 			combo2dRead(combo, buffer, dwSize);
-			NCLR *nclr = NULL;
-			NCGR *ncgr = NULL;
-			NSCR *nscr = NULL;
 
-			if (combo2dFormatHasPalette(type)) nclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
-			if (combo2dFormatHasCharacter(type)) ncgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
-			if (combo2dFormatHasScreen(type)) nscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->nscr;
+			//open the component objects
+			for (int i = 0; i < combo->nLinks; i++) {
+				OBJECT_HEADER *object = combo->links[i];
+				int type = object->type;
 
-			combo2dLink(combo, &nclr->header);
-			combo2dLink(combo, &ncgr->header);
-			combo2dLink(combo, &nscr->header);
-			if(nclr != NULL) nclr->combo2d = combo;
-			if(ncgr != NULL) ncgr->combo2d = combo;
-			if(nscr != NULL) nscr->combo2d = combo;
+				HWND h = NULL;
+				OBJECT_HEADER *copy = combo->links[i];
+				switch (type) {
 
-			combo->header.compression = COMPRESSION_NONE;
-			combo->header.dispose = NULL;
-			combo->header.size = sizeof(COMBO2D);
-			combo->header.type = FILE_TYPE_COMBO2D;
-			combo->header.format = type;
+					case FILE_TYPE_PALETTE:
+						((NCLR *) object)->combo2d = combo;
+
+						//if there is already an NCLR open, close it.
+						if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
+						h = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, (NCLR *) object);
+						data->hWndNclrViewer = h;
+						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
+						break;
+
+					case FILE_TYPE_CHARACTER:
+						((NCGR *) object)->combo2d = combo;
+
+						//if there is already an NCGR open, close it.
+						if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
+						h = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, (NCGR *) object);
+						data->hWndNcgrViewer = h;
+						InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
+						break;
+
+					case FILE_TYPE_SCREEN:
+						//create NSCR and make it active
+						((NSCR *) object)->combo2d = combo;
+						h = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, (NSCR *) object);
+						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
+						break;
+				}
+
+				//if we created a copy, free the original and keep the copy
+				if (copy != combo->links[i]) {
+					free(combo->links[i]);
+					combo->links[i] = copy;
+				}
+
+				//point the editor window at the right file
+				EditorSetFile(h, path);
+			}
 			break;
 		}
 		default: //unrecognized file

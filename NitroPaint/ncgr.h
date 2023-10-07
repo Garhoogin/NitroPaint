@@ -80,6 +80,11 @@ int ncgrGetTile(NCGR *ncgr, NCLR *nclr, int x, int y, COLOR32 *out, int previewP
 void ncgrChangeWidth(NCGR *ncgr, int width);
 
 //
+// Read character data from binary data and store in an NCGR.
+//
+void ncgrReadChars(NCGR *ncgr, unsigned char *buffer);
+
+//
 // Read character graphics from a byte array.
 //
 int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size);
