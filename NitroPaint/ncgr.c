@@ -58,6 +58,8 @@ int ncgrIsValidNcg(unsigned char *buffer, unsigned int size) {
 }
 
 int ncgrAcgScanFooter(unsigned char *buffer, unsigned int size) {
+	if (size < 8) return -1;
+
 	//scan for possible locations of the footer
 	for (unsigned int i = 0; i < size - 8; i++) {
 		if (buffer[i] != 'L') continue;
