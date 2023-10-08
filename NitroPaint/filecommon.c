@@ -9,7 +9,8 @@
 #include "gdip.h"
 #include "g2dfile.h"
 
-LPCWSTR compressionNames[] = { L"None", L"LZ77", L"LZ11", L"LZ11 COMP", L"Huffman 4", L"Huffman 8", L"RLE", L"Diff 8", L"Diff 16", L"LZ77 Header", NULL };
+LPCWSTR compressionNames[] = { L"None", L"LZ77", L"LZ11", L"LZ11 COMP", L"Huffman 4", L"Huffman 8", L"RLE", L"Diff 8", L"Diff 16", L"LZ77 Header", 
+	L"MvDK", NULL };
 
 int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;

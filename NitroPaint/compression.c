@@ -1093,6 +1093,490 @@ char *lz11CompHeaderCompress(char *buffer, int size, int *compressedSize) {
 	return stream.buffer;
 }
 
+
+
+//MvDK compression
+
+#define MVDK_DUMMY       0
+#define MVDK_LZ          1
+#define MVDK_DEFLATE     2
+#define MVDK_RLE         3
+#define MVDK_INVALID     -1
+
+typedef struct DEFLATE_TABLE_ENTRY_ {
+	uint16_t nMinorBits;
+	uint16_t majorPart;
+} DEFLATE_TABLE_ENTRY;
+
+typedef struct DEFLATE_TREE_NODE {
+	struct DEFLATE_TREE_NODE *left;
+	struct DEFLATE_TREE_NODE *right;
+	uint8_t depth;
+	uint8_t isLeaf;
+	uint16_t value;
+	uint32_t path;
+} DEFLATE_TREE_NODE;
+
+typedef struct DEFLATE_WORK_BUFFER_ {
+	DEFLATE_TREE_NODE symbolNodeBuffer[855];
+	DEFLATE_TREE_NODE lengthNodeBuffer[855];
+	DEFLATE_TREE_NODE *nextAvailable;
+} DEFLATE_WORK_BUFFER;
+
+typedef struct BIT_READER_8_ {
+	unsigned char *start;
+	unsigned char *end;
+	unsigned char *pos;
+	unsigned char current;
+	uint8_t nBitsBuffered;
+	uint8_t error;
+	uint32_t nBitsRead;
+} BIT_READER_8;
+
+static const DEFLATE_TABLE_ENTRY sDeflateLengthTable[] = {
+	{ 0, 0x00 }, { 0, 0x01 }, { 0, 0x02 }, { 0, 0x03 }, { 0, 0x04 }, { 0, 0x05 }, { 0, 0x06 }, { 0, 0x07 },
+	{ 1, 0x08 }, { 1, 0x0A }, { 1, 0x0C }, { 1, 0x0E }, { 2, 0x10 }, { 2, 0x14 }, { 2, 0x18 }, { 2, 0x1C },
+	{ 3, 0x20 }, { 3, 0x28 }, { 3, 0x30 }, { 3, 0x38 }, { 4, 0x40 }, { 4, 0x50 }, { 4, 0x60 }, { 4, 0x70 },
+	{ 5, 0x80 }, { 5, 0xA0 }, { 5, 0xC0 }, { 5, 0xE0 }, { 0, 0xFF }
+};
+
+static const DEFLATE_TABLE_ENTRY sDeflateOffsetTable[] = {
+	{ 0,  0x0000 }, { 0,  0x0001 }, { 0,  0x0002 }, { 0,  0x0003 },
+	{ 1,  0x0004 }, { 1,  0x0006 }, { 2,  0x0008 }, { 2,  0x000C },
+	{ 3,  0x0010 }, { 3,  0x0018 }, { 4,  0x0020 }, { 4,  0x0030 },
+	{ 5,  0x0040 }, { 5,  0x0060 }, { 6,  0x0080 }, { 6,  0x00C0 },
+	{ 7,  0x0100 }, { 7,  0x0180 }, { 8,  0x0200 }, { 8,  0x0300 },
+	{ 9,  0x0400 }, { 9,  0x0600 }, { 10, 0x0800 }, { 10, 0x0C00 },
+	{ 11, 0x1000 }, { 11, 0x1800 }, { 12, 0x2000 }, { 12, 0x3000 },
+	{ 13, 0x4000 }, { 13, 0x6000 }
+};
+
+// deflate decompress (inflate?)
+
+void CxiInitBitReader(BIT_READER_8 *reader, unsigned char *pos, unsigned char *end) {
+	reader->pos = pos;
+	reader->end = end;
+	reader->start = pos;
+	reader->nBitsBuffered = 8;
+	reader->nBitsRead = 0;
+	reader->current = *pos;
+	reader->error = 0;
+}
+
+uint32_t CxiConsumeBit(BIT_READER_8 *reader) {
+	unsigned char byteVal = reader->current;
+	reader->nBitsBuffered--;
+	reader->nBitsRead++;
+
+	if (reader->nBitsBuffered > 0) {
+		reader->current >>= 1;
+	} else {
+		reader->pos++;
+		if (reader->pos >= reader->end) {
+			reader->error = 1;
+		} else {
+			reader->nBitsBuffered = 8;
+			reader->current = *reader->pos;
+		}
+	}
+
+	return byteVal & 1;
+}
+
+uint32_t CxiConsumeBits(BIT_READER_8 *bitReader, unsigned int nBits) {
+	uint32_t string = 0, i = 0;
+	for (i = 0; i < nBits; i++) {
+		bitReader->nBitsBuffered--;
+		bitReader->nBitsRead++;
+		string |= (bitReader->current & 1) << i;
+
+		if (bitReader->nBitsBuffered > 0) {
+			bitReader->current >>= 1;
+		} else {
+			bitReader->pos++;
+			if (bitReader->pos >= bitReader->end) {
+				bitReader->error = 1;
+				return string;
+			} else {
+				bitReader->nBitsBuffered = 8;
+				bitReader->current = *bitReader->pos;
+			}
+		}
+	}
+
+	return string;
+}
+
+
+// ----- Huffman tree construction
+
+void CxiHuffmanInsertNode(DEFLATE_WORK_BUFFER *auxBuffer, DEFLATE_TREE_NODE *root, DEFLATE_TREE_NODE *node2, unsigned int depth) {
+	//0 for left, 1 for right
+	int pathbit = (node2->path >> depth) & 1;
+
+	//depth=0 means insert here
+	if (depth == 0) {
+		if (pathbit) {
+			root->right = node2;
+		} else {
+			root->left = node2;
+		}
+		return;
+	}
+
+	if (pathbit) {
+		//create a right node if it doesn't exist
+		if (root->right == NULL) {
+			DEFLATE_TREE_NODE *available = auxBuffer->nextAvailable;
+			auxBuffer->nextAvailable++;
+			root->right = available;
+		}
+		CxiHuffmanInsertNode(auxBuffer, root->right, node2, depth - 1);
+	} else {
+		//create a left node if it doesn't exist
+		if (root->left == NULL) {
+			DEFLATE_TREE_NODE *available = auxBuffer->nextAvailable;
+			auxBuffer->nextAvailable++;
+			root->left = available;
+		}
+		CxiHuffmanInsertNode(auxBuffer, root->left, node2, depth - 1);
+	}
+}
+
+
+DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER_8 *reader, DEFLATE_TREE_NODE *nodeBuffer, unsigned int nNodes) {
+	unsigned int i, j;
+	int paths[32];
+	int depthCounts[32];
+
+	//clear buffers
+	memset(nodeBuffer, 0, nNodes * 2 * sizeof(DEFLATE_TREE_NODE));
+	memset(depthCounts, 0, sizeof(depthCounts));
+	memset(paths, 0, sizeof(paths));
+
+	i = 0;
+	while (i < nNodes) {
+		//Read 1 bit - determines format of node structure?
+		if (CxiConsumeBit(reader)) {
+			//read 7-bit number from 2 to 129 (number of loop iterations)
+			unsigned int nNodesBlock = CxiConsumeBits(reader, 7) + 2;
+			if (reader->error) return NULL;
+
+			//this 5-bit value gets put into the depth of all nodes written here
+			unsigned int depth = CxiConsumeBits(reader, 5);
+			if (reader->error) return NULL;
+			for (j = 0; j < nNodesBlock; j++) {
+				nodeBuffer[i + j].depth = depth;
+				depthCounts[depth]++;
+			}
+			i += nNodesBlock;
+		} else {
+			//read 7-bit number from 1 to 128. Number of loop iterations.
+			unsigned int nNodesBlock = CxiConsumeBits(reader, 7) + 1;
+			if (reader->error) return NULL;
+
+			for (j = 0; j < nNodesBlock; j++) {
+				uint8_t depth = CxiConsumeBits(reader, 5);
+				if (reader->error) return NULL;
+
+				nodeBuffer[i + j].depth = depth;
+				depthCounts[depth]++;
+			}
+			i += nNodesBlock;
+		}
+	}
+
+
+	int depth = 0;
+	depthCounts[0] = 0;
+	for (i = 1; i < 32; i++) {
+		depth = (depth + depthCounts[i - 1]) << 1;
+		paths[i] = depth;
+	}
+
+	DEFLATE_TREE_NODE *root = nodeBuffer + nNodes;
+	auxBuffer->nextAvailable = root + 1;
+
+	for (i = 0; i < nNodes; i++) {
+		DEFLATE_TREE_NODE *node = nodeBuffer + i;
+		node->isLeaf = 1;
+
+		if (node->depth > 0) {
+			node->path = paths[node->depth];
+			node->value = i;
+			paths[node->depth]++;
+			CxiHuffmanInsertNode(auxBuffer, root, node, node->depth - 1);
+		}
+	}
+	return root;
+}
+
+uint32_t CxiLookupTreeNode(DEFLATE_TREE_NODE *node, BIT_READER_8 *reader) {
+	while (!node->isLeaf) {
+		if (CxiConsumeBit(reader)) {
+			node = node->right;
+		} else {
+			node = node->left;
+		}
+		if (reader->error) return (uint32_t) -1;
+	}
+	return node->value;
+}
+
+unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigned char *destBase, unsigned char **pPos, unsigned char *dest, 
+		unsigned char *end, unsigned char *srcEnd, int write) {
+	//init reader
+	BIT_READER_8 reader;
+	unsigned char *pos = *pPos;
+	uint32_t nBytesConsumed = 0;
+	CxiInitBitReader(&reader, pos, srcEnd);
+
+	int isCompressed = CxiConsumeBit(&reader);
+	if (reader.error) return NULL;
+	uint32_t chunkLen = CxiConsumeBits(&reader, 31);
+	if (reader.error) return NULL;
+
+	if (!isCompressed) {
+		//uncompressed chunk, just memcpy out
+		if ((dest + chunkLen) > end || (dest + chunkLen) < destBase) return NULL;
+		if (write) memcpy(dest, pos + 4, chunkLen);
+
+		nBytesConsumed = chunkLen + 4;
+		dest += chunkLen;
+	} else {
+		unsigned char *tableBase = reader.pos;
+
+		//Consume a Huffman tree. The length of the tree data (in bits) is given by the next 16 bits in the stream.
+		uint32_t lzLen2 = CxiConsumeBits(&reader, 16);
+		uint32_t table1SizeBytes = (lzLen2 + 7) >> 3;
+		unsigned char *postTree = reader.pos + table1SizeBytes;
+		DEFLATE_TREE_NODE *huffRoot1 = CxiHuffmanReadTree(auxBuffer, &reader, auxBuffer->symbolNodeBuffer, 0x11D);
+		if (huffRoot1 == NULL) return NULL;
+
+		//Reposition stream after the Huffman tree. Read out the LZ distance tree next.
+		//Its size in bits is given by the following 16 bits from the stream.
+		CxiInitBitReader(&reader, postTree, srcEnd);
+		reader.nBitsRead = (postTree - pos) * 8;
+		lzLen2 = CxiConsumeBits(&reader, 16);
+		uint32_t table2SizeBytes = (lzLen2 + 7) >> 3;
+
+		postTree = reader.pos + table2SizeBytes;
+		DEFLATE_TREE_NODE *huffDistancesRoot = CxiHuffmanReadTree(auxBuffer, &reader, auxBuffer->lengthNodeBuffer, 0x1E);
+		if (huffDistancesRoot == NULL) return NULL;
+
+		//Reposition stream after this tree to prepare for reading the compressed sequence.
+		CxiInitBitReader(&reader, postTree, srcEnd);
+		reader.nBitsRead = (reader.pos - pos) * 8;
+
+		while (reader.nBitsRead < chunkLen && dest < end) {
+			uint32_t huffVal = CxiLookupTreeNode(huffRoot1, &reader);
+			if (huffVal == (uint32_t) -1) return NULL;
+
+			if (huffVal < 0x100) {
+				//simple byte value Huffman
+				if (write) *dest = (unsigned char) huffVal;
+				dest++;
+			} else {
+				//LZ part Huffman
+
+				//read out length
+				uint32_t nLengthMinorBits = sDeflateLengthTable[huffVal - 0x100].nMinorBits;
+				uint32_t lzLen1 = sDeflateLengthTable[huffVal - 0x100].majorPart;
+				uint32_t lzLen2 = CxiConsumeBits(&reader, nLengthMinorBits);
+				uint32_t lzLen = lzLen1 + lzLen2 + 3;
+
+				//read out offset
+				uint32_t nodeVal2 = CxiLookupTreeNode(huffDistancesRoot, &reader);
+				uint32_t nOffsetMinorBits = sDeflateOffsetTable[nodeVal2].nMinorBits;
+				uint32_t lzOffset1 = sDeflateOffsetTable[nodeVal2].majorPart;
+				uint32_t lzOffset2 = CxiConsumeBits(&reader, nOffsetMinorBits);
+				uint32_t lzOffset = lzOffset1 + lzOffset2 + 1;
+
+				size_t curoffs = dest - destBase;
+				size_t remaining = end - dest;
+				if (lzOffset > curoffs) return NULL;
+				if (lzLen > remaining) return NULL;
+
+				unsigned char *lzSrc = dest - lzOffset;
+				unsigned int i;
+				for (i = 0; i < lzLen && dest < end; i++) {
+					if (write) *dest = *lzSrc;
+					dest++, lzSrc++;
+				}
+			}
+		}
+		nBytesConsumed = (chunkLen + 7) >> 3;
+	}
+
+	*pPos = pos + nBytesConsumed;
+	return dest;
+}
+
+
+void CxDecompressDeflate(unsigned char *filebuf, unsigned char *dest, void *auxBuffer, unsigned int size) {
+	unsigned char *destBase = dest;
+	unsigned char *pos = filebuf + 4;
+	unsigned char *end = dest + ((*(uint32_t *) filebuf) >> 2);
+
+	while (dest < end) {
+		dest = CxiDecompressDeflateChunk((DEFLATE_WORK_BUFFER *) auxBuffer, destBase, &pos, dest, end, filebuf + size, 1);
+	}
+}
+
+int mvdkLzIsValid(unsigned char *buffer, unsigned int size) {
+	//same format as standard LZ, with different header
+	uint32_t uncompSize = (*(uint32_t *) buffer) >> 2;
+	char *copy = (char *) malloc(size);
+	memcpy(copy, buffer, size);
+	*(uint32_t *) copy = 0x10 | (uncompSize << 8);
+	int valid = lz77IsCompressed(copy, size);
+	free(copy);
+	return valid;
+}
+
+int mvdkRlIsValid(unsigned char *buffer, unsigned int size) {
+	//same format as standard LZ, with different header
+	uint32_t uncompSize = (*(uint32_t *) buffer) >> 2;
+	char *copy = (char *) malloc(size);
+	memcpy(copy, buffer, size);
+	*(uint32_t *) copy = 0x30 | (uncompSize << 8);
+	int valid = rlIsCompressed(copy, size);
+	free(copy);
+	return valid;
+}
+
+int mvdkDeflateIsValid(unsigned char *buffer, unsigned int size) {
+	unsigned char *pos = buffer + 4;
+	unsigned char *dest = NULL; //won't be written to
+	unsigned char *destBase = dest;
+	unsigned char *end = dest + ((*(uint32_t *) buffer) >> 2); //for address comparison
+	DEFLATE_WORK_BUFFER *work = (DEFLATE_WORK_BUFFER *) calloc(1, sizeof(DEFLATE_WORK_BUFFER));
+
+	while (dest < end) {
+		dest = CxiDecompressDeflateChunk(work, destBase, &pos, dest, end, buffer + size, 0);
+		if (dest == NULL) {
+			free(work);
+			return 0;
+		}
+	}
+	free(work);
+	return 1;
+}
+
+int mvdkGetCompressionType(char *buffer, int size) {
+	return (*(uint32_t *) buffer) & 3;
+}
+
+int mvdkCompressionIsValid(char *buffer, int size) {
+	if (size < 4) return MVDK_INVALID;
+
+	uint32_t uncompSize = (*(uint32_t *) buffer) >> 2;
+	int type = mvdkGetCompressionType(buffer, size);
+	switch (type) {
+		case MVDK_DUMMY:
+			//check size
+			return ((size - 4 + 3) & ~3) == ((uncompSize + 3) & ~3);
+		case MVDK_LZ:
+			return mvdkLzIsValid(buffer, size);
+		case MVDK_RLE:
+			return mvdkRlIsValid(buffer, size);
+		case MVDK_DEFLATE:
+			return mvdkDeflateIsValid(buffer, size);
+	}
+	return 0;
+}
+
+char *mvdkDecompressDummy(char *buffer, int size, int *uncompressedSize) {
+	uint32_t outlen = (*(uint32_t *) buffer) >> 2;
+	char *out = (char *) malloc(outlen);
+	*uncompressedSize = outlen;
+
+	memcpy(out, buffer + 4, outlen);
+	return out;
+}
+
+char *mvdkDecompressLZ(char *buffer, int size, int *uncompressedSize) {
+	uint32_t outlen = (*(uint32_t *) buffer) >> 2;
+
+	char *copy = (char *) malloc(size);
+	memcpy(copy, buffer, size);
+	*(uint32_t *) copy = 0x10 | (outlen << 8);
+	char *out = lz77decompress(copy, size, uncompressedSize);
+	free(copy);
+
+	return out;
+}
+
+char *mvdkDecompressRL(char *buffer, int size, int *uncompressedSize) {
+	uint32_t outlen = (*(uint32_t *) buffer) >> 2;
+
+	char *copy = (char *) malloc(size);
+	memcpy(copy, buffer, size);
+	*(uint32_t *) copy = 0x30 | (outlen << 8);
+	char *out = rlDecompress(copy, size, uncompressedSize);
+	free(copy);
+
+	return out;
+}
+
+char *mvdkDecompressDeflate(char *buffer, int size, int *uncompressedSize) {
+	uint32_t outlen = (*(uint32_t *) buffer) >> 2;
+	*uncompressedSize = outlen;
+	char *dest = malloc(outlen);
+
+	void *aux = calloc(1, sizeof(DEFLATE_WORK_BUFFER));
+	CxDecompressDeflate(buffer, dest, aux, size);
+	free(aux);
+	return dest;
+}
+
+char *mvdkDecompress(char *buffer, int size, int *uncompressedSize) {
+	int type = (*(uint32_t *) buffer) & 3;
+	switch (type) {
+		case MVDK_DUMMY:
+			return mvdkDecompressDummy(buffer, size, uncompressedSize);
+		case MVDK_LZ:
+			return mvdkDecompressLZ(buffer, size, uncompressedSize);
+		case MVDK_RLE:
+			return mvdkDecompressRL(buffer, size, uncompressedSize);
+		case MVDK_DEFLATE:
+			return mvdkDecompressDeflate(buffer, size, uncompressedSize);
+	}
+	*uncompressedSize = 0;
+	return NULL;
+}
+
+char *mvdkCompress(char *buffer, int size, int *compressedSize) {
+	int dummySize = size + 4;
+	int lzSize, rlSize;
+	char *lz = lz77compress(buffer, size, &lzSize);
+	char *rl = rlCompress(buffer, size, &rlSize);
+
+	*(uint32_t *) lz = MVDK_LZ | (size << 2);
+	*(uint32_t *) rl = MVDK_RLE | (size << 2);
+
+	if (lzSize <= rlSize && lzSize <= dummySize) {
+		free(rl);
+		*compressedSize = lzSize;
+		return lz;
+	} else if (rlSize <= lzSize && rlSize <= dummySize) {
+		free(lz);
+		*compressedSize = rlSize;
+		return rl;
+	}
+
+	//else
+	char *dummy = (char *) malloc(size + 4);
+	*(uint32_t *) dummy = MVDK_DUMMY | (size << 2);
+	memcpy(dummy + 4, buffer, size);
+
+	free(rl);
+	free(lz);
+	*compressedSize = dummySize;
+	return dummy;
+}
+
+
 int getCompressionType(char *buffer, int size) {
 	if (lz77HeaderIsCompressed(buffer, size)) return COMPRESSION_LZ77_HEADER;
 	if (lz77IsCompressed(buffer, size)) return COMPRESSION_LZ77;
@@ -1103,6 +1587,7 @@ int getCompressionType(char *buffer, int size) {
 	if (huffman8IsCompressed(buffer, size)) return COMPRESSION_HUFFMAN_8;
 	if (diff8IsFiltered(buffer, size)) return COMPRESSION_DIFF8;
 	if (diff16IsFiltered(buffer, size)) return COMPRESSION_DIFF16;
+	if (mvdkCompressionIsValid(buffer, size)) return COMPRESSION_MVDK;
 
 	return COMPRESSION_NONE;
 }
@@ -1134,6 +1619,8 @@ char *decompress(char *buffer, int size, int *uncompressedSize) {
 			return diff8Unfilter(buffer, size, uncompressedSize);
 		case COMPRESSION_DIFF16:
 			return diff16Unfilter(buffer, size, uncompressedSize);
+		case COMPRESSION_MVDK:
+			return mvdkDecompress(buffer, size, uncompressedSize);
 	}
 	return NULL;
 }
@@ -1165,6 +1652,8 @@ char *compress(char *buffer, int size, int compression, int *compressedSize) {
 			return diff8Filter(buffer, size, compressedSize);
 		case COMPRESSION_DIFF16:
 			return diff16Filter(buffer, size, compressedSize);
+		case COMPRESSION_MVDK:
+			return mvdkCompress(buffer, size, compressedSize);
 	}
 	return NULL;
 }

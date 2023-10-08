@@ -655,13 +655,15 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		{
 			//since we're kind of stepping around things a bit, we need to decompress here if applicable
 			int decompressedSize = dwSize;
+			int compressionType = getCompressionType(buffer, dwSize);
 			char *decompressed = decompress(buffer, dwSize, &decompressedSize);
 			int type = combo2dIsValid(decompressed, decompressedSize);
-			free(decompressed);
 
 			//read combo
 			COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-			combo2dRead(combo, buffer, dwSize);
+			combo2dRead(combo, decompressed, decompressedSize);
+			if (compressionType != COMPRESSION_NONE) combo->header.compression = compressionType;
+			free(decompressed);
 
 			//open the component objects
 			for (int i = 0; i < combo->nLinks; i++) {

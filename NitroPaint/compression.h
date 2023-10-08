@@ -10,6 +10,7 @@
 #define COMPRESSION_DIFF8            7
 #define COMPRESSION_DIFF16           8
 #define COMPRESSION_LZ77_HEADER      9
+#define COMPRESSION_MVDK             10
 
 //----- LZ77 functions
 
