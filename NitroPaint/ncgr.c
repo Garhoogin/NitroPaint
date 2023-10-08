@@ -170,6 +170,44 @@ void ncgrReadChars(NCGR *ncgr, unsigned char *buffer) {
 	ncgr->tiles = tiles;
 }
 
+void ncgrReadBitmap(NCGR *ncgr, unsigned char *buffer) {
+	int depth = ncgr->nBits;
+	int tilesX = ncgr->tilesX, tilesY = ncgr->tilesY;
+	unsigned char **tiles = (BYTE **) calloc(ncgr->nTiles, sizeof(BYTE **));
+
+	for (int y = 0; y < tilesY; y++) {
+		for (int x = 0; x < tilesX; x++) {
+
+			int offset = x * 4 + 4 * y * tilesX * 8;
+			BYTE *tile = calloc(64, 1);
+			tiles[x + y * tilesX] = tile;
+			if (depth == 8) {
+				offset *= 2;
+				BYTE *indices = buffer + offset;
+				memcpy(tile, indices, 8);
+				memcpy(tile + 8, indices + 8 * tilesX, 8);
+				memcpy(tile + 16, indices + 16 * tilesX, 8);
+				memcpy(tile + 24, indices + 24 * tilesX, 8);
+				memcpy(tile + 32, indices + 32 * tilesX, 8);
+				memcpy(tile + 40, indices + 40 * tilesX, 8);
+				memcpy(tile + 48, indices + 48 * tilesX, 8);
+				memcpy(tile + 56, indices + 56 * tilesX, 8);
+			} else if (depth == 4) {
+				unsigned char *indices = buffer + offset;
+				for (int j = 0; j < 8; j++) {
+					for (int i = 0; i < 4; i++) {
+						tile[i * 2 + j * 8] = indices[i + j * 4 * tilesX] & 0xF;
+						tile[i * 2 + 1 + j * 8] = indices[i + j * 4 * tilesX] >> 4;
+					}
+				}
+			}
+
+		}
+	}
+
+	ncgr->tiles = tiles;
+}
+
 int hudsonReadCharacter(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 1; //file too small
 	if (*buffer == 0x10) return 1; //TODO: LZ77 decompress
@@ -381,39 +419,7 @@ int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	if (format == NCGR_TYPE_NCGR) {
 		ncgrReadChars(ncgr, buffer);
 	} else if (format == NCGR_TYPE_NCBR) {
-		BYTE **tiles = (BYTE **) calloc(tileCount, sizeof(BYTE **));
-
-		for (int y = 0; y < tilesY; y++) {
-			for (int x = 0; x < tilesX; x++) {
-
-				int offset = x * 4 + 4 * y * tilesX * 8;
-				BYTE *tile = calloc(64, 1);
-				tiles[x + y * tilesX] = tile;
-				if (depth == 8) {
-					offset *= 2;
-					BYTE *indices = buffer + offset;
-					memcpy(tile, indices, 8);
-					memcpy(tile + 8, indices + 8 * tilesX, 8);
-					memcpy(tile + 16, indices + 16 * tilesX, 8);
-					memcpy(tile + 24, indices + 24 * tilesX, 8);
-					memcpy(tile + 32, indices + 32 * tilesX, 8);
-					memcpy(tile + 40, indices + 40 * tilesX, 8);
-					memcpy(tile + 48, indices + 48 * tilesX, 8);
-					memcpy(tile + 56, indices + 56 * tilesX, 8);
-				} else if (depth == 4) {
-					unsigned char *indices = buffer + offset;
-					for (int j = 0; j < 8; j++) {
-						for (int i = 0; i < 4; i++) {
-							tile[i * 2 + j * 8] = indices[i + j * 4 * tilesX] & 0xF;
-							tile[i * 2 + 1 + j * 8] = indices[i + j * 4 * tilesX] >> 4;
-						}
-					}
-				}
-
-			}
-		}
-
-		ncgr->tiles = tiles;
+		ncgrReadBitmap(ncgr, buffer);
 	}
 
 	return 0;

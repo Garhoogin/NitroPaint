@@ -85,6 +85,11 @@ void ncgrChangeWidth(NCGR *ncgr, int width);
 void ncgrReadChars(NCGR *ncgr, unsigned char *buffer);
 
 //
+// Rad bitmap data from binary data and store in an NCGR.
+//
+void ncgrReadBitmap(NCGR *ncgr, unsigned char *buffer);
+
+//
 // Read character graphics from a byte array.
 //
 int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size);
