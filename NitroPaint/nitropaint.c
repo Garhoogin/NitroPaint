@@ -715,6 +715,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 					combo->links[i] = copy;
 				}
 
+				//set compression type for all links
+				combo->links[i]->compression = compressionType;
+
 				//point the editor window at the right file
 				EditorSetFile(h, path);
 			}
