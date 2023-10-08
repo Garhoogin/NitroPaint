@@ -257,32 +257,38 @@ LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-void copyBitmap(COLOR32 *img, int width, int height) {
-	HGLOBAL hDib = NULL;
-	int dibSize = width * height * 3 + sizeof(BITMAPINFOHEADER);
-	hDib = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, dibSize);
+void copyBitmap(COLOR32 *px, int width, int height) {
+	//assume clipboard is already owned and emptied
 
-	//populate common info
-	BITMAPINFOHEADER *bmi = (BITMAPINFOHEADER *) GlobalLock(hDib);
-	BYTE *bmiBits = (BYTE *) (bmi + 1);
-	bmi->biSize = sizeof(BITMAPINFOHEADER);
-	bmi->biCompression = BI_RGB;
-	bmi->biHeight = height;
-	bmi->biWidth = width;
-	bmi->biPlanes = 1;
-	bmi->biBitCount = 24;
+	//set DDB
+	HBITMAP hBitmap = CreateBitmap(width, height, 1, 32, px);
+	SetClipboardData(CF_BITMAP, hBitmap);
 
+	//set DIBv5
+	HGLOBAL hBmi = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(BITMAPV5HEADER) + width * height * sizeof(COLOR32));
+	BITMAPV5HEADER *bmi = (BITMAPV5HEADER *) GlobalLock(hBmi);
+	bmi->bV5Size = sizeof(*bmi);
+	bmi->bV5Width = width;
+	bmi->bV5Height = height;
+	bmi->bV5Planes = 1;
+	bmi->bV5BitCount = 32;
+	bmi->bV5Compression = BI_BITFIELDS;
+	bmi->bV5RedMask = 0x00FF0000;
+	bmi->bV5GreenMask = 0x0000FF00;
+	bmi->bV5BlueMask = 0x000000FF;
+	bmi->bV5AlphaMask = 0xFF000000;
+	bmi->bV5CSType = LCS_sRGB;
+	bmi->bV5Intent = LCS_GM_ABS_COLORIMETRIC;
+
+	COLOR32 *cDest = (COLOR32 *) (bmi + 1);
 	for (int y = 0; y < height; y++) {
 		for (int x = 0; x < width; x++) {
-			COLOR32 c = img[x + (height - 1 - y) * width];
-			bmiBits[(x + y * width) * 3 + 0] = (c >> 16) & 0xFF;
-			bmiBits[(x + y * width) * 3 + 1] = (c >> 8) & 0xFF;
-			bmiBits[(x + y * width) * 3 + 2] = (c >> 0) & 0xFF;
+			COLOR32 c = px[x + y * width];
+			cDest[x + (height - 1 - y) * width] = c;
 		}
 	}
-
-	GlobalUnlock(hDib);
-	SetClipboardData(CF_DIB, hDib);
+	GlobalUnlock(hBmi);
+	SetClipboardData(CF_DIBV5, hBmi);
 }
 
 LPCWSTR GetFileName(LPCWSTR lpszPath) {

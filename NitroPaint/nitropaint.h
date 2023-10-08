@@ -82,6 +82,11 @@ LPWSTR openFilesDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extensi
 LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension);
 
 //
+// Copy a bitmap to the clipboard.
+//
+void copyBitmap(COLOR32 *px, int width, int height);
+
+//
 // Creates a text prompt
 //
 int PromptUserText(HWND hWnd, LPCWSTR title, LPCWSTR prompt, LPWSTR text, int maxLength);

@@ -527,6 +527,9 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_NSCRMENU_COPY:
 					{
+						OpenClipboard(hWnd);
+						EmptyClipboard();
+
 						//clipboard format: "0000", "N", w, h, d
 						int tileX = data->contextHoverX;
 						int tileY = data->contextHoverY;
@@ -558,9 +561,32 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							}
 						}
 
+						HWND hWndNclrEditor = NULL, hWndNcgrEditor = NULL;
+						HWND hWndMain = getMainWindow(hWnd);
+						GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrEditor, 1);
+						GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
+
+						COLOR32 *bm = NULL;
+						if (hWndNclrEditor != NULL && hWndNcgrEditor != NULL) {
+							//to bitmap
+							NSCR *nscr = &data->nscr;
+							NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor))->ncgr;
+							NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(hWndNclrEditor))->nclr;
+
+							//cut selection region out of the image
+							int wholeWidth, wholeHeight, width = tilesX * 8, height = tilesY * 8;
+							COLOR32 *bm = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &wholeWidth, &wholeHeight,
+								-1, -1, -1, -1, -1, -1, -1, TRUE);
+							COLOR32 *sub = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+							for (int y = 0; y < height; y++) {
+								memcpy(sub + y * width, bm + (y + tileY * 8) * wholeWidth + tileX * 8, width * sizeof(COLOR32));
+							}
+							free(bm);
+							copyBitmap(sub, width, height);
+							free(sub);
+						}
+
 						GlobalUnlock(hString);
-						OpenClipboard(hWnd);
-						EmptyClipboard();
 						SetClipboardData(CF_TEXT, hString);
 						CloseClipboard();
 						break;
