@@ -1286,6 +1286,8 @@ DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER
 		}
 	}
 
+	//written too many nodes
+	if (i > nNodes) return NULL;
 
 	int depth = 0;
 	depthCounts[0] = 0;
@@ -1312,13 +1314,15 @@ DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER
 }
 
 uint32_t CxiLookupTreeNode(DEFLATE_TREE_NODE *node, BIT_READER_8 *reader) {
+	if (node == NULL) return (uint32_t) -1;
+
 	while (!node->isLeaf) {
 		if (CxiConsumeBit(reader)) {
 			node = node->right;
 		} else {
 			node = node->left;
 		}
-		if (reader->error) return (uint32_t) -1;
+		if (reader->error || node == NULL) return (uint32_t) -1;
 	}
 	return node->value;
 }
