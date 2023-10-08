@@ -9,8 +9,50 @@
 #include "gdip.h"
 #include "g2dfile.h"
 
-LPCWSTR compressionNames[] = { L"None", L"LZ77", L"LZ11", L"LZ11 COMP", L"Huffman 4", L"Huffman 8", L"RLE", L"Diff 8", L"Diff 16", L"LZ77 Header", 
-	L"MvDK", NULL };
+LPCWSTR compressionNames[] = {
+	L"None", 
+	L"LZ77", 
+	L"LZ11", 
+	L"LZ11 COMP", 
+	L"Huffman 4", 
+	L"Huffman 8", 
+	L"RLE",
+	L"Diff 8",
+	L"Diff 16", 
+	L"LZ77 Header", 
+	L"MvDK", 
+	NULL
+};
+
+static LPCWSTR sCommonPaletteEndings[] = {
+	L"ncl.bin",
+	L"icl.bin",
+	L"plt.bin",
+	L"pal.bin",
+	L".pltt",
+	L".nbfp",
+	L".acl",
+	L".plb",
+	NULL
+};
+
+static LPCWSTR sCommonCharacterEndings[] = {
+	L"ncg.bin",
+	L"icg.bin",
+	L"chr.bin",
+	L".char",
+	L".nbfc",
+	L".imb",
+	NULL
+};
+
+static LPCWSTR sCommonScreenEndings[] = {
+	L"nsc.bin",
+	L"isc.bin",
+	L"scr.bin",
+	L".nbfs",
+	NULL
+};
 
 int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;
@@ -21,6 +63,14 @@ int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
 int pathStartsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 1;
 	return !_wcsnicmp(str, substr, wcslen(substr));
+}
+
+int pathEndsWithOneOf(LPCWSTR str, LPCWSTR *endings) {
+	while (*endings) {
+		if (pathEndsWith(str, *endings)) return 1;
+		endings++;
+	}
+	return 0;
 }
 
 LPCWSTR *getFormatNamesFromType(int type) {
@@ -286,23 +336,10 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 
 				//test for bin format files
 				else {
-					if (nclrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"ncl.bin") || 
-															   pathEndsWith(path, L"icl.bin") || 
-															   pathEndsWith(path, L"plt.bin") ||
-															   pathEndsWith(path, L"pal.bin") ||
-															   pathEndsWith(path, L".pltt") || 
-															   pathEndsWith(path, L".nbfp") ||
-															   pathEndsWith(path, L".acl"))) type = FILE_TYPE_PALETTE;
+					if (nclrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
 					else if (nclrIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
-					else if (nscrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"nsc.bin") || 
-																	pathEndsWith(path, L"isc.bin") ||
-																	pathEndsWith(path, L"scr.bin") ||
-																	pathEndsWith(path, L".nbfs"))) type = FILE_TYPE_SCREEN;
-					else if (ncgrIsValidBin(buffer, bufferSize) && (pathEndsWith(path, L"ncg.bin") || 
-																	pathEndsWith(path, L"icg.bin") || 
-																	pathEndsWith(path, L"chr.bin") ||
-																	pathEndsWith(path, L".char") ||
-																	pathEndsWith(path, L".nbfc"))) type = FILE_TYPE_CHARACTER;
+					else if (nscrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
+					else if (ncgrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
 					else {
 						//double check, without respect to the file name.
 						type = fileGuessPltChrScr(buffer, bufferSize);
