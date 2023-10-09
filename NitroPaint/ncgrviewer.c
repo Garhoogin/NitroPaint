@@ -1017,7 +1017,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 		}
 	} else {
 		//create a palette, then encode them to the nclr
-		createPaletteSlowEx(pixels, width, height, palette, paletteSize, balance, colorBalance, enhanceColors, 0);
+		RxCreatePaletteEx(pixels, width, height, palette, paletteSize, balance, colorBalance, enhanceColors, 0);
 		for (int i = 0; i < paletteSize; i++) {
 			COLOR32 d = palette[i];
 			COLOR ds = ColorConvertToDS(d);
@@ -1028,7 +1028,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 
 	//index image with given parameters.
 	if (!dither) diffuse = 0.0f;
-	ditherImagePaletteEx(pixels, NULL, width, height, palette, paletteSize, 0, 1, 0, diffuse, balance, colorBalance, enhanceColors);
+	RxReduceImageEx(pixels, NULL, width, height, palette, paletteSize, 0, 1, 0, diffuse, balance, colorBalance, enhanceColors);
 
 	//now, write out indices. 
 	int originOffset = originX + originY * ncgr->tilesX;
@@ -1055,7 +1055,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 					int poffset = x * 8 + offsetX + (y * 8 + offsetY) * width;
 					COLOR32 pixel = pixels[poffset];
 
-					int closest = closestPalette(pixel, palette, paletteSize) + paletteBase;
+					int closest = RxPaletteFindClosestColorSimple(pixel, palette, paletteSize) + paletteBase;
 					if ((pixel >> 24) < 127) closest = 0;
 					tile[i] = closest;
 				}
@@ -1133,7 +1133,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 			for (int j = 0; j < 64; j++) {
 				COLOR32 pixel = srcTile[j];
 
-				int closest = closestPalette(pixel, palette, paletteSize) + paletteBase;
+				int closest = RxPaletteFindClosestColorSimple(pixel, palette, paletteSize) + paletteBase;
 				if ((pixel >> 24) < 127) closest = 0;
 				tile[j] = closest;
 			}

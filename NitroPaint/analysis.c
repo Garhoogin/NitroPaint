@@ -234,5 +234,5 @@ void getColorEndPoints(DWORD *colors, int nColors, DWORD *points) {
 
 	points[0] = r1 | (g1 << 8) | (b1 << 16);
 	points[1] = r2 | (g2 << 8) | (b2 << 16);
-	qsort(points, 2, 4, lightnessCompare);
+	qsort(points, 2, 4, RxColorLightnessComparator);
 }

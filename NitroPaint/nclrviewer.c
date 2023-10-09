@@ -342,7 +342,7 @@ int paletteNeuroSortPermute(COLOR *palette, int nColors, unsigned long long best
 			dr = (last & 0xFF) - (test & 0xFF);
 			dg = ((last >> 8) & 0xFF) - ((test >> 8) & 0xFF);
 			db = ((last >> 16) & 0xFF) - ((test >> 16) & 0xFF);
-			convertRGBToYUV(dr, dg, db, &dy, &du, &dv);
+			RxConvertRgbToYuv(dr, dg, db, &dy, &du, &dv);
 			int diff = 4 * dy * dy + du * du + dv * dv;
 			if (diff < minDiff) {
 				nextIndex = j;
@@ -1122,25 +1122,25 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 				COLOR32 *paletteCopy = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
 
 				//compute histogram
-				REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
-				initReduction(reduction, balance, colorBalance, 15, enhanceColors, nColors - reserveFirst);
+				RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
+				RxInit(reduction, balance, colorBalance, 15, enhanceColors, nColors - reserveFirst);
 				for (int i = 0; i < nPaths; i++) {
 					getPathFromPaths(paths, i, bf);
 					COLOR32 *bits = gdipReadImage(bf, &width, &height);
-					computeHistogram(reduction, bits, width, height);
+					RxHistAdd(reduction, bits, width, height);
 					free(bits);
 				}
-				flattenHistogram(reduction);
+				RxHistFinalize(reduction);
 
 				//create and write palette
-				optimizePalette(reduction);
+				RxComputePalette(reduction);
 				for (int i = 0; i < nColors - reserveFirst; i++) {
 					uint8_t *c8 = &reduction->paletteRgb[i][0];
 					COLOR32 c = c8[0] | (c8[1] << 8) | (c8[2] << 16);
 					(paletteCopy + reserveFirst)[i] = c;
 				}
-				qsort(paletteCopy + reserveFirst, nColors - reserveFirst, sizeof(COLOR32), lightnessCompare);
-				destroyReduction(reduction);
+				qsort(paletteCopy + reserveFirst, nColors - reserveFirst, sizeof(COLOR32), RxColorLightnessComparator);
+				RxDestroy(reduction);
 				free(reduction);
 
 				//write back

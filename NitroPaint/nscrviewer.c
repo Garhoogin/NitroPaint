@@ -781,7 +781,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
-double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, YIQ_COLOR *pals, unsigned char *character, int flip, double maxError) {
+double calculatePaletteCharError(RxReduction *reduction, COLOR32 *block, RxYiqColor *pals, unsigned char *character, int flip, double maxError) {
 	double error = 0;
 	for (int i = 0; i < 64; i++) { //0b111 111
 		int srcIndex = i;
@@ -789,13 +789,13 @@ double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, YIQ_COLOR
 		if (flip & TILE_FLIPY) srcIndex ^= 7 << 3;
 
 		//convert source image pixel
-		YIQ_COLOR yiq;
+		RxYiqColor yiq;
 		COLOR32 col = block[srcIndex];
-		rgbToYiq(col, &yiq);
+		RxConvertRgbToYiq(col, &yiq);
 
 		//char pixel
 		int index = character[i];
-		YIQ_COLOR *matchedYiq = pals + index;
+		RxYiqColor *matchedYiq = pals + index;
 		int matchedA = index > 0 ? 255 : 0;
 		if (matchedA == 0 && yiq.a < 128) {
 			continue; //to prevent superfluous non-alpha difference
@@ -817,7 +817,7 @@ double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, YIQ_COLOR
 	return error;
 }
 
-double calculateBestPaletteCharError(REDUCTION *reduction, COLOR32 *block, YIQ_COLOR *pals, unsigned char *character, int *flip, double maxError) {
+double calculateBestPaletteCharError(RxReduction *reduction, COLOR32 *block, RxYiqColor *pals, unsigned char *character, int *flip, double maxError) {
 	double e00 = calculatePaletteCharError(reduction, block, pals, character, TILE_FLIPNONE, maxError);
 	if (e00 == 0) {
 		*flip = TILE_FLIPNONE;
@@ -946,14 +946,14 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	uint16_t *nscrData = nscr->data;
 
 	//create dummy reduction to setup parameters for color matching
-	REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
-	initReduction(reduction, balance, colorBalance, 15, enhanceColors, paletteSize - !paletteOffset);
+	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
+	RxInit(reduction, balance, colorBalance, 15, enhanceColors, paletteSize - !paletteOffset);
 
 	//generate an nPalettes color palette
 	if (newPalettes) {
 		if (writeScreen) {
 			//if we're writing the screen, we can write the palette as normal.
-			createMultiplePalettesEx(px, tilesX, tilesY, pals, 0, nPalettes, maxPaletteSize, paletteSize, 
+			RxCreateMultiplePalettesEx(px, tilesX, tilesY, pals, 0, nPalettes, maxPaletteSize, paletteSize, 
 				paletteOffset, balance, colorBalance, enhanceColors, progress);
 		} else {
 			//else, we need to be a bit more methodical. Lucky for us, though, the palettes are already partitioned.
@@ -974,14 +974,14 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						if (thisPalNo != palNo) continue;
 
 						nTilesHistogram++;
-						computeHistogram(reduction, blocks[x + y * tilesX].px, 8, 8);
+						RxHistAdd(reduction, blocks[x + y * tilesX].px, 8, 8);
 					}
 				}
 
 				//if we counted tiles, create palette
 				if (nTilesHistogram > 0) {
-					flattenHistogram(reduction);
-					optimizePalette(reduction);
+					RxHistFinalize(reduction);
+					RxComputePalette(reduction);
 					
 					COLOR32 *outPal = pals + palNo * maxPaletteSize + paletteOffset + !paletteOffset;
 					for (int i = 0; i < paletteSize - !paletteOffset; i++) {
@@ -990,9 +990,9 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						uint8_t b = reduction->paletteRgb[i][2];
 						outPal[i] = r | (g << 8) | (b << 16);
 					}
-					qsort(outPal, paletteSize - !paletteOffset, sizeof(COLOR32), lightnessCompare);
+					qsort(outPal, paletteSize - !paletteOffset, sizeof(COLOR32), RxColorLightnessComparator);
 					if (paletteOffset == 0) pals[palNo * maxPaletteSize] = 0xFF00FF;
-					resetHistogram(reduction);
+					RxHistClear(reduction);
 				}
 			}
 		}
@@ -1018,9 +1018,9 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	}
 
 	//pre-convert palette to YIQ
-	YIQ_COLOR *palsYiq = (YIQ_COLOR *) calloc(nPalettes * paletteSize, sizeof(YIQ_COLOR));
+	RxYiqColor *palsYiq = (RxYiqColor *) calloc(nPalettes * paletteSize, sizeof(RxYiqColor));
 	for (int i = 0; i < nPalettes * paletteSize; i++) {
-		rgbToYiq(pals[i], palsYiq + i);
+		RxConvertRgbToYiq(pals[i], palsYiq + i);
 	}
 
 	if (!writeScreen) {
@@ -1039,7 +1039,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					
 					BYTE *chr = ncgr->tiles[charIndex];
 					COLOR32 *thisPalette = pals + palIndex * maxPaletteSize + paletteOffset + !paletteOffset;
-					ditherImagePaletteEx(tile->px, NULL, 8, 8, thisPalette, paletteSize - !paletteOffset, 
+					RxReduceImageEx(tile->px, NULL, 8, 8, thisPalette, paletteSize - !paletteOffset, 
 						FALSE, TRUE, FALSE, dither ? diffuse : 0.0f, balance, colorBalance, enhanceColors);
 					for (int i = 0; i < 64; i++) {
 						COLOR32 c = tile->px[i];
@@ -1049,7 +1049,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						int dstY = srcY ^ (flip & TILE_FLIPY ? 7 : 0);
 
 						int cidx = 0;
-						if ((c >> 24) >= 0x80) cidx = closestPalette(c, thisPalette, paletteSize - !paletteOffset) + paletteOffset + !paletteOffset;
+						if ((c >> 24) >= 0x80) cidx = RxPaletteFindClosestColorSimple(c, thisPalette, paletteSize - !paletteOffset) + paletteOffset + !paletteOffset;
 						chr[dstX + dstY * 8] = cidx;
 					}
 				}
@@ -1148,7 +1148,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					int leastIndex = 0;
 					for (int i = 0; i < nPalettes; i++) {
 						COLOR32 *thisPal = pals + i * maxPaletteSize + paletteOffset + !paletteOffset;
-						double err = computePaletteErrorYiq(reduction, block, 64, thisPal, paletteSize - !paletteOffset, 128, leastError);
+						double err = RxComputePaletteError(reduction, block, 64, thisPal, paletteSize - !paletteOffset, 128, leastError);
 						if (err < leastError) {
 							leastError = err;
 							leastIndex = i;
@@ -1169,12 +1169,12 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						unsigned char *ncgrTile = ncgr->tiles[charOrigin - charBase];
 
 						COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset + !paletteOffset;
-						ditherImagePaletteEx(block, NULL, 8, 8, thisPal, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, dither ? diffuse : 0.0f,
+						RxReduceImageEx(block, NULL, 8, 8, thisPal, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, dither ? diffuse : 0.0f,
 							balance, colorBalance, enhanceColors);
 						for (int i = 0; i < 64; i++) {
 							if ((block[i] & 0xFF000000) < 0x80) ncgrTile[i] = 0;
 							else {
-								int index = paletteOffset + !paletteOffset + closestPalette(block[i], thisPal, paletteSize - !paletteOffset);
+								int index = paletteOffset + !paletteOffset + RxPaletteFindClosestColorSimple(block[i], thisPal, paletteSize - !paletteOffset);
 								ncgrTile[i] = index;
 							}
 						}
@@ -1220,7 +1220,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	}
 
 	free(palsYiq);
-	destroyReduction(reduction);
+	RxDestroy(reduction);
 	free(reduction);
 
 	free(blocks);

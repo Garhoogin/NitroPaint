@@ -627,7 +627,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					//if we do not use an existing palette, generate one.
 					if(createPalette){
 						//create a palette, then encode them to the nclr
-						createPalette_(pixels, width, height, palette, paletteSize);
+						RxCreatePaletteTransparentReserve(pixels, width, height, palette, paletteSize);
 						for (int i = 0; i < paletteSize; i++) {
 							DWORD d = palette[i];
 							COLOR ds = ColorConvertToDS(d);
@@ -683,7 +683,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 									DWORD col = pixels[x + y * width];
 									int _x = cellX % 8, _y = cellY % 8;
 									if (col >> 24 > 0x80) {
-										int closest = closestPalette(col, palette + (info.palette << ncgr->nBits) + 1, paletteSize - 1) + 1;
+										int closest = RxPaletteFindClosestColorSimple(col, palette + (info.palette << ncgr->nBits) + 1, paletteSize - 1) + 1;
 										character[_x + _y * 8] = closest;
 
 										//diffuse
@@ -1262,15 +1262,15 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int depth = ncgr->nBits;
 				int paletteSize = (1 << depth);
 				COLOR32 *palette = (COLOR32 *) calloc(paletteSize, sizeof(COLOR32));
-				REDUCTION *reduction = (REDUCTION *) calloc(1, sizeof(REDUCTION));
-				initReduction(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, 0, paletteSize - 1);
+				RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
+				RxInit(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, 0, paletteSize - 1);
 
 				//compute palette from pixels
 				for (int i = 0; i < nObj; i++) {
-					computeHistogram(reduction, slices[i].px, slices[i].bounds.width, slices[i].bounds.height);
+					RxHistAdd(reduction, slices[i].px, slices[i].bounds.width, slices[i].bounds.height);
 				}
-				flattenHistogram(reduction);
-				optimizePalette(reduction);
+				RxHistFinalize(reduction);
+				RxComputePalette(reduction);
 
 				//read palette out
 				for (int i = 0; i < reduction->nUsedColors; i++) {
@@ -1293,7 +1293,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int width = slice->bounds.width, height = slice->bounds.height;
 					int nChars = slice->bounds.width * slice->bounds.height / 8 / 8;
 
-					ditherImagePaletteEx(slice->px, indicesBuffer, width, height, palette, paletteSize, 
+					RxReduceImageEx(slice->px, indicesBuffer, width, height, palette, paletteSize, 
 						1, 1, 1, 0.0f, BALANCE_DEFAULT, BALANCE_DEFAULT, 0);
 
 					//convert to character array in indicesBuffer8
@@ -1388,7 +1388,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				free(palette);
 
-				destroyReduction(reduction);
+				RxDestroy(reduction);
 				free(reduction);
 
 				free(slices);
