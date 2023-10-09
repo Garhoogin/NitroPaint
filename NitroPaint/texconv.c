@@ -1,7 +1,6 @@
 #include "palette.h"
 #include "color.h"
 #include "texconv.h"
-#include "analysis.h"
 
 #include <math.h>
 

@@ -161,9 +161,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="analysis.c">
-      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsC</CompileAs>
-    </ClCompile>
     <ClCompile Include="bstream.c" />
     <ClCompile Include="cellgen.c" />
     <ClCompile Include="childwindow.c" />
@@ -203,7 +200,6 @@
     <ClCompile Include="undo.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="analysis.h" />
     <ClInclude Include="bstream.h" />
     <ClInclude Include="cellgen.h" />
     <ClInclude Include="childwindow.h" />

@@ -1,9 +1,13 @@
 #include <math.h>
+#include <stdlib.h>
 #include <stdint.h>
+#include <limits.h>
 
 #include "color.h"
 #include "palette.h"
-#include "analysis.h"
+
+#define TRUE 1
+#define FALSE 0
 
 //struct for internal processing of color leaves
 typedef struct {

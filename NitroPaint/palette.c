@@ -1,5 +1,4 @@
 #include "palette.h"
-#include "analysis.h"
 #include <math.h>
 
 int RxColorLightnessComparator(const void *d1, const void *d2) {
