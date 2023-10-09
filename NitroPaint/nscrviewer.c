@@ -781,7 +781,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
-double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, int *pals, unsigned char *character, int flip, double maxError) {
+double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, YIQ_COLOR *pals, unsigned char *character, int flip, double maxError) {
 	double error = 0;
 	for (int i = 0; i < 64; i++) { //0b111 111
 		int srcIndex = i;
@@ -789,23 +789,23 @@ double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, int *pals
 		if (flip & TILE_FLIPY) srcIndex ^= 7 << 3;
 
 		//convert source image pixel
-		int yiq[4];
+		YIQ_COLOR yiq;
 		COLOR32 col = block[srcIndex];
-		rgbToYiq(col, yiq);
+		rgbToYiq(col, &yiq);
 
 		//char pixel
 		int index = character[i];
-		int *matchedYiq = pals + index * 4;
+		YIQ_COLOR *matchedYiq = pals + index;
 		int matchedA = index > 0 ? 255 : 0;
-		if (matchedA == 0 && yiq[3] < 128) {
+		if (matchedA == 0 && yiq.a < 128) {
 			continue; //to prevent superfluous non-alpha difference
 		}
 
 		//diff
-		double dy = reduction->yWeight * (reduction->lumaTable[yiq[0]] - reduction->lumaTable[matchedYiq[0]]);
-		double di = reduction->iWeight * (yiq[1] - matchedYiq[1]);
-		double dq = reduction->qWeight * (yiq[2] - matchedYiq[2]);
-		double da = 40 * (yiq[3] - matchedA);
+		double dy = reduction->yWeight * (reduction->lumaTable[yiq.y] - reduction->lumaTable[matchedYiq->y]);
+		double di = reduction->iWeight * (yiq.i - matchedYiq->i);
+		double dq = reduction->qWeight * (yiq.q - matchedYiq->q);
+		double da = 40 * (yiq.a - matchedA);
 		
 
 		error += dy * dy;
@@ -817,7 +817,7 @@ double calculatePaletteCharError(REDUCTION *reduction, COLOR32 *block, int *pals
 	return error;
 }
 
-double calculateBestPaletteCharError(REDUCTION *reduction, COLOR32 *block, int *pals, unsigned char *character, int *flip, double maxError) {
+double calculateBestPaletteCharError(REDUCTION *reduction, COLOR32 *block, YIQ_COLOR *pals, unsigned char *character, int *flip, double maxError) {
 	double e00 = calculatePaletteCharError(reduction, block, pals, character, TILE_FLIPNONE, maxError);
 	if (e00 == 0) {
 		*flip = TILE_FLIPNONE;
@@ -1018,9 +1018,9 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	}
 
 	//pre-convert palette to YIQ
-	int *palsYiq = (int *) calloc(nPalettes * paletteSize, 4 * sizeof(int));
+	YIQ_COLOR *palsYiq = (YIQ_COLOR *) calloc(nPalettes * paletteSize, sizeof(YIQ_COLOR));
 	for (int i = 0; i < nPalettes * paletteSize; i++) {
-		rgbToYiq(pals[i], palsYiq + i * 4);
+		rgbToYiq(pals[i], palsYiq + i);
 	}
 
 	if (!writeScreen) {
@@ -1110,7 +1110,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					for (int j = 0; j < ncgr->nTiles; j++) {
 						for (int i = 0; i < nPalettes; i++) {
 							int charId = j, mode;
-							double err = calculateBestPaletteCharError(reduction, block, palsYiq + i * maxPaletteSize * 4, ncgr->tiles[charId], &mode, minError);
+							double err = calculateBestPaletteCharError(reduction, block, palsYiq + i * maxPaletteSize, ncgr->tiles[charId], &mode, minError);
 							if (err < minError) {
 								chosenCharacter = charId;
 								chosenPalette = i;
@@ -1198,7 +1198,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						double minError = 1e32;
 						for (int i = 0; i < nPalettes; i++) {
 							int mode;
-							double err = calculateBestPaletteCharError(reduction, block, palsYiq + i * maxPaletteSize * 4, ncgr->tiles[charId], &mode, minError);
+							double err = calculateBestPaletteCharError(reduction, block, palsYiq + i * maxPaletteSize, ncgr->tiles[charId], &mode, minError);
 							if (err < minError) {
 								chosenPalette = i;
 								minError = err;

@@ -344,7 +344,7 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 	}
 
 	//use principal component analysis to determine endpoints
-	int yiq1[4], yiq2[4], rgb1[4], rgb2[4];
+	RGB_COLOR rgb1, rgb2;
 	HIST_ENTRY *firstEntry, *lastEntry;
 	resetHistogram(reduction);
 	computeHistogram(reduction, px, 4, nPx / 4);
@@ -354,14 +354,12 @@ void getColorBounds(REDUCTION *reduction, COLOR32 *px, int nPx, COLOR32 *colorMi
 	//choose first and last colors along the principal axis (greatest Y is at the end)
 	firstEntry = reduction->histogramFlat[0];
 	lastEntry = reduction->histogramFlat[reduction->histogram->nEntries - 1];
-	yiq1[0] = firstEntry->y, yiq1[1] = firstEntry->i, yiq1[2] = firstEntry->q, yiq1[3] = 0xFF;
-	yiq2[0] = lastEntry->y, yiq2[1] = lastEntry->i, yiq2[2] = lastEntry->q, yiq2[3] = 0xFF;
-	yiqToRgb(rgb1, yiq1);
-	yiqToRgb(rgb2, yiq2);
+	yiqToRgb(&rgb1, &firstEntry->color);
+	yiqToRgb(&rgb2, &lastEntry->color);
 
 	//round to nearest colors.
-	COLOR32 full1 = rgb1[0] | (rgb1[1] << 8) | (rgb1[2] << 16);
-	COLOR32 full2 = rgb2[0] | (rgb2[1] << 8) | (rgb2[2] << 16);
+	COLOR32 full1 = rgb1.r | (rgb1.g << 8) | (rgb1.b << 16);
+	COLOR32 full2 = rgb2.r | (rgb2.g << 8) | (rgb2.b << 16);
 	COLOR c1 = ColorConvertToDS(full1);
 	COLOR c2 = ColorConvertToDS(full2);
 

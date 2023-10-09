@@ -4,6 +4,7 @@
 
 #include "ncgr.h"
 #include "nclr.h"
+#include "palette.h"
 
 #define SCREENFORMAT_TEXT 0
 #define SCREENFORMAT_AFFINE 1
@@ -68,7 +69,7 @@ typedef struct NSCR_ {
 typedef struct BGTILE_ {
 	BYTE indices[64];
 	COLOR32 px[64]; //redundant, speed
-	int pxYiq[64][4];
+	YIQ_COLOR pxYiq[64];
 	int masterTile;
 	int nRepresents;
 	int flipMode;

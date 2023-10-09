@@ -708,12 +708,12 @@ float tileDifferenceFlip(REDUCTION *reduction, BGTILE *t1, BGTILE *t2, unsigned 
 			int x2 = (mode & TILE_FLIPX) ? (7 - x) : x;
 			int y2 = (mode & TILE_FLIPY) ? (7 - y) : y;
 
-			int *yiq1 = &t1->pxYiq[x + y * 8][0];
-			int *yiq2 = &t2->pxYiq[x2 + y2 * 8][0];
-			double dy = reduction->lumaTable[yiq1[0]] - reduction->lumaTable[yiq2[0]];
-			double di = yiq1[1] - yiq2[1];
-			double dq = yiq1[2] - yiq2[2];
-			double da = yiq1[3] - yiq2[3];
+			YIQ_COLOR *yiq1 = &t1->pxYiq[x + y * 8];
+			YIQ_COLOR *yiq2 = &t2->pxYiq[x2 + y2 * 8];
+			double dy = reduction->lumaTable[yiq1->y] - reduction->lumaTable[yiq2->y];
+			double di = yiq1->i - yiq2->i;
+			double dq = yiq1->q - yiq2->q;
+			double da = yiq1->a - yiq2->a;
 			err += yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + 1600 * da * da;
 		}
 	}
@@ -772,12 +772,12 @@ void bgAddTileToTotal(REDUCTION *reduction, int *pxBlock, BGTILE *tile) {
 			int y2 = (tile->flipMode & TILE_FLIPY) ? (7 - y) : y;
 			int *dest = pxBlock + 4 * (x2 + y2 * 8);
 
-			int yiq[4];
-			rgbToYiq(col, yiq);
-			dest[0] += (int) (16.0 * reduction->lumaTable[yiq[0]] + 0.5f);
-			dest[1] += yiq[1];
-			dest[2] += yiq[2];
-			dest[3] += yiq[3];
+			YIQ_COLOR yiq;
+			rgbToYiq(col, &yiq);
+			dest[0] += (int) (16.0 * reduction->lumaTable[yiq.y] + 0.5f);
+			dest[1] += yiq.i;
+			dest[2] += yiq.q;
+			dest[3] += yiq.a;
 		}
 	}
 }
@@ -1034,11 +1034,12 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 
 			double dcy = ((double) cy) / 16.0;
 			cy = (int) (pow(dcy * 0.00195695, 1.0 / reduction->gamma) * 511.0);
-			int yiq[] = { cy, ci, cq, ca };
-			int rgb[4];
-			yiqToRgb(rgb, yiq);
 
-			tile->px[j] = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16) | (ca << 24);
+			YIQ_COLOR yiq = { cy, ci, cq, ca };
+			RGB_COLOR rgb;
+			yiqToRgb(&rgb, &yiq);
+
+			tile->px[j] = rgb.r | (rgb.g << 8) | (rgb.b << 16) | (ca << 24);
 		}
 
 		//try to determine the most optimal palette. Child tiles can be different palettes.
@@ -1133,7 +1134,7 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
 
 			//YIQ color
-			rgbToYiq(col, &tile->pxYiq[j][0]);
+			rgbToYiq(col, &tile->pxYiq[j]);
 		}
 
 		tile->masterTile = i;

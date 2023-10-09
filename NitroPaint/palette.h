@@ -101,12 +101,23 @@ unsigned long long computePaletteError(COLOR32 *px, int nPx, COLOR32 *pal, int n
 
 //----------structures used by palette generator
 
-//histogram linked list entry as secondary sorting
-typedef struct HIST_ENTRY_ {
+typedef struct RGB_COLOR_ {
+	int r;
+	int g;
+	int b;
+	int a;
+} RGB_COLOR;
+
+typedef struct YIQ_COLOR_ {
 	int y;
 	int i;
 	int q;
 	int a;
+} YIQ_COLOR;
+
+//histogram linked list entry as secondary sorting
+typedef struct HIST_ENTRY_ {
+	YIQ_COLOR color;
 	struct HIST_ENTRY_ *next;
 	int entry;
 	double weight;
@@ -118,10 +129,7 @@ typedef struct COLOR_NODE_ {
 	int isLeaf;
 	double weight;
 	double priority;
-	int y;
-	int i;
-	int q;
-	int a;
+	YIQ_COLOR color;
 	int pivotIndex;
 	int startIndex;
 	int endIndex;
@@ -172,8 +180,8 @@ typedef struct REDUCTION_ {
 	COLOR_NODE *colorBlocks[0x2000];
 	uint8_t paletteRgb[256][3];
 	uint8_t paletteRgbCopy[256][3];
-	int paletteYiq[256][4];
-	int paletteYiqCopy[256][4];
+	YIQ_COLOR paletteYiq[256];
+	YIQ_COLOR paletteYiqCopy[256];
 	double lumaTable[512];
 	double gamma;
 } REDUCTION;
@@ -181,12 +189,12 @@ typedef struct REDUCTION_ {
 //
 // Encode an RGBA color to a YIQA color.
 //
-void rgbToYiq(COLOR32 rgb, int *yiq);
+void rgbToYiq(COLOR32 rgb, YIQ_COLOR *yiq);
 
 //
 // Decode a YIQ color to RGB.
 //
-void yiqToRgb(int *rgb, int *yiq);
+void yiqToRgb(RGB_COLOR *rgb, YIQ_COLOR *yiq);
 
 //
 // Initialize a REDUCTION structure with palette parameters.
@@ -227,7 +235,7 @@ void optimizePalette(REDUCTION *reduction);
 // Find the closest YIQA color to a specified YIQA color with a provided
 // reduction context.
 //
-int closestPaletteYiq(REDUCTION *reduction, int *yiqColor, int *palette, int nColors);
+int closestPaletteYiq(REDUCTION *reduction, YIQ_COLOR *yiqColor, YIQ_COLOR *palette, int nColors);
 
 //
 // Compute palette error on a bitmap given a specified reduction context.
@@ -242,7 +250,7 @@ double computeHistogramPaletteError(REDUCTION *reduction, COLOR32 *palette, int 
 //
 // Compute palette error on a histogram for a YIQ palette.
 //
-double computeHistogramPaletteErrorYiq(REDUCTION *reduction, int *yiqPalette, int nColors, double maxError);
+double computeHistogramPaletteErrorYiq(REDUCTION *reduction, YIQ_COLOR *yiqPalette, int nColors, double maxError);
 
 //
 // Free all resources consumed by a REDUCTION.
