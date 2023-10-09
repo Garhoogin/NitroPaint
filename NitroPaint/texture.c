@@ -33,21 +33,6 @@ int TxGetTexPlttVramSize(PALETTE *palette) {
 	return palette->nColors * sizeof(COLOR);
 }
 
-typedef struct {
-	BYTE r;
-	BYTE g;
-	BYTE b;
-	BYTE a;
-} RGB;
-
-static void getrgb(unsigned short n, RGB * ret){
-	COLOR32 conv = ColorConvertFromDS(n);
-	ret->r = conv & 0xFF;
-	ret->g = (conv >> 8) & 0xFF;
-	ret->b = (conv >> 16) & 0xFF;
-	ret->a = (BYTE) (255 * (n >> 15));
-}
-
 int max16Len(char *str) {
 	int len = 0;
 	for (int i = 0; i < 16; i++) {
@@ -63,6 +48,16 @@ const char *TxNameFromTexFormat(int fmt) {
 	return fmts[fmt];
 }
 
+static COLOR32 TxiBlend(COLOR32 c1, COLOR32 c2, int factor) {
+	unsigned int r = ((c1 >> 0) & 0xFF) * (8 - factor) + ((c2 >> 0) & 0xFF) * factor;
+	unsigned int g = ((c1 >> 8) & 0xFF) * (8 - factor) + ((c2 >> 8) & 0xFF) * factor;
+	unsigned int b = ((c1 >> 16) & 0xFF) * (8 - factor) + ((c2 >> 16) & 0xFF) * factor;
+	r = (r + 4) / 8;
+	g = (g + 4) / 8;
+	b = (b + 4) / 8;
+	return ColorRoundToDS18(r | (g << 8) | (b << 16));
+}
+
 void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 	int format = FORMAT(texels->texImageParam);
 	int c0xp = COL0TRANS(texels->texImageParam);
@@ -73,28 +68,27 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 	switch (format) {
 		case CT_DIRECT:
 		{
-			for(int i = 0; i < nPixels; i++){
-				unsigned short pVal = *(((unsigned short *) texels->texel) + i);
-				RGB rgb = {0};
-				getrgb(pVal, &rgb);
-				px[i] = rgb.b | (rgb.g << 8) | (rgb.r << 16) | (rgb.a << 24);
+			for (int i = 0; i < nPixels; i++) {
+				COLOR pVal = ((COLOR *) texels->texel)[i];
+				px[i] = ColorConvertFromDS(pVal) | (GetA(pVal) ? 0xFF000000 : 0);
 			}
 			break;
 		}
 		case CT_4COLOR:
 		{
 			int offs = 0;
-			for(int i = 0; i < txelSize >> 2; i++){
-				unsigned d = (unsigned) *(((int *) texels->texel) + i);
-				for(int j = 0; j < 16; j++){
+			for (int i = 0; i < txelSize >> 2; i++) {
+				uint32_t d = ((uint32_t *) texels->texel)[i];
+				for (int j = 0; j < 16; j++) {
 					int pVal = d & 0x3;
 					d >>= 2;
 					if (pVal < palette->nColors) {
-						unsigned short col = palette->pal[pVal] | 0x8000;
-						if (!pVal && c0xp) col = 0;
-						RGB rgb = { 0 };
-						getrgb(col, &rgb);
-						px[offs] = rgb.b | (rgb.g << 8) | (rgb.r << 16) | (rgb.a << 24);
+						if (!pVal && c0xp) {
+							px[offs] = 0;
+						} else {
+							COLOR col = palette->pal[pVal];
+							px[offs] = ColorConvertFromDS(col) | 0xFF000000;
+						}
 					}
 					offs++;
 				}
@@ -103,149 +97,142 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 		}
 		case CT_16COLOR:
 		{
-			int iters = txelSize;
-			for(int i = 0; i < iters; i++){
-				unsigned char pVal = *(((unsigned char *) texels->texel) + i);
-				unsigned short col0 = 0;
-				unsigned short col1 = 0;
+			for (int i = 0; i < txelSize; i++) {
+				uint8_t pVal = texels->texel[i];
+				COLOR32 col0 = 0;
+				COLOR32 col1 = 0;
+
 				if ((pVal & 0xF) < palette->nColors) {
-					col0 = palette->pal[pVal & 0xF] | 0x8000;
+					col0 = ColorConvertFromDS(palette->pal[pVal & 0xF]) | 0xFF000000;
 				}
 				if ((pVal >> 4) < palette->nColors) {
-					col1 = palette->pal[pVal >> 4] | 0x8000;
+					col1 = ColorConvertFromDS(palette->pal[pVal >> 4]) | 0xFF000000;
 				}
-				if(c0xp){
-					if(!(pVal & 0xF)) col0 = 0;
-					if(!(pVal >> 4)) col1 = 0;
+
+				if (c0xp) {
+					if (!(pVal & 0xF)) col0 = 0;
+					if (!(pVal >> 4)) col1 = 0;
 				}
-				RGB rgb = {0};
-				getrgb(col0, &rgb);
-				px[i * 2] = rgb.b | (rgb.g << 8) | (rgb.r << 16) | (rgb.a << 24);
-				getrgb(col1, &rgb);
-				px[i * 2 + 1] = rgb.b | (rgb.g << 8) | (rgb.r << 16) | (rgb.a << 24);
+
+				px[i * 2 + 0] = col0;
+				px[i * 2 + 1] = col1;
 			}
 			break;
 		}
 		case CT_256COLOR:
 		{
-			for(int i = 0; i < txelSize; i++){
-				unsigned char pVal = *(texels->texel + i);
+			for (int i = 0; i < txelSize; i++) {
+				uint8_t pVal = texels->texel[i];
 				if (pVal < palette->nColors) {
-					unsigned short col = *(((unsigned short *) palette->pal) + pVal) | 0x8000;
-					if (!pVal && c0xp) col = 0;
-					RGB rgb = { 0 };
-					getrgb(col, &rgb);
-					px[i] = rgb.b | (rgb.g << 8) | (rgb.r << 16) | (rgb.a << 24);
+					if (!pVal && c0xp) {
+						px[i] = 0;
+					} else {
+						COLOR col = palette->pal[pVal];
+						px[i] = ColorConvertFromDS(col) | 0xFF000000;
+					}
 				}
 			}
 			break;
 		}
 		case CT_A3I5:
 		{
-			for(int i = 0; i < txelSize; i++){
-				unsigned char d = texels->texel[i];
+			for (int i = 0; i < txelSize; i++) {
+				uint8_t d = texels->texel[i];
 				int alpha = ((d & 0xE0) >> 5) * 255 / 7;
 				int index = d & 0x1F;
 				if (index < palette->nColors) {
-					unsigned short atIndex = *(((unsigned short *) palette->pal) + index);
-					RGB r = { 0 };
-					getrgb(atIndex, &r);
-					r.a = alpha;
-					px[i] = r.b | (r.g << 8) | (r.r << 16) | (r.a << 24);
+					COLOR32 atIndex = ColorConvertFromDS(palette->pal[index]);
+					px[i] = atIndex | (alpha << 24);
 				}
 			}
 			break;
 		}
 		case CT_A5I3:
 		{
-			for(int i = 0; i < txelSize; i++){
-				unsigned char d = texels->texel[i];
+			for (int i = 0; i < txelSize; i++) {
+				uint8_t d = texels->texel[i];
 				int alpha = ((d & 0xF8) >> 3) * 255 / 31;
 				int index = d & 0x7;
 				if (index < palette->nColors) {
-					unsigned short atIndex = *(((unsigned short *) palette->pal) + index);
-					RGB r = { 0 };
-					getrgb(atIndex, &r);
-					r.a = alpha;
-					px[i] = r.b | (r.g << 8) | (r.r << 16) | (r.a << 24);
+					COLOR32 atIndex = ColorConvertFromDS(palette->pal[index]);
+					px[i] = atIndex | (alpha << 24);
 				}
 			}
 			break;
 		}
 		case CT_4x4:
 		{
-			int squares = (width * height) >> 4;
-			RGB transparent = {0, 0, 0, 0};
-			for(int i = 0; i < squares; i++){
-				RGB colors[4] = { 0 };
-				unsigned texel = *(unsigned *) (texels->texel + (i << 2));
-				unsigned short data = *(unsigned short *) (texels->cmp + i);
+			int tilesX = width / 4;
+			int tilesY = height / 4;
+			int nTiles = tilesX * tilesY;
+			for (int i = 0; i < nTiles; i++) {
+				int tileX = i % tilesX;
+				int tileY = i / tilesX;
 
-				int address = COMP_INDEX(data);
-				int mode = (data & COMP_MODE_MASK) >> 14;
-				COLOR *base = ((COLOR *) palette->pal) + address;
+				COLOR32 colors[4] = { 0 };
+				uint32_t texel = *(uint32_t *) (texels->texel + (i << 2));
+				uint16_t index = texels->cmp[i];
+
+				int address = COMP_INDEX(index);
+				int mode = index & COMP_MODE_MASK;
+				COLOR *base = palette->pal + address;
 				if (address + 2 <= palette->nColors) {
-					getrgb(base[0], colors);
-					getrgb(base[1], colors + 1);
+					colors[0] = ColorConvertFromDS(base[0]) | 0xFF000000;
+					colors[1] = ColorConvertFromDS(base[1]) | 0xFF000000;
 				}
-				colors[0].a = 255;
-				colors[1].a = 255;
-				if (mode == 0) {
+
+				if (mode == (COMP_TRANSPARENT | COMP_FULL)) {
 					//require 3 colors
 					if (address + 3 <= palette->nColors) {
-						getrgb(base[2], colors + 2);
+						colors[2] = ColorConvertFromDS(base[2]) | 0xFF000000;
 					}
-					colors[2].a = 255;
-					colors[3] = transparent;
-				} else if (mode == 1) {
+					colors[3] = 0;
+				} else if (mode == (COMP_TRANSPARENT | COMP_INTERPOLATE)) {
 					//require 2 colors
-					RGB col0 = { 0, 0, 0, 255 };
-					RGB col1 = { 0, 0, 0, 255 };
+					COLOR32 col0 = 0, col1 = 0;
 					if (address + 2 <= palette->nColors) {
-						col0 = *colors;
-						col1 = *(colors + 1);
+						col0 = colors[0];
+						col1 = colors[1];
 					}
-					colors[2].r = (col0.r + col1.r + 1) >> 1;
-					colors[2].g = (col0.g + col1.g + 1) >> 1;
-					colors[2].b = (col0.b + col1.b + 1) >> 1;
-					colors[2].a = 255;
-					colors[3] = transparent;
-				} else if (mode == 2) {
+					colors[2] = TxiBlend(col0, col1, 4) | 0xFF000000;
+					colors[3] = 0;
+				} else if (mode == (COMP_OPAQUE | COMP_FULL)) {
 					//require 4 colors
 					if (address + 4 <= palette->nColors) {
-						getrgb(base[2], colors + 2);
-						getrgb(base[3], colors + 3);
+						colors[2] = ColorConvertFromDS(base[2]) | 0xFF000000;
+						colors[3] = ColorConvertFromDS(base[3]) | 0xFF000000;
 					}
-					colors[2].a = 255;
-					colors[3].a = 255;
 				} else {
 					//require 2 colors
-					RGB col0 = { 0, 0, 0, 255 };
-					RGB col1 = { 0, 0, 0, 255 };
+					COLOR32 col0 = 0, col1 = 0;
 					if (address + 2 <= palette->nColors) {
-						col0 = *colors;
-						col1 = *(colors + 1);
+						col0 = colors[0];
+						col1 = colors[1];
 					}
-					colors[2].r = (col0.r * 5 + col1.r * 3 + 4) >> 3;
-					colors[2].g = (col0.g * 5 + col1.g * 3 + 4) >> 3;
-					colors[2].b = (col0.b * 5 + col1.b * 3 + 4) >> 3;
-					colors[2].a = 255;
-					colors[3].r = (col0.r * 3 + col1.r * 5 + 4) >> 3;
-					colors[3].g = (col0.g * 3 + col1.g * 5 + 4) >> 3;
-					colors[3].b = (col0.b * 3 + col1.b * 5 + 4) >> 3;
-					colors[3].a = 255;
+					
+					colors[2] = TxiBlend(col0, col1, 3) | 0xFF000000;
+					colors[3] = TxiBlend(col0, col1, 5) | 0xFF000000;
 				}
-				for(int j = 0; j < 16; j++){
+
+				for (int j = 0; j < 16; j++) {
 					int pVal = texel & 0x3;
 					texel >>= 2;
-					RGB rgb = colors[pVal];
-					int offs = ((i & ((width >> 2) - 1)) << 2) + (j & 3) + (((i / (width >> 2)) << 2) + (j  >> 2)) * width;
-					px[offs] = ColorRoundToDS18(rgb.b | (rgb.g << 8) | (rgb.r << 16)) | (rgb.a << 24);
+
+					int destX = (j % 4) + tileX * 4;
+					int destY = (j / 4) + tileY * 4;
+					px[destX + destY * width] = colors[pVal];
 				}
 			}
 			break;
 		}
 	}
+
+	//swap RB
+	for (int i = 0; i < width * height; i++) {
+		COLOR32 c = px[i];
+		px[i] = REVERSE(c);
+	}
+
 	//flip upside down
 	if (flip) {
 		DWORD *tmp = calloc(width, 4);
