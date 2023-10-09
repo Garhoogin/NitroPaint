@@ -16,8 +16,8 @@
 
 /******************************************************************************\
 *
-* Decompresses LZ77-compressed data and returns a pointer to the decompressed
-* buffer allocated with malloc.
+* Decompresses compressed data and returns a pointer to the decompressed buffer
+* allocated with malloc.
 *
 * Parameters:
 *	buffer					the compressed buffer
@@ -28,225 +28,24 @@
 *	A pointer to the decompressed data on success, or NULL on failure.
 * 
 \******************************************************************************/
-char *lz77decompress(char *buffer, int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressLZ(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressLZX(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressLZXComp(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressRL(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxUnfilterDiff8(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxUnfilterDiff16(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressLZHeader(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressMvDK(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 
 
 /******************************************************************************\
 *
-* Compresses a buffer with LZ77 and returns a pointer to an allocated buffer
-* holding the compressed data.
-*
-* Parameters:
-*	buffer					the buffer to compress
-*	size					size of the buffer
-*	compressedSize			pointer that receives the compressed size
-*
-* Returns:
-*	A pointer to the compressed buffer on success, or NULL on failure.
-*
-\******************************************************************************/
-char *lz77compress(char *buffer, int size, unsigned int *compressedSize);
-
-
-/******************************************************************************\
-*
-* Determines whether the input buffer contains valid LZ77 compressed data.
-*
-* Parameters:
-*	buffer					the buffer to check
-*	size					the size of the buffer
-*
-* Returns:
-*	0 if the buffer does not contain valid LZ77 compressed data
-*	1 if the buffer does contain valid LZ77 compressed data
-*
-\******************************************************************************/
-int lz77IsCompressed(char *buffer, unsigned int size);
-
-//----- LZ11 functions
-
-/******************************************************************************\
-*
-* Decompresses LZ11-compressed data and returns a pointer to the decompressed
-* buffer allocated with malloc.
-*
-* Parameters:
-*	buffer					the compressed buffer
-*	size					size of the compressed buffer
-*	uncompressedSize		pointer that receives uncompressed size
-*
-* Returns:
-*	A pointer to the decompressed data on success, or NULL on failure.
-*
-\******************************************************************************/
-char *lz11decompress(char *buffer, int size, int *uncompressedSize);
-
-
-/******************************************************************************\
-*
-* Compresses a buffer with LZ11 and returns a pointer to an allocated buffer
-* holding the compressed data.
-*
-* Parameters:
-*	buffer					the buffer to compress
-*	size					size of the buffer
-*	compressedSize			pointer that receives the compressed size
-*
-* Returns:
-*	A pointer to the compressed buffer on success, or NULL on failure.
-*
-\******************************************************************************/
-char *lz11compress(char *buffer, int size, int *compressedSize);
-
-
-/******************************************************************************\
-*
-* Determines whether the input buffer contains valid LZ11 compressed data.
-*
-* Parameters:
-*	buffer					the buffer to check
-*	size					the size of the buffer
-*
-* Returns:
-*	0 if the buffer does not contain valid LZ11 compressed data
-*	1 if the buffer does contain valid LZ11 compressed data
-*
-\******************************************************************************/
-int lz11IsCompressed(char *buffer, unsigned size);
-
-//----- LZ11 header functions
-
-/******************************************************************************\
-*
-* Decompresses LZ11 header compressed data and returns a pointer to the
-* decompressed buffer allocated with malloc.
-*
-* Parameters:
-*	buffer					the compressed buffer
-*	size					size of the compressed buffer
-*	uncompressedSize		pointer that receives uncompressed size
-*
-* Returns:
-*	A pointer to the decompressed data on success, or NULL on failure.
-*
-\******************************************************************************/
-char *lz11CompHeaderDecompress(char *buffer, int size, int *uncompressedSize);
-
-
-/******************************************************************************\
-*
-* Compresses a buffer with LZ11 header compression and returns a pointer to an
-* allocated buffer holding the compressed data.
-*
-* Parameters:
-*	buffer					the buffer to compress
-*	size					size of the buffer
-*	compressedSize			pointer that receives the compressed size
-*
-* Returns:
-*	A pointer to the compressed buffer on success, or NULL on failure.
-*
-\******************************************************************************/
-char *lz11CompHeaderCompress(char *buffer, int size, int *compressedSize);
-
-
-/******************************************************************************\
-*
-* Determines whether the input buffer contains valid LZ11 header compression
+* Compresses a buffer and returns a pointer to an allocated buffer holding the
 * compressed data.
 *
 * Parameters:
-*	buffer					the buffer to check
-*	size					the size of the buffer
-*
-* Returns:
-*	0 if the buffer does not contain valid LZ11 header compressed data
-*	1 if the buffer does contain valid LZ11 header compressed data
-*
-\******************************************************************************/
-int lz11CompHeaderIsValid(char *buffer, unsigned size);
-
-//----- Huffman functions
-
-/******************************************************************************\
-*
-* Decompresses Huffman-compressed data and returns a pointer to the decompressed
-* buffer allocated with malloc.
-*
-* Parameters:
-*	buffer					the compressed buffer
-*	size					size of the compressed buffer
-*	uncompressedSize		pointer that receives uncompressed size
-*
-* Returns:
-*	A pointer to the decompressed data on success, or NULL on failure.
-*
-\******************************************************************************/
-char *huffmanDecompress(unsigned char *buffer, int size, int *uncompressedSize);
-
-
-/******************************************************************************\
-*
-* Compresses a buffer with Huffman and returns a pointer to an allocated buffer
-* holding the compressed data.
-*
-* Parameters:
-*	buffer					the buffer to compress
-*	size					size of the buffer
-*	compressedSize			pointer that receives the compressed size
-*	nBits					Symbol size in bits; either 4 or 8
-*
-* Returns:
-*	A pointer to the compressed buffer on success, or NULL on failure.
-*
-\******************************************************************************/
-char *huffmanCompress(unsigned char *buffer, int size, int *compressedSize, int nBits);
-char *huffman4Compress(unsigned char *buffer, int size, int *compressedSize);
-char *huffman8Compress(unsigned char *buffer, int size, int *compressedSize);
-
-
-/******************************************************************************\
-*
-* Determines whether the input buffer contains valid Huffman compressed data.
-*
-* Parameters:
-*	buffer					the buffer to check
-*	size					the size of the buffer
-*
-* Returns:
-*	0 if the buffer does not contain valid LZ77 compressed data
-*	1 if the buffer does contain valid LZ77 compressed data
-*
-\******************************************************************************/
-int huffmanIsCompressed(unsigned char *buffer, unsigned size);
-int huffman4IsCompressed(unsigned char *buffer, unsigned size);
-int huffman8IsCompressed(unsigned char *buffer, unsigned size);
-
-//----- LZ77 header functions
-
-/******************************************************************************\
-*
-* Decompresses LZ77-compressed data and returns a pointer to the decompressed
-* buffer allocated with malloc.
-*
-* Parameters:
-*	buffer					the compressed buffer
-*	size					size of the compressed buffer
-*	uncompressedSize		pointer that receives uncompressed size
-*
-* Returns:
-*	A pointer to the decompressed data on success, or NULL on failure.
-*
-\******************************************************************************/
-char *lz77HeaderDecompress(char *buffer, int size, int *uncompressedSize);
-
-
-/******************************************************************************\
-*
-* Compresses a buffer with LZ77 and returns a pointer to an allocated buffer
-* holding the compressed data.
-*
-* Parameters:
 *	buffer					the buffer to compress
 *	size					size of the buffer
 *	compressedSize			pointer that receives the compressed size
@@ -255,23 +54,44 @@ char *lz77HeaderDecompress(char *buffer, int size, int *uncompressedSize);
 *	A pointer to the compressed buffer on success, or NULL on failure.
 *
 \******************************************************************************/
-char *lz77HeaderCompress(char *buffer, int size, int *compressedSize);
+unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressLZXComp(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize, int nBits);
+unsigned char *CxCompressHuffman4(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressHuffman8(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressRL(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxFilterDiff8(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxFilterDiff16(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressLZHeader(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressMvDK(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompress(const unsigned char *buffer, unsigned int size, int compression, unsigned int *compressedSize);
 
 
 /******************************************************************************\
 *
-* Determines whether the input buffer contains valid LZ77 compressed data.
+* Determines whether the input buffer contains valid compressed data.
 *
 * Parameters:
 *	buffer					the buffer to check
 *	size					the size of the buffer
 *
 * Returns:
-*	0 if the buffer does not contain valid LZ77 compressed data
-*	1 if the buffer does contain valid LZ77 compressed data
+*	0 if the buffer does not contain valid compressed data
+*	1 if the buffer does contain valid compressed data
 *
 \******************************************************************************/
-int lz77HeaderIsCompressed(unsigned char *buffer, unsigned size);
+int CxIsCompressedLZ(const unsigned char *buffer, unsigned int size);
+int CxIsCompressedLZX(const unsigned char *buffer, unsigned int size);
+int CxIsCompressedLZXComp(const unsigned char *buffer, unsigned int size);
+int CxIsCompressedHuffman(const unsigned char *buffer, unsigned int size);
+int CxIsCompressedHuffman4(const unsigned char *buffer, unsigned int size);
+int CxIsCompressedHuffman8(const unsigned char *buffer, unsigned int size);
+int CxIsCompressedRL(const unsigned char *buffer, unsigned int size);
+int CxIsFilteredDiff8(const unsigned char *buffer, unsigned int size);
+int CxIsFilteredDiff16(const unsigned char *buffer, unsigned int size);
+int CxIsFilteredLZHeader(const unsigned char *buffer, unsigned int size);
+int CxIsCompressedMvDK(const unsigned char *buffer, unsigned int size);
 
 //----- Common functions
 
@@ -287,37 +107,4 @@ int lz77HeaderIsCompressed(unsigned char *buffer, unsigned size);
 *	The compression type used, or COMPRESSION_NONE if none were identified.
 *
 \******************************************************************************/
-int getCompressionType(char *buffer, int size);
-
-
-/******************************************************************************\
-*
-* Decompresses a buffer, automatically detecting the type of compression.
-*
-* Parameters:
-*	buffer					the buffer to check
-*	size					the size of the buffer
-*	uncompressedSize		pointer receiving the uncompressed size
-*
-* Returns:
-*	A buffer containing the decompressed data.
-*
-\******************************************************************************/
-char *decompress(char *buffer, int size, int *uncompressedSize);
-
-
-/******************************************************************************\
-*
-* Compresses a buffer with the compression algorithm of choice.
-*
-* Parameters:
-*	buffer					the buffer to check
-*	size					the size of the buffer
-*	compression				the type of compression to use
-*	compressedSize			pointer receiving the uncompressed size
-*
-* Returns:
-*	A buffer containing the compressed data.
-*
-\******************************************************************************/
-char *compress(char *buffer, int size, int compression, int *compressedSize);
+int CxGetCompressionType(const unsigned char *buffer, unsigned int size);

@@ -256,8 +256,8 @@ int fileGuessPltChrScr(unsigned char *ptr, int size) {
 int fileIdentify(char *file, int size, LPCWSTR path) {
 	char *buffer = file;
 	int bufferSize = size;
-	if (getCompressionType(file, size) != COMPRESSION_NONE) {
-		buffer = decompress(file, size, &bufferSize);
+	if (CxGetCompressionType(file, size) != COMPRESSION_NONE) {
+		buffer = CxDecompress(file, size, &bufferSize);
 	}
 
 	int type = FILE_TYPE_INVALID;
@@ -389,7 +389,7 @@ void fileCompress(LPWSTR name, int compression) {
 	CloseHandle(hFile);
 	int compressedSize;
 	char *compressedBuffer;
-	compressedBuffer = compress(buffer, dwSizeLow, compression, &compressedSize);
+	compressedBuffer = CxCompress(buffer, dwSizeLow, compression, &compressedSize);
 
 	hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	WriteFile(hFile, compressedBuffer, compressedSize, &dwWritten, NULL);
@@ -428,12 +428,12 @@ int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
 	void *buffer = fileReadWhole(name, &size);
 
 	int status;
-	int compType = getCompressionType(buffer, size);
+	int compType = CxGetCompressionType(buffer, size);
 	if (compType == COMPRESSION_NONE) {
 		status = reader(object, buffer, size);
 	} else {
 		int decompressedSize;
-		void *decompressed = decompress(buffer, size, &decompressedSize);
+		void *decompressed = CxDecompress(buffer, size, &decompressedSize);
 		status = reader(object, decompressed, decompressedSize);
 		free(decompressed);
 		object->compression = compType;

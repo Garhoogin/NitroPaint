@@ -79,7 +79,7 @@ int bstreamCompress(BSTREAM *stream, int algorithm, int start, int size) {
 	//compress section
 	char *compressed = NULL;
 	int compressedSize = size;
-	compressed = compress(src, size, algorithm, &compressedSize);
+	compressed = CxCompress(src, size, algorithm, &compressedSize);
 
 	//insert section
 	int beforeCompressed = start;

@@ -661,8 +661,8 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		{
 			//since we're kind of stepping around things a bit, we need to decompress here if applicable
 			int decompressedSize = dwSize;
-			int compressionType = getCompressionType(buffer, dwSize);
-			char *decompressed = decompress(buffer, dwSize, &decompressedSize);
+			int compressionType = CxGetCompressionType(buffer, dwSize);
+			char *decompressed = CxDecompress(buffer, dwSize, &decompressedSize);
 			int type = combo2dIsValid(decompressed, decompressedSize);
 
 			//read combo
