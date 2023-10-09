@@ -955,7 +955,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							COLOR32 as32 = ColorConvertFromDS(data->nclr.colors[i]) | 0xFF000000;
 							bits[i] = as32;
 						}
-						writeImage(bits, width, height, path);
+						ImgWrite(bits, width, height, path);
 						free(path);
 
 						break;
@@ -966,7 +966,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (path == NULL) break;
 
 						int width, height;
-						COLOR32 *colors = gdipReadImage(path, &width, &height);
+						COLOR32 *colors = ImgRead(path, &width, &height);
 						int nColors = width * height;
 						int startIndex = data->contextHoverX + data->contextHoverY * 16;
 						int nCopyColors = min(nColors, data->nclr.nColors - startIndex);
@@ -1126,7 +1126,7 @@ LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, 
 				RxInit(reduction, balance, colorBalance, 15, enhanceColors, nColors - reserveFirst);
 				for (int i = 0; i < nPaths; i++) {
 					getPathFromPaths(paths, i, bf);
-					COLOR32 *bits = gdipReadImage(bf, &width, &height);
+					COLOR32 *bits = ImgRead(bf, &width, &height);
 					RxHistAdd(reduction, bits, width, height);
 					free(bits);
 				}

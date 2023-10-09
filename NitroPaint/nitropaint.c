@@ -1538,7 +1538,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					}
 
 					int width, height;
-					DWORD * bbits = gdipReadImage(location, &width, &height);
+					DWORD * bbits = ImgRead(location, &width, &height);
 
 					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
@@ -2353,7 +2353,7 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 	//load background image
 	if (g_configuration.backgroundPath[0] != L'\0') {
 		int width = 0, height = 0;
-		COLOR32 *bits = gdipReadImage(g_configuration.backgroundPath, &width, &height);
+		COLOR32 *bits = ImgRead(g_configuration.backgroundPath, &width, &height);
 		if (bits != NULL) {
 			for (int i = 0; i < width * height; i++) bits[i] = REVERSE(bits[i]);
 			HBITMAP hbm = CreateBitmap(width, height, 1, 32, bits);

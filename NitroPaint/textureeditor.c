@@ -71,7 +71,7 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 
 	if (format == CT_256COLOR || format == CT_A3I5 || format == CT_A5I3) {
 		//prepare image output. For palette256, a3i5 and a5i3, we can export the data as it already is.
-		imageWriteIndexed((unsigned char *) texture->texels.texel, width, height, palette, paletteSize, path);
+		ImgWriteIndexed((unsigned char *) texture->texels.texel, width, height, palette, paletteSize, path);
 	} else if (format == CT_4x4 || format == CT_DIRECT) {
 		//else if 4x4 or direct, just export full-color image. Red/blue must be swapped here
 		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
@@ -80,7 +80,7 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 			COLOR32 c = px[i];
 			px[i] = REVERSE(c);
 		}
-		imageWrite(px, width, height, path);
+		ImgWrite(px, width, height, path);
 		free(px);
 	} else {
 		//palette16 or palette4, will need to convert the bit depth
@@ -95,7 +95,7 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 				rowDst[x] = (rowSrc[x * depth / 8] >> ((x * depth) % 8)) & mask;
 			}
 		}
-		imageWriteIndexed(bits, width, height, palette, paletteSize, path);
+		ImgWriteIndexed(bits, width, height, palette, paletteSize, path);
 		free(bits);
 	}
 }
@@ -117,7 +117,7 @@ void UpdatePaletteLabel(HWND hWnd) {
 	len = wsprintfW(bf, L"Format: %S", TxNameFromTexFormat(FORMAT(data->textureData.texels.texImageParam)));
 	SendMessage(data->hWndFormatLabel, WM_SETTEXT, len, (LPARAM) bf);
 
-	int nColors = countColors(data->px, data->width * data->height);
+	int nColors = ImgCountColors(data->px, data->width * data->height);
 	len = wsprintfW(bf, L"Colors: %d", nColors);
 	SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) bf);
 
@@ -213,7 +213,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			}
 
 			WCHAR buffer[16];
-			int nColors = countColors(data->px, data->width * data->height);
+			int nColors = ImgCountColors(data->px, data->width * data->height);
 			int len = wsprintfW(buffer, L"Colors: %d", nColors);
 			SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) buffer);
 
@@ -245,7 +245,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 			//update UI
 			WCHAR buffer[16];
-			int nColors = countColors(data->px, data->width * data->height);
+			int nColors = ImgCountColors(data->px, data->width * data->height);
 			int len = wsprintfW(buffer, L"Colors: %d", nColors);
 			SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) buffer);
 
@@ -437,7 +437,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						if (data->isNitro) {
 							exportTextureImage(path, &data->textureData);
 						} else {
-							imageWrite(data->px, data->width, data->height, path);
+							ImgWrite(data->px, data->width, data->height, path);
 						}
 						free(path);
 						break;
@@ -1130,7 +1130,7 @@ int guessFormat(COLOR32 *px, int nWidth, int nHeight) {
 	//is there translucency?
 	if (isTranslucent(px, nWidth, nHeight)) {
 		//then choose a3i5 or a5i3. Do this by using color count.
-		int colorCount = countColors(px, nWidth * nHeight);
+		int colorCount = ImgCountColors(px, nWidth * nHeight);
 		if (colorCount < 16) {
 			//colors < 16, choose a5i3.
 			fmt = CT_A5I3;
@@ -1140,7 +1140,7 @@ int guessFormat(COLOR32 *px, int nWidth, int nHeight) {
 		}
 	} else {
 		//weigh the other format options for optimal size.
-		int nColors = countColors(px, nWidth * nHeight);
+		int nColors = ImgCountColors(px, nWidth * nHeight);
 		
 		//if <= 4 colors, choose 4-color.
 		if (nColors <= 4) {
@@ -2076,7 +2076,7 @@ void BatchTexCheckFormatDir(LPCWSTR path, int *fmt) {
 BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	//read image
 	int width, height;
-	COLOR32 *px = gdipReadImage(path, &width, &height);
+	COLOR32 *px = ImgRead(path, &width, &height);
 
 	//invalid image?
 	if (px == NULL) {
@@ -2411,7 +2411,7 @@ HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndPa
 
 HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	int bWidth, bHeight;
-	DWORD *bits = gdipReadImage(path, &bWidth, &bHeight);
+	DWORD *bits = ImgRead(path, &bWidth, &bHeight);
 	if (bits == NULL) {
 		MessageBox(hWndParent, L"An invalid image file was specified.", L"Invalid Image", MB_ICONERROR);
 		return NULL;

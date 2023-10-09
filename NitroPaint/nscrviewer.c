@@ -395,7 +395,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								}
 							}
 							unsigned char *bits = renderNscrIndexed(nscr, ncgr, data->tileBase, &width, &height, TRUE);
-							imageWriteIndexed(bits, width, height, palette, 256, location);
+							ImgWriteIndexed(bits, width, height, palette, 256, location);
 							free(bits);
 						} else {
 							//write direct
@@ -404,7 +404,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								COLOR32 c = bits[i];
 								bits[i] = REVERSE(c);
 							}
-							imageWrite(bits, width, height, location);
+							ImgWrite(bits, width, height, location);
 							free(bits);
 						}
 						free(location);
@@ -1462,7 +1462,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					WCHAR textBuffer[MAX_PATH + 1];
 					SendMessage(data->hWndBitmapName, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
 					int width, height;
-					DWORD *px = gdipReadImage(textBuffer, &width, &height);
+					DWORD *px = ImgRead(textBuffer, &width, &height);
 
 					SendMessage(data->hWndDiffuseAmount, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
 					float diffuse = ((float) _wtoi(textBuffer)) * 0.01f;

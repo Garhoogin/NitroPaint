@@ -94,36 +94,3 @@ void RxConvertYuvToRgb(int y, int u, int v, int *r, int *g, int *b) {
 	*g = (int) (y - 0.34408f * u - 0.71389f * v);
 	*b = (int) (y + 1.77180f * u - 0.00126f * v);
 }
-
-static int RxiPixelComparator(const void *p1, const void *p2) {
-	return *(COLOR32 *) p1 - (*(COLOR32 *) p2);
-}
-
-int countColors(COLOR32 *px, int nPx) {
-	//sort the colors by raw RGB value. This way, same colors are grouped.
-	COLOR32 *copy = (COLOR32 *) malloc(nPx * 4);
-	memcpy(copy, px, nPx * 4);
-	qsort(copy, nPx, 4, RxiPixelComparator);
-	int nColors = 0;
-	int hasTransparent = 0;
-	for (int i = 0; i < nPx; i++) {
-		int a = copy[i] >> 24;
-		if (!a) hasTransparent = 1;
-		else {
-			COLOR32 color = copy[i] & 0xFFFFFF;
-			//has this color come before?
-			int repeat = 0;
-			if(i){
-				COLOR32 comp = copy[i - 1] & 0xFFFFFF;
-				if (comp == color) {
-					repeat = 1;
-				}
-			}
-			if (!repeat) {
-				nColors++;
-			}
-		}
-	}
-	free(copy);
-	return nColors + hasTransparent;
-}

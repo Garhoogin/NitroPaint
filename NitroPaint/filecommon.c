@@ -318,7 +318,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 		} else {
 			//image file?
 			int width, height;
-			DWORD *bits = gdipReadImage(path, &width, &height);
+			DWORD *bits = ImgRead(path, &width, &height);
 			if (bits != NULL && width && height) {
 				free(bits);
 				type = FILE_TYPE_IMAGE;

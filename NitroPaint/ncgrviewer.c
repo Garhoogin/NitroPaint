@@ -155,7 +155,7 @@ void ncgrExportImage(NCGR *ncgr, NCLR *nclr, int paletteIndex, LPCWSTR path) {
 		pal[i] = c;
 	}
 
-	imageWriteIndexed(bits, width, height, pal, paletteSize, path);
+	ImgWriteIndexed(bits, width, height, pal, paletteSize, path);
 
 	free(bits);
 	free(pal);
@@ -1005,7 +1005,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 	COLOR32 *palette = (COLOR32 *) calloc(paletteSize, 4);
 
 	int width, height;
-	COLOR32 *pixels = gdipReadImage(imgPath, &width, &height);
+	COLOR32 *pixels = ImgRead(imgPath, &width, &height);
 
 	//if we use an existing palette, decode the palette values.
 	//if we do not use an existing palette, generate one.

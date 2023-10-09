@@ -622,7 +622,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 
 					int width, height;
-					DWORD *pixels = gdipReadImage(path, &width, &height);
+					DWORD *pixels = ImgRead(path, &width, &height);
 
 					//if we do not use an existing palette, generate one.
 					if(createPalette){
@@ -900,7 +900,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					if (path == NULL) break;
 
 					int width, height;
-					COLOR32 *px = gdipReadImage(path, &width, &height);
+					COLOR32 *px = ImgRead(path, &width, &height);
 					free(path);
 
 					//create generator dialog
@@ -1017,7 +1017,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							bits[i] = REVERSE(c);
 						}
 
-						writeImage(bits, width, height, location);
+						ImgWrite(bits, width, height, location);
 						free(bits);
 						free(location);
 						break;

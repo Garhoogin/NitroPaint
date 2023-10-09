@@ -29,7 +29,7 @@ typedef struct {
 //
 // Counts the number of colors in an image (transparent counts as a color)
 //
-int countColors(COLOR32 *px, int nPx);
+int ImgCountColors(COLOR32 *px, int nPx);
 
 //
 // Convert an image to a direct mode texture

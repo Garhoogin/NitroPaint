@@ -71,11 +71,6 @@ void RxConvertRgbToYuv(int r, int g, int b, int *y, int *u, int *v);
 //
 void RxConvertYuvToRgb(int y, int u, int v, int *r, int *g, int *b);
 
-//
-// Count the number of unique colors in an image (counting transparent as a color), and otherwise ignoring the alpha channel.
-//
-int countColors(COLOR32 *px, int nPx);
-
 
 //----------structures used by palette generator
 
