@@ -75,7 +75,7 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	} else if (format == CT_4x4 || format == CT_DIRECT) {
 		//else if 4x4 or direct, just export full-color image. Red/blue must be swapped here
 		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-		textureRender(px, &texture->texels, &texture->palette, 0);
+		TxRender(px, &texture->texels, &texture->palette, 0);
 		for (int i = 0; i < width * height; i++) {
 			COLOR32 c = px[i];
 			px[i] = REVERSE(c);
@@ -114,15 +114,15 @@ void UpdatePaletteLabel(HWND hWnd) {
 	}
 	SendMessage(data->hWndPaletteLabel, WM_SETTEXT, len, (LPARAM) bf);
 
-	len = wsprintfW(bf, L"Format: %S", stringFromFormat(FORMAT(data->textureData.texels.texImageParam)));
+	len = wsprintfW(bf, L"Format: %S", TxNameFromTexFormat(FORMAT(data->textureData.texels.texImageParam)));
 	SendMessage(data->hWndFormatLabel, WM_SETTEXT, len, (LPARAM) bf);
 
 	int nColors = countColors(data->px, data->width * data->height);
 	len = wsprintfW(bf, L"Colors: %d", nColors);
 	SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) bf);
 
-	int texelVram = getTextureVramSize(&data->textureData.texels);
-	int paletteVram = getPaletteVramSize(&data->textureData.palette);
+	int texelVram = TxGetTextureVramSize(&data->textureData.texels);
+	int paletteVram = TxGetTexPlttVramSize(&data->textureData.palette);
 	
 	//this code is ugly due to being unable to just use %.2f
 	len = wsprintfW(bf, L"Texel: %d.%d%dKB", texelVram / 1024, (texelVram * 10 / 1024) % 10,
@@ -199,12 +199,12 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->frameData.contentHeight = data->height;
 
 			//check: is it a Nitro TGA?
-			if (!nitroTgaRead(data->szInitialFile, &data->textureData.texels, &data->textureData.palette)) {
+			if (!TxReadNnsTga(data->szInitialFile, &data->textureData.texels, &data->textureData.palette)) {
 				memcpy(data->szCurrentFile, data->szInitialFile, 2 + 2 * wcslen(data->szInitialFile));
 				data->format = FORMAT(data->textureData.texels.texImageParam);
 				data->hasPalette = (data->format != CT_DIRECT && data->format != 0);
 				data->isNitro = 1;
-				textureRender(data->px, &data->textureData.texels, &data->textureData.palette, 0);
+				TxRender(data->px, &data->textureData.texels, &data->textureData.palette, 0);
 				for (int i = 0; i < data->width * data->height; i++) {
 					DWORD col = data->px[i];
 					data->px[i] = REVERSE(col);
@@ -237,7 +237,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 			//decode texture data for preview
 			int nPx = data->width * data->height;
-			textureRender(data->px, &texture->texels, &texture->palette, 0);
+			TxRender(data->px, &texture->texels, &texture->palette, 0);
 			for (int i = 0; i < nPx; i++) {
 				COLOR32 p = data->px[i];
 				data->px[i] = REVERSE(p);
@@ -329,7 +329,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 					DWORD dwWritten;
 					int texImageParam = data->textureData.texels.texImageParam;
-					int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+					int texelSize = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
 					HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 					WriteFile(hFile, data->textureData.texels.texel, texelSize, &dwWritten, NULL);
 					CloseHandle(hFile);
@@ -423,7 +423,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 							memcpy(data->szCurrentFile, path, 2 * wcslen(path) + 2);
 							free(path);
 						}
-						writeNitroTGA(data->szCurrentFile, &data->textureData.texels, &data->textureData.palette);
+						TxWriteNnsTga(data->szCurrentFile, &data->textureData.texels, &data->textureData.palette);
 						break;
 					}
 					case ID_FILE_EXPORT:
@@ -568,7 +568,7 @@ void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int
 	temp.texels.texImageParam = format << 26;
 	temp.palette.nColors = texture->palette.nColors;
 	temp.palette.pal = texture->palette.pal;
-	textureRender(rendered, &temp.texels, &temp.palette, 0);
+	TxRender(rendered, &temp.texels, &temp.palette, 0);
 
 	//convert back to 4x4
 	memmove(rendered + 0, rendered + 0, 16);
@@ -741,14 +741,14 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				if (notification == BN_CLICKED && hWndControl == data->hWndTransparent) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
-					textureRender(data->px, texels, &data->textureData.palette, 0);
+					TxRender(data->px, texels, &data->textureData.palette, 0);
 					swapRedBlueChannels(data->px, nPx);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
-					textureRender(data->px, texels, &data->textureData.palette, 0);
+					TxRender(data->px, texels, &data->textureData.palette, 0);
 					swapRedBlueChannels(data->px, nPx);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
@@ -756,7 +756,7 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 					WCHAR buffer[8];
 					SendMessage(hWndControl, WM_GETTEXT, 8, (LPARAM) buffer);
 					*pIdx = ((*pIdx) & 0xC000) | (_wtol(buffer) & 0x3FFF);
-					textureRender(data->px, texels, &data->textureData.palette, 0);
+					TxRender(data->px, texels, &data->textureData.palette, 0);
 					swapRedBlueChannels(data->px, nPx);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
@@ -837,7 +837,7 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 						}
 					}
 				}
-				textureRender(data->px, texels, &data->textureData.palette, 0);
+				TxRender(data->px, texels, &data->textureData.palette, 0);
 				swapRedBlueChannels(data->px, width * height);
 				InvalidateRect(data->hWnd, NULL, FALSE);
 				InvalidateRect(hWnd, NULL, FALSE);
@@ -1339,7 +1339,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			WCHAR bf[16];
 			int len;
 			for (int i = 1; i <= CT_DIRECT; i++) {
-				char *str = stringFromFormat(i);
+				const char *str = TxNameFromTexFormat(i);
 				len = 0;
 				while (*str) {
 					bf[len] = *str;
@@ -1723,11 +1723,11 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 							data->data->textureData.palette.pal[index] = ColorConvertToDS(result);
 							InvalidateRect(hWnd, NULL, FALSE);
 
-							textureRender(data->data->px, &data->data->textureData.texels, &data->data->textureData.palette, 0);
+							TxRender(data->data->px, &data->data->textureData.texels, &data->data->textureData.palette, 0);
 							int param = data->data->textureData.texels.texImageParam;
 							int width = TEXW(param);
 							int height = 8 << ((param >> 23) & 7);
-							//textureRender outputs red and blue in the opposite order, so flip them here.
+							//TxRender outputs red and blue in the opposite order, so flip them here.
 							for (int i = 0; i < width * height; i++) {
 								DWORD p = data->data->px[i];
 								data->data->px[i] = REVERSE(p);
@@ -1762,7 +1762,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						CloseClipboard();
 
 						TEXTURE *texture = &data->data->textureData;
-						textureRender(data->data->px, &texture->texels, &texture->palette, 0);
+						TxRender(data->data->px, &texture->texels, &texture->palette, 0);
 						for (int i = 0; i < data->data->width * data->data->height; i++) {
 							COLOR32 col = data->data->px[i];
 							data->data->px[i] = REVERSE(col);
@@ -1920,7 +1920,7 @@ BOOL BatchTexReadOptions(LPCWSTR path, int *fmt, int *dither, int *ditherAlpha, 
 	}
 	int foundFormat = 0;
 	for (int i = CT_A3I5; i <= CT_DIRECT; i++) {
-		char *fname = stringFromFormat(i);
+		const char *fname = TxNameFromTexFormat(i);
 		if (strcmp(fname, narrow) == 0) {
 			*fmt = i;
 			foundFormat = 1;
@@ -1973,7 +1973,7 @@ void BatchTexWriteOptions(LPCWSTR path, int fmt, int dither, int ditherAlpha, fl
 
 	//format
 	WCHAR buffer[MAX_PATH] = { 0 };
-	wsprintfW(buffer, L"%S", stringFromFormat(fmt));
+	wsprintfW(buffer, L"%S", TxNameFromTexFormat(fmt));
 	WritePrivateProfileString(L"Texture", L"Format", buffer, path);
 
 	//dithering
@@ -2062,7 +2062,7 @@ void BatchTexCheckFormatDir(LPCWSTR path, int *fmt) {
 
 	for (int i = CT_A3I5; i <= CT_DIRECT; i++) {
 		WCHAR wideFmt[16] = { 0 };
-		char *name = stringFromFormat(i);
+		const char *name = TxNameFromTexFormat(i);
 		for (unsigned int j = 0; j < strlen(name); j++) wideFmt[j] = name[j];
 		
 		//case insensitive check
@@ -2084,14 +2084,14 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	}
 
 	//invalid texture size?
-	if (!textureDimensionIsValid(width) || !textureDimensionIsValid(height)) {
+	if (!TxDimensionIsValid(width) || !TxDimensionIsValid(height)) {
 		if (px) free(px);
 		return FALSE; //report actual error
 	}
 
 	//construct output path (ensure .TGA extension)
 	WCHAR outPath[MAX_PATH] = { 0 };
-	LPWSTR filename = GetFileName(path);
+	LPCWSTR filename = GetFileName(path);
 	int outPathLen = wcslen(g_batchTexOut);
 	memcpy(outPath, g_batchTexOut, 2 * (outPathLen + 1));
 	outPath[outPathLen++] = L'\\';
@@ -2187,7 +2187,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	DoModalWait(hWndProgress, hThread); //modal wait progress window
 	
 	//write file out
-	writeNitroTGA(outPath, &texture.texels, &texture.palette);
+	TxWriteNnsTga(outPath, &texture.texels, &texture.palette);
 
 	//free texture memory
 	if (texture.texels.texel != NULL) free(texture.texels.texel);
@@ -2229,14 +2229,14 @@ BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
 	//read file and determine if valid
 	int size;
 	void *pf = fileReadWhole(path, &size);
-	int valid = nitrotgaIsValid(pf, size);
+	int valid = TxIsValidNnsTga(pf, size);
 	free(pf);
 	if (!valid) return TRUE;
 
 	//read texture
 	TEXELS texture = { 0 };
 	PALETTE palette = { 0 };
-	nitroTgaRead(path, &texture, &palette);
+	TxReadNnsTga(path, &texture, &palette);
 
 	//add to NSBTX
 	int fmt = FORMAT(texture.texImageParam);
@@ -2416,7 +2416,7 @@ HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, L
 		MessageBox(hWndParent, L"An invalid image file was specified.", L"Invalid Image", MB_ICONERROR);
 		return NULL;
 	}
-	if (!textureDimensionIsValid(bWidth) || !textureDimensionIsValid(bHeight)) {
+	if (!TxDimensionIsValid(bWidth) || !TxDimensionIsValid(bHeight)) {
 		free(bits);
 		MessageBox(hWndParent, L"Textures must have dimensions as powers of two greater than or equal to 8, and not exceeding 1024.", L"Invalid dimensions", MB_ICONERROR);
 		return NULL;

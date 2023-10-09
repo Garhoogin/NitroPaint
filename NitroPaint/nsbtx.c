@@ -591,7 +591,7 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 
 		int width = TEXW(texData->texImageParam);
 		int height = TEXH(texData->texImageParam);
-		int texelSize = getTexelSize(width, height, texData->texImageParam);
+		int texelSize = TxGetTexelSize(width, height, texData->texImageParam);
 
 		if (FORMAT(texData->texImageParam) == CT_4x4) {
 			texels[i].texImageParam = texData->texImageParam;
@@ -811,7 +811,7 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 		TEXELS *texture = nsbtx->textures + i;
 		int width = TEXW(texture->texImageParam);
 		int height = TEXH(texture->texImageParam);
-		int texelSize = getTexelSize(width, height, texture->texImageParam);
+		int texelSize = TxGetTexelSize(width, height, texture->texImageParam);
 		if (FORMAT(texture->texImageParam) == CT_4x4) {
 			//write the offset in the texImageParams
 			int ofs = (tex4x4Data.length >> 3) & 0xFFFF;
@@ -949,7 +949,7 @@ int nsbtxWriteBmd(NSBTX *nsbtx, BSTREAM *stream) {
 		TEXELS *texture = nsbtx->textures + i;
 
 		int texImageParam = texture->texImageParam;
-		*(uint32_t *) (texEntry + 0x08) = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+		*(uint32_t *) (texEntry + 0x08) = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
 		*(uint16_t *) (texEntry + 0x0C) = TEXW(texImageParam);
 		*(uint16_t *) (texEntry + 0x0E) = TEXH(texImageParam);
 		*(uint32_t *) (texEntry + 0x10) = texImageParam;
@@ -1026,7 +1026,7 @@ int nsbtxWriteBmd(NSBTX *nsbtx, BSTREAM *stream) {
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		TEXELS *texture = nsbtx->textures + i;
 		int texImageParam = texture->texImageParam;
-		int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+		int texelSize = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
 		uint32_t pos = stream->pos;
 
 		bstreamSeek(stream, texturePos + i * 0x14 + 4, 0);

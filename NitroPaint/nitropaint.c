@@ -1723,7 +1723,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			WCHAR bf[16];
 			int len;
 			for (int i = 1; i <= CT_DIRECT; i++) {
-				char *str = stringFromFormat(i);
+				const char *str = TxNameFromTexFormat(i);
 				len = 0;
 				while (*str) {
 					bf[len] = *str;

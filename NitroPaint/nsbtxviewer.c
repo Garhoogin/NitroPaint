@@ -17,7 +17,7 @@ HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	int width = TEXW(texture->texImageParam);
 	int height = TEXH(texture->texImageParam);
 	COLOR32 *px = (COLOR32 *) calloc(width * zoom * height * zoom, 4);
-	textureRender(px, texture, palette, 0);
+	TxRender(px, texture, palette, 0);
 
 	//perform alpha blending
 	int scaleWidth = width * zoom, scaleHeight = height * zoom;
@@ -81,7 +81,7 @@ int calculateHighestPaletteIndex(TEXELS *texture) {
 	if (format == CT_DIRECT) return -1;
 
 	int nHighest = 0;
-	int texelSize = getTexelSize(TEXW(texture->texImageParam), TEXH(texture->texImageParam), texture->texImageParam);
+	int texelSize = TxGetTexelSize(TEXW(texture->texImageParam), TEXH(texture->texImageParam), texture->texImageParam);
 	switch (format) {
 		case CT_4COLOR:
 			for (int i = 0; i < texelSize; i++) {
@@ -335,9 +335,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			SelectObject(hDC, GetStockObject(DEFAULT_GUI_FONT));
 			SetBkMode(hDC, TRANSPARENT);
 			if (FORMAT(texture->texImageParam) == CT_DIRECT) {
-				sprintf(bf, "%s texture, %dx%d", stringFromFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), TEXH(texture->texImageParam));
+				sprintf(bf, "%s texture, %dx%d", TxNameFromTexFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), TEXH(texture->texImageParam));
 			} else {
-				sprintf(bf, "%s texture, %dx%d; palette: %d colors", stringFromFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), TEXH(texture->texImageParam), palette->nColors);
+				sprintf(bf, "%s texture, %dx%d; palette: %d colors", TxNameFromTexFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), TEXH(texture->texImageParam), palette->nColors);
 			}
 			RECT rcText;
 			rcText.left = 155;
@@ -393,7 +393,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						LPWSTR location = saveFileDialog(hWnd, L"Save Texture", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
 						if (!location) break;
 
-						writeNitroTGA(location, data->nsbtx.textures + SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0),
+						TxWriteNnsTga(location, data->nsbtx.textures + SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0),
 									  data->nsbtx.palettes + SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0));
 
 						free(location);
@@ -458,7 +458,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 						TEXELS texels;
 						PALETTE palette;
-						int s = nitroTgaRead(path, &texels, &palette);
+						int s = TxReadNnsTga(path, &texels, &palette);
 						if (s) {
 							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
 						} else {
@@ -530,7 +530,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//suffix ".tga"
 							memcpy(path + pathLen + strlen(name), L".tga", 10);
 
-							writeNitroTGA(path, &data->nsbtx.textures[i], &data->nsbtx.palettes[pltt]);
+							TxWriteNnsTga(path, &data->nsbtx.textures[i], &data->nsbtx.palettes[pltt]);
 						}
 
 						//free palette name array
@@ -548,7 +548,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						//read texture
 						TEXELS texels;
 						PALETTE palette;
-						int s = nitroTgaRead(path, &texels, &palette);
+						int s = TxReadNnsTga(path, &texels, &palette);
 						if (s) {
 							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
 						} else {
@@ -779,8 +779,8 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 				TEXELS *tex = nsbtx->textures + i;
 				int texImageParam = tex->texImageParam;
 				int format = FORMAT(texImageParam);
-				int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
-				int indexSize = getIndexVramSize(tex);
+				int texelSize = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+				int indexSize = TxGetIndexVramSize(tex);
 
 				//copy name. Beware, not null terminated
 				for (unsigned int j = 0; j < 16; j++) {
@@ -790,7 +790,7 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 				AddListViewItem(hWndTexList, textBuffer, i, 0);
 
 				//format
-				const char *fmt = stringFromFormat(FORMAT(texImageParam));
+				const char *fmt = TxNameFromTexFormat(FORMAT(texImageParam));
 				for (unsigned int j = 0; j < strlen(fmt); j++) {
 					textBuffer[j] = (WCHAR) fmt[j];
 					textBuffer[j + 1] = L'\0';

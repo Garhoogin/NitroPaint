@@ -313,7 +313,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 	
 	//no matches?
 	if (type == FILE_TYPE_INVALID) {
-		if (nitrotgaIsValid(buffer, bufferSize)) {
+		if (TxIsValidNnsTga(buffer, bufferSize)) {
 			type = FILE_TYPE_TEXTURE;
 		} else {
 			//image file?

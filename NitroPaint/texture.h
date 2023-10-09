@@ -43,22 +43,22 @@ typedef struct {
 	PALETTE palette;
 } TEXTURE;
 
-char *stringFromFormat(int fmt);
+const char *TxNameFromTexFormat(int fmt);
 
-void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip);
+void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip);
 
-int getTexelSize(int width, int height, int texImageParam);
+int TxGetTexelSize(int width, int height, int texImageParam);
 
-int getTextureVramSize(TEXELS *texels);
+int TxGetTextureVramSize(TEXELS *texels);
 
-int getIndexVramSize(TEXELS *texels);
+int TxGetIndexVramSize(TEXELS *texels);
 
-int getPaletteVramSize(PALETTE *palette);
+int TxGetTexPlttVramSize(PALETTE *palette);
 
-void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette);
+void TxWriteNnsTga(LPCWSTR name, TEXELS *texels, PALETTE *palette);
 
-int textureDimensionIsValid(int x);
+int TxDimensionIsValid(int x);
 
-int nitrotgaIsValid(unsigned char *buffer, unsigned int size);
+int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size);
 
-int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette);
+int TxReadNnsTga(LPCWSTR path, TEXELS *texels, PALETTE *palette);

@@ -2,24 +2,24 @@
 #include <stdio.h>
 #include "texture.h"
 
-int getTexelSize(int width, int height, int texImageParam) {
+int TxGetTexelSize(int width, int height, int texImageParam) {
 	int nPx = width * height;
 	int bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
 	int b = bits[FORMAT(texImageParam)];
 	return (nPx * b) >> 3;
 }
 
-int getIndexVramSize(TEXELS *texels) {
+int TxGetIndexVramSize(TEXELS *texels) {
 	int texImageParam = texels->texImageParam;
 	int format = FORMAT(texImageParam);
 	int hasIndex = format == CT_4x4;
 
-	int texelSize = getTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+	int texelSize = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
 	int indexSize = hasIndex ? (texelSize / 2) : 0;
 	return indexSize;
 }
 
-int getTextureVramSize(TEXELS *texels) {
+int TxGetTextureVramSize(TEXELS *texels) {
 	int texImageParam = texels->texImageParam;
 	int w = TEXW(texImageParam);
 	int h = TEXH(texImageParam);
@@ -29,7 +29,7 @@ int getTextureVramSize(TEXELS *texels) {
 	return bpps[fmt] * w * h / 8;
 }
 
-int getPaletteVramSize(PALETTE *palette) {
+int TxGetTexPlttVramSize(PALETTE *palette) {
 	return palette->nColors * sizeof(COLOR);
 }
 
@@ -40,7 +40,7 @@ typedef struct {
 	BYTE a;
 } RGB;
 
-void getrgb(unsigned short n, RGB * ret){
+static void getrgb(unsigned short n, RGB * ret){
 	COLOR32 conv = ColorConvertFromDS(n);
 	ret->r = conv & 0xFF;
 	ret->g = (conv >> 8) & 0xFF;
@@ -58,18 +58,18 @@ int max16Len(char *str) {
 	return len;
 }
 
-char *stringFromFormat(int fmt) {
-	char *fmts[] = {"", "a3i5", "palette4", "palette16", "palette256", "tex4x4", "a5i3", "direct"};
+const char *TxNameFromTexFormat(int fmt) {
+	const char *fmts[] = { "", "a3i5", "palette4", "palette16", "palette256", "tex4x4", "a5i3", "direct" };
 	return fmts[fmt];
 }
 
-void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
+void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 	int format = FORMAT(texels->texImageParam);
 	int c0xp = COL0TRANS(texels->texImageParam);
 	int width = TEXW(texels->texImageParam);
 	int height = TEXH(texels->texImageParam);
 	int nPixels = width * height;
-	int txelSize = getTexelSize(width, height, texels->texImageParam);
+	int txelSize = TxGetTexelSize(width, height, texels->texImageParam);
 	switch (format) {
 		case CT_DIRECT:
 		{
@@ -262,7 +262,7 @@ void textureRender(DWORD *px, TEXELS *texels, PALETTE *palette, int flip) {
 
 #pragma comment(lib, "Version.lib")
 
-void getVersion(char *buffer, int max) {
+static void getVersion(char *buffer, int max) {
 	WCHAR path[MAX_PATH];
 	GetModuleFileName(NULL, path, MAX_PATH);
 	DWORD handle;
@@ -281,7 +281,7 @@ void getVersion(char *buffer, int max) {
 	}
 }
 
-void nnsTgaWriteSection(HANDLE hFile, const char *section, const void *data, int size) {
+static void TxiNnsTgaWriteSection(HANDLE hFile, const char *section, const void *data, int size) {
 	DWORD dwWritten;
 	
 	//prepare and write
@@ -295,7 +295,7 @@ void nnsTgaWriteSection(HANDLE hFile, const char *section, const void *data, int
 	}
 }
 
-int imageHasTransparent(COLOR32 *px, int nPx) {
+static int imageHasTransparent(COLOR32 *px, int nPx) {
 	for (int i = 0; i < nPx; i++) {
 		COLOR32 c = px[i];
 		int a = c >> 24;
@@ -304,7 +304,7 @@ int imageHasTransparent(COLOR32 *px, int nPx) {
 	return 0;
 }
 
-void nnsTgaWritePixels(HANDLE hFile, COLOR32 *rawPx, int width, int height, int depth) {
+static void TxiNnsTgaWritePixels(HANDLE hFile, COLOR32 *rawPx, int width, int height, int depth) {
 	DWORD dwWritten;
 	if (depth == 32) {
 		//write as-is
@@ -327,14 +327,14 @@ void nnsTgaWritePixels(HANDLE hFile, COLOR32 *rawPx, int width, int height, int 
 	//bad
 }
 
-void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
+void TxWriteNnsTga(LPCWSTR name, TEXELS *texels, PALETTE *palette) {
 	HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwWritten;
 
 	int width = TEXW(texels->texImageParam);
 	int height = TEXH(texels->texImageParam);
 	COLOR32 *pixels = (COLOR32 *) calloc(width * height, 4);
-	textureRender(pixels, texels, palette, 1);
+	TxRender(pixels, texels, palette, 1);
 	int depth = imageHasTransparent(pixels, width * height) ? 32 : 24;
 
 	uint8_t header[] = {0x14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 8,
@@ -344,32 +344,32 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 	*(uint8_t *) (header + 0x10) = depth;
 	*(uint32_t *) (header + 0x22) = sizeof(header) + width * height * (depth / 8);
 	WriteFile(hFile, header, sizeof(header), &dwWritten, NULL);
-	nnsTgaWritePixels(hFile, pixels, width, height, depth);
+	TxiNnsTgaWritePixels(hFile, pixels, width, height, depth);
 
 	//format
-	char *fstr = stringFromFormat(FORMAT(texels->texImageParam));
-	nnsTgaWriteSection(hFile, "nns_frmt", fstr, -1);
+	const char *fstr = TxNameFromTexFormat(FORMAT(texels->texImageParam));
+	TxiNnsTgaWriteSection(hFile, "nns_frmt", fstr, -1);
 
 	//texels
-	int txelLength = getTexelSize(width, height, texels->texImageParam);
-	nnsTgaWriteSection(hFile, "nns_txel", texels->texel, txelLength);
+	int txelLength = TxGetTexelSize(width, height, texels->texImageParam);
+	TxiNnsTgaWriteSection(hFile, "nns_txel", texels->texel, txelLength);
 
 	//write 4x4 if applicable
 	if (FORMAT(texels->texImageParam) == CT_4x4) {
 		int pidxLength = txelLength / 2;
-		nnsTgaWriteSection(hFile, "nns_pidx", texels->cmp, pidxLength);
+		TxiNnsTgaWriteSection(hFile, "nns_pidx", texels->cmp, pidxLength);
 	}
 
 	//palette (if applicable)
 	if (FORMAT(texels->texImageParam) != CT_DIRECT) {
 		int pnamLength = max16Len(palette->name);
-		nnsTgaWriteSection(hFile, "nns_pnam", palette->name, pnamLength);
+		TxiNnsTgaWriteSection(hFile, "nns_pnam", palette->name, pnamLength);
 
 		int nColors = palette->nColors;
 		if (FORMAT(texels->texImageParam) == CT_4COLOR && nColors > 4) nColors = 4;
 		if (nColors == 4 || (nColors % 8) == 0) {
 			//valid size
-			nnsTgaWriteSection(hFile, "nns_pcol", palette->pal, nColors * sizeof(COLOR));
+			TxiNnsTgaWriteSection(hFile, "nns_pcol", palette->pal, nColors * sizeof(COLOR));
 		} else {
 			//needs padding
 			int outPaletteSize = (nColors + 7) / 8 * 8;
@@ -377,7 +377,7 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 
 			COLOR *padded = (COLOR *) calloc(outPaletteSize, sizeof(COLOR));
 			memcpy(padded, palette->pal, palette->nColors * sizeof(COLOR));
-			nnsTgaWriteSection(hFile, "nns_pcol", padded, outPaletteSize * sizeof(COLOR));
+			TxiNnsTgaWriteSection(hFile, "nns_pcol", padded, outPaletteSize * sizeof(COLOR));
 			free(padded);
 		}
 	}
@@ -385,19 +385,19 @@ void writeNitroTGA(LPWSTR name, TEXELS *texels, PALETTE *palette) {
 	//NitroPaint generator signature
 	char version[16];
 	getVersion(version, 16);
-	nnsTgaWriteSection(hFile, "nns_gnam", "NitroPaint", -1);
-	nnsTgaWriteSection(hFile, "nns_gver", version, -1);
+	TxiNnsTgaWriteSection(hFile, "nns_gnam", "NitroPaint", -1);
+	TxiNnsTgaWriteSection(hFile, "nns_gver", version, -1);
 
 	//dummy imagestudio data
-	nnsTgaWriteSection(hFile, "nns_imst", NULL, 0);
+	TxiNnsTgaWriteSection(hFile, "nns_imst", NULL, 0);
 
 	//if c0xp
 	if (COL0TRANS(texels->texImageParam)) {
-		nnsTgaWriteSection(hFile, "nns_c0xp", NULL, 0);
+		TxiNnsTgaWriteSection(hFile, "nns_c0xp", NULL, 0);
 	}
 
 	//write end
-	nnsTgaWriteSection(hFile, "nns_endb", NULL, 0);
+	TxiNnsTgaWriteSection(hFile, "nns_endb", NULL, 0);
 	CloseHandle(hFile);
 	free(pixels);
 }
@@ -411,33 +411,35 @@ int ilog2(int x) {
 	return n - 1;
 }
 
-int textureDimensionIsValid(int x) {
+int TxDimensionIsValid(int x) {
 	if (x & (x - 1)) return 0;
 	if (x < 8 || x > 1024) return 0;
 	return 1;
 }
 
-int nitrotgaIsValid(unsigned char *buffer, unsigned int size) {
+int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size) {
 	//is the file even big enough to hold a TGA header and comment?
 	if (size < 0x16) return 0;
 	
-	int commentLength = *buffer;
+	unsigned int commentLength = *buffer;
 	if (commentLength < 4) return 0;
+
 	unsigned int ptrOffset = 0x12 + commentLength - 4;
 	if (ptrOffset + 4 > size) return 0;
-	unsigned int ptr = *(unsigned int *) (buffer + ptrOffset);
+
+	uint32_t ptr = *(uint32_t *) (buffer + ptrOffset);
 	if (ptr + 0xC > size) return 0;
 
 	//process sections. When any anomalies are found, return 0.
-	char *curr = buffer + ptr;
+	const unsigned char *curr = buffer + ptr;
 	while (1) {
 		//is there space enough left for a section header?
 		if (curr + 0xC > buffer + size) return 0;
 
 		//all sections must start with nns_.
-		if (*(int *) curr != 0x5F736E6E) return 0;
-		int section = *(int *) (curr + 4);
-		unsigned int sectionSize = *(unsigned int *) (curr + 8);
+		if (*(uint32_t *) curr != 0x5F736E6E) return 0;
+		uint32_t section = *(uint32_t *) (curr + 4);
+		uint32_t sectionSize = *(uint32_t *) (curr + 8);
 
 		//does the section size make sense?
 		if (sectionSize < 0xC) return 0;
@@ -453,7 +455,7 @@ int nitrotgaIsValid(unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
+int TxReadNnsTga(LPCWSTR path, TEXELS *texels, PALETTE *palette) {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeHigh;
 	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
@@ -462,7 +464,7 @@ int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
 	CloseHandle(hFile);
 
-	if (!nitrotgaIsValid(lpBuffer, dwSize)) {
+	if (!TxIsValidNnsTga(lpBuffer, dwSize)) {
 		free(lpBuffer);
 		return 1;
 	}
@@ -546,7 +548,7 @@ int nitroTgaRead(LPWSTR path, TEXELS *texels, PALETTE *palette) {
 	for (unsigned int i = 0; i < wcslen(path); i++) {
 		if (path[i] == L'/' || path[i] == L'\\') nameOffset = i + 1;
 	}
-	LPWSTR name = path + nameOffset;
+	LPCWSTR name = path + nameOffset;
 	memset(texels->name, 0, 16);
 	WCHAR *lastDot = wcsrchr(name, L'.');
 	for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator

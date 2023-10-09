@@ -959,8 +959,8 @@ int textureConvert(CREATEPARAMS *params) {
 		}
 	}
 
-	textureRender(params->px, &params->dest->texels, &params->dest->palette, 0);
-	//textureRender outputs red and blue in the opposite order, so flip them here.
+	TxRender(params->px, &params->dest->texels, &params->dest->palette, 0);
+	//TxRender outputs red and blue in the opposite order, so flip them here.
 	for (int i = 0; i < params->width * params->height; i++) {
 		COLOR32 p = params->px[i];
 		params->px[i] = REVERSE(p);
