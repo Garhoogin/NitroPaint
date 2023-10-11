@@ -263,7 +263,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 	int type = FILE_TYPE_INVALID;
 
 	//test Nitro formats
-	if (g2dIsValid(buffer, bufferSize)) {
+	if (NnsG2dIsValid(buffer, bufferSize)) {
 		unsigned int magic = *(unsigned int *) buffer;
 		switch (magic) {
 			case 'NCLR':

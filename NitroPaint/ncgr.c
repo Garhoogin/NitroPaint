@@ -49,10 +49,10 @@ int ncgrIsValidBin(unsigned char *buffer, unsigned int size) {
 }
 
 int ncgrIsValidNcg(unsigned char *buffer, unsigned int size) {
-	if (!g2dIsValid(buffer, size)) return 0;
+	if (!NnsG2dIsValid(buffer, size)) return 0;
 
-	char *sChar = g2dGetSectionByMagic(buffer, size, 'CHAR');
-	if (sChar == NULL) sChar = g2dGetSectionByMagic(buffer, size, 'RAHC');
+	char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
+	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
 	if (sChar == NULL) return 0;
 	return 1;
 }
@@ -332,14 +332,14 @@ int ncgrReadBin(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 int ncgrReadNcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgrInit(ncgr, NCGR_TYPE_NC);
 
-	unsigned char *sChar = g2dGetSectionByMagic(buffer, size, 'CHAR');
-	if (sChar == NULL) sChar = g2dGetSectionByMagic(buffer, size, 'RAHC');
-	unsigned char *sAttr = g2dGetSectionByMagic(buffer, size, 'ATTR');
-	if (sAttr == NULL) sAttr = g2dGetSectionByMagic(buffer, size, 'RTTA');
-	unsigned char *sLink = g2dGetSectionByMagic(buffer, size, 'LINK');
-	if (sLink == NULL) sLink = g2dGetSectionByMagic(buffer, size, 'KNIL');
-	unsigned char *sCmnt = g2dGetSectionByMagic(buffer, size, 'CMNT');
-	if (sCmnt == NULL) sCmnt = g2dGetSectionByMagic(buffer, size, 'TNMC');
+	unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
+	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
+	unsigned char *sAttr = NnsG2dGetSectionByMagic(buffer, size, 'ATTR');
+	if (sAttr == NULL) sAttr = NnsG2dGetSectionByMagic(buffer, size, 'RTTA');
+	unsigned char *sLink = NnsG2dGetSectionByMagic(buffer, size, 'LINK');
+	if (sLink == NULL) sLink = NnsG2dGetSectionByMagic(buffer, size, 'KNIL');
+	unsigned char *sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'CMNT');
+	if (sCmnt == NULL) sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'TNMC');
 	
 	ncgr->nBits = *(uint32_t *) (sChar + 0x10) == 0 ? 4 : 8;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;

@@ -60,10 +60,10 @@ int nscrIsValidBin(unsigned char *buffer, unsigned int size) {
 }
 
 int nscrIsValidNsc(unsigned char *buffer, unsigned int size) {
-	if (!g2dIsValid(buffer, size)) return 0;
+	if (!NnsG2dIsValid(buffer, size)) return 0;
 
-	unsigned char *scrn = g2dGetSectionByMagic(buffer, size, 'SCRN');
-	if (scrn == NULL) scrn = g2dGetSectionByMagic(buffer, size, 'NRCS');
+	unsigned char *scrn = NnsG2dGetSectionByMagic(buffer, size, 'SCRN');
+	if (scrn == NULL) scrn = NnsG2dGetSectionByMagic(buffer, size, 'NRCS');
 	if (scrn == NULL) return 0;
 
 	return 1;
@@ -228,20 +228,20 @@ int nscrReadBin(NSCR *nscr, unsigned char *file, unsigned int dwFileSize) {
 int nscrReadNsc(NSCR *nscr, unsigned char *file, unsigned int size) {
 	nscrInit(nscr, NSCR_TYPE_NC);
 
-	unsigned char *scrn = g2dGetSectionByMagic(file, size, 'SCRN');
-	if (scrn == NULL) scrn = g2dGetSectionByMagic(file, size, 'NRCS');
-	unsigned char *escr = g2dGetSectionByMagic(file, size, 'ESCR');
-	if (escr == NULL) escr = g2dGetSectionByMagic(file, size, 'RCSE'); //xxxxFFxxxxxxPPPPCCCCCCCCCCCCCCCC
-	unsigned char *clrf = g2dGetSectionByMagic(file, size, 'CLRF');
-	if (clrf == NULL) clrf = g2dGetSectionByMagic(file, size, 'FRLC');
-	unsigned char *clrc = g2dGetSectionByMagic(file, size, 'CLRC');
-	if (clrc == NULL) clrc = g2dGetSectionByMagic(file, size, 'CRLC');
-	unsigned char *grid = g2dGetSectionByMagic(file, size, 'GRID');
-	if (grid == NULL) grid = g2dGetSectionByMagic(file, size, 'DIRG');
-	unsigned char *link = g2dGetSectionByMagic(file, size, 'LINK');
-	if (link == NULL) link = g2dGetSectionByMagic(file, size, 'KNIL');
-	unsigned char *cmnt = g2dGetSectionByMagic(file, size, 'CMNT');
-	if (cmnt == NULL) cmnt = g2dGetSectionByMagic(file, size, 'TNMC');
+	unsigned char *scrn = NnsG2dGetSectionByMagic(file, size, 'SCRN');
+	if (scrn == NULL) scrn = NnsG2dGetSectionByMagic(file, size, 'NRCS');
+	unsigned char *escr = NnsG2dGetSectionByMagic(file, size, 'ESCR');
+	if (escr == NULL) escr = NnsG2dGetSectionByMagic(file, size, 'RCSE'); //xxxxFFxxxxxxPPPPCCCCCCCCCCCCCCCC
+	unsigned char *clrf = NnsG2dGetSectionByMagic(file, size, 'CLRF');
+	if (clrf == NULL) clrf = NnsG2dGetSectionByMagic(file, size, 'FRLC');
+	unsigned char *clrc = NnsG2dGetSectionByMagic(file, size, 'CLRC');
+	if (clrc == NULL) clrc = NnsG2dGetSectionByMagic(file, size, 'CRLC');
+	unsigned char *grid = NnsG2dGetSectionByMagic(file, size, 'GRID');
+	if (grid == NULL) grid = NnsG2dGetSectionByMagic(file, size, 'DIRG');
+	unsigned char *link = NnsG2dGetSectionByMagic(file, size, 'LINK');
+	if (link == NULL) link = NnsG2dGetSectionByMagic(file, size, 'KNIL');
+	unsigned char *cmnt = NnsG2dGetSectionByMagic(file, size, 'CMNT');
+	if (cmnt == NULL) cmnt = NnsG2dGetSectionByMagic(file, size, 'TNMC');
 
 	nscr->dataSize = *(uint32_t *) (scrn + 0x4) - 0x18;
 	nscr->nWidth = *(uint32_t *) (scrn + 0x8) * 8;

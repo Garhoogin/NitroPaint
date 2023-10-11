@@ -13,9 +13,9 @@ int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
 	nmcr->header.size = sizeof(NMCR);
 	fileInitCommon((OBJECT_HEADER *) nmcr, FILE_TYPE_NMCR, type);
 	if (type == NMCR_TYPE_NMCR) {
-		char *pMcbk = g2dGetSectionByMagic(buffer, size, 'MCBK');
+		char *pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'MCBK');
 		if (pMcbk == NULL) {
-			pMcbk = g2dGetSectionByMagic(buffer, size, 'KBCM');
+			pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'KBCM');
 		}
 		pMcbk += 8;
 
@@ -38,11 +38,11 @@ int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
 }
 
 int nmcrIsValid(char *buffer, unsigned int size) {
-	if (!g2dIsValid(buffer, size)) return NMCR_TYPE_INVALID;
+	if (!NnsG2dIsValid(buffer, size)) return NMCR_TYPE_INVALID;
 
-	char *pMcbk = g2dGetSectionByMagic(buffer, size, 'MCBK');
+	char *pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'MCBK');
 	if (pMcbk == NULL) {
-		pMcbk = g2dGetSectionByMagic(buffer, size, 'KBCM');
+		pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'KBCM');
 	}
 	if (pMcbk == NULL) return NMCR_TYPE_INVALID;
 

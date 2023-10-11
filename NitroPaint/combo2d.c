@@ -199,16 +199,16 @@ int combo2dIsValidBanner(BYTE *file, int size) {
 
 int combo2dIsValid5bg(BYTE *file, int size) {
 	//must be a valid G2D structured file
-	if (!g2dIsValid(file, size)) return 0;
+	if (!NnsG2dIsValid(file, size)) return 0;
 
 	//must have PALT section
-	char *palt = g2dGetSectionByMagic(file, size, 'PALT');
-	if (palt == NULL) palt = g2dGetSectionByMagic(file, size, 'TLAP');
+	char *palt = NnsG2dGetSectionByMagic(file, size, 'PALT');
+	if (palt == NULL) palt = NnsG2dGetSectionByMagic(file, size, 'TLAP');
 	if (palt == NULL) return 0;
 
 	//must have BGDT section
-	char *bgdt = g2dGetSectionByMagic(file, size, 'BGDT');
-	if (bgdt == NULL) bgdt = g2dGetSectionByMagic(file, size, 'TDGB');
+	char *bgdt = NnsG2dGetSectionByMagic(file, size, 'BGDT');
+	if (bgdt == NULL) bgdt = NnsG2dGetSectionByMagic(file, size, 'TDGB');
 	if (bgdt == NULL) return 0;
 
 	//may have DFPL section
@@ -264,12 +264,12 @@ int combo2dReadTimeAce(COMBO2D *combo, char *buffer, int size) {
 }
 
 int combo2dRead5bg(COMBO2D *combo, char *buffer, int size) {
-	char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
-	if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
-	char *bgdt = g2dGetSectionByMagic(buffer, size, 'BGDT');
-	if (bgdt == NULL) bgdt = g2dGetSectionByMagic(buffer, size, 'TDGB');
-	char *dfpl = g2dGetSectionByMagic(buffer, size, 'DFPL');
-	if (dfpl == NULL) dfpl = g2dGetSectionByMagic(buffer, size, 'LPFD');
+	char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
+	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
+	char *bgdt = NnsG2dGetSectionByMagic(buffer, size, 'BGDT');
+	if (bgdt == NULL) bgdt = NnsG2dGetSectionByMagic(buffer, size, 'TDGB');
+	char *dfpl = NnsG2dGetSectionByMagic(buffer, size, 'DFPL');
+	if (dfpl == NULL) dfpl = NnsG2dGetSectionByMagic(buffer, size, 'LPFD');
 
 	int nColors = *(uint32_t *) (palt + 0x08);
 

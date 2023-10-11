@@ -84,45 +84,45 @@ int PalIsValidNtfp(const unsigned char *lpFile, unsigned int size) {
 }
 
 int PalIsValidNclr(const unsigned char *lpFile, unsigned int size) {
-	if (!g2dIsValid(lpFile, size)) return 0;
+	if (!NnsG2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NCLR' && magic != 'RLCN' && magic != 'NCPR' && magic != 'RPCN') return 0;
 
-	char *pltt = g2dGetSectionByMagic(lpFile, size, 'PLTT');
-	char *ttlp = g2dGetSectionByMagic(lpFile, size, 'TTLP');
+	char *pltt = NnsG2dGetSectionByMagic(lpFile, size, 'PLTT');
+	char *ttlp = NnsG2dGetSectionByMagic(lpFile, size, 'TTLP');
 	if (pltt == NULL && ttlp == NULL) return 0;
 	return 1;
 }
 
 int PalIsValidNcl(const unsigned char *lpFile, unsigned int size) {
-	if (!g2dIsValid(lpFile, size)) return 0;
+	if (!NnsG2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NCCL' && magic != 'LCCN') return 0;
 
-	char *palt = g2dGetSectionByMagic(lpFile, size, 'PALT');
-	char *tlap = g2dGetSectionByMagic(lpFile, size, 'TLAP');
+	char *palt = NnsG2dGetSectionByMagic(lpFile, size, 'PALT');
+	char *tlap = NnsG2dGetSectionByMagic(lpFile, size, 'TLAP');
 	if (palt == NULL && tlap == NULL) return 0;
 	return 1;
 }
 
 int PalIsValidIStudio(const unsigned char *lpFile, unsigned int size) {
-	if (!g2dIsValid(lpFile, size)) return 0;
+	if (!NnsG2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NTPL' && magic != 'LPTN') return 0;
 
-	unsigned char *palt = g2dGetSectionByMagic(lpFile, size, 'PALT');
-	unsigned char *tlap = g2dGetSectionByMagic(lpFile, size, 'TLAP');
+	unsigned char *palt = NnsG2dGetSectionByMagic(lpFile, size, 'PALT');
+	unsigned char *tlap = NnsG2dGetSectionByMagic(lpFile, size, 'TLAP');
 	if (palt == NULL && tlap == NULL) return 0;
 	return 1;
 }
 
 int PalIsValidIStudioCompressed(const unsigned char *lpFile, unsigned int size) {
-	if (!g2dIsValid(lpFile, size)) return 0;
+	if (!NnsG2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NTPC' && magic != 'CPTN') return 0;
 
-	unsigned char *palt = g2dGetSectionByMagic(lpFile, size, 'PALT');
-	unsigned char *tlap = g2dGetSectionByMagic(lpFile, size, 'TLAP');
+	unsigned char *palt = NnsG2dGetSectionByMagic(lpFile, size, 'PALT');
+	unsigned char *tlap = NnsG2dGetSectionByMagic(lpFile, size, 'TLAP');
 	if (palt == NULL && tlap == NULL) return 0;
 	return 1;
 }
@@ -172,10 +172,10 @@ int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 
 	PalInit(nclr, NCLR_TYPE_NC);
 
-	char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
-	if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
-	char *cmnt = g2dGetSectionByMagic(buffer, size, 'CMNT');
-	if (cmnt == NULL) cmnt = g2dGetSectionByMagic(buffer, size, 'TNMC');
+	char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
+	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
+	char *cmnt = NnsG2dGetSectionByMagic(buffer, size, 'CMNT');
+	if (cmnt == NULL) cmnt = NnsG2dGetSectionByMagic(buffer, size, 'TNMC');
 
 	nclr->nPalettes = *(uint32_t *) (palt + 0xC);
 	nclr->nColors = nclr->nPalettes * *(uint32_t *) (palt + 0x8);
@@ -194,8 +194,8 @@ int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 }
 
 void PaliReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
-	if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
+	char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
+	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
 
 	nclr->nColors = *(uint32_t *) (palt + 0x8);
 	nclr->nPalettes = (nclr->nColors + 15) / 16;
@@ -223,12 +223,12 @@ int PalReadIStudioCompressed(NCLR *nclr, const unsigned char *buffer, unsigned i
 }
 
 int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	const unsigned char *pltt = g2dGetSectionByMagic(buffer, size, 'PLTT');
-	const unsigned char *pcmp = g2dGetSectionByMagic(buffer, size, 'PCMP');
+	const unsigned char *pltt = NnsG2dGetSectionByMagic(buffer, size, 'PLTT');
+	const unsigned char *pcmp = NnsG2dGetSectionByMagic(buffer, size, 'PCMP');
 	if (pltt == NULL) return 1;
 
 	uint32_t sectionSize = *(uint32_t *) (pltt + 0x4);
-	if (g2dIsOld(buffer, size)) sectionSize += 8;
+	if (NnsG2dIsOld(buffer, size)) sectionSize += 8;
 
 	int bits = *(uint32_t *) (pltt + 0x8);
 	bits = 1 << (bits - 1);
