@@ -170,7 +170,7 @@
     <ClCompile Include="editor.c" />
     <ClCompile Include="exceptions.c" />
     <ClCompile Include="filecommon.c" />
-    <ClCompile Include="g2dfile.c" />
+    <ClCompile Include="nns.c" />
     <ClCompile Include="gdip.c" />
     <ClCompile Include="compression.c" />
     <ClCompile Include="isplt.c" />
@@ -210,7 +210,7 @@
     <ClInclude Include="editor.h" />
     <ClInclude Include="exceptions.h" />
     <ClInclude Include="filecommon.h" />
-    <ClInclude Include="g2dfile.h" />
+    <ClInclude Include="nns.h" />
     <ClInclude Include="gdip.h" />
     <ClInclude Include="nanr.h" />
     <ClInclude Include="nanrviewer.h" />

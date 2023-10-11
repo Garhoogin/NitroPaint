@@ -2,7 +2,7 @@
 #include "nclr.h"
 #include "nscr.h"
 #include "color.h"
-#include "g2dfile.h"
+#include "nns.h"
 
 #include <stdio.h>
 

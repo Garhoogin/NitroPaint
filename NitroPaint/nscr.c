@@ -1,7 +1,7 @@
 #include "nscr.h"
 #include "palette.h"
 #include "ncgr.h"
-#include "g2dfile.h"
+#include "nns.h"
 
 #include <Windows.h>
 #include <stdio.h>

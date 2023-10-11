@@ -1,6 +1,6 @@
 #include "nsbtx.h"
 #include "texture.h"
-#include "g2dfile.h"
+#include "nns.h"
 
 #include <Windows.h>
 #include <stdio.h>

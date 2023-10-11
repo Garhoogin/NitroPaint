@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 #include "nclr.h"
-#include "g2dfile.h"
+#include "nns.h"
 
 LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", L"NCL", L"5PL", L"5PC", NULL };
 

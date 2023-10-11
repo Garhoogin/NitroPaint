@@ -7,7 +7,7 @@
 #include "nanr.h"
 #include "texture.h"
 #include "gdip.h"
-#include "g2dfile.h"
+#include "nns.h"
 
 LPCWSTR compressionNames[] = {
 	L"None", 

@@ -1,7 +1,7 @@
 #include <Windows.h>
 #include "color.h"
 #include "combo2d.h"
-#include "g2dfile.h"
+#include "nns.h"
 
 #include "nclr.h"
 #include "ncgr.h"

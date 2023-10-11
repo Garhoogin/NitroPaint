@@ -1,5 +1,5 @@
 #include "filecommon.h"
-#include "g2dfile.h"
+#include "nns.h"
 #include "nclr.h"
 #include "ncgr.h"
 #include "ncer.h"
