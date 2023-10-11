@@ -748,44 +748,12 @@ int nsbtxReadFile(NSBTX *nsbtx, LPCWSTR path) {
 	return fileRead(path, (OBJECT_HEADER *) nsbtx, (OBJECT_READER) nsbtxRead);
 }
 
-typedef struct {
-	BYTE *ptr;
-	int bufferSize;
-	int length;
-} BYTEARRAY;
-
-void initializeArray(BYTEARRAY *arr) {
-	arr->ptr = calloc(1024, 1);
-	arr->length = 0;
-	arr->bufferSize = 1024;
-}
-
-void freeArray(BYTEARRAY *arr) {
-	if (arr->ptr != NULL) free(arr->ptr);
-	arr->ptr = NULL;
-	arr->length = 0;
-	arr->bufferSize = 0;
-}
-
 static char *getTextureName(void *texels) {
 	return ((TEXELS *) texels)->name;
 }
 
 static char *getPaletteName(void *palette) {
 	return ((PALETTE *) palette)->name;
-}
-
-void addBytes(BYTEARRAY *arr, BYTE *bytes, int length) {
-	if (arr->length + length >= arr->bufferSize) {
-		int newSize = arr->bufferSize;
-		while (arr->length + length >= newSize) {
-			newSize = newSize + (newSize >> 1);
-		}
-		arr->ptr = realloc(arr->ptr, newSize);
-		arr->bufferSize = newSize;
-	}
-	memcpy(arr->ptr + arr->length, bytes, length);
-	arr->length += length;
 }
 
 int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
@@ -811,11 +779,11 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 	BYTE tex0Header[] = { 'T', 'E', 'X', '0', 0, 0, 0, 0 };
 	bstreamWrite(stream, tex0Header, sizeof(tex0Header));
 
-	BYTEARRAY texData, tex4x4Data, tex4x4PlttIdxData, paletteData;
-	initializeArray(&texData);
-	initializeArray(&tex4x4Data);
-	initializeArray(&tex4x4PlttIdxData);
-	initializeArray(&paletteData);
+	BSTREAM texData, tex4x4Data, tex4x4PlttIdxData, paletteData;
+	bstreamCreate(&texData, NULL, 0);
+	bstreamCreate(&tex4x4Data, NULL, 0);
+	bstreamCreate(&tex4x4PlttIdxData, NULL, 0);
+	bstreamCreate(&paletteData, NULL, 0);
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		TEXELS *texture = nsbtx->textures + i;
 		int width = TEXW(texture->texImageParam);
@@ -824,30 +792,30 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 
 		if (FORMAT(texture->texImageParam) == CT_4x4) {
 			//write the offset in the texImageParams
-			int ofs = (tex4x4Data.length >> 3) & 0xFFFF;
+			int ofs = (tex4x4Data.pos >> 3) & 0xFFFF;
 			texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ofs;
-			addBytes(&tex4x4Data, texture->texel, texelSize);
-			addBytes(&tex4x4PlttIdxData, (BYTE *) texture->cmp, texelSize / 2);
+			bstreamWrite(&tex4x4Data, texture->texel, texelSize);
+			bstreamWrite(&tex4x4PlttIdxData, (BYTE *) texture->cmp, texelSize / 2);
 		} else {
-			int ofs = (texData.length >> 3) & 0xFFFF;
+			int ofs = (texData.pos >> 3) & 0xFFFF;
 			texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ofs;
-			addBytes(&texData, texture->texel, texelSize);
+			bstreamWrite(&texData, texture->texel, texelSize);
 		}
 	}
 
 	int *paletteOffsets = (int *) calloc(nsbtx->nTextures, sizeof(int));
 	int has4Color = 0;
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
-		int offs = paletteData.length;
+		int offs = paletteData.pos;
 		PALETTE *palette = nsbtx->palettes + i;
-		paletteOffsets[i] = paletteData.length;
+		paletteOffsets[i] = paletteData.pos;
 
 		//add bytes, make sure to align to a multiple of 16 bytes if more than 4 colors! (or if it's the last palette)
 		int nColors = palette->nColors;
-		addBytes(&paletteData, (BYTE *) palette->pal, nColors * 2);
+		bstreamWrite(&paletteData, (BYTE *) palette->pal, nColors * 2);
 		if (nColors <= 4 && ((i == nsbtx->nPalettes - 1) || (nsbtx->palettes[i + 1].nColors > 4))) {
 			BYTE padding[16] = { 0 };
-			addBytes(&paletteData, padding, 16 - nColors * 2);
+			bstreamWrite(&paletteData, padding, 16 - nColors * 2);
 		}
 
 		//do we have 4 color?
@@ -856,22 +824,22 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 
 	uint8_t texInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	*(uint16_t *) (texInfo + 6) = 60;
-	*(uint16_t *) (texInfo + 4) = texData.length >> 3;
+	*(uint16_t *) (texInfo + 4) = texData.pos >> 3;
 	*(uint32_t *) (texInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24;
 	bstreamWrite(stream, texInfo, sizeof(texInfo));
 
 	uint8_t tex4x4Info[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	*(uint16_t *) (tex4x4Info + 6) = 60;
-	*(uint16_t *) (tex4x4Info + 4) = tex4x4Data.length >> 3;
-	*(uint32_t *) (tex4x4Info + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.length;
-	*(uint32_t *) (tex4x4Info + 16) = (*(uint32_t *) (tex4x4Info + 12)) + tex4x4Data.length;
+	*(uint16_t *) (tex4x4Info + 4) = tex4x4Data.pos >> 3;
+	*(uint32_t *) (tex4x4Info + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.pos;
+	*(uint32_t *) (tex4x4Info + 16) = (*(uint32_t *) (tex4x4Info + 12)) + tex4x4Data.pos;
 	bstreamWrite(stream, tex4x4Info, sizeof(tex4x4Info));
 
 	uint8_t plttInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	*(uint16_t *) (plttInfo + 8) = 76 + nsbtx->nTextures * 28;
-	*(uint16_t *) (plttInfo + 4) = paletteData.length >> 3;
+	*(uint16_t *) (plttInfo + 4) = paletteData.pos >> 3;
 	*(uint16_t *) (plttInfo + 6) = has4Color ? 0x8000 : 0;
-	*(uint32_t *) (plttInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.length + tex4x4Data.length + tex4x4PlttIdxData.length;
+	*(uint32_t *) (plttInfo + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.pos + tex4x4Data.pos + tex4x4PlttIdxData.pos;
 	bstreamWrite(stream, plttInfo, sizeof(plttInfo));
 
 	{
@@ -917,10 +885,10 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 	free(paletteOffsets);
 
 	//write texData, tex4x4Data, tex4x4PlttIdxData, paletteData
-	bstreamWrite(stream, texData.ptr, texData.length);
-	bstreamWrite(stream, tex4x4Data.ptr, tex4x4Data.length);
-	bstreamWrite(stream, tex4x4PlttIdxData.ptr, tex4x4PlttIdxData.length);
-	bstreamWrite(stream, paletteData.ptr, paletteData.length);
+	bstreamWrite(stream, texData.buffer, texData.pos);
+	bstreamWrite(stream, tex4x4Data.buffer, tex4x4Data.pos);
+	bstreamWrite(stream, tex4x4PlttIdxData.buffer, tex4x4PlttIdxData.pos);
+	bstreamWrite(stream, paletteData.buffer, paletteData.pos);
 
 	//write back the proper sizes
 	DWORD endPos = stream->pos;
@@ -942,10 +910,10 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 	}
 
 	//free resources
-	freeArray(&texData);
-	freeArray(&tex4x4Data);
-	freeArray(&tex4x4PlttIdxData);
-	freeArray(&paletteData);
+	bstreamFree(&texData);
+	bstreamFree(&tex4x4Data);
+	bstreamFree(&tex4x4PlttIdxData);
+	bstreamFree(&paletteData);
 
 	return 0;
 }
