@@ -1086,3 +1086,83 @@ int TexarcWrite(TexArc *nsbtx, BSTREAM *stream) {
 int TexarcWriteFile(TexArc *nsbtx, LPWSTR name) {
 	return fileWrite(name, (OBJECT_HEADER *) nsbtx, (OBJECT_WRITER) TexarcWrite);
 }
+
+int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name) {
+	for (int i = 0; i < nsbtx->nTextures; i++) {
+		if (strncmp(nsbtx->textures[i].name, name, 16) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+int TexarcGetPaletteIndexByName(TexArc *nsbtx, const char *name) {
+	for (int i = 0; i < nsbtx->nPalettes; i++) {
+		if (strncmp(nsbtx->palettes[i].name, name, 16) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+TEXELS *TexarcGetTextureByName(TexArc *nsbtx, const char *name) {
+	int index = TexarcGetTextureIndexByName(nsbtx, name);
+	if (index == -1) return NULL;
+
+	return nsbtx->textures + index;
+}
+
+PALETTE *TexarcGetPaletteByName(TexArc *nsbtx, const char *name) {
+	int index = TexarcGetPaletteIndexByName(nsbtx, name);
+	if (index == -1) return NULL;
+
+	return nsbtx->palettes + index;
+}
+
+int TexarcAddTexture(TexArc *nsbtx, TEXELS *texture) {
+	//if the texture already exists, return 0
+	if (TexarcGetTextureByName(nsbtx, texture->name) != NULL) return -1;
+
+	//add texture
+	nsbtx->textures = realloc(nsbtx->textures, (nsbtx->nTextures + 1) * sizeof(TEXELS));
+	memcpy(nsbtx->textures + nsbtx->nTextures, texture, sizeof(TEXELS));
+	nsbtx->nTextures++;
+	return nsbtx->nTextures - 1;
+}
+
+int TexarcAddPalette(TexArc *nsbtx, PALETTE *palette) {
+	//if the palette already exists, check its content
+	PALETTE *existing = TexarcGetPaletteByName(nsbtx, palette->name);
+	if (existing != NULL) {
+		//one must be contained within the other
+		int nColsCompare = palette->nColors;
+		if (existing->nColors < nColsCompare) nColsCompare = existing->nColors;
+
+		if (memcmp(existing->pal, palette->pal, nColsCompare * sizeof(COLOR)) != 0) {
+			//data mismatch. Report error.
+			return -1;
+		}
+
+		//if the palette to add is smaller, return success
+		int index = existing - nsbtx->palettes;
+		if (palette->nColors < existing->nColors) {
+			free(palette->pal);
+			palette->pal = NULL;
+			palette->nColors = 0;
+			return index;
+		}
+
+		//expand and fill
+		free(existing->pal);
+		existing->pal = palette->pal;
+		existing->nColors = palette->nColors;
+		return index;
+	}
+
+	//add palette
+	nsbtx->palettes = realloc(nsbtx->palettes, (nsbtx->nPalettes + 1) * sizeof(PALETTE));
+	memcpy(nsbtx->palettes + nsbtx->nPalettes, palette, sizeof(PALETTE));
+	nsbtx->nPalettes++;
+	return nsbtx->nPalettes - 1;
+}
+

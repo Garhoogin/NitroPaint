@@ -546,75 +546,44 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//add texel
 							{
 								//update TexArc
-								data->nsbtx.textures = realloc(data->nsbtx.textures, (data->nsbtx.nTextures + 1) * sizeof(TEXELS));
-								memcpy(data->nsbtx.textures + data->nsbtx.nTextures, &texels, sizeof(TEXELS));
-								data->nsbtx.nTextures++;
-
-								//update UI
-								for (int i = 0; i < 16; i++) {
-									strbuf[i] = (WCHAR) texels.name[i];
+								int texIndex = TexarcAddTexture(&data->nsbtx, &texels);
+								if (texIndex != -1) {
+									//update UI
+									for (int i = 0; i < 16; i++) {
+										strbuf[i] = (WCHAR) texels.name[i];
+									}
+									SendMessage(data->hWndTextureSelect, LB_ADDSTRING, 0, (LPARAM) strbuf);
+									SendMessage(data->hWndTextureSelect, LB_SETCURSEL, data->nsbtx.nTextures - 1, 0);
+								} else {
+									int existingIndex = TexarcGetTextureIndexByName(&data->nsbtx, texels.name);
+									SendMessage(data->hWndTextureSelect, LB_SETCURSEL, existingIndex, 0);
+									MessageBox(hWnd, L"Texture name conflict.", L"Texture name conflict", MB_ICONERROR);
 								}
-								SendMessage(data->hWndTextureSelect, LB_ADDSTRING, 0, (LPARAM) strbuf);
-								SendMessage(data->hWndTextureSelect, LB_SETCURSEL, data->nsbtx.nTextures - 1, 0);
 							}
 
 							//add palette (if the name is the same as an existing palette, use the larger
 							//of the two palettes)
 							if (hasPalette) {
-								//check if a palette of that name already exists.
-								PALETTE *existing = NULL;
-								int existingIndex = -1;
-								for (int i = 0; i < data->nsbtx.nPalettes; i++) {
-									PALETTE *p = data->nsbtx.palettes + i;
-									if (memcmp(p->name, palette.name, 16) == 0) {
-										existing = data->nsbtx.palettes + i;
-										existingIndex = i;
-										break;
-									}
-								}
 
-								//existing?
-								PALETTE *dest = NULL;
-								int destIndex = -1;
-								if (existing != NULL) {
-									//if existing, ensure one is a subset of the other.
-									int nColsExisting = existing->nColors;
-									int nColsNew = palette.nColors;
-									int nColsCompare = min(nColsNew, nColsExisting);
-
-									//not a subset?
-									if (memcmp(palette.pal, existing->pal, nColsCompare * sizeof(COLOR)) != 0) {
-										MessageBox(hWnd, L"Palette name conflict.", L"Palette name conflict", MB_ICONERROR);
-										free(palette.pal);
-										break;
-									}
-									dest = existing;
-									destIndex = existingIndex;
-
-									//if new palette is larger, realloc
-									if (nColsNew > nColsExisting) {
-										dest->nColors = nColsNew;
-										free(dest->pal);
-										dest->pal = palette.pal;
-									} else {
-										free(palette.pal);
-									}
+								int nOriginalPalettes = data->nsbtx.nPalettes;
+								int palIndex = TexarcAddPalette(&data->nsbtx, &palette);
+								if (palIndex == -1) {
+									MessageBox(hWnd, L"Palette name conflict.", L"Palette name conflict", MB_ICONERROR);
+									free(palette.pal);
+									break;
 								} else {
-									//increase palette count. Update TexArc
-									data->nsbtx.palettes = realloc(data->nsbtx.palettes, (data->nsbtx.nPalettes + 1) * sizeof(PALETTE));
-									dest = data->nsbtx.palettes + data->nsbtx.nPalettes;
-									memcpy(dest, &palette, sizeof(PALETTE));
-									data->nsbtx.nPalettes++;
-
-									//add to UI
-									for (int i = 0; i < 16; i++) {
-										strbuf[i] = (WCHAR) palette.name[i];
+									int nPalettesAfter = data->nsbtx.nPalettes;
+									if (nPalettesAfter > nOriginalPalettes) {
+										//add to UI
+										for (int i = 0; i < 16; i++) {
+											strbuf[i] = (WCHAR) palette.name[i];
+										}
+										SendMessage(data->hWndPaletteSelect, LB_ADDSTRING, 0, (LPARAM) strbuf);
 									}
-									SendMessage(data->hWndPaletteSelect, LB_ADDSTRING, 0, (LPARAM) strbuf);
-								}
 
-								//update UI
-								SendMessage(data->hWndPaletteSelect, LB_SETCURSEL, data->nsbtx.nPalettes - 1, 0);
+									//select
+									SendMessage(data->hWndPaletteSelect, LB_SETCURSEL, palIndex, 0);
+								}
 							}
 
 							//invalidate

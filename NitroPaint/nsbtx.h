@@ -50,3 +50,15 @@ int TexarcReadFile(TexArc *nsbtx, LPCWSTR path);
 int TexarcWriteFile(TexArc *nsbtx, LPWSTR filename);
 
 int TexarcWrite(TexArc *nsbtx, BSTREAM *stream);
+
+int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name);
+
+int TexarcGetPaletteIndexByName(TexArc *nsbtx, const char *name);
+
+TEXELS *TexarcGetTextureByName(TexArc *nsbtx, const char *name);
+
+PALETTE *TexarcGetPaletteByName(TexArc *nsbtx, const char *name);
+
+int TexarcAddTexture(TexArc *nsbtx, TEXELS *texture);
+
+int TexarcAddPalette(TexArc *nsbtx, PALETTE *palette);
