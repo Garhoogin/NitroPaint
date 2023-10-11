@@ -1215,7 +1215,7 @@ double RxHistComputePaletteErrorYiq(RxReduction *reduction, RxYiqColor *palette,
 		
 		int closest = RxPaletteFindCloestColorYiq(reduction, &entry->color, palette, nColors);
 		RxYiqColor *closestYiq = palette + closest;
-		int dy = entry->color.y - closestYiq->y;
+		double dy = reduction->lumaTable[entry->color.y] - reduction->lumaTable[closestYiq->y];
 		int di = entry->color.i - closestYiq->i;
 		int dq = entry->color.q - closestYiq->q;
 		error += (yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq) * entry->weight;
