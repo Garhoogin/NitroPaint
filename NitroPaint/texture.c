@@ -253,12 +253,6 @@ void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE 
 		}
 	}
 
-	//swap RB
-	for (int i = 0; i < dstWidth * dstHeight; i++) {
-		COLOR32 c = px[i];
-		px[i] = REVERSE(c);
-	}
-
 	//flip upside down
 	if (flip) {
 		COLOR32 *tmp = calloc(dstWidth, 4);
@@ -348,6 +342,10 @@ void TxWriteNnsTga(LPCWSTR name, TEXELS *texels, PALETTE *palette) {
 	int height = TEXH(texels->texImageParam);
 	COLOR32 *pixels = (COLOR32 *) calloc(width * height, 4);
 	TxRender(pixels, width, height, texels, palette, 1);
+	for (int i = 0; i < width * height; i++) {
+		COLOR32 c = pixels[i];
+		pixels[i] = REVERSE(c);
+	}
 	int depth = imageHasTransparent(pixels, width * height) ? 32 : 24;
 
 	uint8_t header[] = {0x14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 8,

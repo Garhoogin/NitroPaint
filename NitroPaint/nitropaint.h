@@ -102,11 +102,6 @@ int getPathCount(LPCWSTR paths);
 void getPathFromPaths(LPCWSTR paths, int index, WCHAR *path);
 
 //
-// Copy a bitmap to the clipboard.
-//
-void copyBitmap(COLOR32 *img, int width, int height);
-
-//
 // Get the current zoom level
 //
 int MainGetZoom(HWND hWnd);

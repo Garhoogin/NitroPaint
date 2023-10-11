@@ -577,12 +577,10 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							int wholeWidth, wholeHeight, width = tilesX * 8, height = tilesY * 8;
 							COLOR32 *bm = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &wholeWidth, &wholeHeight,
 								-1, -1, -1, -1, -1, -1, -1, TRUE);
-							COLOR32 *sub = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-							for (int y = 0; y < height; y++) {
-								memcpy(sub + y * width, bm + (y + tileY * 8) * wholeWidth + tileX * 8, width * sizeof(COLOR32));
-							}
-							free(bm);
+							COLOR32 *sub = ImgCrop(bm, wholeWidth, wholeHeight, tileX * 8, tileY * 8, tilesX * 8, tilesY * 8);
+							ImgSwapRedBlue(sub, tilesX * 8, tilesY * 8);
 							copyBitmap(sub, width, height);
+							free(bm);
 							free(sub);
 						}
 

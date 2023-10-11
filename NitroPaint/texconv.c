@@ -1012,11 +1012,7 @@ int textureConvert(CREATEPARAMS *params) {
 	}
 
 	TxRender(params->px, sourceWidth, sourceHeight, &params->dest->texels, &params->dest->palette, 0);
-	//TxRender outputs red and blue in the opposite order, so flip them here.
-	for (int i = 0; i < params->width * params->height; i++) {
-		COLOR32 p = params->px[i];
-		params->px[i] = REVERSE(p);
-	}
+	
 	g_texCompressionFinished = 1;
 	if (params->callback) params->callback(params->callbackParam);
 	if (params->useFixedPalette) free(params->fixedPalette);

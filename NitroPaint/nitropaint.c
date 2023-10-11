@@ -284,6 +284,7 @@ void copyBitmap(COLOR32 *px, int width, int height) {
 	for (int y = 0; y < height; y++) {
 		for (int x = 0; x < width; x++) {
 			COLOR32 c = px[x + y * width];
+			c = REVERSE(c);
 			cDest[x + (height - 1 - y) * width] = c;
 		}
 	}

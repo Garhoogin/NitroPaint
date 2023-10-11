@@ -76,10 +76,7 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 		//else if 4x4 or direct, just export full-color image. Red/blue must be swapped here
 		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
 		TxRender(px, width, height, &texture->texels, &texture->palette, 0);
-		for (int i = 0; i < width * height; i++) {
-			COLOR32 c = px[i];
-			px[i] = REVERSE(c);
-		}
+		
 		ImgWrite(px, width, height, path);
 		free(px);
 	} else {
@@ -205,7 +202,6 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				data->hasPalette = (data->format != CT_DIRECT && data->format != 0);
 				data->isNitro = 1;
 				TxRender(data->px, data->width, data->height, &data->textureData.texels, &data->textureData.palette, 0);
-				ImgSwapRedBlue(data->px, data->width, data->height);
 				UpdatePaletteLabel(hWnd);
 			}
 
@@ -235,7 +231,6 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			//decode texture data for preview
 			int nPx = data->width * data->height;
 			TxRender(data->px, data->width, data->height, &texture->texels, &texture->palette, 0);
-			ImgSwapRedBlue(data->px, data->width, data->height);
 
 			//update UI
 			WCHAR buffer[16];
@@ -562,6 +557,7 @@ void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int
 	temp.palette.nColors = texture->palette.nColors;
 	temp.palette.pal = texture->palette.pal;
 	TxRender(rendered, 8, 8, &temp.texels, &temp.palette, 0);
+	ImgSwapRedBlue(rendered, 8, 8);
 
 	//convert back to 4x4
 	memmove(rendered + 0, rendered + 0, 16);
@@ -728,14 +724,12 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
 					TxRender(data->px, data->width, data->height, texels, &data->textureData.palette, 0);
-					ImgSwapRedBlue(data->px, data->width, data->height);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
 					TxRender(data->px, data->width, data->height, texels, &data->textureData.palette, 0);
-					ImgSwapRedBlue(data->px, data->width, data->height);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndPaletteBase) {
@@ -743,7 +737,6 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 					SendMessage(hWndControl, WM_GETTEXT, 8, (LPARAM) buffer);
 					*pIdx = ((*pIdx) & 0xC000) | (_wtol(buffer) & 0x3FFF);
 					TxRender(data->px, data->width, data->height, texels, &data->textureData.palette, 0);
-					ImgSwapRedBlue(data->px, data->width, data->height);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
@@ -823,7 +816,6 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 					}
 				}
 				TxRender(data->px, data->width, data->height, texels, &data->textureData.palette, 0);
-				ImgSwapRedBlue(data->px, data->width, data->height);
 				InvalidateRect(data->hWnd, NULL, FALSE);
 				InvalidateRect(hWnd, NULL, FALSE);
 			} else if (pt.x >= 138 && pt.y >= 0) { //select palette/alpha
@@ -1713,11 +1705,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 							int param = data->data->textureData.texels.texImageParam;
 							int width = TEXW(param);
 							int height = 8 << ((param >> 23) & 7);
-							//TxRender outputs red and blue in the opposite order, so flip them here.
-							for (int i = 0; i < width * height; i++) {
-								DWORD p = data->data->px[i];
-								data->data->px[i] = REVERSE(p);
-							}
+							
 							InvalidateRect(data->data->hWnd, NULL, FALSE);
 						}
 					} else if (msg == WM_RBUTTONDOWN) {
@@ -1749,10 +1737,6 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 						TEXTURE *texture = &data->data->textureData;
 						TxRender(data->data->px, data->data->width, data->data->height, &texture->texels, &texture->palette, 0);
-						for (int i = 0; i < data->data->width * data->data->height; i++) {
-							COLOR32 col = data->data->px[i];
-							data->data->px[i] = REVERSE(col);
-						}
 						
 						InvalidateRect(hWnd, NULL, FALSE);
 						InvalidateRect(data->data->hWnd, NULL, FALSE);
