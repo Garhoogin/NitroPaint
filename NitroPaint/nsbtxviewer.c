@@ -7,6 +7,7 @@
 #include "nitropaint.h"
 #include "resource.h"
 #include "ui.h"
+#include "editor.h"
 
 extern HICON g_appIcon;
 
@@ -239,14 +240,10 @@ LRESULT CALLBACK ListboxDeleteSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	return DefSubclassProc(hWnd, msg, wParam, lParam);
 }
 
-void CreateVramUseWindow(HWND hWndParent, NSBTX *nsbtx);
+void CreateVramUseWindow(HWND hWndParent, TexArc *nsbtx);
 
 LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NSBTXVIEWERDATA *data = (NSBTXVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (NSBTXVIEWERDATA *) calloc(1, sizeof(NSBTXVIEWERDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	NSBTXVIEWERDATA *data = (NSBTXVIEWERDATA *) EditorGetData(hWnd);
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -262,24 +259,13 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			data->scale = 1;
 			return 1;
 		}
-		case NV_SETTITLE:
-		{
-			LPCWSTR path = (LPWSTR) lParam;
-			WCHAR titleBuffer[MAX_PATH + 15];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - NSBTX Viewer", 32);
-			SetWindowText(hWnd, titleBuffer);
-			break;
-		}
 		case NV_INITIALIZE:
 		{
 			LPWSTR path = (LPWSTR) wParam;
 			if (path != NULL) {
-				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+				EditorSetFile(hWnd, path);
 			}
-			memcpy(&data->nsbtx, (NSBTX *) lParam, sizeof(NSBTX));
+			memcpy(&data->nsbtx, (TexArc *) lParam, sizeof(TexArc));
 
 			WCHAR buffer[17];
 			for (int i = 0; i < data->nsbtx.nTextures; i++) {
@@ -403,15 +389,14 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					case ID_FILE_SAVE:
 					{
 						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
-							LPCWSTR filter = L"NSBTX Files (*.nsbtx)\0*.nsbtx\0All Files\0*.*\0";
+							LPCWSTR filter = L"TexArc Files (*.nsbtx)\0*.nsbtx\0All Files\0*.*\0";
 							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nsbtx");
 							if (path != NULL) {
-								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
+								EditorSetFile(hWnd, path);
 								free(path);
 							} else break;
 						}
-						nsbtxWriteFile(&data->nsbtx, data->szOpenFile);
+						TexarcWriteFile(&data->nsbtx, data->szOpenFile);
 						break;
 					}
 					case ID_ZOOM_100:
@@ -560,7 +545,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 							//add texel
 							{
-								//update NSBTX
+								//update TexArc
 								data->nsbtx.textures = realloc(data->nsbtx.textures, (data->nsbtx.nTextures + 1) * sizeof(TEXELS));
 								memcpy(data->nsbtx.textures + data->nsbtx.nTextures, &texels, sizeof(TEXELS));
 								data->nsbtx.nTextures++;
@@ -615,7 +600,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 										free(palette.pal);
 									}
 								} else {
-									//increase palette count. Update NSBTX
+									//increase palette count. Update TexArc
 									data->nsbtx.palettes = realloc(data->nsbtx.palettes, (data->nsbtx.nPalettes + 1) * sizeof(PALETTE));
 									dest = data->nsbtx.palettes + data->nsbtx.nPalettes;
 									memcpy(dest, &palette, sizeof(PALETTE));
@@ -657,7 +642,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							SendMessage(hWndControl, LB_SETCURSEL, sel, 0);
 							SetFocus(hWndControl);
 
-							//update NSBTX
+							//update TexArc
 							char *destName = NULL;
 							if (hWndControl == data->hWndTextureSelect) {
 								destName = data->nsbtx.textures[sel].name;
@@ -711,19 +696,11 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			}
 			break;
 		}
-		case WM_DESTROY:
-		{
-			NSBTX *nsbtx = &data->nsbtx;
-			fileFree((OBJECT_HEADER *) nsbtx);
-			break;
-		}
-		case NV_GETTYPE:
-			return FILE_TYPE_NSBTX;
 	}
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
-void CreateVramUseWindow(HWND hWndParent, NSBTX *nsbtx) {
+void CreateVramUseWindow(HWND hWndParent, TexArc *nsbtx) {
 	HWND hWndVramViewer = CreateWindow(L"VramUseClass", L"VRAM Usage", WS_CAPTION | WS_SYSMENU | WS_THICKFRAME, CW_USEDEFAULT,
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndParent, NULL, NULL, NULL);
 	SendMessage(hWndVramViewer, NV_INITIALIZE, 0, (LPARAM) nsbtx);
@@ -768,7 +745,7 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		}
 		case NV_INITIALIZE:
 		{
-			NSBTX *nsbtx = (NSBTX *) lParam;
+			TexArc *nsbtx = (TexArc *) lParam;
 
 			//for all textures...
 			int nTextures = 0, nPalettes = 0;
@@ -886,51 +863,26 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-VOID RegisterVramUseClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme ? CreateSolidBrush(RGB(32, 32, 32)) : (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"VramUseClass";
-	wcex.lpfnWndProc = VramUseWndProc;
-	wcex.cbWndExtra = 8 * sizeof(void *); //2 labels, 2 ListViews, info button
-	                                      //texel size, 4x4 texel size, index size
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
-}
-
 VOID RegisterNsbtxViewerClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	//wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NsbtxViewerClass";
-	wcex.lpfnWndProc = NsbtxViewerWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
-	RegisterVramUseClass();
+	EditorRegister(L"NsbtxViewerClass", NsbtxViewerWndProc, L"NSBTX Editor", sizeof(NSBTXVIEWERDATA));
+	RegisterGenericClass(L"VramUseClass", VramUseWndProc, 8 * sizeof(void *));
 }
 
 HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NSBTX nsbtx;
-	int n = nsbtxReadFile(&nsbtx, path);
+	TexArc nsbtx;
+	int n = TexarcReadFile(&nsbtx, path);
 	if (n) {
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}
 
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NsbtxViewerClass", L"NSBTX Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	HWND h = EditorCreate(L"NsbtxViewerClass", x, y, width, height, hWndParent);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nsbtx);
 	return h;
 }
 
-HWND CreateNsbtxViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSBTX *nsbtx) {
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NsbtxViewerClass", L"NSBTX Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+HWND CreateNsbtxViewerImmediate(int x, int y, int width, int height, HWND hWndParent, TexArc *nsbtx) {
+	HWND h = EditorCreate(L"NsbtxViewerClass", x, y, width, height, hWndParent);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) nsbtx);
 	return h;
 }

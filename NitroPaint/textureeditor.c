@@ -2210,7 +2210,7 @@ int BatchTexConvert(LPCWSTR path, LPCWSTR convertedDir) {
 }
 
 BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
-	NSBTX *nsbtx = (NSBTX *) param;
+	TexArc *nsbtx = (TexArc *) param;
 
 	//read file and determine if valid
 	int size;
@@ -2224,7 +2224,7 @@ BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
 	PALETTE palette = { 0 };
 	TxReadNnsTga(path, &texture, &palette);
 
-	//add to NSBTX
+	//add to TexArc
 	int fmt = FORMAT(texture.texImageParam);
 	nsbtx->nTextures++;
 	nsbtx->textures = (TEXELS *) realloc(nsbtx->textures, nsbtx->nTextures * sizeof(TEXELS));
@@ -2244,8 +2244,8 @@ BOOL CALLBACK BatchTexAddDir(LPCWSTR path, void *param) {
 
 void BatchTexShowVramStatistics(HWND hWnd, LPCWSTR convertedDir) {
 	//enumerate files in this folder and construct a temporary texture archive of them
-	NSBTX nsbtx;
-	nsbtxInit(&nsbtx, NSBTX_TYPE_NNS);
+	TexArc nsbtx;
+	TexarcInit(&nsbtx, NSBTX_TYPE_NNS);
 	EnumAllFiles(convertedDir, BatchTexAddTexture, BatchTexAddDir, NULL, (void *) &nsbtx);
 
 	//create dialog

@@ -5,7 +5,30 @@
 #include <Windows.h>
 #include <stdio.h>
 
-//----- BEGIN Code for constructing an NSBTX dictionary
+//----- BEGIN Code for constructing an TexArc dictionary
+
+typedef struct DICTENTRY_ {
+	int sizeUnit;
+	int offsetName;
+	void *data;
+} DICTENTRY;
+
+typedef struct DICTIONARY_ {
+	int nEntries;
+
+	DICTENTRY entry;
+	char *namesPtr;
+} DICTIONARY;
+
+typedef struct DICTTEXDATA_ {
+	int texImageParam;
+	int extraParam;
+} DICTTEXDATA;
+
+typedef struct DICTPLTTDATA_ {
+	uint16_t offset;
+	uint16_t flag;
+} DICTPLTTDATA;
 
 typedef struct PNODE_ {
 	int leafIndex; //to control output index for a leaf node (set by user)
@@ -386,14 +409,10 @@ int nnsWriteDictionary(BSTREAM *stream, void *items, int itemSize, int nItems, c
 	return dictEntryBase + 4;
 }
 
-//----- END Code for constructing an NSBTX dictionary
+//----- END Code for constructing an TexArc dictionary
 
-void freeDictionary(DICTIONARY *dictionary) {
-	UNREFERENCED_PARAMETER(dictionary);
-}
-
-void nsbtxFree(OBJECT_HEADER *header) {
-	NSBTX *nsbtx = (NSBTX *) header;
+void TexarcFree(OBJECT_HEADER *header) {
+	TexArc *nsbtx = (TexArc *) header;
 	if (nsbtx->textures != NULL) {
 		for (int i = 0; i < nsbtx->nTextures; i++) {
 			TEXELS *texture = nsbtx->textures + i;
@@ -428,13 +447,13 @@ void nsbtxFree(OBJECT_HEADER *header) {
 	
 }
 
-void nsbtxInit(NSBTX *nsbtx, int format) {
-	nsbtx->header.size = sizeof(NSBTX);
+void TexarcInit(TexArc *nsbtx, int format) {
+	nsbtx->header.size = sizeof(TexArc);
 	fileInitCommon((OBJECT_HEADER *) nsbtx, FILE_TYPE_NSBTX, format);
-	nsbtx->header.dispose = nsbtxFree;
+	nsbtx->header.dispose = TexarcFree;
 }
 
-//NSBTX code adapted from Gericom's code in Fvery File Explorer.
+//TexArc code adapted from Gericom's code in Fvery File Explorer.
 
 unsigned char *readDictionary(DICTIONARY *dict, unsigned char *base, int entrySize) {
 	unsigned char *pos = base;
@@ -456,17 +475,17 @@ unsigned char *readDictionary(DICTIONARY *dict, unsigned char *base, int entrySi
 	return pos;
 }
 
-int nsbtxIsValidNsbtx(char *buffer, int size) {
+int TexarcIsValidNsbtx(char *buffer, int size) {
 	if (!g2dIsValid(buffer, size)) return 0;
 
-	//check magic (only NSBTX or NSBMD)
+	//check magic (only TexArc or NSBMD)
 	if ((buffer[0] != 'B' || buffer[1] != 'T' || buffer[2] != 'X' || buffer[3] != '0') &&
 		(buffer[0] != 'B' || buffer[1] != 'M' || buffer[2] != 'D' || buffer[3] != '0')) return 0;
 
 	return 1;
 }
 
-int nsbtxIsValidBmd(char *buffer, unsigned int size) {
+int TexarcIsValidBmd(char *buffer, unsigned int size) {
 	if (size < 0x3C || (size & 3)) return 0;
 
 	int scale = *(int *) (buffer + 0);
@@ -516,11 +535,11 @@ int nsbtxIsValidBmd(char *buffer, unsigned int size) {
 	return 1;
 }
 
-int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
+int TexarcReadNsbtx(TexArc *nsbtx, char *buffer, int size) {
 	//is it valid?
-	if (!nsbtxIsValidNsbtx(buffer, size)) return 1;
+	if (!TexarcIsValidNsbtx(buffer, size)) return 1;
 
-	nsbtxInit(nsbtx, NSBTX_TYPE_NNS);
+	TexarcInit(nsbtx, NSBTX_TYPE_NNS);
 	//iterate over each section
 	int *sectionOffsets = (int *) (buffer + 0x10);
 	int nSections = *(short *) (buffer + 0xE);
@@ -647,10 +666,10 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 	return 0;
 }
 
-int nsbtxReadBmd(NSBTX *nsbtx, unsigned char *buffer, int size) {
-	if (!nsbtxIsValidBmd(buffer, size)) return 1;
+int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
+	if (!TexarcIsValidBmd(buffer, size)) return 1;
 
-	nsbtxInit(nsbtx, NSBTX_TYPE_BMD);
+	TexarcInit(nsbtx, NSBTX_TYPE_BMD);
 	nsbtx->bmdData = (BMD_DATA *) calloc(1, sizeof(BMD_DATA));
 	BMD_DATA *bmd = nsbtx->bmdData;
 
@@ -738,25 +757,25 @@ int nsbtxReadBmd(NSBTX *nsbtx, unsigned char *buffer, int size) {
 	return 0;
 }
 
-int nsbtxRead(NSBTX *nsbtx, char *buffer, int size) {
-	if (nsbtxIsValidNsbtx(buffer, size)) return nsbtxReadNsbtx(nsbtx, buffer, size);
-	if (nsbtxIsValidBmd(buffer, size)) return nsbtxReadBmd(nsbtx, buffer, size);
+int TexarcRead(TexArc *nsbtx, char *buffer, int size) {
+	if (TexarcIsValidNsbtx(buffer, size)) return TexarcReadNsbtx(nsbtx, buffer, size);
+	if (TexarcIsValidBmd(buffer, size)) return TexarcReadBmd(nsbtx, buffer, size);
 	return 1;
 }
 
-int nsbtxReadFile(NSBTX *nsbtx, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) nsbtx, (OBJECT_READER) nsbtxRead);
+int TexarcReadFile(TexArc *nsbtx, LPCWSTR path) {
+	return fileRead(path, (OBJECT_HEADER *) nsbtx, (OBJECT_READER) TexarcRead);
 }
 
-static char *getTextureName(void *texels) {
+static char *TexarciGetTextureNameCallback(void *texels) {
 	return ((TEXELS *) texels)->name;
 }
 
-static char *getPaletteName(void *palette) {
+static char *TexarciGetPaletteNameCallback(void *palette) {
 	return ((PALETTE *) palette)->name;
 }
 
-int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
+int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 	if (nsbtx->mdl0 != NULL) {
 		BYTE fileHeader[] = { 'B', 'M', 'D', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 2, 0, 0x18, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -844,7 +863,7 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 
 	{
 		//write dictTex
-		int dictOfs = nnsWriteDictionary(stream, nsbtx->textures, sizeof(TEXELS), nsbtx->nTextures, getTextureName, 8);
+		int dictOfs = nnsWriteDictionary(stream, nsbtx->textures, sizeof(TEXELS), nsbtx->nTextures, TexarciGetTextureNameCallback, 8);
 		int dictEndOfs = stream->pos;
 
 		//write dict data
@@ -868,7 +887,7 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 	}
 	{
 		//write dictPltt
-		int dictOfs = nnsWriteDictionary(stream, nsbtx->palettes, sizeof(PALETTE), nsbtx->nPalettes, getPaletteName, 4);
+		int dictOfs = nnsWriteDictionary(stream, nsbtx->palettes, sizeof(PALETTE), nsbtx->nPalettes, TexarciGetPaletteNameCallback, 4);
 		int dictEndOfs = stream->pos;
 		
 		//write data
@@ -918,7 +937,7 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 	return 0;
 }
 
-int nsbtxWriteBmd(NSBTX *nsbtx, BSTREAM *stream) {
+int TexarcWriteBmd(TexArc *nsbtx, BSTREAM *stream) {
 	unsigned char header[0x3C];
 
 	BMD_DATA *bmd = nsbtx->bmdData;
@@ -1053,17 +1072,17 @@ int nsbtxWriteBmd(NSBTX *nsbtx, BSTREAM *stream) {
 	return 0;
 }
 
-int nsbtxWrite(NSBTX *nsbtx, BSTREAM *stream) {
+int TexarcWrite(TexArc *nsbtx, BSTREAM *stream) {
 	int fmt = nsbtx->header.format;
 	switch (fmt) {
 		case NSBTX_TYPE_NNS:
-			return nsbtxWriteNsbtx(nsbtx, stream);
+			return TexarcWriteNsbtx(nsbtx, stream);
 		case NSBTX_TYPE_BMD:
-			return nsbtxWriteBmd(nsbtx, stream);
+			return TexarcWriteBmd(nsbtx, stream);
 	}
 	return 1;
 }
 
-int nsbtxWriteFile(NSBTX *nsbtx, LPWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) nsbtx, (OBJECT_WRITER) nsbtxWrite);
+int TexarcWriteFile(TexArc *nsbtx, LPWSTR name) {
+	return fileWrite(name, (OBJECT_HEADER *) nsbtx, (OBJECT_WRITER) TexarcWrite);
 }

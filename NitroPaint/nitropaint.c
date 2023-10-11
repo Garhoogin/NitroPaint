@@ -1103,8 +1103,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEW_NEWTEXTUREARCHIVE:
 					{
-						NSBTX nsbtx;
-						nsbtxInit(&nsbtx, NSBTX_TYPE_NNS);
+						TexArc nsbtx;
+						TexarcInit(&nsbtx, NSBTX_TYPE_NNS);
 						
 						//no need to init further
 						CreateNsbtxViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, &nsbtx);

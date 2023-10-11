@@ -7,29 +7,6 @@
 #define NSBTX_TYPE_NNS       1
 #define NSBTX_TYPE_BMD       2
 
-typedef struct DICTENTRY_ {
-	int sizeUnit;
-	int offsetName;
-	void *data;
-} DICTENTRY;
-
-typedef struct DICTIONARY_ {
-	int nEntries;
-
-	DICTENTRY entry;
-	char *namesPtr;
-} DICTIONARY;
-
-typedef struct DICTTEXDATA_ {
-	int texImageParam;
-	int extraParam;
-} DICTTEXDATA;
-
-typedef struct DICTPLTTDATA_ {
-	uint16_t offset;
-	uint16_t flag;
-} DICTPLTTDATA;
-
 
 typedef struct BMD_DATA_ {
 	int scale;
@@ -50,7 +27,7 @@ typedef struct BMD_DATA_ {
 } BMD_DATA;
 
 
-typedef struct NSBTX_ { //these should not be converted to other formats
+typedef struct TexArc_ { //these should not be converted to other formats
 	OBJECT_HEADER header;
 	int nTextures;
 	int nPalettes;
@@ -60,16 +37,16 @@ typedef struct NSBTX_ { //these should not be converted to other formats
 	void *mdl0;			//for handling NSBMD files as well
 	int mdl0Size;
 	BMD_DATA *bmdData;	//for handling BMD files
-} NSBTX;
+} TexArc;
 
-void nsbtxInit(NSBTX *nsbtx, int format);
+void TexarcInit(TexArc *nsbtx, int format);
 
-int nsbtxRead(NSBTX *nsbtx, char *buffer, int size);
+int TexarcRead(TexArc *nsbtx, char *buffer, int size);
 
-int nsbtxIsValidBmd(char *buffer, unsigned int size);
+int TexarcIsValidBmd(char *buffer, unsigned int size);
 
-int nsbtxReadFile(NSBTX *nsbtx, LPCWSTR path);
+int TexarcReadFile(TexArc *nsbtx, LPCWSTR path);
 
-int nsbtxWriteFile(NSBTX *nsbtx, LPWSTR filename);
+int TexarcWriteFile(TexArc *nsbtx, LPWSTR filename);
 
-int nsbtxWrite(NSBTX *nsbtx, BSTREAM *stream);
+int TexarcWrite(TexArc *nsbtx, BSTREAM *stream);

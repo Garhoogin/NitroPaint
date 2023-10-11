@@ -325,7 +325,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 			} else {
 
 				//test other formats
-				if (nsbtxIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
+				if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
 				else if (ncgrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (nscrIsValidAsc(buffer, bufferSize))  type = FILE_TYPE_SCREEN;

@@ -6,7 +6,7 @@
 typedef struct {
 	FRAMEDATA frameData;
 	WCHAR szOpenFile[MAX_PATH];
-	NSBTX nsbtx;
+	TexArc nsbtx;
 	int showBorders;
 	int scale;
 
@@ -20,8 +20,8 @@ typedef struct {
 
 VOID RegisterNsbtxViewerClass(VOID);
 
-void CreateVramUseWindow(HWND hWndParent, NSBTX *nsbtx);
+void CreateVramUseWindow(HWND hWndParent, TexArc *nsbtx);
 
 HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 
-HWND CreateNsbtxViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSBTX *nsbtx);
+HWND CreateNsbtxViewerImmediate(int x, int y, int width, int height, HWND hWndParent, TexArc *nsbtx);
