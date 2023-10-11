@@ -593,6 +593,13 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 		int height = TEXH(texData->texImageParam);
 		int texelSize = TxGetTexelSize(width, height, texData->texImageParam);
 
+		uint32_t paramEx = texData->extraParam;
+		int origWidth = width, origHeight = height;
+		if (!(paramEx & 0x80000000)) {
+			origWidth = (paramEx >> 0) & 0x7FF;
+			origHeight = (paramEx >> 11) & 0x7FF;
+		}
+
 		if (FORMAT(texData->texImageParam) == CT_4x4) {
 			texels[i].texImageParam = texData->texImageParam;
 			texels[i].texel = calloc(texelSize, 1);
@@ -607,6 +614,7 @@ int nsbtxReadNsbtx(NSBTX *nsbtx, char *buffer, int size) {
 			memcpy(texels[i].texel, tex0 + offset + baseOffsetTex, texelSize);
 		}
 		memcpy(texels[i].name, dictTex.namesPtr + i * 16, 16);
+		texels[i].height = origHeight;
 	}
 
 	for (int i = 0; i < dictPal.nEntries; i++) {
@@ -683,6 +691,7 @@ int nsbtxReadBmd(NSBTX *nsbtx, unsigned char *buffer, int size) {
 			texture->cmp = (short *) calloc(texelSize / 2, 1);
 			memcpy(texture->cmp, buffer + texelOffset + texelSize, texelSize / 2);
 		}
+		texture->height = TEXH(texImageParam);
 	}
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
 		unsigned char *thisPal = palDescriptors + i * 0x10;
@@ -810,8 +819,9 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		TEXELS *texture = nsbtx->textures + i;
 		int width = TEXW(texture->texImageParam);
-		int height = TEXH(texture->texImageParam);
+		int height = texture->height;
 		int texelSize = TxGetTexelSize(width, height, texture->texImageParam);
+
 		if (FORMAT(texture->texImageParam) == CT_4x4) {
 			//write the offset in the texImageParams
 			int ofs = (tex4x4Data.length >> 3) & 0xFFFF;
@@ -877,7 +887,12 @@ int nsbtxWriteNsbtx(NSBTX *nsbtx, BSTREAM *stream) {
 			TEXELS *texels = nsbtx->textures + i;
 			int texImageParam = texels->texImageParam;
 			dictData[0] = texImageParam;
-			dictData[1] = 0x80000000 | TEXW(texImageParam) | (TEXH(texImageParam) << 11);
+			dictData[1] = TEXW(texImageParam);
+			if (texels->height == TEXH(texImageParam)) {
+				dictData[1] |= 0x80000000 | (TEXH(texImageParam) << 11); //original size match
+			} else {
+				dictData[1] |= texels->height << 11; //original size mismatch
+			}
 
 			bstreamWrite(stream, dictData, sizeof(dictData));
 		}

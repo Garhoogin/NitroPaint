@@ -27,6 +27,7 @@
 
 typedef struct {
 	int texImageParam;
+	int height;
 	char *texel;
 	short *cmp;
 	char name[16]; //NOT necessarily null terminated!
@@ -45,7 +46,7 @@ typedef struct {
 
 const char *TxNameFromTexFormat(int fmt);
 
-void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip);
+void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE *palette, int flip);
 
 int TxGetTexelSize(int width, int height, int texImageParam);
 

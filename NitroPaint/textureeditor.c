@@ -28,7 +28,7 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	int texImageParam = texture->texels.texImageParam;
 	int format = FORMAT(texImageParam);
 	int width = TEXW(texImageParam);
-	int height = TEXH(texImageParam);
+	int height = texture->texels.height;
 
 	//buffer to hold converted palette
 	int paletteSize = 0;
@@ -75,7 +75,7 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	} else if (format == CT_4x4 || format == CT_DIRECT) {
 		//else if 4x4 or direct, just export full-color image. Red/blue must be swapped here
 		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-		TxRender(px, &texture->texels, &texture->palette, 0);
+		TxRender(px, width, height, &texture->texels, &texture->palette, 0);
 		for (int i = 0; i < width * height; i++) {
 			COLOR32 c = px[i];
 			px[i] = REVERSE(c);
@@ -204,11 +204,8 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				data->format = FORMAT(data->textureData.texels.texImageParam);
 				data->hasPalette = (data->format != CT_DIRECT && data->format != 0);
 				data->isNitro = 1;
-				TxRender(data->px, &data->textureData.texels, &data->textureData.palette, 0);
-				for (int i = 0; i < data->width * data->height; i++) {
-					DWORD col = data->px[i];
-					data->px[i] = REVERSE(col);
-				}
+				TxRender(data->px, data->width, data->height, &data->textureData.texels, &data->textureData.palette, 0);
+				ImgSwapRedBlue(data->px, data->width, data->height);
 				UpdatePaletteLabel(hWnd);
 			}
 
@@ -230,18 +227,15 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hasPalette = FORMAT(texture->texels.texImageParam) != CT_DIRECT;
 			data->format = FORMAT(texture->texels.texImageParam);
 			data->width = TEXW(texture->texels.texImageParam);
-			data->height = TEXH(texture->texels.texImageParam);
+			data->height = texture->texels.height;
 			data->frameData.contentWidth = data->width;
 			data->frameData.contentHeight = data->height;
 			data->px = (COLOR32 *) calloc(data->width * data->height, sizeof(COLOR32));
 
 			//decode texture data for preview
 			int nPx = data->width * data->height;
-			TxRender(data->px, &texture->texels, &texture->palette, 0);
-			for (int i = 0; i < nPx; i++) {
-				COLOR32 p = data->px[i];
-				data->px[i] = REVERSE(p);
-			}
+			TxRender(data->px, data->width, data->height, &texture->texels, &texture->palette, 0);
+			ImgSwapRedBlue(data->px, data->width, data->height);
 
 			//update UI
 			WCHAR buffer[16];
@@ -329,7 +323,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 					DWORD dwWritten;
 					int texImageParam = data->textureData.texels.texImageParam;
-					int texelSize = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+					int texelSize = TxGetTexelSize(TEXW(texImageParam), data->textureData.texels.height, texImageParam);
 					HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 					WriteFile(hFile, data->textureData.texels.texel, texelSize, &dwWritten, NULL);
 					CloseHandle(hFile);
@@ -482,11 +476,10 @@ HWND CreateTextureTileEditor(HWND hWndParent, int tileX, int tileY) {
 int getTextureOffsetByTileCoordinates(TEXELS *texel, int x, int y) {
 	int fmt = FORMAT(texel->texImageParam);
 	int width = TEXW(texel->texImageParam);
-	int height = TEXH(texel->texImageParam);
 
 	int bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
 
-	if(fmt != CT_4x4){
+	if (fmt != CT_4x4) {
 		int pxX = x * 4;
 		int pxY = y * 4;
 		return (pxX + pxY * width) * bits[fmt] / 8;
@@ -545,7 +538,7 @@ void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int
 	COLOR32 rendered[64];
 
 	int param = texture->texels.texImageParam;
-	int format = FORMAT(param), width = TEXW(param), height = TEXH(param);
+	int format = FORMAT(param), width = TEXW(param);
 	int offset = getTextureOffsetByTileCoordinates(&texture->texels, tileX, tileY);
 	unsigned char *texelSrc = texture->texels.texel + offset;
 	if (format == CT_4x4) indexBuffer[0] = texture->texels.cmp[offset / 4];
@@ -568,7 +561,7 @@ void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int
 	temp.texels.texImageParam = format << 26;
 	temp.palette.nColors = texture->palette.nColors;
 	temp.palette.pal = texture->palette.pal;
-	TxRender(rendered, &temp.texels, &temp.palette, 0);
+	TxRender(rendered, 8, 8, &temp.texels, &temp.palette, 0);
 
 	//convert back to 4x4
 	memmove(rendered + 0, rendered + 0, 16);
@@ -674,13 +667,6 @@ void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int
 	}
 }
 
-void swapRedBlueChannels(COLOR32 *px, int nPx) {
-	for (int i = 0; i < nPx; i++) {
-		COLOR32 c = px[i];
-		px[i] = REVERSE(c);
-	}
-}
-
 LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	HWND hWndTextureEditor = (HWND) GetWindowLongPtr(hWnd, 0);
 	if (hWndTextureEditor == NULL) return DefMDIChildProc(hWnd, msg, wParam, lParam);
@@ -733,31 +719,31 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl != NULL) {
 				TEXELS *texels = &data->textureData.texels;
-				int width = TEXW(texels->texImageParam), height = TEXH(texels->texImageParam);
-				int nPx = width * height, tilesX = width / 4;
+				int width = TEXW(texels->texImageParam);
+				int tilesX = width / 4;
 				uint16_t *pIdx = &texels->cmp[tileX + tileY * tilesX];
 
 				int notification = HIWORD(wParam);
 				if (notification == BN_CLICKED && hWndControl == data->hWndTransparent) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
-					TxRender(data->px, texels, &data->textureData.palette, 0);
-					swapRedBlueChannels(data->px, nPx);
+					TxRender(data->px, data->width, data->height, texels, &data->textureData.palette, 0);
+					ImgSwapRedBlue(data->px, data->width, data->height);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
 					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
 					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
-					TxRender(data->px, texels, &data->textureData.palette, 0);
-					swapRedBlueChannels(data->px, nPx);
+					TxRender(data->px, data->width, data->height, texels, &data->textureData.palette, 0);
+					ImgSwapRedBlue(data->px, data->width, data->height);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndPaletteBase) {
 					WCHAR buffer[8];
 					SendMessage(hWndControl, WM_GETTEXT, 8, (LPARAM) buffer);
 					*pIdx = ((*pIdx) & 0xC000) | (_wtol(buffer) & 0x3FFF);
-					TxRender(data->px, texels, &data->textureData.palette, 0);
-					swapRedBlueChannels(data->px, nPx);
+					TxRender(data->px, data->width, data->height, texels, &data->textureData.palette, 0);
+					ImgSwapRedBlue(data->px, data->width, data->height);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
@@ -786,7 +772,6 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			PALETTE *palette = &data->textureData.palette;
 			int format = FORMAT(texels->texImageParam);
 			int width = TEXW(texels->texImageParam);
-			int height = TEXH(texels->texImageParam);
 
 			POINT pt;
 			GetCursorPos(&pt);
@@ -837,8 +822,8 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 						}
 					}
 				}
-				TxRender(data->px, texels, &data->textureData.palette, 0);
-				swapRedBlueChannels(data->px, width * height);
+				TxRender(data->px, data->width, data->height, texels, &data->textureData.palette, 0);
+				ImgSwapRedBlue(data->px, data->width, data->height);
 				InvalidateRect(data->hWnd, NULL, FALSE);
 				InvalidateRect(hWnd, NULL, FALSE);
 			} else if (pt.x >= 138 && pt.y >= 0) { //select palette/alpha
@@ -974,7 +959,7 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			int texImageParam = data->textureData.texels.texImageParam;
 			int tilesX = TEXW(texImageParam) / 4;
-			int tilesY = TEXH(texImageParam) / 4;
+			int tilesY = data->textureData.texels.height / 4;
 			if (x >= 0 && y >= 0 && x < tilesX && y < tilesY) {
 				HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 				
@@ -1723,7 +1708,8 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 							data->data->textureData.palette.pal[index] = ColorConvertToDS(result);
 							InvalidateRect(hWnd, NULL, FALSE);
 
-							TxRender(data->data->px, &data->data->textureData.texels, &data->data->textureData.palette, 0);
+							TxRender(data->data->px, data->data->width, data->data->height, 
+								&data->data->textureData.texels, &data->data->textureData.palette, 0);
 							int param = data->data->textureData.texels.texImageParam;
 							int width = TEXW(param);
 							int height = 8 << ((param >> 23) & 7);
@@ -1762,7 +1748,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						CloseClipboard();
 
 						TEXTURE *texture = &data->data->textureData;
-						TxRender(data->data->px, &texture->texels, &texture->palette, 0);
+						TxRender(data->data->px, data->data->width, data->data->height, &texture->texels, &texture->palette, 0);
 						for (int i = 0; i < data->data->width * data->data->height; i++) {
 							COLOR32 col = data->data->px[i];
 							data->data->px[i] = REVERSE(col);
@@ -2416,7 +2402,7 @@ HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, L
 		MessageBox(hWndParent, L"An invalid image file was specified.", L"Invalid Image", MB_ICONERROR);
 		return NULL;
 	}
-	if (!TxDimensionIsValid(bWidth) || !TxDimensionIsValid(bHeight)) {
+	if (!TxDimensionIsValid(bWidth) || (bHeight > 1024)) {
 		free(bits);
 		MessageBox(hWndParent, L"Textures must have dimensions as powers of two greater than or equal to 8, and not exceeding 1024.", L"Invalid dimensions", MB_ICONERROR);
 		return NULL;

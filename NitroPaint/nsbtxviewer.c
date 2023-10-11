@@ -15,9 +15,9 @@ extern int max16Len(char *str);
 HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	if (texture == NULL) return NULL;
 	int width = TEXW(texture->texImageParam);
-	int height = TEXH(texture->texImageParam);
+	int height = texture->height;
 	COLOR32 *px = (COLOR32 *) calloc(width * zoom * height * zoom, 4);
-	TxRender(px, texture, palette, 0);
+	TxRender(px, width, height, texture, palette, 0);
 
 	//perform alpha blending
 	int scaleWidth = width * zoom, scaleHeight = height * zoom;
@@ -81,7 +81,7 @@ int calculateHighestPaletteIndex(TEXELS *texture) {
 	if (format == CT_DIRECT) return -1;
 
 	int nHighest = 0;
-	int texelSize = TxGetTexelSize(TEXW(texture->texImageParam), TEXH(texture->texImageParam), texture->texImageParam);
+	int texelSize = TxGetTexelSize(TEXW(texture->texImageParam), texture->height, texture->texImageParam);
 	switch (format) {
 		case CT_4COLOR:
 			for (int i = 0; i < texelSize; i++) {
@@ -329,15 +329,15 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			HBITMAP hBitmap = renderTexture(texture, palette, data->scale);
 			HDC hCompat = CreateCompatibleDC(hDC);
 			SelectObject(hCompat, hBitmap);
-			BitBlt(hDC, 150, 22, TEXW(texture->texImageParam) * data->scale, TEXH(texture->texImageParam) * data->scale, hCompat, 0, 0, SRCCOPY);
+			BitBlt(hDC, 150, 22, TEXW(texture->texImageParam) * data->scale, texture->height * data->scale, hCompat, 0, 0, SRCCOPY);
 
 			char bf[64];
 			SelectObject(hDC, GetStockObject(DEFAULT_GUI_FONT));
 			SetBkMode(hDC, TRANSPARENT);
 			if (FORMAT(texture->texImageParam) == CT_DIRECT) {
-				sprintf(bf, "%s texture, %dx%d", TxNameFromTexFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), TEXH(texture->texImageParam));
+				sprintf(bf, "%s texture, %dx%d", TxNameFromTexFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), texture->height);
 			} else {
-				sprintf(bf, "%s texture, %dx%d; palette: %d colors", TxNameFromTexFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), TEXH(texture->texImageParam), palette->nColors);
+				sprintf(bf, "%s texture, %dx%d; palette: %d colors", TxNameFromTexFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), texture->height, palette->nColors);
 			}
 			RECT rcText;
 			rcText.left = 155;
@@ -779,7 +779,7 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 				TEXELS *tex = nsbtx->textures + i;
 				int texImageParam = tex->texImageParam;
 				int format = FORMAT(texImageParam);
-				int texelSize = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+				int texelSize = TxGetTexelSize(TEXW(texImageParam), tex->height, texImageParam);
 				int indexSize = TxGetIndexVramSize(tex);
 
 				//copy name. Beware, not null terminated

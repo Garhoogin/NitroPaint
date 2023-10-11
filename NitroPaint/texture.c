@@ -2,6 +2,17 @@
 #include <stdio.h>
 #include "texture.h"
 
+int ilog2(int x);
+
+int TxRoundTextureSize(int dimension) {
+	if (dimension < 8) return 8; //min
+	
+	//round up
+	dimension = (dimension << 1) - 1;
+	dimension = 1 << ilog2(dimension);
+	return dimension;
+}
+
 int TxGetTexelSize(int width, int height, int texImageParam) {
 	int nPx = width * height;
 	int bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
@@ -58,7 +69,7 @@ static COLOR32 TxiBlend(COLOR32 c1, COLOR32 c2, int factor) {
 	return ColorRoundToDS18(r | (g << 8) | (b << 16));
 }
 
-void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
+void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE *palette, int flip) {
 	int format = FORMAT(texels->texImageParam);
 	int c0xp = COL0TRANS(texels->texImageParam);
 	int width = TEXW(texels->texImageParam);
@@ -69,8 +80,11 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 		case CT_DIRECT:
 		{
 			for (int i = 0; i < nPixels; i++) {
+				int curX = i % width, curY = i / width;
 				COLOR pVal = ((COLOR *) texels->texel)[i];
-				px[i] = ColorConvertFromDS(pVal) | (GetA(pVal) ? 0xFF000000 : 0);
+				if (curX < dstWidth && curY < dstHeight) {
+					px[curX + curY * dstWidth] = ColorConvertFromDS(pVal) | (GetA(pVal) ? 0xFF000000 : 0);
+				}
 			}
 			break;
 		}
@@ -80,14 +94,15 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 			for (int i = 0; i < txelSize >> 2; i++) {
 				uint32_t d = ((uint32_t *) texels->texel)[i];
 				for (int j = 0; j < 16; j++) {
+					int curX = offs % width, curY = offs / width;
 					int pVal = d & 0x3;
 					d >>= 2;
-					if (pVal < palette->nColors) {
+					if (curX < dstWidth && curY < dstHeight && pVal < palette->nColors) {
 						if (!pVal && c0xp) {
 							px[offs] = 0;
 						} else {
 							COLOR col = palette->pal[pVal];
-							px[offs] = ColorConvertFromDS(col) | 0xFF000000;
+							px[curX + curY * dstWidth] = ColorConvertFromDS(col) | 0xFF000000;
 						}
 					}
 					offs++;
@@ -114,8 +129,10 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 					if (!(pVal >> 4)) col1 = 0;
 				}
 
-				px[i * 2 + 0] = col0;
-				px[i * 2 + 1] = col1;
+				int offs = i * 2;
+				int curX = offs % width, curY = offs / width;
+				if ((curX + 0) < dstWidth && curY < dstHeight) px[offs + 0] = col0;
+				if ((curX + 1) < dstWidth && curY < dstHeight) px[offs + 1] = col1;
 			}
 			break;
 		}
@@ -123,12 +140,13 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 		{
 			for (int i = 0; i < txelSize; i++) {
 				uint8_t pVal = texels->texel[i];
-				if (pVal < palette->nColors) {
+				int destX = i % width, destY = i / width;
+				if (destX < dstWidth && destY < dstHeight && pVal < palette->nColors) {
 					if (!pVal && c0xp) {
 						px[i] = 0;
 					} else {
 						COLOR col = palette->pal[pVal];
-						px[i] = ColorConvertFromDS(col) | 0xFF000000;
+						px[destX + destY * dstWidth] = ColorConvertFromDS(col) | 0xFF000000;
 					}
 				}
 			}
@@ -142,7 +160,10 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 				int index = d & 0x1F;
 				if (index < palette->nColors) {
 					COLOR32 atIndex = ColorConvertFromDS(palette->pal[index]);
-					px[i] = atIndex | (alpha << 24);
+					int destX = i % width, destY = i / width;
+					if (destX < dstWidth && destY < dstHeight) {
+						px[destX + destY * dstWidth] = atIndex | (alpha << 24);
+					}
 				}
 			}
 			break;
@@ -155,7 +176,10 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 				int index = d & 0x7;
 				if (index < palette->nColors) {
 					COLOR32 atIndex = ColorConvertFromDS(palette->pal[index]);
-					px[i] = atIndex | (alpha << 24);
+					int destX = i % width, destY = i / width;
+					if (destX < dstWidth && destY < dstHeight) {
+						px[destX + destY * dstWidth] = atIndex | (alpha << 24);
+					}
 				}
 			}
 			break;
@@ -220,7 +244,9 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 
 					int destX = (j % 4) + tileX * 4;
 					int destY = (j / 4) + tileY * 4;
-					px[destX + destY * width] = colors[pVal];
+					if (destX < dstWidth && destY < dstHeight) {
+						px[destX + destY * dstWidth] = colors[pVal];
+					}
 				}
 			}
 			break;
@@ -228,20 +254,20 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette, int flip) {
 	}
 
 	//swap RB
-	for (int i = 0; i < width * height; i++) {
+	for (int i = 0; i < dstWidth * dstHeight; i++) {
 		COLOR32 c = px[i];
 		px[i] = REVERSE(c);
 	}
 
 	//flip upside down
 	if (flip) {
-		DWORD *tmp = calloc(width, 4);
-		for (int y = 0; y < height / 2; y++) {
-			DWORD *row1 = px + y * width;
-			DWORD *row2 = px + (height - 1 - y) * width;
-			memcpy(tmp, row1, width * 4);
-			memcpy(row1, row2, width * 4);
-			memcpy(row2, tmp, width * 4);
+		COLOR32 *tmp = calloc(dstWidth, 4);
+		for (int y = 0; y < dstHeight / 2; y++) {
+			COLOR32 *row1 = px + y * dstWidth;
+			COLOR32 *row2 = px + (dstHeight - 1 - y) * dstWidth;
+			memcpy(tmp, row1, dstWidth * sizeof(COLOR32));
+			memcpy(row1, row2, dstWidth * sizeof(COLOR32));
+			memcpy(row2, tmp, dstWidth * sizeof(COLOR32));
 		}
 		free(tmp);
 	}
@@ -321,7 +347,7 @@ void TxWriteNnsTga(LPCWSTR name, TEXELS *texels, PALETTE *palette) {
 	int width = TEXW(texels->texImageParam);
 	int height = TEXH(texels->texImageParam);
 	COLOR32 *pixels = (COLOR32 *) calloc(width * height, 4);
-	TxRender(pixels, texels, palette, 1);
+	TxRender(pixels, width, height, texels, palette, 1);
 	int depth = imageHasTransparent(pixels, width * height) ? 32 : 24;
 
 	uint8_t header[] = {0x14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 8,
@@ -523,12 +549,14 @@ int TxReadNnsTga(LPCWSTR path, TEXELS *texels, PALETTE *palette) {
 	}
 	texels->cmp = (short *) pidx;
 	texels->texel = txel;
+
 	int texImageParam = 0;
 	if (c0xp) texImageParam |= (1 << 29);
 	texImageParam |= (1 << 17) | (1 << 16);
-	texImageParam |= (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
+	texImageParam |= (ilog2(TxRoundTextureSize(width) >> 3) << 20) | (ilog2(TxRoundTextureSize(height) >> 3) << 23);
 	texImageParam |= frmt << 26;
 	texels->texImageParam = texImageParam;
+	texels->height = height;
 
 	//copy texture name
 	int nameOffset = 0;

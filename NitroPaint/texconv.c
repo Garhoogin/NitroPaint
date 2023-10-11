@@ -6,6 +6,47 @@
 
 int ilog2(int x);
 
+static int roundUpTextureDimension(int x) {
+	x = (x << 1) - 1;
+	return 1 << ilog2(x); //rounds down
+}
+
+static COLOR32 *padTextureImage(COLOR32 *px, int width, int height, int *outWidth, int *outHeight) {
+	//if this is a 0x0 image somehow just return an 8x8 transparent square
+	if (width == 0 || height == 0) {
+		*outWidth = 8;
+		*outHeight = 8;
+		return (COLOR32 *) calloc(8 * 8, sizeof(COLOR32));
+	}
+
+	//function imitates iMageStudio behavior
+	int padWidth = roundUpTextureDimension(width);
+	int padHeight = roundUpTextureDimension(height);
+	if (padWidth < 8) padWidth = 8;
+	if (padHeight < 8) padHeight = 8;
+
+	COLOR32 *out = (COLOR32 *) calloc(padWidth * padHeight, sizeof(COLOR32));
+
+	//fill rows
+	for (int y = 0; y < padHeight; y++) {
+		COLOR32 *rowSrc = px + y * width;
+		COLOR32 *rowDst = out + y * padWidth;
+		if (y >= height) {
+			rowSrc = px + (height - 1) * width;
+		}
+		memcpy(rowDst, rowSrc, width * sizeof(COLOR32));
+
+		//copy last pixel for the remainder of the width
+		for (int x = width; x < padWidth; x++) {
+			rowDst[x] = rowSrc[width - 1];
+		}
+	}
+
+	*outWidth = padWidth;
+	*outHeight = padHeight;
+	return out;
+}
+
 int textureConvertDirect(CREATEPARAMS *params) {
 	//convert to direct color.
 	int width = params->width, height = params->height;
@@ -927,6 +968,15 @@ int textureConvert4x4(CREATEPARAMS *params) {
 }
 
 int textureConvert(CREATEPARAMS *params) {
+	//pad texture if needed
+	int padWidth, padHeight, sourceWidth = params->width, sourceHeight = params->height;
+	COLOR32 *srcPx = params->px;
+	COLOR32 *padded = padTextureImage(srcPx, sourceWidth, sourceHeight, &padWidth, &padHeight);
+
+	params->width = padWidth;
+	params->height = padHeight;
+	params->px = padded;
+
 	//begin conversion.
 	switch (params->fmt) {
 		case CT_DIRECT:
@@ -946,6 +996,11 @@ int textureConvert(CREATEPARAMS *params) {
 			break;
 	}
 
+	params->width = sourceWidth;
+	params->height = sourceHeight;
+	params->px = srcPx;
+	free(padded);
+
 	//copy name (null-terminated unless 16-char long)
 	if (params->fmt != CT_DIRECT) {
 		memset(params->dest->palette.name, 0, 16);
@@ -956,7 +1011,7 @@ int textureConvert(CREATEPARAMS *params) {
 		}
 	}
 
-	TxRender(params->px, &params->dest->texels, &params->dest->palette, 0);
+	TxRender(params->px, sourceWidth, sourceHeight, &params->dest->texels, &params->dest->palette, 0);
 	//TxRender outputs red and blue in the opposite order, so flip them here.
 	for (int i = 0; i < params->width * params->height; i++) {
 		COLOR32 p = params->px[i];
