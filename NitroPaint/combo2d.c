@@ -226,7 +226,7 @@ int combo2dIsValid(BYTE *file, int size) {
 int combo2dReadTimeAce(COMBO2D *combo, char *buffer, int size) {
 	//add palette
 	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	nclrInit(nclr, NCLR_TYPE_COMBO);
+	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = 256;
 	nclr->extPalette = 0;
 	nclr->idxTable = NULL;
@@ -289,7 +289,7 @@ int combo2dRead5bg(COMBO2D *combo, char *buffer, int size) {
 
 	//addpalette
 	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	nclrInit(nclr, NCLR_TYPE_COMBO);
+	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = nColors;
 	nclr->extPalette = 0;
 	nclr->idxTable = NULL;
@@ -336,7 +336,7 @@ int combo2dReadBanner(COMBO2D *combo, char *buffer, int size) {
 
 	//add palette
 	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	nclrInit(nclr, NCLR_TYPE_COMBO);
+	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = 16;
 	nclr->extPalette = 0;
 	nclr->idxTable = NULL;
@@ -377,7 +377,7 @@ int combo2dReadMbb(COMBO2D *combo, char *buffer, int size) {
 
 	//add palette
 	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	nclrInit(nclr, NCLR_TYPE_COMBO);
+	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = 256;
 	nclr->extPalette = 0;
 	nclr->idxTable = NULL;

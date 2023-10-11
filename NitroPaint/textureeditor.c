@@ -1393,7 +1393,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					if (fixedPalette) {
 						int status = 1;
 						if (path[0]) {
-							status = nclrReadFile(&paletteFile, path);
+							status = PalReadFile(&paletteFile, path);
 						}
 						if (status) {
 							MessageBox(hWnd, L"Invalid palette file.", L"Invalid file", MB_ICONERROR);

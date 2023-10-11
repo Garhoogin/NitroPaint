@@ -329,15 +329,15 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
 				else if (ncgrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (nscrIsValidAsc(buffer, bufferSize))  type = FILE_TYPE_SCREEN;
-				else if (nclrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+				else if (PalIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
 
 				//test for bin format files
 				else {
-					if (nclrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
-					else if (nclrIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
+					if (PalIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
+					else if (PalIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
 					else if (nscrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
 					else if (ncgrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
 					else {
@@ -346,10 +346,10 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 
 						//last ditch effort
 						if (type == FILE_TYPE_INVALID) {
-							if (nclrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+							if (PalIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 							else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 							else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-							else if (nclrIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+							else if (PalIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 						}
 					}
 				}

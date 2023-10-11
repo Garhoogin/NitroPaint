@@ -6,7 +6,7 @@
 
 LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", L"NCL", L"5PL", L"5PC", NULL };
 
-void nclrFree(OBJECT_HEADER *header) {
+void PalFree(OBJECT_HEADER *header) {
 	NCLR *nclr = (NCLR *) header;
 	if (nclr->colors != NULL) free(nclr->colors);
 	nclr->colors = NULL;
@@ -26,14 +26,14 @@ void nclrFree(OBJECT_HEADER *header) {
 	nclr->combo2d = NULL;
 }
 
-void nclrInit(NCLR *nclr, int format) {
+void PalInit(NCLR *nclr, int format) {
 	nclr->header.size = sizeof(NCLR);
 	fileInitCommon((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
-	nclr->header.dispose = nclrFree;
+	nclr->header.dispose = PalFree;
 	nclr->combo2d = NULL;
 }
 
-int nclrIsValidHudson(unsigned char *lpFile, unsigned int size) {
+int PalIsValidHudson(const unsigned char *lpFile, unsigned int size) {
 	if (size < 4) return 0;
 	if (*lpFile == 0x10) return 0;
 	int dataLength = *(uint16_t *) lpFile;
@@ -56,7 +56,7 @@ int nclrIsValidHudson(unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int nclrIsValidBin(unsigned char *lpFile, unsigned int size) {
+int PalIsValidBin(const unsigned char *lpFile, unsigned int size) {
 	if (size < 16) return 0;
 	if (size & 1) return 0;
 	if (size > 16 * 256 * 2) return 0;
@@ -74,7 +74,7 @@ int nclrIsValidBin(unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int nclrIsValidNtfp(unsigned char *lpFile, unsigned int size) {
+int PalIsValidNtfp(const unsigned char *lpFile, unsigned int size) {
 	if (size & 1) return 0;
 	for (unsigned int i = 0; i < size >> 1; i++) {
 		COLOR c = *(COLOR *) (lpFile + i * 2);
@@ -83,7 +83,7 @@ int nclrIsValidNtfp(unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int nclrIsValidNclr(unsigned char *lpFile, unsigned int size) {
+int PalIsValidNclr(const unsigned char *lpFile, unsigned int size) {
 	if (!g2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NCLR' && magic != 'RLCN' && magic != 'NCPR' && magic != 'RPCN') return 0;
@@ -94,7 +94,7 @@ int nclrIsValidNclr(unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int nclrIsValidNcl(unsigned char *lpFile, unsigned int size) {
+int PalIsValidNcl(const unsigned char *lpFile, unsigned int size) {
 	if (!g2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NCCL' && magic != 'LCCN') return 0;
@@ -105,7 +105,7 @@ int nclrIsValidNcl(unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int nclrIsValidIStudio(unsigned char *lpFile, unsigned int size) {
+int PalIsValidIStudio(const unsigned char *lpFile, unsigned int size) {
 	if (!g2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NTPL' && magic != 'LPTN') return 0;
@@ -116,7 +116,7 @@ int nclrIsValidIStudio(unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int nclrIsValidIStudioCompressed(unsigned char *lpFile, unsigned int size) {
+int PalIsValidIStudioCompressed(const unsigned char *lpFile, unsigned int size) {
 	if (!g2dIsValid(lpFile, size)) return 0;
 	uint32_t magic = *(uint32_t *) lpFile;
 	if (magic != 'NTPC' && magic != 'CPTN') return 0;
@@ -127,24 +127,24 @@ int nclrIsValidIStudioCompressed(unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int nclrIsValid(unsigned char *lpFile, unsigned int size) {
-	if (nclrIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
-	if (nclrIsValidNcl(lpFile, size)) return NCLR_TYPE_NC;
-	if (nclrIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
-	if (nclrIsValidBin(lpFile, size)) return NCLR_TYPE_BIN;
-	if (nclrIsValidNtfp(lpFile, size)) return NCLR_TYPE_NTFP;
-	if (nclrIsValidIStudio(lpFile, size)) return NCLR_TYPE_ISTUDIO;
-	if (nclrIsValidIStudioCompressed(lpFile, size)) return NCLR_TYPE_ISTUDIOC;
+int PalIdentify(const unsigned char *lpFile, unsigned int size) {
+	if (PalIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
+	if (PalIsValidNcl(lpFile, size)) return NCLR_TYPE_NC;
+	if (PalIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
+	if (PalIsValidBin(lpFile, size)) return NCLR_TYPE_BIN;
+	if (PalIsValidNtfp(lpFile, size)) return NCLR_TYPE_NTFP;
+	if (PalIsValidIStudio(lpFile, size)) return NCLR_TYPE_ISTUDIO;
+	if (PalIsValidIStudioCompressed(lpFile, size)) return NCLR_TYPE_ISTUDIOC;
 	return NCLR_TYPE_INVALID;
 }
 
-int hudsonPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
+int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	if (size < 4) return 1;
 
 	int dataLength = *(uint16_t *) buffer;
 	int nColors = *(uint16_t *) (buffer + 2);
 
-	nclrInit(nclr, NCLR_TYPE_HUDSON);
+	PalInit(nclr, NCLR_TYPE_HUDSON);
 	nclr->nColors = nColors;
 	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->nBits = 4;
@@ -153,12 +153,12 @@ int hudsonPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int binPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
-	if (!nclrIsValidNtfp(buffer, size)) return 1; //this function is being reused for NTFP as well
+int PalReadBin(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+	if (!PalIsValidNtfp(buffer, size)) return 1; //this function is being reused for NTFP as well
 	
 	int nColors = size >> 1;
 
-	nclrInit(nclr, nclrIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP);
+	PalInit(nclr, PalIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP);
 	nclr->nColors = nColors;
 	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->nBits = 4;
@@ -167,10 +167,10 @@ int binPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int ncPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
-	if (!nclrIsValidNcl(buffer, size)) return 1;
+int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+	if (!PalIsValidNcl(buffer, size)) return 1;
 
-	nclrInit(nclr, NCLR_TYPE_NC);
+	PalInit(nclr, NCLR_TYPE_NC);
 
 	char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
 	if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
@@ -193,7 +193,7 @@ int ncPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-void istudioCommonReadColors(NCLR *nclr, unsigned char *buffer, unsigned int size) {
+void PaliReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	char *palt = g2dGetSectionByMagic(buffer, size, 'PALT');
 	if (palt == NULL) palt = g2dGetSectionByMagic(buffer, size, 'TLAP');
 
@@ -206,67 +206,80 @@ void istudioCommonReadColors(NCLR *nclr, unsigned char *buffer, unsigned int siz
 	memcpy(nclr->colors, palt + 0xC, nclr->nColors * 2);
 }
 
-int istudioPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
-	if (!nclrIsValidIStudio(buffer, size)) return 1;
+int PalReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+	if (!PalIsValidIStudio(buffer, size)) return 1;
 
-	nclrInit(nclr, NCLR_TYPE_ISTUDIO);
-	istudioCommonReadColors(nclr, buffer, size);
+	PalInit(nclr, NCLR_TYPE_ISTUDIO);
+	PaliReadIStudio(nclr, buffer, size);
 	return 0;
 }
 
-int istudioCompressedPaletteRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
-	if (!nclrIsValidIStudioCompressed(buffer, size)) return 1;
+int PalReadIStudioCompressed(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+	if (!PalIsValidIStudioCompressed(buffer, size)) return 1;
 
-	nclrInit(nclr, NCLR_TYPE_ISTUDIOC);
-	istudioCommonReadColors(nclr, buffer, size);
+	PalInit(nclr, NCLR_TYPE_ISTUDIOC);
+	PaliReadIStudio(nclr, buffer, size);
 	return 0;
 }
 
-int nclrRead(NCLR *nclr, unsigned char *buffer, unsigned int size) {
-	if (!nclrIsValidNclr(buffer, size)) {
-		if (nclrIsValidNcl(buffer, size)) return ncPaletteRead(nclr, buffer, size);
-		if (nclrIsValidIStudio(buffer, size)) return istudioPaletteRead(nclr, buffer, size);
-		if (nclrIsValidIStudioCompressed(buffer, size)) return istudioCompressedPaletteRead(nclr, buffer, size);
-		if (nclrIsValidHudson(buffer, size)) return hudsonPaletteRead(nclr, buffer, size);
-		if (nclrIsValidBin(buffer, size)) return binPaletteRead(nclr, buffer, size);
-		if (nclrIsValidNtfp(buffer, size)) return binPaletteRead(nclr, buffer, size);
-	}
-	char *pltt = g2dGetSectionByMagic(buffer, size, 'PLTT');
-	char *pcmp = g2dGetSectionByMagic(buffer, size, 'PCMP');
+int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+	const unsigned char *pltt = g2dGetSectionByMagic(buffer, size, 'PLTT');
+	const unsigned char *pcmp = g2dGetSectionByMagic(buffer, size, 'PCMP');
 	if (pltt == NULL) return 1;
 
-	int sectionSize = *(int *) (pltt + 0x4);
+	uint32_t sectionSize = *(uint32_t *) (pltt + 0x4);
 	if (g2dIsOld(buffer, size)) sectionSize += 8;
 
-	int bits = *(int *) (pltt + 0x8);
+	int bits = *(uint32_t *) (pltt + 0x8);
 	bits = 1 << (bits - 1);
-	int dataSize = *(int *) (pltt + 0x10);
-	int dataOffset = 8 + *(int *) (pltt + 0x14);
+	int dataSize = *(uint32_t *) (pltt + 0x10);
+	int dataOffset = 8 + *(uint32_t *) (pltt + 0x14);
 	int nColors = (sectionSize - dataOffset) >> 1;
 
-	nclrInit(nclr, NCLR_TYPE_NCLR);
+	PalInit(nclr, NCLR_TYPE_NCLR);
 	nclr->nColors = nColors;
 	nclr->nBits = bits;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
-	nclr->extPalette = *(int *) (pltt + 0xC);
-	nclr->totalSize = *(int *) (pltt + 0x10);
+	nclr->extPalette = *(uint32_t *) (pltt + 0xC);
+	nclr->totalSize = *(uint32_t *) (pltt + 0x10);
 	nclr->nPalettes = 0;
 	nclr->idxTable = NULL;
-	
+
 	if (pcmp != NULL) {
-		nclr->nPalettes = *(unsigned short *) (pcmp + 8);
+		nclr->nPalettes = *(uint16_t *) (pcmp + 8);
 		nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
-		memcpy(nclr->idxTable, pcmp + 8 + *(unsigned int *) (pcmp + 0xC), nclr->nPalettes * 2);
+		memcpy(nclr->idxTable, pcmp + 8 + *(uint32_t *) (pcmp + 0xC), nclr->nPalettes * 2);
 	}
 	memcpy(nclr->colors, pltt + dataOffset, nColors * 2);
 	return 0;
 }
 
-int nclrReadFile(NCLR *nclr, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) nclrRead);
+int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+	int type = PalIdentify(buffer, size);
+	switch (type) {
+		case NCLR_TYPE_NCLR:
+			return PalReadNclr(nclr, buffer, size);
+		case NCLR_TYPE_NC:
+			return PalReadNcl(nclr, buffer, size);
+		case NCLR_TYPE_ISTUDIO:
+			return PalReadIStudio(nclr, buffer, size);
+		case NCLR_TYPE_ISTUDIOC:
+			return PalReadIStudioCompressed(nclr, buffer, size);
+		case NCLR_TYPE_HUDSON:
+			return PalReadHudson(nclr, buffer, size);
+		case NCLR_TYPE_BIN:
+			return PalReadBin(nclr, buffer, size);
+		case NCLR_TYPE_NTFP:
+			return PalReadBin(nclr, buffer, size);
+	}
+	return 1;
 }
 
-int nclrSaveNclr(NCLR *nclr, BSTREAM *stream) {
+int PalReadFile(NCLR *nclr, LPCWSTR path) {
+	return fileRead(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) PalRead);
+}
+
+int PalWriteNclr(NCLR *nclr, BSTREAM *stream) {
 	uint8_t fileHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 	uint8_t ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
 	uint8_t pmcpHeader[] = { 'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
@@ -296,7 +309,7 @@ int nclrSaveNclr(NCLR *nclr, BSTREAM *stream) {
 	return 0;
 }
 
-int nclrSaveNcl(NCLR *nclr, BSTREAM *stream) {
+int PalWriteNcl(NCLR *nclr, BSTREAM *stream) {
 	uint8_t fileHeader[] = { 'N', 'C', 'C', 'L', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 	uint8_t paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	uint8_t cmntHeader[] = { 'C', 'M', 'N', 'T', 0xC, 0, 0, 0 };
@@ -325,7 +338,7 @@ int nclrSaveNcl(NCLR *nclr, BSTREAM *stream) {
 	return 0;
 }
 
-int nclrSaveHudson(NCLR *nclr, BSTREAM *stream) {
+int PalWriteHudson(NCLR *nclr, BSTREAM *stream) {
 	uint16_t fileHeader[] = { 0, 0 };
 	fileHeader[0] = nclr->nColors * 2;
 	fileHeader[1] = nclr->nColors;
@@ -335,16 +348,16 @@ int nclrSaveHudson(NCLR *nclr, BSTREAM *stream) {
 	return 0;
 }
 
-int nclrSaveBin(NCLR *nclr, BSTREAM *stream) {
+int PalWriteBin(NCLR *nclr, BSTREAM *stream) {
 	bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
 	return 0;
 }
 
-int nclrSaveCombo(NCLR *nclr, BSTREAM *stream) {
+int PalWriteCombo(NCLR *nclr, BSTREAM *stream) {
 	return combo2dWrite(nclr->combo2d, stream);
 }
 
-int nclrSaveIStudio(NCLR *nclr, BSTREAM *stream) {
+int PalWriteIStudio(NCLR *nclr, BSTREAM *stream) {
 	uint8_t fileHeader[] = { 'N', 'T', 'P', 'L', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
 	uint8_t paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
 	if (nclr->header.format == NCLR_TYPE_ISTUDIOC) fileHeader[3] = 'C'; //format otherwise identical
@@ -363,26 +376,26 @@ int nclrSaveIStudio(NCLR *nclr, BSTREAM *stream) {
 	return 0;
 }
 
-int nclrWrite(NCLR *nclr, BSTREAM *stream) {
+int PalWrite(NCLR *nclr, BSTREAM *stream) {
 	switch (nclr->header.format) {
 		case NCLR_TYPE_NCLR:
-			return nclrSaveNclr(nclr, stream);
+			return PalWriteNclr(nclr, stream);
 		case NCLR_TYPE_NC:
-			return nclrSaveNcl(nclr, stream);
+			return PalWriteNcl(nclr, stream);
 		case NCLR_TYPE_ISTUDIO:
 		case NCLR_TYPE_ISTUDIOC:
-			return nclrSaveIStudio(nclr, stream);
+			return PalWriteIStudio(nclr, stream);
 		case NCLR_TYPE_HUDSON:
-			return nclrSaveHudson(nclr, stream);
+			return PalWriteHudson(nclr, stream);
 		case NCLR_TYPE_BIN:
 		case NCLR_TYPE_NTFP:
-			return nclrSaveBin(nclr, stream);
+			return PalWriteBin(nclr, stream);
 		case NCLR_TYPE_COMBO:
-			return nclrSaveCombo(nclr, stream);
+			return PalWriteCombo(nclr, stream);
 	}
 	return 1;
 }
 
-int nclrWriteFile(NCLR *nclr, LPCWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) nclr, (OBJECT_WRITER) nclrWrite);
+int PalWriteFile(NCLR *nclr, LPCWSTR name) {
+	return fileWrite(name, (OBJECT_HEADER *) nclr, (OBJECT_WRITER) PalWrite);
 }

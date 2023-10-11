@@ -565,7 +565,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 		//read applicable sections
 		if (pltRef != NULL) {
-			nclrRead(&nclr, dfc->data + pltOffset, pltSize);
+			PalRead(&nclr, dfc->data + pltOffset, pltSize);
 			nclr.header.format = NCLR_TYPE_COMBO;
 			nclr.combo2d = combo;
 		}
@@ -1065,7 +1065,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						data->hWndNclrViewer = NULL;
 
 						NCLR nclr;
-						nclrInit(&nclr, NCLR_TYPE_NCLR);
+						PalInit(&nclr, NCLR_TYPE_NCLR);
 						nclr.nColors = 256;
 						nclr.nBits = 4;
 						nclr.nPalettes = 16;
@@ -2102,7 +2102,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int palFormat = palFormats[format];
 
 					NCLR nclr;
-					nclrInit(&nclr, palFormat);
+					PalInit(&nclr, palFormat);
 					nclr.colors = (COLOR *) calloc(256, sizeof(COLOR));
 					nclr.nColors = 256;
 					nclr.totalSize = nclr.nColors * 2;

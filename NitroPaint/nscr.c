@@ -1453,7 +1453,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 			break;
 	}
 
-	nclrInit(nclr, paletteFormat);
+	PalInit(nclr, paletteFormat);
 	ncgrInit(ncgr, characterFormat);
 	nscrInit(nscr, screenFormat);
 	nclr->header.compression = compressPalette;

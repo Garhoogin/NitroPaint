@@ -445,7 +445,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			if (msg == NV_INITIALIZE) {
 				LPWSTR path = (LPWSTR) wParam;
-				int n = nclrReadFile(&data->nclr, path);
+				int n = PalReadFile(&data->nclr, path);
 				if (n) return 0;
 				
 				EditorSetFile(hWnd, path);
@@ -939,7 +939,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
 							SendMessage(hWnd, NV_PICKFILE, 0, 0);
 						}
-						if (data->szOpenFile[0] != L'\0') nclrWriteFile(&data->nclr, data->szOpenFile);;
+						if (data->szOpenFile[0] != L'\0') PalWriteFile(&data->nclr, data->szOpenFile);;
 						break;
 					}
 					case ID_FILE_EXPORT:

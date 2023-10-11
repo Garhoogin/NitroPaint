@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-int g2dIsValid(char *buffer, unsigned int size) {
+int g2dIsValid(const unsigned char *buffer, unsigned int size) {
 	if (size < 0x10) return 0;
 	uint16_t endianness = *(uint16_t *) (buffer + 4);
 	if (endianness != 0xFFFE && endianness != 0xFEFF && endianness != 0) return 0;
@@ -31,16 +31,16 @@ int g2dIsValid(char *buffer, unsigned int size) {
 	return 1;
 }
 
-int g2dIsOld(char *buffer, unsigned int size) {
+int g2dIsOld(const unsigned char *buffer, unsigned int size) {
 	uint16_t endianness = *(uint16_t *) (buffer + 4);
 	return endianness == 0;
 }
 
-int g2dGetNumberOfSections(char *buffer, unsigned int size) {
+int g2dGetNumberOfSections(const unsigned char *buffer, unsigned int size) {
 	return *(uint16_t *) (buffer + 0xE);
 }
 
-char *g2dGetSectionByIndex(char *buffer, unsigned int size, int index) {
+unsigned char *g2dGetSectionByIndex(const unsigned char *buffer, unsigned int size, int index) {
 	if (index >= g2dGetNumberOfSections(buffer, size)) return NULL;
 
 	uint16_t endianness = *(uint16_t *) (buffer + 4);
@@ -52,13 +52,13 @@ char *g2dGetSectionByIndex(char *buffer, unsigned int size, int index) {
 		uint32_t size = *(uint32_t *) (buffer + offset + 4);
 		if (isOld) size += 8;
 
-		if (i == index) return buffer + offset;
+		if (i == index) return (unsigned char *) (buffer + offset);
 		offset += size;
 	}
 	return NULL;
 }
 
-char *g2dGetSectionByMagic(char *buffer, unsigned int size, unsigned int sectionMagic) {
+unsigned char *g2dGetSectionByMagic(const unsigned char *buffer, unsigned int size, unsigned int sectionMagic) {
 	int nSections = g2dGetNumberOfSections(buffer, size);
 	uint32_t offset = *(uint16_t *) (buffer + 0xC);
 	uint16_t endianness = *(uint16_t *) (buffer + 4);
@@ -70,7 +70,7 @@ char *g2dGetSectionByMagic(char *buffer, unsigned int size, unsigned int section
 		uint32_t size = *(uint32_t *) (buffer + offset + 4);
 		if (isOld) size += 8;
 
-		if (magic == sectionMagic) return buffer + offset;
+		if (magic == sectionMagic) return (unsigned char *) (buffer + offset); //cast away const
 		offset += size;
 	}
 	return NULL;
