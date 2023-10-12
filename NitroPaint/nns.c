@@ -1,15 +1,64 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "nns.h"
 
-int NnsG2dIsValid(const unsigned char *buffer, unsigned int size) {
-	if (size < 0x10) return 0;
-	uint16_t endianness = *(uint16_t *) (buffer + 4);
-	if (endianness != 0xFFFE && endianness != 0xFEFF && endianness != 0) return 0;
+// ----- NNS generic
 
-	int isOld = (endianness == 0);
+static int NnsiSigNameIsValid(const signed char *sig) {
+	//all 4 characters must be valid ASCII printable
+	if (sig[0] < ' ') return 0;
+	if (sig[1] < ' ') return 0;
+	if (sig[2] < ' ') return 0;
+	if (sig[3] < ' ') return 0;
+	return 1;
+}
+
+int NnsHeaderIsValid(const unsigned char *buffer, unsigned int size) {
+	//header must be at least 0x10 bytes
+	if (size < 0x10) return 0;
+
+	//read signature (should all be valid ASCII printables)
+	const char *sig = (const char *) buffer;
+	if (!NnsiSigNameIsValid(sig)) return 0;
+
+	//read header size in header, should be at least 0x10
+	unsigned int headerSize = *(uint16_t *) (buffer + 0xC);
+	if (headerSize < 0x10) return 0;
+	if (headerSize > size) return 0;
+
+	//read BOM. Should be 0xFFFE, 0xFEFF, or 0x0000.
+	uint16_t bom = *(uint16_t *) (buffer + 4);
+	if (bom != 0xFFFE && bom != 0xFEFF && bom != 0) return 0;
+
+	//read number of sections. Should be at least 1
+	uint16_t nSections = *(uint16_t *) (buffer + 0xE);
+	if (nSections < 1) return 0;
+
+	return 1;
+}
+
+int NnsIsValid(const unsigned char *buffer, unsigned int size) {
+	if (NnsG2dIsValid(buffer, size)) return 1;
+	if (NnsG3dIsValid(buffer, size)) return 1;
+	return 0;
+}
+
+// ----- NNS G2D
+
+int NnsG2dIsOld(const unsigned char *buffer, unsigned int size) {
+	//if header size+8 equals file size, file is old NNS G2D
+	uint32_t headerSize = *(uint32_t *) (buffer + 8);
+
+	if (headerSize + 8 == size) return 1;
+	return 0;
+}
+
+int NnsG2dIsValid(const unsigned char *buffer, unsigned int size) {
+	if (!NnsHeaderIsValid(buffer, size)) return 0;
+	int isOld = NnsG2dIsOld(buffer, size);
 
 	uint32_t fileSize = *(uint32_t *) (buffer + 8);
 	if (fileSize != size && !(fileSize + 8 == size && isOld)) { //old G2D Runtime subtracts 8
@@ -17,14 +66,13 @@ int NnsG2dIsValid(const unsigned char *buffer, unsigned int size) {
 		if (fileSize != size) return 0;
 	}
 	uint16_t headerSize = *(uint16_t *) (buffer + 0xC);
-	if (headerSize < 0x10) return 0;
 	int nSections = *(uint16_t *) (buffer + 0xE);
-	
 
 	//check sections
 	unsigned int offset = headerSize;
 	for (int i = 0; i < nSections; i++) {
 		if (offset + 8 > size) return 0;
+		if (!NnsiSigNameIsValid(buffer + offset)) return 0;
 
 		uint32_t size = *(uint32_t *) (buffer + offset + 4);
 		offset += size;
@@ -34,11 +82,6 @@ int NnsG2dIsValid(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int NnsG2dIsOld(const unsigned char *buffer, unsigned int size) {
-	uint16_t endianness = *(uint16_t *) (buffer + 4);
-	return endianness == 0;
-}
-
 int NnsG2dGetNumberOfSections(const unsigned char *buffer, unsigned int size) {
 	return *(uint16_t *) (buffer + 0xE);
 }
@@ -46,8 +89,7 @@ int NnsG2dGetNumberOfSections(const unsigned char *buffer, unsigned int size) {
 unsigned char *NnsG2dGetSectionByIndex(const unsigned char *buffer, unsigned int size, int index) {
 	if (index >= NnsG2dGetNumberOfSections(buffer, size)) return NULL;
 
-	uint16_t endianness = *(uint16_t *) (buffer + 4);
-	int isOld = (endianness == 0);
+	int isOld = NnsG2dIsOld(buffer, size);
 
 	uint32_t offset = *(uint16_t *) (buffer + 0xC);
 	for (int i = 0; i <= index; i++) {
@@ -63,9 +105,9 @@ unsigned char *NnsG2dGetSectionByIndex(const unsigned char *buffer, unsigned int
 
 unsigned char *NnsG2dGetSectionByMagic(const unsigned char *buffer, unsigned int size, unsigned int sectionMagic) {
 	int nSections = NnsG2dGetNumberOfSections(buffer, size);
+	int isOld = NnsG2dIsOld(buffer, size);
 	uint32_t offset = *(uint16_t *) (buffer + 0xC);
 	uint16_t endianness = *(uint16_t *) (buffer + 4);
-	int isOld = (endianness == 0);
 
 	for (int i = 0; i <= nSections; i++) {
 		if (offset + 8 > size) return NULL;
@@ -461,3 +503,54 @@ int NnsG3dWriteDictionary(BSTREAM *stream, void *resources, int itemSize, int nI
 	//return pointer to dictionary entries
 	return dictEntryBase + 4;
 }
+
+int NnsG3dIsValid(const unsigned char *buffer, unsigned int size) {
+	if (!NnsHeaderIsValid(buffer, size)) return 0;
+
+	uint32_t fileSize = *(uint32_t *) (buffer + 8);
+	if (fileSize != size) return 0;
+
+	//check sections.
+	uint32_t headerSize = *(uint16_t *) (buffer + 0xC);
+	uint32_t nSections = *(uint16_t *) (buffer + 0x0E);
+	uint32_t *offsets = (uint32_t *) (buffer + headerSize);
+
+	uint32_t sectionTableSize = nSections * sizeof(uint32_t);
+	if (headerSize + sectionTableSize > size) return 0;
+
+	for (unsigned int i = 0; i < nSections; i++) {
+		uint32_t pos = offsets[i];
+		if (pos + 8 > size) return 0;
+		if (!NnsiSigNameIsValid(buffer + pos)) return 0;
+
+		uint32_t sectionSize = *(uint32_t *) (buffer + pos + 4);
+		if (sectionSize < 8) return 0;
+		if (pos + sectionSize > size) return 0;
+	}
+
+	return 1;
+}
+
+unsigned char *NnsG3dGetSectionByMagic(const unsigned char *buffer, unsigned int size, const char *magic) {
+	//iterate sections
+	unsigned int nSections = *(uint16_t *) (buffer + 0xE);
+	uint32_t headerSize = *(uint16_t *) (buffer + 0xC);
+	uint32_t *offsets = (uint32_t *) (buffer + headerSize);
+
+	for (unsigned int i = 0; i < nSections; i++) {
+		const unsigned char *sect = buffer + offsets[i];
+		if (memcmp(sect, magic, 4) == 0) return (unsigned char *) sect; //cast away const
+	}
+	return NULL;
+}
+
+unsigned char *NnsG3dGetSectionByIndex(const unsigned char *buffer, unsigned int size, int index) {
+	//iterate sections
+	int nSections = *(uint16_t *) (buffer + 0xE);
+	uint32_t headerSize = *(uint16_t *) (buffer + 0xC);
+	uint32_t *offsets = (uint32_t *) (buffer + headerSize);
+
+	if (index >= nSections) return NULL;
+	return (unsigned char *) (buffer + offsets[index]); //cast away const
+}
+

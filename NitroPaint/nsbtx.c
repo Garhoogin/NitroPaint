@@ -97,7 +97,7 @@ unsigned char *readDictionary(DICTIONARY *dict, unsigned char *base, int entrySi
 }
 
 int TexarcIsValidNsbtx(char *buffer, int size) {
-	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (!NnsIsValid(buffer, size)) return 0;
 
 	//check magic (only TexArc or NSBMD)
 	if ((buffer[0] != 'B' || buffer[1] != 'T' || buffer[2] != 'X' || buffer[3] != '0') &&
