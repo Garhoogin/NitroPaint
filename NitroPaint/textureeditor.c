@@ -196,7 +196,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->frameData.contentHeight = data->height;
 
 			//check: is it a Nitro TGA?
-			if (!TxReadNnsTga(data->szInitialFile, &data->textureData.texels, &data->textureData.palette)) {
+			if (!TxReadFile(data->szInitialFile, &data->textureData.texels, &data->textureData.palette)) {
 				memcpy(data->szCurrentFile, data->szInitialFile, 2 + 2 * wcslen(data->szInitialFile));
 				data->format = FORMAT(data->textureData.texels.texImageParam);
 				data->hasPalette = (data->format != CT_DIRECT && data->format != 0);
@@ -2206,7 +2206,7 @@ BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
 	//read texture
 	TEXELS texture = { 0 };
 	PALETTE palette = { 0 };
-	TxReadNnsTga(path, &texture, &palette);
+	TxReadFile(path, &texture, &palette);
 
 	//add to TexArc
 	int fmt = FORMAT(texture.texImageParam);
@@ -2381,19 +2381,32 @@ HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndPa
 
 HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	int bWidth, bHeight;
-	DWORD *bits = ImgRead(path, &bWidth, &bHeight);
-	if (bits == NULL) {
+	int textureType = TxIdentifyFile(path);
+	COLOR32 *bits = ImgRead(path, &bWidth, &bHeight);
+	if (bits == NULL && textureType == TEXTURE_TYPE_INVALID) {
 		MessageBox(hWndParent, L"An invalid image file was specified.", L"Invalid Image", MB_ICONERROR);
 		return NULL;
 	}
-	if (!TxDimensionIsValid(bWidth) || (bHeight > 1024)) {
+
+	//if not already a valid texture file, validate dimensions
+	if (textureType == TEXTURE_TYPE_INVALID && (!TxDimensionIsValid(bWidth) || (bHeight > 1024))) {
 		free(bits);
 		MessageBox(hWndParent, L"Textures must have dimensions as powers of two greater than or equal to 8, and not exceeding 1024.", L"Invalid dimensions", MB_ICONERROR);
 		return NULL;
 	}
+
 	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TextureEditorClass", L"Texture Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
-	SendMessage(h, NV_INITIALIZE, bWidth | (bHeight << 16), (LPARAM) bits);
+
+	//for unconverted images, open path and bitmap
+	if (textureType == TEXTURE_TYPE_INVALID) {
+		SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
+		SendMessage(h, NV_INITIALIZE, bWidth | (bHeight << 16), (LPARAM) bits);
+	} else {
+		TEXTURE texture = { 0 };
+		TxReadFile(path, &texture.texels, &texture.palette);
+		SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
+		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) &texture);
+	}
 	return h;
 }
 

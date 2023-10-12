@@ -1,6 +1,11 @@
 #pragma once
 #include "color.h"
 
+//texture file types
+#define TEXTURE_TYPE_INVALID     0
+#define TEXTURE_TYPE_NNSTGA      1
+#define TEXTURE_TYPE_ISTUDIO     2
+
 #define CT_A3I5 1			/*can read and write*/
 #define CT_4COLOR 2			/*can read and write*/
 #define CT_16COLOR 3		/*can read and write*/
@@ -62,4 +67,14 @@ int TxDimensionIsValid(int x);
 
 int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size);
 
-int TxReadNnsTga(LPCWSTR path, TEXELS *texels, PALETTE *palette);
+int TxIsValidIStudio(const unsigned char *buffer, unsigned int size);
+
+int TxIdentify(const unsigned char *buffer, unsigned int size);
+
+int TxIdentifyFile(LPCWSTR path);
+
+int TxReadNnsTga(const unsigned char *buffer, unsigned int size, TEXELS *texels, PALETTE *palette);
+
+int TxReadIStudio(const unsigned char *buffer, unsigned int size, TEXELS *texels, PALETTE *palette);
+
+int TxReadFile(LPCWSTR path, TEXELS *texels, PALETTE *palette);

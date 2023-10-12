@@ -8,6 +8,7 @@
 #include "resource.h"
 #include "ui.h"
 #include "editor.h"
+#include "gdip.h"
 
 extern HICON g_appIcon;
 
@@ -19,6 +20,7 @@ HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	int height = texture->height;
 	COLOR32 *px = (COLOR32 *) calloc(width * zoom * height * zoom, 4);
 	TxRender(px, width, height, texture, palette, 0);
+	ImgSwapRedBlue(px, width, height);
 
 	//perform alpha blending
 	int scaleWidth = width * zoom, scaleHeight = height * zoom;
@@ -443,7 +445,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 						TEXELS texels;
 						PALETTE palette;
-						int s = TxReadNnsTga(path, &texels, &palette);
+						int s = TxReadFile(path, &texels, &palette);
 						if (s) {
 							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
 						} else {
@@ -533,7 +535,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						//read texture
 						TEXELS texels;
 						PALETTE palette;
-						int s = TxReadNnsTga(path, &texels, &palette);
+						int s = TxReadFile(path, &texels, &palette);
 						if (s) {
 							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
 						} else {

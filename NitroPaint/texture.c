@@ -1,6 +1,7 @@
 #include <Windows.h>
 #include <stdio.h>
 #include "texture.h"
+#include "nns.h"
 
 int ilog2(int x);
 
@@ -466,7 +467,51 @@ int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int TxReadNnsTga(LPCWSTR path, TEXELS *texels, PALETTE *palette) {
+int TxIsValidIStudio(const unsigned char *buffer, unsigned int size) {
+	//must be valid G2D structure
+	if (!NnsG2dIsValid(buffer, size)) return 0;
+
+	//magic must be "NTTX" and have "PALT" and "IMGE" sections
+	const unsigned char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
+	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
+	const unsigned char *imge = NnsG2dGetSectionByMagic(buffer, size, 'IMGE');
+	if (imge == NULL) imge = NnsG2dGetSectionByMagic(buffer, size, 'EGMI');
+
+	//IMGE must be present
+	if (imge == NULL) return 0;
+
+	//we don't support textures without palettes unless it's a direct color image
+	int fmt = imge[8];
+	if (fmt > CT_DIRECT) return 0;
+	if (fmt != CT_DIRECT && palt == NULL) return 0;
+
+	//validate the PALT section
+	if (palt != NULL) {
+		uint32_t nColors = *(uint32_t *) (palt + 8);
+		uint32_t paltSize = *(uint32_t *) (palt + 4);
+		if (nColors * 2 + 0xC != paltSize) return 0;
+	}
+
+	//validate IMGE section
+	int log2Width = imge[8 + 1];
+	int log2Height = imge[8 + 2];
+	if (log2Width > 7 || log2Height > 7) return 0; //too large
+
+	int fullWidth = 8 << (log2Width);
+	int fullHeight = 8 << (log2Height);
+	int origWidth = *(uint16_t *) (imge + 0xC);
+	int origHeight = *(uint16_t *) (imge + 0xE);
+	if (origWidth > fullWidth || origHeight > fullHeight) return 0;
+	return 1;
+}
+
+int TxIdentify(const unsigned char *buffer, unsigned int size) {
+	if (TxIsValidNnsTga(buffer, size)) return TEXTURE_TYPE_NNSTGA;
+	if (TxIsValidIStudio(buffer, size)) return TEXTURE_TYPE_ISTUDIO;
+	return TEXTURE_TYPE_INVALID;
+}
+
+int TxIdentifyFile(LPCWSTR path) {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeHigh;
 	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
@@ -475,14 +520,17 @@ int TxReadNnsTga(LPCWSTR path, TEXELS *texels, PALETTE *palette) {
 	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
 	CloseHandle(hFile);
 
-	if (!TxIsValidNnsTga(lpBuffer, dwSize)) {
-		free(lpBuffer);
-		return 1;
-	}
+	int type = TxIdentify(lpBuffer, dwRead);
+	free(lpBuffer);
+	return type;
+}
+
+int TxReadNnsTga(const unsigned char *lpBuffer, unsigned int dwSize, TEXELS *texels, PALETTE *palette) {
+	if (!TxIsValidNnsTga(lpBuffer, dwSize)) return 1;
 
 	int commentLength = *lpBuffer;
 	int nitroOffset = *(int *) (lpBuffer + 0x12 + commentLength - 4);
-	LPBYTE buffer = lpBuffer + nitroOffset;
+	LPCBYTE buffer = lpBuffer + nitroOffset;
 
 	int width = *(short *) (lpBuffer + 0xC);
 	int height = *(short *) (lpBuffer + 0xE);
@@ -556,20 +604,93 @@ int TxReadNnsTga(LPCWSTR path, TEXELS *texels, PALETTE *palette) {
 	texels->texImageParam = texImageParam;
 	texels->height = height;
 
-	//copy texture name
-	int nameOffset = 0;
-	for (unsigned int i = 0; i < wcslen(path); i++) {
-		if (path[i] == L'/' || path[i] == L'\\') nameOffset = i + 1;
+	return 0;
+}
+
+int TxReadIStudio(const unsigned char *buffer, unsigned int size, TEXELS *texels, PALETTE *palette) {
+	if (!TxIsValidIStudio(buffer, size)) return 1;
+
+	const unsigned char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
+	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
+	const unsigned char *imge = NnsG2dGetSectionByMagic(buffer, size, 'IMGE');
+	if (imge == NULL) imge = NnsG2dGetSectionByMagic(buffer, size, 'EGMI');
+
+	int frmt = imge[8];
+	int log2Width = imge[9];
+	int log2Height = imge[10];
+	int c0xp = imge[11];
+
+	int origWidth = *(uint16_t *) (imge + 0xC);
+	int origHeight = *(uint16_t *) (imge + 0xE);
+
+	//copy palette
+	if (palt != NULL) {
+		palette->nColors = *(uint32_t *) (palt + 8);
+		palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
+		memcpy(palette->pal, palt + 0xC, palette->nColors * sizeof(COLOR));
+	} else {
+		palette->nColors = 0;
+		palette->pal = NULL;
 	}
-	LPCWSTR name = path + nameOffset;
-	memset(texels->name, 0, 16);
-	WCHAR *lastDot = wcsrchr(name, L'.');
-	for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
-		if (i == 16) break;
-		if (name + i == lastDot) break; //file extension
-		texels->name[i] = (char) name[i];
+	
+
+	int texImageParam = 0;
+	if (c0xp) texImageParam |= (1 << 29);
+	texImageParam |= (1 << 17) | (1 << 16);
+	texImageParam |= (log2Width << 20) | (log2Height << 23);
+	texImageParam |= frmt << 26;
+	texels->texImageParam = texImageParam;
+	texels->height = origHeight;
+
+	//copy texel
+	int texelSize = TxGetTexelSize(8 << log2Width, 8 << log2Height, texels->texImageParam);
+	int indexSize = (frmt == CT_4x4) ? texelSize / 2 : 0;
+	texels->texel = (char *) malloc(texelSize);
+	memcpy(texels->texel, imge + 0x14, texelSize);
+
+	if (indexSize) {
+		texels->cmp = (short *) malloc(indexSize);
+		memcpy(texels->cmp, imge + 0x14 + texelSize, indexSize);
+	}
+
+	return 0;
+}
+
+int TxReadFile(LPCWSTR path, TEXELS *texels, PALETTE *palette) {
+	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	DWORD dwSizeHigh;
+	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
+	LPBYTE lpBuffer = (LPBYTE) malloc(dwSize);
+	DWORD dwRead;
+	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
+	CloseHandle(hFile);
+
+	int status = 1;
+	switch (TxIdentify(lpBuffer, dwSize)) {
+		case TEXTURE_TYPE_NNSTGA:
+			status = TxReadNnsTga(lpBuffer, dwRead, texels, palette);
+			break;
+		case TEXTURE_TYPE_ISTUDIO:
+			status = TxReadIStudio(lpBuffer, dwRead, texels, palette);
+			break;
+	}
+
+	if (status == 0) {
+		//copy texture name
+		int nameOffset = 0;
+		for (unsigned int i = 0; i < wcslen(path); i++) {
+			if (path[i] == L'/' || path[i] == L'\\') nameOffset = i + 1;
+		}
+		LPCWSTR name = path + nameOffset;
+		memset(texels->name, 0, 16);
+		WCHAR *lastDot = wcsrchr(name, L'.');
+		for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
+			if (i == 16) break;
+			if (name + i == lastDot) break; //file extension
+			texels->name[i] = (char) name[i];
+		}
 	}
 
 	free(lpBuffer);
-	return 0;
+	return status;
 }
