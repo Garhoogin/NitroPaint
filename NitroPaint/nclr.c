@@ -130,11 +130,11 @@ int PalIsValidIStudioCompressed(const unsigned char *lpFile, unsigned int size) 
 int PalIdentify(const unsigned char *lpFile, unsigned int size) {
 	if (PalIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
 	if (PalIsValidNcl(lpFile, size)) return NCLR_TYPE_NC;
+	if (PalIsValidIStudio(lpFile, size)) return NCLR_TYPE_ISTUDIO;
+	if (PalIsValidIStudioCompressed(lpFile, size)) return NCLR_TYPE_ISTUDIOC;
 	if (PalIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
 	if (PalIsValidBin(lpFile, size)) return NCLR_TYPE_BIN;
 	if (PalIsValidNtfp(lpFile, size)) return NCLR_TYPE_NTFP;
-	if (PalIsValidIStudio(lpFile, size)) return NCLR_TYPE_ISTUDIO;
-	if (PalIsValidIStudioCompressed(lpFile, size)) return NCLR_TYPE_ISTUDIOC;
 	return NCLR_TYPE_INVALID;
 }
 
