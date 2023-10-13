@@ -552,3 +552,41 @@ COLOR32 *ImgCrop(COLOR32 *px, int width, int height, int srcX, int srcY, int src
 	ImgCropInPlace(px, width, height, out, srcX, srcY, srcWidth, srcHeight);
 	return out;
 }
+
+COLOR32 *ImgComposite(COLOR32 *back, int backWidth, int backHeight, COLOR32 *front, int frontWidth, int frontHeight, int *outWidth, int *outHeight) {
+	//create output image with dimension min(<backWidth, backHeight>, <frontWidth, frontHeight>)
+	int width = min(backWidth, frontWidth);
+	int height = min(backHeight, frontHeight);
+	*outWidth = width;
+	*outHeight = height;
+
+	COLOR32 *out = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++) {
+			COLOR32 fg = front[x + y * frontWidth];
+			COLOR32 bg = back[x + y * backWidth];
+			unsigned int af = fg >> 24;
+			unsigned int ab = bg >> 24;
+
+			if (af == 255) {
+				//if foreground opaque, write foreground
+				out[x + y * width] = fg;
+			} else if (af == 0) {
+				//if foreground transparent, write background
+				out[x + y * width] = bg;
+			} else {
+				//compute coefficients
+				unsigned int wf = 255 * af;
+				unsigned int wb = (255 - af) * ab;
+				unsigned int wTotal = wf + wb;
+
+				unsigned int r = (((fg >>  0) & 0xFF) * wf + ((bg >>  0) & 0xFF) * wb) / wTotal;
+				unsigned int g = (((fg >>  8) & 0xFF) * wf + ((bg >>  8) & 0xFF) * wb) / wTotal;
+				unsigned int b = (((fg >> 16) & 0xFF) * wf + ((bg >> 16) & 0xFF) * wb) / wTotal;
+				unsigned int a = wTotal / 255;
+				out[x + y * width] = (r << 0) | (g << 8) | (b << 16) | (a << 24);
+			}
+		}
+	}
+	return out;
+}

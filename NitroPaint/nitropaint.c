@@ -1203,6 +1203,12 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						CreateWindow(L"NtftConvertDialogClass", L"NTFT To Texture", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
 						break;
 					}
+					case ID_TOOLS_ALPHABLEND:
+					{
+						HWND h = CreateWindow(L"AlphaBlendClass", L"Alpha Blend", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						DoModal(h);
+						break;
+					}
 					case ID_TOOLS_COLORPICKER:
 					{
 						CHOOSECOLOR cc = { 0 };
@@ -2300,6 +2306,146 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndForegroundPath, hWndForegroundBrowse, hWndBackgroundPath, hWndBackgroundBrowse;
+	HWND hWndTiledCheckbox, hWndSave;
+	hWndForegroundPath = (HWND) GetWindowLongPtr(hWnd, 0 * sizeof(LPVOID));
+	hWndForegroundBrowse = (HWND) GetWindowLongPtr(hWnd, 1 * sizeof(LPVOID));
+	hWndBackgroundPath = (HWND) GetWindowLongPtr(hWnd, 2 * sizeof(LPVOID));
+	hWndBackgroundBrowse = (HWND) GetWindowLongPtr(hWnd, 3 * sizeof(LPVOID));
+	hWndTiledCheckbox = (HWND) GetWindowLongPtr(hWnd, 4 * sizeof(LPVOID));
+	hWndSave = (HWND) GetWindowLongPtr(hWnd, 5 * sizeof(LPVOID));
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			CreateStatic(hWnd, L"Background:", 10, 10, 70, 22);
+			CreateStatic(hWnd, L"Foreground:", 10, 37, 70, 22);
+			hWndForegroundPath = CreateEdit(hWnd, L"", 90, 37, 200, 22, FALSE);
+			hWndForegroundBrowse = CreateButton(hWnd, L"...", 290, 37, 30, 22, FALSE);
+			hWndBackgroundPath = CreateEdit(hWnd, L"", 90, 10, 200, 22, FALSE);
+			hWndBackgroundBrowse = CreateButton(hWnd, L"...", 290, 10, 30, 22, FALSE);
+			hWndTiledCheckbox = CreateCheckbox(hWnd, L"Tiled", 10, 64, 100, 22, TRUE);
+			hWndSave = CreateButton(hWnd, L"Save", 245, 96, 75, 22, TRUE);
+
+			SetWindowLongPtr(hWnd, 0 * sizeof(LPVOID), (LONG_PTR) hWndForegroundPath);
+			SetWindowLongPtr(hWnd, 1 * sizeof(LPVOID), (LONG_PTR) hWndForegroundBrowse);
+			SetWindowLongPtr(hWnd, 2 * sizeof(LPVOID), (LONG_PTR) hWndBackgroundPath);
+			SetWindowLongPtr(hWnd, 3 * sizeof(LPVOID), (LONG_PTR) hWndBackgroundBrowse);
+			SetWindowLongPtr(hWnd, 4 * sizeof(LPVOID), (LONG_PTR) hWndTiledCheckbox);
+			SetWindowLongPtr(hWnd, 5 * sizeof(LPVOID), (LONG_PTR) hWndSave);
+
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 330, 128);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			int notif = HIWORD(wParam);
+			if (hWndControl == hWndForegroundBrowse && notif == BN_CLICKED) {
+				//set foreground path
+				LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
+				LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
+				if (path == NULL) break;
+
+				SendMessage(hWndForegroundPath, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				free(path);
+			} else if (hWndControl == hWndBackgroundBrowse && notif == BN_CLICKED) {
+				//set background path
+				LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
+				LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
+				if (path == NULL) break;
+
+				SendMessage(hWndBackgroundPath, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				free(path);
+			} else if (hWndControl == hWndSave && notif == BN_CLICKED) {
+				//get paths
+				WCHAR forepath[MAX_PATH], backpath[MAX_PATH];
+				int isTiled = GetCheckboxChecked(hWndTiledCheckbox);
+				SendMessage(hWndForegroundPath, WM_GETTEXT, MAX_PATH, (LPARAM) forepath);
+				SendMessage(hWndBackgroundPath, WM_GETTEXT, MAX_PATH, (LPARAM) backpath);
+
+				//read images
+				int foreWidth, foreHeight, backWidth, backHeight, blendWidth, blendHeight;
+				COLOR32 *foreground = ImgRead(forepath, &foreWidth, &foreHeight);
+				COLOR32 *background = ImgRead(backpath, &backWidth, &backHeight);
+				if (foreground == NULL || background == NULL) {
+					MessageBox(hWnd, L"File not found.", L"Not found", MB_ICONERROR);
+					if (foreground != NULL) free(foreground);
+					if (background != NULL) free(background);
+					break;
+				}
+				COLOR32 *blend = ImgComposite(background, backWidth, backHeight, foreground, foreWidth, foreHeight, &blendWidth, &blendHeight);
+
+				//write
+				LPWSTR out = saveFileDialog(hWnd, L"Save Image", L"PNG files (*.png)\0*.png\0All Files\0*.*\0", L".png");
+				if (out == NULL) {
+					free(foreground);
+					free(background);
+					break;
+				}
+
+				//cut out any pixel matching the background
+				for (int y = 0; y < blendHeight; y++) {
+					for (int x = 0; x < blendWidth; x++) {
+						COLOR32 blendC = blend[x + y * blendWidth];
+						COLOR32 bgC = background[x + y * backWidth];
+						if (blendC == bgC) {
+							blend[x + y * blendWidth] = 0;
+						}
+					}
+				}
+
+				//if we're in tiled mode, write background to transparent pixels in occupied tiles
+				if (isTiled) {
+					int tilesX = blendWidth / 8, tilesY = blendHeight / 8;
+					for (int tileY = 0; tileY < tilesY; tileY++) {
+						for (int tileX = 0; tileX < tilesX; tileX++) {
+
+							//find transparent pixel in the tile
+							int hasTransparent = 0, hasOpaque = 0;
+							for (int i = 0; i < 64; i++) {
+								int x = i % 8;
+								int y = i / 8;
+								COLOR32 c = blend[(x + tileX * 8) + (y + tileY * 8) * blendWidth];
+								if ((c >> 24) == 0) {
+									hasTransparent = 1;
+								}
+								if ((c >> 24)) {
+									hasOpaque = 1;
+								}
+							}
+
+							//if has opaque and transparent, copy background to transparent pixels
+							if (hasTransparent && hasOpaque) {
+								for (int i = 0; i < 64; i++) {
+									int x = i % 8;
+									int y = i / 8;
+									COLOR32 c = blend[(x + tileX * 8) + (y + tileY * 8) * blendWidth];
+									if ((c >> 24) == 0) {
+										COLOR32 b = background[(x + tileX * 8) + (y + tileY * 8) * backWidth];
+										blend[(x + tileX * 8) + (y + tileY * 8) * blendWidth] = b;
+									}
+								}
+							}
+						}
+					}
+				}
+
+				ImgWrite(blend, blendWidth, blendHeight, out);
+
+				free(out);
+				free(foreground);
+				free(background);
+				free(blend);
+			}
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 void RegisterImageDialogClass() {
 	RegisterGenericClass(L"ImageDialogClass", ImageDialogProc, sizeof(LPVOID));
 }
@@ -2322,6 +2468,10 @@ void RegisterScreenSplitDialogClass() {
 
 void RegisterTextPromptClass() {
 	RegisterGenericClass(L"TextPromptClass", TextInputWndProc, sizeof(LPVOID) * 5); //2 HWNDs, status, out info
+}
+
+void RegisterAlphaBlendClass() {
+	RegisterGenericClass(L"AlphaBlendClass", AlphaBlendWndProc, sizeof(LPVOID) * 6);
 }
 
 VOID ReadConfiguration(LPWSTR lpszPath) {
@@ -2404,6 +2554,7 @@ void RegisterClasses() {
 	RegisterScreenDialogClass();
 	RegisterScreenSplitDialogClass();
 	RegisterTextPromptClass();
+	RegisterAlphaBlendClass();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {

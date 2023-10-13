@@ -48,3 +48,7 @@ COLOR32 *ImgCrop(COLOR32 *px, int width, int height, int srcX, int srcY, int src
 //
 void ImgCropInPlace(COLOR32 *px, int width, int height, COLOR32 *out, int srcX, int srcY, int srcWidth, int srcHeight);
 
+//
+// Composite two translucent images.
+//
+COLOR32 *ImgComposite(COLOR32 *back, int backWidth, int backHeight, COLOR32 *front, int frontWidth, int frontHeight, int *outWidth, int *outHeight);
