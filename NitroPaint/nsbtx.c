@@ -470,6 +470,7 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 
 	uint8_t tex4x4Info[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	*(uint16_t *) (tex4x4Info + 6) = 60;
+	*(uint16_t *) (tex4x4Info + 8) = has4Color ? 0x8000 : 0; //to accommodate an NNS G3D bug
 	*(uint16_t *) (tex4x4Info + 4) = tex4x4Data.pos >> 3;
 	*(uint32_t *) (tex4x4Info + 12) = 92 + nsbtx->nTextures * 28 + nsbtx->nPalettes * 24 + texData.pos;
 	*(uint32_t *) (tex4x4Info + 16) = (*(uint32_t *) (tex4x4Info + 12)) + tex4x4Data.pos;
