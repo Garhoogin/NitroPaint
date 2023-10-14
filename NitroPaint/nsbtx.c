@@ -450,16 +450,24 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 		PALETTE *palette = nsbtx->palettes + i;
 		paletteOffsets[i] = paletteData.pos;
 
-		//add bytes, make sure to align to a multiple of 16 bytes if more than 4 colors! (or if it's the last palette)
+		//if not a palette4 palette, ensure alignment
 		int nColors = palette->nColors;
-		bstreamWrite(&paletteData, (BYTE *) palette->pal, nColors * 2);
-		if (nColors <= 4 && ((i == nsbtx->nPalettes - 1) || (nsbtx->palettes[i + 1].nColors > 4))) {
+		if (nColors > 4 && (paletteData.pos % 16) > 0) {
 			BYTE padding[16] = { 0 };
-			bstreamWrite(&paletteData, padding, 16 - nColors * 2);
+			bstreamWrite(&paletteData, padding, 16 - (paletteData.pos % 16));
 		}
+
+		//palette
+		bstreamWrite(&paletteData, (BYTE *) palette->pal, nColors * 2);
 
 		//do we have 4 color?
 		if (nColors <= 4) has4Color = 1;
+	}
+
+	//if palette section size unaligned, pad it
+	if (paletteData.pos % 16) {
+		BYTE padding[16] = { 0 };
+		bstreamWrite(&paletteData, padding, 16 - (paletteData.pos % 16));
 	}
 
 	uint8_t texInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
