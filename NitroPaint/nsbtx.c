@@ -448,14 +448,13 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
 		int offs = paletteData.pos;
 		PALETTE *palette = nsbtx->palettes + i;
-		paletteOffsets[i] = paletteData.pos;
 
 		//if not a palette4 palette, ensure alignment
 		int nColors = palette->nColors;
-		if (nColors > 4 && (paletteData.pos % 16) > 0) {
-			BYTE padding[16] = { 0 };
-			bstreamWrite(&paletteData, padding, 16 - (paletteData.pos % 16));
+		if (nColors > 4) {
+			bstreamAlign(&paletteData, 16);
 		}
+		paletteOffsets[i] = paletteData.pos;
 
 		//palette
 		bstreamWrite(&paletteData, (BYTE *) palette->pal, nColors * 2);
@@ -465,10 +464,7 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 	}
 
 	//if palette section size unaligned, pad it
-	if (paletteData.pos % 16) {
-		BYTE padding[16] = { 0 };
-		bstreamWrite(&paletteData, padding, 16 - (paletteData.pos % 16));
-	}
+	bstreamAlign(&paletteData, 16);
 
 	uint8_t texInfo[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	*(uint16_t *) (texInfo + 6) = 60;

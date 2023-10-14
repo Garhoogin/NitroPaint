@@ -53,6 +53,23 @@ void bstreamWrite(BSTREAM *stream, void *data, int dataSize) {
 	stream->size = requiredSize;
 }
 
+void bstreamAlign(BSTREAM *stream, int by) {
+	//temp buffer for fill
+	unsigned char buf[32] = { 0 };
+	int required = by - (stream->pos % by);
+
+	//if already aligned, required==by.
+	if (required == by) return;
+
+	while (required > 0) {
+		int nFill = required;
+		if (nFill > sizeof(buf)) nFill = sizeof(buf);
+
+		bstreamWrite(stream, buf, nFill);
+		required -= nFill;
+	}
+}
+
 int bstreamSeek(BSTREAM *stream, int pos, int relative) {
 	int newPos = stream->pos;
 	if (relative) newPos += pos;

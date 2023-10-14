@@ -14,6 +14,8 @@ void bstreamFree(BSTREAM *stream);
 
 void bstreamWrite(BSTREAM *stream, void *data, int size);
 
+void bstreamAlign(BSTREAM *stream, int by);
+
 int bstreamSeek(BSTREAM *stream, int pos, int relative);
 
 int bstreamCompress(BSTREAM *stream, int algorithm, int start, int size);
