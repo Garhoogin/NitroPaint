@@ -278,12 +278,23 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_T
 					}
 				}
 
-				int ncx = index % ncgr->tilesX;
-				int ncy = index / ncgr->tilesX;
-				ncgrGetTile(ncgr, nclr, ncx, ncy, block, info->palette, checker, TRUE);
+				ChrRenderCharacter(ncgr, nclr, index, block, info->palette, TRUE);
 				for (int i = 0; i < 8; i++) {
 					memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
 				}
+			}
+		}
+	}
+
+	//render checker
+	if (checker) {
+		for (int i = 0; i < info->width * info->height; i++) {
+			int x = i % info->width;
+			int y = i / info->height;
+			int ch = ((x >> 2) ^ (y >> 2)) & 1;
+			COLOR32 c = out[i];
+			if ((c & 0xFF000000) == 0) {
+				out[i] = ch ? 0xFFFFFFFF : 0xFFC0C0C0;
 			}
 		}
 	}

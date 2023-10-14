@@ -570,7 +570,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			nclr.combo2d = combo;
 		}
 		if (chrRef != NULL) {
-			ncgrRead(&ncgr, dfc->data + chrOffset, chrSize);
+			ChrRead(&ncgr, dfc->data + chrOffset, chrSize);
 			ncgr.header.format = NCGR_TYPE_COMBO;
 			ncgr.combo2d = combo;
 		}
@@ -2115,7 +2115,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					nclr.nBits = nBits;
 					
 					NCGR ncgr;
-					ncgrInit(&ncgr, charFormat);
+					ChrInit(&ncgr, charFormat);
 					ncgr.header.compression = compression;
 					ncgr.tileWidth = 8;
 					ncgr.nBits = nBits;

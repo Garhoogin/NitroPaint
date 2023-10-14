@@ -8,7 +8,7 @@
 
 #define NV_INITIALIZE (WM_USER+1)
 
-HWND CreateTileEditor(int x, int y, int width, int height, HWND hWndParent, int tileX, int tileY) {
+HWND CreateTileEditor(int x, int y, int width, int height, HWND hWndParent, int tileNo) {
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
 		RECT rc = { 0 };
 		rc.right = width;
@@ -17,7 +17,7 @@ HWND CreateTileEditor(int x, int y, int width, int height, HWND hWndParent, int 
 		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
 		height = rc.bottom - rc.top + 4;
 		HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN & (~WS_THICKFRAME), x, y, width, height, hWndParent, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE, 0, (LPARAM) tileX | (tileY << 16));
+		SendMessage(h, NV_INITIALIZE, 0, tileNo);
 		return h;
 	}
 	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TileEditorClass", L"Tile Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
@@ -41,10 +41,8 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case NV_INITIALIZE:
 		{
-			int tileX = LOWORD(lParam);
-			int tileY = HIWORD(lParam);
-			data->tileX = tileX;
-			data->tileY = tileY;
+			int index = LOWORD(lParam);
+			data->tileIndex = index;
 			break;
 		}
 		case WM_PAINT:
@@ -83,7 +81,7 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			
 			DWORD tileBits[64];
-			ncgrGetTile(ncgr, nclr, data->tileX, data->tileY, tileBits, usedPalette, FALSE, transparent);
+			ChrRenderCharacter(ncgr, nclr, data->tileIndex, tileBits, usedPalette, transparent);
 			int width, height;
 			HBITMAP hBitmap = CreateTileBitmap(tileBits, 8, 8, -1, -1, &width, &height, 32, FALSE);
 			HDC hCompat = CreateCompatibleDC(hDC);
@@ -201,7 +199,7 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			if (mousePos.x < 256) {
 				int x = mousePos.x / 32;
 				int y = mousePos.y / 32;
-				int color = ncgr->tiles[data->tileX + data->tileY * ncgr->tilesX][x + y * 8];
+				int color = ncgr->tiles[data->tileIndex][x + y * 8];
 				data->selectedColor = color;
 				InvalidateRect(hWnd, NULL, FALSE);
 			}
@@ -240,7 +238,7 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				mousePos.x /= 32;
 				mousePos.y /= 32;
 
-				int tileIndex = data->tileX + data->tileY * ncgr->tilesX;
+				int tileIndex = data->tileIndex;
 				int ptIndex = mousePos.x + mousePos.y * 8;
 				BYTE *tile = ncgr->tiles[tileIndex];
 				tile[ptIndex] = data->selectedColor;

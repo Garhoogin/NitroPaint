@@ -1454,7 +1454,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	}
 
 	PalInit(nclr, paletteFormat);
-	ncgrInit(ncgr, characterFormat);
+	ChrInit(ncgr, characterFormat);
 	nscrInit(nscr, screenFormat);
 	nclr->header.compression = compressPalette;
 	ncgr->header.compression = compressCharacter;
@@ -1482,7 +1482,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nTiles = nCharsFile;
 	ncgr->tileWidth = 8;
-	ncgr->tilesX = calculateWidth(ncgr->nTiles);
+	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
 	ncgr->tiles = (BYTE **) calloc(nCharsFile, sizeof(BYTE *));
 	int charSize = nBits == 4 ? 32 : 64;

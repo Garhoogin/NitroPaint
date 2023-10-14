@@ -327,11 +327,11 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				//test other formats
 				if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
-				else if (ncgrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+				else if (ChrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (nscrIsValidAsc(buffer, bufferSize))  type = FILE_TYPE_SCREEN;
 				else if (PalIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-				else if (ncgrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+				else if (ChrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
 
 				//test for bin format files
@@ -339,7 +339,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 					if (PalIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
 					else if (PalIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
 					else if (nscrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
-					else if (ncgrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
+					else if (ChrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
 					else {
 						//double check, without respect to the file name.
 						type = fileGuessPltChrScr(buffer, bufferSize);
@@ -348,7 +348,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 						if (type == FILE_TYPE_INVALID) {
 							if (PalIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 							else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-							else if (ncgrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+							else if (ChrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 							else if (PalIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 						}
 					}

@@ -16,50 +16,6 @@
 
 extern HICON g_appIcon;
 
-DWORD * renderNcgrBits(NCGR * renderNcgr, NCLR * renderNclr, BOOL drawGrid, BOOL drawChecker, int * width, int * height, int markX, int markY, int previewPalette, BOOL transparent) {
-	int xTiles = renderNcgr->tilesX;
-	int yTiles = renderNcgr->tilesY;
-	int bitmapWidth = xTiles << 3;
-	int bitmapHeight = yTiles << 3;
-	if (drawGrid) {
-		bitmapWidth = xTiles * 9 + 1;
-		bitmapHeight = yTiles * 9 + 1;
-	}
-
-	DWORD * bits = (DWORD *) calloc(bitmapWidth * bitmapHeight, 4);
-
-	//draw tiles
-	DWORD block[64];
-
-	for (int y = 0; y < yTiles; y++) {
-		for (int x = 0; x < xTiles; x++) {
-			ncgrGetTile(renderNcgr, renderNclr, x, y, block, previewPalette, drawChecker, transparent);
-			if (x == markX && y == markY) {
-				for (int i = 0; i < 64; i++) {
-					DWORD d = block[i];
-					d ^= 0xFFFFFF;
-					block[i] = d;
-				}
-			}
-			DWORD offset = 8 * x + 8 * y * bitmapWidth;
-			if (drawGrid) {
-				offset = 9 * x + 9 * y * bitmapWidth + 1 + bitmapWidth;
-			}
-			for (int i = 0; i < 8; i++) {
-				CopyMemory(bits + offset + i * bitmapWidth, block + 8 * i, 32);
-			}
-		}
-	}
-	/*for (int i = 0; i < bitmapWidth * bitmapHeight; i++) {
-		DWORD d = bits[i];
-		d = ((d & 0xFF) << 16) | (d & 0xFF00FF00) | ((d >> 16) & 0xFF);
-		bits[i] = d;
-	}*/
-	*width = bitmapWidth;
-	*height = bitmapHeight;
-	return bits;
-}
-
 DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor, BOOL transparent) {
 	int width = ncgr->tilesX * 8;
 	DWORD *bits = (DWORD *) malloc(ncgr->tilesX * ncgr->tilesY * 64 * 4);
@@ -69,7 +25,7 @@ DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor, 
 		for (int x = 0; x < ncgr->tilesX; x++) {
 			BYTE *tile = ncgr->tiles[tileNumber];
 			DWORD block[64];
-			ncgrGetTile(ncgr, nclr, x, y, block, usePalette, TRUE, transparent);
+			ChrRenderCharacter(ncgr, nclr, tileNumber, block, usePalette, transparent);
 			if (highlightColor != -1) {
 				for (int i = 0; i < 64; i++) {
 					if (tile[i] != highlightColor) continue;
@@ -90,7 +46,6 @@ DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor, 
 			memcpy(bits + offset + width * 5, block + 40, 32);
 			memcpy(bits + offset + width * 6, block + 48, 32);
 			memcpy(bits + offset + width * 7, block + 56, 32);
-
 
 			tileNumber++;
 		}
@@ -296,7 +251,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int selected = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 					SendMessage(hWndControl, CB_GETLBTEXT, (WPARAM) selected, (LPARAM) text);
 					int width = _wtol(text);
-					ncgrChangeWidth(&data->ncgr, width);
+					ChrSetWidth(&data->ncgr, width);
 
 					RECT rcClient;
 					GetClientRect(hWnd, &rcClient);
@@ -341,7 +296,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							data->ncgr.nTiles /= 2;
 						} else {
 							data->ncgr.nTiles /= 2;
-							data->ncgr.tilesX = calculateWidth(data->ncgr.nTiles);
+							data->ncgr.tilesX = ChrGuessWidth(data->ncgr.nTiles);
 							data->ncgr.tilesY = data->ncgr.nTiles / data->ncgr.tilesX;
 						}
 						data->ncgr.nBits = 8;
@@ -508,7 +463,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								free(path);
 							} else break;
 						}
-						ncgrWriteFile(&data->ncgr, data->szOpenFile);
+						ChrWriteFile(&data->ncgr, data->szOpenFile);
 						break;
 					}
 					case ID_FILE_EXPORT:
@@ -766,7 +721,8 @@ LRESULT WINAPI NcgrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					}
 					if (nclr != NULL) {
 						if (data->hWndTileEditorWindow) DestroyWindow(data->hWndTileEditorWindow);
-						data->hWndTileEditorWindow = CreateTileEditor(CW_USEDEFAULT, CW_USEDEFAULT, 480, 256, nitroPaintStruct->hWndMdi, data->hoverX, data->hoverY);
+						data->hWndTileEditorWindow = CreateTileEditor(CW_USEDEFAULT, CW_USEDEFAULT, 480, 256, nitroPaintStruct->hWndMdi, 
+							data->hoverX + data->hoverY * data->ncgr.tilesX);
 					}
 				} else {
 					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 1);
@@ -1338,7 +1294,7 @@ VOID RegisterNcgrViewerClass(VOID) {
 
 HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	NCGR ncgr;
-	int n = ncgrReadFile(&ncgr, path);
+	int n = ChrReadFile(&ncgr, path);
 	if (n) {
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;

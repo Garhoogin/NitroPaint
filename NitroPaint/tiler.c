@@ -44,21 +44,6 @@ HBITMAP CreateTileBitmap2(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX
 				memcpy(block + tileWidth * i, lpBits + offs + nWidth * i, stride);
 			}
 
-			//if this tile is highlighted, then highlight it.
-			if (tileX == hiliteX && tileY == hiliteY) {
-				//average the tile with white.
-				for (int i = 0; i < 64; i++) {
-					DWORD d = block[i];
-					int r = d & 0xFF;
-					r = (r + 255) >> 1;
-					int g = (d >> 8) & 0xFF;
-					g = (g + 255) >> 1;
-					int b = (d >> 16) & 0xFF;
-					b = (b + 255) >> 1;
-					block[i] = r | (g << 8) | (b << 16) | (d & 0xFF000000);
-				}
-			}
-
 			//next, fill out each pixel in the output image.
 			for (unsigned int destY = 0; destY < tileSize; destY++) {
 				for (unsigned int destX = 0; destX < tileSize; destX++) {
@@ -99,6 +84,12 @@ HBITMAP CreateTileBitmap2(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX
 						int g = (((bg >> 8) & 0xFF) * (255 - alpha) + ((sample >> 8) & 0xFF) * alpha) >> 8;
 						int b = (((bg >> 16) & 0xFF) * (255 - alpha) + ((sample >> 16) & 0xFF) * alpha) >> 8;
 						sample = r | (g << 8) | (b << 16) | 0xFF000000;
+					}
+
+					//highlight
+					if (tileX == hiliteX && tileY == hiliteY) {
+						//bit magic to blend with white
+						sample = (sample & 0xFF000000) | (sample >> 1) | 0x808080;
 					}
 
 					//write it

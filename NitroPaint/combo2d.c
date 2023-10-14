@@ -239,13 +239,13 @@ int combo2dReadTimeAce(COMBO2D *combo, char *buffer, int size) {
 
 	//add character
 	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ncgrInit(ncgr, NCGR_TYPE_COMBO);
+	ChrInit(ncgr, NCGR_TYPE_COMBO);
 	ncgr->nTiles = *(int *) (buffer + 0xA08);
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
 	ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
-	ncgr->tilesX = calculateWidth(ncgr->nTiles);
+	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-	ncgrReadChars(ncgr, buffer + 0xA0C);
+	ChrReadChars(ncgr, buffer + 0xA0C);
 	combo2dLink(combo, &ncgr->header);
 
 	//add screen
@@ -302,13 +302,13 @@ int combo2dRead5bg(COMBO2D *combo, char *buffer, int size) {
 
 	//add character
 	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ncgrInit(ncgr, NCGR_TYPE_COMBO);
+	ChrInit(ncgr, NCGR_TYPE_COMBO);
 	ncgr->nTiles = chrWidth * chrHeight;
 	ncgr->tilesX = chrWidth;
 	ncgr->tilesY = chrHeight;
 	ncgr->nBits = nBits;
 	ncgr->mappingMode = mapping;
-	ncgrReadChars(ncgr, bgdt + charOffset);
+	ChrReadChars(ncgr, bgdt + charOffset);
 	combo2dLink(combo, &ncgr->header);
 
 	//add screen
@@ -349,14 +349,14 @@ int combo2dReadBanner(COMBO2D *combo, char *buffer, int size) {
 
 	//add character
 	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ncgrInit(ncgr, FILE_TYPE_CHARACTER);
+	ChrInit(ncgr, FILE_TYPE_CHARACTER);
 	ncgr->nTiles = 16;
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = 4;
 	ncgr->tilesY = 4;
 	ncgr->nBits = 4;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-	ncgrReadChars(ncgr, buffer + 0x20);
+	ChrReadChars(ncgr, buffer + 0x20);
 	combo2dLink(combo, &ncgr->header);
 
 	return 0;
@@ -390,14 +390,14 @@ int combo2dReadMbb(COMBO2D *combo, char *buffer, int size) {
 
 	//add character
 	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ncgrInit(ncgr, NCGR_TYPE_COMBO);
+	ChrInit(ncgr, NCGR_TYPE_COMBO);
 	ncgr->nBits = nBits;
 	ncgr->nTiles = nChars;
-	ncgr->tilesX = calculateWidth(ncgr->nTiles);
+	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
 	ncgr->tileWidth = 8;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-	ncgrReadChars(ncgr, buffer + chrofs);
+	ChrReadChars(ncgr, buffer + chrofs);
 	combo2dLink(combo, &ncgr->header);
 
 	//add screen
@@ -462,7 +462,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		bstreamWrite(stream, nscr->data, nscr->dataSize);
 		bstreamWrite(stream, &ncgr->nTiles, 4);
 
-		ncgrWriteChars(ncgr, stream);
+		ChrWriteChars(ncgr, stream);
 	} else if (combo->header.format == COMBO2D_TYPE_BANNER) {
 		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
 		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
@@ -470,7 +470,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		BANNER_INFO *info = (BANNER_INFO *) combo->extraData;
 		unsigned short header[16] = { 0 };
 		bstreamWrite(stream, header, sizeof(header));
-		ncgrWriteChars(ncgr, stream);
+		ChrWriteChars(ncgr, stream);
 
 		//write palette
 		bstreamWrite(stream, nclr->colors, 32);
@@ -515,7 +515,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 
 					BSTREAM chrStream;
 					bstreamCreate(&chrStream, NULL, 0);
-					ncgrWriteChars(ncgr, &chrStream);
+					ChrWriteChars(ncgr, &chrStream);
 
 					if (chrStream.size > dfc->chrSize) chrStream.size = dfc->chrSize;
 					memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
@@ -580,7 +580,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		int nTilesOld = ncgr->nTiles;
 		ncgr->nTiles = nCharsWrite;
 		ncgr->header.format = NCGR_TYPE_BIN;
-		ncgrWrite(ncgr, stream);
+		ChrWrite(ncgr, stream);
 		ncgr->header.type = NCGR_TYPE_COMBO;
 		ncgr->nTiles = nTilesOld;
 
@@ -629,7 +629,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 
 		bstreamWrite(stream, header, sizeof(header));
 		bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
-		ncgrWriteChars(ncgr, stream);
+		ChrWriteChars(ncgr, stream);
 
 		//write screens
 		nScreensWritten = 0;

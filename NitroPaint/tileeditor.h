@@ -2,12 +2,11 @@
 #include <Windows.h>
 
 typedef struct {
-	int tileX;
-	int tileY;
+	int tileIndex;
 	int selectedColor;
 	int mouseDown;
 } TILEEDITORDATA;
 
-HWND CreateTileEditor(int x, int y, int width, int height, HWND hWndParent, int tileX, int tileY);
+HWND CreateTileEditor(int x, int y, int width, int height, HWND hWndParent, int tileNo);
 
 VOID RegisterTileEditorClass(VOID);

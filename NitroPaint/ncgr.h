@@ -47,69 +47,69 @@ typedef struct NCGR_{
 //
 // Calculates a sensible width given a character count.
 //
-int calculateWidth(int nTiles);
+int ChrGuessWidth(int nTiles);
 
 //
 // Initialize an NCGR structure with sensible values.
 //
-void ncgrInit(NCGR *ncgr, int format);
+void ChrInit(NCGR *ncgr, int format);
 
 //
 // Determines if a byte array represents a valid Hudson character graphics file
 //
-int ncgrIsValidHudson(unsigned char *buffer, unsigned int size);
+int ChrIsValidHudson(unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid raw character graphics file.
 //
-int ncgrIsValidBin(unsigned char *buffer, unsigned int size);
+int ChrIsValidBin(unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid IS-AGB-CHARACTER graphics file
 //
-int ncgrIsValidAcg(unsigned char *buffer, unsigned int size);
+int ChrIsValidAcg(unsigned char *buffer, unsigned int size);
 
 //
 // Get a 32-bit color render of graphics data
 //
-int ncgrGetTile(NCGR *ncgr, NCLR *nclr, int x, int y, COLOR32 *out, int previewPalette, int drawChecker, int transparent);
+int ChrRenderCharacter(NCGR *ncgr, NCLR *nclr, int chNo, COLOR32 *out, int previewPalette, int transparent);
 
 //
 // Update the width of graphics data. Useful for bitmapped graphics.
 //
-void ncgrChangeWidth(NCGR *ncgr, int width);
+void ChrSetWidth(NCGR *ncgr, int width);
 
 //
 // Read character data from binary data and store in an NCGR.
 //
-void ncgrReadChars(NCGR *ncgr, unsigned char *buffer);
+void ChrReadChars(NCGR *ncgr, unsigned char *buffer);
 
 //
 // Rad bitmap data from binary data and store in an NCGR.
 //
-void ncgrReadBitmap(NCGR *ncgr, unsigned char *buffer);
+void ChrReadBitmap(NCGR *ncgr, unsigned char *buffer);
 
 //
 // Read character graphics from a byte array.
 //
-int ncgrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size);
+int ChrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size);
 
 //
 // Read character graphics from a file.
 //
-int ncgrReadFile(NCGR *ncgr, LPCWSTR path);
+int ChrReadFile(NCGR *ncgr, LPCWSTR path);
 
 //
 // Write character data to stream.
 //
-void ncgrWriteChars(NCGR *ncgr, BSTREAM *stream);
+void ChrWriteChars(NCGR *ncgr, BSTREAM *stream);
 
 //
 // Write character graphics to a stream.
 //
-int ncgrWrite(NCGR *ncgr, BSTREAM *stream);
+int ChrWrite(NCGR *ncgr, BSTREAM *stream);
 
 //
 // Write character graphics to a file.
 //
-int ncgrWriteFile(NCGR *ncgr, LPCWSTR name);
+int ChrWriteFile(NCGR *ncgr, LPCWSTR name);
