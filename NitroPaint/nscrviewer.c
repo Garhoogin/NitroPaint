@@ -16,20 +16,16 @@
 
 extern HICON g_appIcon;
 
-DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, BOOL checker, int *width, int *height, int tileMarks, int highlightTile, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
-	int bWidth = renderNscr->nWidth;
-	int bHeight = renderNscr->nHeight;
-	if (drawGrid) {
-		bWidth += renderNscr->nWidth / 8 + 1;
-		bHeight += renderNscr->nHeight / 8 + 1;
-	}
+DWORD *renderNscrBits(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int *width, int *height, int tileMarks, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
+	int bWidth = nscr->nWidth;
+	int bHeight = nscr->nHeight;
 	*width = bWidth;
 	*height = bHeight;
 
 	LPDWORD bits = (LPDWORD) calloc(bWidth * bHeight, 4);
 
-	int tilesX = renderNscr->nWidth >> 3;
-	int tilesY = renderNscr->nHeight >> 3;
+	int tilesX = nscr->nWidth >> 3;
+	int tilesY = nscr->nHeight >> 3;
 
 	int selX = min(selStartX, selEndX);
 	int selY = min(selStartY, selEndY);
@@ -40,38 +36,31 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 
 	for (int y = 0; y < tilesY; y++) {
 		int offsetY = y << 3;
-		if (drawGrid) offsetY = y * 9 + 1;
 		for (int x = 0; x < tilesX; x++) {
 			int offsetX = x << 3;
-			if (drawGrid) offsetX = x * 9 + 1;
 
 			int tileNo = -1;
-			nscrGetTileEx(renderNscr, renderNcgr, renderNclr, tileBase, x, y, checker, block, &tileNo, transparent);
+			nscrGetTileEx(nscr, ncgr, nclr, tileBase, x, y, block, &tileNo, transparent);
 			DWORD dwDest = x * 8 + y * 8 * bWidth;
 
 			if (tileMarks != -1 && tileMarks == tileNo) {
 				for (int i = 0; i < 64; i++) {
 					DWORD d = block[i];
-					int b = d & 0xFF;
+					int b = (d >> 0) & 0xFF;
 					int g = (d >> 8) & 0xFF;
 					int r = (d >> 16) & 0xFF;
-					r = r >> 1;
-					g = (g + 255) >> 1;
-					b = (b + 255) >> 1;
-					block[i] = (d & 0xFF000000) | b | (g << 8) | (r << 16);
-				}
-			}
+					int a = (d >> 24) & 0xFF;
 
-			if (highlightTile != -1 && (x + y * tilesX) == highlightTile) {
-				for (int i = 0; i < 64; i++) {
-					DWORD d = block[i];
-					int b = d & 0xFF;
-					int g = (d >> 8) & 0xFF;
-					int r = (d >> 16) & 0xFF;
-					r = (r + 255) >> 1;
-					g = (g + 255) >> 1;
-					b = (b + 255) >> 1;
-					block[i] = (d & 0xFF000000) | b | (g << 8) | (r << 16);
+					if (a) { //effect on opaque pixels
+						r = (r + 0) >> 1;
+						g = (g + 255) >> 1;
+						b = (b + 255) >> 1;
+					} else { //on transparent pixels
+						r = 0;
+						g = b = 255;
+						a = 128;
+					}
+					block[i] = (a << 24) | b | (g << 8) | (r << 16);
 				}
 			}
 
@@ -82,10 +71,18 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 					int b = d & 0xFF;
 					int g = (d >> 8) & 0xFF;
 					int r = (d >> 16) & 0xFF;
-					r = (r * 3 + 255) >> 2;
-					g = (g * 3 + 255) >> 2;
-					b = (b * 3 + 0) >> 2;
-					block[i] = (d & 0xFF000000) | b | (g << 8) | (r << 16);
+					int a = (d >> 24) & 0xFF;
+
+					if (a) { //effect on opaque pixels
+						r = (r * 3 + 255) >> 2;
+						g = (g * 3 + 255) >> 2;
+						b = (b * 3 + 0) >> 2;
+					} else { //effect on transparent pixels
+						r = g = 255;
+						b = 0;
+						a = 64;
+					}
+					block[i] = (a << 24) | b | (g << 8) | (r << 16);
 				}
 				//highlight edges for better visibility
 				if (x == selX || x == selRight) {
@@ -99,15 +96,15 @@ DWORD *renderNscrBits(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int 
 			}
 
 			if (highlightColor != -1) {
-				int color = highlightColor % (1 << renderNcgr->nBits);
-				int highlightPalette = highlightColor / (1 << renderNcgr->nBits);
-				WORD nscrData = renderNscr->data[x + y * (renderNscr->nWidth / 8)];
+				int color = highlightColor % (1 << ncgr->nBits);
+				int highlightPalette = highlightColor / (1 << ncgr->nBits);
+				WORD nscrData = nscr->data[x + y * (nscr->nWidth / 8)];
 				int flip = (nscrData >> 10) & 3;
 				if (((nscrData >> 12) & 0xF) == highlightPalette) {
 					int charBase = tileBase;
 					int tileIndex = nscrData & 0x3FF;
 					if (tileIndex - charBase >= 0) {
-						BYTE *tile = renderNcgr->tiles[tileIndex - charBase];
+						BYTE *tile = ncgr->tiles[tileIndex - charBase];
 						for (int i = 0; i < 64; i++) {
 							int bIndex = i;
 							if (flip & TILE_FLIPX) bIndex ^= 7;
@@ -181,10 +178,14 @@ unsigned char *renderNscrIndexed(NSCR *nscr, NCGR *ncgr, int tileBase, int *widt
 HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int highlightColor, int scale, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
 	if (renderNcgr != NULL) {
 		if (highlightNclr != -1) highlightNclr += tileBase;
-		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, tileBase, FALSE, TRUE, width, height, highlightNclr, highlightTile, highlightColor, selStartX, selStartY, selEndX, selEndY, transparent);
+		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, tileBase, width, height, highlightNclr, highlightColor, selStartX, selStartY, selEndX, selEndY, transparent);
 
-		//HBITMAP hBitmap = CreateBitmap(*width, *height, 1, 32, bits);
-		HBITMAP hBitmap = CreateTileBitmap(bits, *width, *height, -1, -1, width, height, scale, drawGrid);
+		int hovX = -1, hovY = -1;
+		if (highlightTile != -1) {
+			hovX = highlightTile % renderNcgr->tilesX;
+			hovY = highlightTile / renderNcgr->tilesX;
+		}
+		HBITMAP hBitmap = CreateTileBitmap2(bits, *width, *height, hovX, hovY, width, height, scale, drawGrid, 8, FALSE, TRUE);
 		free(bits);
 		return hBitmap;
 	}
@@ -399,7 +400,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							free(bits);
 						} else {
 							//write direct
-							COLOR32 *bits = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &width, &height, -1, -1, -1, -1, -1, -1, -1, TRUE);
+							COLOR32 *bits = renderNscrBits(nscr, ncgr, nclr, data->tileBase, &width, &height, -1, -1, -1, -1, -1, -1, TRUE);
 							for (int i = 0; i < width * height; i++) {
 								COLOR32 c = bits[i];
 								bits[i] = REVERSE(c);
@@ -512,7 +513,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								free(path);
 							}
 						}
-						nscrWriteFile(&data->nscr, data->szOpenFile);
+						ScrWriteFile(&data->nscr, data->szOpenFile);
 						break;
 					}
 					case ID_NSCRMENU_IMPORTBITMAPHERE:
@@ -575,8 +576,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 							//cut selection region out of the image
 							int wholeWidth, wholeHeight, width = tilesX * 8, height = tilesY * 8;
-							COLOR32 *bm = renderNscrBits(nscr, ncgr, nclr, data->tileBase, FALSE, FALSE, &wholeWidth, &wholeHeight,
-								-1, -1, -1, -1, -1, -1, -1, TRUE);
+							COLOR32 *bm = renderNscrBits(nscr, ncgr, nclr, data->tileBase, &wholeWidth, &wholeHeight,
+								-1, -1, -1, -1, -1, -1, TRUE);
 							COLOR32 *sub = ImgCrop(bm, wholeWidth, wholeHeight, tileX * 8, tileY * 8, tilesX * 8, tilesY * 8);
 							ImgSwapRedBlue(sub, tilesX * 8, tilesY * 8);
 							copyBitmap(sub, width, height);
@@ -1861,7 +1862,7 @@ VOID RegisterNscrViewerClass(VOID) {
 
 HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	NSCR nscr;
-	int n = nscrReadFile(&nscr, path);
+	int n = ScrReadFile(&nscr, path);
 	if (n) {
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;

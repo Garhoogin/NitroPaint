@@ -114,7 +114,7 @@ int fileGuessPltChrScr(unsigned char *ptr, int size) {
 
 	if (size & 1 || size > 32768) canBePalette = 0;
 	if (size & 0x1F || !size) canBeChar = 0;
-	if (!nscrIsValidBin(ptr, size)) canBeScreen = 0;
+	if (!ScrIsValidBin(ptr, size)) canBeScreen = 0;
 
 	if(canBePalette) {
 		COLOR *asColors = (COLOR *) ptr;
@@ -328,9 +328,9 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
 				else if (ChrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-				else if (nscrIsValidAsc(buffer, bufferSize))  type = FILE_TYPE_SCREEN;
+				else if (ScrIsValidAsc(buffer, bufferSize))  type = FILE_TYPE_SCREEN;
 				else if (PalIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-				else if (nscrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
+				else if (ScrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ChrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
 
@@ -338,7 +338,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				else {
 					if (PalIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
 					else if (PalIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
-					else if (nscrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
+					else if (ScrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
 					else if (ChrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
 					else {
 						//double check, without respect to the file name.
@@ -347,7 +347,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 						//last ditch effort
 						if (type == FILE_TYPE_INVALID) {
 							if (PalIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-							else if (nscrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
+							else if (ScrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 							else if (ChrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 							else if (PalIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 						}

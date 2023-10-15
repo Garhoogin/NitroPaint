@@ -79,64 +79,59 @@ typedef struct BGTILE_ {
 //
 // Initialize an NSCR structure with sensible values.
 //
-void nscrInit(NSCR *nscr, int format);
+void ScrInit(NSCR *nscr, int format);
 
 //
 // Determines if a byte array represents a valid Hudson screen file.
 //
-int nscrIsValidHudson(unsigned char *buffer, unsigned int size);
+int ScrIsValidHudson(const unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid raw screen file.
 //
-int nscrIsValidBin(unsigned char *buffer, unsigned int size);
+int ScrIsValidBin(const unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid IS-ACG-CHARACTER screen file.
 //
-int nscrIsValidAsc(unsigned char *buffer, unsigned int size);
+int ScrIsValidAsc(const unsigned char *buffer, unsigned int size);
+
+//
+// Idenfities the format of this screen data.
+//
+int ScrIdentify(const unsigned char *file, unsigned int size);
 
 //
 // Reads a screen file from an array.
 //
-int nscrRead(NSCR *nscr, unsigned char *file, unsigned int dwFileSize);
+int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize);
 
 //
 // Reads a screen from a file.
 //
-int nscrReadFile(NSCR *nscr, LPCWSTR path);
-
-//
-// Renders a screenwith character and palette data to 32-bit output.
-//
-COLOR32 *toBitmap(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int *width, int *height, int transparent);
+int ScrReadFile(NSCR *nscr, LPCWSTR path);
 
 //
 // Write a screen to a stream.
 //
-int nscrWrite(NSCR *nscr, BSTREAM *stream);
+int ScrWrite(NSCR *nscr, BSTREAM *stream);
 
 //
 // Write a screen to a file.
 //
-int nscrWriteFile(NSCR *nscr, LPCWSTR name);
-
-//
-// Render a single tile of a screen to 32-bit output.
-//
-int nscrGetTile(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int x, int y, int chceker, COLOR32 *out, int transparent);
+int ScrWriteFile(NSCR *nscr, LPCWSTR name);
 
 //
 // Render a single tile of a screen to 32-bit output, with respect to character
 // base for quirks in some game setups.
 //
-int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, int checker, COLOR32 *out, int *tileNo, int transparent);
+int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y, COLOR32 *out, int *tileNo, int transparent);
 
 //
 // Computes and stores the highest character index in the screen file and
 // returns it.
 //
-int nscrGetHighestCharacter(NSCR *nscr);
+int ScrComputeHighestCharacter(NSCR *nscr);
 
 //
 // Call this function after filling out the RGB color info in the tile array.

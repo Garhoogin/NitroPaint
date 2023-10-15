@@ -250,14 +250,14 @@ int combo2dReadTimeAce(COMBO2D *combo, char *buffer, int size) {
 
 	//add screen
 	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-	nscrInit(nscr, NSCR_TYPE_COMBO);
+	ScrInit(nscr, NSCR_TYPE_COMBO);
 	nscr->nWidth = 256;
 	nscr->nHeight = 256;
 	nscr->dataSize = (nscr->nWidth / 8) * (nscr->nHeight / 8) * 2;
 	nscr->nHighestIndex = 0;
 	nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
 	memcpy(nscr->data, buffer + 0x208, nscr->dataSize);
-	nscrGetHighestCharacter(nscr);
+	ScrComputeHighestCharacter(nscr);
 	combo2dLink(combo, &nscr->header);
 
 	return 0;
@@ -313,14 +313,14 @@ int combo2dRead5bg(COMBO2D *combo, char *buffer, int size) {
 
 	//add screen
 	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-	nscrInit(nscr, NSCR_TYPE_COMBO);
+	ScrInit(nscr, NSCR_TYPE_COMBO);
 	nscr->nWidth = scrWidth;
 	nscr->nHeight = scrHeight;
 	nscr->dataSize = scrDataSize;
 	nscr->nHighestIndex = 0;
 	nscr->data = (uint16_t *) calloc(scrDataSize, 1);
 	memcpy(nscr->data, bgdt + 0x1C, scrDataSize);
-	nscrGetHighestCharacter(nscr);
+	ScrComputeHighestCharacter(nscr);
 	combo2dLink(combo, &nscr->header);
 
 	return 0;
@@ -411,14 +411,14 @@ int combo2dReadMbb(COMBO2D *combo, char *buffer, int size) {
 
 		//add screen
 		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-		nscrInit(nscr, NSCR_TYPE_COMBO);
+		ScrInit(nscr, NSCR_TYPE_COMBO);
 		nscr->nWidth = scrWidth;
 		nscr->nHeight = scrHeight;
 		nscr->dataSize = scrDataSize;
 		nscr->nHighestIndex = 0;
 		nscr->data = (uint16_t *) calloc(scrDataSize, 1);
 		memcpy(nscr->data, buffer + scrnofs, scrDataSize);
-		nscrGetHighestCharacter(nscr);
+		ScrComputeHighestCharacter(nscr);
 		combo2dLink(combo, &nscr->header);
 
 		mbbInfo->screenBitmap |= (1 << i);
@@ -544,7 +544,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
 
 		//how many characters do we write?
-		int nCharsWrite = nscrGetHighestCharacter(nscr) + 1;
+		int nCharsWrite = ScrComputeHighestCharacter(nscr) + 1;
 
 		int nSections = ncgr->nBits == 4 ? 3 : 2; //no flags for 8-bit images
 		int paltSize = 0xC + nclr->nColors * 2;

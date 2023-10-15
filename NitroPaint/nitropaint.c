@@ -575,7 +575,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			ncgr.combo2d = combo;
 		}
 		if (scrRef != NULL) {
-			nscrRead(&nscr, dfc->data + scrOffset, scrSize);
+			ScrRead(&nscr, dfc->data + scrOffset, scrSize);
 			nscr.header.format = NSCR_TYPE_COMBO;
 			nscr.combo2d = combo;
 		}
@@ -2193,7 +2193,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				int tilesY = height / 8;
 
 				NSCR nscr;
-				nscrInit(&nscr, NSCR_TYPE_NSCR);
+				ScrInit(&nscr, NSCR_TYPE_NSCR);
 				nscr.nWidth = tilesX * 8;
 				nscr.nHeight = tilesY * 8;
 				nscr.dataSize = tilesX * tilesY * sizeof(uint16_t);
@@ -2267,7 +2267,7 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int newTilesY = tilesY / y;
 
 				NSCR newNscr;
-				nscrInit(&newNscr, nscr->header.format);
+				ScrInit(&newNscr, nscr->header.format);
 				newNscr.nWidth = newTilesX * 8;
 				newNscr.nHeight = newTilesY * 8;
 				newNscr.dataSize = newTilesX * newTilesY * sizeof(uint16_t);
