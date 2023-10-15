@@ -182,8 +182,8 @@ HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int til
 
 		int hovX = -1, hovY = -1;
 		if (highlightTile != -1) {
-			hovX = highlightTile % renderNcgr->tilesX;
-			hovY = highlightTile / renderNcgr->tilesX;
+			hovX = highlightTile % (renderNscr->nWidth / 8);
+			hovY = highlightTile / (renderNscr->nHeight / 8);
 		}
 		HBITMAP hBitmap = CreateTileBitmap2(bits, *width, *height, hovX, hovY, width, height, scale, drawGrid, 8, FALSE, TRUE);
 		free(bits);
