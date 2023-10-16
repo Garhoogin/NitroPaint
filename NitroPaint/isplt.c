@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
+#include <string.h>
 
 #include "color.h"
 #include "palette.h"
@@ -827,11 +828,20 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 				int farthestIndex = 0;
 				for (int j = 0; j < nHistEntries; j++) {
 					RxHistEntry *entry = reduction->histogramFlat[j];
-					int bucket = entry->entry;
-					RxYiqColor *yiq1 = &reduction->paletteYiqCopy[bucket];
+					RxYiqColor *yiq1 = &reduction->paletteYiqCopy[entry->entry];
 
-					RxYiqColor yiq2 = { entry->color.y, entry->color.i, entry->color.q, 0xFF };
-					double diff = RxiComputeColorDifference(reduction, yiq1, &yiq2) * entry->weight;
+					//if we mask colors, check this entry against the palette with clamping.
+					if (reduction->maskColors) {
+						RxRgbColor histRgb, palRgb;
+						RxConvertYiqToRgb(&histRgb, &entry->color);
+						RxConvertYiqToRgb(&palRgb, yiq1);
+
+						COLOR32 histMasked = ColorRoundToDS15(histRgb.r | (histRgb.g << 8) | (histRgb.b << 16));
+						COLOR32 palMasked = ColorRoundToDS15(palRgb.r | (palRgb.g << 8) | (palRgb.b << 16));
+						if (histMasked == palMasked) continue; //this difference can't be reconciled
+					}
+
+					double diff = RxiComputeColorDifference(reduction, yiq1, &entry->color) * entry->weight;
 					if (diff > largestDifference) {
 						largestDifference = diff;
 						farthestIndex = j;
@@ -847,9 +857,9 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 				
 				//set this node's center to the point
 				RxConvertRgbToYiq(as32, &reduction->paletteYiqCopy[i]);
-				reduction->paletteRgbCopy[i][0] = as32 & 0xFF;
+				reduction->paletteRgbCopy[i][0] = (as32 >> 0) & 0xFF;
 				reduction->paletteRgbCopy[i][1] = (as32 >> 8) & 0xFF;
-				reduction->paletteRgbCopy[i][2] = (as32 >> 8) & 0xFF;
+				reduction->paletteRgbCopy[i][2] = (as32 >> 16) & 0xFF;
 				
 				//now that we've changed the palette copy, we need to recompute boundaries.
 				doRecompute = 1;
