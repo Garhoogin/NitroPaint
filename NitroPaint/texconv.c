@@ -999,6 +999,7 @@ int textureConvert(CREATEPARAMS *params) {
 	params->width = sourceWidth;
 	params->height = sourceHeight;
 	params->px = srcPx;
+	params->dest->texels.height = sourceHeight;
 	free(padded);
 
 	//copy name (null-terminated unless 16-char long)
