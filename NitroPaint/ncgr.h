@@ -6,11 +6,10 @@
 #define NCGR_TYPE_NCGR		1
 #define NCGR_TYPE_HUDSON	2
 #define NCGR_TYPE_HUDSON2	3
-#define NCGR_TYPE_NCBR      4
-#define NCGR_TYPE_BIN       5
-#define NCGR_TYPE_NC        6
-#define NCGR_TYPE_AC        7
-#define NCGR_TYPE_COMBO     8
+#define NCGR_TYPE_BIN       4
+#define NCGR_TYPE_NC        5
+#define NCGR_TYPE_AC        6
+#define NCGR_TYPE_COMBO     7
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
@@ -31,6 +30,7 @@ typedef struct NCGR_{
 	int tilesX;
 	int tilesY;
 	int mappingMode;
+	int bitmap;
 	int nBits;
 	int tileWidth;
 	char *comment;		//null terminated
@@ -57,17 +57,17 @@ void ChrInit(NCGR *ncgr, int format);
 //
 // Determines if a byte array represents a valid Hudson character graphics file
 //
-int ChrIsValidHudson(unsigned char *buffer, unsigned int size);
+int ChrIsValidHudson(const unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid raw character graphics file.
 //
-int ChrIsValidBin(unsigned char *buffer, unsigned int size);
+int ChrIsValidBin(const unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid IS-AGB-CHARACTER graphics file
 //
-int ChrIsValidAcg(unsigned char *buffer, unsigned int size);
+int ChrIsValidAcg(const unsigned char *buffer, unsigned int size);
 
 //
 // Get a 32-bit color render of graphics data
@@ -82,17 +82,22 @@ void ChrSetWidth(NCGR *ncgr, int width);
 //
 // Read character data from binary data and store in an NCGR.
 //
-void ChrReadChars(NCGR *ncgr, unsigned char *buffer);
+void ChrReadChars(NCGR *ncgr, const unsigned char *buffer);
 
 //
 // Rad bitmap data from binary data and store in an NCGR.
 //
-void ChrReadBitmap(NCGR *ncgr, unsigned char *buffer);
+void ChrReadBitmap(NCGR *ncgr, const unsigned char *buffer);
+
+//
+// Read either bitmap or chactacter graphics.
+//
+void ChrReadGraphics(NCGR *ncgr, const unsigned char *buffer);
 
 //
 // Read character graphics from a byte array.
 //
-int ChrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size);
+int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
 
 //
 // Read character graphics from a file.

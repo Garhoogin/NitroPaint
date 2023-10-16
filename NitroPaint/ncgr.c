@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"Hudson", L"Hudson 2", L"NCBR", L"Binary", L"NCG", L"ACG", NULL };
+LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"Hudson", L"Hudson 2", L"Binary", L"NCG", L"ACG", NULL };
 
 int ChrGuessWidth(int nTiles) {
 	int width = 1;
@@ -26,7 +26,7 @@ int ChrGuessWidth(int nTiles) {
 	return height;
 }
 
-int ChrIsValidHudson(unsigned char *buffer, unsigned int size) {
+int ChrIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 0;
 	if (((*buffer) & 0xF0) != 0) return 0;
 	int dataLength = *(uint16_t *) (buffer + 1);
@@ -42,12 +42,12 @@ int ChrIsValidHudson(unsigned char *buffer, unsigned int size) {
 	return NCGR_TYPE_HUDSON;
 }
 
-int ChrIsValidBin(unsigned char *buffer, unsigned int size) {
+int ChrIsValidBin(const unsigned char *buffer, unsigned int size) {
 	if (size & 0x1F) return 0;
 	return NCGR_TYPE_BIN;
 }
 
-int ChrIsValidNcg(unsigned char *buffer, unsigned int size) {
+int ChrIsValidNcg(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 
 	char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
@@ -56,7 +56,7 @@ int ChrIsValidNcg(unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-static int ChriAcgScanFooter(unsigned char *buffer, unsigned int size) {
+static int ChriAcgScanFooter(const unsigned char *buffer, unsigned int size) {
 	if (size < 8) return -1;
 
 	//scan for possible locations of the footer
@@ -70,8 +70,8 @@ static int ChriAcgScanFooter(unsigned char *buffer, unsigned int size) {
 		//scan sections
 		unsigned int offset = i;
 		while (1) {
-			char *section = buffer + offset;
-			unsigned int length = *(unsigned int *) (buffer + offset + 4);
+			const unsigned char *section = buffer + offset;
+			unsigned int length = *(uint32_t *) (buffer + offset + 4);
 			offset += 8;
 
 			if (memcmp(section, "LINK", 4) == 0) hasLink = 1;
@@ -94,7 +94,7 @@ static int ChriAcgScanFooter(unsigned char *buffer, unsigned int size) {
 	return -1;
 }
 
-int ChrIsValidAcg(unsigned char *buffer, unsigned int size) {
+int ChrIsValidAcg(const unsigned char *buffer, unsigned int size) {
 	int dataOffset = ChriAcgScanFooter(buffer, size);
 	if (dataOffset == -1) return 0;
 
@@ -142,7 +142,7 @@ void ChrInit(NCGR *ncgr, int format) {
 	ncgr->combo2d = NULL;
 }
 
-void ChrReadChars(NCGR *ncgr, unsigned char *buffer) {
+void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
 	int nChars = ncgr->nTiles;
 
 	unsigned char **tiles = (unsigned char **) calloc(nChars, sizeof(BYTE **));
@@ -169,20 +169,20 @@ void ChrReadChars(NCGR *ncgr, unsigned char *buffer) {
 	ncgr->tiles = tiles;
 }
 
-void ChrReadBitmap(NCGR *ncgr, unsigned char *buffer) {
+void ChrReadBitmap(NCGR *ncgr, const unsigned char *buffer) {
 	int depth = ncgr->nBits;
 	int tilesX = ncgr->tilesX, tilesY = ncgr->tilesY;
-	unsigned char **tiles = (BYTE **) calloc(ncgr->nTiles, sizeof(BYTE **));
+	unsigned char **tiles = (unsigned char **) calloc(ncgr->nTiles, sizeof(unsigned char **));
 
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 
 			int offset = x * 4 + 4 * y * tilesX * 8;
-			BYTE *tile = calloc(64, 1);
+			unsigned char *tile = calloc(64, 1);
 			tiles[x + y * tilesX] = tile;
 			if (depth == 8) {
 				offset *= 2;
-				BYTE *indices = buffer + offset;
+				const unsigned char *indices = buffer + offset;
 				memcpy(tile, indices, 8);
 				memcpy(tile + 8, indices + 8 * tilesX, 8);
 				memcpy(tile + 16, indices + 16 * tilesX, 8);
@@ -192,7 +192,7 @@ void ChrReadBitmap(NCGR *ncgr, unsigned char *buffer) {
 				memcpy(tile + 48, indices + 48 * tilesX, 8);
 				memcpy(tile + 56, indices + 56 * tilesX, 8);
 			} else if (depth == 4) {
-				unsigned char *indices = buffer + offset;
+				const unsigned char *indices = buffer + offset;
 				for (int j = 0; j < 8; j++) {
 					for (int i = 0; i < 4; i++) {
 						tile[i * 2 + j * 8] = indices[i + j * 4 * tilesX] & 0xF;
@@ -207,7 +207,15 @@ void ChrReadBitmap(NCGR *ncgr, unsigned char *buffer) {
 	ncgr->tiles = tiles;
 }
 
-int ChrReadHudson(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
+void ChrReadGraphics(NCGR *ncgr, const unsigned char *buffer) {
+	if (ncgr->bitmap) {
+		ChrReadBitmap(ncgr, buffer);
+	} else {
+		ChrReadChars(ncgr, buffer);
+	}
+}
+
+int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 1; //file too small
 	if (*buffer == 0x10) return 1; //TODO: LZ77 decompress
 	int type = ChrIsValidHudson(buffer, size);
@@ -232,6 +240,7 @@ int ChrReadHudson(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgr->nBits = 8;
 	ncgr->tilesX = -1;
 	ncgr->tilesY = -1;
+	ncgr->bitmap = 0;
 
 	if (type == NCGR_TYPE_HUDSON) {
 		if (buffer[4] == 0) {
@@ -254,11 +263,11 @@ int ChrReadHudson(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
-	ChrReadChars(ncgr, buffer);
+	ChrReadGraphics(ncgr, buffer);
 	return 0;
 }
 
-int ChrReadAcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
+int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	int footerOffset = ChriAcgScanFooter(buffer, size);
 
 	int width = 0, height = 0, depth = 4;
@@ -266,9 +275,9 @@ int ChrReadAcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	//process extra data
 	unsigned int offset = (unsigned int) footerOffset;
 	while (1) {
-		char *section = buffer + offset;
-		unsigned int len = *(unsigned int *) (section + 4);
-		unsigned char *sectionData = section + 8;
+		const unsigned char *section = buffer + offset;
+		unsigned int len = *(uint32_t *) (section + 4);
+		const unsigned char *sectionData = section + 8;
 
 		if (memcmp(section, "SIZE", 4) == 0) {
 			//SIZE
@@ -295,7 +304,7 @@ int ChrReadAcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 
 	int attrSize = width * height;
 	int nChars = width * height;
-	unsigned char *attr = buffer + (nChars * 8 * depth);
+	const unsigned char *attr = buffer + (nChars * 8 * depth);
 
 	ChrInit(ncgr, NCGR_TYPE_AC);
 	ncgr->tilesX = width;
@@ -303,9 +312,10 @@ int ChrReadAcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
 	ncgr->tileWidth = 8;
 	ncgr->nBits = depth;
+	ncgr->bitmap = 0;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 
-	ChrReadChars(ncgr, buffer);
+	ChrReadGraphics(ncgr, buffer);
 
 	//attr
 	ncgr->attrWidth = width;
@@ -317,21 +327,21 @@ int ChrReadAcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int ChrReadBin(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
+int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_BIN);
 	ncgr->nTiles = size / 0x20;
 	ncgr->nBits = 4;
+	ncgr->bitmap = 0;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
 
-	ChrReadChars(ncgr, buffer);
-
+	ChrReadGraphics(ncgr, buffer);
 	return 0;
 }
 
-int ChrReadNcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
+int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_NC);
 
 	unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
@@ -344,6 +354,7 @@ int ChrReadNcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	if (sCmnt == NULL) sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'TNMC');
 	
 	ncgr->nBits = *(uint32_t *) (sChar + 0x10) == 0 ? 4 : 8;
+	ncgr->bitmap = 0;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->tilesX = *(uint32_t *) (sChar + 0x8);
 	ncgr->tilesY = *(uint32_t *) (sChar + 0xC);
@@ -373,7 +384,7 @@ int ChrReadNcg(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int ChrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
+int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	if (*(DWORD *) buffer != 0x4E434752) {
 		if (ChrIsValidNcg(buffer, size)) return ChrReadNcg(ncgr, buffer, size);
 		if (ChrIsValidAcg(buffer, size)) return ChrReadAcg(ncgr, buffer, size);
@@ -394,11 +405,6 @@ int ChrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 	int tileDataSize = *(int *) (buffer + 0x18);
 	int type = *(int *) (buffer + 0x14);
 
-	int format = NCGR_TYPE_NCGR;
-	if (type == 1) {
-		format = NCGR_TYPE_NCBR;
-	}
-
 	int tileCount = tilesX * tilesY;
 	int nPresentTiles = tileDataSize >> 5;
 	if (depth == 8) nPresentTiles >>= 1;
@@ -408,24 +414,20 @@ int ChrRead(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 		tilesY = tileCount / tilesX;
 	}
 
-	ChrInit(ncgr, format);
+	ChrInit(ncgr, NCGR_TYPE_NCGR);
 	ncgr->nBits = depth;
+	ncgr->bitmap = 0;
 	ncgr->nTiles = tileCount;
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
 	ncgr->mappingMode = mapping;
+	ncgr->bitmap = (type == 1);
 
 	buffer += 0x20;
 
-	if (format == NCGR_TYPE_NCGR) {
-		ChrReadChars(ncgr, buffer);
-	} else if (format == NCGR_TYPE_NCBR) {
-		ChrReadBitmap(ncgr, buffer);
-	}
-
+	ChrReadGraphics(ncgr, buffer);
 	return 0;
-
 }
 
 int ChrReadFile(NCGR *ncgr, LPCWSTR path) {
@@ -459,7 +461,7 @@ void ChrSetWidth(NCGR *ncgr, int width) {
 	if (ncgr->nTiles % width) return;
 
 	//only matters for bitmap graphics
-	if (ncgr->header.format != NCGR_TYPE_NCBR) {
+	if (!ncgr->bitmap) {
 		ncgr->tilesX = width;
 		ncgr->tilesY = ncgr->nTiles / width;
 		return;
@@ -513,15 +515,50 @@ void ChrWriteChars(NCGR *ncgr, BSTREAM *stream) {
 	}
 }
 
+void ChrWriteBitmap(NCGR *ncgr, BSTREAM *stream) {
+	int nTiles = ncgr->nTiles;
+	unsigned char *bmp = (unsigned char *) calloc(nTiles, 8 * ncgr->nBits);
+
+	int nWidth = ncgr->tilesX * 8;
+	for (int y = 0; y < ncgr->tilesY; y++) {
+		for (int x = 0; x < ncgr->tilesX; x++) {
+			unsigned char *tile = ncgr->tiles[x + y * ncgr->tilesX];
+			if (ncgr->nBits == 8) {
+				for (int i = 0; i < 64; i++) {
+					int tX = x * 8 + (i % 8);
+					int tY = y * 8 + (i / 8);
+					bmp[tX + tY * nWidth] = tile[i];
+				}
+			} else {
+				for (int i = 0; i < 32; i++) {
+					int tX = x * 8 + ((i * 2) % 8);
+					int tY = y * 8 + (i / 4);
+					bmp[(tX + tY * nWidth) / 2] = tile[i * 2] | (tile[i * 2 + 1] << 4);
+				}
+			}
+		}
+	}
+	bstreamWrite(stream, bmp, nTiles * 8 * ncgr->nBits);
+	free(bmp);
+}
+
+void ChrWriteGraphics(NCGR *ncgr, BSTREAM *stream) {
+	if (ncgr->bitmap) {
+		ChrWriteBitmap(ncgr, stream);
+	} else {
+		ChrWriteChars(ncgr, stream);
+	}
+}
+
 int ChrWriteBin(NCGR *ncgr, BSTREAM *stream) {
-	ChrWriteChars(ncgr, stream);
+	ChrWriteGraphics(ncgr, stream);
 	return 0;
 }
 
 int ChrWriteNcgr(NCGR *ncgr, BSTREAM *stream) {
 	unsigned char ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, 0x1, 0 };
 	unsigned char charHeader[] = { 'R', 'A', 'H', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	if (ncgr->header.format == NCGR_TYPE_NCBR) {
+	if (ncgr->bitmap) {
 		charHeader[20] = 1;
 	}
 
@@ -548,32 +585,7 @@ int ChrWriteNcgr(NCGR *ncgr, BSTREAM *stream) {
 
 	bstreamWrite(stream, ncgrHeader, sizeof(ncgrHeader));
 	bstreamWrite(stream, charHeader, sizeof(charHeader));
-	if (ncgr->header.format == NCGR_TYPE_NCGR) {
-		ChrWriteChars(ncgr, stream);
-	} else if (ncgr->header.format == NCGR_TYPE_NCBR) {
-		BYTE *bmp = (BYTE *) calloc(nTiles, 8 * ncgr->nBits);
-		int nWidth = ncgr->tilesX * 8;
-		for (int y = 0; y < ncgr->tilesY; y++) {
-			for (int x = 0; x < ncgr->tilesX; x++) {
-				BYTE *tile = ncgr->tiles[x + y * ncgr->tilesX];
-				if (ncgr->nBits == 8) {
-					for (int i = 0; i < 64; i++) {
-						int tX = x * 8 + (i % 8);
-						int tY = y * 8 + (i / 8);
-						bmp[tX + tY * nWidth] = tile[i];
-					}
-				} else {
-					for (int i = 0; i < 32; i++) {
-						int tX = x * 8 + ((i * 2) % 8);
-						int tY = y * 8 + (i / 4);
-						bmp[(tX + tY * nWidth) / 2] = tile[i * 2] | (tile[i * 2 + 1] << 4);
-					}
-				}
-			}
-		}
-		bstreamWrite(stream, bmp, nTiles * 8 * ncgr->nBits);
-		free(bmp);
-	}
+	ChrWriteGraphics(ncgr, stream);
 	return 0;
 }
 
@@ -602,7 +614,7 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	*(uint16_t *) (ncgHeader + 0xE) = !!charSize + !!attrSize + !!linkSize + !!cmntSize;
 	bstreamWrite(stream, ncgHeader, sizeof(ncgHeader));
 	bstreamWrite(stream, charHeader, sizeof(charHeader));
-	ChrWriteChars(ncgr, stream);
+	ChrWriteChars(ncgr, stream); //NCG doesn't store bitmap graphics
 	if (ncgr->tilesX == ncgr->attrWidth && ncgr->tilesY == ncgr->attrHeight) {
 		bstreamWrite(stream, attrHeader, sizeof(attrHeader));
 		bstreamWrite(stream, ncgr->attr, ncgr->attrWidth * ncgr->attrHeight);
@@ -700,7 +712,6 @@ int ChrWriteCombo(NCGR *ncgr, BSTREAM *stream) {
 int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 	switch (ncgr->header.format) {
 		case NCGR_TYPE_NCGR:
-		case NCGR_TYPE_NCBR:
 			return ChrWriteNcgr(ncgr, stream);
 		case NCGR_TYPE_NC:
 			return ChrWriteNcg(ncgr, stream);
