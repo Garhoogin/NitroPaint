@@ -28,9 +28,8 @@ int ChrGuessWidth(int nTiles) {
 
 int ChrIsValidHudson(unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 0;
-	if (*buffer == 0x10) return 0;
 	if (((*buffer) & 0xF0) != 0) return 0;
-	int dataLength = *(WORD *) (buffer + 1);
+	int dataLength = *(uint16_t *) (buffer + 1);
 	if (buffer[3] != 0) return 0;
 	if (dataLength * 32 + 4 == size || dataLength * 64 + 4 == size) {
 		//no second header
@@ -239,7 +238,10 @@ int ChrReadHudson(NCGR *ncgr, unsigned char *buffer, unsigned int size) {
 			ncgr->nBits = 4;
 		}
 	} else if (type == NCGR_TYPE_HUDSON2) {
-		ncgr->nBits = 4;
+		//00: 4-bit, 01: 8-bit
+		if (buffer[0] == 0) {
+			ncgr->nBits = 4;
+		}
 	}
 
 	int tileCount = nCharacters;
@@ -672,17 +674,18 @@ int ChrWriteAcg(NCGR *ncgr, BSTREAM *stream) {
 
 int ChrWriteHudson(NCGR *ncgr, BSTREAM *stream) {
 	if (ncgr->header.format == NCGR_TYPE_HUDSON) {
-		BYTE header[] = { 0, 0, 0, 0, 1, 0, 0, 0 };
+		unsigned char header[] = { 0, 0, 0, 0, 1, 0, 0, 0 };
 		if (ncgr->nBits == 4) header[4] = 0;
-		*(WORD *) (header + 5) = ncgr->nTiles;
+		*(uint16_t *) (header + 5) = ncgr->nTiles;
 		int nCharacterBytes = 64 * ncgr->nTiles;
 		if (ncgr->nBits == 4) nCharacterBytes >>= 1;
-		*(WORD *) (header + 1) = nCharacterBytes + 4;
+		*(uint16_t *) (header + 1) = nCharacterBytes + 4;
 
 		bstreamWrite(stream, header, sizeof(header));
 	} else if(ncgr->header.format == NCGR_TYPE_HUDSON2) {
-		BYTE header[] = { 0, 0, 0, 0 };
-		*(WORD *) (header + 1) = ncgr->nTiles;
+		unsigned char header[] = { 0, 0, 0, 0 };
+		header[0] = (ncgr->nBits == 8) ? 1 : 0;
+		*(uint16_t *) (header + 1) = ncgr->nTiles;
 		bstreamWrite(stream, header, sizeof(header));
 	}
 
