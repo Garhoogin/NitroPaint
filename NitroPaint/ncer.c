@@ -117,7 +117,15 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 		const unsigned char *cellData = cebk + *(uint32_t *) (cebk + 4);
 
 		uint32_t mappingMode = *(uint32_t *) (cebk + 8);
-		ncer->mappingMode = mappingMode;
+		const int mappingModes[] = {
+			GX_OBJVRAMMODE_CHAR_1D_32K,
+			GX_OBJVRAMMODE_CHAR_1D_64K,
+			GX_OBJVRAMMODE_CHAR_1D_128K,
+			GX_OBJVRAMMODE_CHAR_1D_256K,
+			GX_OBJVRAMMODE_CHAR_2D
+		};
+		if (mappingMode < 5) ncer->mappingMode = mappingModes[mappingMode];
+		else ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 
 		int perCellDataSize = 8;
 		if (ncer->bankAttribs == 1) perCellDataSize += 8;
@@ -166,7 +174,7 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 
 		ncer->lablSize = lablSize;
 		ncer->labl = calloc(lablSize + 1, 1);
-		memcpy(ncer->labl, buffer, lablSize);
+		memcpy(ncer->labl, labl, lablSize);
 	}
 
 	//user extended
@@ -177,7 +185,7 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 
 		ncer->uextSize = uextSize;
 		ncer->uext = calloc(uextSize, 1);
-		memcpy(ncer->uext, buffer, uextSize);
+		memcpy(ncer->uext, uext, uextSize);
 	}
 
 	return 0;
@@ -473,9 +481,25 @@ int CellWrite(NCER *ncer, BSTREAM *stream) {
 		//write the KBEC header
 		unsigned char kbecHeader[] = {'K', 'B', 'E', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0x18, 0, 0, 0
 			, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-		*(uint16_t *) (kbecHeader + 8) = ncer->nCells;
-		*(uint16_t *) (kbecHeader + 10) = attr;
-		*(uint32_t *) (kbecHeader + 4) = (kbecSize + 3) & ~3;
+		*(uint16_t *) (kbecHeader + 0x8) = ncer->nCells;
+		*(uint16_t *) (kbecHeader + 0xA) = attr;
+		*(uint32_t *) (kbecHeader + 0x4) = (kbecSize + 3) & ~3;
+
+		//mapping mode
+		uint32_t mappingMode = 0;
+		switch (ncer->mappingMode) {
+			case GX_OBJVRAMMODE_CHAR_1D_32K:
+				mappingMode = 0; break;
+			case GX_OBJVRAMMODE_CHAR_1D_64K:
+				mappingMode = 1; break;
+			case GX_OBJVRAMMODE_CHAR_1D_128K:
+				mappingMode = 2; break;
+			case GX_OBJVRAMMODE_CHAR_1D_256K:
+				mappingMode = 3; break;
+			case GX_OBJVRAMMODE_CHAR_2D:
+				mappingMode = 4; break;
+		}
+		*(uint32_t *) (kbecHeader + 0x10) = mappingMode;
 
 		bstreamWrite(stream, kbecHeader, sizeof(kbecHeader));
 
@@ -506,11 +530,8 @@ int CellWrite(NCER *ncer, BSTREAM *stream) {
 		}
 
 		//align
+		bstreamAlign(stream, 4);
 		uint32_t endPos = stream->pos;
-		uint32_t zero = 0;
-		if (stream->pos & 3) {
-			bstreamWrite(stream, &zero, 4 - (stream->pos & 3));
-		}
 
 		if (hasLabl) {
 			BYTE lablHeader[] = {'L', 'B', 'A', 'L', 0, 0, 0, 0};
