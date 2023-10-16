@@ -19,6 +19,7 @@ typedef struct {
 	int contextHoverX;
 	int contextHoverY;
 	int hoverIndex;
+	int showFrequency;
 
 	POINT dragStart; //in client coordinates, scroll transformed
 	POINT dragPoint; //in client coordinates, scroll transformed

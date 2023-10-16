@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <CommCtrl.h>
+#include <math.h>
 
 #include "nitropaint.h"
 #include "editor.h"
@@ -134,18 +135,69 @@ VOID PastePalette(COLOR *dest, int nMax) {
 	if (hOp != NULL) GlobalUnlock(hOp);
 }
 
+int CountPaletteUsages(HWND hWndMain, NCLR *nclr, int *counts) {
+	//if no screen editor open, get use counts from character
+	int nScreen = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
+	if (nScreen == 0) {
+		//use character editor, if it exists.
+		HWND hWndCharacterEditor;
+		int nChar = GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndCharacterEditor, 1);
+		if (nChar == 0) return 0;
+
+		//exists. get graphics
+		NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
+		int palBase = data->selectedPalette;
+		int palSize = 1 << data->ncgr.nBits;
+		for (int i = 0; i < data->ncgr.nTiles; i++) {
+			unsigned char *tile = data->ncgr.tiles[i];
+			for (int j = 0; j < 64; j++) {
+				int index = tile[j] + palBase * palSize;
+				if (index < nclr->nColors) counts[index]++;
+			}
+		}
+		return 1;
+	} else {
+		//get character
+		HWND hWndCharacterEditor;
+		int nChar = GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndCharacterEditor, 1);
+		if (nChar == 0) return 0;
+
+		NCGRVIEWERDATA *ncgrData = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
+		int palSize = 1 << ncgrData->ncgr.nBits;
+
+		//use screen.
+		HWND *hWndScreens = (HWND *) calloc(nScreen, sizeof(HWND));
+		GetAllEditors(hWndMain, FILE_TYPE_SCREEN, hWndScreens, nScreen);
+
+		//measure every screen
+		for (int i = 0; i < nScreen; i++) {
+			NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWndScreens[i]);
+			for (unsigned int j = 0; j < data->nscr.dataSize / 2; j++) {
+				uint16_t tile = data->nscr.data[j];
+				int charIndex = tile & 0x3FF;
+				int palBase = (tile >> 12) & 0xF;
+
+				//tally up palette indices
+				if (charIndex < ncgrData->ncgr.nTiles) {
+					for (int k = 0; k < 64; k++) {
+						int index = ncgrData->ncgr.tiles[charIndex][k];
+						index += palBase * palSize;
+						if (index < nclr->nColors) counts[index]++;
+					}
+				}
+
+			}
+		}
+
+		free(hWndScreens);
+		return 1;
+	}
+}
+
 VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
 
 	COLOR *cols = data->nclr.colors;
 	int nRows = data->nclr.nColors / 16;
-
-	HPEN defaultOutline = GetStockObject(BLACK_PEN);
-	HPEN highlightRowOutline = CreatePen(PS_SOLID, 1, RGB(127, 127, 127));
-	HPEN previewOutline = CreatePen(PS_SOLID, 1, RGB(255, 0, 0));
-	HPEN highlightCellOutline = GetStockObject(WHITE_PEN);
-	HPEN ncerOutline = CreatePen(PS_SOLID, 1, RGB(0, 192, 32));
-	HPEN opSrcOutline = CreatePen(PS_SOLID, 1, RGB(255, 255, 0));
-	HPEN opDstOutline = CreatePen(PS_DOT, 1, RGB(0, 192, 128));
 
 	int previewPalette = -1;
 	HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
@@ -194,6 +246,27 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 		dstIndex = 16 * (data->dragPoint.y >> 4);
 	}
 
+	//get use counts
+	unsigned int *freqs = NULL;
+	int maxLevel = 0;
+	if (data->showFrequency) {
+		freqs = (unsigned int *) calloc(data->nclr.nColors, sizeof(unsigned int));
+
+		int hasCount = CountPaletteUsages(hWndMain, &data->nclr, freqs);
+		if (!hasCount) {
+			free(freqs);
+			freqs = NULL;
+		}
+	}
+
+	//get max level
+	if (freqs != NULL) {
+		for (int i = 0; i < data->nclr.nColors; i++) {
+			int count = freqs[i];
+			if (count > maxLevel) maxLevel = count;
+		}
+	}
+
 	SetBkColor(hDC, RGB(0, 0, 0));
 	for (int y = yMin / 16; y < nRows && y < (yMax + 15) / 16; y++) {
 		for (int x = 0; x < 16; x++) {
@@ -232,33 +305,47 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 				}
 			}
 
-			if (y * 16 + x >= palOpSrcIndex && y * 16 + x < palOpSrcIndex + palOpSrcLength) {
-				SelectObject(hDC, opSrcOutline);
-			} else if (isInPalOpDest) {
-				SelectObject(hDC, opDstOutline);
-			} else if (index == data->hoverIndex) {
-				SelectObject(hDC, highlightCellOutline);
-			} else if (previewPalette != -1 && (y >= highlightRowStart && y < highlightRowEnd)) {
-				SelectObject(hDC, previewOutline);
-			} else if(ncerPalette != -1 && (y >= (ncerPalette * nclrRowsPerPalette) && y < (ncerPalette * nclrRowsPerPalette + nRowsPerPalette))){
-				SelectObject(hDC, ncerOutline);
-			} else if(y == data->hoverY) {
-				SelectObject(hDC, highlightRowOutline);
-			} else {
-				SelectObject(hDC, defaultOutline);
+			//frequency
+			int level = 0;
+			if (freqs != NULL && maxLevel > 0) {
+				level = (int) (255.0f * pow(((float) freqs[index]) / maxLevel, 0.5f));
 			}
 
+			HPEN hOutlinePen = NULL;
+			COLORREF outlineColor = 0;
+			int outlineStyle = PS_SOLID;
+			if (y * 16 + x >= palOpSrcIndex && y * 16 + x < palOpSrcIndex + palOpSrcLength) {
+				outlineColor = RGB(255, 255, 0);
+			} else if (isInPalOpDest) {
+				outlineColor = RGB(0, 192, 128);
+				outlineStyle = PS_DOT;
+			} else if (index == data->hoverIndex) {
+				outlineColor = RGB(255, 255, 255);
+			} else if (previewPalette != -1 && (y >= highlightRowStart && y < highlightRowEnd)) {
+				if (freqs == NULL) outlineColor = RGB(255, 0, 0); //
+				else outlineColor = RGB(255, level, level);
+			} else if(ncerPalette != -1 && (y >= (ncerPalette * nclrRowsPerPalette) && y < (ncerPalette * nclrRowsPerPalette + nRowsPerPalette))){
+				outlineColor = RGB(0, 192, 32);
+			} else if(y == data->hoverY) {
+				outlineColor = RGB(127, 127, 127);
+			} else {
+				if (freqs == NULL) outlineColor = RGB(0, 0, 0);
+				else outlineColor = RGB(level, level, level);
+			}
+			hOutlinePen = CreatePen(outlineStyle, 1, outlineColor);
+
+			HPEN hOldPen = SelectObject(hDC, hOutlinePen);
 			Rectangle(hDC, x * 16, y * 16, x * 16 + 16, y * 16 + 16);
+			SelectObject(hDC, hOldPen);
 
 			DeleteObject(hbr);
+			DeleteObject(hOutlinePen);
 		}
 	}
 
-	DeleteObject(highlightRowOutline);
-	DeleteObject(previewOutline);
-	DeleteObject(ncerOutline);
-	DeleteObject(opSrcOutline);
-	DeleteObject(opDstOutline);
+	if (freqs != NULL) {
+		free(freqs);
+	}
 }
 
 void NclrViewerPalOpUpdateCallback(PAL_OP *palOp) {
@@ -777,6 +864,10 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				int index = y * 16 + x;
 				if (index < data->nclr.nColors) {
 					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 0);
+
+					//set menu state
+					CheckMenuItem(hPopup, ID_MENU_FREQUENCYHIGHLIGHT, data->showFrequency ? MF_CHECKED : MF_UNCHECKED);
+
 					POINT mouse;
 					GetCursorPos(&mouse);
 					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
@@ -993,6 +1084,14 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							SetTimer(hWndNcgrViewer, 1, 100, NULL);
 						}
 						EnumAllEditors(hWndMain, FILE_TYPE_SCREEN, ValidateColorsNscrProc, (void *) index);
+						break;
+					}
+					case ID_MENU_FREQUENCYHIGHLIGHT:
+					{
+						//toggle
+						int state = !data->showFrequency;
+						data->showFrequency = state;
+						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
 					case ID_MENU_CREATE:
