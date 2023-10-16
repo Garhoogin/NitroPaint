@@ -1,16 +1,17 @@
 #include "ncer.h"
 #include "nclr.h"
 #include "ncgr.h"
+#include "nns.h"
 
 LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Hudson", NULL };
 
-void ncerInit(NCER *ncer, int format) {
+void CellInit(NCER *ncer, int format) {
 	ncer->header.size = sizeof(NCER);
 	fileInitCommon((OBJECT_HEADER *) ncer, FILE_TYPE_CELL, format);
-	ncer->header.dispose = ncerFree;
+	ncer->header.dispose = CellFree;
 }
 
-int ncerIsValidHudson(char *buffer, unsigned int size) {
+int CellIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	unsigned int nCells = *(unsigned int *) buffer;
 	if (nCells == 0) return 0;
 
@@ -32,16 +33,27 @@ int ncerIsValidHudson(char *buffer, unsigned int size) {
 	return 1;
 }
 
-int ncerIsValid(char *buffer, int size) {
-	if (size <= 4) return 0;
-	DWORD dwMagic = *(DWORD *) buffer;
-	if (dwMagic != 0x5245434E && dwMagic != 0x4E434552) return ncerIsValidHudson(buffer, size);
+int CellIsValidNcer(const unsigned char *buffer, unsigned int size) {
+	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "RECN", 4) != 0) return 0;
+
+	//must have CEBK section
+	const unsigned char *cebk = NnsG2dGetSectionByMagic(buffer, size, 'CEBK');
+	if (cebk == NULL) cebk = NnsG2dGetSectionByMagic(buffer, size, 'KBEC');
+	if (cebk == NULL) return 0;
+
 	return 1;
 }
 
-int ncerReadHudson(NCER *ncer, char *buffer, int size) {
-	int nCells = *(int *) buffer;
-	ncerInit(ncer, NCER_TYPE_HUDSON);
+int CellIdentify(const unsigned char *buffer, unsigned int size) {
+	if (CellIsValidNcer(buffer, size)) return NCER_TYPE_NCER;
+	if (CellIsValidHudson(buffer, size)) return NCER_TYPE_HUDSON;
+	return NCER_TYPE_INVALID;
+}
+
+int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {
+	int nCells = *(uint32_t *) buffer;
+	CellInit(ncer, NCER_TYPE_HUDSON);
 	ncer->labl = NULL;
 	ncer->lablSize = 0;
 	ncer->uext = NULL;
@@ -52,21 +64,21 @@ int ncerReadHudson(NCER *ncer, char *buffer, int size) {
 	NCER_CELL *cells = (NCER_CELL *) calloc(nCells, sizeof(NCER_CELL));
 	ncer->cells = cells;
 	for (int i = 0; i < nCells; i++) {
-		DWORD ofs = ((DWORD *) (buffer + 4))[i] + 4;
-		SHORT nOAM = *(SHORT *) (buffer + ofs);
+		uint32_t ofs = ((uint32_t *) (buffer + 4))[i] + 4;
+		int nOAM = *(uint16_t *) (buffer + ofs);
 		NCER_CELL *thisCell = cells + i;
-		thisCell->nAttr = nOAM * 3;
 		thisCell->nAttribs = nOAM;
-		thisCell->attr = (WORD *) calloc(3 * nOAM, 2);
+		thisCell->attr = (uint16_t *) calloc(3 * nOAM, 2);
 		thisCell->cellAttr = 0;
 		int minX = 0x7FFF, maxX = -0x7FFF, minY = 0x7FFF, maxY = -0x7FFF;
-		WORD *attrs = (WORD *) (buffer + ofs + 2);
+		uint16_t *attrs = (uint16_t *) (buffer + ofs + 2);
 		for (int j = 0; j < nOAM; j++) {
 			memcpy(thisCell->attr + j * 3, attrs + j * 5, 6);
 			NCER_CELL_INFO info;
-			decodeAttributesEx(&info, thisCell, j);
-			SHORT x = attrs[j * 5 + 3];
-			SHORT y = attrs[j * 5 + 4];
+			CellDecodeOamAttributes(&info, thisCell, j);
+
+			int16_t x = attrs[j * 5 + 3];
+			int16_t y = attrs[j * 5 + 4];
 			if (x < minX) minX = x;
 			if (x + info.width > maxX) maxX = x + info.width;
 			if (y < minY) minY = y;
@@ -80,115 +92,112 @@ int ncerReadHudson(NCER *ncer, char *buffer, int size) {
 	return 0;
 }
 
-int ncerRead(NCER *ncer, char *buffer, int size) {
-	if (size < 16) return 1;
-	DWORD dwMagic = *(DWORD *) buffer;
-	if (dwMagic != 0x5245434E && dwMagic != 0x4E434552) return ncerReadHudson(ncer, buffer, size);
-
-	ncerInit(ncer, NCER_TYPE_NCER);
+int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
+	CellInit(ncer, NCER_TYPE_NCER);
 	ncer->nCells = 0;
 	ncer->uextSize = 0;
 	ncer->lablSize = 0;
 	ncer->uext = NULL;
 	ncer->labl = NULL;
 
-	char *end = buffer + size;
-	buffer += 0x10;
-	while (buffer + 8 < end) {
-		dwMagic = *(DWORD *) buffer;
-		DWORD dwSize = *(DWORD *) (buffer + 4) - 8;
-		buffer += 8;
+	int old = NnsG2dIsOld(buffer, size); //must adjust block lengths
+	const unsigned char *cebk = NnsG2dGetSectionByMagic(buffer, size, 'CEBK');
+	if (cebk == NULL) cebk = NnsG2dGetSectionByMagic(buffer, size, 'KBEC');
+	const unsigned char *labl = NnsG2dGetSectionByMagic(buffer, size, 'LABL');
+	if (labl == NULL) labl = NnsG2dGetSectionByMagic(buffer, size, 'LBAL');
+	const unsigned char *uext = NnsG2dGetSectionByMagic(buffer, size, 'UEXT');
+	if (uext == NULL) uext = NnsG2dGetSectionByMagic(buffer, size, 'TXEU');
 
-		switch (dwMagic) {
-			case 0x4345424B: //CEBK
-			{
-				ncer->nCells = *(WORD *) buffer;
-				ncer->cells = (NCER_CELL *) calloc(ncer->nCells, sizeof(NCER_CELL));
-				ncer->bankAttribs = *(WORD *) (buffer + 2); //1 - with bounding rectangle, 0 - without
-				char *cellData = buffer + *(DWORD *) (buffer + 4);
-				
-				DWORD mappingMode = *(DWORD *) (buffer + 8);
+	//bank
+	if (cebk != NULL) {
+		cebk += 8; //advance block header
+		ncer->nCells = *(uint16_t *) cebk;
+		ncer->cells = (NCER_CELL *) calloc(ncer->nCells, sizeof(NCER_CELL));
+		ncer->bankAttribs = *(uint16_t *) (cebk + 2); //1 - with bounding rectangle, 0 - without
+		const unsigned char *cellData = cebk + *(uint32_t *) (cebk + 4);
 
-				int perCellDataSize = 8;
-				if (ncer->bankAttribs == 1) perCellDataSize += 8;
-				char *oamData = cellData + (ncer->nCells * perCellDataSize);
+		uint32_t mappingMode = *(uint32_t *) (cebk + 8);
+		ncer->mappingMode = mappingMode;
 
-				for (int i = 0; i < ncer->nCells; i++) {
-					WORD nOAMEntries = *(WORD *) cellData;
-					WORD cellAttr = *(WORD *) (cellData + 2);
-					DWORD pOamAttrs = *(DWORD *) (cellData + 4);
+		int perCellDataSize = 8;
+		if (ncer->bankAttribs == 1) perCellDataSize += 8;
+		const unsigned char *oamData = cellData + (ncer->nCells * perCellDataSize);
 
-					NCER_CELL *cell = ncer->cells + i;
-					cell->nAttribs = nOAMEntries;
-					cell->cellAttr = cellAttr;
+		for (int i = 0; i < ncer->nCells; i++) {
+			int nOAMEntries = *(uint16_t *) (cellData + 0);
+			int cellAttr = *(uint16_t *) (cellData + 2);
+			uint32_t pOamAttrs = *(uint32_t *) (cellData + 4);
 
-					WORD *cellOam = (WORD *) (oamData + pOamAttrs);
-					//cell->attr0 = cellOam[0];
-					//cell->attr1 = cellOam[1];
-					//cell->attr2 = cellOam[2];
-					cell->nAttr = nOAMEntries * 3;
-					cell->attr = calloc(cell->nAttr, 2);
-					memcpy(cell->attr, oamData + pOamAttrs, cell->nAttr * 2);
-					//printf("n: %d (%X), size: %d (%X)\n", nOAMEntries, nOAMEntries, cell->nAttr * 2, cell->nAttr * 2);
+			NCER_CELL *cell = ncer->cells + i;
+			cell->nAttribs = nOAMEntries;
+			cell->cellAttr = cellAttr;
 
-					//cell->attr0 = cell->attr[0];
-					//cell->attr1 = cell->attr[1];
-					//cell->attr2 = cell->attr[2];
+			uint16_t *cellOam = (uint16_t *) (oamData + pOamAttrs);
+			cell->attr = calloc(cell->nAttribs * 3, 2);
+			memcpy(cell->attr, oamData + pOamAttrs, cell->nAttribs * 3 * 2);
 
-					if (perCellDataSize >= 16) {
-						cell->maxX = *(SHORT *) (cellData + 8);
-						cell->maxY = *(SHORT *) (cellData + 10);
-						cell->minX = *(SHORT *) (cellData + 12);
-						cell->minY = *(SHORT *) (cellData + 14);
-					}
-
-					cellData += perCellDataSize;
-				}
-
-				//VRAM transfer
-				uint32_t vramTransferOffset = *(uint32_t *) (buffer + 0xC);
-				if (vramTransferOffset) {
-					unsigned char *vramTransferData = (buffer + vramTransferOffset);
-					uint32_t maxTransfer = *(uint32_t *) (vramTransferData);
-					uint32_t transferDataOffset = vramTransferOffset + *(uint32_t *) (vramTransferData + 4);
-
-					ncer->vramTransfer = (NCER_VRAM_TRANSFER_ENTRY *) calloc(ncer->nCells, sizeof(NCER_VRAM_TRANSFER_ENTRY));
-					memcpy(ncer->vramTransfer, buffer + transferDataOffset, ncer->nCells * sizeof(NCER_VRAM_TRANSFER_ENTRY));
-				}
-
-				break;
+			if (perCellDataSize >= 16) {
+				cell->maxX = *(int16_t *) (cellData + 0x8);
+				cell->maxY = *(int16_t *) (cellData + 0xA);
+				cell->minX = *(int16_t *) (cellData + 0xC);
+				cell->minY = *(int16_t *) (cellData + 0xE);
 			}
-			case 0x4C41424C: //LABL
-			{
-				ncer->lablSize = dwSize;
-				ncer->labl = calloc(dwSize, 1);
-				memcpy(ncer->labl, buffer, dwSize);
-				break;
-			}
-			case 0x55455854: //UEXT
-			{
 
-				ncer->uextSize = dwSize;
-				ncer->uext = calloc(dwSize, 1);
-				memcpy(ncer->uext, buffer, dwSize);
-				break;
-			}
+			cellData += perCellDataSize;
 		}
 
-		buffer += dwSize;
+		//VRAM transfer
+		uint32_t vramTransferOffset = *(uint32_t *) (cebk + 0xC);
+		if (vramTransferOffset) {
+			const unsigned char *vramTransferData = (cebk + vramTransferOffset);
+			uint32_t maxTransfer = *(uint32_t *) (vramTransferData);
+			uint32_t transferDataOffset = vramTransferOffset + *(uint32_t *) (vramTransferData + 4);
+
+			ncer->vramTransfer = (NCER_VRAM_TRANSFER_ENTRY *) calloc(ncer->nCells, sizeof(NCER_VRAM_TRANSFER_ENTRY));
+			memcpy(ncer->vramTransfer, cebk + transferDataOffset, ncer->nCells * sizeof(NCER_VRAM_TRANSFER_ENTRY));
+		}
+	}
+
+	//NC label
+	if (labl != NULL) {
+		uint32_t lablSize = *(uint32_t *) (labl + 4);
+		if (!old) lablSize -= 8;
+		labl += 8; //advance block header
+
+		ncer->lablSize = lablSize;
+		ncer->labl = calloc(lablSize + 1, 1);
+		memcpy(ncer->labl, buffer, lablSize);
+	}
+
+	//user extended
+	if (uext != NULL) {
+		uint32_t uextSize = *(uint32_t *) (uext + 4);
+		if (!old) uextSize -= 8;
+		uext += 8; //advance block header
+
+		ncer->uextSize = uextSize;
+		ncer->uext = calloc(uextSize, 1);
+		memcpy(ncer->uext, buffer, uextSize);
 	}
 
 	return 0;
 }
-int ncerReadFile(NCER *ncer, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) ncer, (OBJECT_READER) ncerRead);
+
+int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size) {
+	int type = CellIdentify(buffer, size);
+	switch (type) {
+		case NCER_TYPE_NCER:
+			return CellReadNcer(ncer, buffer, size);
+		case NCER_TYPE_HUDSON:
+			return CellReadHudson(ncer, buffer, size);
+	}
+	return 1;
+}
+int CellReadFile(NCER *ncer, LPCWSTR path) {
+	return fileRead(path, (OBJECT_HEADER *) ncer, (OBJECT_READER) CellRead);
 }
 
-int decodeAttributes(NCER_CELL_INFO *info, NCER_CELL *cell) {
-	return decodeAttributesEx(info, cell, 0);
-}
-
-void getObjSize(int shape, int size, int *width, int *height) {
+void CellGetObjDimensions(int shape, int size, int *width, int *height) {
 	int widths[3][4] = { {8, 16, 32, 64}, {16, 32, 32, 64}, {8, 8, 16, 32} };
 	int heights[3][4] = { {8, 16, 32, 64}, {8, 8, 16, 32}, {16, 32, 32, 64} };
 
@@ -196,7 +205,7 @@ void getObjSize(int shape, int size, int *width, int *height) {
 	*height = heights[shape][size];
 }
 
-int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
+int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	WORD attr0 = cell->attr[oam * 3];
 	WORD attr1 = cell->attr[oam * 3 + 1];
 	WORD attr2 = cell->attr[oam * 3 + 2];
@@ -206,7 +215,7 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	int shape = attr0 >> 14;
 	int size = attr1 >> 14;
 
-	getObjSize(shape, size, &info->width, &info->height);
+	CellGetObjDimensions(shape, size, &info->width, &info->height);
 	info->size = size;
 	info->shape = shape;
 
@@ -243,7 +252,7 @@ int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	return 0;
 }
 
-void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, DWORD *out, int *width, int *height, int checker) {
+void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, COLOR32 *out, int *width, int *height, int checker) {
 	*width = info->width;
 	*height = info->height;
 
@@ -300,26 +309,14 @@ void ncerCellToBitmap2(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_T
 	}
 }
 
-DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int *width, int *height, int checker) {
-	*width = info->width;
-	*height = info->height;
-	DWORD *bits = calloc(*width * *height, 4);
-	ncerCellToBitmap2(info, ncgr, nclr, NULL, bits, width, height, checker);
-	return bits;
-}
-
-DWORD *ncerRenderWholeCell2(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline) {
-	return ncerRenderWholeCell3(px, cell, ncgr, nclr, NULL, xOffs, yOffs, checker, outline, 1.0f, 0.0f, 0.0f, 1.0f);
-}
-
-DWORD *ncerRenderWholeCell3(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d) {
+COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d) {
 	DWORD *block = (DWORD *) calloc(64 * 64, 4);
 	for (int i = cell->nAttribs - 1; i >= 0; i--) {
 		NCER_CELL_INFO info;
 		int entryWidth, entryHeight;
-		decodeAttributesEx(&info, cell, i);
+		CellDecodeOamAttributes(&info, cell, i);
 
-		ncerCellToBitmap2(&info, ncgr, nclr, vramTransfer, block, &entryWidth, &entryHeight, 0);
+		CellRenderObj(&info, ncgr, nclr, vramTransfer, block, &entryWidth, &entryHeight, 0);
 
 		//HV flip? Only if not affine!
 		if (!info.rotateScale) {
@@ -434,15 +431,7 @@ DWORD *ncerRenderWholeCell3(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, 
 	return px;
 }
 
-DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int *width, int *height, int checker, int outline) {
-	*width = 512, *height = 256;
-	DWORD *px = (DWORD *) calloc(*width * *height, 4);
-
-	ncerRenderWholeCell2(px, cell, ncgr, nclr, xOffs, yOffs, checker, outline);
-	return px;
-}
-
-int ncerFree(OBJECT_HEADER *header) {
+int CellFree(OBJECT_HEADER *header) {
 	NCER *ncer = (NCER *) header;
 	if (ncer->uext) free(ncer->uext);
 	if (ncer->labl) free(ncer->labl);
@@ -455,7 +444,7 @@ int ncerFree(OBJECT_HEADER *header) {
 	return 0;
 }
 
-int ncerWrite(NCER *ncer, BSTREAM *stream) {
+int CellWrite(NCER *ncer, BSTREAM *stream) {
 	int status = 0;
 
 	if (ncer->header.format == NCER_TYPE_NCER) {
@@ -471,22 +460,22 @@ int ncerWrite(NCER *ncer, BSTREAM *stream) {
 		int kbecSize = 32 + ncer->nCells * cellSize;
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
-			kbecSize += 2 * cell->nAttr;
+			kbecSize += 2 * cell->nAttribs * 3;
 		}
 
 		int fileSize = 16 + kbecSize;
 		if (hasLabl) fileSize += ncer->lablSize + 8;
 		if (hasUext) fileSize += ncer->uextSize + 8;
 
-		BYTE ncerHeader[] = { 'R', 'E', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, nSections, 0 };
-		*(DWORD *) (ncerHeader + 8) = fileSize;
+		unsigned char ncerHeader[] = { 'R', 'E', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, nSections, 0 };
+		*(uint32_t *) (ncerHeader + 8) = fileSize;
 		bstreamWrite(stream, ncerHeader, sizeof(ncerHeader));
 		//write the KBEC header
-		BYTE kbecHeader[] = {'K', 'B', 'E', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0x18, 0, 0, 0
+		unsigned char kbecHeader[] = {'K', 'B', 'E', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0x18, 0, 0, 0
 			, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-		*(WORD *) (kbecHeader + 8) = ncer->nCells;
-		*(WORD *) (kbecHeader + 10) = attr;
-		*(DWORD *) (kbecHeader + 4) = (kbecSize + 3) & ~3;
+		*(uint16_t *) (kbecHeader + 8) = ncer->nCells;
+		*(uint16_t *) (kbecHeader + 10) = attr;
+		*(uint32_t *) (kbecHeader + 4) = (kbecSize + 3) & ~3;
 
 		bstreamWrite(stream, kbecHeader, sizeof(kbecHeader));
 
@@ -494,25 +483,26 @@ int ncerWrite(NCER *ncer, BSTREAM *stream) {
 		int oamOffset = 0;
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
-			BYTE data[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-			*(WORD *) data = cell->nAttr / 3;
-			*(WORD *) (data + 2) = cell->cellAttr;
-			*(DWORD *) (data + 4) = oamOffset;
+			unsigned char data[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+			*(uint16_t *) data = cell->nAttribs;
+			*(uint16_t *) (data + 2) = cell->cellAttr;
+			*(uint32_t *) (data + 4) = oamOffset;
 			if (cellSize > 8) {
-				*(SHORT *) (data + 8) = cell->maxX;
-				*(SHORT *) (data + 10) = cell->maxY;
-				*(SHORT *) (data + 12) = cell->minX;
-				*(SHORT *) (data + 14) = cell->minY;
+				*(int16_t *) (data + 8) = cell->maxX;
+				*(int16_t *) (data + 10) = cell->maxY;
+				*(int16_t *) (data + 12) = cell->minX;
+				*(int16_t *) (data + 14) = cell->minY;
 			}
 
 			bstreamWrite(stream, data, cellSize);
-			oamOffset += cell->nAttr * 2;
+			oamOffset += cell->nAttribs * 3 * 2;
 		}
 
 		//write each cell's OAM
 		for (int i = 0; i < ncer->nCells; i++) {
 			NCER_CELL *cell = ncer->cells + i;
-			bstreamWrite(stream, cell->attr, cell->nAttr * 2);
+			bstreamWrite(stream, cell->attr, cell->nAttribs * 3 * 2);
 		}
 
 		//align
@@ -553,7 +543,7 @@ int ncerWrite(NCER *ncer, BSTREAM *stream) {
 			bstreamWrite(stream, &cell->nAttribs, 2);
 			for (int j = 0; j < cell->nAttribs; j++) {
 				NCER_CELL_INFO info;
-				decodeAttributesEx(&info, cell, j);
+				CellDecodeOamAttributes(&info, cell, j);
 				SHORT pos[2];
 				pos[0] = info.x;
 				pos[1] = info.y;
@@ -572,6 +562,6 @@ int ncerWrite(NCER *ncer, BSTREAM *stream) {
 	return status;
 }
 
-int ncerWriteFile(NCER *ncer, LPWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) ncer, (OBJECT_WRITER) ncerWrite);
+int CellWriteFile(NCER *ncer, LPWSTR name) {
+	return fileWrite(name, (OBJECT_HEADER *) ncer, (OBJECT_WRITER) CellWrite);
 }

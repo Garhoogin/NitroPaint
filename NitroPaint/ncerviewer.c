@@ -34,13 +34,13 @@ VOID PaintNcerViewer(HWND hWnd) {
 	
 	NCER_CELL *cell = data->ncer.cells + data->cell;
 	NCER_CELL_INFO info;
-	decodeAttributesEx(&info, cell, data->oam);
+	CellDecodeOamAttributes(&info, cell, data->oam);
 
 	memset(data->frameBuffer, 0, sizeof(data->frameBuffer));
 	NCER_VRAM_TRANSFER_ENTRY *transferEntry = NULL;
 	if (data->ncer.vramTransfer != NULL)
 		transferEntry = data->ncer.vramTransfer + data->cell;
-	DWORD *bits = ncerRenderWholeCell3(data->frameBuffer, data->ncer.cells + data->cell, ncgr, nclr, transferEntry, 
+	DWORD *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, ncgr, nclr, transferEntry, 
 		256, 128, 1, data->oam, 1.0f, 0.0f, 0.0f, 1.0f);
 
 	//draw lines if needed
@@ -66,7 +66,8 @@ VOID PaintNcerViewer(HWND hWnd) {
 	DeleteObject(hbm);
 
 	int width, height;
-	bits = ncerCellToBitmap(&info, ncgr, nclr, &width, &height, 1);
+	bits = (COLOR32 *) calloc(info.width * info.height, sizeof(COLOR32));
+	CellRenderObj(&info, ncgr, nclr, NULL, bits, &width, &height, 1);
 	hbm = CreateBitmap(width, height, 1, 32, bits);
 	SelectObject(hCompatibleDC, hbm);
 	BitBlt(hWindowDC, 512 - 69, 256 + 5, width, height, hCompatibleDC, 0, 0, SRCCOPY);
@@ -83,7 +84,7 @@ void UpdateEnabledControls(HWND hWnd) {
 
 	NCER_CELL *cell = data->ncer.cells + data->cell;
 	NCER_CELL_INFO info;
-	decodeAttributesEx(&info, cell, data->oam);
+	CellDecodeOamAttributes(&info, cell, data->oam);
 
 	//if rotate/scale, disable HV Flip and Disable, enable matrix.
 	if (info.rotateScale) {
@@ -107,7 +108,7 @@ void UpdateControls(HWND hWnd) {
 
 	NCER_CELL *cell = data->ncer.cells + data->cell;
 	NCER_CELL_INFO info;
-	decodeAttributesEx(&info, cell, data->oam);
+	CellDecodeOamAttributes(&info, cell, data->oam);
 
 	WCHAR buffer[16];
 	int len;
@@ -164,7 +165,7 @@ int getOamFromPoint(NCER_CELL *cell, int x, int y) {
 	int oam = -1;
 	for (int i = 0; i < cell->nAttribs; i++) {
 		NCER_CELL_INFO info;
-		decodeAttributesEx(&info, cell, i);
+		CellDecodeOamAttributes(&info, cell, i);
 
 		//take into account double size!
 		int width = info.width << info.doubleSize;
@@ -197,8 +198,8 @@ void ncerCreateCopy(NCER *dest, NCER *src) {
 	for (int i = 0; i < dest->nCells; i++) {
 		NCER_CELL *cell = dest->cells + i;
 		WORD *attr = cell->attr;
-		cell->attr = (WORD *) malloc(cell->nAttr * 2);
-		memcpy(cell->attr, attr, cell->nAttr * 2);
+		cell->attr = (WORD *) malloc(cell->nAttribs * 3 * 2);
+		memcpy(cell->attr, attr, cell->nAttribs * 3 * 2);
 	}
 }
 
@@ -231,8 +232,8 @@ void ncerEditorUndoRedo(NCERVIEWERDATA *data) {
 	for (int i = 0; i < ncer->nCells; i++) {
 		NCER_CELL *cell = ncer->cells + i;
 		WORD *oldAttr = cell->attr;
-		cell->attr = malloc(cell->nAttr * 2);
-		memcpy(cell->attr, oldAttr, cell->nAttr * 2);
+		cell->attr = malloc(cell->nAttribs * 3 * 2);
+		memcpy(cell->attr, oldAttr, cell->nAttribs * 3 * 2);
 	}
 
 	//if the selected OAM or cell is out of bounds, bring it back in-bounds.
@@ -375,7 +376,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SendMessage(data->hWndPaletteDropdown, CB_SETCURSEL, 0, 0);
 			
 			NCER_CELL_INFO cinfo;
-			decodeAttributes(&cinfo, data->ncer.cells);
+			CellDecodeOamAttributes(&cinfo, data->ncer.cells, 0);
 			
 			WCHAR size[13];
 			int sizes[] = { 0, 0, 1, 0, 1, 2, 1, 2, 2, 3, 3, 3 };
@@ -385,7 +386,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				int shape = shapes[i];
 				int objSize = sizes[i];
 				int objWidth, objHeight;
-				getObjSize(shape, objSize, &objWidth, &objHeight);
+				CellGetObjDimensions(shape, objSize, &objWidth, &objHeight);
 				wsprintfW(size, L"%dx%d", objWidth, objHeight);
 				SendMessage(data->hWndSizeDropdown, CB_ADDSTRING, 0, (LPARAM) size);
 			}
@@ -420,7 +421,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			UpdateControls(hWnd);
 
 			undoInitialize(&data->undo, sizeof(NCER));
-			data->undo.freeFunction = (void (*) (void *)) ncerFree;
+			data->undo.freeFunction = (void (*) (void *)) CellFree;
 			NCER copy;
 			ncerCreateCopy(&copy, &data->ncer);
 			undoAdd(&data->undo, &copy);
@@ -440,7 +441,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				int oam = getOamFromPoint(cell, x, y);
 				if (oam != -1) {
 					NCER_CELL_INFO info;
-					decodeAttributesEx(&info, cell, oam);
+					CellDecodeOamAttributes(&info, cell, oam);
 					data->oam = oam;
 					data->dragStartX = pos.x;
 					data->dragStartY = pos.y;
@@ -480,7 +481,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				attribs[1] = (attribs[1] & 0xFE00) | x;
 
 				NCER *currentSlot = undoGetStackPosition(&data->undo);
-				memcpy(currentSlot->cells[data->cell].attr, data->ncer.cells[data->cell].attr, currentSlot->cells[data->cell].nAttr * 2);
+				memcpy(currentSlot->cells[data->cell].attr, data->ncer.cells[data->cell].attr, currentSlot->cells[data->cell].nAttribs * 3 * 2);
 
 				UpdateControls(hWnd);
 				InvalidateRect(hWnd, NULL, FALSE);
@@ -517,7 +518,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						undoAdd(&data->undo, &copy);
 					} else {
 						NCER *currentSlot = undoGetStackPosition(&data->undo);
-						memcpy(currentSlot->cells[data->cell].attr, data->ncer.cells[data->cell].attr, currentSlot->cells[data->cell].nAttr * 2);
+						memcpy(currentSlot->cells[data->cell].attr, data->ncer.cells[data->cell].attr, currentSlot->cells[data->cell].nAttribs * 3 * 2);
 					}
 				}
 				UpdateControls(hWnd);
@@ -547,7 +548,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					data->oam = 0;
 					NCER_CELL_INFO cinfo;
 					NCER_CELL *cell = data->ncer.cells + sel;
-					decodeAttributesEx(&cinfo, cell, data->oam);
+					CellDecodeOamAttributes(&cinfo, cell, data->oam);
 					
 					UpdateOamDropdown(hWnd);
 
@@ -648,7 +649,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int translateX = -256 + (cell->maxX + cell->minX) / 2, translateY = -128 + (cell->maxY + cell->minY) / 2;
 					for (int i = 0; i < cell->nAttribs; i++) {
 						NCER_CELL_INFO info;
-						decodeAttributesEx(&info, cell, i);
+						CellDecodeOamAttributes(&info, cell, i);
 						if (info.disable) continue;
 						
 						BYTE **characterBase = ncgr->tiles + NCGR_BOUNDARY(ncgr, info.characterName);
@@ -778,7 +779,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					//don't remove an entry if it's the only entry!
 					if (cell->nAttribs > 1) {
 						memmove(cell->attr + (data->oam * 3), cell->attr + ((data->oam + 1) * 3), (cell->nAttribs - data->oam - 1) * 6);
-						cell->nAttr -= 3;
 						cell->nAttribs--;
 						if (data->oam) data->oam--;
 						SendMessage(data->hWndOamDropdown, CB_SETCURSEL, data->oam, 0);
@@ -795,7 +795,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					attributes = realloc(attributes, (cell->nAttribs + 1) * 6);
 					memset(attributes + (3 * cell->nAttribs), 0, 6);
 					cell->attr = attributes;
-					cell->nAttr += 3;
 					cell->nAttribs++;
 					data->oam = cell->nAttribs - 1;
 					wsprintfW(name, L"OAM %d", cell->nAttribs - 1);
@@ -832,7 +831,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					ncer->cells = realloc(ncer->cells, ncer->nCells * sizeof(NCER_CELL));
 					NCER_CELL *cell = ncer->cells + ncer->nCells - 1;
 					memset(cell, 0, sizeof(NCER_CELL));
-					cell->nAttr = 3;
 					cell->nAttribs = 1;
 					cell->attr = (WORD *) calloc(1, 6);
 					data->cell = ncer->nCells - 1;
@@ -928,9 +926,9 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					dup->cellAttr = cell->cellAttr;
 					dup->minX = cell->minX, dup->maxX = cell->maxX;
 					dup->minY = cell->minY, dup->maxY = cell->maxY;
-					dup->nAttr = cell->nAttr, dup->nAttribs = cell->nAttribs;
-					dup->attr = (uint16_t *) calloc(cell->nAttr, sizeof(uint16_t));
-					memcpy(dup->attr, cell->attr, cell->nAttr * sizeof(uint16_t));
+					dup->nAttribs = cell->nAttribs;
+					dup->attr = (uint16_t *) calloc(cell->nAttribs, 3 * sizeof(uint16_t));
+					memcpy(dup->attr, cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
 
 					data->cell = data->ncer.nCells - 1;
 					data->oam = 0;
@@ -970,7 +968,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								free(path);
 							} else break;
 						}
-						ncerWriteFile(&data->ncer, data->szOpenFile);
+						CellWriteFile(&data->ncer, data->szOpenFile);
 						break;
 					}
 					case ID_EDIT_UNDO:
@@ -987,7 +985,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					{
 						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 						if (!location) break;
-						int width, height;
 
 						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
@@ -999,7 +996,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						NCER *ncer = &data->ncer;
 						NCER_CELL *cell = ncer->cells + data->cell;
 						NCER_CELL_INFO info;
-						decodeAttributesEx(&info, cell, data->oam);
+						CellDecodeOamAttributes(&info, cell, data->oam);
 
 						if (hWndNclrViewer) {
 							NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
@@ -1010,14 +1007,12 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							ncgr = &ncgrViewerData->ncgr;
 						}
 
+						COLOR32 *bits = (COLOR32 *) calloc(256 * 512, sizeof(COLOR32));
 						int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-						COLOR32 *bits = ncerRenderWholeCell(cell, ncgr, nclr, translateX, translateY, &width, &height, 0, -1);
-						for (int i = 0; i < width * height; i++) {
-							COLOR32 c = bits[i];
-							bits[i] = REVERSE(c);
-						}
+						CellRenderCell(bits, cell, ncgr, nclr, NULL, translateX, translateY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
+						ImgSwapRedBlue(bits, 512, 256);
+						ImgWrite(bits, 512, 256, location);
 
-						ImgWrite(bits, width, height, location);
 						free(bits);
 						free(location);
 						break;
@@ -1230,8 +1225,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int currentCellIndex = ncerViewerData->cell;
 				NCER_CELL *cell = ncer->cells + currentCellIndex;
 				cell->nAttribs = nObj;
-				cell->nAttr = cell->nAttribs * 3;
-				cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttr * sizeof(uint16_t));
+				cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
 				ncerViewerData->oam = 0;
 
 				//OBJ VRAM granularity
@@ -1415,7 +1409,7 @@ VOID RegisterNcerViewerClass(VOID) {
 
 HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	NCER ncer;
-	if (ncerReadFile(&ncer, path)) {
+	if (CellReadFile(&ncer, path)) {
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}

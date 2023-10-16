@@ -332,7 +332,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 				else if (PalIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (ScrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ChrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-				else if (ncerIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
+				else if (CellIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
 
 				//test for bin format files
 				else {

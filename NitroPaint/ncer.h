@@ -18,8 +18,7 @@ typedef struct NCER_CELL_ {
 	int minX;
 	int minY;
 	
-	int nAttr;
-	WORD *attr;
+	uint16_t *attr;
 } NCER_CELL;
 
 typedef struct NCER_CELL_INFO_ {
@@ -59,6 +58,7 @@ typedef struct NCER_ {
 	OBJECT_HEADER header;
 	int nCells;
 	int bankAttribs;
+	int mappingMode;
 	NCER_CELL *cells;
 
 	NCER_VRAM_TRANSFER_ENTRY *vramTransfer;
@@ -70,32 +70,28 @@ typedef struct NCER_ {
 	char *labl;
 } NCER;
 
-void ncerInit(NCER *ncer, int format);
+void CellInit(NCER *ncer, int format);
 
-int ncerIsValid(char *buffer, int size);
+int CellIdentify(const unsigned char *buffer, unsigned int size);
 
-int ncerIsValidHudson(char *buffer, unsigned int size);
+int CellIsValidHudson(const unsigned char *buffer, unsigned int size);
 
-int ncerRead(NCER *ncer, char *buffer, int size);
+int CellIsValidNcer(const unsigned char *buffer, unsigned int size);
 
-int ncerReadFile(NCER *ncer, LPCWSTR path);
+int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size);
 
-void getObjSize(int shape, int size, int *width, int *height);
+int CellReadFile(NCER *ncer, LPCWSTR path);
 
-int decodeAttributes(NCER_CELL_INFO *info, NCER_CELL *cell);
+void CellGetObjDimensions(int shape, int size, int *width, int *height);
 
-int decodeAttributesEx(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
+int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
 
-int ncerFree(OBJECT_HEADER *header);
+int CellFree(OBJECT_HEADER *header);
 
-DWORD *ncerCellToBitmap(NCER_CELL_INFO *info, NCGR * ncgr, NCLR * nclr, int * width, int * height, int checker);
+void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, COLOR32 *out, int *width, int *height, int checker);
 
-DWORD *ncerRenderWholeCell(NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int *width, int *height, int checker, int outline);
+COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d);
 
-DWORD *ncerRenderWholeCell2(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, int xOffs, int yOffs, int checker, int outline);
+int CellWrite(NCER *ncer, BSTREAM *stream);
 
-DWORD *ncerRenderWholeCell3(DWORD *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d);
-
-int ncerWrite(NCER *ncer, BSTREAM *stream);
-
-int ncerWriteFile(NCER *ncer, LPWSTR name);
+int CellWriteFile(NCER *ncer, LPWSTR name);

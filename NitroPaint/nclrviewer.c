@@ -161,7 +161,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 		NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(nitroPaintStruct->hWndNcerViewer);
 		NCER_CELL *cell = ncerViewerData->ncer.cells + ncerViewerData->cell;
 		NCER_CELL_INFO info;
-		decodeAttributesEx(&info, cell, ncerViewerData->oam);
+		CellDecodeOamAttributes(&info, cell, ncerViewerData->oam);
 		ncerPalette = info.palette;
 	}
 	
