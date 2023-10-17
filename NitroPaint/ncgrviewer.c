@@ -578,7 +578,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_DESTROY:
 		{
-			fileFree((OBJECT_HEADER *) &data->ncgr);
+			ObjFree((OBJECT_HEADER *) &data->ncgr);
 			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 			nitroPaintStruct->hWndNcgrViewer = NULL;

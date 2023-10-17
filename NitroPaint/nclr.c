@@ -28,7 +28,7 @@ void PalFree(OBJECT_HEADER *header) {
 
 void PalInit(NCLR *nclr, int format) {
 	nclr->header.size = sizeof(NCLR);
-	fileInitCommon((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
+	ObjInit((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
 	nclr->header.dispose = PalFree;
 	nclr->combo2d = NULL;
 }
@@ -276,7 +276,7 @@ int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 }
 
 int PalReadFile(NCLR *nclr, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) PalRead);
+	return ObjReadFile(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) PalRead);
 }
 
 int PalWriteNclr(NCLR *nclr, BSTREAM *stream) {
@@ -397,5 +397,5 @@ int PalWrite(NCLR *nclr, BSTREAM *stream) {
 }
 
 int PalWriteFile(NCLR *nclr, LPCWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) nclr, (OBJECT_WRITER) PalWrite);
+	return ObjWriteFile(name, (OBJECT_HEADER *) nclr, (OBJECT_WRITER) PalWrite);
 }

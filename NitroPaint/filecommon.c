@@ -9,7 +9,7 @@
 #include "gdip.h"
 #include "nns.h"
 
-LPCWSTR compressionNames[] = {
+LPCWSTR g_ObjCompressionNames[] = {
 	L"None", 
 	L"LZ77", 
 	L"LZ11", 
@@ -54,26 +54,26 @@ static LPCWSTR sCommonScreenEndings[] = {
 	NULL
 };
 
-int pathEndsWith(LPCWSTR str, LPCWSTR substr) {
+static int ObjiPathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;
 	LPCWSTR str1 = str + wcslen(str) - wcslen(substr);
 	return !_wcsicmp(str1, substr);
 }
 
-int pathStartsWith(LPCWSTR str, LPCWSTR substr) {
+static int ObjiPathStartsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 1;
 	return !_wcsnicmp(str, substr, wcslen(substr));
 }
 
-int pathEndsWithOneOf(LPCWSTR str, LPCWSTR *endings) {
+static int ObjiPathEndsWithOneOf(LPCWSTR str, LPCWSTR *endings) {
 	while (*endings) {
-		if (pathEndsWith(str, *endings)) return 1;
+		if (ObjiPathEndsWith(str, *endings)) return 1;
 		endings++;
 	}
 	return 0;
 }
 
-LPCWSTR *getFormatNamesFromType(int type) {
+LPCWSTR *ObjGetFormatNamesByType(int type) {
 	switch (type) {
 		case FILE_TYPE_PALETTE:
 			return paletteFormatNames;
@@ -90,7 +90,7 @@ LPCWSTR *getFormatNamesFromType(int type) {
 	}
 }
 
-void fileInitCommon(OBJECT_HEADER *header, int type, int format) {
+void ObjInit(OBJECT_HEADER *header, int type, int format) {
 	int size = header->size; //restore this
 	memset(header, 0, size);
 	header->type = type;
@@ -99,7 +99,7 @@ void fileInitCommon(OBJECT_HEADER *header, int type, int format) {
 	header->size = size;
 }
 
-int screenCharComparator(const void *v1, const void *v2) {
+int ObjiScreenCharComparator(const void *v1, const void *v2) {
 	uint16_t u1 = *(const uint16_t *) v1;
 	uint16_t u2 = *(const uint16_t *) v2;
 	return ((int) u1) - ((int) u2);
@@ -108,7 +108,7 @@ int screenCharComparator(const void *v1, const void *v2) {
 //
 // Attempt to guess if a file is a palette, character graphics, or screen.
 //
-int fileGuessPltChrScr(unsigned char *ptr, int size) {
+static int ObjiGuessPltChrScr(const unsigned char *ptr, unsigned int size) {
 	int canBePalette = 1, canBeChar = 1, canBeScreen = 1;
 	int n16 = size / 2;
 
@@ -185,7 +185,7 @@ int fileGuessPltChrScr(unsigned char *ptr, int size) {
 
 		uint16_t *sorted = (uint16_t *) calloc(size, 1);
 		memcpy(sorted, ptr, size);
-		qsort(sorted, size / 2, 2, screenCharComparator);
+		qsort(sorted, size / 2, 2, ObjiScreenCharComparator);
 		int minChar = sorted[0] & 0x3FF;
 		int maxChar = sorted[n16 - 1] & 0x3FF;
 		int charRange = maxChar - minChar + 1;
@@ -253,7 +253,7 @@ int fileGuessPltChrScr(unsigned char *ptr, int size) {
 	return FILE_TYPE_CHAR;
 }
 
-int fileIdentify(char *file, int size, LPCWSTR path) {
+int ObjIdentify(char *file, int size, LPCWSTR path) {
 	char *buffer = file;
 	int bufferSize = size;
 	if (CxGetCompressionType(file, size) != COMPRESSION_NONE) {
@@ -336,13 +336,13 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 
 				//test for bin format files
 				else {
-					if (PalIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
-					else if (PalIsValidNtfp(buffer, bufferSize) && pathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
-					else if (ScrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
-					else if (ChrIsValidBin(buffer, bufferSize) && pathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
+					if (PalIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
+					else if (PalIsValidNtfp(buffer, bufferSize) && ObjiPathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
+					else if (ScrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
+					else if (ChrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
 					else {
 						//double check, without respect to the file name.
-						type = fileGuessPltChrScr(buffer, bufferSize);
+						type = ObjiGuessPltChrScr(buffer, bufferSize);
 
 						//last ditch effort
 						if (type == FILE_TYPE_INVALID) {
@@ -363,7 +363,7 @@ int fileIdentify(char *file, int size, LPCWSTR path) {
 	return type;
 }
 
-unsigned short computeCrc16(unsigned char *data, int length, unsigned short init) {
+unsigned short ObjComputeCrc16(unsigned char *data, int length, unsigned short init) {
 	unsigned short r = init;
 	unsigned short tbl[] = { 
 		0x0000, 0xCC01, 0xD801, 0x1400, 
@@ -380,7 +380,7 @@ unsigned short computeCrc16(unsigned char *data, int length, unsigned short init
 	return r;
 }
 
-void fileCompress(LPWSTR name, int compression) {
+void ObjCompressFile(LPWSTR name, int compression) {
 	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeLow, dwSizeHigh, dwRead, dwWritten;
 	dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
@@ -398,16 +398,16 @@ void fileCompress(LPWSTR name, int compression) {
 	free(buffer);
 }
 
-void fileFree(OBJECT_HEADER *header) {
+void ObjFree(OBJECT_HEADER *header) {
 	if(header->dispose != NULL) header->dispose(header);
 }
 
-void *fileReadWhole(LPCWSTR name, int *size) {
+void *ObjReadWholeFile(LPCWSTR name, int *size) {
 	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwRead, dwSizeLow, dwSizeHigh = 0;
 
 	void *buffer;
-	if (pathStartsWith(name, L"\\\\.\\pipe\\")) {
+	if (ObjiPathStartsWith(name, L"\\\\.\\pipe\\")) {
 		//pipe protocol: first 4 bytes file size, followed by file data.
 		ReadFile(hFile, &dwSizeLow, 4, &dwRead, NULL);
 		buffer = malloc(dwSizeLow);
@@ -423,9 +423,9 @@ void *fileReadWhole(LPCWSTR name, int *size) {
 	return buffer;
 }
 
-int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
-	int size;
-	void *buffer = fileReadWhole(name, &size);
+int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
+	unsigned int size;
+	void *buffer = ObjReadWholeFile(name, &size);
 
 	int status;
 	int compType = CxGetCompressionType(buffer, size);
@@ -443,7 +443,7 @@ int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
 	return status;
 }
 
-int fileWrite(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
+int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
 	int status = writer(object, &stream);

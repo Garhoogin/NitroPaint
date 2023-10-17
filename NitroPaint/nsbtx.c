@@ -70,7 +70,7 @@ void TexarcFree(OBJECT_HEADER *header) {
 
 void TexarcInit(TexArc *nsbtx, int format) {
 	nsbtx->header.size = sizeof(TexArc);
-	fileInitCommon((OBJECT_HEADER *) nsbtx, FILE_TYPE_NSBTX, format);
+	ObjInit((OBJECT_HEADER *) nsbtx, FILE_TYPE_NSBTX, format);
 	nsbtx->header.dispose = TexarcFree;
 }
 
@@ -385,7 +385,7 @@ int TexarcRead(TexArc *nsbtx, char *buffer, int size) {
 }
 
 int TexarcReadFile(TexArc *nsbtx, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) nsbtx, (OBJECT_READER) TexarcRead);
+	return ObjReadFile(path, (OBJECT_HEADER *) nsbtx, (OBJECT_READER) TexarcRead);
 }
 
 static char *TexarciGetTextureNameCallback(void *texels) {
@@ -710,7 +710,7 @@ int TexarcWrite(TexArc *nsbtx, BSTREAM *stream) {
 }
 
 int TexarcWriteFile(TexArc *nsbtx, LPWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) nsbtx, (OBJECT_WRITER) TexarcWrite);
+	return ObjWriteFile(name, (OBJECT_HEADER *) nsbtx, (OBJECT_WRITER) TexarcWrite);
 }
 
 int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name) {

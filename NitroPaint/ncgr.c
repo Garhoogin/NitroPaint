@@ -158,7 +158,7 @@ void ChrFree(OBJECT_HEADER *header) {
 
 void ChrInit(NCGR *ncgr, int format) {
 	ncgr->header.size = sizeof(NCGR);
-	fileInitCommon((OBJECT_HEADER *) ncgr, FILE_TYPE_CHARACTER, format);
+	ObjInit((OBJECT_HEADER *) ncgr, FILE_TYPE_CHARACTER, format);
 	ncgr->header.dispose = ChrFree;
 	ncgr->combo2d = NULL;
 }
@@ -459,7 +459,7 @@ int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 }
 
 int ChrReadFile(NCGR *ncgr, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) ncgr, (OBJECT_READER) ChrRead);
+	return ObjReadFile(path, (OBJECT_HEADER *) ncgr, (OBJECT_READER) ChrRead);
 }
 
 int ChrRenderCharacter(NCGR *ncgr, NCLR *nclr, int chNo, COLOR32 *out, int previewPalette, int transparent) {
@@ -757,5 +757,5 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 }
 
 int ChrWriteFile(NCGR *ncgr, LPCWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) ncgr, (OBJECT_WRITER) ChrWrite);
+	return ObjWriteFile(name, (OBJECT_HEADER *) ncgr, (OBJECT_WRITER) ChrWrite);
 }

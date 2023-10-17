@@ -7,7 +7,7 @@ LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Hudson", NULL };
 
 void CellInit(NCER *ncer, int format) {
 	ncer->header.size = sizeof(NCER);
-	fileInitCommon((OBJECT_HEADER *) ncer, FILE_TYPE_CELL, format);
+	ObjInit((OBJECT_HEADER *) ncer, FILE_TYPE_CELL, format);
 	ncer->header.dispose = CellFree;
 }
 
@@ -202,7 +202,7 @@ int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 int CellReadFile(NCER *ncer, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) ncer, (OBJECT_READER) CellRead);
+	return ObjReadFile(path, (OBJECT_HEADER *) ncer, (OBJECT_READER) CellRead);
 }
 
 void CellGetObjDimensions(int shape, int size, int *width, int *height) {
@@ -584,5 +584,5 @@ int CellWrite(NCER *ncer, BSTREAM *stream) {
 }
 
 int CellWriteFile(NCER *ncer, LPWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) ncer, (OBJECT_WRITER) CellWrite);
+	return ObjWriteFile(name, (OBJECT_HEADER *) ncer, (OBJECT_WRITER) CellWrite);
 }

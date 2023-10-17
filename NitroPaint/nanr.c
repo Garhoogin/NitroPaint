@@ -92,7 +92,7 @@ int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
 }
 
 int nanrReadFile(NANR *nanr, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) nanr, (OBJECT_READER) nanrRead);
+	return ObjReadFile(path, (OBJECT_HEADER *) nanr, (OBJECT_READER) nanrRead);
 }
 
 int nanrCountFrames(NANR *nanr) {
@@ -256,7 +256,7 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 }
 
 int nanrWriteFile(NANR *nanr, LPWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) nanr, (OBJECT_WRITER) nanrWrite);
+	return ObjWriteFile(name, (OBJECT_HEADER *) nanr, (OBJECT_WRITER) nanrWrite);
 }
 
 void nanrFree(NANR *nanr) {

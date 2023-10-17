@@ -20,7 +20,7 @@ typedef struct BANNER_INFO_ {
 } BANNER_INFO;
 
 void combo2dInit(COMBO2D *combo, int format) {
-	fileInitCommon(&combo->header, FILE_TYPE_COMBO2D, format);
+	ObjInit(&combo->header, FILE_TYPE_COMBO2D, format);
 }
 
 int combo2dCount(COMBO2D *combo, int type) {
@@ -96,7 +96,7 @@ void combo2dFree(COMBO2D *combo) {
 	//free all links
 	for (int i = 0; i < combo->nLinks; i++) {
 		OBJECT_HEADER *object = combo->links[i];
-		fileFree(object);
+		ObjFree(object);
 		free(object);
 	}
 	if (combo->links != NULL) {
@@ -182,7 +182,7 @@ int combo2dIsValidBanner(BYTE *file, int size) {
 	int crcC = *(unsigned short *) (file + 6);
 	int crcD = *(unsigned short *) (file + 8);
 	if (version != 1 && version != 2 && version != 3 && version != 0x0103) return 0;
-	if (crcA != computeCrc16(file + 0x20, 0x820, 0xFFFF)) return 0;
+	if (crcA != ObjComputeCrc16(file + 0x20, 0x820, 0xFFFF)) return 0;
 
 	//at 0xA, 0x16 bytes should be 0.
 	for (int i = 0; i < 0x16; i++) if (file[i + 0xA] != 0) return 0;
@@ -483,9 +483,9 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		//go back and write the CRCs
 		bstreamSeek(stream, 0, 0);
 		header[0] = info->version;
-		header[1] = computeCrc16(stream->buffer + 0x20, 0x820, 0xFFFF);
-		if (info->version >= 2) header[2] = computeCrc16(stream->buffer + 0x20, 0x920, 0xFFFF);
-		if (info->version >= 3) header[3] = computeCrc16(stream->buffer + 0x20, 0xA20, 0xFFFF);
+		header[1] = ObjComputeCrc16(stream->buffer + 0x20, 0x820, 0xFFFF);
+		if (info->version >= 2) header[2] = ObjComputeCrc16(stream->buffer + 0x20, 0x920, 0xFFFF);
+		if (info->version >= 3) header[3] = ObjComputeCrc16(stream->buffer + 0x20, 0xA20, 0xFFFF);
 		bstreamWrite(stream, header, sizeof(header));
 	} else if (combo->header.format == COMBO2D_TYPE_DATAFILE) {
 		//the original data is in combo->extraData->data, but has key replacements
@@ -647,5 +647,5 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 }
 
 int combo2dWriteFile(COMBO2D *combo, LPWSTR path) {
-	return fileWrite(path, (OBJECT_HEADER *) combo, (OBJECT_WRITER) combo2dWrite);
+	return ObjWriteFile(path, (OBJECT_HEADER *) combo, (OBJECT_WRITER) combo2dWrite);
 }

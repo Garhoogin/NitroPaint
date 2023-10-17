@@ -11,7 +11,7 @@ int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
 	if (type == NMCR_TYPE_INVALID) return 1;
 
 	nmcr->header.size = sizeof(NMCR);
-	fileInitCommon((OBJECT_HEADER *) nmcr, FILE_TYPE_NMCR, type);
+	ObjInit((OBJECT_HEADER *) nmcr, FILE_TYPE_NMCR, type);
 	if (type == NMCR_TYPE_NMCR) {
 		char *pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'MCBK');
 		if (pMcbk == NULL) {
@@ -50,5 +50,5 @@ int nmcrIsValid(char *buffer, unsigned int size) {
 }
 
 int nmcrReadFile(NMCR *nmcr, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) nmcr, (OBJECT_READER) nmcrRead);
+	return ObjReadFile(path, (OBJECT_HEADER *) nmcr, (OBJECT_READER) nmcrRead);
 }

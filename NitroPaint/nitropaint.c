@@ -512,7 +512,7 @@ VOID CreateImageDialog(HWND hWnd, LPCWSTR path);
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	NITROPAINTSTRUCT *data = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWnd, 0);
 	DWORD dwSize = 0;
-	char *buffer = (char *) fileReadWhole(path, &dwSize);
+	char *buffer = (char *) ObjReadWholeFile(path, &dwSize);
 
 	//test: Is this a specification file to open a file with?
 	if (specIsSpec(buffer, dwSize)) {
@@ -535,7 +535,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		}
 
 		unsigned comboSize;
-		void *fp = fileReadWhole(pathBuffer, &comboSize);
+		void *fp = ObjReadWholeFile(pathBuffer, &comboSize);
 
 		//refName is the name of the file to read.
 		COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
@@ -619,7 +619,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		goto cleanup;
 	}
 
-	int format = fileIdentify(buffer, dwSize, path);
+	int format = ObjIdentify(buffer, dwSize, path);
 	switch (format) {
 		case FILE_TYPE_PALETTE:
 			//if there is already an NCLR open, close it.
@@ -1083,7 +1083,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_NEW_NEWANIMATION:
 					{
 						NANR nanr = { 0 };
-						fileInitCommon(&nanr.header, FILE_TYPE_NANR, NANR_TYPE_NANR);
+						ObjInit(&nanr.header, FILE_TYPE_NANR, NANR_TYPE_NANR);
 
 						nanr.nSequences = 1;
 						nanr.sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
@@ -1120,7 +1120,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							&& editorType != FILE_TYPE_SCREEN && editorType != FILE_TYPE_CELL) break;
 
 						EDITORDATA *editorData = (EDITORDATA *) GetWindowLongPtr(hWndFocused, 0);
-						LPCWSTR *formats = getFormatNamesFromType(editorData->objectHeader.type);
+						LPCWSTR *formats = ObjGetFormatNamesByType(editorData->objectHeader.type);
 						if (formats == NULL || formats[0] == NULL)  break;
 
 						HWND h = CreateWindow(L"ConvertFormatDialogClass", L"Convert Format", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
@@ -1926,14 +1926,14 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			HWND hWndCompressionCombobox = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 37, 100, 100, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
 
-			LPCWSTR *formats = getFormatNamesFromType(editorData->objectHeader.type);
+			LPCWSTR *formats = ObjGetFormatNamesByType(editorData->objectHeader.type);
 			formats++; //skip invalid
 			while (*formats != NULL) {
 				SendMessage(hWndFormatCombobox, CB_ADDSTRING, wcslen(*formats), (LPARAM) *formats);
 				formats++;
 			}
 			SendMessage(hWndFormatCombobox, CB_SETCURSEL, editorData->objectHeader.format - 1, 0);
-			LPCWSTR *compressions = compressionNames;
+			LPCWSTR *compressions = g_ObjCompressionNames;
 			while (*compressions != NULL) {
 				SendMessage(hWndCompressionCombobox, CB_ADDSTRING, wcslen(*compressions), (LPARAM) *compressions);
 				compressions++;

@@ -162,7 +162,7 @@ void ScrFree(OBJECT_HEADER *header) {
 
 void ScrInit(NSCR *nscr, int format) {
 	nscr->header.size = sizeof(NSCR);
-	fileInitCommon((OBJECT_HEADER *) nscr, FILE_TYPE_SCREEN, format);
+	ObjInit((OBJECT_HEADER *) nscr, FILE_TYPE_SCREEN, format);
 	nscr->header.dispose = ScrFree;
 	nscr->combo2d = NULL;
 }
@@ -401,7 +401,7 @@ int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 }
 
 int ScrReadFile(NSCR *nscr, LPCWSTR path) {
-	return fileRead(path, (OBJECT_HEADER *) nscr, (OBJECT_READER) ScrRead);
+	return ObjReadFile(path, (OBJECT_HEADER *) nscr, (OBJECT_READER) ScrRead);
 }
 
 int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int charBase, int x, int y, COLOR32 *out, int *tileNo, int transparent) {
@@ -661,7 +661,7 @@ int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 }
 
 int ScrWriteFile(NSCR *nscr, LPCWSTR name) {
-	return fileWrite(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) ScrWrite);
+	return ObjWriteFile(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) ScrWrite);
 }
 
 float tileDifferenceFlip(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigned char mode) {

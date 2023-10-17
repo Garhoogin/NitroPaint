@@ -27,49 +27,49 @@ typedef struct OBJECT_HEADER_ {
 typedef int (*OBJECT_READER) (OBJECT_HEADER *object, char *buffer, int size);
 typedef int (*OBJECT_WRITER) (OBJECT_HEADER *object, BSTREAM *stream);
 
-extern LPCWSTR compressionNames[];
+extern LPCWSTR g_ObjCompressionNames[];
 
-LPCWSTR *getFormatNamesFromType(int type);
+LPCWSTR *ObjGetFormatNamesByType(int type);
 
 //
 // Identify the type of a file based on its bytes and file name. File name is
 // is only used as a fallback when regular detection becomes too vague to rely
 // on.
 //
-int fileIdentify(char *file, int size, LPCWSTR path);
+int ObjIdentify(char *file, int size, LPCWSTR path);
 
 //
 // Compute CRC16 checksum for an array of bytes.
 //
-unsigned short computeCrc16(unsigned char *data, int length, unsigned short init);
+unsigned short ObjComputeCrc16(unsigned char *data, int length, unsigned short init);
 
 //
 // Initialize a file's OBJECT_HEADER. The size field must be set before calling
 // this function to the size of the whole file object.
 //
-void fileInitCommon(OBJECT_HEADER *header, int type, int format);
+void ObjInit(OBJECT_HEADER *header, int type, int format);
 
 //
 // Compress a file given its path using the specified compression type.
 //
-void fileCompress(LPWSTR name, int compression);
+void ObjCompressFile(LPWSTR name, int compression);
 
 //
 // Free the resources held by an open file, after which it can be safely freed
 //
-void fileFree(OBJECT_HEADER *header);
+void ObjFree(OBJECT_HEADER *header);
 
 //
 // Read an entire file into memory from path. No decompression is performed.
 //
-void *fileReadWhole(LPCWSTR name, int *size);
+void *ObjReadWholeFile(LPCWSTR name, int *size);
 
 //
 // Reads a file into the specified object with the given reader function.
 //
-int fileRead(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);
+int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);
 
 //
 // Writes a file to the disk using a provided writer function.
 //
-int fileWrite(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer);
+int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer);

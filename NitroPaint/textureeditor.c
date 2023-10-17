@@ -2198,7 +2198,7 @@ BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
 
 	//read file and determine if valid
 	int size;
-	void *pf = fileReadWhole(path, &size);
+	void *pf = ObjReadWholeFile(path, &size);
 	int valid = TxIsValidNnsTga(pf, size);
 	free(pf);
 	if (!valid) return TRUE;
@@ -2236,7 +2236,7 @@ void BatchTexShowVramStatistics(HWND hWnd, LPCWSTR convertedDir) {
 	CreateVramUseWindow(hWnd, &nsbtx);
 
 	//free
-	fileFree(&nsbtx.header);
+	ObjFree(&nsbtx.header);
 }
 
 LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
