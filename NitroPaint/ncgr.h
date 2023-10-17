@@ -4,11 +4,11 @@
 
 #define NCGR_TYPE_INVALID	0
 #define NCGR_TYPE_NCGR		1
-#define NCGR_TYPE_HUDSON	2
-#define NCGR_TYPE_HUDSON2	3
-#define NCGR_TYPE_BIN       4
-#define NCGR_TYPE_NC        5
-#define NCGR_TYPE_AC        6
+#define NCGR_TYPE_NC        2
+#define NCGR_TYPE_AC        3
+#define NCGR_TYPE_HUDSON	4
+#define NCGR_TYPE_HUDSON2	5
+#define NCGR_TYPE_BIN       6
 #define NCGR_TYPE_COMBO     7
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000

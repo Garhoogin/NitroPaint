@@ -29,11 +29,11 @@
 
 #define NSCR_TYPE_INVALID	0
 #define NSCR_TYPE_NSCR		1
-#define NSCR_TYPE_HUDSON	2
-#define NSCR_TYPE_HUDSON2	3
-#define NSCR_TYPE_BIN       4
-#define NSCR_TYPE_NC        5
-#define NSCR_TYPE_AC        6
+#define NSCR_TYPE_NC        2
+#define NSCR_TYPE_AC        3
+#define NSCR_TYPE_HUDSON	4
+#define NSCR_TYPE_HUDSON2	5
+#define NSCR_TYPE_BIN       6
 #define NSCR_TYPE_COMBO     7
 
 #define BG_COLOR0_FIXED     0

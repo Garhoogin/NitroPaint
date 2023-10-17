@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"Hudson", L"Hudson 2", L"Binary", L"NCG", L"ACG", NULL };
+LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ACG", L"Hudson", L"Hudson 2", L"Binary", NULL };
 
 int ChrGuessWidth(int nTiles) {
 	int width = 1;

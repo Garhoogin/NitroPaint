@@ -4,7 +4,7 @@
 #include "nclr.h"
 #include "nns.h"
 
-LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"Hudson", L"Binary", L"NTFP", L"NCL", L"5PL", L"5PC", NULL };
+LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"NCL", L"5PL", L"5PC", L"Hudson", L"Binary", L"NTFP", NULL };
 
 void PalFree(OBJECT_HEADER *header) {
 	NCLR *nclr = (NCLR *) header;

@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <math.h>
 
-LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"Hudson", L"Hudson 2", L"Binary", L"NSC", L"ASC", NULL };
+LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"NSC", L"ASC", L"Hudson", L"Hudson 2", L"Binary", NULL };
 
 #define NSCR_FLIPNONE 0
 #define NSCR_FLIPX 1
