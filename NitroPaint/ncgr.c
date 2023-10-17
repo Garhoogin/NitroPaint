@@ -101,6 +101,27 @@ int ChrIsValidAcg(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size) {
+	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "RGCN", 4) != 0) return 0;
+
+	//find CHAR section
+	const unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
+	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
+	if (sChar == NULL) return 0;
+
+	return 1;
+}
+
+int ChrIdentify(const unsigned char *buffer, unsigned int size) {
+	if (ChrIsValidNcgr(buffer, size)) return NCGR_TYPE_NCGR;
+	if (ChrIsValidNcg(buffer, size)) return NCGR_TYPE_NC;
+	if (ChrIsValidAcg(buffer, size)) return NCGR_TYPE_AC;
+	if (ChrIsValidHudson(buffer, size)) return NCGR_TYPE_HUDSON;
+	if (ChrIsValidBin(buffer, size)) return NCGR_TYPE_BIN;
+	return NCGR_TYPE_INVALID;
+}
+
 void ChrFree(OBJECT_HEADER *header) {
 	NCGR *ncgr = (NCGR *) header;
 	if (ncgr->tiles != NULL) {
@@ -384,26 +405,18 @@ int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	if (*(DWORD *) buffer != 0x4E434752) {
-		if (ChrIsValidNcg(buffer, size)) return ChrReadNcg(ncgr, buffer, size);
-		if (ChrIsValidAcg(buffer, size)) return ChrReadAcg(ncgr, buffer, size);
-		if (ChrIsValidHudson(buffer, size)) return ChrReadHudson(ncgr, buffer, size);
-		if (ChrIsValidBin(buffer, size)) return ChrReadBin(ncgr, buffer, size);
-	}
-	if (size < 0x10) return 1;
-	DWORD magic = *(DWORD *) buffer;
-	if (magic != 0x4E434752 && magic != 0x5247434E) return 1;
+int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	const unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
+	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
 
-	buffer += 0x10;
-	int rahcSize = *(int *) buffer;
-	unsigned short tilesY = *(unsigned short *) (buffer + 0x8);
-	unsigned short tilesX = *(unsigned short *) (buffer + 0xA);
-	int depth = *(int *) (buffer + 0xC);
-	int mapping = *(int *) (buffer + 0x10);
+	int tilesY = *(uint16_t *) (sChar + 0x8);
+	int tilesX = *(uint16_t *) (sChar + 0xA);
+	int depth = *(uint32_t *) (sChar + 0xC);
+	int mapping = *(uint32_t *) (sChar + 0x10);
 	depth = 1 << (depth - 1);
-	int tileDataSize = *(int *) (buffer + 0x18);
-	int type = *(int *) (buffer + 0x14);
+	int tileDataSize = *(uint32_t *) (sChar + 0x18);
+	int type = *(uint32_t *) (sChar + 0x14);
+	uint32_t gfxOffset = *(uint32_t *) (sChar + 0x1C);
 
 	int tileCount = tilesX * tilesY;
 	int nPresentTiles = tileDataSize >> 5;
@@ -424,10 +437,25 @@ int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ncgr->mappingMode = mapping;
 	ncgr->bitmap = (type == 1);
 
-	buffer += 0x20;
-
-	ChrReadGraphics(ncgr, buffer);
+	ChrReadGraphics(ncgr, sChar + gfxOffset + 8);
 	return 0;
+}
+
+int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	int type = ChrIdentify(buffer, size);
+	switch (type) {
+		case NCGR_TYPE_NCGR:
+			return ChrReadNcgr(ncgr, buffer, size);
+		case NCGR_TYPE_NC:
+			return ChrReadNcg(ncgr, buffer, size);
+		case NCGR_TYPE_AC:
+			return ChrReadAcg(ncgr, buffer, size);
+		case NCGR_TYPE_HUDSON:
+			return ChrReadHudson(ncgr, buffer, size);
+		case NCGR_TYPE_BIN:
+			return ChrReadBin(ncgr, buffer, size);
+	}
+	return 1;
 }
 
 int ChrReadFile(NCGR *ncgr, LPCWSTR path) {

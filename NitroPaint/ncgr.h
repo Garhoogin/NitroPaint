@@ -70,6 +70,11 @@ int ChrIsValidBin(const unsigned char *buffer, unsigned int size);
 int ChrIsValidAcg(const unsigned char *buffer, unsigned int size);
 
 //
+// Determines if a byte array represents a valid NNS G2D character graphics file for runtime.
+//
+int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size);
+
+//
 // Get a 32-bit color render of graphics data
 //
 int ChrRenderCharacter(NCGR *ncgr, NCLR *nclr, int chNo, COLOR32 *out, int previewPalette, int transparent);
