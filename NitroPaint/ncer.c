@@ -188,8 +188,12 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 			uint32_t maxTransfer = *(uint32_t *) (vramTransferData);
 			uint32_t transferDataOffset = vramTransferOffset + *(uint32_t *) (vramTransferData + 4);
 
-			ncer->vramTransfer = (NCER_VRAM_TRANSFER_ENTRY *) calloc(ncer->nCells, sizeof(NCER_VRAM_TRANSFER_ENTRY));
-			memcpy(ncer->vramTransfer, cebk + transferDataOffset, ncer->nCells * sizeof(NCER_VRAM_TRANSFER_ENTRY));
+			ncer->vramTransfer = (CHAR_VRAM_TRANSFER *) calloc(ncer->nCells, sizeof(CHAR_VRAM_TRANSFER));
+			for (int i = 0; i < ncer->nCells; i++) {
+				ncer->vramTransfer[i].dstAddr = 0;
+				ncer->vramTransfer[i].srcAddr = *(uint32_t *) (cebk + transferDataOffset + i * 8 + 0);
+				ncer->vramTransfer[i].size = *(uint32_t *) (cebk + transferDataOffset + i * 8 + 4);
+			}
 		}
 	}
 
@@ -310,7 +314,7 @@ int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	return 0;
 }
 
-void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, COLOR32 *out, int *width, int *height, int checker) {
+void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out, int *width, int *height, int checker) {
 	*width = info->width;
 	*height = info->height;
 
@@ -334,18 +338,7 @@ void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANS
 					index = ncgrStart + x + y * tilesX;
 				}
 
-				if (vramTransfer != NULL) {
-					int transferDest = 0, transferSize = vramTransfer->size;
-					int transferSrc = vramTransfer->offset;
-
-					//simulate a VRAM transfer to VRAM at offset 0
-					//do this by adding transferSrc to our character address
-					if (index * charSize < transferDest + transferSize) {
-						index += transferSrc / charSize;
-					}
-				}
-
-				ChrRenderCharacter(ncgr, nclr, index, block, info->palette, TRUE);
+				ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette, TRUE);
 				for (int i = 0; i < 8; i++) {
 					memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
 				}
@@ -357,7 +350,7 @@ void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANS
 	if (checker) {
 		for (int i = 0; i < info->width * info->height; i++) {
 			int x = i % info->width;
-			int y = i / info->height;
+			int y = i / info->width;
 			int ch = ((x >> 2) ^ (y >> 2)) & 1;
 			COLOR32 c = out[i];
 			if ((c & 0xFF000000) == 0) {
@@ -367,7 +360,7 @@ void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANS
 	}
 }
 
-COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d) {
+COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d) {
 	DWORD *block = (DWORD *) calloc(64 * 64, 4);
 	for (int i = cell->nAttribs - 1; i >= 0; i--) {
 		NCER_CELL_INFO info;

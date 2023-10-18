@@ -50,11 +50,6 @@ typedef struct NCER_CELL_INFO_ {
 	int height;
 } NCER_CELL_INFO;
 
-typedef struct NCER_VRAM_TRANSFER_ENTRY_ {
-	uint32_t offset;
-	uint32_t size;
-} NCER_VRAM_TRANSFER_ENTRY;
-
 typedef struct NCER_ {
 	OBJECT_HEADER header;
 	int nCells;
@@ -62,7 +57,7 @@ typedef struct NCER_ {
 	int mappingMode;
 	NCER_CELL *cells;
 
-	NCER_VRAM_TRANSFER_ENTRY *vramTransfer;
+	CHAR_VRAM_TRANSFER *vramTransfer;
 	int nVramTransferEntries;
 
 	int uextSize;
@@ -91,9 +86,9 @@ int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
 
 int CellFree(OBJECT_HEADER *header);
 
-void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, COLOR32 *out, int *width, int *height, int checker);
+void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out, int *width, int *height, int checker);
 
-COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, NCER_VRAM_TRANSFER_ENTRY *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d);
+COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d);
 
 int CellWrite(NCER *ncer, BSTREAM *stream);
 

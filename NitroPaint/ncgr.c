@@ -462,26 +462,79 @@ int ChrReadFile(NCGR *ncgr, LPCWSTR path) {
 	return ObjReadFile(path, (OBJECT_HEADER *) ncgr, (OBJECT_READER) ChrRead);
 }
 
+void ChrGetChar(NCGR *ncgr, int chno, CHAR_VRAM_TRANSFER *transfer, unsigned char *out) {
+	//if transfer == NULL, don't simulate any VRAM transfer operation
+	if (transfer == NULL) {
+		if (chno < ncgr->nTiles) memcpy(out, ncgr->tiles[chno], 64);
+		else memset(out, 0, 64);
+		return;
+	}
+
+	//get character source address
+	unsigned int chrSize = 8 * ncgr->nBits;
+	unsigned int srcAddr = chno * chrSize;
+	if ((srcAddr + chrSize) < transfer->dstAddr || srcAddr >= (transfer->dstAddr + transfer->size)) {
+		if (chno < ncgr->nTiles) memcpy(out, ncgr->tiles[chno], 64);
+		else memset(out, 0, 64);
+		return;
+	}
+
+	//character is within the destination region. For bytes within the region, copy from src.
+	//TODO: handle bitmapped graphics transfers too
+	for (unsigned int i = 0; i < 64; i++) {
+		//copy ncgr->tiles[chrno][i] to out[i]
+		unsigned int pxaddr = srcAddr + (i >> (ncgr->nBits == 4 ? 1 : 0));
+		if (pxaddr >= transfer->dstAddr && pxaddr < (transfer->dstAddr + transfer->size)) {
+			//in transfer destination
+			pxaddr = pxaddr - transfer->dstAddr + transfer->srcAddr;
+			unsigned int transferChr = pxaddr / chrSize;
+			unsigned int transferChrPxOffset = pxaddr % chrSize;
+			unsigned int pxno = transferChrPxOffset;
+			if (ncgr->nBits == 4) {
+				pxno <<= 1;
+				pxno += (i & 1);
+			}
+			out[i] = ncgr->tiles[transferChr][pxno];
+		} else {
+			//out of transfer destination
+			out[i] = ncgr->tiles[chno][i];
+		}
+	}
+}
+
+static int ChriRenderCharacter(unsigned char *chr, int depth, int palette, NCLR *nclr, COLOR32 *out, int transparent) {
+	for (int i = 0; i < 64; i++) {
+		int index = chr[i];
+		if (index || !transparent) {
+			COLOR w = 0;
+			if (nclr && (index + (palette << depth)) < nclr->nColors)
+				w = nclr->colors[index + (palette << depth)];
+			out[i] = ColorConvertFromDS(CREVERSE(w)) | 0xFF000000;
+		} else {
+			out[i] = 0;
+		}
+	}
+	return 0;
+}
+
 int ChrRenderCharacter(NCGR *ncgr, NCLR *nclr, int chNo, COLOR32 *out, int previewPalette, int transparent) {
 	if (chNo < ncgr->nTiles) {
 		unsigned char *tile = ncgr->tiles[chNo];
-		for (int i = 0; i < 64; i++) {
-			int index = tile[i];
-
-			if (index || !transparent) {
-				COLOR w = 0;
-				if (nclr && (index + (previewPalette << ncgr->nBits)) < nclr->nColors)
-					w = nclr->colors[index + (previewPalette << ncgr->nBits)];
-				out[i] = ColorConvertFromDS(CREVERSE(w)) | 0xFF000000;
-			} else {
-				out[i] = 0;
-			}
-		}
+		return ChriRenderCharacter(tile, ncgr->nBits, previewPalette, nclr, out, transparent);
 	} else {
 		memset(out, 0, 64 * 4);
 		return 1;
 	}
-	return 0;
+}
+
+int ChrRenderCharacterTransfer(NCGR *ncgr, NCLR *nclr, int chNo, CHAR_VRAM_TRANSFER *transfer, COLOR32 *out, int palette, int transparent) {
+	//if transfer == NULL, render as normal
+	if (transfer == NULL) return ChrRenderCharacter(ncgr, nclr, chNo, out, palette, transparent);
+
+	//else, read graphics and render
+	unsigned char buf[64];
+	ChrGetChar(ncgr, chNo, transfer, buf);
+	return ChriRenderCharacter(buf, ncgr->nBits, palette, nclr, out, transparent);
 }
 
 void ChrSetWidth(NCGR *ncgr, int width) {

@@ -37,7 +37,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 	CellDecodeOamAttributes(&info, cell, data->oam);
 
 	memset(data->frameBuffer, 0, sizeof(data->frameBuffer));
-	NCER_VRAM_TRANSFER_ENTRY *transferEntry = NULL;
+	CHAR_VRAM_TRANSFER *transferEntry = NULL;
 	if (data->ncer.vramTransfer != NULL)
 		transferEntry = data->ncer.vramTransfer + data->cell;
 	DWORD *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, ncgr, nclr, transferEntry, 
@@ -200,6 +200,10 @@ void ncerCreateCopy(NCER *dest, NCER *src) {
 		WORD *attr = cell->attr;
 		cell->attr = (WORD *) malloc(cell->nAttribs * 3 * 2);
 		memcpy(cell->attr, attr, cell->nAttribs * 3 * 2);
+	}
+	if (src->vramTransfer != NULL) {
+		dest->vramTransfer = (CHAR_VRAM_TRANSFER *) calloc(src->nCells, sizeof(CHAR_VRAM_TRANSFER));
+		memcpy(dest->vramTransfer, src->vramTransfer, src->nCells * sizeof(CHAR_VRAM_TRANSFER));
 	}
 }
 
