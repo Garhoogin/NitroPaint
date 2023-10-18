@@ -3,7 +3,7 @@
 #include "ncgr.h"
 #include "nns.h"
 
-LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Hudson", NULL };
+LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Hudson", L"Ghost Trick", NULL };
 
 void CellInit(NCER *ncer, int format) {
 	ncer->header.size = sizeof(NCER);
@@ -45,9 +45,36 @@ int CellIsValidNcer(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
+	if (size < 2) return 0; //must contain at least 1 cell
+
+	const uint16_t *cellOffsets = (uint16_t *) buffer;
+	unsigned int nCells = cellOffsets[0]; //first offset is count
+	unsigned int cellOffset = nCells * 2;
+	if (cellOffset > size) return 0;
+
+	//read cells
+	unsigned int readSize = 2;
+	for (unsigned int i = 0; i < nCells; i++) {
+		unsigned int offset = cellOffsets[i] * 2;
+		if ((offset + 2) >= size) return 0;
+
+		const unsigned char *cell = buffer + offset;
+		unsigned int nObj = *(uint16_t *) cell;
+
+		//file must be big enough to fit contained OBJ
+		unsigned int endOfs = offset + 2 + nObj * 6;
+		if (endOfs > size) return 0;
+		if (endOfs > readSize) readSize = endOfs;
+	}
+	if (readSize < size) return 0;
+	return 1;
+}
+
 int CellIdentify(const unsigned char *buffer, unsigned int size) {
 	if (CellIsValidNcer(buffer, size)) return NCER_TYPE_NCER;
 	if (CellIsValidHudson(buffer, size)) return NCER_TYPE_HUDSON;
+	if (CellIsValidGhostTrick(buffer, size)) return NCER_TYPE_GHOSTTRICK;
 	return NCER_TYPE_INVALID;
 }
 
@@ -191,6 +218,27 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
+int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int size) {
+	const uint16_t *cellOffs = (const uint16_t *) buffer;
+	int nCells = *(uint16_t *) buffer;
+	NCER_CELL *cells = (NCER_CELL *) calloc(nCells, sizeof(NCER_CELL));
+
+	for (int i = 0; i < nCells; i++) {
+		const unsigned char *cell = buffer + cellOffs[i] * 2;
+		int nObj = *(uint16_t *) cell;
+
+		cells[i].nAttribs = nObj;
+		cells[i].attr = (uint16_t *) calloc(nObj, 6 * 2);
+		memcpy(cells[i].attr, cell + 2, nObj * 2 * 6);
+	}
+
+	CellInit(ncer, NCER_TYPE_GHOSTTRICK);
+	ncer->nCells = nCells;
+	ncer->cells = cells;
+	ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_128K;
+	return 0;
+}
+
 int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 	int type = CellIdentify(buffer, size);
 	switch (type) {
@@ -198,6 +246,8 @@ int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 			return CellReadNcer(ncer, buffer, size);
 		case NCER_TYPE_HUDSON:
 			return CellReadHudson(ncer, buffer, size);
+		case NCER_TYPE_GHOSTTRICK:
+			return CellReadGhostTrick(ncer, buffer, size);
 	}
 	return 1;
 }

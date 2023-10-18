@@ -133,7 +133,7 @@ static int ObjiGuessPltChrScr(const unsigned char *ptr, unsigned int size) {
 
 	//Use some heuristics. Check the flip bytes for screen.
 	if (canBeScreen) {
-		int nFlipped = 0;
+		unsigned int nFlipped = 0;
 		uint16_t *screen = (uint16_t *) ptr;
 		for (int i = 0; i < n16; i++) {
 			int f = (screen[i] >> 10) & 3;
@@ -220,7 +220,7 @@ static int ObjiGuessPltChrScr(const unsigned char *ptr, unsigned int size) {
 	if (canBeChar) {
 		//check for identical runs of nonzero bytes
 		int runLength = 0;
-		for (int i = 0; i < size; i++) {
+		for (unsigned int i = 0; i < size; i++) {
 			unsigned char c = ptr[i];
 			if (!c) continue;
 
@@ -333,6 +333,7 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 				else if (ScrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ChrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (CellIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
+				else if (CellIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_CELL;
 
 				//test for bin format files
 				else {

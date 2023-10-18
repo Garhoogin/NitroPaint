@@ -3,9 +3,10 @@
 #include "ncgr.h"
 #include "nclr.h"
 
-#define NCER_TYPE_INVALID 0
-#define NCER_TYPE_NCER 1
-#define NCER_TYPE_HUDSON 2
+#define NCER_TYPE_INVALID    0
+#define NCER_TYPE_NCER       1
+#define NCER_TYPE_HUDSON     2
+#define NCER_TYPE_GHOSTTRICK 3
 
 extern LPCWSTR cellFormatNames[];
 
@@ -75,6 +76,8 @@ void CellInit(NCER *ncer, int format);
 int CellIdentify(const unsigned char *buffer, unsigned int size);
 
 int CellIsValidHudson(const unsigned char *buffer, unsigned int size);
+
+int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 
 int CellIsValidNcer(const unsigned char *buffer, unsigned int size);
 
