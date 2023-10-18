@@ -40,7 +40,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 	CHAR_VRAM_TRANSFER *transferEntry = NULL;
 	if (data->ncer.vramTransfer != NULL)
 		transferEntry = data->ncer.vramTransfer + data->cell;
-	DWORD *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, ncgr, nclr, transferEntry, 
+	DWORD *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, data->ncer.mappingMode, ncgr, nclr, transferEntry, 
 		256, 128, 1, data->oam, 1.0f, 0.0f, 0.0f, 1.0f);
 
 	//draw lines if needed
@@ -67,7 +67,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 
 	int width, height;
 	bits = (COLOR32 *) calloc(info.width * info.height, sizeof(COLOR32));
-	CellRenderObj(&info, ncgr, nclr, NULL, bits, &width, &height, 1);
+	CellRenderObj(&info, data->ncer.mappingMode, ncgr, nclr, NULL, bits, &width, &height, 1);
 	hbm = CreateBitmap(width, height, 1, 32, bits);
 	SelectObject(hCompatibleDC, hbm);
 	BitBlt(hWindowDC, 512 - 69, 256 + 5, width, height, hCompatibleDC, 0, 0, SRCCOPY);
@@ -321,6 +321,12 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndCellBoundsCheckbox = CreateWindow(L"BUTTON", L"Show cell bounds", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 169, 256, 100, 22, hWnd, NULL, NULL, NULL);
 			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", 169, 256 + 22 + 5, 164, 22, FALSE);
 			data->hWndDuplicateCell = CreateButton(hWnd, L"Duplicate Cell", 169, 256 + 22 + 5 + 22, 164, 22, FALSE);
+
+			//mapping mode
+			LPCWSTR mappingNames[] = {
+				L"2D", L"1D 32K", L"1D 64K", L"1D 128K", L"1D 256K"
+			};
+			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, 338, 256 + 22 + 5, 75, 100, 0);
 			break;
 		}
 		case WM_NCHITTEST:	//make the border non-sizeable
@@ -343,6 +349,22 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			data->frameData.contentWidth = 612;
 			data->frameData.contentHeight = 326;
+
+			//set mapping mode selection
+			int mappingIndex = 0;
+			switch (data->ncer.mappingMode) {
+				case GX_OBJVRAMMODE_CHAR_2D:
+					mappingIndex = 0; break;
+				case GX_OBJVRAMMODE_CHAR_1D_32K:
+					mappingIndex = 1; break;
+				case GX_OBJVRAMMODE_CHAR_1D_64K:
+					mappingIndex = 2; break;
+				case GX_OBJVRAMMODE_CHAR_1D_128K:
+					mappingIndex = 3; break;
+				case GX_OBJVRAMMODE_CHAR_1D_256K:
+					mappingIndex = 4; break;
+			}
+			SendMessage(data->hWndMappingMode, CB_SETCURSEL, mappingIndex, 0);
 
 			RECT rc = { 0 };
 			rc.right = data->frameData.contentWidth;
@@ -945,6 +967,19 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					UpdateOamDropdown(hWnd);
 					UpdateControls(hWnd);
+				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndMappingMode) {
+					const int mappings[] = {
+						GX_OBJVRAMMODE_CHAR_2D,
+						GX_OBJVRAMMODE_CHAR_1D_32K,
+						GX_OBJVRAMMODE_CHAR_1D_64K,
+						GX_OBJVRAMMODE_CHAR_1D_128K,
+						GX_OBJVRAMMODE_CHAR_1D_256K
+					};
+					int sel = mappings[SendMessage(data->hWndMappingMode, CB_GETCURSEL, 0, 0)];
+					data->ncer.mappingMode = sel;
+					changed = 1;
+
+					InvalidateRect(hWnd, NULL, FALSE);
 				}
 
 				//log a change
@@ -1013,7 +1048,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 						COLOR32 *bits = (COLOR32 *) calloc(256 * 512, sizeof(COLOR32));
 						int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-						CellRenderCell(bits, cell, ncgr, nclr, NULL, translateX, translateY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
+						CellRenderCell(bits, cell, ncer->mappingMode, ncgr, nclr, NULL, translateX, translateY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
 						ImgSwapRedBlue(bits, 512, 256);
 						ImgWrite(bits, 512, 256, location);
 

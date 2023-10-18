@@ -21,7 +21,7 @@
 #define NCGR_1D(m)              (!NCGR_2D(m))
 #define NCGR_BYTE_BOUNDARY(m)   (1<<((((m)>>20)&0x7)+5))
 #define NCGR_BOUNDARY(n,x)      (NCGR_BYTE_BOUNDARY((n)->mappingMode)*(x)/(((n)->nBits)<<3))
-#define NCGr_CHNAME(x,m,d)      (NCGR_BYTE_BOUNDARY(m)*(x)/((b)<<3))
+#define NCGR_CHNAME(x,m,b)      (NCGR_BYTE_BOUNDARY(m)*(x)/((b)<<3))
 
 extern LPCWSTR characterFormatNames[];
 

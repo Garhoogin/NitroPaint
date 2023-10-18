@@ -314,7 +314,7 @@ int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	return 0;
 }
 
-void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out, int *width, int *height, int checker) {
+void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out, int *width, int *height, int checker) {
 	*width = info->width;
 	*height = info->height;
 
@@ -323,14 +323,14 @@ void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANS
 
 	if (ncgr != NULL) {
 		int charSize = ncgr->nBits * 8;
-		int ncgrStart = NCGR_BOUNDARY(ncgr, info->characterName);
+		int ncgrStart = NCGR_CHNAME(info->characterName, mapping, ncgr->nBits);
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 				DWORD block[64];
 
 				int bitsOffset = x * 8 + (y * 8 * tilesX * 8);
 				int index;
-				if (NCGR_2D(ncgr->mappingMode)) {
+				if (NCGR_2D(mapping)) {
 					int ncx = x + ncgrStart % ncgr->tilesX;
 					int ncy = y + ncgrStart / ncgr->tilesX;
 					index = ncx + ncgr->tilesX * ncy;
@@ -360,14 +360,14 @@ void CellRenderObj(NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANS
 	}
 }
 
-COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d) {
+COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d) {
 	DWORD *block = (DWORD *) calloc(64 * 64, 4);
 	for (int i = cell->nAttribs - 1; i >= 0; i--) {
 		NCER_CELL_INFO info;
 		int entryWidth, entryHeight;
 		CellDecodeOamAttributes(&info, cell, i);
 
-		CellRenderObj(&info, ncgr, nclr, vramTransfer, block, &entryWidth, &entryHeight, 0);
+		CellRenderObj(&info, mapping, ncgr, nclr, vramTransfer, block, &entryWidth, &entryHeight, 0);
 
 		//HV flip? Only if not affine!
 		if (!info.rotateScale) {
