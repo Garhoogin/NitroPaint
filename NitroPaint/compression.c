@@ -119,6 +119,72 @@ unsigned char *CxDecompressLZX(const unsigned char *buffer, unsigned int size, u
 	return result;
 }
 
+unsigned char *CxAdvanceLZX(const unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+	if (*buffer != 0x11) return 0;
+
+	uint32_t length = (*(uint32_t *) buffer) >> 8;
+
+	//perform a test decompression.
+	uint32_t offset = 4;
+	uint32_t dstOffset = 0;
+	while (1) {
+		if (offset >= size) return NULL;
+		uint8_t head = buffer[offset];
+		uint8_t origHead = head;
+		offset++;
+
+		//loop 8 times
+		for (int i = 0; i < 8; i++) {
+			int flag = head >> 7;
+			head <<= 1;
+
+			if (!flag) {
+				if (offset >= size || dstOffset >= length) return NULL;
+				dstOffset++, offset++;
+				if (dstOffset == length) return (unsigned char *) (buffer + offset);
+			} else {
+				if (offset + 1 >= size) return NULL;
+				uint8_t high = buffer[offset++];
+				uint8_t low = buffer[offset++];
+				uint8_t low2, low3;
+				int mode = high >> 4;
+
+				uint32_t len = 0, offs = 0;
+				switch (mode) {
+					case 0:
+						if (offset >= size) return NULL;
+						low2 = buffer[offset++];
+						len = ((high << 4) | (low >> 4)) + 0x11; //8-bit length +0x11
+						offs = (((low & 0xF) << 8) | low2) + 1; //12-bit offset
+						break;
+					case 1:
+						if (offset + 1 >= size) return NULL;
+						low2 = buffer[offset++];
+						low3 = buffer[offset++];
+						len = (((high & 0xF) << 12) | (low << 4) | (low2 >> 4)) + 0x111; //16-bit length +0x111
+						offs = (((low2 & 0xF) << 8) | low3) + 1; //12-bit offset
+						break;
+					default:
+						len = (high >> 4) + 1; //4-bit length +0x1 (but >= 3)
+						offs = (((high & 0xF) << 8) | low) + 1; //12-bit offset
+						break;
+				}
+
+				//test write
+				if (dstOffset < offs) return NULL; //would we write before our buffer decompressing? (weird because unsigned)
+				for (uint32_t j = 0; j < len; j++) {
+					if (dstOffset >= length) return NULL;
+					dstOffset++;
+					if (dstOffset == length) return (unsigned char *) (buffer + offset);
+				}
+			}
+		}
+	}
+
+	return (unsigned char *) (buffer + offset);;
+}
+
 unsigned char *CxDecompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
 	if (size < 5) return NULL;
 
@@ -372,9 +438,7 @@ unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, uns
 			head <<= 1;
 
 			if (isDone) {
-				*(compressed++) = 0;
-				nSize++;
-				continue;
+				continue; //allows head byte to shift one place
 			}
 
 			//search backwards up to 0xFFF bytes.
@@ -834,70 +898,14 @@ int CxIsFilteredLZHeader(const unsigned char *buffer, unsigned int size) {
 }
 
 int CxIsCompressedLZX(const unsigned char *buffer, unsigned int size) {
-	if (size < 4) return 0;
-	if (*buffer != 0x11) return 0;
-
-	uint32_t length = (*(uint32_t *) buffer) >> 8;
-	if (size > 7 + length * 9 / 8) return 0;
-
-	//perform a test decompression.
-	uint32_t offset = 4;
-	uint32_t dstOffset = 0;
-	while (1) {
-		if (offset >= size) return 0;
-		uint8_t head = buffer[offset];
-		uint8_t origHead = head;
-		offset++;
-
-		//loop 8 times
-		for (int i = 0; i < 8; i++) {
-			int flag = head >> 7;
-			head <<= 1;
-
-			if (!flag) {
-				if (offset >= size || dstOffset >= length) return 0;
-				dstOffset++, offset++;
-				if (dstOffset == length) return 1;
-			} else {
-				if (offset + 1 >= size) return 0;
-				uint8_t high = buffer[offset++];
-				uint8_t low = buffer[offset++];
-				uint8_t low2, low3;
-				int mode = high >> 4;
-
-				uint32_t len = 0, offs = 0;
-				switch (mode) {
-					case 0:
-						if (offset >= size) return 0;
-						low2 = buffer[offset++];
-						len = ((high << 4) | (low >> 4)) + 0x11; //8-bit length +0x11
-						offs = (((low & 0xF) << 8) | low2) + 1; //12-bit offset
-						break;
-					case 1:
-						if (offset + 1 >= size) return 0;
-						low2 = buffer[offset++];
-						low3 = buffer[offset++];
-						len = (((high & 0xF) << 12) | (low << 4) | (low2 >> 4)) + 0x111; //16-bit length +0x111
-						offs = (((low2 & 0xF) << 8) | low3) + 1; //12-bit offset
-						break;
-					default:
-						len = (high >> 4) + 1; //4-bit length +0x1 (but >= 3)
-						offs = (((high & 0xF) << 8) | low) + 1; //12-bit offset
-						break;
-				}
-
-				//test write
-				if (dstOffset < offs) return 0; //would we write before our buffer decompressing? (weird because unsigned)
-				for (uint32_t j = 0; j < len; j++) {
-					if (dstOffset >= length) return 0;
-					dstOffset++;
-					if (dstOffset == length) return 1;
-				}
-			}
-		}
-	}
-
-	return 1;
+	const unsigned char *end = CxAdvanceLZX(buffer, size);
+	if (end == NULL) return 0;
+	
+	//allow for up to 7 bytes tail
+	unsigned int complen = end - buffer;
+	unsigned int leftover = size - complen;
+	if (leftover <= 7) return 1;
+	return 0;
 }
 
 int CxIsCompressedHuffman(const unsigned char *buffer, unsigned int size) {

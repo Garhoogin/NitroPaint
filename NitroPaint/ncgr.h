@@ -2,14 +2,15 @@
 
 #include "nclr.h"
 
-#define NCGR_TYPE_INVALID	0
-#define NCGR_TYPE_NCGR		1
-#define NCGR_TYPE_NC        2
-#define NCGR_TYPE_AC        3
-#define NCGR_TYPE_HUDSON	4
-#define NCGR_TYPE_HUDSON2	5
-#define NCGR_TYPE_BIN       6
-#define NCGR_TYPE_COMBO     7
+#define NCGR_TYPE_INVALID	 0
+#define NCGR_TYPE_NCGR		 1
+#define NCGR_TYPE_NC         2
+#define NCGR_TYPE_AC         3
+#define NCGR_TYPE_HUDSON	 4
+#define NCGR_TYPE_HUDSON2	 5
+#define NCGR_TYPE_GHOSTTRICK 6
+#define NCGR_TYPE_BIN        7
+#define NCGR_TYPE_COMBO      8
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
@@ -24,6 +25,11 @@
 #define NCGR_CHNAME(x,m,b)      (NCGR_BYTE_BOUNDARY(m)*(x)/((b)<<3))
 
 extern LPCWSTR characterFormatNames[];
+
+typedef struct CHAR_SLICE_ {
+	unsigned int offset;
+	unsigned int size;
+} CHAR_SLICE;
 
 typedef struct NCGR_{
 	OBJECT_HEADER header;
@@ -40,6 +46,8 @@ typedef struct NCGR_{
 	int attrWidth;		//width of ATTR
 	int attrHeight;		//height of ATTR
 	BYTE **tiles;
+	CHAR_SLICE *slices;       //for Ghost Trick files
+	int nSlices;              //for Ghost Trick files
 	struct COMBO2D_ *combo2d; //for combination files
 } NCGR;
 
@@ -70,6 +78,11 @@ int ChrIsValidHudson(const unsigned char *buffer, unsigned int size);
 // Determines if a byte array represents a valid raw character graphics file.
 //
 int ChrIsValidBin(const unsigned char *buffer, unsigned int size);
+
+//
+// Determines if a byte array represents a valid Ghost Trick graphics file.
+//
+int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid IS-AGB-CHARACTER graphics file

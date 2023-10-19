@@ -42,6 +42,21 @@ unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, unsi
 
 /******************************************************************************\
 *
+* Advance a byte steam beyond a compressed segment.
+*
+* Parameters:
+*	buffer					the input buffer
+*	size					size of the buffer
+*
+* Returns:
+*	A pointer to the end of the compressed segment, or NULL if an error occurs.
+*
+\******************************************************************************/
+unsigned char *CxAdvanceLZX(const unsigned char *buffer, unsigned int size);
+
+
+/******************************************************************************\
+*
 * Compresses a buffer and returns a pointer to an allocated buffer holding the
 * compressed data.
 *

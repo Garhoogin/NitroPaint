@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ACG", L"Hudson", L"Hudson 2", L"Binary", NULL };
+LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ACG", L"Hudson", L"Hudson 2", L"Ghost Trick", L"Binary", NULL };
 
 int ChrGuessWidth(int nTiles) {
 	int width = 1;
@@ -45,6 +45,35 @@ int ChrIsValidHudson(const unsigned char *buffer, unsigned int size) {
 int ChrIsValidBin(const unsigned char *buffer, unsigned int size) {
 	if (size & 0x1F) return 0;
 	return NCGR_TYPE_BIN;
+}
+
+int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
+	//size must be at least 4
+	if (size < 4) return 0;
+
+	//made up of 1 or more LZX chunk
+	const unsigned char *end = buffer + size;
+	const unsigned char *pos = buffer;
+
+	while (pos < end) {
+		//advance LZ. If failure, invalid
+		pos = CxAdvanceLZX(pos, end - pos);
+		if (pos == NULL) return 0;
+
+		unsigned int curpos = pos - buffer;
+
+		//advance 0 bytes until we reach another chunk
+		int nSkipped = 0;
+		while (pos < end && *pos == '\0') {
+			pos++;
+			nSkipped++;
+			if (nSkipped >= 8) return 0;
+		}
+
+		//if not at the end, check for a 0x11 byte.
+		if (pos < end && *pos != 0x11) return 0;
+	}
+	return 1;
 }
 
 int ChrIsValidNcg(const unsigned char *buffer, unsigned int size) {
@@ -118,6 +147,7 @@ int ChrIdentify(const unsigned char *buffer, unsigned int size) {
 	if (ChrIsValidNcg(buffer, size)) return NCGR_TYPE_NC;
 	if (ChrIsValidAcg(buffer, size)) return NCGR_TYPE_AC;
 	if (ChrIsValidHudson(buffer, size)) return NCGR_TYPE_HUDSON;
+	if (ChrIsValidGhostTrick(buffer, size)) return NCGR_TYPE_GHOSTTRICK;
 	if (ChrIsValidBin(buffer, size)) return NCGR_TYPE_BIN;
 	return NCGR_TYPE_INVALID;
 }
@@ -362,6 +392,55 @@ int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
+int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	ChrInit(ncgr, NCGR_TYPE_GHOSTTRICK);
+	ncgr->tileWidth = 8;
+	ncgr->nBits = 4;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_128K;
+
+	//made up of 1 or more LZX chunk
+	const unsigned char *end = buffer + size;
+	const unsigned char *pos = buffer;
+
+	unsigned int uncompSize = 0;
+	unsigned char *uncomp = NULL;
+	int nSlices = 0;
+	CHAR_SLICE *slices = NULL;
+
+	while (pos < end) {
+		unsigned int chunkSize;
+		unsigned char *p = CxDecompressLZX(pos, end - pos, &chunkSize);
+
+		uncompSize += chunkSize;
+		uncomp = (unsigned char *) realloc(uncomp, uncompSize);
+		memcpy(uncomp + uncompSize - chunkSize, p, chunkSize);
+
+		nSlices++;
+		slices = realloc(slices, nSlices * sizeof(CHAR_SLICE));
+		slices[nSlices - 1].offset = uncompSize - chunkSize;
+		slices[nSlices - 1].size = chunkSize;
+
+		//advance LZ. If failure, invalid
+		pos = CxAdvanceLZX(pos, end - pos);
+
+		//advance 0 bytes until we reach another chunk
+		while (pos < end && *pos == '\0') {
+			pos++;
+		}
+	}
+
+	//set graphics
+	ncgr->nTiles = uncompSize / 0x20;
+	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
+	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ncgr->tiles = (unsigned char **) calloc(ncgr->nTiles, sizeof(unsigned char *));
+	ncgr->slices = slices;
+	ncgr->nSlices = nSlices;
+	ChrReadGraphics(ncgr, uncomp);
+	free(uncomp);
+	return 0;
+}
+
 int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_NC);
 
@@ -452,6 +531,8 @@ int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 			return ChrReadAcg(ncgr, buffer, size);
 		case NCGR_TYPE_HUDSON:
 			return ChrReadHudson(ncgr, buffer, size);
+		case NCGR_TYPE_GHOSTTRICK:
+			return ChrReadGhostTrick(ncgr, buffer, size);
 		case NCGR_TYPE_BIN:
 			return ChrReadBin(ncgr, buffer, size);
 	}
@@ -786,6 +867,28 @@ int ChrWriteHudson(NCGR *ncgr, BSTREAM *stream) {
 	return 0;
 }
 
+int ChrWriteGhostTrick(NCGR *ncgr, BSTREAM *stream) {
+	//get raw graphics data
+	BSTREAM gfxStream;
+	bstreamCreate(&gfxStream, NULL, 0);
+	ChrWriteChars(ncgr, &gfxStream);
+
+	//write slices
+	for (int i = 0; i < ncgr->nSlices; i++) {
+		CHAR_SLICE *slice = ncgr->slices + i;
+		unsigned int compSize;
+		unsigned char *comp = CxCompressLZX(gfxStream.buffer + slice->offset, slice->size, &compSize);
+		bstreamWrite(stream, comp, compSize);
+		free(comp);
+
+		//align
+		bstreamAlign(stream, 4);
+	}
+
+	bstreamFree(&gfxStream);
+	return 0;
+}
+
 int ChrWriteCombo(NCGR *ncgr, BSTREAM *stream) {
 	return combo2dWrite(ncgr->combo2d, stream);
 }
@@ -801,6 +904,8 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 		case NCGR_TYPE_HUDSON:
 		case NCGR_TYPE_HUDSON2:
 			return ChrWriteHudson(ncgr, stream);
+		case NCGR_TYPE_GHOSTTRICK:
+			return ChrWriteGhostTrick(ncgr, stream);
 		case NCGR_TYPE_BIN:
 			return ChrWriteBin(ncgr, stream);
 		case NCGR_TYPE_COMBO:
