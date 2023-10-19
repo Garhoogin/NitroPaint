@@ -798,7 +798,7 @@ int CxIsCompressedLZ(const unsigned char *buffer, unsigned int size) {
 			if (!flag) {
 				if (dstOffset >= length || offset >= size) return 0;
 				dstOffset++, offset++;
-				if (dstOffset == length) return 1;
+				if (dstOffset == length) goto checkSize;
 			} else {
 				if (offset + 1 >= size) return 0;
 				uint8_t high = buffer[offset++];
@@ -812,11 +812,18 @@ int CxIsCompressedLZ(const unsigned char *buffer, unsigned int size) {
 				for (uint32_t j = 0; j < len; j++) {
 					if (dstOffset >= length) return 0;
 					dstOffset++;
-					if (dstOffset == length) return 1;
+					if (dstOffset == length) goto checkSize;
 				}
 			}
 		}
 	}
+
+	//check the size of the remaining data
+	unsigned int remaining;
+checkSize:
+	remaining = size - offset;
+	if (remaining > 7) return 0;
+
 	return 1;
 }
 
