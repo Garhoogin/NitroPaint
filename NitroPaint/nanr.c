@@ -410,7 +410,7 @@ void AnmFree(NANR *nanr) {
 	}
 	if (nanr->seqVramTransfers != NULL) {
 		for (int i = 0; i < nanr->nSequences; i++) {
-			if (nanr->seqVramTransfers[i] != NULL) free(nanr->sequences);
+			if (nanr->seqVramTransfers[i] != NULL) free(nanr->seqVramTransfers[i]);
 		}
 		free(nanr->seqVramTransfers);
 	}
