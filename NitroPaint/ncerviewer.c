@@ -672,7 +672,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 
 					//for each OAM entry, match each pixel to a pixel of the image.
-					int translateX = -256 + (cell->maxX + cell->minX) / 2, translateY = -128 + (cell->maxY + cell->minY) / 2;
+					int translateX = -256, translateY = -128;
 					for (int i = 0; i < cell->nAttribs; i++) {
 						NCER_CELL_INFO info;
 						CellDecodeOamAttributes(&info, cell, i);
@@ -1047,8 +1047,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 
 						COLOR32 *bits = (COLOR32 *) calloc(256 * 512, sizeof(COLOR32));
-						int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-						CellRenderCell(bits, cell, ncer->mappingMode, ncgr, nclr, NULL, translateX, translateY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
+						CellRenderCell(bits, cell, ncer->mappingMode, ncgr, nclr, NULL, 256, 128, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
 						ImgSwapRedBlue(bits, 512, 256);
 						ImgWrite(bits, 512, 256, location);
 
