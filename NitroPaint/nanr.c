@@ -4,20 +4,102 @@
 #include "nanr.h"
 #include "ncgr.h"
 #include "nclr.h"
+#include "nns.h"
 
-LPCWSTR cellAnimationFormatNames[] = { L"Invalid", L"NANR" };
+LPCWSTR cellAnimationFormatNames[] = { L"Invalid", L"NANR", L"Ghost Trick" };
 
-int nanrIsValid(LPBYTE lpFile, int size) {
-	if (size < 16) return 0;
-	DWORD dwMagic = *(DWORD *) lpFile;
-	if (dwMagic != 'NANR' && dwMagic != 'RNAN') return 0;
+static int AnmiOffsetComparator(const void *p1, const void *p2) {
+	uint32_t ofs1 = *(uint32_t *) p1;
+	uint32_t ofs2 = *(uint32_t *) p2;
+	if (ofs1 < ofs2) return -1;
+	if (ofs1 > ofs2) return 1;
+	return 0;
+}
+
+int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
+	//must be >0 and a multiple of 8
+	if (size < 8 || (size & 7)) return 0;
+
+	//scan offset:size pairs. Offsets must be a multiple of 4, and sizes must be nonzero
+	int nEntries = size / 8;
+	for (int i = 0; i < nEntries; i++) {
+		uint32_t offset = *(uint32_t *) (buffer + i * 8 + 0);
+		uint32_t seglen = *(uint32_t *) (buffer + i * 8 + 4);
+
+		if (seglen == 0) return 0;
+		if (offset & 3) return 0;
+		if (seglen & 3) return 0;
+	}
+
+	//ensure no overlapping segments, aside from those that overlap entirely, and that all segments are accounted for
+	uint32_t (*copy)[2] = (uint32_t (*)[2]) calloc(nEntries, sizeof(uint32_t [2]));
+	memcpy(copy, buffer, nEntries * sizeof(*copy));
+	qsort(copy, nEntries, sizeof(*copy), AnmiOffsetComparator);
+
+	uint32_t lastOffset = 0, lastSize = 0;
+	int valid = 1;
+	for (int i = 0; i < nEntries; i++) {
+		uint32_t offset = copy[i][0];
+		uint32_t seglen = copy[i][1];
+		if (i == 0) {
+			//lowest offset: must be 0
+			if (offset > 0) {
+				valid = 0;
+				break;
+			}
+			lastOffset = offset;
+			lastSize = seglen;
+			continue;
+		}
+
+		//not the first segment. If the offset equals last offset, size must match too.
+		if (offset == lastOffset) {
+			if (seglen != lastSize) {
+				valid = 0;
+				break;
+			}
+		}
+
+		//else, check that the offset equals the last offset plus the last size.
+		if (offset != lastOffset) {
+			if (offset != lastOffset + lastSize) {
+				valid = 0;
+				break;
+			}
+		}
+
+		//set last
+		lastOffset = offset;
+		lastSize = seglen;
+	}
+
+	free(copy);
+	return valid;
+}
+
+int AnmIsValidNanr(const unsigned char *buffer, unsigned int size) {
+	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "RNAN", 4) != 0) return 0;
+
+	const unsigned char *abnk = NnsG2dGetSectionByMagic(buffer, size, 'ABNK');
+	if (abnk == NULL) abnk = NnsG2dGetSectionByMagic(buffer, size, 'KNBA');
+	if (abnk == NULL) return 0;
 	return 1;
 }
 
-int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
-	if (!nanrIsValid(buffer, size)) return 1;
+int AnmIdentify(const unsigned char *buffer, unsigned int size) {
+	if (AnmIsValidNanr(buffer, size)) return NANR_TYPE_NANR;
+	if (AnmIsValidGhostTrick(buffer, size)) return NANR_TYPE_GHOSTTRICK;
+	return NANR_TYPE_INVALID;
+}
 
-	LPBYTE abnk = buffer + 0x10;
+void AnmInit(NANR *nanr, int format) {
+	nanr->header.size = sizeof(NANR);
+	ObjInit(&nanr->header, FILE_TYPE_NANR, format);
+}
+
+int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
+	const unsigned char *abnk = buffer + 0x10;
 	int nSections = *(unsigned short *) (buffer + 0xE);
 	int nSequences = *(unsigned short *) (abnk + 8);
 	int nTotalFrames = *(unsigned short *) (abnk + 0xA);
@@ -43,7 +125,7 @@ int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
 		sequences[i].frames = frameData;
 
 		for (int j = 0; j < sequences[i].nFrames; j++) {
-			
+
 			framesOffs = (int) frameData[j].animationData;
 			void *frameSrc = (void *) (buffer + animationOffset + framesOffs);
 			void *frame = calloc(1, elementSize);
@@ -60,7 +142,7 @@ int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
 	DWORD lablSize = 0, uextSize = 0;
 	void *labl = NULL, *uext = NULL;
 	if (nSections > 1) {
-		LPBYTE ptr = buffer + 0x10;
+		const unsigned char *ptr = buffer + 0x10;
 		ptr += *(DWORD *) (ptr + 4);
 		nSections--;
 
@@ -80,7 +162,7 @@ int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
 			ptr += size;
 		}
 	}
-	
+
 	nanr->sequences = sequences;
 	nanr->nSequences = nSequences;
 	nanr->labl = labl;
@@ -91,8 +173,66 @@ int nanrRead(NANR *nanr, LPBYTE buffer, int size) {
 	return 0;
 }
 
-int nanrReadFile(NANR *nanr, LPCWSTR path) {
-	return ObjReadFile(path, (OBJECT_HEADER *) nanr, (OBJECT_READER) nanrRead);
+int AnmReadGhostTrick(NANR *nanr, const unsigned char *buffer, unsigned int size) {
+	//Ghost Trick files contain only one sequence. Read it here.
+	AnmInit(nanr, NANR_TYPE_GHOSTTRICK);
+	nanr->nSequences = 1;
+	nanr->sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
+	
+	//get frames
+	int nFrames = size / 8;
+
+	NANR_SEQUENCE *seq = &nanr->sequences[0];
+	seq->nFrames = nFrames;
+	seq->frames = (FRAME_DATA *) calloc(nFrames, sizeof(FRAME_DATA));
+	seq->startFrameIndex = 0;
+	seq->mode = 1; //forward
+	seq->type = 0 | (1 << 16); //Cell anim Index
+
+	//read frames
+	for (int i = 0; i < nFrames; i++) {
+		ANIM_DATA *animData = (ANIM_DATA *) calloc(1, sizeof(ANIM_DATA));
+		animData->index = i;
+		seq->frames[i].nFrames = 1;
+		seq->frames[i].animationData = animData;
+	}
+
+	//convert transfers into transfer indices
+	uint32_t (*copy)[2] = (uint32_t (*)[2]) calloc(nFrames, sizeof(uint32_t [2]));
+	memcpy(copy, buffer, nFrames * sizeof(*copy));
+	qsort(copy, nFrames, sizeof(*copy), AnmiOffsetComparator);
+	for (int i = 0; i < nFrames; i++) {
+		if (i == 0) copy[i][1] = 0;
+		else {
+			if (copy[i][0] == copy[i - 1][0]) copy[i][1] = copy[i - 1][1];
+			else copy[i][1] = copy[i - 1][1] + 1;
+		}
+	}
+
+	//VRAM transfer operations
+	nanr->seqVramTransfers = (int **) calloc(1, sizeof(int *));
+	nanr->seqVramTransfers[0] = (int *) calloc(nFrames, sizeof(int));
+	for (int i = 0; i < nFrames; i++) {
+		nanr->seqVramTransfers[0][i] = copy[i][1];
+	}
+
+	free(copy);
+	return 0;
+}
+
+int AnmRead(NANR *nanr, const unsigned char *buffer, unsigned int size) {
+	int type = AnmIdentify(buffer, size);
+	switch (type) {
+		case NANR_TYPE_NANR:
+			return AnmReadNanr(nanr, buffer, size);
+		case NANR_TYPE_GHOSTTRICK:
+			return AnmReadGhostTrick(nanr, buffer, size);
+	}
+	return 1;
+}
+
+int AnmReadFile(NANR *nanr, LPCWSTR path) {
+	return ObjReadFile(path, (OBJECT_HEADER *) nanr, (OBJECT_READER) AnmRead);
 }
 
 int nanrCountFrames(NANR *nanr) {
@@ -155,7 +295,7 @@ int nanrWriteFrame(BSTREAM *stream, void *data, int element) {
 	return ofs;
 }
 
-int nanrWrite(NANR *nanr, BSTREAM *stream) {
+int AnmWrite(NANR *nanr, BSTREAM *stream) {
 	int status = 0;
 
 	int fileStart = stream->pos;
@@ -255,11 +395,11 @@ int nanrWrite(NANR *nanr, BSTREAM *stream) {
 	return status;
 }
 
-int nanrWriteFile(NANR *nanr, LPWSTR name) {
-	return ObjWriteFile(name, (OBJECT_HEADER *) nanr, (OBJECT_WRITER) nanrWrite);
+int AnmWriteFile(NANR *nanr, LPWSTR name) {
+	return ObjWriteFile(name, (OBJECT_HEADER *) nanr, (OBJECT_WRITER) AnmWrite);
 }
 
-void nanrFree(NANR *nanr) {
+void AnmFree(NANR *nanr) {
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;
 		for (int j = 0; j < sequence->nFrames; j++) {
@@ -267,6 +407,12 @@ void nanrFree(NANR *nanr) {
 			free(f->animationData);
 		}
 		free(sequence->frames);
+	}
+	if (nanr->seqVramTransfers != NULL) {
+		for (int i = 0; i < nanr->nSequences; i++) {
+			if (nanr->seqVramTransfers[i] != NULL) free(nanr->sequences);
+		}
+		free(nanr->seqVramTransfers);
 	}
 	free(nanr->sequences);
 }

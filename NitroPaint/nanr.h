@@ -2,8 +2,9 @@
 #include <Windows.h>
 #include "filecommon.h"
 
-#define NANR_TYPE_INVALID 0
-#define NANR_TYPE_NANR 1
+#define NANR_TYPE_INVALID    0
+#define NANR_TYPE_NANR       1
+#define NANR_TYPE_GHOSTTRICK 2
 
 extern LPCWSTR cellAnimationFormatNames[];
 
@@ -41,11 +42,13 @@ typedef struct NANR_SQUENCE_ {
 	FRAME_DATA *frames;
 } NANR_SEQUENCE;
 
+
 typedef struct NANR_ {
 	OBJECT_HEADER header;
 
 	int nSequences;
-	NANR_SEQUENCE *sequences;
+	NANR_SEQUENCE *sequences;  //animation sequences
+	int **seqVramTransfers;    //VRAM transfer arrays (one per frame per sequence)
 
 	void *labl;
 	int lablSize;
@@ -53,14 +56,16 @@ typedef struct NANR_ {
 	int uextSize;
 } NANR;
 
-int nanrIsValid(LPBYTE lpFile, int size);
+int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 
-int nanrRead(NANR *nanr, LPBYTE lpFile, int size);
+int AnmIsValidNanr(const unsigned char *lpFile, unsigned int size);
 
-int nanrReadFile(NANR *nanr, LPCWSTR path);
+int AnmRead(NANR *nanr, const unsigned char *lpFile, unsigned int size);
 
-int nanrWrite(NANR *nanr, BSTREAM *stream);
+int AnmReadFile(NANR *nanr, LPCWSTR path);
 
-int nanrWriteFile(NANR *nanr, LPWSTR name);
+int AnmWrite(NANR *nanr, BSTREAM *stream);
 
-void nanrFree(NANR *nanr);
+int AnmWriteFile(NANR *nanr, LPWSTR name);
+
+void AnmFree(NANR *nanr);

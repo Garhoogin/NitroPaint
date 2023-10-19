@@ -148,6 +148,20 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 		}
 	}
 
+	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
+
+	//if this animation has VRAM transfer operations, simulate them here.
+	if (nanr->seqVramTransfers != NULL) {
+		if (ncgr->slices != NULL) {
+			CHAR_VRAM_TRANSFER dummy = { 0 };
+			int transferIndex = nanr->seqVramTransfers[sequenceIndex][frameIndex];
+			dummy.srcAddr = ncgr->slices[transferIndex].offset;
+			dummy.dstAddr = 0;
+			dummy.size = ncgr->slices[transferIndex].size;
+			vramTransfer = &dummy;
+		}
+	}
+
 	//now, determine the type of frame and how to draw it.
 	int animType = type & 0xFFFF;
 	if (animType == 0) { //index
@@ -155,7 +169,7 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, NULL, translateX + ofsX, translateY + ofsY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
+		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + ofsX, translateY + ofsY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
 	} else if (animType == 1) { //SRT
 		ANIM_DATA_SRT *animData = (ANIM_DATA_SRT *) frameData->animationData;
 
@@ -174,13 +188,13 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, NULL, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, a, b, c, d);
+		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, a, b, c, d);
 	} else if (animType == 2) { //index+translation
 		ANIM_DATA_T *animData = (ANIM_DATA_T *) frameData->animationData;
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, NULL, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
+		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
 	}
 
 	return frameBuffer;
@@ -589,7 +603,7 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 								free(path);
 							} else break;
 						}
-						nanrWriteFile(&data->nanr, data->szOpenFile);
+						AnmWriteFile(&data->nanr, data->szOpenFile);
 						break;
 					}
 				}
@@ -895,7 +909,7 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		{
 			DWORD *frameBuffer = data->frameBuffer;
 			data->frameBuffer = NULL;
-			nanrFree(&data->nanr);
+			AnmFree(&data->nanr);
 			free(frameBuffer);
 			free(data);
 			destroyWindowAnimationTick(hWnd);
@@ -923,7 +937,7 @@ VOID RegisterNanrViewerClass(VOID) {
 
 HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	NANR nanr;
-	int n = nanrReadFile(&nanr, path);
+	int n = AnmReadFile(&nanr, path);
 	if (n) {
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
