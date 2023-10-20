@@ -1,5 +1,13 @@
+#include <Shlwapi.h>
+#include <Uxtheme.h>
+
 #include "nitropaint.h"
 #include "editor.h"
+
+static BOOL CALLBACK EditorSetThemeProc(HWND hWnd, LPARAM lParam) {
+	SetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
+	return TRUE;
+}
 
 static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	//check class long for initialized. If so, pass to window proc
@@ -25,6 +33,21 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				} else {
 					return FILE_TYPE_INVALID;
 				}
+#if(g_useDarkTheme)
+			case WM_CTLCOLORSTATIC:
+			case WM_CTLCOLORBTN:
+				SetBkMode((HDC) wParam, TRANSPARENT);
+				SetTextColor((HDC) wParam, RGB(255, 255, 255));
+				return (LRESULT) (HBRUSH) GetClassLongPtr(hWnd, GCL_HBRBACKGROUND);
+			case WM_CTLCOLORDLG:
+				break;
+			case WM_CTLCOLOREDIT:
+			case WM_CTLCOLORLISTBOX:
+				SetBkMode((HDC) wParam, TRANSPARENT);
+				SetTextColor((HDC) wParam, RGB(255, 255, 255));
+				SelectObject((HDC) wParam, (HPEN) GetClassLongPtr(hWnd, EDITOR_CD_LIGHTPEN));
+				return (LRESULT) (HBRUSH) GetClassLongPtr(hWnd, EDITOR_CD_LIGHTBRUSH);
+#endif
 		}
 
 		//call proc
@@ -37,6 +60,13 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
 				free(data);
 			}
+		}
+
+		//WM_CREATE set theme
+		if (msg == WM_CREATE) {
+#if(g_useDarkTheme)
+			EnumChildWindows(hWnd, EditorSetThemeProc, 0);
+#endif
 		}
 
 		return res;
@@ -72,6 +102,8 @@ ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, s
 		SetClassLongPtr(hWndDummy, EDITOR_CD_TITLE, (LONG_PTR) title);
 		SetClassLongPtr(hWndDummy, EDITOR_CD_WNDPROC, (LONG_PTR) lpfnWndProc);
 		SetClassLongPtr(hWndDummy, EDITOR_CD_DATA_SIZE, dataSize);
+		SetClassLongPtr(hWndDummy, EDITOR_CD_LIGHTBRUSH, (LONG_PTR) CreateSolidBrush(RGB(51, 51, 51)));
+		SetClassLongPtr(hWndDummy, EDITOR_CD_LIGHTPEN, (LONG_PTR) CreatePen(PS_SOLID, 1, RGB(51, 51, 51)));
 		DestroyWindow(hWndDummy);
 	}
 

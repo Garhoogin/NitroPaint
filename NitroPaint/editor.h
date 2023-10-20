@@ -6,12 +6,14 @@
 
 // ----- Class data slots
 #define EDITOR_CD_SLOT(n)     ((n)*sizeof(void*))
-#define EDITOR_CD_SIZE        (4*sizeof(void*))
+#define EDITOR_CD_SIZE        (6*sizeof(void*))
 
 #define EDITOR_CD_TITLE       EDITOR_CD_SLOT(0)
 #define EDITOR_CD_WNDPROC     EDITOR_CD_SLOT(1)
 #define EDITOR_CD_INITIALIZED EDITOR_CD_SLOT(2)
 #define EDITOR_CD_DATA_SIZE   EDITOR_CD_SLOT(3)
+#define EDITOR_CD_LIGHTBRUSH  EDITOR_CD_SLOT(4)
+#define EDITOR_CD_LIGHTPEN    EDITOR_CD_SLOT(5)
 
 
 // ----- Window data slots
