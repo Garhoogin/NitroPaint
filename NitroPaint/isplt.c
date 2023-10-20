@@ -1267,17 +1267,16 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *t
 		int closest = RxiPaletteFindClosestColorYiqSimple(reduction, &tile1->palette[0], tile1->nUsedColors, yiq, &diff);
 
 		if (diff > 0) {
-			totalDiff += sqrt(diff) * tile2->useCounts[i];
+			totalDiff += diff * tile2->useCounts[i];
 		}
 
 	}
-
+	if (totalDiff > 0) totalDiff = sqrt(totalDiff);
 	if (totalDiff == 0.0) return 0;
-	if (tile2->nUsedColors > tile1->nUsedColors) totalDiff += 1.0;
 
 	if ((tile1->nUsedColors + tile2->nUsedColors) <= reduction->nPaletteColors) {
 		if (tile2->nUsedColors <= reduction->nPaletteColors / 2) {
-			totalDiff = totalDiff * (double) tile2->nUsedColors / reduction->nPaletteColors;
+			//totalDiff = totalDiff * (double) tile2->nUsedColors / reduction->nPaletteColors;
 		}
 	} else {
 		totalDiff += 2.0 * (tile1->nUsedColors + tile2->nUsedColors - reduction->nPaletteColors);
