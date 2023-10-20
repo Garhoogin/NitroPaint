@@ -434,7 +434,7 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int charBase, int x, int y
 				out[i] = bg;
 			}
 		} else {
-			memset(out, 64 * 4, 0);
+			memset(out, 0, 64 * 4);
 		}
 		return 0;
 	}
