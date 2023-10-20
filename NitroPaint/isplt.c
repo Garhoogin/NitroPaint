@@ -1274,14 +1274,6 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *t
 	if (totalDiff > 0) totalDiff = sqrt(totalDiff);
 	if (totalDiff == 0.0) return 0;
 
-	if ((tile1->nUsedColors + tile2->nUsedColors) <= reduction->nPaletteColors) {
-		if (tile2->nUsedColors <= reduction->nPaletteColors / 2) {
-			//totalDiff = totalDiff * (double) tile2->nUsedColors / reduction->nPaletteColors;
-		}
-	} else {
-		totalDiff += 2.0 * (tile1->nUsedColors + tile2->nUsedColors - reduction->nPaletteColors);
-	}
-
 	totalDiff += 15.0 * sqrt(tile1->nSwallowed * tile2->nSwallowed);
 	return totalDiff;
 }

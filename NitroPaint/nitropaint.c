@@ -1478,7 +1478,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndAlignment = CreateEdit(hWnd, L"32", rightX + 75, topY + 27 * 4, 80, 22, TRUE);
 			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
 
-			LPCWSTR formatNames[] = { L"NITRO-System", L"Hudson", L"Hudson 2", L"NITRO-CHARACTER", L"AGB-CHARACTER", L"Raw", L"Raw Compressed" };
+			LPCWSTR formatNames[] = { L"NITRO-System", L"NITRO-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed" };
 			CreateStatic(hWnd, L"Format:", rightX, middleY, 50, 22);
 			data->hWndFormatDropdown = CreateCombobox(hWnd, formatNames, sizeof(formatNames) / sizeof(*formatNames), rightX + 55, middleY, 150, 22, 0);
 
