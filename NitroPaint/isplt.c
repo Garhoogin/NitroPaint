@@ -1259,7 +1259,7 @@ static int RxiPaletteFindClosestColorYiqSimple(RxReduction *reduction, RxYiqColo
 	return RxiPaletteFindClosestRgbColorYiqPaletteSimple(palette, nColors, rgb.r | (rgb.g << 8) | (rgb.b << 16), outDiff);
 }
 
-static int RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *tile1, RxiTile *tile2) {
+static double RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *tile1, RxiTile *tile2) {
 	//are the palettes identical?
 	if (tile1->nUsedColors == tile2->nUsedColors && memcmp(tile1->palette, tile2->palette, tile1->nUsedColors * sizeof(tile1->palette[0])) == 0) return 0;
 
@@ -1288,14 +1288,13 @@ static int RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *tile
 	}
 
 	totalDiff += 15.0 * sqrt(tile1->nSwallowed * tile2->nSwallowed);
-	if (totalDiff >= INT_MAX) return INT_MAX;
-	return (int) totalDiff;
+	return totalDiff;
 }
 
-static int RxiTileFindSimilarTiles(RxiTile *tiles, int *similarities, int nTiles, int *i1, int *i2) {
+static double RxiTileFindSimilarTiles(RxiTile *tiles, double *similarities, int nTiles, int *i1, int *i2) {
 	//find a pair of tiles. Both must be representative tiles.
 
-	int leastDiff = INT_MAX;
+	double leastDiff = 1e32;
 	int best1 = 0, best2 = 1;
 	for (int i = 0; i < nTiles; i++) {
 		RxiTile *tile1 = tiles + i;
@@ -1398,7 +1397,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 	}
 
 	//-------------STAGE 2
-	int *diffBuff = (int *) calloc(nTiles * nTiles, sizeof(int));
+	double *diffBuff = (double *) calloc(nTiles * nTiles, sizeof(double));
 	for (int i = 0; i < nTiles; i++) {
 		RxiTile *tile1 = tiles + i;
 		for (int j = 0; j < nTiles; j++) {
@@ -1418,7 +1417,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 	while (nCurrentPalettes > nPalettes) {
 
 		int index1, index2;
-		int diff = RxiTileFindSimilarTiles(tiles, diffBuff, nTiles, &index1, &index2);
+		double diff = RxiTileFindSimilarTiles(tiles, diffBuff, nTiles, &index1, &index2);
 
 		//find all  instances of index2, replace with index1
 		int nSwitched = 0;
@@ -1472,8 +1471,8 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 		for (int i = 0; i < nTiles; i++) {
 			RxiTile *t = tiles + i;
 			if (t->palIndex != i) continue;
-			int diff1 = RxiTileComputePaletteDifference(reduction, t, rep);
-			int diff2 = RxiTileComputePaletteDifference(reduction, rep, t);
+			double diff1 = RxiTileComputePaletteDifference(reduction, t, rep);
+			double diff2 = RxiTileComputePaletteDifference(reduction, rep, t);
 			diffBuff[i + index1 * nTiles] = diff1;
 			diffBuff[index1 + i * nTiles] = diff2;
 		}
