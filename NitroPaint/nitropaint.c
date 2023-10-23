@@ -850,7 +850,7 @@ VOID ProcessCommandLine(HWND hWnd, BOOL remoteWindow) {
 	wchar_t **argv;
 	wchar_t **env;
 	int startInfo;
-	__wgetmainargs(&argc, &argv, &env, 1, &startInfo);
+	argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 	if (argc > 1) {
 		argc--;
 		argv++;
