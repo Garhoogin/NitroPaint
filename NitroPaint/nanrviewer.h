@@ -15,6 +15,7 @@ typedef struct {
 	int sequence;
 	int playing;
 	DWORD *frameBuffer;
+	BOOL ignoreInputMsg;
 
 	HWND hWndAnimationDropdown;
 	HWND hWndPauseButton;

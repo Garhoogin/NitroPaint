@@ -281,11 +281,17 @@ void nanrViewerSetFrame(HWND hWnd, int n, BOOL updateListBox) {
 	int len = wsprintfW(bf, L"Frame %d", n);
 	SendMessage(data->hWndFrameCounter, WM_SETTEXT, len, (LPARAM) bf);
 	len = wsprintfW(bf, L"%d", sequence->frames[n].nFrames);
+
+	// Prevent SETTEXT message from changing the animation data
+	data->ignoreInputMsg = TRUE;
+
 	SendMessage(data->hWndFrameCount, WM_SETTEXT, len, (LPARAM) bf);
 	if (n < sequence->nFrames && n >= 0) {
 		len = wsprintfW(bf, L"%d", ((ANIM_DATA *) (sequence->frames[n].animationData))->index);
 		SendMessage(data->hWndIndex, WM_SETTEXT, len, (LPARAM) bf);
 	}
+	
+	data->ignoreInputMsg = FALSE;
 	
 	int element = sequence->type & 0xFFFF;
 	if (element > 0) {
@@ -489,6 +495,7 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWnd = hWnd;
 			data->sequence = 0;
 			data->frameBuffer = (DWORD *) calloc(256 * 512, 4);
+			data->ignoreInputMsg = FALSE;
 
 			CreateWindow(L"STATIC", L"Sequence:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 522, 10, 70, 22, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"STATIC", L"Frames:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 95, 50, 22, hWnd, NULL, NULL, NULL);
@@ -704,19 +711,23 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					sequence->type = (sequence->type & 0xFFFF) | ((idx + 1) << 16);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->hWndFrameCount && notif == EN_CHANGE) {
-					WCHAR bf[16];
-					SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
-					int frameCount = _wtol(bf);
+					if (!data->ignoreInputMsg) {
+						WCHAR bf[16];
+						SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
+						int frameCount = _wtol(bf);
 
-					sequence->frames[startFrameIndex].nFrames = frameCount;
+						sequence->frames[startFrameIndex].nFrames = frameCount;
+					}
 				} else if (hWndControl == data->hWndIndex && notif == EN_CHANGE) {
-					WCHAR bf[16];
-					SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
-					int index = _wtol(bf);
+					if (!data->ignoreInputMsg) {
+						WCHAR bf[16];
+						SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
+						int index = _wtol(bf);
 
-					ANIM_DATA *f = (ANIM_DATA *) sequence->frames[startFrameIndex].animationData;
-					f->index = index;
-					InvalidateRect(hWnd, NULL, FALSE);
+						ANIM_DATA *f = (ANIM_DATA *) sequence->frames[startFrameIndex].animationData;
+						f->index = index;
+						InvalidateRect(hWnd, NULL, FALSE);
+					}
 				} else if ((hWndControl == data->hWndTranslateX || hWndControl == data->hWndTranslateY) && notif == EN_CHANGE) {
 					WCHAR bf[16];
 					SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);

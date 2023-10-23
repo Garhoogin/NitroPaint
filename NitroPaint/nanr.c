@@ -99,6 +99,8 @@ void AnmInit(NANR *nanr, int format) {
 }
 
 int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
+	AnmInit(nanr, NANR_TYPE_NANR);
+
 	const unsigned char *abnk = buffer + 0x10;
 	int nSections = *(unsigned short *) (buffer + 0xE);
 	int nSequences = *(unsigned short *) (abnk + 8);
