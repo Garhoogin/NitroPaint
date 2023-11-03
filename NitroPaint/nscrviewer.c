@@ -10,6 +10,7 @@
 #include "resource.h"
 #include "nitropaint.h"
 #include "nscr.h"
+#include "bggen.h"
 #include "gdip.h"
 #include "palette.h"
 #include "tiler.h"

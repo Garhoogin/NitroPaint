@@ -161,6 +161,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="bggen.c" />
     <ClCompile Include="bstream.c" />
     <ClCompile Include="cellgen.c" />
     <ClCompile Include="childwindow.c" />
@@ -201,6 +202,7 @@
     <ClCompile Include="undo.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="bggen.h" />
     <ClInclude Include="bstream.h" />
     <ClInclude Include="cellgen.h" />
     <ClInclude Include="childwindow.h" />

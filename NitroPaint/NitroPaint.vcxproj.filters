@@ -90,9 +90,6 @@
     <ClCompile Include="undo.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="analysis.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="nanr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -100,9 +97,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="isplt.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="g2dfile.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="combo2d.c">
@@ -127,6 +121,15 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="cellgen.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nns.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tds.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="bggen.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -209,16 +212,10 @@
     <ClInclude Include="undo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="analysis.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="nanr.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="nanrviewer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="g2dfile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="combo2d.h">
@@ -243,6 +240,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="cellgen.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nns.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tds.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bggen.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
