@@ -167,15 +167,23 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 			cell->nAttribs = nOAMEntries;
 			cell->cellAttr = cellAttr;
 
-			uint16_t *cellOam = (uint16_t *) (oamData + pOamAttrs);
-			cell->attr = calloc(cell->nAttribs * 3, 2);
-			memcpy(cell->attr, oamData + pOamAttrs, cell->nAttribs * 3 * 2);
+			if (nOAMEntries != 0) {
+				uint16_t *cellOam = (uint16_t *) (oamData + pOamAttrs);
+				cell->attr = calloc(cell->nAttribs * 3, 2);
+				memcpy(cell->attr, oamData + pOamAttrs, cell->nAttribs * 3 * 2);
 
-			if (perCellDataSize >= 16) {
-				cell->maxX = *(int16_t *) (cellData + 0x8);
-				cell->maxY = *(int16_t *) (cellData + 0xA);
-				cell->minX = *(int16_t *) (cellData + 0xC);
-				cell->minY = *(int16_t *) (cellData + 0xE);
+				if (perCellDataSize >= 16) {
+					cell->maxX = *(int16_t *) (cellData + 0x8);
+					cell->maxY = *(int16_t *) (cellData + 0xA);
+					cell->minX = *(int16_t *) (cellData + 0xC);
+					cell->minY = *(int16_t *) (cellData + 0xE);
+				}
+			} else {
+				// Provide at least one OAM attribute for empty cells
+				cell->nAttribs = 1;
+				cell->attr = calloc(3, 2);
+				memset(cell->attr, 0, 3 * 2);
+				cell->attr[0] = 0x0200; // Disable rendering
 			}
 
 			cellData += perCellDataSize;
@@ -232,8 +240,18 @@ int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int siz
 		int nObj = *(uint16_t *) cell;
 
 		cells[i].nAttribs = nObj;
-		cells[i].attr = (uint16_t *) calloc(nObj, 6 * 2);
-		memcpy(cells[i].attr, cell + 2, nObj * 2 * 6);
+
+		if (nObj != 0) {
+			cells[i].attr = (uint16_t *) calloc(nObj, 3 * 2);
+			memcpy(cells[i].attr, cell + 2, nObj * 3 * 2);
+		} else {
+			// Provide at least one OAM attribute for empty cells
+			cells[i].nAttribs = 1;
+			cells[i].attr = calloc(1, 3 * 2);
+			memset(cells[i].attr, 0, 3 * 2);
+			cells[i].attr[0] = 0x0200; // Disable rendering
+		}
+
 	}
 
 	CellInit(ncer, NCER_TYPE_GHOSTTRICK);
@@ -268,6 +286,10 @@ void CellGetObjDimensions(int shape, int size, int *width, int *height) {
 }
 
 int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
+	if (oam >= cell->nAttribs) {
+		return 1;
+	}
+
 	WORD attr0 = cell->attr[oam * 3];
 	WORD attr1 = cell->attr[oam * 3 + 1];
 	WORD attr2 = cell->attr[oam * 3 + 2];

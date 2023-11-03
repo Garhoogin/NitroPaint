@@ -20,6 +20,7 @@
 #include "tileeditor.h"
 #include "textureeditor.h"
 #include "nsbtx.h"
+#include "tds.h"
 #include "nmcrviewer.h"
 #include "colorchooser.h"
 #include "ui.h"
@@ -658,6 +659,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		case FILE_TYPE_IMAGE:
 			CreateImageDialog(hWnd, path);
 			break;
+		case FILE_TYPE_TDS:
+			CreateTdsViewer(data->hWndMdi, path);
+			break;
 		case FILE_TYPE_COMBO2D:
 		{
 			//since we're kind of stepping around things a bit, we need to decompress here if applicable
@@ -846,7 +850,7 @@ VOID ProcessCommandLine(HWND hWnd, BOOL remoteWindow) {
 	wchar_t **argv;
 	wchar_t **env;
 	int startInfo;
-	__wgetmainargs(&argc, &argv, &env, 1, &startInfo);
+	argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 	if (argc > 1) {
 		argc--;
 		argv++;
