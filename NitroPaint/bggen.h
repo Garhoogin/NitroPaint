@@ -14,7 +14,7 @@
 
 //
 // Structure used for character compression. Fill them out and pass them to
-// performCharacterCompression.
+// BgPerformCharacterCompression.
 //
 typedef struct BGTILE_ {
 	BYTE indices[64];
@@ -32,20 +32,14 @@ typedef struct BGTILE_ {
 // The function will associate each tile with its best fitting palette, index
 // the tile with that palette, and perform optional dithering.
 //
-void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse);
-
-//
-// Same functionality as setupBgTiles, with the added ability to specify
-// specific color balance settings.
-//
-void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors);
+void BgSetupTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors);
 
 //
 // Perform character compresion on the input array of tiles. After tiles are
 // combined, the bit depth and palette settings are used to finalize the
 // result in the tile array. progress must not be NULL, and ranges from 0-1000.
 //
-int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
+int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
 	int paletteBase, int paletteOffset, int balance, int colorBalance, int *progress);
 
 //
@@ -67,13 +61,20 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 //  - nMaxChars: Maximum character count of resulting graphics
 //  - color0Mode: change how color 0 is determined
 //
-void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse,
+void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse,
 	int palette, int nPalettes, int bin, int tileBase, int mergeTiles, int alignment,
 	int paletteSize, int paletteOffsetm, int rowLimit, int nMaxChars,
 	int color0Mode, int balance, int colorBalance, int enhanceColors,
 	int *progress1, int *progress1Max, int *progress2, int *progress2Max,
 	NCLR *nclr, NCGR *ncgr, NSCR *nscr);
 
+void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width, int height,
+	int writeScreen, int writeCharacterIndices,
+	int tileBase, int nPalettes, int paletteNumber, int paletteOffset,
+	int paletteSize, BOOL newPalettes, int writeCharBase, int nMaxChars,
+	BOOL newCharacters, BOOL dither, float diffuse, int maxTilesX, int maxTilesY,
+	int nscrTileX, int nscrTileY, int balance, int colorBalance, int enhanceColors,
+	int *progress, int *progressMax);
 
 
 

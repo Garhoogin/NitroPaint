@@ -3,7 +3,7 @@
 #include "palette.h"
 
 
-float tileDifferenceFlip(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigned char mode) {
+static float BgiTileDifferenceFlip(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigned char mode) {
 	double err = 0.0;
 	COLOR32 *px1 = t1->px;
 	double yw2 = reduction->yWeight * reduction->yWeight;
@@ -29,23 +29,23 @@ float tileDifferenceFlip(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigne
 	return (float) err;
 }
 
-float tileDifference(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigned char *flipMode) {
-	float err = tileDifferenceFlip(reduction, t1, t2, 0);
+static float BgiTileDifference(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigned char *flipMode) {
+	float err = BgiTileDifferenceFlip(reduction, t1, t2, 0);
 	if (err == 0) {
 		*flipMode = 0;
 		return err;
 	}
-	float err2 = tileDifferenceFlip(reduction, t1, t2, TILE_FLIPX);
+	float err2 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPX);
 	if (err2 == 0) {
 		*flipMode = TILE_FLIPX;
 		return err2;
 	}
-	float err3 = tileDifferenceFlip(reduction, t1, t2, TILE_FLIPY);
+	float err3 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPY);
 	if (err3 == 0) {
 		*flipMode = TILE_FLIPY;
 		return err3;
 	}
-	float err4 = tileDifferenceFlip(reduction, t1, t2, TILE_FLIPXY);
+	float err4 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPXY);
 	if (err4 == 0) {
 		*flipMode = TILE_FLIPXY;
 		return err4;
@@ -71,7 +71,7 @@ float tileDifference(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigned ch
 	return err;
 }
 
-void bgAddTileToTotal(RxReduction *reduction, int *pxBlock, BGTILE *tile) {
+static void BgiAddTileToTotal(RxReduction *reduction, int *pxBlock, BGTILE *tile) {
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
 			COLOR32 col = tile->px[x + y * 8];
@@ -90,36 +90,36 @@ void bgAddTileToTotal(RxReduction *reduction, int *pxBlock, BGTILE *tile) {
 	}
 }
 
-typedef struct TILE_DIFF_ {
+typedef struct BgTileDiff_ {
 	int tile1;
 	int tile2;
 	double diff;		//post-biased
-} TILE_DIFF;
+} BgTileDiff;
 
-typedef struct TILE_DIFF_LIST_ {
-	TILE_DIFF *diffBuff;
+typedef struct BgTileDiffList_ {
+	BgTileDiff *diffBuff;
 	int diffBuffSize;
 	int diffBuffLength;
 	double minDiff;
 	double maxDiff;
-} TILE_DIFF_LIST;
+} BgTileDiffList;
 
-void tdlInit(TILE_DIFF_LIST *list, int nEntries) {
+static void BgiTdlInit(BgTileDiffList *list, int nEntries) {
 	list->diffBuffSize = nEntries;
 	list->diffBuffLength = 0;
 	list->minDiff = 1e32;
 	list->maxDiff = 0;
-	list->diffBuff = (TILE_DIFF *) calloc(list->diffBuffSize, sizeof(TILE_DIFF));
+	list->diffBuff = (BgTileDiff *) calloc(list->diffBuffSize, sizeof(BgTileDiff));
 }
 
-void tdlFree(TILE_DIFF_LIST *list) {
+static void BgiTdlFree(BgTileDiffList *list) {
 	free(list->diffBuff);
 	list->diffBuff = NULL;
 	list->diffBuffLength = 0;
 	list->diffBuffSize = 0;
 }
 
-void tdlAdd(TILE_DIFF_LIST *list, int tile1, int tile2, double diff) {
+static void BgiTdlAdd(BgTileDiffList *list, int tile1, int tile2, double diff) {
 	if (list->diffBuffLength == list->diffBuffSize && diff >= list->maxDiff) return;
 
 	//find an insertion point
@@ -143,7 +143,7 @@ void tdlAdd(TILE_DIFF_LIST *list, int tile1, int tile2, double diff) {
 		nEntriesToMove = list->diffBuffSize - destIndex - 1;
 		added = 0;
 	}
-	memmove(list->diffBuff + destIndex + 1, list->diffBuff + destIndex, nEntriesToMove * sizeof(TILE_DIFF));
+	memmove(list->diffBuff + destIndex + 1, list->diffBuff + destIndex, nEntriesToMove * sizeof(BgTileDiff));
 	list->diffBuff[destIndex].tile1 = tile1;
 	list->diffBuff[destIndex].tile2 = tile2;
 	list->diffBuff[destIndex].diff = diff;
@@ -154,12 +154,12 @@ void tdlAdd(TILE_DIFF_LIST *list, int tile1, int tile2, double diff) {
 	list->maxDiff = list->diffBuff[list->diffBuffLength - 1].diff;
 }
 
-void tdlRemoveAll(TILE_DIFF_LIST *list, int tile1, int tile2) {
+static void BgiTdlRemoveAll(BgTileDiffList *list, int tile1, int tile2) {
 	//remove all diffs involving tile1 and tile2
 	for (int i = 0; i < list->diffBuffLength; i++) {
-		TILE_DIFF *td = list->diffBuff + i;
+		BgTileDiff *td = list->diffBuff + i;
 		if (td->tile1 == tile1 || td->tile2 == tile1 || td->tile1 == tile2 || td->tile2 == tile2) {
-			memmove(td, td + 1, (list->diffBuffLength - i - 1) * sizeof(TILE_DIFF));
+			memmove(td, td + 1, (list->diffBuffLength - i - 1) * sizeof(BgTileDiff));
 			list->diffBuffLength--;
 			i--;
 		}
@@ -170,10 +170,10 @@ void tdlRemoveAll(TILE_DIFF_LIST *list, int tile1, int tile2) {
 	}
 }
 
-void tdlPop(TILE_DIFF_LIST *list, TILE_DIFF *out) {
+static void BgiTdlPop(BgTileDiffList *list, BgTileDiff *out) {
 	if (list->diffBuffLength > 0) {
-		memcpy(out, list->diffBuff, sizeof(TILE_DIFF));
-		memmove(list->diffBuff, list->diffBuff + 1, (list->diffBuffLength - 1) * sizeof(TILE_DIFF));
+		memcpy(out, list->diffBuff, sizeof(BgTileDiff));
+		memmove(list->diffBuff, list->diffBuff + 1, (list->diffBuffLength - 1) * sizeof(BgTileDiff));
 		list->diffBuffLength--;
 		if (list->diffBuffLength > 0) {
 			list->minDiff = list->diffBuff[0].diff;
@@ -181,13 +181,13 @@ void tdlPop(TILE_DIFF_LIST *list, TILE_DIFF *out) {
 	}
 }
 
-void tdlReset(TILE_DIFF_LIST *list) {
+static void BgiTdlReset(BgTileDiffList *list) {
 	list->diffBuffLength = 0;
 	list->maxDiff = 0;
 	list->minDiff = 1e32;
 }
 
-int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
+int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
 	int paletteBase, int paletteOffset, int balance, int colorBalance, int *progress) {
 	int nChars = nTiles;
 	float *diffBuff = (float *) calloc(nTiles * nTiles, sizeof(float));
@@ -200,7 +200,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		for (int j = 0; j < i; j++) {
 			BGTILE *t2 = tiles + j;
 
-			diffBuff[i + j * nTiles] = tileDifference(reduction, t1, t2, &flips[i + j * nTiles]);
+			diffBuff[i + j * nTiles] = BgiTileDifference(reduction, t1, t2, &flips[i + j * nTiles]);
 			diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
 			flips[j + i * nTiles] = flips[i + j * nTiles];
 		}
@@ -240,8 +240,8 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		//create a rolling buffer of similar tiles. 
 		//when tiles are combined, combinations that involve affected tiles in the array are removed.
 		//fill it to capacity initially, then keep using it until it's empty, then fill again.
-		TILE_DIFF_LIST tdl;
-		tdlInit(&tdl, 64);
+		BgTileDiffList tdl;
+		BgiTdlInit(&tdl, 64);
 
 		//keep finding the most similar tile until we get character count down
 		int direction = 0;
@@ -261,15 +261,15 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 					bias *= bias;
 
 					thisError = thisErrorEntry * bias;
-					tdlAdd(&tdl, j, i, thisError);
+					BgiTdlAdd(&tdl, j, i, thisError);
 				}
 			}
 
 			//now merge tiles while we can
 			int tile1, tile2;
 			while (tdl.diffBuffLength > 0 && nChars > nMaxChars) {
-				TILE_DIFF td;
-				tdlPop(&tdl, &td);
+				BgTileDiff td;
+				BgiTdlPop(&tdl, &td);
 
 				//tile merging
 				tile1 = td.tile1;
@@ -296,12 +296,12 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 				nChars--;
 				*progress = 500 + (int) (500 * sqrt((float) (nTiles - nChars) / (nTiles - nMaxChars)));
 
-				tdlRemoveAll(&tdl, td.tile1, td.tile2);
+				BgiTdlRemoveAll(&tdl, td.tile1, td.tile2);
 			}
 			direction = !direction;
-			tdlReset(&tdl);
+			BgiTdlReset(&tdl);
 		}
-		tdlFree(&tdl);
+		BgiTdlFree(&tdl);
 	}
 
 	free(flips);
@@ -319,7 +319,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 		for (int j = 0; j < nTiles; j++) {
 			if (tiles[j].masterTile != i) continue;
 			BGTILE *tile2 = tiles + j;
-			bgAddTileToTotal(reduction, pxBlock, tile2);
+			BgiAddTileToTotal(reduction, pxBlock, tile2);
 		}
 
 		//divide by count, convert to 32-bit RGB
@@ -396,11 +396,7 @@ int performCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxCh
 	return nChars;
 }
 
-void setupBgTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse) {
-	setupBgTilesEx(tiles, nTiles, nBits, palette, paletteSize, nPalettes, paletteBase, paletteOffset, dither, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
-}
-
-void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
+void BgSetupTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
 	RxInit(reduction, balance, colorBalance, 15, enhanceColors, paletteSize);
 
@@ -453,26 +449,7 @@ void setupBgTilesEx(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int 
 	free(reduction);
 }
 
-int findLeastDistanceToColor(COLOR32 *px, int nPx, int destR, int destG, int destB) {
-	int leastDistance = 0x7FFFFFFF;
-	for (int i = 0; i < nPx; i++) {
-		COLOR32 c = px[i];
-		if ((c >> 24) < 0x80) continue;
-
-		int dr = (c & 0xFF) - destR;
-		int dg = ((c >> 8) & 0xFF) - destG;
-		int db = ((c >> 16) & 0xFF) - destB;
-		int dy, du, dv;
-		RxConvertRgbToYuv(dr, dg, db, &dy, &du, &dv);
-		int dd = 4 * dy * dy + du * du + dv * dv;
-		if (dd < leastDistance) {
-			leastDistance = dd;
-		}
-	}
-	return leastDistance;
-}
-
-COLOR32 chooseBGColor0(COLOR32 *px, int width, int height, int mode) {
+static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, int mode) {
 	//based on mode, determine color 0 mode
 	if (mode == BG_COLOR0_FIXED) return 0xFF00FF;
 
@@ -574,7 +551,7 @@ COLOR32 chooseBGColor0(COLOR32 *px, int width, int height, int mode) {
 	return pt;
 }
 
-void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse,
+void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse,
 	int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles, int alignment,
 	int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
 	int color0Mode, int balance, int colorBalance, int enhanceColors,
@@ -613,7 +590,7 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	*progress2Max = 1000;
 
 	COLOR32 *palette = (COLOR32 *) calloc(256 * 16, 4);
-	COLOR32 color0 = chooseBGColor0(imgBits, width, height, color0Mode);
+	COLOR32 color0 = BgiSelectColor0(imgBits, width, height, color0Mode);
 	if (nBits < 5) nBits = 4;
 	else nBits = 8;
 	if (nPalettes == 1) {
@@ -661,22 +638,22 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	}
 
 	//match palettes to tiles
-	setupBgTilesEx(tiles, nTiles, nBits, palette, paletteSize, nPalettes, paletteBase, paletteOffset,
+	BgSetupTiles(tiles, nTiles, nBits, palette, paletteSize, nPalettes, paletteBase, paletteOffset,
 		dither, diffuse, balance, colorBalance, enhanceColors);
 
 	//match tiles to each other
 	int nChars = nTiles;
 	if (mergeTiles) {
-		nChars = performCharacterCompression(tiles, nTiles, nBits, nMaxChars, palette, paletteSize, nPalettes, paletteBase,
+		nChars = BgPerformCharacterCompression(tiles, nTiles, nBits, nMaxChars, palette, paletteSize, nPalettes, paletteBase,
 			paletteOffset, balance, colorBalance, progress2);
 	}
 
-	DWORD *blocks = (DWORD *) calloc(64 * nChars, sizeof(DWORD));
+	COLOR32 *blocks = (COLOR32 *) calloc(64 * nChars, sizeof(COLOR32));
 	int writeIndex = 0;
 	for (int i = 0; i < nTiles; i++) {
 		if (tiles[i].masterTile != i) continue;
 		BGTILE *t = tiles + i;
-		DWORD *dest = blocks + 64 * writeIndex;
+		COLOR32 *dest = blocks + 64 * writeIndex;
 
 		for (int j = 0; j < 64; j++) {
 			if (nBits == 4) dest[j] = t->indices[j] & 0xF;
@@ -792,13 +769,13 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	ncgr->tileWidth = 8;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-	ncgr->tiles = (BYTE **) calloc(nCharsFile, sizeof(BYTE *));
+	ncgr->tiles = (unsigned char **) calloc(nCharsFile, sizeof(unsigned char *));
 	int charSize = nBits == 4 ? 32 : 64;
 	for (int j = 0; j < nCharsFile; j++) {
-		BYTE *b = (BYTE *) calloc(64, 1);
+		unsigned char *b = (unsigned char *) calloc(64, 1);
 		if (j < nChars) {
 			for (int i = 0; i < 64; i++) {
-				b[i] = (BYTE) blocks[i + j * 64];
+				b[i] = (unsigned char) blocks[i + j * 64];
 			}
 		}
 		ncgr->tiles[j] = b;
@@ -834,4 +811,424 @@ void nscrCreate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	free(indices);
 	free(palette);
 	free(paletteIndices);
+}
+
+double BgiPaletteCharError(RxReduction *reduction, COLOR32 *block, RxYiqColor *pals, unsigned char *character, int flip, double maxError) {
+	double error = 0;
+	for (int i = 0; i < 64; i++) { //0b111 111
+		int srcIndex = i;
+		if (flip & TILE_FLIPX) srcIndex ^= 7;
+		if (flip & TILE_FLIPY) srcIndex ^= 7 << 3;
+
+		//convert source image pixel
+		RxYiqColor yiq;
+		COLOR32 col = block[srcIndex];
+		RxConvertRgbToYiq(col, &yiq);
+
+		//char pixel
+		int index = character[i];
+		RxYiqColor *matchedYiq = pals + index;
+		int matchedA = index > 0 ? 255 : 0;
+		if (matchedA == 0 && yiq.a < 128) {
+			continue; //to prevent superfluous non-alpha difference
+		}
+
+		//diff
+		double dy = reduction->yWeight * (reduction->lumaTable[yiq.y] - reduction->lumaTable[matchedYiq->y]);
+		double di = reduction->iWeight * (yiq.i - matchedYiq->i);
+		double dq = reduction->qWeight * (yiq.q - matchedYiq->q);
+		double da = 40 * (yiq.a - matchedA);
+
+
+		error += dy * dy;
+		if (da != 0.0) error += da * da;
+		if (error >= maxError) return maxError;
+		error += di * di + dq * dq;
+		if (error >= maxError) return maxError;
+	}
+	return error;
+}
+
+double BgiBestPaletteCharError(RxReduction *reduction, COLOR32 *block, RxYiqColor *pals, unsigned char *character, int *flip, double maxError) {
+	double e00 = BgiPaletteCharError(reduction, block, pals, character, TILE_FLIPNONE, maxError);
+	if (e00 == 0) {
+		*flip = TILE_FLIPNONE;
+		return e00;
+	}
+	double e01 = BgiPaletteCharError(reduction, block, pals, character, TILE_FLIPX, maxError);
+	if (e01 == 0) {
+		*flip = TILE_FLIPX;
+		return e01;
+	}
+	double e10 = BgiPaletteCharError(reduction, block, pals, character, TILE_FLIPY, maxError);
+	if (e10 == 0) {
+		*flip = TILE_FLIPY;
+		return e10;
+	}
+	double e11 = BgiPaletteCharError(reduction, block, pals, character, TILE_FLIPXY, maxError);
+	if (e11 == 0) {
+		*flip = TILE_FLIPXY;
+		return e11;
+	}
+
+	if (e00 <= e01 && e00 <= e10 && e00 <= e11) {
+		*flip = TILE_FLIPNONE;
+		return e00;
+	}
+	if (e01 <= e00 && e01 <= e10 && e01 <= e11) {
+		*flip = TILE_FLIPX;
+		return e01;
+	}
+	if (e10 <= e00 && e10 <= e01 && e10 <= e11) {
+		*flip = TILE_FLIPY;
+		return e10;
+	}
+	*flip = TILE_FLIPXY;
+	return e11;
+}
+
+void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width, int height,
+	int writeScreen, int writeCharacterIndices,
+	int tileBase, int nPalettes, int paletteNumber, int paletteOffset,
+	int paletteSize, BOOL newPalettes, int writeCharBase, int nMaxChars,
+	BOOL newCharacters, BOOL dither, float diffuse, int maxTilesX, int maxTilesY,
+	int nscrTileX, int nscrTileY, int balance, int colorBalance, int enhanceColors,
+	int *progress, int *progressMax) {
+
+	int tilesX = width / 8;
+	int tilesY = height / 8;
+	int paletteStartFrom0 = 0;
+	int maxPaletteSize = ncgr->nBits == 4 ? 16 : 256;
+
+	//sanity checks
+	if (tilesX > maxTilesX) tilesX = maxTilesX;
+	if (tilesY > maxTilesY) tilesY = maxTilesY;
+	if (paletteOffset >= maxPaletteSize) paletteOffset = maxPaletteSize - 1;
+	if (paletteSize > maxPaletteSize) paletteSize = maxPaletteSize;
+	if (paletteOffset + paletteSize > maxPaletteSize) paletteSize = maxPaletteSize - paletteOffset;
+	if (writeCharBase >= ncgr->nTiles) writeCharBase = ncgr->nTiles - 1;
+	if (writeCharBase + nMaxChars > ncgr->nTiles) nMaxChars = ncgr->nTiles - writeCharBase;
+
+	//if no write screen, still set some proper bounds.
+	if (!writeScreen) {
+		paletteNumber = 0;
+		if (ncgr->nBits == 4) {
+			nPalettes = nclr->nColors / 16;
+		} else {
+			nPalettes = 1;
+		}
+	}
+
+	*progressMax = tilesX * tilesY * 2;
+
+	BGTILE *blocks = (BGTILE *) calloc(tilesX * tilesY, sizeof(BGTILE));
+	COLOR32 *pals = (COLOR32 *) calloc(16 * maxPaletteSize, 4);
+
+	//split image into 8x8 chunks
+	for (int y = 0; y < tilesY; y++) {
+		for (int x = 0; x < tilesX; x++) {
+			int srcOffset = x * 8 + y * 8 * (width);
+			COLOR32 *block = blocks[x + y * tilesX].px;
+			memcpy(block, px + srcOffset, 32);
+			memcpy(block + 8, px + srcOffset + width, 32);
+			memcpy(block + 16, px + srcOffset + width * 2, 32);
+			memcpy(block + 24, px + srcOffset + width * 3, 32);
+			memcpy(block + 32, px + srcOffset + width * 4, 32);
+			memcpy(block + 40, px + srcOffset + width * 5, 32);
+			memcpy(block + 48, px + srcOffset + width * 6, 32);
+			memcpy(block + 56, px + srcOffset + width * 7, 32);
+
+			for (int i = 0; i < 8 * 8; i++) {
+				int a = (block[i] >> 24) & 0xFF;
+				if (a < 128) block[i] = 0; //make transparent pixels transparent black
+				else block[i] |= 0xFF000000; //opaque
+			}
+		}
+	}
+
+	int charBase = tileBase;
+	int nscrTilesX = nscr->nWidth / 8;
+	int nscrTilesY = nscr->nHeight / 8;
+	uint16_t *nscrData = nscr->data;
+
+	//create dummy reduction to setup parameters for color matching
+	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
+	RxInit(reduction, balance, colorBalance, 15, enhanceColors, paletteSize - !paletteOffset);
+
+	//generate an nPalettes color palette
+	if (newPalettes) {
+		if (writeScreen) {
+			//if we're writing the screen, we can write the palette as normal.
+			RxCreateMultiplePalettesEx(px, tilesX, tilesY, pals, 0, nPalettes, maxPaletteSize, paletteSize,
+				paletteOffset, balance, colorBalance, enhanceColors, progress);
+		} else {
+			//else, we need to be a bit more methodical. Lucky for us, though, the palettes are already partitioned.
+			//due to this, we can't respect user-set palette base and count. We're at the whim of the screen's
+			//existing data. Iterate all 16 palettes. If tiles in our region use them, construct a histogram and
+			//write its palette data.
+			//first read in original palette, we'll write over it.
+			for (int i = 0; i < nclr->nColors; i++) {
+				pals[i] = ColorConvertFromDS(nclr->colors[i]);
+			}
+			for (int palNo = 0; palNo < nPalettes; palNo++) {
+				int nTilesHistogram = 0;
+
+				for (int y = 0; y < tilesY; y++) {
+					for (int x = 0; x < tilesX; x++) {
+						uint16_t d = nscrData[x + nscrTileX + (y + nscrTileY) * nscrTilesX];
+						int thisPalNo = (d & 0xF000) >> 12;
+						if (thisPalNo != palNo) continue;
+
+						nTilesHistogram++;
+						RxHistAdd(reduction, blocks[x + y * tilesX].px, 8, 8);
+					}
+				}
+
+				//if we counted tiles, create palette
+				if (nTilesHistogram > 0) {
+					RxHistFinalize(reduction);
+					RxComputePalette(reduction);
+
+					COLOR32 *outPal = pals + palNo * maxPaletteSize + paletteOffset + !paletteOffset;
+					for (int i = 0; i < paletteSize - !paletteOffset; i++) {
+						uint8_t r = reduction->paletteRgb[i][0];
+						uint8_t g = reduction->paletteRgb[i][1];
+						uint8_t b = reduction->paletteRgb[i][2];
+						outPal[i] = r | (g << 8) | (b << 16);
+					}
+					qsort(outPal, paletteSize - !paletteOffset, sizeof(COLOR32), RxColorLightnessComparator);
+					if (paletteOffset == 0) pals[palNo * maxPaletteSize] = 0xFF00FF;
+					RxHistClear(reduction);
+				}
+			}
+		}
+	} else {
+		COLOR *destPalette = nclr->colors + paletteNumber * maxPaletteSize;
+		int nColors = nPalettes * paletteSize;
+		for (int i = 0; i < nColors; i++) {
+			COLOR c = destPalette[i];
+			pals[i] = ColorConvertFromDS(c);
+		}
+	}
+
+	//write to NCLR
+	if (newPalettes) {
+		COLOR *destPalette = nclr->colors + paletteNumber * maxPaletteSize;
+		for (int i = 0; i < nPalettes; i++) {
+			COLOR *dest = destPalette + i * maxPaletteSize;
+			for (int j = paletteOffset; j < paletteOffset + paletteSize; j++) {
+				COLOR32 col = (pals + i * maxPaletteSize)[j];
+				dest[j] = ColorConvertToDS(col);
+			}
+		}
+	}
+
+	//pre-convert palette to YIQ
+	RxYiqColor *palsYiq = (RxYiqColor *) calloc(nPalettes * paletteSize, sizeof(RxYiqColor));
+	for (int i = 0; i < nPalettes * paletteSize; i++) {
+		RxConvertRgbToYiq(pals[i], palsYiq + i);
+	}
+
+	if (!writeScreen) {
+		//no write screen, only character can be written (palette was already dealt with)
+		if (newCharacters) {
+			//just write each tile
+			for (int y = 0; y < tilesY; y++) {
+				for (int x = 0; x < tilesX; x++) {
+					BGTILE *tile = blocks + x + y * tilesX;
+
+					uint16_t d = nscrData[x + nscrTileX + (y + nscrTileY) * nscrTilesX];
+					int charIndex = (d & 0x3FF) - charBase;
+					int palIndex = (d & 0xF000) >> 12;
+					int flip = (d & 0x0C00) >> 10;
+					if (charIndex < 0) continue;
+
+					unsigned char *chr = ncgr->tiles[charIndex];
+					COLOR32 *thisPalette = pals + palIndex * maxPaletteSize + paletteOffset + !paletteOffset;
+					RxReduceImageEx(tile->px, NULL, 8, 8, thisPalette, paletteSize - !paletteOffset,
+						FALSE, TRUE, FALSE, dither ? diffuse : 0.0f, balance, colorBalance, enhanceColors);
+					for (int i = 0; i < 64; i++) {
+						COLOR32 c = tile->px[i];
+						int srcX = i % 8;
+						int srcY = i / 8;
+						int dstX = srcX ^ (flip & TILE_FLIPX ? 7 : 0);
+						int dstY = srcY ^ (flip & TILE_FLIPY ? 7 : 0);
+
+						int cidx = 0;
+						if ((c >> 24) >= 0x80) cidx = RxPaletteFindClosestColorSimple(c, thisPalette, paletteSize - !paletteOffset) + paletteOffset + !paletteOffset;
+						chr[dstX + dstY * 8] = cidx;
+					}
+				}
+			}
+		}
+	} else if (writeCharacterIndices) {
+		//write screen, write character indices
+		//if we can write characters, do a normal character compression.
+		if (newCharacters) {
+			//do normal character compression.
+			BgSetupTiles(blocks, tilesX * tilesY, ncgr->nBits, pals, paletteSize, nPalettes, 0, paletteOffset,
+				dither, diffuse, balance, colorBalance, enhanceColors);
+			int nOutChars = BgPerformCharacterCompression(blocks, tilesX * tilesY, ncgr->nBits, nMaxChars, pals, paletteSize,
+				nPalettes, 0, paletteOffset, balance, colorBalance, progress);
+
+			//keep track of master tiles and how they map to real character indices
+			int *masterMap = (int *) calloc(tilesX * tilesY, sizeof(int));
+
+			//write chars
+			int nCharsWritten = 0;
+			int indexMask = (1 << ncgr->nBits) - 1;
+			for (int i = 0; i < tilesX * tilesY; i++) {
+				BGTILE *tile = blocks + i;
+				if (tile->masterTile != i) continue;
+
+				//master tile
+				unsigned char *destTile = ncgr->tiles[nCharsWritten + writeCharBase];
+				for (int j = 0; j < 64; j++)
+					destTile[j] = tile->indices[j] & indexMask;
+				masterMap[i] = nCharsWritten + writeCharBase;
+				nCharsWritten++;
+			}
+
+			//next, write screen.
+			for (int y = 0; y < tilesY; y++) {
+				for (int x = 0; x < tilesX; x++) {
+					BGTILE *tile = blocks + x + y * tilesX;
+					int palette = tile->palette + paletteNumber;
+					int charIndex = masterMap[tile->masterTile] + charBase;
+
+					if (x + nscrTileX < nscrTilesX && y + nscrTileY < nscrTilesY) {
+						uint16_t d = (tile->flipMode << 10) | (palette << 12) | charIndex;
+						nscrData[x + nscrTileX + (y + nscrTileY) * (nscr->nWidth >> 3)] = d;
+					}
+				}
+			}
+			free(masterMap);
+		} else {
+			//else, we have to get by just using the screen itself.
+			for (int y = 0; y < tilesY; y++) {
+				for (int x = 0; x < tilesX; x++) {
+					BGTILE *tile = blocks + x + y * tilesX;
+					COLOR32 *block = tile->px;
+
+					//search best tile.
+					int chosenCharacter = 0, chosenPalette = 0, chosenFlip = TILE_FLIPNONE;
+					double minError = 1e32;
+					for (int j = 0; j < ncgr->nTiles; j++) {
+						for (int i = 0; i < nPalettes; i++) {
+							int charId = j, mode;
+							double err = BgiBestPaletteCharError(reduction, block, palsYiq + i * maxPaletteSize, ncgr->tiles[charId], &mode, minError);
+							if (err < minError) {
+								chosenCharacter = charId;
+								chosenPalette = i;
+								minError = err;
+								chosenFlip = mode;
+							}
+						}
+					}
+
+					int nscrX = x + nscrTileX;
+					int nscrY = y + nscrTileY;
+
+					if (nscrX < nscrTilesX && nscrY < nscrTilesY) {
+						uint16_t d = 0;
+						d = d & 0xFFF;
+						d |= (chosenPalette + paletteNumber) << 12;
+						d &= 0xFC00;
+						d |= (chosenCharacter + charBase);
+						d |= chosenFlip << 10;
+						nscrData[nscrX + nscrY * nscrTilesX] = d;
+					}
+				}
+			}
+		}
+
+	} else {
+		//write screen, no write character indices.
+		//next, start palette matching. See which palette best fits a tile, set it in the NSCR, then write the bits to the NCGR.
+		if (newCharacters) {
+			for (int y = 0; y < tilesY; y++) {
+				for (int x = 0; x < tilesX; x++) {
+					COLOR32 *block = blocks[x + y * tilesX].px;
+
+					double leastError = 1e32;
+					int leastIndex = 0;
+					for (int i = 0; i < nPalettes; i++) {
+						COLOR32 *thisPal = pals + i * maxPaletteSize + paletteOffset + !paletteOffset;
+						double err = RxComputePaletteError(reduction, block, 64, thisPal, paletteSize - !paletteOffset, 128, leastError);
+						if (err < leastError) {
+							leastError = err;
+							leastIndex = i;
+						}
+					}
+
+					int nscrX = x + nscrTileX;
+					int nscrY = y + nscrTileY;
+
+					if (nscrX < nscrTilesX && nscrY < nscrTilesY) {
+						uint16_t d = nscrData[nscrX + nscrY * nscrTilesX];
+						d = d & 0x3FF;
+						d |= (leastIndex + paletteNumber) << 12;
+						nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
+
+						int charOrigin = d & 0x3FF;
+						if (charOrigin - charBase < 0) continue;
+						unsigned char *ncgrTile = ncgr->tiles[charOrigin - charBase];
+
+						COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset + !paletteOffset;
+						RxReduceImageEx(block, NULL, 8, 8, thisPal, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, dither ? diffuse : 0.0f,
+							balance, colorBalance, enhanceColors);
+						for (int i = 0; i < 64; i++) {
+							if ((block[i] & 0xFF000000) < 0x80) ncgrTile[i] = 0;
+							else {
+								int index = paletteOffset + !paletteOffset + RxPaletteFindClosestColorSimple(block[i], thisPal, paletteSize - !paletteOffset);
+								ncgrTile[i] = index;
+							}
+						}
+					}
+				}
+			}
+		} else {
+			//no new character
+			for (int y = 0; y < tilesY; y++) {
+				for (int x = 0; x < tilesX; x++) {
+					COLOR32 *block = blocks[x + y * tilesX].px;
+					int nscrX = x + nscrTileX;
+					int nscrY = y + nscrTileY;
+
+					//check bounds
+					if (nscrX < nscrTilesX && nscrY < nscrTilesY) {
+
+						//find what combination of palette and flip minimizes the error.
+						uint16_t oldData = nscrData[nscrX + nscrY * nscrTilesX];
+						int charId = (oldData & 0x3FF) - charBase, chosenPalette = 0, chosenFlip = TILE_FLIPNONE;
+						double minError = 1e32;
+						for (int i = 0; i < nPalettes; i++) {
+							int mode;
+							double err = BgiBestPaletteCharError(reduction, block, palsYiq + i * maxPaletteSize, ncgr->tiles[charId], &mode, minError);
+							if (err < minError) {
+								chosenPalette = i;
+								minError = err;
+								chosenFlip = mode;
+							}
+						}
+
+						uint16_t d = 0;
+						d = d & 0xFFF;
+						d |= (chosenPalette + paletteNumber) << 12;
+						d &= 0xFC00;
+						d |= (charId + charBase);
+						d |= chosenFlip << 10;
+						nscrData[nscrX + nscrY * nscrTilesX] = d;
+					}
+				}
+			}
+		}
+	}
+
+	free(palsYiq);
+	RxDestroy(reduction);
+	free(reduction);
+
+	free(blocks);
+	free(pals);
 }

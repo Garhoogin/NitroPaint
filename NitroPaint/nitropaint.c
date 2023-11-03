@@ -25,6 +25,7 @@
 #include "colorchooser.h"
 #include "ui.h"
 #include "texconv.h"
+#include "bggen.h"
 #include "editor.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
@@ -1384,7 +1385,7 @@ typedef struct {
 
 DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	THREADEDNSCRCREATEPARAMS *params = lpParameter;
-	nscrCreate(params->bbits, params->width, params->height, params->bits, params->dither, params->diffuse,
+	BgGenerate(params->bbits, params->width, params->height, params->bits, params->dither, params->diffuse,
 			   params->palette, params->nPalettes, params->fmt, params->tileBase, params->mergeTiles, params->alignment,
 			   params->paletteSize, params->paletteOffset, params->rowLimit, params->nMaxChars,
 			   params->color0Setting, params->balance, params->colorBalance, params->enhanceColors,
