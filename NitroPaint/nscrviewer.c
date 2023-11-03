@@ -1062,7 +1062,7 @@ void nscrImportBitmap(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			setupBgTilesEx(blocks, tilesX * tilesY, ncgr->nBits, pals, paletteSize, nPalettes, 0, paletteOffset, 
 				dither, diffuse, balance, colorBalance, enhanceColors);
 			int nOutChars = performCharacterCompression(blocks, tilesX * tilesY, ncgr->nBits, nMaxChars, pals, paletteSize, 
-				nPalettes, paletteNumber, paletteOffset, balance, colorBalance, progress);
+				nPalettes, 0, paletteOffset, balance, colorBalance, progress);
 
 			//keep track of master tiles and how they map to real character indices
 			int *masterMap = (int *) calloc(tilesX * tilesY, sizeof(int));
