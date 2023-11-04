@@ -1360,68 +1360,31 @@ void nscrCreateCallback(void *data) {
 
 typedef struct {
 	PROGRESSDATA *data;
-	DWORD *bbits;
+	CREATENSCRDATA *createData;
+	COLOR32 *bbits;
 	int width;
 	int height;
-	int bits;
-	int dither;
-	float diffuse;
-	CREATENSCRDATA *createData;
-	int palette;
-	int nPalettes;
-	int fmt;
-	int tileBase;
-	int mergeTiles;
-	int alignment;
-	int paletteSize;
-	int paletteOffset;
-	int rowLimit;
-	int nMaxChars;
-	int color0Setting;
-	int balance;
-	int colorBalance;
-	int enhanceColors;
+	BgGenerateParameters params;
 } THREADEDNSCRCREATEPARAMS;
 
 DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	THREADEDNSCRCREATEPARAMS *params = lpParameter;
-	BgGenerate(params->bbits, params->width, params->height, params->bits, params->dither, params->diffuse,
-			   params->palette, params->nPalettes, params->fmt, params->tileBase, params->mergeTiles, params->alignment,
-			   params->paletteSize, params->paletteOffset, params->rowLimit, params->nMaxChars,
-			   params->color0Setting, params->balance, params->colorBalance, params->enhanceColors,
-			   &params->data->progress1, &params->data->progress1Max, &params->data->progress2, &params->data->progress2Max,
-			   &params->createData->nclr, &params->createData->ncgr, &params->createData->nscr);
+	BgGenerate(&params->createData->nclr, &params->createData->ncgr, &params->createData->nscr, 
+			   params->bbits, params->width, params->height, &params->params,
+			   &params->data->progress1, &params->data->progress1Max, &params->data->progress2, &params->data->progress2Max);
 	params->data->waitOn = 1;
 	return 0;
 }
 
-void threadedNscrCreate(PROGRESSDATA *data, DWORD *bbits, int width, int height, int bits, int dither, float diffuse, 
-						CREATENSCRDATA *createData, int palette, int nPalettes, int fmt, int tileBase, int mergeTiles,
-						int alignment, int paletteSize, int paletteOffset, int rowLimit, int nMaxChars, int color0Setting,
-						int balance, int colorBalance, int enhanceColors) {
+void threadedNscrCreate(PROGRESSDATA *data, CREATENSCRDATA *createData, COLOR32 *bbits, int width, int height,
+						BgGenerateParameters *generateParams) {
 	THREADEDNSCRCREATEPARAMS *params = calloc(1, sizeof(*params));
 	params->data = data;
 	params->bbits = bbits;
 	params->width = width;
 	params->height = height;
-	params->bits = bits;
-	params->dither = dither;
 	params->createData = createData;
-	params->palette = palette;
-	params->nPalettes = nPalettes;
-	params->fmt = fmt;
-	params->tileBase = tileBase;
-	params->mergeTiles = mergeTiles;
-	params->alignment = alignment;
-	params->paletteSize = paletteSize;
-	params->paletteOffset = paletteOffset;
-	params->rowLimit = rowLimit;
-	params->nMaxChars = nMaxChars;
-	params->color0Setting = color0Setting;
-	params->diffuse = diffuse;
-	params->balance = balance;
-	params->colorBalance = colorBalance;
-	params->enhanceColors = enhanceColors;
+	memcpy(&params->params, generateParams, sizeof(BgGenerateParameters));
 	CreateThread(NULL, 0, threadedNscrCreateInternal, (LPVOID) params, 0, NULL);
 }
 
@@ -1522,26 +1485,9 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					free(location);
 				} else if (hWndControl == data->nscrCreateButton || idc == IDOK) {
 					WCHAR location[MAX_PATH + 1];
-					int dither = GetCheckboxChecked(data->nscrCreateDither);
-					int merge = GetCheckboxChecked(data->hWndMergeTiles);
-					int rowLimit = GetCheckboxChecked(data->hWndRowLimit);
 					int doAlign = GetCheckboxChecked(data->hWndAlignmentCheckbox);
-					int fmt = SendMessage(data->hWndFormatDropdown, CB_GETCURSEL, 0, 0);
-					int bitsOptions[] = { 4, 8 };
-					int bits = bitsOptions[SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0)];
-					int palette = GetEditNumber(data->hWndPaletteInput);
-					int nPalettes = GetEditNumber(data->hWndPalettesInput);
-					int tileBase = GetEditNumber(data->hWndTileBase);
-					int paletteSize = GetEditNumber(data->hWndPaletteSize);
-					int paletteOffset = GetEditNumber(data->hWndPaletteOffset);
-					int nMaxChars = GetEditNumber(data->hWndMaxChars);
-					int alignment = doAlign ? GetEditNumber(data->hWndAlignment) : 1;
-					float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) * 0.01f;
+					const int bitsOptions[] = { 4, 8 };
 					SendMessage(data->nscrCreateInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
-					int balance = GetTrackbarPosition(data->hWndBalance);
-					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
-					int enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
-					int color0Setting = SendMessage(data->hWndColor0Setting, CB_GETCURSEL, 0, 0);
 
 					if (*location == L'\0') {
 						MessageBox(hWnd, L"No image input specified.", L"No Input", MB_ICONERROR);
@@ -1549,7 +1495,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					}
 
 					int width, height;
-					DWORD * bbits = ImgRead(location, &width, &height);
+					COLOR32 *bbits = ImgRead(location, &width, &height);
 
 					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
@@ -1566,9 +1512,33 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					progressData->callback = nscrCreateCallback;
 					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
 
-					threadedNscrCreate(progressData, bbits, width, height, bits, dither, diffuse, createData, palette,
-						nPalettes, fmt, tileBase, merge, alignment, paletteSize, paletteOffset, rowLimit, nMaxChars,
-						color0Setting, balance, colorBalance, enhanceColors);
+					//global setting
+					BgGenerateParameters params;
+					params.fmt = SendMessage(data->hWndFormatDropdown, CB_GETCURSEL, 0, 0);
+					params.balance.balance = GetTrackbarPosition(data->hWndBalance);
+					params.balance.colorBalance = GetTrackbarPosition(data->hWndColorBalance);
+					params.balance.enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+
+					//dither setting
+					params.dither.dither = GetCheckboxChecked(data->nscrCreateDither);
+					params.dither.diffuse = ((float) GetEditNumber(data->hWndDiffuse)) * 0.01f;
+
+					//palette region
+					params.compressPalette = GetCheckboxChecked(data->hWndRowLimit);
+					params.color0Mode = SendMessage(data->hWndColor0Setting, CB_GETCURSEL, 0, 0);
+					params.paletteRegion.base = GetEditNumber(data->hWndPaletteInput);
+					params.paletteRegion.count = GetEditNumber(data->hWndPalettesInput);
+					params.paletteRegion.offset = GetEditNumber(data->hWndPaletteOffset);
+					params.paletteRegion.length = GetEditNumber(data->hWndPaletteSize);
+
+					//character setting
+					params.nBits = bitsOptions[SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0)];
+					params.characterSetting.base = GetEditNumber(data->hWndTileBase);
+					params.characterSetting.alignment = doAlign ? GetEditNumber(data->hWndAlignment) : 1;
+					params.characterSetting.compress = GetCheckboxChecked(data->hWndMergeTiles);
+					params.characterSetting.nMax = GetEditNumber(data->hWndMaxChars);
+
+					threadedNscrCreate(progressData, createData, bbits, width, height, &params);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					DoModalEx(hWndProgress, FALSE);

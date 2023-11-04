@@ -8,6 +8,17 @@
 
 #define RECLUSTER_DEFAULT 8
 
+typedef struct RxBalanceSetting_ {
+	int balance;          //relative priority of lightness over color information (1-39)
+	int colorBalance;     //relative priority of reds over greens                 (1-39)
+	int enhanceColors;    //give more weight to gradient colors                   (0 or 1)
+} RxBalanceSetting;
+
+typedef struct RxDitherSetting_ {
+	int dither;           //enable dithering (0 or 1)
+	float diffuse;        //dithering amount (0-1)
+} RxDitherSetting;
+
 //
 // Comparator for use with qsort, sortrs an array of colors by lightness.
 //

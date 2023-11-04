@@ -1040,7 +1040,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 			COLOR32 dummyFull[256] = { 0 };
 			memcpy(dummyFull + paletteBase, palette, paletteSize * 4);
 
-			BGTILE *bgTiles = (BGTILE *) calloc(nChars, sizeof(BGTILE));
+			BgTile *bgTiles = (BgTile *) calloc(nChars, sizeof(BgTile));
 
 			//split image into 8x8 tiles.
 			for (int y = 0; y < tilesY; y++) {
@@ -1067,7 +1067,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 			int outIndex = 0;
 			for (int i = 0; i < nTiles; i++) {
 				if (bgTiles[i].masterTile != i) continue;
-				BGTILE *t = bgTiles + i;
+				BgTile *t = bgTiles + i;
 
 				COLOR32 *dest = tiles + outIndex * 64;
 				for (int j = 0; j < 64; j++) {

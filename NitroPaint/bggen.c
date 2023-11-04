@@ -1,9 +1,11 @@
+#include <math.h>
+
 #include "bggen.h"
 #include "color.h"
 #include "palette.h"
 
 
-static float BgiTileDifferenceFlip(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigned char mode) {
+static float BgiTileDifferenceFlip(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char mode) {
 	double err = 0.0;
 	COLOR32 *px1 = t1->px;
 	double yw2 = reduction->yWeight * reduction->yWeight;
@@ -29,7 +31,7 @@ static float BgiTileDifferenceFlip(RxReduction *reduction, BGTILE *t1, BGTILE *t
 	return (float) err;
 }
 
-static float BgiTileDifference(RxReduction *reduction, BGTILE *t1, BGTILE *t2, unsigned char *flipMode) {
+static float BgiTileDifference(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char *flipMode) {
 	float err = BgiTileDifferenceFlip(reduction, t1, t2, 0);
 	if (err == 0) {
 		*flipMode = 0;
@@ -71,7 +73,7 @@ static float BgiTileDifference(RxReduction *reduction, BGTILE *t1, BGTILE *t2, u
 	return err;
 }
 
-static void BgiAddTileToTotal(RxReduction *reduction, int *pxBlock, BGTILE *tile) {
+static void BgiAddTileToTotal(RxReduction *reduction, int *pxBlock, BgTile *tile) {
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
 			COLOR32 col = tile->px[x + y * 8];
@@ -187,7 +189,7 @@ static void BgiTdlReset(BgTileDiffList *list) {
 	list->minDiff = 1e32;
 }
 
-int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
+int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
 	int paletteBase, int paletteOffset, int balance, int colorBalance, int *progress) {
 	int nChars = nTiles;
 	float *diffBuff = (float *) calloc(nTiles * nTiles, sizeof(float));
@@ -196,9 +198,9 @@ int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMax
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
 	RxInit(reduction, balance, colorBalance, 15, 0, 255);
 	for (int i = 0; i < nTiles; i++) {
-		BGTILE *t1 = tiles + i;
+		BgTile *t1 = tiles + i;
 		for (int j = 0; j < i; j++) {
-			BGTILE *t2 = tiles + j;
+			BgTile *t2 = tiles + j;
 
 			diffBuff[i + j * nTiles] = BgiTileDifference(reduction, t1, t2, &flips[i + j * nTiles]);
 			diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
@@ -210,11 +212,11 @@ int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMax
 	//first, combine tiles with a difference of 0.
 
 	for (int i = 0; i < nTiles; i++) {
-		BGTILE *t1 = tiles + i;
+		BgTile *t1 = tiles + i;
 		if (t1->masterTile != i) continue;
 
 		for (int j = 0; j < i; j++) {
-			BGTILE *t2 = tiles + j;
+			BgTile *t2 = tiles + j;
 			if (t2->masterTile != j) continue;
 
 			if (diffBuff[i + j * nTiles] == 0) {
@@ -248,11 +250,11 @@ int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMax
 		while (nChars > nMaxChars) {
 			for (int iOuter = 0; iOuter < nTiles; iOuter++) {
 				int i = direction ? (nTiles - 1 - iOuter) : iOuter; //criss cross the direction
-				BGTILE *t1 = tiles + i;
+				BgTile *t1 = tiles + i;
 				if (t1->masterTile != i) continue;
 
 				for (int j = 0; j < i; j++) {
-					BGTILE *t2 = tiles + j;
+					BgTile *t2 = tiles + j;
 					if (t2->masterTile != j) continue;
 
 					double thisErrorEntry = diffBuff[i + j * nTiles];
@@ -311,14 +313,14 @@ int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMax
 	for (int i = 0; i < nTiles; i++) {
 		if (tiles[i].masterTile != i) continue;
 		if (tiles[i].nRepresents <= 1) continue; //no averaging required for just one tile
-		BGTILE *tile = tiles + i;
+		BgTile *tile = tiles + i;
 
 		//average all tiles that use this master tile.
 		int pxBlock[64 * 4] = { 0 };
 		int nRep = tile->nRepresents;
 		for (int j = 0; j < nTiles; j++) {
 			if (tiles[j].masterTile != i) continue;
-			BGTILE *tile2 = tiles + j;
+			BgTile *tile2 = tiles + j;
 			BgiAddTileToTotal(reduction, pxBlock, tile2);
 		}
 
@@ -384,7 +386,7 @@ int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMax
 		for (int j = 0; j < nTiles; j++) {
 			if (tiles[j].masterTile != i) continue;
 			if (j == i) continue;
-			BGTILE *tile2 = tiles + j;
+			BgTile *tile2 = tiles + j;
 
 			memcpy(tile2->indices, tile->indices, 64);
 			tile2->palette = tile->palette;
@@ -396,13 +398,13 @@ int BgPerformCharacterCompression(BGTILE *tiles, int nTiles, int nBits, int nMax
 	return nChars;
 }
 
-void BgSetupTiles(BGTILE *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
+void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
 	RxInit(reduction, balance, colorBalance, 15, enhanceColors, paletteSize);
 
 	if (!dither) diffuse = 0.0f;
 	for (int i = 0; i < nTiles; i++) {
-		BGTILE *tile = tiles + i;
+		BgTile *tile = tiles + i;
 
 		//create histogram for tile
 		RxHistClear(reduction);
@@ -551,17 +553,31 @@ static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, int mode) {
 	return pt;
 }
 
-void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, float diffuse,
-	int paletteBase, int nPalettes, int fmt, int tileBase, int mergeTiles, int alignment,
-	int paletteSize, int paletteOffset, int rowLimit, int nMaxChars,
-	int color0Mode, int balance, int colorBalance, int enhanceColors,
-	int *progress1, int *progress1Max, int *progress2, int *progress2Max,
-	NCLR *nclr, NCGR *ncgr, NSCR *nscr) {
+void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width, int height, 
+	BgGenerateParameters *params,
+	int *progress1, int *progress1Max, int *progress2, int *progress2Max) {
+
+	//palette setting
+	int nPalettes = params->paletteRegion.count;
+	int paletteBase = params->paletteRegion.base;
+	int paletteOffset = params->paletteRegion.offset;
+	int paletteSize = params->paletteRegion.length;
+
+	//balance settting
+	int balance = params->balance.balance;
+	int colorBalance = params->balance.colorBalance;
+	int enhanceColors = params->balance.enhanceColors;
+
+	//character setting
+	int tileBase = params->characterSetting.base;
+	int characterCompression = params->characterSetting.compress;
+	int nMaxChars = params->characterSetting.nMax;
+	int alignment = params->characterSetting.alignment;
 
 	//cursory sanity checks
 	if (nPalettes > 16) nPalettes = 16;
 	else if (nPalettes < 1) nPalettes = 1;
-	if (nBits == 4) {
+	if (params->nBits == 4) {
 		if (paletteBase >= 16) paletteBase = 15;
 		else if (paletteBase < 0) paletteBase = 0;
 		if (paletteBase + nPalettes > 16) nPalettes = 16 - paletteBase;
@@ -583,14 +599,15 @@ void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	int tilesX = width / 8;
 	int tilesY = height / 8;
 	int nTiles = tilesX * tilesY;
-	BGTILE *tiles = (BGTILE *) calloc(nTiles, sizeof(BGTILE));
+	BgTile *tiles = (BgTile *) calloc(nTiles, sizeof(BgTile));
 
 	//initialize progress
 	*progress1Max = nTiles * 2; //2 passes
 	*progress2Max = 1000;
 
+	int nBits = params->nBits;
 	COLOR32 *palette = (COLOR32 *) calloc(256 * 16, 4);
-	COLOR32 color0 = BgiSelectColor0(imgBits, width, height, color0Mode);
+	COLOR32 color0 = BgiSelectColor0(imgBits, width, height, params->color0Mode);
 	if (nBits < 5) nBits = 4;
 	else nBits = 8;
 	if (nPalettes == 1) {
@@ -639,11 +656,11 @@ void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 
 	//match palettes to tiles
 	BgSetupTiles(tiles, nTiles, nBits, palette, paletteSize, nPalettes, paletteBase, paletteOffset,
-		dither, diffuse, balance, colorBalance, enhanceColors);
+		params->dither.dither, params->dither.diffuse, balance, colorBalance, enhanceColors);
 
 	//match tiles to each other
 	int nChars = nTiles;
-	if (mergeTiles) {
+	if (characterCompression) {
 		nChars = BgPerformCharacterCompression(tiles, nTiles, nBits, nMaxChars, palette, paletteSize, nPalettes, paletteBase,
 			paletteOffset, balance, colorBalance, progress2);
 	}
@@ -652,7 +669,7 @@ void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	int writeIndex = 0;
 	for (int i = 0; i < nTiles; i++) {
 		if (tiles[i].masterTile != i) continue;
-		BGTILE *t = tiles + i;
+		BgTile *t = tiles + i;
 		COLOR32 *dest = blocks + 64 * writeIndex;
 
 		for (int j = 0; j < 64; j++) {
@@ -700,7 +717,7 @@ void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	//create output
 	int paletteFormat = NCLR_TYPE_NCLR, characterFormat = NCGR_TYPE_NCGR, screenFormat = NSCR_TYPE_NSCR;
 	int compressPalette = 0, compressCharacter = 0, compressScreen = 0;
-	switch (fmt) {
+	switch (params->fmt) {
 		case BGGEN_FORMAT_NITROSYSTEM:
 			paletteFormat = NCLR_TYPE_NCLR;
 			characterFormat = NCGR_TYPE_NCGR;
@@ -731,7 +748,7 @@ void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 			paletteFormat = NCLR_TYPE_BIN;
 			characterFormat = NCGR_TYPE_BIN;
 			screenFormat = NSCR_TYPE_BIN;
-			if (fmt == BGGEN_FORMAT_BIN_COMPRESSED) {
+			if (params->fmt == BGGEN_FORMAT_BIN_COMPRESSED) {
 				compressCharacter = COMPRESSION_LZ77;
 				compressScreen = COMPRESSION_LZ77;
 			}
@@ -745,9 +762,10 @@ void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 	ncgr->header.compression = compressCharacter;
 	nscr->header.compression = compressScreen;
 
-	int colorOutputBase = rowLimit ? (nBits == 4 ? (paletteBase * 16) : 0) : 0;
-	int nColorsOutput = rowLimit ? (nBits == 4 ? (16 * nPalettes) : (paletteOffset + paletteSize)) : (nBits == 4 ? 256 : (256 * nPalettes));
-	int nPalettesOutput = rowLimit ? (nPalettes) : (nBits == 4 ? 16 : nPalettes);
+	int paletteCompression = params->compressPalette;
+	int colorOutputBase = paletteCompression ? (nBits == 4 ? (paletteBase * 16) : 0) : 0;
+	int nColorsOutput = paletteCompression ? (nBits == 4 ? (16 * nPalettes) : (paletteOffset + paletteSize)) : (nBits == 4 ? 256 : (256 * nPalettes));
+	int nPalettesOutput = paletteCompression ? (nPalettes) : (nBits == 4 ? 16 : nPalettes);
 	nclr->nBits = nBits;
 	nclr->nColors = nColorsOutput;
 	nclr->totalSize = nclr->nColors * 2;
@@ -759,7 +777,7 @@ void BgGenerate(COLOR32 *imgBits, int width, int height, int nBits, int dither, 
 		nclr->colors[i] = ColorConvertToDS(palette[i + colorOutputBase]);
 	}
 	for (int i = 0; i < nclr->nPalettes; i++) {
-		nclr->idxTable[i] = rowLimit ? (i + paletteBase) : i;
+		nclr->idxTable[i] = compressPalette ? (i + paletteBase) : i;
 	}
 
 	int nCharsFile = ((nChars + alignment - 1) / alignment) * alignment;
@@ -921,7 +939,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 
 	*progressMax = tilesX * tilesY * 2;
 
-	BGTILE *blocks = (BGTILE *) calloc(tilesX * tilesY, sizeof(BGTILE));
+	BgTile *blocks = (BgTile *) calloc(tilesX * tilesY, sizeof(BgTile));
 	COLOR32 *pals = (COLOR32 *) calloc(16 * maxPaletteSize, 4);
 
 	//split image into 8x8 chunks
@@ -1035,7 +1053,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			//just write each tile
 			for (int y = 0; y < tilesY; y++) {
 				for (int x = 0; x < tilesX; x++) {
-					BGTILE *tile = blocks + x + y * tilesX;
+					BgTile *tile = blocks + x + y * tilesX;
 
 					uint16_t d = nscrData[x + nscrTileX + (y + nscrTileY) * nscrTilesX];
 					int charIndex = (d & 0x3FF) - charBase;
@@ -1078,7 +1096,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			int nCharsWritten = 0;
 			int indexMask = (1 << ncgr->nBits) - 1;
 			for (int i = 0; i < tilesX * tilesY; i++) {
-				BGTILE *tile = blocks + i;
+				BgTile *tile = blocks + i;
 				if (tile->masterTile != i) continue;
 
 				//master tile
@@ -1092,7 +1110,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			//next, write screen.
 			for (int y = 0; y < tilesY; y++) {
 				for (int x = 0; x < tilesX; x++) {
-					BGTILE *tile = blocks + x + y * tilesX;
+					BgTile *tile = blocks + x + y * tilesX;
 					int palette = tile->palette + paletteNumber;
 					int charIndex = masterMap[tile->masterTile] + charBase;
 
@@ -1107,7 +1125,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			//else, we have to get by just using the screen itself.
 			for (int y = 0; y < tilesY; y++) {
 				for (int x = 0; x < tilesX; x++) {
-					BGTILE *tile = blocks + x + y * tilesX;
+					BgTile *tile = blocks + x + y * tilesX;
 					COLOR32 *block = tile->px;
 
 					//search best tile.
