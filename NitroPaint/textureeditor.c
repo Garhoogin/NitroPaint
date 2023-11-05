@@ -252,10 +252,19 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		{
 			HWND hWndMain = getMainWindow(hWnd);
 			if ((HWND) lParam == hWnd) {
+				HMENU hMenu = GetMenu(hWndMain);
+
+				//enable menus
+				EnableMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_ENABLED);
+				EnableMenuItem(hMenu, ID_ZOOM_100, MF_ENABLED);
+				EnableMenuItem(hMenu, ID_ZOOM_200, MF_ENABLED);
+				EnableMenuItem(hMenu, ID_ZOOM_400, MF_ENABLED);
+				EnableMenuItem(hMenu, ID_ZOOM_800, MF_ENABLED);
+
 				if (data->showBorders)
-					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
+					CheckMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_CHECKED);
 				else
-					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+					CheckMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_UNCHECKED);
 				int checkBox = ID_ZOOM_100;
 				if (data->scale == 2) {
 					checkBox = ID_ZOOM_200;
@@ -267,7 +276,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
 				for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
 					int id = ids[i];
-					CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
+					CheckMenuItem(hMenu, id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
 				}
 			}
 			break;
