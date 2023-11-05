@@ -219,17 +219,17 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			data->hWndPreview = CreateWindow(L"NscrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
 			//Character: \n Palette: 
-			data->hWndCharacterLabel = CreateWindow(L"STATIC", L"Character:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteLabel = CreateWindow(L"STATIC", L"Palette:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndCharacterNumber = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteNumber = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndApply = CreateWindow(L"BUTTON", L"Apply", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndAdd = CreateWindow(L"BUTTON", L"Add", WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndSubtract = CreateWindow(L"BUTTON", L"Subtract", WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndTileBaseLabel = CreateWindow(L"STATIC", L"Tile Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndTileBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndSize = CreateWindow(L"STATIC", L"Size: 0x0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
-			data->hWndSelectionSize = CreateWindow(L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 0, 0, 0, 0, hWnd, NULL, NULL, NULL);
+			data->hWndCharacterLabel = CreateCheckbox(hWnd, L"Character:", 0, 0, 0, 0, TRUE);
+			data->hWndPaletteLabel = CreateCheckbox(hWnd, L"Palette:", 0, 0, 0, 0, TRUE);
+			data->hWndCharacterNumber = CreateEdit(hWnd, L"0", 0, 0, 0, 0, TRUE);
+			data->hWndPaletteNumber = CreateCombobox(hWnd, NULL, 0, 0, 0, 0, 0, 0);
+			data->hWndApply = CreateButton(hWnd, L"Apply", 0, 0, 0, 0, TRUE);
+			data->hWndAdd = CreateButton(hWnd, L"Add", 0, 0, 0, 0, FALSE);
+			data->hWndSubtract = CreateButton(hWnd, L"Subtract", 0, 0, 0, 0, FALSE);
+			data->hWndTileBaseLabel = CreateStatic(hWnd, L"Tile Base:", 0, 0, 0, 0);
+			data->hWndTileBase = CreateEdit(hWnd, L"0", 0, 0, 0, 0, TRUE);
+			data->hWndSize = CreateStatic(hWnd, L"Size: 0x0", 0, 0, 0, 0);
+			data->hWndSelectionSize = CreateStatic(hWnd, L"", 0, 0, 0, 0);
 			WCHAR bf[16];
 			for (int i = 0; i < 16; i++) {
 				wsprintf(bf, L"Palette %02d", i);
@@ -261,7 +261,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			MoveWindow(data->hWndTileBase, 50, rcClient.bottom - 22, 100, 22, TRUE);
 			MoveWindow(data->hWndSize, 160, rcClient.bottom - 22, 100, 22, TRUE);
 			MoveWindow(data->hWndSelectionSize, 260, rcClient.bottom - 22, 100, 22, TRUE);
-			
 
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
@@ -291,7 +290,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200; //+4 to account for WS_EX_CLIENTEDGE
 			int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22;
 			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
-
 
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
@@ -495,7 +493,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					}
 					case ID_NSCRMENU_IMPORTBITMAPHERE:
 					{
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND hWndMain = getMainWindow(hWnd);
 						HWND h = CreateWindow(L"NscrBitmapImportClass", L"Import Bitmap", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
 						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) hWnd);
 						WORD d = data->nscr.data[data->contextHoverX + data->contextHoverY * (data->nscr.nWidth >> 3)];
@@ -634,6 +632,10 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			} else if (lParam) {
 				HWND hWndControl = (HWND) lParam;
 				if (hWndControl == data->hWndApply || hWndControl == data->hWndAdd || hWndControl == data->hWndSubtract) {
+					//get data to overwrite
+					int writePalette = GetCheckboxChecked(data->hWndPaletteLabel);
+					int writeCharacter = GetCheckboxChecked(data->hWndCharacterLabel);
+
 					WCHAR bf[16];
 					SendMessage(data->hWndCharacterNumber, WM_GETTEXT, 15, (LPARAM) bf);
 					int character = _wtoi(bf);
@@ -648,9 +650,10 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					for (int i = 0; i < nTiles; i++) {
 						int x = i % tilesX, y = i / tilesX;
 						if (x >= xMin && y >= yMin && x <= xMax && y <= yMax) {
-							WORD oldValue = data->nscr.data[i];
-							int newPalette = (oldValue >> 12) & 0xF;
-							int newCharacter = oldValue & 0x3FF;
+							uint16_t value = data->nscr.data[i];
+							int newPalette = (value >> 12) & 0xF;
+							int newCharacter = value & 0x3FF;
+
 							if (hWndControl == data->hWndAdd) {
 								newPalette = (newPalette + palette) & 0xF;
 								newCharacter = (newCharacter + character) & 0x3FF;
@@ -661,7 +664,16 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								newCharacter = character;
 								newPalette = palette;
 							}
-							data->nscr.data[i] = (oldValue & 0xC00) | newCharacter | (newPalette << 12);
+
+							//write data we're told to
+							if (writePalette) {
+								value = (value & 0x0FFF) | (newPalette << 12);
+							}
+							if (writeCharacter) {
+								value = (value & 0xFC00) | newCharacter;
+							}
+
+							data->nscr.data[i] = value;
 						}
 					}
 					InvalidateRect(hWnd, NULL, FALSE);
