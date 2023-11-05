@@ -405,29 +405,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					case ID_ZOOM_200:
 					case ID_ZOOM_400:
 					case ID_ZOOM_800:
-					{
-						if (LOWORD(wParam) == ID_ZOOM_100) data->scale = 1;
-						if (LOWORD(wParam) == ID_ZOOM_200) data->scale = 2;
-						if (LOWORD(wParam) == ID_ZOOM_400) data->scale = 4;
-						if (LOWORD(wParam) == ID_ZOOM_800) data->scale = 8;
-
-						int checkBox = ID_ZOOM_100;
-						if (data->scale == 2) {
-							checkBox = ID_ZOOM_200;
-						} else if (data->scale == 4) {
-							checkBox = ID_ZOOM_400;
-						} else if (data->scale == 8) {
-							checkBox = ID_ZOOM_800;
-						}
-						int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
-						for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-							int id = ids[i];
-							CheckMenuItem(GetMenu(getMainWindow(hWnd)), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-						}
-
 						InvalidateRect(hWnd, NULL, TRUE);
 						break;
-					}
 				}
 			}
 			if (lParam) {
@@ -835,7 +814,8 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 }
 
 VOID RegisterNsbtxViewerClass(VOID) {
-	EditorRegister(L"NsbtxViewerClass", NsbtxViewerWndProc, L"NSBTX Editor", sizeof(NSBTXVIEWERDATA));
+	int features = EDITOR_FEATURE_ZOOM;
+	EditorRegister(L"NsbtxViewerClass", NsbtxViewerWndProc, L"NSBTX Editor", sizeof(NSBTXVIEWERDATA), features);
 	RegisterGenericClass(L"VramUseClass", VramUseWndProc, 8 * sizeof(void *));
 }
 

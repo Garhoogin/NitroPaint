@@ -1,13 +1,12 @@
+#pragma once
 #include <Windows.h>
+#include "editor.h"
 #include "childwindow.h"
 #include "nscr.h"
 
 typedef struct {
-	FRAMEDATA frameData;
-	WCHAR szOpenFile[MAX_PATH];
+	EDITOR_BASIC_MEMBERS;
 	NSCR nscr;
-	int showBorders;
-	int scale;
 	int transparent;
 
 	HWND hWndTileEditor;

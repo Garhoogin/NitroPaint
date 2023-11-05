@@ -1,13 +1,11 @@
 #include <Windows.h>
+#include "editor.h"
 #include "childwindow.h"
 #include "ncgr.h"
 
 typedef struct {
-	FRAMEDATA frameData;
-	WCHAR szOpenFile[MAX_PATH];
+	EDITOR_BASIC_MEMBERS;
 	NCGR ncgr;
-	int showBorders;
-	int scale;
 	int hoverX;
 	int hoverY;
 	int contextHoverX;

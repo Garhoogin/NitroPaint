@@ -1,18 +1,11 @@
 #pragma once
 #include <Windows.h>
+#include "editor.h"
 #include "nclr.h"
 #include "palops.h"
 
 typedef struct {
-	int contentWidth;
-	int contentHeight;
-	int paddingLeft;
-	int paddingTop;
-	int paddingRight;
-	int paddingBottom;
-	int allowClear;
-	int sizeLevel;
-	WCHAR szOpenFile[MAX_PATH];
+	EDITOR_BASIC_MEMBERS;
 	NCLR nclr;
 	int hoverX;
 	int hoverY;

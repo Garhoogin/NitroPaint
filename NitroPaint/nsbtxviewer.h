@@ -1,14 +1,12 @@
 #pragma once
+#include <Windows.h>
+#include "editor.h"
 #include "nsbtx.h"
 #include "childwindow.h"
-#include <Windows.h>
 
 typedef struct {
-	FRAMEDATA frameData;
-	WCHAR szOpenFile[MAX_PATH];
+	EDITOR_BASIC_MEMBERS;
 	TexArc nsbtx;
-	int showBorders;
-	int scale;
 
 	HWND hWndTextureSelect;
 	HWND hWndPaletteSelect;

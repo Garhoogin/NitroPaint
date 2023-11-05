@@ -492,8 +492,8 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data->contentWidth = 0; //prevent horizontal scrollbar
-			data->contentHeight = 256;
+			data->frameData.contentWidth = 0; //prevent horizontal scrollbar
+			data->frameData.contentHeight = 256;
 			data->hoverX = -1;
 			data->hoverY = -1;
 			data->hoverIndex = -1;
@@ -515,14 +515,14 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SCROLLINFO info;
 			info.cbSize = sizeof(info);
 			info.nMin = 0;
-			info.nMax = data->contentWidth;
+			info.nMax = data->frameData.contentWidth;
 			info.nPos = 0;
 			info.nPage = rcClient.right - rcClient.left;
 			info.nTrackPos = 0;
 			info.fMask = SIF_POS | SIF_RANGE | SIF_POS | SIF_TRACKPOS | SIF_PAGE;
 			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
 
-			info.nMax = data->contentHeight;
+			info.nMax = data->frameData.contentHeight;
 			info.nPage = rcClient.bottom - rcClient.top;
 			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
 			break;
@@ -550,8 +550,8 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 
 			//set appropriate height
-			data->contentHeight = ((data->nclr.nColors + 15) / 16) * 16;
-			if (data->contentHeight > 256) {
+			data->frameData.contentHeight = ((data->nclr.nColors + 15) / 16) * 16;
+			if (data->frameData.contentHeight > 256) {
 				SetWindowSize(hWnd, 256 + 4 + GetSystemMetrics(SM_CXVSCROLL), 257);
 			}
 
@@ -559,7 +559,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SCROLLINFO info;
 			info.cbSize = sizeof(info);
 			info.nMin = 0;
-			info.nMax = data->contentHeight;
+			info.nMax = data->frameData.contentHeight;
 			info.fMask = SIF_RANGE;
 			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
 			InvalidateRect(hWnd, NULL, FALSE);
@@ -897,7 +897,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 
 			HDC hDC = CreateCompatibleDC(hWindowDC);
-			HBITMAP hBitmap = CreateCompatibleBitmap(hWindowDC, max(data->contentWidth, horiz.nPos + rcClient.right), max(data->contentHeight, vert.nPos + rcClient.bottom));
+			HBITMAP hBitmap = CreateCompatibleBitmap(hWindowDC, max(data->frameData.contentWidth, horiz.nPos + rcClient.right), max(data->frameData.contentHeight, vert.nPos + rcClient.bottom));
 			SelectObject(hDC, hBitmap);
 			IntersectClipRect(hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
 			DefMDIChildProc(hWnd, WM_ERASEBKGND, (WPARAM) hDC, 0);
@@ -1271,8 +1271,9 @@ VOID RegisterPaletteGenerationClass(VOID) {
 }
 
 VOID RegisterNclrViewerClass(VOID) {
+	int features = 0;
+	EditorRegister(L"NclrViewerClass", NclrViewerWndProc, L"Palette Editor", sizeof(NCLRVIEWERDATA), features);
 	RegisterPaletteGenerationClass();
-	EditorRegister(L"NclrViewerClass", NclrViewerWndProc, L"Palette Editor", sizeof(NCLRVIEWERDATA));
 }
 
 HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {

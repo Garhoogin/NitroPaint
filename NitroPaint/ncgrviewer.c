@@ -356,50 +356,15 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			if (lParam == 0 && HIWORD(wParam) == 0) {
 				switch (LOWORD(wParam)) {
 					case ID_VIEW_GRIDLINES:
-					{
-						HWND hWndMain = getMainWindow(hWnd);
-						int state = GetMenuState(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_BYCOMMAND);
-						state = !state;
-						if (state) {
-							data->showBorders = 1;
-							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
-						} else {
-							data->showBorders = 0;
-							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
-						}
 						SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
-						InvalidateRect(hWnd, NULL, FALSE);
 						break;
-					}
 					case ID_ZOOM_100:
 					case ID_ZOOM_200:
 					case ID_ZOOM_400:
 					case ID_ZOOM_800:
-					{
-						if (LOWORD(wParam) == ID_ZOOM_100) data->scale = 1;
-						if (LOWORD(wParam) == ID_ZOOM_200) data->scale = 2;
-						if (LOWORD(wParam) == ID_ZOOM_400) data->scale = 4;
-						if (LOWORD(wParam) == ID_ZOOM_800) data->scale = 8;
-
-						int checkBox = ID_ZOOM_100;
-						if (data->scale == 2) {
-							checkBox = ID_ZOOM_200;
-						} else if (data->scale == 4) {
-							checkBox = ID_ZOOM_400;
-						} else if (data->scale == 8) {
-							checkBox = ID_ZOOM_800;
-						}
-						int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
-						for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-							int id = ids[i];
-							CheckMenuItem(GetMenu(getMainWindow(hWnd)), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-						}
-
 						SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
-						InvalidateRect(hWnd, NULL, FALSE);
 						RedrawWindow(data->hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
-					}
 					case ID_NCGRMENU_IMPORTBITMAPHERE:
 					case ID_NCGRMENU_IMPORTBITMAPHEREANDREPLACEPALETTE:
 					{
@@ -550,30 +515,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				}
 				InvalidateRect(data->hWndViewer, NULL, FALSE);
 				return 0;
-			}
-			break;
-		}
-		case WM_MDIACTIVATE:
-		{
-			HWND hWndMain = getMainWindow(hWnd);
-			if ((HWND) lParam == hWnd) {
-				if (data->showBorders)
-					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
-				else
-					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
-				int checkBox = ID_ZOOM_100;
-				if (data->scale == 2) {
-					checkBox = ID_ZOOM_200;
-				} else if (data->scale == 4) {
-					checkBox = ID_ZOOM_400;
-				} else if (data->scale == 8) {
-					checkBox = ID_ZOOM_800;
-				}
-				int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
-				for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-					int id = ids[i];
-					CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-				}
 			}
 			break;
 		}
@@ -1285,7 +1226,8 @@ VOID RegisterCharImportClass(VOID) {
 }
 
 VOID RegisterNcgrViewerClass(VOID) {
-	EditorRegister(L"NcgrViewerClass", NcgrViewerWndProc, L"Character Editor", sizeof(NCGRVIEWERDATA));
+	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
+	EditorRegister(L"NcgrViewerClass", NcgrViewerWndProc, L"Character Editor", sizeof(NCGRVIEWERDATA), features);
 	
 	RegisterNcgrPreviewClass();
 	RegisterTileEditorClass();

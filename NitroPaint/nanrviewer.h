@@ -3,13 +3,15 @@
 #include "ncer.h"
 #include "ncgr.h"
 #include "nclr.h"
-#include "childwindow.h"
 
 #include <Windows.h>
 
+#include "childwindow.h"
+#include "editor.h"
+
+
 typedef struct {
-	FRAMEDATA frameData;
-	WCHAR szOpenFile[MAX_PATH];
+	EDITOR_BASIC_MEMBERS;
 	NANR nanr;
 	int frame;
 	int sequence;

@@ -1,12 +1,13 @@
 #pragma once
-#include "nmcr.h"
-#include "childwindow.h"
-
 #include <Windows.h>
 
+#include "nmcr.h"
+#include "childwindow.h"
+#include "editor.h"
+
+
 typedef struct {
-	FRAMEDATA frameData;
-	WCHAR szOpenFile[MAX_PATH];
+	EDITOR_BASIC_MEMBERS;
 	NMCR nmcr;
 	int multiCell;
 	int frame;

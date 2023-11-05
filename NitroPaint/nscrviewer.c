@@ -328,30 +328,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SendMessage(data->hWndSize, WM_SETTEXT, len, (LPARAM) buffer);
 			return 1;
 		}
-		case WM_MDIACTIVATE:
-		{
-			HWND hWndMain = getMainWindow(hWnd);
-			if ((HWND) lParam == hWnd) {
-				if (data->showBorders)
-					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
-				else
-					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
-				int checkBox = ID_ZOOM_100;
-				if (data->scale == 2) {
-					checkBox = ID_ZOOM_200;
-				} else if (data->scale == 4) {
-					checkBox = ID_ZOOM_400;
-				} else if (data->scale == 8) {
-					checkBox = ID_ZOOM_800;
-				}
-				int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
-				for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-					int id = ids[i];
-					CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-				}
-			}
-			break;
-		}
 		case WM_COMMAND:
 		{
 			if (HIWORD(wParam) == 0 && lParam == 0) {
@@ -647,57 +623,13 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 					case ID_VIEW_GRIDLINES:
-					{
-						HWND hWndMain = getMainWindow(hWnd);
-						int state = GetMenuState(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_BYCOMMAND);
-						state = !state;
-						if (state) {
-							data->showBorders = 1;
-							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
-						} else {
-							data->showBorders = 0;
-							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
-						}
-						data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
-						data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
-
-						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-						InvalidateRect(hWnd, NULL, TRUE);
-						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
-						break;
-					}
 					case ID_ZOOM_100:
 					case ID_ZOOM_200:
 					case ID_ZOOM_400:
 					case ID_ZOOM_800:
-					{
-						if (LOWORD(wParam) == ID_ZOOM_100) data->scale = 1;
-						if (LOWORD(wParam) == ID_ZOOM_200) data->scale = 2;
-						if (LOWORD(wParam) == ID_ZOOM_400) data->scale = 4;
-						if (LOWORD(wParam) == ID_ZOOM_800) data->scale = 8;
-
-						int checkBox = ID_ZOOM_100;
-						if (data->scale == 2) {
-							checkBox = ID_ZOOM_200;
-						} else if (data->scale == 4) {
-							checkBox = ID_ZOOM_400;
-						} else if (data->scale == 8) {
-							checkBox = ID_ZOOM_800;
-						}
-						int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-						for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-							int id = ids[i];
-							CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-						}
-						data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
-						data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
-
 						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-						InvalidateRect(hWnd, NULL, TRUE);
 						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
-					}
 				}
 			} else if (lParam) {
 				HWND hWndControl = (HWND) lParam;
@@ -1438,7 +1370,8 @@ VOID RegisterNscrPreviewClass(VOID) {
 }
 
 VOID RegisterNscrViewerClass(VOID) {
-	EditorRegister(L"NscrViewerClass", NscrViewerWndProc, L"Screen Editor", sizeof(NSCRVIEWERDATA));
+	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
+	EditorRegister(L"NscrViewerClass", NscrViewerWndProc, L"Screen Editor", sizeof(NSCRVIEWERDATA), features);
 	RegisterNscrBitmapImportClass();
 	RegisterNscrPreviewClass();
 }

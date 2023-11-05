@@ -2,11 +2,131 @@
 #include <Uxtheme.h>
 
 #include "nitropaint.h"
+#include "resource.h"
 #include "editor.h"
 
 static BOOL CALLBACK EditorSetThemeProc(HWND hWnd, LPARAM lParam) {
 	SetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
 	return TRUE;
+}
+
+static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
+	//get editor data
+	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+
+	//process editor menu common messages
+	switch (LOWORD(wParam)) {
+		case ID_VIEW_GRIDLINES:
+		{
+			HWND hWndMain = getMainWindow(hWnd);
+			int state = GetMenuState(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_BYCOMMAND);
+			state = !state;
+
+			if (state) {
+				CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
+			} else {
+				CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+			}
+			data->showBorders = state;
+			break;
+		}
+		case ID_ZOOM_100:
+		case ID_ZOOM_200:
+		case ID_ZOOM_400:
+		case ID_ZOOM_800:
+		{
+			int scale = 1;
+			if (LOWORD(wParam) == ID_ZOOM_100) scale = 1;
+			if (LOWORD(wParam) == ID_ZOOM_200) scale = 2;
+			if (LOWORD(wParam) == ID_ZOOM_400) scale = 4;
+			if (LOWORD(wParam) == ID_ZOOM_800) scale = 8;
+			data->scale = scale;
+
+			int checkBox = ID_ZOOM_100;
+			if (scale == 2) {
+				checkBox = ID_ZOOM_200;
+			} else if (scale == 4) {
+				checkBox = ID_ZOOM_400;
+			} else if (scale == 8) {
+				checkBox = ID_ZOOM_800;
+			}
+			int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800 };
+			for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
+				int id = ids[i];
+				CheckMenuItem(GetMenu(getMainWindow(hWnd)), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
+			}
+			break;
+		}
+	}
+}
+
+static void EditorHandleActivate(HWND hWnd, HWND to) {
+	if (hWnd != to) return; //focusing away from this window
+
+	HWND hWndMain = getMainWindow(hWnd);
+	HMENU hMenu = GetMenu(hWndMain);
+	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	int features = GetClassLong(hWnd, EDITOR_CD_FEATURES);
+
+	//enable/disable menus depending on supported features
+	if (features & EDITOR_FEATURE_GRIDLINES) {
+		EnableMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_ENABLED);
+	} else {
+		CheckMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_UNCHECKED);
+		EnableMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_DISABLED);
+	}
+
+	if (features & EDITOR_FEATURE_ZOOM) {
+		EnableMenuItem(hMenu, ID_ZOOM_100, MF_ENABLED);
+		EnableMenuItem(hMenu, ID_ZOOM_200, MF_ENABLED);
+		EnableMenuItem(hMenu, ID_ZOOM_400, MF_ENABLED);
+		EnableMenuItem(hMenu, ID_ZOOM_800, MF_ENABLED);
+	} else {
+		CheckMenuItem(hMenu, ID_ZOOM_100, MF_UNCHECKED);
+		CheckMenuItem(hMenu, ID_ZOOM_200, MF_UNCHECKED);
+		CheckMenuItem(hMenu, ID_ZOOM_400, MF_UNCHECKED);
+		CheckMenuItem(hMenu, ID_ZOOM_800, MF_UNCHECKED);
+		EnableMenuItem(hMenu, ID_ZOOM_100, MF_DISABLED);
+		EnableMenuItem(hMenu, ID_ZOOM_200, MF_DISABLED);
+		EnableMenuItem(hMenu, ID_ZOOM_400, MF_DISABLED);
+		EnableMenuItem(hMenu, ID_ZOOM_800, MF_DISABLED);
+	}
+
+	if (features & EDITOR_FEATURE_UNDO) {
+		EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_ENABLED);
+		EnableMenuItem(hMenu, ID_EDIT_REDO, MF_ENABLED);
+	} else {
+		EnableMenuItem(hMenu, ID_EDIT_UNDO, MF_DISABLED);
+		EnableMenuItem(hMenu, ID_EDIT_REDO, MF_DISABLED);
+	}
+
+	//if we support gridlines, handle gridlines checkbox
+	if (features & EDITOR_FEATURE_GRIDLINES) {
+		if (data->showBorders) {
+			CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
+		} else {
+			CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+		}
+		InvalidateRect(hWnd, NULL, FALSE);
+	}
+
+	//if we support zoom, handle zoom checkboxes
+	if (features & EDITOR_FEATURE_ZOOM) {
+		int checkBox = ID_ZOOM_100;
+		if (data->scale == 2) {
+			checkBox = ID_ZOOM_200;
+		} else if (data->scale == 4) {
+			checkBox = ID_ZOOM_400;
+		} else if (data->scale == 8) {
+			checkBox = ID_ZOOM_800;
+		}
+		int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800 };
+		for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
+			int id = ids[i];
+			CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
+		}
+		InvalidateRect(hWnd, NULL, FALSE);
+	}
 }
 
 static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -33,6 +153,16 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				} else {
 					return FILE_TYPE_INVALID;
 				}
+			case WM_COMMAND:
+				//common command messages
+				if (lParam == 0 && HIWORD(wParam) == 0) {
+					//menu command message, handle basic ones
+					EditorHandleMenu(hWnd, wParam, lParam);
+				}
+				break;
+			case WM_MDIACTIVATE:
+				EditorHandleActivate(hWnd, (HWND) lParam);
+				break;
 #if(g_useDarkTheme)
 			case WM_CTLCOLORSTATIC:
 			case WM_CTLCOLORBTN:
@@ -82,7 +212,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize) {
+ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize, int features) {
 	//register editor-common window class.
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -104,6 +234,7 @@ ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, s
 		SetClassLongPtr(hWndDummy, EDITOR_CD_DATA_SIZE, dataSize);
 		SetClassLongPtr(hWndDummy, EDITOR_CD_LIGHTBRUSH, (LONG_PTR) CreateSolidBrush(RGB(51, 51, 51)));
 		SetClassLongPtr(hWndDummy, EDITOR_CD_LIGHTPEN, (LONG_PTR) CreatePen(PS_SOLID, 1, RGB(51, 51, 51)));
+		SetClassLongPtr(hWndDummy, EDITOR_CD_FEATURES, features);
 		DestroyWindow(hWndDummy);
 	}
 

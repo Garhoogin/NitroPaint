@@ -1,14 +1,12 @@
 #pragma once
+#include "editor.h"
 #include "childwindow.h"
 #include "ncer.h"
 #include "undo.h"
 
 typedef struct NCERVIEWERDATA_ {
-	FRAMEDATA frameData;
-	WCHAR szOpenFile[MAX_PATH];
+	EDITOR_BASIC_MEMBERS;
 	NCER ncer;
-	int showBorders;
-	int scale;
 	int hoverX;
 	int hoverY;
 	int cell;
