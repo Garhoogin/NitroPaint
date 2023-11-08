@@ -874,44 +874,43 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			
 			*/
 
-			CreateWindow(L"STATIC", L"Bitmap:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBitmapName = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 70, 10, width - 10 - 50 - 70, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBrowseButton = CreateWindow(L"BUTTON", L"...", WS_VISIBLE | WS_CHILD, width - 10 - 50, 10, 50, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Bitmap:", 10, 10, 50, 22);
+			data->hWndBitmapName = CreateEdit(hWnd, L"", 70, 10, width - 10 - 50 - 70, 22, FALSE);
+			data->hWndBrowseButton = CreateButton(hWnd, L"...", width - 10 - 50, 10, 50, 22, FALSE);
 
-			data->hWndWriteScreenCheckbox = CreateWindow(L"BUTTON", L"Overwrite Screen", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY, 150, 22, hWnd, NULL, NULL, NULL);
-			data->hWndWriteCharIndicesCheckbox = CreateWindow(L"BUTTON", L"Overwrite Character Indices", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, topY + 27, 150, 22, hWnd, NULL, NULL, NULL);
+			data->hWndWriteScreenCheckbox = CreateCheckbox(hWnd, L"Overwrite Screen", leftX, topY, 150, 22, TRUE);
+			data->hWndWriteCharIndicesCheckbox = CreateCheckbox(hWnd, L"Overwrite Character Indices", leftX, topY + 27, 150, 22, FALSE);
 
-			data->hWndNewPaletteCheckbox = CreateWindow(L"BUTTON", L"Overwrite Palette", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, middleY, 150, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Palettes:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPalettesInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, leftX + 85, middleY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27 * 2, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteInput = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, leftX + 85, middleY + 27 * 2, 100, 200, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Size:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27 * 3, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteSize = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"16", WS_VISIBLE | WS_CHILD | ES_NUMBER, leftX + 85, middleY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Offset:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, middleY + 27 * 4, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteOffset = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER, leftX + 85, middleY + 27 * 4, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNewPaletteCheckbox = CreateCheckbox(hWnd, L"Overwrite Palette", leftX, middleY, 150, 22, TRUE);
+			CreateStatic(hWnd, L"Palettes:", leftX, middleY + 27, 75, 22);
+			data->hWndPalettesInput = CreateEdit(hWnd, L"1", leftX + 85, middleY + 27, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Base:", leftX, middleY + 27 * 2, 75, 22);
+			data->hWndPaletteInput = CreateCombobox(hWnd, NULL, 0, leftX + 85, middleY + 27 * 2, 100, 200, 0);
+			CreateStatic(hWnd, L"Size:", leftX, middleY + 27 * 3, 75, 22);
+			data->hWndPaletteSize = CreateEdit(hWnd, L"16", leftX + 85, middleY + 27 * 3, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Offset:", leftX, middleY + 27 * 4, 75, 22);
+			data->hWndPaletteOffset = CreateEdit(hWnd, L"0", leftX + 85, middleY + 27 * 4, 100, 22, TRUE);
 
-			data->hWndNewCharactersCheckbox = CreateWindow(L"BUTTON", L"Overwrite Character", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, middleY, 150, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDitherCheckbox = CreateWindow(L"BUTTON", L"Dither", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, rightX, middleY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Diffuse:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, middleY + 27 * 2, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDiffuseAmount = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"100", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, rightX + 85, middleY + 27 * 2, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Base:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, middleY + 27 * 3, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndCharacterBase = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER, rightX + 85, middleY + 27 * 3, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Count:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, rightX, middleY + 27 * 4, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndCharacterCount = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1024", WS_VISIBLE | WS_CHILD | ES_NUMBER, rightX + 85, middleY + 27 * 4, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndNewCharactersCheckbox = CreateCheckbox(hWnd, L"Overwrite Character", rightX, middleY, 150, 22, TRUE);
+			data->hWndDitherCheckbox = CreateCheckbox(hWnd, L"Dither", rightX, middleY + 27, 100, 22, FALSE);
+			CreateStatic(hWnd, L"Diffuse:", rightX, middleY + 27 * 2, 75, 22);
+			data->hWndDiffuseAmount = CreateEdit(hWnd, L"100", rightX + 85, middleY + 27 * 2, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Base:", rightX, middleY + 27 * 3, 75, 22);
+			data->hWndCharacterBase = CreateEdit(hWnd, L"0", rightX + 85, middleY + 27 * 3, 100, 22, TRUE);
+			CreateStatic(hWnd, L"Count:", rightX, middleY + 27 * 4, 75, 22);
+			CreateEdit(hWnd, L"1024", rightX + 85, middleY + 27 * 4, 100, 22, TRUE);
 
-			CreateWindow(L"STATIC", L"Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color Balance:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX, bottomY + 27, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndEnhanceColors = CreateWindow(L"BUTTON", L"Enhance Colors", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, leftX, bottomY + 27 * 2, 200, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Lightness", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Color", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Green", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT, leftX + 110, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Red", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, leftX + 110 + 50 + 200, bottomY + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY, 200, 22, hWnd, NULL, NULL, NULL);
-			data->hWndColorBalance = CreateWindow(TRACKBAR_CLASS, L"", WS_VISIBLE | WS_CHILD, leftX + 110 + 50, bottomY + 27, 200, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
+			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
+			CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
+			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
+			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
+			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
 
-
-			data->hWndImportButton = CreateWindow(L"BUTTON", L"Import", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, width / 2 - 100, height - 32, 200, 22, hWnd, NULL, NULL, NULL);
+			data->hWndImportButton = CreateButton(hWnd, L"Import", width / 2 - 100, height - 32, 200, 22, TRUE);
 
 			CreateWindow(L"BUTTON", L"Screen", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, topY - 18, rightX + boxWidth - leftX, boxHeight, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"Palette", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, middleY - 18, boxWidth, boxHeight2, hWnd, NULL, NULL, NULL);
@@ -923,20 +922,13 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				wsprintf(textBuffer, L"%d", i);
 				SendMessage(data->hWndPaletteInput, CB_ADDSTRING, wcslen(textBuffer), (LPARAM) textBuffer);
 			}
-			SendMessage(data->hWndWriteScreenCheckbox, BM_SETCHECK, 1, 0);
-			SendMessage(data->hWndDitherCheckbox, BM_SETCHECK, 1, 0);
-			SendMessage(data->hWndNewPaletteCheckbox, BM_SETCHECK, 1, 0);
-			SendMessage(data->hWndNewCharactersCheckbox, BM_SETCHECK, 1, 0);
-			SendMessage(data->hWndBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
-			SendMessage(data->hWndBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
-			SendMessage(data->hWndColorBalance, TBM_SETRANGE, TRUE, BALANCE_MIN | (BALANCE_MAX << 16));
-			SendMessage(data->hWndColorBalance, TBM_SETPOS, TRUE, BALANCE_DEFAULT);
 
 			setStyle(data->hWndCharacterBase, TRUE, WS_DISABLED);
 			setStyle(data->hWndCharacterCount, TRUE, WS_DISABLED);
+			setStyle(data->hWndDiffuseAmount, TRUE, WS_DISABLED);
 
 			SetWindowSize(hWnd, width, height);
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 			break;
 		}
 		case NV_INITIALIZE:
@@ -988,33 +980,27 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					WCHAR textBuffer[MAX_PATH + 1];
 					SendMessage(data->hWndBitmapName, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
 					int width, height;
-					DWORD *px = ImgRead(textBuffer, &width, &height);
+					COLOR32 *px = ImgRead(textBuffer, &width, &height);
 
-					SendMessage(data->hWndDiffuseAmount, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
-					float diffuse = ((float) _wtoi(textBuffer)) * 0.01f;
+					float diffuse = ((float) GetEditNumber(data->hWndDiffuseAmount)) * 0.01f;
 
-					SendMessage(data->hWndCharacterBase, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
-					int characterBase = _wtoi(textBuffer);
-					SendMessage(data->hWndCharacterCount, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
-					int characterCount = _wtoi(textBuffer);
+					int characterBase = GetEditNumber(data->hWndCharacterBase);
+					int characterCount = GetEditNumber(data->hWndCharacterCount);
 
-					SendMessage(data->hWndPalettesInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
-					int nPalettes = _wtoi(textBuffer);
-					SendMessage(data->hWndPaletteSize, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
-					int paletteSize = _wtoi(textBuffer);
-					SendMessage(data->hWndPaletteOffset, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) textBuffer);
-					int paletteOffset = _wtoi(textBuffer);
+					int nPalettes = GetEditNumber(data->hWndPalettesInput);
+					int paletteSize = GetEditNumber(data->hWndPaletteSize);
+					int paletteOffset = GetEditNumber(data->hWndPaletteOffset);
 					if (nPalettes > 16) nPalettes = 16;
 
 					int paletteNumber = SendMessage(data->hWndPaletteInput, CB_GETCURSEL, 0, 0);
-					int dither = SendMessage(data->hWndDitherCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int newPalettes = SendMessage(data->hWndNewPaletteCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int newCharacters = SendMessage(data->hWndNewCharactersCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
-					int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
-					int enhanceColors = SendMessage(data->hWndEnhanceColors, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int writeCharacterIndices = SendMessage(data->hWndWriteCharIndicesCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
-					int writeScreen = SendMessage(data->hWndWriteScreenCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int dither = GetCheckboxChecked(data->hWndDitherCheckbox);
+					int newPalettes = GetCheckboxChecked(data->hWndNewPaletteCheckbox);
+					int newCharacters = GetCheckboxChecked(data->hWndNewCharactersCheckbox);
+					int balance = GetTrackbarPosition(data->hWndBalance);
+					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
+					int enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+					int writeCharacterIndices = GetCheckboxChecked(data->hWndWriteCharIndicesCheckbox);
+					int writeScreen = GetCheckboxChecked(data->hWndWriteScreenCheckbox);
 
 					if (!writeScreen) writeCharacterIndices = 0;
 
