@@ -1365,8 +1365,14 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						}
 					}
 
-					//read out character
+					//enough space?
 					int nCharsAdd = nChars - nFoundChars;
+					if (charBase + nCharsAdd > ncgr->nTiles) {
+						MessageBox(hWnd, L"Not enough graphics space.", L"Out of space.", MB_ICONERROR);
+						break;
+					}
+
+					//read out character
 					for (int j = nFoundChars; j < nChars; j++) {
 						unsigned char *ch = ncgr->tiles[foundStart + j];
 
