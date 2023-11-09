@@ -275,57 +275,62 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	switch (msg) {
 		case WM_CREATE:
 		{
-			//64x64 cell
 
-			//+-----+ [character index]
-			//|     | [palette number]
-			//|     | [Size: XxX]
-			//+-----+
-			//[Cell x]
-			data->hWndCellDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 0, 256, 132, 100, hWnd, NULL, NULL, NULL);
-			data->hWndOamDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 512, 0, 68, 100, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Character: ", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 21, 50, 21, hWnd, NULL, NULL, NULL);
-			data->hWndCharacterOffset = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 512 + 50, 21, 30, 21, hWnd, NULL, NULL, NULL);
-			data->hWndCharacterOffsetButton = CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD, 512 + 50 + 30, 21, 20, 21, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 512, 42, 100, 100, hWnd, NULL, NULL, NULL);
-			data->hWndSizeLabel = CreateWindow(L"STATIC", L"Size:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 63, 25, 21, hWnd, NULL, NULL, NULL);
-			data->hWndImportBitmap = CreateWindow(L"BUTTON", L"Import Bitmap", WS_VISIBLE | WS_CHILD, 0, 282, 164, 22, hWnd, NULL, NULL, NULL);
-			data->hWndImportReplacePalette = CreateWindow(L"BUTTON", L"Import and Replace Palette", WS_VISIBLE | WS_CHILD, 0, 304, 164, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"OBJ:", WS_VISIBLE | WS_CHILD, 418, 261, 25, 22, hWnd, NULL, NULL, NULL);
-
-			CreateWindow(L"STATIC", L"X: ", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 85, 25, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Y:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 107, 25, 22, hWnd, NULL, NULL, NULL);
-			data->hWndXInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 537, 85, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndYInput = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 537, 107, 75, 22, hWnd, NULL, NULL, NULL);
-			data->hWndRotateScale = CreateWindow(L"BUTTON", L"Rotate/Scale", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 129, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndHFlip = CreateWindow(L"BUTTON", L"H Flip", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 151, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndVFlip = CreateWindow(L"BUTTON", L"V Flip", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 562, 151, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndDisable = CreateWindow(L"BUTTON", L"Disable", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 173, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Matrix:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 195, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndMatrix = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_AUTOHSCROLL, 562, 195, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWnd8bpp = CreateWindow(L"BUTTON", L"8bpp", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 217 + 22, 25 + 20, 22, hWnd, NULL, NULL, NULL);
-			data->hWndMosaic = CreateWindow(L"BUTTON", L"Mosaic", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 537 + 20, 217 + 22, 75 - 20, 22, hWnd, NULL, NULL, NULL);
-
-			data->hWndOamRemove = CreateWindow(L"BUTTON", L"-", WS_VISIBLE | WS_CHILD, 580, 0, 16, 21, hWnd, NULL, NULL, NULL);
-			data->hWndOamAdd = CreateWindow(L"BUTTON", L"+", WS_VISIBLE | WS_CHILD, 596, 0, 16, 21, hWnd, NULL, NULL, NULL);
-			data->hWndCellRemove = CreateWindow(L"BUTTON", L"-", WS_VISIBLE | WS_CHILD, 132, 256, 16, 21, hWnd, NULL, NULL, NULL);
-			data->hWndCellAdd = CreateWindow(L"BUTTON", L"+", WS_VISIBLE | WS_CHILD, 148, 256, 16, 21, hWnd, NULL, NULL, NULL);
-
-			data->hWndDoubleSize = CreateWindow(L"BUTTON", L"Double Size", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 512, 239 - 22, 100, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Priority:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 261, 50, 21, hWnd, NULL, NULL, NULL);
-			data->hWndPriority = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 512 + 50, 261, 50, 100, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Type:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 512, 282, 30, 21, hWnd, NULL, NULL, NULL);
-			data->hWndType = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 512 + 30, 282, 70, 100, hWnd, NULL, NULL, NULL);
-
-			data->hWndSizeDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 537, 63, 75, 100, hWnd, NULL, NULL, NULL);
-			data->hWndCellBoundsCheckbox = CreateWindow(L"BUTTON", L"Show cell bounds", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, 169, 256, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", 169, 256 + 22 + 5, 164, 22, FALSE);
-			data->hWndDuplicateCell = CreateButton(hWnd, L"Duplicate Cell", 169, 256 + 22 + 5 + 22, 164, 22, FALSE);
-
-			//mapping mode
+			//mapping modes
 			LPCWSTR mappingNames[] = {
 				L"2D", L"1D 32K", L"1D 64K", L"1D 128K", L"1D 256K"
 			};
+
+			//OBJ types
+			LPCWSTR objTypes[] = {
+				L"Normal", L"Translucent", L"Window"
+			};
+
+			//OBJ priorities
+			LPCWSTR objPriorities[] = {
+				L"0", L"1", L"2", L"3"
+			};
+
+			data->hWndCellDropdown = CreateCombobox(hWnd, NULL, 0, 0, 256, 132, 100, 0);
+			data->hWndOamDropdown = CreateCombobox(hWnd, NULL, 0, 512, 0, 68, 100, 0);
+			CreateStatic(hWnd, L"Character:", 512, 21, 50, 21);
+			data->hWndCharacterOffset = CreateEdit(hWnd, L"0", 512 + 50, 21, 30, 21, TRUE);
+			data->hWndCharacterOffsetButton = CreateButton(hWnd, L"Set", 512 + 50 + 30, 21, 20, 21, FALSE);
+			data->hWndPaletteDropdown = CreateCombobox(hWnd, NULL, 0, 512, 42, 100, 100, 0);
+			CreateStatic(hWnd, L"Size:", 512, 63, 25, 21);
+			data->hWndImportBitmap = CreateButton(hWnd, L"Import Bitmap", 0, 282, 164, 22, FALSE);
+			data->hWndImportReplacePalette = CreateButton(hWnd, L"Import and Replace Palette", 0, 304, 164, 22, FALSE);
+			CreateStatic(hWnd, L"OBJ:", 418, 261, 25, 22);
+
+			CreateStatic(hWnd, L"X:", 512, 85, 25, 22);
+			CreateStatic(hWnd, L"Y:", 512, 107, 25, 22);
+			data->hWndXInput = CreateEdit(hWnd, L"0", 537, 85, 75, 22, FALSE);
+			data->hWndYInput = CreateEdit(hWnd, L"0", 537, 107, 75, 22, FALSE);
+			data->hWndRotateScale = CreateCheckbox(hWnd, L"Rotate/Scale", 512, 129, 100, 22, FALSE);
+			data->hWndHFlip = CreateCheckbox(hWnd, L"H Flip", 512, 151, 50, 22, FALSE);
+			data->hWndVFlip = CreateCheckbox(hWnd, L"V Flip", 562, 151, 50, 22, FALSE);
+			data->hWndDisable = CreateCheckbox(hWnd, L"Disable", 512, 173, 100, 22, FALSE);
+			CreateStatic(hWnd, L"Matrix:", 512, 195, 50, 22);
+			data->hWndMatrix = CreateEdit(hWnd, L"0", 562, 195, 50, 22, TRUE);
+			data->hWnd8bpp = CreateCheckbox(hWnd, L"8bpp", 512, 217 + 22, 25 + 20, 22, FALSE);
+			data->hWndMosaic = CreateCheckbox(hWnd, L"Mosaic", 537 + 20, 217 + 22, 75 - 20, 22, FALSE);
+
+			data->hWndOamRemove = CreateButton(hWnd, L"-", 580, 0, 16, 21, FALSE);
+			data->hWndOamAdd = CreateButton(hWnd, L"+", 596, 0, 16, 21, FALSE);
+			data->hWndCellRemove = CreateButton(hWnd, L"-", 132, 256, 16, 21, FALSE);
+			data->hWndCellAdd = CreateButton(hWnd, L"+", 148, 256, 16, 21, FALSE);
+
+			data->hWndDoubleSize = CreateCheckbox(hWnd, L"Double Size", 512, 239 - 22, 100, 22, FALSE);
+			CreateStatic(hWnd, L"Priority:", 512, 261, 50, 21);
+			data->hWndPriority = CreateCombobox(hWnd, objPriorities, 4, 512 + 50, 261, 50, 100, 0);
+			CreateStatic(hWnd, L"Type:", 512, 282, 30, 21);
+			data->hWndType = CreateCombobox(hWnd, objTypes, 3, 512 + 30, 282, 70, 100, 0);
+
+			data->hWndSizeDropdown = CreateCombobox(hWnd, NULL, 0, 537, 63, 75, 100, 0);
+			data->hWndCellBoundsCheckbox = CreateCheckbox(hWnd, L"Show cell bounds", 169, 256, 100, 22, FALSE);
+			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", 169, 256 + 22 + 5, 164, 22, FALSE);
+			data->hWndDuplicateCell = CreateButton(hWnd, L"Duplicate Cell", 169, 256 + 22 + 5 + 22, 164, 22, FALSE);
+
 			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, 338, 256 + 22 + 5, 75, 100, 0);
 			break;
 		}
@@ -431,17 +436,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				SendMessage(data->hWndCellDropdown, CB_ADDSTRING, 0, (LPARAM) size);
 			}
 			SendMessage(data->hWndCellDropdown, CB_SETCURSEL, 0, 0);
-
-			for (int i = 0; i < 4; i++) {
-				wsprintf(size, L"%d", i);
-				SendMessage(data->hWndPriority, CB_ADDSTRING, 0, (LPARAM) size);
-			}
-			SendMessage(data->hWndPriority, CB_SETCURSEL, 0, 0);
-
-			SendMessage(data->hWndType, CB_ADDSTRING, 0, (LPARAM) L"Normal");
-			SendMessage(data->hWndType, CB_ADDSTRING, 0, (LPARAM) L"Translucent");
-			SendMessage(data->hWndType, CB_ADDSTRING, 0, (LPARAM) L"Window");
-			SendMessage(data->hWndType, CB_SETCURSEL, 0, 0);
 
 			UpdateOamDropdown(hWnd);
 			UpdateControls(hWnd);
