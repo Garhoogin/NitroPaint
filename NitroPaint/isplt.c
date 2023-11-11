@@ -1250,12 +1250,25 @@ double RxHistComputePaletteError(RxReduction *reduction, COLOR32 *palette, int n
 }
 
 static int RxiPaletteFindClosestColorYiqSimple(RxReduction *reduction, RxYiqColor *palette, int nColors, RxYiqColor *col, double *outDiff) {
-	RxRgbColor rgb;
-	RxConvertYiqToRgb(&rgb, col);
-	return RxiPaletteFindClosestRgbColorYiqPaletteSimple(reduction, palette, nColors, rgb.r | (rgb.g << 8) | (rgb.b << 16), outDiff);
+	double leastDiff = 1e32;
+	int leastIndex = 0;
+	for (int i = 0; i < nColors; i++) {
+		RxYiqColor *yiq2 = palette + i;
+
+		double diff = RxiComputeColorDifference(reduction, col, yiq2);
+		if (diff < leastDiff) {
+			leastDiff = diff;
+			leastIndex = i;
+		}
+	}
+	if (outDiff != NULL) *outDiff = leastDiff;
+	return leastIndex;
 }
 
 static double RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *tile1, RxiTile *tile2) {
+	//if either palette has 0 colors, return 0 (perfect fit)
+	if (tile1->nUsedColors == 0 || tile2->nUsedColors == 0) return 0;
+
 	//are the palettes identical?
 	if (tile1->nUsedColors == tile2->nUsedColors && memcmp(tile1->palette, tile2->palette, tile1->nUsedColors * sizeof(tile1->palette[0])) == 0) return 0;
 
@@ -1264,17 +1277,29 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *t
 	for (int i = 0; i < tile2->nUsedColors; i++) {
 		RxYiqColor *yiq = &tile2->palette[i];
 		double diff = 0.0;
-		int closest = RxiPaletteFindClosestColorYiqSimple(reduction, &tile1->palette[0], tile1->nUsedColors, yiq, &diff);
+		RxiPaletteFindClosestColorYiqSimple(reduction, &tile1->palette[0], tile1->nUsedColors, yiq, &diff);
 
 		if (diff > 0) {
 			totalDiff += diff * tile2->useCounts[i];
 		}
 
 	}
-	if (totalDiff > 0) totalDiff = sqrt(totalDiff);
-	if (totalDiff == 0.0) return 0;
+	
+	//if all colors match perfectly, return 0
+	if (totalDiff == 0) return 0;
 
-	totalDiff += 15.0 * sqrt(tile1->nSwallowed * tile2->nSwallowed);
+	//imperfect fit. 
+	int fullSize = 2 * reduction->nPaletteColors;
+	if (tile1->nUsedColors + tile2->nUsedColors < fullSize) {
+		//one or two palettes not full. Scale down
+		totalDiff *= sqrt(((double) (tile1->nUsedColors + tile2->nUsedColors)) / fullSize);
+	} else {
+		//both palettes full.
+	}
+
+	//scale difference by frequency (resistance to change)
+	totalDiff *= sqrt(tile1->nSwallowed + tile2->nSwallowed);
+
 	return totalDiff;
 }
 
@@ -1404,7 +1429,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 	while (nCurrentPalettes > nPalettes) {
 
 		int index1, index2;
-		double diff = RxiTileFindSimilarTiles(tiles, diffBuff, nTiles, &index1, &index2);
+		RxiTileFindSimilarTiles(tiles, diffBuff, nTiles, &index1, &index2);
 
 		//find all  instances of index2, replace with index1
 		int nSwitched = 0;
@@ -1427,12 +1452,10 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 
 		//write over the palette of the tile
 		RxiTile *palTile = tiles + index1;
-		COLOR32 palBuf[16];
 		for (int i = 0; i < 15; i++) {
 			RxYiqColor *yiqDest = &palTile->palette[i];
 			uint8_t *srcRgb = &reduction->paletteRgb[i][0];
 			COLOR32 rgb = srcRgb[0] | (srcRgb[1] << 8) | (srcRgb[2] << 16);
-			palBuf[i] = rgb;
 			RxConvertRgbToYiq(rgb, yiqDest);
 		}
 		palTile->nUsedColors = reduction->nUsedColors;
