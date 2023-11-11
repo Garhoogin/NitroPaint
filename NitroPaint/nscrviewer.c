@@ -898,7 +898,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateStatic(hWnd, L"Base:", rightX, middleY + 27 * 3, 75, 22);
 			data->hWndCharacterBase = CreateEdit(hWnd, L"0", rightX + 85, middleY + 27 * 3, 100, 22, TRUE);
 			CreateStatic(hWnd, L"Count:", rightX, middleY + 27 * 4, 75, 22);
-			CreateEdit(hWnd, L"1024", rightX + 85, middleY + 27 * 4, 100, 22, TRUE);
+			data->hWndCharacterCount = CreateEdit(hWnd, L"1024", rightX + 85, middleY + 27 * 4, 100, 22, TRUE);
 
 			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
 			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
