@@ -1,6 +1,7 @@
 #include <Windows.h>
 
 #include "childwindow.h"
+#include "nitropaint.h"
 #include "colorchooser.h"
 #include "color.h"
 
@@ -36,6 +37,7 @@ VOID ConvertRGBToHSV(COLORREF col, int *h, int *s, int *v) {
 }
 
 VOID ConvertHSVToRGB(int h, int s, int v, COLORREF *rgb) {
+	h %= 360;
 	int chroma = 255 * s * v / 10000;
 	int x = chroma * (60 - abs((h % 120) - 60)) / 60;
 
@@ -70,7 +72,7 @@ VOID ConvertHSVToRGB(int h, int s, int v, COLORREF *rgb) {
 	*rgb = RGB(r1, g1, b1);
 }
 
-HBITMAP RenderGradientBar(COLORREF left, COLORREF right, int width, int height) {
+static HBITMAP RenderGradientBar(COLORREF left, COLORREF right, int width, int height) {
 	DWORD *px = (DWORD *) calloc(width * height, 4);
 
 	int r1 = left & 0xFF, r2 = right & 0xFF;
@@ -92,7 +94,7 @@ HBITMAP RenderGradientBar(COLORREF left, COLORREF right, int width, int height) 
 	return hBitmap;
 }
 
-HBITMAP RenderHSVGradientBar(int hLeft, int sLeft, int vLeft, int hRight, int sRight, int vRight, int width, int height) {
+static HBITMAP RenderHSVGradientBar(int hLeft, int sLeft, int vLeft, int hRight, int sRight, int vRight, int width, int height) {
 	DWORD *px = (DWORD *) calloc(width * height, 4);
 
 	for (int x = 0; x < width; x++) {
@@ -114,7 +116,7 @@ HBITMAP RenderHSVGradientBar(int hLeft, int sLeft, int vLeft, int hRight, int sR
 	return hBitmap;
 }
 
-VOID DrawTick(HDC hDC, int x, int y) {
+static VOID DrawTick(HDC hDC, int x, int y) {
 	MoveToEx(hDC, x - 1, y + 3 + 1, NULL);
 	LineTo(hDC, x, y + 4 + 1);
 	LineTo(hDC, x + 2, y + 2 + 1);
@@ -144,7 +146,7 @@ typedef struct {
 	int exitStatus;
 } CHOOSECOLORDATA;
 
-VOID UpdateValues(HWND hWnd, COLORREF rgb) {
+static VOID UpdateValues(HWND hWnd, COLORREF rgb) {
 	CHOOSECOLORDATA *data = (CHOOSECOLORDATA *) GetWindowLongPtr(hWnd, 0);
 	data->noUpdateTextBoxes = TRUE;
 
@@ -152,32 +154,25 @@ VOID UpdateValues(HWND hWnd, COLORREF rgb) {
 
 	HWND hWndFocus = GetFocus();
 
-	wsprintfW(text, L"%d", ((rgb & 0xFF) + 4) * 31 / 255);
-	if(hWndFocus != data->inputs[0]) SendMessage(data->inputs[0], WM_SETTEXT, 0, (LPARAM) text);
-	wsprintfW(text, L"%d", (((rgb >> 8) & 0xFF) + 4) * 31 / 255);
-	if(hWndFocus != data->inputs[1]) SendMessage(data->inputs[1], WM_SETTEXT, 0, (LPARAM) text);
-	wsprintfW(text, L"%d", (((rgb >> 16) & 0xFF) + 4) * 31 / 255);
-	if(hWndFocus != data->inputs[2]) SendMessage(data->inputs[2], WM_SETTEXT, 0, (LPARAM) text);
+	COLOR ds = ColorConvertToDS(rgb);
+	if (hWndFocus != data->inputs[0]) SetEditNumber(data->inputs[0], (ds >> 0) & 0x1F);
+	if (hWndFocus != data->inputs[1]) SetEditNumber(data->inputs[1], (ds >> 5) & 0x1F);
+	if (hWndFocus != data->inputs[2]) SetEditNumber(data->inputs[2], (ds >> 10) & 0x1F);
 
 	int h, s, v;
 	ConvertRGBToHSV(rgb, &h, &s, &v);
+	if (hWndFocus != data->inputs[3]) SetEditNumber(data->inputs[3], h);
+	if (hWndFocus != data->inputs[4]) SetEditNumber(data->inputs[4], s);
+	if (hWndFocus != data->inputs[5]) SetEditNumber(data->inputs[5], v);
 
-	wsprintf(text, L"%d", h);
-	if(hWndFocus != data->inputs[3]) SendMessage(data->inputs[3], WM_SETTEXT, 0, (LPARAM) text);
-	wsprintf(text, L"%d", s);
-	if(hWndFocus != data->inputs[4]) SendMessage(data->inputs[4], WM_SETTEXT, 0, (LPARAM) text);
-	wsprintf(text, L"%d", v);
-	if(hWndFocus != data->inputs[5]) SendMessage(data->inputs[5], WM_SETTEXT, 0, (LPARAM) text);
-
-	COLOR ds = ColorConvertToDS(rgb);
 	wsprintf(text, L"%04X", ds);
-	if(hWndFocus != data->inputs[6]) SendMessage(data->inputs[6], WM_SETTEXT, 0, (LPARAM) text);
+	if (hWndFocus != data->inputs[6]) SendMessage(data->inputs[6], WM_SETTEXT, 0, (LPARAM) text);
 
 	InvalidateRect(hWnd, NULL, FALSE);
 	data->noUpdateTextBoxes = FALSE;
 }
 
-LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	CHOOSECOLORDATA *data = (CHOOSECOLORDATA *) GetWindowLongPtr(hWnd, 0);
 	if (data == NULL) {
 		data = (CHOOSECOLORDATA *) calloc(1, sizeof(CHOOSECOLORDATA));
@@ -186,25 +181,25 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateWindow(L"STATIC", L"R:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 10, 15, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"G:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 37, 15, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"B:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 64, 15, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"R:", 10, 10, 15, 22);
+			CreateStatic(hWnd, L"G:", 10, 37, 15, 22);
+			CreateStatic(hWnd, L"B:", 10, 64, 15, 22);
 
-			CreateWindow(L"STATIC", L"H:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 96, 15, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"S:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 123, 15, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"V:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 10, 150, 15, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"H:", 10, 96, 15, 22);
+			CreateStatic(hWnd, L"S:", 10, 123, 15, 22);
+			CreateStatic(hWnd, L"V:", 10, 150, 15, 22);
 
-			CreateWindow(L"STATIC", L"Hex:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 271, 91, 30, 22, hWnd, NULL, NULL, NULL);
+			CreateStatic(hWnd, L"Hex:", 271, 91, 30, 22);
 
-			HWND hR = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"31", WS_VISIBLE | WS_CHILD | ES_NUMBER | WS_TABSTOP, 235, 10, 20, 22, hWnd, NULL, NULL, NULL);
-			HWND hG = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"31", WS_VISIBLE | WS_CHILD | ES_NUMBER | WS_TABSTOP, 235, 37, 20, 22, hWnd, NULL, NULL, NULL);
-			HWND hB = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"31", WS_VISIBLE | WS_CHILD | ES_NUMBER | WS_TABSTOP, 235, 64, 20, 22, hWnd, NULL, NULL, NULL);
-			HWND hH = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | WS_TABSTOP, 235, 96, 30, 22, hWnd, NULL, NULL, NULL);
-			HWND hS = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | WS_TABSTOP, 235, 123, 30, 22, hWnd, NULL, NULL, NULL);
-			HWND hV = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_NUMBER | WS_TABSTOP, 235, 150, 30, 22, hWnd, NULL, NULL, NULL);
+			HWND hR = CreateEdit(hWnd, L"0", 235, 10, 20, 22, TRUE);
+			HWND hG = CreateEdit(hWnd, L"0", 235, 37, 20, 22, TRUE);
+			HWND hB = CreateEdit(hWnd, L"0", 235, 64, 20, 22, TRUE);
+			HWND hH = CreateEdit(hWnd, L"0", 235, 96, 30, 22, TRUE);
+			HWND hS = CreateEdit(hWnd, L"0", 235, 123, 30, 22, TRUE);
+			HWND hV = CreateEdit(hWnd, L"0", 235, 150, 30, 22, TRUE);
 			HWND hHex = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0000", WS_VISIBLE | WS_CHILD | ES_UPPERCASE | ES_AUTOHSCROLL | WS_TABSTOP, 301, 91, 40, 22, hWnd, NULL, NULL, NULL);
-			HWND hWndOk = CreateWindow(L"BUTTON", L"OK", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON | WS_TABSTOP, 275, 177, 66, 22, hWnd, NULL, NULL, NULL);
-			HWND hWndCancel = CreateWindow(L"BUTTON", L"Cancel", WS_VISIBLE | WS_CHILD | WS_TABSTOP, 199, 177, 66, 22, hWnd, NULL, NULL, NULL);
+			HWND hWndOk = CreateButton(hWnd, L"OK", 275, 177, 66, 22, TRUE);
+			HWND hWndCancel = CreateButton(hWnd, L"Cancel", 199, 177, 66, 22, FALSE);
 			data->inputs[0] = hR;
 			data->inputs[1] = hG;
 			data->inputs[2] = hB;
@@ -216,7 +211,7 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndCancel = hWndCancel;
 			data->exitStatus = FALSE;
 
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 			break;
 		}
 		case WM_LBUTTONDOWN:
@@ -283,10 +278,10 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				COLORREF rgb = chooseColor->rgbResult;
 
 				if (channel == 0 || channel == 1 || channel == 2) {
-					v = x * 255 / 199;
+					v = (x * 255 + 99) / 199;
 					if (v < 0) v = 0;
 					if (v > 255) v = 255;
-					v = ((v + 4) * 31 / 255) * 255 / 31;
+					v = ColorRoundToDS15(v);
 
 					if (channel == 0) rgb &= 0xFFFF00;
 					if (channel == 1) rgb &= 0xFF00FF;
@@ -324,11 +319,11 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		}
 		case WM_COMMAND:
 		{
-			if ((HWND) lParam == data->hWndOk && HIWORD(wParam) == BN_CLICKED) {
+			if (((HWND) lParam == data->hWndOk && HIWORD(wParam) == BN_CLICKED) || (lParam == 0 && LOWORD(wParam) == IDOK)) {
 				data->exitStatus = TRUE;
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
-			if ((HWND) lParam == data->hWndCancel && HIWORD(wParam) == BN_CLICKED) {
+			if (((HWND) lParam == data->hWndCancel && HIWORD(wParam) == BN_CLICKED) || (lParam == 0 && LOWORD(wParam) == IDCANCEL)) {
 				data->chooseColor->rgbResult = data->inputColor;
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
@@ -378,7 +373,7 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 						int val = _wtol(buffer);
 
 						if (index == 0 || index == 1 || index == 2) {
-							val = val * 255 / 31;
+							val = (val * 510 + 31) / 62;
 							if (index == 0) rgb &= 0xFFFF00;
 							if (index == 1) rgb &= 0xFF00FF;
 							if (index == 2) rgb &= 0x00FFFF;
@@ -386,9 +381,6 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 							chooseColor->rgbResult = rgb;
 							UpdateValues(hWnd, rgb);
 						} else if (index == 3 || index == 4 || index == 5) {
-							if (index == 3) val = val * 359 / 199;
-							else val = val * 100 / 199;
-
 							int hsv[3];
 							ConvertRGBToHSV(rgb, hsv, hsv + 1, hsv + 2);
 
@@ -501,15 +493,6 @@ LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			if (!data->exitStatus) {
 				data->chooseColor->rgbResult = data->inputColor;
 			}
-			HWND hWndOwner = data->chooseColor->hwndOwner;
-			if (hWndOwner) {
-				SetWindowLongPtr(hWndOwner, GWL_STYLE, GetWindowLongPtr(hWndOwner, GWL_STYLE) & ~WS_DISABLED);
-				SetActiveWindow(hWndOwner);
-			}
-			break;
-		}
-		case WM_DESTROY:
-		{
 			break;
 		}
 	}
@@ -547,24 +530,11 @@ BOOL WINAPI CustomChooseColor(CHOOSECOLORW *chooseColor) {
 	ShowWindow(hWndChooser, SW_SHOW);
 	UpdateValues(hWndChooser, chooseColor->rgbResult);
 	InvalidateRect(hWndChooser, NULL, FALSE);
+	SetFocus(data->inputs[0]);
 
 	HWND hWndOwner = chooseColor->hwndOwner;
-	if (hWndOwner) {
-		SetWindowLongPtr(hWndOwner, GWL_STYLE, GetWindowLongPtr(hWndOwner, GWL_STYLE) | WS_DISABLED);
-	}
+	DoModal(hWndChooser);
 
-	MSG msg;
-	BOOL exitLoop = FALSE;
-	while (IsWindow(hWndChooser)) {
-		if(!GetMessage(&msg, NULL, 0, 0)) break;
-		if (!IsDialogMessage(hWndChooser, &msg)) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-	}
-	if (msg.message == WM_QUIT) {
-		PostQuitMessage(0);
-	}
 	int status = data->exitStatus;
 	free(data);
 
