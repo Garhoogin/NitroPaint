@@ -1067,11 +1067,14 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 }
 
 typedef struct CELLGENDATA_ {
+	int lastOptimization; //last optimization setting
+
 	HWND hWndAggressiveness;
 	HWND hWndOk;
 	HWND hWndCancel;
 	HWND hWndAggressivenessLabel;
 	HWND hWndObjLabel;
+	HWND hWndCharLabel;
 	HWND hWndCharacter;
 
 	//cell
@@ -1117,6 +1120,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			//allocate data
 			data = (CELLGENDATA *) calloc(1, sizeof(CELLGENDATA));
+			data->lastOptimization = 100;
 			SetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR), (LONG_PTR) data);
 			break;
 		}
@@ -1127,14 +1131,19 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		case WM_TIMER:
 		{
+			int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
+
 			//invalidate update part
-			RECT rc;
-			rc.top = previewX;
-			rc.left = previewY;
-			rc.right = previewX + 512;
-			rc.bottom = previewY + 256;
-			InvalidateRect(hWnd, &rc, FALSE);
-			SetEditNumber(data->hWndAggressivenessLabel, GetTrackbarPosition(data->hWndAggressiveness));
+			if (aggressiveness != data->lastOptimization) {
+				RECT rc;
+				rc.top = previewX;
+				rc.left = previewY;
+				rc.right = previewX + 512;
+				rc.bottom = previewY + 256;
+				InvalidateRect(hWnd, &rc, FALSE);
+				SetEditNumber(data->hWndAggressivenessLabel, aggressiveness);
+				data->lastOptimization = aggressiveness;
+			}
 			break;
 		}
 		case WM_PAINT:
@@ -1157,7 +1166,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			//must have image loaded
 			if (px != NULL) {
-				int nObj;
+				int nObj, nChars = 0;
 				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
 				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, &nObj);
 
@@ -1169,6 +1178,9 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int bx = b->x + 256;
 					int by = b->y + 128;
 					Rectangle(hCompatibleDC, bx, by, bx + b->width, by + b->height);
+
+					//tally characters
+					nChars += (b->width * b->height) / 64;
 				}
 
 				free(bounds);
@@ -1176,6 +1188,9 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				WCHAR objText[16];
 				int len = wsprintfW(objText, L"%d OBJ", nObj);
 				SendMessage(data->hWndObjLabel, WM_SETTEXT, len, (LPARAM) objText);
+
+				len = wsprintfW(objText, L"%d characters", nChars);
+				SendMessage(data->hWndCharLabel, WM_SETTEXT, len, (LPARAM) objText);
 			}
 
 			BitBlt(hDC, previewX, previewY, 512, 256, hCompatibleDC, 0, 0, SRCCOPY);
@@ -1207,8 +1222,9 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndCharacter = CreateEdit(hWnd, L"0", 350, 10, 40, 22, TRUE);
 			CreateGroupbox(hWnd, L"Preview", 10, 42, 534, 285);
 			data->hWndObjLabel = CreateStatic(hWnd, L"0 OBJ", 10, 337, 75, 22);
-			data->hWndOk = CreateButton(hWnd, L"Complete", 560 - 100, 337, 100, 22, TRUE);
-			data->hWndCancel = CreateButton(hWnd, L"Cancel", 560 - 100 - 5 - 100, 337, 100, 22, FALSE);
+			data->hWndCharLabel = CreateStaticAligned(hWnd, L"0 characters", 10 + 534 - 75, 337, 75, 22, SCA_RIGHT);
+			data->hWndOk = CreateButton(hWnd, L"Complete", 988 - 10 - 100, 337, 100, 22, TRUE);
+			data->hWndCancel = CreateButton(hWnd, L"Cancel", 988 - 10 - 100 - 5 - 100, 337, 100, 22, FALSE);
 
 			//Cell
 			LPCWSTR genModes[] = { L"Replace", L"Prepend", L"Append" };
