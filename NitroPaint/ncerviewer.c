@@ -1066,28 +1066,63 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct CELLGENDATA_ {
+	HWND hWndAggressiveness;
+	HWND hWndOk;
+	HWND hWndCancel;
+	HWND hWndAggressivenessLabel;
+	HWND hWndObjLabel;
+	HWND hWndCharacter;
+
+	//cell
+	HWND hWndAffine;
+	HWND hWndMatrixSlot;
+	HWND hWndPriority;
+	HWND hWndWriteMode;
+
+	//palette
+	HWND hWndWritePalette;
+	HWND hWndPalette;
+	HWND hWndPaletteOffset;
+	HWND hWndPaletteLength;
+
+	//position
+	HWND hWndPosX;
+	HWND hWndPosY;
+	HWND hWndAnchorX;
+	HWND hWndAnchorY;
+
+	//graphics
+	HWND hWndDither;
+	HWND hWndDiffuse;
+
+	//color
+	HWND hWndBalance;
+	HWND hWndColorBalance;
+	HWND hWndEnhanceColors;
+} CELLGENDATA;
+
 LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	CELLGENDATA *data = (CELLGENDATA *) GetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR));
+
 	COLOR32 *px = (COLOR32 *) GetWindowLongPtr(hWnd, 0 * sizeof(LONG_PTR));
 	int width = GetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR));
 	int height = GetWindowLongPtr(hWnd, 2 * sizeof(LONG_PTR));
 
 	//controls
-	HWND hWndAggressiveness = (HWND) GetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR));
-	HWND hWndOk = (HWND) GetWindowLongPtr(hWnd, 4 * sizeof(LONG_PTR));
-	HWND hWndCancel = (HWND) GetWindowLongPtr(hWnd, 5 * sizeof(LONG_PTR));
-	HWND hWndAggressivenessLabel = (HWND) GetWindowLongPtr(hWnd, 6 * sizeof(LONG_PTR));
-	HWND hWndObjLabel = (HWND) GetWindowLongPtr(hWnd, 7 * sizeof(LONG_PTR));
-	HWND hWndCharacter = (HWND) GetWindowLongPtr(hWnd, 8 * sizeof(LONG_PTR));
-	HWND hWndAffine = (HWND) GetWindowLongPtr(hWnd, 9 * sizeof(LONG_PTR));
-	HWND hWndPalette = (HWND) GetWindowLongPtr(hWnd, 10 * sizeof(LONG_PTR));
-	HWND hWndWritePalette = (HWND) GetWindowLongPtr(hWnd, 11 * sizeof(LONG_PTR));
-
 	int previewX = 21, previewY = 59;
 
 	switch (msg) {
+		case WM_NCCREATE:
+		{
+			//allocate data
+			data = (CELLGENDATA *) calloc(1, sizeof(CELLGENDATA));
+			SetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR), (LONG_PTR) data);
+			break;
+		}
 		case WM_CREATE:
 		{
-			SetWindowSize(hWnd, 570, 369);
+			SetWindowSize(hWnd, 988, 369);
 			break;
 		}
 		case WM_TIMER:
@@ -1099,7 +1134,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			rc.right = previewX + 512;
 			rc.bottom = previewY + 256;
 			InvalidateRect(hWnd, &rc, FALSE);
-			SetEditNumber(hWndAggressivenessLabel, GetTrackbarPosition(hWndAggressiveness));
+			SetEditNumber(data->hWndAggressivenessLabel, GetTrackbarPosition(data->hWndAggressiveness));
 			break;
 		}
 		case WM_PAINT:
@@ -1123,7 +1158,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			//must have image loaded
 			if (px != NULL) {
 				int nObj;
-				int aggressiveness = GetTrackbarPosition(hWndAggressiveness);
+				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
 				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, &nObj);
 
 				for (int i = 0; i < nObj; i++) {
@@ -1140,7 +1175,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				WCHAR objText[16];
 				int len = wsprintfW(objText, L"%d OBJ", nObj);
-				SendMessage(hWndObjLabel, WM_SETTEXT, len, (LPARAM) objText);
+				SendMessage(data->hWndObjLabel, WM_SETTEXT, len, (LPARAM) objText);
 			}
 
 			BitBlt(hDC, previewX, previewY, 512, 256, hCompatibleDC, 0, 0, SRCCOPY);
@@ -1163,34 +1198,78 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SetWindowLongPtr(hWnd, 2 * sizeof(LONG_PTR), height);
 
 			//setup controls
+			int groupWidth = 207, groupHeight = 131, group2Height = 77, groupX = 554, groupY = 10;
+
 			CreateStatic(hWnd, L"Optimization:", 10, 10, 70, 22);
-			hWndAggressiveness = CreateTrackbar(hWnd, 90, 10, 150, 22, 0, 100, 100);
-			hWndAggressivenessLabel = CreateStatic(hWnd, L"100", 250, 10, 30, 22);
+			data->hWndAggressiveness = CreateTrackbar(hWnd, 90, 10, 150, 22, 0, 100, 100);
+			data->hWndAggressivenessLabel = CreateStatic(hWnd, L"100", 250, 10, 30, 22);
 			CreateStatic(hWnd, L"Character:", 290, 10, 60, 22);
-			hWndCharacter = CreateEdit(hWnd, L"0", 350, 10, 40, 22, TRUE);
-			hWndAffine = CreateCheckbox(hWnd, L"Affine", 400, 10, 50, 22, FALSE);
-			hWndPalette = CreateCombobox(hWnd, NULL, 0, 460, 10, 100, 100, 0);
+			data->hWndCharacter = CreateEdit(hWnd, L"0", 350, 10, 40, 22, TRUE);
 			CreateGroupbox(hWnd, L"Preview", 10, 42, 534, 285);
-			hWndObjLabel = CreateStatic(hWnd, L"0 OBJ", 10, 337, 75, 22);
-			hWndOk = CreateButton(hWnd, L"Complete", 560 - 100, 337, 100, 22, TRUE);
-			hWndCancel = CreateButton(hWnd, L"Cancel", 560 - 100 - 5 - 100, 337, 100, 22, FALSE);
+			data->hWndObjLabel = CreateStatic(hWnd, L"0 OBJ", 10, 337, 75, 22);
+			data->hWndOk = CreateButton(hWnd, L"Complete", 560 - 100, 337, 100, 22, TRUE);
+			data->hWndCancel = CreateButton(hWnd, L"Cancel", 560 - 100 - 5 - 100, 337, 100, 22, FALSE);
+
+			//Cell
+			LPCWSTR genModes[] = { L"Replace", L"Prepend", L"Append" };
+			LPCWSTR priorities[] = { L"0", L"1", L"2", L"3" };
+			data->hWndAffine = CreateCheckbox(hWnd, L"Affine", groupX + 11, groupY + 17, 50, 22, FALSE);
+			CreateStatic(hWnd, L"Matrix Slot:", groupX + 11, groupY + 17 + 27, 60, 22);
+			data->hWndMatrixSlot = CreateEdit(hWnd, L"0", groupX + 11 + 65, groupY + 17 + 27, 75, 22, TRUE);
+			CreateStatic(hWnd, L"Priority:", groupX + 11, groupY + 17 + 27 * 2, 60, 22);
+			data->hWndPriority = CreateCombobox(hWnd, priorities, 4, groupX + 11 + 65, groupY + 17 + 27 * 2, 75, 100, 0);
+			CreateStatic(hWnd, L"Mode:", groupX + 11, groupY + 17 + 27 * 3, 60, 22);
+			data->hWndWriteMode = CreateCombobox(hWnd, genModes, 3, groupX + 11 + 65, groupY + 17 + 27 * 3, 75, 100, 0);
+
+			//Palette
+			data->hWndWritePalette = CreateCheckbox(hWnd, L"Write Palette", groupX + groupWidth + 10 + 11, groupY + 17, 100, 22, TRUE);
+			data->hWndPalette = CreateCombobox(hWnd, NULL, 0, groupX + groupWidth + 10 + 11, groupY + 17 + 27, 100, 100, 0);
+			CreateStatic(hWnd, L"Offset:", groupX + groupWidth + 10 + 11, groupY + 17 + 27 * 2, 75, 22);
+			data->hWndPaletteOffset = CreateEdit(hWnd, L"0", groupX + groupWidth + 10 + 11 + 80, groupY + 17 + 27 * 2, 75, 22, TRUE);
+			CreateStatic(hWnd, L"Length:", groupX + groupWidth + 10 + 11, groupY + 17 + 27 * 3, 75, 22);
+			data->hWndPaletteLength = CreateEdit(hWnd, L"16", groupX + groupWidth + 10 + 11 + 80, groupY + 17 + 27 * 3, 75, 22, TRUE);
+
+			//Position
+			LPCWSTR anchorXs[] = { L"Left", L"Center", L"Right" };
+			LPCWSTR anchorYs[] = { L"Top", L"Middle", L"Bottom" };
+			CreateStatic(hWnd, L"Position:", groupX + 11, groupY + groupHeight + 3 + 17, 60, 22);
+			data->hWndPosX = CreateEdit(hWnd, L"0", groupX + 11 + 65, groupY + groupHeight + 3 + 17, 60, 22, FALSE);
+			data->hWndPosY = CreateEdit(hWnd, L"0", groupX + 11 + 125, groupY + groupHeight + 3 + 17, 60, 22, FALSE);
+			CreateStatic(hWnd, L"Anchor:", groupX + 11, groupY + groupHeight + 3 + 17 + 27, 60, 22);
+			data->hWndAnchorX = CreateCombobox(hWnd, anchorXs, 3, groupX + 11 + 65, groupY + groupHeight + 3 + 17 + 27, 60, 100, 1);
+			data->hWndAnchorY = CreateCombobox(hWnd, anchorYs, 3, groupX + 11 + 65 + 60, groupY + groupHeight + 3 + 17 + 27, 60, 100, 1);
+
+			//Graphics
+			data->hWndDither = CreateCheckbox(hWnd, L"Dither", groupX + groupWidth + 10 + 11, groupY + groupHeight + 3 + 17, 60, 22, FALSE);
+			CreateStatic(hWnd, L"Diffuse:", groupX + groupWidth + 10 + 11, groupY + groupHeight + 3 + 17 + 27, 60, 22);
+			data->hWndDiffuse = CreateEdit(hWnd, L"100", groupX + groupWidth + 10 + 11 + 65, groupY + groupHeight + 3 + 17 + 27, 60, 22, TRUE);
+
+			//color
+			int bottomY = groupY + groupHeight + group2Height + 6 + 17;
+			CreateStatic(hWnd, L"Balance:", groupX + 11, bottomY, 100, 22);
+			CreateStatic(hWnd, L"Color Balance:", groupX + 11, bottomY + 27, 100, 22);
+			CreateStaticAligned(hWnd, L"Lightness", groupX + 11 + 110, bottomY, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Color", groupX + 11 + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
+			CreateStaticAligned(hWnd, L"Green", groupX + 11 + 110, bottomY + 27, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Red", groupX + 11 + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
+			data->hWndBalance = CreateTrackbar(hWnd, groupX + 11 + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndColorBalance = CreateTrackbar(hWnd, groupX + 11 + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", groupX + 11, bottomY + 27 * 2, 200, 22, FALSE);
+
+			//groupboxes
+			CreateGroupbox(hWnd, L"Cell", groupX, groupY, groupWidth, groupHeight);
+			CreateGroupbox(hWnd, L"Palette", groupX + groupWidth + 10, groupY, groupWidth, groupHeight);
+			CreateGroupbox(hWnd, L"Position", groupX, groupY + groupHeight + 3, groupWidth, group2Height);
+			CreateGroupbox(hWnd, L"Graphics", groupX + groupWidth + 10, groupY + groupHeight + 3, groupWidth, group2Height);
+			CreateGroupbox(hWnd, L"Color", groupX, groupY + groupHeight + group2Height + 6, groupWidth * 2 + 10, 103);
 
 			//populate palette dropdown
 			for (int i = 0; i < 16; i++) {
 				WCHAR bf[16];
 				wsprintfW(bf, L"Palette %d", i);
-				SendMessage(hWndPalette, CB_ADDSTRING, 0, (LPARAM) bf);
+				SendMessage(data->hWndPalette, CB_ADDSTRING, 0, (LPARAM) bf);
 			}
-			SendMessage(hWndPalette, CB_SETCURSEL, 0, 0);
-
-			SetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR), (LONG_PTR) hWndAggressiveness);
-			SetWindowLongPtr(hWnd, 4 * sizeof(LONG_PTR), (LONG_PTR) hWndOk);
-			SetWindowLongPtr(hWnd, 5 * sizeof(LONG_PTR), (LONG_PTR) hWndCancel);
-			SetWindowLongPtr(hWnd, 6 * sizeof(LONG_PTR), (LONG_PTR) hWndAggressivenessLabel);
-			SetWindowLongPtr(hWnd, 7 * sizeof(LONG_PTR), (LONG_PTR) hWndObjLabel);
-			SetWindowLongPtr(hWnd, 8 * sizeof(LONG_PTR), (LONG_PTR) hWndCharacter);
-			SetWindowLongPtr(hWnd, 9 * sizeof(LONG_PTR), (LONG_PTR) hWndAffine);
-			SetWindowLongPtr(hWnd, 10 * sizeof(LONG_PTR), (LONG_PTR) hWndPalette);
+			SendMessage(data->hWndPalette, CB_SETCURSEL, 0, 0);
 
 			//set timer
 			SetTimer(hWnd, 1, 50, NULL);
@@ -1210,7 +1289,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					lastIndex = i;
 				}
 			}
-			SetEditNumber(hWndCharacter, lastIndex + 1);
+			SetEditNumber(data->hWndCharacter, lastIndex + 1);
 			break;
 		}
 		case WM_COMMAND:
@@ -1219,20 +1298,66 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			int notif = HIWORD(wParam);
 			int idc = LOWORD(wParam);
 
-			if (notif == BN_CLICKED && (hWndControl == hWndOk || idc == IDOK)) {
+			if (notif == BN_CLICKED && (hWndControl == data->hWndOk || idc == IDOK)) {
+
+				//cell params
+				int affine = GetCheckboxChecked(data->hWndAffine);
+				int affineIdx = GetEditNumber(data->hWndMatrixSlot);
+				int prio = SendMessage(data->hWndPriority, CB_GETCURSEL, 0, 0);
+				int insertMode = SendMessage(data->hWndWriteMode, CB_GETCURSEL, 0, 0);
+				if (!affine) affineIdx = 0;
+
+				//palette params
+				int writePalette = GetCheckboxChecked(data->hWndWritePalette);
+				int paletteIndex = SendMessage(data->hWndPalette, CB_GETCURSEL, 0, 0);
+				int paletteOffset = GetEditNumber(data->hWndPaletteOffset);
+				int paletteLength = GetEditNumber(data->hWndPaletteLength);
+				if (paletteOffset == 0) {
+					paletteOffset++;
+					paletteLength--;
+				}
+
+				//position params
+				int ofsX = GetEditNumber(data->hWndPosX);
+				int ofsY = GetEditNumber(data->hWndPosY);
+				int anchorX = SendMessage(data->hWndAnchorX, CB_GETCURSEL, 0, 0);
+				int anchorY = SendMessage(data->hWndAnchorY, CB_GETCURSEL, 0, 0);
+
+				//graphics
+				int dither = GetCheckboxChecked(data->hWndDither);
+				float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
+				if (!dither) diffuse = 0.0f;
+
+				//balance
+				int balance = GetTrackbarPosition(data->hWndBalance);
+				int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
+				int enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+
 				//generate
 				int nObj;
-				int charBase = GetEditNumber(hWndCharacter);
+				int charBase = GetEditNumber(data->hWndCharacter);
 				int charStart = charBase; //initial
-				int affine = GetCheckboxChecked(hWndAffine);
-				int paletteIndex = SendMessage(hWndPalette, CB_GETCURSEL, 0, 0);
-				int aggressiveness = GetTrackbarPosition(hWndAggressiveness);
+				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
 				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, &nObj);
 
 				//bounding box of image
 				int xMin, xMax, yMin, yMax, centerX, centerY;
 				CellgenGetBounds(px, width, height, &xMin, &xMax, &yMin, &yMax);
 				centerX = (xMin + xMax) / 2, centerY = (yMin + yMax) / 2;
+
+				//add to offset depending on anchor positions
+				switch (anchorX) {
+					case 0: //left
+						ofsX += (xMax - xMin) / 2; break;
+					case 2: //right
+						ofsX -= (xMax - xMin) / 2; break;
+				}
+				switch (anchorY) {
+					case 0: //top
+						ofsY += (yMax - yMin) / 2; break;
+					case 2: //bottom
+						ofsY -= (yMax - yMin) / 2; break;
+				}
 
 				//chunk the image
 				OBJ_IMAGE_SLICE *slices = CellgenSliceImage(px, width, height, bounds, nObj);
@@ -1252,12 +1377,38 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
 				NCER *ncer = &((NCERVIEWERDATA *) EditorGetData(hWndNcerViewer))->ncer;
 
-				//clear out current cell
+				//get current cell
 				NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(hWndNcerViewer);
 				int currentCellIndex = ncerViewerData->cell;
 				NCER_CELL *cell = ncer->cells + currentCellIndex;
-				cell->nAttribs = nObj;
-				cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
+
+				//depending on generation mode, determine how many OBJ and where to put them
+				int attrBase = 0, nOldAttribs = cell->nAttribs;
+				switch (insertMode) {
+					case 0: //replace
+						attrBase = 0;
+						cell->nAttribs = nObj;
+						cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
+						break;
+					case 1: //prepend
+						attrBase = 0;
+						cell->nAttribs += nObj;
+						cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
+						memmove(cell->attr + nObj * 3, cell->attr, (cell->nAttribs - nObj) * (3 * sizeof(uint16_t))); //slide over
+						break;
+					case 2: //append
+						attrBase = cell->nAttribs;
+						cell->nAttribs += nObj;
+						cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
+						break;
+				}
+
+				//warn for excess OBJ
+				if (cell->nAttribs > 128 && nOldAttribs <= 128) {
+					MessageBox(hWnd, L"Cell generation results in >128 OBJ.", L"Too many OBJ", MB_ICONWARNING);
+				}
+
+				//clear out current cell
 				ncerViewerData->oam = 0;
 
 				//OBJ VRAM granularity
@@ -1279,36 +1430,44 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 
 				//set bounding box
-				cell->minX = xMin - centerX;
-				cell->minY = yMin - centerY;
-				cell->maxX = xMax - centerX;
-				cell->maxY = yMax - centerY;
+				if (insertMode == 0) { //replace
+					cell->minX = xMin - centerX + ofsX;
+					cell->minY = yMin - centerY + ofsY;
+					cell->maxX = xMax - centerX + ofsX;
+					cell->maxY = yMax - centerY + ofsY;
+				} else { //prepend or append
+					cell->minX = min(xMin - centerX + ofsX, cell->minX);
+					cell->minY = min(yMin - centerY + ofsY, cell->minY);
+					cell->maxX = max(xMax - centerX + ofsX, cell->maxX);
+					cell->maxY = max(yMax - centerY + ofsY, cell->maxY);
+				}
 
-				//create palette
+				//sanity check palette setting
 				int depth = ncgr->nBits;
 				int paletteSize = (1 << depth);
+				if (paletteLength == 0) {
+					paletteLength = 1;
+				}
+				if (paletteLength > paletteSize) {
+					paletteLength = paletteSize - paletteOffset;
+				}
+
+				//create palette
 				COLOR32 *palette = (COLOR32 *) calloc(paletteSize, sizeof(COLOR32));
-				RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-				RxInit(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, 0, paletteSize - 1);
 
-				//compute palette from pixels
-				for (int i = 0; i < nObj; i++) {
-					RxHistAdd(reduction, slices[i].px, slices[i].bounds.width, slices[i].bounds.height);
-				}
-				RxHistFinalize(reduction);
-				RxComputePalette(reduction);
+				if (writePalette) {
+					//compute palette from pixels
+					palette[0] = 0xFF00FF;
+					RxCreatePalette(px, width, height, palette + paletteOffset, paletteLength);
 
-				//read palette out
-				for (int i = 0; i < reduction->nUsedColors; i++) {
-					int r = reduction->paletteRgb[i][0];
-					int g = reduction->paletteRgb[i][1];
-					int b = reduction->paletteRgb[i][2];
-					palette[i + 1] = r | (g << 8) | (b << 16);
-				}
-
-				//write palette
-				for (int i = 0; i < paletteSize; i++) {
-					nclr->colors[i + (paletteIndex << depth)] = ColorConvertToDS(palette[i]);
+					//write palette
+					for (int i = paletteOffset; i < paletteOffset + paletteLength; i++) {
+						nclr->colors[i + (paletteIndex << depth)] = ColorConvertToDS(palette[i]);
+					}
+				} else {
+					for (int i = paletteOffset; i < paletteOffset + paletteLength; i++) {
+						palette[i] = ColorConvertFromDS(nclr->colors[i + (paletteIndex << depth)]);
+					}
 				}
 
 				//fill out character
@@ -1319,8 +1478,8 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int width = slice->bounds.width, height = slice->bounds.height;
 					int nChars = slice->bounds.width * slice->bounds.height / 8 / 8;
 
-					RxReduceImageEx(slice->px, indicesBuffer, width, height, palette, paletteSize, 
-						1, 1, 1, 0.0f, BALANCE_DEFAULT, BALANCE_DEFAULT, 0);
+					RxReduceImageEx(slice->px, indicesBuffer, width, height, palette + paletteOffset, paletteLength, 
+						1, 1, 0, diffuse, balance, colorBalance, enhanceColors);
 
 					//convert to character array in indicesBuffer8
 					for (int j = 0; j < nChars; j++) {
@@ -1330,7 +1489,9 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 						for (int y = 0; y < 8; y++) {
 							for (int x = 0; x < 8; x++) {
-								ch[x + y * 8] = indicesBuffer[objX + x + (objY + y) * slice->bounds.width];
+								int index = indicesBuffer[objX + x + (objY + y) * slice->bounds.width] + paletteOffset;
+								if ((slice->px[objX + x + (objY + y) * slice->bounds.width] >> 24) < 128) index = 0;
+								ch[x + y * 8] = index;
 							}
 						}
 					}
@@ -1405,11 +1566,15 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						slice->bounds.y -= slice->bounds.height / 2;
 					}
 
+					//offset position
+					slice->bounds.x += ofsX;
+					slice->bounds.y += ofsY;
+
 					//add OBJ
 					int charName = (foundStart / granularity) >> charLShift;
-					cell->attr[i * 3 + 0] = (slice->bounds.y & 0x0FF) | (affine << 8) | (affine << 9) | ((depth == 8) << 13) | (shape << 14);
-					cell->attr[i * 3 + 1] = (slice->bounds.x & 0x1FF) | (size << 14);
-					cell->attr[i * 3 + 2] = (paletteIndex << 12) | (charName);
+					cell->attr[attrBase + i * 3 + 0] = (slice->bounds.y & 0x0FF) | (affine << 8) | (affine << 9) | ((depth == 8) << 13) | (shape << 14);
+					cell->attr[attrBase + i * 3 + 1] = (slice->bounds.x & 0x1FF) | ((affineIdx & 0x1F) << 9) | (size << 14);
+					cell->attr[attrBase + i * 3 + 2] = (paletteIndex << 12) | (charName) | (prio << 10);
 
 					//increment
 					charBase += nCharsAdd;
@@ -1420,9 +1585,6 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				free(palette);
 
-				RxDestroy(reduction);
-				free(reduction);
-
 				free(slices);
 
 				//import complete, update UIs
@@ -1431,11 +1593,15 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
-			} else if (notif == BN_CLICKED && (hWndControl == hWndCancel || idc == IDCANCEL)) {
+			} else if (notif == BN_CLICKED && (hWndControl == data->hWndCancel || idc == IDCANCEL)) {
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
 			break;
 		}
+		case WM_DESTROY:
+			free(data);
+			SetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR), 0);
+			break;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
