@@ -194,6 +194,16 @@ int CountPaletteUsages(HWND hWndMain, NCLR *nclr, int *counts) {
 	}
 }
 
+static COLOR32 MakeContrastingColor(COLOR32 c) {
+	int r = (c >> 0) & 0xFF;
+	int g = (c >> 8) & 0xFF;
+	int b = (c >> 16) & 0xFF;
+	r = (r >= 186) ? 0 : 255;
+	g = (g >= 186) ? 0 : 255;
+	b = (b >= 186) ? 0 : 255;
+	return r | (g << 8) | (b << 16);
+}
+
 VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
 
 	COLOR *cols = data->nclr.colors;
@@ -249,7 +259,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	//get use counts
 	unsigned int *freqs = NULL;
 	int maxLevel = 0;
-	if (data->showFrequency) {
+	if (data->showFrequency || data->showUnused) {
 		freqs = (unsigned int *) calloc(data->nclr.nColors, sizeof(unsigned int));
 
 		int hasCount = CountPaletteUsages(hWndMain, &data->nclr, freqs);
@@ -307,7 +317,7 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 
 			//frequency
 			int level = 0;
-			if (freqs != NULL && maxLevel > 0) {
+			if (freqs != NULL && data->showFrequency && maxLevel > 0) {
 				level = (int) (255.0f * pow(((float) freqs[index]) / maxLevel, 0.5f));
 			}
 
@@ -322,14 +332,14 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 			} else if (index == data->hoverIndex) {
 				outlineColor = RGB(255, 255, 255);
 			} else if (previewPalette != -1 && (y >= highlightRowStart && y < highlightRowEnd)) {
-				if (freqs == NULL) outlineColor = RGB(255, 0, 0); //
+				if (!data->showFrequency) outlineColor = RGB(255, 0, 0); //
 				else outlineColor = RGB(255, level, level);
 			} else if(ncerPalette != -1 && (y >= (ncerPalette * nclrRowsPerPalette) && y < (ncerPalette * nclrRowsPerPalette + nRowsPerPalette))){
 				outlineColor = RGB(0, 192, 32);
 			} else if(y == data->hoverY) {
 				outlineColor = RGB(127, 127, 127);
 			} else {
-				if (freqs == NULL) outlineColor = RGB(0, 0, 0);
+				if (!data->showFrequency) outlineColor = RGB(0, 0, 0);
 				else outlineColor = RGB(level, level, level);
 			}
 			hOutlinePen = CreatePen(outlineStyle, 1, outlineColor);
@@ -337,6 +347,21 @@ VOID PaintNclrViewer(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 			HPEN hOldPen = SelectObject(hDC, hOutlinePen);
 			Rectangle(hDC, x * 16, y * 16, x * 16 + 16, y * 16 + 16);
 			SelectObject(hDC, hOldPen);
+
+			//if frequency is 0 and we're outlining frequencies, slash this color
+			if (freqs != NULL && data->showUnused && freqs[index] == 0) {
+				COLOR32 slashColor = MakeContrastingColor(rgb);
+				HPEN hSlashPen = CreatePen(PS_SOLID, 1, slashColor);
+				HPEN hOldPen = SelectObject(hDC, hSlashPen);
+
+				MoveToEx(hDC, x * 16 + 1, y * 16 + 14, NULL);
+				LineTo(hDC, x * 16 + 15, y * 16);
+				MoveToEx(hDC, x * 16 + 1, y * 16 + 1, NULL);
+				LineTo(hDC, x * 16 + 15, y * 16 + 15);
+
+				SelectObject(hDC, hOldPen);
+				DeleteObject(hSlashPen);
+			}
 
 			DeleteObject(hbr);
 			DeleteObject(hOutlinePen);
@@ -867,6 +892,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					//set menu state
 					CheckMenuItem(hPopup, ID_MENU_FREQUENCYHIGHLIGHT, data->showFrequency ? MF_CHECKED : MF_UNCHECKED);
+					CheckMenuItem(hPopup, ID_MENU_SHOWUNUSED, data->showUnused ? MF_CHECKED : MF_UNCHECKED);
 
 					POINT mouse;
 					GetCursorPos(&mouse);
@@ -1091,6 +1117,14 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						//toggle
 						int state = !data->showFrequency;
 						data->showFrequency = state;
+						InvalidateRect(hWnd, NULL, FALSE);
+						break;
+					}
+					case ID_MENU_SHOWUNUSED:
+					{
+						//toggle
+						int state = !data->showUnused;
+						data->showUnused = state;
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
