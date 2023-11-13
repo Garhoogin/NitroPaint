@@ -297,9 +297,10 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndCharacterOffset = CreateEdit(hWnd, L"0", 512 + 50, 21, 30, 21, TRUE);
 			data->hWndCharacterOffsetButton = CreateButton(hWnd, L"Set", 512 + 50 + 30, 21, 20, 21, FALSE);
 			data->hWndPaletteDropdown = CreateCombobox(hWnd, NULL, 0, 512, 42, 100, 100, 0);
+			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", 0, 282, 164, 22, FALSE);
+			data->hWndDuplicateCell = CreateButton(hWnd, L"Duplicate Cell", 0, 304, 164, 22, FALSE);
+			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, 169, 256 + 22 + 5, 75, 100, 0);
 			CreateStatic(hWnd, L"Size:", 512, 63, 25, 21);
-			data->hWndImportBitmap = CreateButton(hWnd, L"Import Bitmap", 0, 282, 164, 22, FALSE);
-			data->hWndImportReplacePalette = CreateButton(hWnd, L"Import and Replace Palette", 0, 304, 164, 22, FALSE);
 			CreateStatic(hWnd, L"OBJ:", 418, 261, 25, 22);
 
 			CreateStatic(hWnd, L"X:", 512, 85, 25, 22);
@@ -328,10 +329,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			data->hWndSizeDropdown = CreateCombobox(hWnd, NULL, 0, 537, 63, 75, 100, 0);
 			data->hWndCellBoundsCheckbox = CreateCheckbox(hWnd, L"Show cell bounds", 169, 256, 100, 22, FALSE);
-			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", 169, 256 + 22 + 5, 164, 22, FALSE);
-			data->hWndDuplicateCell = CreateButton(hWnd, L"Duplicate Cell", 169, 256 + 22 + 5 + 22, 164, 22, FALSE);
-
-			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, 338, 256 + 22 + 5, 75, 100, 0);
 			break;
 		}
 		case WM_NCHITTEST:	//make the border non-sizeable
@@ -605,131 +602,6 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					attr2 |= chr & 0x3FF;
 					cell->attr[2 + 3 * data->oam] = attr2;
 					InvalidateRect(hWnd, NULL, TRUE);
-					changed = 1;
-				} else if (notification == BN_CLICKED && (hWndControl == data->hWndImportBitmap || hWndControl == data->hWndImportReplacePalette)) {
-					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-					HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-					NCLR *nclr = NULL;
-					NCGR *ncgr = NULL;
-					if (hWndNcgrViewer) {
-						NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
-						ncgr = &ncgrViewerData->ncgr;
-					}
-					if (hWndNclrViewer) {
-						NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
-						nclr = &nclrViewerData->nclr;
-					}
-
-					if (nclr == NULL || ncgr == NULL) {
-						MessageBox(hWnd, L"Open palette and character graphics are required to import.", L"No NCLR", MB_ICONERROR);
-						break;
-					}
-
-					LPWSTR path = openFileDialog(hWnd, L"Select Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
-					if (path == NULL) break;
-
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-
-					BOOL createPalette = hWndControl == data->hWndImportReplacePalette;
-					BOOL dither = MessageBox(hWnd, L"Use dithering?", L"Dither", MB_ICONQUESTION | MB_YESNO) == IDYES;
-
-					DWORD *palette = (DWORD *) calloc(nclr->nColors, 4);
-					COLOR *nitroPalette = nclr->colors;
-					int paletteSize = 1 << ncgr->nBits;
-					for (int i = 0; i < nclr->nColors; i++) {
-						palette[i] = ColorConvertFromDS(nitroPalette[i]);
-					}
-
-					int width, height;
-					DWORD *pixels = ImgRead(path, &width, &height);
-
-					//if we do not use an existing palette, generate one.
-					if(createPalette){
-						//create a palette, then encode them to the nclr
-						RxCreatePaletteTransparentReserve(pixels, width, height, palette, paletteSize);
-						for (int i = 0; i < paletteSize; i++) {
-							DWORD d = palette[i];
-							COLOR ds = ColorConvertToDS(d);
-							palette[i] = ColorConvertFromDS(ds);
-						}
-						//write out to each palette used by this cell
-						for (int i = 0; i < cell->nAttribs; i++) {
-							WORD *attr = cell->attr + (i * 3);
-							int paletteIndex = attr[2] >> 12;
-							COLOR *thisPalette = nitroPalette + (paletteIndex << ncgr->nBits);
-							for (int j = 0; j < paletteSize; j++) {
-								thisPalette[j] = ColorConvertToDS(palette[j]);
-							}
-						}
-					}
-
-					//for each OAM entry, match each pixel to a pixel of the image.
-					int translateX = -256, translateY = -128;
-					for (int i = 0; i < cell->nAttribs; i++) {
-						NCER_CELL_INFO info;
-						CellDecodeOamAttributes(&info, cell, i);
-						if (info.disable) continue;
-						
-						BYTE **characterBase = ncgr->tiles + NCGR_BOUNDARY(ncgr, info.characterName);
-						int nCharsX = info.width / 8, nCharsY = info.height / 8;
-						for (int cellY = 0; cellY < info.height; cellY++) {
-							for (int cellX = 0; cellX < info.width; cellX++) {
-								BYTE *character;
-								if (NCGR_1D(ncgr->mappingMode)) {
-									character = characterBase[cellX / 8 + nCharsX * (cellY / 8)];
-								} else {
-									character = characterBase[cellX / 8 + (cellY / 8) * ncgr->tilesX];
-								}
-
-								int totalWidth = info.width << info.doubleSize;
-								int totalHeight = info.height << info.doubleSize;
-								int padX = (totalWidth - info.width) / 2;
-								int padY = (totalHeight - info.height) / 2;
-
-								int x = (cellX + info.x + translateX + padX) & 0x1FF;
-								int y = (cellY + info.y + translateY + padY) & 0xFF;
-								
-								//adjust x and y if the cell is flipped
-								if (info.flipX) {
-									x = (totalWidth - 1 - (x - info.x) + info.x) & 0x1FF;
-								}
-								if (info.flipY) {
-									y = (totalHeight - 1 - (y - info.y) + info.y) & 0xFF;
-								}
-
-								if (x < width && y < height) {
-									//pixel is in the image. 
-									DWORD col = pixels[x + y * width];
-									int _x = cellX % 8, _y = cellY % 8;
-									if (col >> 24 > 0x80) {
-										int closest = RxPaletteFindClosestColorSimple(col, palette + (info.palette << ncgr->nBits) + 1, paletteSize - 1) + 1;
-										character[_x + _y * 8] = closest;
-
-										//diffuse
-										if (dither) {
-											DWORD chosen = palette[16 * info.palette + closest];
-											int dr = (chosen & 0xFF) - (col & 0xFF);
-											int dg = ((chosen >> 8) & 0xFF) - ((col >> 8) & 0xFF);
-											int db = ((chosen >> 16) & 0xFF) - ((col >> 16) & 0xFF);
-											doDiffuse(x + y * width, width, height, pixels, -dr, -dg, -db, 0, 1.0f);
-										}
-									} else {
-										character[_x + _y * 8] = 0;
-									}
-								}
-							}
-						}
-					}
-
-					
-					free(path);
-					free(pixels);
-					free(palette);
-					InvalidateRect(hWndNclrViewer, NULL, FALSE);
-					InvalidateRect(hWndNcgrViewer, NULL, FALSE);
-					InvalidateRect(hWnd, NULL, FALSE);
 					changed = 1;
 				} else if (notification == BN_CLICKED && (
 					hWndControl == data->hWnd8bpp || hWndControl == data->hWndDisable || hWndControl == data->hWndHFlip
