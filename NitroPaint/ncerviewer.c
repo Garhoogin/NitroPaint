@@ -41,7 +41,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 	if (data->ncer.vramTransfer != NULL)
 		transferEntry = data->ncer.vramTransfer + data->cell;
 	DWORD *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, data->ncer.mappingMode, ncgr, nclr, transferEntry, 
-		256, 128, 1, data->oam, 1.0f, 0.0f, 0.0f, 1.0f);
+		256, 128, g_configuration.renderTransparent, data->oam, 1.0f, 0.0f, 0.0f, 1.0f);
 
 	//draw lines if needed
 	if (data->showCellBounds) {
@@ -50,12 +50,23 @@ VOID PaintNcerViewer(HWND hWnd) {
 		minX &= 0x1FF, maxX &= 0x1FF, minY &= 0xFF, maxY &= 0xFF;
 
 		for (int i = 0; i < 256; i++) {
-			if(bits[i * 512 + minX] >> 24 != 0xFE) bits[i * 512 + minX] = 0xFF0000FF;
-			if(bits[i * 512 + maxX] >> 24 != 0xFE) bits[i * 512 + maxX] = 0xFF0000FF;
+			if (bits[i * 512 + minX] >> 24 != 0xFE) bits[i * 512 + minX] = 0xFF0000FF;
+			if (bits[i * 512 + maxX] >> 24 != 0xFE) bits[i * 512 + maxX] = 0xFF0000FF;
 		}
 		for (int i = 0; i < 512; i++) {
-			if(bits[minY * 512 + i] >> 24 != 0xFE) bits[minY * 512 + i] = 0xFF0000FF;
-			if(bits[maxY * 512 + i] >> 24 != 0xFE) bits[maxY * 512 + i] = 0xFF0000FF;
+			if (bits[minY * 512 + i] >> 24 != 0xFE) bits[minY * 512 + i] = 0xFF0000FF;
+			if (bits[maxY * 512 + i] >> 24 != 0xFE) bits[maxY * 512 + i] = 0xFF0000FF;
+		}
+	}
+
+	//draw solid color background if transparency disabled
+	if (!g_configuration.renderTransparent) {
+		COLOR32 bgColor = ColorConvertFromDS(nclr->colors[0]);
+		bgColor = REVERSE(bgColor);
+		for (int i = 0; i < 256 * 512; i++) {
+			COLOR32 c = bits[i];
+			if ((c >> 24) == 0) bits[i] = bgColor;
+			else if ((c >> 24) == 0xFE) bits[i] = ((bgColor + 0x808080) & 0xFFFFFF) | 0xFE000000;
 		}
 	}
 

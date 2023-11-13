@@ -1209,6 +1209,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						InvalidateAllEditors(hWnd, FILE_TYPE_CHAR);
 						EnumAllEditors(hWnd, FILE_TYPE_SCREEN, SetNscrEditorTransparentProc, (void *) state);
 						InvalidateAllEditors(hWnd, FILE_TYPE_SCREEN);
+						InvalidateAllEditors(hWnd, FILE_TYPE_CELL);
 						break;
 					}
 					case ID_NTFT_NTFT40084:
