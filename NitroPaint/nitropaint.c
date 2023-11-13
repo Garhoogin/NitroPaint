@@ -1054,11 +1054,20 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 						NCER ncer;
 						CellInit(&ncer, NCER_TYPE_NCER);
+						ncer.mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 						ncer.nCells = 1;
 						ncer.cells = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
 						ncer.cells[0].attr = (WORD *) calloc(3, 2);
 						ncer.cells[0].nAttribs = 1;
 						ncer.cells[0].cellAttr = 0;
+
+						//if a character editor is open, use its mapping mode
+						HWND hWndCharacterEditor;
+						int nCharEditors = GetAllEditors(hWnd, FILE_TYPE_CHARACTER, &hWndCharacterEditor, 1);
+						if (nCharEditors) {
+							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
+							ncer.mappingMode = ncgrViewerData->ncgr.mappingMode;
+						}
 
 						data->hWndNcerViewer = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 50, data->hWndMdi, &ncer);
 						break;

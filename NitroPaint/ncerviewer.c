@@ -780,7 +780,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					HWND hWndNcgrViewer;
 					GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrViewer, 1);
 					NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
-					if (ncgr->mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+					if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
 						MessageBox(hWnd, L"Cannot be used with 2D mapping.", L"Error", MB_ICONERROR);
 						break;
 					}
