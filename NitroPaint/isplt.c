@@ -7,6 +7,13 @@
 #include "color.h"
 #include "palette.h"
 
+//optimize for speed rather than size
+#ifndef _DEBUG
+#ifdef _MSC_VER
+#pragma optimize("t", on)
+#endif
+#endif
+
 #define TRUE 1
 #define FALSE 0
 
@@ -22,10 +29,10 @@ typedef struct {
 } COLOR_INFO; 
 
 void RxInit(RxReduction *reduction, int balance, int colorBalance, int optimization, int enhanceColors, unsigned int nColors) {
+	(void) optimization;
 	memset(reduction, 0, sizeof(RxReduction));
 	reduction->yWeight = 60 - balance;
 	reduction->iWeight = colorBalance;
-	reduction->optimization = optimization;
 	reduction->qWeight = 40 - colorBalance;
 	reduction->enhanceColors = enhanceColors;
 	reduction->nReclusters = RECLUSTER_DEFAULT;// nColors <= 32 ? RECLUSTER_DEFAULT : 0;
@@ -151,7 +158,7 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	yiq->a = (rgb >> 24) & 0xFF;
 }
 
-void RxConvertYiqToRgb(RxRgbColor *rgb, RxYiqColor *yiq) {
+void RxConvertYiqToRgb(RxRgbColor *rgb, const RxYiqColor *yiq) {
 	double i = (double) yiq->i;
 	double q = (double) yiq->q;
 	double y;
@@ -214,15 +221,7 @@ void RxHistFinalize(RxReduction *reduction) {
 	}
 }
 
-void RxHistAdd(RxReduction *reduction, COLOR32 *img, int width, int height) {
-	int iMask = 0xFFFFFFFF, qMask = 0xFFFFFFFF;
-	if (reduction->optimization < 5) {
-		qMask = 0xFFFFFFFE;
-		if (reduction->optimization < 2) {
-			iMask = 0xFFFFFFFE;
-		}
-	}
-
+void RxHistAdd(RxReduction *reduction, const COLOR32 *img, int width, int height) {
 	if (reduction->histogram == NULL) {
 		reduction->histogram = (RxHistogram *) calloc(1, sizeof(RxHistogram));
 		reduction->histogram->firstSlot = 0x20000;
@@ -241,7 +240,7 @@ void RxHistAdd(RxReduction *reduction, COLOR32 *img, int width, int height) {
 			double weight = (double) (16 - abs(16 - abs(dy)) / 8);
 			if (weight < 1.0) weight = 1.0;
 
-			RxHistAddColor(reduction->histogram, yiq.y, yiq.i & iMask, yiq.q & qMask, yiq.a, weight);
+			RxHistAddColor(reduction->histogram, yiq.y, yiq.i, yiq.q, yiq.a, weight);
 			yLeft = yiq.y;
 		}
 	}
@@ -749,7 +748,7 @@ static void RxiPaletteWrite(RxReduction *reduction) {
 	}
 }
 
-static double __inline RxiComputeColorDifference(RxReduction *reduction, RxYiqColor *yiq1, RxYiqColor *yiq2) {
+static double __inline RxiComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
 	double yw2 = reduction->yWeight * reduction->yWeight;
 	double iw2 = reduction->iWeight * reduction->iWeight;
 	double qw2 = reduction->qWeight * reduction->qWeight;
@@ -1154,9 +1153,9 @@ void RxHistClear(RxReduction *reduction) {
 
 extern int RxColorLightnessComparator(const void *d1, const void *d2);
 
-int RxCreatePalette(COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors) {
+int RxCreatePalette(const COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors) {
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, 20, 20, 15, FALSE, nColors);
+	RxInit(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, FALSE, nColors);
 	RxHistAdd(reduction, img, width, height);
 	RxHistFinalize(reduction);
 	RxComputePalette(reduction);
@@ -1184,20 +1183,20 @@ typedef struct RxiTile_ {
 	unsigned short nSwallowed;
 } RxiTile;
 
-static void RxiTileCopy(RxiTile *dest, COLOR32 *pxOrigin, int width) {
+static void RxiTileCopy(RxiTile *dest, const COLOR32 *pxOrigin, int width) {
 	for (int y = 0; y < 8; y++) {
 		memcpy(dest->rgb + y * 8, pxOrigin + y * width, 32);
 	}
 }
 
-static int RxiPaletteFindClosestRgbColorYiqPaletteSimple(RxReduction *reduction, RxYiqColor *palette, int nColors, COLOR32 col, double *outDiff) {
+static int RxiPaletteFindClosestRgbColorYiqPaletteSimple(RxReduction *reduction, const RxYiqColor *palette, int nColors, COLOR32 col, double *outDiff) {
 	RxYiqColor yiq;
 	RxConvertRgbToYiq(col, &yiq);
 
 	double leastDiff = 1e32;
 	int leastIndex = 0;
 	for (int i = 0; i < nColors; i++) {
-		RxYiqColor *yiq2 = palette + i;
+		const RxYiqColor *yiq2 = palette + i;
 
 		double diff = RxiComputeColorDifference(reduction, &yiq, yiq2);
 		if (diff < leastDiff) {
@@ -1209,7 +1208,7 @@ static int RxiPaletteFindClosestRgbColorYiqPaletteSimple(RxReduction *reduction,
 	return leastIndex;
 }
 
-double RxHistComputePaletteErrorYiq(RxReduction *reduction, RxYiqColor *palette, int nColors, double maxError) {
+double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, int nColors, double maxError) {
 	double error = 0.0;
 
 	//sum total weighted squared differences
@@ -1220,7 +1219,7 @@ double RxHistComputePaletteErrorYiq(RxReduction *reduction, RxYiqColor *palette,
 		RxHistEntry *entry = reduction->histogramFlat[i];
 		
 		int closest = RxPaletteFindCloestColorYiq(reduction, &entry->color, palette, nColors);
-		RxYiqColor *closestYiq = palette + closest;
+		const RxYiqColor *closestYiq = palette + closest;
 		double dy = reduction->lumaTable[entry->color.y] - reduction->lumaTable[closestYiq->y];
 		int di = entry->color.i - closestYiq->i;
 		int dq = entry->color.q - closestYiq->q;
@@ -1231,7 +1230,7 @@ double RxHistComputePaletteErrorYiq(RxReduction *reduction, RxYiqColor *palette,
 	return error;
 }
 
-double RxHistComputePaletteError(RxReduction *reduction, COLOR32 *palette, int nColors, double maxError) {
+double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, int nColors, double maxError) {
 	RxYiqColor yiqPaletteStack[16];
 	RxYiqColor *yiqPalette = yiqPaletteStack;
 	if (nColors > 16) {
@@ -1249,11 +1248,11 @@ double RxHistComputePaletteError(RxReduction *reduction, COLOR32 *palette, int n
 	return error;
 }
 
-static int RxiPaletteFindClosestColorYiqSimple(RxReduction *reduction, RxYiqColor *palette, int nColors, RxYiqColor *col, double *outDiff) {
+static int RxiPaletteFindClosestColorYiqSimple(RxReduction *reduction, const RxYiqColor *palette, int nColors, const RxYiqColor *col, double *outDiff) {
 	double leastDiff = 1e32;
 	int leastIndex = 0;
 	for (int i = 0; i < nColors; i++) {
-		RxYiqColor *yiq2 = palette + i;
+		const RxYiqColor *yiq2 = palette + i;
 
 		double diff = RxiComputeColorDifference(reduction, col, yiq2);
 		if (diff < leastDiff) {
@@ -1659,7 +1658,7 @@ static int RxiDiffuseCurveQ(int x) {
 	return (int) (8.5f + pow(x - 8, 0.85) * 0.89453125);
 }
 
-int RxPaletteFindCloestColorYiq(RxReduction *reduction, RxYiqColor *color, RxYiqColor *palette, int nColors) {
+int RxPaletteFindCloestColorYiq(RxReduction *reduction, const RxYiqColor *color, const RxYiqColor *palette, int nColors) {
 	double yw2 = reduction->yWeight * reduction->yWeight;
 	double iw2 = reduction->iWeight * reduction->iWeight;
 	double qw2 = reduction->qWeight * reduction->qWeight;
@@ -1667,7 +1666,7 @@ int RxPaletteFindCloestColorYiq(RxReduction *reduction, RxYiqColor *color, RxYiq
 	double minDistance = 1e32;
 	int minIndex = 0;
 	for (int i = 0; i < nColors; i++) {
-		RxYiqColor *yiq = palette + i;
+		const RxYiqColor *yiq = palette + i;
 
 		double dy = reduction->lumaTable[yiq->y] - reduction->lumaTable[color->y];
 		double di = yiq->i - color->i;
@@ -1881,7 +1880,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, int width, int height, COLOR32 
 	free(reduction);
 }
 
-double RxComputePaletteError(RxReduction *reduction, COLOR32 *px, int nPx, COLOR32 *pal, int nColors, int alphaThreshold, double nMaxError) {
+double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, int nPx, const COLOR32 *pal, int nColors, int alphaThreshold, double nMaxError) {
 	if (nMaxError == 0) nMaxError = 1e32;
 	double error = 0;
 

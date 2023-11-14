@@ -27,7 +27,7 @@ int RxColorLightnessComparator(const void *d1, const void *d2);
 //
 // Creates a color palette for an image.
 //
-int RxCreatePalette(COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors);
+int RxCreatePalette(const COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors);
 
 //
 // Creates a color palette for an image without reservin any color slots for transparency, with more specific parameters.
@@ -148,15 +148,14 @@ typedef struct {
 
 //reduction workspace structure
 typedef struct RxReduction_ {
+	double yWeight;
+	double iWeight;
+	double qWeight;
 	int nPaletteColors;
 	int nUsedColors;
-	int yWeight;
-	int iWeight;
-	int qWeight;
 	int enhanceColors;
 	int nReclusters;
 	int maskColors;
-	int optimization;
 	RxHistogram *histogram;
 	RxHistEntry **histogramFlat;
 	RxTotalBuffer blockTotals[256];
@@ -178,7 +177,7 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq);
 //
 // Decode a YIQ color to RGB.
 //
-void RxConvertYiqToRgb(RxRgbColor *rgb, RxYiqColor *yiq);
+void RxConvertYiqToRgb(RxRgbColor *rgb, const RxYiqColor *yiq);
 
 //
 // Initialize a RxReduction structure with palette parameters.
@@ -193,7 +192,7 @@ void RxHistAddColor(RxHistogram *histogram, int y, int i, int q, int a, double w
 //
 // Add an image's color data to a RxReduction's histogram.
 //
-void RxHistAdd(RxReduction *reduction, COLOR32 *img, int width, int height);
+void RxHistAdd(RxReduction *reduction, const COLOR32 *img, int width, int height);
 
 //
 // Sort a histogram's colors by their principal component.
@@ -219,22 +218,22 @@ void RxComputePalette(RxReduction *reduction);
 // Find the closest YIQA color to a specified YIQA color with a provided
 // reduction context.
 //
-int RxPaletteFindCloestColorYiq(RxReduction *reduction, RxYiqColor *yiqColor, RxYiqColor *palette, int nColors);
+int RxPaletteFindCloestColorYiq(RxReduction *reduction, const RxYiqColor *yiqColor, const RxYiqColor *palette, int nColors);
 
 //
 // Compute palette error on a bitmap given a specified reduction context.
 //
-double RxComputePaletteError(RxReduction *reduction, COLOR32 *px, int nPx, COLOR32 *pal, int nColors, int alphaThreshold, double nMaxError);
+double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, int nPx, const COLOR32 *pal, int nColors, int alphaThreshold, double nMaxError);
 
 //
 // Compute palette error on a histogram.
 //
-double RxHistComputePaletteError(RxReduction *reduction, COLOR32 *palette, int nColors, double maxError);
+double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, int nColors, double maxError);
 
 //
 // Compute palette error on a histogram for a YIQ palette.
 //
-double RxHistComputePaletteErrorYiq(RxReduction *reduction, RxYiqColor *yiqPalette, int nColors, double maxError);
+double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *yiqPalette, int nColors, double maxError);
 
 //
 // Free all resources consumed by a RxReduction.
