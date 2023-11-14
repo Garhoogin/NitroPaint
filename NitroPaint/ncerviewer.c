@@ -41,7 +41,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 	if (data->ncer.vramTransfer != NULL)
 		transferEntry = data->ncer.vramTransfer + data->cell;
 	DWORD *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, data->ncer.mappingMode, ncgr, nclr, transferEntry, 
-		256, 128, g_configuration.renderTransparent, data->oam, 1.0f, 0.0f, 0.0f, 1.0f);
+		256, 128, g_configuration.renderTransparent, data->showObjOutline ? data->oam : -1, 1.0f, 0.0f, 0.0f, 1.0f);
 
 	//draw lines if needed
 	if (data->showCellBounds) {
@@ -70,6 +70,32 @@ VOID PaintNcerViewer(HWND hWnd) {
 		}
 	}
 
+	//draw editor guidelines if enabled
+	if (data->showGuidelines) {
+		//dotted lines at X=0 an Y=0
+		COLOR32 centerColor = 0xFF0000; //red
+		COLOR32 auxColor = 0x00FF00; //green
+
+		for (int i = 0; i < 512; i++) {
+			COLOR32 c = bits[i + 128 * 512];
+			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 128 * 512] ^= centerColor;
+
+			c = bits[i + 64 * 512];
+			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 64 * 512] ^= auxColor;
+			c = bits[i + 192 * 512];
+			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 192 * 512] ^= auxColor;
+		}
+		for (int i = 0; i < 256; i++) {
+			COLOR32 c = bits[256 + i * 512];
+			if ((c >> 24) != 0xFE) if (i & 1) bits[256 + i * 512] ^= centerColor;
+
+			c = bits[128 + i * 512];
+			if ((c >> 24) != 0xFE) if (i & 1) bits[128 + i * 512] ^= auxColor;
+			c = bits[384 + i * 512];
+			if ((c >> 24) != 0xFE) if (i & 1) bits[384 + i * 512] ^= auxColor;
+		}
+	}
+
 	HBITMAP hbm = CreateBitmap(512, 256, 1, 32, bits);
 	HDC hCompatibleDC = CreateCompatibleDC(hWindowDC);
 	SelectObject(hCompatibleDC, hbm);
@@ -91,7 +117,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 }
 
 void UpdateEnabledControls(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 
 	NCER_CELL *cell = data->ncer.cells + data->cell;
 	NCER_CELL_INFO info;
@@ -99,17 +125,17 @@ void UpdateEnabledControls(HWND hWnd) {
 
 	//if rotate/scale, disable HV Flip and Disable, enable matrix.
 	if (info.rotateScale) {
-		SetWindowLong(data->hWndHFlip, GWL_STYLE, GetWindowLong(data->hWndHFlip, GWL_STYLE) | WS_DISABLED);
-		SetWindowLong(data->hWndVFlip, GWL_STYLE, GetWindowLong(data->hWndVFlip, GWL_STYLE) | WS_DISABLED);
-		SetWindowLong(data->hWndDisable, GWL_STYLE, GetWindowLong(data->hWndDisable, GWL_STYLE) | WS_DISABLED);
-		SetWindowLong(data->hWndMatrix, GWL_STYLE, GetWindowLong(data->hWndMatrix, GWL_STYLE) & ~WS_DISABLED);
-		SetWindowLong(data->hWndDoubleSize, GWL_STYLE, GetWindowLong(data->hWndDoubleSize, GWL_STYLE) & ~WS_DISABLED);
+		setStyle(data->hWndHFlip, TRUE, WS_DISABLED);
+		setStyle(data->hWndVFlip, TRUE, WS_DISABLED);
+		setStyle(data->hWndDisable, TRUE, WS_DISABLED);
+		setStyle(data->hWndMatrix, FALSE, WS_DISABLED);
+		setStyle(data->hWndDoubleSize, FALSE, WS_DISABLED);
 	} else {
-		SetWindowLong(data->hWndHFlip, GWL_STYLE, GetWindowLong(data->hWndHFlip, GWL_STYLE) & ~WS_DISABLED);
-		SetWindowLong(data->hWndVFlip, GWL_STYLE, GetWindowLong(data->hWndVFlip, GWL_STYLE) & ~WS_DISABLED);
-		SetWindowLong(data->hWndDisable, GWL_STYLE, GetWindowLong(data->hWndDisable, GWL_STYLE) & ~WS_DISABLED);
-		SetWindowLong(data->hWndMatrix, GWL_STYLE, GetWindowLong(data->hWndMatrix, GWL_STYLE) | WS_DISABLED);
-		SetWindowLong(data->hWndDoubleSize, GWL_STYLE, GetWindowLong(data->hWndDoubleSize, GWL_STYLE) | WS_DISABLED);
+		setStyle(data->hWndHFlip, FALSE, WS_DISABLED);
+		setStyle(data->hWndVFlip, FALSE, WS_DISABLED);
+		setStyle(data->hWndDisable, FALSE, WS_DISABLED);
+		setStyle(data->hWndMatrix, TRUE, WS_DISABLED);
+		setStyle(data->hWndDoubleSize, TRUE, WS_DISABLED);
 	}
 	RedrawWindow(hWnd, NULL, NULL, RDW_ALLCHILDREN | RDW_INVALIDATE);
 }
@@ -120,9 +146,6 @@ void UpdateControls(HWND hWnd) {
 	NCER_CELL *cell = data->ncer.cells + data->cell;
 	NCER_CELL_INFO info;
 	CellDecodeOamAttributes(&info, cell, data->oam);
-
-	WCHAR buffer[16];
-	int len;
 
 	if (!data->mouseDown) {
 		SendMessage(data->hWnd8bpp, BM_SETCHECK, info.characterBits == 8, 0);
@@ -136,15 +159,11 @@ void UpdateControls(HWND hWnd) {
 		SendMessage(data->hWndPriority, CB_SETCURSEL, info.priority, 0);
 		SendMessage(data->hWndType, CB_SETCURSEL, info.mode, 0);
 
-		len = wsprintfW(buffer, L"%d", info.matrix);
-		SendMessage(data->hWndMatrix, WM_SETTEXT, len, (LPARAM) buffer);
-		len = wsprintfW(buffer, L"%d", info.characterName);
-		SendMessage(data->hWndCharacterOffset, WM_SETTEXT, len, (LPARAM) buffer);
+		SetEditNumber(data->hWndMatrix, info.matrix);
+		SetEditNumber(data->hWndCharacterOffset, info.characterName);
 	}
-	len = wsprintfW(buffer, L"%d", info.x >= 256 ? (info.x - 512) : info.x);
-	SendMessage(data->hWndXInput, WM_SETTEXT, len, (LPARAM) buffer);
-	len = wsprintfW(buffer, L"%d", info.y >= 128 ? (info.y - 256) : info.y);
-	SendMessage(data->hWndYInput, WM_SETTEXT, len, (LPARAM) buffer);
+	SetEditNumber(data->hWndXInput, info.x >= 256 ? (info.x - 512) : info.x);
+	SetEditNumber(data->hWndYInput, info.y >= 128 ? (info.y - 256) : info.y);
 
 	int sizes[] = { 0, 0, 1, 0, 1, 2, 1, 2, 2, 3, 3, 3 };
 	int shapes[] = { 0, 2, 2, 1, 0, 2, 1, 1, 0, 2, 1, 0 };
@@ -340,6 +359,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			data->hWndSizeDropdown = CreateCombobox(hWnd, NULL, 0, 537, 63, 75, 100, 0);
 			data->hWndCellBoundsCheckbox = CreateCheckbox(hWnd, L"Show cell bounds", 169, 256, 100, 22, FALSE);
+			data->hWndGuidelines = CreateCheckbox(hWnd, L"Show Guidelines", 274, 256, 100, 22, TRUE);
+			data->hWndOutlineObj = CreateCheckbox(hWnd, L"Outline OBJ", 274, 256 + 27, 100, 22, TRUE);
 			break;
 		}
 		case WM_NCHITTEST:	//make the border non-sizeable
@@ -454,6 +475,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			ncerCreateCopy(&copy, &data->ncer);
 			undoAdd(&data->undo, &copy);
 
+			data->showGuidelines = 1;
+			data->showObjOutline = 1;
 			break;
 		}
 		case WM_LBUTTONDOWN:
@@ -602,12 +625,10 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndCharacterOffsetButton) {
-					WCHAR input[16];
-					SendMessage(data->hWndCharacterOffset, WM_GETTEXT, (WPARAM) 15, (LPARAM) input);
-					int chr = _wtoi(input);
+					int chr = GetEditNumber(data->hWndCharacterOffset);
 					NCER_CELL *cell = data->ncer.cells + data->cell;
-					WORD attr2 = cell->attr[2 + 3 * data->oam];
-					WORD attr0 = cell->attr[0 + 3 * data->oam];
+					uint16_t attr2 = cell->attr[2 + 3 * data->oam];
+					uint16_t attr0 = cell->attr[0 + 3 * data->oam];
 					if ((attr0 >> 13) & 1) chr &= ~1;
 					attr2 = attr2 & 0xFC00;
 					attr2 |= chr & 0x3FF;
@@ -618,7 +639,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					hWndControl == data->hWnd8bpp || hWndControl == data->hWndDisable || hWndControl == data->hWndHFlip
 					|| hWndControl == data->hWndVFlip || hWndControl == data->hWndMosaic || hWndControl == data->hWndRotateScale
 					|| hWndControl == data->hWndDoubleSize)) {
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
 
 					int bit = 0, attr = 0;
 					//really wish I could've used a switch/case here :(
@@ -653,25 +674,19 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					UpdateControls(hWnd);
 					changed = 1;
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndXInput) {
-					WCHAR buffer[16];
-					int len = SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) buffer);
-					int x = _wtol(buffer);
-					WORD *dest = data->ncer.cells[data->cell].attr + (data->oam * 3 + 1);
+					int x = GetEditNumber(hWndControl);
+					uint16_t *dest = data->ncer.cells[data->cell].attr + (data->oam * 3 + 1);
 					*dest = (*dest & 0xFE00) | (x & 0x1FF);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndYInput) {
-					WCHAR buffer[16];
-					int len = SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) buffer);
-					int y = _wtol(buffer);
-					WORD *dest = data->ncer.cells[data->cell].attr + (data->oam * 3);
+					int y = GetEditNumber(hWndControl);
+					uint16_t *dest = data->ncer.cells[data->cell].attr + (data->oam * 3);
 					*dest = (*dest & 0xFF00) | (y & 0xFF);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndMatrix) {
-					WCHAR buffer[16];
-					int len = SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) buffer);
-					int mtx = _wtol(buffer);
-					WORD *dest = data->ncer.cells[data->cell].attr + (data->oam * 3 + 1);
-					WORD attr0 = dest[-1];
+					int mtx = GetEditNumber(hWndControl);
+					uint16_t *dest = data->ncer.cells[data->cell].attr + (data->oam * 3 + 1);
+					uint16_t attr0 = dest[-1];
 					if (attr0 & 0x100) {
 						*dest = (*dest & 0xC1FF) | ((mtx & 0x1F) << 9);
 						InvalidateRect(hWnd, NULL, FALSE);
@@ -762,8 +777,16 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					InvalidateRect(hWnd, NULL, TRUE);
 					changed = 1;
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellBoundsCheckbox) {
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
 					data->showCellBounds = state;
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (notification == BN_CLICKED && hWndControl == data->hWndGuidelines) {
+					int state = GetCheckboxChecked(hWndControl);
+					data->showGuidelines = state;
+					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (notification == BN_CLICKED && hWndControl == data->hWndOutlineObj) {
+					int state = GetCheckboxChecked(hWndControl);
+					data->showObjOutline = state;
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndType) {
 					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);

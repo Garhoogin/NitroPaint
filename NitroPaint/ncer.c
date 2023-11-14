@@ -376,7 +376,7 @@ void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CH
 			int ch = ((x >> 2) ^ (y >> 2)) & 1;
 			COLOR32 c = out[i];
 			if ((c & 0xFF000000) == 0) {
-				out[i] = ch ? 0xFFFFFFFF : 0xFFC0C0C0;
+				out[i] = ch ? 0xFFFFFF : 0xC0C0C0;
 			}
 		}
 	}
@@ -493,9 +493,9 @@ COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, int mapping, NCGR *ncgr, N
 				if (px[index] >> 24 == 0) {
 					int p = ((x >> 2) ^ (y >> 2)) & 1;
 					if (p) {
-						px[index] = 0xFFFFFFFF;
+						px[index] = 0xFFFFFF;
 					} else {
-						px[index] = 0xFFC0C0C0;
+						px[index] = 0xC0C0C0;
 					}
 				}
 			}

@@ -17,6 +17,8 @@ typedef struct NCERVIEWERDATA_ {
 	int oamStartX;
 	int oamStartY;
 	int showCellBounds;
+	int showGuidelines;
+	int showObjOutline;
 	UNDO undo;
 
 	COLOR32 frameBuffer[256 * 512];
@@ -30,6 +32,8 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndCreateCell;
 	HWND hWndDuplicateCell;
 	HWND hWndMappingMode;
+	HWND hWndGuidelines;
+	HWND hWndOutlineObj;
 
 	HWND hWndXInput;
 	HWND hWndYInput;
