@@ -304,11 +304,6 @@ LPCWSTR GetFileName(LPCWSTR lpszPath) {
 	return current + 1;
 }
 
-typedef struct EDITORDATA_ {
-	FRAMEDATA frameData;
-	WCHAR szOpenFile[MAX_PATH];
-	OBJECT_HEADER objectHeader;
-} EDITORDATA;
 
 CONFIGURATIONSTRUCT g_configuration;
 LPWSTR g_configPath;
@@ -1128,13 +1123,13 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					{
 						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
 						if (hWndFocused == NULL) break;
-
+						
 						int editorType = GetEditorType(hWndFocused);
 						if (editorType != FILE_TYPE_PALETTE && editorType != FILE_TYPE_CHAR
 							&& editorType != FILE_TYPE_SCREEN && editorType != FILE_TYPE_CELL) break;
 
-						EDITORDATA *editorData = (EDITORDATA *) GetWindowLongPtr(hWndFocused, 0);
-						LPCWSTR *formats = ObjGetFormatNamesByType(editorData->objectHeader.type);
+						EDITOR_DATA *editorData = (EDITOR_DATA *) EditorGetData(hWndFocused);
+						LPCWSTR *formats = ObjGetFormatNamesByType(editorData->file.type);
 						if (formats == NULL || formats[0] == NULL)  break;
 
 						HWND h = CreateWindow(L"ConvertFormatDialogClass", L"Convert Format", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
@@ -1902,7 +1897,7 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 		}
 		case NV_SETDATA:
 		{
-			EDITORDATA *editorData = (EDITORDATA *) lParam;
+			EDITOR_DATA *editorData = (EDITOR_DATA *) lParam;
 			SetWindowLongPtr(hWnd, 0, (LONG_PTR) editorData);
 
 			CreateStatic(hWnd, L"Format:", 10, 10, 100, 22);
@@ -1911,19 +1906,19 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			HWND hWndCompressionCombobox = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 37, 100, 100, hWnd, NULL, NULL, NULL);
 			CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
 
-			LPCWSTR *formats = ObjGetFormatNamesByType(editorData->objectHeader.type);
+			LPCWSTR *formats = ObjGetFormatNamesByType(editorData->file.type);
 			formats++; //skip invalid
 			while (*formats != NULL) {
 				SendMessage(hWndFormatCombobox, CB_ADDSTRING, wcslen(*formats), (LPARAM) *formats);
 				formats++;
 			}
-			SendMessage(hWndFormatCombobox, CB_SETCURSEL, editorData->objectHeader.format - 1, 0);
+			SendMessage(hWndFormatCombobox, CB_SETCURSEL, editorData->file.format - 1, 0);
 			LPCWSTR *compressions = g_ObjCompressionNames;
 			while (*compressions != NULL) {
 				SendMessage(hWndCompressionCombobox, CB_ADDSTRING, wcslen(*compressions), (LPARAM) *compressions);
 				compressions++;
 			}
-			SendMessage(hWndCompressionCombobox, CB_SETCURSEL, editorData->objectHeader.compression, 0);
+			SendMessage(hWndCompressionCombobox, CB_SETCURSEL, editorData->file.compression, 0);
 
 			SetWindowLong(hWnd, sizeof(LPVOID), (LONG) hWndFormatCombobox);
 			SetWindowLong(hWnd, sizeof(LPVOID) * 2, (LONG) hWndCompressionCombobox);
@@ -1936,9 +1931,9 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			if (hWndControl && HIWORD(wParam) == BN_CLICKED) {
 				int fmt = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID)), CB_GETCURSEL, 0, 0) + 1;
 				int comp = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID) * 2), CB_GETCURSEL, 0, 0);
-				EDITORDATA *editorData = (EDITORDATA *) GetWindowLongPtr(hWnd, 0);
-				editorData->objectHeader.format = fmt;
-				editorData->objectHeader.compression = comp;
+				EDITOR_DATA *editorData = (EDITOR_DATA *) GetWindowLongPtr(hWnd, 0);
+				editorData->file.format = fmt;
+				editorData->file.compression = comp;
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
