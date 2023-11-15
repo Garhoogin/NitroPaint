@@ -673,19 +673,21 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 	}
 
 	//remove all OBJ not occupying any opaque pixels
-	for (int i = 0; i < nObj; i++) {
-		OBJ_BOUNDS *bounds = obj + i;
+	if (aggressiveness > 0) {
+		for (int i = 0; i < nObj; i++) {
+			OBJ_BOUNDS *bounds = obj + i;
 
-		//check bounding region
-		int bxMin, bxMax, byMin, byMax;
-		CellgenGetXYBounds(px, NULL, width, height, bounds->x, bounds->x + bounds->width, bounds->y, bounds->y + bounds->height,
-			&bxMin, &bxMax, &byMin, &byMax);
+			//check bounding region
+			int bxMin, bxMax, byMin, byMax;
+			CellgenGetXYBounds(px, NULL, width, height, bounds->x, bounds->x + bounds->width, bounds->y, bounds->y + bounds->height,
+				&bxMin, &bxMax, &byMin, &byMax);
 
-		if (bxMin == bxMax && byMin == byMax) {
-			//remove
-			memmove(obj + i, obj + i + 1, (nObj - i - 1) * sizeof(OBJ_BOUNDS));
-			nObj--;
-			i--;
+			if (bxMin == bxMax && byMin == byMax) {
+				//remove
+				memmove(obj + i, obj + i + 1, (nObj - i - 1) * sizeof(OBJ_BOUNDS));
+				nObj--;
+				i--;
+			}
 		}
 	}
 
@@ -705,18 +707,20 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 		nObj = CellgenIterateAllShifts(px, accountBuf, width, height, obj, nObj);
 
 	//run 6 rounds (maximum possible times an OBJ can be divided)
-	for (int i = 0; i < CELLGEN_MAX_DIV; i++) {
-		//next, begin the subdivision step.
-		memset(accountBuf, 0, width * height);
-		nObj = CellgenTryIterateSplit(px, accountBuf, width, height, aggressiveness, obj, nObj, CELLGEN_MAX_DIV);
-		nObj = CellgenTryCoalesce(obj, nObj);
+	if (aggressiveness > 0) {
+		for (int i = 0; i < CELLGEN_MAX_DIV; i++) {
+			//next, begin the subdivision step.
+			memset(accountBuf, 0, width * height);
+			nObj = CellgenTryIterateSplit(px, accountBuf, width, height, aggressiveness, obj, nObj, CELLGEN_MAX_DIV);
+			nObj = CellgenTryCoalesce(obj, nObj);
 
-		//iterate OBJ shift again
-		if (aggressiveness > 0)
-			nObj = CellgenIterateAllShifts(px, accountBuf, width, height, obj, nObj);
+			//iterate OBJ shift again
+			if (aggressiveness > 0)
+				nObj = CellgenIterateAllShifts(px, accountBuf, width, height, obj, nObj);
 
-		//remove any overlapped
-		nObj = CellgenTryRemoveOverlapping(px, accountBuf, width, height, obj, nObj);
+			//remove any overlapped
+			nObj = CellgenTryRemoveOverlapping(px, accountBuf, width, height, obj, nObj);
+		}
 	}
 
 	//try to aid in coalescing: push objects towards the center and remove overlapping
@@ -738,15 +742,20 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 	}
 
 	//try aggressive coalesce
-	for (int i = 0; i < CELLGEN_MAX_DIV; i++) {
-		nObj = CellgenCoalesceAggressively(px, accountBuf, width, height, obj, nObj);
+	if (aggressiveness > 0) {
+		for (int i = 0; i < CELLGEN_MAX_DIV; i++) {
+			nObj = CellgenCoalesceAggressively(px, accountBuf, width, height, obj, nObj);
+		}
 	}
 
 	//order from big->small
 	qsort(obj, nObj, sizeof(OBJ_BOUNDS), CellgenSizeComparator);
 
 	//remove objects that are over half overlapped by another, starting from big
-	nObj = CellgenRemoveHalfRedundant(px, accountBuf, width, height, obj, nObj);
+	if (aggressiveness > 0) {
+		nObj = CellgenTryRemoveOverlapping(px, accountBuf, width, height, obj, nObj);
+		nObj = CellgenRemoveHalfRedundant(px, accountBuf, width, height, obj, nObj);
+	}
 
 	//resize buffer and return
 	free(accountBuf);
