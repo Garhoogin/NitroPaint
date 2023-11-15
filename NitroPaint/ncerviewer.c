@@ -62,7 +62,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 	//draw solid color background if transparency disabled
 	if (!g_configuration.renderTransparent) {
 		COLOR32 bgColor = 0;
-		if (nclr!= NULL) ColorConvertFromDS(nclr->colors[0]);
+		if (nclr!= NULL) bgColor = ColorConvertFromDS(nclr->colors[0]);
 		bgColor = REVERSE(bgColor);
 		for (int i = 0; i < 256 * 512; i++) {
 			COLOR32 c = bits[i];
@@ -76,24 +76,45 @@ VOID PaintNcerViewer(HWND hWnd) {
 		//dotted lines at X=0 an Y=0
 		COLOR32 centerColor = 0xFF0000; //red
 		COLOR32 auxColor = 0x00FF00; //green
+		COLOR32 minorColor = 0x002F00;
 
 		for (int i = 0; i < 512; i++) {
+			//major guideline
 			COLOR32 c = bits[i + 128 * 512];
 			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 128 * 512] ^= centerColor;
 
+			//auxiliary guidelines
 			c = bits[i + 64 * 512];
 			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 64 * 512] ^= auxColor;
 			c = bits[i + 192 * 512];
 			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 192 * 512] ^= auxColor;
+
+			//minor guidelines
+			for (int j = 0; j < 256; j += 8) {
+				if (j == 64 || j == 128 || j == 192) continue;
+
+				c = bits[i + j * 512];
+				if ((c >> 24) != 0xFE) if (i & 1) bits[i + j * 512] ^= minorColor;
+			}
 		}
 		for (int i = 0; i < 256; i++) {
+			//major guideline
 			COLOR32 c = bits[256 + i * 512];
 			if ((c >> 24) != 0xFE) if (i & 1) bits[256 + i * 512] ^= centerColor;
 
+			//auxiliary guidelines
 			c = bits[128 + i * 512];
 			if ((c >> 24) != 0xFE) if (i & 1) bits[128 + i * 512] ^= auxColor;
 			c = bits[384 + i * 512];
 			if ((c >> 24) != 0xFE) if (i & 1) bits[384 + i * 512] ^= auxColor;
+
+			//minor guidelines
+			for (int j = 0; j < 512; j += 8) {
+				if (j == 128 || j == 256 || j == 384) continue;
+
+				c = bits[j + i * 512];
+				if ((c >> 24) != 0xFE) if (i & 1) bits[j + i * 512] ^= minorColor;
+			}
 		}
 	}
 
