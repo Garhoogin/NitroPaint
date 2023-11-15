@@ -130,6 +130,35 @@ void UpdatePaletteLabel(HWND hWnd) {
 	SendMessage(data->hWndPaletteVram, WM_SETTEXT, len, (LPARAM) bf);
 }
 
+DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
+	TxConversionParameters *params = (TxConversionParameters *) lpParam;
+	return TxConvert(params);
+}
+
+HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, int balance, int colorBalance, int enhanceColors, char *pnam, TEXTURE *dest, void(*callback) (void *), void *callbackParam) {
+	TxConversionParameters *params = (TxConversionParameters *) calloc(1, sizeof(TxConversionParameters));
+	g_texCompressionFinished = 0;
+	params->px = px;
+	params->width = width;
+	params->height = height;
+	params->fmt = fmt;
+	params->dither = dither;
+	params->diffuseAmount = diffuse;
+	params->ditherAlpha = ditherAlpha;
+	params->colorEntries = colorEntries;
+	params->threshold = threshold;
+	params->balance = balance;
+	params->colorBalance = colorBalance;
+	params->enhanceColors = enhanceColors;
+	params->dest = dest;
+	params->callback = callback;
+	params->callbackParam = callbackParam;
+	params->useFixedPalette = useFixedPalette;
+	params->fixedPalette = useFixedPalette ? fixedPalette : NULL;
+	memcpy(params->pnam, pnam, strlen(pnam) + 1);
+	return CreateThread(NULL, 0, textureStartConvertThreadEntry, (LPVOID) params, 0, NULL);
+}
+
 LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 	if (data == NULL) {
@@ -154,15 +183,15 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hoverIndex = -1;
 			data->hWnd = hWnd;
 			data->hWndPreview = CreateWindow(L"TexturePreviewClass", L"Texture Preview", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
-			data->hWndFormatLabel = CreateWindow(L"STATIC", L"Format: none", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 10, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndConvert = CreateWindow(L"BUTTON", L"Convert To...", WS_VISIBLE | WS_CHILD, 310, 37, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteLabel = CreateWindow(L"STATIC", L"No palette", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 69, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndEditPalette = CreateWindow(L"BUTTON", L"Edit Palette", WS_VISIBLE | WS_CHILD, 310, 123, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndExportNTF = CreateWindow(L"BUTTON", L"Export NTF", WS_VISIBLE | WS_CHILD, 310, 150, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndUniqueColors = CreateWindow(L"STATIC", L"Colors: 0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 155, 100, 22, hWnd, NULL, NULL, NULL);
+			data->hWndFormatLabel = CreateStatic(hWnd, L"Format: none", 310, 10, 100, 22);
+			data->hWndConvert = CreateButton(hWnd, L"Convert To...", 310, 37, 100, 22, FALSE);
+			data->hWndPaletteLabel = CreateStatic(hWnd, L"No palette", 310, 69, 100, 22);
+			data->hWndEditPalette = CreateButton(hWnd, L"Edit Palette", 310, 123, 100, 22, FALSE);
+			data->hWndExportNTF = CreateButton(hWnd, L"Export NTF", 310, 150, 100, 22, FALSE);
+			data->hWndUniqueColors = CreateStatic(hWnd, L"Colors: 0", 310, 155, 100, 22);
 
-			data->hWndTexelVram = CreateWindow(L"STATIC", L"Texel: 0KB", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 182, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteVram = CreateWindow(L"STATIC", L"Palette: 0KB", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 310, 209, 110, 22, hWnd, NULL, NULL, NULL);
+			data->hWndTexelVram = CreateStatic(hWnd, L"Texel: 0KB", 310, 182, 100, 22);
+			data->hWndPaletteVram = CreateStatic(hWnd, L"Palette: 0KB", 310, 209, 110, 22);
 			break;
 		}
 		case WM_PAINT:
@@ -1166,6 +1195,8 @@ void createPaletteName(WCHAR *buffer, WCHAR *file) {
 	memcpy(buffer + i, L"_pl", 6);
 }
 
+#ifdef _MSC_VER
+
 float mylog2(float d) { //UGLY!
 	float ans;
 	_asm {
@@ -1177,6 +1208,8 @@ float mylog2(float d) { //UGLY!
 	return ans;
 }
 #define log2 mylog2
+
+#endif //_MSC_VER
 
 int chooseColorCount(int bWidth, int bHeight) {
 	int area = bWidth * bHeight;

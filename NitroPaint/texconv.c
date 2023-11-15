@@ -54,20 +54,18 @@ static COLOR32 *TxiPadTextureImage(COLOR32 *px, int width, int height, int *outW
 	return out;
 }
 
-int TxConvertDirect(CREATEPARAMS *params) {
+int TxConvertDirect(TxConversionParameters *params) {
 	//convert to direct color.
 	int width = params->width, height = params->height;
 	COLOR32 *px = params->px;
 
+	COLOR *txel = (COLOR *) calloc(width * height, 2);
 	params->dest->texels.texImageParam = (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23) | (params->fmt << 26);
-	if (params->dest->texels.cmp) free(params->dest->texels.cmp);
 	params->dest->texels.cmp = NULL;
-	if (params->dest->texels.texel) free(params->dest->texels.texel);
-	if (params->dest->palette.pal) free(params->dest->palette.pal);
 	params->dest->palette.pal = NULL;
 	params->dest->palette.nColors = 0;
-	COLOR *txel = (COLOR *) calloc(width * height, 2);
-	params->dest->texels.texel = (char *) txel;
+	params->dest->texels.texel = (unsigned char *) txel;
+
 	for (int i = 0; i < width * height; i++) {
 		COLOR32 p = px[i];
 		COLOR c = ColorConvertToDS(p);
@@ -84,7 +82,7 @@ int TxConvertDirect(CREATEPARAMS *params) {
 	return 0;
 }
 
-int TxConvertIndexedOpaque(CREATEPARAMS *params) {
+int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	//convert to translucent. First, generate a palette of colors.
 	int nColors = 0, bitsPerPixel = 0;
 	int width = params->width, height = params->height;
@@ -147,16 +145,12 @@ int TxConvertIndexedOpaque(CREATEPARAMS *params) {
 	}
 
 	//update texture info
-	if (params->dest->palette.pal) free(params->dest->palette.pal);
-	if (params->dest->texels.cmp) free(params->dest->texels.cmp);
-	if (params->dest->texels.texel) free(params->dest->texels.texel);
+	unsigned int param = (params->fmt << 26) | (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
+	if (hasTransparent) param |= (1 << 29);
 	params->dest->palette.nColors = nColors;
 	params->dest->palette.pal = (COLOR *) calloc(nColors, 2);
 	params->dest->texels.cmp = NULL;
 	params->dest->texels.texel = txel;
-
-	unsigned int param = (params->fmt << 26) | (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
-	if (hasTransparent) param |= (1 << 29);
 	params->dest->texels.texImageParam = param;
 
 	for (int i = 0; i < nColors; i++) {
@@ -166,7 +160,7 @@ int TxConvertIndexedOpaque(CREATEPARAMS *params) {
 	return 0;
 }
 
-int TxConvertIndexedTranslucent(CREATEPARAMS *params) {
+int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 	//convert to translucent. First, generate a palette of colors.
 	int nColors = 0, alphaShift = 0, alphaMax = 0;
 	int width = params->width, height = params->height;
@@ -894,7 +888,7 @@ static uint16_t TxiFindOptimalPidx(RxReduction *reduction, TxTileData *tile, COL
 	return leastPidx;
 }
 
-int TxConvert4x4(CREATEPARAMS *params) {
+int TxConvert4x4(TxConversionParameters *params) {
 	//3-stage compression. First stage builds tile data, second stage builds palettes, third stage builds the final texture.
 	if (params->colorEntries < 16) params->colorEntries = 16;
 	params->colorEntries = (params->colorEntries + 7) & 0xFFFFFFF8;
@@ -962,19 +956,16 @@ int TxConvert4x4(CREATEPARAMS *params) {
 
 	//set fields in the texture
 	params->dest->palette.nColors = nUsedColors;
-	if (params->dest->palette.pal) free(params->dest->palette.pal);
 	params->dest->palette.pal = nnsPal;
-	if (params->dest->texels.cmp) free(params->dest->texels.cmp);
-	if (params->dest->texels.texel) free(params->dest->texels.texel);
-	params->dest->texels.cmp = (short *) pidx;
-	params->dest->texels.texel = (char *) txel;
+	params->dest->texels.cmp = pidx;
+	params->dest->texels.texel = (unsigned char *) txel;
 	params->dest->texels.texImageParam = (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23) | (params->fmt << 26);
 	
 	free(tileData);
 	return 0;
 }
 
-int TxConvert(CREATEPARAMS *params) {
+int TxConvert(TxConversionParameters *params) {
 	//pad texture if needed
 	int padWidth, padHeight, sourceWidth = params->width, sourceHeight = params->height;
 	COLOR32 *srcPx = params->px;
@@ -1025,33 +1016,4 @@ int TxConvert(CREATEPARAMS *params) {
 	if (params->callback) params->callback(params->callbackParam);
 	if (params->useFixedPalette) free(params->fixedPalette);
 	return 0;
-}
-
-DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
-	CREATEPARAMS *params = (CREATEPARAMS *) lpParam;
-	return TxConvert(params);
-}
-
-HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, int balance, int colorBalance, int enhanceColors, char *pnam, TEXTURE *dest, void (*callback) (void *), void *callbackParam) {
-	CREATEPARAMS *params = (CREATEPARAMS *) calloc(1, sizeof(CREATEPARAMS));
-	g_texCompressionFinished = 0;
-	params->px = px;
-	params->width = width;
-	params->height = height;
-	params->fmt = fmt;
-	params->dither = dither;
-	params->diffuseAmount = diffuse;
-	params->ditherAlpha = ditherAlpha;
-	params->colorEntries = colorEntries;
-	params->threshold = threshold;
-	params->balance = balance;
-	params->colorBalance = colorBalance;
-	params->enhanceColors = enhanceColors;
-	params->dest = dest;
-	params->callback = callback;
-	params->callbackParam = callbackParam;
-	params->useFixedPalette = useFixedPalette;
-	params->fixedPalette = useFixedPalette ? fixedPalette : NULL;
-	memcpy(params->pnam, pnam, strlen(pnam) + 1);
-	return CreateThread(NULL, 0, textureStartConvertThreadEntry, (LPVOID) params, 0, NULL);
 }

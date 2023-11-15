@@ -33,8 +33,8 @@
 typedef struct {
 	int texImageParam;
 	int height;
-	char *texel;
-	short *cmp;
+	unsigned char *texel;
+	uint16_t *cmp;
 	char name[16]; //NOT necessarily null terminated!
 } TEXELS;
 
