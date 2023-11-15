@@ -1039,7 +1039,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_NEW_NEWSPRITESHEET:
 					{
 						HWND h = CreateWindow(L"SpriteSheetDialogClass", L"Create Sprite Sheet", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						ShowWindow(h, SW_SHOW);
+						DoModal(h);
 						break;
 					}
 					case ID_NEW_NEWCELLBANK:
@@ -1084,9 +1084,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_NEW_NEWSCREEN:
 					{
 						HWND h = CreateWindow(L"NewScreenDialogClass", L"New Screen", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						ShowWindow(h, SW_SHOW);
-						SetActiveWindow(h);
-						SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_DISABLED);
+						DoModal(h);
 						break;
 					}
 					case ID_NEW_NEWANIMATION:
@@ -1132,10 +1130,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						LPCWSTR *formats = ObjGetFormatNamesByType(editorData->file.type);
 						if (formats == NULL || formats[0] == NULL)  break;
 
-						HWND h = CreateWindow(L"ConvertFormatDialogClass", L"Convert Format", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						HWND h = CreateWindow(L"ConvertFormatDialogClass", L"Convert Format", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
 						SendMessage(h, NV_SETDATA, 0, (LPARAM) editorData);
-						SetActiveWindow(h);
-						SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_DISABLED);
+						DoModal(h);
 						break;
 					}
 					case ID_HELP_ABOUT:
@@ -1209,7 +1206,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NTFT_NTFT40084:
 					{
-						CreateWindow(L"NtftConvertDialogClass", L"NTFT To Texture", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						HWND h = CreateWindow(L"NtftConvertDialogClass", L"NTFT To Texture", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						DoModal(h);
 						break;
 					}
 					case ID_TOOLS_ALPHABLEND:
@@ -1239,8 +1237,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							break;
 						}
 						HWND h = CreateWindow(L"ScreenSplitDialogClass", L"Split Screen", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						SetActiveWindow(h);
-						setStyle(hWnd, TRUE, WS_DISABLED);
+						DoModal(h);
 						break;
 					}
 					case ID_BATCHPROCESSING_TEXTURECONVERSION:
@@ -1729,155 +1726,146 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			HWND hWndControl = (HWND) lParam;
 			int notif = HIWORD(wParam);
-			if (hWndControl) {
-				if (hWndControl == data->hWndNtftBrowseButton) {
-					LPWSTR path = openFileDialog(hWnd, L"Open NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
-					if (!path) break;
-					SendMessage(data->hWndNtftInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
-					free(path);
-				} else if (hWndControl == data->hWndNtfpBrowseButton) {
-					LPWSTR path = openFileDialog(hWnd, L"Open NTFP", L"NTFP Files (*.ntfp)\0*.ntfp\0All Files\0*.*\0", L"ntfp");
-					if (!path) break;
-					SendMessage(data->hWndNtfpInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
-					free(path);
-				} else if (hWndControl == data->hWndNtfiBrowseButton) {
-					LPWSTR path = openFileDialog(hWnd, L"Open NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0", L"ntfi");
-					if (!path) break;
-					SendMessage(data->hWndNtfiInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
-					free(path);
-				} else if (hWndControl == data->hWndFormat && notif == CBN_SELCHANGE) {
-					//every format needs NTFT. But not all NTFI or NTFP
-					int fmt = SendMessage(hWndControl, CB_GETCURSEL, 0, 0) + 1; //1-based since entry 0 corresponds to format 1
+			if (hWndControl == data->hWndNtftBrowseButton) {
+				LPWSTR path = openFileDialog(hWnd, L"Open NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
+				if (!path) break;
+				SendMessage(data->hWndNtftInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				free(path);
+			} else if (hWndControl == data->hWndNtfpBrowseButton) {
+				LPWSTR path = openFileDialog(hWnd, L"Open NTFP", L"NTFP Files (*.ntfp)\0*.ntfp\0All Files\0*.*\0", L"ntfp");
+				if (!path) break;
+				SendMessage(data->hWndNtfpInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				free(path);
+			} else if (hWndControl == data->hWndNtfiBrowseButton) {
+				LPWSTR path = openFileDialog(hWnd, L"Open NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0", L"ntfi");
+				if (!path) break;
+				SendMessage(data->hWndNtfiInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				free(path);
+			} else if (hWndControl == data->hWndFormat && notif == CBN_SELCHANGE) {
+				//every format needs NTFT. But not all NTFI or NTFP
+				int fmt = SendMessage(hWndControl, CB_GETCURSEL, 0, 0) + 1; //1-based since entry 0 corresponds to format 1
 					
-					//only 4x4 needs NTFI.
-					int needsNtfi = fmt == CT_4x4;
-					setStyle(data->hWndNtfiInput, !needsNtfi, WS_DISABLED);
-					setStyle(data->hWndNtfiBrowseButton, !needsNtfi, WS_DISABLED);
+				//only 4x4 needs NTFI.
+				int needsNtfi = fmt == CT_4x4;
+				setStyle(data->hWndNtfiInput, !needsNtfi, WS_DISABLED);
+				setStyle(data->hWndNtfiBrowseButton, !needsNtfi, WS_DISABLED);
 
-					//only direct doesn't need and NTFP.
-					int needsNtfp = fmt != CT_DIRECT;
-					setStyle(data->hWndNtfpInput, !needsNtfp, WS_DISABLED);
-					setStyle(data->hWndNtfpBrowseButton, !needsNtfp, WS_DISABLED);
+				//only direct doesn't need and NTFP.
+				int needsNtfp = fmt != CT_DIRECT;
+				setStyle(data->hWndNtfpInput, !needsNtfp, WS_DISABLED);
+				setStyle(data->hWndNtfpBrowseButton, !needsNtfp, WS_DISABLED);
 
-					//update
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (hWndControl == data->hWndConvertButton) {
-					WCHAR src[MAX_PATH + 1];
-					SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
-					int width = _wtol(src);
-					int format = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+				//update
+				InvalidateRect(hWnd, NULL, FALSE);
+			} else if (hWndControl == data->hWndConvertButton || LOWORD(wParam) == IDOK) {
+				WCHAR src[MAX_PATH + 1];
+				SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
+				int width = _wtol(src);
+				int format = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
 
-					int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
-					int bpp = bppArray[format];
+				int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+				int bpp = bppArray[format];
 
-					int ntftSize = 0, ntfpSize = 0, ntfiSize = 0;
-					BYTE *ntft = NULL, *ntfp = NULL, *ntfi = NULL;
+				int ntftSize = 0, ntfpSize = 0, ntfiSize = 0;
+				BYTE *ntft = NULL, *ntfp = NULL, *ntfi = NULL;
 					
-					//read files
-					DWORD dwSizeHigh, dwRead;
-					char palName[16] = { 0 };
-					SendMessage(data->hWndNtftInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
-					if (wcslen(src)) {
-						HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-						ntftSize = GetFileSize(hFile, &dwSizeHigh);
-						ntft = malloc(ntftSize);
-						ReadFile(hFile, ntft, ntftSize, &dwRead, NULL);
-						CloseHandle(hFile);
-					}
-
-					SendMessage(data->hWndNtfpInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
-					if (wcslen(src)) {
-						HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-						ntfpSize = GetFileSize(hFile, &dwSizeHigh);
-						ntfp = malloc(ntfpSize);
-						ReadFile(hFile, ntfp, ntfpSize, &dwRead, NULL);
-						CloseHandle(hFile);
-
-						//populate palette name. Scan for last \ or /
-						int lastIndex = -1;
-						unsigned int i;
-						for (i = 0; i < wcslen(src); i++) {
-							if (src[i] == '\\' || src[i] == '/') lastIndex = i;
-						}
-						LPCWSTR end = src + lastIndex + 1;
-
-						//copy until first ., NUL, or 12 characters are copied
-						for (i = 0; i < 12; i++) {
-							WCHAR c = end[i];
-							if (c == L'.' || c == L'\0') break;
-							palName[i] = (char) c;
-						}
-						memcpy(palName + i, "_pl", 3);
-					}
-
-					SendMessage(data->hWndNtfiInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
-					if (wcslen(src)) {
-						HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-						ntfiSize = GetFileSize(hFile, &dwSizeHigh);
-						ntfi = malloc(ntfiSize);
-						ReadFile(hFile, ntfi, ntfiSize, &dwRead, NULL);
-						CloseHandle(hFile);
-					}
-
-					//sort out texture format requirements
-					BOOL requiresNtft = TRUE;
-					BOOL requiresNtfp = (format != CT_DIRECT);
-					BOOL requiresNtfi = (format == CT_4x4);
-
-					BOOL abortConvert = FALSE;
-					if (requiresNtft && ntft == NULL) {
-						MessageBox(hWnd, L"Texture format requires NTFT.", L"Requires NTFT", MB_ICONERROR);
-						abortConvert = TRUE;
-					}
-					if (requiresNtfp && ntfp == NULL) {
-						MessageBox(hWnd, L"Texture format requires NTFP.", L"Requires NTFP", MB_ICONERROR);
-						abortConvert = TRUE;
-					}
-					if (requiresNtfi && ntfi == NULL) {
-						MessageBox(hWnd, L"Texture format requires NTFI.", L"Requires NTFI", MB_ICONERROR);
-						abortConvert = TRUE;
-					}
-					if (abortConvert) {
-						if (ntft != NULL) free(ntft);
-						if (ntfp != NULL) free(ntfp);
-						if (ntfi != NULL) free(ntfi);
-						break;
-					}
-
-					//ok now actually convert
-					int height = ntftSize * 8 / bpp / width;
-					TEXTURE texture = { 0 };
-					texture.palette.pal = (COLOR *) ntfp;
-					texture.palette.nColors = ntfpSize / 2;
-					texture.texels.texel = ntft;
-					texture.texels.cmp = (short *) ntfi;
-					texture.texels.texImageParam = (format << 26) | ((ilog2(width) - 3) << 20) | ((ilog2(height) - 3) << 23);
-					memcpy(&texture.palette.name, palName, 16);
-
-					//texture editor takes ownership of texture data, no need to free
-					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-					HWND hWndMdi = nitroPaintStruct->hWndMdi;
-					CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, &texture);
-
-					DestroyWindow(hWnd);
+				//read files
+				DWORD dwSizeHigh, dwRead;
+				char palName[16] = { 0 };
+				SendMessage(data->hWndNtftInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
+				if (wcslen(src)) {
+					HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+					ntftSize = GetFileSize(hFile, &dwSizeHigh);
+					ntft = malloc(ntftSize);
+					ReadFile(hFile, ntft, ntftSize, &dwRead, NULL);
+					CloseHandle(hFile);
 				}
+
+				SendMessage(data->hWndNtfpInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
+				if (wcslen(src)) {
+					HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+					ntfpSize = GetFileSize(hFile, &dwSizeHigh);
+					ntfp = malloc(ntfpSize);
+					ReadFile(hFile, ntfp, ntfpSize, &dwRead, NULL);
+					CloseHandle(hFile);
+
+					//populate palette name. Scan for last \ or /
+					int lastIndex = -1;
+					unsigned int i;
+					for (i = 0; i < wcslen(src); i++) {
+						if (src[i] == '\\' || src[i] == '/') lastIndex = i;
+					}
+					LPCWSTR end = src + lastIndex + 1;
+
+					//copy until first ., NUL, or 12 characters are copied
+					for (i = 0; i < 12; i++) {
+						WCHAR c = end[i];
+						if (c == L'.' || c == L'\0') break;
+						palName[i] = (char) c;
+					}
+					memcpy(palName + i, "_pl", 3);
+				}
+
+				SendMessage(data->hWndNtfiInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
+				if (wcslen(src)) {
+					HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+					ntfiSize = GetFileSize(hFile, &dwSizeHigh);
+					ntfi = malloc(ntfiSize);
+					ReadFile(hFile, ntfi, ntfiSize, &dwRead, NULL);
+					CloseHandle(hFile);
+				}
+
+				//sort out texture format requirements
+				BOOL requiresNtft = TRUE;
+				BOOL requiresNtfp = (format != CT_DIRECT);
+				BOOL requiresNtfi = (format == CT_4x4);
+
+				BOOL abortConvert = FALSE;
+				if (requiresNtft && ntft == NULL) {
+					MessageBox(hWnd, L"Texture format requires NTFT.", L"Requires NTFT", MB_ICONERROR);
+					abortConvert = TRUE;
+				}
+				if (requiresNtfp && ntfp == NULL) {
+					MessageBox(hWnd, L"Texture format requires NTFP.", L"Requires NTFP", MB_ICONERROR);
+					abortConvert = TRUE;
+				}
+				if (requiresNtfi && ntfi == NULL) {
+					MessageBox(hWnd, L"Texture format requires NTFI.", L"Requires NTFI", MB_ICONERROR);
+					abortConvert = TRUE;
+				}
+				if (abortConvert) {
+					if (ntft != NULL) free(ntft);
+					if (ntfp != NULL) free(ntfp);
+					if (ntfi != NULL) free(ntfi);
+					break;
+				}
+
+				//ok now actually convert
+				int height = ntftSize * 8 / bpp / width;
+				TEXTURE texture = { 0 };
+				texture.palette.pal = (COLOR *) ntfp;
+				texture.palette.nColors = ntfpSize / 2;
+				texture.texels.texel = ntft;
+				texture.texels.cmp = (short *) ntfi;
+				texture.texels.texImageParam = (format << 26) | ((ilog2(width) - 3) << 20) | ((ilog2(height) - 3) << 23);
+				texture.texels.height = height;
+				memcpy(&texture.palette.name, palName, 16);
+
+				//texture editor takes ownership of texture data, no need to free
+				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+				HWND hWndMdi = nitroPaintStruct->hWndMdi;
+				CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, &texture);
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			} else if (LOWORD(wParam) == IDCANCEL) {
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
-			break;
-		}
-		case WM_CLOSE:
-		{
-			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) & ~WS_DISABLED);
-			SetActiveWindow(hWndParent);
 			break;
 		}
 		case WM_DESTROY:
 		{
 			free(data);
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
-			SetActiveWindow(hWndMain);
 			break;
 		}
 	}
@@ -1904,7 +1892,7 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			CreateStatic(hWnd, L"Compression:", 10, 37, 100, 22);
 			HWND hWndFormatCombobox = CreateWindow(WC_COMBOBOXW, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 10, 100, 100, hWnd, NULL, NULL, NULL);
 			HWND hWndCompressionCombobox = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 37, 100, 100, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Set", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 120, 64, 100, 22, hWnd, NULL, NULL, NULL);
+			CreateButton(hWnd, L"Set", 120, 64, 100, 22, TRUE);
 
 			LPCWSTR *formats = ObjGetFormatNamesByType(editorData->file.type);
 			formats++; //skip invalid
@@ -1928,7 +1916,7 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
-			if (hWndControl && HIWORD(wParam) == BN_CLICKED) {
+			if ((hWndControl && HIWORD(wParam) == BN_CLICKED) || (hWndControl == NULL && LOWORD(wParam) == IDOK)) {
 				int fmt = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID)), CB_GETCURSEL, 0, 0) + 1;
 				int comp = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID) * 2), CB_GETCURSEL, 0, 0);
 				EDITOR_DATA *editorData = (EDITOR_DATA *) GetWindowLongPtr(hWnd, 0);
@@ -1936,14 +1924,9 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 				editorData->file.compression = comp;
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			} else if (hWndControl == NULL && LOWORD(wParam) == IDCANCEL) {
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
-			break;
-		}
-		case WM_CLOSE:
-		{
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) & ~WS_DISABLED);
-			SetActiveWindow(hWndMain);
 			break;
 		}
 	}
@@ -1953,9 +1936,7 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 VOID CreateImageDialog(HWND hWnd, LPCWSTR path) {
 	HWND h = CreateWindow(L"ImageDialogClass", L"Image Conversion", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWnd, NULL, NULL, NULL);
 	SendMessage(h, NV_SETDATA, 0, (LPARAM) path);
-	ShowWindow(h, SW_SHOW);
-	SetForegroundWindow(h);
-	SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_DISABLED);
+	DoModal(h);
 }
 
 typedef struct {
@@ -1977,7 +1958,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			memcpy(data->szPath, path, 2 * (wcslen(path) + 1));
 
 			CreateStatic(hWnd, GetFileName(path), 10, 10, 200, 22);
-			data->hWndBg = CreateButton(hWnd, L"Create BG", 10, 42, 200, 22, FALSE);;
+			data->hWndBg = CreateButton(hWnd, L"Create BG", 10, 42, 200, 22, FALSE);
 			data->hWndTexture = CreateButton(hWnd, L"Create Texture", 10, 74, 200, 22, FALSE);
 			SetWindowSize(hWnd, 220, 106);
 			SetGUIFont(hWnd);
@@ -2004,14 +1985,9 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, data->szPath);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}
+			} else if (LOWORD(wParam) == IDCANCEL) {
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
-			break;
-		}
-		case WM_CLOSE:
-		{
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndMain, FALSE, WS_DISABLED);
-			SetForegroundWindow(hWndMain);
 			break;
 		}
 		case WM_DESTROY:
@@ -2056,9 +2032,6 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndCreate = CreateButton(hWnd, L"Create", 70, 106, 100, 22, TRUE);
 			SetWindowSize(hWnd, 280, 138);
 			SetGUIFont(hWnd);
-
-			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndParent, TRUE, WS_DISABLED);
 			break;
 		}
 		case WM_COMMAND:
@@ -2119,13 +2092,6 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 			break;
 		}
-		case WM_CLOSE:
-		{
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndMain, FALSE, WS_DISABLED);
-			SetForegroundWindow(hWndMain);
-			break;
-		}
 		case WM_DESTROY:
 		{
 			free(data);
@@ -2181,13 +2147,6 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
-			break;
-		}
-		case WM_CLOSE:
-		{
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndMain, FALSE, WS_DISABLED);
-			SetActiveWindow(hWndMain);
 			break;
 		}
 		case WM_DESTROY:
@@ -2266,13 +2225,6 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
-			break;
-		}
-		case WM_CLOSE:
-		{
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndMain, FALSE, WS_DISABLED);
-			SetActiveWindow(hWndMain);
 			break;
 		}
 		case WM_DESTROY:
