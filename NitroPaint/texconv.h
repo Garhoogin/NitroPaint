@@ -34,19 +34,19 @@ int ImgCountColors(COLOR32 *px, int nPx);
 //
 // Convert an image to a direct mode texture
 //
-int textureConvertDirect(CREATEPARAMS *params);
+int TxConvertDirect(CREATEPARAMS *params);
 
 //
 // Convert an image to a paletted texture
 //
-int textureConvertPalette(CREATEPARAMS *params);
+int TxConvertIndexedOpaque(CREATEPARAMS *params);
 
 //
 // Convert an image to a translucent (a3i5 or a5i3) texture
 //
-int textureConvertTranslucent(CREATEPARAMS *params);
+int TxConvertIndexedTranslucent(CREATEPARAMS *params);
 
-//progress markers for textureConvert4x4.
+//progress markers for TxConvert4x4.
 extern volatile g_texCompressionProgress;
 extern volatile g_texCompressionProgressMax;
 extern volatile g_texCompressionFinished;
@@ -54,12 +54,12 @@ extern volatile g_texCompressionFinished;
 //
 // Convert an image to a 4x4 compressed texture
 //
-int textureConvert4x4(CREATEPARAMS *params);
+int TxConvert4x4(CREATEPARAMS *params);
 
 //
 // Convert a texture given some input parameters.
 //
-int textureConvert(CREATEPARAMS *params);
+int TxConvert(CREATEPARAMS *params);
 
 //
 // Begin a texture conversion in a new thread, returning a handle to the thread.
