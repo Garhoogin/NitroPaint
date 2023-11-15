@@ -61,7 +61,8 @@ VOID PaintNcerViewer(HWND hWnd) {
 
 	//draw solid color background if transparency disabled
 	if (!g_configuration.renderTransparent) {
-		COLOR32 bgColor = ColorConvertFromDS(nclr->colors[0]);
+		COLOR32 bgColor = 0;
+		if (nclr!= NULL) ColorConvertFromDS(nclr->colors[0]);
 		bgColor = REVERSE(bgColor);
 		for (int i = 0; i < 256 * 512; i++) {
 			COLOR32 c = bits[i];
