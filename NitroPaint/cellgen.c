@@ -11,6 +11,8 @@
 #define CELLGEN_MAX_DIV     (CELLGEN_MAX_DIV_H+CELLGEN_MAX_DIV_V)
 #define CELLGEN_MAX_PACK    64
 
+#define CELLGEN_ROUNDUP8(x)  (((x)+7)&~7)
+
 static void CellgenGetXYBounds(COLOR32 *px, const unsigned char *ignores, int width, int height, int xMin, int xMax, int yMin, int yMax,
 		int *pxMin, int *pxMax, int *pyMin, int *pyMax) {
 
@@ -608,10 +610,29 @@ static int CellgenSizeComparator(const void *v1, const void *v2) {
 	return (b2->width * b2->height) - (b1->width * b1->height);
 }
 
-OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressiveness, int *pnObj) {
+static int CellgenPositionComparator(const void *v1, const void *v2) {
+	OBJ_BOUNDS *b1 = (OBJ_BOUNDS *) v1;
+	OBJ_BOUNDS *b2 = (OBJ_BOUNDS *) v2;
+
+	//scan top-down left-right
+	if (b2->y > b1->y) return -1;
+	if (b2->y < b1->y) return 1;
+	if (b2->x > b1->x) return -1;
+	if (b2->x < b1->x) return 1;
+	return 0;
+}
+
+OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressiveness, int full, int *pnObj) {
 	//get image bounds
 	int xMin, xMax, yMin, yMax;
 	CellgenGetXYBounds(px, NULL, width, height, 0, width, 0, height, &xMin, &xMax, &yMin, &yMax);
+
+	//if full image rectangle requested
+	if (full) {
+		xMin = yMin = 0;
+		xMax = width;
+		yMax = height;
+	}
 
 	int boundingWidth = xMax - xMin;
 	int boundingHeight = yMax - yMin;
@@ -646,12 +667,12 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 	//greedily split into OBJ as large as we can fit
 	for (int y = yMin; y < yMax;) {
 		//get OBJ height for this row
-		int yRemaining = yMax - y;
+		int yRemaining = CELLGEN_ROUNDUP8(yMax - y);
 		int objHeight = CellgenGetLargestObjDimension(yRemaining);
 
 		//scan across
-		for (int x = 0; x < xMax;) {
-			int xRemaining = xMax - x;
+		for (int x = xMin; x < xMax;) {
+			int xRemaining = CELLGEN_ROUNDUP8(xMax - x);
 			int objWidth = CellgenGetLargestObjDimension(xRemaining);
 
 			//for this OBJ height, some widths may be disallowed.
@@ -756,6 +777,9 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 		nObj = CellgenTryRemoveOverlapping(px, accountBuf, width, height, obj, nObj);
 		nObj = CellgenRemoveHalfRedundant(px, accountBuf, width, height, obj, nObj);
 	}
+
+	//sort OBJ by position
+	qsort(obj, nObj, sizeof(OBJ_BOUNDS), CellgenPositionComparator);
 
 	//resize buffer and return
 	free(accountBuf);

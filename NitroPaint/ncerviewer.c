@@ -996,6 +996,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 typedef struct CELLGENDATA_ {
 	int lastOptimization; //last optimization setting
+	int lastBoundType;    //last bound type setting
 
 	HWND hWndAggressiveness;
 	HWND hWndOk;
@@ -1004,6 +1005,7 @@ typedef struct CELLGENDATA_ {
 	HWND hWndObjLabel;
 	HWND hWndCharLabel;
 	HWND hWndCharacter;
+	HWND hWndBoundType;
 
 	//cell
 	HWND hWndAffine;
@@ -1049,6 +1051,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			//allocate data
 			data = (CELLGENDATA *) calloc(1, sizeof(CELLGENDATA));
 			data->lastOptimization = 100;
+			data->lastBoundType = 0;
 			SetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR), (LONG_PTR) data);
 			break;
 		}
@@ -1060,9 +1063,10 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_TIMER:
 		{
 			int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
+			int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
 
 			//invalidate update part
-			if (aggressiveness != data->lastOptimization) {
+			if (aggressiveness != data->lastOptimization || boundType != data->lastBoundType) {
 				RECT rc;
 				rc.top = previewX;
 				rc.left = previewY;
@@ -1071,6 +1075,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				InvalidateRect(hWnd, &rc, FALSE);
 				SetEditNumber(data->hWndAggressivenessLabel, aggressiveness);
 				data->lastOptimization = aggressiveness;
+				data->lastBoundType = boundType;
 			}
 			break;
 		}
@@ -1096,7 +1101,8 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			if (px != NULL) {
 				int nObj, nChars = 0;
 				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
-				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, &nObj);
+				int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
+				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, &nObj);
 
 				for (int i = 0; i < nObj; i++) {
 					OBJ_BOUNDS *b = bounds + i;
@@ -1143,11 +1149,14 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			//setup controls
 			int groupWidth = 207, groupHeight = 131, group2Height = 77, groupX = 554, groupY = 10;
 
+			LPCWSTR boundModes[] = { L"Opaque", L"Full Image" };
 			CreateStatic(hWnd, L"Optimization:", 10, 10, 70, 22);
 			data->hWndAggressiveness = CreateTrackbar(hWnd, 90, 10, 150, 22, 0, 100, 100);
 			data->hWndAggressivenessLabel = CreateStatic(hWnd, L"100", 250, 10, 30, 22);
 			CreateStatic(hWnd, L"Character:", 290, 10, 60, 22);
 			data->hWndCharacter = CreateEdit(hWnd, L"0", 350, 10, 40, 22, TRUE);
+			CreateStatic(hWnd, L"Bounds:", 400, 10, 50, 22);
+			data->hWndBoundType = CreateCombobox(hWnd, boundModes, 2, 460, 10, 75, 100, 0);
 			CreateGroupbox(hWnd, L"Preview", 10, 42, 534, 285);
 			data->hWndObjLabel = CreateStatic(hWnd, L"0 OBJ", 10, 337, 75, 22);
 			data->hWndCharLabel = CreateStaticAligned(hWnd, L"0 characters", 10 + 534 - 75, 337, 75, 22, SCA_RIGHT);
@@ -1249,6 +1258,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int affineIdx = GetEditNumber(data->hWndMatrixSlot);
 				int prio = SendMessage(data->hWndPriority, CB_GETCURSEL, 0, 0);
 				int insertMode = SendMessage(data->hWndWriteMode, CB_GETCURSEL, 0, 0);
+				int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
 				if (!affine) affineIdx = 0;
 
 				//palette params
@@ -1282,11 +1292,18 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int charBase = GetEditNumber(data->hWndCharacter);
 				int charStart = charBase; //initial
 				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
-				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, &nObj);
+				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, &nObj);
 
 				//bounding box of image
 				int xMin, xMax, yMin, yMax, centerX, centerY;
 				CellgenGetBounds(px, width, height, &xMin, &xMax, &yMin, &yMax);
+				if (boundType == 1) {
+					//full image
+					xMin = yMin = 0;
+					xMax = width;
+					yMax = height;
+				}
+
 				centerX = (xMin + xMax) / 2, centerY = (yMin + yMax) / 2;
 
 				//add to offset depending on anchor positions
