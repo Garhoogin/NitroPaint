@@ -998,6 +998,9 @@ typedef struct CELLGENDATA_ {
 	int lastOptimization; //last optimization setting
 	int lastBoundType;    //last bound type setting
 
+	int xMin, xMax;
+	int yMin, yMax;
+
 	HWND hWndAggressiveness;
 	HWND hWndOk;
 	HWND hWndCancel;
@@ -1068,8 +1071,8 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			//invalidate update part
 			if (aggressiveness != data->lastOptimization || boundType != data->lastBoundType) {
 				RECT rc;
-				rc.top = previewX;
-				rc.left = previewY;
+				rc.left = previewX;
+				rc.top = previewY;
 				rc.right = previewX + 512;
 				rc.bottom = previewY + 256;
 				InvalidateRect(hWnd, &rc, FALSE);
@@ -1081,6 +1084,11 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		case WM_PAINT:
 		{
+			int posX = GetEditNumber(data->hWndPosX);
+			int posY = GetEditNumber(data->hWndPosY);
+			int anchorX = SendMessage(data->hWndAnchorX, CB_GETCURSEL, 0, 0);
+			int anchorY = SendMessage(data->hWndAnchorY, CB_GETCURSEL, 0, 0);
+
 			PAINTSTRUCT ps;
 			HDC hDC = BeginPaint(hWnd, &ps);
 
@@ -1097,6 +1105,43 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SelectObject(hCompatibleDC, hBluePen);
 			SelectObject(hCompatibleDC, hFillBrush);
 
+			//calculate offset of obj
+			int boundingWidth = 0, boundingHeight = 0, ofsX = 0, ofsY = 0;
+			if (data != NULL) {
+				boundingWidth = data->xMax - data->xMin;
+				boundingHeight = data->yMax - data->yMin;
+
+				if (data->lastBoundType == 1) {
+					//full
+					boundingWidth = width;
+					boundingHeight = height;
+					ofsX = -boundingWidth / 2;
+					ofsY = -boundingHeight / 2;
+				} else {
+					//opaque
+					boundingWidth = data->xMax - data->xMin;
+					boundingHeight = data->yMax - data->yMin;
+					ofsX = -boundingWidth / 2 - data->xMin;
+					ofsY = -boundingHeight / 2 - data->yMin;
+				}
+			}
+
+			//offset by user setting
+			switch (anchorX) {
+				case 0: //left
+					ofsX += boundingWidth / 2; break;
+				case 2: //right
+					ofsX -= boundingWidth / 2; break;
+			}
+			switch (anchorY) {
+				case 0: //top
+					ofsY += boundingHeight / 2; break;
+				case 2: //bottom
+					ofsY -= boundingHeight / 2; break;
+			}
+			ofsX += posX;
+			ofsY += posY;
+			
 			//must have image loaded
 			if (px != NULL) {
 				int nObj, nChars = 0;
@@ -1106,8 +1151,8 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				for (int i = 0; i < nObj; i++) {
 					OBJ_BOUNDS *b = bounds + i;
-					b->x -= width / 2;
-					b->y -= height / 2;
+					b->x += ofsX;
+					b->y += ofsY;
 
 					int bx = b->x + 256;
 					int by = b->y + 128;
@@ -1141,6 +1186,8 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			px = (COLOR32 *) lParam;
 			width = LOWORD(wParam);
 			height = HIWORD(wParam);
+
+			CellgenGetBounds(px, width, height, &data->xMin, &data->xMax, &data->yMin, &data->yMax);
 
 			SetWindowLongPtr(hWnd, 0 * sizeof(LONG_PTR), (LONG_PTR) px);
 			SetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR), width);
@@ -1250,6 +1297,14 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			HWND hWndControl = (HWND) lParam;
 			int notif = HIWORD(wParam);
 			int idc = LOWORD(wParam);
+
+			//update preview for changed controls
+			if ((hWndControl == data->hWndPosX || hWndControl == data->hWndPosY) && notif == EN_CHANGE) {
+				InvalidateRect(hWnd, NULL, FALSE);
+			}
+			if ((hWndControl == data->hWndAnchorX || hWndControl == data->hWndAnchorY) && notif == CBN_SELCHANGE) {
+				InvalidateRect(hWnd, NULL, FALSE);
+			}
 
 			if (notif == BN_CLICKED && (hWndControl == data->hWndOk || idc == IDOK)) {
 
