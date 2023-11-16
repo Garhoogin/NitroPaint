@@ -2026,7 +2026,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateStatic(hWnd, L"8 bit:", 10, 10, 50, 22);
 			data->hWndBitDepth = CreateCheckbox(hWnd, L"", 70, 10, 22, 22, FALSE);
 			CreateStatic(hWnd, L"Mapping:", 10, 42, 50, 22);
-			data->hWndMapping = CreateCombobox(hWnd, mappings, sizeof(mappings) / sizeof(*mappings), 70, 42, 200, 100, 0);
+			data->hWndMapping = CreateCombobox(hWnd, mappings, sizeof(mappings) / sizeof(*mappings), 70, 42, 200, 100, 1);
 			CreateStatic(hWnd, L"Format:", 10, 74, 50, 22);
 			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(*formats), 70, 74, 100, 100, 0);
 			data->hWndCreate = CreateButton(hWnd, L"Create", 70, 106, 100, 22, TRUE);
