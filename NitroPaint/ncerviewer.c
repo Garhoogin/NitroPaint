@@ -997,6 +997,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 typedef struct CELLGENDATA_ {
 	int lastOptimization; //last optimization setting
 	int lastBoundType;    //last bound type setting
+	int lastAffine;       //last affine state
 
 	int xMin, xMax;
 	int yMin, yMax;
@@ -1067,9 +1068,10 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
 			int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
+			int affine = GetCheckboxChecked(data->hWndAffine);
 
 			//invalidate update part
-			if (aggressiveness != data->lastOptimization || boundType != data->lastBoundType) {
+			if (aggressiveness != data->lastOptimization || boundType != data->lastBoundType || affine != data->lastAffine) {
 				RECT rc;
 				rc.left = previewX;
 				rc.top = previewY;
@@ -1077,8 +1079,10 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				rc.bottom = previewY + 256;
 				InvalidateRect(hWnd, &rc, FALSE);
 				SetEditNumber(data->hWndAggressivenessLabel, aggressiveness);
+
 				data->lastOptimization = aggressiveness;
 				data->lastBoundType = boundType;
+				data->lastAffine = affine;
 			}
 			break;
 		}
@@ -1088,6 +1092,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			int posY = GetEditNumber(data->hWndPosY);
 			int anchorX = SendMessage(data->hWndAnchorX, CB_GETCURSEL, 0, 0);
 			int anchorY = SendMessage(data->hWndAnchorY, CB_GETCURSEL, 0, 0);
+			int affine = GetCheckboxChecked(data->hWndAffine);
 
 			PAINTSTRUCT ps;
 			HDC hDC = BeginPaint(hWnd, &ps);
@@ -1148,6 +1153,11 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
 				int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
 				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, &nObj);
+
+				//if affine specified, restrict OBJ size ratio to 1:2
+				if (affine) {
+					bounds = CellgenEnsureRatio(bounds, nObj, 2, &nObj);
+				}
 
 				for (int i = 0; i < nObj; i++) {
 					OBJ_BOUNDS *b = bounds + i;
@@ -1348,6 +1358,11 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int charStart = charBase; //initial
 				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
 				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, &nObj);
+
+				//split too skinnny OBJ for affine
+				if (affine) {
+					bounds = CellgenEnsureRatio(bounds, nObj, 2, &nObj);
+				}
 
 				//bounding box of image
 				int xMin, xMax, yMin, yMax, centerX, centerY;

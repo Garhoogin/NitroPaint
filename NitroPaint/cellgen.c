@@ -788,6 +788,34 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 	return obj;
 }
 
+OBJ_BOUNDS *CellgenEnsureRatio(OBJ_BOUNDS *obj, int nObj, int maxRatio, int *pnOutObj) {
+	//for each OBJ, split any whose aspect ratio exceeds maxRatio
+	for (int i = 0; i < nObj; i++) {
+		OBJ_BOUNDS *bound = obj + i;
+		int wide = (bound->width > bound->height);
+
+		int ratio = 1;
+		if (wide) ratio = bound->width / bound->height;
+		else ratio = bound->height / bound->width;
+
+		if (ratio <= maxRatio) continue;
+
+		//make space for new OBJ
+		obj = realloc(obj, (nObj + 1) * sizeof(OBJ_BOUNDS));
+		memmove(obj + i + 1, obj + i, (nObj - i) * sizeof(OBJ_BOUNDS));
+		nObj++;
+
+		//split
+		OBJ_BOUNDS temp[2];
+		CellgenSplitObj(bound, wide ? CELLGEN_DIR_H : CELLGEN_DIR_V, temp + 0, temp + 1);
+		memcpy(obj + i, temp, sizeof(temp));
+		i--; //allow obj to be recursively processed
+	}
+
+	*pnOutObj = nObj;
+	return obj;
+}
+
 void CellgenGetBounds(COLOR32 *px, int width, int height, int *pxMin, int *pxMax, int *pyMin, int *pyMax) {
 	//get bounding box
 	CellgenGetXYBounds(px, NULL, width, height, 0, width, 0, height, pxMin, pxMax, pyMin, pyMax);
