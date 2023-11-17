@@ -849,6 +849,13 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					COLOR32 *px = ImgRead(path, &width, &height);
 					free(path);
 
+					//reject images too large
+					if (width > 512 || height > 256) {
+						MessageBox(hWnd, L"Image too large.", L"Too large", MB_ICONERROR);
+						free(px);
+						break;
+					}
+
 					//create generator dialog
 					HWND h = CreateWindow(L"NcerCreateCellClass", L"Generate Cell", WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
 						CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
@@ -1453,6 +1460,9 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					case GX_OBJVRAMMODE_CHAR_1D_32K:
 						granularity = 1; break;
 				}
+
+				//align starting character to granularity
+				charStart = (charStart + granularity - 1) / granularity * granularity;
 
 				//for 8-bit: since each character increment is 32*granularity bytes, 
 				//fix the low bit 0. Do this by incrementing the left-shift.
