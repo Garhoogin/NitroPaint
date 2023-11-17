@@ -1039,6 +1039,7 @@ typedef struct CELLGENDATA_ {
 	//graphics
 	HWND hWndDither;
 	HWND hWndDiffuse;
+	HWND hWndOptimize;
 
 	//color
 	HWND hWndBalance;
@@ -1260,6 +1261,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndDither = CreateCheckbox(hWnd, L"Dither", groupX + groupWidth + 10 + 11, groupY + groupHeight + 3 + 17, 60, 22, FALSE);
 			CreateStatic(hWnd, L"Diffuse:", groupX + groupWidth + 10 + 11, groupY + groupHeight + 3 + 17 + 27, 60, 22);
 			data->hWndDiffuse = CreateEdit(hWnd, L"100", groupX + groupWidth + 10 + 11 + 65, groupY + groupHeight + 3 + 17 + 27, 60, 22, TRUE);
+			data->hWndOptimize = CreateCheckbox(hWnd, L"Optimize", groupX + groupWidth + 10  + 11+ 65, groupY + groupHeight + 3 + 17, 60, 22, TRUE);
 
 			//color
 			int bottomY = groupY + groupHeight + group2Height + 6 + 17;
@@ -1350,6 +1352,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int anchorY = SendMessage(data->hWndAnchorY, CB_GETCURSEL, 0, 0);
 
 				//graphics
+				int optimize = GetCheckboxChecked(data->hWndOptimize);
 				int dither = GetCheckboxChecked(data->hWndDither);
 				float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
 				if (!dither) diffuse = 0.0f;
@@ -1539,7 +1542,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 					//search chars for a match
 					int foundStart = charBase, nFoundChars = 0;
-					for (int j = charStart; j < charBase; j += granularity) {
+					for (int j = charStart; optimize && j < charBase; j += granularity) {
 						int nCharsCompare = nChars;
 						if (j + nCharsCompare > charBase) nCharsCompare = charBase - j;
 
