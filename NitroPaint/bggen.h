@@ -6,11 +6,12 @@
 
 #define BGGEN_FORMAT_NITROSYSTEM     0          //NCLR, NCGR, NSCR
 #define BGGEN_FORMAT_NITROCHARACTER  1          //NCL,  NCG,  NSC
-#define BGGEN_FORMAT_AGBCHARACTER    2          //ACL,  ACG,  ASC
-#define BGGEN_FORMAT_HUDSON          3          //Hudson bin
-#define BGGEN_FORMAT_HUDSON2         4          //Hudson bin
-#define BGGEN_FORMAT_BIN             5          //raw
-#define BGGEN_FORMAT_BIN_COMPRESSED  6          //raw compresed
+#define BGGEN_FORMAT_IRISCHARACTER   2          //ICL,  ICG,  ISC
+#define BGGEN_FORMAT_AGBCHARACTER    3          //ACL,  ACG,  ASC
+#define BGGEN_FORMAT_HUDSON          4          //Hudson bin
+#define BGGEN_FORMAT_HUDSON2         5          //Hudson bin
+#define BGGEN_FORMAT_BIN             6          //raw
+#define BGGEN_FORMAT_BIN_COMPRESSED  7          //raw compresed
 
 //
 // Structure used for character compression. Fill them out and pass them to

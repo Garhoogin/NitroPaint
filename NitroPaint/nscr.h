@@ -22,11 +22,12 @@
 #define NSCR_TYPE_INVALID	0
 #define NSCR_TYPE_NSCR		1
 #define NSCR_TYPE_NC        2
-#define NSCR_TYPE_AC        3
-#define NSCR_TYPE_HUDSON	4
-#define NSCR_TYPE_HUDSON2	5
-#define NSCR_TYPE_BIN       6
-#define NSCR_TYPE_COMBO     7
+#define NSCR_TYPE_IC        3
+#define NSCR_TYPE_AC        4
+#define NSCR_TYPE_HUDSON	5
+#define NSCR_TYPE_HUDSON2	6
+#define NSCR_TYPE_BIN       7
+#define NSCR_TYPE_COMBO     8
 
 #define BG_COLOR0_FIXED     0
 #define BG_COLOR0_AVERAGE   1
@@ -73,6 +74,11 @@ int ScrIsValidBin(const unsigned char *buffer, unsigned int size);
 // Determines if a byte array represents a valid IS-ACG-CHARACTER screen file.
 //
 int ScrIsValidAsc(const unsigned char *buffer, unsigned int size);
+
+//
+// Determines if a byte array represents a valid IS-IRIS-CHARACTER screen file.
+//
+int ScrIsValidIsc(const unsigned char *buffer, unsigned int size);
 
 //
 // Idenfities the format of this screen data.

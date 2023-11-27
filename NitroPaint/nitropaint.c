@@ -990,15 +990,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_FILE_OPEN40085:
 					{
 						LPWSTR path = openFileDialog(hWnd, L"Open", 
-													 L"All Supported Files\0*.nclr;*.rlcn;*.ncl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.char;*.nscr;*.rcsn;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga\0"
-													 L"Palette Files (*.nclr, *.rlcn, *.ncl, *.5pl, *.5pc, *ncl.bin, *icl.bin, *.ntfp, *.nbfp, *.pltt, *.bin)\0*.nclr;*.rlcn;*.ncl;*.5pc;*.5pl;*ncl.bin;*.ntfp;*.nbfp;*.pltt;*.bin\0"
-													 L"Graphics Files (*.ncgr, *.rgcn, *.ncbr, *ncg.bin, *icg.bin, *.nbfc, *.char, *.bin)\0*.ncgr;*.rgcn;*.ncbr;*.nbfc;*.char;*.bin\0"
-													 L"Screen Files (*.nscr, *.rcsn, *nsc.bin, *isc.bin, *.nbfs, *.bin)\0*.nscr;*.rcsn;*.nbfs;*.bin\0"
-													 L"Cell Files (*.ncer, *.recn, *.bin)\0*.ncer;*.recn;*.bin\0"
-													 L"Animation Files (*.nanr, *.rnan)\0*.nanr;*.rnan\0"
-													 L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0"
-													 L"Texture Archives (*.nsbtx, *.nsbmd, *.bmd)\0*.nsbtx;*.nsbmd;*.bmd\0"
-													 L"Textures (*.tga)\0*.tga\0"
+													 FILTER_ALL  FILTER_PALETTE FILTER_CHARACTER FILTER_SCREEN FILTER_CELL
+													 FILTER_ANIM FILTER_COMBO2D FILTER_TEXARC    FILTER_TEXTURE
 													 L"All Files (*.*)\0*.*\0",
 													 L"");
 						if (path == NULL) break;
@@ -1448,7 +1441,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndAlignment = CreateEdit(hWnd, L"32", rightX + 75, topY + 27 * 4, 80, 22, TRUE);
 			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
 
-			LPCWSTR formatNames[] = { L"NITRO-System", L"NITRO-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed" };
+			LPCWSTR formatNames[] = { L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed" };
 			CreateStatic(hWnd, L"Format:", rightX, middleY, 50, 22);
 			data->hWndFormatDropdown = CreateCombobox(hWnd, formatNames, sizeof(formatNames) / sizeof(*formatNames), rightX + 55, middleY, 150, 22, 0);
 

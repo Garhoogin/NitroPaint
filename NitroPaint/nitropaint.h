@@ -56,6 +56,17 @@ typedef struct {
 //WM_COPYDATA types
 #define NPMSG_OPENFILE       1
 
+//common filters
+#define FILTER_PALETTE    L"Palette Files (*.nclr, *.rlcn, *.ncpr, *.rpcn, *.ncl, *.icl, *.acl, *.5pl, *.5pc, *.ntfp, *.nbfp, *.pltt, *.bin)\0*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pc;*.5pl;*ncl.bin;*.ntfp;*.nbfp;*.pltt;*.bin\0"
+#define FILTER_CHARACTER  L"Graphics Files (*.ncgr, *.rgcn, *.ncbr, *.ncg, *.icg, *.acg, *.nbfc, *.char, *.bin)\0*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.bin\0"
+#define FILTER_SCREEN     L"Screen Files (*.nscr, *.rcsn, *.nsc, *.isc, *.asc, *.nbfs, *.bin)\0*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.bin\0"
+#define FILTER_CELL       L"Cell Files (*.ncer, *.recn, *.bin)\0*.ncer;*.recn;*.bin\0"
+#define FILTER_ANIM       L"Animation Files (*.nanr, *.rnan, *.bin)\0*.nanr;*.rnan;*.bin\0"
+#define FILTER_COMBO2D    L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0"
+#define FILTER_TEXARC     L"Texture Archives (*.nsbtx, *.nsbmd, *.bmd)\0*.nsbtx;*.nsbmd;*.bmd\0"
+#define FILTER_TEXTURE    L"Textures (*.tga, *.5tx, *.tds)\0*.tga;*.5tx;*.tds\0"
+#define FILTER_ALL        L"All Supported Files\0*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga;*.5tx;*.tds\0"
+
 //
 // Register a generic window class.
 //

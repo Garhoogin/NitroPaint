@@ -738,6 +738,11 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 			characterFormat = NCGR_TYPE_NC;
 			screenFormat = NSCR_TYPE_NC;
 			break;
+		case BGGEN_FORMAT_IRISCHARACTER:
+			paletteFormat = NCLR_TYPE_BIN;
+			characterFormat = NCGR_TYPE_IC;
+			screenFormat = NSCR_TYPE_IC;
+			break;
 		case BGGEN_FORMAT_AGBCHARACTER:
 			paletteFormat = NCLR_TYPE_BIN;
 			characterFormat = NCGR_TYPE_AC;

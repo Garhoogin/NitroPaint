@@ -31,6 +31,7 @@ static LPCWSTR sCommonPaletteEndings[] = {
 	L"pal.bin",
 	L".pltt",
 	L".nbfp",
+	L".icl",
 	L".acl",
 	L".plb",
 	NULL
@@ -327,7 +328,9 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 				//test other formats
 				if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
+				else if (ChrIsValidIcg(buffer, bufferSize)) type = FILE_TYPE_CHAR;
 				else if (ChrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+				else if (ScrIsValidIsc(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ScrIsValidAsc(buffer, bufferSize))  type = FILE_TYPE_SCREEN;
 				else if (PalIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (ScrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;

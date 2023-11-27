@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ACG", L"Hudson", L"Hudson 2", L"Ghost Trick", L"Binary", NULL };
+LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ICG", L"ACG", L"Hudson", L"Hudson 2", L"Ghost Trick", L"Binary", NULL };
 
 int ChrGuessWidth(int nTiles) {
 	int width = 1;
@@ -85,7 +85,7 @@ int ChrIsValidNcg(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-static int ChriAcgScanFooter(const unsigned char *buffer, unsigned int size) {
+static int ChriIsCommonScanFooter(const unsigned char *buffer, unsigned int size, int type) {
 	if (size < 8) return -1;
 
 	//scan for possible locations of the footer
@@ -110,6 +110,14 @@ static int ChriAcgScanFooter(const unsigned char *buffer, unsigned int size) {
 			else if (memcmp(section, "VER ", 4) == 0) hasVer = 1;
 			else if (memcmp(section, "END ", 4) == 0) hasEnd = 1;
 
+			if (memcmp(section, "VER ", 4) == 0) {
+				//ACG: ver = "IS-ACG0x" (1-3)
+				//ICG: ver = "IS-ICG01"
+				const char *ver = section + 8;
+				if (type == NCGR_TYPE_AC && (length < 8 || memcmp(ver, "IS-ACG", 6))) return -1;
+				if (type == NCGR_TYPE_IC && (length < 8 || memcmp(ver, "IS-ICG", 6))) return -1;
+			}
+
 			offset += length;
 			if (offset >= size) break;
 			if (hasEnd) break;
@@ -124,7 +132,14 @@ static int ChriAcgScanFooter(const unsigned char *buffer, unsigned int size) {
 }
 
 int ChrIsValidAcg(const unsigned char *buffer, unsigned int size) {
-	int dataOffset = ChriAcgScanFooter(buffer, size);
+	int dataOffset = ChriIsCommonScanFooter(buffer, size, NCGR_TYPE_AC);
+	if (dataOffset == -1) return 0;
+
+	return 1;
+}
+
+int ChrIsValidIcg(const unsigned char *buffer, unsigned int size) {
+	int dataOffset = ChriIsCommonScanFooter(buffer, size, NCGR_TYPE_IC);
 	if (dataOffset == -1) return 0;
 
 	return 1;
@@ -145,6 +160,7 @@ int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size) {
 int ChrIdentify(const unsigned char *buffer, unsigned int size) {
 	if (ChrIsValidNcgr(buffer, size)) return NCGR_TYPE_NCGR;
 	if (ChrIsValidNcg(buffer, size)) return NCGR_TYPE_NC;
+	if (ChrIsValidIcg(buffer, size)) return NCGR_TYPE_IC;
 	if (ChrIsValidAcg(buffer, size)) return NCGR_TYPE_AC;
 	if (ChrIsValidHudson(buffer, size)) return NCGR_TYPE_HUDSON;
 	if (ChrIsValidGhostTrick(buffer, size)) return NCGR_TYPE_GHOSTTRICK;
@@ -318,8 +334,8 @@ int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	int footerOffset = ChriAcgScanFooter(buffer, size);
+int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size, int type) {
+	int footerOffset = ChriIsCommonScanFooter(buffer, size, type);
 
 	int width = 0, height = 0, depth = 4;
 
@@ -336,7 +352,14 @@ int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 			height = *(uint16_t *) (sectionData + 2);
 		} else if (memcmp(section, "MODE", 4) == 0) {
 			int mode = *(int *) (sectionData + 0);
-			depth = (mode == 3 || mode == 2) ? 8 : 4;
+
+			if (type == NCGR_TYPE_AC) {
+				//2, 3: 8bpp text
+				depth = (mode == 3 || mode == 2) ? 8 : 4;
+			} else if (type == NCGR_TYPE_IC) {
+				//6: 8bpp text, 7: 4bpp text, 8: 8bpp ext
+				depth = (mode == 6 || mode == 8) ? 8 : 4;
+			}
 		} else if (memcmp(section, "LINK", 4) == 0) {
 			//LINK
 			int linkLen = sectionData[1];
@@ -357,7 +380,7 @@ int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	int nChars = width * height;
 	const unsigned char *attr = buffer + (nChars * 8 * depth);
 
-	ChrInit(ncgr, NCGR_TYPE_AC);
+	ChrInit(ncgr, type);
 	ncgr->tilesX = width;
 	ncgr->tilesY = height;
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
@@ -376,6 +399,14 @@ int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 		ncgr->attr[i] = attr[i] & 0xF;
 	}
 	return 0;
+}
+
+int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	return ChriIsCommonRead(ncgr, buffer, size, NCGR_TYPE_AC);
+}
+
+int ChrReadIcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	return ChriIsCommonRead(ncgr, buffer, size, NCGR_TYPE_IC);
 }
 
 int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
@@ -527,6 +558,8 @@ int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 			return ChrReadNcgr(ncgr, buffer, size);
 		case NCGR_TYPE_NC:
 			return ChrReadNcg(ncgr, buffer, size);
+		case NCGR_TYPE_IC:
+			return ChrReadIcg(ncgr, buffer, size);
 		case NCGR_TYPE_AC:
 			return ChrReadAcg(ncgr, buffer, size);
 		case NCGR_TYPE_HUDSON:
@@ -799,7 +832,7 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	return 0;
 }
 
-int ChrWriteAcg(NCGR *ncgr, BSTREAM *stream) {
+static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
 	int attrSize = ncgr->attrWidth * ncgr->attrHeight;
 
 	ChrWriteChars(ncgr, stream);
@@ -808,8 +841,11 @@ int ChrWriteAcg(NCGR *ncgr, BSTREAM *stream) {
 	for (int i = 0; i < attrSize; i++) {
 		//bstreamWrite(stream, ncgr->attr, attrSize);
 		unsigned char a = ncgr->attr[i];
-		a |= 0x20; //exists
-		a |= (ncgr->nBits == 8) ? 0x10 : 0x00;
+		if (ncgr->header.format == NCGR_TYPE_AC) {
+			a |= 0x20; //exists
+			a |= (ncgr->nBits == 8) ? 0x10 : 0x00;
+		}
+
 		bstreamWrite(stream, &a, sizeof(a));
 	}
 
@@ -821,15 +857,33 @@ int ChrWriteAcg(NCGR *ncgr, BSTREAM *stream) {
 	unsigned char verFooter[] = { 'V', 'E', 'R', ' ', 0, 0, 0, 0 };
 	unsigned char endFooter[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 0 };
 
-	char *version = "IS-ACG03";
+	char *version = "";
+	switch (ncgr->header.format) {
+		case NCGR_TYPE_AC:
+			version = "IS-ACG03"; break;
+		case NCGR_TYPE_IC:
+			version = "IS-ICG01"; break;
+	}
+
 	int linkLen = (ncgr->link == NULL) ? 0 : strlen(ncgr->link);
 	int commentLen = (ncgr->comment == NULL) ? 0 : strlen(ncgr->comment);
+
+	int mode = 0;
+	if (ncgr->header.format == NCGR_TYPE_AC) {
+		//3: 8bpp, 1: 4bpp
+		if (ncgr->nBits == 8) mode = 3;
+		else mode = 1;
+	} else if (ncgr->header.format == NCGR_TYPE_IC) {
+		//6: text 8bpp, 7: text 4bpp, 8: ext 8bpp
+		if (ncgr->nBits == 4) mode = 7;
+		else mode = 6;
+	}
 
 	*(uint32_t *) (linkFooter + 4) = linkLen + 2;
 	linkFooter[9] = (unsigned char) linkLen;
 	*(uint32_t *) (cmntFooter + 4) = commentLen + 2;
 	cmntFooter[9] = (unsigned char) commentLen;
-	*(uint32_t *) (modeFooter + 8) = (ncgr->nBits == 8) ? 3 : 1;
+	*(uint32_t *) (modeFooter + 8) = mode;
 	*(uint16_t *) (sizeFooter + 8) = ncgr->tilesX;
 	*(uint16_t *) (sizeFooter + 10) = ncgr->tilesY;
 	*(uint32_t *) (verFooter + 4) = strlen(version);
@@ -844,6 +898,14 @@ int ChrWriteAcg(NCGR *ncgr, BSTREAM *stream) {
 	bstreamWrite(stream, version, strlen(version));
 	bstreamWrite(stream, endFooter, sizeof(endFooter));
 	return 0;
+}
+
+int ChrWriteAcg(NCGR *ncgr, BSTREAM *stream) {
+	return ChriIsCommonWrite(ncgr, stream);
+}
+
+int ChrWriteIcg(NCGR *ncgr, BSTREAM *stream) {
+	return ChriIsCommonWrite(ncgr, stream);
 }
 
 int ChrWriteHudson(NCGR *ncgr, BSTREAM *stream) {
@@ -901,6 +963,8 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 			return ChrWriteNcg(ncgr, stream);
 		case NCGR_TYPE_AC:
 			return ChrWriteAcg(ncgr, stream);
+		case NCGR_TYPE_IC:
+			return ChrWriteIcg(ncgr, stream);
 		case NCGR_TYPE_HUDSON:
 		case NCGR_TYPE_HUDSON2:
 			return ChrWriteHudson(ncgr, stream);

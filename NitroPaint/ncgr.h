@@ -5,12 +5,13 @@
 #define NCGR_TYPE_INVALID	 0
 #define NCGR_TYPE_NCGR		 1
 #define NCGR_TYPE_NC         2
-#define NCGR_TYPE_AC         3
-#define NCGR_TYPE_HUDSON	 4
-#define NCGR_TYPE_HUDSON2	 5
-#define NCGR_TYPE_GHOSTTRICK 6
-#define NCGR_TYPE_BIN        7
-#define NCGR_TYPE_COMBO      8
+#define NCGR_TYPE_IC         3
+#define NCGR_TYPE_AC         4
+#define NCGR_TYPE_HUDSON	 5
+#define NCGR_TYPE_HUDSON2	 6
+#define NCGR_TYPE_GHOSTTRICK 7
+#define NCGR_TYPE_BIN        8
+#define NCGR_TYPE_COMBO      9
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
@@ -88,6 +89,11 @@ int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 // Determines if a byte array represents a valid IS-AGB-CHARACTER graphics file
 //
 int ChrIsValidAcg(const unsigned char *buffer, unsigned int size);
+
+//
+// Determines if a byte array represents a valid IS-IRIS-CHARACTER graphics file
+//
+int ChrIsValidIcg(const unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid NNS G2D character graphics file for runtime.

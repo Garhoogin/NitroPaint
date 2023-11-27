@@ -419,6 +419,9 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								case NCGR_TYPE_NC:
 									filter = L"NCG Files (*.ncg)\0*.ncg\0All Files\0*.*\0";
 									break;
+								case NCGR_TYPE_IC:
+									filter = L"ICG Files (*.icg)\0*.icg\0All Files\0*.*\0";
+									break;
 								case NCGR_TYPE_AC:
 									filter = L"ACG Files (*.acg)\0*.acg\0All Files\0*.*\0";
 									break;

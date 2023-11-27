@@ -949,7 +949,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			switch (data->nclr.header.format) {
 				case NCLR_TYPE_BIN:
 				case NCLR_TYPE_HUDSON:
-					filter = L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.acl)\0*.bin;*.nbfp;*.acl\0All Files\0*.*\0";
+					filter = L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0All Files\0*.*\0";
 					break;
 				case NCLR_TYPE_COMBO:
 					filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";

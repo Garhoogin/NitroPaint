@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <math.h>
 
-LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"NSC", L"ASC", L"Hudson", L"Hudson 2", L"Binary", NULL };
+LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"NSC", L"ISC", L"ASC", L"Hudson", L"Hudson 2", L"Binary", NULL };
 
 #define NSCR_FLIPNONE 0
 #define NSCR_FLIPX 1
@@ -69,8 +69,7 @@ int ScrIsValidNsc(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-
-int ScriAscScanFooter(const unsigned char *buffer, unsigned int size) {
+int ScriIsCommonScanFooter(const unsigned char *buffer, unsigned int size, int type) {
 	if (size < 8) return -1;
 
 	//scan for possible locations of the footer
@@ -79,7 +78,7 @@ int ScriAscScanFooter(const unsigned char *buffer, unsigned int size) {
 		if (memcmp(buffer + i, "CLRF", 4) != 0) continue;
 
 		//candidate location
-		int hasClrf = 0, hasLink = 0, hasCmnt = 0, hasClrc = 0, hasMode = 0, hasVer = 0, hasEnd = 0;
+		int hasClrf = 0, hasLink = 0, hasCmnt = 0, hasClrc = 0, hasMode = 0, hasVer = 0, hasEnd = 0, hasSize = 0;
 
 		//scan sections
 		unsigned int offset = i;
@@ -93,15 +92,26 @@ int ScriAscScanFooter(const unsigned char *buffer, unsigned int size) {
 			else if (memcmp(section, "CMNT", 4) == 0) hasCmnt = 1;
 			else if (memcmp(section, "CLRC", 4) == 0) hasClrc = 1;
 			else if (memcmp(section, "MODE", 4) == 0) hasMode = 1;
+			else if (memcmp(section, "SIZE", 4) == 0) hasSize = 1;
 			else if (memcmp(section, "VER ", 4) == 0) hasVer = 1;
 			else if (memcmp(section, "END ", 4) == 0) hasEnd = 1;
+
+			if (memcmp(section, "VER ", 4) == 0) {
+				//ACG: ver = "IS-ACG0x" (1-3)
+				//ICG: ver = "IS-ICG01"
+				const char *ver = section + 8;
+				if (type == NSCR_TYPE_AC && (length < 8 || memcmp(ver, "IS-ASC", 6))) return -1;
+				if (type == NSCR_TYPE_IC && (length < 8 || memcmp(ver, "IS-ISC", 6))) return -1;
+			}
 
 			offset += length;
 			if (offset >= size) break;
 			if (hasEnd) break;
 		}
 
-		if (hasClrf && hasLink && hasCmnt && hasClrc && hasMode && hasVer && hasEnd && offset <= size) {
+		//ISC files have a SIZE section, but ASC files do not
+		int sizeSatisfied = (type == NSCR_TYPE_IC && hasSize) || (type != NSCR_TYPE_IC);
+		if (hasClrf && hasLink && hasCmnt && hasClrc && hasMode && sizeSatisfied && hasVer && hasEnd && offset <= size) {
 			//candidate found
 			return i;
 		}
@@ -110,7 +120,13 @@ int ScriAscScanFooter(const unsigned char *buffer, unsigned int size) {
 }
 
 int ScrIsValidAsc(const unsigned char *file, unsigned int size) {
-	int footerOffset = ScriAscScanFooter(file, size);
+	int footerOffset = ScriIsCommonScanFooter(file, size, NSCR_TYPE_AC);
+	if (footerOffset == -1) return 0;
+	return 1;
+}
+
+int ScrIsValidIsc(const unsigned char *file, unsigned int size) {
+	int footerOffset = ScriIsCommonScanFooter(file, size, NSCR_TYPE_IC);
 	if (footerOffset == -1) return 0;
 	return 1;
 }
@@ -129,6 +145,7 @@ int ScrIsValidNscr(const unsigned char *file, unsigned int size) {
 int ScrIdentify(const unsigned char *file, unsigned int size) {
 	if (ScrIsValidNscr(file, size)) return NSCR_TYPE_NSCR;
 	if (ScrIsValidNsc(file, size)) return NSCR_TYPE_NC;
+	if (ScrIsValidIsc(file, size)) return NSCR_TYPE_IC;
 	if (ScrIsValidAsc(file, size)) return NSCR_TYPE_AC;
 	if (ScrIsValidHudson(file, size)) return NSCR_TYPE_HUDSON;
 	if (ScrIsValidBin(file, size)) return NSCR_TYPE_BIN;
@@ -293,8 +310,8 @@ int ScrReadNsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	return 0;
 }
 
-int ScrReadAsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
-	int footerOffset = ScriAscScanFooter(file, size);
+static int ScriIsCommonRead(NSCR *nscr, const unsigned char *file, unsigned int size, int type) {
+	int footerOffset = ScriIsCommonScanFooter(file, size, type);
 
 	int width = 0, height = 0, depth = 4;
 
@@ -310,9 +327,20 @@ int ScrReadAsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 			nscr->clearValue = *(uint16_t *) (sectionData + 0);
 		} else if (memcmp(section, "MODE", 4) == 0) {
 			//MODE
-			width = sectionData[0];
-			height = sectionData[1];
-			nscr->fmt = sectionData[2] ? SCREENFORMAT_AFFINE : SCREENFORMAT_TEXT;
+			if (type == NSCR_TYPE_AC) {
+				width = sectionData[0];
+				height = sectionData[1];
+				nscr->fmt = sectionData[2] ? SCREENFORMAT_AFFINE : SCREENFORMAT_TEXT;
+			} else if (type == NSCR_TYPE_IC) {
+				//byte 0: 0 for text BG
+				nscr->fmt = sectionData[0] ? SCREENFORMAT_AFFINE : SCREENFORMAT_TEXT;
+
+				//byte 1: doesn't seem to be used
+			}
+		} else if (memcmp(section, "SIZE", 4) == 0) {
+			//size only for ISC files
+			width = *(uint16_t *) (sectionData + 0);
+			height = *(uint16_t *) (sectionData + 2);
 		} else if (memcmp(section, "LINK", 4) == 0) {
 			//LINK
 			if (len) {
@@ -331,7 +359,7 @@ int ScrReadAsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 		if (offset >= size) break;
 	}
 
-	ScrInit(nscr, NSCR_TYPE_AC);
+	ScrInit(nscr, type);
 	nscr->nWidth = width * 8;
 	nscr->nHeight = height * 8;
 	nscr->dataSize = width * height * sizeof(uint16_t);
@@ -344,6 +372,14 @@ int ScrReadAsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	ScrComputeHighestCharacter(nscr);
 
 	return 0;
+}
+
+int ScrReadAsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
+	return ScriIsCommonRead(nscr, file, size, NSCR_TYPE_AC);
+}
+
+int ScrReadIsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
+	return ScriIsCommonRead(nscr, file, size, NSCR_TYPE_IC);
 }
 
 int ScrReadNscr(NSCR* nscr, const unsigned char *file, unsigned int dwFileSize) {
@@ -390,6 +426,8 @@ int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 			return ScrReadNscr(nscr, file, dwFileSize);
 		case NSCR_TYPE_NC:
 			return ScrReadNsc(nscr, file, dwFileSize);
+		case NSCR_TYPE_IC:
+			return ScrReadIsc(nscr, file, dwFileSize);
 		case NSCR_TYPE_AC:
 			return ScrReadAsc(nscr, file, dwFileSize);
 		case NSCR_TYPE_HUDSON:
@@ -565,7 +603,7 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	return 0;
 }
 
-int ScrWriteAsc(NSCR *nscr, BSTREAM *stream) {
+static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
 	bstreamWrite(stream, nscr->data, nscr->dataSize);
 
 	unsigned char clrfFooter[] = { 'C', 'L', 'R', 'F', 0, 0, 0, 0 };
@@ -573,18 +611,27 @@ int ScrWriteAsc(NSCR *nscr, BSTREAM *stream) {
 	unsigned char cmntFooter[] = { 'C', 'M', 'N', 'T', 0, 0, 0, 0, 1, 0 };
 	unsigned char clrcFooter[] = { 'C', 'L', 'R', 'C', 2, 0, 0, 0, 0, 0 };
 	unsigned char modeFooter[] = { 'M', 'O', 'D', 'E', 4, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char sizeFooter[] = { 'S', 'I', 'Z', 'E', 4, 0, 0, 0, 0, 0, 0, 0 };
 	unsigned char verFooter[] = { 'V', 'E', 'R', ' ', 0, 0, 0, 0 };
 	unsigned char endFooter[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 0 };
 
 	int linkLen = (nscr->link == NULL) ? 0 : strlen(nscr->link);
 	int commentLen = (nscr->comment == NULL) ? 0 : strlen(nscr->comment);
 
-	char *ver = "IS-ASC03";
+	char *ver = "";
+	switch (nscr->header.format) {
+		case NSCR_TYPE_AC:
+			ver = "IS-ASC03"; break;
+		case NSCR_TYPE_IC:
+			ver = "IS-ISC01"; break;
+	}
 
 	*(uint32_t *) (clrfFooter + 0x4) = (nscr->dataSize + 15) / 16;
 	*(uint32_t *) (linkFooter + 0x4) = linkLen;
 	*(uint32_t *) (cmntFooter + 0x4) = commentLen + 2;
 	*(uint16_t *) (clrcFooter + 0x8) = nscr->clearValue;
+	*(uint16_t *) (sizeFooter + 0x8) = nscr->nWidth / 8;
+	*(uint16_t *) (sizeFooter + 0xA) = nscr->nHeight / 8;
 	cmntFooter[9] = commentLen;
 	modeFooter[0x8] = nscr->nWidth / 8;
 	modeFooter[0x9] = nscr->nHeight / 8;
@@ -602,12 +649,29 @@ int ScrWriteAsc(NSCR *nscr, BSTREAM *stream) {
 	bstreamWrite(stream, cmntFooter, sizeof(cmntFooter));
 	bstreamWrite(stream, nscr->comment, commentLen);
 	bstreamWrite(stream, clrcFooter, sizeof(clrcFooter));
-	bstreamWrite(stream, modeFooter, sizeof(modeFooter));
+	if (nscr->header.format == NSCR_TYPE_AC) {
+		//ASC: MODE footer contains the size
+		bstreamWrite(stream, modeFooter, sizeof(modeFooter));
+	} else if (nscr->header.format == NSCR_TYPE_IC) {
+		//ISC: MODE footer does not contain the size, has separate SIZE footer
+		unsigned char iscModeFooter[] = { 'M', 'O', 'D', 'E', 2, 0, 0, 0, 0, 0 };
+		iscModeFooter[0x8] = (nscr->fmt == SCREENFORMAT_AFFINE) ? 1 : 0;
+		bstreamWrite(stream, iscModeFooter, sizeof(iscModeFooter));
+		bstreamWrite(stream, sizeFooter, sizeof(sizeFooter));
+	}
 	bstreamWrite(stream, verFooter, sizeof(verFooter));
 	bstreamWrite(stream, ver, strlen(ver));
 	bstreamWrite(stream, endFooter, sizeof(endFooter));
 
 	return 0;
+}
+
+int ScrWriteAsc(NSCR *nscr, BSTREAM *stream) {
+	return ScriIsCommonWrite(nscr, stream);
+}
+
+int ScrWriteIsc(NSCR *nscr, BSTREAM *stream) {
+	return ScriIsCommonWrite(nscr, stream);
 }
 
 int ScrWriteHudson(NSCR *nscr, BSTREAM *stream) {
@@ -648,6 +712,8 @@ int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 			return ScrWriteNsc(nscr, stream);
 		case NSCR_TYPE_AC:
 			return ScrWriteAsc(nscr, stream);
+		case NSCR_TYPE_IC:
+			return ScrWriteIsc(nscr, stream);
 		case NSCR_TYPE_HUDSON:
 		case NSCR_TYPE_HUDSON2:
 			return ScrWriteHudson(nscr, stream);
