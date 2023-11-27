@@ -3,6 +3,7 @@
 
 #include "ui.h"
 #include "color.h"
+#include "filecommon.h"
 
 #define g_useDarkTheme 0
 
@@ -161,6 +162,11 @@ void EnumAllEditors(HWND hWndMain, int type, BOOL (*pfn) (HWND, void *), void *p
 // of 0 to retrieve only the editor count.
 //
 int GetAllEditors(HWND hWndMain, int type, HWND *editors, int bufferSize);
+
+//
+// Gets the editor associated with an object by its pointer. 
+//
+HWND GetEditorFromObject(HWND hWndMain, OBJECT_HEADER *obj);
 
 
 //common viewer window messages

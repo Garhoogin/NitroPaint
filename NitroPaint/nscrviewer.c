@@ -711,7 +711,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_DESTROY:
 		{
 			if (data->hWndTileEditor) DestroyWindow(data->hWndTileEditor);
-			ObjFree((OBJECT_HEADER *) &data->nscr);
+			ObjFree(&data->nscr.header);
 			break;
 		}
 		case WM_LBUTTONDOWN:

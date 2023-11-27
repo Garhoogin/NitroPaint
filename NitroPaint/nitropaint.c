@@ -794,7 +794,7 @@ void InvalidateAllEditors(HWND hWndMain, int type) {
 BOOL CALLBACK EnumAllEditorsProc(HWND hWnd, LPARAM lParam) {
 	struct { BOOL (*pfn) (HWND, void *); void *param; int type; } *data = (void *) lParam;
 	int type = GetEditorType(hWnd);
-	if (type == data->type || (type != FILE_TYPE_INVALID && data->type == FILE_TYPE_INVALID)) {
+	if ((type == data->type && type != FILE_TYPE_INVALID) || (type != FILE_TYPE_INVALID && data->type == FILE_TYPE_INVALID)) {
 		return data->pfn(hWnd, data->param);
 	}
 	return TRUE;
@@ -818,6 +818,95 @@ int GetAllEditors(HWND hWndMain, int type, HWND *editors, int bufferSize) {
 	struct { int nCounted; HWND *buffer; int bufferSize; } param = { 0, editors, bufferSize };
 	EnumAllEditors(hWndMain, type, GetAllEditorsProc, (void *) &param);
 	return param.nCounted;
+}
+
+static BOOL GetEditorFromObjectProc(HWND hWnd, void *param) {
+	struct { OBJECT_HEADER *obj; HWND hWnd; } *data = param;
+	EDITOR_DATA *ed = (EDITOR_DATA *) EditorGetData(hWnd);
+
+	if (&ed->file == data->obj) {
+		//found
+		data->hWnd = hWnd;
+		return FALSE;
+	}
+	return TRUE;
+}
+
+HWND GetEditorFromObject(HWND hWndMain, OBJECT_HEADER *obj) {
+	struct { OBJECT_HEADER *obj; HWND hWnd; } data = { obj, NULL };
+	EnumAllEditors(hWndMain, FILE_TYPE_INVALID, GetEditorFromObjectProc, &data);
+	return data.hWnd;
+}
+
+static BOOL CALLBACK CountWindowsProc(HWND hWnd, LPARAM lParam) {
+	(*(int *) lParam)++;
+	return TRUE;
+}
+
+static BOOL CALLBACK ListWindowsProc(HWND hWnd, LPARAM lParam) {
+	HWND **ppos = (HWND **) lParam;
+	**ppos = hWnd;
+	(*ppos)++;
+	return TRUE;
+}
+
+static int SortWindowsComputeOrder(int type) {
+	switch (type) {
+		case FILE_TYPE_INVALID:
+			return 0;
+		case FILE_TYPE_PALETTE:
+			return 1;
+		case FILE_TYPE_CHAR:
+			return 2;
+		case FILE_TYPE_SCREEN:
+			return 3;
+		case FILE_TYPE_CELL:
+			return 4;
+		case FILE_TYPE_NANR:
+			return 5;
+		case FILE_TYPE_NMCR:
+			return 6;
+		case FILE_TYPE_NMAR:
+			return 7;
+		case FILE_TYPE_TEXTURE:
+			return 8;
+		case FILE_TYPE_NSBTX:
+			return 9;
+	}
+	return 0;
+}
+
+static int SortWindowsProc(const void *p1, const void *p2) {
+	HWND h1 = *(HWND *) p1;
+	HWND h2 = *(HWND *) p2;
+	int type1 = GetEditorType(h1);
+	int type2 = GetEditorType(h2);
+	
+	if (type1 == type2) return 0;
+	return SortWindowsComputeOrder(type1) - SortWindowsComputeOrder(type2);
+}
+
+void EnumChildWindowsInHierarchy(HWND hWnd, WNDENUMPROC lpEnumFunc, LPARAM lParam) {
+	//count windows
+	int nChildren = 0;
+	EnumChildWindows(hWnd, CountWindowsProc, (LPARAM) &nChildren);
+
+	//get window list
+	HWND *list = (HWND *) calloc(nChildren, sizeof(HWND));
+	HWND *pos = list;
+	EnumChildWindows(hWnd, ListWindowsProc, (LPARAM) &pos);
+
+	//sort by hierachical status (invalids first, then pal->chr->scr->cel->anm, tex->texarc)
+	qsort(list, nChildren, sizeof(HWND), SortWindowsProc);
+
+	//call proc for each
+	for (int i = 0; i < nChildren; i++) {
+		BOOL b = lpEnumFunc(list[i], lParam);
+		if (!b) break;
+	}
+
+	//free
+	free(list);
 }
 
 BOOL SetNscrEditorTransparentProc(HWND hWnd, void *param) {
@@ -1003,7 +1092,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_FILE_SAVEALL:
 					{
 						HWND hWndMdi = data->hWndMdi;
-						EnumChildWindows(hWndMdi, SaveAllProc, (LPARAM) hWndMdi);
+						EnumChildWindowsInHierarchy(hWndMdi, SaveAllProc, (LPARAM) hWndMdi);
 						break;
 					}
 					case ID_FILE_CLOSEALL:
@@ -1347,7 +1436,15 @@ void nscrCreateCallback(void *data) {
 	if (nitroPaintStruct->hWndNclrViewer) DestroyChild(nitroPaintStruct->hWndNclrViewer);
 	nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, &createData->nclr);
 	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->ncgr);
-	CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
+	HWND hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
+
+	NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(nitroPaintStruct->hWndNclrViewer))->nclr;
+	NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(nitroPaintStruct->hWndNcgrViewer))->ncgr;
+	NSCR *nscr = &((NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer))->nscr;
+
+	//link data
+	ObjLinkObjects(&nclr->header, &ncgr->header);
+	ObjLinkObjects(&ncgr->header, &nscr->header);
 
 	free(createData->bbits);
 	free(data);

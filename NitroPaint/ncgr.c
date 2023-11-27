@@ -981,3 +981,13 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 int ChrWriteFile(NCGR *ncgr, LPCWSTR name) {
 	return ObjWriteFile(name, (OBJECT_HEADER *) ncgr, (OBJECT_WRITER) ChrWrite);
 }
+
+void CharSetLink(NCGR *ncgr, const wchar_t *link) {
+	if (ncgr->link != NULL) free(ncgr->link);
+
+	int len = wcslen(link);
+	ncgr->link = (char *) calloc(len + 1, 1);
+	for (int i = 0; i < len; i++) {
+		ncgr->link[i] = (char) link[i];
+	}
+}

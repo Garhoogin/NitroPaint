@@ -159,3 +159,8 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream);
 // Write character graphics to a file.
 //
 int ChrWriteFile(NCGR *ncgr, LPCWSTR name);
+
+//
+// Set a character object's linked file.
+//
+void CharSetLink(NCGR *ncgr, const wchar_t *name);

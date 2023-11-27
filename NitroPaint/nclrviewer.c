@@ -1056,7 +1056,18 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
 							SendMessage(hWnd, NV_PICKFILE, 0, 0);
 						}
-						if (data->szOpenFile[0] != L'\0') PalWriteFile(&data->nclr, data->szOpenFile);;
+						if (data->szOpenFile[0] != L'\0') {
+							PalWriteFile(&data->nclr, data->szOpenFile);
+
+							//update link of any character graphics pointing here
+							for (int i = 0; i < data->nclr.header.link.nFrom; i++) {
+								OBJECT_HEADER *obj = data->nclr.header.link.from[i];
+								if (obj->type != FILE_TYPE_CHAR) continue;
+
+								NCGR *ncgr = (NCGR *) obj;
+								CharSetLink(ncgr, ObjGetFileNameFromPath(data->szOpenFile));
+							}
+						}
 						break;
 					}
 					case ID_FILE_EXPORT:
@@ -1172,7 +1183,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_DESTROY:
 		{
-			ObjFree((OBJECT_HEADER *) &data->nclr);
+			ObjFree(&data->nclr.header);
 			if (data->nclr.idxTable != NULL) free(data->nclr.idxTable);
 
 			HWND hWndMain = getMainWindow(hWnd);

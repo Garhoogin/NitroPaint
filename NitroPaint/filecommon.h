@@ -17,12 +17,19 @@
 #define FILE_TYPE_NMAR       12
 #define FILE_TYPE_TDS        13
 
+typedef struct ObjLink_ {
+	int nFrom;
+	struct OBJECT_HEADER_ *to;
+	struct OBJECT_HEADER_ **from;
+} ObjLink;
+
 typedef struct OBJECT_HEADER_ {
 	int size;
 	int type;
 	int format;
 	int compression;
 	void (*dispose) (struct OBJECT_HEADER_ *);
+	ObjLink link;
 } OBJECT_HEADER;
 
 typedef int (*OBJECT_READER) (OBJECT_HEADER *object, char *buffer, int size);
@@ -31,6 +38,11 @@ typedef int (*OBJECT_WRITER) (OBJECT_HEADER *object, BSTREAM *stream);
 extern LPCWSTR g_ObjCompressionNames[];
 
 LPCWSTR *ObjGetFormatNamesByType(int type);
+
+//
+// Get a file name from a file path.
+//
+LPWSTR ObjGetFileNameFromPath(LPCWSTR path);
 
 //
 // Identify the type of a file based on its bytes and file name. File name is
@@ -74,3 +86,13 @@ int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);
 // Writes a file to the disk using a provided writer function.
 //
 int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer);
+
+//
+// Link an object to another in a directed way.
+//
+void ObjLinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from);
+
+//
+// Unlink an object from another.
+//
+void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from);

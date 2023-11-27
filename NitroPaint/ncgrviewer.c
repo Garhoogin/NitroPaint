@@ -432,7 +432,22 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								free(path);
 							} else break;
 						}
+
 						ChrWriteFile(&data->ncgr, data->szOpenFile);
+
+						//update link of any screens and cells pointing here
+						for (int i = 0; i < data->ncgr.header.link.nFrom; i++) {
+							OBJECT_HEADER *obj = data->ncgr.header.link.from[i];
+							if (obj->type != FILE_TYPE_SCREEN && obj->type != FILE_TYPE_CELL) continue;
+
+							if (obj->type == FILE_TYPE_SCREEN) {
+								NSCR *nscr = (NSCR *) obj;
+								ScrSetLink(nscr, ObjGetFileNameFromPath(data->szOpenFile));
+							} else if (obj->type == FILE_TYPE_CELL) {
+								//NCER *ncer = (NCER *) obj;
+
+							}
+						}
 						break;
 					}
 					case ID_FILE_EXPORT:
@@ -523,7 +538,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_DESTROY:
 		{
-			ObjFree((OBJECT_HEADER *) &data->ncgr);
+			ObjFree(&data->ncgr.header);
 			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 			nitroPaintStruct->hWndNcgrViewer = NULL;

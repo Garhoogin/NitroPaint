@@ -74,6 +74,16 @@ static int ObjiPathEndsWithOneOf(LPCWSTR str, LPCWSTR *endings) {
 	return 0;
 }
 
+LPWSTR ObjGetFileNameFromPath(LPCWSTR path) {
+	LPWSTR lastF = wcsrchr(path, L'/');
+	LPWSTR lastB = wcsrchr(path, L'\\');
+	if (lastF == NULL && lastB != NULL) return lastB + 1;
+	if (lastB == NULL && lastF != NULL) return lastF + 1;
+	if (lastF == NULL && lastB == NULL) return path;
+	if (lastF > lastB) return lastF + 1;
+	return lastB + 1;
+}
+
 LPCWSTR *ObjGetFormatNamesByType(int type) {
 	switch (type) {
 		case FILE_TYPE_PALETTE:
@@ -98,6 +108,8 @@ void ObjInit(OBJECT_HEADER *header, int type, int format) {
 	header->format = format;
 	header->compression = COMPRESSION_NONE;
 	header->size = size;
+	header->link.to = NULL;
+	header->link.from = NULL;
 }
 
 int ObjiScreenCharComparator(const void *v1, const void *v2) {
@@ -406,7 +418,19 @@ void ObjCompressFile(LPWSTR name, int compression) {
 }
 
 void ObjFree(OBJECT_HEADER *header) {
-	if(header->dispose != NULL) header->dispose(header);
+	//clean up object outgoing links
+	OBJECT_HEADER *to = header->link.to;
+	if (to != NULL) {
+		ObjUnlinkObjects(to, header);
+	}
+
+	//clean up object incoming links
+	while (header->link.nFrom > 0) {
+		ObjUnlinkObjects(header, header->link.from[0]);
+	}
+
+	//free object resources
+	if (header->dispose != NULL) header->dispose(header);
 }
 
 void *ObjReadWholeFile(LPCWSTR name, int *size) {
@@ -468,4 +492,40 @@ int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
 
 	bstreamFree(&stream);
 	return status;
+}
+
+void ObjLinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
+	//if the from object is already linking an object, unlink it
+	if (from->link.to != NULL) {
+		ObjUnlinkObjects(to, from);
+	}
+
+	//link both ways
+	to->link.nFrom++;
+	to->link.from = (OBJECT_HEADER **) realloc(to->link.from, to->link.nFrom * sizeof(OBJECT_HEADER *));
+	to->link.from[to->link.nFrom - 1] = from;
+	from->link.to = to;
+}
+
+void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
+	//if not linked in this direction...
+	if (from->link.to != to) return;
+
+	from->link.to = NULL;
+
+	//scan for link in to object
+	int fromIndex = -1;
+	OBJECT_HEADER **fromObj = to->link.from;
+	for (int i = 0; i < to->link.nFrom; i++) {
+		if (fromObj[i] == from) {
+			fromIndex = i;
+			break;
+		}
+	}
+	if (fromIndex == -1) return;
+
+	//fill over
+	memmove(to->link.from + fromIndex, to->link.from + fromIndex + 1, (to->link.nFrom - fromIndex - 1) * sizeof(OBJECT_HEADER *));
+	to->link.nFrom--;
+	to->link.from = (OBJECT_HEADER **) realloc(to->link.from, to->link.nFrom * sizeof(OBJECT_HEADER *));
 }

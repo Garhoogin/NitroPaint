@@ -615,7 +615,8 @@ static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
 	unsigned char verFooter[] = { 'V', 'E', 'R', ' ', 0, 0, 0, 0 };
 	unsigned char endFooter[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 0 };
 
-	int linkLen = (nscr->link == NULL) ? 0 : strlen(nscr->link);
+	//expects null terminated for ISC/ASC LINK specifically (not the others for some reason)
+	int linkLen = (nscr->link == NULL) ? 0 : (strlen(nscr->link) + 1);
 	int commentLen = (nscr->comment == NULL) ? 0 : strlen(nscr->comment);
 
 	char *ver = "";
@@ -728,4 +729,14 @@ int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 
 int ScrWriteFile(NSCR *nscr, LPCWSTR name) {
 	return ObjWriteFile(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) ScrWrite);
+}
+
+void ScrSetLink(NSCR *nscr, const wchar_t *link) {
+	if (nscr->link != NULL) free(nscr->link);
+
+	int len = wcslen(link);
+	nscr->link = (char *) calloc(len + 1, 1);
+	for (int i = 0; i < len; i++) {
+		nscr->link[i] = (char) link[i];
+	}
 }
