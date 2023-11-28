@@ -281,6 +281,15 @@ void EditorSetData(HWND hWnd, void *data) {
 	SetWindowLongPtr(hWnd, EDITOR_WD_DATA, (LONG_PTR) data);
 }
 
+OBJECT_HEADER *EditorGetObject(HWND hWnd) {
+	EDITOR_DATA *data = EditorGetData(hWnd);
+	if (data == NULL) return NULL;
+
+	OBJECT_HEADER *obj = &data->file;
+	if (!ObjIsValid(obj)) return NULL;
+	return obj;
+}
+
 HWND EditorCreate(LPCWSTR lpszClassName, int x, int y, int width, int height, HWND hWndParent) {
 	//create
 	DWORD dwExStyle = WS_EX_CLIENTEDGE | WS_EX_MDICHILD;

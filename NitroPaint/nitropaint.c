@@ -1438,13 +1438,13 @@ void nscrCreateCallback(void *data) {
 	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->ncgr);
 	HWND hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
 
-	NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(nitroPaintStruct->hWndNclrViewer))->nclr;
-	NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(nitroPaintStruct->hWndNcgrViewer))->ncgr;
-	NSCR *nscr = &((NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer))->nscr;
+	OBJECT_HEADER *palobj = EditorGetObject(nitroPaintStruct->hWndNclrViewer);
+	OBJECT_HEADER *chrobj = EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
+	OBJECT_HEADER *scrobj = EditorGetObject(hWndNscrViewer);
 
 	//link data
-	ObjLinkObjects(&nclr->header, &ncgr->header);
-	ObjLinkObjects(&ncgr->header, &nscr->header);
+	ObjLinkObjects(palobj, chrobj);
+	ObjLinkObjects(chrobj, scrobj);
 
 	free(createData->bbits);
 	free(data);
@@ -2110,7 +2110,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				L"Char 2D", L"Char 1D 32K", L"Char 1D 64K", L"Char 1D 128K", L"Char 1D 256K"
 			};
 			LPCWSTR formats[] = {
-				L"NITRO-System", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed"
+				L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed"
 			};
 
 			CreateStatic(hWnd, L"8 bit:", 10, 10, 50, 22);
@@ -2118,8 +2118,8 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateStatic(hWnd, L"Mapping:", 10, 42, 50, 22);
 			data->hWndMapping = CreateCombobox(hWnd, mappings, sizeof(mappings) / sizeof(*mappings), 70, 42, 200, 100, 1);
 			CreateStatic(hWnd, L"Format:", 10, 74, 50, 22);
-			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(*formats), 70, 74, 100, 100, 0);
-			data->hWndCreate = CreateButton(hWnd, L"Create", 70, 106, 100, 22, TRUE);
+			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(*formats), 70, 74, 150, 100, 0);
+			data->hWndCreate = CreateButton(hWnd, L"Create", 70, 106, 150, 22, TRUE);
 			SetWindowSize(hWnd, 280, 138);
 			SetGUIFont(hWnd);
 			break;
@@ -2143,9 +2143,9 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					mapping = mappings[mapping];
 					int format = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0);
 
-					int charFormats[] = { NCGR_TYPE_NCGR, NCGR_TYPE_HUDSON, NCGR_TYPE_HUDSON2, NCGR_TYPE_BIN, NCGR_TYPE_BIN };
-					int palFormats[] = { NCLR_TYPE_NCLR, NCLR_TYPE_HUDSON, NCLR_TYPE_HUDSON, NCLR_TYPE_BIN, NCLR_TYPE_BIN };
-					int compression = format == 4 ? COMPRESSION_LZ77 : COMPRESSION_NONE;
+					int charFormats[] = { NCGR_TYPE_NCGR, NCGR_TYPE_NC, NCGR_TYPE_IC, NCGR_TYPE_AC, NCGR_TYPE_HUDSON, NCGR_TYPE_HUDSON2, NCGR_TYPE_BIN, NCGR_TYPE_BIN };
+					int palFormats[] = { NCLR_TYPE_NCLR, NCLR_TYPE_NC, NCLR_TYPE_BIN, NCLR_TYPE_BIN, NCLR_TYPE_HUDSON, NCLR_TYPE_HUDSON, NCLR_TYPE_BIN, NCLR_TYPE_BIN };
+					int compression = format == 7 ? COMPRESSION_LZ77 : COMPRESSION_NONE;
 					int charFormat = charFormats[format];
 					int palFormat = palFormats[format];
 
@@ -2153,6 +2153,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					PalInit(&nclr, palFormat);
 					nclr.colors = (COLOR *) calloc(256, sizeof(COLOR));
 					nclr.nColors = 256;
+					nclr.nPalettes = (nBits == 8) ? 1 : 16;
 					nclr.totalSize = nclr.nColors * 2;
 					nclr.nBits = nBits;
 					
@@ -2176,6 +2177,11 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					nitroPaintStruct->hWndNcgrViewer = NULL;
 					nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, &nclr);
 					nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, hWndMdi, &ncgr);
+
+					//link (objects get shallow copied by the editor)
+					OBJECT_HEADER *palobj = EditorGetObject(nitroPaintStruct->hWndNclrViewer);
+					OBJECT_HEADER *chrobj = EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
+					ObjLinkObjects(palobj, chrobj);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}

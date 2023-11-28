@@ -53,6 +53,8 @@ void EditorSetFile(HWND hWnd, LPCWSTR file);
 
 void *EditorGetData(HWND hWnd);
 
+OBJECT_HEADER *EditorGetObject(HWND hWnd);
+
 void EditorSetData(HWND hWnd, void *data);
 
 HWND EditorCreate(LPCWSTR lpszClassName, int x, int y, int width, int height, HWND hWndParent);

@@ -79,7 +79,7 @@ LPWSTR ObjGetFileNameFromPath(LPCWSTR path) {
 	LPWSTR lastB = wcsrchr(path, L'\\');
 	if (lastF == NULL && lastB != NULL) return lastB + 1;
 	if (lastB == NULL && lastF != NULL) return lastF + 1;
-	if (lastF == NULL && lastB == NULL) return path;
+	if (lastF == NULL && lastB == NULL) return (LPWSTR) path;
 	if (lastF > lastB) return lastF + 1;
 	return lastB + 1;
 }
