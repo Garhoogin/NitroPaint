@@ -73,6 +73,11 @@ void ObjCompressFile(LPWSTR name, int compression);
 void ObjFree(OBJECT_HEADER *header);
 
 //
+// Determines the validity of an object.
+//
+int ObjIsValid(OBJECT_HEADER *header);
+
+//
 // Read an entire file into memory from path. No decompression is performed.
 //
 void *ObjReadWholeFile(LPCWSTR name, int *size);

@@ -1183,9 +1183,6 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_DESTROY:
 		{
-			ObjFree(&data->nclr.header);
-			if (data->nclr.idxTable != NULL) free(data->nclr.idxTable);
-
 			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 			nitroPaintStruct->hWndNclrViewer = NULL;

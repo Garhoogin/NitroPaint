@@ -920,7 +920,6 @@ LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		{
 			DWORD *frameBuffer = data->frameBuffer;
 			data->frameBuffer = NULL;
-			AnmFree(&data->nanr);
 			free(frameBuffer);
 			free(data);
 			destroyWindowAnimationTick(hWnd);

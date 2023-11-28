@@ -622,30 +622,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			MoveWindow(data->hWndAddButton, 250, height - 22, 100, 22, TRUE);
 			break;
 		}
-		case WM_MDIACTIVATE:
-		{
-			HWND hWndMain = getMainWindow(hWnd);
-			if ((HWND) lParam == hWnd) {
-				if (data->showBorders)
-					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
-				else
-					CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
-				int checkBox = ID_ZOOM_100;
-				if (data->scale == 2) {
-					checkBox = ID_ZOOM_200;
-				} else if (data->scale == 4) {
-					checkBox = ID_ZOOM_400;
-				} else if (data->scale == 8) {
-					checkBox = ID_ZOOM_800;
-				}
-				int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
-				for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-					int id = ids[i];
-					CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-				}
-			}
-			break;
-		}
 	}
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }

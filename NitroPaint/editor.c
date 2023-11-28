@@ -185,8 +185,9 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 		//WM_DESTROY should free data
 		if (msg == WM_DESTROY) {
-			void *data = (void *) GetWindowLongPtr(hWnd, EDITOR_WD_DATA);
+			EDITOR_DATA *data = (EDITOR_DATA *) GetWindowLongPtr(hWnd, EDITOR_WD_DATA);
 			if (data != NULL) {
+				if (ObjIsValid(&data->file)) ObjFree(&data->file);
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
 				free(data);
 			}

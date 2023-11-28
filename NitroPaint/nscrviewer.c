@@ -708,12 +708,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			break;
 		}
-		case WM_DESTROY:
-		{
-			if (data->hWndTileEditor) DestroyWindow(data->hWndTileEditor);
-			ObjFree(&data->nscr.header);
-			break;
-		}
 		case WM_LBUTTONDOWN:
 		{
 			data->selStartX = -1;

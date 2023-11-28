@@ -108,8 +108,13 @@ void ObjInit(OBJECT_HEADER *header, int type, int format) {
 	header->format = format;
 	header->compression = COMPRESSION_NONE;
 	header->size = size;
+	header->link.nFrom = 0;
 	header->link.to = NULL;
 	header->link.from = NULL;
+}
+
+int ObjIsValid(OBJECT_HEADER *obj) {
+	return obj->size != 0;
 }
 
 int ObjiScreenCharComparator(const void *v1, const void *v2) {
@@ -431,6 +436,8 @@ void ObjFree(OBJECT_HEADER *header) {
 
 	//free object resources
 	if (header->dispose != NULL) header->dispose(header);
+
+	memset(header, 0, header->size);
 }
 
 void *ObjReadWholeFile(LPCWSTR name, int *size) {
