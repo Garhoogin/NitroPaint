@@ -40,6 +40,7 @@ typedef struct NCGR_{
 	int mappingMode;
 	int bitmap;
 	int nBits;
+	int extPalette;     //whether character is using an extended palette
 	char *comment;		//null terminated
 	char *link;			//linked NCL file, null terminated
 	unsigned char *attr; //unused by most things

@@ -358,6 +358,7 @@ int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size,
 			} else if (type == NCGR_TYPE_IC) {
 				//6: 8bpp text, 7: 4bpp text, 8: 8bpp ext
 				depth = (mode == 6 || mode == 8) ? 8 : 4;
+				ncgr->extPalette = (mode == 8);
 			}
 		} else if (memcmp(section, "LINK", 4) == 0) {
 			//LINK
@@ -478,7 +479,9 @@ int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	const unsigned char *sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'CMNT');
 	if (sCmnt == NULL) sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'TNMC');
 	
-	ncgr->nBits = *(uint32_t *) (sChar + 0x10) == 0 ? 4 : 8;
+	int paletteType = *(uint32_t *) (sChar + 0x10);
+	ncgr->nBits = (paletteType == 0) ? 4 : 8;
+	ncgr->extPalette = (paletteType == 2);
 	ncgr->bitmap = 0;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->tilesX = *(uint32_t *) (sChar + 0x8);
@@ -796,7 +799,7 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	*(uint32_t *) (charHeader + 0x4) = charSize;
 	*(uint32_t *) (charHeader + 0x8) = ncgr->tilesX;
 	*(uint32_t *) (charHeader + 0xC) = ncgr->tilesY;
-	*(uint32_t *) (charHeader + 0x10) = ncgr->nBits == 8;
+	*(uint32_t *) (charHeader + 0x10) = (ncgr->extPalette && ncgr->nBits == 8) ? 2 : (ncgr->nBits == 8);
 	*(uint32_t *) (attrHeader + 0x4) = attrSize;
 	*(uint32_t *) (attrHeader + 0x8) = ncgr->tilesX;
 	*(uint32_t *) (attrHeader + 0xC) = ncgr->tilesY;
@@ -874,7 +877,8 @@ static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
 	} else if (ncgr->header.format == NCGR_TYPE_IC) {
 		//6: text 8bpp, 7: text 4bpp, 8: ext 8bpp
 		if (ncgr->nBits == 4) mode = 7;
-		else mode = 6;
+		else if (!ncgr->extPalette) mode = 6;
+		else mode = 8;
 	}
 
 	*(uint32_t *) (linkFooter + 4) = linkLen + 2;

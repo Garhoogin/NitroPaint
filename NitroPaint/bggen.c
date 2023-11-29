@@ -787,6 +787,7 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 
 	int nCharsFile = ((nChars + alignment - 1) / alignment) * alignment;
 	ncgr->nBits = nBits;
+	ncgr->extPalette = (nBits == 4) ? 0 : ((nPalettes > 1 || paletteBase > 0) ? 1 : 0);
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nTiles = nCharsFile;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
@@ -817,7 +818,7 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 
 	nscr->nWidth = width;
 	nscr->nHeight = height;
-	nscr->fmt = nBits == 4 ? SCREENFORMAT_TEXT : (nPalettes == 1 ? SCREENFORMAT_TEXT : SCREENFORMAT_AFFINEEXT);
+	nscr->fmt = nBits == 4 ? SCREENFORMAT_TEXT : ((nPalettes == 1 && paletteBase == 0) ? SCREENFORMAT_TEXT : SCREENFORMAT_AFFINEEXT);
 	nscr->dataSize = nTiles * 2;
 	nscr->data = (uint16_t *) malloc(nscr->dataSize);
 	int nHighestIndex = 0;
