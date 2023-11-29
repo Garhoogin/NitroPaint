@@ -2160,7 +2160,6 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					NCGR ncgr;
 					ChrInit(&ncgr, charFormat);
 					ncgr.header.compression = compression;
-					ncgr.tileWidth = 8;
 					ncgr.nBits = nBits;
 					ncgr.mappingMode = mapping;
 					ncgr.tilesX = 32;

@@ -302,7 +302,6 @@ int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 
 	ChrInit(ncgr, type);
 	ncgr->nTiles = nCharacters;
-	ncgr->tileWidth = 8;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nBits = 8;
 	ncgr->tilesX = -1;
@@ -384,7 +383,6 @@ int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size,
 	ncgr->tilesX = width;
 	ncgr->tilesY = height;
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
-	ncgr->tileWidth = 8;
 	ncgr->nBits = depth;
 	ncgr->bitmap = 0;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
@@ -415,7 +413,6 @@ int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ncgr->nBits = 4;
 	ncgr->bitmap = 0;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-	ncgr->tileWidth = 8;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
 
@@ -425,7 +422,6 @@ int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 
 int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_GHOSTTRICK);
-	ncgr->tileWidth = 8;
 	ncgr->nBits = 4;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_128K;
 
@@ -490,7 +486,6 @@ int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ncgr->tilesX = *(uint32_t *) (sChar + 0x8);
 	ncgr->tilesY = *(uint32_t *) (sChar + 0xC);
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
-	ncgr->tileWidth = 8;
 
 	ChrReadChars(ncgr, sChar + 0x14);
 
@@ -541,7 +536,6 @@ int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ncgr->nBits = depth;
 	ncgr->bitmap = 0;
 	ncgr->nTiles = tileCount;
-	ncgr->tileWidth = 8;
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
 	ncgr->mappingMode = mapping;

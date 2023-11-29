@@ -351,7 +351,6 @@ int combo2dReadBanner(COMBO2D *combo, char *buffer, int size) {
 	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
 	ChrInit(ncgr, FILE_TYPE_CHARACTER);
 	ncgr->nTiles = 16;
-	ncgr->tileWidth = 8;
 	ncgr->tilesX = 4;
 	ncgr->tilesY = 4;
 	ncgr->nBits = 4;
@@ -395,7 +394,6 @@ int combo2dReadMbb(COMBO2D *combo, char *buffer, int size) {
 	ncgr->nTiles = nChars;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-	ncgr->tileWidth = 8;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ChrReadChars(ncgr, buffer + chrofs);
 	combo2dLink(combo, &ncgr->header);

@@ -789,7 +789,6 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	ncgr->nBits = nBits;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nTiles = nCharsFile;
-	ncgr->tileWidth = 8;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
 	ncgr->tiles = (unsigned char **) calloc(nCharsFile, sizeof(unsigned char *));
