@@ -24,6 +24,7 @@ typedef struct {
 	HWND hWndExpand;
 	HWND hWnd;
 	HWND hWndExpandRowsInput;
+	HWND hWndExpandColsInput;
 	HWND hWndExpandButton;
 	HWND hWnd8bpp;
 } NCGRVIEWERDATA;

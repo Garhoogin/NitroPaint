@@ -117,6 +117,51 @@ void ncgrExportImage(NCGR *ncgr, NCLR *nclr, int paletteIndex, LPCWSTR path) {
 	free(pal);
 }
 
+static void NcgrEditorPopulateWidthField(HWND hWnd) {
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+
+	SendMessage(data->hWndWidthDropdown, CB_RESETCONTENT, 0, 0);
+	int nTiles = data->ncgr.nTiles;
+	int nStrings = 0;
+	WCHAR bf[16];
+
+	for (int i = 1; i <= nTiles; i++) {
+		if (nTiles % i) continue;
+		wsprintfW(bf, L"%d", i);
+		SendMessage(data->hWndWidthDropdown, CB_ADDSTRING, 0, (LPARAM) bf);
+		if (i == data->ncgr.tilesX) {
+			SendMessage(data->hWndWidthDropdown, CB_SETCURSEL, (WPARAM) nStrings, 0);
+		}
+		nStrings++;
+	}
+}
+
+static void NcgrEditorSetWidth(HWND hWnd, int width) {
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+
+	//update width
+	ChrSetWidth(&data->ncgr, width);
+	SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
+	InvalidateRect(hWnd, NULL, FALSE);
+}
+
+static void NcgrEditorSetDepth(HWND hWnd, int depth) {
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+
+	//set depth and update UI
+	ChrSetDepth(&data->ncgr, depth);
+	NcgrEditorPopulateWidthField(hWnd);
+	SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
+	InvalidateRect(hWnd, NULL, FALSE);
+
+	//update palette editor view
+	HWND hWndMain = getMainWindow(hWnd);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	if (nitroPaintStruct->hWndNclrViewer) {
+		InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
+	}
+}
+
 typedef struct CHARIMPORTDATA_ {
 	WCHAR path[MAX_PATH];
 	NCLR *nclr;
@@ -161,7 +206,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndPaletteDropdown = CreateCombobox(hWnd, NULL, 0, 0, 0, 200, 100, 0);
 			data->hWndWidthDropdown = CreateCombobox(hWnd, NULL, 0, 0, 0, 200, 100, 0);
 			data->hWndWidthLabel = CreateStatic(hWnd, L" Width:", 0, 0, 100, 21);
-			data->hWndExpand = CreateButton(hWnd, L"Extend", 0, 0, 100, 22, FALSE);
+			data->hWndExpand = CreateButton(hWnd, L"Resize", 0, 0, 100, 22, FALSE);
 			data->hWnd8bpp = CreateCheckbox(hWnd, L"8bpp", 0, 0, 100, 22, FALSE);
 
 			WCHAR bf[] = L"Palette 00";
@@ -199,18 +244,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SetWindowSize(hWnd, width, height);
 
 
-			int nTiles = data->ncgr.nTiles;
-			int nStrings = 0;
-			WCHAR bf[16];
-			for (int i = 1; i <= nTiles; i++) {
-				if (nTiles % i) continue;
-				wsprintfW(bf, L"%d", i);
-				SendMessage(data->hWndWidthDropdown, CB_ADDSTRING, 0, (LPARAM) bf);
-				if (i == data->ncgr.tilesX) {
-					SendMessage(data->hWndWidthDropdown, CB_SETCURSEL, (WPARAM) nStrings, 0);
-				}
-				nStrings++;
-			}
+			NcgrEditorPopulateWidthField(hWnd);
 			if (data->ncgr.nBits == 8) SendMessage(data->hWnd8bpp, BM_SETCHECK, 1, 0);
 
 			//guess a tile base for open NSCR (if any)
@@ -252,105 +286,17 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					int selected = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 					SendMessage(hWndControl, CB_GETLBTEXT, (WPARAM) selected, (LPARAM) text);
 					int width = _wtol(text);
-					ChrSetWidth(&data->ncgr, width);
-
-					RECT rcClient;
-					GetClientRect(hWnd, &rcClient);
-
-					SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
-					InvalidateRect(hWnd, NULL, FALSE);
+					NcgrEditorSetWidth(hWnd, width);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndExpand) {
-					HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-					HWND h = CreateWindow(L"ExpandNcgrClass", L"Expand NCGR", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
+					HWND hWndMain = getMainWindow(hWnd);
+					HWND h = CreateWindow(L"ExpandNcgrClass", L"Resize Graphics", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
 										  CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
-					ShowWindow(h, SW_SHOW);
-					SetActiveWindow(h);
-					setStyle(hWndMain, TRUE, WS_DISABLED);
 					SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
+					DoModal(h);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWnd8bpp) {
 					int state = GetCheckboxChecked(hWndControl);
-					if (state) {
-						//convert 4bpp graphic to 8bpp
-
-						BYTE **tiles2 = (BYTE **) calloc(data->ncgr.nTiles / 2, sizeof(BYTE **));
-						for (int i = 0; i < data->ncgr.nTiles / 2; i++) {
-							BYTE *tile1 = data->ncgr.tiles[i * 2];
-							BYTE *tile2 = data->ncgr.tiles[i * 2 + 1];
-							BYTE *dest = (BYTE *) calloc(64, 1);
-							tiles2[i] = dest;
-
-							for (int j = 0; j < 32; j++) {
-								dest[j] = tile1[j * 2] | (tile1[j * 2 + 1] << 4);
-							}
-							for (int j = 0; j < 32; j++) {
-								dest[j + 32] = tile2[j * 2] | (tile2[j * 2 + 1] << 4);
-							}
-						}
-						for (int i = 0; i < data->ncgr.nTiles; i++) {
-							free(data->ncgr.tiles[i]);
-						}
-						free(data->ncgr.tiles);
-						data->ncgr.tiles = tiles2;
-						
-						if ((data->ncgr.tilesX & 1) == 0) {
-							data->ncgr.tilesX /= 2;
-							data->ncgr.nTiles /= 2;
-						} else {
-							data->ncgr.nTiles /= 2;
-							data->ncgr.tilesX = ChrGuessWidth(data->ncgr.nTiles);
-							data->ncgr.tilesY = data->ncgr.nTiles / data->ncgr.tilesX;
-						}
-						data->ncgr.nBits = 8;
-					} else {
-						//covert 8bpp graphic to 4bpp
-
-						BYTE **tiles2 = (BYTE **) calloc(data->ncgr.nTiles * 2, sizeof(BYTE **));
-						for (int i = 0; i < data->ncgr.nTiles; i++) {
-							BYTE *tile1 = calloc(64, 1);
-							BYTE *tile2 = calloc(64, 1);
-							BYTE *src = data->ncgr.tiles[i];
-							tiles2[i * 2] = tile1;
-							tiles2[i * 2 + 1] = tile2;
-
-							for (int j = 0; j < 32; j++) {
-								tile1[j * 2] = src[j] & 0xF;
-								tile1[j * 2 + 1] = src[j] >> 4;
-							}
-							for (int j = 0; j < 32; j++) {
-								tile2[j * 2] = src[j + 32] & 0xF;
-								tile2[j * 2 + 1] = src[j + 32] >> 4;
-							}
-						}
-						for (int i = 0; i < data->ncgr.nTiles; i++) {
-							free(data->ncgr.tiles[i]);
-						}
-						free(data->ncgr.tiles);
-						data->ncgr.tiles = tiles2;
-						data->ncgr.tilesX *= 2;
-						data->ncgr.nTiles *= 2;
-						data->ncgr.nBits = 4;
-					}
-
-					SendMessage(data->hWndWidthDropdown, CB_RESETCONTENT, 0, 0);
-					int nTiles = data->ncgr.nTiles;
-					int nStrings = 0;
-					WCHAR bf[16];
-					for (int i = 1; i <= nTiles; i++) {
-						if (nTiles % i) continue;
-						wsprintfW(bf, L"%d", i);
-						SendMessage(data->hWndWidthDropdown, CB_ADDSTRING, 0, (LPARAM) bf);
-						if (i == data->ncgr.tilesX) {
-							SendMessage(data->hWndWidthDropdown, CB_SETCURSEL, (WPARAM) nStrings, 0);
-						}
-						nStrings++;
-					}
-
-					InvalidateRect(hWnd, NULL, FALSE);
-					HWND hWndMain = getMainWindow(hWnd);
-					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-					if (nitroPaintStruct->hWndNclrViewer) {
-						InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
-					}
+					int depth = (state) ? 8 : 4;
+					NcgrEditorSetDepth(hWnd, depth);
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -455,7 +401,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 						if (!location) break;
 
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND hWndMain = getMainWindow(hWnd);
 						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 						HWND hWndNcgrViewer = hWnd;
@@ -464,8 +410,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						NCLR *nclr = NULL;
 
 						if (hWndNclrViewer) {
-							NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(hWndNclrViewer);
-							nclr = &nclrViewerData->nclr;
+							nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
 						}
 						ncgr = &data->ncgr;
 
@@ -812,22 +757,17 @@ LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		{
 			SetWindowLongPtr(hWnd, 0, (LONG_PTR) lParam);
 			data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
-			WCHAR buffer[16];
-			wsprintfW(buffer, L"%d", data->ncgr.nTiles / data->ncgr.tilesX);
 
-			CreateStatic(hWnd, L"Rows:", 10, 10, 75, 22);
-			data->hWndExpandRowsInput = CreateEdit(hWnd, buffer, 90, 10, 75, 22, TRUE);
-			data->hWndExpandButton = CreateButton(hWnd, L"Set", 90, 37, 75, 22, TRUE);
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
-			SetWindowSize(hWnd, 175, 69);
+			CreateStatic(hWnd, L"Width:", 10, 10, 75, 22);
+			CreateStatic(hWnd, L"Height:", 10, 37, 75, 22);
+			data->hWndExpandColsInput = CreateEdit(hWnd, L"", 90, 10, 75, 22, TRUE);
+			data->hWndExpandRowsInput = CreateEdit(hWnd, L"", 90, 37, 75, 22, TRUE);
+			data->hWndExpandButton = CreateButton(hWnd, L"Set", 90, 64, 75, 22, TRUE);
+			SetEditNumber(data->hWndExpandRowsInput, data->ncgr.tilesY);
+			SetEditNumber(data->hWndExpandColsInput, data->ncgr.tilesX);
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 175, 96);
 			SetFocus(data->hWndExpandRowsInput);
-			break;
-		}
-		case WM_CLOSE:
-		{
-			HWND hWndMain = getMainWindow(data->hWnd);
-			setStyle(hWndMain, FALSE, WS_DISABLED);
-			SetActiveWindow(hWndMain);
 			break;
 		}
 		case WM_COMMAND:
@@ -835,23 +775,10 @@ LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			int notification = LOWORD(wParam);
 			HWND hWndControl = (HWND) lParam;
 			if (notification == BN_CLICKED && hWndControl == data->hWndExpandButton) {
-				int tilesX = data->ncgr.tilesX;
 				int nRows = GetEditNumber(data->hWndExpandRowsInput);
-				int nOldRows = data->ncgr.nTiles / tilesX;
-				if (nRows > nOldRows) {
-					BYTE **chars = data->ncgr.tiles;
-					data->ncgr.tiles = realloc(chars, nRows * tilesX * sizeof(BYTE *));
-					for (int i = 0; i < nRows * tilesX - nOldRows * tilesX; i++) {
-						data->ncgr.tiles[i + nOldRows * tilesX] = (BYTE *) calloc(64, 1);
-					}
-				} else if (nRows < nOldRows) {
-					for (int i = 0; i < nOldRows * tilesX - nRows * tilesX; i++) {
-						free(data->ncgr.tiles[i + nRows * tilesX]);
-					}
-					data->ncgr.tiles = realloc(data->ncgr.tiles, nRows * tilesX * sizeof(BYTE *));
-				}
-				data->ncgr.nTiles = nRows * tilesX;
-				data->ncgr.tilesY = nRows;
+				int nCols = GetEditNumber(data->hWndExpandColsInput);
+				ChrResize(&data->ncgr, nCols, nRows);
+
 				SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
 				InvalidateRect(data->hWnd, NULL, FALSE);
 

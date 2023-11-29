@@ -43,8 +43,6 @@ typedef struct NCGR_{
 	char *comment;		//null terminated
 	char *link;			//linked NCL file, null terminated
 	unsigned char *attr; //unused by most things
-	int attrWidth;		//width of ATTR
-	int attrHeight;		//height of ATTR
 	BYTE **tiles;
 	CHAR_SLICE *slices;       //for Ghost Trick files
 	int nSlices;              //for Ghost Trick files
@@ -163,3 +161,13 @@ int ChrWriteFile(NCGR *ncgr, LPCWSTR name);
 // Set a character object's linked file.
 //
 void CharSetLink(NCGR *ncgr, const wchar_t *name);
+
+//
+// Change the bit depth of character graphics.
+//
+void ChrSetDepth(NCGR *ncgr, int depth);
+
+//
+// Resize the grphics area of character graphics.
+//
+void ChrResize(NCGR *ncgr, int width, int height);

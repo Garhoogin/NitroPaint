@@ -390,8 +390,6 @@ int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size,
 	ChrReadGraphics(ncgr, buffer);
 
 	//attr
-	ncgr->attrWidth = width;
-	ncgr->attrHeight = height;
 	ncgr->attr = (unsigned char *) calloc(width * height, 1);
 	for (int i = 0; i < width * height; i++) {
 		ncgr->attr[i] = attr[i] & 0xF;
@@ -471,13 +469,13 @@ int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size
 int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_NC);
 
-	unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
+	const unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
 	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
-	unsigned char *sAttr = NnsG2dGetSectionByMagic(buffer, size, 'ATTR');
+	const unsigned char *sAttr = NnsG2dGetSectionByMagic(buffer, size, 'ATTR');
 	if (sAttr == NULL) sAttr = NnsG2dGetSectionByMagic(buffer, size, 'RTTA');
-	unsigned char *sLink = NnsG2dGetSectionByMagic(buffer, size, 'LINK');
+	const unsigned char *sLink = NnsG2dGetSectionByMagic(buffer, size, 'LINK');
 	if (sLink == NULL) sLink = NnsG2dGetSectionByMagic(buffer, size, 'KNIL');
-	unsigned char *sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'CMNT');
+	const unsigned char *sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'CMNT');
 	if (sCmnt == NULL) sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'TNMC');
 	
 	ncgr->nBits = *(uint32_t *) (sChar + 0x10) == 0 ? 4 : 8;
@@ -501,10 +499,15 @@ int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	}
 	if (sAttr != NULL) {
 		int attrSize = *(uint32_t *) (sAttr + 0x4) - 0x10;
-		ncgr->attrWidth = *(uint32_t *) (sAttr + 0x8);
-		ncgr->attrHeight = *(uint32_t *) (sAttr + 0xC);
-		ncgr->attr = (unsigned char *) calloc(attrSize, 1);
-		memcpy(ncgr->attr, sAttr + 0x10, attrSize);
+		int attrWidth = *(uint32_t *) (sAttr + 0x8);
+		int attrHeight = *(uint32_t *) (sAttr + 0xC);
+
+		ncgr->attr = (unsigned char *) calloc(ncgr->tilesX * ncgr->tilesY, 1);
+		for (int y = 0; y < ncgr->tilesY; y++) {
+			const unsigned char *srcRow = sAttr + 0x10 + y * attrWidth;
+			unsigned char *dstRow = ncgr->attr + y * ncgr->tilesX;
+			memcpy(dstRow, srcRow, min(attrWidth, ncgr->tilesX));
+		}
 	}
 
 	return 0;
@@ -786,7 +789,7 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	unsigned char cmntHeader[] = { 'C', 'M', 'N', 'T', 0x08, 0, 0, 0 };
 
 	int charSize = ncgr->nTiles * ncgr->nBits * 8 + sizeof(charHeader);
-	int attrSize = ncgr->attrWidth * ncgr->attrHeight + sizeof(attrHeader);
+	int attrSize = ncgr->tilesX * ncgr->tilesY + sizeof(attrHeader);
 	int linkSize = ncgr->link == NULL ? 0 : (((strlen(ncgr->link) + 4) & ~3) + sizeof(linkHeader));
 	int cmntSize = ncgr->comment == NULL ? 0 : (((strlen(ncgr->comment) + 4) & ~3) + sizeof(cmntHeader));
 	int totalSize = sizeof(ncgHeader) + charSize + attrSize + linkSize + cmntSize;
@@ -795,8 +798,8 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	*(uint32_t *) (charHeader + 0xC) = ncgr->tilesY;
 	*(uint32_t *) (charHeader + 0x10) = ncgr->nBits == 8;
 	*(uint32_t *) (attrHeader + 0x4) = attrSize;
-	*(uint32_t *) (attrHeader + 0x8) = ncgr->attrWidth;
-	*(uint32_t *) (attrHeader + 0xC) = ncgr->attrHeight;
+	*(uint32_t *) (attrHeader + 0x8) = ncgr->tilesX;
+	*(uint32_t *) (attrHeader + 0xC) = ncgr->tilesY;
 	*(uint32_t *) (linkHeader + 0x4) = linkSize;
 	*(uint32_t *) (cmntHeader + 0x4) = cmntSize;
 	*(uint32_t *) (ncgHeader + 0x8) = totalSize;
@@ -804,13 +807,11 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	bstreamWrite(stream, ncgHeader, sizeof(ncgHeader));
 	bstreamWrite(stream, charHeader, sizeof(charHeader));
 	ChrWriteChars(ncgr, stream); //NCG doesn't store bitmap graphics
-	if (ncgr->tilesX == ncgr->attrWidth && ncgr->tilesY == ncgr->attrHeight) {
+	if (ncgr->attr != NULL) {
 		bstreamWrite(stream, attrHeader, sizeof(attrHeader));
-		bstreamWrite(stream, ncgr->attr, ncgr->attrWidth * ncgr->attrHeight);
+		bstreamWrite(stream, ncgr->attr, ncgr->tilesX * ncgr->tilesY);
 	} else {
 		unsigned char *dummy = (unsigned char *) calloc(ncgr->tilesX * ncgr->tilesY, 1);
-		*(uint32_t *) (attrHeader + 0x8) = ncgr->tilesX;
-		*(uint32_t *) (attrHeader + 0xC) = ncgr->tilesY;
 		bstreamWrite(stream, attrHeader, sizeof(attrHeader));
 		bstreamWrite(stream, dummy, ncgr->tilesX * ncgr->tilesY);
 		free(dummy);
@@ -827,14 +828,17 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 }
 
 static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
-	int attrSize = ncgr->attrWidth * ncgr->attrHeight;
+	int attrSize = ncgr->tilesX * ncgr->tilesY;
 
 	ChrWriteChars(ncgr, stream);
 
 	//write attribute for ACG
 	for (int i = 0; i < attrSize; i++) {
-		//bstreamWrite(stream, ncgr->attr, attrSize);
-		unsigned char a = ncgr->attr[i];
+		unsigned char a = 0;
+		if (ncgr->attr != NULL) {
+			a = ncgr->attr[i];
+		}
+
 		if (ncgr->header.format == NCGR_TYPE_AC) {
 			a |= 0x20; //exists
 			a |= (ncgr->nBits == 8) ? 0x10 : 0x00;
@@ -984,4 +988,116 @@ void CharSetLink(NCGR *ncgr, const wchar_t *link) {
 	for (int i = 0; i < len; i++) {
 		ncgr->link[i] = (char) link[i];
 	}
+}
+
+void ChrSetDepth(NCGR *ncgr, int depth) {
+	if (depth == ncgr->nBits) return; //do nothing
+
+	//compute new tile count
+	int nTiles2 = ncgr->nTiles;
+	if (depth == 8) {
+		//4bpp -> 8bpp, tile count /= 2
+		nTiles2 = (nTiles2 + 1) / 2;
+	} else {
+		//8bpp -> 4bpp, tile count *= 2
+		nTiles2 *= 2;
+	}
+	unsigned char **tiles2 = (unsigned char **) calloc(nTiles2, sizeof(unsigned char **));
+
+	if (depth == 8) {
+		//convert 4bpp graphic to 8bpp
+		for (int i = 0; i < nTiles2; i++) {
+			unsigned char *tile1 = ncgr->tiles[i * 2];
+			unsigned char *dest = (unsigned char *) calloc(64, 1);
+			tiles2[i] = dest;
+
+			//first half
+			for (int j = 0; j < 32; j++) {
+				dest[j] = tile1[j * 2] | (tile1[j * 2 + 1] << 4);
+			}
+
+			//second half, only if it exists
+			if ((nTiles2 & 1) == 0) {
+				unsigned char *tile2 = ncgr->tiles[i * 2 + 1];
+				for (int j = 0; j < 32; j++) {
+					dest[j + 32] = tile2[j * 2] | (tile2[j * 2 + 1] << 4);
+				}
+			}
+		}
+
+	} else {
+		//covert 8bpp graphic to 4bpp
+		for (int i = 0; i < ncgr->nTiles; i++) {
+			unsigned char *tile1 = calloc(64, 1);
+			unsigned char *tile2 = calloc(64, 1);
+			unsigned char *src = ncgr->tiles[i];
+			tiles2[i * 2] = tile1;
+			tiles2[i * 2 + 1] = tile2;
+
+			for (int j = 0; j < 32; j++) {
+				tile1[j * 2 + 0] = (src[j + 0] >> 0) & 0xF;
+				tile1[j * 2 + 1] = (src[j + 0] >> 4) & 0xF;
+				tile2[j * 2 + 0] = (src[j + 32] >> 0) & 0xF;
+				tile2[j * 2 + 1] = (src[j + 32] >> 4) & 0xF;
+			}
+		}
+	}
+
+	//replace graphics
+	for (int i = 0; i < ncgr->nTiles; i++) {
+		if (ncgr->tiles[i] != NULL) free(ncgr->tiles[i]);
+	}
+	free(ncgr->tiles);
+	ncgr->tiles = tiles2;
+
+	//adjust dimensions and size
+	ncgr->nTiles = nTiles2;
+	ncgr->nBits = depth;
+	if (depth == 8) {
+		//may not be able to just halve the width
+		if ((ncgr->tilesX & 1) == 0) {
+			ncgr->tilesX /= 2;
+		} else {
+			ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
+			ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+		}
+	} else {
+		//just double the width
+		ncgr->tilesX *= 2;
+	}
+}
+
+void ChrResize(NCGR *ncgr, int width, int height) {
+	//either pad on the sides or crop
+	if (ncgr->tilesX == width && ncgr->tilesY == height) return;
+
+	//allocate new buffer
+	unsigned char **chars2 = (unsigned char **) calloc(width * height, sizeof(unsigned char *));
+	unsigned char *attr2 = (unsigned char *) calloc(width * height, 1);
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++) {
+			unsigned char *chr = (unsigned char *) calloc(64, 1);
+			chars2[x + y * width] = chr;
+
+			//read in
+			if (x < ncgr->tilesX && y < ncgr->tilesY) {
+				unsigned char *src = ncgr->tiles[x + y * ncgr->tilesX];
+				memcpy(chr, src, 64);
+				if (ncgr->attr != NULL) attr2[x + y * width] = ncgr->attr[x + y * ncgr->tilesX];
+			}
+		}
+	}
+
+	//free original character
+	for (int i = 0; i < ncgr->nTiles; i++) {
+		free(ncgr->tiles[i]);
+	}
+	free(ncgr->tiles);
+	if (ncgr->attr != NULL) free(ncgr->attr);
+	ncgr->tiles = chars2;
+	ncgr->attr = attr2;
+
+	ncgr->tilesX = width;
+	ncgr->tilesY = height;
+	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
 }

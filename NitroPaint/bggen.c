@@ -802,9 +802,8 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		}
 		ncgr->tiles[j] = b;
 	}
+
 	ncgr->attr = (unsigned char *) calloc(ncgr->nTiles, 1);
-	ncgr->attrWidth = ncgr->tilesX;
-	ncgr->attrHeight = ncgr->tilesY;
 	for (int i = 0; i < ncgr->nTiles; i++) {
 		int attr = paletteBase;
 		for (int j = 0; j < nTiles; j++) {
