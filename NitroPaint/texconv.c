@@ -253,7 +253,7 @@ volatile g_texCompressionProgressMax = 0;
 volatile g_texCompressionFinished = 0;
 
 typedef struct TxTileData_ {
-	uint8_t rgb[64];           //the tile's initial RGBA color data
+	COLOR32 rgb[16];           //the tile's initial RGBA color data
 	uint16_t used;             //marks a used tile
 	uint16_t mode;             //the tile's working palette mode
 	COLOR palette[4];          //the tile's initial color palette
@@ -462,15 +462,15 @@ static int TxiComputeMSE(COLOR32 *tile, COLOR32 *palette, int transparent) {
 static void TxiChoosePaletteAndMode(RxReduction *reduction, TxTileData *tile) {
 	//first try interpolated. If it's not good enough, use full color.
 	COLOR32 colorMin, colorMax;
-	TxiComputeEndpoints(reduction, (COLOR32 *) tile->rgb, 16, &colorMin, &colorMax);
+	TxiComputeEndpoints(reduction, tile->rgb, 16, &colorMin, &colorMax);
 	if (tile->transparentPixels) {
 		COLOR32 mid = TxiBlend18(colorMin, 4, colorMax, 4);
 		COLOR32 palette[] = { colorMax, mid, colorMin, 0 };
 		COLOR32 paletteFull[4];
 
-		int error = TxiComputeMSE((COLOR32 *) tile->rgb, palette, 1);
+		int error = TxiComputeMSE(tile->rgb, palette, 1);
 		RxHistClear(reduction);
-		RxHistAdd(reduction, (COLOR32 *) tile->rgb, 4, 4);
+		RxHistAdd(reduction, tile->rgb, 4, 4);
 		int nFull = TxiCreatePaletteFromHistogram(reduction, 3, paletteFull);
 		//if error <= 64, then these colors are good enough
 		if (error <= 64 || nFull <= 2) {
@@ -493,9 +493,9 @@ static void TxiChoosePaletteAndMode(RxReduction *reduction, TxTileData *tile) {
 		COLOR32 palette[] = { colorMax, mid2, mid1, colorMin };
 		COLOR32 paletteFull[4];
 
-		int error = TxiComputeMSE((COLOR32 *) tile->rgb, palette, 0);
+		int error = TxiComputeMSE(tile->rgb, palette, 0);
 		RxHistClear(reduction);
-		RxHistAdd(reduction, (COLOR32 *) tile->rgb, 4, 4);
+		RxHistAdd(reduction, tile->rgb, 4, 4);
 		int nFull = TxiCreatePaletteFromHistogram(reduction, 4, paletteFull);
 		if (error <= 64 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
@@ -547,8 +547,8 @@ static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, COLO
 	int duplicateIndex = 0;
 	for (int i = index - 1; i >= 0; i--) {
 		TxTileData *tile = data + i;
-		COLOR32 *px1 = (COLOR32 *) tile->rgb;
-		COLOR32 *px2 = (COLOR32 *) data[index].rgb;
+		COLOR32 *px1 = tile->rgb;
+		COLOR32 *px2 = data[index].rgb;
 
 		if (!memcmp(px1, px2, 16 * sizeof(COLOR32))) {
 			isDuplicate = 1;
@@ -695,7 +695,7 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 		RxHistClear(reduction);
 		for (int i = 0; i < nTiles; i++) {
 			if (tileData[i].paletteIndex == paletteIndex && tileData[i].used) {
-				RxHistAdd(reduction, (COLOR32 *) tileData[i].rgb, 4, 4);
+				RxHistAdd(reduction, tileData[i].rgb, 4, 4);
 			}
 		}
 		TxiCreatePaletteFromHistogram(reduction, 3, expandPal + 1);
@@ -728,7 +728,7 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 		RxHistClear(reduction);
 		for (int i = 0; i < nTiles; i++) {
 			if (tileData[i].paletteIndex == paletteIndex && tileData[i].used) {
-				RxHistAdd(reduction, (COLOR32 *) tileData[i].rgb, 4, 4);
+				RxHistAdd(reduction, tileData[i].rgb, 4, 4);
 			}
 		}
 		int nFull = TxiCreatePaletteFromHistogram(reduction, 4, expandPal);
@@ -855,7 +855,7 @@ static double TxiComputeTilePidxError(RxReduction *reduction, COLOR32 *px, COLOR
 }
 
 static uint16_t TxiFindOptimalPidx(RxReduction *reduction, TxTileData *tile, COLOR *palette, int nColors, int startIdx, double *error) {
-	COLOR32 *px = (COLOR32 *) tile->rgb;
+	COLOR32 *px = tile->rgb;
 	int hasTransparent = tile->transparentPixels;
 
 	//start with default values
@@ -921,12 +921,12 @@ static TxiTileErrorMapEntry *TxiGetGreatestErrorTile(TxiTileErrorMapEntry *map, 
 static void TxiIndexTile(TxTileData *tile, uint32_t *txel, COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
 	COLOR32 tilebuf[16];
 	memcpy(tilebuf, tile->rgb, sizeof(tilebuf));
-	RxReduceImage((COLOR32 *) tile->rgb, 4, 4, tilepal, nOpaque, 0, 1, 0, diffuse);
+	RxReduceImage(tile->rgb, 4, 4, tilepal, nOpaque, 0, 1, 0, diffuse);
 
 	uint32_t texel = 0;
 	for (int j = 0; j < 16; j++) {
 		int index = 0;
-		COLOR32 col = ((COLOR32 *) tile->rgb)[j];
+		COLOR32 col = tile->rgb[j];
 		if ((col >> 24) < 0x80) {
 			index = 3;
 		} else {
@@ -1026,7 +1026,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 			//better fit?
 			COLOR32 temp[1] = { 0 };
 			temp[0] = ColorConvertFromDS(tile->palette[0]);
-			double newErr = RxComputePaletteError(reduction, (COLOR32 *) tile->rgb, 16, temp, 1, 128, entry->error);
+			double newErr = RxComputePaletteError(reduction, tile->rgb, 16, temp, 1, 128, entry->error);
 			if (newErr >= entry->error) continue;
 
 			//single candidate, slot in
@@ -1062,7 +1062,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 		COLOR32 tilepal[4] = { 0 };
 		TxiExpandPalette(tile->palette, tile->mode, tilepal, &nOpaque);
 
-		double newErr = RxComputePaletteError(reduction, (COLOR32 *) tile->rgb, 16, tilepal, nOpaque, 128, highestError);
+		double newErr = RxComputePaletteError(reduction, tile->rgb, 16, tilepal, nOpaque, 128, highestError);
 		if (newErr >= highestError) {
 			//tile is beyond saving, give up
 			errorEntry->error = 0.0; //ignored from now on
@@ -1133,7 +1133,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 				//if our working tile doesn't have transparency, don't use it on a transparent tile
 				if (!tile->transparentPixels && tile2->transparentPixels) continue;
 
-				double err = RxComputePaletteError(reduction, (COLOR32 *) tile2->rgb, 16, tilepal, nOpaque, 128, entry->error);
+				double err = RxComputePaletteError(reduction, tile2->rgb, 16, tilepal, nOpaque, 128, entry->error);
 				if (err < entry->error) {
 					//better
 					entry->error = err;
