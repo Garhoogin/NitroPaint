@@ -43,6 +43,7 @@ static LPCWSTR sCommonCharacterEndings[] = {
 	L"chr.bin",
 	L".char",
 	L".nbfc",
+	L".icg",
 	L".imb",
 	NULL
 };
@@ -52,6 +53,7 @@ static LPCWSTR sCommonScreenEndings[] = {
 	L"isc.bin",
 	L"scr.bin",
 	L".nbfs",
+	L".isc",
 	NULL
 };
 
