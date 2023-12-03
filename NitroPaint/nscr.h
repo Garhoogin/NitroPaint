@@ -45,8 +45,6 @@ typedef struct NSCR_ {
 	int fmt;
 	int nHighestIndex;//weird hack
 	uint16_t clearValue; //default tile value
-	char *comment; //null terminated
-	char *link; //null terminated, linked NCG
 	int showGrid;     //for NC
 	short gridWidth;  //for NC
 	short gridHeight; //for NC
@@ -116,8 +114,3 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int x, int y
 // returns it.
 //
 int ScrComputeHighestCharacter(NSCR *nscr);
-
-//
-// Set a screen object's linked file.
-//
-void ScrSetLink(NSCR *nscr, const wchar_t *link);

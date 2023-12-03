@@ -24,7 +24,6 @@ typedef struct NCLR_ {
 	int extPalette;
 	short *idxTable;
 	COLOR *colors;
-	char *comment;
 	struct COMBO2D_ *combo2d; //for part of a combination file
 } NCLR;
 

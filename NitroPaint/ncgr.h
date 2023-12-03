@@ -41,8 +41,6 @@ typedef struct NCGR_{
 	int bitmap;
 	int nBits;
 	int extPalette;     //whether character is using an extended palette
-	char *comment;		//null terminated
-	char *link;			//linked NCL file, null terminated
 	unsigned char *attr; //unused by most things
 	BYTE **tiles;
 	CHAR_SLICE *slices;       //for Ghost Trick files
@@ -157,11 +155,6 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream);
 // Write character graphics to a file.
 //
 int ChrWriteFile(NCGR *ncgr, LPCWSTR name);
-
-//
-// Set a character object's linked file.
-//
-void CharSetLink(NCGR *ncgr, const wchar_t *name);
 
 //
 // Change the bit depth of character graphics.

@@ -382,18 +382,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						ChrWriteFile(&data->ncgr, data->szOpenFile);
 
 						//update link of any screens and cells pointing here
-						for (int i = 0; i < data->ncgr.header.link.nFrom; i++) {
-							OBJECT_HEADER *obj = data->ncgr.header.link.from[i];
-							if (obj->type != FILE_TYPE_SCREEN && obj->type != FILE_TYPE_CELL) continue;
-
-							if (obj->type == FILE_TYPE_SCREEN) {
-								NSCR *nscr = (NSCR *) obj;
-								ScrSetLink(nscr, ObjGetFileNameFromPath(data->szOpenFile));
-							} else if (obj->type == FILE_TYPE_CELL) {
-								//NCER *ncer = (NCER *) obj;
-
-							}
-						}
+						ObjUpdateLinks(&data->ncgr.header, ObjGetFileNameFromPath(data->szOpenFile));
 						break;
 					}
 					case ID_FILE_EXPORT:

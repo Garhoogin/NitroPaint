@@ -178,14 +178,6 @@ void ChrFree(OBJECT_HEADER *header) {
 	}
 	ncgr->tiles = NULL;
 
-	if (ncgr->comment != NULL) {
-		free(ncgr->comment);
-		ncgr->comment = NULL;
-	}
-	if (ncgr->link != NULL) {
-		free(ncgr->link);
-		ncgr->link = NULL;
-	}
 	if (ncgr->attr != NULL) {
 		free(ncgr->attr);
 		ncgr->attr = NULL;
@@ -363,13 +355,13 @@ int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size,
 		} else if (memcmp(section, "LINK", 4) == 0) {
 			//LINK
 			int linkLen = sectionData[1];
-			ncgr->link = (char *) calloc(linkLen + 1, 1);
-			memcpy(ncgr->link, sectionData + 2, linkLen);
+			ncgr->header.fileLink = (char *) calloc(linkLen + 1, 1);
+			memcpy(ncgr->header.fileLink, sectionData + 2, linkLen);
 		} else if (memcmp(section, "CMNT", 4) == 0) {
 			//CMNT
 			int cmntLen = sectionData[1];
-			ncgr->comment = (char *) calloc(cmntLen + 1, 1);
-			memcpy(ncgr->comment, sectionData + 2, cmntLen);
+			ncgr->header.comment = (char *) calloc(cmntLen + 1, 1);
+			memcpy(ncgr->header.comment, sectionData + 2, cmntLen);
 		}
 
 		offset += len + 8;
@@ -492,13 +484,13 @@ int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 
 	if (sCmnt != NULL) {
 		int len = *(uint32_t *) (sCmnt + 4) - 8;
-		ncgr->comment = (char *) calloc(len, 1);
-		memcpy(ncgr->comment, sCmnt + 8, len);
+		ncgr->header.comment = (char *) calloc(len, 1);
+		memcpy(ncgr->header.comment, sCmnt + 8, len);
 	}
 	if (sLink != NULL) {
 		int len = *(uint32_t *) (sLink + 4) - 8;
-		ncgr->link = (char *) calloc(len, 1);
-		memcpy(ncgr->link, sLink + 8, len);
+		ncgr->header.fileLink = (char *) calloc(len, 1);
+		memcpy(ncgr->header.fileLink, sLink + 8, len);
 	}
 	if (sAttr != NULL) {
 		int attrSize = *(uint32_t *) (sAttr + 0x4) - 0x10;
@@ -793,8 +785,8 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 
 	int charSize = ncgr->nTiles * ncgr->nBits * 8 + sizeof(charHeader);
 	int attrSize = ncgr->tilesX * ncgr->tilesY + sizeof(attrHeader);
-	int linkSize = ncgr->link == NULL ? 0 : (((strlen(ncgr->link) + 4) & ~3) + sizeof(linkHeader));
-	int cmntSize = ncgr->comment == NULL ? 0 : (((strlen(ncgr->comment) + 4) & ~3) + sizeof(cmntHeader));
+	int linkSize = ncgr->header.fileLink == NULL ? 0 : (((strlen(ncgr->header.fileLink) + 4) & ~3) + sizeof(linkHeader));
+	int cmntSize = ncgr->header.comment == NULL ? 0 : (((strlen(ncgr->header.comment) + 4) & ~3) + sizeof(cmntHeader));
 	int totalSize = sizeof(ncgHeader) + charSize + attrSize + linkSize + cmntSize;
 	*(uint32_t *) (charHeader + 0x4) = charSize;
 	*(uint32_t *) (charHeader + 0x8) = ncgr->tilesX;
@@ -821,11 +813,11 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 	}
 	if (linkSize) {
 		bstreamWrite(stream, linkHeader, sizeof(linkHeader));
-		bstreamWrite(stream, ncgr->link, linkSize - sizeof(linkHeader));
+		bstreamWrite(stream, ncgr->header.fileLink, linkSize - sizeof(linkHeader));
 	}
 	if (cmntSize) {
 		bstreamWrite(stream, cmntHeader, sizeof(cmntHeader));
-		bstreamWrite(stream, ncgr->comment, cmntSize - sizeof(cmntHeader));
+		bstreamWrite(stream, ncgr->header.comment, cmntSize - sizeof(cmntHeader));
 	}
 	return 0;
 }
@@ -866,8 +858,8 @@ static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
 			version = "IS-ICG01"; break;
 	}
 
-	int linkLen = (ncgr->link == NULL) ? 0 : strlen(ncgr->link);
-	int commentLen = (ncgr->comment == NULL) ? 0 : strlen(ncgr->comment);
+	int linkLen = (ncgr->header.fileLink == NULL) ? 0 : strlen(ncgr->header.fileLink);
+	int commentLen = (ncgr->header.comment == NULL) ? 0 : strlen(ncgr->header.comment);
 
 	int mode = 0;
 	if (ncgr->header.format == NCGR_TYPE_AC) {
@@ -891,9 +883,9 @@ static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
 	*(uint32_t *) (verFooter + 4) = strlen(version);
 
 	bstreamWrite(stream, linkFooter, sizeof(linkFooter));
-	bstreamWrite(stream, ncgr->link, linkLen);
+	bstreamWrite(stream, ncgr->header.fileLink, linkLen);
 	bstreamWrite(stream, cmntFooter, sizeof(cmntFooter));
-	bstreamWrite(stream, ncgr->comment, commentLen);
+	bstreamWrite(stream, ncgr->header.comment, commentLen);
 	bstreamWrite(stream, modeFooter, sizeof(modeFooter));
 	bstreamWrite(stream, sizeFooter, sizeof(sizeFooter));
 	bstreamWrite(stream, verFooter, sizeof(verFooter));
@@ -982,16 +974,6 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 
 int ChrWriteFile(NCGR *ncgr, LPCWSTR name) {
 	return ObjWriteFile(name, (OBJECT_HEADER *) ncgr, (OBJECT_WRITER) ChrWrite);
-}
-
-void CharSetLink(NCGR *ncgr, const wchar_t *link) {
-	if (ncgr->link != NULL) free(ncgr->link);
-
-	int len = wcslen(link);
-	ncgr->link = (char *) calloc(len + 1, 1);
-	for (int i = 0; i < len; i++) {
-		ncgr->link[i] = (char) link[i];
-	}
 }
 
 void ChrSetDepth(NCGR *ncgr, int depth) {

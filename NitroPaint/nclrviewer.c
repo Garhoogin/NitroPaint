@@ -1060,13 +1060,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							PalWriteFile(&data->nclr, data->szOpenFile);
 
 							//update link of any character graphics pointing here
-							for (int i = 0; i < data->nclr.header.link.nFrom; i++) {
-								OBJECT_HEADER *obj = data->nclr.header.link.from[i];
-								if (obj->type != FILE_TYPE_CHAR) continue;
-
-								NCGR *ncgr = (NCGR *) obj;
-								CharSetLink(ncgr, ObjGetFileNameFromPath(data->szOpenFile));
-							}
+							ObjUpdateLinks(&data->nclr.header, ObjGetFileNameFromPath(data->szOpenFile));
 						}
 						break;
 					}

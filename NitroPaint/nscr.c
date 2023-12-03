@@ -157,15 +157,6 @@ void ScrFree(OBJECT_HEADER *header) {
 	if (nscr->data != NULL) free(nscr->data);
 	nscr->data = NULL;
 
-	if (nscr->link != NULL) {
-		free(nscr->link);
-		nscr->link = NULL;
-	}
-	if (nscr->comment != NULL) {
-		free(nscr->comment);
-		nscr->comment = NULL;
-	}
-
 	COMBO2D *combo = nscr->combo2d;
 	if (combo != NULL) {
 		combo2dUnlink(combo, &nscr->header);
@@ -288,13 +279,13 @@ int ScrReadNsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 
 	if (link != NULL) {
 		int len = *(uint32_t *) (link + 4) - 8;
-		nscr->link = (char *) calloc(len, 1);
-		memcpy(nscr->link, link + 8, len);
+		nscr->header.fileLink = (char *) calloc(len, 1);
+		memcpy(nscr->header.fileLink, link + 8, len);
 	}
 	if (cmnt != NULL) {
 		int len = *(uint32_t *) (cmnt + 4) - 8;
-		nscr->comment = (char *) calloc(len, 1);
-		memcpy(nscr->comment, cmnt + 8, len);
+		nscr->header.comment = (char *) calloc(len, 1);
+		memcpy(nscr->header.comment, cmnt + 8, len);
 	}
 	if (clrc != NULL) {
 		nscr->clearValue = *(uint16_t *) (clrc + 8);
@@ -345,14 +336,14 @@ static int ScriIsCommonRead(NSCR *nscr, const unsigned char *file, unsigned int 
 			//LINK
 			if (len) {
 				int linkLen = len - 1;
-				nscr->link = (char *) calloc(linkLen + 1, 1);
-				memcpy(nscr->link, sectionData, linkLen);
+				nscr->header.fileLink = (char *) calloc(linkLen + 1, 1);
+				memcpy(nscr->header.fileLink, sectionData, linkLen);
 			}
 		} else if (memcmp(section, "CMNT", 4) == 0) {
 			//CMNT
 			int cmntLen = sectionData[1];
-			nscr->comment = (char *) calloc(cmntLen + 1, 1);
-			memcpy(nscr->comment, sectionData + 2, cmntLen);
+			nscr->header.comment = (char *) calloc(cmntLen + 1, 1);
+			memcpy(nscr->header.comment, sectionData + 2, cmntLen);
 		}
 
 		offset += len + 8;
@@ -556,16 +547,16 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	*(uint32_t *) (gridHeader + 0x08) = nscr->showGrid;
 	*(uint16_t *) (gridHeader + 0x0C) = nscr->gridWidth;
 	*(uint16_t *) (gridHeader + 0x0E) = nscr->gridHeight;
-	*(uint32_t *) (linkHeader + 0x04) = (nscr->link == NULL) ? 0x0C : (((strlen(nscr->link) + 4) & ~3) + sizeof(linkHeader));
-	*(uint32_t *) (cmntHeader + 0x04) = (nscr->comment == NULL) ? 0x0C : (((strlen(nscr->comment) + 4) & ~3) + sizeof(cmntHeader));
+	*(uint32_t *) (linkHeader + 0x04) = (nscr->header.fileLink == NULL) ? 0x0C : (((strlen(nscr->header.fileLink) + 4) & ~3) + sizeof(linkHeader));
+	*(uint32_t *) (cmntHeader + 0x04) = (nscr->header.comment == NULL) ? 0x0C : (((strlen(nscr->header.comment) + 4) & ~3) + sizeof(cmntHeader));
 
 	int scrnSize = nscr->dataSize + sizeof(scrnHeader);
 	int escrSize = nscr->dataSize * 2 + sizeof(escrHeader);
 	int clrfSize = nscr->nWidth * nscr->nHeight / 512 + sizeof(clrfHeader);
 	int clrcSize = sizeof(clrcHeader);
 	int gridSize = nscr->gridWidth == 0 ? 0 : sizeof(gridHeader);
-	int linkSize = nscr->link == NULL ? 0 : (((strlen(nscr->link) + 4) & ~3) + sizeof(linkHeader));
-	int cmntSize = nscr->comment == NULL ? 0 : (((strlen(nscr->comment) + 4) & ~3) + sizeof(cmntHeader));
+	int linkSize = nscr->header.fileLink == NULL ? 0 : (((strlen(nscr->header.fileLink) + 4) & ~3) + sizeof(linkHeader));
+	int cmntSize = nscr->header.comment == NULL ? 0 : (((strlen(nscr->header.comment) + 4) & ~3) + sizeof(cmntHeader));
 	int totalSize = scrnSize + escrSize + clrfSize + clrcSize + gridSize + linkSize + cmntSize + sizeof(ncscHeader);
 	*(uint32_t *) (ncscHeader + 0x08) = totalSize;
 	*(uint16_t *) (ncscHeader + 0x0E) = !!scrnSize + !!escrSize + !!clrfSize + !!clrcSize + !!gridSize + !!linkSize + !!cmntSize;
@@ -592,11 +583,11 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	}
 	if (linkSize) {
 		bstreamWrite(stream, linkHeader, sizeof(linkHeader));
-		bstreamWrite(stream, nscr->link, linkSize - sizeof(linkHeader));
+		bstreamWrite(stream, nscr->header.fileLink, linkSize - sizeof(linkHeader));
 	}
 	if (cmntSize) {
 		bstreamWrite(stream, cmntHeader, sizeof(cmntHeader));
-		bstreamWrite(stream, nscr->comment, cmntSize - sizeof(cmntHeader));
+		bstreamWrite(stream, nscr->header.comment, cmntSize - sizeof(cmntHeader));
 	}
 	free(dummyClrf);
 	free(escr);
@@ -616,8 +607,8 @@ static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
 	unsigned char endFooter[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 0 };
 
 	//expects null terminated for ISC/ASC LINK specifically (not the others for some reason)
-	int linkLen = (nscr->link == NULL) ? 0 : (strlen(nscr->link) + 1);
-	int commentLen = (nscr->comment == NULL) ? 0 : strlen(nscr->comment);
+	int linkLen = (nscr->header.fileLink == NULL) ? 0 : (strlen(nscr->header.fileLink) + 1);
+	int commentLen = (nscr->header.comment == NULL) ? 0 : strlen(nscr->header.comment);
 
 	char *ver = "";
 	switch (nscr->header.format) {
@@ -646,9 +637,9 @@ static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
 		bstreamWrite(stream, &f, sizeof(f));
 	}
 	bstreamWrite(stream, linkFooter, sizeof(linkFooter));
-	bstreamWrite(stream, nscr->link, linkLen);
+	bstreamWrite(stream, nscr->header.fileLink, linkLen);
 	bstreamWrite(stream, cmntFooter, sizeof(cmntFooter));
-	bstreamWrite(stream, nscr->comment, commentLen);
+	bstreamWrite(stream, nscr->header.comment, commentLen);
 	bstreamWrite(stream, clrcFooter, sizeof(clrcFooter));
 	if (nscr->header.format == NSCR_TYPE_AC) {
 		//ASC: MODE footer contains the size
@@ -729,14 +720,4 @@ int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 
 int ScrWriteFile(NSCR *nscr, LPCWSTR name) {
 	return ObjWriteFile(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) ScrWrite);
-}
-
-void ScrSetLink(NSCR *nscr, const wchar_t *link) {
-	if (nscr->link != NULL) free(nscr->link);
-
-	int len = wcslen(link);
-	nscr->link = (char *) calloc(len + 1, 1);
-	for (int i = 0; i < len; i++) {
-		nscr->link[i] = (char) link[i];
-	}
 }

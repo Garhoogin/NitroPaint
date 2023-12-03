@@ -436,6 +436,12 @@ void ObjFree(OBJECT_HEADER *header) {
 		ObjUnlinkObjects(header, header->link.from[0]);
 	}
 
+	//free strings
+	if (header->fileLink != NULL) free(header->fileLink);
+	if (header->comment != NULL) free(header->comment);
+	header->fileLink = NULL;
+	header->comment = NULL;
+
 	//free object resources
 	if (header->dispose != NULL) header->dispose(header);
 
@@ -537,4 +543,21 @@ void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
 	memmove(to->link.from + fromIndex, to->link.from + fromIndex + 1, (to->link.nFrom - fromIndex - 1) * sizeof(OBJECT_HEADER *));
 	to->link.nFrom--;
 	to->link.from = (OBJECT_HEADER **) realloc(to->link.from, to->link.nFrom * sizeof(OBJECT_HEADER *));
+}
+
+void ObjSetFileLink(OBJECT_HEADER *obj, const wchar_t *link) {
+	if (obj->fileLink != NULL) free(obj->fileLink);
+
+	int len = wcslen(link);
+	obj->fileLink = (char *) calloc(len + 1, 1);
+	for (int i = 0; i < len; i++) {
+		obj->fileLink[i] = (char) link[i];
+	}
+}
+
+void ObjUpdateLinks(OBJECT_HEADER *obj, const wchar_t *path) {
+	for (int i = 0; i < obj->link.nFrom; i++) {
+		OBJECT_HEADER *obj = obj->link.from[i];
+		ObjSetFileLink(obj, path);
+	}
 }

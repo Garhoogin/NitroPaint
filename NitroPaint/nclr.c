@@ -12,8 +12,6 @@ void PalFree(OBJECT_HEADER *header) {
 	nclr->colors = NULL;
 	if (nclr->idxTable != NULL) free(nclr->idxTable);
 	nclr->idxTable = NULL;
-	if (nclr->comment != NULL) free(nclr->comment);
-	nclr->comment = NULL;
 
 	COMBO2D *combo2d = nclr->combo2d;
 	if (combo2d != NULL) {
@@ -186,8 +184,8 @@ int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	memcpy(nclr->colors, palt + 0x10, nclr->nColors * 2);
 	if (cmnt != NULL) {
 		int cmntLength = (*(uint32_t *) (cmnt + 4)) - 4;
-		nclr->comment = (char *) calloc(cmntLength, 1);
-		memcpy(nclr->comment, cmnt + 8, cmntLength);
+		nclr->header.comment = (char *) calloc(cmntLength, 1);
+		memcpy(nclr->header.comment, cmnt + 8, cmntLength);
 	}
 
 	return 0;
@@ -315,7 +313,7 @@ int PalWriteNcl(NCLR *nclr, BSTREAM *stream) {
 	uint8_t cmntHeader[] = { 'C', 'M', 'N', 'T', 0xC, 0, 0, 0 };
 
 	int paltSize = nclr->nColors * 2 + sizeof(paltHeader);
-	int commentLength = nclr->comment == NULL ? 0 : ((strlen(nclr->comment) + 4) & ~3);
+	int commentLength = nclr->header.comment == NULL ? 0 : ((strlen(nclr->header.comment) + 4) & ~3);
 	int cmntSize = commentLength ? (commentLength + sizeof(cmntHeader)) : 0;
 	int fileSize = paltSize + cmntSize + sizeof(fileHeader);
 
@@ -332,8 +330,8 @@ int PalWriteNcl(NCLR *nclr, BSTREAM *stream) {
 	if (cmntSize != 0) {
 		uint32_t padding = 0;
 		bstreamWrite(stream, cmntHeader, sizeof(cmntHeader));
-		bstreamWrite(stream, nclr->comment, strlen(nclr->comment) + 1);
-		bstreamWrite(stream, &padding, commentLength - (strlen(nclr->comment) + 1));
+		bstreamWrite(stream, nclr->header.comment, strlen(nclr->header.comment) + 1);
+		bstreamWrite(stream, &padding, commentLength - (strlen(nclr->header.comment) + 1));
 	}
 	return 0;
 }

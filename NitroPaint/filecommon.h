@@ -30,6 +30,8 @@ typedef struct OBJECT_HEADER_ {
 	int compression;
 	void (*dispose) (struct OBJECT_HEADER_ *);
 	ObjLink link;
+	char *fileLink;
+	char *comment;
 } OBJECT_HEADER;
 
 typedef int (*OBJECT_READER) (OBJECT_HEADER *object, char *buffer, int size);
@@ -101,3 +103,13 @@ void ObjLinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from);
 // Unlink an object from another.
 //
 void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from);
+
+//
+// Sets a file link for an object.
+//
+void ObjSetFileLink(OBJECT_HEADER *obj, const wchar_t *link);
+
+//
+// Update the file links of all objects linking to this one.
+//
+void ObjUpdateLinks(OBJECT_HEADER *obj, const wchar_t *path);
