@@ -57,6 +57,29 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 			}
 			break;
 		}
+		case ID_EDIT_COMMENT:
+		{
+			HWND hWndMain = getMainWindow(hWnd);
+			OBJECT_HEADER *obj = EditorGetObject(hWnd);
+			WCHAR textBuffer[256] = { 0 };
+			if (obj != NULL && obj->comment != NULL) {
+				for (unsigned int i = 0; i < strlen(obj->comment); i++) {
+					textBuffer[i] = (WCHAR) obj->comment[i];
+				}
+			}
+
+			int result = PromptUserText(hWndMain, L"File Comment", L"Comment:", textBuffer, sizeof(textBuffer));
+			if (result) {
+				int len = wcslen(textBuffer);
+
+				if (obj->comment != NULL) free(obj->comment);
+				obj->comment = calloc(len + 1, 1);
+				for (int i = 0; i < len; i++) {
+					obj->comment[i] = (char) textBuffer[i];
+				}
+			}
+			break;
+		}
 	}
 }
 
