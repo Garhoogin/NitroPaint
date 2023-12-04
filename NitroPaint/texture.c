@@ -728,12 +728,54 @@ int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
 	return 0;
 }
 
+int TxWriteIStudio(TextureObject *texture, BSTREAM *stream) {
+	unsigned char header[] = { 'N', 'T', 'T', 'X', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 2, 0 };
+	unsigned char paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char imgeHeader[] = { 'I', 'M', 'G', 'E', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	int texImageParam = texture->texture.texels.texImageParam;
+	int format = FORMAT(texImageParam);
+	int width = TEXW(texImageParam);
+	int height = texture->texture.texels.height;
+	int texelSize = TxGetTexelSize(width, height, texImageParam);
+
+	int nColors = texture->texture.palette.nColors;
+
+	//direct textures: no palette
+	*(uint16_t *) (header + 0xE) = 1 + (format != CT_DIRECT);
+
+	unsigned int paltSize = (format == CT_DIRECT) ? 0 : (sizeof(paltHeader) + nColors * sizeof(COLOR));
+	unsigned int imgeSize = sizeof(imgeHeader) + texelSize + (format == CT_4x4 ? (texelSize / 2) : 0);
+	*(uint32_t *) (header + 0x08) = sizeof(header) + paltSize + imgeSize;
+	*(uint32_t *) (paltHeader + 0x04) = paltSize;
+	*(uint32_t *) (paltHeader + 0x08) = nColors;
+	*(uint32_t *) (imgeHeader + 0x04) = imgeSize;
+	*(uint8_t *) (imgeHeader + 0x08) = format;
+	*(uint8_t *) (imgeHeader + 0x09) = (texImageParam >> 20) & 7;
+	*(uint8_t *) (imgeHeader + 0x0A) = (texImageParam >> 23) & 7;
+	*(uint16_t *) (imgeHeader + 0xC) = width;
+	*(uint16_t *) (imgeHeader + 0xE) = height;
+	*(uint32_t *) (imgeHeader + 0x10) = imgeSize - sizeof(imgeHeader);
+
+	bstreamWrite(stream, header, sizeof(header));
+	if (format != CT_DIRECT) {
+		bstreamWrite(stream, paltHeader, sizeof(paltHeader));
+		bstreamWrite(stream, texture->texture.palette.pal, nColors * sizeof(COLOR));
+	}
+	bstreamWrite(stream, imgeHeader, sizeof(imgeHeader));
+	bstreamWrite(stream, texture->texture.texels.texel, texelSize);
+	if (format == CT_4x4) {
+		bstreamWrite(stream, texture->texture.texels.cmp, texelSize / 2);
+	}
+	return 0;
+}
+
 int TxWrite(TextureObject *texture, BSTREAM *stream) {
 	switch (texture->header.format) {
 		case TEXTURE_TYPE_NNSTGA:
 			return TxWriteNnsTga(texture, stream);
 		case TEXTURE_TYPE_ISTUDIO:
-			return 1;
+			return TxWriteIStudio(texture, stream);
 	}
 	return 1;
 }
