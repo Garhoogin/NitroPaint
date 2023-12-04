@@ -98,6 +98,8 @@ LPCWSTR *ObjGetFormatNamesByType(int type) {
 			return cellFormatNames;
 		case FILE_TYPE_NANR:
 			return cellAnimationFormatNames;
+		case FILE_TYPE_TEXTURE:
+			return textureFormatNames;
 		default:
 			return NULL;
 	}
@@ -557,7 +559,7 @@ void ObjSetFileLink(OBJECT_HEADER *obj, const wchar_t *link) {
 
 void ObjUpdateLinks(OBJECT_HEADER *obj, const wchar_t *path) {
 	for (int i = 0; i < obj->link.nFrom; i++) {
-		OBJECT_HEADER *obj = obj->link.from[i];
-		ObjSetFileLink(obj, path);
+		OBJECT_HEADER *linked = obj->link.from[i];
+		ObjSetFileLink(linked, path);
 	}
 }

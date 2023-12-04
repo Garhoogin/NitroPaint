@@ -1205,10 +1205,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						if (hWndFocused == NULL) break;
 						
 						int editorType = GetEditorType(hWndFocused);
-						if (editorType != FILE_TYPE_PALETTE && editorType != FILE_TYPE_CHAR
-							&& editorType != FILE_TYPE_SCREEN && editorType != FILE_TYPE_CELL) break;
+						if (editorType == FILE_TYPE_INVALID) break;
 
 						EDITOR_DATA *editorData = (EDITOR_DATA *) EditorGetData(hWndFocused);
+						if (editorData == NULL) break;
+
 						LPCWSTR *formats = ObjGetFormatNamesByType(editorData->file.type);
 						if (formats == NULL || formats[0] == NULL)  break;
 

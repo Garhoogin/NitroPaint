@@ -381,8 +381,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						LPWSTR location = saveFileDialog(hWnd, L"Save Texture", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
 						if (!location) break;
 
-						TxWriteNnsTga(location, data->nsbtx.textures + SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0),
-									  data->nsbtx.palettes + SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0));
+						TxWriteFileDirect(data->nsbtx.textures + SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0),
+									  data->nsbtx.palettes + SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0), TEXTURE_TYPE_NNSTGA, location);
 
 						free(location);
 						break;
@@ -424,7 +424,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 						TEXELS texels;
 						PALETTE palette;
-						int s = TxReadFile(path, &texels, &palette);
+						int s = TxReadFileDirect(&texels, &palette, path);
 						if (s) {
 							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
 						} else {
@@ -496,7 +496,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//suffix ".tga"
 							memcpy(path + pathLen + strlen(name), L".tga", 10);
 
-							TxWriteNnsTga(path, &data->nsbtx.textures[i], &data->nsbtx.palettes[pltt]);
+							TxWriteFileDirect(&data->nsbtx.textures[i], &data->nsbtx.palettes[pltt], TEXTURE_TYPE_NNSTGA, path);
 						}
 
 						//free palette name array
@@ -514,7 +514,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						//read texture
 						TEXELS texels;
 						PALETTE palette;
-						int s = TxReadFile(path, &texels, &palette);
+						int s = TxReadFileDirect(&texels, &palette, path);
 						if (s) {
 							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
 						} else {

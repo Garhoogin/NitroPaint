@@ -3,20 +3,19 @@
 #include "color.h"
 #include "texture.h"
 #include "childwindow.h"
+#include "editor.h"
 
 typedef struct {
-	FRAMEDATA frameData;
-	WCHAR szInitialFile[MAX_PATH]; //opened file
-	WCHAR szCurrentFile[MAX_PATH]; //save destination
+	EDITOR_BASIC_MEMBERS;
+	TextureObject texture;
+
+	WCHAR szInitialFile[MAX_PATH]; //source image file
 	BOOL hasPalette;
 	BOOL isNitro;
-	TEXTURE textureData;
-	int format;
+
+	COLOR32 *px;
 	int width;
 	int height;
-	DWORD *px;
-	int scale;
-	int showBorders;
 
 	int hoverX;
 	int hoverY;

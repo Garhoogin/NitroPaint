@@ -1,10 +1,12 @@
 #pragma once
 #include "color.h"
+#include "filecommon.h"
 
 //texture file types
 #define TEXTURE_TYPE_INVALID     0
 #define TEXTURE_TYPE_NNSTGA      1
 #define TEXTURE_TYPE_ISTUDIO     2
+#define TEXTURE_TYPE_TDS         3
 
 #define CT_A3I5 1			/*can read and write*/
 #define CT_4COLOR 2			/*can read and write*/
@@ -49,6 +51,11 @@ typedef struct {
 	PALETTE palette;
 } TEXTURE;
 
+typedef struct TextureObject_ {
+	OBJECT_HEADER header;
+	TEXTURE texture;
+} TextureObject;
+
 const char *TxNameFromTexFormat(int fmt);
 
 void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE *palette, int flip);
@@ -61,9 +68,20 @@ int TxGetIndexVramSize(TEXELS *texels);
 
 int TxGetTexPlttVramSize(PALETTE *palette);
 
-void TxWriteNnsTga(LPCWSTR name, TEXELS *texels, PALETTE *palette);
-
 int TxDimensionIsValid(int x);
+
+
+// ----- Functions operating on the texture as an object
+
+extern LPCWSTR textureFormatNames[];
+
+void TxInit(TextureObject *texture, int format);
+
+void TxFree(OBJECT_HEADER *texture);
+
+void TxContain(TextureObject *object, int format, TEXTURE *texture);
+
+TEXTURE *TxUncontain(TextureObject *texture);
 
 int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size);
 
@@ -73,8 +91,20 @@ int TxIdentify(const unsigned char *buffer, unsigned int size);
 
 int TxIdentifyFile(LPCWSTR path);
 
-int TxReadNnsTga(const unsigned char *buffer, unsigned int size, TEXELS *texels, PALETTE *palette);
+int TxReadNnsTga(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 
-int TxReadIStudio(const unsigned char *buffer, unsigned int size, TEXELS *texels, PALETTE *palette);
+int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 
-int TxReadFile(LPCWSTR path, TEXELS *texels, PALETTE *palette);
+int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+
+int TxReadFile(TextureObject *texture, LPCWSTR path);
+
+int TxReadFileDirect(TEXELS *texels, PALETTE *palette, LPCWSTR path);
+
+int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream);
+
+int TxWrite(TextureObject *texture, BSTREAM *stream);
+
+int TxWriteFile(TextureObject *texture, LPCWSTR path);
+
+int TxWriteFileDirect(TEXELS *texels, PALETTE *palette, int format, LPCWSTR path);
