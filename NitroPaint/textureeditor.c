@@ -160,11 +160,7 @@ HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int d
 }
 
 LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (TEXTUREEDITORDATA *) calloc(1, sizeof(TEXTUREEDITORDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -216,6 +212,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		}
 		case NV_INITIALIZE:
 		{
+			TxInit(&data->texture, TEXTURE_TYPE_NNSTGA);
 			data->width = wParam & 0xFFFF;
 			data->height = (wParam >> 16) & 0xFFFF;
 			data->px = (COLOR32 *) lParam;
@@ -226,7 +223,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			//check: is it a Nitro TGA?
 			if (!TxReadFile(&data->texture, data->szInitialFile)) {
 				int format = FORMAT(data->texture.texture.texels.texImageParam);
-				memcpy(data->szOpenFile, data->szInitialFile, 2 + 2 * wcslen(data->szInitialFile));
+				EditorSetFile(hWnd, data->szInitialFile);
 				data->hasPalette = (format != CT_DIRECT && format != 0);
 				data->isNitro = 1;
 				TxRender(data->px, data->width, data->height, &data->texture.texture.texels, &data->texture.texture.palette, 0);
@@ -273,39 +270,6 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		case NV_SETPATH:
 		{
 			memcpy(data->szInitialFile, (LPWSTR) lParam, 2 * wParam + 2);
-			break;
-		}
-		case WM_MDIACTIVATE:
-		{
-			HWND hWndMain = getMainWindow(hWnd);
-			if ((HWND) lParam == hWnd) {
-				HMENU hMenu = GetMenu(hWndMain);
-
-				//enable menus
-				EnableMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_ENABLED);
-				EnableMenuItem(hMenu, ID_ZOOM_100, MF_ENABLED);
-				EnableMenuItem(hMenu, ID_ZOOM_200, MF_ENABLED);
-				EnableMenuItem(hMenu, ID_ZOOM_400, MF_ENABLED);
-				EnableMenuItem(hMenu, ID_ZOOM_800, MF_ENABLED);
-
-				if (data->showBorders)
-					CheckMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_CHECKED);
-				else
-					CheckMenuItem(hMenu, ID_VIEW_GRIDLINES, MF_UNCHECKED);
-				int checkBox = ID_ZOOM_100;
-				if (data->scale == 2) {
-					checkBox = ID_ZOOM_200;
-				} else if (data->scale == 4) {
-					checkBox = ID_ZOOM_400;
-				} else if (data->scale == 8) {
-					checkBox = ID_ZOOM_800;
-				}
-				int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
-				for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-					int id = ids[i];
-					CheckMenuItem(hMenu, id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-				}
-			}
 			break;
 		}
 		case WM_COMMAND:
@@ -388,50 +352,15 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			if (lParam == 0 && HIWORD(wParam) == 0) {
 				switch (LOWORD(wParam)) {
 					case ID_VIEW_GRIDLINES:
-					{
-						HWND hWndMain = getMainWindow(hWnd);
-						int state = GetMenuState(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_BYCOMMAND);
-						state = !state;
-						if (state) {
-							data->showBorders = 1;
-							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_CHECKED);
-						} else {
-							data->showBorders = 0;
-							CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
-						}
 						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-						InvalidateRect(hWnd, NULL, FALSE);
 						break;
-					}
 					case ID_ZOOM_100:
 					case ID_ZOOM_200:
 					case ID_ZOOM_400:
 					case ID_ZOOM_800:
-					{
-						if (LOWORD(wParam) == ID_ZOOM_100) data->scale = 1;
-						if (LOWORD(wParam) == ID_ZOOM_200) data->scale = 2;
-						if (LOWORD(wParam) == ID_ZOOM_400) data->scale = 4;
-						if (LOWORD(wParam) == ID_ZOOM_800) data->scale = 8;
-
-						int checkBox = ID_ZOOM_100;
-						if (data->scale == 2) {
-							checkBox = ID_ZOOM_200;
-						} else if (data->scale == 4) {
-							checkBox = ID_ZOOM_400;
-						} else if (data->scale == 8) {
-							checkBox = ID_ZOOM_800;
-						}
-						int ids[] = {ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800};
-						for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-							int id = ids[i];
-							CheckMenuItem(GetMenu(getMainWindow(hWnd)), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-						}
-
 						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-						InvalidateRect(hWnd, NULL, FALSE);
 						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
-					}
 					case ID_FILE_SAVE:
 					case ID_FILE_SAVEAS:
 					{
@@ -445,7 +374,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 							//browse for file
 							LPWSTR path = saveFileDialog(hWndMain, L"Save Texture", L"Nitro TGA Files (*.tga)\0*.tga\0All Files\0*.*\0\0", L"tga");
 							if (!path) break;
-							memcpy(data->szOpenFile, path, 2 * wcslen(path) + 2);
+							EditorSetFile(hWnd, path);
 							free(path);
 						}
 						TxWriteFile(&data->texture, data->szOpenFile);
@@ -477,11 +406,6 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			if (data->hWndTileEditor) DestroyWindow(data->hWndTileEditor);
 			SetWindowLongPtr(data->hWndPreview, 0, 0);
 			free(data->px);
-			if (data->texture.texture.palette.pal) free(data->texture.texture.palette.pal);
-			if (data->texture.texture.texels.texel) free(data->texture.texture.texels.texel);
-			if (data->texture.texture.texels.cmp) free(data->texture.texture.texels.cmp);
-			free(data);
-			SetWindowLongPtr(hWnd, 0, 0);
 			break;
 		}
 		case NV_GETTYPE:
@@ -2410,7 +2334,8 @@ VOID RegisterTextureTileEditorClass(VOID) {
 }
 
 VOID RegisterTextureEditorClass(VOID) {
-	RegisterGenericClass(L"TextureEditorClass", TextureEditorWndProc, sizeof(LPVOID));
+	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
+	EditorRegister(L"TextureEditorClass", TextureEditorWndProc, L"Texture Editor", sizeof(TEXTUREEDITORDATA), features);
 	RegisterTexturePreviewClass();
 	RegisterConvertDialogClass();
 	RegisterCompressionProgressClass();
@@ -2441,7 +2366,7 @@ HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, L
 		return NULL;
 	}
 
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TextureEditorClass", L"Texture Editor", WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	HWND h = EditorCreate(L"TextureEditorClass", x, y, width, height, hWndParent);
 
 	//for unconverted images, open path and bitmap
 	if (textureType == TEXTURE_TYPE_INVALID) {
@@ -2452,13 +2377,13 @@ HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, L
 		TxReadFile(&texture, path);
 		SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
 		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) &texture);
+		EditorSetFile(h, path);
 	}
 	return h;
 }
 
 HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TEXTURE *texture) {
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TextureEditorClass", L"Texture Editor", 
-		WS_VISIBLE | WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	HWND h = EditorCreate(L"TextureEditorClass", x, y, width, height, hWndParent);
 	SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) texture);
 	return h;
 }

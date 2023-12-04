@@ -268,12 +268,7 @@ void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE 
 	}
 }
 
-LPCWSTR textureFormatNames[] = {
-	L"NNS TGA",
-	L"5TX",
-	L"TDS",
-	NULL
-};
+LPCWSTR textureFormatNames[] = { L"Invalid", L"NNS TGA", L"5TX", L"TDS", NULL };
 
 #pragma comment(lib, "Version.lib")
 
