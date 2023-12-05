@@ -15,7 +15,6 @@
 #define FILE_TYPE_COMBO2D    10
 #define FILE_TYPE_NMCR       11
 #define FILE_TYPE_NMAR       12
-#define FILE_TYPE_TDS        13
 
 typedef struct ObjLink_ {
 	int nFrom;

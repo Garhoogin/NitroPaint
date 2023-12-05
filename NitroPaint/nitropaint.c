@@ -20,7 +20,6 @@
 #include "tileeditor.h"
 #include "textureeditor.h"
 #include "nsbtx.h"
-#include "tds.h"
 #include "nmcrviewer.h"
 #include "colorchooser.h"
 #include "ui.h"
@@ -654,9 +653,6 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			break;
 		case FILE_TYPE_IMAGE:
 			CreateImageDialog(hWnd, path);
-			break;
-		case FILE_TYPE_TDS:
-			CreateTdsViewer(data->hWndMdi, path);
 			break;
 		case FILE_TYPE_COMBO2D:
 		{

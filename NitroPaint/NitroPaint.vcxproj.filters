@@ -126,9 +126,6 @@
     <ClCompile Include="nns.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tds.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="bggen.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -243,9 +240,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="nns.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="tds.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="bggen.h">

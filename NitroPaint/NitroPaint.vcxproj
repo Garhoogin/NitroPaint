@@ -192,7 +192,6 @@
     <ClCompile Include="nscrviewer.c" />
     <ClCompile Include="palette.c" />
     <ClCompile Include="palops.c" />
-    <ClCompile Include="tds.c" />
     <ClCompile Include="texconv.c" />
     <ClCompile Include="texture.c" />
     <ClCompile Include="textureeditor.c" />
@@ -233,7 +232,6 @@
     <ClInclude Include="palette.h" />
     <ClInclude Include="palops.h" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="tds.h" />
     <ClInclude Include="texconv.h" />
     <ClInclude Include="texture.h" />
     <ClInclude Include="textureeditor.h" />

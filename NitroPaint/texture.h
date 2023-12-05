@@ -87,6 +87,8 @@ int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size);
 
 int TxIsValidIStudio(const unsigned char *buffer, unsigned int size);
 
+int TxIsValidTds(const unsigned char *buffer, unsigned int size);
+
 int TxIdentify(const unsigned char *buffer, unsigned int size);
 
 int TxIdentifyFile(LPCWSTR path);
@@ -95,6 +97,8 @@ int TxReadNnsTga(TextureObject *texture, const unsigned char *buffer, unsigned i
 
 int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 
+int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+
 int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 
 int TxReadFile(TextureObject *texture, LPCWSTR path);
@@ -102,6 +106,10 @@ int TxReadFile(TextureObject *texture, LPCWSTR path);
 int TxReadFileDirect(TEXELS *texels, PALETTE *palette, LPCWSTR path);
 
 int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream);
+
+int TxWriteTds(TextureObject *texture, BSTREAM *stream);
+
+int TxWriteIStudio(TextureObject *texture, BSTREAM *stream);
 
 int TxWrite(TextureObject *texture, BSTREAM *stream);
 

@@ -360,7 +360,6 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 				else if (CellIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
 				else if (CellIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_CELL;
 				else if (AnmIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_NANR;
-				else if (TdsIsValid(buffer, bufferSize)) type = FILE_TYPE_TDS;
 
 				//test for bin format files
 				else {
