@@ -372,7 +372,19 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						}
 						if (*data->szOpenFile == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
 							//browse for file
-							LPWSTR path = saveFileDialog(hWndMain, L"Save Texture", L"Nitro TGA Files (*.tga)\0*.tga\0All Files\0*.*\0\0", L"tga");
+							LPCWSTR filter = L"NNS TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", extension = L"tga";
+							switch (data->texture.header.format) {
+								case TEXTURE_TYPE_ISTUDIO:
+									filter = L"iMageStudio Textures (*.5tx)\0*.5tx\0All Files\0*.*\0";
+									extension = L"5tx";
+									break;
+								case TEXTURE_TYPE_TDS:
+									filter = L"Ghost Trick Textures (*.tds)\0*.tds\0All Files\0*.*\0";
+									extension = L"tds";
+									break;
+							}
+
+							LPWSTR path = saveFileDialog(hWndMain, L"Save Texture", filter, extension);
 							if (!path) break;
 							EditorSetFile(hWnd, path);
 							free(path);
