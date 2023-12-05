@@ -453,6 +453,11 @@ void *ObjReadWholeFile(LPCWSTR name, int *size) {
 	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwRead, dwSizeLow, dwSizeHigh = 0;
 
+	if (hFile == INVALID_HANDLE_VALUE) {
+		*size = 0;
+		return NULL;
+	}
+
 	void *buffer;
 	if (ObjiPathStartsWith(name, L"\\\\.\\pipe\\")) {
 		//pipe protocol: first 4 bytes file size, followed by file data.
@@ -473,6 +478,9 @@ void *ObjReadWholeFile(LPCWSTR name, int *size) {
 int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
 	unsigned int size;
 	void *buffer = ObjReadWholeFile(name, &size);
+	if (buffer == NULL) {
+		return OBJ_STATUS_NO_ACCESS;
+	}
 
 	int status;
 	int compType = CxGetCompressionType(buffer, size);
@@ -495,13 +503,17 @@ int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
 	bstreamCreate(&stream, NULL, 0);
 	int status = writer(object, &stream);
 
-	if (status == 0) {
+	if (OBJ_SUCCEEDED(status)) {
 		if (object->compression != COMPRESSION_NONE) {
 			bstreamCompress(&stream, object->compression, 0, 0);
 		}
 
 		DWORD dwWritten;
 		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile == INVALID_HANDLE_VALUE) {
+			bstreamFree(&stream);
+			return OBJ_STATUS_NO_ACCESS;
+		}
 		WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
 		CloseHandle(hFile);
 	}
