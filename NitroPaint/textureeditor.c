@@ -2363,8 +2363,18 @@ HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndPa
 }
 
 HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
+	unsigned int fileSize;
+	unsigned char *bytes = ObjReadWholeFile(path, &fileSize);
+	int compression = CxGetCompressionType(bytes, fileSize);
+	if (compression != COMPRESSION_NONE) {
+		unsigned char *dec = CxDecompress(bytes, fileSize, &fileSize);
+		free(bytes);
+		bytes = dec;
+	}
+	int textureType = TxIdentify(bytes, fileSize);
+	free(bytes);
+
 	int bWidth, bHeight;
-	int textureType = TxIdentifyFile(path);
 	COLOR32 *bits = ImgRead(path, &bWidth, &bHeight);
 	if (bits == NULL && textureType == TEXTURE_TYPE_INVALID) {
 		MessageBox(hWndParent, L"An invalid image file was specified.", L"Invalid Image", MB_ICONERROR);
