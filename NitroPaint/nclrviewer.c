@@ -945,20 +945,31 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			return 1;
 		case NV_PICKFILE:
 		{
-			LPCWSTR filter = L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0";
+			LPCWSTR filter = L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0", extension = L"nclr";
 			switch (data->nclr.header.format) {
 				case NCLR_TYPE_BIN:
 				case NCLR_TYPE_HUDSON:
 					filter = L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0All Files\0*.*\0";
+					extension = L"bin";
 					break;
 				case NCLR_TYPE_COMBO:
 					filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";
+					extension = L"bin";
 					break;
 				case NCLR_TYPE_NC:
 					filter = L"NCL Files (*.ncl)\0*.ncl\0All Files\0*.*\0";
+					extension = L"ncl";
+					break;
+				case NCLR_TYPE_ISTUDIO:
+					filter = L"5PL Files (*.5pl)\0*.5pl\0All Files\0*.*\0";
+					extension = L"5pl";
+					break;
+				case NCLR_TYPE_ISTUDIOC:
+					filter = L"5PC Files (*.5pc)\0*.5pc\0All Files\0*.*\0";
+					extension = L"5pc";
 					break;
 			}
-			LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nclr");
+			LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, extension);
 			if (path != NULL) {
 				EditorSetFile(hWnd, path);
 				free(path);
