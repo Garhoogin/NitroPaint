@@ -198,6 +198,7 @@ void ChrInit(NCGR *ncgr, int format) {
 	ncgr->header.size = sizeof(NCGR);
 	ObjInit((OBJECT_HEADER *) ncgr, FILE_TYPE_CHARACTER, format);
 	ncgr->header.dispose = ChrFree;
+	ncgr->header.writer = (OBJECT_WRITER) ChrWrite;
 	ncgr->combo2d = NULL;
 }
 

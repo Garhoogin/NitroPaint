@@ -349,42 +349,11 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 					case ID_FILE_SAVEAS:
-					case ID_FILE_SAVE:
-					{
-						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
-							LPCWSTR filter = L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*\0";
-							switch (data->ncgr.header.format) {
-								case NCGR_TYPE_BIN:
-								case NCGR_TYPE_HUDSON:
-								case NCGR_TYPE_HUDSON2:
-									filter = L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0All Files\0*.*\0";
-									break;
-								case NCGR_TYPE_COMBO:
-									filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";
-									break;
-								case NCGR_TYPE_NC:
-									filter = L"NCG Files (*.ncg)\0*.ncg\0All Files\0*.*\0";
-									break;
-								case NCGR_TYPE_IC:
-									filter = L"ICG Files (*.icg)\0*.icg\0All Files\0*.*\0";
-									break;
-								case NCGR_TYPE_AC:
-									filter = L"ACG Files (*.acg)\0*.acg\0All Files\0*.*\0";
-									break;
-							}
-							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncgr");
-							if (path != NULL) {
-								EditorSetFile(hWnd, path);
-								free(path);
-							} else break;
-						}
-
-						ChrWriteFile(&data->ncgr, data->szOpenFile);
-
-						//update link of any screens and cells pointing here
-						ObjUpdateLinks(&data->ncgr.header, ObjGetFileNameFromPath(data->szOpenFile));
+						EditorSaveAs(hWnd);
 						break;
-					}
+					case ID_FILE_SAVE:
+						EditorSave(hWnd);
+						break;
 					case ID_FILE_EXPORT:
 					{
 						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
@@ -1160,7 +1129,15 @@ VOID RegisterCharImportClass(VOID) {
 
 VOID RegisterNcgrViewerClass(VOID) {
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
-	EditorRegister(L"NcgrViewerClass", NcgrViewerWndProc, L"Character Editor", sizeof(NCGRVIEWERDATA), features);
+	EDITOR_CLASS *cls = EditorRegister(L"NcgrViewerClass", NcgrViewerWndProc, L"Character Editor", sizeof(NCGRVIEWERDATA), features);
+	EditorAddFilter(cls, NCGR_TYPE_NCGR, L"ncgr", L"NCGR Files (*.ncgr)\0*.ncgr\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCGR_TYPE_NC, L"ncg", L"NCG Files (*.ncg)\0*.ncg\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCGR_TYPE_IC, L"icg", L"ICG Files (*.icg)\0*.icg\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCGR_TYPE_AC, L"acg", L"ACG Files (*.acg)\0*.acg\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCGR_TYPE_HUDSON, L"bin", L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCGR_TYPE_HUDSON2, L"bin", L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCGR_TYPE_BIN, L"bin", L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCGR_TYPE_COMBO, L"bin", L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0");
 	
 	RegisterNcgrPreviewClass();
 	RegisterTileEditorClass();

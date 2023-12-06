@@ -943,39 +943,6 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_ERASEBKGND:
 			return 1;
-		case NV_PICKFILE:
-		{
-			LPCWSTR filter = L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0", extension = L"nclr";
-			switch (data->nclr.header.format) {
-				case NCLR_TYPE_BIN:
-				case NCLR_TYPE_HUDSON:
-					filter = L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0All Files\0*.*\0";
-					extension = L"bin";
-					break;
-				case NCLR_TYPE_COMBO:
-					filter = L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0";
-					extension = L"bin";
-					break;
-				case NCLR_TYPE_NC:
-					filter = L"NCL Files (*.ncl)\0*.ncl\0All Files\0*.*\0";
-					extension = L"ncl";
-					break;
-				case NCLR_TYPE_ISTUDIO:
-					filter = L"5PL Files (*.5pl)\0*.5pl\0All Files\0*.*\0";
-					extension = L"5pl";
-					break;
-				case NCLR_TYPE_ISTUDIOC:
-					filter = L"5PC Files (*.5pc)\0*.5pc\0All Files\0*.*\0";
-					extension = L"5pc";
-					break;
-			}
-			LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, extension);
-			if (path != NULL) {
-				EditorSetFile(hWnd, path);
-				free(path);
-			}
-			break;
-		}
 		case WM_COMMAND:
 		{
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -1062,19 +1029,11 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 					case ID_FILE_SAVE:
-					case ID_FILE_SAVEAS:
-					{
-						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
-							SendMessage(hWnd, NV_PICKFILE, 0, 0);
-						}
-						if (data->szOpenFile[0] != L'\0') {
-							PalWriteFile(&data->nclr, data->szOpenFile);
-
-							//update link of any character graphics pointing here
-							ObjUpdateLinks(&data->nclr.header, ObjGetFileNameFromPath(data->szOpenFile));
-						}
+						EditorSave(hWnd);
 						break;
-					}
+					case ID_FILE_SAVEAS:
+						EditorSaveAs(hWnd);
+						break;
 					case ID_FILE_EXPORT:
 					{
 						LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Export Palette", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
@@ -1319,7 +1278,14 @@ VOID RegisterPaletteGenerationClass(VOID) {
 
 VOID RegisterNclrViewerClass(VOID) {
 	int features = 0;
-	EditorRegister(L"NclrViewerClass", NclrViewerWndProc, L"Palette Editor", sizeof(NCLRVIEWERDATA), features);
+	EDITOR_CLASS *cls = EditorRegister(L"NclrViewerClass", NclrViewerWndProc, L"Palette Editor", sizeof(NCLRVIEWERDATA), features);
+	EditorAddFilter(cls, NCLR_TYPE_NCLR, L"nclr", L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCLR_TYPE_BIN, L"bin", L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCLR_TYPE_HUDSON, L"bin", L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCLR_TYPE_COMBO, L"bin", L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0");
+	EditorAddFilter(cls, NCLR_TYPE_NC, L"ncl", L"NCL Files (*.ncl)\0*.ncl\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCLR_TYPE_ISTUDIO, L"5pl", L"5PL Files (*.5pl)\0*.5pl\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCLR_TYPE_ISTUDIOC, L"5pc", L"5PC Files (*.5pc)\0*.5pc\0All Files\0*.*\0");
 	RegisterPaletteGenerationClass();
 }
 

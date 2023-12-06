@@ -462,38 +462,11 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 					case ID_FILE_SAVEAS:
-					case ID_FILE_SAVE:
-					{
-						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
-							LPCWSTR filter = L"NSCR Files (*.nscr)\0*.nscr\0All Files\0*.*\0";
-							switch (data->nscr.header.format) {
-								case NSCR_TYPE_BIN:
-								case NSCR_TYPE_HUDSON:
-								case NSCR_TYPE_HUDSON2:
-									filter = L"Screen Files (*.bin, *nsc.bin, *isc.bin, *.nbfs)\0*.bin;*.nbfs\0All Files\0*.*\0";
-									break;
-								case NSCR_TYPE_COMBO:
-									filter = L"Combination Files (*.dat, *.bin)\0*.dat;*.bin\0";
-									break;
-								case NSCR_TYPE_NC:
-									filter = L"NSC Files (*.nsc)\0*.nsc\0All Files\0*.*\0";
-									break;
-								case NSCR_TYPE_IC:
-									filter = L"ISC Files (*.isc)\0*.isc\0All Files\0*.*\0";
-									break;
-								case NSCR_TYPE_AC:
-									filter = L"ASC Files (*.asc)\0*.asc\0All Files\0*.*\0";
-									break;
-							}
-							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nscr");
-							if (path != NULL) {
-								EditorSetFile(hWnd, path);
-								free(path);
-							}
-						}
-						ScrWriteFile(&data->nscr, data->szOpenFile);
+						EditorSaveAs(hWnd);
 						break;
-					}
+					case ID_FILE_SAVE:
+						EditorSave(hWnd);
+						break;
 					case ID_NSCRMENU_IMPORTBITMAPHERE:
 					{
 						HWND hWndMain = getMainWindow(hWnd);
@@ -1366,7 +1339,16 @@ VOID RegisterNscrPreviewClass(VOID) {
 
 VOID RegisterNscrViewerClass(VOID) {
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
-	EditorRegister(L"NscrViewerClass", NscrViewerWndProc, L"Screen Editor", sizeof(NSCRVIEWERDATA), features);
+	EDITOR_CLASS *cls = EditorRegister(L"NscrViewerClass", NscrViewerWndProc, L"Screen Editor", sizeof(NSCRVIEWERDATA), features);
+	EditorAddFilter(cls, NSCR_TYPE_NSCR, L"nscr", L"NSCR Files (*.nscr)\0*.nscr\0All Files\0*.*\0");
+	EditorAddFilter(cls, NSCR_TYPE_NC, L"nsc", L"NSC Files (*.nsc)\0*.nsc\0All Files\0*.*\0");
+	EditorAddFilter(cls, NSCR_TYPE_IC, L"isc", L"ISC Files (*.isc)\0*.isc\0All Files\0*.*\0");
+	EditorAddFilter(cls, NSCR_TYPE_AC, L"asc", L"ASC Files (*.asc)\0*.asc\0All Files\0*.*\0");
+	EditorAddFilter(cls, NSCR_TYPE_HUDSON, L"bin", L"Screen Files (*.bin)\0*.bin\0All Files\0*.*\0");
+	EditorAddFilter(cls, NSCR_TYPE_HUDSON2, L"bin", L"Screen Files (*.bin)\0*.bin\0All Files\0*.*\0");
+	EditorAddFilter(cls, NSCR_TYPE_BIN, L"bin", L"Screen Files (*.bin, *nsc.bin, *isc.bin, *.nbfs)\0*.bin;*.nbfs\0All Files\0*.*\0");
+	EditorAddFilter(cls, NSCR_TYPE_COMBO, L"bin", L"Combination Files (*.dat, *.bin)\0*.dat;*.bin\0");
+
 	RegisterNscrBitmapImportClass();
 	RegisterNscrPreviewClass();
 }

@@ -28,6 +28,7 @@ void PalInit(NCLR *nclr, int format) {
 	nclr->header.size = sizeof(NCLR);
 	ObjInit((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
 	nclr->header.dispose = PalFree;
+	nclr->header.writer = (OBJECT_WRITER) PalWrite;
 	nclr->combo2d = NULL;
 }
 

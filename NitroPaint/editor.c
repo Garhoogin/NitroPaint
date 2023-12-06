@@ -236,7 +236,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize, int features) {
+EDITOR_CLASS *EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize, int features) {
 	//register editor-common window class.
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -252,6 +252,7 @@ ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, s
 
 	//if success, set class data
 	if (aClass) {
+		EDITOR_CLASS *ec = (EDITOR_CLASS *) calloc(1, sizeof(EDITOR_CLASS));
 		HWND hWndDummy = CreateWindow(lpszClassName, L"", 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL);
 		SetClassLongPtr(hWndDummy, EDITOR_CD_TITLE, (LONG_PTR) title);
 		SetClassLongPtr(hWndDummy, EDITOR_CD_WNDPROC, (LONG_PTR) lpfnWndProc);
@@ -259,10 +260,66 @@ ATOM EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, s
 		SetClassLongPtr(hWndDummy, EDITOR_CD_LIGHTBRUSH, (LONG_PTR) CreateSolidBrush(RGB(51, 51, 51)));
 		SetClassLongPtr(hWndDummy, EDITOR_CD_LIGHTPEN, (LONG_PTR) CreatePen(PS_SOLID, 1, RGB(51, 51, 51)));
 		SetClassLongPtr(hWndDummy, EDITOR_CD_FEATURES, features);
+		SetClassLongPtr(hWndDummy, EDITOR_CD_CLASSINFO, (LONG_PTR) ec);
 		DestroyWindow(hWndDummy);
+
+		ec->aclass = aClass;
+		ec->nFilters = 0;
+		ec->filters = ec->extensions = NULL;
+		return ec;
 	}
 
-	return aClass;
+	return NULL;
+}
+
+void EditorAddFilter(EDITOR_CLASS *cls, int format, LPCWSTR extension, LPCWSTR filter) {
+	//if format not within the bounds, add it.
+	if (format >= cls->nFilters) {
+		cls->extensions = (LPCWSTR *) realloc((LPWSTR *) cls->extensions, (format + 1) * sizeof(LPCWSTR *));
+		cls->filters = (LPCWSTR *) realloc((LPWSTR *) cls->filters, (format + 1) * sizeof(LPCWSTR *));
+		for (int i = cls->nFilters; i < format; i++) {
+			cls->extensions[i] = NULL;
+			cls->filters[i] = NULL;
+		}
+		cls->nFilters = format + 1;
+	}
+	cls->extensions[format] = extension;
+	cls->filters[format] = filter;
+}
+
+int EditorSaveAs(HWND hWnd) {
+	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	EDITOR_CLASS *cls = (EDITOR_CLASS *) GetClassLong(hWnd, EDITOR_CD_CLASSINFO);
+
+	int format = data->file.format;
+	LPCWSTR filter = format < cls->nFilters ? cls->filters[format] : NULL;
+	LPCWSTR extension = format < cls->nFilters ? cls->extensions[format] : NULL;
+	if (filter == NULL && cls->nFilters > 0) filter = cls->filters[0];
+	if (extension == NULL && cls->nFilters > 0) extension = cls->extensions[0];
+
+	LPWSTR path = saveFileDialog(hWnd, L"Save As...", filter, extension);
+	if (path == NULL) return EDITOR_STATUS_CANCELLED;
+
+	EditorSetFile(hWnd, path);
+	free(path);
+	return EditorSave(hWnd);
+}
+
+int EditorSave(HWND hWnd) {
+	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	EDITOR_CLASS *cls = (EDITOR_CLASS *) GetClassLong(hWnd, EDITOR_CD_CLASSINFO);
+
+	//do we need to open a Save As dialog?
+	if (data->szOpenFile[0] == L'\0') {
+		return EditorSaveAs(hWnd);
+	}
+
+	//else save
+	ObjUpdateLinks(&data->file, ObjGetFileNameFromPath(data->szOpenFile));
+	if (data->file.writer != NULL) return ObjWriteFile(data->szOpenFile, &data->file, data->file.writer);
+
+	//needs to be written
+	return OBJ_STATUS_UNSUPPORTED;
 }
 
 void EditorSetFile(HWND hWnd, LPCWSTR filename) {

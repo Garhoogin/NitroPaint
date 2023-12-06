@@ -55,6 +55,11 @@ int PalIsValidNtfp(const unsigned char *lpFile, unsigned int size);
 int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size);
 
 //
+// Writes a palette to a stream.
+//
+int PalWrite(NCLR *nclr, BSTREAM *stream);
+
+//
 // Writes a palette to a file.
 //
 int PalWriteFile(NCLR *nclr, LPCWSTR name);

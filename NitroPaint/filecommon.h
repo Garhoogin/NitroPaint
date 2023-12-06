@@ -22,8 +22,13 @@
 #define OBJ_STATUS_NO_MEMORY   2  //not enough memory
 #define OBJ_STATUS_UNSUPPORTED 3  //feature unsupported
 #define OBJ_STATUS_NO_ACCESS   4  //access denied accessing a resource
+#define OBJ_STATUS_MAX         5
 
 #define OBJ_SUCCEEDED(s)       ((s)==OBJ_STATUS_SUCCESS)
+
+
+typedef int(*OBJECT_READER) (struct OBJECT_HEADER_ *object, char *buffer, int size);
+typedef int(*OBJECT_WRITER) (struct OBJECT_HEADER_ *object, BSTREAM *stream);
 
 typedef struct ObjLink_ {
 	int nFrom;
@@ -37,13 +42,11 @@ typedef struct OBJECT_HEADER_ {
 	int format;
 	int compression;
 	void (*dispose) (struct OBJECT_HEADER_ *);
+	OBJECT_WRITER writer;
 	ObjLink link;
 	char *fileLink;
 	char *comment;
 } OBJECT_HEADER;
-
-typedef int (*OBJECT_READER) (OBJECT_HEADER *object, char *buffer, int size);
-typedef int (*OBJECT_WRITER) (OBJECT_HEADER *object, BSTREAM *stream);
 
 extern LPCWSTR g_ObjCompressionNames[];
 

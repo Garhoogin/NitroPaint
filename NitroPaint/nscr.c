@@ -172,6 +172,7 @@ void ScrInit(NSCR *nscr, int format) {
 	nscr->header.size = sizeof(NSCR);
 	ObjInit((OBJECT_HEADER *) nscr, FILE_TYPE_SCREEN, format);
 	nscr->header.dispose = ScrFree;
+	nscr->header.writer = (OBJECT_WRITER) ScrWrite;
 	nscr->combo2d = NULL;
 }
 
