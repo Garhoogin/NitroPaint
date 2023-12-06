@@ -278,61 +278,55 @@ int PalReadFile(NCLR *nclr, LPCWSTR path) {
 }
 
 int PalWriteNclr(NCLR *nclr, BSTREAM *stream) {
-	uint8_t fileHeader[] = { 'R', 'L', 'C', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-	uint8_t ttlpHeader[] = { 'T', 'T', 'L', 'P', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
-	uint8_t pmcpHeader[] = { 'P', 'M', 'C', 'P', 0x12, 0, 0, 0, 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
+	uint8_t plttHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
+	uint8_t pcmpHeader[] = { 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
 
-	int sectionSize = 0x18 + (nclr->nColors << 1);
-	int pcmpSize = (nclr->nPalettes && nclr->idxTable != NULL) ? (0x10 + 2 * nclr->nPalettes) : 0;
-	int nSections = 1 + (pcmpSize != 0);
-	*(int *) (ttlpHeader + 0x4) = sectionSize;
-	if (nclr->nBits == 8) *(int *) (ttlpHeader + 0x8) = 4;
-	else *(int *) (ttlpHeader + 0x8) = 3;
-	*(int *) (ttlpHeader + 0x10) = nclr->totalSize;
-	*(int *) (ttlpHeader + 0xC) = nclr->extPalette;
+	if (nclr->nBits == 8) *(uint32_t *) (plttHeader + 0x0) = 4;
+	else *(uint32_t *) (plttHeader + 0x0) = 3;
+	*(uint32_t *) (plttHeader + 0x4) = nclr->extPalette;
+	*(uint32_t *) (plttHeader + 0x8) = nclr->totalSize;
 
-	*(int *) (fileHeader + 0x8) = sectionSize + 0x10 + pcmpSize;
-	*(short *) (fileHeader + 0xE) = nSections;
+	*(uint16_t *) (pcmpHeader + 0) = nclr->nPalettes;
 
-	*(short *) (pmcpHeader + 8) = nclr->nPalettes;
-	*(int *) (pmcpHeader + 4) = 0x10 + 2 * nclr->nPalettes;
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, "NCLR", 1, 0, NNS_TYPE_G2D, NNS_SIG_LE);
+	NnsStreamStartBlock(&nnsStream, "PLTT");
+	NnsStreamWrite(&nnsStream, plttHeader, sizeof(plttHeader));
+	NnsStreamWrite(&nnsStream, nclr->colors, nclr->nColors * sizeof(COLOR));
+	NnsStreamEndBlock(&nnsStream);
 
-	bstreamWrite(stream, fileHeader, sizeof(fileHeader));
-	bstreamWrite(stream, ttlpHeader, sizeof(ttlpHeader));
-	bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
-	if (pcmpSize) {
-		bstreamWrite(stream, pmcpHeader, sizeof(pmcpHeader));
-		bstreamWrite(stream, nclr->idxTable, nclr->nPalettes * 2);
+	if (nclr->nPalettes && nclr->idxTable != NULL) {
+		NnsStreamStartBlock(&nnsStream, "PCMP");
+		NnsStreamWrite(&nnsStream, pcmpHeader, sizeof(pcmpHeader));
+		NnsStreamWrite(&nnsStream, nclr->idxTable, nclr->nPalettes * 2);
+		NnsStreamEndBlock(&nnsStream);
 	}
+
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
 	return 0;
 }
 
 int PalWriteNcl(NCLR *nclr, BSTREAM *stream) {
-	uint8_t fileHeader[] = { 'N', 'C', 'C', 'L', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-	uint8_t paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint8_t cmntHeader[] = { 'C', 'M', 'N', 'T', 0xC, 0, 0, 0 };
+	uint8_t paltHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+	*(uint32_t *) (paltHeader + 0x0) = nclr->nColors / nclr->nPalettes;
+	*(uint32_t *) (paltHeader + 0x4) = nclr->nPalettes;
 
-	int paltSize = nclr->nColors * 2 + sizeof(paltHeader);
-	int commentLength = nclr->header.comment == NULL ? 0 : ((strlen(nclr->header.comment) + 4) & ~3);
-	int cmntSize = commentLength ? (commentLength + sizeof(cmntHeader)) : 0;
-	int fileSize = paltSize + cmntSize + sizeof(fileHeader);
-
-	*(uint32_t *) (fileHeader + 8) = fileSize;
-	*(uint16_t *) (fileHeader + 14) = 1 + (cmntSize != 0);
-	*(uint32_t *) (paltHeader + 4) = paltSize;
-	*(uint32_t *) (paltHeader + 8) = nclr->nColors / nclr->nPalettes;
-	*(uint32_t *) (paltHeader + 12) = nclr->nPalettes;
-	*(uint32_t *) (cmntHeader + 4) = cmntSize;
-
-	bstreamWrite(stream, fileHeader, sizeof(fileHeader));
-	bstreamWrite(stream, paltHeader, sizeof(paltHeader));
-	bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
-	if (cmntSize != 0) {
-		uint32_t padding = 0;
-		bstreamWrite(stream, cmntHeader, sizeof(cmntHeader));
-		bstreamWrite(stream, nclr->header.comment, strlen(nclr->header.comment) + 1);
-		bstreamWrite(stream, &padding, commentLength - (strlen(nclr->header.comment) + 1));
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, "NCCL", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
+	NnsStreamStartBlock(&nnsStream, "PALT");
+	NnsStreamWrite(&nnsStream, paltHeader, sizeof(paltHeader));
+	NnsStreamWrite(&nnsStream, nclr->colors, nclr->nColors * sizeof(COLOR));
+	NnsStreamEndBlock(&nnsStream);
+	if (nclr->header.comment != NULL) {
+		NnsStreamStartBlock(&nnsStream, "CMNT");
+		NnsStreamWrite(&nnsStream, nclr->header.comment, strlen(nclr->header.comment));
+		NnsStreamEndBlock(&nnsStream);
 	}
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
 	return 0;
 }
 
@@ -356,21 +350,18 @@ int PalWriteCombo(NCLR *nclr, BSTREAM *stream) {
 }
 
 int PalWriteIStudio(NCLR *nclr, BSTREAM *stream) {
-	uint8_t fileHeader[] = { 'N', 'T', 'P', 'L', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-	uint8_t paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
-	if (nclr->header.format == NCLR_TYPE_ISTUDIOC) fileHeader[3] = 'C'; //format otherwise identical
+	uint8_t paltHeader[] = { 0, 0, 0, 0 };
+	*(uint32_t *) (paltHeader + 0x0) = nclr->nColors;
 
-	uint32_t paletteSize = nclr->nColors * sizeof(COLOR);
-	uint32_t paltSize = paletteSize + sizeof(paltHeader);
-	uint32_t fileSize = paltSize + sizeof(fileHeader);
-	*(uint32_t *) (fileHeader + 0x08) = fileSize;
-	*(uint32_t *) (paltHeader + 0x04) = paltSize;
-	*(uint32_t *) (paltHeader + 0x08) = nclr->nColors;
-
-	bstreamWrite(stream, fileHeader, sizeof(fileHeader));
-	bstreamWrite(stream, paltHeader, sizeof(paltHeader));
-	bstreamWrite(stream, nclr->colors, paletteSize);
-
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, nclr->header.format == NCLR_TYPE_ISTUDIOC ? "NTPC" : "NTPL", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
+	NnsStreamStartBlock(&nnsStream, "PALT");
+	NnsStreamWrite(&nnsStream, paltHeader, sizeof(paltHeader));
+	NnsStreamWrite(&nnsStream, nclr->colors, nclr->nColors * sizeof(COLOR));
+	NnsStreamEndBlock(&nnsStream);
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
 	return 0;
 }
 

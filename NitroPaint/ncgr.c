@@ -743,82 +743,81 @@ int ChrWriteBin(NCGR *ncgr, BSTREAM *stream) {
 }
 
 int ChrWriteNcgr(NCGR *ncgr, BSTREAM *stream) {
-	unsigned char ncgrHeader[] = { 'R', 'G', 'C', 'N', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, 0x1, 0 };
-	unsigned char charHeader[] = { 'R', 'A', 'H', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	if (ncgr->bitmap) {
-		charHeader[20] = 1;
-	}
+	unsigned char charHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 	int nTiles = ncgr->nTiles;
-	int nBytesPerTile = 64;
-	if (ncgr->nBits == 4) nBytesPerTile >>= 1;
-	int sectionSize = 0x20 + nTiles * nBytesPerTile;
-	int fileSize = 0x10 + sectionSize;
+	int nBytesPerTile = 8 * ncgr->nBits;
+	int gfxFormat = (ncgr->nBits == 8) ? 4 : 3;
 
-	if (ncgr->nBits == 8) *(int *) (charHeader + 0xC) = 4;
-	else if (ncgr->nBits == 4) *(int *) (charHeader + 0xC) = 3;
-	*(int *) (charHeader + 0x10) = ncgr->mappingMode;
-	*(int *) (charHeader + 0x4) = sectionSize;
 	if (NCGR_2D(ncgr->mappingMode)) {
-		*(unsigned short *) (charHeader + 0x8) = ncgr->tilesY;
-		*(unsigned short *) (charHeader + 0xA) = ncgr->tilesX;
+		*(uint16_t *) (charHeader + 0x00) = ncgr->tilesY;
+		*(uint16_t *) (charHeader + 0x02) = ncgr->tilesX;
 	} else {
-		*(int *) (charHeader + 0x8) = 0xFFFFFFFF;
+		*(uint32_t *) (charHeader + 0x00) = 0xFFFFFFFF;
 	}
-	*(int *) (charHeader + 0x1C) = 0x18;
-	*(int *) (charHeader + 0x18) = sectionSize - 0x20;
+	*(uint32_t *) (charHeader + 0x04) = gfxFormat;
+	*(uint32_t *) (charHeader + 0x08) = ncgr->mappingMode;
+	*(uint32_t *) (charHeader + 0x0C) = !!ncgr->bitmap;
+	*(uint32_t *) (charHeader + 0x10) = nTiles * nBytesPerTile;
+	*(uint32_t *) (charHeader + 0x14) = sizeof(charHeader);
 
-	*(int *) (ncgrHeader + 0x8) = fileSize;
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, "NCGR", 1, 0, NNS_TYPE_G2D, NNS_SIG_LE);
 
-	bstreamWrite(stream, ncgrHeader, sizeof(ncgrHeader));
-	bstreamWrite(stream, charHeader, sizeof(charHeader));
-	ChrWriteGraphics(ncgr, stream);
+	NnsStreamStartBlock(&nnsStream, "CHAR");
+	NnsStreamWrite(&nnsStream, charHeader, sizeof(charHeader));
+	ChrWriteGraphics(ncgr, NnsStreamGetBlockStream(&nnsStream));
+	NnsStreamEndBlock(&nnsStream);
+
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
+
 	return 0;
 }
 
 int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
-	unsigned char ncgHeader[] = { 'N', 'C', 'C', 'G', 0xFF, 0xFE, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x10, 0, 0x1, 0 };
-	unsigned char charHeader[] = { 'C', 'H', 'A', 'R', 0x14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char attrHeader[] = { 'A', 'T', 'T', 'R', 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char linkHeader[] = { 'L', 'I', 'N', 'K', 0x08, 0, 0, 0 };
-	unsigned char cmntHeader[] = { 'C', 'M', 'N', 'T', 0x08, 0, 0, 0 };
+	unsigned char charHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char attrHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	int charSize = ncgr->nTiles * ncgr->nBits * 8 + sizeof(charHeader);
-	int attrSize = ncgr->tilesX * ncgr->tilesY + sizeof(attrHeader);
-	int linkSize = ncgr->header.fileLink == NULL ? 0 : (((strlen(ncgr->header.fileLink) + 4) & ~3) + sizeof(linkHeader));
-	int cmntSize = ncgr->header.comment == NULL ? 0 : (((strlen(ncgr->header.comment) + 4) & ~3) + sizeof(cmntHeader));
-	int totalSize = sizeof(ncgHeader) + charSize + attrSize + linkSize + cmntSize;
-	*(uint32_t *) (charHeader + 0x4) = charSize;
-	*(uint32_t *) (charHeader + 0x8) = ncgr->tilesX;
-	*(uint32_t *) (charHeader + 0xC) = ncgr->tilesY;
-	*(uint32_t *) (charHeader + 0x10) = (ncgr->extPalette && ncgr->nBits == 8) ? 2 : (ncgr->nBits == 8);
-	*(uint32_t *) (attrHeader + 0x4) = attrSize;
-	*(uint32_t *) (attrHeader + 0x8) = ncgr->tilesX;
-	*(uint32_t *) (attrHeader + 0xC) = ncgr->tilesY;
-	*(uint32_t *) (linkHeader + 0x4) = linkSize;
-	*(uint32_t *) (cmntHeader + 0x4) = cmntSize;
-	*(uint32_t *) (ncgHeader + 0x8) = totalSize;
-	*(uint16_t *) (ncgHeader + 0xE) = !!charSize + !!attrSize + !!linkSize + !!cmntSize;
-	bstreamWrite(stream, ncgHeader, sizeof(ncgHeader));
-	bstreamWrite(stream, charHeader, sizeof(charHeader));
-	ChrWriteChars(ncgr, stream); //NCG doesn't store bitmap graphics
+	*(uint32_t *) (charHeader + 0x0) = ncgr->tilesX;
+	*(uint32_t *) (charHeader + 0x4) = ncgr->tilesY;
+	*(uint32_t *) (charHeader + 0x8) = (ncgr->extPalette && ncgr->nBits == 8) ? 2 : (ncgr->nBits == 8);
+	*(uint32_t *) (attrHeader + 0x0) = ncgr->tilesX;
+	*(uint32_t *) (attrHeader + 0x4) = ncgr->tilesY;
+
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, "NCCG", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
+	NnsStreamStartBlock(&nnsStream, "CHAR");
+	NnsStreamWrite(&nnsStream, charHeader, sizeof(charHeader));
+	ChrWriteChars(ncgr, NnsStreamGetBlockStream(&nnsStream)); //NCG doesn't store bitmap graphics
+	NnsStreamEndBlock(&nnsStream);
+
+	NnsStreamStartBlock(&nnsStream, "ATTR");
+	NnsStreamWrite(&nnsStream, attrHeader, sizeof(attrHeader));
 	if (ncgr->attr != NULL) {
-		bstreamWrite(stream, attrHeader, sizeof(attrHeader));
-		bstreamWrite(stream, ncgr->attr, ncgr->tilesX * ncgr->tilesY);
+		NnsStreamWrite(&nnsStream, ncgr->attr, ncgr->tilesX * ncgr->tilesY);
 	} else {
 		unsigned char *dummy = (unsigned char *) calloc(ncgr->tilesX * ncgr->tilesY, 1);
-		bstreamWrite(stream, attrHeader, sizeof(attrHeader));
-		bstreamWrite(stream, dummy, ncgr->tilesX * ncgr->tilesY);
+		NnsStreamWrite(&nnsStream, dummy, ncgr->tilesX * ncgr->tilesY);
 		free(dummy);
 	}
-	if (linkSize) {
-		bstreamWrite(stream, linkHeader, sizeof(linkHeader));
-		bstreamWrite(stream, ncgr->header.fileLink, linkSize - sizeof(linkHeader));
+	NnsStreamEndBlock(&nnsStream);
+
+	if (ncgr->header.fileLink != NULL) {
+		NnsStreamStartBlock(&nnsStream, "LINK");
+		NnsStreamWrite(&nnsStream, ncgr->header.fileLink, strlen(ncgr->header.fileLink));
+		NnsStreamEndBlock(&nnsStream);
 	}
-	if (cmntSize) {
-		bstreamWrite(stream, cmntHeader, sizeof(cmntHeader));
-		bstreamWrite(stream, ncgr->header.comment, cmntSize - sizeof(cmntHeader));
+	if (ncgr->header.comment != NULL) {
+		NnsStreamStartBlock(&nnsStream, "CMNT");
+		NnsStreamWrite(&nnsStream, ncgr->header.comment, strlen(ncgr->header.comment));
+		NnsStreamEndBlock(&nnsStream);
 	}
+
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
 	return 0;
 }
 

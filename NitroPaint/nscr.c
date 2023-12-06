@@ -503,70 +503,49 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int charBase, int x, int y
 }
 
 int ScrWriteNscr(NSCR *nscr, BSTREAM *stream) {
-	unsigned char nscrHeader[] = { 'R', 'C', 'S', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-	unsigned char nrcsHeader[] = { 'N', 'R', 'C', 'S', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char scrnHeader[] = { 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
 
 	int dataSize = ((nscr->nWidth * nscr->nHeight) >> 6) << 1;
-	int nrcsSize = dataSize + 0x14;
-	int fileSize = nrcsSize + 0x10;
+	*(uint16_t *) (scrnHeader + 0x0) = nscr->nWidth;
+	*(uint16_t *) (scrnHeader + 0x2) = nscr->nHeight;
+	*(uint32_t *) (scrnHeader + 0x4) = nscr->fmt;
+	*(uint32_t *) (scrnHeader + 0x8) = dataSize;
 
-	*(uint32_t *) (nscrHeader + 0x8) = fileSize;
-	*(uint32_t *) (nrcsHeader + 0x4) = nrcsSize;
-	*(uint16_t *) (nrcsHeader + 0x8) = nscr->nWidth;
-	*(uint16_t *) (nrcsHeader + 0xA) = nscr->nHeight;
-	*(uint32_t *) (nrcsHeader + 0x10) = dataSize;
-	*(uint32_t *) (nrcsHeader + 0xC) = nscr->fmt;
-
-	bstreamWrite(stream, nscrHeader, sizeof(nscrHeader));
-	bstreamWrite(stream, nrcsHeader, sizeof(nrcsHeader));
-	bstreamWrite(stream, nscr->data, dataSize);
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, "NSCR", 1, 0, NNS_TYPE_G2D, NNS_SIG_LE);
+	NnsStreamStartBlock(&nnsStream, "SCRN");
+	NnsStreamWrite(&nnsStream, scrnHeader, sizeof(scrnHeader));
+	NnsStreamWrite(&nnsStream, nscr->data, dataSize);
+	NnsStreamEndBlock(&nnsStream);
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
 	return 0;
 }
 
 int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
-	unsigned char ncscHeader[] = { 'N', 'C', 'S', 'C', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 1, 0 };
-	unsigned char scrnHeader[] = { 'S', 'C', 'R', 'N', 0x18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char escrHeader[] = { 'E', 'S', 'C', 'R', 0x18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char clrfHeader[] = { 'C', 'L', 'R', 'F', 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char clrcHeader[] = { 'C', 'L', 'R', 'C', 0x0C, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char gridHeader[] = { 'G', 'R', 'I', 'D', 0x18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char linkHeader[] = { 'L', 'I', 'N', 'K', 0x08, 0, 0, 0 };
-	unsigned char cmntHeader[] = { 'C', 'M', 'N', 'T', 0x08, 0, 0, 0 };
+	unsigned char scrnHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char escrHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char clrfHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char clrcHeader[] = { 0, 0, 0, 0 };
+	unsigned char gridHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+	
+	*(uint32_t *) (scrnHeader + 0x0) = nscr->nWidth / 8;
+	*(uint32_t *) (scrnHeader + 0x4) = nscr->nHeight / 8;
+	*(uint32_t *) (escrHeader + 0x0) = nscr->nWidth / 8;
+	*(uint32_t *) (escrHeader + 0x4) = nscr->nHeight / 8;
+	*(uint32_t *) (escrHeader + 0x8) = (nscr->clearValue & 0x3FF) | ((nscr->clearValue & 0xF000) << 4) | ((nscr->clearValue & 0x0C00) << 16);
+	*(uint32_t *) (clrfHeader + 0x0) = nscr->nWidth / 8;
+	*(uint32_t *) (clrfHeader + 0x4) = nscr->nHeight / 8;
+	*(uint32_t *) (clrcHeader + 0x0) = nscr->clearValue;
+	*(uint32_t *) (gridHeader + 0x0) = nscr->showGrid;
+	*(uint16_t *) (gridHeader + 0x4) = nscr->gridWidth;
+	*(uint16_t *) (gridHeader + 0x6) = nscr->gridHeight;
 
-	*(uint32_t *) (scrnHeader + 0x04) = nscr->dataSize + sizeof(scrnHeader);
-	*(uint32_t *) (scrnHeader + 0x08) = nscr->nWidth / 8;
-	*(uint32_t *) (scrnHeader + 0x0C) = nscr->nHeight / 8;
-	*(uint32_t *) (escrHeader + 0x04) = nscr->dataSize * 2 + sizeof(escrHeader);
-	*(uint32_t *) (escrHeader + 0x08) = nscr->nWidth / 8;
-	*(uint32_t *) (escrHeader + 0x0C) = nscr->nHeight / 8;
-	*(uint32_t *) (escrHeader + 0x10) = (nscr->clearValue & 0x3FF) | ((nscr->clearValue & 0xF000) << 4) | ((nscr->clearValue & 0x0C00) << 16);
-	*(uint32_t *) (clrfHeader + 0x04) = nscr->nWidth * nscr->nHeight / 512 + sizeof(clrfHeader);
-	*(uint32_t *) (clrfHeader + 0x08) = nscr->nWidth / 8;
-	*(uint32_t *) (clrfHeader + 0x0C) = nscr->nHeight / 8;
-	*(uint32_t *) (clrcHeader + 0x08) = nscr->clearValue;
-	*(uint32_t *) (gridHeader + 0x08) = nscr->showGrid;
-	*(uint16_t *) (gridHeader + 0x0C) = nscr->gridWidth;
-	*(uint16_t *) (gridHeader + 0x0E) = nscr->gridHeight;
-	*(uint32_t *) (linkHeader + 0x04) = (nscr->header.fileLink == NULL) ? 0x0C : (((strlen(nscr->header.fileLink) + 4) & ~3) + sizeof(linkHeader));
-	*(uint32_t *) (cmntHeader + 0x04) = (nscr->header.comment == NULL) ? 0x0C : (((strlen(nscr->header.comment) + 4) & ~3) + sizeof(cmntHeader));
+	int clrfSize = ((nscr->nWidth / 8) * (nscr->nHeight / 8) + 7) / 8;
+	void *dummyClrf = calloc(clrfSize, 1);
 
-	int scrnSize = nscr->dataSize + sizeof(scrnHeader);
-	int escrSize = nscr->dataSize * 2 + sizeof(escrHeader);
-	int clrfSize = nscr->nWidth * nscr->nHeight / 512 + sizeof(clrfHeader);
-	int clrcSize = sizeof(clrcHeader);
-	int gridSize = nscr->gridWidth == 0 ? 0 : sizeof(gridHeader);
-	int linkSize = nscr->header.fileLink == NULL ? 0 : (((strlen(nscr->header.fileLink) + 4) & ~3) + sizeof(linkHeader));
-	int cmntSize = nscr->header.comment == NULL ? 0 : (((strlen(nscr->header.comment) + 4) & ~3) + sizeof(cmntHeader));
-	int totalSize = scrnSize + escrSize + clrfSize + clrcSize + gridSize + linkSize + cmntSize + sizeof(ncscHeader);
-	*(uint32_t *) (ncscHeader + 0x08) = totalSize;
-	*(uint16_t *) (ncscHeader + 0x0E) = !!scrnSize + !!escrSize + !!clrfSize + !!clrcSize + !!gridSize + !!linkSize + !!cmntSize;
-
-	void *dummyClrf = calloc(clrfSize - sizeof(clrfHeader), 1);
 	uint32_t *escr = (uint32_t *) calloc(nscr->nWidth * nscr->nHeight / 64, 4);
-	bstreamWrite(stream, ncscHeader, sizeof(ncscHeader));
-	bstreamWrite(stream, scrnHeader, sizeof(scrnHeader));
-	bstreamWrite(stream, nscr->data, nscr->dataSize);
-	bstreamWrite(stream, escrHeader, sizeof(escrHeader));
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		uint16_t t = nscr->data[i];
 		int chr = t & 0x03FF;
@@ -574,21 +553,51 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 		int hvf = t & 0x0C00;
 		escr[i] = chr | (pal << 4) | (hvf << 16);
 	}
-	bstreamWrite(stream, escr, nscr->nWidth * nscr->nHeight / 64 * 4);
-	bstreamWrite(stream, clrfHeader, sizeof(clrfHeader));
-	bstreamWrite(stream, dummyClrf, clrfSize - sizeof(clrfHeader));
-	bstreamWrite(stream, clrcHeader, sizeof(clrcHeader));
-	if (gridSize) {
-		bstreamWrite(stream, gridHeader, sizeof(gridHeader));
+
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, "NCSC", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
+
+	NnsStreamStartBlock(&nnsStream, "SCRN");
+	NnsStreamWrite(&nnsStream, scrnHeader, sizeof(scrnHeader));
+	NnsStreamWrite(&nnsStream, nscr->data, nscr->dataSize);
+	NnsStreamEndBlock(&nnsStream);
+
+	NnsStreamStartBlock(&nnsStream, "ESCR");
+	NnsStreamWrite(&nnsStream, escrHeader, sizeof(escrHeader));
+	NnsStreamWrite(&nnsStream, escr, nscr->nWidth * nscr->nHeight / 64 * 4);
+	NnsStreamEndBlock(&nnsStream);
+
+	NnsStreamStartBlock(&nnsStream, "CLRF");
+	NnsStreamWrite(&nnsStream, clrfHeader, sizeof(clrfHeader));
+	NnsStreamWrite(&nnsStream, dummyClrf, clrfSize);
+	NnsStreamEndBlock(&nnsStream);
+
+	NnsStreamStartBlock(&nnsStream, "CLRC");
+	NnsStreamWrite(&nnsStream, clrcHeader, sizeof(clrcHeader));
+	NnsStreamEndBlock(&nnsStream);
+
+	if (nscr->gridWidth != 0) {
+		NnsStreamStartBlock(&nnsStream, "GRID");
+		NnsStreamWrite(&nnsStream, gridHeader, sizeof(gridHeader));
+		NnsStreamEndBlock(&nnsStream);
 	}
-	if (linkSize) {
-		bstreamWrite(stream, linkHeader, sizeof(linkHeader));
-		bstreamWrite(stream, nscr->header.fileLink, linkSize - sizeof(linkHeader));
+
+	if (nscr->header.fileLink != NULL) {
+		NnsStreamStartBlock(&nnsStream, "LINK");
+		NnsStreamWrite(&nnsStream, nscr->header.fileLink, strlen(nscr->header.fileLink));
+		NnsStreamEndBlock(&nnsStream);
 	}
-	if (cmntSize) {
-		bstreamWrite(stream, cmntHeader, sizeof(cmntHeader));
-		bstreamWrite(stream, nscr->header.comment, cmntSize - sizeof(cmntHeader));
+
+	if (nscr->header.comment != NULL) {
+		NnsStreamStartBlock(&nnsStream, "CMNT");
+		NnsStreamWrite(&nnsStream, nscr->header.comment, strlen(nscr->header.comment));
+		NnsStreamEndBlock(&nnsStream);
 	}
+
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
+
 	free(dummyClrf);
 	free(escr);
 	return 0;

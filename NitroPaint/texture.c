@@ -802,44 +802,46 @@ int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
 }
 
 int TxWriteIStudio(TextureObject *texture, BSTREAM *stream) {
-	unsigned char header[] = { 'N', 'T', 'T', 'X', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 2, 0 };
-	unsigned char paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char imgeHeader[] = { 'I', 'M', 'G', 'E', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	unsigned char paltHeader[] = { 0, 0, 0, 0 };
+	unsigned char imgeHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 	int texImageParam = texture->texture.texels.texImageParam;
 	int format = FORMAT(texImageParam);
 	int width = TEXW(texImageParam);
 	int height = texture->texture.texels.height;
 	int texelSize = TxGetTexelSize(width, height, texImageParam);
-
 	int nColors = texture->texture.palette.nColors;
 
-	//direct textures: no palette
-	*(uint16_t *) (header + 0xE) = 1 + (format != CT_DIRECT);
+	unsigned int imgeSize = texelSize + (format == CT_4x4 ? (texelSize / 2) : 0);
+	*(uint32_t *) (paltHeader + 0x0) = nColors;
+	*(uint8_t *) (imgeHeader + 0x0) = format;
+	*(uint8_t *) (imgeHeader + 0x1) = (texImageParam >> 20) & 7;
+	*(uint8_t *) (imgeHeader + 0x2) = (texImageParam >> 23) & 7;
+	*(uint16_t *) (imgeHeader + 0x4) = width;
+	*(uint16_t *) (imgeHeader + 0x6) = height;
+	*(uint32_t *) (imgeHeader + 0x8) = imgeSize;
 
-	unsigned int paltSize = (format == CT_DIRECT) ? 0 : (sizeof(paltHeader) + nColors * sizeof(COLOR));
-	unsigned int imgeSize = sizeof(imgeHeader) + texelSize + (format == CT_4x4 ? (texelSize / 2) : 0);
-	*(uint32_t *) (header + 0x08) = sizeof(header) + paltSize + imgeSize;
-	*(uint32_t *) (paltHeader + 0x04) = paltSize;
-	*(uint32_t *) (paltHeader + 0x08) = nColors;
-	*(uint32_t *) (imgeHeader + 0x04) = imgeSize;
-	*(uint8_t *) (imgeHeader + 0x08) = format;
-	*(uint8_t *) (imgeHeader + 0x09) = (texImageParam >> 20) & 7;
-	*(uint8_t *) (imgeHeader + 0x0A) = (texImageParam >> 23) & 7;
-	*(uint16_t *) (imgeHeader + 0xC) = width;
-	*(uint16_t *) (imgeHeader + 0xE) = height;
-	*(uint32_t *) (imgeHeader + 0x10) = imgeSize - sizeof(imgeHeader);
-
-	bstreamWrite(stream, header, sizeof(header));
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, "NTTX", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
+	
 	if (format != CT_DIRECT) {
-		bstreamWrite(stream, paltHeader, sizeof(paltHeader));
-		bstreamWrite(stream, texture->texture.palette.pal, nColors * sizeof(COLOR));
+		NnsStreamStartBlock(&nnsStream, "PALT");
+		NnsStreamWrite(&nnsStream, paltHeader, sizeof(paltHeader));
+		NnsStreamWrite(&nnsStream, texture->texture.palette.pal, nColors * sizeof(COLOR));
+		NnsStreamEndBlock(&nnsStream);
 	}
-	bstreamWrite(stream, imgeHeader, sizeof(imgeHeader));
-	bstreamWrite(stream, texture->texture.texels.texel, texelSize);
+
+	NnsStreamStartBlock(&nnsStream, "IMGE");
+	NnsStreamWrite(&nnsStream, imgeHeader, sizeof(imgeHeader));
+	NnsStreamWrite(&nnsStream, texture->texture.texels.texel, texelSize);
 	if (format == CT_4x4) {
-		bstreamWrite(stream, texture->texture.texels.cmp, texelSize / 2);
+		NnsStreamWrite(&nnsStream, texture->texture.texels.cmp, texelSize / 2);
 	}
+	NnsStreamEndBlock(&nnsStream);
+
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
 	return 0;
 }
 
