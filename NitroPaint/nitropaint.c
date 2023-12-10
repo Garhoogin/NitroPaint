@@ -26,6 +26,7 @@
 #include "texconv.h"
 #include "bggen.h"
 #include "editor.h"
+#include "preview.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -1283,6 +1284,26 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						InvalidateAllEditors(hWnd, FILE_TYPE_CELL);
 						break;
 					}
+					case ID_FILE_PREVIEWTARGET:
+					{
+						int inited = GetMenuState(GetMenu(hWnd), ID_FILE_PREVIEWTARGET, MF_BYCOMMAND);
+						if (!inited) {
+							//try init
+							int status = PreviewInit();
+							if (status) {
+								//success
+								CheckMenuItem(GetMenu(hWnd), ID_FILE_PREVIEWTARGET, MF_CHECKED);
+							} else {
+								//failure
+								MessageBox(hWnd, L"Could not connect.", L"Could not connect", MB_ICONERROR);
+							}
+						} else {
+							//deinit
+							PreviewEnd();
+							CheckMenuItem(GetMenu(hWnd), ID_FILE_PREVIEWTARGET, MF_UNCHECKED);
+						}
+						break;
+					}
 					case ID_NTFT_NTFT40084:
 					{
 						HWND h = CreateWindow(L"NtftConvertDialogClass", L"NTFT To Texture", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
@@ -1442,6 +1463,9 @@ void nscrCreateCallback(void *data) {
 	//link data
 	ObjLinkObjects(palobj, chrobj);
 	ObjLinkObjects(chrobj, scrobj);
+
+	//TEST: preview
+	PreviewScreen((NSCR *) scrobj, (NCGR *) chrobj, (NCLR *) palobj);
 
 	free(createData->bbits);
 	free(data);

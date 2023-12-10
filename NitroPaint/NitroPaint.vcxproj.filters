@@ -129,6 +129,9 @@
     <ClCompile Include="bggen.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="preview.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tiler.h">
@@ -243,6 +246,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="bggen.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="preview.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
