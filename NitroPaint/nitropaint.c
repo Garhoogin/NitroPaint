@@ -617,22 +617,26 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	}
 
 	int format = ObjIdentify(buffer, dwSize, path);
+	HWND hWndViewer = NULL;
 	switch (format) {
 		case FILE_TYPE_PALETTE:
 			//if there is already an NCLR open, close it.
 			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
 			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
 			if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
+			PreviewLoadBgPalette((NCLR *) EditorGetObject(data->hWndNclrViewer));
 			break;
 		case FILE_TYPE_CHARACTER:
 			//if there is already an NCGR open, close it.
 			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
 			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
 			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+			PreviewLoadBgCharacter((NCGR *) EditorGetObject(data->hWndNcgrViewer));
 			break;
 		case FILE_TYPE_SCREEN:
 			//create editor
-			CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			hWndViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			PreviewLoadBgScreen((NSCR *) EditorGetObject(hWndViewer));
 			break;
 		case FILE_TYPE_CELL:
 			//if there is already an NCER open, close it.

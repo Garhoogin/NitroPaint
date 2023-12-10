@@ -28,7 +28,7 @@ int PreviewLoadBgCharacter(NCGR *ncgr);
 //
 // Load a BG screen for preview
 //
-int PreviewLoadBgScreen(NSCR *nscr, int depth, int useExtPalette);
+int PreviewLoadBgScreen(NSCR *nscr);
 
 //
 // Preview a BG screen

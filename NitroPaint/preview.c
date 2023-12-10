@@ -64,6 +64,14 @@ static pfnNNS_McsOpenStream NNS_McsOpenStream = NULL;
 #define REG_BLDCNT        0x04000050
 #define REG_MASTER_BRIGHT 0x0400006C
 
+#define PREVIEW_BG        3
+
+// ----- preview modes
+
+#define PREVIEW_MODE_NONE    0
+#define PREVIEW_MODE_BG      1
+#define PREVIEW_MODE_OBJ     2
+#define PREVIEW_MODE_TEXTURE 3
 
 typedef struct NvcMessageHeader_ {
 	uint16_t opcode;
@@ -83,6 +91,14 @@ typedef struct NvcWriteMessage_ {
 	unsigned char bytes[0];
 } NvcWriteMessage;
 
+
+
+// ----- Internal state to keep track of current preview state
+
+static int sGraphicsDepth = 4;
+static int sPreviewMode = PREVIEW_MODE_NONE;
+static uint32_t sDispCnt;  //DISPCNT
+static uint16_t sBgCnt[4]; //BG controls 0-3
 
 // ----- mechanics of MCS communication
 
@@ -110,6 +126,7 @@ int PreviewInit(void) {
 	//create stream
 	if (sNvcStream == NULL || sNvcStream == INVALID_HANDLE_VALUE) sNvcStream = NNS_McsOpenStream('NC', 0);
 	if (sNvcStream == NULL || sNvcStream == INVALID_HANDLE_VALUE) return 0;
+	sPreviewMode = PREVIEW_MODE_NONE;
 
 	return 1;
 }
@@ -117,8 +134,8 @@ int PreviewInit(void) {
 void PreviewEnd(void) {
 	CloseHandle(sNvcStream);
 	sNvcStream = NULL;
+	sPreviewMode = PREVIEW_MODE_NONE;
 }
-
 
 
 static void NvcWriteRegisterN(uint32_t regaddr, const void *src, unsigned int size) {
@@ -166,15 +183,6 @@ static void NvcWriteRegister16(uint32_t regaddr, uint16_t val) {
 	NvcWriteRegisterN(regaddr, &val, sizeof(val));
 }
 
-static void NvcWriteRegisterNx16(uint32_t regaddr, uint16_t *data, size_t size) {
-	while (size >= sizeof(uint16_t)) {
-		NvcWriteRegister16(regaddr, *data);
-		regaddr += sizeof(uint16_t);
-		data++;
-		size -= sizeof(uint16_t);
-	}
-}
-
 static void NvcHello(void) {
 	DWORD dwWritten;
 	NvcMessageHeader packet = { 0 };
@@ -183,7 +191,7 @@ static void NvcHello(void) {
 	WriteFile(sNvcStream, &packet, sizeof(packet), &dwWritten, NULL);
 }
 
-static void NvcInit(int useExtPalette) {
+static void NvcInit(void) {
 	DWORD dwWritten;
 	NvcHello();
 
@@ -192,26 +200,30 @@ static void NvcInit(int useExtPalette) {
 	packet.header.length = sizeof(packet);
 
 	//BG, OBJ, BG ext pltt, OBJ ext pltt, sub BG, sub OBJ, sub BG ext pltt, sub OBJ ext pltt, LCDC
-	uint16_t bgBankConfig[] =      { 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x77 };
 	uint16_t bgBankConfigExt[] =   { 0x08, 0x00, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17 };
 	for (int i = 0; i < 9; i++) {
 		packet.forX = i;
-		packet.banks = (useExtPalette ? bgBankConfigExt : bgBankConfigExt)[i];
+		packet.banks = bgBankConfigExt[i];
 		WriteFile(sNvcStream, &packet, sizeof(packet), &dwWritten, NULL);
 	}
+
+	sGraphicsDepth = 4;
 }
 
-static void NvcResetState(int useExtPalette) {
+static void NvcResetStateForBG(void) {
 	int16_t identityMatrix[] = { 0x0100, 0x0000, 0x0000, 0x0100 };
 	int16_t scrollValues[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	uint16_t bgcnts[] = { 0, 0, 0, 0 };
-	NvcInit(useExtPalette);
-	NvcWriteRegisterNx16(REG_BG0CNT, bgcnts, sizeof(bgcnts));                // BG control registers
-	NvcWriteRegisterNx16(REG_BG2PA, identityMatrix, sizeof(identityMatrix)); // reset matrix for BG 2
-	NvcWriteRegisterNx16(REG_BG3PA, identityMatrix, sizeof(identityMatrix)); // reset matrix for BG 3
-	NvcWriteRegisterNx16(REG_BG0HOFS, scrollValues, sizeof(scrollValues));   // reset BG scroll
+	memset(sBgCnt, 0, sizeof(sBgCnt));
+	sGraphicsDepth = 4;
+
+	NvcInit();
+	NvcWriteRegisterN(REG_BG0CNT, sBgCnt, sizeof(sBgCnt));                   // BG control registers
+	NvcWriteRegisterN(REG_BG2PA, identityMatrix, sizeof(identityMatrix));    // reset matrix for BG 2
+	NvcWriteRegisterN(REG_BG3PA, identityMatrix, sizeof(identityMatrix));    // reset matrix for BG 3
+	NvcWriteRegisterN(REG_BG0HOFS, scrollValues, sizeof(scrollValues));      // reset BG scroll
 	NvcWriteRegister16(REG_BLDCNT, 0);                                       // no blend effects
 	NvcWriteRegister16(REG_MASTER_BRIGHT, 0);                                // normal brightness
+	sPreviewMode = PREVIEW_MODE_BG;
 }
 
 static int NvcGetBgSize(int width, int height, int useExtPalette, int *pHwWidth, int *pHwHeight) {
@@ -237,31 +249,32 @@ static int NvcGetBgSize(int width, int height, int useExtPalette, int *pHwWidth,
 static void NvcShowBG(int bgNo, int useExtPalette) {
 	int bgMode = (useExtPalette ? 5 : 0);
 
-	uint32_t cnt = 0x01010000; //graphics display, character block 1
-	cnt |= bgMode;
-	cnt |= (useExtPalette << 30); 
-	cnt |= ((1 << bgNo) << 8);
-	NvcWriteRegister32(REG_DISPCNT, cnt);
+	sDispCnt = 0x01010000; //graphics display, character block 1
+	sDispCnt |= bgMode;
+	sDispCnt |= (useExtPalette << 30);
+	sDispCnt |= ((1 << bgNo) << 8);
+	NvcWriteRegister32(REG_DISPCNT, sDispCnt);
 }
 
 int PreviewLoadBgPalette(NCLR *nclr) {
 	if (sNvcStream == NULL) return 0;
+	if (sPreviewMode != PREVIEW_MODE_BG) NvcResetStateForBG();
 
 	//should we copy using an index table?
-	if (nclr->idxTable != NULL) {
+	if (nclr->idxTable == NULL) {
 		//copy up to 512 bytes to standard paeltte, copy up to 0x2000 bytes to extended palette
 		int paletteSize = nclr->nColors * sizeof(COLOR);
 		NvcCopyData(MM_BG_PLTT, nclr->colors, (paletteSize > 0x200) ? 0x200 : paletteSize);
 		NvcCopyData(MM_NVC_BG_EXT_PLTT_SLOT(3), nclr->colors, (paletteSize > 0x2000) ? 0x2000 : paletteSize);
 	} else {
 		//copy with index table
-		int paletteSize = (1 << nclr->nBits);
+		int paletteSize = (1 << nclr->nBits) * sizeof(COLOR);
 		for (int i = 0; i < nclr->nPalettes; i++) {
 			int srcofs = i * paletteSize;
 			int dstofs = nclr->idxTable[i] * paletteSize;
 
-			if (dstofs + paletteSize <= 0x200) NvcCopyData(MM_BG_PLTT + dstofs, nclr->colors + srcofs, paletteSize);
-			if (dstofs + paletteSize <= 0x2000) NvcCopyData(MM_NVC_BG_EXT_PLTT_SLOT(3) + dstofs, nclr->colors + srcofs, paletteSize);
+			if ((dstofs + paletteSize) <= 0x200) NvcCopyData(MM_BG_PLTT + dstofs, nclr->colors + (srcofs / 2), paletteSize);
+			if ((dstofs + paletteSize) <= 0x2000) NvcCopyData(MM_NVC_BG_EXT_PLTT_SLOT(3) + dstofs, nclr->colors + (srcofs / 2), paletteSize);
 		}
 	}
 
@@ -269,22 +282,50 @@ int PreviewLoadBgPalette(NCLR *nclr) {
 }
 
 int PreviewLoadBgCharacter(NCGR *ncgr) {
+	if (sPreviewMode != PREVIEW_MODE_BG) NvcResetStateForBG();
+
 	BSTREAM gfxStream;
 	bstreamCreate(&gfxStream, NULL, 0);
 	ChrWriteChars(ncgr, &gfxStream);
 	NvcCopyData(MM_VRAM_START + 0x10000, gfxStream.buffer, gfxStream.size);
 	bstreamFree(&gfxStream);
+
+	if (sGraphicsDepth != ncgr->nBits) {
+		//update DISPCNT for our new graphics bit depth
+		if (!(sDispCnt & 0x40000000)) {
+			//extended palette not used? set bit depth in screen info
+			sBgCnt[PREVIEW_BG] |= (ncgr->nBits == 8) << 7;
+		} else {
+			//
+		}
+		NvcWriteRegister16(REG_BG0CNT + 2 * PREVIEW_BG, sBgCnt[PREVIEW_BG]);
+
+		sGraphicsDepth = ncgr->nBits;
+	}
 	return 1;
 }
 
-int PreviewLoadBgScreen(NSCR *nscr, int depth, int useExtPalette) {
-	int screenSize = 0, bgWidth, bgHeight;
+int PreviewLoadBgScreen(NSCR *nscr) {
+	if (sPreviewMode != PREVIEW_MODE_BG) NvcResetStateForBG();
+
+	//determine if an extended palette should be used to preview (not all file formats store screen format)
+	int useExtPalette = 0;
+	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+		int palno = nscr->data[i] >> 12;
+		if (palno > 0 && sGraphicsDepth == 8) {
+			useExtPalette = 1;
+			break;
+		}
+	}
+
+	int screenSize = 0, bgWidth, bgHeight, bgTilesX, bgTilesY;
 	screenSize = NvcGetBgSize(nscr->nWidth, nscr->nHeight, useExtPalette, &bgWidth, &bgHeight);
+	bgTilesX = bgWidth / 8, bgTilesY = bgHeight / 8;
 
 	//setup BG control
-	uint16_t bgcnt = (screenSize << 14);
-	if (!useExtPalette) bgcnt |= ((depth == 8) << 7);
-	NvcWriteRegister16(REG_BG0CNT + 2 * 3, bgcnt);
+	sBgCnt[PREVIEW_BG] = (screenSize << 14);
+	if (!useExtPalette) sBgCnt[PREVIEW_BG] |= ((sGraphicsDepth == 8) << 7);
+	NvcWriteRegister16(REG_BG0CNT + 2 * PREVIEW_BG, sBgCnt[PREVIEW_BG]);
 
 	//load BG screen
 	if (bgWidth == nscr->nWidth && bgHeight == nscr->nHeight) {
@@ -293,15 +334,15 @@ int PreviewLoadBgScreen(NSCR *nscr, int depth, int useExtPalette) {
 	} else {
 		//resize to hw-supported size
 		int tilesX = nscr->nWidth / 8, tilesY = nscr->nHeight / 8;
-		uint16_t *copy = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
+		uint16_t *copy = (uint16_t *) calloc(bgTilesX * bgTilesY, sizeof(uint16_t));
 
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
-				copy[x + y * (bgWidth / 8)] = nscr->data[x + y * tilesX];
+				copy[x + y * bgTilesX] = nscr->data[x + y * tilesX];
 			}
 		}
 
-		NvcCopyData(MM_VRAM_START, copy, tilesX * tilesY * sizeof(uint16_t));
+		NvcCopyData(MM_VRAM_START, copy, bgTilesX * bgTilesY * sizeof(uint16_t));
 		free(copy);
 	}
 
@@ -316,12 +357,12 @@ int PreviewScreen(NSCR *nscr, NCGR *ncgr, NCLR *nclr) {
 	int useExtPalette = (nclr->nColors > 256) || (nclr->extPalette) || (ncgr->extPalette) || (nscr->fmt == SCREENFORMAT_AFFINEEXT);
 
 	//reset BG state
-	NvcResetState(useExtPalette);
+	if (sPreviewMode != PREVIEW_MODE_BG) NvcResetStateForBG();
 
 	//load component parts
 	PreviewLoadBgPalette(nclr);
 	PreviewLoadBgCharacter(ncgr);
-	PreviewLoadBgScreen(nscr, ncgr->nBits, useExtPalette);
+	PreviewLoadBgScreen(nscr);
 	return 1;
 }
 
