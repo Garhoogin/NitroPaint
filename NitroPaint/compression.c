@@ -1363,7 +1363,7 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 
 	if (!isCompressed) {
 		//uncompressed chunk, just memcpy out
-		if ((dest + chunkLen) > end || (dest + chunkLen) < destBase) return NULL;
+		if ((dest + chunkLen) > end || (dest + chunkLen) < destBase || (pos + 4 + chunkLen) > srcEnd) return NULL;
 		if (write) memcpy(dest, pos + 4, chunkLen);
 
 		nBytesConsumed = chunkLen + 4;
