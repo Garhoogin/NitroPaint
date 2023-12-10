@@ -244,40 +244,85 @@ static void NvcShowBG(int bgNo, int useExtPalette) {
 	NvcWriteRegister32(REG_DISPCNT, cnt);
 }
 
+int PreviewLoadBgPalette(NCLR *nclr) {
+	if (sNvcStream == NULL) return 0;
 
-int PreviewScreen(NSCR *nscr, NCGR *ncgr, NCLR *nclr) {
-	int bgNo = 3;
+	//should we copy using an index table?
+	if (nclr->idxTable != NULL) {
+		//copy up to 512 bytes to standard paeltte, copy up to 0x2000 bytes to extended palette
+		int paletteSize = nclr->nColors * sizeof(COLOR);
+		NvcCopyData(MM_BG_PLTT, nclr->colors, (paletteSize > 0x200) ? 0x200 : paletteSize);
+		NvcCopyData(MM_NVC_BG_EXT_PLTT_SLOT(3), nclr->colors, (paletteSize > 0x2000) ? 0x2000 : paletteSize);
+	} else {
+		//copy with index table
+		int paletteSize = (1 << nclr->nBits);
+		for (int i = 0; i < nclr->nPalettes; i++) {
+			int srcofs = i * paletteSize;
+			int dstofs = nclr->idxTable[i] * paletteSize;
 
-	//use extended palette? 
-	int useExtPalette = (nclr->nColors > 256) || (nclr->extPalette) || (ncgr->extPalette) || (nscr->fmt == SCREENFORMAT_AFFINEEXT);
+			if (dstofs + paletteSize <= 0x200) NvcCopyData(MM_BG_PLTT + dstofs, nclr->colors + srcofs, paletteSize);
+			if (dstofs + paletteSize <= 0x2000) NvcCopyData(MM_NVC_BG_EXT_PLTT_SLOT(3) + dstofs, nclr->colors + srcofs, paletteSize);
+		}
+	}
 
-	int screenSize = 0, bgWidth, bgHeight;
-	screenSize = NvcGetBgSize(nscr->nWidth, nscr->nHeight, useExtPalette, &bgWidth, &bgHeight);
+	return 1;
+}
 
-	//reset BG state
-	NvcResetState(useExtPalette);
-
-	//setup BG3
-	uint16_t bgcnt = (screenSize << 14);
-	if (!useExtPalette) bgcnt |= ((ncgr->nBits == 8) << 7);
-	NvcWriteRegister16(REG_BG0CNT + 2 * bgNo, bgcnt);
-
-	//load palette
-	uint32_t dstPal = useExtPalette ? MM_NVC_BG_EXT_PLTT_SLOT(3) : MM_BG_PLTT; 
-	NvcCopyData(dstPal, nclr->colors, nclr->nColors * sizeof(COLOR));
-
-	//load character
+int PreviewLoadBgCharacter(NCGR *ncgr) {
 	BSTREAM gfxStream;
 	bstreamCreate(&gfxStream, NULL, 0);
 	ChrWriteChars(ncgr, &gfxStream);
 	NvcCopyData(MM_VRAM_START + 0x10000, gfxStream.buffer, gfxStream.size);
 	bstreamFree(&gfxStream);
+	return 1;
+}
 
-	//load screen
-	NvcCopyData(MM_VRAM_START, nscr->data, nscr->dataSize);
+int PreviewLoadBgScreen(NSCR *nscr, int depth, int useExtPalette) {
+	int screenSize = 0, bgWidth, bgHeight;
+	screenSize = NvcGetBgSize(nscr->nWidth, nscr->nHeight, useExtPalette, &bgWidth, &bgHeight);
 
-	//show
-	NvcShowBG(bgNo, useExtPalette);
+	//setup BG control
+	uint16_t bgcnt = (screenSize << 14);
+	if (!useExtPalette) bgcnt |= ((depth == 8) << 7);
+	NvcWriteRegister16(REG_BG0CNT + 2 * 3, bgcnt);
+
+	//load BG screen
+	if (bgWidth == nscr->nWidth && bgHeight == nscr->nHeight) {
+		//copy direct
+		NvcCopyData(MM_VRAM_START, nscr->data, nscr->dataSize);
+	} else {
+		//resize to hw-supported size
+		int tilesX = nscr->nWidth / 8, tilesY = nscr->nHeight / 8;
+		uint16_t *copy = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
+
+		for (int y = 0; y < tilesY; y++) {
+			for (int x = 0; x < tilesX; x++) {
+				copy[x + y * (bgWidth / 8)] = nscr->data[x + y * tilesX];
+			}
+		}
+
+		NvcCopyData(MM_VRAM_START, copy, tilesX * tilesY * sizeof(uint16_t));
+		free(copy);
+	}
+
+	NvcShowBG(3, useExtPalette); //BG 3
+	return 1;
+}
+
+int PreviewScreen(NSCR *nscr, NCGR *ncgr, NCLR *nclr) {
+	if (sNvcStream == NULL) return 0;
+
+	//use extended palette? 
+	int useExtPalette = (nclr->nColors > 256) || (nclr->extPalette) || (ncgr->extPalette) || (nscr->fmt == SCREENFORMAT_AFFINEEXT);
+
+	//reset BG state
+	NvcResetState(useExtPalette);
+
+	//load component parts
+	PreviewLoadBgPalette(nclr);
+	PreviewLoadBgCharacter(ncgr);
+	PreviewLoadBgScreen(nscr, ncgr->nBits, useExtPalette);
+	return 1;
 }
 
 

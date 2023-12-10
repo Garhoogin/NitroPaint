@@ -16,6 +16,21 @@ int PreviewInit(void);
 void PreviewEnd(void);
 
 //
+// Load a palette for preview
+//
+int PreviewLoadBgPalette(NCLR *nclr);
+
+//
+// Load a character for preview
+//
+int PreviewLoadBgCharacter(NCGR *ncgr);
+
+//
+// Load a BG screen for preview
+//
+int PreviewLoadBgScreen(NSCR *nscr, int depth, int useExtPalette);
+
+//
 // Preview a BG screen
 //
 int PreviewScreen(NSCR *nscr, NCGR *ncgr, NCLR *nclr);
