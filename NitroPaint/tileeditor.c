@@ -263,6 +263,11 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			data->mouseDown = FALSE;
 			ReleaseCapture();
+
+			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+			SendMessage(hWndNcgrViewer, NV_UPDATEPREVIEW, 0, 0);
 			break;
 		}
 		case WM_DESTROY:

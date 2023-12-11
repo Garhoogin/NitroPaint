@@ -15,6 +15,8 @@
 #include "tileeditor.h"
 #include "ui.h"
 
+#include "preview.h"
+
 extern HICON g_appIcon;
 
 DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor, BOOL transparent) {
@@ -235,6 +237,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				NCGR *ncgr = (NCGR *) lParam;
 				memcpy(&data->ncgr, ncgr, sizeof(NCGR));
 			}
+			PreviewLoadBgCharacter(&data->ncgr);
+
 			data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
 
@@ -268,6 +272,9 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			break;
 		}
+		case NV_UPDATEPREVIEW:
+			PreviewLoadBgCharacter(&data->ncgr);
+			break;
 		case WM_COMMAND:
 		{
 			if (lParam) {
@@ -293,10 +300,12 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 										  CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
 					SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
 					DoModal(h);
+					SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWnd8bpp) {
 					int state = GetCheckboxChecked(hWndControl);
 					int depth = (state) ? 8 : 4;
 					NcgrEditorSetDepth(hWnd, depth);
+					SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -409,6 +418,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							}
 							InvalidateRect(hWnd, NULL, FALSE);
 						}
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 						GlobalUnlock(hString);
 						break;

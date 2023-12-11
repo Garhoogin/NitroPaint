@@ -15,6 +15,8 @@
 #include "palette.h"
 #include "tiler.h"
 
+#include "preview.h"
+
 extern HICON g_appIcon;
 
 DWORD *renderNscrBits(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int *width, int *height, int tileMarks, int highlightColor, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
@@ -280,6 +282,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				NSCR *nscr = (NSCR *) wParam;
 				memcpy(&data->nscr, nscr, sizeof(NSCR));
 			}
+			PreviewLoadBgScreen(&data->nscr);
+
 			data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
 
@@ -326,6 +330,9 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SendMessage(data->hWndSize, WM_SETTEXT, len, (LPARAM) buffer);
 			return 1;
 		}
+		case NV_UPDATEPREVIEW:
+			PreviewLoadBgScreen(&data->nscr);
+			break;
 		case WM_COMMAND:
 		{
 			if (HIWORD(wParam) == 0 && lParam == 0) {
@@ -411,6 +418,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								}
 							}
 						}
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
@@ -439,6 +447,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							}
 						}
 						InvalidateRect(hWnd, NULL, FALSE);
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						break;
 					}
 					case ID_NSCRMENU_MAKEIDENTITY:
@@ -459,6 +468,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							}
 						}
 						InvalidateRect(hWnd, NULL, FALSE);
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						break;
 					}
 					case ID_FILE_SAVEAS:
@@ -581,6 +591,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 								}
 							}
 							InvalidateRect(hWnd, NULL, FALSE);
+							SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						}
 
 						GlobalUnlock(hString);
@@ -652,6 +663,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							data->nscr.data[i] = value;
 						}
 					}
+					SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->hWndTileBase) {
 					WORD command = HIWORD(wParam);
@@ -761,6 +773,9 @@ void nscrImportCallback(void *data) {
 	InvalidateRect(importData->hWndNclrViewer, NULL, FALSE);
 	InvalidateRect(importData->hWndNcgrViewer, NULL, FALSE);
 	InvalidateRect(importData->hWndNscrViewer, NULL, FALSE);
+	SendMessage(importData->hWndNclrViewer, NV_UPDATEPREVIEW, 0, 0);
+	SendMessage(importData->hWndNcgrViewer, NV_UPDATEPREVIEW, 0, 0);
+	SendMessage(importData->hWndNscrViewer, NV_UPDATEPREVIEW, 0, 0);
 	free(importData->px);
 	free(data);
 }

@@ -617,26 +617,22 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	}
 
 	int format = ObjIdentify(buffer, dwSize, path);
-	HWND hWndViewer = NULL;
 	switch (format) {
 		case FILE_TYPE_PALETTE:
 			//if there is already an NCLR open, close it.
 			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
 			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
 			if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
-			PreviewLoadBgPalette((NCLR *) EditorGetObject(data->hWndNclrViewer));
 			break;
 		case FILE_TYPE_CHARACTER:
 			//if there is already an NCGR open, close it.
 			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
 			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
 			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-			PreviewLoadBgCharacter((NCGR *) EditorGetObject(data->hWndNcgrViewer));
 			break;
 		case FILE_TYPE_SCREEN:
 			//create editor
-			hWndViewer = CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-			PreviewLoadBgScreen((NSCR *) EditorGetObject(hWndViewer));
+			CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
 			break;
 		case FILE_TYPE_CELL:
 			//if there is already an NCER open, close it.
@@ -914,6 +910,11 @@ BOOL SetNscrEditorTransparentProc(HWND hWnd, void *param) {
 	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
 	int state = (int) param;
 	nscrViewerData->transparent = state;
+	return TRUE;
+}
+
+BOOL CALLBACK UpdatePreviewProc(HWND hWnd, LPARAM lParam) {
+	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 	return TRUE;
 }
 
@@ -1297,6 +1298,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							if (status) {
 								//success
 								CheckMenuItem(GetMenu(hWnd), ID_FILE_PREVIEWTARGET, MF_CHECKED);
+
+								//update preview of all editors
+								EnumChildWindows(data->hWndMdi, UpdatePreviewProc, 0);
 							} else {
 								//failure
 								MessageBox(hWnd, L"Could not connect.", L"Could not connect", MB_ICONERROR);
@@ -1467,9 +1471,6 @@ void nscrCreateCallback(void *data) {
 	//link data
 	ObjLinkObjects(palobj, chrobj);
 	ObjLinkObjects(chrobj, scrobj);
-
-	//TEST: preview
-	PreviewScreen((NSCR *) scrobj, (NCGR *) chrobj, (NCLR *) palobj);
 
 	free(createData->bbits);
 	free(data);

@@ -15,6 +15,8 @@
 #include "gdip.h"
 #include "ui.h"
 
+#include "preview.h"
+
 extern HICON g_appIcon;
 
 //IS.Colors4
@@ -380,6 +382,7 @@ void NclrViewerPalOpUpdateCallback(PAL_OP *palOp) {
 	PalopRunOperation(data->tempPalette, data->nclr.colors, data->nclr.nColors, palOp);
 
 	InvalidateRect(hWnd, NULL, FALSE);
+	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 }
 
 int lightness(COLOR col) {
@@ -431,6 +434,7 @@ BOOL SwapNscrPalettesProc(HWND hWnd, void *param) {
 		d = (d & 0xFFF) | (pal << 12);
 		nscr->data[i] = d;
 	}
+	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 	return TRUE;
 }
 
@@ -496,6 +500,7 @@ DWORD CALLBACK paletteNeuroSort(LPVOID param) {
 			PostMessage(hWnd, NV_XTINVALIDATE, 0, 0);
 		}
 	}
+	PostMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 	free(tempBuf);
 	free(data);
@@ -565,6 +570,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				NCLR *nclr = (NCLR *) wParam;
 				memcpy(&data->nclr, nclr, sizeof(NCLR));
 			}
+			PreviewLoadBgPalette(&data->nclr);
 
 			HWND hWndMain = getMainWindow(hWnd);
 			InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
@@ -590,6 +596,9 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			InvalidateRect(hWnd, NULL, FALSE);
 			return 1;
 		}
+		case NV_UPDATEPREVIEW:
+			PreviewLoadBgPalette(&data->nclr);
+			break;
 		case WM_MOUSEMOVE:
 		case WM_NCMOUSEMOVE:
 		{
@@ -746,6 +755,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
 							InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
 							InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+							SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						}
 					}
 				}
@@ -858,6 +868,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 					}
 				}
+				SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 				InvalidateRect(hWnd, NULL, FALSE);
 			}
 			data->mouseDown = 0;
@@ -959,6 +970,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
 						InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 						InvalidateRect(hWnd, NULL, FALSE);
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						break;
 					}
 					case ID_MENU_COPY:
@@ -985,6 +997,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							pal[index + i] ^= 0x7FFF;
 						}
 						InvalidateRect(hWnd, NULL, FALSE);
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						break;
 					}
 					case ID_MENU_MAKEGRAYSCALE:
@@ -1003,6 +1016,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							pal[index + i] = ColorCreate(l, l, l);
 						}
 						InvalidateRect(hWnd, NULL, FALSE);
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						break;
 					}
 					case ID_ARRANGEPALETTE_BYLIGHTNESS:
@@ -1026,6 +1040,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 							paletteNeuroSortThreaded(hWnd, pal + 1, nColors - 1);
 						}
 						InvalidateRect(hWnd, NULL, FALSE);
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						break;
 					}
 					case ID_FILE_SAVE:
@@ -1068,6 +1083,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						free(colors);
 
 						free(path);
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 						break;
 					}
 					case ID_MENU_VERIFYCOLOR:
