@@ -23,6 +23,7 @@ static pfnNNS_McsOpenStream NNS_McsOpenStream = NULL;
 #define NVC_MJ_VRAM          (3<<8)
 
 #define NVC_MSG_INIT         (NVC_MJ_SYS  | 0)
+#define NVC_MSG_LOAD_CELL    (NVC_MJ_ANM  | 0)
 #define NVC_MSG_WRITE_REG    (NVC_MJ_MEM  | 3)
 #define NVC_MSG_COPY         (NVC_MJ_MEM  | 5)
 #define NVC_MSG_VRAM_CONFIG  (NVC_MJ_VRAM | 0)
@@ -90,6 +91,16 @@ typedef struct NvcWriteMessage_ {
 	uint32_t size;
 	unsigned char bytes[0];
 } NvcWriteMessage;
+
+typedef struct NvcLoadCellMessage_ {
+	NvcMessageHeader header;
+	wchar_t ncer[MAX_PATH];
+	wchar_t nanr[MAX_PATH];
+	wchar_t nmcr[MAX_PATH];
+	wchar_t nmar[MAX_PATH];
+	int field1;
+	int field2;
+} NvcLoadCellMessage;
 
 
 
@@ -228,6 +239,27 @@ static int NvcCopyData(uint32_t destaddr, const void *src, unsigned int size) {
 	return status;
 }
 
+static int NvcLoadCell(const wchar_t *pathNcer, const wchar_t *pathNanr, const wchar_t *pathNmcr, const wchar_t *pathNmar) {
+	NvcLoadCellMessage msg = { 0 };
+	msg.header.opcode = NVC_MSG_LOAD_CELL;
+	msg.header.length = sizeof(msg);
+
+	if (pathNcer != NULL) {
+		memcpy(msg.ncer, pathNcer, wcslen(pathNcer));
+	}
+	if (pathNanr != NULL) {
+		memcpy(msg.nanr, pathNanr, wcslen(pathNanr));
+	}
+	if (pathNmcr != NULL) {
+		memcpy(msg.nmcr, pathNmcr, wcslen(pathNmcr));
+	}
+	if (pathNmar != NULL) {
+		memcpy(msg.nmar, pathNmar, wcslen(pathNmar));
+	}
+
+	return NvcWriteSafe(sNvcStream, &msg, sizeof(msg));
+}
+
 static int NvcWriteRegister32(uint32_t regaddr, uint32_t val) {
 	return NvcWriteRegisterN(regaddr, &val, sizeof(val));
 }
@@ -253,15 +285,15 @@ static int NvcInit(void) {
 
 	//BG, OBJ, BG ext pltt, OBJ ext pltt, sub BG, sub OBJ, sub BG ext pltt, sub OBJ ext pltt, LCDC
 	const uint16_t bgBankConfigExt[] = {
-		0x008, //Main BG:              A
-		0x000, //Main OBJ:
+		0x008, //Main BG:              D
+		0x001, //Main OBJ:             A
 		0x060, //Main BG Ext Pltt:     FG
 		0x000, //Main OBJ Ext Pltt: 
 		0x000, //Sub BG:
 		0x000, //Sub OBJ:
 		0x000, //Sub BG Ext Pltt:
 		0x000, //Sub OBJ Ext Pltt: 
-		0x017  //LCDC:                 ABC E
+		0x016  //LCDC:                 BC E
 	};
 	for (int i = 0; i < 9; i++) {
 		packet.forX = i;

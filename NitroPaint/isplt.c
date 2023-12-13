@@ -763,8 +763,6 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 	//simple termination conditions
 	int nIterations = reduction->nReclusters;
 	if (nIterations <= 0) return;
-	if (reduction->nUsedColors < reduction->nPaletteColors) return;
-	if (reduction->nUsedColors >= reduction->histogram->nEntries) return;
 
 	int nHistEntries = reduction->histogram->nEntries;
 	double yw2 = reduction->yWeight * reduction->yWeight;
@@ -796,7 +794,7 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 			for (int j = 0; j < reduction->nUsedColors; j++) {
 				RxYiqColor *pyiq = &reduction->paletteYiqCopy[j];
 
-				double dy = hy - pyiq->y;
+				double dy = reduction->lumaTable[hy] - reduction->lumaTable[pyiq->y];
 				double di = hi - pyiq->i;
 				double dq = hq - pyiq->q;
 				double diff = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
@@ -877,18 +875,18 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 
 		//after recomputing bounds, now let's see if we're wasting any slots.
 		for (int i = 0; i < reduction->nUsedColors; i++) {
-			if (totalsBuffer[i].weight <= 0.0) return;
+			if (totalsBuffer[i].weight <= 0.0) goto finalize;
 		}
 
 		//also check palette error; if we've started rising, we passed our locally optimal palette
 		if (error > lastError) {
-			return;
+			goto finalize;
 		}
 
 		//check: is the palette the same after this iteration as lst?
 		if (error == lastError)
 			if (memcmp(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgb)) == 0)
-				return;
+				goto finalize;
 
 		//weight check succeeded, copy this palette to the main palette.
 		memcpy(reduction->paletteYiq, reduction->paletteYiqCopy, sizeof(reduction->paletteYiqCopy));
@@ -930,6 +928,49 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 		lastError = error;
 		error = 0.0;
 	}
+
+finalize:
+	//delete any entries we couldn't use and shrink the palette size.
+	memset(totalsBuffer, 0, sizeof(reduction->blockTotals));
+	for (int i = 0; i < reduction->histogram->nEntries; i++) {
+		RxYiqColor *histColor = &reduction->histogramFlat[i]->color;
+
+		//find nearest
+		double bestDistance = 1e30;
+		int bestIndex = 0;
+		for (int j = 0; j < reduction->nUsedColors; j++) {
+			RxYiqColor *pyiq = &reduction->paletteYiq[j];
+
+			double dy = reduction->lumaTable[histColor->y] - reduction->lumaTable[pyiq->y];
+			double di = histColor->i - pyiq->i;
+			double dq = histColor->q - pyiq->q;
+			double diff = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
+			if (diff < bestDistance) {
+				bestDistance = diff;
+				bestIndex = j;
+			}
+		}
+		
+		//add to total
+		totalsBuffer[bestIndex].weight += reduction->histogramFlat[i]->weight;
+	}
+
+	//weight==0 => delete
+	int nRemoved = 0;
+	for (int i = 0; i < reduction->nUsedColors; i++) {
+		if (totalsBuffer[i].weight > 0) continue;
+		
+		//delete
+		memmove(reduction->paletteRgb + i, reduction->paletteRgb + i + 1, (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteRgb[0]));
+		memmove(reduction->paletteYiq + i, reduction->paletteYiq + i + 1, (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteYiq[0]));
+		memmove(totalsBuffer + i, totalsBuffer + i + 1, (reduction->nUsedColors - i - 1) * sizeof(RxTotalBuffer));
+		reduction->nUsedColors--;
+		i--;
+		nRemoved++;
+	}
+	
+	memset(reduction->paletteRgb + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteRgb[0]));
+	memset(reduction->paletteYiq + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteYiq[0]));
 }
 
 void RxComputePalette(RxReduction *reduction) {
