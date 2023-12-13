@@ -794,7 +794,8 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 			for (int j = 0; j < reduction->nUsedColors; j++) {
 				RxYiqColor *pyiq = &reduction->paletteYiqCopy[j];
 
-				double dy = reduction->lumaTable[hy] - reduction->lumaTable[pyiq->y];
+				//double dy = reduction->lumaTable[hy] - reduction->lumaTable[pyiq->y];
+				double dy = hy - pyiq->y;
 				double di = hi - pyiq->i;
 				double dq = hq - pyiq->q;
 				double diff = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
@@ -950,7 +951,7 @@ finalize:
 				bestIndex = j;
 			}
 		}
-		
+
 		//add to total
 		totalsBuffer[bestIndex].weight += reduction->histogramFlat[i]->weight;
 	}
@@ -959,7 +960,7 @@ finalize:
 	int nRemoved = 0;
 	for (int i = 0; i < reduction->nUsedColors; i++) {
 		if (totalsBuffer[i].weight > 0) continue;
-		
+
 		//delete
 		memmove(reduction->paletteRgb + i, reduction->paletteRgb + i + 1, (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteRgb[0]));
 		memmove(reduction->paletteYiq + i, reduction->paletteYiq + i + 1, (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteYiq[0]));
@@ -968,7 +969,7 @@ finalize:
 		i--;
 		nRemoved++;
 	}
-	
+
 	memset(reduction->paletteRgb + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteRgb[0]));
 	memset(reduction->paletteYiq + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteYiq[0]));
 }
