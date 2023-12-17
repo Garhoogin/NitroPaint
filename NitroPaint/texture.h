@@ -7,6 +7,7 @@
 #define TEXTURE_TYPE_NNSTGA      1
 #define TEXTURE_TYPE_ISTUDIO     2
 #define TEXTURE_TYPE_TDS         3
+#define TEXTURE_TYPE_NTGA        4 //not to be confused with NNS TGA!
 
 #define CT_A3I5 1			/*can read and write*/
 #define CT_4COLOR 2			/*can read and write*/

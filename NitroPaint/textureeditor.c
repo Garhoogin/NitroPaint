@@ -362,36 +362,19 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
 					case ID_FILE_SAVE:
-					case ID_FILE_SAVEAS:
-					{
-						HWND hWndMain = getMainWindow(hWnd);
-						//if not in any format, it cannot be saved.
 						if (!data->isNitro) {
 							MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
 							break;
 						}
-						if (*data->szOpenFile == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
-							//browse for file
-							LPCWSTR filter = L"NNS TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", extension = L"tga";
-							switch (data->texture.header.format) {
-								case TEXTURE_TYPE_ISTUDIO:
-									filter = L"iMageStudio Textures (*.5tx)\0*.5tx\0All Files\0*.*\0";
-									extension = L"5tx";
-									break;
-								case TEXTURE_TYPE_TDS:
-									filter = L"Ghost Trick Textures (*.tds)\0*.tds\0All Files\0*.*\0";
-									extension = L"tds";
-									break;
-							}
-
-							LPWSTR path = saveFileDialog(hWndMain, L"Save Texture", filter, extension);
-							if (!path) break;
-							EditorSetFile(hWnd, path);
-							free(path);
-						}
-						TxWriteFile(&data->texture, data->szOpenFile);
+						EditorSave(hWnd);
 						break;
-					}
+					case ID_FILE_SAVEAS:
+						if (!data->isNitro) {
+							MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
+							break;
+						}
+						EditorSaveAs(hWnd);
+						break;
 					case ID_FILE_EXPORT:
 					{
 						//PNG export
@@ -2347,7 +2330,12 @@ VOID RegisterTextureTileEditorClass(VOID) {
 
 VOID RegisterTextureEditorClass(VOID) {
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
-	EditorRegister(L"TextureEditorClass", TextureEditorWndProc, L"Texture Editor", sizeof(TEXTUREEDITORDATA), features);
+	EDITOR_CLASS *cls = EditorRegister(L"TextureEditorClass", TextureEditorWndProc, L"Texture Editor", sizeof(TEXTUREEDITORDATA), features);
+	EditorAddFilter(cls, TEXTURE_TYPE_NNSTGA, L"tga", L"NNS TGA Files (*.tga)\0*.tga\0All Files\0*.*\0");
+	EditorAddFilter(cls, TEXTURE_TYPE_ISTUDIO, L"5tx", L"iMageStudio Textures (*.5tx)\0*.5tx\0All Files\0*.*\0");
+	EditorAddFilter(cls, TEXTURE_TYPE_TDS, L"tds", L"Ghost Trick Textures (*.tds)\0*.tds\0All Files\0*.*\0");
+	EditorAddFilter(cls, TEXTURE_TYPE_NTGA, L"nnstga", L"NTGA Files (*.nnstga)\0*.nnstga\0All Files\0*.*\0");
+
 	RegisterTexturePreviewClass();
 	RegisterConvertDialogClass();
 	RegisterCompressionProgressClass();
