@@ -49,10 +49,11 @@ int NnsIsValid(const unsigned char *buffer, unsigned int size) {
 // ----- NNS G2D
 
 int NnsG2dIsOld(const unsigned char *buffer, unsigned int size) {
-	//if header size+8 equals file size, file is old NNS G2D
-	uint32_t headerSize = *(uint32_t *) (buffer + 8);
+	//if header size = total block size plus header size, file is old NNS G2D
+	uint32_t headerSize = *(uint32_t *) (buffer + 0x8);
+	uint16_t nBlocks = *(uint16_t *) (buffer + 0xE);
+	if ((headerSize + nBlocks * 8) == size) return 1;
 
-	if (headerSize + 8 == size) return 1;
 	return 0;
 }
 
@@ -61,12 +62,13 @@ int NnsG2dIsValid(const unsigned char *buffer, unsigned int size) {
 	int isOld = NnsG2dIsOld(buffer, size);
 
 	uint32_t fileSize = *(uint32_t *) (buffer + 8);
-	if (fileSize != size && !(fileSize + 8 == size && isOld)) { //old G2D Runtime subtracts 8
-		fileSize = (fileSize + 3) & ~3; 
-		if (fileSize != size) return 0;
-	}
 	uint16_t headerSize = *(uint16_t *) (buffer + 0xC);
 	int nSections = *(uint16_t *) (buffer + 0xE);
+
+	if (fileSize != size && !(fileSize + 8 * nSections == size && isOld)) { //old G2D Runtime subtracts block headers
+		fileSize = (fileSize + 3) & ~3; 
+		if (fileSize != size && !(fileSize + 8 * nSections == size && isOld)) return 0;
+	}
 
 	//check sections
 	unsigned int offset = headerSize;

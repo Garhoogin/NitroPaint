@@ -191,7 +191,7 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 
 		//VRAM transfer
 		uint32_t vramTransferOffset = *(uint32_t *) (cebk + 0xC);
-		if (vramTransferOffset) {
+		if (vramTransferOffset && vramTransferOffset != 0xFFFFFFFF) {
 			const unsigned char *vramTransferData = (cebk + vramTransferOffset);
 			uint32_t maxTransfer = *(uint32_t *) (vramTransferData);
 			uint32_t transferDataOffset = vramTransferOffset + *(uint32_t *) (vramTransferData + 4);
