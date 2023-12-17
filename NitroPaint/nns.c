@@ -650,7 +650,7 @@ void NnsStreamFinalize(NnsStream *stream) {
 
 	//write file size into file header
 	uint32_t fileSize = stream->headerStream.size + stream->blockStream.size;
-	if (stream->old) fileSize -= 8;
+	if (stream->old) fileSize -= 8 * stream->nBlocks;
 	bstreamSeek(&stream->headerStream, 8, 0);
 	bstreamWrite(&stream->headerStream, &fileSize, sizeof(fileSize));
 }
