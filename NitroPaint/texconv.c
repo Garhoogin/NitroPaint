@@ -1241,14 +1241,18 @@ int TxConvert4x4(TxConversionParameters *params) {
 
 	if (params->fixedPalette == NULL) {
 		unsigned char *useMap = (unsigned char *) calloc(nUsedColors, 1);
+		int nNewUsed = nUsedColors;
+
 		for (int i = 0; i < 4; i++) {
 			int nAfterRefinement = TxiRefinePalette(reduction, tileData, txel, pidx, tilesX * tilesY, nnsPal, nUsedColors, errorMap, useMap, diffuse);
-
-			//shrink palette
 			nAfterRefinement = (nAfterRefinement + 7) & ~7;
-			nnsPal = realloc(nnsPal, nAfterRefinement * sizeof(COLOR));
-			nUsedColors = nAfterRefinement;
+			nNewUsed = nAfterRefinement;
 		}
+		
+		//shrink palette
+		nUsedColors = nNewUsed;
+		nnsPal = realloc(nnsPal, nUsedColors * sizeof(COLOR));
+
 		free(useMap);
 	}
 
