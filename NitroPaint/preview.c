@@ -1,9 +1,12 @@
 #include <Windows.h>
 #include <stdio.h>
 
+#include "preview.h"
 #include "color.h"
 #include "nclr.h"
 #include "ncgr.h"
+#include "ncer.h"
+#include "nanr.h"
 #include "nscr.h"
 #include "texture.h"
 
@@ -24,6 +27,7 @@ static pfnNNS_McsOpenStream NNS_McsOpenStream = NULL;
 
 #define NVC_MSG_INIT         (NVC_MJ_SYS  | 0)
 #define NVC_MSG_LOAD_CELL    (NVC_MJ_ANM  | 0)
+#define NVC_MSG_CELL_POS     (NVC_MJ_ANM  | 7)
 #define NVC_MSG_WRITE_REG    (NVC_MJ_MEM  | 3)
 #define NVC_MSG_COPY         (NVC_MJ_MEM  | 5)
 #define NVC_MSG_VRAM_CONFIG  (NVC_MJ_VRAM | 0)
@@ -44,9 +48,9 @@ static pfnNNS_McsOpenStream NNS_McsOpenStream = NULL;
 #define MM_OAM_END           0x08000000
 
 #define MM_BG_PLTT           (MM_PLTT_START+0x000)
-#define MM_OBJ_PLTT          (MM_PLTT_START+0x100)
-#define MM_BG_PLTT_SUB       (MM_PLTT_START+0x200)
-#define MM_OBJ_PLTT_SUB      (MM_PLTT_START+0x300)
+#define MM_OBJ_PLTT          (MM_PLTT_START+0x200)
+#define MM_BG_PLTT_SUB       (MM_PLTT_START+0x400)
+#define MM_OBJ_PLTT_SUB      (MM_PLTT_START+0x600)
 
 // ----- special NVC locations
 
@@ -94,13 +98,24 @@ typedef struct NvcWriteMessage_ {
 
 typedef struct NvcLoadCellMessage_ {
 	NvcMessageHeader header;
-	wchar_t ncer[MAX_PATH];
-	wchar_t nanr[MAX_PATH];
-	wchar_t nmcr[MAX_PATH];
-	wchar_t nmar[MAX_PATH];
-	int field1;
-	int field2;
+	char ncer[MAX_PATH];
+	char nanr[MAX_PATH];
+	char nmcr[MAX_PATH];
+	char nmar[MAX_PATH];
+	uint16_t nPreviews;
+	struct {
+		uint16_t index; //incrementing?
+		uint16_t animIndex; //cell number
+		uint16_t field4;
+	} shownCells[0];
 } NvcLoadCellMessage;
+
+typedef struct NvcCellPositionMessage_ {
+	NvcMessageHeader header;
+	int16_t x;
+	int16_t y;
+	uint16_t anim;
+} NvcCellPositionMessage;
 
 
 
@@ -109,6 +124,7 @@ typedef struct NvcLoadCellMessage_ {
 static int sGraphicsDepth = 4;
 static int sScreenUsesNonzeroPalettes = 0; //if current BG screen uses nonzero palettes
 static int sPreviewMode = PREVIEW_MODE_NONE;
+static int sMappingMode = GX_OBJVRAMMODE_CHAR_2D;
 static uint32_t sDispCnt;  //DISPCNT
 static uint16_t sBgCnt[4]; //BG controls 0-3
 
@@ -201,6 +217,13 @@ static BOOL NvcWriteSafe(HANDLE hFile, const void *data, size_t size) {
 	return b && (size == nWritten);
 }
 
+static int NvcHello(void) {
+	NvcMessageHeader packet = { 0 };
+	packet.opcode = NVC_MSG_INIT;
+	packet.length = sizeof(packet);
+	return NvcWriteSafe(sNvcStream, &packet, sizeof(packet));
+}
+
 static int NvcWriteRegisterN(uint32_t regaddr, const void *src, unsigned int size) {
 	int status;
 	NvcWriteMessage *packet = (NvcWriteMessage *) calloc(sizeof(NvcWriteMessage) + size, 1);
@@ -240,24 +263,35 @@ static int NvcCopyData(uint32_t destaddr, const void *src, unsigned int size) {
 }
 
 static int NvcLoadCell(const wchar_t *pathNcer, const wchar_t *pathNanr, const wchar_t *pathNmcr, const wchar_t *pathNmar) {
-	NvcLoadCellMessage msg = { 0 };
-	msg.header.opcode = NVC_MSG_LOAD_CELL;
-	msg.header.length = sizeof(msg);
+	//might be necessary to clear preview state
+	int status = NvcHello();
+	if (!status) return status;
+
+	int size = sizeof(NvcLoadCellMessage) + sizeof(uint16_t) * 3;
+	NvcLoadCellMessage *msg = (NvcLoadCellMessage *) calloc(1, size);
+	msg->header.opcode = NVC_MSG_LOAD_CELL;
+	msg->header.length = sizeof(msg);
+	msg->nPreviews = 1;
+	msg->shownCells[0].animIndex = 0;
+	msg->shownCells[0].index = 0;
+	msg->shownCells[0].field4 = 0; //?
 
 	if (pathNcer != NULL) {
-		memcpy(msg.ncer, pathNcer, wcslen(pathNcer));
+		wcstombs(msg->ncer, pathNcer, MAX_PATH);
 	}
 	if (pathNanr != NULL) {
-		memcpy(msg.nanr, pathNanr, wcslen(pathNanr));
+		wcstombs(msg->nanr, pathNanr, MAX_PATH);
 	}
 	if (pathNmcr != NULL) {
-		memcpy(msg.nmcr, pathNmcr, wcslen(pathNmcr));
+		wcstombs(msg->nmcr, pathNmcr, MAX_PATH);
 	}
 	if (pathNmar != NULL) {
-		memcpy(msg.nmar, pathNmar, wcslen(pathNmar));
+		wcstombs(msg->nmar, pathNmar, MAX_PATH);
 	}
 
-	return NvcWriteSafe(sNvcStream, &msg, sizeof(msg));
+	status = NvcWriteSafe(sNvcStream, msg, size);
+	free(msg);
+	return status;
 }
 
 static int NvcWriteRegister32(uint32_t regaddr, uint32_t val) {
@@ -266,13 +300,6 @@ static int NvcWriteRegister32(uint32_t regaddr, uint32_t val) {
 
 static int NvcWriteRegister16(uint32_t regaddr, uint16_t val) {
 	return NvcWriteRegisterN(regaddr, &val, sizeof(val));
-}
-
-static int NvcHello(void) {
-	NvcMessageHeader packet = { 0 };
-	packet.opcode = NVC_MSG_INIT;
-	packet.length = sizeof(packet);
-	return NvcWriteSafe(sNvcStream, &packet, sizeof(packet));
 }
 
 static int NvcInit(void) {
@@ -287,13 +314,13 @@ static int NvcInit(void) {
 	const uint16_t bgBankConfigExt[] = {
 		0x008, //Main BG:              D
 		0x001, //Main OBJ:             A
-		0x060, //Main BG Ext Pltt:     FG
-		0x000, //Main OBJ Ext Pltt: 
+		0x010, //Main BG Ext Pltt:     E
+		0x060, //Main OBJ Ext Pltt:    FG
 		0x000, //Sub BG:
 		0x000, //Sub OBJ:
 		0x000, //Sub BG Ext Pltt:
 		0x000, //Sub OBJ Ext Pltt: 
-		0x016  //LCDC:                 BC E
+		0x006  //LCDC:                 BC
 	};
 	for (int i = 0; i < 9; i++) {
 		packet.forX = i;
@@ -302,12 +329,13 @@ static int NvcInit(void) {
 		if (!status) return 0;
 	}
 
-	sGraphicsDepth = 4;
+	if (sPreviewMode != PREVIEW_MODE_BG && sPreviewMode != PREVIEW_MODE_OBJ) sGraphicsDepth = 4;
+	if (sPreviewMode != PREVIEW_MODE_OBJ) sMappingMode = GX_OBJVRAMMODE_CHAR_2D;
 	sScreenUsesNonzeroPalettes = 0;
 	return 1;
 }
 
-static int NvcResetStateForBG(void) {
+static int NvcResetStateFor2D(void) {
 	int16_t identityMatrix[] = { 0x0100, 0x0000, 0x0000, 0x0100 };
 	int16_t scrollValues[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 	memset(sBgCnt, 0, sizeof(sBgCnt));
@@ -321,9 +349,18 @@ static int NvcResetStateForBG(void) {
 	status = status && NvcWriteRegisterN(REG_BG0HOFS, scrollValues, sizeof(scrollValues));      // reset BG scroll
 	status = status && NvcWriteRegister16(REG_BLDCNT, 0);                                       // no blend effects
 	status = status && NvcWriteRegister16(REG_MASTER_BRIGHT, 0);                                // normal brightness
-	sPreviewMode = PREVIEW_MODE_BG;
 	sScreenUsesNonzeroPalettes = 0;
 	return status;
+}
+
+static int NvcResetStateForBG(void) {
+	sPreviewMode = PREVIEW_MODE_BG;
+	return NvcResetStateFor2D();
+}
+
+static int NvcResetStateForOBJ(void) {
+	sPreviewMode = PREVIEW_MODE_OBJ;
+	return NvcResetStateFor2D();
 }
 
 static int NvcGetBgSize(int width, int height, int useExtPalette, int *pHwWidth, int *pHwHeight) {
@@ -353,20 +390,37 @@ static int NvcShowBG(int bgNo, int useExtPalette) {
 	sDispCnt |= bgMode;
 	sDispCnt |= (useExtPalette << 30);
 	sDispCnt |= ((1 << bgNo) << 8);
+	sDispCnt &= ~(1 << 12); //hide OBJ
 	return NvcWriteRegister32(REG_DISPCNT, sDispCnt);
 }
 
-int PreviewLoadBgPalette(NCLR *nclr) {
+static int NvcShowOBJ(int animIndex, int useExtPalette, int mappingMode) {
+	sDispCnt = 0x00011000; //graphics display, show OBJ
+	sDispCnt |= (useExtPalette << 31);
+	sDispCnt |= mappingMode; //mapping mode
+	int state = NvcWriteRegister32(REG_DISPCNT, sDispCnt);
+	if (!state) return state;
+
+	NvcCellPositionMessage msg = { 0 };
+	msg.header.opcode = NVC_MSG_CELL_POS;
+	msg.header.length = sizeof(msg);
+	msg.x = 256 / 2;
+	msg.y = 192 / 2;
+	msg.anim = animIndex;
+	return NvcWriteSafe(sNvcStream, &msg, sizeof(msg));
+}
+
+static int NvcLoadPalette(NCLR *nclr, uint32_t stdAddr, uint32_t extAddr) {
 	int status = 1;
 	if (sNvcStream == NULL) return 0;
-	if (sPreviewMode != PREVIEW_MODE_BG) NvcResetStateForBG();
+	if (sPreviewMode != PREVIEW_MODE_BG && sPreviewMode != PREVIEW_MODE_OBJ) NvcResetStateForBG();
 
 	//should we copy using an index table?
 	if (nclr->idxTable == NULL) {
 		//copy up to 512 bytes to standard paeltte, copy up to 0x2000 bytes to extended palette
 		int paletteSize = nclr->nColors * sizeof(COLOR);
-		status = status && NvcCopyData(MM_BG_PLTT, nclr->colors, (paletteSize > 0x200) ? 0x200 : paletteSize);
-		status = status && NvcCopyData(MM_NVC_BG_EXT_PLTT_SLOT(3), nclr->colors, (paletteSize > 0x2000) ? 0x2000 : paletteSize);
+		status = status && NvcCopyData(stdAddr, nclr->colors, (paletteSize > 0x200) ? 0x200 : paletteSize);
+		status = status && NvcCopyData(extAddr, nclr->colors, (paletteSize > 0x2000) ? 0x2000 : paletteSize);
 	} else {
 		//copy with index table
 		int paletteSize = (1 << nclr->nBits) * sizeof(COLOR);
@@ -375,53 +429,75 @@ int PreviewLoadBgPalette(NCLR *nclr) {
 			int dstofs = nclr->idxTable[i] * paletteSize;
 			int end = dstofs + paletteSize;
 
-			if (end <= 0x200) status = status && NvcCopyData(MM_BG_PLTT + dstofs, nclr->colors + (srcofs / 2), paletteSize);
-			if (end <= 0x2000) status = status && NvcCopyData(MM_NVC_BG_EXT_PLTT_SLOT(3) + dstofs, nclr->colors + (srcofs / 2), paletteSize);
+			if (end <= 0x200) status = status && NvcCopyData(stdAddr + dstofs, nclr->colors + (srcofs / 2), paletteSize);
+			if (end <= 0x2000) status = status && NvcCopyData(extAddr + dstofs, nclr->colors + (srcofs / 2), paletteSize);
 		}
 	}
 
 	return status;
 }
 
-int PreviewLoadBgCharacter(NCGR *ncgr) {
+static int NvcLoadCharacter(NCGR *ncgr, uint32_t addr) {
 	int status = 1;
 	if (sNvcStream == NULL) return 0;
-	if (sPreviewMode != PREVIEW_MODE_BG) NvcResetStateForBG();
+	if (sPreviewMode != PREVIEW_MODE_BG && sPreviewMode != PREVIEW_MODE_OBJ) NvcResetStateForBG();
 
 	BSTREAM gfxStream;
 	bstreamCreate(&gfxStream, NULL, 0);
 	ChrWriteChars(ncgr, &gfxStream);
-	status = NvcCopyData(MM_VRAM_START + 0x10000, gfxStream.buffer, gfxStream.size);
+	status = NvcCopyData(addr, gfxStream.buffer, gfxStream.size);
 	bstreamFree(&gfxStream);
 	if (!status) return 0;
 
-	if (sGraphicsDepth != ncgr->nBits) {
-		//update DISPCNT for our new graphics bit depth
-		if (!(sDispCnt & 0x40000000)) {
-			//extended palette not used? set bit depth in screen info. If screen is using multiple palettes, enable extended palette
-			if (sScreenUsesNonzeroPalettes && ncgr->nBits == 8) {
-				sDispCnt |= 0x40000000;
-				sBgCnt[PREVIEW_BG] &= ~(1 << 7); //clear depth field
-				status = status && NvcWriteRegister32(REG_DISPCNT, sDispCnt);
+	if (sPreviewMode == PREVIEW_MODE_BG) {
+		//update DISPCNT for BG
+		if (sGraphicsDepth != ncgr->nBits) {
+			//update DISPCNT for our new graphics bit depth
+			if (!(sDispCnt & 0x40000000)) {
+				//extended palette not used? set bit depth in screen info. If screen is using multiple palettes, enable extended palette
+				if (sScreenUsesNonzeroPalettes && ncgr->nBits == 8) {
+					sDispCnt |= 0x40000000;
+					sBgCnt[PREVIEW_BG] &= ~(1 << 7); //clear depth field
+					status = status && NvcWriteRegister32(REG_DISPCNT, sDispCnt);
+				} else {
+					sBgCnt[PREVIEW_BG] &= ~(1 << 7); //clear depth field
+					sBgCnt[PREVIEW_BG] |= (ncgr->nBits == 8) << 7;
+				}
 			} else {
-				sBgCnt[PREVIEW_BG] &= ~(1 << 7); //clear depth field
-				sBgCnt[PREVIEW_BG] |= (ncgr->nBits == 8) << 7;
+				//extended palette used.
+				if (ncgr->nBits == 4) {
+					//If we're setting the depth to 4-bit, clear the extended palette flag
+					sDispCnt &= ~0x40000000;
+					status = status && NvcWriteRegister32(REG_DISPCNT, sDispCnt);
+				} else {
+					//Setting depth to 8-bit (why was extended palette on before?)
+				}
 			}
-		} else {
-			//extended palette used.
-			if (ncgr->nBits == 4) {
-				//If we're setting the depth to 4-bit, clear the extended palette flag
-				sDispCnt &= ~0x40000000;
-				status = status && NvcWriteRegister32(REG_DISPCNT, sDispCnt);
-			} else {
-				//Setting depth to 8-bit (why was extended palette on before?)
-			}
-		}
-		status = status && NvcWriteRegister16(REG_BG0CNT + 2 * PREVIEW_BG, sBgCnt[PREVIEW_BG]);
+			status = status && NvcWriteRegister16(REG_BG0CNT + 2 * PREVIEW_BG, sBgCnt[PREVIEW_BG]);
 
+			sGraphicsDepth = ncgr->nBits;
+		}
+	} else {
+		//update DISPCNT for OBJ?
 		sGraphicsDepth = ncgr->nBits;
 	}
 	return status;
+}
+
+int PreviewLoadBgPalette(NCLR *nclr) {
+	return NvcLoadPalette(nclr, MM_BG_PLTT, MM_NVC_BG_EXT_PLTT_SLOT(3));
+}
+
+int PreviewLoadObjPalette(NCLR *nclr) {
+	return NvcLoadPalette(nclr, MM_OBJ_PLTT, MM_NVC_OBJ_EXT_PLTT_SLOT(0));
+}
+
+int PreviewLoadBgCharacter(NCGR *ncgr) {
+	return NvcLoadCharacter(ncgr, MM_VRAM_START + 0x10000);
+}
+
+int PreviewLoadObjCharacter(NCGR *ncgr) {
+	return NvcLoadCharacter(ncgr, MM_VRAM_START + 0x400000);
 }
 
 int PreviewLoadBgScreen(NSCR *nscr) {
@@ -469,6 +545,62 @@ int PreviewLoadBgScreen(NSCR *nscr) {
 	}
 
 	status = status && NvcShowBG(3, useExtPalette); //BG 3
+	return status;
+}
+
+int PreviewLoadObjCell(NCER *ncer, NANR *nanr, int cellno) {
+	if (sNvcStream == NULL) return 0;
+	if (sPreviewMode != PREVIEW_MODE_OBJ) NvcResetStateForOBJ();
+
+	//hmm, I wish a pipe would work here
+	WCHAR tempDir[MAX_PATH];
+	WCHAR pathNce[MAX_PATH], pathNan[MAX_PATH];
+	GetTempPath(MAX_PATH, tempDir);
+	GetTempFileName(tempDir, L"nce", 1, pathNce);
+	GetTempFileName(tempDir, L"nan", 2, pathNan);
+
+	//write cell as NCER
+	int fmt = ncer->header.format;
+	ncer->header.format = NCER_TYPE_NCER;
+	CellWriteFile(ncer, pathNce);
+	ncer->header.format = fmt;
+	sMappingMode = ncer->mappingMode;
+
+	int animIndex = 0;
+	if (nanr == NULL) {
+		//write animation as NANR
+		NANR nanr;
+		AnmInit(&nanr, NANR_TYPE_NANR);
+		nanr.nSequences = 1;
+		nanr.sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
+		nanr.sequences[0].nFrames = 1;
+		nanr.sequences[0].mode = 2;
+		nanr.sequences[0].type = 0 | (1 << 16);
+		nanr.sequences[0].startFrameIndex = 0;
+		nanr.sequences[0].frames = (FRAME_DATA *) calloc(1, sizeof(FRAME_DATA));
+		nanr.sequences[0].frames[0].nFrames = 4;
+		nanr.sequences[0].frames[0].pad_ = 0xBEEF;
+		nanr.sequences[0].frames[0].animationData = calloc(1, sizeof(ANIM_DATA));
+		memset(nanr.sequences[0].frames[0].animationData, 0, sizeof(ANIM_DATA));
+		((ANIM_DATA *) nanr.sequences[0].frames[0].animationData)->index = cellno;
+
+		AnmWriteFile(&nanr, pathNan);
+		AnmFree(&nanr);
+		animIndex = 0;
+	} else {
+		//load NANR as-is
+		int fmt = nanr->header.format;
+		nanr->header.format = NANR_TYPE_NANR;
+		AnmWriteFile(nanr, pathNan);
+		nanr->header.format = fmt;
+		animIndex = cellno;
+	}
+
+	//write
+	int status = 1;
+	status = NvcLoadCell(pathNce, pathNan, NULL, NULL);
+	status = status && NvcShowOBJ(animIndex, 0, sMappingMode);
+
 	return status;
 }
 

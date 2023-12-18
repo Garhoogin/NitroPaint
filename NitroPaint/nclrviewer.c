@@ -570,7 +570,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				NCLR *nclr = (NCLR *) wParam;
 				memcpy(&data->nclr, nclr, sizeof(NCLR));
 			}
-			PreviewLoadBgPalette(&data->nclr);
+			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 			HWND hWndMain = getMainWindow(hWnd);
 			InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
@@ -598,6 +598,7 @@ LRESULT WINAPI NclrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case NV_UPDATEPREVIEW:
 			PreviewLoadBgPalette(&data->nclr);
+			PreviewLoadObjPalette(&data->nclr);
 			break;
 		case WM_MOUSEMOVE:
 		case WM_NCMOUSEMOVE:

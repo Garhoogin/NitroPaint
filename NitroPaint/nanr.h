@@ -56,6 +56,8 @@ typedef struct NANR_ {
 	int uextSize;
 } NANR;
 
+void AnmInit(NANR *nanr, int format);
+
 int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 
 int AnmIsValidNanr(const unsigned char *lpFile, unsigned int size);

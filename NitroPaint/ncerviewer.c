@@ -9,6 +9,7 @@
 #include "ncgrviewer.h"
 #include "palette.h"
 #include "gdip.h"
+#include "preview.h"
 
 #include "cellgen.h"
 
@@ -321,6 +322,12 @@ void ncerEditorRedo(HWND hWnd) {
 	UpdateControls(hWnd);
 }
 
+static void CellPreviewUpdate(HWND hWnd, int cellno) {
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
+	NCER *ncer = &data->ncer;
+	PreviewLoadObjCell(ncer, NULL, cellno);
+}
+
 LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 
@@ -403,6 +410,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				NCER *ncer = (NCER *) lParam;
 				memcpy(&data->ncer, ncer, sizeof(NCER));
 			}
+			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
+
 			data->frameData.contentWidth = 612;
 			data->frameData.contentHeight = 326;
 
@@ -501,6 +510,9 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->showObjOutline = 1;
 			break;
 		}
+		case NV_UPDATEPREVIEW:
+			CellPreviewUpdate(hWnd, data->cell);
+			break;
 		case WM_LBUTTONDOWN:
 		{
 			POINT pos;
@@ -627,6 +639,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					UpdateControls(hWnd);
 					InvalidateRect(hWnd, NULL, TRUE);
+					SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 					if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndPaletteDropdown) {
@@ -916,6 +929,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					NCER copy;
 					ncerCreateCopy(&copy, &data->ncer);
 					undoAdd(&data->undo, &copy);
+					SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 				}
 			}
 			if (lParam == 0 && HIWORD(wParam) == 0) {

@@ -237,7 +237,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				NCGR *ncgr = (NCGR *) lParam;
 				memcpy(&data->ncgr, ncgr, sizeof(NCGR));
 			}
-			PreviewLoadBgCharacter(&data->ncgr);
+			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 			data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
@@ -274,6 +274,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case NV_UPDATEPREVIEW:
 			PreviewLoadBgCharacter(&data->ncgr);
+			PreviewLoadObjCharacter(&data->ncgr);
 			break;
 		case WM_COMMAND:
 		{
