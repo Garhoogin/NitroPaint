@@ -588,7 +588,7 @@ int PreviewLoadObjCell(NCER *ncer, NANR *nanr, int cellno) {
 		((ANIM_DATA *) nanr.sequences[0].frames[0].animationData)->index = cellno;
 
 		AnmWriteFile(&nanr, pathNan);
-		AnmFree(&nanr);
+		AnmFree(&nanr.header);
 		animIndex = 0;
 	} else {
 		//load NANR as-is

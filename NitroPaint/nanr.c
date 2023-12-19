@@ -6,7 +6,7 @@
 #include "nclr.h"
 #include "nns.h"
 
-LPCWSTR cellAnimationFormatNames[] = { L"Invalid", L"NANR", L"Ghost Trick" };
+LPCWSTR cellAnimationFormatNames[] = { L"Invalid", L"NANR", L"Ghost Trick", NULL };
 
 static int AnmiOffsetComparator(const void *p1, const void *p2) {
 	uint32_t ofs1 = *(uint32_t *) p1;
@@ -96,18 +96,22 @@ int AnmIdentify(const unsigned char *buffer, unsigned int size) {
 void AnmInit(NANR *nanr, int format) {
 	nanr->header.size = sizeof(NANR);
 	ObjInit(&nanr->header, FILE_TYPE_NANR, format);
+	nanr->header.dispose = AnmFree;
+	nanr->header.writer = (OBJECT_WRITER) AnmWrite;
 }
 
 int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 	AnmInit(nanr, NANR_TYPE_NANR);
 
-	const unsigned char *abnk = buffer + 0x10;
-	int nSections = *(unsigned short *) (buffer + 0xE);
-	int nSequences = *(unsigned short *) (abnk + 8);
-	int nTotalFrames = *(unsigned short *) (abnk + 0xA);
-	int sequenceArrayOffset = *(int *) (abnk + 0xC) + 0x18;
-	int frameArrayOffset = *(int *) (abnk + 0x10) + 0x18;
-	int animationOffset = *(int *) (abnk + 0x14) + 0x18;
+	const unsigned char *abnk = NnsG2dGetSectionByMagic(buffer, size, 'ABNK');
+	if (abnk == NULL) abnk = NnsG2dGetSectionByMagic(buffer, size, 'KNBA');
+
+	int nSections = *(uint16_t *) (buffer + 0xE);
+	int nSequences = *(uint16_t *) (abnk + 8);
+	int nTotalFrames = *(uint16_t *) (abnk + 0xA);
+	int sequenceArrayOffset = *(uint32_t *) (abnk + 0xC) + 0x18;
+	int frameArrayOffset = *(uint32_t *) (abnk + 0x10) + 0x18;
+	int animationOffset = *(uint32_t *) (abnk + 0x14) + 0x18;
 
 	NANR_SEQUENCE *sequenceArray = (NANR_SEQUENCE *) (buffer + sequenceArrayOffset);
 	NANR_SEQUENCE *sequences = (NANR_SEQUENCE *) calloc(nSequences, sizeof(NANR_SEQUENCE));
@@ -136,41 +140,27 @@ int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 		}
 	}
 
-	nanr->header.compression = COMPRESSION_NONE;
-	nanr->header.format = NANR_TYPE_NANR;
-	nanr->header.size = sizeof(*nanr);
-	nanr->header.type = FILE_TYPE_NANR;
+	int old = NnsG2dIsOld(buffer, size);
+	const unsigned char *labl = NnsG2dGetSectionByMagic(buffer, size, 'LABL');
+	if (labl == NULL) labl = NnsG2dGetSectionByMagic(buffer, size, 'LBAL');
+	const unsigned char *uext = NnsG2dGetSectionByMagic(buffer, size, 'UEXT');
+	if (uext == NULL) uext = NnsG2dGetSectionByMagic(buffer, size, 'TXEU');
 
-	DWORD lablSize = 0, uextSize = 0;
-	void *labl = NULL, *uext = NULL;
-	if (nSections > 1) {
-		const unsigned char *ptr = buffer + 0x10;
-		ptr += *(DWORD *) (ptr + 4);
-		nSections--;
-
-		for (int i = 0; i < nSections; i++) {
-			DWORD magic = *(DWORD *) ptr;
-			DWORD size = *(DWORD *) (ptr + 4) - 8;
-			ptr += 8;
-			if (magic == 'LABL' || magic == 'LBAL') {
-				lablSize = size;
-				labl = malloc(size);
-				memcpy(labl, ptr, size);
-			} else if (magic == 'UEXT' || magic == 'TXEU') {
-				uextSize = size;
-				uext = malloc(size);
-				memcpy(uext, ptr, size);
-			}
-			ptr += size;
-		}
+	if (labl != NULL) {
+		nanr->lablSize = *(uint32_t *) (labl + 4);
+		if (!old) nanr->lablSize -= 8;
+		nanr->labl = malloc(nanr->lablSize);
+		memcpy(nanr->labl, labl + 8, nanr->lablSize);
+	}
+	if (uext != NULL) {
+		nanr->uextSize = *(uint32_t *) (uext + 4);
+		if (!old) nanr->uextSize -= 8;
+		nanr->uext = malloc(nanr->uextSize);
+		memcpy(nanr->uext, uext + 8, nanr->uextSize);
 	}
 
 	nanr->sequences = sequences;
 	nanr->nSequences = nSequences;
-	nanr->labl = labl;
-	nanr->lablSize = lablSize;
-	nanr->uext = uext;
-	nanr->uextSize = uextSize;
 
 	return 0;
 }
@@ -237,7 +227,7 @@ int AnmReadFile(NANR *nanr, LPCWSTR path) {
 	return ObjReadFile(path, (OBJECT_HEADER *) nanr, (OBJECT_READER) AnmRead);
 }
 
-int nanrCountFrames(NANR *nanr) {
+static int AnmiCountFrames(NANR *nanr) {
 	int nFrames = 0;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		nFrames += nanr->sequences[i].nFrames;
@@ -246,8 +236,8 @@ int nanrCountFrames(NANR *nanr) {
 }
 
 //ensure frame is in the stream, and return the offset to it
-int nanrWriteFrame(BSTREAM *stream, void *data, int element) {
-	int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+static int AnmiNanrWriteFrame(BSTREAM *stream, void *data, int element) {
+	const int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
 	int size = sizes[element];
 
 	//search for element
@@ -300,99 +290,80 @@ int nanrWriteFrame(BSTREAM *stream, void *data, int element) {
 int AnmWrite(NANR *nanr, BSTREAM *stream) {
 	int status = 0;
 
-	int fileStart = stream->pos;
-	BYTE nanrHeader[] = { 'R', 'N', 'A', 'N', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 0, 0 };
-	WORD nSections = 1 + (nanr->labl != NULL) + (nanr->uext != NULL);
-	DWORD sequencesSize = nanr->nSequences * sizeof(NANR_SEQUENCE);
-
-	*(uint16_t *) (nanrHeader + 0xE) = nSections;
-	bstreamWrite(stream, nanrHeader, sizeof(nanrHeader));
-
-	uint32_t align0 = 0; //0-padding for alignment
+	NnsStream nnsStream;
+	NnsStreamCreate(&nnsStream, "NANR", 1, 0, NNS_TYPE_G2D, NNS_SIG_LE);
+	uint32_t sequencesSize = nanr->nSequences * sizeof(NANR_SEQUENCE);
 
 	int abnkStart = stream->pos;
-	int nFrames = nanrCountFrames(nanr);
+	int nFrames = AnmiCountFrames(nanr);
 	int animFramesSize = nFrames * sizeof(FRAME_DATA);
-	unsigned char abnkHeader[] = { 'K', 'N', 'B', 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	*(uint32_t *) (abnkHeader + 4) = 0;
-	*(uint16_t *) (abnkHeader + 8) = nanr->nSequences;
-	*(uint16_t *) (abnkHeader + 0xA) = nFrames;
-	*(uint32_t *) (abnkHeader + 0xC) = 0x18;
-	*(uint32_t *) (abnkHeader + 0x10) = 0x18 + sequencesSize;
-	*(uint32_t *) (abnkHeader + 0x14) = 0x18 + sequencesSize + animFramesSize;
-	bstreamWrite(stream, abnkHeader, sizeof(abnkHeader));
 
-	int seqOffset = stream->pos;
+	NnsStreamStartBlock(&nnsStream, "ABNK");
+	unsigned char abnkHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	*(uint16_t *) (abnkHeader + 0x00) = nanr->nSequences;
+	*(uint16_t *) (abnkHeader + 0x02) = nFrames;
+	*(uint32_t *) (abnkHeader + 0x04) = sizeof(abnkHeader);
+	*(uint32_t *) (abnkHeader + 0x08) = sizeof(abnkHeader) + sequencesSize;
+	*(uint32_t *) (abnkHeader + 0x0C) = sizeof(abnkHeader) + sequencesSize + animFramesSize;
+	NnsStreamWrite(&nnsStream, abnkHeader, sizeof(abnkHeader));
+
+	BSTREAM *blockStream = NnsStreamGetBlockStream(&nnsStream);
+	int seqOffset = blockStream->pos;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE seq;
 		memcpy(&seq, nanr->sequences + i, sizeof(NANR_SEQUENCE));
 		seq.frames = (FRAME_DATA *) (i * sizeof(FRAME_DATA));
-		bstreamWrite(stream, &seq, sizeof(seq));
+		NnsStreamWrite(&nnsStream, &seq, sizeof(seq));
 	}
 
 	BSTREAM frameStream;
 	bstreamCreate(&frameStream, NULL, 0);
 
-	int frameDataOffset = stream->pos;
+	int frameDataOffset = blockStream->pos;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;
 		FRAME_DATA *frames = sequence->frames;
 
 		int element = sequence->type & 0xFFFF;
-		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
 
 		//write frame data offset
-		int pos = stream->pos;
+		int pos = blockStream->pos;
 		int thisSequenceOffset = pos - frameDataOffset;
-		bstreamSeek(stream, seqOffset + i * sizeof(NANR_SEQUENCE) + 0xC, 0); //frame offset in this sequence
-		bstreamWrite(stream, &thisSequenceOffset, sizeof(thisSequenceOffset));
-		bstreamSeek(stream, pos, 0);
+		bstreamSeek(blockStream, seqOffset + i * sizeof(NANR_SEQUENCE) + 0xC, 0); //frame offset in this sequence
+		bstreamWrite(blockStream, &thisSequenceOffset, sizeof(thisSequenceOffset));
+		bstreamSeek(blockStream, pos, 0);
 
 		for (int j = 0; j < sequence->nFrames; j++) {
-			int frameOfs = nanrWriteFrame(&frameStream, frames[j].animationData, element);
+			int frameOfs = AnmiNanrWriteFrame(&frameStream, frames[j].animationData, element);
 
 			FRAME_DATA frame;
 			memcpy(&frame, frames + j, sizeof(FRAME_DATA));
 			frame.animationData = (void *) frameOfs;
-			bstreamWrite(stream, &frame, sizeof(frame));
+			bstreamWrite(blockStream, &frame, sizeof(frame));
 		}
 	}
 
 	//need alignment?
-	if (frameStream.pos & 3) {
-		int nPad = 4 - (frameStream.pos & 3);
-		bstreamWrite(&frameStream, &align0, nPad);
-	}
+	bstreamAlign(blockStream, 4);
 
-	bstreamWrite(stream, frameStream.buffer, frameStream.size);
+	NnsStreamWrite(&nnsStream, frameStream.buffer, frameStream.size);
+	NnsStreamEndBlock(&nnsStream);
 	bstreamFree(&frameStream);
 
-	int abnkEnd = stream->pos;
-	int abnkSize = abnkEnd - abnkStart;
-
-	bstreamSeek(stream, abnkStart + 4, 0);
-	bstreamWrite(stream, &abnkSize, sizeof(abnkSize));
-	bstreamSeek(stream, abnkEnd, 0);
-
 	if (nanr->labl != NULL) {
-		BYTE lablHeader[] = { 'L', 'B', 'A', 'L', 0, 0, 0, 0 };
-		*(DWORD *) (lablHeader + 4) = 8 + nanr->lablSize;
-		bstreamWrite(stream, lablHeader, sizeof(lablHeader));
-		bstreamWrite(stream, nanr->labl, nanr->lablSize);
+		NnsStreamStartBlock(&nnsStream, "LABL");
+		NnsStreamWrite(&nnsStream, nanr->labl, nanr->lablSize);
+		NnsStreamEndBlock(&nnsStream);
 	}
 
 	if (nanr->uext != NULL) {
-		BYTE uextHeader[] = { 'T', 'X', 'E', 'U', 0, 0, 0, 0 };
-		*(DWORD *) (uextHeader + 4) = 8 + nanr->uextSize;
-		bstreamWrite(stream, uextHeader, sizeof(uextHeader));
-		bstreamWrite(stream, nanr->uext, nanr->uextSize);
+		NnsStreamStartBlock(&nnsStream, "UEXT");
+		NnsStreamWrite(&nnsStream, nanr->uext, nanr->uextSize);
+		NnsStreamEndBlock(&nnsStream);
 	}
-
-	int fileEnd = stream->pos;
-	int fileSize = fileEnd - fileStart;
-	bstreamSeek(stream, fileStart + 8, 0);
-	bstreamWrite(stream, &fileSize, sizeof(fileSize));
-	bstreamSeek(stream, fileEnd, 0);
+	NnsStreamFinalize(&nnsStream);
+	NnsStreamFlushOut(&nnsStream, stream);
+	NnsStreamFree(&nnsStream);
 
 	return status;
 }
@@ -401,7 +372,8 @@ int AnmWriteFile(NANR *nanr, LPWSTR name) {
 	return ObjWriteFile(name, (OBJECT_HEADER *) nanr, (OBJECT_WRITER) AnmWrite);
 }
 
-void AnmFree(NANR *nanr) {
+void AnmFree(OBJECT_HEADER *obj) {
+	NANR *nanr = (NANR *) obj;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;
 		for (int j = 0; j < sequence->nFrames; j++) {

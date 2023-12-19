@@ -70,4 +70,4 @@ int AnmWrite(NANR *nanr, BSTREAM *stream);
 
 int AnmWriteFile(NANR *nanr, LPWSTR name);
 
-void AnmFree(NANR *nanr);
+void AnmFree(OBJECT_HEADER *obj);

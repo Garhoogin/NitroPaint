@@ -12,12 +12,13 @@
 #include "nclr.h"
 #include "ncgr.h"
 #include "ncer.h"
+#include "preview.h"
 
 extern HICON g_appIcon;
 
 #define NANRVIEWER_TIMER_TICK 1
 
-int getTotalFrameCount(NANR_SEQUENCE *sequence) {
+static int getTotalFrameCount(NANR_SEQUENCE *sequence) {
 	int nFrames = 0;
 	for (int i = 0; i < sequence->nFrames; i++) {
 		nFrames += sequence->frames[i].nFrames;
@@ -25,7 +26,7 @@ int getTotalFrameCount(NANR_SEQUENCE *sequence) {
 	return nFrames;
 }
 
-int getAnimationFrameFromFrame(NANR_SEQUENCE *sequence, int drawFrameIndex) {
+static int getAnimationFrameFromFrame(NANR_SEQUENCE *sequence, int drawFrameIndex) {
 	if (sequence == NULL) return 0;
 	for (int i = 0; i < sequence->nFrames; i++) {
 		drawFrameIndex -= sequence->frames[i].nFrames;
@@ -34,12 +35,12 @@ int getAnimationFrameFromFrame(NANR_SEQUENCE *sequence, int drawFrameIndex) {
 	return sequence->nFrames - 1;
 }
 
-int getFrameIndex(FRAME_DATA *frame) {
+static int getFrameIndex(FRAME_DATA *frame) {
 	ANIM_DATA *f = (ANIM_DATA *) frame->animationData;
 	return f->index;
 }
 
-void getFrameScaleRotate(FRAME_DATA *frame, int *sx, int *sy, int *rotZ, int element) {
+static void AnmViewerFrameGetScaleRotate(FRAME_DATA *frame, int *sx, int *sy, int *rotZ, int element) {
 	if (element != 1) {
 		*sx = *sy = 4096;
 		*rotZ = 0;
@@ -51,7 +52,7 @@ void getFrameScaleRotate(FRAME_DATA *frame, int *sx, int *sy, int *rotZ, int ele
 	*rotZ = f->rotZ;
 }
 
-void setFrameScaleRotate(FRAME_DATA *frame, int sx, int sy, int rotZ, int element) {
+static void AnmViewerFrameSetScaleRotate(FRAME_DATA *frame, int sx, int sy, int rotZ, int element) {
 	if (element == 1) {
 		ANIM_DATA_SRT *f = (ANIM_DATA_SRT *) frame->animationData;
 		f->sx = sx;
@@ -60,7 +61,7 @@ void setFrameScaleRotate(FRAME_DATA *frame, int sx, int sy, int rotZ, int elemen
 	}
 }
 
-void getFrameTranslate(FRAME_DATA *frame, int *px, int *py, int element) {
+static void AnmViewerFrameGetTranslate(FRAME_DATA *frame, int *px, int *py, int element) {
 	if (element == 0) {
 		*px = *py = 0;
 		return;
@@ -75,7 +76,7 @@ void getFrameTranslate(FRAME_DATA *frame, int *px, int *py, int element) {
 	}
 }
 
-void setFrameTranslate(FRAME_DATA *frame, int px, int py, int element) {
+static void AnmViewerFrameSetTranslate(FRAME_DATA *frame, int px, int py, int element) {
 	if (element == 1) {
 		ANIM_DATA_SRT *f = (ANIM_DATA_SRT *) frame->animationData;
 		f->px = px;
@@ -87,7 +88,7 @@ void setFrameTranslate(FRAME_DATA *frame, int px, int py, int element) {
 	}
 }
 
-int getDrawFrameIndex(NANR_SEQUENCE *sequence, int frame) {
+static int getDrawFrameIndex(NANR_SEQUENCE *sequence, int frame) {
 	if (sequence == NULL || sequence->nFrames == 0) return 0;
 	int drawFrameIndex = sequence->startFrameIndex + frame;
 	int mode = sequence->mode;
@@ -200,29 +201,32 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 	return frameBuffer;
 }
 
-VOID PaintNanrFrame(HWND hWnd, HDC hDC) {
+static HWND AnmViewerGetAssociatedEditor(HWND hWnd, int type) {
+	HWND hWndMain = getMainWindow(hWnd);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	switch (type) {
+		case FILE_TYPE_PALETTE:
+			return nitroPaintStruct->hWndNclrViewer;
+		case FILE_TYPE_CHARACTER:
+			return nitroPaintStruct->hWndNcgrViewer;
+		case FILE_TYPE_CELL:
+			return nitroPaintStruct->hWndNcerViewer;
+	}
+	return NULL;
+}
+
+static void AnmViewerPaintFrame(HWND hWnd, HDC hDC) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
 	NCLR *nclr = NULL;
 	NCGR *ncgr = NULL;
 	NCER *ncer = NULL;
-	HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
 
-	if (nitroPaintStruct->hWndNclrViewer) {
-		HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-		NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLong(hWndNclrViewer, 0);
-		nclr = &nclrViewerData->nclr;
-	}
-	if (nitroPaintStruct->hWndNcgrViewer) {
-		HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLong(hWndNcgrViewer, 0);
-		ncgr = &ncgrViewerData->ncgr;
-	}
-	if (nitroPaintStruct->hWndNcerViewer) {
-		HWND hWndNcerViewer = nitroPaintStruct->hWndNcerViewer;
-		NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) GetWindowLong(hWndNcerViewer, 0);
-		ncer = &ncerViewerData->ncer;
-	}
+	HWND hWndNclrViewer = AnmViewerGetAssociatedEditor(hWnd, FILE_TYPE_PALETTE);
+	HWND hWndNcgrViewer = AnmViewerGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
+	HWND hWndNcerViewer = AnmViewerGetAssociatedEditor(hWnd, FILE_TYPE_CELL);
+	if (hWndNclrViewer != NULL) nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
+	if (hWndNcgrViewer != NULL) ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
+	if (hWndNcerViewer != NULL) ncer = (NCER *) EditorGetObject(hWndNcerViewer);
 
 	if (nclr != NULL && ncgr != NULL && ncer != NULL) {
 		NANR *nanr = &data->nanr;
@@ -242,60 +246,53 @@ VOID PaintNanrFrame(HWND hWnd, HDC hDC) {
 	}
 }
 
-void showChild(HWND hWnd, BOOL show) {
-	DWORD dwStyle = GetWindowLong(hWnd, GWL_STYLE);
-	if (show) dwStyle |= WS_VISIBLE;
-	else dwStyle &= ~WS_VISIBLE;
-	SetWindowLong(hWnd, GWL_STYLE, dwStyle);
+static void showChild(HWND hWnd, BOOL show) {
+	setStyle(hWnd, show, WS_VISIBLE);
 	if (show) RedrawWindow(hWnd, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 }
 
-void updateOptionalControls(HWND hWnd, int n) {
-	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+static void AnmViewerUpdateOptionalControls(HWND hWnd, int n) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
 	NANR_SEQUENCE *sequence = data->nanr.sequences + data->sequence;
 	WCHAR bf[16];
 
 	int px, py, sx, sy, rotZ;
 	int element = sequence->type & 0xFFFF;
-	getFrameTranslate(sequence->frames + n, &px, &py, element);
-	getFrameScaleRotate(sequence->frames + n, &sx, &sy, &rotZ, element);
+	AnmViewerFrameGetTranslate(sequence->frames + n, &px, &py, element);
+	AnmViewerFrameGetScaleRotate(sequence->frames + n, &sx, &sy, &rotZ, element);
 
-	int len = wsprintfW(bf, L"%d", px);
-	SendMessage(data->hWndTranslateX, WM_SETTEXT, len, (LPARAM) bf);
-	len = wsprintfW(bf, L"%d", py);
-	SendMessage(data->hWndTranslateY, WM_SETTEXT, len, (LPARAM) bf);
-	len = wsprintfW(bf, L"%d.%04d", sx >> 12, (abs(sx) & 0xFFF) * 10000 / 4096);
+	SetEditNumber(data->hWndTranslateX, px);
+	SetEditNumber(data->hWndTranslateY, py);
+	SetEditNumber(data->hWndRotateAngle, rotZ);
+
+	int len = wsprintfW(bf, L"%d.%04d", sx >> 12, (abs(sx) & 0xFFF) * 10000 / 4096);
 	SendMessage(data->hWndScaleX, WM_SETTEXT, len, (LPARAM) bf);
 	len = wsprintfW(bf, L"%d.%04d", sy >> 12, (abs(sy) & 0xFFF) * 10000 / 4096);
 	SendMessage(data->hWndScaleY, WM_SETTEXT, len, (LPARAM) bf);
-	len = wsprintfW(bf, L"%d", rotZ);
-	SendMessage(data->hWndRotateAngle, WM_SETTEXT, len, (LPARAM) bf);
 }
 
-void nanrViewerSetFrame(HWND hWnd, int n, BOOL updateListBox) {
-	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+static void AnmViewerSetFrame(HWND hWnd, int n, BOOL updateListBox) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
 
 	//update controls
 	WCHAR bf[16];
 	NANR_SEQUENCE *sequence = data->nanr.sequences + data->sequence;
 	int len = wsprintfW(bf, L"Frame %d", n);
 	SendMessage(data->hWndFrameCounter, WM_SETTEXT, len, (LPARAM) bf);
-	len = wsprintfW(bf, L"%d", sequence->frames[n].nFrames);
 
 	// Prevent SETTEXT message from changing the animation data
 	data->ignoreInputMsg = TRUE;
 
-	SendMessage(data->hWndFrameCount, WM_SETTEXT, len, (LPARAM) bf);
+	SetEditNumber(data->hWndFrameCount, sequence->frames[n].nFrames);
 	if (n < sequence->nFrames && n >= 0) {
-		len = wsprintfW(bf, L"%d", ((ANIM_DATA *) (sequence->frames[n].animationData))->index);
-		SendMessage(data->hWndIndex, WM_SETTEXT, len, (LPARAM) bf);
+		SetEditNumber(data->hWndIndex, ((ANIM_DATA *) (sequence->frames[n].animationData))->index);
 	}
 	
 	data->ignoreInputMsg = FALSE;
 	
 	int element = sequence->type & 0xFFFF;
 	if (element > 0) {
-		updateOptionalControls(hWnd, n);
+		AnmViewerUpdateOptionalControls(hWnd, n);
 	}
 
 	if(updateListBox) SendMessage(data->hWndFrameList, LB_SETCURSEL, n, 0);
@@ -303,8 +300,8 @@ void nanrViewerSetFrame(HWND hWnd, int n, BOOL updateListBox) {
 	InvalidateRect(hWnd, NULL, FALSE);
 }
 
-void nanrViewerUpdatePropertySelection(HWND hWnd, int element) {
-	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+static void AnmViewerUpdateFieldsVisibility(HWND hWnd, int element) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
 	switch (element) {
 		case 0:
 			showChild(data->hWndTranslateLabel, FALSE);
@@ -338,12 +335,12 @@ void nanrViewerUpdatePropertySelection(HWND hWnd, int element) {
 			break;
 	}
 	NANR_SEQUENCE *sequence = data->nanr.sequences + data->sequence;
-	updateOptionalControls(hWnd, getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame)));
+	AnmViewerUpdateOptionalControls(hWnd, getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame)));
 	InvalidateRect(hWnd, NULL, TRUE);
 }
 
-void nanrViewerSetSequence(HWND hWnd, int n) {
-	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+static void AnmViewerSetSequence(HWND hWnd, int n) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
 
 	//update sequence 
 	data->sequence = n;
@@ -366,14 +363,14 @@ void nanrViewerSetSequence(HWND hWnd, int n) {
 	SendMessage(data->hWndAnimationElement, CB_SETCURSEL, sequence->type & 0xFFFF, 0);
 
 	int element = sequence->type & 0xFFFF;
-	nanrViewerUpdatePropertySelection(hWnd, element);
+	AnmViewerUpdateFieldsVisibility(hWnd, element);
 
-	nanrViewerSetFrame(hWnd, 0, FALSE);
+	AnmViewerSetFrame(hWnd, 0, FALSE);
 	InvalidateRect(hWnd, NULL, TRUE);
 }
 
-void nanrViewerRefreshSequences(HWND hWnd) {
-	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+static void AnmViewerRefreshSequences(HWND hWnd) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
 
 	SendMessage(data->hWndAnimationDropdown, CB_RESETCONTENT, 0, 0);
 	for (int i = 0; i < data->nanr.nSequences; i++) {
@@ -384,6 +381,18 @@ void nanrViewerRefreshSequences(HWND hWnd) {
 	SendMessage(data->hWndAnimationDropdown, CB_SETCURSEL, data->sequence, 0);
 }
 
+static void AnmViewerUpdatePreview(HWND hWnd) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
+	HWND hWndNcerViewer = AnmViewerGetAssociatedEditor(hWnd, FILE_TYPE_CELL);
+	if (hWndNcerViewer == NULL) return;
+
+	NANR *nanr = &data->nanr;
+	NCER *ncer = (NCER *) EditorGetObject(hWndNcerViewer);
+	if (ncer == NULL) return;
+
+	PreviewLoadObjCell(ncer, nanr, data->sequence);
+}
+
 static BOOL g_tickThreadRunning = FALSE;
 static HWND *g_tickWindows = NULL;
 static int g_nTickWindows = 0;
@@ -391,9 +400,9 @@ static CRITICAL_SECTION g_tickWindowCriticalSection;
 static BOOL g_tickWindowCriticalSectionInitialized = FALSE;
 static HANDLE g_hTickThread = NULL;
 
-DWORD CALLBACK NanrViewerTicker(LPVOID lpParam) {
+DWORD CALLBACK AnmViewerTickerProc(LPVOID lpParam) {
 	HWND hWnd = (HWND) lpParam;
-	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
 
 	LARGE_INTEGER startTime;
 	GetSystemTimeAsFileTime((FILETIME *) &startTime);
@@ -418,7 +427,7 @@ DWORD CALLBACK NanrViewerTicker(LPVOID lpParam) {
 	}
 }
 
-void setupWindowAnimationTick(HWND hWnd) {
+static void AnmViewerStartAnimTickThread(HWND hWnd) {
 	if (!g_tickWindowCriticalSectionInitialized) {
 		InitializeCriticalSection(&g_tickWindowCriticalSection);
 		g_tickWindowCriticalSectionInitialized = TRUE;
@@ -426,7 +435,7 @@ void setupWindowAnimationTick(HWND hWnd) {
 	EnterCriticalSection(&g_tickWindowCriticalSection);
 	if (!g_tickThreadRunning) {
 		DWORD tid;
-		g_hTickThread = CreateThread(NULL, 0, NanrViewerTicker, (LPVOID) hWnd, 0, &tid);
+		g_hTickThread = CreateThread(NULL, 0, AnmViewerTickerProc, (LPVOID) hWnd, 0, &tid);
 		g_tickThreadRunning = TRUE;
 	}
 	if (g_tickWindows == NULL) {
@@ -441,7 +450,7 @@ void setupWindowAnimationTick(HWND hWnd) {
 	LeaveCriticalSection(&g_tickWindowCriticalSection);
 }
 
-void destroyWindowAnimationTick(HWND hWnd) {
+static void AnmViewerFreeTickThread(HWND hWnd) {
 	EnterCriticalSection(&g_tickWindowCriticalSection);
 	int index = -1;
 	for (int i = 0; i < g_nTickWindows; i++) {
@@ -483,466 +492,444 @@ float my_wtof(const wchar_t *str) {
 	return ((float) intPart) + ((float) fracPart) / ((float) denominator);
 }
 
-LRESULT CALLBACK NanrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (NANRVIEWERDATA *) calloc(1, sizeof(*data));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+static void AnmViewerOnCreate(NANRVIEWERDATA *data, HWND hWnd) {
+	data->hWnd = hWnd;
+	data->sequence = 0;
+	data->frameBuffer = (DWORD *) calloc(256 * 512, 4);
+	data->ignoreInputMsg = FALSE;
+
+	CreateStatic(hWnd, L"Sequence:", 522, 10, 70, 22);
+	CreateStatic(hWnd, L"Frames:", 632, 95, 50, 22);
+	CreateStatic(hWnd, L"Index:", 632, 122, 50, 22);
+
+	data->hWndTranslateLabel = CreateStatic(hWnd, L"Translate:", 632, 149, 50, 22);
+	data->hWndScaleLabel = CreateStatic(hWnd, L"Scale:", 632, 149 + 27, 50, 22);
+	data->hWndRotateLabel = CreateStatic(hWnd, L"Rotation:", 632, 149 + 27 + 27, 50, 22);
+
+	LPWSTR playModes[] = { L"Forward", L"Forward loop", L"Reverse", L"Reverse loop" };
+	LPWSTR animationTypes[] = { L"Cell", L"Multicell" };
+	LPWSTR animationElements[] = { L"Index", L"Index+SRT", L"Index+T" };
+
+	data->hWndAnimationDropdown = CreateCombobox(hWnd, NULL, 0, 602, 10, 100, 100, 0);
+	data->hWndAddSequence = CreateButton(hWnd, L"+", 724, 10, 22, 22, FALSE);
+	data->hWndDeleteSequence = CreateButton(hWnd, L"-", 702, 10, 22, 22, FALSE);
+	data->hWndPauseButton = CreateButton(hWnd, L"Play", 522, 37, 50, 22, FALSE);
+	data->hWndStepButton = CreateButton(hWnd, L"Step", 577, 37, 50, 22, FALSE);
+	data->hWndFrameCounter = CreateStatic(hWnd, L"Frame 0", 632, 37, 100, 22);
+	data->hWndFrameList = CreateWindowEx(0, L"LISTBOX", L"", WS_VISIBLE | WS_CHILD | WS_VSCROLL | LBS_STANDARD | LBS_NOINTEGRALHEIGHT, 522, 95, 105, 139, hWnd, NULL, NULL, NULL);
+	data->hWndPlayMode = CreateCombobox(hWnd, playModes, 4, 522, 64, 105, 100, 0);
+	data->hWndAnimationType = CreateCombobox(hWnd, animationTypes, 2, 627, 64, 105, 100, 0);
+	data->hWndAnimationElement = CreateCombobox(hWnd, animationElements, 3, 732, 64, 105, 100, 0);
+	data->hWndFrameCount = CreateEdit(hWnd, L"", 687, 95, 50, 22, TRUE);
+	data->hWndIndex = CreateEdit(hWnd, L"", 687, 95 + 22 + 5, 50, 22, TRUE);
+
+	data->hWndTranslateX = CreateEdit(hWnd, L"0", 632 + 55, 149, 50, 22, FALSE);
+	data->hWndTranslateY = CreateEdit(hWnd, L"0", 632 + 110, 149, 50, 22, FALSE);
+	data->hWndScaleX = CreateEdit(hWnd, L"1.0000", 632 + 55, 149 + 27, 50, 22, FALSE);
+	data->hWndScaleY = CreateEdit(hWnd, L"1.0000", 632 + 110, 149 + 27, 50, 22, FALSE);
+	data->hWndRotateAngle = CreateEdit(hWnd, L"0", 632 + 55, 149 + 27 + 27, 50, 22, FALSE);
+
+	data->hWndDeleteFrame = CreateButton(hWnd, L"-", 522, 245 - 11, 50, 22, FALSE);
+	data->hWndAddFrame = CreateButton(hWnd, L"+", 577, 245 - 11, 50, 22, FALSE);
+
+	AnmViewerStartAnimTickThread(hWnd);
+}
+
+static void AnmViewerOnTimer(NANRVIEWERDATA *data, HWND hWnd) {
+	if (data->playing) {
+		data->frame++;
+		InvalidateRect(hWnd, NULL, FALSE);
+
+		NANR_SEQUENCE *sequence = data->nanr.sequences + data->sequence;
+		AnmViewerSetFrame(hWnd, getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame)), TRUE);
 	}
+}
+
+static void AnmViewerOnPaint(NANRVIEWERDATA *data, HWND hWnd) {
+	PAINTSTRUCT ps;
+	HDC hDC = BeginPaint(hWnd, &ps);
+
+	AnmViewerPaintFrame(hWnd, hDC);
+
+	EndPaint(hWnd, &ps);
+}
+
+static void AnmViewerOnInitialize(NANRVIEWERDATA *data, HWND hWnd, NANR *nanr, LPWSTR path) {
+	if (path != NULL) {
+		EditorSetFile(hWnd, path);
+	}
+	memcpy(&data->nanr, nanr, sizeof(NANR));
+	AnmViewerUpdatePreview(hWnd);
+
+	for (int i = 0; i < data->nanr.nSequences; i++) {
+		WCHAR buf[16];
+		int len = wsprintfW(buf, L"%d", i);
+		SendMessage(data->hWndAnimationDropdown, CB_ADDSTRING, len, (LPARAM) buf);
+	}
+
+	SendMessage(data->hWndAnimationDropdown, CB_SETCURSEL, 0, 0);
+
+	AnmViewerSetSequence(hWnd, 0);
+}
+
+static void AnmViewerOnMenuCommand(NANRVIEWERDATA *data, HWND hWnd, int id) {
+	switch (id) {
+		case ID_FILE_SAVEAS:
+			EditorSaveAs(hWnd);
+			break;
+		case ID_FILE_SAVE:
+			EditorSave(hWnd);
+			break;
+	}
+}
+
+static void AnmViewerOnControlCommand(NANRVIEWERDATA *data, HWND hWnd, HWND hWndControl, int idc, int notif) {
+	NANR_SEQUENCE *sequence = data->nanr.sequences + data->sequence;
+	int startFrameIndex = getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame));
+	FRAME_DATA *frameData = NULL;
+	if (sequence != NULL) {
+		frameData = sequence->frames + startFrameIndex;
+	}
+
+	if (hWndControl == data->hWndAnimationDropdown && notif == CBN_SELCHANGE) {
+		int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+
+		data->playing = 0;
+		SendMessage(data->hWndPauseButton, WM_SETTEXT, 4, (LPARAM) L"Play");
+
+		AnmViewerSetSequence(hWnd, idx);
+		AnmViewerUpdatePreview(hWnd);
+	} else if (hWndControl == data->hWndPauseButton && notif == BN_CLICKED) {
+		int playing = data->playing;
+		data->playing = !playing;
+
+		if (playing) {
+			SendMessage(hWndControl, WM_SETTEXT, 4, (LPARAM) L"Play");
+		} else {
+			SendMessage(hWndControl, WM_SETTEXT, 5, (LPARAM) L"Pause");
+		}
+	} else if (hWndControl == data->hWndStepButton && notif == BN_CLICKED) {
+		if (data->playing) {
+			SendMessage(data->hWndPauseButton, WM_SETTEXT, 4, (LPARAM) L"Play");
+			data->playing = 0;
+		}
+
+		//advance the animation by 1 frame entry. Tricky!
+		for (int i = 0; i < frameData->nFrames; i++) {
+			data->frame++;
+			int frameIndex = getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame));
+			if (frameIndex != startFrameIndex) break;
+		}
+
+		AnmViewerSetFrame(hWnd, getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame)), TRUE);
+	} else if (hWndControl == data->hWndFrameList && notif == LBN_SELCHANGE) {
+		int idx = SendMessage(data->hWndFrameList, LB_GETCURSEL, 0, 0);
+		data->playing = 0;
+
+		int nFrameIndex = 0;
+		for (int i = 0; i < idx; i++) {
+			nFrameIndex += sequence->frames[i].nFrames;
+		}
+		data->frame = nFrameIndex;
+
+		AnmViewerSetFrame(hWnd, idx, FALSE);
+	} else if (hWndControl == data->hWndPlayMode && notif == CBN_SELCHANGE) {
+		int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+
+		int mode = idx + 1;
+		sequence->mode = mode;
+		InvalidateRect(hWnd, NULL, FALSE);
+		AnmViewerUpdatePreview(hWnd);
+	} else if (hWndControl == data->hWndAnimationElement && notif == LBN_SELCHANGE) {
+		int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+
+		int oldElement = sequence->type & 0xFFFF;
+		sequence->type = (sequence->type & 0xFFFF0000) | idx;
+		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_SRT) };
+
+		for (int i = 0; i < sequence->nFrames; i++) {
+
+			int index = getFrameIndex(sequence->frames + i);
+			int sx, sy, rotZ, px, py;
+			AnmViewerFrameGetScaleRotate(sequence->frames + i, &sx, &sy, &rotZ, oldElement);
+			AnmViewerFrameGetTranslate(sequence->frames + i, &px, &py, oldElement);
+
+			sequence->frames[i].animationData = realloc(sequence->frames[i].animationData, sizes[idx]);
+			if (idx == 0) {
+			} else if (idx == 1) {
+				ANIM_DATA_SRT *f = (ANIM_DATA_SRT *) sequence->frames[i].animationData;
+				f->px = px;
+				f->py = py;
+				f->rotZ = rotZ;
+				f->sx = sx;
+				f->sy = sy;
+			} else if (idx == 2) {
+				ANIM_DATA_T *f = (ANIM_DATA_T *) sequence->frames[i].animationData;
+				f->pad_ = 0xBEEF;
+				f->px = px;
+				f->py = py;
+			}
+
+		}
+
+		AnmViewerUpdateFieldsVisibility(hWnd, idx);
+		InvalidateRect(hWnd, NULL, FALSE);
+		AnmViewerUpdatePreview(hWnd);
+	} else if (hWndControl == data->hWndAnimationType && notif == LBN_SELCHANGE) {
+		int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+
+		sequence->type = (sequence->type & 0xFFFF) | ((idx + 1) << 16);
+		InvalidateRect(hWnd, NULL, FALSE);
+		AnmViewerUpdatePreview(hWnd);
+	} else if (hWndControl == data->hWndFrameCount && notif == EN_CHANGE) {
+		if (!data->ignoreInputMsg) {
+			sequence->frames[startFrameIndex].nFrames = GetEditNumber(hWndControl);
+		}
+	} else if (hWndControl == data->hWndIndex && notif == EN_CHANGE) {
+		if (!data->ignoreInputMsg) {
+			ANIM_DATA *f = (ANIM_DATA *) sequence->frames[startFrameIndex].animationData;
+			f->index = GetEditNumber(hWndControl);;
+			InvalidateRect(hWnd, NULL, FALSE);
+		}
+	} else if ((hWndControl == data->hWndTranslateX || hWndControl == data->hWndTranslateY) && notif == EN_CHANGE) {
+		int val = GetEditNumber(hWndControl);
+
+		int element = sequence->type & 0xFFFF;
+		int x, y;
+		AnmViewerFrameGetTranslate(sequence->frames + startFrameIndex, &x, &y, element);
+		if (hWndControl == data->hWndTranslateX) {
+			x = val;
+		} else {
+			y = val;
+		}
+		AnmViewerFrameSetTranslate(sequence->frames + startFrameIndex, x, y, element);
+		InvalidateRect(hWnd, NULL, FALSE);
+	} else if ((hWndControl == data->hWndScaleX || hWndControl == data->hWndScaleY) && notif == EN_CHANGE) {
+		WCHAR bf[16];
+		SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
+		float fVal = my_wtof(bf); //standard library I use doesn't export _wtof or wcstof, so I guess I do that myself
+		int val = (int) (fVal * 4096.0f + (fVal < 0.0f ? -0.5f : 0.5f));
+
+		int element = sequence->type & 0xFFFF;
+		int sx, sy, rotZ;
+		AnmViewerFrameGetScaleRotate(sequence->frames + startFrameIndex, &sx, &sy, &rotZ, element);
+		if (hWndControl == data->hWndScaleX) {
+			sx = val;
+		} else {
+			sy = val;
+		}
+		AnmViewerFrameSetScaleRotate(sequence->frames + startFrameIndex, sx, sy, rotZ, element);
+		InvalidateRect(hWnd, NULL, FALSE);
+	} else if (hWndControl == data->hWndRotateAngle && notif == EN_CHANGE) {
+		int val = GetEditNumber(hWndControl);
+
+		int element = sequence->type & 0xFFFF;
+		int sx, sy, rotZ;
+		AnmViewerFrameGetScaleRotate(sequence->frames + startFrameIndex, &sx, &sy, &rotZ, element);
+		rotZ = val;
+		AnmViewerFrameSetScaleRotate(sequence->frames + startFrameIndex, sx, sy, rotZ, element);
+		InvalidateRect(hWnd, NULL, FALSE);
+	} else if (hWndControl == data->hWndAddFrame && notif == BN_CLICKED) {
+		int frameIndex = SendMessage(data->hWndFrameList, LB_GETCURSEL, 0, 0);
+
+		//insert a frame after frameIndex. First, determine the size of a frame.
+		int element = sequence->type & 0xFFFF;
+		int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_SRT) };
+
+		void *newFrame = calloc(1, sizes[element]);
+		int nFrames = sequence->nFrames + 1;
+		sequence->frames = realloc(sequence->frames, nFrames * sizeof(FRAME_DATA));
+
+		//element frameIndex+1 now goes to frameIndex+2, ...
+		if (frameIndex < nFrames - 2) {
+			memmove(sequence->frames + frameIndex + 2, sequence->frames + frameIndex + 1, (nFrames - frameIndex - 2) * sizeof(FRAME_DATA));
+		}
+		sequence->frames[frameIndex + 1].nFrames = 1;
+		sequence->frames[frameIndex + 1].pad_ = 0xBEEF;
+		sequence->frames[frameIndex + 1].animationData = newFrame;
+
+		//populate the new frame with valid data
+		switch (element) {
+			case 0:
+			{
+				ANIM_DATA *f = (ANIM_DATA *) newFrame;
+				(void) f;
+				break;
+			}
+			case 1:
+			{
+				ANIM_DATA_SRT *f = (ANIM_DATA_SRT *) newFrame;
+				f->sx = 4096;
+				f->sy = 4096;
+				break;
+			}
+			case 2:
+			{
+				ANIM_DATA_T *f = (ANIM_DATA_T *) newFrame;
+				f->pad_ = 0xBEEF;
+				break;
+			}
+		}
+		sequence->nFrames = nFrames;
+
+		//find first frame the new index is in
+		int frame = 0;
+		for (int i = 0; i < frameIndex + 1; i++) {
+			frame += sequence->frames[i].nFrames;
+		}
+
+		AnmViewerSetSequence(hWnd, data->sequence);
+		data->frame = frame;
+		AnmViewerSetFrame(hWnd, frameIndex + 1, TRUE);
+		AnmViewerUpdatePreview(hWnd);
+	} else if (hWndControl == data->hWndDeleteFrame && notif == BN_CLICKED) {
+		int frameIndex = SendMessage(data->hWndFrameList, LB_GETCURSEL, 0, 0);
+		if (sequence->nFrames <= 0) return;
+
+		//remove a frame
+		int nFrames = sequence->nFrames;
+		FRAME_DATA *frames = sequence->frames;
+		FRAME_DATA *removeFrame = frames + frameIndex;
+		free(removeFrame->animationData);
+
+		if (frameIndex < nFrames - 1) {
+			memmove(frames + frameIndex, frames + frameIndex + 1, (nFrames - frameIndex - 1) * sizeof(FRAME_DATA));
+		}
+		nFrames--;
+		sequence->nFrames = nFrames;
+		sequence->frames = realloc(sequence->frames, nFrames * sizeof(FRAME_DATA));
+
+		//find first frame the new index is in
+		int frame = 0;
+		if (frameIndex >= nFrames) frameIndex = nFrames - 1;
+		if (frameIndex < 0) frameIndex = 0;
+		for (int i = 0; i < frameIndex; i++) {
+			frame += sequence->frames[i].nFrames;
+		}
+
+		AnmViewerSetSequence(hWnd, data->sequence);
+		data->frame = frame;
+		AnmViewerSetFrame(hWnd, frameIndex, TRUE);
+		AnmViewerUpdatePreview(hWnd);
+	} else if (hWndControl == data->hWndAddSequence && notif == BN_CLICKED) {
+		//add one sequence
+		int seqno = SendMessage(data->hWndAnimationDropdown, CB_GETCURSEL, 0, 0);
+
+		NANR *nanr = &data->nanr;
+		nanr->nSequences++;
+		nanr->sequences = (NANR_SEQUENCE *) realloc(nanr->sequences, nanr->nSequences * sizeof(NANR_SEQUENCE));
+
+		//move all sequences after seqno
+		int nSeq = nanr->nSequences;
+		if (seqno < nSeq - 2) {
+			memmove(nanr->sequences + seqno + 2, nanr->sequences + seqno + 1, (nSeq - seqno - 2) * sizeof(NANR_SEQUENCE));
+		}
+
+		//clear out sequence
+		seqno++; //point to added sequence
+		nanr->sequences[seqno].nFrames = 1;
+		nanr->sequences[seqno].frames = (FRAME_DATA *) calloc(1, sizeof(FRAME_DATA));
+		nanr->sequences[seqno].mode = 1;
+		nanr->sequences[seqno].type = 0 | (1 << 16);
+		nanr->sequences[seqno].startFrameIndex = 0;
+
+		FRAME_DATA *frame = nanr->sequences[seqno].frames;
+		frame->nFrames = 1;
+		frame->pad_ = 0xBEEF;
+		frame->animationData = (ANIM_DATA *) calloc(1, sizeof(ANIM_DATA));
+
+		ANIM_DATA *animData = (ANIM_DATA *) frame->animationData;
+		animData->index = 0;
+
+		AnmViewerSetSequence(hWnd, seqno);
+		AnmViewerSetFrame(hWnd, 0, TRUE);
+		data->frame = 0;
+		AnmViewerRefreshSequences(hWnd);
+		AnmViewerUpdatePreview(hWnd);
+	} else if (hWndControl == data->hWndDeleteSequence && notif == BN_CLICKED) {
+		int seqno = SendMessage(data->hWndAnimationDropdown, CB_GETCURSEL, 0, 0);
+
+		NANR *nanr = &data->nanr;
+		NANR_SEQUENCE *sequences = nanr->sequences;
+
+		//free sequence
+		FRAME_DATA *frames = sequences[seqno].frames;
+		for (int i = 0; i < sequences[seqno].nFrames; i++) {
+			free(frames[i].animationData);
+		}
+		free(frames);
+
+		//move sequences
+		if (seqno < nanr->nSequences - 1) {
+			memmove(sequences + seqno, sequences + seqno + 1, (nanr->nSequences - seqno - 1) * sizeof(NANR_SEQUENCE));
+		}
+		nanr->nSequences--;
+		nanr->sequences = realloc(nanr->sequences, nanr->nSequences * sizeof(NANR_SEQUENCE));
+
+		data->sequence--;
+		if (data->sequence < 0) data->sequence = 0;
+
+		data->frame = 0;
+		AnmViewerSetSequence(hWnd, data->sequence);
+		AnmViewerSetFrame(hWnd, 0, TRUE);
+		AnmViewerRefreshSequences(hWnd);
+		AnmViewerUpdatePreview(hWnd);
+	}
+}
+
+static void AnmViewerOnCommand(NANRVIEWERDATA *data, HWND hWnd, WPARAM wParam, LPARAM lParam) {
+	if (lParam == 0 && HIWORD(wParam) == 0) {
+		//menu command
+		AnmViewerOnMenuCommand(data, hWnd, LOWORD(wParam));
+	} else if (lParam == 0 && HIWORD(wParam) != 0) {
+		//accelerator command
+	} else if (lParam != 0) {
+		//control command
+		AnmViewerOnControlCommand(data, hWnd, (HWND) lParam, LOWORD(wParam), HIWORD(wParam));
+	}
+}
+
+static void AnmViewerOnDestroy(NANRVIEWERDATA *data, HWND hWnd) {
+	DWORD *frameBuffer = data->frameBuffer;
+	data->frameBuffer = NULL;
+	free(frameBuffer);
+	AnmViewerFreeTickThread(hWnd);
+}
+
+LRESULT CALLBACK AnmViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
+
 	switch (msg) {
 		case WM_CREATE:
-		{
-			data->hWnd = hWnd;
-			data->sequence = 0;
-			data->frameBuffer = (DWORD *) calloc(256 * 512, 4);
-			data->ignoreInputMsg = FALSE;
-
-			CreateWindow(L"STATIC", L"Sequence:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 522, 10, 70, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Frames:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 95, 50, 22, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"STATIC", L"Index:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 122, 50, 22, hWnd, NULL, NULL, NULL);
-
-			data->hWndTranslateLabel = CreateWindow(L"STATIC", L"Translate:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 149, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndScaleLabel = CreateWindow(L"STATIC", L"Scale:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 149 + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndRotateLabel = CreateWindow(L"STATIC", L"Rotation:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 149 + 27 + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			
-			data->hWndAnimationDropdown = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST | WS_VSCROLL, 602, 10, 100, 100, hWnd, NULL, NULL, NULL);
-			data->hWndAddSequence = CreateButton(hWnd, L"+", 724, 10, 22, 22, FALSE);
-			data->hWndDeleteSequence = CreateButton(hWnd, L"-", 702, 10, 22, 22, FALSE);
-			data->hWndPauseButton = CreateWindow(L"BUTTON", L"Play", WS_VISIBLE | WS_CHILD, 522, 37, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndStepButton = CreateWindow(L"BUTTON", L"Step", WS_VISIBLE | WS_CHILD, 577, 37, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFrameCounter = CreateWindow(L"STATIC", L"Frame 0", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 632, 37, 100, 22, hWnd, NULL, NULL, NULL);
-			data->hWndFrameList = CreateWindowEx(0, L"LISTBOX", L"", WS_VISIBLE | WS_CHILD | WS_VSCROLL | LBS_STANDARD | LBS_NOINTEGRALHEIGHT , 522, 95, 105, 139, hWnd, NULL, NULL, NULL);
-			data->hWndPlayMode = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 522, 64, 105, 100, hWnd, NULL, NULL, NULL);
-			data->hWndAnimationType = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 627, 64, 105, 100, hWnd, NULL, NULL, NULL);
-			data->hWndAnimationElement = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 732, 64, 105, 100, hWnd, NULL, NULL, NULL);
-			data->hWndFrameCount = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 687, 95, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndIndex = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 687, 95 + 22 + 5, 50, 22, hWnd, NULL, NULL, NULL);
-
-			data->hWndTranslateX = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 632 + 55, 149, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndTranslateY = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 632 + 110, 149, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndScaleX = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1.0000", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 632 + 55, 149 + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndScaleY = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"1.0000", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 632 + 110, 149 + 27, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndRotateAngle = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, 632 + 55, 149 + 27 + 27, 50, 22, hWnd, NULL, NULL, NULL);
-
-			data->hWndDeleteFrame = CreateWindow(L"BUTTON", L"-", WS_VISIBLE | WS_CHILD, 522, 245 - 11, 50, 22, hWnd, NULL, NULL, NULL);
-			data->hWndAddFrame = CreateWindow(L"BUTTON", L"+", WS_VISIBLE | WS_CHILD, 577, 245 - 11, 50, 22, hWnd, NULL, NULL, NULL);
-
-			setupWindowAnimationTick(hWnd);
+			AnmViewerOnCreate(data, hWnd);
 			break;
-		}
 		case WM_TIMER:
-		{
-			if (data->playing) {
-				data->frame++;
-				InvalidateRect(hWnd, NULL, FALSE);
-
-				NANR_SEQUENCE *sequence = data->nanr.sequences + data->sequence;
-				nanrViewerSetFrame(hWnd, getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame)), TRUE);
-			}
+			AnmViewerOnTimer(data, hWnd);
 			break;
-		}
 		case WM_PAINT:
-		{
-			PAINTSTRUCT ps;
-			HDC hDC = BeginPaint(hWnd, &ps);
-
-			PaintNanrFrame(hWnd, hDC);
-
-			EndPaint(hWnd, &ps);
+			AnmViewerOnPaint(data, hWnd);
 			break;
-		}
-		case NV_SETTITLE:
-		{
-			LPCWSTR path = (LPWSTR) lParam;
-			WCHAR titleBuffer[MAX_PATH + 15];
-			if (!g_configuration.fullPaths) path = GetFileName(path);
-			memcpy(titleBuffer, path, wcslen(path) * 2 + 2);
-			memcpy(titleBuffer + wcslen(titleBuffer), L" - NANR Editor", 30);
-			SetWindowText(hWnd, titleBuffer);
-			break;
-		}
 		case NV_INITIALIZE:
-		{
-			LPWSTR path = (LPWSTR) wParam;
-			if (path != NULL) {
-				memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-				SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
-			}
-			memcpy(&data->nanr, (NANR *) lParam, sizeof(NANR));
-
-			for (int i = 0; i < data->nanr.nSequences; i++) {
-				WCHAR buf[16];
-				int len = wsprintfW(buf, L"%d", i);
-				SendMessage(data->hWndAnimationDropdown, CB_ADDSTRING, len, (LPARAM) buf);
-			}
-
-			LPWSTR modes[] = { L"Forward", L"Forward loop", L"Reverse", L"Reverse loop" };
-			for (int i = 1; i < 5; i++) {
-				LPWSTR mode = modes[i - 1];
-				SendMessage(data->hWndPlayMode, CB_ADDSTRING, wcslen(mode), (LPARAM) mode);
-			}
-
-			SendMessage(data->hWndAnimationType, CB_ADDSTRING, 4, (LPARAM) L"Cell");
-			SendMessage(data->hWndAnimationType, CB_ADDSTRING, 9, (LPARAM) L"Multicell");
-			SendMessage(data->hWndAnimationElement, CB_ADDSTRING, 5, (LPARAM) L"Index");
-			SendMessage(data->hWndAnimationElement, CB_ADDSTRING, 9, (LPARAM) L"Index+SRT");
-			SendMessage(data->hWndAnimationElement, CB_ADDSTRING, 7, (LPARAM) L"Index+T");
-
-			SendMessage(data->hWndAnimationDropdown, CB_SETCURSEL, 0, 0);
-			
-			nanrViewerSetSequence(hWnd, 0);
+			AnmViewerOnInitialize(data, hWnd, (NANR *) lParam, (LPWSTR) wParam);
 			break;
-		}
+		case NV_UPDATEPREVIEW:
+			AnmViewerUpdatePreview(hWnd);
+			break;
 		case WM_COMMAND:
-		{
-			HWND hWndControl = (HWND) lParam;
-			if (hWndControl == NULL && HIWORD(wParam) == 0) {
-				switch (LOWORD(wParam)) {
-					case ID_FILE_SAVEAS:
-					case ID_FILE_SAVE:
-					{
-						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
-							LPCWSTR filter = L"NANR Files (*.nanr)\0*.nanr\0All Files\0*.*\0";
-							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nanr");
-							if (path != NULL) {
-								memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-								SendMessage(hWnd, NV_SETTITLE, 0, (LPARAM) path);
-								free(path);
-							} else break;
-						}
-						AnmWriteFile(&data->nanr, data->szOpenFile);
-						break;
-					}
-				}
-			}
-			if (hWndControl != NULL) {
-				NANR_SEQUENCE *sequence = data->nanr.sequences + data->sequence;
-				int startFrameIndex = getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame));
-				FRAME_DATA *frameData = NULL;
-				if (sequence != NULL) {
-					frameData = sequence->frames + startFrameIndex;
-				}
-
-				WORD notif = HIWORD(wParam);
-				if (hWndControl == data->hWndAnimationDropdown && notif == CBN_SELCHANGE) {
-					int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-
-					data->playing = 0;
-					SendMessage(data->hWndPauseButton, WM_SETTEXT, 4, (LPARAM) L"Play");
-
-					nanrViewerSetSequence(hWnd, idx);
-				} else if (hWndControl == data->hWndPauseButton && notif == BN_CLICKED) {
-					int playing = data->playing;
-					data->playing = !playing;
-
-					if (playing) {
-						SendMessage(hWndControl, WM_SETTEXT, 4, (LPARAM) L"Play");
-					} else {
-						SendMessage(hWndControl, WM_SETTEXT, 5, (LPARAM) L"Pause");
-					}
-				} else if (hWndControl == data->hWndStepButton && notif == BN_CLICKED) {
-					if (data->playing) {
-						SendMessage(data->hWndPauseButton, WM_SETTEXT, 4, (LPARAM) L"Play");
-						data->playing = 0;
-					}
-
-					//advance the animation by 1 frame entry. Tricky!
-					for (int i = 0; i < frameData->nFrames; i++) {
-						data->frame++;
-						int frameIndex = getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame));
-						if (frameIndex != startFrameIndex) break;
-					}
-
-					nanrViewerSetFrame(hWnd, getAnimationFrameFromFrame(sequence, getDrawFrameIndex(sequence, data->frame)), TRUE);
-				} else if (hWndControl == data->hWndFrameList && notif == LBN_SELCHANGE) {
-					int idx = SendMessage(data->hWndFrameList, LB_GETCURSEL, 0, 0);
-					data->playing = 0;
-
-					int nFrameIndex = 0;
-					for (int i = 0; i < idx; i++) {
-						nFrameIndex += sequence->frames[i].nFrames;
-					}
-					data->frame = nFrameIndex;
-
-					nanrViewerSetFrame(hWnd, idx, FALSE);
-				} else if (hWndControl == data->hWndPlayMode && notif == CBN_SELCHANGE) {
-					int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-
-					int mode = idx + 1;
-					sequence->mode = mode;
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (hWndControl == data->hWndAnimationElement && notif == LBN_SELCHANGE) {
-					int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-
-					int oldElement = sequence->type & 0xFFFF;
-					sequence->type = (sequence->type & 0xFFFF0000) | idx;
-					int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_SRT) };
-
-					for (int i = 0; i < sequence->nFrames; i++) {
-
-						int index = getFrameIndex(sequence->frames + i);
-						int sx, sy, rotZ, px, py;
-						getFrameScaleRotate(sequence->frames + i, &sx, &sy, &rotZ, oldElement);
-						getFrameTranslate(sequence->frames + i, &px, &py, oldElement);
-
-						sequence->frames[i].animationData = realloc(sequence->frames[i].animationData, sizes[idx]);
-						if (idx == 0) {
-						} else if (idx == 1) {
-							ANIM_DATA_SRT *f = (ANIM_DATA_SRT *) sequence->frames[i].animationData;
-							f->px = px;
-							f->py = py;
-							f->rotZ = rotZ;
-							f->sx = sx;
-							f->sy = sy;
-						} else if (idx == 2) {
-							ANIM_DATA_T *f = (ANIM_DATA_T *) sequence->frames[i].animationData;
-							f->pad_ = 0xBEEF;
-							f->px = px;
-							f->py = py;
-						}
-
-					}
-
-					nanrViewerUpdatePropertySelection(hWnd, idx);
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (hWndControl == data->hWndAnimationType && notif == LBN_SELCHANGE) {
-					int idx = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-
-					sequence->type = (sequence->type & 0xFFFF) | ((idx + 1) << 16);
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (hWndControl == data->hWndFrameCount && notif == EN_CHANGE) {
-					if (!data->ignoreInputMsg) {
-						WCHAR bf[16];
-						SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
-						int frameCount = _wtol(bf);
-
-						sequence->frames[startFrameIndex].nFrames = frameCount;
-					}
-				} else if (hWndControl == data->hWndIndex && notif == EN_CHANGE) {
-					if (!data->ignoreInputMsg) {
-						WCHAR bf[16];
-						SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
-						int index = _wtol(bf);
-
-						ANIM_DATA *f = (ANIM_DATA *) sequence->frames[startFrameIndex].animationData;
-						f->index = index;
-						InvalidateRect(hWnd, NULL, FALSE);
-					}
-				} else if ((hWndControl == data->hWndTranslateX || hWndControl == data->hWndTranslateY) && notif == EN_CHANGE) {
-					WCHAR bf[16];
-					SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
-					int val = _wtol(bf);
-
-					int element = sequence->type & 0xFFFF;
-					int x, y;
-					getFrameTranslate(sequence->frames + startFrameIndex, &x, &y, element);
-					if (hWndControl == data->hWndTranslateX) {
-						x = val;
-					} else {
-						y = val;
-					}
-					setFrameTranslate(sequence->frames + startFrameIndex, x, y, element);
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if ((hWndControl == data->hWndScaleX || hWndControl == data->hWndScaleY) && notif == EN_CHANGE) {
-					WCHAR bf[16];
-					SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
-					float fVal = my_wtof(bf); //standard library I use doesn't export _wtof or wcstof, so I guess I do that myself
-					int val = (int) (fVal * 4096.0f + (fVal < 0.0f ? -0.5f : 0.5f));
-
-					int element = sequence->type & 0xFFFF;
-					int sx, sy, rotZ;
-					getFrameScaleRotate(sequence->frames + startFrameIndex, &sx, &sy, &rotZ, element);
-					if (hWndControl == data->hWndScaleX) {
-						sx = val;
-					} else {
-						sy = val;
-					}
-					setFrameScaleRotate(sequence->frames + startFrameIndex, sx, sy, rotZ, element);
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (hWndControl == data->hWndRotateAngle && notif == EN_CHANGE) {
-					WCHAR bf[16];
-					SendMessage(hWndControl, WM_GETTEXT, 16, (LPARAM) bf);
-					int val = _wtol(bf);
-
-					int element = sequence->type & 0xFFFF;
-					int sx, sy, rotZ;
-					getFrameScaleRotate(sequence->frames + startFrameIndex, &sx, &sy, &rotZ, element);
-					rotZ = val;
-					setFrameScaleRotate(sequence->frames + startFrameIndex, sx, sy, rotZ, element);
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (hWndControl == data->hWndAddFrame && notif == BN_CLICKED) {
-					int frameIndex = SendMessage(data->hWndFrameList, LB_GETCURSEL, 0, 0);
-					
-					//insert a frame after frameIndex. First, determine the size of a frame.
-					int element = sequence->type & 0xFFFF;
-					int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_SRT) };
-					
-					void *newFrame = calloc(1, sizes[element]);
-					int nFrames = sequence->nFrames + 1;
-					sequence->frames = realloc(sequence->frames, nFrames * sizeof(FRAME_DATA));
-					
-					//element frameIndex+1 now goes to frameIndex+2, ...
-					if (frameIndex < nFrames - 2) {
-						memmove(sequence->frames + frameIndex + 2, sequence->frames + frameIndex + 1, (nFrames - frameIndex - 2) * sizeof(FRAME_DATA));
-					}
-					sequence->frames[frameIndex + 1].nFrames = 1;
-					sequence->frames[frameIndex + 1].pad_ = 0xBEEF;
-					sequence->frames[frameIndex + 1].animationData = newFrame;
-
-					//populate the new frame with valid data
-					switch (element) {
-						case 0:
-						{
-							ANIM_DATA *f = (ANIM_DATA *) newFrame;
-							(void) f;
-							break;
-						}
-						case 1:
-						{
-							ANIM_DATA_SRT *f = (ANIM_DATA_SRT *) newFrame;
-							f->sx = 4096;
-							f->sy = 4096;
-							break;
-						}
-						case 2:
-						{
-							ANIM_DATA_T *f = (ANIM_DATA_T *) newFrame;
-							f->pad_ = 0xBEEF;
-							break;
-						}
-					}
-					sequence->nFrames = nFrames;
-
-					//find first frame the new index is in
-					int frame = 0;
-					for (int i = 0; i < frameIndex + 1; i++) {
-						frame += sequence->frames[i].nFrames;
-					}
-
-					nanrViewerSetSequence(hWnd, data->sequence);
-					data->frame = frame;
-					nanrViewerSetFrame(hWnd, frameIndex + 1, TRUE);
-				} else if (hWndControl == data->hWndDeleteFrame && notif == BN_CLICKED) {
-					int frameIndex = SendMessage(data->hWndFrameList, LB_GETCURSEL, 0, 0);
-					if (sequence->nFrames <= 0) break;
-
-					//remove a frame
-					int nFrames = sequence->nFrames;
-					FRAME_DATA *frames = sequence->frames;
-					FRAME_DATA *removeFrame = frames + frameIndex;
-					free(removeFrame->animationData);
-
-					if (frameIndex < nFrames - 1) {
-						memmove(frames + frameIndex, frames + frameIndex + 1, (nFrames - frameIndex - 1) * sizeof(FRAME_DATA));
-					}
-					nFrames--;
-					sequence->nFrames = nFrames;
-					sequence->frames = realloc(sequence->frames, nFrames * sizeof(FRAME_DATA));
-
-					//find first frame the new index is in
-					int frame = 0;
-					if (frameIndex >= nFrames) frameIndex = nFrames - 1;
-					if (frameIndex < 0) frameIndex = 0;
-					for (int i = 0; i < frameIndex; i++) {
-						frame += sequence->frames[i].nFrames;
-					}
-
-					nanrViewerSetSequence(hWnd, data->sequence);
-					data->frame = frame;
-					nanrViewerSetFrame(hWnd, frameIndex, TRUE);
-				} else if (hWndControl == data->hWndAddSequence && notif == BN_CLICKED) {
-					//add one sequence
-					int seqno = SendMessage(data->hWndAnimationDropdown, CB_GETCURSEL, 0, 0);
-
-					NANR *nanr = &data->nanr;
-					nanr->nSequences++;
-					nanr->sequences = (NANR_SEQUENCE *) realloc(nanr->sequences, nanr->nSequences * sizeof(NANR_SEQUENCE));
-
-					//move all sequences after seqno
-					int nSeq = nanr->nSequences;
-					if (seqno < nSeq - 2) {
-						memmove(nanr->sequences + seqno + 2, nanr->sequences + seqno + 1, (nSeq - seqno - 2) * sizeof(NANR_SEQUENCE));
-					}
-
-					//clear out sequence
-					seqno++; //point to added sequence
-					nanr->sequences[seqno].nFrames = 1;
-					nanr->sequences[seqno].frames = (FRAME_DATA *) calloc(1, sizeof(FRAME_DATA));
-					nanr->sequences[seqno].mode = 1;
-					nanr->sequences[seqno].type = 0 | (1 << 16);
-					nanr->sequences[seqno].startFrameIndex = 0;
-
-					FRAME_DATA *frame = nanr->sequences[seqno].frames;
-					frame->nFrames = 1;
-					frame->pad_ = 0xBEEF;
-					frame->animationData = (ANIM_DATA *) calloc(1, sizeof(ANIM_DATA));
-					
-					ANIM_DATA *animData = (ANIM_DATA *) frame->animationData;
-					animData->index = 0;
-
-					nanrViewerSetSequence(hWnd, seqno);
-					nanrViewerSetFrame(hWnd, 0, TRUE);
-					data->frame = 0;
-					nanrViewerRefreshSequences(hWnd);
-				} else if (hWndControl == data->hWndDeleteSequence && notif == BN_CLICKED) {
-					int seqno = SendMessage(data->hWndAnimationDropdown, CB_GETCURSEL, 0, 0);
-
-					NANR *nanr = &data->nanr;
-					NANR_SEQUENCE *sequences = nanr->sequences;
-
-					//free sequence
-					FRAME_DATA *frames = sequences[seqno].frames;
-					for (int i = 0; i < sequences[seqno].nFrames; i++) {
-						free(frames[i].animationData);
-					}
-					free(frames);
-
-					//move sequences
-					if (seqno < nanr->nSequences - 1) {
-						memmove(sequences + seqno, sequences + seqno + 1, (nanr->nSequences - seqno - 1) * sizeof(NANR_SEQUENCE));
-					}
-					nanr->nSequences--;
-					nanr->sequences = realloc(nanr->sequences, nanr->nSequences * sizeof(NANR_SEQUENCE));
-
-					data->sequence--;
-					if (data->sequence < 0) data->sequence = 0;
-
-					data->frame = 0;
-					nanrViewerSetSequence(hWnd, data->sequence);
-					nanrViewerSetFrame(hWnd, 0, TRUE);
-					nanrViewerRefreshSequences(hWnd);
-				}
-
-			}
+			AnmViewerOnCommand(data, hWnd, wParam, lParam);
 			break;
-		}
 		case WM_DESTROY:
-		{
-			DWORD *frameBuffer = data->frameBuffer;
-			data->frameBuffer = NULL;
-			free(frameBuffer);
-			free(data);
-			destroyWindowAnimationTick(hWnd);
+			AnmViewerOnDestroy(data, hWnd);
 			break;
-		}
-		case NV_GETTYPE:
-			return FILE_TYPE_NANR;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
-VOID RegisterNanrViewerClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NanrViewerClass";
-	wcex.lpfnWndProc = NanrViewerWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+void RegisterNanrViewerClass(void) {
+	int features = 0;
+	EDITOR_CLASS *cls = EditorRegister(L"NanrViewerClass", AnmViewerWndProc, L"NANR Viewer", sizeof(NANRVIEWERDATA), features);
+	EditorAddFilter(cls, NANR_TYPE_NANR, L"nanr", L"NANR Files (*.nanr)\0*.nanr\0All Files\0*.*\0");
+	EditorAddFilter(cls, NANR_TYPE_GHOSTTRICK, L"bin", L"Ghost Trick Files (*.bin)\0*.bin\0All Files\0*.*\0");
 }
 
 HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
@@ -952,15 +939,13 @@ HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NanrViewerClass", L"NANR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	HWND h = EditorCreate(L"NanrViewerClass", x, y, width, height, hWndParent);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nanr);
 	return h;
 }
 
 HWND CreateNanrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NANR *nanr) {
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NanrViewerClass", L"NANR Viewer", 
-		WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN,
-		x, y, width, height, hWndParent, NULL, NULL, NULL);
+	HWND h = EditorCreate(L"NanrViewerClass", x, y, width, height, hWndParent);
 	SendMessage(h, NV_INITIALIZE, 0, (LPARAM) nanr);
 	return h;
 }
