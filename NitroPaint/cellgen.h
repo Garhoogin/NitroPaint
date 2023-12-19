@@ -29,13 +29,16 @@ typedef struct OBJ_IMAGE_SLICE_ {
 *                           (0-100)
 *	full                    controls whether the whole or only opaque region is
 *                           used.
+*   affine                  makes a cell for affine use. If nonzero, the cell
+*                           is generated using 8x8, 16x16, 32x32, and 64x64 OBJ
+*                           only.
 *   pnObj                   pointer to the output number of OBJ.
 *
 * Returns:
 *	A list of OBJ covering the image with coordinates in the image space.
 *
 \******************************************************************************/
-OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressiveness, int full, int *pnObj);
+OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressiveness, int full, int affine, int *pnObj);
 
 /******************************************************************************\
 *
@@ -69,12 +72,13 @@ OBJ_BOUNDS *CellgenEnsureRatio(OBJ_BOUNDS *obj, int nObj, int maxRatio, int *pnO
 *   height                  the height of the input image
 *   bounds                  the input OBJ bounds array
 *   nObj                    the number of input OBJ bounds
+*   cut                     if nonzero, cuts used parts of slices out of others
 *
 * Returns:
 *	A list of OBJ slices containing the cut up input image.
 *
 \******************************************************************************/
-OBJ_IMAGE_SLICE *CellgenSliceImage(COLOR32 *px, int width, int height, OBJ_BOUNDS *bounds, int nObj);
+OBJ_IMAGE_SLICE *CellgenSliceImage(COLOR32 *px, int width, int height, OBJ_BOUNDS *bounds, int nObj, int cut);
 
 /******************************************************************************\
 *

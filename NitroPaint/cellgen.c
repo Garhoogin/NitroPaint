@@ -622,7 +622,7 @@ static int CellgenPositionComparator(const void *v1, const void *v2) {
 	return 0;
 }
 
-OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressiveness, int full, int *pnObj) {
+OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressiveness, int full, int affine, int *pnObj) {
 	//get image bounds
 	int xMin, xMax, yMin, yMax;
 	CellgenGetXYBounds(px, NULL, width, height, 0, width, 0, height, &xMin, &xMax, &yMin, &yMax);
@@ -769,13 +769,26 @@ OBJ_BOUNDS *CellgenMakeCell(COLOR32 *px, int width, int height, int aggressivene
 		}
 	}
 
+	//if affine, split OBJ into squares.
+	if (affine) {
+		obj = CellgenEnsureRatio(obj, nObj, 1, &nObj);
+
+		//with new OBJ division, ensure none are redundant
+		if (aggressiveness > 0) {
+			nObj = CellgenIterateAllShifts(px, accountBuf, width, height, obj, nObj);
+		}
+
+		//shift in
+		nObj = CellgenCondenseObj(px, accountBuf, width, height, (xMin + xMax) / 2, (yMin + yMax) / 2, obj, nObj);
+	}
+
 	//order from big->small
 	qsort(obj, nObj, sizeof(OBJ_BOUNDS), CellgenSizeComparator);
 
 	//remove objects that are over half overlapped by another, starting from big
 	if (aggressiveness > 0) {
 		nObj = CellgenTryRemoveOverlapping(px, accountBuf, width, height, obj, nObj);
-		nObj = CellgenRemoveHalfRedundant(px, accountBuf, width, height, obj, nObj);
+		if (!affine) nObj = CellgenRemoveHalfRedundant(px, accountBuf, width, height, obj, nObj);
 	}
 
 	//sort OBJ by position
@@ -821,7 +834,7 @@ void CellgenGetBounds(COLOR32 *px, int width, int height, int *pxMin, int *pxMax
 	CellgenGetXYBounds(px, NULL, width, height, 0, width, 0, height, pxMin, pxMax, pyMin, pyMax);
 }
 
-OBJ_IMAGE_SLICE *CellgenSliceImage(COLOR32 *px, int width, int height, OBJ_BOUNDS *bounds, int nObj) {
+OBJ_IMAGE_SLICE *CellgenSliceImage(COLOR32 *px, int width, int height, OBJ_BOUNDS *bounds, int nObj, int cut) {
 	unsigned char *accountBuf = (unsigned char *) calloc(width * height, 1);
 	OBJ_IMAGE_SLICE *slices = (OBJ_IMAGE_SLICE *) calloc(nObj, sizeof(OBJ_IMAGE_SLICE));
 	
@@ -846,7 +859,7 @@ OBJ_IMAGE_SLICE *CellgenSliceImage(COLOR32 *px, int width, int height, OBJ_BOUND
 		}
 
 		//account it
-		CellgenAccountRegion(accountBuf, width, height, obj);
+		if (cut) CellgenAccountRegion(accountBuf, width, height, obj);
 	}
 
 	free(accountBuf);

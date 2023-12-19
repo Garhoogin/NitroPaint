@@ -1196,12 +1196,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int nObj, nChars = 0;
 				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
 				int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
-				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, &nObj);
-
-				//if affine specified, restrict OBJ size ratio to 1:1
-				if (affine) {
-					bounds = CellgenEnsureRatio(bounds, nObj, 1, &nObj);
-				}
+				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, affine, &nObj);
 
 				for (int i = 0; i < nObj; i++) {
 					OBJ_BOUNDS *b = bounds + i;
@@ -1403,12 +1398,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int charBase = GetEditNumber(data->hWndCharacter);
 				int charStart = charBase; //initial
 				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
-				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, &nObj);
-
-				//split too skinnny OBJ for affine
-				if (affine) {
-					bounds = CellgenEnsureRatio(bounds, nObj, 1, &nObj);
-				}
+				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, affine, &nObj);
 
 				//bounding box of image
 				int xMin, xMax, yMin, yMax, centerX, centerY;
@@ -1437,7 +1427,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 
 				//chunk the image
-				OBJ_IMAGE_SLICE *slices = CellgenSliceImage(px, width, height, bounds, nObj);
+				OBJ_IMAGE_SLICE *slices = CellgenSliceImage(px, width, height, bounds, nObj, !affine);
 				free(bounds);
 
 				//get NCER, NCGR, NCLR
