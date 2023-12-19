@@ -561,9 +561,12 @@ int PreviewLoadObjCell(NCER *ncer, NANR *nanr, int cellno) {
 
 	//write cell as NCER
 	int fmt = ncer->header.format;
+	int bankAttr = ncer->bankAttribs;
 	ncer->header.format = NCER_TYPE_NCER;
+	ncer->bankAttribs = 0; //no BR (breaks NITRO-Viewer)
 	CellWriteFile(ncer, pathNce);
 	ncer->header.format = fmt;
+	ncer->bankAttribs = bankAttr;
 	sMappingMode = ncer->mappingMode;
 
 	int animIndex = 0;
