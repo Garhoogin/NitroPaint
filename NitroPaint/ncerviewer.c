@@ -309,6 +309,7 @@ void ncerEditorUndo(HWND hWnd) {
 	undo(&data->undo);
 
 	ncerEditorUndoRedo(data);
+	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 	UpdateControls(hWnd);
 }
@@ -318,11 +319,13 @@ void ncerEditorRedo(HWND hWnd) {
 	redo(&data->undo);
 
 	ncerEditorUndoRedo(data);
+	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 	UpdateControls(hWnd);
 }
 
 static void CellPreviewUpdate(HWND hWnd, int cellno) {
+	puts("!!");
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 	NCER *ncer = &data->ncer;
 	PreviewLoadObjCell(ncer, NULL, cellno);
@@ -549,6 +552,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			data->mouseDown = 0;
 			ReleaseCapture();
+			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 			break;
 		}
 		case WM_MOUSEMOVE:
@@ -879,6 +883,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
 					UpdateOamDropdown(hWnd);
 					UpdateControls(hWnd);
+					changed = 1;
 
 					//free px
 					free(px);
@@ -900,6 +905,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					data->cell = data->ncer.nCells - 1;
 					data->oam = 0;
+					changed = 1;
 
 					//select
 					WCHAR name[16];
@@ -1468,7 +1474,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				//OBJ VRAM granularity
 				int granularity = ncgr->mappingMode;
-				int charLShift = 0;
+				int charRShift = 0;
 				switch (ncgr->mappingMode) {
 					case GX_OBJVRAMMODE_CHAR_1D_128K:
 						granularity = 4; break;
@@ -1484,7 +1490,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				//for 8-bit: since each character increment is 32*granularity bytes, 
 				//fix the low bit 0. Do this by incrementing the left-shift.
 				if (ncgr->nBits == 8) {
-					charLShift++;
+					charRShift++;
 				}
 
 				//set bounding box
@@ -1629,7 +1635,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					slice->bounds.y += ofsY;
 
 					//add OBJ
-					int charName = (foundStart / granularity) >> charLShift;
+					int charName = (foundStart / granularity) << charRShift;
 					cell->attr[attrBase + i * 3 + 0] = (slice->bounds.y & 0x0FF) | (affine << 8) | (affine << 9) | ((depth == 8) << 13) | (shape << 14);
 					cell->attr[attrBase + i * 3 + 1] = (slice->bounds.x & 0x1FF) | ((affineIdx & 0x1F) << 9) | (size << 14);
 					cell->attr[attrBase + i * 3 + 2] = (paletteIndex << 12) | (charName) | (prio << 10);
