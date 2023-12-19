@@ -325,7 +325,6 @@ void ncerEditorRedo(HWND hWnd) {
 }
 
 static void CellPreviewUpdate(HWND hWnd, int cellno) {
-	puts("!!");
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 	NCER *ncer = &data->ncer;
 	PreviewLoadObjCell(ncer, NULL, cellno);
