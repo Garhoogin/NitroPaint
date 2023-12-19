@@ -330,6 +330,19 @@ static void CellPreviewUpdate(HWND hWnd, int cellno) {
 	PreviewLoadObjCell(ncer, NULL, cellno);
 }
 
+static HWND CellEditorGetAssociatedEditor(HWND hWnd, int type) {
+	HWND hWndMain = getMainWindow(hWnd);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+
+	switch (type) {
+		case FILE_TYPE_PALETTE:
+			return nitroPaintStruct->hWndNclrViewer;
+		case FILE_TYPE_CHARACTER:
+			return nitroPaintStruct->hWndNcgrViewer;
+	}
+	return NULL;
+}
+
 LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 
@@ -849,8 +862,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 
-					HWND hWndNcgrViewer;
-					GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrViewer, 1);
+					HWND hWndNclrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_PALETTE);
+					HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
 					NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
 					if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
 						MessageBox(hWnd, L"Cannot be used with 2D mapping.", L"Error", MB_ICONERROR);
@@ -883,6 +896,10 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					UpdateOamDropdown(hWnd);
 					UpdateControls(hWnd);
 					changed = 1;
+
+					//update palette and character window
+					SendMessage(hWndNcgrViewer, NV_UPDATEPREVIEW, 0, 0);
+					SendMessage(hWndNclrViewer, NV_UPDATEPREVIEW, 0, 0);
 
 					//free px
 					free(px);
@@ -1181,9 +1198,9 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
 				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, &nObj);
 
-				//if affine specified, restrict OBJ size ratio to 1:2
+				//if affine specified, restrict OBJ size ratio to 1:1
 				if (affine) {
-					bounds = CellgenEnsureRatio(bounds, nObj, 2, &nObj);
+					bounds = CellgenEnsureRatio(bounds, nObj, 1, &nObj);
 				}
 
 				for (int i = 0; i < nObj; i++) {
@@ -1390,7 +1407,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				//split too skinnny OBJ for affine
 				if (affine) {
-					bounds = CellgenEnsureRatio(bounds, nObj, 2, &nObj);
+					bounds = CellgenEnsureRatio(bounds, nObj, 1, &nObj);
 				}
 
 				//bounding box of image
@@ -1474,7 +1491,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				//OBJ VRAM granularity
 				int granularity = ncgr->mappingMode;
 				int charRShift = 0;
-				switch (ncgr->mappingMode) {
+				switch (ncer->mappingMode) {
 					case GX_OBJVRAMMODE_CHAR_1D_128K:
 						granularity = 4; break;
 					case GX_OBJVRAMMODE_CHAR_1D_64K:
