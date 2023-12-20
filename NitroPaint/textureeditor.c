@@ -177,7 +177,6 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hoverX = -1;
 			data->hoverY = -1;
 			data->hoverIndex = -1;
-			data->hWnd = hWnd;
 			data->hWndPreview = CreateWindow(L"TexturePreviewClass", L"Texture Preview", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
 			data->hWndFormatLabel = CreateStatic(hWnd, L"Format: none", 310, 10, 100, 22);
 			data->hWndConvert = CreateButton(hWnd, L"Convert To...", 310, 37, 100, 22, FALSE);

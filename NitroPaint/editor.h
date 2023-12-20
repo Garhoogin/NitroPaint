@@ -43,6 +43,7 @@ typedef struct EDITOR_CLASS_ {
 
 #define EDITOR_BASIC_MEMBERS     \
 	FRAMEDATA frameData;         \
+	HWND hWnd;                   \
 	int scale;                   \
 	int showBorders;             \
 	WCHAR szOpenFile[MAX_PATH]

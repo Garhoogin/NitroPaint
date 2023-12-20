@@ -493,7 +493,6 @@ float my_wtof(const wchar_t *str) {
 }
 
 static void AnmViewerOnCreate(NANRVIEWERDATA *data, HWND hWnd) {
-	data->hWnd = hWnd;
 	data->sequence = 0;
 	data->frameBuffer = (DWORD *) calloc(256 * 512, 4);
 	data->ignoreInputMsg = FALSE;

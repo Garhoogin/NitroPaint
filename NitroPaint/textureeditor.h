@@ -23,7 +23,6 @@ typedef struct {
 	int contextHoverX;
 	int contextHoverY;
 
-	HWND hWnd;
 	HWND hWndPreview;
 	HWND hWndFormatLabel;
 	HWND hWndPaletteLabel;

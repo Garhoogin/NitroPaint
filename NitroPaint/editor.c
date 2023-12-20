@@ -162,9 +162,10 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		int wndInited = GetWindowLongPtr(hWnd, EDITOR_WD_INITIALIZED);
 		if (!wndInited) {
 			size_t dataSize = GetClassLongPtr(hWnd, EDITOR_CD_DATA_SIZE);
-			void *data = calloc(1, dataSize);
+			EDITOR_DATA *data = (EDITOR_DATA *) calloc(1, dataSize);
 			SetWindowLongPtr(hWnd, EDITOR_WD_DATA, (LONG_PTR) data);
 			SetWindowLongPtr(hWnd, EDITOR_WD_INITIALIZED, 1);
+			data->hWnd = hWnd;
 		}
 
 		//handle common editor messages

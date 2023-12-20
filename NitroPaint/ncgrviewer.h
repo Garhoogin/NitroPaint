@@ -22,7 +22,6 @@ typedef struct {
 	HWND hWndWidthDropdown;
 	HWND hWndTileEditorWindow;
 	HWND hWndExpand;
-	HWND hWnd;
 	HWND hWndExpandRowsInput;
 	HWND hWndExpandColsInput;
 	HWND hWndExpandButton;
