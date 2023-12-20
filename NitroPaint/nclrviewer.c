@@ -1296,13 +1296,13 @@ VOID RegisterPaletteGenerationClass(VOID) {
 VOID RegisterNclrViewerClass(VOID) {
 	int features = 0;
 	EDITOR_CLASS *cls = EditorRegister(L"NclrViewerClass", NclrViewerWndProc, L"Palette Editor", sizeof(NCLRVIEWERDATA), features);
-	EditorAddFilter(cls, NCLR_TYPE_NCLR, L"nclr", L"NCLR Files (*.nclr)\0*.nclr\0All Files\0*.*\0");
-	EditorAddFilter(cls, NCLR_TYPE_BIN, L"bin", L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0All Files\0*.*\0");
-	EditorAddFilter(cls, NCLR_TYPE_HUDSON, L"bin", L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCLR_TYPE_NCLR, L"nclr", L"NCLR Files (*.nclr)\0*.nclr\0");
+	EditorAddFilter(cls, NCLR_TYPE_BIN, L"bin", L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0");
+	EditorAddFilter(cls, NCLR_TYPE_HUDSON, L"bin", L"Palette Files (*.bin, *ncl.bin, *icl.bin, *.nbfp, *.icl, *.acl)\0*.bin;*.nbfp;*.icl;*.acl;\0");
 	EditorAddFilter(cls, NCLR_TYPE_COMBO, L"bin", L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0");
-	EditorAddFilter(cls, NCLR_TYPE_NC, L"ncl", L"NCL Files (*.ncl)\0*.ncl\0All Files\0*.*\0");
-	EditorAddFilter(cls, NCLR_TYPE_ISTUDIO, L"5pl", L"5PL Files (*.5pl)\0*.5pl\0All Files\0*.*\0");
-	EditorAddFilter(cls, NCLR_TYPE_ISTUDIOC, L"5pc", L"5PC Files (*.5pc)\0*.5pc\0All Files\0*.*\0");
+	EditorAddFilter(cls, NCLR_TYPE_NC, L"ncl", L"NCL Files (*.ncl)\0*.ncl\0");
+	EditorAddFilter(cls, NCLR_TYPE_ISTUDIO, L"5pl", L"5PL Files (*.5pl)\0*.5pl\0");
+	EditorAddFilter(cls, NCLR_TYPE_ISTUDIOC, L"5pc", L"5PC Files (*.5pc)\0*.5pc\0");
 	RegisterPaletteGenerationClass();
 }
 

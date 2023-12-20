@@ -287,6 +287,21 @@ void EditorAddFilter(EDITOR_CLASS *cls, int format, LPCWSTR extension, LPCWSTR f
 	cls->filters[format] = filter;
 }
 
+static int EditorGetFilterLength(LPCWSTR filter) {
+	const WCHAR *pos = filter;
+	const WCHAR *end = filter;
+	while (1) {
+		while (*pos) pos++;
+
+		//first NUL character, 2 indicates the end of the filter
+		pos++;
+		if (*pos == L'\0') {
+			pos++;
+			return pos - filter;
+		}
+	}
+}
+
 int EditorSaveAs(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 	EDITOR_CLASS *cls = (EDITOR_CLASS *) GetClassLong(hWnd, EDITOR_CD_CLASSINFO);
@@ -297,7 +312,20 @@ int EditorSaveAs(HWND hWnd) {
 	if (filter == NULL && cls->nFilters > 0) filter = cls->filters[0];
 	if (extension == NULL && cls->nFilters > 0) extension = cls->extensions[0];
 
-	LPWSTR path = saveFileDialog(hWnd, L"Save As...", filter, extension);
+	//append generic All Files filter
+	LPWSTR dlgFilter = NULL;
+	if (filter != NULL) {
+		LPCWSTR suffix = L"All Files\0*.*\0";
+		int baselen = EditorGetFilterLength(filter);
+		int suffixlen = EditorGetFilterLength(suffix);
+
+		dlgFilter = (WCHAR *) calloc(baselen - 1 + suffixlen, sizeof(WCHAR));
+		memcpy(dlgFilter, filter, (baselen - 1) * sizeof(WCHAR));
+		memcpy(dlgFilter + baselen - 1, suffix, suffixlen * sizeof(WCHAR));
+	}
+
+	LPWSTR path = saveFileDialog(hWnd, L"Save As...", dlgFilter, extension);
+	if (dlgFilter != NULL) free(dlgFilter);
 	if (path == NULL) return EDITOR_STATUS_CANCELLED;
 
 	EditorSetFile(hWnd, path);
