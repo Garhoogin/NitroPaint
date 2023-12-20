@@ -19,7 +19,7 @@ int NnsG2dGetNumberOfSections(const unsigned char *buffer, unsigned int size);
 
 unsigned char *NnsG2dGetSectionByIndex(const unsigned char *buffer, unsigned int size, int index);
 
-unsigned char *NnsG2dGetSectionByMagic(const unsigned char *buffer, unsigned int size, unsigned int sectionMagic);
+unsigned char *NnsG2dFindBlockBySignature(const unsigned char *buffer, unsigned int size, const char *sig, int sigType, unsigned int *blockSize);
 
 // ----- NNS G3D functions
 

@@ -67,7 +67,7 @@ int ObjIdentify(char *file, int size, LPCWSTR path);
 //
 // Compute CRC16 checksum for an array of bytes.
 //
-unsigned short ObjComputeCrc16(unsigned char *data, int length, unsigned short init);
+unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned short init);
 
 //
 // Initialize a file's OBJECT_HEADER. The size field must be set before calling

@@ -390,9 +390,9 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 	return type;
 }
 
-unsigned short ObjComputeCrc16(unsigned char *data, int length, unsigned short init) {
+unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned short init) {
 	unsigned short r = init;
-	unsigned short tbl[] = { 
+	const unsigned short tbl[] = { 
 		0x0000, 0xCC01, 0xD801, 0x1400, 
 		0xF001, 0x3C00, 0x2800, 0xE401, 
 		0xA001, 0x6C00, 0x7800, 0xB401, 

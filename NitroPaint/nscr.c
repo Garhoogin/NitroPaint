@@ -61,9 +61,9 @@ int ScrIsValidBin(const unsigned char *buffer, unsigned int size) {
 
 int ScrIsValidNsc(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "NCSC", 4) != 0) return 0;
 
-	unsigned char *scrn = NnsG2dGetSectionByMagic(buffer, size, 'SCRN');
-	if (scrn == NULL) scrn = NnsG2dGetSectionByMagic(buffer, size, 'NRCS');
+	unsigned char *scrn = NnsG2dFindBlockBySignature(buffer, size, "SCRN", NNS_SIG_BE, NULL);
 	if (scrn == NULL) return 0;
 
 	return 1;
@@ -135,8 +135,7 @@ int ScrIsValidNscr(const unsigned char *file, unsigned int size) {
 	if (!NnsG2dIsValid(file, size)) return 0;
 	if (memcmp(file, "RCSN", 4) != 0) return 0;
 
-	const unsigned char *sChar = NnsG2dGetSectionByMagic(file, size, 'SCRN');
-	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(file, size, 'NRCS');
+	const unsigned char *sChar = NnsG2dFindBlockBySignature(file, size, "SCRN", NNS_SIG_LE, NULL);
 	if (sChar == NULL) return 0;
 
 	return 1;
@@ -257,44 +256,36 @@ int ScrReadBin(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 int ScrReadNsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	ScrInit(nscr, NSCR_TYPE_NC);
 
-	unsigned char *scrn = NnsG2dGetSectionByMagic(file, size, 'SCRN');
-	if (scrn == NULL) scrn = NnsG2dGetSectionByMagic(file, size, 'NRCS');
-	unsigned char *escr = NnsG2dGetSectionByMagic(file, size, 'ESCR');
-	if (escr == NULL) escr = NnsG2dGetSectionByMagic(file, size, 'RCSE'); //xxxxFFxxxxxxPPPPCCCCCCCCCCCCCCCC
-	unsigned char *clrf = NnsG2dGetSectionByMagic(file, size, 'CLRF');
-	if (clrf == NULL) clrf = NnsG2dGetSectionByMagic(file, size, 'FRLC');
-	unsigned char *clrc = NnsG2dGetSectionByMagic(file, size, 'CLRC');
-	if (clrc == NULL) clrc = NnsG2dGetSectionByMagic(file, size, 'CRLC');
-	unsigned char *grid = NnsG2dGetSectionByMagic(file, size, 'GRID');
-	if (grid == NULL) grid = NnsG2dGetSectionByMagic(file, size, 'DIRG');
-	unsigned char *link = NnsG2dGetSectionByMagic(file, size, 'LINK');
-	if (link == NULL) link = NnsG2dGetSectionByMagic(file, size, 'KNIL');
-	unsigned char *cmnt = NnsG2dGetSectionByMagic(file, size, 'CMNT');
-	if (cmnt == NULL) cmnt = NnsG2dGetSectionByMagic(file, size, 'TNMC');
+	unsigned int scrnSize = 0, escrSize = 0, clrfSize = 0, clrcSize = 0, gridSize = 0, linkSize = 0, cmntSize = 0;
+	const unsigned char *scrn = NnsG2dFindBlockBySignature(file, size, "SCRN", NNS_SIG_BE, &scrnSize);
+	const unsigned char *escr = NnsG2dFindBlockBySignature(file, size, "ESCR", NNS_SIG_BE, &escrSize); //xxxxFFxxxxxxPPPPCCCCCCCCCCCCCCCC
+	const unsigned char *clrf = NnsG2dFindBlockBySignature(file, size, "CLRF", NNS_SIG_BE, &clrfSize);
+	const unsigned char *clrc = NnsG2dFindBlockBySignature(file, size, "CLRC", NNS_SIG_BE, &clrcSize);
+	const unsigned char *grid = NnsG2dFindBlockBySignature(file, size, "GRID", NNS_SIG_BE, &gridSize);
+	const unsigned char *link = NnsG2dFindBlockBySignature(file, size, "LINK", NNS_SIG_BE, &linkSize);
+	const unsigned char *cmnt = NnsG2dFindBlockBySignature(file, size, "CMNT", NNS_SIG_BE, &cmntSize);
 
-	nscr->dataSize = *(uint32_t *) (scrn + 0x4) - 0x18;
-	nscr->nWidth = *(uint32_t *) (scrn + 0x8) * 8;
-	nscr->nHeight = *(uint32_t *) (scrn + 0xC) * 8;
+	nscr->dataSize = scrnSize - 0x10;
+	nscr->nWidth = *(uint32_t *) (scrn + 0x0) * 8;
+	nscr->nHeight = *(uint32_t *) (scrn + 0x4) * 8;
 	nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
-	memcpy(nscr->data, scrn + 0x18, nscr->dataSize);
+	memcpy(nscr->data, scrn + 0x10, nscr->dataSize);
 
 	if (link != NULL) {
-		int len = *(uint32_t *) (link + 4) - 8;
-		nscr->header.fileLink = (char *) calloc(len, 1);
-		memcpy(nscr->header.fileLink, link + 8, len);
+		nscr->header.fileLink = (char *) malloc(linkSize);
+		memcpy(nscr->header.fileLink, link, linkSize);
 	}
 	if (cmnt != NULL) {
-		int len = *(uint32_t *) (cmnt + 4) - 8;
-		nscr->header.comment = (char *) calloc(len, 1);
-		memcpy(nscr->header.comment, cmnt + 8, len);
+		nscr->header.comment = (char *) malloc(cmntSize);
+		memcpy(nscr->header.comment, cmnt, cmntSize);
 	}
 	if (clrc != NULL) {
-		nscr->clearValue = *(uint16_t *) (clrc + 8);
+		nscr->clearValue = *(uint16_t *) (clrc + 0);
 	}
 	if (grid != NULL) {
-		nscr->showGrid = *(uint32_t *) (grid + 0x8);
-		nscr->gridWidth = *(uint16_t *) (grid + 0xC);
-		nscr->gridHeight = *(uint16_t *) (grid + 0xE);
+		nscr->showGrid = *(uint32_t *) (grid + 0x0);
+		nscr->gridWidth = *(uint16_t *) (grid + 0x4);
+		nscr->gridHeight = *(uint16_t *) (grid + 0x6);
 	}
 
 	//calculate highest index
@@ -374,38 +365,24 @@ int ScrReadIsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	return ScriIsCommonRead(nscr, file, size, NSCR_TYPE_IC);
 }
 
-int ScrReadNscr(NSCR* nscr, const unsigned char *file, unsigned int dwFileSize) {
-	if (dwFileSize < 0x14) return 1;
-	uint32_t dwFirst = *(uint32_t *) file;
-	if (dwFirst != 0x5243534E && dwFirst != 0x4E534352) return 1;
-	uint16_t endianness = *(uint16_t *) (file + 0x4);
-	if (endianness != 0xFFFE && endianness != 0xFEFF) return 1;
-	uint32_t dwSize = *(uint32_t *) (file + 0x8);
-	if (dwSize < dwFileSize) return 1;
-	uint16_t wHeaderSize = *(uint16_t *) (file + 0xC);
-	if (wHeaderSize < 0x10) return 1;
-	uint16_t nSections = *(uint16_t *) (file + 0xE);
-	if (nSections == 0) return 1;
-	file += wHeaderSize;
+int ScrReadNscr(NSCR *nscr, const unsigned char *file, unsigned int size) {
+	ScrInit(nscr, NSCR_TYPE_NSCR);
+
+	unsigned int scrnSize = 0;
+	const unsigned char *scrn = NnsG2dFindBlockBySignature(file, size, "SCRN", NNS_SIG_LE, &scrnSize);
 
 	//NSCR data
-	uint32_t nrcsMagic = *(uint32_t *) (file);
-	if (nrcsMagic != 0x5343524E) return 1;
-	uint32_t dwSectionSize = *(uint32_t *) (file + 0x4);
-	if (!dwSectionSize) return 1;
-	uint16_t nWidth = *(uint16_t *) (file + 0x8);
-	uint16_t nHeight = *(uint16_t *) (file + 0xA);
-	nscr->fmt = *(int *) (file + 0xC);
-	uint32_t dwDataSize = *(uint32_t *) (file + 0x10);
-	//printf("%dx%d, %d bytes\n", nWidth, nHeight, dwDataSize);
+	uint16_t nWidth = *(uint16_t *) (scrn + 0x0);
+	uint16_t nHeight = *(uint16_t *) (scrn + 0x2);
+	nscr->fmt = *(uint32_t *) (scrn + 0x4);
+	uint32_t dwDataSize = *(uint32_t *) (scrn + 0x8);
 
-	ScrInit(nscr, NSCR_TYPE_NSCR);
 	nscr->data = malloc(dwDataSize);
 	nscr->nWidth = nWidth;
 	nscr->nHeight = nHeight;
 	nscr->dataSize = dwDataSize;
 	nscr->nHighestIndex = 0;
-	memcpy(nscr->data, file + 0x14, dwDataSize);
+	memcpy(nscr->data, scrn + 0xC, dwDataSize);
 	ScrComputeHighestCharacter(nscr);
 
 	return 0;

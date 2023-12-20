@@ -78,10 +78,11 @@ int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
 
 int ChrIsValidNcg(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "NCCG", 4) != 0) return 0;
 
-	char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
-	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
+	const unsigned char *sChar = NnsG2dFindBlockBySignature(buffer, size, "CHAR", NNS_SIG_BE, NULL);
 	if (sChar == NULL) return 0;
+
 	return 1;
 }
 
@@ -150,8 +151,7 @@ int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size) {
 	if (memcmp(buffer, "RGCN", 4) != 0) return 0;
 
 	//find CHAR section
-	const unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
-	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
+	const unsigned char *sChar = NnsG2dFindBlockBySignature(buffer, size, "CHAR", NNS_SIG_LE, NULL);
 	if (sChar == NULL) return 0;
 
 	return 1;
@@ -463,44 +463,38 @@ int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size
 int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_NC);
 
-	const unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
-	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
-	const unsigned char *sAttr = NnsG2dGetSectionByMagic(buffer, size, 'ATTR');
-	if (sAttr == NULL) sAttr = NnsG2dGetSectionByMagic(buffer, size, 'RTTA');
-	const unsigned char *sLink = NnsG2dGetSectionByMagic(buffer, size, 'LINK');
-	if (sLink == NULL) sLink = NnsG2dGetSectionByMagic(buffer, size, 'KNIL');
-	const unsigned char *sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'CMNT');
-	if (sCmnt == NULL) sCmnt = NnsG2dGetSectionByMagic(buffer, size, 'TNMC');
+	unsigned int charSize = 0, attrSize = 0, linkSize = 0, cmntSize = 0;
+	const unsigned char *sChar = NnsG2dFindBlockBySignature(buffer, size, "CHAR", NNS_SIG_BE, &charSize);
+	const unsigned char *sAttr = NnsG2dFindBlockBySignature(buffer, size, "ATTR", NNS_SIG_BE, &attrSize);
+	const unsigned char *sLink = NnsG2dFindBlockBySignature(buffer, size, "LINK", NNS_SIG_BE, &linkSize);
+	const unsigned char *sCmnt = NnsG2dFindBlockBySignature(buffer, size, "CMNT", NNS_SIG_BE, &cmntSize);
 	
-	int paletteType = *(uint32_t *) (sChar + 0x10);
+	int paletteType = *(uint32_t *) (sChar + 0x8);
 	ncgr->nBits = (paletteType == 0) ? 4 : 8;
 	ncgr->extPalette = (paletteType == 2);
 	ncgr->bitmap = 0;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
-	ncgr->tilesX = *(uint32_t *) (sChar + 0x8);
-	ncgr->tilesY = *(uint32_t *) (sChar + 0xC);
+	ncgr->tilesX = *(uint32_t *) (sChar + 0x0);
+	ncgr->tilesY = *(uint32_t *) (sChar + 0x4);
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
 
-	ChrReadChars(ncgr, sChar + 0x14);
+	ChrReadChars(ncgr, sChar + 0xC);
 
 	if (sCmnt != NULL) {
-		int len = *(uint32_t *) (sCmnt + 4) - 8;
-		ncgr->header.comment = (char *) calloc(len, 1);
-		memcpy(ncgr->header.comment, sCmnt + 8, len);
+		ncgr->header.comment = (char *) malloc(cmntSize);
+		memcpy(ncgr->header.comment, sCmnt, cmntSize);
 	}
 	if (sLink != NULL) {
-		int len = *(uint32_t *) (sLink + 4) - 8;
-		ncgr->header.fileLink = (char *) calloc(len, 1);
-		memcpy(ncgr->header.fileLink, sLink + 8, len);
+		ncgr->header.fileLink = (char *) malloc(linkSize);
+		memcpy(ncgr->header.fileLink, sLink, linkSize);
 	}
 	if (sAttr != NULL) {
-		int attrSize = *(uint32_t *) (sAttr + 0x4) - 0x10;
-		int attrWidth = *(uint32_t *) (sAttr + 0x8);
-		int attrHeight = *(uint32_t *) (sAttr + 0xC);
+		int attrWidth = *(uint32_t *) (sAttr + 0x0);
+		int attrHeight = *(uint32_t *) (sAttr + 0x4);
 
 		ncgr->attr = (unsigned char *) calloc(ncgr->tilesX * ncgr->tilesY, 1);
 		for (int y = 0; y < ncgr->tilesY; y++) {
-			const unsigned char *srcRow = sAttr + 0x10 + y * attrWidth;
+			const unsigned char *srcRow = sAttr + 0x8 + y * attrWidth;
 			unsigned char *dstRow = ncgr->attr + y * ncgr->tilesX;
 			memcpy(dstRow, srcRow, min(attrWidth, ncgr->tilesX));
 		}
@@ -510,17 +504,17 @@ int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 }
 
 int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	const unsigned char *sChar = NnsG2dGetSectionByMagic(buffer, size, 'CHAR');
-	if (sChar == NULL) sChar = NnsG2dGetSectionByMagic(buffer, size, 'RAHC');
+	unsigned int charSize = 0;
+	const unsigned char *sChar = NnsG2dFindBlockBySignature(buffer, size, "CHAR", NNS_SIG_LE, &charSize);
 
-	int tilesY = *(uint16_t *) (sChar + 0x8);
-	int tilesX = *(uint16_t *) (sChar + 0xA);
-	int depth = *(uint32_t *) (sChar + 0xC);
-	int mapping = *(uint32_t *) (sChar + 0x10);
+	int tilesY = *(uint16_t *) (sChar + 0x0);
+	int tilesX = *(uint16_t *) (sChar + 0x2);
+	int depth = *(uint32_t *) (sChar + 0x4);
+	int mapping = *(uint32_t *) (sChar + 0x8);
 	depth = 1 << (depth - 1);
-	int tileDataSize = *(uint32_t *) (sChar + 0x18);
-	int type = *(uint32_t *) (sChar + 0x14);
-	uint32_t gfxOffset = *(uint32_t *) (sChar + 0x1C);
+	int tileDataSize = *(uint32_t *) (sChar + 0x10);
+	int type = *(uint32_t *) (sChar + 0xC);
+	uint32_t gfxOffset = *(uint32_t *) (sChar + 0x14);
 
 	int tileCount = tilesX * tilesY;
 	int nPresentTiles = tileDataSize >> 5;
@@ -540,7 +534,7 @@ int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ncgr->mappingMode = mapping;
 	ncgr->bitmap = (type == 1);
 
-	ChrReadGraphics(ncgr, sChar + gfxOffset + 8);
+	ChrReadGraphics(ncgr, sChar + gfxOffset);
 	return 0;
 }
 

@@ -13,11 +13,7 @@ int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
 	nmcr->header.size = sizeof(NMCR);
 	ObjInit((OBJECT_HEADER *) nmcr, FILE_TYPE_NMCR, type);
 	if (type == NMCR_TYPE_NMCR) {
-		char *pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'MCBK');
-		if (pMcbk == NULL) {
-			pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'KBCM');
-		}
-		pMcbk += 8;
+		char *pMcbk = NnsG2dFindBlockBySignature(buffer, size, "MCBK", NNS_SIG_LE, NULL);
 
 		char *pMultiCells = pMcbk + *(uint32_t *) (pMcbk + 4);
 		char *pHierarchy = pMcbk + *(uint32_t *) (pMcbk + 8);
@@ -39,11 +35,9 @@ int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
 
 int nmcrIsValid(char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return NMCR_TYPE_INVALID;
+	if (memcmp(buffer, "RCMN", 4) != 0) return 0;
 
-	char *pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'MCBK');
-	if (pMcbk == NULL) {
-		pMcbk = NnsG2dGetSectionByMagic(buffer, size, 'KBCM');
-	}
+	const unsigned char *pMcbk = NnsG2dFindBlockBySignature(buffer, size, "MCBK", NNS_SIG_LE, NULL);
 	if (pMcbk == NULL) return NMCR_TYPE_INVALID;
 
 	return NMCR_TYPE_NMCR;

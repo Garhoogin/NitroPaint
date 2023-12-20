@@ -116,7 +116,7 @@ void combo2dFree(COMBO2D *combo) {
 	}
 }
 
-int combo2dIsValidTimeAce(BYTE *file, int size) {
+int combo2dIsValidTimeAce(const unsigned char *file, unsigned int size) {
 	//file must be big enough for 12 bytes plus palette (512 bytes) and screen (2048 bytes).
 	if (size < 0xA0C) return 0;
 
@@ -134,7 +134,7 @@ int combo2dIsValidTimeAce(BYTE *file, int size) {
 	return 1;
 }
 
-int combo2dIsValidMbb(BYTE *file, unsigned int size) {
+int combo2dIsValidMbb(const unsigned char *file, unsigned int size) {
 	if (size < 0x74) return 0;
 
 	//check that offsets aren't out of bounds
@@ -173,7 +173,7 @@ int combo2dIsValidMbb(BYTE *file, unsigned int size) {
 	return 1;
 }
 
-int combo2dIsValidBanner(BYTE *file, int size) {
+int combo2dIsValidBanner(const unsigned char *file, unsigned int size) {
 	if (size < 0x840) return 0;
 
 	int version = *(unsigned short *) file;
@@ -197,25 +197,24 @@ int combo2dIsValidBanner(BYTE *file, int size) {
 	return 1;
 }
 
-int combo2dIsValid5bg(BYTE *file, int size) {
+int combo2dIsValid5bg(const unsigned char *file, unsigned int size) {
 	//must be a valid G2D structured file
 	if (!NnsG2dIsValid(file, size)) return 0;
+	if (memcmp(file, "NTBG", 4) != 0) return 0;
 
 	//must have PALT section
-	char *palt = NnsG2dGetSectionByMagic(file, size, 'PALT');
-	if (palt == NULL) palt = NnsG2dGetSectionByMagic(file, size, 'TLAP');
+	const unsigned char *palt = NnsG2dFindBlockBySignature(file, size, "PALT", NNS_SIG_BE, NULL);
 	if (palt == NULL) return 0;
 
 	//must have BGDT section
-	char *bgdt = NnsG2dGetSectionByMagic(file, size, 'BGDT');
-	if (bgdt == NULL) bgdt = NnsG2dGetSectionByMagic(file, size, 'TDGB');
+	const unsigned char *bgdt = NnsG2dFindBlockBySignature(file, size, "BGDT", NNS_SIG_BE, NULL);
 	if (bgdt == NULL) return 0;
 
 	//may have DFPL section
 	return 1;
 }
 
-int combo2dIsValid(BYTE *file, int size) {
+int combo2dIsValid(const unsigned char *file, unsigned int size) {
 	if (combo2dIsValid5bg(file, size)) return COMBO2D_TYPE_5BG;
 	if (combo2dIsValidTimeAce(file, size)) return COMBO2D_TYPE_TIMEACE;
 	if (combo2dIsValidBanner(file, size)) return COMBO2D_TYPE_BANNER;
@@ -223,7 +222,7 @@ int combo2dIsValid(BYTE *file, int size) {
 	return 0;
 }
 
-int combo2dReadTimeAce(COMBO2D *combo, char *buffer, int size) {
+int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	//add palette
 	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
 	PalInit(nclr, NCLR_TYPE_COMBO);
@@ -263,26 +262,23 @@ int combo2dReadTimeAce(COMBO2D *combo, char *buffer, int size) {
 	return 0;
 }
 
-int combo2dRead5bg(COMBO2D *combo, char *buffer, int size) {
-	char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
-	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
-	char *bgdt = NnsG2dGetSectionByMagic(buffer, size, 'BGDT');
-	if (bgdt == NULL) bgdt = NnsG2dGetSectionByMagic(buffer, size, 'TDGB');
-	char *dfpl = NnsG2dGetSectionByMagic(buffer, size, 'DFPL');
-	if (dfpl == NULL) dfpl = NnsG2dGetSectionByMagic(buffer, size, 'LPFD');
+int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, NULL);
+	const unsigned char *bgdt = NnsG2dFindBlockBySignature(buffer, size, "BGDT", NNS_SIG_BE, NULL);
+	const unsigned char *dfpl = NnsG2dFindBlockBySignature(buffer, size, "DFPL", NNS_SIG_BE, NULL);
 
-	int nColors = *(uint32_t *) (palt + 0x08);
+	int nColors = *(uint32_t *) (palt + 0x00);
 
-	int chrWidth = *(uint16_t *) (bgdt + 0x14);
-	int chrHeight = *(uint16_t *) (bgdt + 0x16);
-	int scrSize = *(uint32_t *) (bgdt + 0x0C);
-	int mapping = *(uint32_t *) (bgdt + 0x08);
-	int charSize = *(uint32_t *) (bgdt + 0x18);
-	int charOffset = 0x1C + scrSize;
+	int chrWidth = *(uint16_t *) (bgdt + 0xC);
+	int chrHeight = *(uint16_t *) (bgdt + 0xE);
+	int scrSize = *(uint32_t *) (bgdt + 0x04);
+	int mapping = *(uint32_t *) (bgdt + 0x00);
+	int charSize = *(uint32_t *) (bgdt + 0x10);
+	int charOffset = 0x14 + scrSize;
 	int nBits = dfpl == NULL ? 8 : 4; //8-bit if no DFPL present
 
-	int scrX = *(uint16_t *) (bgdt + 0x10);
-	int scrY = *(uint16_t *) (bgdt + 0x12);
+	int scrX = *(uint16_t *) (bgdt + 0x8);
+	int scrY = *(uint16_t *) (bgdt + 0xA);
 	int scrDataSize = scrX * scrY * 2;
 	int scrWidth = scrX * 8;
 	int scrHeight = scrY * 8;
@@ -297,7 +293,7 @@ int combo2dRead5bg(COMBO2D *combo, char *buffer, int size) {
 	nclr->nPalettes = 0;
 	nclr->totalSize = nColors * sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
-	memcpy(nclr->colors, palt + 0xC, nColors * sizeof(COLOR));
+	memcpy(nclr->colors, palt + 0x4, nColors * sizeof(COLOR));
 	combo2dLink(combo, &nclr->header);
 
 	//add character
@@ -319,14 +315,14 @@ int combo2dRead5bg(COMBO2D *combo, char *buffer, int size) {
 	nscr->dataSize = scrDataSize;
 	nscr->nHighestIndex = 0;
 	nscr->data = (uint16_t *) calloc(scrDataSize, 1);
-	memcpy(nscr->data, bgdt + 0x1C, scrDataSize);
+	memcpy(nscr->data, bgdt + 0x14, scrDataSize);
 	ScrComputeHighestCharacter(nscr);
 	combo2dLink(combo, &nscr->header);
 
 	return 0;
 }
 
-int combo2dReadBanner(COMBO2D *combo, char *buffer, int size) {
+int combo2dReadBanner(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	BANNER_INFO *info = (BANNER_INFO *) calloc(1, sizeof(BANNER_INFO));
 	combo->extraData = (void *) info;
 	info->version = *(unsigned short *) buffer;
@@ -361,7 +357,7 @@ int combo2dReadBanner(COMBO2D *combo, char *buffer, int size) {
 	return 0;
 }
 
-int combo2dReadMbb(COMBO2D *combo, char *buffer, int size) {
+int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	MBBCOMBO *mbbInfo = (MBBCOMBO *) calloc(1, sizeof(MBBCOMBO));
 	combo->extraData = mbbInfo;
 	mbbInfo->screenBitmap = 0;
@@ -425,7 +421,7 @@ int combo2dReadMbb(COMBO2D *combo, char *buffer, int size) {
 	return 0;
 }
 
-int combo2dRead(COMBO2D *combo, char *buffer, int size) {
+int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	int format = combo2dIsValid(buffer, size);
 	if (format == COMBO2D_TYPE_INVALID) return 1;
 

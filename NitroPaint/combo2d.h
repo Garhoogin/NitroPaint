@@ -72,12 +72,12 @@ void combo2dFree(COMBO2D *combo);
 //
 // Returns the type of COMBO2D the buffer contains, or COMBO2D_TYPE_INVALID if the data is invalid.
 //
-int combo2dIsValid(BYTE *buffer, int size);
+int combo2dIsValid(const unsigned char *buffer, unsigned int size);
 
 //
 // Read a COMBO2D extra data from a buffer, if there is any.
 //
-int combo2dRead(COMBO2D *combo, char *buffer, int size);
+int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
 
 //
 // Writes a COMBO2D to a BSTREAM.

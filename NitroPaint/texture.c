@@ -374,37 +374,36 @@ int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size) {
 int TxIsValidIStudio(const unsigned char *buffer, unsigned int size) {
 	//must be valid G2D structure
 	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "NTTX", 4) != 0) return 0;
 
 	//magic must be "NTTX" and have "PALT" and "IMGE" sections
-	const unsigned char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
-	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
-	const unsigned char *imge = NnsG2dGetSectionByMagic(buffer, size, 'IMGE');
-	if (imge == NULL) imge = NnsG2dGetSectionByMagic(buffer, size, 'EGMI');
+	unsigned int paltSize = 0, imgeSize = 0;
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, &paltSize);
+	const unsigned char *imge = NnsG2dFindBlockBySignature(buffer, size, "IMGE", NNS_SIG_BE, &imgeSize);
 
 	//IMGE must be present
 	if (imge == NULL) return 0;
 
 	//we don't support textures without palettes unless it's a direct color image
-	int fmt = imge[8];
+	int fmt = imge[0];
 	if (fmt > CT_DIRECT) return 0;
 	if (fmt != CT_DIRECT && palt == NULL) return 0;
 
 	//validate the PALT section
 	if (palt != NULL) {
-		uint32_t nColors = *(uint32_t *) (palt + 8);
-		uint32_t paltSize = *(uint32_t *) (palt + 4);
-		if (nColors * 2 + 0xC != paltSize) return 0;
+		uint32_t nColors = *(uint32_t *) (palt + 0);
+		if (nColors * 2 + 0x4 != paltSize) return 0;
 	}
 
 	//validate IMGE section
-	int log2Width = imge[8 + 1];
-	int log2Height = imge[8 + 2];
+	int log2Width = imge[1];
+	int log2Height = imge[2];
 	if (log2Width > 7 || log2Height > 7) return 0; //too large
 
 	int fullWidth = 8 << (log2Width);
 	int fullHeight = 8 << (log2Height);
-	int origWidth = *(uint16_t *) (imge + 0xC);
-	int origHeight = *(uint16_t *) (imge + 0xE);
+	int origWidth = *(uint16_t *) (imge + 0x4);
+	int origHeight = *(uint16_t *) (imge + 0x6);
 	if (origWidth > fullWidth || origHeight > fullHeight) return 0;
 	return 1;
 }
@@ -580,24 +579,22 @@ int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned
 int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
 	TxInit(texture, TEXTURE_TYPE_ISTUDIO);
 
-	const unsigned char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
-	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
-	const unsigned char *imge = NnsG2dGetSectionByMagic(buffer, size, 'IMGE');
-	if (imge == NULL) imge = NnsG2dGetSectionByMagic(buffer, size, 'EGMI');
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, NULL);
+	const unsigned char *imge = NnsG2dFindBlockBySignature(buffer, size, "IMGE", NNS_SIG_BE, NULL);
 
-	int frmt = imge[8];
-	int log2Width = imge[9];
-	int log2Height = imge[10];
-	int c0xp = imge[11];
+	int frmt = imge[0];
+	int log2Width = imge[1];
+	int log2Height = imge[2];
+	int c0xp = imge[3];
 
-	int origWidth = *(uint16_t *) (imge + 0xC);
-	int origHeight = *(uint16_t *) (imge + 0xE);
+	int origWidth = *(uint16_t *) (imge + 0x4);
+	int origHeight = *(uint16_t *) (imge + 0x6);
 
 	//copy palette
 	if (palt != NULL) {
-		texture->texture.palette.nColors = *(uint32_t *) (palt + 8);
+		texture->texture.palette.nColors = *(uint32_t *) (palt + 0);
 		texture->texture.palette.pal = (COLOR *) calloc(texture->texture.palette.nColors, sizeof(COLOR));
-		memcpy(texture->texture.palette.pal, palt + 0xC, texture->texture.palette.nColors * sizeof(COLOR));
+		memcpy(texture->texture.palette.pal, palt + 0x4, texture->texture.palette.nColors * sizeof(COLOR));
 	} else {
 		texture->texture.palette.nColors = 0;
 		texture->texture.palette.pal = NULL;
@@ -616,11 +613,11 @@ int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned 
 	int texelSize = TxGetTexelSize(8 << log2Width, 8 << log2Height, texture->texture.texels.texImageParam);
 	int indexSize = (frmt == CT_4x4) ? texelSize / 2 : 0;
 	texture->texture.texels.texel = (unsigned char *) malloc(texelSize);
-	memcpy(texture->texture.texels.texel, imge + 0x14, texelSize);
+	memcpy(texture->texture.texels.texel, imge + 0xC, texelSize);
 
 	if (indexSize) {
 		texture->texture.texels.cmp = (uint16_t *) malloc(indexSize);
-		memcpy(texture->texture.texels.cmp, imge + 0x14 + texelSize, indexSize);
+		memcpy(texture->texture.texels.cmp, imge + 0xC + texelSize, indexSize);
 	}
 
 	return 0;

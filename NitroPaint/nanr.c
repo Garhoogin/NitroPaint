@@ -81,9 +81,9 @@ int AnmIsValidNanr(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "RNAN", 4) != 0) return 0;
 
-	const unsigned char *abnk = NnsG2dGetSectionByMagic(buffer, size, 'ABNK');
-	if (abnk == NULL) abnk = NnsG2dGetSectionByMagic(buffer, size, 'KNBA');
+	const unsigned char *abnk = NnsG2dFindBlockBySignature(buffer, size, "ABNK", NNS_SIG_LE, NULL);
 	if (abnk == NULL) return 0;
+
 	return 1;
 }
 
@@ -103,20 +103,18 @@ void AnmInit(NANR *nanr, int format) {
 int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 	AnmInit(nanr, NANR_TYPE_NANR);
 
-	const unsigned char *abnk = NnsG2dGetSectionByMagic(buffer, size, 'ABNK');
-	if (abnk == NULL) abnk = NnsG2dGetSectionByMagic(buffer, size, 'KNBA');
+	const unsigned char *abnk = NnsG2dFindBlockBySignature(buffer, size, "ABNK", NNS_SIG_LE, NULL);
 
-	int nSections = *(uint16_t *) (buffer + 0xE);
-	int nSequences = *(uint16_t *) (abnk + 8);
-	int nTotalFrames = *(uint16_t *) (abnk + 0xA);
-	int sequenceArrayOffset = *(uint32_t *) (abnk + 0xC) + 0x18;
-	int frameArrayOffset = *(uint32_t *) (abnk + 0x10) + 0x18;
-	int animationOffset = *(uint32_t *) (abnk + 0x14) + 0x18;
+	int nSequences = *(uint16_t *) (abnk + 0);
+	int nTotalFrames = *(uint16_t *) (abnk + 0x2);
+	int sequenceArrayOffset = *(uint32_t *) (abnk + 0x4);
+	int frameArrayOffset = *(uint32_t *) (abnk + 0x8);
+	int animationOffset = *(uint32_t *) (abnk + 0xC);
 
-	NANR_SEQUENCE *sequenceArray = (NANR_SEQUENCE *) (buffer + sequenceArrayOffset);
+	NANR_SEQUENCE *sequenceArray = (NANR_SEQUENCE *) (abnk + sequenceArrayOffset);
 	NANR_SEQUENCE *sequences = (NANR_SEQUENCE *) calloc(nSequences, sizeof(NANR_SEQUENCE));
 	memcpy(sequences, sequenceArray, nSequences * sizeof(NANR_SEQUENCE));
-	int elementSizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+	const int elementSizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
 
 	for (int i = 0; i < nSequences; i++) {
 
@@ -125,7 +123,7 @@ int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 		int element = animType & 0xFFFF;
 		int elementSize = elementSizes[element];
 
-		FRAME_DATA *frameDataSrc = (FRAME_DATA *) (buffer + framesOffs);
+		FRAME_DATA *frameDataSrc = (FRAME_DATA *) (abnk + framesOffs);
 		FRAME_DATA *frameData = (FRAME_DATA *) calloc(sequences[i].nFrames, sizeof(FRAME_DATA));
 		memcpy(frameData, frameDataSrc, sequences[i].nFrames * sizeof(FRAME_DATA));
 		sequences[i].frames = frameData;
@@ -133,30 +131,26 @@ int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 		for (int j = 0; j < sequences[i].nFrames; j++) {
 
 			framesOffs = (int) frameData[j].animationData;
-			void *frameSrc = (void *) (buffer + animationOffset + framesOffs);
+			void *frameSrc = (void *) (abnk + animationOffset + framesOffs);
 			void *frame = calloc(1, elementSize);
 			memcpy(frame, frameSrc, elementSize);
 			frameData[j].animationData = (void *) frame;
 		}
 	}
 
-	int old = NnsG2dIsOld(buffer, size);
-	const unsigned char *labl = NnsG2dGetSectionByMagic(buffer, size, 'LABL');
-	if (labl == NULL) labl = NnsG2dGetSectionByMagic(buffer, size, 'LBAL');
-	const unsigned char *uext = NnsG2dGetSectionByMagic(buffer, size, 'UEXT');
-	if (uext == NULL) uext = NnsG2dGetSectionByMagic(buffer, size, 'TXEU');
+	unsigned int lablSize = 0, uextSize = 0;
+	const unsigned char *labl = NnsG2dFindBlockBySignature(buffer, size, "LABL", NNS_SIG_LE, &lablSize);
+	const unsigned char *uext = NnsG2dFindBlockBySignature(buffer, size, "UEXT", NNS_SIG_LE, &uextSize);
 
 	if (labl != NULL) {
-		nanr->lablSize = *(uint32_t *) (labl + 4);
-		if (!old) nanr->lablSize -= 8;
+		nanr->lablSize = lablSize;
 		nanr->labl = malloc(nanr->lablSize);
-		memcpy(nanr->labl, labl + 8, nanr->lablSize);
+		memcpy(nanr->labl, labl, nanr->lablSize);
 	}
 	if (uext != NULL) {
-		nanr->uextSize = *(uint32_t *) (uext + 4);
-		if (!old) nanr->uextSize -= 8;
+		nanr->uextSize = uextSize;
 		nanr->uext = malloc(nanr->uextSize);
-		memcpy(nanr->uext, uext + 8, nanr->uextSize);
+		memcpy(nanr->uext, uext, nanr->uextSize);
 	}
 
 	nanr->sequences = sequences;

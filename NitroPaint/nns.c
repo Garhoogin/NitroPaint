@@ -105,7 +105,7 @@ unsigned char *NnsG2dGetSectionByIndex(const unsigned char *buffer, unsigned int
 	return NULL;
 }
 
-unsigned char *NnsG2dGetSectionByMagic(const unsigned char *buffer, unsigned int size, unsigned int sectionMagic) {
+static unsigned char *NnsG2dGetSectionByMagic(const unsigned char *buffer, unsigned int size, unsigned int sectionMagic) {
 	int nSections = NnsG2dGetNumberOfSections(buffer, size);
 	int isOld = NnsG2dIsOld(buffer, size);
 	uint32_t offset = *(uint16_t *) (buffer + 0xC);
@@ -121,6 +121,25 @@ unsigned char *NnsG2dGetSectionByMagic(const unsigned char *buffer, unsigned int
 		offset += size;
 	}
 	return NULL;
+}
+
+unsigned char *NnsG2dFindBlockBySignature(const unsigned char *buffer, unsigned int size, const char *sig, int sigType, unsigned int *blockSize) {
+	unsigned int sig32 = 0;
+	for (int i = 0; i < 4; i++) {
+		int shift = 8 * ((sigType == NNS_SIG_LE) ? (3 - i) : i);
+		sig32 |= sig[i] << shift;
+	}
+
+	unsigned char *block = NnsG2dGetSectionByMagic(buffer, size, sig32);
+	if (block == NULL) {
+		if (blockSize != NULL) *blockSize = 0;
+		return NULL;
+	}
+
+	uint32_t thisBlockSize = *(uint32_t *) (block + 4);
+	if (!NnsG2dIsOld(buffer, size)) thisBlockSize -= 8;
+	if (blockSize != NULL) *blockSize = thisBlockSize;
+	return block + 8;
 }
 
 

@@ -38,8 +38,7 @@ int CellIsValidNcer(const unsigned char *buffer, unsigned int size) {
 	if (memcmp(buffer, "RECN", 4) != 0) return 0;
 
 	//must have CEBK section
-	const unsigned char *cebk = NnsG2dGetSectionByMagic(buffer, size, 'CEBK');
-	if (cebk == NULL) cebk = NnsG2dGetSectionByMagic(buffer, size, 'KBEC');
+	const unsigned char *cebk = NnsG2dFindBlockBySignature(buffer, size, "CEBK", NNS_SIG_LE, NULL);
 	if (cebk == NULL) return 0;
 
 	return 1;
@@ -127,17 +126,13 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 	ncer->uext = NULL;
 	ncer->labl = NULL;
 
-	int old = NnsG2dIsOld(buffer, size); //must adjust block lengths
-	const unsigned char *cebk = NnsG2dGetSectionByMagic(buffer, size, 'CEBK');
-	if (cebk == NULL) cebk = NnsG2dGetSectionByMagic(buffer, size, 'KBEC');
-	const unsigned char *labl = NnsG2dGetSectionByMagic(buffer, size, 'LABL');
-	if (labl == NULL) labl = NnsG2dGetSectionByMagic(buffer, size, 'LBAL');
-	const unsigned char *uext = NnsG2dGetSectionByMagic(buffer, size, 'UEXT');
-	if (uext == NULL) uext = NnsG2dGetSectionByMagic(buffer, size, 'TXEU');
+	unsigned int cebkSize = 0, lablSize = 0, uextSize = 0;
+	const unsigned char *cebk = NnsG2dFindBlockBySignature(buffer, size, "CEBK", NNS_SIG_LE, &cebkSize);
+	const unsigned char *labl = NnsG2dFindBlockBySignature(buffer, size, "LABL", NNS_SIG_LE, &lablSize);
+	const unsigned char *uext = NnsG2dFindBlockBySignature(buffer, size, "UEXT", NNS_SIG_LE, &uextSize);
 
 	//bank
 	if (cebk != NULL) {
-		cebk += 8; //advance block header
 		ncer->nCells = *(uint16_t *) cebk;
 		ncer->cells = (NCER_CELL *) calloc(ncer->nCells, sizeof(NCER_CELL));
 		ncer->bankAttribs = *(uint16_t *) (cebk + 2); //1 - with bounding rectangle, 0 - without
@@ -207,10 +202,6 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 
 	//NC label
 	if (labl != NULL) {
-		uint32_t lablSize = *(uint32_t *) (labl + 4);
-		if (!old) lablSize -= 8;
-		labl += 8; //advance block header
-
 		ncer->lablSize = lablSize;
 		ncer->labl = calloc(lablSize + 1, 1);
 		memcpy(ncer->labl, labl, lablSize);
@@ -218,10 +209,6 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 
 	//user extended
 	if (uext != NULL) {
-		uint32_t uextSize = *(uint32_t *) (uext + 4);
-		if (!old) uextSize -= 8;
-		uext += 8; //advance block header
-
 		ncer->uextSize = uextSize;
 		ncer->uext = calloc(uextSize, 1);
 		memcpy(ncer->uext, uext, uextSize);

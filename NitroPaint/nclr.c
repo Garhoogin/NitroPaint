@@ -82,47 +82,43 @@ int PalIsValidNtfp(const unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int PalIsValidNclr(const unsigned char *lpFile, unsigned int size) {
-	if (!NnsG2dIsValid(lpFile, size)) return 0;
-	uint32_t magic = *(uint32_t *) lpFile;
-	if (magic != 'NCLR' && magic != 'RLCN' && magic != 'NCPR' && magic != 'RPCN') return 0;
+int PalIsValidNclr(const unsigned char *buffer, unsigned int size) {
+	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "RLCN", 4) != 0) return 0;
 
-	char *pltt = NnsG2dGetSectionByMagic(lpFile, size, 'PLTT');
-	char *ttlp = NnsG2dGetSectionByMagic(lpFile, size, 'TTLP');
-	if (pltt == NULL && ttlp == NULL) return 0;
+	const unsigned char *pltt = NnsG2dFindBlockBySignature(buffer, size, "PLTT", NNS_SIG_LE, NULL);
+	if (pltt == NULL) return 0;
+
 	return 1;
 }
 
-int PalIsValidNcl(const unsigned char *lpFile, unsigned int size) {
-	if (!NnsG2dIsValid(lpFile, size)) return 0;
-	uint32_t magic = *(uint32_t *) lpFile;
-	if (magic != 'NCCL' && magic != 'LCCN') return 0;
+int PalIsValidNcl(const unsigned char *buffer, unsigned int size) {
+	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "NCCL", 4) != 0) return 0;
 
-	char *palt = NnsG2dGetSectionByMagic(lpFile, size, 'PALT');
-	char *tlap = NnsG2dGetSectionByMagic(lpFile, size, 'TLAP');
-	if (palt == NULL && tlap == NULL) return 0;
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, NULL);
+	if (palt == NULL) return 0;
+
 	return 1;
 }
 
-int PalIsValidIStudio(const unsigned char *lpFile, unsigned int size) {
-	if (!NnsG2dIsValid(lpFile, size)) return 0;
-	uint32_t magic = *(uint32_t *) lpFile;
-	if (magic != 'NTPL' && magic != 'LPTN') return 0;
+int PalIsValidIStudio(const unsigned char *buffer, unsigned int size) {
+	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "NTPL", 4) != 0) return 0;
 
-	unsigned char *palt = NnsG2dGetSectionByMagic(lpFile, size, 'PALT');
-	unsigned char *tlap = NnsG2dGetSectionByMagic(lpFile, size, 'TLAP');
-	if (palt == NULL && tlap == NULL) return 0;
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, NULL);
+	if (palt == NULL) return 0;
+
 	return 1;
 }
 
-int PalIsValidIStudioCompressed(const unsigned char *lpFile, unsigned int size) {
-	if (!NnsG2dIsValid(lpFile, size)) return 0;
-	uint32_t magic = *(uint32_t *) lpFile;
-	if (magic != 'NTPC' && magic != 'CPTN') return 0;
+int PalIsValidIStudioCompressed(const unsigned char *buffer, unsigned int size) {
+	if (!NnsG2dIsValid(buffer, size)) return 0;
+	if (memcmp(buffer, "NTPC", 4) != 0) return 0;
 
-	unsigned char *palt = NnsG2dGetSectionByMagic(lpFile, size, 'PALT');
-	unsigned char *tlap = NnsG2dGetSectionByMagic(lpFile, size, 'TLAP');
-	if (palt == NULL && tlap == NULL) return 0;
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, NULL);
+	if (palt == NULL) return 0;
+
 	return 1;
 }
 
@@ -171,38 +167,36 @@ int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 
 	PalInit(nclr, NCLR_TYPE_NC);
 
-	char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
-	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
-	char *cmnt = NnsG2dGetSectionByMagic(buffer, size, 'CMNT');
-	if (cmnt == NULL) cmnt = NnsG2dGetSectionByMagic(buffer, size, 'TNMC');
+	unsigned int paltSize = 0, cmntSize = 0;
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, &paltSize);
+	const unsigned char *cmnt = NnsG2dFindBlockBySignature(buffer, size, "CMNT", NNS_SIG_BE, &cmntSize);
 
-	nclr->nPalettes = *(uint32_t *) (palt + 0xC);
-	nclr->nColors = nclr->nPalettes * *(uint32_t *) (palt + 0x8);
+	nclr->nPalettes = *(uint32_t *) (palt + 0x4);
+	nclr->nColors = nclr->nPalettes * *(uint32_t *) (palt + 0x0);
 	nclr->extPalette = nclr->nColors > 256;
-	nclr->nBits = *(uint32_t *) (palt + 0x8) > 16 ? 8 : 4;
+	nclr->nBits = *(uint32_t *) (palt + 0x0) > 16 ? 8 : 4;
 	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
-	memcpy(nclr->colors, palt + 0x10, nclr->nColors * 2);
+	memcpy(nclr->colors, palt + 0x8, nclr->nColors * 2);
 	if (cmnt != NULL) {
-		int cmntLength = (*(uint32_t *) (cmnt + 4)) - 4;
-		nclr->header.comment = (char *) calloc(cmntLength, 1);
-		memcpy(nclr->header.comment, cmnt + 8, cmntLength);
+		nclr->header.comment = (char *) malloc(cmntSize);
+		memcpy(nclr->header.comment, cmnt, cmntSize);
 	}
 
 	return 0;
 }
 
 void PaliReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	char *palt = NnsG2dGetSectionByMagic(buffer, size, 'PALT');
-	if (palt == NULL) palt = NnsG2dGetSectionByMagic(buffer, size, 'TLAP');
+	unsigned int paltSize = 0;
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, &paltSize);
 
-	nclr->nColors = *(uint32_t *) (palt + 0x8);
+	nclr->nColors = *(uint32_t *) (palt + 0x0);
 	nclr->nPalettes = (nclr->nColors + 15) / 16;
 	nclr->extPalette = nclr->nColors > 256;
 	nclr->nBits = 4;
 	nclr->totalSize = nclr->nColors;
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
-	memcpy(nclr->colors, palt + 0xC, nclr->nColors * 2);
+	memcpy(nclr->colors, palt + 0x4, nclr->nColors * 2);
 }
 
 int PalReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
@@ -222,32 +216,30 @@ int PalReadIStudioCompressed(NCLR *nclr, const unsigned char *buffer, unsigned i
 }
 
 int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	const unsigned char *pltt = NnsG2dGetSectionByMagic(buffer, size, 'PLTT');
-	const unsigned char *pcmp = NnsG2dGetSectionByMagic(buffer, size, 'PCMP');
+	unsigned int plttSize = 0, pcmpSize = 0;
+	const unsigned char *pltt = NnsG2dFindBlockBySignature(buffer, size, "PLTT", NNS_SIG_LE, &plttSize);
+	const unsigned char *pcmp = NnsG2dFindBlockBySignature(buffer, size, "PCMP", NNS_SIG_LE, &pcmpSize);
 	if (pltt == NULL) return 1;
 
-	uint32_t sectionSize = *(uint32_t *) (pltt + 0x4);
-	if (NnsG2dIsOld(buffer, size)) sectionSize += 8;
-
-	int bits = *(uint32_t *) (pltt + 0x8);
+	int bits = *(uint32_t *) (pltt + 0x0);
 	bits = 1 << (bits - 1);
-	int dataSize = *(uint32_t *) (pltt + 0x10);
-	int dataOffset = 8 + *(uint32_t *) (pltt + 0x14);
-	int nColors = (sectionSize - dataOffset) >> 1;
+	int dataSize = *(uint32_t *) (pltt + 0x8);
+	int dataOffset = *(uint32_t *) (pltt + 0xC);
+	int nColors = (plttSize - dataOffset) >> 1;
 
 	PalInit(nclr, NCLR_TYPE_NCLR);
 	nclr->nColors = nColors;
 	nclr->nBits = bits;
-	nclr->colors = (COLOR *) calloc(nColors, 2);
-	nclr->extPalette = *(uint32_t *) (pltt + 0xC);
-	nclr->totalSize = *(uint32_t *) (pltt + 0x10);
+	nclr->colors = (COLOR *) calloc(nColors, sizeof(COLOR));
+	nclr->extPalette = *(uint32_t *) (pltt + 0x4);
+	nclr->totalSize = *(uint32_t *) (pltt + 0x8);
 	nclr->nPalettes = 0;
 	nclr->idxTable = NULL;
 
 	if (pcmp != NULL) {
-		nclr->nPalettes = *(uint16_t *) (pcmp + 8);
+		nclr->nPalettes = *(uint16_t *) (pcmp + 0);
 		nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
-		memcpy(nclr->idxTable, pcmp + 8 + *(uint32_t *) (pcmp + 0xC), nclr->nPalettes * 2);
+		memcpy(nclr->idxTable, pcmp + *(uint32_t *) (pcmp + 0x4), nclr->nPalettes * 2);
 	}
 	memcpy(nclr->colors, pltt + dataOffset, nColors * 2);
 	return 0;
