@@ -19,7 +19,7 @@
 
 extern HICON g_appIcon;
 
-DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor, BOOL transparent) {
+DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int hlStart, int hlEnd, int hlMode, BOOL transparent) {
 	int width = ncgr->tilesX * 8;
 	DWORD *bits = (DWORD *) malloc(ncgr->tilesX * ncgr->tilesY * 64 * 4);
 
@@ -29,9 +29,12 @@ DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int highlightColor, 
 			BYTE *tile = ncgr->tiles[tileNumber];
 			DWORD block[64];
 			ChrRenderCharacter(ncgr, nclr, tileNumber, block, usePalette, transparent);
-			if (highlightColor != -1) {
+
+			if (hlStart != -1 && hlEnd != -1) {
 				for (int i = 0; i < 64; i++) {
-					if (tile[i] != highlightColor) continue;
+					int c = tile[i];
+					if (!PalViewerIndexInRange(c, hlStart, hlEnd, hlMode == PALVIEWER_SELMODE_2D)) continue;
+
 					DWORD col = block[i];
 					int lightness = (col & 0xFF) + ((col >> 8) & 0xFF) + ((col >> 16) & 0xFF);
 					if (lightness < 383) block[i] = 0xFFFFFFFF;
@@ -69,9 +72,16 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 		nclr = &nclrViewerData->nclr;
 	}
 
-	int highlightColor = data->verifyColor % (1 << data->ncgr.nBits);
-	if ((data->verifyFrames & 1) == 0) highlightColor = -1;
-	DWORD *px = NcgrToBitmap(&data->ncgr, data->selectedPalette, nclr, highlightColor, data->transparent);
+	//int highlightColor = data->verifyColor % (1 << data->ncgr.nBits);
+	int hlStart = data->verifyStart;
+	int hlEnd = data->verifyEnd;
+	int hlMode = data->verifySelMode;
+	if ((data->verifyFrames & 1) == 0) {
+		//animate view (un-highlight)
+		hlStart = hlEnd = -1;
+	}
+
+	DWORD *px = NcgrToBitmap(&data->ncgr, data->selectedPalette, nclr, hlStart, hlEnd, hlMode, data->transparent);
 	int outWidth, outHeight;
 	HBITMAP hTiles = CreateTileBitmap(px, width, height, data->hoverX, data->hoverY, &outWidth, &outHeight, data->scale, data->showBorders);
 
@@ -439,7 +449,6 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_TIMER:
 		{
 			if (wParam == 1) {
-				int color = data->verifyColor;
 				data->verifyFrames--;
 				if (!data->verifyFrames) {
 					KillTimer(hWnd, wParam);

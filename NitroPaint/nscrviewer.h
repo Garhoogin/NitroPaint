@@ -29,7 +29,9 @@ typedef struct {
 	int contextHoverY;
 	int editingX;
 	int editingY;
-	int verifyColor;
+	int hlStart;
+	int hlEnd;
+	int hlMode;
 	int verifyFrames;
 	int tileBase;
 

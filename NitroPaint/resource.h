@@ -121,13 +121,23 @@
 #define ID_MENU_SHOWUNUSED              40126
 #define ID_EDIT_COMMENT                 40127
 #define ID_FILE_PREVIEWTARGET           40128
+#define ID_MENU_SELECTIONMODE           40129
+#define ID_SELECTIONMODE_1D             40130
+#define ID_SELECTIONMODE_2D             40131
+#define ID_MENU_DESELECT                40132
+#define ID_MENU_CUT                     40133
+#define ID_ACCELERATOR_COPY             40134
+#define ID_ACCELERATOR_CUT              40135
+#define ID_ACCELERATOR_PASTE            40136
+#define ID_ACCELERATOR_DESELECT         40142
+#define ID_ACCELERATOR_SELECT_ALL       40144
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40129
+#define _APS_NEXT_COMMAND_VALUE         40146
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

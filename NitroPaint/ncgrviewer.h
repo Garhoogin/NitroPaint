@@ -12,7 +12,9 @@ typedef struct {
 	int contextHoverY;
 	int hoverIndex;
 	int selectedPalette;
-	int verifyColor;
+	int verifyStart;
+	int verifyEnd;
+	int verifySelMode;
 	int verifyFrames;
 	int transparent;
 	HWND hWndViewer;
