@@ -1750,25 +1750,58 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 					case ID_MENU_IMPORT:
 					{
-						LPWSTR path = openFileDialog(getMainWindow(hWnd), L"Import Palette", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+						LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0"
+							L"Palette Files\0*.nclr;*.rlcn;*.5pl;*.5tx;*.ncl;*.icl;*.acl;*ncl.bin;*icl.bin;*ntfp;*.nbfp\0"
+							L"Texture Files\0*.tga;*.5tx;*.tds;\0"
+							L"All Files\0*.*\0";
+						LPWSTR path = openFileDialog(getMainWindow(hWnd), L"Import Palette", filter, L"");
 						if (path == NULL) break;
 
-						int width, height;
-						COLOR32 *src = ImgRead(path, &width, &height);
+						COLOR *colors = NULL;
+						int nColors = 0;
+
+						//try texture
+						if (TxIdentifyFile(path) != TEXTURE_TYPE_INVALID) {
+							TextureObject texture = { 0 };
+							TxReadFile(&texture, path);
+
+							if (texture.texture.palette.pal != NULL) {
+								nColors = texture.texture.palette.nColors;
+								colors = (COLOR *) calloc(nColors, sizeof(COLOR));
+								memcpy(colors, texture.texture.palette.pal, nColors * sizeof(COLOR));
+							}
+							TxFree(&texture.header);
+						} else {
+							//try image
+							int width, height;
+							COLOR32 *src = ImgRead(path, &width, &height);
+							if (src != NULL) {
+								//convert to DS 15bpp colors
+								nColors = width * height;
+								colors = (COLOR *) calloc(nColors, sizeof(COLOR));
+								for (int i = 0; i < nColors; i++) {
+									colors[i] = ColorConvertToDS(src[i]);
+								}
+								free(src);
+							} else {
+								//try palette file
+								NCLR nclr = { 0 };
+								PalReadFile(&nclr, path);
+
+								nColors = nclr.nColors;
+								colors = (COLOR *) calloc(nColors, sizeof(COLOR));
+								memcpy(colors, nclr.colors, nColors * sizeof(COLOR));
+
+								ObjFree(&nclr.header);
+							}
+						}
 						free(path);
 
-						//convert to DS 15bpp colors
-						int nColors = width * height;
-						COLOR *colors = (COLOR *) calloc(nColors, sizeof(COLOR));
-						for (int i = 0; i < nColors; i++) {
-							colors[i] = ColorConvertToDS(src[i]);
+						if (colors != NULL) {
+							PalViewerWrapSelection(data, colors, nColors);
+							PalViewerUpdatePreview(hWnd);
+							free(colors);
 						}
-						free(src);
-
-						PalViewerWrapSelection(data, colors, nColors);
-						PalViewerUpdatePreview(hWnd);
-
-						free(colors);
 						break;
 					}
 					case ID_MENU_VERIFYCOLOR:
