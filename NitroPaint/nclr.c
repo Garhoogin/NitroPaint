@@ -84,7 +84,7 @@ int PalIsValidNtfp(const unsigned char *lpFile, unsigned int size) {
 
 int PalIsValidNclr(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
-	if (memcmp(buffer, "RLCN", 4) != 0) return 0;
+	if (memcmp(buffer, "RLCN", 4) != 0 && memcmp(buffer, "RPCN", 4) != 0) return 0;
 
 	const unsigned char *pltt = NnsG2dFindBlockBySignature(buffer, size, "PLTT", NNS_SIG_LE, NULL);
 	if (pltt == NULL) return 0;
