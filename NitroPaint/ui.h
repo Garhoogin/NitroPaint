@@ -59,6 +59,11 @@ HWND CreateStaticAligned(HWND hWnd, LPCWSTR text, int x, int y, int width, int h
 HWND CreateCombobox(HWND hWnd, LPCWSTR *items, int nItems, int x, int y, int width, int height, int def);
 
 //
+// Create a listbox.
+//
+HWND CreateListBox(HWND hWnd, int x, int y, int width, int height);
+
+//
 // Create a trackbar.
 //
 HWND CreateTrackbar(HWND hWnd, int x, int y, int width, int height, int vMin, int vMax, int vDef);
@@ -83,6 +88,32 @@ void SetEditNumber(HWND hWnd, int n);
 // Get trackbar position
 //
 int GetTrackbarPosition(HWND hWnd);
+
+//
+// Gets the selected listbox item.
+//
+int GetListBoxSelection(HWND hWnd);
+
+//
+// Sets the selected listbox item.
+//
+void SetListBoxSelection(HWND hWnd, int sel);
+
+//
+// Add an item to a listbox.
+//
+void AddListBoxItem(HWND hWnd, LPCWSTR item);
+
+//
+// Remove an item from a listbox.
+//
+void RemoveListBoxItem(HWND hWnd, int index);
+
+
+//
+// Replace an item in a listbox.
+//
+void ReplaceListBoxItem(HWND hWnd, int index, LPCWSTR newitem);
 
 
 //

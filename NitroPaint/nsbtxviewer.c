@@ -236,8 +236,8 @@ int guessTexPlttByName(char *textureName, char **paletteNames, int nPalettes, TE
 LRESULT CALLBACK ListboxDeleteSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT subclass, DWORD_PTR ref) {
 	if (msg == WM_KEYDOWN && wParam == VK_DELETE) {
 		HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-		int sel = SendMessage(hWnd, LB_GETCURSEL, 0, 0);
-		SendMessage(hWnd, LB_DELETESTRING, sel, 0);
+		int sel = GetListBoxSelection(hWnd);
+		RemoveListBoxItem(hWnd, sel);
 		SendMessage(hWndParent, NV_CHILDNOTIF, sel, (LPARAM) hWnd);
 	}
 	return DefSubclassProc(hWnd, msg, wParam, lParam);
@@ -351,8 +351,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data->hWndTextureSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 0, 150, 100, hWnd, NULL, NULL, NULL);
-			data->hWndPaletteSelect = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY, 0, 100, 150, 100, hWnd, NULL, NULL, NULL);
+			data->hWndTextureSelect = CreateListBox(hWnd, 0, 0, 150, 100);
+			data->hWndPaletteSelect = CreateListBox(hWnd, 0, 100, 150, 100);
 			data->hWndExportAll = CreateButton(hWnd, L"Export All", 0, 300 - 22, 75, 22, FALSE);
 			data->hWndResourceButton = CreateButton(hWnd, L"VRAM Use", 75, 300 - 22, 75, 22, FALSE);
 			data->hWndReplaceButton = CreateButton(hWnd, L"Replace", 150, 300 - 22, 100, 22, TRUE);
@@ -379,7 +379,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					buffer[j] = name[j];
 				}
 				buffer[len] = 0;
-				SendMessage(data->hWndTextureSelect, LB_ADDSTRING, 0, (LPARAM) buffer);
+				AddListBoxItem(data->hWndTextureSelect, buffer);
 			}
 			for (int i = 0; i < data->nsbtx.nPalettes; i++) {
 				char *name = data->nsbtx.palettes[i].name;
@@ -388,10 +388,10 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					buffer[j] = name[j];
 				}
 				buffer[len] = 0;
-				SendMessage(data->hWndPaletteSelect, LB_ADDSTRING, 0, (LPARAM) buffer);
+				AddListBoxItem(data->hWndPaletteSelect, buffer);
 			}
-			SendMessage(data->hWndTextureSelect, LB_SETCURSEL, 0, 0);
-			SendMessage(data->hWndPaletteSelect, LB_SETCURSEL, 0, 0);
+			SetListBoxSelection(data->hWndTextureSelect, 0);
+			SetListBoxSelection(data->hWndPaletteSelect, 0);
 			return 1;
 		}
 		case WM_PAINT:
@@ -399,8 +399,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			PAINTSTRUCT ps;
 			HDC hDC = BeginPaint(hWnd, &ps);
 
-			int t = SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0);
-			int p = SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0);
+			int t = GetListBoxSelection(data->hWndTextureSelect);
+			int p = GetListBoxSelection(data->hWndPaletteSelect);
 			TEXELS *texture = data->nsbtx.textures + t;
 			PALETTE *palette = data->nsbtx.palettes + p;
 			if (t >= data->nsbtx.nTextures || t < 0) texture = NULL; //catch out-of-bounds cases
@@ -469,7 +469,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				free(cols);
 				if (sel >= data->nsbtx.nPalettes) sel = data->nsbtx.nPalettes - 1;
 			}
-			SendMessage(hWndControl, LB_SETCURSEL, sel, 0);
+			SetListBoxSelection(hWndControl, sel);
 			InvalidateRect(hWnd, NULL, TRUE);
 			break;
 		}
@@ -483,8 +483,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						LPWSTR location = saveFileDialog(hWnd, L"Save Texture", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
 						if (!location) break;
 
-						TxWriteFileDirect(data->nsbtx.textures + SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0),
-									  data->nsbtx.palettes + SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0), TEXTURE_TYPE_NNSTGA, location);
+						TxWriteFileDirect(data->nsbtx.textures + GetListBoxSelection(data->hWndTextureSelect),
+									  data->nsbtx.palettes + GetListBoxSelection(data->hWndPaletteSelect), TEXTURE_TYPE_NNSTGA, location);
 
 						free(location);
 						break;
@@ -515,7 +515,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				HWND hWndControl = (HWND) lParam;
 				int m = HIWORD(wParam);
 				if (m == LBN_SELCHANGE) {
-					int currentTexture = SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0);
+					int currentTexture = GetListBoxSelection(data->hWndTextureSelect);
 					if (hWndControl == data->hWndTextureSelect || hWndControl == data->hWndPaletteSelect) {
 						InvalidateRect(hWnd, NULL, TRUE);
 					}
@@ -525,8 +525,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						PALETTE palette;
 						int s = TexarcViewerPromptTexImage(data, &texels, &palette);
 						if (s) {
-							int selectedPalette = SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0);
-							int selectedTexture = SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0);
+							int selectedPalette = GetListBoxSelection(data->hWndPaletteSelect);
+							int selectedTexture = GetListBoxSelection(data->hWndTextureSelect);
 							TEXELS *destTex = data->nsbtx.textures + selectedTexture;
 							PALETTE *destPal = data->nsbtx.palettes + selectedPalette;
 							int oldTexImageParam = destTex->texImageParam;
@@ -623,11 +623,11 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 									for (int i = 0; i < 16; i++) {
 										strbuf[i] = (WCHAR) texels.name[i];
 									}
-									SendMessage(data->hWndTextureSelect, LB_ADDSTRING, 0, (LPARAM) strbuf);
-									SendMessage(data->hWndTextureSelect, LB_SETCURSEL, data->nsbtx.nTextures - 1, 0);
+									AddListBoxItem(data->hWndTextureSelect, strbuf);
+									SetListBoxSelection(data->hWndTextureSelect, data->nsbtx.nTextures - 1);
 								} else {
 									int existingIndex = TexarcGetTextureIndexByName(&data->nsbtx, texels.name);
-									SendMessage(data->hWndTextureSelect, LB_SETCURSEL, existingIndex, 0);
+									SetListBoxSelection(data->hWndTextureSelect, existingIndex);
 									MessageBox(hWnd, L"Texture name conflict.", L"Texture name conflict", MB_ICONERROR);
 								}
 							}
@@ -649,11 +649,11 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 										for (int i = 0; i < 16; i++) {
 											strbuf[i] = (WCHAR) palette.name[i];
 										}
-										SendMessage(data->hWndPaletteSelect, LB_ADDSTRING, 0, (LPARAM) strbuf);
+										AddListBoxItem(data->hWndPaletteSelect, strbuf);
 									}
 
 									//select
-									SendMessage(data->hWndPaletteSelect, LB_SETCURSEL, palIndex, 0);
+									SetListBoxSelection(data->hWndPaletteSelect, palIndex);
 								}
 							}
 
@@ -664,7 +664,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				} else if (m == LBN_DBLCLK) {
 					if (hWndControl == data->hWndTextureSelect || hWndControl == data->hWndPaletteSelect) {
 						WCHAR textBuffer[17] = { 0 }; //enforced: items <= 16 chars long
-						int sel = SendMessage(hWndControl, LB_GETCURSEL, 0, 0);
+						int sel = GetListBoxSelection(hWndControl);
 						SendMessage(hWndControl, LB_GETTEXT, sel, (LPARAM) textBuffer);
 						
 						//make prompt
@@ -672,12 +672,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						int n = PromptUserText(hWndMain, L"Name Entry", L"Enter a name:", textBuffer, 17);
 						if (n) {
 							//replace selected text
-							SendMessage(hWndControl, WM_SETREDRAW, FALSE, 0);
-							SendMessage(hWndControl, LB_DELETESTRING, sel, 0);
-							SendMessage(hWndControl, LB_INSERTSTRING, sel, (LPARAM) textBuffer);
-							SendMessage(hWndControl, WM_SETREDRAW, TRUE, 0);
-							RedrawWindow(hWndControl, NULL, NULL, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN);
-							SendMessage(hWndControl, LB_SETCURSEL, sel, 0);
+							ReplaceListBoxItem(hWndControl, sel, textBuffer);
 							SetFocus(hWndControl);
 
 							//update TexArc

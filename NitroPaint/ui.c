@@ -48,6 +48,12 @@ HWND CreateCombobox(HWND hWnd, LPCWSTR *items, int nItems, int x, int y, int wid
 	return h;
 }
 
+HWND CreateListBox(HWND hWnd, int x, int y, int width, int height) {
+	DWORD dwStyle = WS_VISIBLE | WS_CHILD | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | LBS_NOTIFY;
+	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTBOX, L"", dwStyle, x, y, width, height, hWnd, NULL, NULL, NULL);
+	return  h;
+}
+
 HWND CreateTrackbar(HWND hWnd, int x, int y, int width, int height, int vMin, int vMax, int vDef) {
 	DWORD dwStyle = WS_VISIBLE | WS_CHILD | WS_TABSTOP;
 	HWND h = CreateWindow(TRACKBAR_CLASS, L"", dwStyle, x, y, width, height, hWnd, NULL, NULL, NULL);
@@ -75,6 +81,35 @@ void SetEditNumber(HWND hWnd, int n) {
 int GetTrackbarPosition(HWND hWnd) {
 	return SendMessage(hWnd, TBM_GETPOS, 0, 0);
 }
+
+
+
+int GetListBoxSelection(HWND hWnd) {
+	return SendMessage(hWnd, LB_GETCURSEL, 0, 0);
+}
+
+void SetListBoxSelection(HWND hWnd, int sel) {
+	SendMessage(hWnd, LB_SETCURSEL, sel, 0);
+}
+
+void AddListBoxItem(HWND hWnd, LPCWSTR item) {
+	SendMessage(hWnd, LB_ADDSTRING, 0, (LPARAM) item);
+}
+
+void RemoveListBoxItem(HWND hWnd, int index) {
+	SendMessage(hWnd, LB_DELETESTRING, index, 0);
+}
+
+void ReplaceListBoxItem(HWND hWnd, int index, LPCWSTR newitem) {
+	SendMessage(hWnd, WM_SETREDRAW, FALSE, 0);
+	SendMessage(hWnd, LB_DELETESTRING, index, 0);
+	SendMessage(hWnd, LB_INSERTSTRING, index, (LPARAM) newitem);
+	SendMessage(hWnd, LB_SETCURSEL, index, 0);
+	SendMessage(hWnd, WM_SETREDRAW, TRUE, 0);
+	RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN);
+}
+
+
 
 HWND CreateListView(HWND hWnd, int x, int y, int width, int height) {
 	DWORD dwStyle = WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN | LVS_REPORT | LVS_EDITLABELS
