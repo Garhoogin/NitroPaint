@@ -195,6 +195,77 @@ HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int til
 	return NULL;
 }
 
+static void ScrViewerCopy(NSCRVIEWERDATA *data) {
+	OpenClipboard(data->hWnd);
+	EmptyClipboard();
+
+	//clipboard format: "0000", "N", w, h, d
+	int tileX = data->contextHoverX;
+	int tileY = data->contextHoverY;
+	int tilesX = 1, tilesY = 1;
+	if (data->selStartX != -1 && data->selStartY != -1 && data->selEndX != -1 && data->selEndY != -1) {
+		tileX = min(data->selStartX, data->selEndX);
+		tileY = min(data->selStartY, data->selEndY);
+		tilesX = max(data->selStartX, data->selEndX) + 1 - tileX;
+		tilesY = max(data->selStartY, data->selEndY) + 1 - tileY;
+	}
+	HANDLE hString = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 10 + 4 * tilesX * tilesY);
+	LPSTR clip = (LPSTR) GlobalLock(hString);
+	*(DWORD *) clip = 0x30303030;
+	clip[4] = 'N';
+	clip[5] = (tilesX & 0xF) + 0x30;
+	clip[6] = ((tilesX >> 4) & 0xF) + 0x30;
+	clip[7] = (tilesY & 0xF) + 0x30;
+	clip[8] = ((tilesY >> 4) & 0xF) + 0x30;
+
+	int i = 0;
+	for (int y = tileY; y < tileY + tilesY; y++) {
+		for (int x = tileX; x < tileX + tilesX; x++) {
+			WORD d = data->nscr.data[x + y * (data->nscr.nWidth / 8)];
+			clip[9 + i * 4] = (d & 0xF) + 0x30;
+			clip[9 + i * 4 + 1] = ((d >> 4) & 0xF) + 0x30;
+			clip[9 + i * 4 + 2] = ((d >> 8) & 0xF) + 0x30;
+			clip[9 + i * 4 + 3] = ((d >> 12) & 0xF) + 0x30;
+			i++;
+		}
+	}
+
+	HWND hWndNclrEditor = NULL, hWndNcgrEditor = NULL;
+	HWND hWndMain = getMainWindow(data->hWnd);
+	GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrEditor, 1);
+	GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
+
+	COLOR32 *bm = NULL;
+	if (hWndNclrEditor != NULL && hWndNcgrEditor != NULL) {
+		//to bitmap
+		NSCR *nscr = &data->nscr;
+		NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor))->ncgr;
+		NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(hWndNclrEditor))->nclr;
+
+		//cut selection region out of the image
+		int wholeWidth, wholeHeight, width = tilesX * 8, height = tilesY * 8;
+		COLOR32 *bm = renderNscrBits(nscr, ncgr, nclr, data->tileBase, &wholeWidth, &wholeHeight,
+			-1, -1, -1, 0, -1, -1, -1, -1, TRUE);
+		COLOR32 *sub = ImgCrop(bm, wholeWidth, wholeHeight, tileX * 8, tileY * 8, tilesX * 8, tilesY * 8);
+		ImgSwapRedBlue(sub, tilesX * 8, tilesY * 8);
+		copyBitmap(sub, width, height);
+		free(bm);
+		free(sub);
+	}
+
+	GlobalUnlock(hString);
+	SetClipboardData(CF_TEXT, hString);
+	CloseClipboard();
+}
+
+static void ScrViewerErase(NSCRVIEWERDATA *data) {
+	for (int y = min(data->selStartY, data->selEndY); y <= max(data->selStartY, data->selEndY); y++) {
+		for (int x = min(data->selStartX, data->selEndX); x <= max(data->selStartX, data->selEndX); x++) {
+			data->nscr.data[x + y * (data->nscr.nWidth / 8)] = data->nscr.clearValue;
+		}
+	}
+}
+
 void NscrViewerSetTileBase(HWND hWnd, int tileBase) {
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
 	data->tileBase = tileBase;
@@ -333,8 +404,48 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case NV_UPDATEPREVIEW:
 			PreviewLoadBgScreen(&data->nscr);
 			break;
+		case WM_KEYDOWN:
+		{
+			int cc = wParam;
+			switch (cc) {
+				case VK_DELETE:
+					//delete
+					ScrViewerErase(data);
+					InvalidateRect(hWnd, NULL, FALSE);
+					SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
+					break;
+				case VK_ESCAPE:
+					SendMessage(hWnd, WM_COMMAND, ID_NSCRMENU_DESELECT, 0);
+					break;
+			}
+			break;
+		}
 		case WM_COMMAND:
 		{
+			if (lParam == 0 && HIWORD(wParam) == 1) {
+				//accelerator
+				WORD accel = LOWORD(wParam);
+				switch (accel) {
+					case ID_ACCELERATOR_CUT:
+						PostMessage(hWnd, WM_COMMAND, ID_NSCRMENU_CUT, 0);
+						break;
+					case ID_ACCELERATOR_COPY:
+						PostMessage(hWnd, WM_COMMAND, ID_NSCRMENU_COPY, 0);
+						break;
+					case ID_ACCELERATOR_PASTE:
+						PostMessage(hWnd, WM_COMMAND, ID_NSCRMENU_PASTE, 0);
+						break;
+					case ID_ACCELERATOR_DESELECT:
+						PostMessage(hWnd, WM_COMMAND, ID_NSCRMENU_DESELECT, 0);
+						break;
+					case ID_ACCELERATOR_SELECT_ALL:
+						data->selStartX = data->selStartY = 0;
+						data->selEndX = data->nscr.nWidth / 8 - 1;
+						data->selEndY = data->nscr.nHeight / 8 - 1;
+						InvalidateRect(hWnd, NULL, FALSE);
+						break;
+				}
+			}
 			if (HIWORD(wParam) == 0 && lParam == 0) {
 				switch (LOWORD(wParam)) {
 					case ID_FILE_EXPORT:
@@ -488,69 +599,8 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 					case ID_NSCRMENU_COPY:
-					{
-						OpenClipboard(hWnd);
-						EmptyClipboard();
-
-						//clipboard format: "0000", "N", w, h, d
-						int tileX = data->contextHoverX;
-						int tileY = data->contextHoverY;
-						int tilesX = 1, tilesY = 1;
-						if (data->selStartX != -1 && data->selStartY != -1 && data->selEndX != -1 && data->selEndY != -1) {
-							tileX = min(data->selStartX, data->selEndX);
-							tileY = min(data->selStartY, data->selEndY);
-							tilesX = max(data->selStartX, data->selEndX) + 1 - tileX;
-							tilesY = max(data->selStartY, data->selEndY) + 1 - tileY;
-						}
-						HANDLE hString = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 10 + 4 * tilesX * tilesY);
-						LPSTR clip = (LPSTR) GlobalLock(hString);
-						*(DWORD *) clip = 0x30303030;
-						clip[4] = 'N';
-						clip[5] = (tilesX & 0xF) + 0x30;
-						clip[6] = ((tilesX >> 4) & 0xF) + 0x30;
-						clip[7] = (tilesY & 0xF) + 0x30;
-						clip[8] = ((tilesY >> 4) & 0xF) + 0x30;
-
-						int i = 0;
-						for (int y = tileY; y < tileY + tilesY; y++) {
-							for (int x = tileX; x < tileX + tilesX; x++) {
-								WORD d = data->nscr.data[x + y * (data->nscr.nWidth / 8)];
-								clip[9 + i * 4] = (d & 0xF) + 0x30;
-								clip[9 + i * 4 + 1] = ((d >> 4) & 0xF) + 0x30;
-								clip[9 + i * 4 + 2] = ((d >> 8) & 0xF) + 0x30;
-								clip[9 + i * 4 + 3] = ((d >> 12) & 0xF) + 0x30;
-								i++;
-							}
-						}
-
-						HWND hWndNclrEditor = NULL, hWndNcgrEditor = NULL;
-						HWND hWndMain = getMainWindow(hWnd);
-						GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrEditor, 1);
-						GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
-
-						COLOR32 *bm = NULL;
-						if (hWndNclrEditor != NULL && hWndNcgrEditor != NULL) {
-							//to bitmap
-							NSCR *nscr = &data->nscr;
-							NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor))->ncgr;
-							NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(hWndNclrEditor))->nclr;
-
-							//cut selection region out of the image
-							int wholeWidth, wholeHeight, width = tilesX * 8, height = tilesY * 8;
-							COLOR32 *bm = renderNscrBits(nscr, ncgr, nclr, data->tileBase, &wholeWidth, &wholeHeight,
-								-1, -1, -1, 0, -1, -1, -1, -1, TRUE);
-							COLOR32 *sub = ImgCrop(bm, wholeWidth, wholeHeight, tileX * 8, tileY * 8, tilesX * 8, tilesY * 8);
-							ImgSwapRedBlue(sub, tilesX * 8, tilesY * 8);
-							copyBitmap(sub, width, height);
-							free(bm);
-							free(sub);
-						}
-
-						GlobalUnlock(hString);
-						SetClipboardData(CF_TEXT, hString);
-						CloseClipboard();
+						ScrViewerCopy(data);
 						break;
-					}
 					case ID_NSCRMENU_PASTE:
 					{
 						OpenClipboard(hWnd);
@@ -598,7 +648,6 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						break;
 					}
 					case ID_NSCRMENU_DESELECT:
-					{
 						data->selStartX = -1;
 						data->selStartY = -1;
 						data->selEndX = -1;
@@ -606,7 +655,12 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						InvalidateRect(hWnd, NULL, FALSE);
 						SendMessage(data->hWndSelectionSize, WM_SETTEXT, 0, (LPARAM) L"");
 						break;
-					}
+					case ID_NSCRMENU_CUT:
+						ScrViewerCopy(data);
+						ScrViewerErase(data);
+						SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
+						InvalidateRect(hWnd, NULL, FALSE);
+						break;
 					case ID_VIEW_GRIDLINES:
 					case ID_ZOOM_100:
 					case ID_ZOOM_200:
@@ -1271,12 +1325,18 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			InvalidateRect(hWnd, NULL, FALSE);
 			break;
 		}
+		case WM_KEYDOWN:
+		case WM_KEYUP:
+			PostMessage(data->hWnd, msg, wParam, lParam);
+			break;
 		case WM_LBUTTONUP:
 		case WM_LBUTTONDOWN:
 		case WM_RBUTTONUP:
 		{
 			int hoverY = data->hoverY;
 			int hoverX = data->hoverX;
+			SetFocus(hWnd);
+
 			POINT mousePos;
 			GetCursorPos(&mousePos);
 			ScreenToClient(hWnd, &mousePos);
@@ -1301,6 +1361,17 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				if (msg == WM_RBUTTONUP) {
 					//if it is within the colors area, open a color chooser
 					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 2);
+
+					//disable non-applicable options
+					const int needsSel[] = {
+						ID_NSCRMENU_DESELECT, ID_NSCRMENU_CUT, ID_NSCRMENU_COPY,
+						ID_NSCRMENU_FLIPHORIZONTALLY, ID_NSCRMENU_FLIPVERTICALLY,
+						ID_NSCRMENU_MAKEIDENTITY
+					};
+					for (int i = 0; i < sizeof(needsSel) / sizeof(int); i++) {
+						EnableMenuItem(hPopup, needsSel[i], (data->selStartX == -1) ? MF_DISABLED : MF_ENABLED);
+					}
+
 					POINT mouse;
 					GetCursorPos(&mouse);
 					TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWndNscrViewer, NULL);
