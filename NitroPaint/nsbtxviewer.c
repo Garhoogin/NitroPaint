@@ -10,6 +10,7 @@
 #include "ui.h"
 #include "editor.h"
 #include "gdip.h"
+#include "nclr.h"
 
 extern HICON g_appIcon;
 
@@ -245,8 +246,20 @@ LRESULT CALLBACK ListboxDeleteSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 void CreateVramUseWindow(HWND hWndParent, TexArc *nsbtx);
 
+static void ConstructResourceNameFromFilePath(LPCWSTR path, char *out) {
+	LPCWSTR name = GetFileName(path);
+	const WCHAR *lastDot = wcsrchr(name, L'.');
+
+	memset(out, 0, 16);
+	for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
+		if (i == 16) break;
+		if (name + i == lastDot) break; //file extension
+		out[i] = (char) name[i];
+	}
+}
+
 static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PALETTE *palette) {
-	LPWSTR filter = L"NNS TGA Files (*.tga)\0*.tga\0Image Files\0*.png;*.bmp;*.jpg;*.tga;*.gif\0All Files\0*.*\0";
+	LPWSTR filter = FILTER_TEXTURE FILTER_IMAGE FILTER_PALETTE FILTER_ALLFILES;
 	LPWSTR path = openFileDialog(data->hWnd, L"Select Texture Image", filter, L"tga");
 	if (path == NULL) return 0;
 
@@ -264,9 +277,30 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 	int bWidth = 0, bHeight = 0;
 	px = ImgRead(path, &bWidth, &bHeight);
 	if (px == NULL || bWidth == 0 || bHeight == 0) {
-		//invalid NNS TGA and image.
-		MessageBox(data->hWnd, L"Invalid NNS TGA.", L"Invalid NNS TGA", MB_ICONERROR);
-		succeeded = 0;
+		//invalid NNS TGA and image. Try reading a palette.
+		//MessageBox(data->hWnd, L"Invalid NNS TGA.", L"Invalid NNS TGA", MB_ICONERROR);
+		//succeeded = 0;
+		memset(texels, 0, sizeof(TEXELS));
+		texels->texImageParam = 0; //no texture
+
+		NCLR nclr;
+		int s = PalReadFile(&nclr, path);
+		if (s) {
+			//invalid file.
+			MessageBox(data->hWnd, L"Invalid texture, image, or palette file.", L"Invalid File", MB_ICONERROR);
+			succeeded = 0;
+		} else {
+			//copy out
+			palette->nColors = nclr.nColors;
+			palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
+			memcpy(palette->pal, nclr.colors, palette->nColors * sizeof(COLOR));
+
+			//name
+			ConstructResourceNameFromFilePath(path, palette->name);
+			
+			succeeded = 1;
+			ObjFree(&nclr.header);
+		}
 	} else if (!TxDimensionIsValid(bWidth) || (bWidth > 1024 || bHeight > 1024)) {
 		//invalid dimension.
 		MessageBox(data->hWnd, L"Textures must have dimensions as powers of two greater than or equal to 8, and not exceeding 1024.", L"Invalid dimensions", MB_ICONERROR);
@@ -327,15 +361,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 			}
 
 			//texture name
-			LPCWSTR name = GetFileName(path);
-			const WCHAR *lastDot = wcsrchr(name, L'.');
-
-			memset(texels->name, 0, 16);
-			for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
-				if (i == 16) break;
-				if (name + i == lastDot) break; //file extension
-				texels->name[i] = (char) name[i];
-			}
+			ConstructResourceNameFromFilePath(path, texels->name);
 		} else {
 			succeeded = 0;
 		}
@@ -527,20 +553,28 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						if (s) {
 							int selectedPalette = GetListBoxSelection(data->hWndPaletteSelect);
 							int selectedTexture = GetListBoxSelection(data->hWndTextureSelect);
+
 							TEXELS *destTex = data->nsbtx.textures + selectedTexture;
 							PALETTE *destPal = data->nsbtx.palettes + selectedPalette;
-							int oldTexImageParam = destTex->texImageParam;
-							memcpy(texels.name, destTex->name, 16);
-							if (destTex->cmp) free(destTex->cmp);
-							memcpy(destTex, &texels, sizeof(TEXELS));
+
+							if (FORMAT(texels.texImageParam) != 0) {
+								//only replace texture if there's one to replace it with
+								int oldTexImageParam = destTex->texImageParam;
+								memcpy(texels.name, destTex->name, 16);
+								if (destTex->cmp) free(destTex->cmp);
+								memcpy(destTex, &texels, sizeof(TEXELS));
+
+								//keep flipping, repeat, and transfomation
+								int mask = 0xC00F0000;
+								destTex->texImageParam = (oldTexImageParam & mask) | (destTex->texImageParam & ~mask);
+							}
+
 							if (FORMAT(texels.texImageParam) != CT_DIRECT) {
 								memcpy(palette.name, destPal->name, 16);
 								free(destPal->pal);
 								memcpy(destPal, &palette, sizeof(PALETTE));
 							}
-							//keep flipping, repeat, and transfomation
-							int mask = 0xC00F0000;
-							destTex->texImageParam = (oldTexImageParam & mask) | (destTex->texImageParam & ~mask);
+
 							InvalidateRect(hWnd, NULL, TRUE);
 						}
 					} else if (hWndControl == data->hWndExportAll) {
@@ -613,9 +647,10 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							int texImageParam = texels.texImageParam;
 							int fmt = FORMAT(texImageParam);
 							int hasPalette = fmt != CT_DIRECT;
+							int hasTexel = fmt != 0;
 
 							//add texel
-							{
+							if (hasTexel) {
 								//update TexArc
 								int texIndex = TexarcAddTexture(&data->nsbtx, &texels);
 								if (texIndex != -1) {

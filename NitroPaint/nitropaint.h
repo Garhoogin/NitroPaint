@@ -57,16 +57,42 @@ typedef struct {
 //WM_COPYDATA types
 #define NPMSG_OPENFILE       1
 
+//common filter names
+#define FILTER_NAME_PALETTE        L"Palette Files"
+#define FILTER_NAME_CHARACTER      L"Graphics Files"
+#define FILTER_NAME_SCREEN         L"Screen Files"
+#define FILTER_NAME_CELL           L"Cell Files"
+#define FILTER_NAME_ANIM           L"Animation Files"
+#define FILTER_NAME_COMBO2D        L"Combination Files"
+#define FILTER_NAME_TEXARC         L"Texture Archives"
+#define FILTER_NAME_TEXTURE        L"Texture Files"
+#define FILTER_NAME_ALL            L"All Supported Files"
+#define FILTER_NAME_IMAGE          L"Supported Image Files"
+
+//common filter file extensions
+#define FILTER_EXTS_PALETTE        L"*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pc;*.5pl;*.ntfp;*.nbfp;*.pltt;*.bin"
+#define FILTER_EXTS_CHARACTER      L"*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.bin"
+#define FILTER_EXTS_SCREEN         L"*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.bin"
+#define FILTER_EXTS_CELL           L"*.ncer;*.recn;*.bin"
+#define FILTER_EXTS_ANIM           L"*.nanr;*.rnan;*.bin"
+#define FILTER_EXTS_COMBO2D        L"*.mbb;*.dat;*.bnr;*.bin"
+#define FILTER_EXTS_TEXARC         L"*.nsbtx;*.nsbmd;*.bmd"
+#define FILTER_EXTS_TEXTURE        L"*.tga;*.5tx;*.tds;*.nnstga"
+#define FILTER_EXTS_IMAGE          L"*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga"
+#define FILTER_EXTS_ALL            L"*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga;*.5tx;*.tds"
+
 //common filters
-#define FILTER_PALETTE    L"Palette Files (*.nclr, *.rlcn, *.ncpr, *.rpcn, *.ncl, *.icl, *.acl, *.5pl, *.5pc, *.ntfp, *.nbfp, *.pltt, *.bin)\0*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pc;*.5pl;*ncl.bin;*.ntfp;*.nbfp;*.pltt;*.bin\0"
-#define FILTER_CHARACTER  L"Graphics Files (*.ncgr, *.rgcn, *.ncbr, *.ncg, *.icg, *.acg, *.nbfc, *.char, *.bin)\0*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.bin\0"
-#define FILTER_SCREEN     L"Screen Files (*.nscr, *.rcsn, *.nsc, *.isc, *.asc, *.nbfs, *.bin)\0*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.bin\0"
-#define FILTER_CELL       L"Cell Files (*.ncer, *.recn, *.bin)\0*.ncer;*.recn;*.bin\0"
-#define FILTER_ANIM       L"Animation Files (*.nanr, *.rnan, *.bin)\0*.nanr;*.rnan;*.bin\0"
-#define FILTER_COMBO2D    L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0"
-#define FILTER_TEXARC     L"Texture Archives (*.nsbtx, *.nsbmd, *.bmd)\0*.nsbtx;*.nsbmd;*.bmd\0"
-#define FILTER_TEXTURE    L"Textures (*.tga, *.5tx, *.tds)\0*.tga;*.5tx;*.tds\0"
-#define FILTER_ALL        L"All Supported Files\0*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga;*.5tx;*.tds\0"
+#define FILTER_PALETTE    FILTER_NAME_PALETTE   L"\0" FILTER_EXTS_PALETTE   L"\0"
+#define FILTER_CHARACTER  FILTER_NAME_CHARACTER L"\0" FILTER_EXTS_CHARACTER L"\0"
+#define FILTER_SCREEN     FILTER_NAME_SCREEN    L"\0" FILTER_EXTS_SCREEN    L"\0"
+#define FILTER_CELL       FILTER_NAME_CELL      L"\0" FILTER_EXTS_CELL      L"\0"
+#define FILTER_ANIM       FILTER_NAME_ANIM      L"\0" FILTER_EXTS_ANIM      L"\0"
+#define FILTER_COMBO2D    FILTER_NAME_COMBO2D   L"\0" FILTER_EXTS_COMBO2D   L"\0"
+#define FILTER_TEXARC     FILTER_NAME_TEXARC    L"\0" FILTER_EXTS_TEXARC    L"\0"
+#define FILTER_TEXTURE    FILTER_NAME_TEXTURE   L"\0" FILTER_EXTS_TEXTURE   L"\0"
+#define FILTER_ALL        FILTER_NAME_ALL       L"\0" FILTER_EXTS_ALL       L"\0"
+#define FILTER_IMAGE      FILTER_NAME_IMAGE     L"\0" FILTER_EXTS_IMAGE     L"\0"
+#define FILTER_ALLFILES   L"All Files\0*.*\0"
 
 //
 // Register a generic window class.
