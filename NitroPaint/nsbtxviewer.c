@@ -4,6 +4,7 @@
 #include <Shlobj.h>
 
 #include "nsbtxviewer.h"
+#include "textureeditor.h"
 #include "nitropaint.h"
 #include "resource.h"
 #include "ui.h"
@@ -244,6 +245,107 @@ LRESULT CALLBACK ListboxDeleteSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 void CreateVramUseWindow(HWND hWndParent, TexArc *nsbtx);
 
+static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PALETTE *palette) {
+	LPWSTR filter = L"NNS TGA Files (*.tga)\0*.tga\0Image Files\0*.png;*.bmp;*.jpg;*.tga;*.gif\0All Files\0*.*\0";
+	LPWSTR path = openFileDialog(data->hWnd, L"Select Texture Image", filter, L"tga");
+	if (path == NULL) return 0;
+
+	//read texture
+	int s = TxReadFileDirect(texels, palette, path);
+	if (!s) {
+		//success: return
+		free(path);
+		return 1;
+	}
+
+	//invalid NNS TGA. try reading as an image file and convert on the spot.
+	int succeeded = 0;
+	COLOR32 *px;
+	int bWidth = 0, bHeight = 0;
+	px = ImgRead(path, &bWidth, &bHeight);
+	if (px == NULL || bWidth == 0 || bHeight == 0) {
+		//invalid NNS TGA and image.
+		MessageBox(data->hWnd, L"Invalid NNS TGA.", L"Invalid NNS TGA", MB_ICONERROR);
+		succeeded = 0;
+	} else if (!TxDimensionIsValid(bWidth) || (bWidth > 1024 || bHeight > 1024)) {
+		//invalid dimension.
+		MessageBox(data->hWnd, L"Textures must have dimensions as powers of two greater than or equal to 8, and not exceeding 1024.", L"Invalid dimensions", MB_ICONERROR);
+		succeeded = 0;
+		free(px);
+	} else {
+		//must be converted.
+		HWND hWndMain = getMainWindow(data->hWnd);
+		NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+		HWND hWndMdi = nitroPaintStruct->hWndMdi;
+
+		free(px); //for validation
+
+		//create temporary texture editor
+		SendMessage(hWndMdi, WM_SETREDRAW, FALSE, 0);
+		int verySmall = -(CW_USEDEFAULT >> 1); //(smallest power of 2 that won't be picked up as CW_USEDEFAULT)
+		HWND hWndTextureEditor = CreateTextureEditor(verySmall, verySmall, 0, 0, hWndMdi, path);
+		ShowWindow(hWndTextureEditor, SW_HIDE);
+		TEXTUREEDITORDATA *teData = (TEXTUREEDITORDATA *) EditorGetData(hWndTextureEditor);
+		
+		//open conversion dialog
+		HWND hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
+			WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
+			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
+		teData->hWndConvertDialog = hWndConvertDialog; //prevent from redrawing the whole screen
+		SendMessage(hWndMdi, WM_SETREDRAW, TRUE, 0);
+		SetWindowLongPtr(hWndConvertDialog, 0, (LONG_PTR) teData);
+		SendMessage(hWndConvertDialog, NV_INITIALIZE, 0, 0);
+		DoModal(hWndConvertDialog);
+
+		//we can check the isNitro field of the texture editor to determine if the conversion succeeded.
+		if (teData->isNitro) {
+			succeeded = 1;
+
+			//copy data
+			TEXELS *srcTexel = &teData->texture.texture.texels;
+			PALETTE *srcPal = &teData->texture.texture.palette;
+
+			int texImageParam = srcTexel->texImageParam;
+			int texelSize = TxGetTexelSize(TEXW(texImageParam), srcTexel->height, texImageParam);
+			texels->texImageParam = texImageParam;
+			texels->height = srcTexel->height;
+			texels->texel = (unsigned char *) calloc(texelSize, 1);
+			memcpy(texels->texel, srcTexel->texel, texelSize);
+
+			//4x4 palette index
+			if (FORMAT(texImageParam) == CT_4x4) {
+				texels->cmp = (uint16_t *) calloc(texelSize / 2, 1);
+				memcpy(texels->cmp, srcTexel->cmp, texelSize / 2);
+			}
+
+			//palette
+			if (FORMAT(texImageParam) != CT_DIRECT) {
+				palette->nColors = srcPal->nColors;
+				palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
+				memcpy(palette->pal, srcPal->pal, palette->nColors * sizeof(COLOR));
+				memcpy(palette->name, srcPal->name, sizeof(palette->name));
+			}
+
+			//texture name
+			LPCWSTR name = GetFileName(path);
+			const WCHAR *lastDot = wcsrchr(name, L'.');
+
+			memset(texels->name, 0, 16);
+			for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
+				if (i == 16) break;
+				if (name + i == lastDot) break; //file extension
+				texels->name[i] = (char) name[i];
+			}
+		} else {
+			succeeded = 0;
+		}
+		DestroyChild(hWndTextureEditor);
+	}
+
+	free(path);
+	return succeeded;
+}
+
 LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NSBTXVIEWERDATA *data = (NSBTXVIEWERDATA *) EditorGetData(hWnd);
 	switch (msg) {
@@ -419,15 +521,10 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					}
 				} else if (m == BN_CLICKED) {
 					if (hWndControl == data->hWndReplaceButton) {
-						LPWSTR path = openFileDialog(hWnd, L"Open Nitro TGA", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
-						if (!path) break;
-
 						TEXELS texels;
 						PALETTE palette;
-						int s = TxReadFileDirect(&texels, &palette, path);
+						int s = TexarcViewerPromptTexImage(data, &texels, &palette);
 						if (s) {
-							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
-						} else {
 							int selectedPalette = SendMessage(data->hWndPaletteSelect, LB_GETCURSEL, 0, 0);
 							int selectedTexture = SendMessage(data->hWndTextureSelect, LB_GETCURSEL, 0, 0);
 							TEXELS *destTex = data->nsbtx.textures + selectedTexture;
@@ -446,8 +543,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							destTex->texImageParam = (oldTexImageParam & mask) | (destTex->texImageParam & ~mask);
 							InvalidateRect(hWnd, NULL, TRUE);
 						}
-
-						free(path);
 					} else if (hWndControl == data->hWndExportAll) {
 						WCHAR path[MAX_PATH]; //we will overwrite this with the *real* path
 
@@ -508,16 +603,11 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						HWND hWndMain = getMainWindow(hWnd);
 						CreateVramUseWindow(hWndMain, &data->nsbtx);
 					} else if (hWndControl == data->hWndAddButton) {
-						LPWSTR path = openFileDialog(hWnd, L"Open Nitro TGA", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
-						if (!path) break;
-
 						//read texture
 						TEXELS texels;
 						PALETTE palette;
-						int s = TxReadFileDirect(&texels, &palette, path);
+						int s = TexarcViewerPromptTexImage(data, &texels, &palette);
 						if (s) {
-							MessageBox(hWnd, L"Invalid Nitro TGA.", L"Invalid Nitro TGA", MB_ICONERROR);
-						} else {
 							//add
 							WCHAR strbuf[17] = { 0 };
 							int texImageParam = texels.texImageParam;
@@ -570,8 +660,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//invalidate
 							InvalidateRect(hWnd, NULL, TRUE);
 						}
-
-						free(path);
 					}
 				} else if (m == LBN_DBLCLK) {
 					if (hWndControl == data->hWndTextureSelect || hWndControl == data->hWndPaletteSelect) {
@@ -781,7 +869,7 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			int listViewHeight = (height - (22 * 2)) / 2;
 			MoveWindow(hWndInfoButton, width - 25, 0, 25, 22, TRUE);
 			MoveWindow(hWndTexList, 0, 22, width, listViewHeight, TRUE);
-			MoveWindow(hWndPalLabel, 5, 22 + listViewHeight, width - 5, 22, FALSE);
+			MoveWindow(hWndPalLabel, 5, 22 + listViewHeight, width - 5, 22, TRUE);
 			MoveWindow(hWndPalList, 0, 44 + listViewHeight, width, height - (44 + listViewHeight), TRUE);
 			break;
 		}
