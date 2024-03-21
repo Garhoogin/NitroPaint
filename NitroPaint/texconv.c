@@ -1000,7 +1000,9 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 
 		for (int j = 0; j < nTiles; j++) {
 			uint16_t idx = pidx[j];
-			if (COMP_INDEX(idx) >= i) pidx[j]--; //must check equal if second half of palette used
+			if (COMP_INDEX(idx) >= i && tiles[j].transparentPixels < 16) {
+				pidx[j]--; //must check equal if second half of palette used
+			}
 		}
 
 		i -= 2;
