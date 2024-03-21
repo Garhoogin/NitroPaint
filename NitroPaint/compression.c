@@ -1485,6 +1485,12 @@ static int CxiMvdkIsValidDeflate(const unsigned char *buffer, unsigned int size)
 		}
 	}
 	free(work);
+
+	//test buffer remaining (allow up to 3 bytes trailing for 4-byte aligned file size)
+	unsigned int nConsumed = pos - buffer;
+	nConsumed = (nConsumed + 3) & ~3;
+	if (nConsumed < ((size + 3) & ~3)) return 0; //bytes unconsumed
+
 	return 1;
 }
 
@@ -1500,7 +1506,7 @@ int CxIsCompressedMvDK(const unsigned char *buffer, unsigned int size) {
 	switch (type) {
 		case MVDK_DUMMY:
 			//check size
-			return ((size - 4 + 3) & ~3) == ((uncompSize + 3) & ~3);
+			return (((size - 4 + 3) & ~3) == ((uncompSize + 3) & ~3)) && ((size - 4) >= uncompSize);
 		case MVDK_LZ:
 			return CxiMvdkIsValidLZ(buffer, size);
 		case MVDK_RLE:
