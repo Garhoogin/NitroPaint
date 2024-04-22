@@ -13,6 +13,13 @@
 #define BGGEN_FORMAT_BIN             6          //raw
 #define BGGEN_FORMAT_BIN_COMPRESSED  7          //raw compresed
 
+typedef struct BgDctBlock_ {
+	float blockY[64];
+	float blockI[64];
+	float blockQ[64];
+	float blockA[64];
+} BgDctBlock;
+
 //
 // Structure used for character compression. Fill them out and pass them to
 // BgPerformCharacterCompression.
@@ -20,6 +27,7 @@
 typedef struct BgTile_ {
 	COLOR32 px[64];               //RGBA colors: redundant, speed
 	RxYiqColor pxYiq[64];         //YIQA colors
+	BgDctBlock dct;               //DCT coefficients
 	unsigned char indices[64];    //color indices per pixel
 	int masterTile;               //index of master tile for this tile 
 	int nRepresents;              //number of tiles this tile represents

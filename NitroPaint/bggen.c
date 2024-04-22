@@ -4,31 +4,157 @@
 #include "color.h"
 #include "palette.h"
 
+//cosine table: [frequency][t]
+static const float sCosTable[8][8] = {
+	{  1.000000f,  1.000000f,  1.000000f,  1.000000f,  1.000000f,  1.000000f,  1.000000f,  1.000000f },
+	{  0.980785f,  0.831470f,  0.555570f,  0.195090f, -0.195090f, -0.555570f, -0.831470f, -0.980785f },
+	{  0.923880f,  0.382683f, -0.382683f, -0.923880f, -0.923880f, -0.382683f,  0.382683f,  0.923880f },
+	{  0.831470f, -0.195090f, -0.980785f, -0.555570f,  0.555570f,  0.980785f,  0.195090f, -0.831470f },
+	{  0.707107f, -0.707107f, -0.707107f,  0.707107f,  0.707107f, -0.707107f, -0.707107f,  0.707107f },
+	{  0.555570f, -0.980785f,  0.195090f,  0.831470f, -0.831470f, -0.195090f,  0.980785f, -0.555570f },
+	{  0.382683f, -0.923880f,  0.923880f, -0.382683f, -0.382683f,  0.923880f, -0.923880f,  0.382683f },
+	{  0.195090f, -0.555570f,  0.831470f, -0.980785f,  0.980785f, -0.831470f,  0.555570f, -0.195090f }
+};
 
-static float BgiTileDifferenceFlip(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char mode) {
-	double err = 0.0;
-	COLOR32 *px1 = t1->px;
-	double yw2 = reduction->yWeight * reduction->yWeight;
-	double iw2 = reduction->iWeight * reduction->iWeight;
-	double qw2 = reduction->qWeight * reduction->qWeight;
+//coefficient weightings
+static const float sWeightLuma[64] = {
+	0.7500f, 1.0000f, 0.8571f, 0.8571f, 0.6667f, 0.5000f, 0.2449f, 0.1667f,
+	1.0000f, 1.0000f, 0.9231f, 0.7059f, 0.5455f, 0.3429f, 0.1875f, 0.1304f,
+	0.8571f, 0.9231f, 0.7500f, 0.5455f, 0.3243f, 0.2182f, 0.1538f, 0.1263f,
+	0.8571f, 0.7059f, 0.5455f, 0.4138f, 0.2143f, 0.1875f, 0.1379f, 0.1224f,
+	0.6667f, 0.5455f, 0.3243f, 0.2143f, 0.1765f, 0.1481f, 0.1165f, 0.1071f,
+	0.5000f, 0.3429f, 0.2182f, 0.1875f, 0.1481f, 0.1154f, 0.0992f, 0.1200f,
+	0.2449f, 0.1875f, 0.1538f, 0.1379f, 0.1165f, 0.0992f, 0.1000f, 0.1165f,
+	0.1667f, 0.1304f, 0.1263f, 0.1224f, 0.1071f, 0.1200f, 0.1165f, 0.1212f
+};
 
-	for (int y = 0; y < 8; y++) {
-		for (int x = 0; x < 8; x++) {
+static const float sWeightChroma[64] = {
+	0.7059f, 0.6667f, 0.5000f, 0.2553f, 0.1212f, 0.1212f, 0.1212f, 0.1212f,
+	0.6667f, 0.5714f, 0.4615f, 0.1818f, 0.1212f, 0.1212f, 0.1212f, 0.1212f,
+	0.5000f, 0.4615f, 0.2143f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f,
+	0.2553f, 0.1818f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f,
+	0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f,
+	0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f,
+	0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f,
+	0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f, 0.1212f
+};
 
-			int x2 = (mode & TILE_FLIPX) ? (7 - x) : x;
-			int y2 = (mode & TILE_FLIPY) ? (7 - y) : y;
+static void BgiComputeDctBlock(float *in, float *out) {
+	for (int ky = 0; ky < 8; ky++) {
+		for (int kx = 0; kx < 8; kx++) {
 
-			RxYiqColor *yiq1 = &t1->pxYiq[x + y * 8];
-			RxYiqColor *yiq2 = &t2->pxYiq[x2 + y2 * 8];
-			double dy = reduction->lumaTable[yiq1->y] - reduction->lumaTable[yiq2->y];
-			double di = yiq1->i - yiq2->i;
-			double dq = yiq1->q - yiq2->q;
-			double da = yiq1->a - yiq2->a;
-			err += yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + 1600 * da * da;
+			double sum = 0.0;
+			for (int y = 0; y < 8; y++) {
+				double cosY = sCosTable[ky][y];
+				for (int x = 0; x < 8; x++) {
+					double cosX = sCosTable[kx][x];
+
+					sum += in[y * 8 + x] * cosX * cosY;
+				}
+			}
+
+			//if first row/column, halve.
+			if (kx == 0) sum *= 0.5;
+			if (ky == 0) sum *= 0.5;
+			out[ky * 8 + kx] = (float) (sum * 0.0625);
+		}
+	}
+}
+
+static void BgiComputeDct(RxReduction *reduction, BgTile *tile) {
+	//compute DCT block for Y, I, Q
+	float blockY[64], blockI[64], blockQ[64], blockA[64];
+
+	for (int i = 0; i < 64; i++) {
+		double y = reduction->lumaTable[tile->pxYiq[i].y];
+		if (tile->pxYiq[i].a < 128) {
+			//A < 128: turn black transparent
+			y = 0.0;
+			blockA[i] = 0;
+		} else {
+			//else turn full opaque
+			blockA[i] = 255;
+		}
+
+		if (y > 0.0) {
+			blockY[i] = (float) y;
+			blockI[i] = (float) tile->pxYiq[i].i;
+			blockQ[i] = (float) tile->pxYiq[i].q;
+		} else {
+			blockY[i] = 0.0f;
+			blockI[i] = 0.0f;
+			blockQ[i] = 0.0f;
 		}
 	}
 
-	return (float) err;
+	//compute output blocks
+	BgiComputeDctBlock(blockY, tile->dct.blockY);
+	BgiComputeDctBlock(blockI, tile->dct.blockI);
+	BgiComputeDctBlock(blockQ, tile->dct.blockQ);
+	BgiComputeDctBlock(blockA, tile->dct.blockA);
+}
+
+static double BgiCompareTilesDct(RxReduction *reduction, BgTile *tile1, BgTile *tile2, unsigned char mode) {
+	//sum of square
+	double error = 0.0;
+
+	for (int i = 0; i < 64; i++) {
+		double block2Y = tile2->dct.blockY[i];
+		double block2I = tile2->dct.blockI[i];
+		double block2Q = tile2->dct.blockQ[i];
+		double block2A = tile2->dct.blockA[i];
+
+		//flip X: negate every odd column
+		if ((mode & TILE_FLIPX) && (i % 2 == 1)) {
+			block2Y = -block2Y, block2I = -block2I, block2Q = -block2Q, block2A = -block2A;
+		}
+
+		//flip Y: negate every odd row
+		if ((mode & TILE_FLIPY) && ((i / 8) % 2 == 1)) {
+			block2Y = -block2Y, block2I = -block2I, block2Q = -block2Q, block2A = -block2A;
+		}
+
+		double dy = sqrt(sWeightLuma[i])   * reduction->yWeight * (tile1->dct.blockY[i] - block2Y);
+		double di = sqrt(sWeightChroma[i]) * reduction->iWeight * (tile1->dct.blockI[i] - block2I);
+		double dq = sqrt(sWeightChroma[i]) * reduction->qWeight * (tile1->dct.blockQ[i] - block2Q);
+		double da = 40.0                                        * (tile1->dct.blockA[i] - block2A);
+
+		//weighted error
+		error += dy * dy + di * di + dq * dq + da * da;
+	}
+
+	return error;
+}
+
+
+static float BgiTileDifferenceFlip(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char mode) {
+	if (1) {
+		double err = 0.0;
+		COLOR32 *px1 = t1->px;
+		double yw2 = reduction->yWeight * reduction->yWeight;
+		double iw2 = reduction->iWeight * reduction->iWeight;
+		double qw2 = reduction->qWeight * reduction->qWeight;
+
+		for (int y = 0; y < 8; y++) {
+			for (int x = 0; x < 8; x++) {
+
+				int x2 = (mode & TILE_FLIPX) ? (7 - x) : x;
+				int y2 = (mode & TILE_FLIPY) ? (7 - y) : y;
+
+				RxYiqColor *yiq1 = &t1->pxYiq[x + y * 8];
+				RxYiqColor *yiq2 = &t2->pxYiq[x2 + y2 * 8];
+				double dy = reduction->lumaTable[yiq1->y] - reduction->lumaTable[yiq2->y];
+				double di = yiq1->i - yiq2->i;
+				double dq = yiq1->q - yiq2->q;
+				double da = yiq1->a - yiq2->a;
+				err += yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + 1600 * da * da;
+			}
+		}
+
+		return (float) err;
+	} else {
+		return (float) BgiCompareTilesDct(reduction, t1, t2, mode);
+	}
 }
 
 static float BgiTileDifference(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char *flipMode) {
@@ -442,6 +568,9 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 			//YIQ color
 			RxConvertRgbToYiq(col, &tile->pxYiq[j]);
 		}
+
+		//compute DCT
+		BgiComputeDct(reduction, tile);
 
 		tile->masterTile = i;
 		tile->nRepresents = 1;
