@@ -1464,7 +1464,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						memmove(cell->attr + nObj * 3, cell->attr, (cell->nAttribs - nObj) * (3 * sizeof(uint16_t))); //slide over
 						break;
 					case 2: //append
-						attrBase = cell->nAttribs;
+						attrBase = cell->nAttribs * 3;
 						cell->nAttribs += nObj;
 						cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
 						break;
