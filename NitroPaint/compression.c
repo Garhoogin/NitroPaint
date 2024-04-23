@@ -316,7 +316,7 @@ static unsigned int CxiCompareMemory(const unsigned char *b1, const unsigned cha
 }
 
 unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize){
-	int compressedMaxSize = 4 + 9 * ((size + 7) >> 3);
+	int compressedMaxSize = 4 + 3 + 9 * ((size + 7) >> 3);
 	char *compressed = (char *) malloc(compressedMaxSize);
 	char *compressedBase = compressed;
 	*(unsigned *) compressed = size << 8;
@@ -341,8 +341,7 @@ unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsi
 			head <<= 1;
 
 			if (isDone) {
-				*(compressed++) = 0;
-				nSize++;
+				//keep shifting the head byte into place
 				continue;
 			}
 
@@ -394,6 +393,13 @@ unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsi
 		*headLocation = head;
 		if (nProcessedBytes >= size) break;
 	}
+
+	//pad to multiple of 4
+	while (nSize & 3) {
+		*(compressed++) = 0;
+		nSize++;
+	}
+
 	*compressedSize = nSize;
 	return realloc(compressedBase, nSize);
 
