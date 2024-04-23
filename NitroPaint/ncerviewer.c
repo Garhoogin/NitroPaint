@@ -164,7 +164,7 @@ void UpdateEnabledControls(HWND hWnd) {
 }
 
 void UpdateControls(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 
 	NCER_CELL *cell = data->ncer.cells + data->cell;
 	NCER_CELL_INFO info;
@@ -203,7 +203,7 @@ void UpdateControls(HWND hWnd) {
 }
 
 void UpdateOamDropdown(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 	SendMessage(data->hWndOamDropdown, CB_RESETCONTENT, 0, 0);
 
 	WCHAR name[13];
@@ -305,7 +305,7 @@ void ncerEditorUndoRedo(NCERVIEWERDATA *data) {
 }
 
 void ncerEditorUndo(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 	undo(&data->undo);
 
 	ncerEditorUndoRedo(data);
@@ -315,7 +315,7 @@ void ncerEditorUndo(HWND hWnd) {
 }
 
 void ncerEditorRedo(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 	redo(&data->undo);
 
 	ncerEditorUndoRedo(data);
@@ -638,7 +638,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				HWND hWndControl = (HWND) lParam;
 				WORD notification = HIWORD(wParam);
 
-				HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+				HWND hWndMain = getMainWindow(hWnd);
 				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 
 				int changed = 0;
@@ -990,7 +990,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 						if (!location) break;
 
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND hWndMain = getMainWindow(hWnd);
 						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
@@ -1003,12 +1003,10 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						CellDecodeOamAttributes(&info, cell, data->oam);
 
 						if (hWndNclrViewer) {
-							NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
-							nclr = &nclrViewerData->nclr;
+							nclr = (NCLR*) EditorGetObject(hWndNclrViewer);
 						}
 						if (hWndNcgrViewer) {
-							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
-							ncgr = &ncgrViewerData->ncgr;
+							ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
 						}
 
 						COLOR32 *bits = (COLOR32 *) calloc(256 * 512, sizeof(COLOR32));
@@ -1026,7 +1024,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_DESTROY:
 		{
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 			nitroPaintStruct->hWndNcerViewer = NULL;
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
@@ -1095,19 +1093,15 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 	switch (msg) {
 		case WM_NCCREATE:
-		{
 			//allocate data
 			data = (CELLGENDATA *) calloc(1, sizeof(CELLGENDATA));
 			data->lastOptimization = 100;
 			data->lastBoundType = 0;
 			SetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR), (LONG_PTR) data);
 			break;
-		}
 		case WM_CREATE:
-		{
 			SetWindowSize(hWnd, 988, 369);
 			break;
-		}
 		case WM_TIMER:
 		{
 			int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
@@ -1329,8 +1323,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			//lastly, try populate character base
 			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT), hWndNcgrEditor;
 			GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
-			NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor);
-			NCGR *ncgr = &ncgrViewerData->ncgr;
+			NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrEditor);
 
 			int lastIndex = -1;
 			unsigned char zeroChar[64] = { 0 };
