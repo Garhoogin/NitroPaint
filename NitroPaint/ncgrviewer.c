@@ -197,6 +197,7 @@ typedef struct CHARIMPORTDATA_ {
 
 LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+	float dpiScale = GetDpiScale();
 
 	switch (msg) {
 		case WM_CREATE:
@@ -205,7 +206,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->frameData.contentHeight = 256;
 			data->frameData.paddingBottom = 21 * 2;
 			data->showBorders = 1;
-			data->scale = 1;
+			data->scale = dpiScale > 1.0f ? 2 : 1; //DPI scale > 1: default 200%
 			data->selectedPalette = 0;
 			data->hoverX = -1;
 			data->hoverY = -1;
@@ -248,11 +249,13 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
+			int controlHeight = (int) (dpiScale * 21.0f + 0.5f);
+			int controlWidth = (int) (dpiScale * 100.0f + 0.5f);
 			data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
 
 			int width = data->frameData.contentWidth + GetSystemMetrics(SM_CXVSCROLL) + 4;
-			int height = data->frameData.contentHeight + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for combobox;
+			int height = data->frameData.contentHeight + 3 * controlHeight + GetSystemMetrics(SM_CYHSCROLL) + 4;
 			if (width < 255 + 4) width = 255 + 4; //min width for controls
 			SetWindowSize(hWnd, width, height);
 
@@ -471,14 +474,19 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
+
+			int controlHeight = (int) (dpiScale * 21.0f + 0.5f);
+			int controlWidth = (int) (dpiScale * 100.0f + 0.5f);
 			int height = rcClient.bottom - rcClient.top;
-			MoveWindow(data->hWndViewer, 0, 0, rcClient.right, height - 42 - 22, FALSE);
-			MoveWindow(data->hWndCharacterLabel, 0, height - 42 - 22, 100, 22, TRUE);
-			MoveWindow(data->hWndPaletteDropdown, 0, height - 21, 150, 21, TRUE);
-			MoveWindow(data->hWndWidthDropdown, 50, height - 42, 100, 21, TRUE);
-			MoveWindow(data->hWndWidthLabel, 0, height - 42, 50, 21, FALSE);
-			MoveWindow(data->hWndExpand, 155, height - 42, 100, 22, TRUE);
-			MoveWindow(data->hWnd8bpp, 155, height - 21, 100, 21, TRUE);
+			int viewHeight = height - 3 * controlHeight;
+
+			MoveWindow(data->hWndViewer, 0, 0, rcClient.right, viewHeight, FALSE);
+			MoveWindow(data->hWndCharacterLabel, 0, viewHeight, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndPaletteDropdown, 0, viewHeight + controlHeight * 2, controlWidth * 3 / 2, controlHeight, TRUE);
+			MoveWindow(data->hWndWidthDropdown, controlWidth / 2, viewHeight + controlHeight, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndWidthLabel, 0, viewHeight + controlHeight, controlWidth / 2, controlHeight, FALSE);
+			MoveWindow(data->hWndExpand, 5 + controlWidth * 3 / 2, viewHeight + controlHeight, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWnd8bpp, 5 + controlWidth * 3 / 2, viewHeight + controlHeight * 2, controlWidth, controlHeight, TRUE);
 			return DefMDIChildProc(hWnd, msg, wParam, lParam);
 		}
 	}

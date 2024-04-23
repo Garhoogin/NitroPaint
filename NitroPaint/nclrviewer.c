@@ -1569,7 +1569,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			int hoverX = data->hoverX;
 
 			//if it is within the colors area, open a color chooser
-			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < 256) {
+			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < 16 * COLOR_SIZE) {
 				int x = mousePos.x / 16;
 				int y = mousePos.y / 16;
 				int index = y * 16 + x;
