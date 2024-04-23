@@ -54,6 +54,27 @@ extern EXCEPTION_DISPOSITION __cdecl ExceptionHandler(EXCEPTION_RECORD *exceptio
 
 HANDLE g_hEvent = NULL;
 
+float GetDpiScale(void) {
+	static int knownDpi = 0;
+	static float scale = 1.0f;
+
+	//if not yet calculated, return
+	if (!knownDpi) {
+		
+		if (!g_configuration.dpiAware) {
+			scale = 1.0f; //no awareness
+		} else {
+			HDC hDC = GetDC(NULL);
+			scale = ((float) GetDeviceCaps(hDC, LOGPIXELSX)) / 96.0f;
+			ReleaseDC(NULL, hDC);
+		}
+		knownDpi = 1;
+
+	}
+
+	return scale;
+}
+
 LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension) {
 	OPENFILENAME o = { 0 };
 	WCHAR fbuff[MAX_PATH + 1] = { 0 };

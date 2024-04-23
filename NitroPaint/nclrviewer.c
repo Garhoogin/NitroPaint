@@ -18,7 +18,9 @@
 #include "preview.h"
 
 //size of a color in the editor
-#define COLOR_SIZE         16
+#define COLOR_SIZE_DEFAULT  16
+#define COLOR_SIZE          sColorCellSize
+static int sColorCellSize = COLOR_SIZE_DEFAULT; //size of one color cell entry
 
 extern HICON g_appIcon;
 
@@ -997,7 +999,7 @@ static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, i
 	}
 
 	SetBkColor(hDC, RGB(0, 0, 0));
-	for (int y = yMin / 16; y < nRows && y < (yMax + 15) / 16; y++) {
+	for (int y = yMin / COLOR_SIZE; y < nRows && y < (yMax + COLOR_SIZE - 1) / COLOR_SIZE; y++) {
 		for (int x = 0; x < 16; x++) {
 			int index = x + y * 16;
 			int colorIndex = index;
@@ -1266,14 +1268,17 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->selStart = -1;
 			data->selEnd = -1;
 
+			//get UI scale
+			sColorCellSize = (int) (GetDpiScale() * COLOR_SIZE + 0.5);
+
 			data->frameData.contentWidth = 0; //prevent horizontal scrollbar
-			data->frameData.contentHeight = 256;
+			data->frameData.contentHeight = 16 * COLOR_SIZE;
 			data->hoverX = -1;
 			data->hoverY = -1;
 			data->hoverIndex = -1;
 
 			PAL_OP *palOp = &data->palOp;
-			palOp->hWndParent = getMainWindow(hWnd);;
+			palOp->hWndParent = getMainWindow(hWnd);
 			palOp->param = (void *) hWnd;
 			palOp->dstOffset = 1;
 			palOp->ignoreFirst = 0;
@@ -1281,6 +1286,13 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			palOp->dstStride = 16;
 			palOp->srcLength = 16;
 			palOp->updateCallback = NclrViewerPalOpUpdateCallback;
+
+			if (data->nclr.nColors <= 256) {
+				SetWindowSize(hWnd, 16 * COLOR_SIZE + 4, 16 * COLOR_SIZE + 4);
+			} else {
+				//account for scrollbar
+				SetWindowSize(hWnd, 16 * COLOR_SIZE + 4 + GetSystemMetrics(SM_CXVSCROLL), 16 * COLOR_SIZE + 4);
+			}
 
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
@@ -1324,9 +1336,11 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 
 			//set appropriate height
-			data->frameData.contentHeight = ((data->nclr.nColors + 15) / 16) * 16;
-			if (data->frameData.contentHeight > 256) {
-				SetWindowSize(hWnd, 256 + 4 + GetSystemMetrics(SM_CXVSCROLL), 257);
+			data->frameData.contentHeight = ((data->nclr.nColors + 15) / 16) * COLOR_SIZE;
+			if (data->nclr.nColors > 256) {
+				SetWindowSize(hWnd, 16 * COLOR_SIZE + 4 + GetSystemMetrics(SM_CXVSCROLL), 16 * COLOR_SIZE + 4);
+			} else {
+				SetWindowSize(hWnd, 16 * COLOR_SIZE + 4, 16 * COLOR_SIZE + 4);
 			}
 
 			//update scroll info
@@ -1392,9 +1406,9 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			int nRows = data->nclr.nColors / 16;
 
 			int hoverX = -1, hoverY = -1, hoverIndex = -1;
-			if (mousePos.x >= 0 && mousePos.x < 256 && mousePos.y >= 0) {
-				hoverX = mousePos.x / 16;
-				hoverY = mousePos.y / 16;
+			if (mousePos.x >= 0 && mousePos.x < (16 * COLOR_SIZE) && mousePos.y >= 0) {
+				hoverX = mousePos.x / COLOR_SIZE;
+				hoverY = mousePos.y / COLOR_SIZE;
 				hoverIndex = hoverX + hoverY * 16;
 				if (hoverY >= nRows) {
 					hoverX = -1, hoverY = -1, hoverIndex = -1;

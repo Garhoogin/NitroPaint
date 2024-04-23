@@ -95,6 +95,11 @@ typedef struct {
 #define FILTER_ALLFILES   L"All Files\0*.*\0"
 
 //
+// Get the DPI scaling for the current monitor.
+//
+float GetDpiScale(void);
+
+//
 // Register a generic window class.
 //
 void RegisterGenericClass(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, int cbWndExtra);
