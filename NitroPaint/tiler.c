@@ -4,8 +4,104 @@ HBITMAP CreateTileBitmap(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX,
 	return CreateTileBitmap2(lpBits, nWidth, nHeight, hiliteX, hiliteY, pOutWidth, pOutHeight, scale, bBorders, 8, FALSE, FALSE);
 }
 
+void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UINT startY, UINT viewWidth, UINT viewHeight, DWORD *lpBits, UINT nWidth, UINT nHeight, int hiliteX, int hiliteY, UINT scale, BOOL bBorders, UINT tileWidth, BOOL bReverseColors, BOOL blend) {
+	unsigned tilesX = nWidth / tileWidth;
+	unsigned tilesY = nHeight / tileWidth;
+	unsigned tileSize = scale * tileWidth;
+
+	for (unsigned int y = startY; y < outHeight && y < (startY + viewHeight); y++) {
+		//is this a border row?
+		if (bBorders) {
+			if ((y % (tileSize + 1)) == 0) {
+				memset(out + y * outWidth, 0, outWidth * sizeof(DWORD));
+				continue;
+			}
+		}
+
+		//tile Y coordinate
+		unsigned int srcY;
+		if (bBorders) {
+			//adjust for gridlines at tileSize intervals
+			srcY = ((y - 1) - (y - 1) / (tileSize + 1)) / scale;
+		} else {
+			srcY = y / scale;
+		}
+		int tileY = srcY / tileWidth;
+
+		//scan tiles horizontally
+		unsigned int baseDestX = !!bBorders;
+		for (unsigned int tileX = 0; tileX < tilesX; tileX++) {
+			
+			//scan horizontally within tile
+			for (unsigned int x = 0; x < tileWidth; x++) {
+				unsigned int tileDestX = baseDestX + x * scale;
+				if (tileDestX >= (startX + viewWidth)) break; //end of line
+
+				unsigned int srcX = tileX * tileWidth + x;
+
+				//get color to render
+				DWORD sample = lpBits[srcY * nWidth + srcX];
+
+				//render horizontal strip
+				for (unsigned int h = 0; h < scale; h++) {
+					unsigned int destX = tileDestX + h;
+					unsigned int destY = y;
+					if (destX < startX || destX >= (startX + viewWidth)) continue;
+
+					DWORD blended = sample;
+
+					//blend with background logic
+					if ((sample & 0xFF000000) == 0) {
+						int cx = destX / (tileWidth / 2);
+						int cy = destY / (tileWidth / 2);
+						int cb = (cx ^ cy) & 1;
+						if (cb) {
+							blended = 0xFFC0C0C0;
+						} else {
+							blended = 0xFFFFFFFF;
+						}
+					} else if (blend && (((sample >> 24) & 0xFF) < 255)) {
+						int alpha = sample >> 24;
+						int cx = destX / (tileWidth / 2);
+						int cy = destY / (tileWidth / 2);
+						int cb = (cx ^ cy) & 1;
+						int bg;
+						if (cb) {
+							bg = 0xFFC0C0C0;
+						} else {
+							bg = 0xFFFFFFFF;
+						}
+
+						int r = ((bg & 0xFF) * (255 - alpha) + (sample & 0xFF) * alpha) >> 8;
+						int g = (((bg >> 8) & 0xFF) * (255 - alpha) + ((sample >> 8) & 0xFF) * alpha) >> 8;
+						int b = (((bg >> 16) & 0xFF) * (255 - alpha) + ((sample >> 16) & 0xFF) * alpha) >> 8;
+						blended = r | (g << 8) | (b << 16) | 0xFF000000;
+					}
+
+					//highlighted tile?
+					if (tileX == hiliteX && tileY == hiliteY) {
+						//bit magic to blend with white
+						blended = (blended & 0xFF000000) | (blended >> 1) | 0x808080;
+					}
+
+					out[destX + destY * outWidth] = blended;
+				}
+			}
+
+			baseDestX += tileWidth * scale + !!bBorders;
+		}
+	}
+
+	if (bReverseColors) {
+		for (unsigned int i = 0; i < outWidth * outHeight; i++) {
+			DWORD d = out[i];
+			d = (d & 0xFF00FF00) | ((d & 0xFF0000) >> 16) | ((d & 0xFF) << 16);
+			out[i] = d;
+		}
+	}
+}
+
 HBITMAP CreateTileBitmap2(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX, int hiliteY, PUINT pOutWidth, PUINT pOutHeight, UINT scale, BOOL bBorders, UINT tileWidth, BOOL bReverseColors, BOOL bAlphaBlend) {
-	if (tileWidth > 8) return NULL;
 	//first off, find the number of tiles.
 	unsigned tilesX = nWidth / tileWidth;
 	unsigned tilesY = nHeight / tileWidth;
@@ -27,94 +123,17 @@ HBITMAP CreateTileBitmap2(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX
 
 	//allocate a buffer for this.
 	LPDWORD lpOutBits = (LPDWORD) calloc(outWidth * outHeight, 4);
-
-	//next, iterate over each tile.
-	for (unsigned int tileY = 0; tileY < tilesY; tileY++) {
-		for (unsigned int tileX = 0; tileX < tilesX; tileX++) {
-			//for this tile, create a 64-dword array to write the tile into.
-			DWORD block[64];
-			unsigned imgX = tileX * tileWidth;
-			unsigned imgY = tileY * tileWidth;
-			unsigned offs = imgX + imgY * nWidth;
-
-			//copy to block. This could be achieved by some cool rep movs-type instructions.
-			
-			unsigned stride = 4 * tileWidth;
-			for (unsigned int i = 0; i < tileWidth; i++) {
-				memcpy(block + tileWidth * i, lpBits + offs + nWidth * i, stride);
-			}
-
-			//next, fill out each pixel in the output image.
-			for (unsigned int destY = 0; destY < tileSize; destY++) {
-				for (unsigned int destX = 0; destX < tileSize; destX++) {
-					//first, find destination point.
-					int x = destX + (tileX * scale * tileWidth) + tileX + 1;
-					int y = destY + (tileY * scale * tileWidth) + tileY + 1;
-					if (!bBorders) {
-						x -= tileX + 1;
-						y -= tileY + 1;
-					}
-
-					//next, find the source point in block.
-					int sampleX = destX / scale;
-					int sampleY = destY / scale;
-					DWORD sample = block[sampleX + sampleY * tileWidth];
-					if ((sample & 0xFF000000) == 0) {
-						int cx = destX / (tileWidth / 2);
-						int cy = destY / (tileWidth / 2);
-						int cb = (cx ^ cy) & 1;
-						if (cb) {
-							sample = 0xFFC0C0C0;
-						} else {
-							sample = 0xFFFFFFFF;
-						}
-					} else if (bAlphaBlend && (((sample >> 24) & 0xFF) < 255)) {
-						int alpha = sample >> 24;
-						int cx = destX / (tileWidth / 2);
-						int cy = destY / (tileWidth / 2);
-						int cb = (cx ^ cy) & 1;
-						int bg;
-						if (cb) {
-							bg = 0xFFC0C0C0;
-						} else {
-							bg = 0xFFFFFFFF;
-						}
-
-						int r = ((bg & 0xFF) * (255 - alpha) + (sample & 0xFF) * alpha) >> 8;
-						int g = (((bg >> 8) & 0xFF) * (255 - alpha) + ((sample >> 8) & 0xFF) * alpha) >> 8;
-						int b = (((bg >> 16) & 0xFF) * (255 - alpha) + ((sample >> 16) & 0xFF) * alpha) >> 8;
-						sample = r | (g << 8) | (b << 16) | 0xFF000000;
-					}
-
-					//highlight
-					if (tileX == hiliteX && tileY == hiliteY) {
-						//bit magic to blend with white
-						sample = (sample & 0xFF000000) | (sample >> 1) | 0x808080;
-					}
-
-					//write it
-					lpOutBits[x + y * outWidth] = sample;
-				}
-			}
-		}
-	}
-
-	*pOutWidth = outWidth;
-	*pOutHeight = outHeight;
-
-	if (bReverseColors) {
-		for (unsigned int i = 0; i < outWidth * outHeight; i++) {
-			DWORD d = lpOutBits[i];
-			d = (d & 0xFF00FF00) | ((d & 0xFF0000) >> 16) | ((d & 0xFF) << 16);
-			lpOutBits[i] = d;
-		}
-	}
+	RenderTileBitmap(lpOutBits, outWidth, outHeight, 0, 0, outWidth, outHeight, 
+		lpBits, nWidth, nHeight, hiliteX, hiliteY, scale, bBorders, tileWidth, bReverseColors, bAlphaBlend);
 
 	//create bitmap
 	HBITMAP hBitmap = CreateBitmap(outWidth, outHeight, 1, 32, lpOutBits);
 
 	//free out bits
 	free(lpOutBits);
+
+	*pOutWidth = outWidth;
+	*pOutHeight = outHeight;
 
 	return hBitmap;
 	

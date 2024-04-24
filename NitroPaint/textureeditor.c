@@ -20,6 +20,22 @@ extern HICON g_appIcon;
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
+static int GetPreviewWidth(TEXTUREEDITORDATA *data) {
+	int size = data->width * data->scale;
+	if (data->showBorders) {
+		size += data->width / 4 + 1;
+	}
+	return size;
+}
+
+static int GetPreviewHeight(TEXTUREEDITORDATA *data) {
+	int size = data->height * data->scale;
+	if (data->showBorders) {
+		size += data->height / 4 + 1;
+	}
+	return size;
+}
+
 void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	//export as PNG
 	//if texture is palette4, palette16 or palette256, output indexed image with appropriate color 0
@@ -219,6 +235,8 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->frameData.contentWidth = data->width;
 			data->frameData.contentHeight = data->height;
 
+			FbCreate(&data->fb, hWnd, GetPreviewWidth(data), GetPreviewHeight(data));
+
 			//check: is it a Nitro TGA?
 			if (!TxReadFile(&data->texture, data->szInitialFile)) {
 				int format = FORMAT(data->texture.texture.texels.texImageParam);
@@ -254,6 +272,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			//decode texture data for preview
 			int nPx = data->width * data->height;
 			TxRender(data->px, data->width, data->height, &texture->texture.texels, &texture->texture.palette, 0);
+			FbCreate(&data->fb, hWnd, GetPreviewWidth(data), GetPreviewHeight(data));
 
 			//update UI
 			WCHAR buffer[16];
@@ -400,6 +419,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			if (data->hWndTileEditor) DestroyWindow(data->hWndTileEditor);
 			SetWindowLongPtr(data->hWndPreview, 0, 0);
 			free(data->px);
+			FbDestroy(&data->fb);
 			break;
 		}
 		case NV_GETTYPE:
@@ -855,13 +875,12 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SelectObject(hOffDC, GetStockObject(NULL_PEN));
 			Rectangle(hOffDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
 			
-			int width, height;
-			HBITMAP hBitmap = CreateTileBitmap2(data->px, data->width, data->height, data->hoverX, data->hoverY, &width, &height, data->scale, data->showBorders, 4, TRUE, TRUE);
-			HDC hCompat = CreateCompatibleDC(hDC);
-			SelectObject(hCompat, hBitmap);
-			BitBlt(hOffDC, -horiz.nPos, -vert.nPos, width, height, hCompat, 0, 0, SRCCOPY);
-			DeleteObject(hCompat);
-			DeleteObject(hBitmap);
+			int width = GetPreviewWidth(data), height = GetPreviewHeight(data);
+			FbSetSize(&data->fb, width, height);
+			RenderTileBitmap(data->fb.px, width, height, horiz.nPos, vert.nPos, rcClient.right, rcClient.bottom, 
+				data->px, data->width, data->height, data->hoverX, data->hoverY, data->scale, data->showBorders,
+				4, TRUE, TRUE);
+			FbDraw(&data->fb, hOffDC, 0, 0, width - horiz.nPos, height - vert.nPos, horiz.nPos, vert.nPos);
 
 			BitBlt(hDC, 0, 0, rcClient.right, rcClient.bottom, hOffDC, 0, 0, SRCCOPY);
 			DeleteObject(hOffDC);

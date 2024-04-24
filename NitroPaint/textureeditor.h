@@ -4,6 +4,7 @@
 #include "texture.h"
 #include "childwindow.h"
 #include "editor.h"
+#include "framebuffer.h"
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
@@ -16,6 +17,7 @@ typedef struct {
 	COLOR32 *px;
 	int width;
 	int height;
+	FrameBuffer fb;
 
 	int hoverX;
 	int hoverY;
