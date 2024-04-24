@@ -116,19 +116,19 @@ static HBITMAP RenderHSVGradientBar(int hLeft, int sLeft, int vLeft, int hRight,
 	return hBitmap;
 }
 
-static VOID DrawTick(HDC hDC, int x, int y) {
+static VOID DrawTick(HDC hDC, int x, int y, int barHeight) {
 	MoveToEx(hDC, x - 1, y + 3 + 1, NULL);
 	LineTo(hDC, x, y + 4 + 1);
 	LineTo(hDC, x + 2, y + 2 + 1);
 	MoveToEx(hDC, x - 1, y + 4 + 1, NULL);
 	LineTo(hDC, x, y + 5 + 1);
 	LineTo(hDC, x + 2, y + 3 + 1);
-	MoveToEx(hDC, x - 1, 17 + y - 1, NULL);
-	LineTo(hDC, x, 16 + y - 1);
-	LineTo(hDC, x + 2, 18 + y - 1);
-	MoveToEx(hDC, x - 1, 18 + y - 1, NULL);
-	LineTo(hDC, x, 17 + y - 1);
-	LineTo(hDC, x + 2, 19 + y - 1);
+	MoveToEx(hDC, x - 1, barHeight + 3 + y - 1, NULL);
+	LineTo(hDC, x, barHeight + 2 + y - 1);
+	LineTo(hDC, x + 2, barHeight + 4 + y - 1);
+	MoveToEx(hDC, x - 1, barHeight + 4 + y - 1, NULL);
+	LineTo(hDC, x, barHeight + 3 + y - 1);
+	LineTo(hDC, x + 2, barHeight + 5 + y - 1);
 }
 
 typedef struct {
@@ -178,6 +178,8 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		data = (CHOOSECOLORDATA *) calloc(1, sizeof(CHOOSECOLORDATA));
 		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
 	}
+	float dpiScale = GetDpiScale();
+
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -222,8 +224,8 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			POINT pt;
 			GetCursorPos(&pt);
 			ScreenToClient(hWnd, &pt);
-			int x = pt.x;
-			int y = pt.y;
+			int x = (int) (pt.x / dpiScale + 0.5f);
+			int y = (int) (pt.y / dpiScale + 0.5f);
 
 			if (x >= 30 && x < 230 && y >= 10 && y <= 96) {
 				if (y < 10 + 22) {
@@ -265,8 +267,8 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			POINT pt;
 			GetCursorPos(&pt);
 			ScreenToClient(hWnd, &pt);
-			int x = pt.x;
-			int y = pt.y;
+			int x = (int) (pt.x / dpiScale + 0.5f);
+			int y = (int) (pt.y / dpiScale + 0.5f);
 			if (data->mouseDown) {
 				int channel = data->draggingSlider;
 				x -= 30;
@@ -416,59 +418,70 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		{
 			PAINTSTRUCT ps;
 			HDC hDC = BeginPaint(hWnd, &ps);
+			
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
 
 			CHOOSECOLORW *chooseColor = data->chooseColor;
 			COLORREF currentColor = chooseColor->rgbResult;
 
+			int barX = (int) (30 * dpiScale + 0.5f);
+			int barY = (int) (10 * dpiScale + 0.5f);
+			int barY2 = (int) (96 * dpiScale + 0.5f);
+			int barWidth = (int) (200 * dpiScale + 0.5f);
+			int barHeight = (int) (14 * dpiScale + 0.5f);
+			int barSpace = (int) (27 * dpiScale + 0.5f);
+
 			HDC hOff = CreateCompatibleDC(hDC);
-			HBITMAP hRectangle = RenderGradientBar(currentColor & 0xFFFF00, currentColor | 0xFF, 200, 14);
+			HBITMAP hRectangle = RenderGradientBar(currentColor & 0xFFFF00, currentColor | 0xFF, barWidth, barHeight);
 			SelectObject(hOff, hRectangle);
-			BitBlt(hDC, 30, 10 + 4, 200, 22 - 8, hOff, 0, 0, SRCCOPY);
+			BitBlt(hDC, barX, barY + barSpace * 0 + 4, barWidth, barHeight, hOff, 0, 0, SRCCOPY);
 			DeleteObject(hRectangle);
 
-			hRectangle = RenderGradientBar(currentColor & 0xFF00FF, currentColor | 0xFF00, 200, 14);
+			hRectangle = RenderGradientBar(currentColor & 0xFF00FF, currentColor | 0xFF00, barWidth, barHeight);
 			SelectObject(hOff, hRectangle);
-			BitBlt(hDC, 30, 37 + 4, 200, 22 - 8, hOff, 0, 0, SRCCOPY);
+			BitBlt(hDC, barX, barY + barSpace * 1 + 4, barWidth, barHeight, hOff, 0, 0, SRCCOPY);
 			DeleteObject(hRectangle);
 
-			hRectangle = RenderGradientBar(currentColor & 0xFFFF, currentColor | 0xFF0000, 200, 14);
+			hRectangle = RenderGradientBar(currentColor & 0xFFFF, currentColor | 0xFF0000, barWidth, barHeight);
 			SelectObject(hOff, hRectangle);
-			BitBlt(hDC, 30, 64 + 4, 200, 22 - 8, hOff, 0, 0, SRCCOPY);
+			BitBlt(hDC, barX, barY + barSpace * 2 + 4, barWidth, barHeight, hOff, 0, 0, SRCCOPY);
 			DeleteObject(hRectangle);
 
 			int h, s, v;
 			ConvertRGBToHSV(currentColor, &h, &s, &v);
 
-			hRectangle = RenderHSVGradientBar(0, s, v, 359, s, v, 200, 14);
+			hRectangle = RenderHSVGradientBar(0, s, v, 359, s, v, barWidth, barHeight);
 			SelectObject(hOff, hRectangle);
-			BitBlt(hDC, 30, 96 + 4, 200, 22 - 8, hOff, 0, 0, SRCCOPY);
+			BitBlt(hDC, barX, barY2 + barSpace * 0 + 4, barWidth, barHeight, hOff, 0, 0, SRCCOPY);
 			DeleteObject(hRectangle);
 
-			hRectangle = RenderHSVGradientBar(h, 0, v, h, 100, v, 200, 14);
+			hRectangle = RenderHSVGradientBar(h, 0, v, h, 100, v, barWidth, barHeight);
 			SelectObject(hOff, hRectangle);
-			BitBlt(hDC, 30, 123 + 4, 200, 22 - 8, hOff, 0, 0, SRCCOPY);
+			BitBlt(hDC, barX, barY2 + barSpace * 1 + 4, barWidth, barHeight, hOff, 0, 0, SRCCOPY);
 			DeleteObject(hRectangle);
 
-			hRectangle = RenderHSVGradientBar(h, s, 0, h, s, 100, 200, 14);
+			hRectangle = RenderHSVGradientBar(h, s, 0, h, s, 100, barWidth, barHeight);
 			SelectObject(hOff, hRectangle);
-			BitBlt(hDC, 30, 150 + 4, 200, 22 - 8, hOff, 0, 0, SRCCOPY);
+			BitBlt(hDC, barX, barY2 + barSpace * 2 + 4, barWidth, barHeight, hOff, 0, 0, SRCCOPY);
 			DeleteObject(hRectangle);
 
 
 			HBRUSH colorBrush = CreateSolidBrush(currentColor & 0xFFFFFF);
 			SelectObject(hDC, colorBrush);
-			Rectangle(hDC, 265, 10, 341, 86);
+			Rectangle(hDC, (int) (265 * dpiScale + 0.5f), (int) (10 * dpiScale + 0.5f), 
+				(int) (341 * dpiScale + 0.5f), (int) (86 * dpiScale + 0.5f));
 			DeleteObject(colorBrush);
 
 			HPEN oldPen = SelectObject(hDC, GetStockObject(NULL_PEN));
 			HBRUSH back = GetSysColorBrush(GetClassLong(hWnd, GCL_HBRBACKGROUND) - 1);
 			SelectObject(hDC, back);
-			Rectangle(hDC, 230, 10, 232, 172);
-			Rectangle(hDC, 29, 10, 31, 172);
+			Rectangle(hDC, barX + barWidth, barY, barX + barWidth + 2, rcClient.bottom);
+			Rectangle(hDC, barX - 1, barY, barX + 1, rcClient.bottom);
 			SelectObject(hDC, oldPen);
 
 			//draw ticks
-			int r = currentColor & 0xFF;
+			int r = (currentColor >> 0) & 0xFF;
 			int g = (currentColor >> 8) & 0xFF;
 			int b = (currentColor >> 16) & 0xFF;
 			int l = max(max(r, g), b) + min(min(r, g), b);
@@ -477,12 +490,12 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				SelectObject(hDC, GetStockObject(WHITE_PEN));
 			}
 
-			DrawTick(hDC, 30 + 199 * r / 255, 10);
-			DrawTick(hDC, 30 + 199 * g / 255, 37);
-			DrawTick(hDC, 30 + 199 * b / 255, 64);
-			DrawTick(hDC, 30 + 199 * h / 359, 96);
-			DrawTick(hDC, 30 + 199 * s / 100, 123);
-			DrawTick(hDC, 30 + 199 * v / 100, 150);
+			DrawTick(hDC, barX + (barWidth - 1) * r / 255, barY + barSpace * 0, barHeight);
+			DrawTick(hDC, barX + (barWidth - 1) * g / 255, barY + barSpace * 1, barHeight);
+			DrawTick(hDC, barX + (barWidth - 1) * b / 255, barY + barSpace * 2, barHeight);
+			DrawTick(hDC, barX + (barWidth - 1) * h / 359, barY2 + barSpace * 0, barHeight);
+			DrawTick(hDC, barX + (barWidth - 1) * s / 100, barY2 + barSpace * 1, barHeight);
+			DrawTick(hDC, barX + (barWidth - 1) * v / 100, barY2 + barSpace * 2, barHeight);
 
 			DeleteObject(hOff);
 			EndPaint(hWnd, &ps);
@@ -496,7 +509,7 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 BOOL WINAPI CustomChooseColor(CHOOSECOLORW *chooseColor) {
