@@ -60,7 +60,7 @@ float GetDpiScale(void) {
 
 	//if not yet calculated, return
 	if (!knownDpi) {
-		
+
 		if (!g_configuration.dpiAware) {
 			scale = 1.0f; //no awareness
 		} else {

@@ -2,6 +2,7 @@
 #include <CommCtrl.h>
 
 #include "ui.h"
+#include "nitropaint.h"
 
 HWND CreateButton(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, BOOL def) {
 	return CreateWindow(L"BUTTON", text, WS_VISIBLE | WS_CHILD | WS_TABSTOP | (def ? BS_DEFPUSHBUTTON : 0), x, y, width, height, hWnd, NULL, NULL, NULL);
@@ -159,7 +160,50 @@ LRESULT CALLBACK ModalCloseHookProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	return DefSubclassProc(hWnd, msg, wParam, lParam);
 }
 
+static BOOL CALLBACK DpiScaleProc(HWND hWnd, LPARAM lParam) {
+	HWND hWndParent = (HWND) lParam;
+	float scale = GetDpiScale();
+
+	//get bounds
+	RECT rc;
+	POINT topLeft = { 0 };
+	GetWindowRect(hWnd, &rc);
+	ClientToScreen(hWndParent, &topLeft);
+
+	//scale by DPI scaling factor
+	rc.left = (int) ((rc.left - topLeft.x) * scale + 0.5f);
+	rc.right = (int) ((rc.right - topLeft.x) * scale + 0.5f);
+	rc.top = (int) ((rc.top - topLeft.y) * scale + 0.5f);
+	rc.bottom = (int) ((rc.bottom - topLeft.y) * scale + 0.5f);
+
+	//move
+	MoveWindow(hWnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, FALSE);
+	EnumChildWindows(hWnd, DpiScaleProc, (LPARAM) hWnd);
+	return TRUE;
+}
+
+static void DpiScaleModal(HWND hWnd) {
+	float dpiScale = GetDpiScale();
+	if (dpiScale != 1.0f) {
+		//enumerate child windows: scale
+		EnumChildWindows(hWnd, DpiScaleProc, (LPARAM) hWnd);
+
+		RECT rcClient, rcWindow;
+		GetClientRect(hWnd, &rcClient);
+		GetWindowRect(hWnd, &rcWindow);
+
+		rcClient.right = (int) (rcClient.right * dpiScale + 0.5f);
+		rcClient.bottom = (int) (rcClient.bottom * dpiScale + 0.5f);
+		AdjustWindowRect(&rcClient, GetWindowLong(hWnd, GWL_STYLE), GetMenu(hWnd) != NULL);
+
+		MoveWindow(hWnd, rcWindow.left, rcWindow.top, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, TRUE);
+	}
+}
+
 void DoModalEx(HWND hWnd, BOOL closeHook) {
+	//do DPI scaling
+	DpiScaleModal(hWnd);
+
 	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 	ShowWindow(hWnd, SW_SHOW);
 	SetActiveWindow(hWnd);
@@ -196,6 +240,9 @@ void DoModal(HWND hWnd) {
 }
 
 void DoModalWait(HWND hWnd, HANDLE hWait) {
+	//do DPI scaling
+	DpiScaleModal(hWnd);
+
 	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 	ShowWindow(hWnd, SW_SHOW);
 	SetActiveWindow(hWnd);
