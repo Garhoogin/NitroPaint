@@ -160,33 +160,11 @@ LRESULT CALLBACK ModalCloseHookProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 	return DefSubclassProc(hWnd, msg, wParam, lParam);
 }
 
-static BOOL CALLBACK DpiScaleProc(HWND hWnd, LPARAM lParam) {
-	HWND hWndParent = (HWND) lParam;
-	float scale = GetDpiScale();
-
-	//get bounds
-	RECT rc;
-	POINT topLeft = { 0 };
-	GetWindowRect(hWnd, &rc);
-	ClientToScreen(hWndParent, &topLeft);
-
-	//scale by DPI scaling factor
-	rc.left = (int) ((rc.left - topLeft.x) * scale + 0.5f);
-	rc.right = (int) ((rc.right - topLeft.x) * scale + 0.5f);
-	rc.top = (int) ((rc.top - topLeft.y) * scale + 0.5f);
-	rc.bottom = (int) ((rc.bottom - topLeft.y) * scale + 0.5f);
-
-	//move
-	MoveWindow(hWnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, FALSE);
-	EnumChildWindows(hWnd, DpiScaleProc, (LPARAM) hWnd);
-	return TRUE;
-}
-
 static void DpiScaleModal(HWND hWnd) {
 	float dpiScale = GetDpiScale();
+
 	if (dpiScale != 1.0f) {
-		//enumerate child windows: scale
-		EnumChildWindows(hWnd, DpiScaleProc, (LPARAM) hWnd);
+		DpiScaleChildren(hWnd, dpiScale);
 
 		RECT rcClient, rcWindow;
 		GetClientRect(hWnd, &rcClient);
@@ -198,6 +176,19 @@ static void DpiScaleModal(HWND hWnd) {
 
 		MoveWindow(hWnd, rcWindow.left, rcWindow.top, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, TRUE);
 	}
+}
+
+LRESULT DefModalProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch (msg) {
+		case WM_NCCREATE:
+			//handle DPI awareness
+			DoHandleNonClientDpiScale(hWnd);
+			break;
+		case 0x02E0://WM_DPICHANGED:
+			//handle DPI update
+			return HandleWindowDpiChange(hWnd, wParam, lParam);
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
 void DoModalEx(HWND hWnd, BOOL closeHook) {

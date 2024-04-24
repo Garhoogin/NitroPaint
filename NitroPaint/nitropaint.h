@@ -100,6 +100,27 @@ typedef struct {
 float GetDpiScale(void);
 
 //
+// Handle configuring nonclient DPI scaling for the Window under the current configuration.
+// Call during WM_NCCREATE.
+//
+void HandleNonClientDpiScale(HWND hWnd);
+
+//
+// Apply a DPI scaling factor to a window.
+//
+void DpiScaleChildren(HWND hWnd, float scale);
+
+//
+// Enable non-client DPI scaling of a window if DPI awareness is enabled.
+//
+void DoHandleNonClientDpiScale(HWND hWnd);
+
+//
+// Call to handle WM_DPICHANGED.
+//
+LRESULT HandleWindowDpiChange(HWND hWnd, WPARAM wParam, LPARAM lParam);
+
+//
 // Register a generic window class.
 //
 void RegisterGenericClass(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, int cbWndExtra);

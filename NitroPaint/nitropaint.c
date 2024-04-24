@@ -54,26 +54,134 @@ extern EXCEPTION_DISPOSITION __cdecl ExceptionHandler(EXCEPTION_RECORD *exceptio
 
 HANDLE g_hEvent = NULL;
 
+
+// ----- DPI scale code
+
+static int sKnownDpi = 0;
+static int sDontScaleGuiFont = 0;
+static float sDpiScale = 1.0f;
+
 float GetDpiScale(void) {
-	static int knownDpi = 0;
-	static float scale = 1.0f;
 
 	//if not yet calculated, return
-	if (!knownDpi) {
+	if (!sKnownDpi) {
 
 		if (!g_configuration.dpiAware) {
-			scale = 1.0f; //no awareness
+			sDpiScale = 1.0f; //no awareness
 		} else {
 			HDC hDC = GetDC(NULL);
-			scale = ((float) GetDeviceCaps(hDC, LOGPIXELSX)) / 96.0f;
+			sDpiScale = ((float) GetDeviceCaps(hDC, LOGPIXELSX)) / (float) USER_DEFAULT_SCREEN_DPI;
 			ReleaseDC(NULL, hDC);
 		}
-		knownDpi = 1;
-
+		sKnownDpi = 1;
 	}
 
-	return scale;
+	return sDpiScale;
 }
+
+HFONT GetGUIFont(void) {
+	static float cachedScale = 0.0f;
+	static HFONT hFont = NULL;
+
+	if (sDpiScale != cachedScale || hFont == NULL) {
+		cachedScale = sDpiScale;
+
+		HFONT hGuiFont = (HFONT) GetStockObject(DEFAULT_GUI_FONT);
+		if (hFont != NULL && hFont != hGuiFont) {
+			DeleteObject(hFont);
+		}
+
+		if (sDpiScale != 1.0f && !sDontScaleGuiFont) {
+			//scale the font by the DPI scaling factor.
+			LOGFONT lfont;
+			GetObject(hGuiFont, sizeof(lfont), &lfont);
+
+			lfont.lfHeight = -(int) ((-lfont.lfHeight) * sDpiScale + 0.5f);
+			hFont = CreateFontIndirect(&lfont);
+		} else {
+			//use stock object
+			hFont = hGuiFont;
+		}
+	}
+
+	return hFont;
+}
+
+void HandleNonClientDpiScale(HWND hWnd) {
+	if (!g_configuration.dpiAware) return;
+
+	//if DPI aware, configure nonclient DPI awareness for Windows 10+
+	HMODULE hUser32 = GetModuleHandle(L"USER32.DLL");
+	BOOL (WINAPI *EnableNonClientDpiScalingFunc) (HWND hWnd) = (BOOL (WINAPI *) (HWND))
+		GetProcAddress(hUser32, "EnableNonClientDpiScaling");
+
+	if (EnableNonClientDpiScalingFunc != NULL) EnableNonClientDpiScalingFunc(hWnd);
+}
+
+static BOOL CALLBACK DpiScaleProc(HWND hWnd, LPARAM lParam) {
+	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	float scale = *(float *) lParam;
+
+	//get bounds
+	RECT rc;
+	POINT topLeft = { 0 };
+	GetWindowRect(hWnd, &rc);
+	ClientToScreen(hWndParent, &topLeft);
+
+	//scale by DPI scaling factor
+	rc.left = (int) ((rc.left - topLeft.x) * scale + 0.5f);
+	rc.right = (int) ((rc.right - topLeft.x) * scale + 0.5f);
+	rc.top = (int) ((rc.top - topLeft.y) * scale + 0.5f);
+	rc.bottom = (int) ((rc.bottom - topLeft.y) * scale + 0.5f);
+
+	//move
+	MoveWindow(hWnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, FALSE);
+	EnumChildWindows(hWnd, DpiScaleProc, (LPARAM) hWnd);
+	return TRUE;
+}
+
+void DpiScaleChildren(HWND hWnd, float dpiScale) {
+	//enumerate child windows: scale
+	EnumChildWindows(hWnd, DpiScaleProc, (LPARAM) &dpiScale);
+}
+
+LRESULT HandleWindowDpiChange(HWND hWnd, WPARAM wParam, LPARAM lParam) {
+	//update window in response to DPI change
+	RECT *rcSug = (RECT *) lParam;
+	int dpiX = LOWORD(wParam);
+	sDpiScale = ((float) dpiX) / (float) USER_DEFAULT_SCREEN_DPI;
+	sKnownDpi = 1;
+
+	//check: DPI different from last? calculate scaling factor (this might be called
+	//several times over the course of a DPI change: make sure all DPI scaling is
+	//handled appropriately)
+	static float lastScale = 1.0f;
+	static float divLast = 1.0f;
+	if (sDpiScale != lastScale) {
+		divLast = sDpiScale / lastScale;
+		lastScale = sDpiScale;
+	}
+	DpiScaleChildren(hWnd, divLast);
+	SetGUIFont(hWnd);
+
+	SetWindowPos(hWnd, NULL, rcSug->left, rcSug->top, rcSug->right - rcSug->left, rcSug->bottom - rcSug->top,
+		SWP_NOZORDER | SWP_NOACTIVATE);
+	return 0;
+}
+
+void DoHandleNonClientDpiScale(HWND hWnd) {
+	if (!g_configuration.dpiAware) return;
+
+	HMODULE hUser32 = GetModuleHandle(L"USER32.DLL");
+	BOOL (WINAPI *pfnEnbleNonClientDpiScaling) (HWND hWnd) = (BOOL (WINAPI *) (HWND)) 
+		GetProcAddress(hUser32, "EnableNonClientDpiScaling");
+	if (pfnEnbleNonClientDpiScaling != NULL) {
+		pfnEnbleNonClientDpiScaling(hWnd);
+	}
+}
+
+
+
 
 LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extension) {
 	OPENFILENAME o = { 0 };
@@ -277,7 +385,7 @@ LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 void copyBitmap(COLOR32 *px, int width, int height) {
@@ -1017,6 +1125,13 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			}
 			return 1;
 		}
+		case WM_NCCREATE:
+			//handle DPI awareness
+			HandleNonClientDpiScale(hWnd);
+			break;
+		case 0x02E0://WM_DPICHANGED:
+			//handle DPI update
+			return HandleWindowDpiChange(hWnd, wParam, lParam);
 		case WM_COPYDATA:
 		{
 			HWND hWndOrigin = (HWND) wParam;
@@ -1447,7 +1562,7 @@ BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
 }
 
 VOID SetGUIFont(HWND hWnd) {
-	HFONT hFont = (HFONT) GetStockObject(DEFAULT_GUI_FONT);
+	HFONT hFont = GetGUIFont();
 	EnumChildWindows(hWnd, SetGUIFontProc, (LPARAM) hFont);
 }
 
@@ -1716,7 +1831,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 void RegisterCreateDialogClass() {
@@ -1783,7 +1898,7 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			return 0;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 void RegisterProgressWindowClass() {
@@ -2006,7 +2121,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 void RegisterNtftConvertDialogClass() {
@@ -2067,7 +2182,7 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 VOID CreateImageDialog(HWND hWnd, LPCWSTR path) {
@@ -2133,7 +2248,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 typedef struct {
@@ -2240,7 +2355,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 typedef struct CREATESCREENDATA_ {
@@ -2299,7 +2414,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 typedef struct SCREENSPLITDIALOGDATA_ {
@@ -2376,7 +2491,7 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2516,7 +2631,7 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 void RegisterImageDialogClass() {
@@ -2630,6 +2745,36 @@ void RegisterClasses() {
 	RegisterAlphaBlendClass();
 }
 
+void InitializeDpiAwareness(void) {
+	if (!g_configuration.dpiAware) return;
+
+	HMODULE hUser32 = GetModuleHandle(L"USER32.DLL");
+	BOOL (WINAPI *SetProcessDPIAwareFunc) (void) = (BOOL (WINAPI *) (void))
+		GetProcAddress(hUser32, "SetProcessDPIAware");
+	BOOL (WINAPI *SetProcessDpiAwarenessContextFunc) (void *) = (BOOL (WINAPI *) (void *))
+		GetProcAddress(hUser32, "SetProcessDpiAwarenessContext");
+	if (SetProcessDPIAwareFunc != NULL) {
+
+		//try for per-monitor awareness if supported
+		HMODULE hShCore = LoadLibrary(L"SHCORE.DLL");
+		HRESULT(WINAPI *SetProcessDpiAwarenessFunc) (int) = (HRESULT(WINAPI *) (int))
+			GetProcAddress(hShCore, "SetProcessDpiAwareness");
+		if (SetProcessDpiAwarenessContextFunc != NULL) {
+			//Windows 10 and above...
+			SetProcessDpiAwarenessContextFunc((void *) -4); //per-monitor v2
+		} else if (SetProcessDpiAwarenessFunc != NULL) {
+			//Windows 8.1 and above...
+			SetProcessDpiAwarenessFunc(2); //per-monitor DPI aware
+		} else {
+			//Default to basic DPI awareness
+			sDontScaleGuiFont = 1; //system DPI awareness scales the GUI font for some reason
+			SetProcessDPIAwareFunc(); //system DPI aware
+		}
+		FreeLibrary(hShCore);
+
+	}
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	g_appIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
 	HACCEL hAccel = LoadAccelerators(hInstance, (LPCWSTR) IDR_ACCELERATOR1);
@@ -2638,6 +2783,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	SetConfigPath();
 	ReadConfiguration(g_configPath);
 	CheckExistingAppWindow();
+	InitializeDpiAwareness();
+
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
 	wcex.hInstance = hInstance;
@@ -2651,20 +2798,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
 	RegisterClassEx(&wcex);
-
 	RegisterClasses();
 
 	InitCommonControls();
-
-	//set DPI awareness
-	if (g_configuration.dpiAware) {
-		HMODULE hUser32 = GetModuleHandle(L"USER32.DLL");
-		BOOL (WINAPI *SetProcessDPIAwareFunc) (void) = (BOOL (WINAPI *) (void)) 
-			GetProcAddress(hUser32, "SetProcessDPIAware");
-		if (SetProcessDPIAwareFunc != NULL) {
-			SetProcessDPIAwareFunc();
-		}
-	}
 
 	HWND hWnd = CreateWindowEx(0, g_lpszNitroPaintClassName, L"NitroPaint", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInstance, NULL);
 	ShowWindow(hWnd, SW_SHOW);
