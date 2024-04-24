@@ -3,12 +3,14 @@
 #include "editor.h"
 #include "childwindow.h"
 #include "nscr.h"
+#include "framebuffer.h"
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
 	NSCR nscr;
 	int transparent;
 
+	FrameBuffer fb;
 	HWND hWndTileEditor;
 	HWND hWndPreview;
 	HWND hWndCharacterLabel;

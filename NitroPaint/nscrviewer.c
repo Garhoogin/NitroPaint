@@ -179,20 +179,83 @@ unsigned char *renderNscrIndexed(NSCR *nscr, NCGR *ncgr, int tileBase, int *widt
 }
 
 HBITMAP renderNscr(NSCR *renderNscr, NCGR *renderNcgr, NCLR *renderNclr, int tileBase, BOOL drawGrid, int *width, int *height, int highlightNclr, int highlightTile, int hlStart, int hlEnd, int hlMode, int scale, int selStartX, int selStartY, int selEndX, int selEndY, BOOL transparent) {
-	if (renderNcgr != NULL) {
-		if (highlightNclr != -1) highlightNclr += tileBase;
-		DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, tileBase, width, height, highlightNclr, hlStart, hlEnd, hlMode, selStartX, selStartY, selEndX, selEndY, transparent);
+	if (renderNcgr == NULL) return NULL;
+
+	if (highlightNclr != -1) highlightNclr += tileBase;
+	DWORD *bits = renderNscrBits(renderNscr, renderNcgr, renderNclr, tileBase, width, height, highlightNclr, hlStart, hlEnd, hlMode, selStartX, selStartY, selEndX, selEndY, transparent);
+
+	int hovX = -1, hovY = -1;
+	if (highlightTile != -1) {
+		hovX = highlightTile % (renderNscr->nWidth / 8);
+		hovY = highlightTile / (renderNscr->nWidth / 8);
+	}
+	HBITMAP hBitmap = CreateTileBitmap2(bits, *width, *height, hovX, hovY, width, height, scale, drawGrid, 8, FALSE, TRUE);
+	free(bits);
+	return hBitmap;
+}
+
+static void ScrViewerPaint(HWND hWnd, HDC hWindowDC, int xOffs, int yOffs) {
+	HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWndEditor);
+
+	NSCR *nscr = &data->nscr;
+	NCGR *ncgr = NULL;
+	NCLR *nclr = NULL;
+
+	HWND hWndMain = getMainWindow(hWndEditor);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
+	if (hWndNclrViewer != NULL) {
+		nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
+	}
+
+	int hoveredNcgrTile = -1, hoveredNscrTile = -1;
+	if (data->hoverX != -1 && data->hoverY != -1) {
+		hoveredNscrTile = data->hoverX + data->hoverY * (nscr->nWidth / 8);
+	}
+
+	HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+	if (hWndNcgrViewer != NULL) {
+		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
+		ncgr = &ncgrViewerData->ncgr;
+		hoveredNcgrTile = ncgrViewerData->hoverIndex;
+	}
+
+	int hlStart = data->hlStart;
+	int hlEnd = data->hlEnd;
+	int hlMode = data->hlMode;
+	if ((data->verifyFrames & 1) == 0) {
+		//animate selection
+		hlStart = hlEnd = -1;
+	}
+
+	int bitmapWidth = getDimension(nscr->nWidth / 8, data->showBorders, data->scale);
+	int bitmapHeight = getDimension(nscr->nWidth / 8, data->showBorders, data->scale);
+
+	if (ncgr != NULL) {
+		int tileBase = data->tileBase;
+		int selStartX = data->selStartX, selEndX = data->selEndX;
+		int selStartY = data->selStartY, selEndY = data->selEndY;
+
+		int outWidth, outHeight;
+		if (hoveredNcgrTile != -1) hoveredNcgrTile += tileBase;
+		DWORD *bits = renderNscrBits(nscr, ncgr, nclr, tileBase, &outWidth, &outHeight, hoveredNcgrTile, hlStart, hlEnd, hlMode, 
+			selStartX, selStartY, selEndX, selEndY, data->transparent);
 
 		int hovX = -1, hovY = -1;
-		if (highlightTile != -1) {
-			hovX = highlightTile % (renderNscr->nWidth / 8);
-			hovY = highlightTile / (renderNscr->nWidth / 8);
+		if (hoveredNscrTile != -1) {
+			hovX = hoveredNscrTile % (nscr->nWidth / 8);
+			hovY = hoveredNscrTile / (nscr->nWidth / 8);
 		}
-		HBITMAP hBitmap = CreateTileBitmap2(bits, *width, *height, hovX, hovY, width, height, scale, drawGrid, 8, FALSE, TRUE);
+
+		FbSetSize(&data->fb, bitmapWidth, bitmapHeight);
+		RenderTileBitmap(data->fb.px, bitmapWidth, bitmapHeight, xOffs, yOffs, bitmapWidth - xOffs, bitmapHeight - yOffs,
+			bits, outWidth, outHeight, hovX, hovY, data->scale, data->showBorders, 8, FALSE, TRUE);
+		FbDraw(&data->fb, hWindowDC, -xOffs, -yOffs, bitmapWidth, bitmapHeight, 0, 0);
+
 		free(bits);
-		return hBitmap;
 	}
-	return NULL;
+
 }
 
 static void ScrViewerCopy(NSCRVIEWERDATA *data) {
@@ -357,6 +420,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			data->frameData.contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->nscr.nHeight / 8, data->showBorders, data->scale);
+			FbCreate(&data->fb, hWnd, data->frameData.contentWidth, data->frameData.contentHeight);
 
 			RECT rc = { 0 };
 			rc.right = data->frameData.contentWidth;
@@ -756,6 +820,9 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			SendMessage(data->hWndSelectionSize, WM_SETTEXT, 0, (LPARAM) L"");
 			break;
 		}
+		case WM_DESTROY:
+			FbDestroy(&data->fb);
+			break;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
@@ -1126,8 +1193,8 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 }
 
 LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HWND hWndNscrViewer = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0);
+	HWND hWndNscrViewer = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
 	int contentWidth = 0, contentHeight = 0;
 	if (data) {
 		contentWidth = getDimension(data->nscr.nWidth / 8, data->showBorders, data->scale);
@@ -1166,48 +1233,7 @@ LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			GetScrollInfo(hWnd, SB_HORZ, &horiz);
 			GetScrollInfo(hWnd, SB_VERT, &vert);
 
-			NSCR *nscr = NULL;
-			NCGR *ncgr = NULL;
-			NCLR *nclr = NULL;
-
-			HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWndNscrViewer, GWL_HWNDPARENT), GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-			if (hWndNclrViewer) {
-				NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(hWndNclrViewer, 0);
-				nclr = &nclrViewerData->nclr;
-			}
-			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-			int hoveredNcgrTile = -1, hoveredNscrTile = -1;
-			if (data->hoverX != -1 && data->hoverY != -1) {
-				hoveredNscrTile = data->hoverX + data->hoverY * (data->nscr.nWidth / 8);
-			}
-			if (hWndNcgrViewer) {
-				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(hWndNcgrViewer, 0);
-				ncgr = &ncgrViewerData->ncgr;
-				hoveredNcgrTile = ncgrViewerData->hoverIndex;
-			}
-
-			nscr = &data->nscr;
-			int bitmapWidth, bitmapHeight;
-
-			int hlStart = data->hlStart;
-			int hlEnd = data->hlEnd;
-			int hlMode = data->hlMode;
-			if ((data->verifyFrames & 1) == 0) {
-				//animate selection
-				hlStart = hlEnd = -1;
-			}
-
-			HBITMAP hBitmap = renderNscr(nscr, ncgr, nclr, data->tileBase, data->showBorders, &bitmapWidth, &bitmapHeight, 
-				hoveredNcgrTile, hoveredNscrTile, hlStart, hlEnd, hlMode,
-				data->scale, data->selStartX, data->selStartY, data->selEndX, data->selEndY, data->transparent);
-
-			HDC hDC = CreateCompatibleDC(hWindowDC);
-			SelectObject(hDC, hBitmap);
-			BitBlt(hWindowDC, -horiz.nPos, -vert.nPos, bitmapWidth, bitmapHeight, hDC, 0, 0, SRCCOPY);
-			DeleteObject(hDC);
-			DeleteObject(hBitmap);
+			ScrViewerPaint(hWnd, hWindowDC, horiz.nPos, vert.nPos);
 
 			EndPaint(hWnd, &ps);
 			break;

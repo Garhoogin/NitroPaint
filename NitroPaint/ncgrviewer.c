@@ -82,14 +82,13 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	}
 
 	DWORD *px = NcgrToBitmap(&data->ncgr, data->selectedPalette, nclr, hlStart, hlEnd, hlMode, data->transparent);
-	int outWidth, outHeight;
-	HBITMAP hTiles = CreateTileBitmap(px, width, height, data->hoverX, data->hoverY, &outWidth, &outHeight, data->scale, data->showBorders);
-
-	HDC hCompat = CreateCompatibleDC(hDC);
-	SelectObject(hCompat, hTiles);
-	BitBlt(hDC, 0, 0, outWidth, outHeight, hCompat, 0, 0, SRCCOPY);
-	DeleteObject(hCompat);
-	DeleteObject(hTiles);
+	int outWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
+	int outHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
+	
+	FbSetSize(&data->fb, outWidth, outHeight);
+	RenderTileBitmap(data->fb.px, outWidth, outHeight, xMin, yMin, outWidth - xMin, outHeight - yMin, px, width, height, 
+		data->hoverX, data->hoverY, data->scale, data->showBorders, 8, FALSE, FALSE);
+	FbDraw(&data->fb, hDC, 0, 0, outWidth, outHeight, 0, 0);
 
 	free(px);
 }
@@ -253,6 +252,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			int controlWidth = (int) (dpiScale * 100.0f + 0.5f);
 			data->frameData.contentWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
 			data->frameData.contentHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
+			FbCreate(&data->fb, hWnd, data->frameData.contentWidth, data->frameData.contentHeight);
 
 			int width = data->frameData.contentWidth + GetSystemMetrics(SM_CXVSCROLL) + 4;
 			int height = data->frameData.contentHeight + 3 * controlHeight + GetSystemMetrics(SM_CYHSCROLL) + 4;
@@ -468,6 +468,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			nitroPaintStruct->hWndNcgrViewer = NULL;
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 			if (data->hWndTileEditorWindow) DestroyWindow(data->hWndTileEditorWindow);
+			FbDestroy(&data->fb);
 			break;
 		}
 		case WM_SIZE:

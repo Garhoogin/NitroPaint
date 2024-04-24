@@ -2,10 +2,12 @@
 #include "editor.h"
 #include "childwindow.h"
 #include "ncgr.h"
+#include "framebuffer.h"
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
 	NCGR ncgr;
+	FrameBuffer fb;
 	int hoverX;
 	int hoverY;
 	int contextHoverX;
