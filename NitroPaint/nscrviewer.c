@@ -230,7 +230,7 @@ static void ScrViewerPaint(HWND hWnd, HDC hWindowDC, int xOffs, int yOffs) {
 	}
 
 	int bitmapWidth = getDimension(nscr->nWidth / 8, data->showBorders, data->scale);
-	int bitmapHeight = getDimension(nscr->nWidth / 8, data->showBorders, data->scale);
+	int bitmapHeight = getDimension(nscr->nHeight / 8, data->showBorders, data->scale);
 
 	if (ncgr != NULL) {
 		int tileBase = data->tileBase;
