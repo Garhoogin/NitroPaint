@@ -95,7 +95,7 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 		case WM_CREATE:
 		{
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 #if(g_useDarkTheme)
 			SetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
 #endif

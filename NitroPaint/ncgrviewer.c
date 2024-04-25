@@ -233,6 +233,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				data->showBorders = 0;
 				CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
 			}
+			SetGUIFont(hWnd);
 			break;
 		}
 		case NV_INITIALIZE:
@@ -1045,7 +1046,7 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			CreateGroupbox(hWnd, L"Color", 10, 10 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3);
 
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 			setStyle(hWndMain, TRUE, WS_DISABLED);
 			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
 			setStyle(data->hWndCompression, TRUE, WS_DISABLED);

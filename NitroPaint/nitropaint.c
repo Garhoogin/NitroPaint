@@ -136,7 +136,7 @@ static BOOL CALLBACK DpiScaleProc(HWND hWnd, LPARAM lParam) {
 
 	//move
 	MoveWindow(hWnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, FALSE);
-	EnumChildWindows(hWnd, DpiScaleProc, (LPARAM) hWnd);
+	EnumChildWindows(hWnd, DpiScaleProc, lParam);
 	return TRUE;
 }
 
