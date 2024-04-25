@@ -1089,7 +1089,10 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	int height = GetWindowLongPtr(hWnd, 2 * sizeof(LONG_PTR));
 
 	//controls
-	int previewX = 21, previewY = 59;
+	float dpiScale = GetDpiScale();
+	int previewX = (int) (21 * dpiScale + 0.5f), previewY = (int) (59 * dpiScale + 0.5f);
+	int previewWidth = (int) (512 * dpiScale + 0.5f);
+	int previewHeight = (int) (256 * dpiScale + 0.5f);
 
 	switch (msg) {
 		case WM_NCCREATE:
@@ -1113,8 +1116,8 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				RECT rc;
 				rc.left = previewX;
 				rc.top = previewY;
-				rc.right = previewX + 512;
-				rc.bottom = previewY + 256;
+				rc.right = previewX + previewWidth;
+				rc.bottom = previewY + previewHeight;
 				InvalidateRect(hWnd, &rc, FALSE);
 				SetEditNumber(data->hWndAggressivenessLabel, aggressiveness);
 
@@ -1137,11 +1140,11 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			//draw offscreen
 			HDC hCompatibleDC = CreateCompatibleDC(hDC);
-			HBITMAP hCompatibleBitmap = CreateCompatibleBitmap(hDC, 512, 256);
+			HBITMAP hCompatibleBitmap = CreateCompatibleBitmap(hDC, previewWidth, previewHeight);
 			SelectObject(hCompatibleDC, hCompatibleBitmap);
 
 			//draw to hCompatibleDC
-			Rectangle(hCompatibleDC, 0, 0, 512, 256);
+			Rectangle(hCompatibleDC, 0, 0, previewWidth, previewHeight);
 
 			HPEN hBluePen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
 			HBRUSH hFillBrush = CreateSolidBrush(RGB(127, 127, 255));
@@ -1199,7 +1202,10 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 					int bx = b->x + 256;
 					int by = b->y + 128;
-					Rectangle(hCompatibleDC, bx, by, bx + b->width, by + b->height);
+					int br = bx + b->width;
+					int bd = by + b->height;
+					Rectangle(hCompatibleDC, (int) (bx * dpiScale + 0.5f), (int) (by * dpiScale + 0.5f),
+						(int) (br * dpiScale + 0.5f), (int) (bd * dpiScale + 0.5f));
 
 					//tally characters
 					nChars += (b->width * b->height) / 64;
@@ -1215,7 +1221,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				SendMessage(data->hWndCharLabel, WM_SETTEXT, len, (LPARAM) objText);
 			}
 
-			BitBlt(hDC, previewX, previewY, 512, 256, hCompatibleDC, 0, 0, SRCCOPY);
+			BitBlt(hDC, previewX, previewY, (int) (512 * dpiScale + 0.5f), (int) (256 * dpiScale + 0.5f), hCompatibleDC, 0, 0, SRCCOPY);
 			DeleteObject(hCompatibleDC);
 			DeleteObject(hCompatibleBitmap);
 			DeleteObject(hBluePen);
