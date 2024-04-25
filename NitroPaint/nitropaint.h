@@ -126,6 +126,11 @@ LRESULT HandleWindowDpiChange(HWND hWnd, WPARAM wParam, LPARAM lParam);
 void RegisterGenericClass(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, int cbWndExtra);
 
 //
+// Gets the GUI font.
+//
+HFONT GetGUIFont(void);
+
+//
 // Makes a window and its children use the default GUI font.
 //
 void SetGUIFont(HWND hWnd);

@@ -154,7 +154,7 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 			PalopPopulateUI(data, palOp);
 			SetWindowSize(hWnd, 20 + boxWidth, 72 + box1Height + box2Height + box3Height);
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 			SetFocus(data->hWndHue);
 			data->inited = 1;
 			if (palOp->updateCallback != NULL) {
@@ -196,7 +196,7 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 int SelectPaletteOperation(PAL_OP *opStruct) {

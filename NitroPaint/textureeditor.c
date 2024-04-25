@@ -1329,7 +1329,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			SendMessage(data->hWndPaletteName, WM_SETTEXT, wcslen(pname), (LPARAM) pname);
 
 			updateConvertDialog(data);
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 			break;
 		}
 		case WM_COMMAND:

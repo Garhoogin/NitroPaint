@@ -93,7 +93,7 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			rcText.left = 257;
 			rcText.right = 256 + 50;
 			rcText.bottom = 21;
-			SelectObject(hDC, GetStockObject(DEFAULT_GUI_FONT));
+			SelectObject(hDC, GetGUIFont());
 			SetBkMode(hDC, TRANSPARENT);
 			DrawTextW(hDC, L"Selected color:", -1, &rcText, DT_SINGLELINE | DT_NOCLIP | DT_VCENTER | DT_NOPREFIX);
 
@@ -285,14 +285,5 @@ LRESULT WINAPI TileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 }
 
 VOID RegisterTileEditorClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.lpszClassName = L"TileEditorClass";
-	wcex.lpfnWndProc = TileEditorWndProc;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"TileEditorClass", TileEditorWndProc, sizeof(LPVOID));
 }

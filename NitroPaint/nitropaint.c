@@ -1902,16 +1902,7 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 
 void RegisterProgressWindowClass() {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"ProgressWindowClass";
-	wcex.lpfnWndProc = ProgressWindowWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"ProgressWindowClass", ProgressWindowWndProc, sizeof(LPVOID));
 }
 
 typedef struct {

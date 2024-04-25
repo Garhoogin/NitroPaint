@@ -383,7 +383,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			data->hWndResourceButton = CreateButton(hWnd, L"VRAM Use", 75, 300 - 22, 75, 22, FALSE);
 			data->hWndReplaceButton = CreateButton(hWnd, L"Replace", 150, 300 - 22, 100, 22, TRUE);
 			data->hWndAddButton = CreateButton(hWnd, L"Add", 250, 300 - 22, 100, 22, FALSE);
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 			SetWindowSubclass(data->hWndTextureSelect, ListboxDeleteSubclassProc, 1, 0);
 			SetWindowSubclass(data->hWndPaletteSelect, ListboxDeleteSubclassProc, 1, 0);
 			data->scale = 1;
@@ -448,7 +448,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			BitBlt(hDC, 150, 22, TEXW(texture->texImageParam) * data->scale, texture->height * data->scale, hCompat, 0, 0, SRCCOPY);
 
 			char bf[64];
-			SelectObject(hDC, GetStockObject(DEFAULT_GUI_FONT));
+			SelectObject(hDC, GetGUIFont());
 			SetBkMode(hDC, TRANSPARENT);
 			if (FORMAT(texture->texImageParam) == CT_DIRECT) {
 				sprintf(bf, "%s texture, %dx%d", TxNameFromTexFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), texture->height);
@@ -778,13 +778,13 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			AddListViewColumn(hWndPalettes, L"Colors", 1, 75, SCA_RIGHT);
 			AddListViewColumn(hWndPalettes, L"Size (KB)", 2, 75, SCA_RIGHT);
 			SetWindowSize(hWnd, width, 300 + 22 + 22);
-			EnumChildWindows(hWnd, SetFontProc, (LPARAM) (HFONT) GetStockObject(DEFAULT_GUI_FONT));
+			SetGUIFont(hWnd);
 
-			SetWindowLong(hWnd, 0 * sizeof(void *), (LONG) hWndTextureLabel);
-			SetWindowLong(hWnd, 1 * sizeof(void *), (LONG) hWndPaletteLabel);
-			SetWindowLong(hWnd, 2 * sizeof(void *), (LONG) hWndTextures);
-			SetWindowLong(hWnd, 3 * sizeof(void *), (LONG) hWndPalettes);
-			SetWindowLong(hWnd, 4 * sizeof(void *), (LONG) hWndButton);
+			SetWindowLongPtr(hWnd, 0 * sizeof(void *), (LONG_PTR) hWndTextureLabel);
+			SetWindowLongPtr(hWnd, 1 * sizeof(void *), (LONG_PTR) hWndPaletteLabel);
+			SetWindowLongPtr(hWnd, 2 * sizeof(void *), (LONG_PTR) hWndTextures);
+			SetWindowLongPtr(hWnd, 3 * sizeof(void *), (LONG_PTR) hWndPalettes);
+			SetWindowLongPtr(hWnd, 4 * sizeof(void *), (LONG_PTR) hWndButton);
 			break;
 		}
 		case NV_INITIALIZE:

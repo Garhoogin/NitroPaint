@@ -515,15 +515,7 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 BOOL WINAPI CustomChooseColor(CHOOSECOLORW *chooseColor) {
 	if (chooseColor->lStructSize != sizeof(CHOOSECOLORW)) return FALSE;
 	if (!g_ccRegistered) {
-		WNDCLASSEX wcex = { 0 };
-		wcex.cbSize = sizeof(wcex);
-		wcex.lpszClassName = L"ColorChooserClass";
-		wcex.hbrBackground = (HBRUSH) COLOR_WINDOW;
-		wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-		wcex.style = CS_HREDRAW | CS_VREDRAW;
-		wcex.lpfnWndProc = ColorChooserWndProc;
-		wcex.cbWndExtra = sizeof(LPVOID) * 14;
-		RegisterClassEx(&wcex);
+		RegisterGenericClass(L"ColorChooserClass", ColorChooserWndProc, sizeof(LPVOID) * 14);
 		g_ccRegistered = TRUE;
 	}
 

@@ -136,17 +136,7 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 }
 
 VOID RegisterNmcrViewerClass(VOID) {
-	WNDCLASSEX wcex = { 0 };
-	wcex.cbSize = sizeof(wcex);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.hbrBackground = g_useDarkTheme? CreateSolidBrush(RGB(32, 32, 32)): (HBRUSH) COLOR_WINDOW;
-	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.lpszClassName = L"NmcrViewerClass";
-	wcex.lpfnWndProc = NmcrViewerWndProc;
-	wcex.cbWndExtra = sizeof(LPVOID);
-	wcex.hIcon = g_appIcon;
-	wcex.hIconSm = g_appIcon;
-	RegisterClassEx(&wcex);
+	RegisterGenericClass(L"NmcrViewerClass", NmcrViewerWndProc, sizeof(LPVOID));
 }
 
 HWND CreateNmcrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
