@@ -371,6 +371,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				switch (LOWORD(wParam)) {
 					case ID_VIEW_GRIDLINES:
 						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
+						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
 					case ID_ZOOM_100:
 					case ID_ZOOM_200:
