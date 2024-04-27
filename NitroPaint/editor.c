@@ -187,6 +187,18 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			case WM_MDIACTIVATE:
 				EditorHandleActivate(hWnd, (HWND) lParam);
 				break;
+			case WM_CLOSE:
+				//if marked dirty, give alert
+				if (data->dirty) {
+					WCHAR buf[128];
+					wsprintfW(buf, L"Unsaved Changes - %s", GetClassLongPtr(hWnd, EDITOR_CD_TITLE));
+					int status = MessageBox(hWnd, L"You have unsaved changes. Close anyway?", buf, MB_ICONWARNING | MB_YESNO);
+
+					if (status == IDNO) {
+						return 0;
+					}
+				}
+				break;
 #if(g_useDarkTheme)
 			case WM_CTLCOLORSTATIC:
 			case WM_CTLCOLORBTN:
@@ -345,6 +357,7 @@ int EditorSave(HWND hWnd) {
 
 	//else save
 	ObjUpdateLinks(&data->file, ObjGetFileNameFromPath(data->szOpenFile));
+	data->dirty = 0;
 	if (data->file.writer != NULL) return ObjWriteFile(data->szOpenFile, &data->file, data->file.writer);
 
 	//needs to be written

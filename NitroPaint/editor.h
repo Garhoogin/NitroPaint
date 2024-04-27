@@ -46,6 +46,7 @@ typedef struct EDITOR_CLASS_ {
 	HWND hWnd;                   \
 	int scale;                   \
 	int showBorders;             \
+	int dirty;                   \
 	WCHAR szOpenFile[MAX_PATH]
 
 
