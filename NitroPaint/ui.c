@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <CommCtrl.h>
+#include <Uxtheme.h>
 
 #include "ui.h"
 #include "nitropaint.h"
@@ -178,6 +179,11 @@ static void DpiScaleModal(HWND hWnd) {
 	}
 }
 
+static BOOL CALLBACK UiSetThemeProc(HWND hWnd, LPARAM lParam) {
+	SetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
+	return TRUE;
+}
+
 LRESULT DefModalProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 		case WM_NCCREATE:
@@ -187,6 +193,24 @@ LRESULT DefModalProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		case 0x02E0://WM_DPICHANGED:
 			//handle DPI update
 			return HandleWindowDpiChange(hWnd, wParam, lParam);
+#if(g_useDarkTheme)
+		case WM_CREATE:
+		case NV_INITIALIZE:
+			EnumChildWindows(hWnd, UiSetThemeProc, 0);
+			break;
+		case WM_CTLCOLORSTATIC:
+		case WM_CTLCOLORBTN:
+			SetBkMode((HDC) wParam, TRANSPARENT);
+			SetTextColor((HDC) wParam, RGB(255, 255, 255));
+			return (LRESULT) (HBRUSH) GetClassLongPtr(hWnd, GCL_HBRBACKGROUND);
+		case WM_CTLCOLORDLG:
+			break;
+		case WM_CTLCOLOREDIT:
+		case WM_CTLCOLORLISTBOX:
+			SetBkMode((HDC) wParam, TRANSPARENT);
+			SetTextColor((HDC) wParam, RGB(255, 255, 255));
+			break;
+#endif
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
