@@ -23,6 +23,12 @@ DWORD *NcgrToBitmap(NCGR *ncgr, int usePalette, NCLR *nclr, int hlStart, int hlE
 	int width = ncgr->tilesX * 8;
 	DWORD *bits = (DWORD *) malloc(ncgr->tilesX * ncgr->tilesY * 64 * 4);
 
+	//normalize color highlight
+	if (hlStart != -1 && hlEnd != -1) {
+		hlStart -= usePalette << ncgr->nBits;
+		hlEnd -= usePalette << ncgr->nBits;
+	}
+
 	int tileNumber = 0;
 	for (int y = 0; y < ncgr->tilesY; y++) {
 		for (int x = 0; x < ncgr->tilesX; x++) {
