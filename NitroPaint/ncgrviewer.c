@@ -797,6 +797,9 @@ typedef struct {
 	NCGR *ncgr;
 	HWND hWndMain;
 	WCHAR imgPath[MAX_PATH];
+	COLOR32 *px;
+	int width;
+	int height;
 } CHARIMPORT;
 
 int charImportCallback(void *data) {
@@ -813,7 +816,7 @@ int charImportCallback(void *data) {
 	return 0;
 }
 
-void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int paletteNumber, int paletteSize, int paletteBase, 
+void charImport(NCLR *nclr, NCGR *ncgr, COLOR32 *pixels, int width, int height, BOOL createPalette, int paletteNumber, int paletteSize, int paletteBase, 
 	BOOL dither, float diffuse, BOOL import1D, BOOL charCompression, int nMaxChars, int originX, int originY, 
 	int balance, int colorBalance, int enhanceColors, int *progress) {
 	int maxPaletteSize = 1 << ncgr->nBits;
@@ -833,9 +836,6 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 
 	COLOR *nitroPalette = nclr->colors + firstColorIndex;
 	COLOR32 *palette = (COLOR32 *) calloc(paletteSize, 4);
-
-	int width, height;
-	COLOR32 *pixels = ImgRead(imgPath, &width, &height);
 
 	//if we use an existing palette, decode the palette values.
 	//if we do not use an existing palette, generate one.
@@ -971,7 +971,6 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 		free(tiles);
 	}
 
-	free(pixels);
 	free(palette);
 }
 
@@ -981,14 +980,18 @@ DWORD WINAPI charImportInternal(LPVOID lpParameter) {
 	progress->progress1Max = 100;
 	progress->progress1 = 100;
 	progress->progress2Max = 1000;
-	charImport(cim->nclr, cim->ncgr, cim->imgPath, cim->createPalette, cim->paletteNumber, cim->paletteSize, cim->paletteBase, 
+	charImport(cim->nclr, cim->ncgr, cim->px, cim->width, cim->height, cim->createPalette, cim->paletteNumber, cim->paletteSize, cim->paletteBase, 
 			   cim->dither, cim->diffuse, cim->import1D, cim->charCompression, cim->nMaxChars, cim->originX, cim->originY, 
 			   cim->balance, cim->colorBalance, cim->enhanceColors, &progress->progress2);
+	free(cim->px);
 	progress->waitOn = 1;
 	return 0;
 }
 
 void threadedCharImport(PROGRESSDATA *progress) {
+	CHARIMPORT *cim = (CHARIMPORT *) progress->data;
+	cim->px = ImgRead(cim->imgPath, &cim->width, &cim->height); //freed by called thread
+
 	CreateThread(NULL, 0, charImportInternal, progress, 0, NULL);
 }
 
