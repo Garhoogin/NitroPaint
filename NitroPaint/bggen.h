@@ -119,5 +119,5 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	int paletteSize, BOOL newPalettes, int writeCharBase, int nMaxChars,
 	BOOL newCharacters, BOOL dither, float diffuse, int maxTilesX, int maxTilesY,
 	int nscrTileX, int nscrTileY, int balance, int colorBalance, int enhanceColors,
-	int *progress, int *progressMax);
+	int *progress, int *progressMax, int *progress2, int *progress2Max);
 

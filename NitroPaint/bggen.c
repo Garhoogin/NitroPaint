@@ -1044,7 +1044,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	int paletteSize, BOOL newPalettes, int writeCharBase, int nMaxChars,
 	BOOL newCharacters, BOOL dither, float diffuse, int maxTilesX, int maxTilesY,
 	int nscrTileX, int nscrTileY, int balance, int colorBalance, int enhanceColors,
-	int *progress, int *progressMax) {
+	int *progress, int *progressMax, int *progress2, int *progress2Max) {
 
 	int tilesX = width / 8;
 	int tilesY = height / 8;
@@ -1070,7 +1070,10 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 		}
 	}
 
+	*progress = 0;
+	*progress2 = 0;
 	*progressMax = tilesX * tilesY * 2;
+	*progress2Max = 1000;
 
 	BgTile *blocks = (BgTile *) calloc(tilesX * tilesY, sizeof(BgTile));
 	COLOR32 *pals = (COLOR32 *) calloc(16 * maxPaletteSize, 4);
@@ -1161,6 +1164,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			pals[i] = ColorConvertFromDS(c);
 		}
 	}
+	*progress = *progressMax;
 
 	//write to NCLR
 	if (newPalettes) {
@@ -1220,7 +1224,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			BgSetupTiles(blocks, tilesX * tilesY, ncgr->nBits, pals, paletteSize, nPalettes, 0, paletteOffset,
 				dither, diffuse, balance, colorBalance, enhanceColors);
 			int nOutChars = BgPerformCharacterCompression(blocks, tilesX * tilesY, ncgr->nBits, nMaxChars, pals, paletteSize,
-				nPalettes, 0, paletteOffset, balance, colorBalance, progress);
+				nPalettes, 0, paletteOffset, balance, colorBalance, progress2);
 
 			//keep track of master tiles and how they map to real character indices
 			int *masterMap = (int *) calloc(tilesX * tilesY, sizeof(int));

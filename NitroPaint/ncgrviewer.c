@@ -78,6 +78,9 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 		nclr = &nclrViewerData->nclr;
 	}
 
+	RECT rcClient;
+	GetClientRect(hWnd, &rcClient);
+
 	//int highlightColor = data->verifyColor % (1 << data->ncgr.nBits);
 	int hlStart = data->verifyStart;
 	int hlEnd = data->verifyEnd;
@@ -94,7 +97,7 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	FbSetSize(&data->fb, outWidth, outHeight);
 	RenderTileBitmap(data->fb.px, outWidth, outHeight, xMin, yMin, outWidth - xMin, outHeight - yMin, px, width, height, 
 		data->hoverX, data->hoverY, data->scale, data->showBorders, 8, FALSE, FALSE);
-	FbDraw(&data->fb, hDC, xMin, yMin, outWidth - xMin, outHeight - yMin, xMin, yMin);
+	FbDraw(&data->fb, hDC, xMin, yMin, min(outWidth - xMin, rcClient.right), min(outHeight - yMin, rcClient.bottom), xMin, yMin);
 
 	free(px);
 }
@@ -781,7 +784,7 @@ LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 typedef struct {
@@ -1151,7 +1154,7 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 VOID RegisterNcgrPreviewClass(VOID) {

@@ -198,6 +198,9 @@ static void ScrViewerPaint(HWND hWnd, HDC hWindowDC, int xOffs, int yOffs) {
 	HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWndEditor);
 
+	RECT rcClient;
+	GetClientRect(hWnd, &rcClient);
+
 	NSCR *nscr = &data->nscr;
 	NCGR *ncgr = NULL;
 	NCLR *nclr = NULL;
@@ -251,7 +254,7 @@ static void ScrViewerPaint(HWND hWnd, HDC hWindowDC, int xOffs, int yOffs) {
 		FbSetSize(&data->fb, bitmapWidth, bitmapHeight);
 		RenderTileBitmap(data->fb.px, bitmapWidth, bitmapHeight, xOffs, yOffs, bitmapWidth - xOffs, bitmapHeight - yOffs,
 			bits, outWidth, outHeight, hovX, hovY, data->scale, data->showBorders, 8, FALSE, TRUE);
-		FbDraw(&data->fb, hWindowDC, 0, 0, bitmapWidth - xOffs, bitmapHeight - yOffs, xOffs, yOffs);
+		FbDraw(&data->fb, hWindowDC, 0, 0, min(bitmapWidth - xOffs, rcClient.right), min(bitmapHeight - yOffs, rcClient.bottom), xOffs, yOffs);
 
 		free(bits);
 	}
@@ -659,7 +662,7 @@ LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) hWnd);
 						WORD d = data->nscr.data[data->contextHoverX + data->contextHoverY * (data->nscr.nWidth >> 3)];
 						SendMessage(h, NV_INITIMPORTDIALOG, d, data->contextHoverX | (data->contextHoverY << 16));
-						ShowWindow(h, SW_SHOW);
+						DoModal(h);
 						break;
 					}
 					case ID_NSCRMENU_COPY:
@@ -911,7 +914,7 @@ DWORD WINAPI threadedNscrImportBitmapInternal(LPVOID lpParameter) {
 					 importData->newCharacters, importData->dither, importData->diffuse,
 					 importData->maxTilesX, importData->maxTilesY, importData->nscrTileX, importData->nscrTileY,
 					 importData->balance, importData->colorBalance, importData->enhanceColors,
-					 &progressData->progress1, &progressData->progress1Max);
+					 &progressData->progress1, &progressData->progress1Max, &progressData->progress2, &progressData->progress2Max);
 	progressData->waitOn = 1;
 	return 0;
 }
@@ -1124,7 +1127,6 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int maxTilesY = (nscr->nHeight / 8) - data->nscrTileY;
 
 					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
-					ShowWindow(hWndProgress, SW_SHOW);
 					NSCRIMPORTDATA *nscrImportData = (NSCRIMPORTDATA *) calloc(1, sizeof(NSCRIMPORTDATA));
 					nscrImportData->nclr = nclr;
 					nscrImportData->ncgr = ncgr;
@@ -1158,11 +1160,11 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					progressData->data = nscrImportData;
 					progressData->callback = nscrImportCallback;
 					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
+					ShowWindow(hWndProgress, SW_SHOW);
 
 					threadedNscrImportBitmap(progressData);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
-					SetActiveWindow(hWndProgress);
-					SetWindowLong(hWndMain, GWL_STYLE, GetWindowLong(hWndMain, GWL_STYLE) | WS_DISABLED);
+					DoModalEx(hWndProgress, FALSE);
 				} else if (hWndControl == data->hWndWriteCharIndicesCheckbox) {
 					nscrBitmapImportUpdate(hWnd);
 				} else if (hWndControl == data->hWndWriteScreenCheckbox) {
@@ -1175,13 +1177,6 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 			break;
 		}
-		case WM_CLOSE:
-		{
-			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			SetWindowLong(hWndParent, GWL_STYLE, GetWindowLong(hWndParent, GWL_STYLE) & ~WS_DISABLED);
-			SetActiveWindow(hWndParent);
-			break;
-		}
 		case WM_DESTROY:
 		{
 			free(data);
@@ -1189,7 +1184,7 @@ LRESULT WINAPI NscrBitmapImportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 LRESULT WINAPI NscrPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
