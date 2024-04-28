@@ -8,6 +8,7 @@ void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UI
 	unsigned tilesX = nWidth / tileWidth;
 	unsigned tilesY = nHeight / tileWidth;
 	unsigned tileSize = scale * tileWidth;
+	unsigned tileSpacing = (bBorders) ? (tileSize + 1) : tileSize;
 
 	for (unsigned int y = startY; y < outHeight && y < (startY + viewHeight); y++) {
 		//is this a border row?
@@ -26,7 +27,7 @@ void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UI
 		} else {
 			srcY = y / scale;
 		}
-		int tileY = srcY / tileWidth;
+		unsigned int tileY = srcY / tileWidth;
 
 		//scan tiles horizontally
 		unsigned int baseDestX = !!bBorders;
@@ -51,30 +52,27 @@ void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UI
 					DWORD blended = sample;
 
 					//blend with background logic
+					unsigned int cx = (x * scale + h) / (tileWidth / 2);
+					unsigned int cy = (bBorders ? ((y - 1) % tileSpacing) : (y)) / (tileWidth / 2);
+					int cb = (cx ^ cy) & 1;
 					if ((sample & 0xFF000000) == 0) {
-						int cx = destX / (tileWidth / 2);
-						int cy = destY / (tileWidth / 2);
-						int cb = (cx ^ cy) & 1;
 						if (cb) {
 							blended = 0xFFC0C0C0;
 						} else {
 							blended = 0xFFFFFFFF;
 						}
 					} else if (blend && (((sample >> 24) & 0xFF) < 255)) {
-						int alpha = sample >> 24;
-						int cx = destX / (tileWidth / 2);
-						int cy = destY / (tileWidth / 2);
-						int cb = (cx ^ cy) & 1;
-						int bg;
+						unsigned int alpha = sample >> 24;
+						DWORD bg;
 						if (cb) {
 							bg = 0xFFC0C0C0;
 						} else {
 							bg = 0xFFFFFFFF;
 						}
 
-						int r = ((bg & 0xFF) * (255 - alpha) + (sample & 0xFF) * alpha) >> 8;
-						int g = (((bg >> 8) & 0xFF) * (255 - alpha) + ((sample >> 8) & 0xFF) * alpha) >> 8;
-						int b = (((bg >> 16) & 0xFF) * (255 - alpha) + ((sample >> 16) & 0xFF) * alpha) >> 8;
+						unsigned int r = ((bg & 0xFF) * (255 - alpha) + (sample & 0xFF) * alpha) >> 8;
+						unsigned int g = (((bg >> 8) & 0xFF) * (255 - alpha) + ((sample >> 8) & 0xFF) * alpha) >> 8;
+						unsigned int b = (((bg >> 16) & 0xFF) * (255 - alpha) + ((sample >> 16) & 0xFF) * alpha) >> 8;
 						blended = r | (g << 8) | (b << 16) | 0xFF000000;
 					}
 

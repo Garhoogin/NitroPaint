@@ -88,7 +88,7 @@ VOID PaintNcgrViewer(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, int yMi
 	FbSetSize(&data->fb, outWidth, outHeight);
 	RenderTileBitmap(data->fb.px, outWidth, outHeight, xMin, yMin, outWidth - xMin, outHeight - yMin, px, width, height, 
 		data->hoverX, data->hoverY, data->scale, data->showBorders, 8, FALSE, FALSE);
-	FbDraw(&data->fb, hDC, 0, 0, outWidth, outHeight, 0, 0);
+	FbDraw(&data->fb, hDC, xMin, yMin, outWidth - xMin, outHeight - yMin, xMin, yMin);
 
 	free(px);
 }
