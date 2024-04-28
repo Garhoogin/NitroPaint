@@ -326,6 +326,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				switch (LOWORD(wParam)) {
 					case ID_VIEW_GRIDLINES:
 						SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
+						RedrawWindow(data->hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
 					case ID_ZOOM_100:
 					case ID_ZOOM_200:
@@ -821,7 +822,7 @@ void charImport(NCLR *nclr, NCGR *ncgr, LPCWSTR imgPath, BOOL createPalette, int
 	if (paletteBase == 0) {
 		paletteBase = 1;
 		paletteSize--;
-		nclr->colors[paletteNumber << ncgr->nBits] = ColorConvertToDS(0xFF00FF);
+		if (createPalette) nclr->colors[paletteNumber << ncgr->nBits] = ColorConvertToDS(0xFF00FF);
 	}
 
 	int firstColorIndex = (paletteNumber << ncgr->nBits) + paletteBase;
