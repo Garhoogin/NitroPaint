@@ -1811,9 +1811,6 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					int state = GetCheckboxChecked(hWndControl);
 					setStyle(data->hWndDiffuse, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (idc == IDCANCEL) {
-					//abort
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}
 			} else if (HIWORD(wParam) == CBN_SELCHANGE) {
 				HWND hWndControl = (HWND) lParam;
@@ -2101,8 +2098,6 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, &texture);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
-			} else if (LOWORD(wParam) == IDCANCEL) {
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
 			break;
 		}
@@ -2167,8 +2162,6 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 				editorData->file.compression = comp;
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
-			} else if (hWndControl == NULL && LOWORD(wParam) == IDCANCEL) {
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
 			break;
 		}
@@ -2228,8 +2221,6 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, data->szPath);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}
-			} else if (LOWORD(wParam) == IDCANCEL) {
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
 			break;
 		}

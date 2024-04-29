@@ -193,6 +193,10 @@ LRESULT DefModalProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		case 0x02E0://WM_DPICHANGED:
 			//handle DPI update
 			return HandleWindowDpiChange(hWnd, wParam, lParam);
+		case WM_COMMAND:
+			//if escape pressed, close dialog
+			if (lParam == 0 && LOWORD(wParam) == IDCANCEL) SendMessage(hWnd, WM_CLOSE, 0, 0);
+			break;
 #if(g_useDarkTheme)
 		case WM_CREATE:
 		case NV_INITIALIZE:
