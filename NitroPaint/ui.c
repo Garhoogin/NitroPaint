@@ -184,6 +184,25 @@ static BOOL CALLBACK UiSetThemeProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
+static BOOL CALLBACK UiPushbuttonEnumProc(HWND hWnd, LPARAM lparam) {
+	WCHAR cls[32];
+	GetClassName(hWnd, cls, sizeof(cls) / sizeof(cls[0]));
+	if (_wcsicmp(cls, L"BUTTON") != 0) return TRUE; //not found
+
+	DWORD dwType = GetWindowLong(hWnd, GWL_STYLE) & BS_TYPEMASK;
+	if (dwType != BS_DEFPUSHBUTTON) return TRUE; //not found
+	
+	//simulate button command
+	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	SendMessage(hWndParent, WM_COMMAND, BN_CLICKED << 16, (LPARAM) hWnd);
+	return FALSE; //found, stop enumerating
+}
+
+static void UiHandleCommandOk(HWND hWnd) {
+	//enumerate child windows, send command to first button with BS_DEFPUSHBUTTON style.
+	EnumChildWindows(hWnd, UiPushbuttonEnumProc, 0);
+}
+
 LRESULT DefModalProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 		case WM_NCCREATE:
@@ -196,6 +215,7 @@ LRESULT DefModalProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		case WM_COMMAND:
 			//if escape pressed, close dialog
 			if (lParam == 0 && LOWORD(wParam) == IDCANCEL) SendMessage(hWnd, WM_CLOSE, 0, 0);
+			if (lParam == 0 && LOWORD(wParam) == IDOK) UiHandleCommandOk(hWnd);
 			break;
 #if(g_useDarkTheme)
 		case WM_CREATE:

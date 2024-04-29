@@ -356,13 +356,12 @@ LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		{
 			HWND hWndControl = (HWND) lParam;
 			WORD notif = HIWORD(wParam);
-			WORD idc = LOWORD(wParam);
-			if (notif == BN_CLICKED && (hWndControl != NULL || idc)) {
+			if (notif == BN_CLICKED && hWndControl != NULL) {
 				
 				//if OK, set status to 1 and copy text.
 				int *pStatus = (int *) GetWindowLong(hWnd, 0 * sizeof(void *));
 				*pStatus = 0;
-				if (hWndControl == hWndOK || idc == IDOK) {
+				if (hWndControl == hWndOK) {
 					//get length of user text. If it's too long, we should let them know.
 					int textLength = SendMessage(hWndEdit, WM_GETTEXTLENGTH, 0, 0);
 					int bufferLength = GetWindowLong(hWnd, 4 * sizeof(void *));
@@ -1729,7 +1728,6 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		}
 		case WM_COMMAND:
 		{
-			int idc = LOWORD(wParam);
 			if (HIWORD(wParam) == BN_CLICKED) {
 				HWND hWndControl = (HWND) lParam;
 				if (hWndControl == data->nscrCreateInputButton) {
@@ -1737,7 +1735,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					if (!location) break;
 					SendMessage(data->nscrCreateInput, WM_SETTEXT, (WPARAM) wcslen(location), (LPARAM) location);
 					free(location);
-				} else if (hWndControl == data->nscrCreateButton || idc == IDOK) {
+				} else if (hWndControl == data->nscrCreateButton) {
 					WCHAR location[MAX_PATH + 1];
 					int doAlign = GetCheckboxChecked(data->hWndAlignmentCheckbox);
 					const int bitsOptions[] = { 4, 8 };
@@ -1997,7 +1995,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				//update
 				InvalidateRect(hWnd, NULL, FALSE);
-			} else if (hWndControl == data->hWndConvertButton || LOWORD(wParam) == IDOK) {
+			} else if (hWndControl == data->hWndConvertButton) {
 				WCHAR src[MAX_PATH + 1];
 				SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
 				int width = _wtol(src);
@@ -2154,7 +2152,7 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
-			if ((hWndControl && HIWORD(wParam) == BN_CLICKED) || (hWndControl == NULL && LOWORD(wParam) == IDOK)) {
+			if (hWndControl && HIWORD(wParam) == BN_CLICKED) {
 				int fmt = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID)), CB_GETCURSEL, 0, 0) + 1;
 				int comp = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID) * 2), CB_GETCURSEL, 0, 0);
 				EDITOR_DATA *editorData = (EDITOR_DATA *) GetWindowLongPtr(hWnd, 0);

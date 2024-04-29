@@ -171,7 +171,7 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if (hWndControl == NULL && idc == 0) break;
 
 			//complete button
-			if (hWndControl == data->hWndComplete || idc == IDOK) {
+			if (hWndControl == data->hWndComplete) {
 				palOp->result = 1;
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 				break;

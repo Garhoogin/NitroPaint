@@ -321,7 +321,7 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		}
 		case WM_COMMAND:
 		{
-			if (((HWND) lParam == data->hWndOk && HIWORD(wParam) == BN_CLICKED) || (lParam == 0 && LOWORD(wParam) == IDOK)) {
+			if ((HWND) lParam == data->hWndOk && HIWORD(wParam) == BN_CLICKED) {
 				data->exitStatus = TRUE;
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
