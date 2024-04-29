@@ -1238,6 +1238,24 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			CellgenGetBounds(px, width, height, &data->xMin, &data->xMax, &data->yMin, &data->yMax);
 
+			//try get initial Optimization setting. Balances VRAM use with OBJ usage with a simple heuristic.
+			int bestUsage = 0, bestOptimization = 0;
+			if (px != NULL) {
+				for (int i = 0; i < 100; i++) {
+					int nObj, nChars = 0;
+					OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, i, 0, 0, &nObj);
+					for (int i = 0; i < nObj; i++) nChars += (bounds[i].width * bounds[i].height) / 64;
+					if (bounds != NULL) free(bounds);
+
+					//heuristic: proportion of OBJ used + proportion of character VRAM used (using 16K bank)
+					int usage = nChars * 0x20 + (nObj * 16384 / (128));
+					if (i == 0 || (usage <= bestUsage)) {
+						bestOptimization = i;
+						bestUsage = usage;
+					}
+				}
+			}
+
 			SetWindowLongPtr(hWnd, 0 * sizeof(LONG_PTR), (LONG_PTR) px);
 			SetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR), width);
 			SetWindowLongPtr(hWnd, 2 * sizeof(LONG_PTR), height);
@@ -1247,7 +1265,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			LPCWSTR boundModes[] = { L"Opaque", L"Full Image" };
 			CreateStatic(hWnd, L"Optimization:", 10, 10, 70, 22);
-			data->hWndAggressiveness = CreateTrackbar(hWnd, 90, 10, 150, 22, 0, 100, 100);
+			data->hWndAggressiveness = CreateTrackbar(hWnd, 90, 10, 150, 22, 0, 100, bestOptimization);
 			data->hWndAggressivenessLabel = CreateStatic(hWnd, L"100", 250, 10, 30, 22);
 			CreateStatic(hWnd, L"Character:", 290, 10, 60, 22);
 			data->hWndCharacter = CreateEdit(hWnd, L"0", 350, 10, 40, 22, TRUE);
