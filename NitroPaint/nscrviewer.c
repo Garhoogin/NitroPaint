@@ -342,12 +342,13 @@ void NscrViewerSetTileBase(HWND hWnd, int tileBase) {
 
 LRESULT WINAPI NscrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWnd);
+	float dpiScale = GetDpiScale();
 
 	switch (msg) {
 		case WM_CREATE:
 		{
 			data->showBorders = 0;
-			data->scale = 1;
+			data->scale = GetDpiScale() > 1.0f ? 2 : 1;
 			data->selStartX = -1;
 			data->selStartY = -1;
 			data->selEndX = -1;
