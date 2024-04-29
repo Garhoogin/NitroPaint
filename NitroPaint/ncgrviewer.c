@@ -353,7 +353,7 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						BOOL createPalette = (LOWORD(wParam) == ID_NCGRMENU_IMPORTBITMAPHEREANDREPLACEPALETTE);
 						HWND hWndMain = getMainWindow(hWnd);
 						HWND h = CreateWindow(L"CharImportDialog", L"Import Bitmap", 
-							(WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX) | WS_VISIBLE,
+							(WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX),
 											  CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
 						CHARIMPORTDATA *cidata = (CHARIMPORTDATA *) GetWindowLongPtr(h, 0);
 						memcpy(cidata->path, path, 2 * (wcslen(path) + 1));
@@ -369,9 +369,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 						NCLR *nclr = NULL;
 						NCGR *ncgr = &data->ncgr;
-						if (hWndNclrViewer) {
-							NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(hWndNclrViewer);
-							nclr = &nclrViewerData->nclr;
+						if (hWndNclrViewer != NULL) {
+							nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
 						}
 						cidata->nclr = nclr;
 						cidata->ncgr = ncgr;
@@ -379,6 +378,8 @@ LRESULT WINAPI NcgrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						cidata->contextHoverX = data->contextHoverX;
 						cidata->contextHoverY = data->contextHoverY;
 						free(path);
+
+						DoModal(h);
 						break;
 					}
 					case ID_FILE_SAVEAS:
@@ -1058,9 +1059,7 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			CreateGroupbox(hWnd, L"Dimension", 10, 10 + boxHeight + 10, boxWidth * 2 + 10, boxHeight2);
 			CreateGroupbox(hWnd, L"Color", 10, 10 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3);
 
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 			SetGUIFont(hWnd);
-			setStyle(hWndMain, TRUE, WS_DISABLED);
 			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
 			setStyle(data->hWndCompression, TRUE, WS_DISABLED);
 			setStyle(data->hWndMaxChars, TRUE, WS_DISABLED);
@@ -1132,20 +1131,13 @@ LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 					progressData->callback = charImportCallback;
 
 					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
-					ShowWindow(hWndProgress, SW_SHOW);
 					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
 					threadedCharImport(progressData);
 
-					DestroyWindow(hWnd);
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					DoModalEx(hWndProgress, FALSE);
 				}
 			}
-			break;
-		}
-		case WM_CLOSE:
-		{
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndMain, FALSE, WS_DISABLED);
-			SetForegroundWindow(hWndMain);
 			break;
 		}
 		case WM_DESTROY:
