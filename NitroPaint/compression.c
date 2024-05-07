@@ -1729,12 +1729,16 @@ static uint32_t CxiVlxWordBufferReadBits(WordBuffer *buffer, int nBits) {
 static uint32_t CxiVlxReadNextValue(WordBuffer *buffer, CxiVlxTreeNode *tree, int nTreeElements) {
 	CxiVlxTreeNode *entry = tree;
 	for (int i = 0; i < nTreeElements; i++) {
-		if (entry->encoding == (buffer->bits & entry->mask)) break;
+		if (entry->encoding == (buffer->bits & entry->mask)) {
+			//consume bits
+			CxiVlxWordBufferReadBits(buffer, entry->maskBits);
+			return entry->value;
+		}
 		entry++;
 	}
-	CxiVlxWordBufferReadBits(buffer, entry->maskBits);
-
-	return entry->value;
+	
+	//not found
+	return (uint32_t) -1;
 }
 
 static unsigned int CxiVlxGetUncompressedSize(const unsigned char *b) {
@@ -1753,6 +1757,8 @@ static int CxiTryDecompressVlx(const unsigned char *src, unsigned int size, unsi
 	CxiVlxTreeNode lengthEntries[12] = { 0 };
 	CxiVlxTreeNode distEntries[12] = { 0 };
 	if (size < 1) return 0; //must be big enough for header byte
+
+	if (*src & 0xF0) return 0; //high 4 bits not used, but always 0
 
 	//ensure the buffer is big enough for the head byte, length, and tree header
 	unsigned char lenlen = *src & 0xF;
@@ -1829,12 +1835,33 @@ static int CxiTryDecompressVlx(const unsigned char *src, unsigned int size, unsi
 		distBitmap |= (1 << distEntries[i].value);
 	}
 
+	//a proper encoder will ensure that the tree can be interpreted umabiguously.
+	for (int i = 0; i < hi4; i++) {
+		for (int j = 0; j < hi4; j++) {
+			if (j == i) continue;
+
+			//check that [i] is not a prefix of [j]
+			if (lengthEntries[i].maskBits > lengthEntries[j].maskBits) continue;
+			if (lengthEntries[i].encoding == (lengthEntries[j].encoding & lengthEntries[i].mask)) return 0;
+		}
+	}
+	for (int i = 0; i < lo4; i++) {
+		for (int j = 0; j < lo4; j++) {
+			if (j == i) continue;
+
+			//check that [i] is not a prefix of [j]
+			if (distEntries[i].maskBits > distEntries[j].maskBits) continue;
+			if (distEntries[i].encoding == (distEntries[j].encoding & distEntries[i].mask)) return 0;
+		}
+	}
+
 	uint32_t outpos = 0;
 	WordBuffer buffer32;
 	CxiVlxWordBufferInit(&buffer32, src, srcpos, size);
 
 	while (outpos < outlen) {
 		uint32_t nLengthBits = CxiVlxReadNextValue(&buffer32, lengthEntries, hi4);
+		if (nLengthBits == (uint32_t) -1) return 0; //bit pattern not found
 
 		if (nLengthBits == 0) {
 			unsigned char bval = CxiVlxWordBufferReadByte(&buffer32);
@@ -1844,6 +1871,8 @@ static int CxiTryDecompressVlx(const unsigned char *src, unsigned int size, unsi
 			if (buffer32.error) return 0;
 		} else {
 			uint32_t copylen = (1 << nLengthBits) + CxiVlxWordBufferReadBits(&buffer32, nLengthBits);
+			if (copylen == (uint32_t) -1) return 0; //bit pattern not found
+			
 			uint32_t nDistBits = CxiVlxReadNextValue(&buffer32, distEntries, lo4);
 			uint32_t dist = (1 << nDistBits) + CxiVlxWordBufferReadBits(&buffer32, nDistBits) - 1;
 			if (buffer32.error) return 0;
