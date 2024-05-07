@@ -11,6 +11,7 @@
 #define COMPRESSION_DIFF16           8
 #define COMPRESSION_LZ77_HEADER      9
 #define COMPRESSION_MVDK             10
+#define COMPRESSION_VLX              11
 
 //----- LZ77 functions
 
@@ -38,6 +39,7 @@ unsigned char *CxUnfilterDiff16(const unsigned char *buffer, unsigned int size, 
 unsigned char *CxDecompressLZHeader(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 unsigned char *CxDecompressMvDK(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressVlx(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 
 
 /******************************************************************************\
@@ -107,6 +109,7 @@ int CxIsFilteredDiff8(const unsigned char *buffer, unsigned int size);
 int CxIsFilteredDiff16(const unsigned char *buffer, unsigned int size);
 int CxIsFilteredLZHeader(const unsigned char *buffer, unsigned int size);
 int CxIsCompressedMvDK(const unsigned char *buffer, unsigned int size);
+int CxIsCompressedVlx(const unsigned char *src, unsigned int size);
 
 //----- Common functions
 

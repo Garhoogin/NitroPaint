@@ -300,19 +300,47 @@ unsigned char *CxUnfilterDiff16(const unsigned char *buffer, unsigned int size, 
 static unsigned int CxiCompareMemory(const unsigned char *b1, const unsigned char *b2, unsigned int nMax, unsigned int nAbsoluteMax) {
 	unsigned int nSame = 0;
 	if (nMax > nAbsoluteMax) nMax = nAbsoluteMax;
-	//count up to nMax. If all match, count 0x12-nMax bytes. The b1 just starts over.
-	for (unsigned int i = 0; i < nMax; i++) {
-		if (*(b1++) == *(b2++)) nSame++;
-		else break;
-	}
-	if (nSame == nMax) {
-		b1 -= nMax;
-		for (unsigned int i = 0; i < nAbsoluteMax - nMax; i++) {
-			if (*(b1++) == *(b2++)) nSame++;
-			else break;
+
+	if (nAbsoluteMax >= nMax) {
+		//compare 4bytes at a time
+		unsigned int nSame = 0;
+		while (nAbsoluteMax >= 4) {
+			if (*(uint32_t *) b1 != *(uint32_t *) b2) break;
+			b1 += sizeof(uint32_t);
+			b2 += sizeof(uint32_t);
+			nAbsoluteMax -= 4;
+			nSame += 4;
 		}
+
+		//fallback to byte comparisons for the remainder & get any bytes from the last failed comparison
+		while (nAbsoluteMax > 0) {
+			if (*(b1++) != *(b2++)) break;
+			nAbsoluteMax--;
+			nSame++;
+		}
+		return nSame;
+	} else {
+		//compare nMax bytes, then repeat the comparison until nAbsoluteMax is 0.
+		unsigned int nSame = 0;
+		while (nAbsoluteMax > 0) {
+
+			//compare strings once, incrementing b2 (but keeping b1 fixed since it's repeating)
+			unsigned int nSameThis = 0;
+			for (unsigned int i = 0; i < nMax; i++) {
+				if (b1[i] == *(b2++)) {
+					nSameThis++;
+				} else {
+					break;
+				}
+			}
+
+			nAbsoluteMax -= nSameThis;
+			nSame += nSameThis;
+			if (nSameThis < nMax) break; //failed comparison
+		}
+		return nSame;
 	}
-	return nSame;
+
 }
 
 unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize){
@@ -1614,6 +1642,458 @@ unsigned char *CxCompressMvDK(const unsigned char *buffer, unsigned int size, un
 }
 
 
+typedef struct st1_ {
+	uint16_t value;
+	uint16_t maskBits;
+	uint32_t encoding;
+	uint32_t mask;
+} st1;
+
+typedef struct WordBuffer_ {
+	uint32_t bits;
+	unsigned int available;
+	const unsigned char *src;
+	unsigned int srcpos;
+	unsigned int size;
+	int error;                 // set when we try to read bits off the end of the file
+	int nEofBits;              // set when low level buffer reaches end of file
+} WordBuffer;
+
+typedef struct CxiLzToken_ {
+	uint8_t isReference;
+	union {
+		uint8_t symbol;
+		struct {
+			int16_t length;
+			int16_t distance;
+		};
+	};
+} CxiLzToken;
+
+static unsigned char CxiVlxWordBufferFetchByte(WordBuffer *buffer) {
+	if (buffer->srcpos < buffer->size) {
+		return buffer->src[buffer->srcpos++];
+	}
+
+	//update EOF status
+	if (buffer->nEofBits <= 24) buffer->nEofBits += 8;
+	else buffer->nEofBits = 32;
+	return 0;
+}
+
+static void CxiVlxWordBufferInit(WordBuffer *buffer, const unsigned char *src, unsigned int srcpos, unsigned int size) {
+	buffer->bits = 0;
+	buffer->available = 0;
+	buffer->src = src;
+	buffer->srcpos = srcpos;
+	buffer->size = size;
+	buffer->error = 0;
+	buffer->nEofBits = 0;
+
+	for (int i = 0; i < 4; i++) {
+		buffer->bits = CxiVlxWordBufferFetchByte(buffer) | (buffer->bits << 8);
+	}
+}
+
+static void CxiVlxWordBufferFill(WordBuffer *buffer) {
+	while (buffer->available >= 8) {
+		buffer->bits |= CxiVlxWordBufferFetchByte(buffer) << (buffer->available - 8);
+		buffer->available -= 8;
+	}
+}
+
+static unsigned char CxiVlxWordBufferReadByte(WordBuffer *buffer) {
+	//check if we're reading bits that would be out of bounds
+	if (buffer->nEofBits > (32 - 8)) buffer->error = 1;
+
+	unsigned char u = buffer->bits >> 24;
+	buffer->bits <<= 8;
+	buffer->available += 8;
+	CxiVlxWordBufferFill(buffer);
+
+	return u;
+}
+
+static uint32_t CxiVlxWordBufferReadBits(WordBuffer *buffer, int nBits) {
+	//check that we're reading bits that would be out of bounds
+	if (buffer->nEofBits > (32 - nBits)) buffer->error = 1;
+
+	uint32_t bits = buffer->bits >> (32 - nBits);
+	buffer->bits <<= nBits;
+	buffer->available += nBits;
+
+	CxiVlxWordBufferFill(buffer);
+	return bits;
+}
+
+static uint32_t CxiVlxReadNextValue(WordBuffer *buffer, st1 *tree, int nTreeElements) {
+	st1 *entry = tree;
+	for (int i = 0; i < nTreeElements; i++) {
+		if (entry->encoding == (buffer->bits & entry->mask)) break;
+		entry++;
+	}
+	CxiVlxWordBufferReadBits(buffer, entry->maskBits);
+
+	return entry->value;
+}
+
+static unsigned int CxiVlxGetUncompressedSize(const unsigned char *b) {
+	switch (*b & 0xF) {
+		case 1:
+			return b[1];
+		case 2:
+			return b[1] | (b[2] << 8);
+		case 4:
+			return b[1] | (b[2] << 8) | (b[3] << 16) | (b[4] << 16); //yes 16 twice
+	}
+	return -1;
+}
+
+static int CxiTryDecompressVlx(const unsigned char *src, unsigned int size, unsigned char *dest) {
+	st1 lengthEntries[12] = { 0 };
+	st1 distEntries[12] = { 0 };
+	if (size < 1) return 0; //must be big enough for header byte
+
+	//ensure the buffer is big enough for the head byte, length, and tree header
+	unsigned char lenlen = *src & 0xF;
+	switch (lenlen) {
+		case 1:
+			if (size < 3) return 0;
+			break;
+		case 2:
+			if (size < 4) return 0;
+			break;
+		case 4:
+			if (size < 6) return 0;
+			if (src[4] != 0) return 0; //bug in the game's decoder shifts this byte incorrectly
+			break;
+		default:
+			//invalid
+			return 0;
+	}
+
+	uint32_t outlen = 0, srcpos = 0;
+	outlen = CxiVlxGetUncompressedSize(src);
+	srcpos += lenlen + 1;
+
+	unsigned char byte1 = src[srcpos++];
+	unsigned char hi4 = (byte1 >> 4) & 0xF;
+	unsigned char lo4 = (byte1 >> 0) & 0xF;
+	if (hi4 > 12 || lo4 > 12) return 0; //too large tree size
+
+	unsigned int treeSize = (hi4 + lo4) * sizeof(uint16_t);
+	if (srcpos + treeSize > size) return 0; //not enough space for tree
+
+	for (int i = 0; i < hi4; i++) {
+		uint16_t hw = src[srcpos] | (src[srcpos + 1] << 8);
+		srcpos += 2;
+
+		lengthEntries[i].value = hw >> 12;
+		lengthEntries[i].maskBits = 11;
+		if ((hw & 0xFFF) == 0) return 0; //will lock the decoder
+
+		while (!((hw & 0xFFF) & (1 << lengthEntries[i].maskBits))) {
+			lengthEntries[i].maskBits--;
+		}
+
+		uint32_t shift = 32 - lengthEntries[i].maskBits;
+		lengthEntries[i].encoding = (hw & 0xFFF) << shift;
+		lengthEntries[i].mask     = 0xFFFFFFFF   << shift;
+	}
+
+	for (int i = 0; i < lo4; i++) {
+		uint16_t hw = src[srcpos] | (src[srcpos + 1] << 8);
+		srcpos += 2;
+
+		distEntries[i].value = hw >> 12;
+		distEntries[i].maskBits = 11;
+		if ((hw & 0xFFF) == 0) return 0; //will lock the decoder
+
+		while (!((hw & 0xFFF) & (1 << distEntries[i].maskBits))) {
+			distEntries[i].maskBits--;
+		}
+
+		uint32_t shift = 32 - distEntries[i].maskBits;
+		distEntries[i].encoding = (hw & 0xFFF) << shift;
+		distEntries[i].mask     = 0xFFFFFFFF   << shift;
+	}
+
+	//a proper encoder won't produce duplicate tree entries. 
+	uint16_t lengthBitmap = 0, distBitmap = 0;
+	for (int i = 0; i < hi4; i++) {
+		if (lengthBitmap & (1 << lengthEntries[i].value)) return 0;
+		lengthBitmap |= (1 << lengthEntries[i].value);
+	}
+	for (int i = 0; i < lo4; i++) {
+		if (distBitmap & (1 << distEntries[i].value)) return 0;
+		distBitmap |= (1 << distEntries[i].value);
+	}
+
+	uint32_t outpos = 0;
+	WordBuffer buffer32;
+	CxiVlxWordBufferInit(&buffer32, src, srcpos, size);
+
+	while (outpos < outlen) {
+		uint32_t nLengthBits = CxiVlxReadNextValue(&buffer32, lengthEntries, hi4);
+
+		if (nLengthBits == 0) {
+			unsigned char bval = CxiVlxWordBufferReadByte(&buffer32);
+			if (dest != NULL) dest[outpos] = bval;
+			outpos++;
+
+			if (buffer32.error) return 0;
+		} else {
+			uint32_t copylen = (1 << nLengthBits) + CxiVlxWordBufferReadBits(&buffer32, nLengthBits);
+			uint32_t nDistBits = CxiVlxReadNextValue(&buffer32, distEntries, lo4);
+			uint32_t dist = (1 << nDistBits) + CxiVlxWordBufferReadBits(&buffer32, nDistBits) - 1;
+			if (buffer32.error) return 0;
+
+			if (dist > outpos || dist == 0 || copylen > (outlen - outpos)) return 0; //invalid copy
+
+			if (dest != NULL) {
+				unsigned char *cpyDest = dest + outpos;
+				unsigned char *cpySrc = dest + outpos - dist;
+				for (uint32_t i = 0; i < copylen; i++) {
+					*(cpyDest++) = *(cpySrc++);
+				}
+			}
+			outpos += copylen;
+		}
+	}
+
+	//check buffer used, allow up to 3 bytes trailing for 4-byte padding
+	if ((buffer32.srcpos + 3) < size) return 0;
+
+	return 1;
+}
+
+unsigned char *CxDecompressVlx(const unsigned char *src, unsigned int size, unsigned int *decompressedSize) {
+	unsigned int outlen = CxiVlxGetUncompressedSize(src);
+	unsigned char *dest = (unsigned char *) malloc(outlen);
+
+	int success = CxiTryDecompressVlx(src, size, dest);
+	if (!success) {
+		free(dest);
+		dest = NULL;
+		outlen = 0;
+	}
+
+	*decompressedSize = outlen;
+	return dest;
+}
+
+int CxIsCompressedVlx(const unsigned char *src, unsigned int size) {
+	return CxiTryDecompressVlx(src, size, NULL);
+}
+
+static unsigned int CxiIlog2(unsigned int x) {
+	unsigned int y = 0;
+	while (x) {
+		x >>= 1;
+		y++;
+	}
+	return y - 1;
+}
+
+static CxiLzToken *CxiVlxComputeLzStatistics(const unsigned char *buffer, unsigned int size, unsigned int *lengthCounts, unsigned int *distCounts, int *pnTokens) {
+	int tokenBufferSize = 16;
+	int nTokens = 0;
+	CxiLzToken *tokenBuffer = (CxiLzToken *) calloc(tokenBufferSize, sizeof(CxiLzToken));
+
+	unsigned int nProcessedBytes = 0;
+	while (nProcessedBytes < size) {
+		//search backwards up to 0xFFF bytes.
+		unsigned int maxSearch = 0xFFE;
+		if (maxSearch > nProcessedBytes) maxSearch = nProcessedBytes;
+
+		//the biggest match, and where it was
+		unsigned int biggestRun = 0, biggestRunIndex = 0;
+
+		//begin searching backwards.
+		for (unsigned int j = 1; j < maxSearch; j++) {
+			//compare up to 0xF bytes, at most j bytes.
+			unsigned int nAbsoluteMaxCompare = 0x7FF;
+			unsigned int nCompare = nAbsoluteMaxCompare;
+			if (nCompare > j) nCompare = j;
+
+			unsigned int nBytesLeft = size - nProcessedBytes;
+			if (nAbsoluteMaxCompare > nBytesLeft) nAbsoluteMaxCompare = nBytesLeft;
+
+			unsigned int nMatched = CxiCompareMemory(buffer - j, buffer, nCompare, nAbsoluteMaxCompare);
+			if (nMatched > biggestRun) {
+				if (biggestRun == nAbsoluteMaxCompare) break;
+				biggestRun = nMatched;
+				biggestRunIndex = j;
+			}
+		}
+
+		//ensure token buffer capacity
+		if ((nTokens + 1) > tokenBufferSize) {
+			tokenBufferSize = (tokenBufferSize + 1) * 3 / 2;
+			tokenBuffer = (CxiLzToken *) realloc(tokenBuffer, tokenBufferSize * sizeof(CxiLzToken));
+		}
+
+		//minimum run length is 2 bytes
+		if (biggestRun >= 2) {
+			//advance the buffer
+			buffer += biggestRun;
+			nProcessedBytes += biggestRun;
+
+			//increment copy length bin
+			lengthCounts[CxiIlog2(biggestRun)]++;
+
+			//increment copy distance bin
+			distCounts[CxiIlog2(biggestRunIndex + 1)]++;
+
+			//append token
+			tokenBuffer[nTokens].isReference = 1;
+			tokenBuffer[nTokens].length = biggestRun;
+			tokenBuffer[nTokens].distance = biggestRunIndex;
+		} else {
+			nProcessedBytes++;
+
+			//no copy found: increment 0-length bin
+			lengthCounts[0]++;
+
+			tokenBuffer[nTokens].isReference = 0;
+			tokenBuffer[nTokens].symbol = *(buffer++);
+		}
+		nTokens++;
+	}
+
+	*pnTokens = nTokens;
+	return tokenBuffer;
+}
+
+static int CxiVlxWriteHuffmanTree(HUFFNODE *tree, uint16_t *dest, int pos, uint16_t *reps, int *lengths, uint16_t curval, int nBitsVal) {
+	if (tree->nRepresent == 1) {
+		dest[pos] = (tree->sym << 12) | (curval | (1 << nBitsVal));
+		lengths[tree->sym] = nBitsVal;
+		reps[tree->sym] = curval;
+		return pos + 1;
+	} else {
+		pos = CxiVlxWriteHuffmanTree(tree->left, dest, pos, reps, lengths, (curval << 1) | 0, nBitsVal + 1);
+		pos = CxiVlxWriteHuffmanTree(tree->right, dest, pos, reps, lengths, (curval << 1) | 1, nBitsVal + 1);
+		return pos;
+	}
+}
+
+static void CxiVlxWriteSymbol(BITSTREAM *stream, uint32_t string, int length) {
+	for (int i = 0; i < length; i++) {
+		CxiBitStreamWrite(stream, (string >> (length - 1 - i)) & 1);
+	}
+}
+
+static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, unsigned int *lengthCounts, unsigned int *distCounts, unsigned int uncompSize, unsigned int *compressedSize) {
+	//write header
+	unsigned char header[5] = { 1, 0, 0, 0, 0 };
+	header[1] = (uncompSize >> 0) & 0xFF;
+	if (uncompSize > 0xFFFF) {
+		header[0] = 4;
+		header[2] = (uncompSize >> 8) & 0xFF;
+		header[3] = (uncompSize >> 16) & 0xFF;
+		//decompressor is bugged: only 24-bit size allowed
+	} else if (uncompSize > 0xFF) {
+		header[0] = 2;
+		header[2] = (uncompSize >> 8) & 0xFF;
+	}
+
+	//arrange tree
+	HUFFNODE lengthNodes[24] = { 0 }, distNodes[24] = { 0 };
+	int nLengthNodes = 0, nDistNodes = 0;
+	for (int i = 0; i < 12; i++) {
+		if (lengthCounts[i] == 0) continue;
+
+		lengthNodes[nLengthNodes].symMin = lengthNodes[nLengthNodes].symMax = lengthNodes[nLengthNodes].sym = i;
+		lengthNodes[nLengthNodes].nRepresent = 1;
+		lengthNodes[nLengthNodes].freq = lengthCounts[i];
+		nLengthNodes++;
+	}
+	for (int i = 0; i < 12; i++) {
+		if (distCounts[i] == 0) continue;
+
+		distNodes[nDistNodes].symMin = distNodes[nDistNodes].symMax = distNodes[nDistNodes].sym = i;
+		distNodes[nDistNodes].nRepresent = 1;
+		distNodes[nDistNodes].freq = distCounts[i];
+		nDistNodes++;
+	}
+	CxiHuffmanConstructTree(lengthNodes, nLengthNodes);
+	CxiHuffmanConstructTree(distNodes, nDistNodes);
+
+	//write tree
+	uint16_t treeData[24] = { 0 };
+	uint8_t treeHeader = (nLengthNodes << 4) | nDistNodes;
+
+	uint16_t lengthReps[12] = { 0 }, distReps[12] = { 0 };
+	int lengthLengths[12] = { 0 }, distLengths[12] = { 0 };
+	int treeDataSize = CxiVlxWriteHuffmanTree(lengthNodes, treeData, 0, lengthReps, lengthLengths, 0, 0);
+	treeDataSize = CxiVlxWriteHuffmanTree(distNodes, treeData, treeDataSize, distReps, distLengths, 0, 0);
+
+	//write tokens
+	BITSTREAM stream;
+	CxiBitStreamCreate(&stream);
+	for (int i = 0; i < nTokens; i++) {
+		CxiLzToken *token = tokens + i;
+		if (!token->isReference) {
+			//write 0-length token
+			CxiVlxWriteSymbol(&stream, lengthReps[0], lengthLengths[0]);
+
+			//write byte
+			CxiVlxWriteSymbol(&stream, token->symbol, 8);
+		} else {
+			//else write reference
+			int nBitsLength = CxiIlog2(token->length);
+			CxiVlxWriteSymbol(&stream, lengthReps[nBitsLength], lengthLengths[nBitsLength]);
+			CxiVlxWriteSymbol(&stream, token->length - (1 << nBitsLength), nBitsLength);
+
+			int nBitsDistance = CxiIlog2(token->distance + 1);
+			CxiVlxWriteSymbol(&stream, distReps[nBitsDistance], distLengths[nBitsDistance]);
+			CxiVlxWriteSymbol(&stream, (token->distance + 1) - (1 << nBitsDistance), nBitsDistance);
+		}
+	}
+
+	//write ending 24-bit dummy string
+	CxiVlxWriteSymbol(&stream, 0, 24);
+
+	//last: switch endianness of stream (uses big endian)
+	for (int i = 0; i < stream.nWords; i++) {
+		uint32_t w = stream.bits[i];
+		w = ((w & 0xFF) << 24) | ((w & 0xFF00) << 8) | ((w & 0xFF0000) >> 8) | ((w & 0xFF000000) >> 24);
+		stream.bits[i] = w;
+	}
+
+	unsigned int outsize = 1 + header[0] + treeDataSize * sizeof(uint16_t) + stream.nWords * 4;
+	outsize = (outsize + 3) & ~3;
+
+	unsigned char *outbuf = (unsigned char *) calloc(outsize, 1);
+	unsigned char *pos = outbuf;
+	memcpy(pos, header, header[0] + 1);
+	pos += header[0] + 1;
+	memcpy(pos, &treeHeader, sizeof(treeHeader));
+	pos += sizeof(treeHeader);
+	memcpy(pos, treeData, treeDataSize * sizeof(uint16_t));
+	pos += treeDataSize * sizeof(uint16_t);
+	memcpy(pos, stream.bits, stream.nWords * 4);
+	CxiBitStreamFree(&stream);
+
+	*compressedSize = outsize;
+	return outbuf;
+}
+
+unsigned char *CxCompressVlx(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
+	//compute histogram of LZ lengths and distances
+	unsigned int lengthCounts[12] = { 0 }, distCounts[12] = { 0 };
+	int nTokens;
+	CxiLzToken *tokens = CxiVlxComputeLzStatistics(buffer, size, lengthCounts, distCounts, &nTokens);
+	
+	unsigned char *out = CxiVlxWriteTokenString(tokens, nTokens, lengthCounts, distCounts, size, compressedSize);
+	free(tokens);
+	return out;
+}
+
+
+
+
 int CxGetCompressionType(const unsigned char *buffer, unsigned int size) {
 	if (CxIsFilteredLZHeader(buffer, size)) return COMPRESSION_LZ77_HEADER;
 	if (CxIsCompressedLZ(buffer, size)) return COMPRESSION_LZ77;
@@ -1625,6 +2105,7 @@ int CxGetCompressionType(const unsigned char *buffer, unsigned int size) {
 	if (CxIsFilteredDiff8(buffer, size)) return COMPRESSION_DIFF8;
 	if (CxIsFilteredDiff16(buffer, size)) return COMPRESSION_DIFF16;
 	if (CxIsCompressedMvDK(buffer, size)) return COMPRESSION_MVDK;
+	if (CxIsCompressedVlx(buffer, size)) return COMPRESSION_VLX;
 
 	return COMPRESSION_NONE;
 }
@@ -1658,6 +2139,8 @@ unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, unsi
 			return CxUnfilterDiff16(buffer, size, uncompressedSize);
 		case COMPRESSION_MVDK:
 			return CxDecompressMvDK(buffer, size, uncompressedSize);
+		case COMPRESSION_VLX:
+			return CxDecompressVlx(buffer, size, uncompressedSize);
 	}
 	return NULL;
 }
@@ -1691,6 +2174,8 @@ unsigned char *CxCompress(const unsigned char *buffer, unsigned int size, int co
 			return CxFilterDiff16(buffer, size, compressedSize);
 		case COMPRESSION_MVDK:
 			return CxCompressMvDK(buffer, size, compressedSize);
+		case COMPRESSION_VLX:
+			return CxCompressVlx(buffer, size, compressedSize);
 	}
 	return NULL;
 }

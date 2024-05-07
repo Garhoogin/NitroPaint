@@ -21,6 +21,7 @@ LPCWSTR g_ObjCompressionNames[] = {
 	L"Diff 16", 
 	L"LZ77 Header", 
 	L"MvDK", 
+	L"VLX",
 	NULL
 };
 
