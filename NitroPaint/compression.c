@@ -1647,7 +1647,7 @@ typedef struct st1_ {
 	uint16_t maskBits;
 	uint32_t encoding;
 	uint32_t mask;
-} st1;
+} CxiVlxTreeNode;
 
 typedef struct WordBuffer_ {
 	uint32_t bits;
@@ -1726,8 +1726,8 @@ static uint32_t CxiVlxWordBufferReadBits(WordBuffer *buffer, int nBits) {
 	return bits;
 }
 
-static uint32_t CxiVlxReadNextValue(WordBuffer *buffer, st1 *tree, int nTreeElements) {
-	st1 *entry = tree;
+static uint32_t CxiVlxReadNextValue(WordBuffer *buffer, CxiVlxTreeNode *tree, int nTreeElements) {
+	CxiVlxTreeNode *entry = tree;
 	for (int i = 0; i < nTreeElements; i++) {
 		if (entry->encoding == (buffer->bits & entry->mask)) break;
 		entry++;
@@ -1750,8 +1750,8 @@ static unsigned int CxiVlxGetUncompressedSize(const unsigned char *b) {
 }
 
 static int CxiTryDecompressVlx(const unsigned char *src, unsigned int size, unsigned char *dest) {
-	st1 lengthEntries[12] = { 0 };
-	st1 distEntries[12] = { 0 };
+	CxiVlxTreeNode lengthEntries[12] = { 0 };
+	CxiVlxTreeNode distEntries[12] = { 0 };
 	if (size < 1) return 0; //must be big enough for header byte
 
 	//ensure the buffer is big enough for the head byte, length, and tree header
