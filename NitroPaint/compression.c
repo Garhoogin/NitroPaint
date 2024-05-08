@@ -343,60 +343,67 @@ static unsigned int CxiCompareMemory(const unsigned char *b1, const unsigned cha
 
 }
 
+static unsigned int CxiSearchLZ(const unsigned char *buffer, unsigned int size, unsigned int curpos, unsigned int minDistance, unsigned int maxDistance, unsigned int maxLength, unsigned int *pDistance) {
+	//nProcessedBytes = curpos
+	unsigned int nBytesLeft = size - curpos;
+
+	//the maximum distance we can search backwards is limited by how far into the buffer we are. It won't
+	//make sense to a decoder to copy bytes from before we've started.
+	if (maxDistance > curpos) maxDistance = curpos;
+
+	//keep track of the biggest match and where it was
+	unsigned int biggestRun = 0, biggestRunIndex = 0;
+
+	//the longest string we can match, including repetition by overwriting the source.
+	unsigned int nMaxCompare = maxLength;
+	if (nMaxCompare > nBytesLeft) nMaxCompare = nBytesLeft;
+
+	//begin searching backwards.
+	for (unsigned int j = minDistance; j <= maxDistance; j++) {
+		//compare up to 0xF bytes, at most j bytes.
+		unsigned int nCompare = maxLength;
+		if (nCompare > j) nCompare = j;
+		if (nCompare > nMaxCompare) nCompare = nMaxCompare;
+
+		unsigned int nMatched = CxiCompareMemory(buffer - j, buffer, nCompare, nMaxCompare);
+		if (nMatched > biggestRun) {
+			biggestRun = nMatched;
+			biggestRunIndex = j;
+			if (biggestRun == nMaxCompare) break;
+		}
+	}
+
+	*pDistance = biggestRunIndex;
+	return biggestRun;
+}
+
 unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize){
-	int compressedMaxSize = 4 + 3 + 9 * ((size + 7) >> 3);
-	char *compressed = (char *) malloc(compressedMaxSize);
-	char *compressedBase = compressed;
-	*(unsigned *) compressed = size << 8;
-	*compressed = 0x10;
+	unsigned int compressedMaxSize = 4 + 3 + 9 * ((size + 7) >> 3);
+	unsigned char *compressed = (unsigned char *) malloc(compressedMaxSize);
+	unsigned char *compressedBase = compressed;
+	*(uint32_t *) compressed = 0x10 | (size << 8);
 
 	unsigned int nProcessedBytes = 0;
 	unsigned int nSize = 4;
 	compressed += 4;
-	while (1) {
-		//make note of where to store the head for later.
-		char *headLocation = compressed;
-		compressed++;
-		nSize++;
-		//initialize the head.
-		char head = 0;
 
-		//set when the end of the file is reached, and the result needs to be zero-padded.
-		int isDone = 0;
+	while (nProcessedBytes < size) {
+		//make note of where to store the head for later.
+		unsigned char *headLocation = compressed++;
+		unsigned char head = 0;
+		nSize++;
 
 		//repeat 8x (8 bits per byte)
 		for (int i = 0; i < 8; i++) {
 			head <<= 1;
 
-			if (isDone) {
+			if (nProcessedBytes >= size) {
 				//keep shifting the head byte into place
 				continue;
 			}
 
-			//search backwards up to 0xFFF bytes.
-			unsigned int maxSearch = 0x1000;
-			if (maxSearch > nProcessedBytes) maxSearch = nProcessedBytes;
-
-			//the biggest match, and where it was
 			unsigned int biggestRun = 0, biggestRunIndex = 0;
-
-			//begin searching backwards.
-			for (unsigned int j = 2; j < maxSearch; j++) {
-				//compare up to 0xF bytes, at most j bytes.
-				unsigned int nCompare = 0x12;
-				if (nCompare > j) nCompare = j;
-
-				unsigned int nBytesLeft = size - nProcessedBytes;
-				unsigned int nAbsoluteMaxCompare = 0x12;
-				if (nAbsoluteMaxCompare > nBytesLeft) nAbsoluteMaxCompare = nBytesLeft;
-
-				unsigned int nMatched = CxiCompareMemory(buffer - j, buffer, nCompare, nAbsoluteMaxCompare);
-				if (nMatched > biggestRun) {
-					if (biggestRun == 0x12) break;
-					biggestRun = nMatched;
-					biggestRunIndex = j;
-				}
-			}
+			biggestRun = CxiSearchLZ(buffer, size, nProcessedBytes, 2, 0x1000, 0x12, &biggestRunIndex);
 
 			//if the biggest run is at least 3, then we use it.
 			if (biggestRun >= 3) {
@@ -410,16 +417,13 @@ unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsi
 				//advance the buffer
 				buffer += biggestRun;
 				nSize += 2;
-				if (nProcessedBytes >= size) isDone = 1;
 			} else {
 				*(compressed++) = *(buffer++);
 				nProcessedBytes++;
 				nSize++;
-				if (nProcessedBytes >= size) isDone = 1;
 			}
 		}
 		*headLocation = head;
-		if (nProcessedBytes >= size) break;
 	}
 
 	//pad to multiple of 4
@@ -447,58 +451,31 @@ unsigned char *CxCompressLZHeader(const unsigned char *buffer, unsigned int size
 }
 
 unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
-	int compressedMaxSize = 7 + 9 * ((size + 7) >> 3);
-	unsigned char *compressed = (char *) malloc(compressedMaxSize);
+	unsigned int compressedMaxSize = 7 + 9 * ((size + 7) >> 3);
+	unsigned char *compressed = (unsigned char *) malloc(compressedMaxSize);
 	unsigned char *compressedBase = compressed;
-	*(uint32_t *) compressed = size << 8;
-	*compressed = 0x11;
+	*(uint32_t *) compressed = 0x11 | (size << 8);
 
 	unsigned int nProcessedBytes = 0;
 	unsigned int nSize = 4;
 	compressed += 4;
-	while (1) {
-		//make note of where to store the head for later.
-		unsigned char *headLocation = compressed;
-		compressed++;
-		nSize++;
-		//initialize the head.
-		unsigned char head = 0;
 
-		//set when the end of the file is reached, and the result needs to be zero-padded.
-		int isDone = 0;
+	while (nProcessedBytes < size) {
+		//make note of where to store the head for later.
+		unsigned char *headLocation = compressed++;
+		unsigned char head = 0;
+		nSize++;
 
 		//repeat 8x (8 bits per byte)
 		for (int i = 0; i < 8; i++) {
 			head <<= 1;
 
-			if (isDone) {
+			if (nProcessedBytes >= size) {
 				continue; //allows head byte to shift one place
 			}
 
-			//search backwards up to 0xFFF bytes.
-			unsigned int maxSearch = 0x1000;
-			if (maxSearch > nProcessedBytes) maxSearch = nProcessedBytes;
-
-			//the biggest match, and where it was
 			unsigned int biggestRun = 0, biggestRunIndex = 0;
-
-			//begin searching backwards.
-			for (unsigned int j = 2; j < maxSearch; j++) {
-				//compare up to 0xF bytes, at most j bytes.
-				unsigned int nCompare = 0xFFFF + 0x111; //max run length
-				if (nCompare > j) nCompare = j;
-
-				unsigned int nBytesLeft = size - nProcessedBytes;
-				unsigned int nAbsoluteMaxCompare = 0xFFFF + 0x111; //max run length
-				if (nAbsoluteMaxCompare > nBytesLeft) nAbsoluteMaxCompare = nBytesLeft;
-
-				unsigned int nMatched = CxiCompareMemory(buffer - j, buffer, nCompare, nAbsoluteMaxCompare);
-				if (nMatched > biggestRun) {
-					if (biggestRun == 0x12) break;
-					biggestRun = nMatched;
-					biggestRunIndex = j;
-				}
-			}
+			biggestRun = CxiSearchLZ(buffer, size, nProcessedBytes, 2, 0x1000, 0xFFFF + 0x111, &biggestRunIndex);
 
 			//if the biggest run is at least 3, then we use it.
 			if (biggestRun >= 3) {
@@ -529,16 +506,13 @@ unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, uns
 				}
 				//advance the buffer
 				buffer += biggestRun;
-				if (nProcessedBytes >= size) isDone = 1;
 			} else {
 				*(compressed++) = *(buffer++);
 				nProcessedBytes++;
 				nSize++;
-				if (nProcessedBytes >= size) isDone = 1;
 			}
 		}
 		*headLocation = head;
-		if (nProcessedBytes >= size) break;
 	}
 
 	while (nSize & 3) {
@@ -1931,30 +1905,8 @@ static CxiLzToken *CxiVlxComputeLzStatistics(const unsigned char *buffer, unsign
 
 	unsigned int nProcessedBytes = 0;
 	while (nProcessedBytes < size) {
-		//search backwards up to 0xFFF bytes.
-		unsigned int maxSearch = 0xFFE;
-		if (maxSearch > nProcessedBytes) maxSearch = nProcessedBytes;
-
-		//the biggest match, and where it was
 		unsigned int biggestRun = 0, biggestRunIndex = 0;
-
-		//begin searching backwards.
-		for (unsigned int j = 1; j < maxSearch; j++) {
-			//compare up to 0xF bytes, at most j bytes.
-			unsigned int nAbsoluteMaxCompare = 0x7FF;
-			unsigned int nCompare = nAbsoluteMaxCompare;
-			if (nCompare > j) nCompare = j;
-
-			unsigned int nBytesLeft = size - nProcessedBytes;
-			if (nAbsoluteMaxCompare > nBytesLeft) nAbsoluteMaxCompare = nBytesLeft;
-
-			unsigned int nMatched = CxiCompareMemory(buffer - j, buffer, nCompare, nAbsoluteMaxCompare);
-			if (nMatched > biggestRun) {
-				if (biggestRun == nAbsoluteMaxCompare) break;
-				biggestRun = nMatched;
-				biggestRunIndex = j;
-			}
-		}
+		biggestRun = CxiSearchLZ(buffer, size, nProcessedBytes, 1, 0xFFE, 0xFFF, &biggestRunIndex);
 
 		//ensure token buffer capacity
 		if ((nTokens + 1) > tokenBufferSize) {
@@ -2046,6 +1998,28 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 		distNodes[nDistNodes].freq = distCounts[i];
 		nDistNodes++;
 	}
+
+	//if we would create a tree of 0 size, add a dummy node. The decompressor is not written to
+	//handle this case.
+	for (int i = 0; i < 12 && nLengthNodes < 2; i++) {
+		if (lengthCounts[i] == 0) {
+			lengthCounts[i] = 1;
+			lengthNodes[nLengthNodes].symMin = lengthNodes[nLengthNodes].symMax = lengthNodes[nLengthNodes].sym = i;
+			lengthNodes[nLengthNodes].nRepresent = 1;
+			lengthNodes[nLengthNodes].freq = lengthCounts[i];
+			nLengthNodes++;
+		}
+	}
+	for (int i = 0; i < 12 && nDistNodes < 2; i++) {
+		if (distCounts[i] == 0) {
+			distCounts[i] = 1;
+			distNodes[nDistNodes].symMin = distNodes[nDistNodes].symMax = distNodes[nDistNodes].sym = i;
+			distNodes[nDistNodes].nRepresent = 1;
+			distNodes[nDistNodes].freq = distCounts[i];
+			nDistNodes++;
+		}
+	}
+
 	CxiHuffmanConstructTree(lengthNodes, nLengthNodes);
 	CxiHuffmanConstructTree(distNodes, nDistNodes);
 
