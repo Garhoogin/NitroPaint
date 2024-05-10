@@ -1110,23 +1110,36 @@ static int PalViewerLightness(COLOR col) {
 	return 1063 * r + 3576 * g + 361 * b;
 }
 
-static int PalViewerSortLightness(LPCVOID p1, LPCVOID p2) {
-	COLOR c1 = *(COLOR *) p1;
-	COLOR c2 = *(COLOR *) p2;
+typedef struct PalViewerSortEntry_ {
+	COLOR col;
+	int srcIndex;
+	int dstIndex;
+	int frequency;
+} PalViewerSortEntry;
+
+static int PalViewerSortLightness(const void *p1, const void *p2) {
+	COLOR c1 = ((PalViewerSortEntry *) p1)->col;
+	COLOR c2 = ((PalViewerSortEntry *) p2)->col;
 	return PalViewerLightness(c1) - PalViewerLightness(c2);
 }
 
-static int PalViewerSortHue(LPCVOID p1, LPCVOID p2) {
-	COLOR c1 = *(COLOR *) p1;
-	COLOR c2 = *(COLOR *) p2;
+static int PalViewerSortHue(const void *p1, const void *p2) {
+	COLOR c1 = ((PalViewerSortEntry *) p1)->col;
+	COLOR c2 = ((PalViewerSortEntry *) p2)->col;
 
-	COLORREF col1 = ColorConvertFromDS(c1);
-	COLORREF col2 = ColorConvertFromDS(c2);
+	COLOR32 col1 = ColorConvertFromDS(c1);
+	COLOR32 col2 = ColorConvertFromDS(c2);
 
 	int h1, s1, v1, h2, s2, v2;
 	ConvertRGBToHSV(col1, &h1, &s1, &v1);
 	ConvertRGBToHSV(col2, &h2, &s2, &v2);
 	return h1 - h2;
+}
+
+static int PalViewerSortFrequency(const void *p1, const void *p2) {
+	int freq1 = ((PalViewerSortEntry *) p1)->frequency;
+	int freq2 = ((PalViewerSortEntry *) p2)->frequency;
+	return freq2 - freq1;
 }
 
 // callback for verify selection
@@ -1242,14 +1255,118 @@ static void PalViewerSortNeuroThreadProc(NCLRVIEWERDATA *data) {
 
 static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command) {
 	int type = command;
-	if (type == ID_ARRANGEPALETTE_BYLIGHTNESS || type == ID_ARRANGEPALETTE_BYHUE) {
+	if (type != ID_ARRANGEPALETTE_NEURO) {
 		//fast palette sorts, can be done right here. First, unwrap the selection into a linear block.
 		int selSize = PalViewerGetSelectionSize(data);
-		COLOR *tmp = (COLOR *) calloc(selSize, sizeof(COLOR));
-		PalViewerUnwrapSelection(data, tmp);
-		qsort(tmp, selSize, sizeof(COLOR), type == ID_ARRANGEPALETTE_BYLIGHTNESS ? PalViewerSortLightness : PalViewerSortHue);
-		PalViewerWrapSelection(data, tmp, selSize);
+		PalViewerSortEntry *tmp = (PalViewerSortEntry *) calloc(selSize, sizeof(PalViewerSortEntry));
+
+		//compute frequency list
+		int *freqList = (int *) calloc(data->nclr.nColors, sizeof(int));
+		int n = CountPaletteUsages(getMainWindow(hWnd), &data->nclr, freqList);
+
+		//unwrap the selection into an array to sort.
+		int destIndex = 0;
+		for (int i = 0; i < data->nclr.nColors; i++) {
+			if (!PalViewerIndexInSelection(data, i)) continue;
+			tmp[destIndex].col = data->nclr.colors[i];
+			tmp[destIndex].srcIndex = i;
+			tmp[destIndex].dstIndex = i;
+			tmp[destIndex].frequency = freqList[i];
+
+			destIndex++;
+		}
+		free(freqList);
+
+		//sort the color array.
+		int (*comparator) (const void *, const void *) = NULL;
+		switch (command) {
+			case ID_ARRANGEPALETTE_BYLIGHTNESS:
+				comparator = PalViewerSortLightness;
+				break;
+			case ID_ARRANGEPALETTE_BYHUE:
+				comparator = PalViewerSortHue;
+				break;
+			case ID_ARRANGEPALETTE_BYFREQUENCY:
+				comparator = PalViewerSortFrequency;
+				break;
+		}
+		qsort(tmp, selSize, sizeof(PalViewerSortEntry), comparator);
+
+		//re-wrap the selection back into the palette.
+		int srcIndex = 0;
+		for (int i = 0; i < data->nclr.nColors && srcIndex < selSize; i++) {
+			if (!PalViewerIndexInSelection(data, i)) continue;
+			tmp[srcIndex].dstIndex = i;
+			data->nclr.colors[i] = tmp[srcIndex++].col;
+		}
+
+		//if enabled: modify graphics data to preserve the picture
+		HWND hWndMain = getMainWindow(hWnd);
+		{
+			int nScreenEditors = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
+			HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CHARACTER);
+
+			if (hWndNcgrViewer != NULL) {
+				NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
+
+				uint8_t *tilePalettes = (uint8_t *) calloc(ncgr->nTiles, sizeof(int));
+				memset(tilePalettes, 0, ncgr->nTiles);
+
+				if (nScreenEditors > 0) {
+					//do graphics transform with respect to screen data.
+					HWND *hScreenEditors = (HWND *) calloc(nScreenEditors, sizeof(HWND));
+					GetAllEditors(hWndMain, FILE_TYPE_SCREEN, hScreenEditors, nScreenEditors);
+					for (int i = 0; i < nScreenEditors; i++) {
+						//determine which palette each tile is using.
+						NSCR *nscr = (NSCR *) EditorGetObject(hScreenEditors[i]);
+						NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hScreenEditors[i]);
+
+						for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+							uint16_t scrd = nscr->data[i];
+							int chrno = (scrd & 0x3FF) - nscrViewerData->tileBase;
+							if (chrno >= 0 && chrno < ncgr->nTiles) tilePalettes[chrno] = scrd >> 12;
+						}
+					}
+					free(hScreenEditors);
+				} else {
+					//do graphics transform with respect to only character data. Assume all characters 
+					//use the selected palette.
+					NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
+					for (int i = 0; i < ncgr->nTiles; i++) {
+						tilePalettes[i] = ncgrViewerData->selectedPalette;
+					}
+				}
+
+				//apply transform
+				for (int i = 0; i < ncgr->nTiles; i++) {
+					int pltBase = tilePalettes[i] << ncgr->nBits;
+					unsigned char *tile = ncgr->tiles[i];
+
+					for (int i = 0; i < 64; i++) {
+						int cidx = tile[i] + pltBase;
+						
+						//map to new index
+						int to = cidx;
+						for (int j = 0; j < selSize; j++) {
+							if (cidx == tmp[j].srcIndex) {
+								to = tmp[j].dstIndex;
+								break;
+							}
+						}
+						tile[i] = (to - pltBase) & ((1 << ncgr->nBits) - 1);
+					}
+				}
+
+				free(tilePalettes);
+
+			}
+		}
 		free(tmp);
+
+		//update all editors dependent
+		InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
+		InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+		InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
 	} else {
 		PalViewerSortNeuroThreadProc(data);
 	}
@@ -1733,6 +1850,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						PalViewerUpdatePreview(hWnd);
 						break;
 					}
+					case ID_ARRANGEPALETTE_BYFREQUENCY:
 					case ID_ARRANGEPALETTE_BYLIGHTNESS:
 					case ID_ARRANGEPALETTE_BYHUE:
 					case ID_ARRANGEPALETTE_NEURO:
