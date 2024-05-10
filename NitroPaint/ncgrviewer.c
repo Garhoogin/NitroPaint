@@ -89,7 +89,7 @@ static void ChrViewerPaint(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, i
 	int outWidth = getDimension(data->ncgr.tilesX, data->showBorders, data->scale);
 	int outHeight = getDimension(data->ncgr.tilesY, data->showBorders, data->scale);
 	int renderWidth = (outWidth < rcClient->right) ? outWidth : rcClient->right;
-	int renderHeight = (outWidth < rcClient->bottom) ? outWidth : rcClient->bottom;
+	int renderHeight = (outHeight < rcClient->bottom) ? outHeight : rcClient->bottom;
 	
 	FbSetSize(&data->fb, renderWidth, renderHeight);
 	RenderTileBitmap(data->fb.px, renderWidth, renderHeight, xMin, yMin, outWidth - xMin, outHeight - yMin, px, width, height, 
