@@ -253,7 +253,7 @@ static void ScrViewerPaint(HWND hWnd, HDC hWindowDC, int xOffs, int yOffs) {
 
 		FbSetSize(&data->fb, bitmapWidth, bitmapHeight);
 		RenderTileBitmap(data->fb.px, bitmapWidth, bitmapHeight, xOffs, yOffs, bitmapWidth - xOffs, bitmapHeight - yOffs,
-			bits, outWidth, outHeight, hovX, hovY, data->scale, data->showBorders, 8, FALSE, TRUE);
+			bits, outWidth, outHeight, hovX, hovY, data->scale, data->showBorders, 8, FALSE, TRUE, FALSE);
 		FbDraw(&data->fb, hWindowDC, 0, 0, min(bitmapWidth - xOffs, rcClient.right), min(bitmapHeight - yOffs, rcClient.bottom), xOffs, yOffs);
 
 		free(bits);

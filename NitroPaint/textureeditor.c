@@ -880,7 +880,7 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			FbSetSize(&data->fb, width, height);
 			RenderTileBitmap(data->fb.px, width, height, horiz.nPos, vert.nPos, rcClient.right, rcClient.bottom, 
 				data->px, data->width, data->height, data->hoverX, data->hoverY, data->scale, data->showBorders,
-				4, TRUE, TRUE);
+				4, TRUE, TRUE, FALSE);
 			FbDraw(&data->fb, hOffDC, 0, 0, width - horiz.nPos, height - vert.nPos, horiz.nPos, vert.nPos);
 
 			BitBlt(hDC, 0, 0, rcClient.right, rcClient.bottom, hOffDC, 0, 0, SRCCOPY);
