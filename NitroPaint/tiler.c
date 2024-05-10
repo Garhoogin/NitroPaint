@@ -37,7 +37,7 @@ HBITMAP CreateTileBitmap(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX,
 	return hBitmap;
 }
 
-void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UINT startY, UINT viewWidth, UINT viewHeight, DWORD *lpBits, UINT nWidth, UINT nHeight, int hiliteX, int hiliteY, UINT scale, BOOL bBorders, UINT tileWidth, BOOL bReverseColors, BOOL blend, BOOL partialImage) {
+void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UINT startY, UINT viewWidth, UINT viewHeight, DWORD *lpBits, UINT nWidth, UINT nHeight, int hiliteX, int hiliteY, UINT scale, BOOL bBorders, UINT tileWidth, BOOL bReverseColors, BOOL blend) {
 	unsigned tilesX = nWidth / tileWidth;
 	unsigned tilesY = nHeight / tileWidth;
 	unsigned tileSize = scale * tileWidth;
@@ -46,16 +46,13 @@ void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UI
 	unsigned int fullWidth = tilesX * tileSpacing + !!bBorders;
 	unsigned int fullHeight = tilesY * tileSpacing + !!bBorders;
 
-	//coordinate to subract for output 
-	unsigned int xBase = partialImage ? startX : 0;
-	unsigned int yBase = partialImage ? startY : 0;
-	for (unsigned int y = startY; (y - yBase) < outHeight && y < (startY + viewHeight); y++) {
+	//coordinate to subract for output
+	for (unsigned int y = startY; (y - startY) < outHeight && y < (startY + viewHeight); y++) {
 		//is this a border row?
 		if (bBorders) {
 			if ((y % (tileSize + 1)) == 0) {
 				unsigned int rowWidth = min(fullWidth - startX, min(viewWidth, outWidth));
-				if (!partialImage) memset(out + (y - yBase) * outWidth + startX, 0, rowWidth * sizeof(DWORD));
-				else               memset(out + (y - yBase) * outWidth, 0, rowWidth * sizeof(DWORD));
+				memset(out + (y - startY) * outWidth, 0, rowWidth * sizeof(DWORD));
 				continue;
 			}
 		}
@@ -72,7 +69,7 @@ void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UI
 
 		//left-most border column
 		if (bBorders && startX == 0) {
-			out[(y - yBase) * outWidth] = 0;
+			out[(y - startY) * outWidth] = 0;
 		}
 
 		//scan tiles horizontally
@@ -97,8 +94,8 @@ void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UI
 					if (destX < startX || destX >= (startX + viewWidth)) continue;
 
 					//partial image render: subtract relative view coordinates
-					destX -= xBase;
-					destY -= yBase;
+					destX -= startX;
+					destY -= startY;
 					if (destX >= outWidth || destY >= outHeight) continue;
 
 					DWORD blended = sample;
@@ -142,8 +139,8 @@ void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UI
 			if (bBorders) {
 				unsigned int destX = baseDestX + tileWidth * scale;
 				unsigned int destY = y;
-				if (destX >= xBase && destY >= yBase && (destX - xBase) < outWidth && (destY - yBase) < outHeight) {
-					out[(destX - xBase) + (destY - yBase) * outWidth] = 0;
+				if (destX >= startX && destY >= startY && (destX - startX) < outWidth && (destY - startY) < outHeight) {
+					out[(destX - startX) + (destY - startY) * outWidth] = 0;
 				}
 			}
 

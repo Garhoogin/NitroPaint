@@ -93,7 +93,7 @@ static void ChrViewerPaint(HWND hWnd, NCGRVIEWERDATA *data, HDC hDC, int xMin, i
 	
 	FbSetSize(&data->fb, renderWidth, renderHeight);
 	RenderTileBitmap(data->fb.px, renderWidth, renderHeight, xMin, yMin, outWidth - xMin, outHeight - yMin, px, width, height, 
-		data->hoverX, data->hoverY, data->scale, data->showBorders, 8, FALSE, FALSE, TRUE);
+		data->hoverX, data->hoverY, data->scale, data->showBorders, 8, FALSE, FALSE);
 	FbDraw(&data->fb, hDC, 0, 0, min(outWidth - xMin, rcClient->right), min(outHeight - yMin, rcClient->bottom), 0, 0);
 	free(px);
 

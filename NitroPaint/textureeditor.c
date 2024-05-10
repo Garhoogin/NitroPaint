@@ -36,7 +36,7 @@ static int GetPreviewHeight(TEXTUREEDITORDATA *data) {
 	return size;
 }
 
-void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
+static void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	//export as PNG
 	//if texture is palette4, palette16 or palette256, output indexed image with appropriate color 0
 	//if texture is direct or 4x4, output non-indexed
@@ -113,7 +113,7 @@ void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	}
 }
 
-void UpdatePaletteLabel(HWND hWnd) {
+static void UpdatePaletteLabel(HWND hWnd) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 
 	WCHAR bf[32];
@@ -146,12 +146,12 @@ void UpdatePaletteLabel(HWND hWnd) {
 	SendMessage(data->hWndPaletteVram, WM_SETTEXT, len, (LPARAM) bf);
 }
 
-DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
+static DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
 	TxConversionParameters *params = (TxConversionParameters *) lpParam;
 	return TxConvert(params);
 }
 
-HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, int balance, int colorBalance, int enhanceColors, char *pnam, TEXTURE *dest, void(*callback) (void *), void *callbackParam) {
+static HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, int balance, int colorBalance, int enhanceColors, char *pnam, TEXTURE *dest, void(*callback) (void *), void *callbackParam) {
 	TxConversionParameters *params = (TxConversionParameters *) calloc(1, sizeof(TxConversionParameters));
 	g_texCompressionFinished = 0;
 	params->px = px;
@@ -175,7 +175,7 @@ HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int d
 	return CreateThread(NULL, 0, textureStartConvertThreadEntry, (LPVOID) params, 0, NULL);
 }
 
-LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
 	switch (msg) {
 		case WM_CREATE:
@@ -299,7 +299,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					if (format == CT_DIRECT || format == 0) {
 						MessageBox(hWnd, L"No palette for this texture.", L"No palette", MB_ICONERROR);
 					} else {
-						HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+						HWND hWndMdi = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 						if (data->hWndPaletteEditor == NULL) {
 							data->hWndPaletteEditor = CreateTexturePaletteEditor(CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWndMdi, data);
 						} else {
@@ -354,7 +354,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						COLOR *colors = data->texture.texture.palette.pal;
 						int nColors = data->texture.texture.palette.nColors;
 
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND hWndMain = getMainWindow(hWnd);
 						LPWSTR ntfpPath = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
 						if (ntfpPath == NULL) break;
 
@@ -429,7 +429,7 @@ LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
 
-HWND CreateTextureTileEditor(HWND hWndParent, int tileX, int tileY) {
+static HWND CreateTextureTileEditor(HWND hWndParent, int tileX, int tileY) {
 	HWND hWndMdi = (HWND) GetWindowLongPtr(hWndParent, GWL_HWNDPARENT);
 	
 	HWND hWnd = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"TextureTileEditorClass", L"Tile Editor", 
@@ -443,7 +443,7 @@ HWND CreateTextureTileEditor(HWND hWndParent, int tileX, int tileY) {
 	return hWnd;
 }
 
-int getTextureOffsetByTileCoordinates(TEXELS *texel, int x, int y) {
+static int getTextureOffsetByTileCoordinates(TEXELS *texel, int x, int y) {
 	int fmt = FORMAT(texel->texImageParam);
 	int width = TEXW(texel->texImageParam);
 
@@ -462,7 +462,7 @@ int getTextureOffsetByTileCoordinates(TEXELS *texel, int x, int y) {
 
 int ilog2(int x);
 
-void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, float alpha, int x, int y) {
+static void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, float alpha, int x, int y) {
 	HPEN hOldPen = (HPEN) SelectObject(hDC, hOutline);
 	HPEN hNullPen = GetStockObject(NULL_PEN);
 	HBRUSH hNullBrush = GetStockObject(NULL_BRUSH);
@@ -501,7 +501,7 @@ void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, float alpha, int x
 	SelectObject(hDC, hOldBrush);
 }
 
-void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int colorIndex, int alphaIndex) {
+static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int colorIndex, int alphaIndex) {
 	//first paint 4x4 tile (scaled 32x)
 	unsigned char tileBuffer[128]; //big enough for an 8x8 texture of any format
 	unsigned short indexBuffer[4] = { 0 }; //big enough for an 8x8 4x4 texture
@@ -638,7 +638,7 @@ void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int
 	}
 }
 
-LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	HWND hWndTextureEditor = (HWND) GetWindowLongPtr(hWnd, 0);
 	if (hWndTextureEditor == NULL) return DefMDIChildProc(hWnd, msg, wParam, lParam);
 
@@ -776,7 +776,7 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 							COLOR *color = (COLOR *) (pTile + y * width * 2 + x * 2);
 							CHOOSECOLOR cc = { 0 };
 							cc.lStructSize = sizeof(cc);
-							cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition?
+							cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition?
 							cc.hwndOwner = hWndMain;
 							cc.rgbResult = ColorConvertFromDS(*color);
 							cc.lpCustColors = data->tmpCust;
@@ -829,8 +829,8 @@ LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
-LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), 0);
+static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData((HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT));
 	int contentWidth = 0, contentHeight = 0;
 	if (data) {
 		contentWidth = getDimension2(data->width / 4, data->showBorders, data->scale, 4);
@@ -849,10 +849,8 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	UpdateScrollbarVisibility(hWnd);
 	switch (msg) {
 		case WM_CREATE:
-		{
 			ShowScrollBar(hWnd, SB_BOTH, FALSE);
 			break;
-		}
 		case WM_PAINT:
 		{
 			PAINTSTRUCT ps;
@@ -877,11 +875,14 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			Rectangle(hOffDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
 			
 			int width = GetPreviewWidth(data), height = GetPreviewHeight(data);
+			if (width > rcClient.right) width = rcClient.right;
+			if (height > rcClient.bottom) height = rcClient.bottom;
+
 			FbSetSize(&data->fb, width, height);
 			RenderTileBitmap(data->fb.px, width, height, horiz.nPos, vert.nPos, rcClient.right, rcClient.bottom, 
 				data->px, data->width, data->height, data->hoverX, data->hoverY, data->scale, data->showBorders,
-				4, TRUE, TRUE, FALSE);
-			FbDraw(&data->fb, hOffDC, 0, 0, width - horiz.nPos, height - vert.nPos, horiz.nPos, vert.nPos);
+				4, TRUE, TRUE);
+			FbDraw(&data->fb, hOffDC, 0, 0, width, height, 0, 0);
 
 			BitBlt(hDC, 0, 0, rcClient.right, rcClient.bottom, hOffDC, 0, 0, SRCCOPY);
 			DeleteObject(hOffDC);
@@ -1002,9 +1003,9 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hoverY = hoverY;
 			data->hoverIndex = hoverIndex;
 			if (data->hoverIndex != oldHovered) {
-				HWND hWndViewer = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-				HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWndViewer, GWL_HWNDPARENT), GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLong(hWndMain, 0);
+				HWND hWndViewer = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+				HWND hWndMain = getMainWindow(hWndViewer);
+				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 				InvalidateRect(hWndViewer, NULL, FALSE);
 			}
 
@@ -1065,7 +1066,7 @@ LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-int isTranslucent(COLOR32 *px, int nWidth, int nHeight) {
+static int isTranslucent(COLOR32 *px, int nWidth, int nHeight) {
 	for (int i = 0; i < nWidth * nHeight; i++) {
 		int a = px[i] >> 24;
 		if (a >= 5 && a <= 250) return 1;
@@ -1073,7 +1074,7 @@ int isTranslucent(COLOR32 *px, int nWidth, int nHeight) {
 	return 0;
 }
 
-int guessFormat(COLOR32 *px, int nWidth, int nHeight) {
+static int guessFormat(COLOR32 *px, int nWidth, int nHeight) {
 	//Guess a good format for the data. Default to 4x4.
 	int fmt = CT_4x4;
 	
@@ -1113,7 +1114,8 @@ int guessFormat(COLOR32 *px, int nWidth, int nHeight) {
 
 	return fmt;
 }
-void createPaletteName(WCHAR *buffer, WCHAR *file) {
+
+static void createPaletteName(WCHAR *buffer, WCHAR *file) {
 	//find the last \ or /
 	int index = -1;
 	unsigned int i;
@@ -1149,7 +1151,7 @@ float mylog2(float d) { //UGLY!
 
 #endif //_MSC_VER
 
-int chooseColorCount(int bWidth, int bHeight) {
+static int chooseColorCount(int bWidth, int bHeight) {
 	int area = bWidth * bHeight;
 
 	//for textures smaller than 256x256, use 8*sqrt(area)
@@ -1163,13 +1165,13 @@ int chooseColorCount(int bWidth, int bHeight) {
 	return (int) (256 * (log2((float) area) - 10));
 }
 
-void updateConvertDialog(TEXTUREEDITORDATA *data) {
+static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	HWND hWndFormat = data->hWndFormat;
 	int sel = SendMessage(hWndFormat, CB_GETCURSEL, 0, 0);
-	int fixedPalette = SendMessage(data->hWndFixedPalette, BM_GETCHECK, 0, 0) == BST_CHECKED;
-	int dither = SendMessage(data->hWndDither, BM_GETCHECK, 0, 0) == BST_CHECKED;
-	int ditherAlpha = SendMessage(data->hWndDitherAlpha, BM_GETCHECK, 0, 0) == BST_CHECKED;
-	int limitPalette = SendMessage(data->hWndLimitPalette, BM_GETCHECK, 0, 0) == BST_CHECKED;
+	int fixedPalette = GetCheckboxChecked(data->hWndFixedPalette);
+	int dither = GetCheckboxChecked(data->hWndDither);
+	int ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
+	int limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
 	int fmt = sel + 1;
 	//some things are only applicable to certain formats!
 	BOOL disables[] = {TRUE, FALSE, TRUE, FALSE, FALSE, FALSE};
@@ -1226,12 +1228,12 @@ void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	InvalidateRect(data->hWndConvertDialog, NULL, FALSE);
 }
 
-void conversionCallback(void *p) {
+static void conversionCallback(void *p) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) p;
 	SendMessage(data->hWndProgress, WM_CLOSE, 0, 0);
 }
 
-LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 	switch (msg) {
 		case WM_CREATE:
@@ -1285,10 +1287,10 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
 			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
 
-			CreateWindow(L"BUTTON", L"Texture", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, topY - 18, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Palette", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, rightX - 10, topY - 18, boxWidth, boxHeight, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"4x4 Compression", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, middleY - 18, rightX + boxWidth - leftX, boxHeight2, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Color", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, leftX - 10, bottomY - 18, rightX + boxWidth - leftX, boxHeight2, hWnd, NULL, NULL, NULL);
+			CreateGroupbox(hWnd, L"Texture", leftX - 10, topY - 18, boxWidth, boxHeight);
+			CreateGroupbox(hWnd, L"Palette", rightX - 10, topY - 18, boxWidth, boxHeight);
+			CreateGroupbox(hWnd, L"4x4 Compression", leftX - 10, middleY - 18, rightX + boxWidth - leftX, boxHeight2);
+			CreateGroupbox(hWnd, L"Color", leftX - 10, bottomY - 18, rightX + boxWidth - leftX, boxHeight2);
 
 			data->hWndDoConvertButton = CreateButton(hWnd, L"Convert", width / 2 - 100, height - 32, 200, 22, TRUE);
 
@@ -1385,13 +1387,13 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					int colorEntries = GetEditNumber(data->hWndColorEntries); //for 4x4
 					float diffuse = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
 					int paletteSize = GetEditNumber(data->hWndPaletteSize); //for non-4x4
-					int optimization = SendMessage(data->hWndOptimizationSlider, TBM_GETPOS, 0, 0);
+					int optimization = GetTrackbarPosition(data->hWndOptimizationSlider);
 					SendMessage(data->hWndPaletteName, WM_GETTEXT, 17, (LPARAM) bf);
 
 					BOOL dither = GetCheckboxChecked(data->hWndDither);
 					BOOL ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
-					int balance = SendMessage(data->hWndBalance, TBM_GETPOS, 0, 0);
-					int colorBalance = SendMessage(data->hWndColorBalance, TBM_GETPOS, 0, 0);
+					int balance = GetTrackbarPosition(data->hWndColorBalance);
+					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
 					BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
 					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
 
@@ -1405,7 +1407,7 @@ LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						mbpnam[i] = (char) bf[i];
 					}
 
-					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 					data->hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), 
 													  CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, hWndMain, NULL, NULL, NULL);
 					ShowWindow(data->hWndProgress, SW_SHOW);
@@ -1463,7 +1465,7 @@ LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 		case WM_TIMER:
 		{
 			if (g_texCompressionProgressMax) {
-				HWND hWndProgress = (HWND) GetWindowLong(hWnd, 0);
+				HWND hWndProgress = (HWND) GetWindowLongPtr(hWnd, 0);
 				SendMessage(hWndProgress, PBM_SETRANGE, 0, g_texCompressionProgressMax << 16);
 				SendMessage(hWndProgress, PBM_SETPOS, g_texCompressionProgress, 0);
 			}
@@ -1668,7 +1670,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						HWND hWndMain = getMainWindow(hWnd);
 						CHOOSECOLOR cc = { 0 };
 						cc.lStructSize = sizeof(cc);
-						cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition
+						cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition
 						cc.hwndOwner = hWndMain;
 						cc.rgbResult = ex;
 						cc.lpCustColors = data->data->tmpCust;
@@ -1744,7 +1746,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						COLOR *colors = data->data->texture.texture.palette.pal;
 						int nColors = data->data->texture.texture.palette.nColors;
 
-						HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(data->data->hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+						HWND hWndMain = getMainWindow(data->data->hWnd);
 						LPWSTR path = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
 						if (path == NULL) break;
 
@@ -1758,10 +1760,8 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					}
 					case ID_FILE_SAVE:
 					case ID_FILE_SAVEAS:
-					{
 						SendMessage(data->data->hWnd, msg, notification, 0);
 						break;
-					}
 				}
 			}
 			break;
