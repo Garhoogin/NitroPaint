@@ -539,6 +539,9 @@ static LRESULT WINAPI ChrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_COMMAND:
 			ChrViewerOnCommand(hWnd, wParam, lParam);
 			break;
+		case WM_PAINT:
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
+			break;
 		case WM_TIMER:
 			return ChrViewerOnTimer(hWnd, wParam);
 		case WM_DESTROY:
