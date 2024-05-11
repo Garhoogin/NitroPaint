@@ -42,6 +42,7 @@ typedef struct NSCR_ {
 	unsigned int nHeight;
 	unsigned int dataSize;
 	uint16_t *data;
+	int colorMode;
 	int fmt;
 	int nHighestIndex;//weird hack
 	uint16_t clearValue; //default tile value
