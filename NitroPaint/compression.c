@@ -5,6 +5,17 @@
 #include "compression.h"
 #include "bstream.h"
 
+typedef struct CxiLzToken_ {
+	uint8_t isReference;
+	union {
+		uint8_t symbol;
+		struct {
+			int16_t length;
+			int16_t distance;
+		};
+	};
+} CxiLzToken;
+
 unsigned char *CxDecompressLZ(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize){
 	if (size < 4) return NULL;
 
@@ -628,27 +639,29 @@ unsigned char *CxFilterDiff16(const unsigned char *buffer, unsigned int size, un
 }
 
 typedef struct HUFFNODE_ {
-	unsigned char sym;
-	unsigned char symMin; //had space to spare, maybe make searches a little simpler
-	unsigned char symMax;
-	unsigned char nRepresent;
+	uint16_t sym;
+	uint16_t symMin; //had space to spare, maybe make searches a little simpler
+	uint16_t symMax;
+	uint16_t nRepresent;
 	int freq;
 	struct HUFFNODE_ *left;
 	struct HUFFNODE_ *right;
 } HUFFNODE;
 
 typedef struct BITSTREAM_ {
-	unsigned *bits;
+	uint32_t *bits;
 	int nWords;
 	int nBitsInLastWord;
 	int nWordsAlloc;
+	int length;
 } BITSTREAM;
 
 static void CxiBitStreamCreate(BITSTREAM *stream) {
-	stream->nWords = 1;
-	stream->nBitsInLastWord = 0;
+	stream->nWords = 0;
+	stream->length = 0;
+	stream->nBitsInLastWord = 32;
 	stream->nWordsAlloc = 16;
-	stream->bits = (unsigned *) calloc(16, 4);
+	stream->bits = (uint32_t *) calloc(stream->nWordsAlloc, 4);
 }
 
 static void CxiBitStreamFree(BITSTREAM *stream) {
@@ -669,6 +682,50 @@ static void CxiBitStreamWrite(BITSTREAM *stream, int bit) {
 
 	stream->bits[stream->nWords - 1] |= (bit << (31 - stream->nBitsInLastWord));
 	stream->nBitsInLastWord++;
+	stream->length++;
+}
+
+static void *CxiBitStreamGetBytes(BITSTREAM *stream, int wordAlign, int beBytes, int beBits, unsigned int *size) {
+	//allocate buffer
+	unsigned int outSize = stream->nWords * 4;
+	if (!wordAlign) {
+		//nBitsInLast word is 32 if last word is full, 0 if empty.
+		if (stream->nBitsInLastWord <= 24) outSize--;
+		if (stream->nBitsInLastWord <= 16) outSize--;
+		if (stream->nBitsInLastWord <=  8) outSize--;
+		if (stream->nBitsInLastWord <=  0) outSize--;
+	}
+	unsigned char *outbuf = (unsigned char *) calloc(outSize, 1);
+
+	//this function handles converting byte and bit orders from the internal
+	//representation. Internally, we store the bit sequence as an array of
+	//words, where the first bits are inserted at the most significant bit.
+	//
+
+	for (unsigned int i = 0; i < outSize; i++) {
+		int byteShift = 8 * ((beBytes) ? (3 - (i % 4)) : (i % 4));
+		uint32_t word = stream->bits[i / 4];
+		uint8_t byte = (word >> byteShift) & 0xFF;
+
+		//if little endian bit order, swap here
+		if (!beBits) {
+			uint8_t temp = byte;
+			byte = 0;
+			for (int j = 0; j < 8; j++) byte |= ((temp >> j) & 1) << (7 - j);
+		}
+		outbuf[i] = byte;
+	}
+
+	*size = outSize;
+	return outbuf;
+}
+
+static void CxiBitStreamWriteBits(BITSTREAM *stream, uint32_t bits, int nBits) {
+	for (int i = 0; i < nBits; i++) CxiBitStreamWrite(stream, (bits >> i) & 1);
+}
+
+static void CxiBitStreamWriteBitsBE(BITSTREAM *stream, uint32_t bits, int nBits) {
+	for (int i = 0; i < nBits; i++) CxiBitStreamWrite(stream, (bits >> (nBits - 1 - i)) & 1);
 }
 
 #define ISLEAF(n) ((n)->left==NULL&&(n)->right==NULL)
@@ -684,7 +741,7 @@ static unsigned int CxiHuffmanWriteNode(unsigned char *tree, unsigned int pos, H
 	//we will write two bytes. 
 	unsigned int afterPos = pos + 2;
 	if (ISLEAF(left)) {
-		tree[pos] = left->sym;
+		tree[pos] = (unsigned char) left->sym;
 	} else {
 		HUFFNODE *leftLeft = left->left;
 		HUFFNODE *leftRight = left->right;
@@ -696,7 +753,7 @@ static unsigned int CxiHuffmanWriteNode(unsigned char *tree, unsigned int pos, H
 	}
 
 	if (ISLEAF(right)) {
-		tree[pos + 1] = right->sym;
+		tree[pos + 1] = (unsigned char) right->sym;
 	} else {
 		HUFFNODE *rightLeft = right->left;
 		HUFFNODE *rightRight = right->right;
@@ -720,7 +777,7 @@ static void CxiHuffmanMakeShallowFirst(HUFFNODE *node) {
 	CxiHuffmanMakeShallowFirst(node->right);
 }
 
-static int CxiHuffmanHasSymbol(HUFFNODE *node, unsigned char sym) {
+static int CxiHuffmanHasSymbol(HUFFNODE *node, uint16_t sym) {
 	if (ISLEAF(node)) return node->sym == sym;
 	if (sym < node->symMin || sym > node->symMax) return 0;
 	HUFFNODE *left = node->left;
@@ -728,7 +785,7 @@ static int CxiHuffmanHasSymbol(HUFFNODE *node, unsigned char sym) {
 	return CxiHuffmanHasSymbol(left, sym) || CxiHuffmanHasSymbol(right, sym);
 }
 
-static void CxiHuffmanWriteSymbol(BITSTREAM *bits, unsigned char sym, HUFFNODE *tree) {
+static void CxiHuffmanWriteSymbol(BITSTREAM *bits, uint16_t sym, HUFFNODE *tree) {
 	if (ISLEAF(tree)) return;
 	HUFFNODE *left = tree->left;
 	HUFFNODE *right = tree->right;
@@ -1290,10 +1347,12 @@ DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER
 			//read 7-bit number from 2 to 129 (number of loop iterations)
 			unsigned int nNodesBlock = CxiConsumeBits(reader, 7) + 2;
 			if (reader->error) return NULL;
+			if (i + nNodesBlock > nNodes) return NULL;
 
 			//this 5-bit value gets put into the depth of all nodes written here
 			unsigned int depth = CxiConsumeBits(reader, 5);
 			if (reader->error) return NULL;
+
 			for (j = 0; j < nNodesBlock; j++) {
 				nodeBuffer[i + j].depth = depth;
 				depthCounts[depth]++;
@@ -1303,6 +1362,7 @@ DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER
 			//read 7-bit number from 1 to 128. Number of loop iterations.
 			unsigned int nNodesBlock = CxiConsumeBits(reader, 7) + 1;
 			if (reader->error) return NULL;
+			if (i + nNodesBlock > nNodes) return NULL;
 
 			for (j = 0; j < nNodesBlock; j++) {
 				uint8_t depth = CxiConsumeBits(reader, 5);
@@ -1420,6 +1480,8 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 
 				//read out offset
 				uint32_t nodeVal2 = CxiLookupTreeNode(huffDistancesRoot, &reader);
+				if (nodeVal2 == (uint32_t) -1) return NULL;
+
 				uint32_t nOffsetMinorBits = sDeflateOffsetTable[nodeVal2].nMinorBits;
 				uint32_t lzOffset1 = sDeflateOffsetTable[nodeVal2].majorPart;
 				uint32_t lzOffset2 = CxiConsumeBits(&reader, nOffsetMinorBits);
@@ -1501,6 +1563,388 @@ static int CxiMvdkIsValidDeflate(const unsigned char *buffer, unsigned int size)
 
 	return 1;
 }
+
+
+static unsigned int CxiIlog2(unsigned int x) {
+	unsigned int y = 0;
+	while (x) {
+		x >>= 1;
+		y++;
+	}
+	return y - 1;
+}
+
+static CxiLzToken *CxiMvdkTokenizeDeflate(const unsigned char *buffer, unsigned int size, int *pnTokens) {
+	int tokenBufferSize = 16;
+	int tokenBufferLength = 0;
+	CxiLzToken *tokenBuffer = (CxiLzToken *) calloc(tokenBufferSize, sizeof(CxiLzToken));
+
+	unsigned int curpos = 0;
+	while (curpos < size) {
+		//ensure buffer capacity
+		if (tokenBufferLength + 1 > tokenBufferSize) {
+			tokenBufferSize = (tokenBufferSize + 2) * 3 / 2;
+			tokenBuffer = (CxiLzToken *) realloc(tokenBuffer, tokenBufferSize * sizeof(CxiLzToken));
+		}
+
+		//search backwards
+		unsigned int length, distance;
+		length = CxiSearchLZ(buffer, size, curpos, 1, 0x7FFF, 0x102, &distance);
+
+		if (length >= 3) {
+			//write LZ reference
+			tokenBuffer[tokenBufferLength].isReference = 1;
+			tokenBuffer[tokenBufferLength].distance = distance;
+			tokenBuffer[tokenBufferLength].length = length;
+
+			buffer += length;
+			curpos += length;
+		} else {
+			//write byte literal
+			tokenBuffer[tokenBufferLength].isReference = 0;
+			tokenBuffer[tokenBufferLength].symbol = *(buffer++);
+			curpos++;
+		}
+
+		tokenBufferLength++;
+	}
+
+	*pnTokens = tokenBufferLength;
+	return tokenBuffer;
+}
+
+
+static int CxiMvdkLookupDeflateTableEntry(const DEFLATE_TABLE_ENTRY *table, int tableSize, unsigned int n) {
+	for (int i = tableSize - 1; i >= 0; i--) {
+		if (n >= table[i].majorPart) return i;
+	}
+	return 0;
+}
+
+static void CxiMvdkInsertDummyNode(HUFFNODE *nodes, int nNodes) {
+	//find first node with a 0 frequency and give it a dummy frequency.
+	for (int i = 0; i < nNodes; i++) {
+		if (nodes[i].freq > 0) continue;
+
+		nodes[i].freq = 1;
+		nodes[i].symMin = nodes[i].symMax = nodes[i].sym = i;
+		nodes[i].nRepresent = 1;
+		break;
+	}
+}
+
+typedef struct CxiHuffmanCode_ {
+	uint32_t encoding;
+	uint16_t value;
+	uint16_t length;
+} CxiHuffmanCode;
+
+static int CxiMvdkAppendCanonicalNode(HUFFNODE *tree, CxiHuffmanCode *codes, uint32_t encoding, int depth) {
+	if (ISLEAF(tree)) {
+		codes[tree->sym].length = depth;
+		return 1;
+	}
+
+	//recurse
+	int nl = CxiMvdkAppendCanonicalNode(tree->left, codes, (encoding << 1) | 0, depth + 1);
+	int nr = CxiMvdkAppendCanonicalNode(tree->right, codes, (encoding << 1) | 1, depth + 1);
+	return nl + nr;
+}
+
+static int CxiMvdkHuffmanCanonicalComparator(const void *p1, const void *p2) {
+	const CxiHuffmanCode *c1 = (const CxiHuffmanCode *) p1;
+	const CxiHuffmanCode *c2 = (const CxiHuffmanCode *) p2;
+
+	//force 0-length (excluded) symbols to the end
+	if (c1->length == 0) return 1;
+	if (c2->length == 0) return -1;
+
+	if (c1->length < c2->length) return -1;
+	if (c1->length > c2->length) return 1;
+	if (c1->value < c2->value) return -1;
+	if (c1->value > c2->value) return 1;
+	return 0;
+}
+
+static int CxiMvdkHuffmanSymbolComparator(const void *p1, const void *p2) {
+	const CxiHuffmanCode *c1 = (const CxiHuffmanCode *) p1;
+	const CxiHuffmanCode *c2 = (const CxiHuffmanCode *) p2;
+
+	if (c1->value < c2->value) return -1;
+	if (c1->value > c2->value) return 1;
+	return 0;
+}
+
+static void CxiMvdkMakeCanonicalTree(HUFFNODE *tree, CxiHuffmanCode *codes, int nMaxNodes) {
+	//first, recursively append to the list.
+	int nNodes = CxiMvdkAppendCanonicalNode(tree, codes, 0, 1);
+	for (int i = 0; i < nMaxNodes; i++) {
+		codes[i].value = i;
+	}
+
+	//next, apply sort. Unassigned codes are pushed to the end of the list.
+	qsort(codes, nMaxNodes, sizeof(CxiHuffmanCode), CxiMvdkHuffmanCanonicalComparator);
+
+	//next, we can start assigning codes.
+	uint32_t curcode = 0, curbits = 0, curmask = 0;
+	for (int i = 0; i < nNodes; i++) {
+		//shift code
+		while (curbits < codes[i].length) {
+			curcode <<= 1;
+			curmask = (curmask << 1) | 1;
+			curbits++;
+		}
+		codes[i].encoding = curcode;
+
+		//increment current code
+		curcode++;
+		if ((curcode & curmask) == 0) {
+			curmask = (curmask << 1) | 1;
+			curbits++;
+		}
+	}
+
+	//sort codes by symbol value again (for constant code lookup time)
+	qsort(codes, nMaxNodes, sizeof(CxiHuffmanCode), CxiMvdkHuffmanSymbolComparator);
+}
+
+static void CxiMvdkWriteHuffmanTree(BITSTREAM *stream, CxiHuffmanCode *codes, int nCodes) {
+	//write tree
+	for (int i = 0; i < nCodes;) {
+		//same as next nodes?
+		int nRunLength = 1, repeatedRun = 0;
+		for (int j = i + 1; j < nCodes; j++) {
+			if (codes[j].length == codes[i].length) nRunLength++;
+			else break;
+		}
+
+		if (nRunLength >= 2) {
+			repeatedRun = 1;
+			if (nRunLength > 0x81) nRunLength = 0x81;
+		} else {
+			//find next position of repeated run
+			nRunLength = 1;
+			for (int j = i + 1; j < nCodes; j++) {
+				if (j == (nCodes - 1)) nRunLength++; //to catch the last element
+				else if (codes[j].length != codes[j + 1].length) nRunLength++;
+				else break;
+			}
+			if (nRunLength > 0x80) nRunLength = 0x80;
+		}
+
+		//run length >= 2: write run length block
+		if (repeatedRun) {
+			CxiBitStreamWrite(stream, 1);
+			CxiBitStreamWriteBits(stream, nRunLength - 2, 7);
+			CxiBitStreamWriteBits(stream, codes[i].length == 0 ? 0 : (codes[i].length - 1), 5);
+		} else {
+			CxiBitStreamWrite(stream, 0);
+			CxiBitStreamWriteBits(stream, nRunLength - 1, 7);
+			for (int j = 0; j < nRunLength; j++) {
+				unsigned int length = codes[i + j].length;
+				CxiBitStreamWriteBits(stream, length == 0 ? 0 : (length - 1), 5);
+			}
+		}
+		i += nRunLength;
+	}
+}
+
+static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize, unsigned int *nOutBits) {
+	//first, tokenize the input string.
+	int nTokens;
+	CxiLzToken *tokens = CxiMvdkTokenizeDeflate(buffer, size, &nTokens);
+
+	//next, compute statistics on the data.
+	unsigned int *symbolFrequencies = (unsigned int *) calloc(0x100 + 29, sizeof(unsigned int));
+	unsigned int *offsetBinFrequencies = (unsigned int *) calloc(30, sizeof(unsigned int));
+	for (int i = 0; i < nTokens; i++) {
+		if (!tokens[i].isReference) {
+			//byte reference
+			symbolFrequencies[tokens[i].symbol]++;
+		} else {
+			//LZ reference
+			unsigned int distance = tokens[i].distance;
+			unsigned int length = tokens[i].length;
+			
+			//if length is 0x102, special case
+			if (length == 0x102) {
+				symbolFrequencies[0x100 + 28]++;
+			} else {
+				symbolFrequencies[0x100 + CxiMvdkLookupDeflateTableEntry(sDeflateLengthTable, 29, length - 3)]++;
+			}
+
+			offsetBinFrequencies[CxiMvdkLookupDeflateTableEntry(sDeflateOffsetTable, 30, distance - 1)]++;
+		}
+	}
+
+	//next: create Huffman tree.
+	HUFFNODE *symbolTree = (HUFFNODE *) calloc((0x100 + 29) * 2, sizeof(HUFFNODE));
+	HUFFNODE *offsetTree = (HUFFNODE *) calloc(30 * 2, sizeof(HUFFNODE));
+
+	int symbolTreeSize = 0, lengthTreeSize = 0;
+	for (int i = 0; i < 0x100 + 29; i++) {
+		if (symbolFrequencies[i] == 0) continue;
+
+		HUFFNODE *node = symbolTree + symbolTreeSize;
+		node->sym = node->symMin = node->symMax = i;
+		node->freq = symbolFrequencies[i];
+		node->nRepresent = 1;
+		symbolTreeSize++;
+	}
+	for (int i = 0; i < 30; i++) {
+		if (offsetBinFrequencies[i] == 0) continue;
+
+		HUFFNODE *node = offsetTree + lengthTreeSize;
+		node->sym = node->symMin = node->symMax = i;
+		node->freq = offsetBinFrequencies[i];
+		node->nRepresent = 1;
+		lengthTreeSize++;
+	}
+
+	//if we have one node of a tree, insert a dummy node of low frequency. The decompressor
+	//won't accept a 0-depth tree (nodes not added to the tree). So we need to ensure that
+	//all leaf nodes have a depth of 1 or higher.
+	if (symbolTreeSize == 1) {
+		CxiMvdkInsertDummyNode(symbolTree, 0x100 + 29);
+		symbolTreeSize++;
+	}
+	if (lengthTreeSize == 1) {
+		CxiMvdkInsertDummyNode(offsetTree, 30);
+		lengthTreeSize++;
+	}
+
+	//construct tree structure
+	CxiHuffmanConstructTree(symbolTree, symbolTreeSize);
+	CxiHuffmanConstructTree(offsetTree, lengthTreeSize);
+	free(symbolFrequencies);
+	free(offsetBinFrequencies);
+
+	//convert Huffman tree to canonical form
+	CxiHuffmanCode *lengthEncodings = (CxiHuffmanCode *) calloc(0x100 + 29, sizeof(CxiHuffmanCode));
+	CxiHuffmanCode *offsetEncodings = (CxiHuffmanCode *) calloc(30, sizeof(CxiHuffmanCode));
+	CxiMvdkMakeCanonicalTree(symbolTree, lengthEncodings, 0x100 + 29);
+	CxiMvdkMakeCanonicalTree(offsetTree, offsetEncodings, 30);
+	free(symbolTree);
+	free(offsetTree);
+
+	//write huffman tree
+	unsigned char *treeData = NULL;
+	unsigned int treeSize = 0;
+	{
+		BITSTREAM symbolStream, offsetStream;
+		CxiBitStreamCreate(&symbolStream);
+		CxiBitStreamCreate(&offsetStream);
+		CxiMvdkWriteHuffmanTree(&symbolStream, lengthEncodings, 0x100 + 29);
+		CxiMvdkWriteHuffmanTree(&offsetStream, offsetEncodings, 30);
+		
+		unsigned int nBytesSymbolTree = (symbolStream.length + 7) / 8;
+		unsigned int nBytesOffsetTree = (offsetStream.length + 7) / 8;
+		void *symbolTree = CxiBitStreamGetBytes(&symbolStream, 0, 1, 0, &nBytesSymbolTree);
+		void *offsetTree = CxiBitStreamGetBytes(&offsetStream, 0, 1, 0, &nBytesOffsetTree);
+
+		treeSize = 2 + nBytesSymbolTree + 2 + nBytesOffsetTree;
+		treeData = (unsigned char *) malloc(treeSize);
+		*(uint16_t *) (treeData + 0) = symbolStream.length;
+		*(uint16_t *) (treeData + 2 + nBytesSymbolTree) = offsetStream.length;
+		
+		memcpy(treeData + 2, symbolTree, nBytesSymbolTree);
+		memcpy(treeData + 2 + nBytesSymbolTree + 2, offsetTree, nBytesOffsetTree);
+		
+		CxiBitStreamFree(&symbolStream);
+		CxiBitStreamFree(&offsetStream);
+		free(symbolTree);
+		free(offsetTree);
+	}
+
+	//TEST: write out bit stream
+	BITSTREAM bitStream;
+	CxiBitStreamCreate(&bitStream);
+	for (int i = 0; i < nTokens; i++) {
+
+		if (!tokens[i].isReference) {
+			//CxiHuffmanWriteSymbol(&bitStream, tokens[i].symbol, symbolTree);
+			CxiBitStreamWriteBitsBE(&bitStream, lengthEncodings[tokens[i].symbol].encoding, lengthEncodings[tokens[i].symbol].length - 1);
+		} else {
+			int lensym = CxiMvdkLookupDeflateTableEntry(sDeflateLengthTable, 29, tokens[i].length - 3);
+			int offsym = CxiMvdkLookupDeflateTableEntry(sDeflateOffsetTable, 30, tokens[i].distance - 1);
+
+			unsigned int lengthMinor = tokens[i].length - 3 - sDeflateLengthTable[lensym].majorPart;
+			unsigned int offsetMinor = tokens[i].distance - 1 - sDeflateOffsetTable[offsym].majorPart;
+			int nLengthMinor = sDeflateLengthTable[lensym].nMinorBits;
+			int nOffsetMinor = sDeflateOffsetTable[offsym].nMinorBits;
+			
+			CxiBitStreamWriteBitsBE(&bitStream, lengthEncodings[0x100 + lensym].encoding, lengthEncodings[0x100 + lensym].length - 1);
+			CxiBitStreamWriteBits(&bitStream, lengthMinor, nLengthMinor);
+
+			CxiBitStreamWriteBitsBE(&bitStream, offsetEncodings[offsym].encoding, offsetEncodings[offsym].length - 1);
+			CxiBitStreamWriteBits(&bitStream, offsetMinor, nOffsetMinor);
+		}
+	}
+	free(tokens);
+
+	free(lengthEncodings);
+	free(offsetEncodings);
+
+	//extract bytes of bit sequence
+	unsigned int nBitsComp = bitStream.length;
+	unsigned int compDataSize;
+	unsigned char *bytes = CxiBitStreamGetBytes(&bitStream, 0, 1, 0, &compDataSize);
+	CxiBitStreamFree(&bitStream);
+
+	unsigned int totalSizeBytes = treeSize + compDataSize;
+	unsigned char *outbuf = (unsigned char *) malloc(totalSizeBytes);
+	memcpy(outbuf, treeData, treeSize);
+	memcpy(outbuf + treeSize, bytes, compDataSize);
+	free(bytes);
+
+	*compressedSize = totalSizeBytes;
+	*nOutBits = treeSize * 8 + nBitsComp;
+	return outbuf;
+}
+
+static unsigned char *CxiCompressMvdkDeflate(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
+	BSTREAM stream;
+	bstreamCreate(&stream, NULL, 0);
+
+	//32-bit reserved space (for header)
+	uint32_t dummyHeader = 0;
+	bstreamWrite(&stream, &dummyHeader, sizeof(dummyHeader));
+
+	unsigned int srcpos = 0;
+	while (srcpos < size) {
+		//TODO: some heuristic for splitting?
+		unsigned int chunkSize = size - srcpos;
+
+		unsigned int chunkCompressedSize = 0, chunkCompressedBits;
+		unsigned char *compressedChunk = CxiCompressMvdkDeflateChunk(buffer + srcpos, size, &chunkCompressedSize, &chunkCompressedBits);
+		if (chunkCompressedSize < chunkSize) {
+			//write compressed block
+			uint32_t head = ((chunkCompressedBits + 32) << 1) | 1;
+			bstreamWrite(&stream, &head, sizeof(head));
+			bstreamWrite(&stream, compressedChunk, chunkCompressedSize);
+		} else {
+			//write uncompressed block
+			uint32_t head = chunkSize << 1;
+			bstreamWrite(&stream, &head, sizeof(head));
+			bstreamWrite(&stream, (void *) (buffer + srcpos), chunkSize);
+		}
+		free(compressedChunk);
+
+		srcpos += chunkSize;
+	}
+
+	//align
+	bstreamAlign(&stream, 4);
+	*compressedSize = stream.size;
+
+	//header
+	unsigned char *outbuf = stream.buffer;
+	*(uint32_t *) (outbuf + 0) = (size << 2) | MVDK_DEFLATE;
+	return outbuf;
+}
+
+
+
 
 static int CxiMvdkGetCompressionType(const unsigned char *buffer, unsigned int size) {
 	return (*(uint32_t *) buffer) & 3;
@@ -1587,21 +2031,29 @@ unsigned char *CxDecompressMvDK(const unsigned char *buffer, unsigned int size, 
 
 unsigned char *CxCompressMvDK(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
 	unsigned int dummySize = size + 4;
-	unsigned int lzSize, rlSize;
+	unsigned int lzSize, rlSize, dfSize;
 	unsigned char *lz = CxCompressLZ(buffer, size, &lzSize);
 	unsigned char *rl = CxCompressRL(buffer, size, &rlSize);
+	unsigned char *df = CxiCompressMvdkDeflate(buffer, size, &dfSize);
 
 	*(uint32_t *) lz = MVDK_LZ | (size << 2);
 	*(uint32_t *) rl = MVDK_RLE | (size << 2);
 
-	if (lzSize <= rlSize && lzSize <= dummySize) {
+	if (lzSize <= rlSize && lzSize <= dummySize && lzSize <= dfSize) {
 		free(rl);
+		free(df);
 		*compressedSize = lzSize;
 		return lz;
-	} else if (rlSize <= lzSize && rlSize <= dummySize) {
+	} else if (rlSize <= lzSize && rlSize <= dummySize && rlSize <= dfSize) {
 		free(lz);
+		free(df);
 		*compressedSize = rlSize;
 		return rl;
+	} else if (dfSize <= lzSize && dfSize <= rlSize && dfSize <= dummySize) {
+		free(lz);
+		free(rl);
+		*compressedSize = dfSize;
+		return df;
 	}
 
 	//else
@@ -1611,6 +2063,7 @@ unsigned char *CxCompressMvDK(const unsigned char *buffer, unsigned int size, un
 
 	free(rl);
 	free(lz);
+	free(df);
 	*compressedSize = dummySize;
 	return dummy;
 }
@@ -1632,17 +2085,6 @@ typedef struct WordBuffer_ {
 	int error;                 // set when we try to read bits off the end of the file
 	int nEofBits;              // set when low level buffer reaches end of file
 } WordBuffer;
-
-typedef struct CxiLzToken_ {
-	uint8_t isReference;
-	union {
-		uint8_t symbol;
-		struct {
-			int16_t length;
-			int16_t distance;
-		};
-	};
-} CxiLzToken;
 
 static unsigned char CxiVlxWordBufferFetchByte(WordBuffer *buffer) {
 	if (buffer->srcpos < buffer->size) {
@@ -1887,15 +2329,6 @@ unsigned char *CxDecompressVlx(const unsigned char *src, unsigned int size, unsi
 
 int CxIsCompressedVlx(const unsigned char *src, unsigned int size) {
 	return CxiTryDecompressVlx(src, size, NULL);
-}
-
-static unsigned int CxiIlog2(unsigned int x) {
-	unsigned int y = 0;
-	while (x) {
-		x >>= 1;
-		y++;
-	}
-	return y - 1;
 }
 
 static CxiLzToken *CxiVlxComputeLzStatistics(const unsigned char *buffer, unsigned int size, unsigned int *lengthCounts, unsigned int *distCounts, int *pnTokens) {
