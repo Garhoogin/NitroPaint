@@ -34,10 +34,17 @@ typedef struct MBBCOMBO_ {
 	int screenBitmap; //bit for each screen present
 } MBBCOMBO;
 
-//these lines cause chaos :(
-//#include "nclr.h"
-//#include "ncgr.h"
-//#include "nscr.h"
+//
+// Get the minimum allowed number of objects of a given type to be included in
+// this combination.
+//
+int combo2dGetObjMinCount(int comboType, int objType);
+
+//
+// Get the maximum allowed number of objects of a given type to be included in
+// this combination.
+//
+int combo2dGetObjMaxCount(int comboType, int objType);
 
 void combo2dInit(COMBO2D *combo, int format);
 
@@ -48,21 +55,6 @@ OBJECT_HEADER *combo2dGet(COMBO2D *combo, int type, int index);
 void combo2dLink(COMBO2D *combo, OBJECT_HEADER *object);
 
 void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object);
-
-//
-// Returns 1 if the specified format contains palette data.
-//
-int combo2dFormatHasPalette(int format);
-
-//
-// Returns 1 if the specified format contains character graphics data.
-//
-int combo2dFormatHasCharacter(int format);
-
-//
-// Returns 1 if the specified format contains screen data.
-//
-int combo2dFormatHasScreen(int format);
 
 //
 // Prepares a COMBO2D structure for deletion, can safely call free() after this.

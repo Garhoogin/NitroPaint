@@ -49,9 +49,12 @@ void combo2dLink(COMBO2D *combo, OBJECT_HEADER *object) {
 	combo->nLinks++;
 	combo->links = (OBJECT_HEADER **) realloc(combo->links, combo->nLinks * sizeof(OBJECT_HEADER *));
 	combo->links[combo->nLinks - 1] = object;
+	object->combo = (void *) combo;
 }
 
 void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object) {
+	object->combo = NULL;
+	object->format = 0;
 	for (int i = 0; i < combo->nLinks; i++) {
 		if (combo->links[i] != object) continue;
 
@@ -59,36 +62,88 @@ void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object) {
 		memmove(combo->links + i, combo->links + i + 1, (combo->nLinks - i - 1) * sizeof(OBJECT_HEADER *));
 		combo->nLinks--;
 		combo->links = (OBJECT_HEADER **) realloc(combo->links, combo->nLinks * sizeof(OBJECT_HEADER *));
-		return;
+		break;
+	}
+
+	//free combo if all links are freed
+	if (combo->nLinks == 0) {
+		combo2dFree(combo);
+		free(combo);
 	}
 }
 
-int combo2dFormatHasPalette(int format) {
-	return format == COMBO2D_TYPE_BANNER
-		|| format == COMBO2D_TYPE_TIMEACE
-		|| format == COMBO2D_TYPE_5BG
-		|| format == COMBO2D_TYPE_MBB;
+int combo2dGetObjMinCount(int comboType, int objType) {
+	switch (comboType) {
+		case COMBO2D_TYPE_BANNER:
+			//requires exactly one palette + one character
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			return 0;
+		case COMBO2D_TYPE_5BG:
+			//requires exactly one palette + one character + one screen (OBJ type not supported)
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_SCREEN) return 1;
+			return 0;
+		case COMBO2D_TYPE_MBB:
+			//requires exactly one palette, one character, and 0-4 screens
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_SCREEN) return 0;
+			return 0;
+		case COMBO2D_TYPE_TIMEACE:
+			//requires exactly one palette, one character, one screen
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_SCREEN) return 1;
+			return 0;
+		case COMBO2D_TYPE_DATAFILE:
+			//no particular requirements
+			return 0;
+	}
+	return 0;
 }
 
-int combo2dFormatHasCharacter(int format) {
-	return format == COMBO2D_TYPE_BANNER
-		|| format == COMBO2D_TYPE_TIMEACE
-		|| format == COMBO2D_TYPE_5BG
-		|| format == COMBO2D_TYPE_MBB;
-}
-
-int combo2dFormatHasScreen(int format) {
-	return format == COMBO2D_TYPE_TIMEACE
-		|| format == COMBO2D_TYPE_5BG;
+int combo2dGetObjMaxCount(int comboType, int objType) {
+	switch (comboType) {
+		case COMBO2D_TYPE_BANNER:
+			//requires exactly one palette + one character
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			return 0;
+		case COMBO2D_TYPE_5BG:
+			//requires exactly one palette + one character + one screen (OBJ type not supported)
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_SCREEN) return 1;
+			return 0;
+		case COMBO2D_TYPE_MBB:
+			//requires exactly one palette, one character, and 0-4 screens
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_SCREEN) return 4;
+		case COMBO2D_TYPE_TIMEACE:
+			//requires exactly one palette, one character, one screen
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_SCREEN) return 1;
+			return 0;
+		case COMBO2D_TYPE_DATAFILE:
+			//no particular requirements
+			return INT_MAX;
+	}
+	return 0;
 }
 
 int combo2dCanSave(COMBO2D *combo) {
-	int nPalettes = combo2dCount(combo, FILE_TYPE_PALETTE);
-	int nCharacters = combo2dCount(combo, FILE_TYPE_CHARACTER);
-	int nScreens = combo2dCount(combo, FILE_TYPE_SCREEN);
-	if (combo2dFormatHasPalette(combo->header.format) && nPalettes == 0) return 0;
-	if (combo2dFormatHasCharacter(combo->header.format) && nCharacters == 0) return 0;
-	if (combo2dFormatHasScreen(combo->header.format) && nScreens == 0) return 0;
+	//count objects
+	for (int type = 0; type < FILE_TYPE_MAX; type++) {
+		int count = combo2dCount(combo, type);
+		if (count > combo2dGetObjMaxCount(combo->header.format, type)) return 0;
+		if (count < combo2dGetObjMinCount(combo->header.format, type)) return 0;
+	}
+	
+	//object count requirements satisfied
 	return 1;
 }
 
@@ -253,7 +308,6 @@ int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int
 	nscr->nWidth = 256;
 	nscr->nHeight = 256;
 	nscr->dataSize = (nscr->nWidth / 8) * (nscr->nHeight / 8) * 2;
-	nscr->nHighestIndex = 0;
 	nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
 	memcpy(nscr->data, buffer + 0x208, nscr->dataSize);
 	ScrComputeHighestCharacter(nscr);
@@ -313,7 +367,6 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	nscr->nWidth = scrWidth;
 	nscr->nHeight = scrHeight;
 	nscr->dataSize = scrDataSize;
-	nscr->nHighestIndex = 0;
 	nscr->data = (uint16_t *) calloc(scrDataSize, 1);
 	memcpy(nscr->data, bgdt + 0x14, scrDataSize);
 	ScrComputeHighestCharacter(nscr);
@@ -409,7 +462,6 @@ int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 		nscr->nWidth = scrWidth;
 		nscr->nHeight = scrHeight;
 		nscr->dataSize = scrDataSize;
-		nscr->nHighestIndex = 0;
 		nscr->data = (uint16_t *) calloc(scrDataSize, 1);
 		memcpy(nscr->data, buffer + scrnofs, scrDataSize);
 		ScrComputeHighestCharacter(nscr);

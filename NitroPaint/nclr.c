@@ -13,15 +13,10 @@ void PalFree(OBJECT_HEADER *header) {
 	if (nclr->idxTable != NULL) free(nclr->idxTable);
 	nclr->idxTable = NULL;
 
-	COMBO2D *combo2d = nclr->combo2d;
+	COMBO2D *combo2d = (COMBO2D *) nclr->header.combo;
 	if (combo2d != NULL) {
 		combo2dUnlink(combo2d, &nclr->header);
-		if (combo2d->nLinks == 0) {
-			combo2dFree(combo2d);
-			free(combo2d);
-		}
 	}
-	nclr->combo2d = NULL;
 }
 
 void PalInit(NCLR *nclr, int format) {
@@ -29,7 +24,7 @@ void PalInit(NCLR *nclr, int format) {
 	ObjInit((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
 	nclr->header.dispose = PalFree;
 	nclr->header.writer = (OBJECT_WRITER) PalWrite;
-	nclr->combo2d = NULL;
+	nclr->header.combo = NULL;
 }
 
 int PalIsValidHudson(const unsigned char *lpFile, unsigned int size) {
@@ -339,7 +334,7 @@ int PalWriteBin(NCLR *nclr, BSTREAM *stream) {
 }
 
 int PalWriteCombo(NCLR *nclr, BSTREAM *stream) {
-	return combo2dWrite(nclr->combo2d, stream);
+	return combo2dWrite((COMBO2D *) nclr->header.combo, stream);
 }
 
 int PalWriteIStudio(NCLR *nclr, BSTREAM *stream) {

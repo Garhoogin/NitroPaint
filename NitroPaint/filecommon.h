@@ -15,6 +15,7 @@
 #define FILE_TYPE_COMBO2D    10
 #define FILE_TYPE_NMCR       11
 #define FILE_TYPE_NMAR       12
+#define FILE_TYPE_MAX        13  //highest file type +1
 
 // ----- common status codes
 #define OBJ_STATUS_SUCCESS     0  //the operation completed successfully
@@ -37,15 +38,16 @@ typedef struct ObjLink_ {
 } ObjLink;
 
 typedef struct OBJECT_HEADER_ {
-	int size;
-	int type;
-	int format;
-	int compression;
-	void (*dispose) (struct OBJECT_HEADER_ *);
-	OBJECT_WRITER writer;
-	ObjLink link;
-	char *fileLink;
-	char *comment;
+	int size;                                   // Size of the containing struct in bytes
+	int type;                                   // The type of file
+	int format;                                 // The format of file (specific to file type)
+	int compression;                            // The compression scheme used on this file
+	void (*dispose) (struct OBJECT_HEADER_ *);  // The callback for freeing the file
+	OBJECT_WRITER writer;                       // The callback for writing the file to a stream
+	void *combo;                                // Pointer to a structure maintaining strict links to objects in the same file
+	ObjLink link;                               // A structure maintaining file links to this file
+	char *fileLink;                             // The name of the file that this object references
+	char *comment;                              // The stored file comment (if supported)
 } OBJECT_HEADER;
 
 extern LPCWSTR g_ObjCompressionNames[];

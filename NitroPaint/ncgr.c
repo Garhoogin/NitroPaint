@@ -183,15 +183,10 @@ void ChrFree(OBJECT_HEADER *header) {
 		ncgr->attr = NULL;
 	}
 
-	COMBO2D *combo = ncgr->combo2d;
+	COMBO2D *combo = (COMBO2D *) ncgr->header.combo;
 	if (combo != NULL) {
 		combo2dUnlink(combo, &ncgr->header);
-		if (combo->nLinks == 0) {
-			combo2dFree(combo);
-			free(combo);
-		}
 	}
-	ncgr->combo2d = NULL;
 }
 
 void ChrInit(NCGR *ncgr, int format) {
@@ -199,7 +194,7 @@ void ChrInit(NCGR *ncgr, int format) {
 	ObjInit((OBJECT_HEADER *) ncgr, FILE_TYPE_CHARACTER, format);
 	ncgr->header.dispose = ChrFree;
 	ncgr->header.writer = (OBJECT_WRITER) ChrWrite;
-	ncgr->combo2d = NULL;
+	ncgr->header.combo = NULL;
 }
 
 void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
@@ -940,7 +935,7 @@ int ChrWriteGhostTrick(NCGR *ncgr, BSTREAM *stream) {
 }
 
 int ChrWriteCombo(NCGR *ncgr, BSTREAM *stream) {
-	return combo2dWrite(ncgr->combo2d, stream);
+	return combo2dWrite((COMBO2D *) ncgr->header.combo, stream);
 }
 
 int ChrWrite(NCGR *ncgr, BSTREAM *stream) {

@@ -45,7 +45,6 @@ typedef struct NCGR_{
 	BYTE **tiles;
 	CHAR_SLICE *slices;       //for Ghost Trick files
 	int nSlices;              //for Ghost Trick files
-	struct COMBO2D_ *combo2d; //for combination files
 } NCGR;
 
 typedef struct CHAR_VRAM_TRANSFER_ {

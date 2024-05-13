@@ -209,15 +209,10 @@ void ScrFree(OBJECT_HEADER *header) {
 	if (nscr->data != NULL) free(nscr->data);
 	nscr->data = NULL;
 
-	COMBO2D *combo = nscr->combo2d;
+	COMBO2D *combo = (COMBO2D *) nscr->header.combo;
 	if (combo != NULL) {
 		combo2dUnlink(combo, &nscr->header);
-		if (combo->nLinks == 0) {
-			combo2dFree(combo);
-			free(combo);
-		}
 	}
-	nscr->combo2d = NULL;
 }
 
 void ScrInit(NSCR *nscr, int format) {
@@ -225,7 +220,7 @@ void ScrInit(NSCR *nscr, int format) {
 	ObjInit((OBJECT_HEADER *) nscr, FILE_TYPE_SCREEN, format);
 	nscr->header.dispose = ScrFree;
 	nscr->header.writer = (OBJECT_WRITER) ScrWrite;
-	nscr->combo2d = NULL;
+	nscr->header.combo = NULL;
 }
 
 int ScrReadHudson(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
@@ -732,7 +727,7 @@ int ScrWriteBin(NSCR *nscr, BSTREAM *stream) {
 }
 
 int ScrWriteCombo(NSCR *nscr, BSTREAM *stream) {
-	return combo2dWrite(nscr->combo2d, stream);
+	return combo2dWrite((COMBO2D *) nscr->header.combo, stream);
 }
 
 int ScrWrite(NSCR *nscr, BSTREAM *stream) {

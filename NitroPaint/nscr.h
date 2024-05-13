@@ -49,7 +49,6 @@ typedef struct NSCR_ {
 	int showGrid;     //for NC
 	short gridWidth;  //for NC
 	short gridHeight; //for NC
-	struct COMBO2D_ *combo2d; //for combination files
 } NSCR;
 
 #include "combo2d.h"

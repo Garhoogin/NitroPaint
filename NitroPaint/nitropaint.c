@@ -692,17 +692,14 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		if (pltRef != NULL) {
 			PalRead(&nclr, dfc->data + pltOffset, pltSize);
 			nclr.header.format = NCLR_TYPE_COMBO;
-			nclr.combo2d = combo;
 		}
 		if (chrRef != NULL) {
 			ChrRead(&ncgr, dfc->data + chrOffset, chrSize);
 			ncgr.header.format = NCGR_TYPE_COMBO;
-			ncgr.combo2d = combo;
 		}
 		if (scrRef != NULL) {
 			ScrRead(&nscr, dfc->data + scrOffset, scrSize);
 			nscr.header.format = NSCR_TYPE_COMBO;
-			nscr.combo2d = combo;
 		}
 
 		//if there is already an NCLR open, close it.
@@ -710,7 +707,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
 			data->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, &nclr);
 
-			NCLR *pNclr = &((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->nclr;
+			NCLR *pNclr = (NCLR *) EditorGetObject(data->hWndNclrViewer);
 			combo2dLink(combo, &pNclr->header);
 			memcpy(((NCLRVIEWERDATA *) GetWindowLongPtr(data->hWndNclrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
 		}
@@ -722,7 +719,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 
 
-			NCGR *pNcgr = &((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->ncgr;
+			NCGR *pNcgr = (NCGR *) EditorGetObject(data->hWndNcgrViewer);
 			combo2dLink(combo, &pNcgr->header);
 			memcpy(((NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
 		}
@@ -731,7 +728,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		if (scrRef != NULL) {
 			HWND hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, &nscr);
 
-			NSCR *pNscr = &((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->nscr;
+			NSCR *pNscr = (NSCR *) EditorGetObject(hWndNscrViewer);
 			combo2dLink(combo, &pNscr->header);
 			memcpy(((NSCRVIEWERDATA *) GetWindowLongPtr(hWndNscrViewer, 0))->szOpenFile, pathBuffer, 2 * (wcslen(pathBuffer) + 1));
 		}
@@ -807,7 +804,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 				switch (type) {
 
 					case FILE_TYPE_PALETTE:
-						((NCLR *) object)->combo2d = combo;
+						object->combo = (void *) combo;
 
 						//if there is already an NCLR open, close it.
 						if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
@@ -817,7 +814,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 						break;
 
 					case FILE_TYPE_CHARACTER:
-						((NCGR *) object)->combo2d = combo;
+						object->combo = (void *) combo;
 
 						//if there is already an NCGR open, close it.
 						if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
@@ -829,7 +826,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 					case FILE_TYPE_SCREEN:
 						//create NSCR and make it active
-						((NSCR *) object)->combo2d = combo;
+						object->combo = (void *) combo;
 						h = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, (NSCR *) object);
 						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
 						break;

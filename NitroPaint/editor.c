@@ -4,6 +4,7 @@
 #include "nitropaint.h"
 #include "resource.h"
 #include "editor.h"
+#include "combo2d.h"
 
 static BOOL CALLBACK EditorSetThemeProc(HWND hWnd, LPARAM lParam) {
 	SetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
@@ -152,6 +153,68 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 	}
 }
 
+// ----- editor find
+
+typedef struct EditorFindStruct_ {
+	OBJECT_HEADER *obj;
+	HWND hWnd;
+} EditorFindStruct;
+
+static BOOL CALLBACK EditorFindByObjectEnumProc(HWND hWnd, LPARAM lParam) {
+	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	if (data == NULL) return TRUE;
+
+	EditorFindStruct *find = (EditorFindStruct *) lParam;
+	if (&data->file == find->obj) {
+		//found
+		find->hWnd = hWnd;
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static HWND EditorFindByObject(HWND hWndParent, OBJECT_HEADER *obj) {
+	//enumerate child windows to find
+	EditorFindStruct findStruct;
+	findStruct.obj = obj;
+	findStruct.hWnd = NULL;
+
+	EnumChildWindows(hWndParent, EditorFindByObjectEnumProc, (LPARAM) &findStruct);
+	return findStruct.hWnd;
+}
+
+static void EditorTerminateCombo(EDITOR_DATA *data) {
+	HWND hWndParent = (HWND) GetWindowLongPtr(data->hWnd, GWL_HWNDPARENT);
+	COMBO2D *combo = (COMBO2D *) data->file.combo;
+
+	//first unlink all child objects. This will prevent us from accidentally infinitely
+	//recursing as each editor tries to close each other.
+	int nLinks = combo->nLinks;
+	while (nLinks > 0) {
+		//unlink
+		OBJECT_HEADER *obj = combo->links[0];
+		combo2dUnlink(combo, obj);
+		nLinks--;
+
+		//skip own object (already closing)
+		if (obj == &data->file) continue;
+
+		//find the window associated with the object and close it
+		HWND hWndEditor = EditorFindByObject(hWndParent, obj);
+		if (hWndEditor != NULL) {
+			//editor found, send close message
+			SendMessage(hWndEditor, WM_CLOSE, 0, 0);
+			//if (IsWindow(hWndEditor)) {
+				//window still exists, close fail
+				//break;
+			//}
+		} else {
+			//no editor found, free the object
+			ObjFree(obj);
+		}
+	}
+}
+
 static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	//check class long for initialized. If so, pass to window proc
 	int inited = GetClassLongPtr(hWnd, EDITOR_CD_INITIALIZED);
@@ -197,6 +260,11 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					if (status == IDNO) {
 						return 0;
 					}
+				}
+
+				//if editor is editing a combination object, close out editors for the other objects.
+				if (data->file.combo != NULL) {
+					EditorTerminateCombo(data);
 				}
 				break;
 #if(g_useDarkTheme)
