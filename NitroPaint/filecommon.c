@@ -9,6 +9,23 @@
 #include "gdip.h"
 #include "nns.h"
 
+const wchar_t *gFileTypeNames[] = {
+	L"Invalid",
+	L"Palette",
+	L"Character",
+	L"Screen",
+	L"Cell",
+	L"Texture Archive",
+	L""
+	L"Texture",
+	L"Animation",
+	L"Image",
+	L"Combination",
+	L"Multi-Cell",
+	L"Multi-Cell Animation",
+	NULL
+};
+
 LPCWSTR g_ObjCompressionNames[] = {
 	L"None", 
 	L"LZ77", 

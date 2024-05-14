@@ -17,6 +17,8 @@
 #define FILE_TYPE_NMAR       12
 #define FILE_TYPE_MAX        13  //highest file type +1
 
+extern const wchar_t *gFileTypeNames[];
+
 // ----- common status codes
 #define OBJ_STATUS_SUCCESS     0  //the operation completed successfully
 #define OBJ_STATUS_INVALID     1  //the byte stream was not a valid object

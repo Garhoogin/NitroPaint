@@ -1510,6 +1510,21 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						BatchTexShowVramStatistics(hWnd, path);
 						break;
 					}
+					case ID_TOOLS_EDITLINK:
+					{
+						//must have an active window open.
+						HWND hWndActive = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);
+						if (hWndActive == NULL || EditorGetObject(hWndActive) == NULL) {
+							MessageBox(hWnd, L"No editor focused.", L"No editor focused", MB_ICONERROR);
+						} else {
+							//do modal dialog
+							HWND hWndDlg = CreateWindow(L"LinkEditClass", L"Edit Links", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT,
+								CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWnd, NULL, NULL, NULL);
+							SendMessage(hWndDlg, NV_INITIALIZE, 0, (LPARAM) hWndActive);
+							DoModal(hWndDlg);
+						}
+						break;
+					}
 				}
 			}
 			HWND hWndActive = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);
@@ -2611,6 +2626,148 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct LINKEDITDATA_ {
+	HWND hWndFormat;
+	HWND hWndOK;
+	HWND hWndObjects;
+
+	COMBO2D *combo;
+	HWND *hWndEditors;
+	int nEditors;
+} LINKEDITDATA;
+
+LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	LINKEDITDATA *data = (LINKEDITDATA *) GetWindowLongPtr(hWnd, 0);
+	switch (msg) {
+		case WM_CREATE:
+		{
+			if (data == NULL) {
+				data = (LINKEDITDATA *) calloc(1, sizeof(LINKEDITDATA));
+				SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+			}
+
+			CreateStatic(hWnd, L"Format:", 10, 10, 50, 22);
+			data->hWndFormat = CreateCombobox(hWnd, gComboFormats + 1, COMBO2D_TYPE_MAX - 1, 70, 10, 300, 100, COMBO2D_TYPE_5BG - 1);
+			CreateStatic(hWnd, L"Objects:", 10, 37, 50, 22);
+			data->hWndObjects = CreateCheckedListView(hWnd, 70, 37, 300, 200);
+			data->hWndOK = CreateButton(hWnd, L"OK", 170, 252, 100, 22, TRUE);
+			data->combo = NULL;
+
+			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+			data->nEditors = GetAllEditors(hWndMain, FILE_TYPE_INVALID, NULL, 0);
+			data->hWndEditors = (HWND *) calloc(data->nEditors, sizeof(HWND));
+			GetAllEditors(hWndMain, FILE_TYPE_INVALID, data->hWndEditors, data->nEditors);
+
+			SetWindowSize(hWnd, 380, 284);
+			SetGUIFont(hWnd);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			//active editor window in lParam.
+			HWND hWndEditor = (HWND) lParam;
+			OBJECT_HEADER *obj = (OBJECT_HEADER *) EditorGetObject(hWndEditor);
+
+			//get combo if the object is a part of one
+			COMBO2D *combo = (COMBO2D *) obj->combo;
+			data->combo = combo;
+
+			//filter the window list based on applicability. If we're not in a combo, filter out all those
+			//that are. If we are in one, filter out all those not in the same one.
+			for (int i = 0; i < data->nEditors; i++) {
+				int remove = 0;
+
+				OBJECT_HEADER *obj2 = (OBJECT_HEADER *) EditorGetObject(data->hWndEditors[i]);
+				if (obj2 == NULL) {
+					remove = 1;
+				} else if (combo != NULL) {
+					if (obj2->combo != NULL && obj2->combo != combo) remove = 1;
+				} else {
+					if (obj2->combo != NULL) remove = 1;
+				}
+
+				//remove
+				if (remove) {
+					memmove(data->hWndEditors + i, data->hWndEditors + i + 1, (data->nEditors - i - 1) * sizeof(HWND));
+					i--;
+					data->nEditors--;
+				}
+			}
+			
+			for (int i = 0; i < data->nEditors; i++) {
+				WCHAR buf[MAX_PATH];
+				HWND hWndThisEditor = data->hWndEditors[i];
+				OBJECT_HEADER *obj = (OBJECT_HEADER *) EditorGetObject(hWndThisEditor);
+
+				SendMessage(hWndThisEditor, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) buf);
+				AddCheckedListViewItem(data->hWndObjects, buf, i, (hWndEditor == hWndThisEditor) || (combo != NULL && obj->combo == combo));
+			}
+
+			//populate type field
+			if (combo != NULL) {
+				SendMessage(data->hWndFormat, CB_SETCURSEL, combo->header.format - 1, TRUE);
+			}
+
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			if (hWndControl != NULL) {
+				if (hWndControl == data->hWndOK) {
+					int fmt = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+
+					//if no combo in data, create a new one.
+					if (data->combo == NULL) {
+						COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
+						combo2dInit(combo, fmt);
+						
+						//for each window selected, link
+						for (int i = 0; i < data->nEditors; i++) {
+							HWND hWndThisEditor = data->hWndEditors[i];
+							if (CheckedListViewIsChecked(data->hWndObjects, i)) {
+								combo2dLink(combo, EditorGetObject(hWndThisEditor));
+							}
+						}
+					} else {
+						data->combo->header.format = fmt;
+
+						//first, add any links we don't have, then remove the removed ones.
+						for (int i = 0; i < data->nEditors; i++) {
+							HWND hWndThisEditor = data->hWndEditors[i];
+							OBJECT_HEADER *obj = EditorGetObject(hWndThisEditor);
+
+							if (CheckedListViewIsChecked(data->hWndObjects, i) && obj->combo == NULL) {
+								combo2dLink(data->combo, obj);
+							}
+						}
+
+						for (int i = 0; i < data->nEditors; i++) {
+							HWND hWndThisEditor = data->hWndEditors[i];
+							OBJECT_HEADER *obj = EditorGetObject(hWndThisEditor);
+
+							if (!CheckedListViewIsChecked(data->hWndObjects, i) && obj->combo == data->combo) {
+								combo2dUnlink(data->combo, obj);
+							}
+						}
+					}
+
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
+				}
+			}
+			break;
+		}
+		case WM_DESTROY:
+			if (data != NULL) {
+				if (data->hWndEditors != NULL) free(data->hWndEditors);
+				free(data);
+				SetWindowLongPtr(hWnd, 0, 0);
+			}
+			break;
+	}
+	return DefModalProc(hWnd, msg, wParam, lParam);
+}
+
 void RegisterImageDialogClass() {
 	RegisterGenericClass(L"ImageDialogClass", ImageDialogProc, sizeof(LPVOID));
 }
@@ -2637,6 +2794,10 @@ void RegisterTextPromptClass() {
 
 void RegisterAlphaBlendClass() {
 	RegisterGenericClass(L"AlphaBlendClass", AlphaBlendWndProc, sizeof(LPVOID) * 6);
+}
+
+void RegisterLinkEditClass() {
+	RegisterGenericClass(L"LinkEditClass", LinkEditWndPRoc, sizeof(LPVOID));
 }
 
 VOID ReadConfiguration(LPWSTR lpszPath) {
@@ -2720,6 +2881,7 @@ void RegisterClasses() {
 	RegisterScreenSplitDialogClass();
 	RegisterTextPromptClass();
 	RegisterAlphaBlendClass();
+	RegisterLinkEditClass();
 }
 
 void InitializeDpiAwareness(void) {

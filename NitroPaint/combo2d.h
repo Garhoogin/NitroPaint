@@ -7,6 +7,9 @@
 #define COMBO2D_TYPE_DATAFILE    3
 #define COMBO2D_TYPE_5BG         4
 #define COMBO2D_TYPE_MBB         5
+#define COMBO2D_TYPE_MAX         6 //max +1
+
+extern const wchar_t *gComboFormats[];
 
 //structure that manages a linkage of palette, graphics, and screen.
 typedef struct COMBO2D_ {

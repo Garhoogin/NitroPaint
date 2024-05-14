@@ -7,6 +7,16 @@
 #include "ncgr.h"
 #include "nscr.h"
 
+extern const wchar_t *gComboFormats[] = {
+	L"Invalid",
+	L"Time Ace",
+	L"Banner",
+	L"Data File",
+	L"5BG",
+	L"MBB",
+	NULL
+};
+
 typedef struct BANNER_INFO_ {
 	int version;
 	WCHAR titleJp[128];

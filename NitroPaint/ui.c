@@ -121,6 +121,15 @@ HWND CreateListView(HWND hWnd, int x, int y, int width, int height) {
 	return hWndLv;
 }
 
+HWND CreateCheckedListView(HWND hWnd, int x, int y, int width, int height) {
+	DWORD dwExStyle = LVS_EX_CHECKBOXES;
+	DWORD dwStyle = WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN | LVS_REPORT | LVS_NOCOLUMNHEADER | WS_VSCROLL | WS_BORDER;
+	HWND hWndLv = CreateWindowEx(0, WC_LISTVIEW, L"", dwStyle, x, y, width, height, hWnd, NULL, NULL, NULL);
+	SendMessage(hWndLv, LVM_SETEXTENDEDLISTVIEWSTYLE, dwExStyle, dwExStyle);
+	AddListViewColumn(hWndLv, L"", 0, width - 2, SCA_LEFT);
+	return hWndLv;
+}
+
 void AddListViewColumn(HWND hWnd, LPWSTR name, int col, int width, int alignment) {
 	LVCOLUMN lvc = { 0 };
 	lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM
@@ -145,6 +154,21 @@ void AddListViewItem(HWND hWnd, LPWSTR text, int row, int col) {
 	} else {
 		ListView_SetItem(hWnd, &lvi);
 	}
+}
+
+void AddCheckedListViewItem(HWND hWnd, LPWSTR text, int row, BOOL checked) {
+	LVITEM lvi = { 0 };
+	lvi.mask = LVIF_TEXT | LVIF_STATE;
+	lvi.pszText = text;
+	lvi.iSubItem = 0;
+	lvi.iItem = row;
+	ListView_InsertItem(hWnd, &lvi);
+	ListView_SetItemState(hWnd, row, (1 + !!checked) << 12, LVIS_STATEIMAGEMASK);
+}
+
+int CheckedListViewIsChecked(HWND hWnd, int item) {
+	int state = SendMessage(hWnd, LVM_GETITEMSTATE, item, LVIS_STATEIMAGEMASK);
+	return (state >> 12) - 1;
 }
 
 //subclass proc that focuses the parent on WM_CLOSE (less flicker)

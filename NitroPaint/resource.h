@@ -133,13 +133,14 @@
 #define ID_ACCELERATOR_SELECT_ALL       40144
 #define ID_NSCRMENU_CUT                 40146
 #define ID_ARRANGEPALETTE_BYFREQUENCY   40147
+#define ID_TOOLS_EDITLINK               40148
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40148
+#define _APS_NEXT_COMMAND_VALUE         40149
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

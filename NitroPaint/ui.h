@@ -127,6 +127,11 @@ void ReplaceListBoxItem(HWND hWnd, int index, LPCWSTR newitem);
 HWND CreateListView(HWND hWnd, int x, int y, int width, int height);
 
 //
+// Create a ListView in multiple select mode.
+//
+HWND CreateCheckedListView(HWND hWnd, int x, int y, int width, int height);
+
+//
 // Add a column to a ListView.
 //
 void AddListViewColumn(HWND hWnd, LPWSTR name, int col, int width, int alignment);
@@ -135,3 +140,13 @@ void AddListViewColumn(HWND hWnd, LPWSTR name, int col, int width, int alignment
 // Add an item to a ListView.
 //
 void AddListViewItem(HWND hWnd, LPWSTR text, int row, int col);
+
+//
+// Adds a checked item to a listview.
+//
+void AddCheckedListViewItem(HWND hWnd, LPWSTR text, int row, BOOL checked);
+
+//
+// Gets the checked state of a listview item.
+//
+int CheckedListViewIsChecked(HWND hWnd, int item);
