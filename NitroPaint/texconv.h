@@ -10,6 +10,7 @@ typedef struct TxConversionParameters_ {
 	int width;
 	int height;
 	int fmt;
+	int forTwl;
 	int dither;
 	float diffuseAmount;
 	int ditherAlpha;

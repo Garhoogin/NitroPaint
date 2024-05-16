@@ -1386,7 +1386,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->selEnd = -1;
 
 			//get UI scale
-			sColorCellSize = (int) (GetDpiScale() * COLOR_SIZE + 0.5);
+			sColorCellSize = (int) (GetDpiScale() * COLOR_SIZE_DEFAULT + 0.5);
 
 			data->frameData.contentWidth = 0; //prevent horizontal scrollbar
 			data->frameData.contentHeight = 16 * COLOR_SIZE;
