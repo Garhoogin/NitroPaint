@@ -67,6 +67,7 @@ extern HICON g_appIcon;
 
 
 static int sOpxCharmapFormat = 0;
+static int sPngFormat = 0;
 
 static void ChrViewerReleaseCursor(NCGRVIEWERDATA *data);
 static void ChrViewerUpdateCursor(NCGRVIEWERDATA *data);
@@ -300,6 +301,13 @@ static int ChrViewerEnsureClipboardFormatOPX(void) {
 	return sOpxCharmapFormat;
 }
 
+static int ChrViewerEnsureClipboardFormatPNG(void) {
+	if (sPngFormat) return sPngFormat;
+
+	sPngFormat = RegisterClipboardFormat(L"PNG");
+	return sPngFormat;
+}
+
 static void ChrViewerCopyOPX(NCGRVIEWERDATA *data) {
 	if (!ChrViewerEnsureClipboardFormatOPX()) return;
 
@@ -445,26 +453,43 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data) {
 	if (nclr == NULL) return;
 
 	HWND hWnd = data->hWnd;
+	ChrViewerEnsureClipboardFormatPNG();
 	OpenClipboard(hWnd);
 
 	HGLOBAL hDib = GetClipboardData(CF_DIB);
-	if (hDib != NULL) {
-		BITMAPINFO *pbmi = GlobalLock(hDib);
+	HGLOBAL hPng = GetClipboardData(sPngFormat);
+	if (hPng != NULL || hDib != NULL) {
+		//read DIB and/or PNG from the clipboard
+		BITMAPINFO *pbmi = NULL;
+		void *ppng = NULL;
+		unsigned int pngSize = 0;
+		COLOR32 *pngPx = NULL;
+		int width = 0, height = 0, nBits = 0;
+
+		//read data available to us
+		if (hDib != NULL) {
+			pbmi = GlobalLock(hDib);
+			nBits = pbmi->bmiHeader.biBitCount;
+			width = pbmi->bmiHeader.biWidth;
+			height = pbmi->bmiHeader.biHeight;
+		}
+		if (hPng != NULL) {
+			ppng = GlobalLock(hPng);
+			pngSize = GlobalSize(hPng);
+			pngPx = ImgReadMem(ppng, pngSize, &width, &height);
+			if (pbmi == NULL) nBits = 32;
+		}
 
 		//decode bitmap
-		int nBits = pbmi->bmiHeader.biBitCount;
-		int width = pbmi->bmiHeader.biWidth;
-		int height = pbmi->bmiHeader.biHeight;
-
 		int nColsDest = 1 << ncgr->nBits;
 		int palFirst = nColsDest * data->selectedPalette;
 
 		//check palette for matching the current data
-		RGBQUAD *bmpal = pbmi->bmiColors;
-		int bmpalSize = pbmi->bmiHeader.biClrUsed;
-		int matchesPalette = (nBits > 8) ? FALSE : TRUE; //cannot have a matching palette if there's no palette!
-		if (matchesPalette && nclr != NULL) {
+		int matchesPalette = ((nBits > 8) || pbmi == NULL) ? FALSE : TRUE; //cannot have a matching palette if there's no palette!
+		if (pbmi != NULL && matchesPalette && nclr != NULL) {
 			//check matching from the start of the currently selected palette in the viewer
+			RGBQUAD *bmpal = pbmi->bmiColors;
+			int bmpalSize = pbmi->bmiHeader.biClrUsed;
 			for (int i = 0; i < nColsDest; i++) {
 				if ((palFirst + i) >= nclr->nColors) break;
 				if (i >= bmpalSize) break;
@@ -487,64 +512,53 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data) {
 
 		//if reindex is selected, finsih paste via the bitmap import dialog.
 		if (reindex) {
+			//create pixel copy
 			COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-			for (int y = 0; y < height; y++) {
-				for (int x = 0; x < width; x++) {
-					px[y * width + x] = GetBitmapPixel32(pbmi, x, y);
+			if (pngPx != NULL) {
+				//copy PNG clipboard
+				memcpy(px, pngPx, width * height * sizeof(COLOR32));
+			} else {
+				//no PNG clipboard available, fall back to bitmap data
+				for (int y = 0; y < height; y++) {
+					for (int x = 0; x < width; x++) {
+						px[y * width + x] = GetBitmapPixel32(pbmi, x, y);
+					}
 				}
 			}
 
 			ChrViewerImportDialog(data, FALSE, pasteX, pasteY, px, width, height);
-			goto Done; //pixel array owned by the conversion process now
-		}
+			//pixel array owned by the conversion process now
+		} else {
 
-		//convert palette to YIQ
-		RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-		RxInit(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, FALSE, nColsDest - 1);
-
-		RxYiqColor *yiqPalette = (RxYiqColor *) calloc(nColsDest, sizeof(RxYiqColor));
-		for (int i = 0; i < nColsDest; i++) {
-			if ((palFirst + i) < nclr->nColors) {
-				RxConvertRgbToYiq(ColorConvertFromDS(nclr->colors[palFirst + i]), yiqPalette + i);
-			}
-		}
-
-		//scan pixels from bitmap into the graphics editor
-		int tilesY = height / 8;
-		int tilesX = width / 8;
-		for (int y = 0; y < tilesY * 8; y++) {
-			for (int x = 0; x < tilesX * 8; x++) {
-				//reindex?
-				if (!reindex) {
+			//scan pixels from bitmap into the graphics editor
+			int tilesY = height / 8;
+			int tilesX = width / 8;
+			for (int y = 0; y < tilesY * 8; y++) {
+				for (int x = 0; x < tilesX * 8; x++) {
 					//copy bits directly
-					COLOR32 c = GetBitmapPixel(pbmi, x, y);
+					COLOR32 c = 0;
+					if (pbmi != NULL) {
+						c = GetBitmapPixel(pbmi, x, y);
+					} else {
+						c = pngPx[x + y * width];
+					}
 					ChrViewerPutPixel(data, pasteX * 8 + x, pasteY * 8 + y, c);
-				} else {
-					//reindex
-					COLOR32 rgb = GetBitmapPixel32(pbmi, x, y);
-					RxYiqColor yiq;
-					RxConvertRgbToYiq(rgb, &yiq);
-
-					int closest = RxPaletteFindCloestColorYiq(reduction, &yiq, yiqPalette, nColsDest);
-					ChrViewerPutPixel(data, pasteX * 8 + x, pasteY * 8 + y, closest);
 				}
 			}
+
+			//next, mark the pasted region as selected.
+			data->selStartX = pasteX;
+			data->selStartY = pasteY;
+			data->selEndX = pasteX + tilesX - 1;
+			data->selEndY = pasteY + tilesY - 1;
+			if (data->selEndX >= ncgr->tilesX) data->selEndX = ncgr->tilesX - 1;
+			if (data->selEndY >= ncgr->tilesY) data->selEndY = ncgr->tilesY - 1;
 		}
 
-		//next, mark the pasted region as selected.
-		data->selStartX = pasteX;
-		data->selStartY = pasteY;
-		data->selEndX = pasteX + tilesX - 1;
-		data->selEndY = pasteY + tilesY - 1;
-		if (data->selEndX >= ncgr->tilesX) data->selEndX = ncgr->tilesX - 1;
-		if (data->selEndY >= ncgr->tilesY) data->selEndY = ncgr->tilesY - 1;
-
-		RxDestroy(reduction);
-		free(reduction);
-		free(yiqPalette);
-
 	Done:
-		GlobalUnlock(hDib);
+		if (pngPx != NULL) free(pngPx);
+		if (hDib != NULL) GlobalUnlock(hDib);
+		if (hPng != NULL) GlobalUnlock(hPng);
 	}
 
 	CloseClipboard();

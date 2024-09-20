@@ -221,7 +221,7 @@ cleanup:
 	return result;
 }
 
-static HRESULT ImgiRead(LPCWSTR path, COLOR32 **ppPixels, unsigned char **ppIndices, int *pWidth, int *pHeight, COLOR32 **ppPalette, int *pPaletteSize) {
+static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsigned char **ppIndices, int *pWidth, int *pHeight, COLOR32 **ppPalette, int *pPaletteSize) {
 	IWICImagingFactory *factory = NULL;
 	IWICStream *stream = NULL;
 	IWICBitmapDecoder *decoder = NULL;
@@ -239,7 +239,7 @@ static HRESULT ImgiRead(LPCWSTR path, COLOR32 **ppPixels, unsigned char **ppIndi
 
 	//create stream
 	SUCCEEDED(result) && (result = factory->lpVtbl->CreateStream(factory, &stream));
-	SUCCEEDED(result) && (result = stream->lpVtbl->InitializeFromFilename(stream, path, GENERIC_READ));
+	SUCCEEDED(result) && (result = stream->lpVtbl->InitializeFromMemory(stream, (WICInProcPointer) buffer, size));
 	CHECK_RESULT(result);
 
 	//decode image
@@ -439,28 +439,41 @@ HRESULT ImgWrite(COLOR32 *px, int width, int height, LPCWSTR path) {
 	return result;
 }
 
+COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
+	COLOR32 *bits = NULL;
+
+	//WIC doesn't support TGA format by default, so try that first.
+	if (ImgIsValidTGA(buffer, size)) {
+		bits = ImgiReadTga(buffer, size, pWidth, pHeight);
+	} else {
+		HRESULT hr = ImgiRead(buffer, size, &bits, indices, pWidth, pHeight, pImagePalette, pPaletteSize);
+		if (!SUCCEEDED(hr)) bits = NULL;
+	}
+
+	return bits;
+}
+
 COLOR32 *ImgReadEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
 	//test for valid file, or TGA file, which WIC does not support.
 	HANDLE hFile = CreateFile(lpszFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) {
 		return NULL;
 	}
+
 	DWORD dwSizeHigh, dwSizeLow, dwRead;
 	dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
-	BYTE *buffer = (BYTE *) calloc(dwSizeLow, 1);
+	BYTE *buffer = (BYTE *) malloc(dwSizeLow);
 	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
 	CloseHandle(hFile);
-	if (ImgIsValidTGA(buffer, dwSizeLow)) {
-		COLOR32 *pixels = NULL;
-		pixels = ImgiReadTga(buffer, dwSizeLow, pWidth, pHeight);
-		free(buffer);
-		return pixels;
-	}
+
+	COLOR32 *bits = ImgReadMemEx(buffer, dwSizeLow, pWidth, pHeight, indices, pImagePalette, pPaletteSize);
 	free(buffer);
 
-	COLOR32 *bits = NULL;
-	ImgiRead(lpszFileName, &bits, indices, pWidth, pHeight, pImagePalette, pPaletteSize);
 	return bits;
+}
+
+COLOR32 *ImgReadMem(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight) {
+	return ImgReadMemEx(buffer, size, pWidth, pHeight, NULL, NULL, NULL);
 }
 
 COLOR32 *ImgRead(LPCWSTR path, int *pWidth, int *pHeight) {

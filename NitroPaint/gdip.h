@@ -13,6 +13,16 @@ COLOR32 *ImgReadEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, unsigned cha
 COLOR32 *ImgRead(LPCWSTR path, int *pWidth, int *pHeight);
 
 //
+// Read an image from a memory block.
+//
+COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize);
+
+//
+// Read an image from a memory block.
+// 
+COLOR32 *ImgReadMem(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight);
+
+//
 // Write an array of pixels to an image file.
 //
 HRESULT ImgWrite(COLOR32 *px, int width, int height, LPCWSTR path);
