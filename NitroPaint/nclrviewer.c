@@ -63,6 +63,8 @@ static void PalViewerEnsureClipboardFormats(void) {
 }
 
 static int PalViewerHasClipboard(HWND hWnd) {
+	PalViewerEnsureClipboardFormats();
+
 	//acquire clipboard and check if we have a palette on the clipboard
 	BOOL b = OpenClipboard(hWnd);
 	if (!b) return 0;

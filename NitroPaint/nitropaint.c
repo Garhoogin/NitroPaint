@@ -865,6 +865,7 @@ int MainGetZoom(HWND hWnd) {
 	if (GetMenuState(hMenu, ID_ZOOM_200, MF_BYCOMMAND)) return 2;
 	if (GetMenuState(hMenu, ID_ZOOM_400, MF_BYCOMMAND)) return 4;
 	if (GetMenuState(hMenu, ID_ZOOM_800, MF_BYCOMMAND)) return 8;
+	if (GetMenuState(hMenu, ID_ZOOM_1600, MF_BYCOMMAND)) return 16;
 	return 0;
 }
 
@@ -875,14 +876,14 @@ void MainSetZoom(HWND hWnd, int zoom) {
 		menuIndex++;
 		zoom >>= 1;
 	}
-	int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800 };
+	int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
 	SendMessage(hWnd, WM_COMMAND, ids[menuIndex], 0);
 }
 
 VOID MainZoomIn(HWND hWnd) {
 	int zoom = MainGetZoom(hWnd);
 	zoom *= 2;
-	if (zoom > 8) zoom = 8;
+	if (zoom > 16) zoom = 16;
 	MainSetZoom(hWnd, zoom);
 }
 

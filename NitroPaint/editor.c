@@ -35,12 +35,14 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 		case ID_ZOOM_200:
 		case ID_ZOOM_400:
 		case ID_ZOOM_800:
+		case ID_ZOOM_1600:
 		{
 			int scale = 1;
 			if (LOWORD(wParam) == ID_ZOOM_100) scale = 1;
 			if (LOWORD(wParam) == ID_ZOOM_200) scale = 2;
 			if (LOWORD(wParam) == ID_ZOOM_400) scale = 4;
 			if (LOWORD(wParam) == ID_ZOOM_800) scale = 8;
+			if (LOWORD(wParam) == ID_ZOOM_1600) scale = 16;
 			data->scale = scale;
 
 			int checkBox = ID_ZOOM_100;
@@ -50,8 +52,10 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 				checkBox = ID_ZOOM_400;
 			} else if (scale == 8) {
 				checkBox = ID_ZOOM_800;
+			} else if (scale == 16) {
+				checkBox = ID_ZOOM_1600;
 			}
-			int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800 };
+			int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
 			for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
 				int id = ids[i];
 				CheckMenuItem(GetMenu(getMainWindow(hWnd)), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
@@ -105,15 +109,18 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 		EnableMenuItem(hMenu, ID_ZOOM_200, MF_ENABLED);
 		EnableMenuItem(hMenu, ID_ZOOM_400, MF_ENABLED);
 		EnableMenuItem(hMenu, ID_ZOOM_800, MF_ENABLED);
+		EnableMenuItem(hMenu, ID_ZOOM_1600, MF_ENABLED);
 	} else {
 		CheckMenuItem(hMenu, ID_ZOOM_100, MF_UNCHECKED);
 		CheckMenuItem(hMenu, ID_ZOOM_200, MF_UNCHECKED);
 		CheckMenuItem(hMenu, ID_ZOOM_400, MF_UNCHECKED);
 		CheckMenuItem(hMenu, ID_ZOOM_800, MF_UNCHECKED);
+		CheckMenuItem(hMenu, ID_ZOOM_1600, MF_UNCHECKED);
 		EnableMenuItem(hMenu, ID_ZOOM_100, MF_DISABLED);
 		EnableMenuItem(hMenu, ID_ZOOM_200, MF_DISABLED);
 		EnableMenuItem(hMenu, ID_ZOOM_400, MF_DISABLED);
 		EnableMenuItem(hMenu, ID_ZOOM_800, MF_DISABLED);
+		EnableMenuItem(hMenu, ID_ZOOM_1600, MF_DISABLED);
 	}
 
 	if (features & EDITOR_FEATURE_UNDO) {
@@ -143,8 +150,10 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 			checkBox = ID_ZOOM_400;
 		} else if (data->scale == 8) {
 			checkBox = ID_ZOOM_800;
+		} else if (data->scale == 16) {
+			checkBox = ID_ZOOM_1600;
 		}
-		int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800 };
+		int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
 		for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
 			int id = ids[i];
 			CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
