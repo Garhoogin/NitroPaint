@@ -12,7 +12,6 @@
 #include "gdip.h"
 #include "palette.h"
 #include "bggen.h"
-#include "tileeditor.h"
 #include "ui.h"
 
 #include "preview.h"

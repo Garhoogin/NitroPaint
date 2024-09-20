@@ -197,7 +197,6 @@
     <ClCompile Include="texconv.c" />
     <ClCompile Include="texture.c" />
     <ClCompile Include="textureeditor.c" />
-    <ClCompile Include="tileeditor.c" />
     <ClCompile Include="tiler.c" />
     <ClCompile Include="ui.c" />
     <ClCompile Include="undo.c" />
@@ -239,7 +238,6 @@
     <ClInclude Include="texconv.h" />
     <ClInclude Include="texture.h" />
     <ClInclude Include="textureeditor.h" />
-    <ClInclude Include="tileeditor.h" />
     <ClInclude Include="tiler.h" />
     <ClInclude Include="ui.h" />
     <ClInclude Include="undo.h" />

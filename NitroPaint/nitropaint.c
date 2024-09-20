@@ -17,7 +17,6 @@
 #include "nanrviewer.h"
 #include "exceptions.h"
 #include "gdip.h"
-#include "tileeditor.h"
 #include "textureeditor.h"
 #include "nsbtx.h"
 #include "nmcrviewer.h"

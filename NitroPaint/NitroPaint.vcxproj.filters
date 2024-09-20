@@ -51,9 +51,6 @@
     <ClCompile Include="palette.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tileeditor.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="ncer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -174,9 +171,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="palette.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="tileeditor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ncer.h">
