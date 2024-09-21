@@ -1042,10 +1042,10 @@ static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, i
 			} else if (PalViewerIndexInSelection(data, index)) {
 				outlineColor = RGB(255, 255, 255);
 			} else if (index == data->hoverIndex && !data->movingSelection) {
-				outlineColor = RGB(128, 128, 128);
+				outlineColor = RGB(192, 192, 192);
 			} else if (previewPalette != -1 && (y >= highlightRowStart && y < highlightRowEnd)) {
-				if (!data->showFrequency) outlineColor = RGB(255, 0, 0); //
-				else outlineColor = RGB(255, level, level);
+				if (!data->showFrequency) outlineColor = RGB(192, 0, 0); //
+				else outlineColor = RGB(192, level, level);
 			} else if(ncerPalette != -1 && (y >= (ncerPalette * nRowsPerPalette) && y < ((ncerPalette + 1) * nRowsPerPalette))){
 				outlineColor = RGB(0, 192, 32);
 			} else {

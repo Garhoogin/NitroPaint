@@ -1724,6 +1724,7 @@ static void ChrViewerMainOnMouseMove(NCGRVIEWERDATA *data, HWND hWnd, UINT msg, 
 	}
 
 	ChrViewerRefreshMargins(hWnd);
+	InvalidateAllEditors(getMainWindow(data->hWnd), FILE_TYPE_SCREEN); //update screen viewers
 }
 
 static void ChrViewerMainOnLButtonDown(NCGRVIEWERDATA *data) {
@@ -2281,6 +2282,7 @@ static void ChrViewerOnMouseMove(NCGRVIEWERDATA *data, HWND hWnd, UINT msg, WPAR
 			data->hWndLastMouse = NULL;
 			data->mouseOver = FALSE;
 			ChrViewerUpdateCharacterLabel(data->hWnd);
+			InvalidateAllEditors(getMainWindow(data->hWnd), FILE_TYPE_SCREEN); //update screen viewers
 		}
 	} else {
 		//mouse moved in client area.
