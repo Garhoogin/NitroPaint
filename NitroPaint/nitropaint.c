@@ -386,6 +386,10 @@ LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
+
+
+// ----- clipboard functions
+
 void copyBitmap(COLOR32 *px, int width, int height) {
 	//assume clipboard is already owned and emptied
 
@@ -420,6 +424,152 @@ void copyBitmap(COLOR32 *px, int width, int height) {
 	GlobalUnlock(hBmi);
 	SetClipboardData(CF_DIBV5, hBmi);
 }
+
+static int EnsurePngClipboardFormat(void) {
+	static int fmt = 0;
+	if (fmt) return fmt;
+	
+	return fmt = RegisterClipboardFormat(L"PNG");
+}
+
+static int GetBitmapPaletteSize(BITMAPINFOHEADER *pbmi) {
+	//get color palette size
+	int paletteSize = 0;
+	if (pbmi->biCompression == BI_BITFIELDS) {
+		paletteSize = 3; //bitfields: 3 "palette colors"
+	} else {
+		paletteSize = pbmi->biClrUsed;
+		if (pbmi->biBitCount <= 8 && paletteSize == 0) {
+			//use max palette size
+			paletteSize = 1 << pbmi->biBitCount;
+		}
+	}
+	return paletteSize;
+}
+
+static size_t GetBitmapOffsetBits(BITMAPINFO *pbmi) {
+	return sizeof(BITMAPINFOHEADER) + 4 * GetBitmapPaletteSize(&pbmi->bmiHeader);
+}
+
+static size_t GetBitmapSize(BITMAPINFO *pbmi) {
+	size_t sizeBits = pbmi->bmiHeader.biSizeImage;
+	int compression = pbmi->bmiHeader.biCompression;
+	if (sizeBits == 0 && (compression == BI_RGB || compression == BI_BITFIELDS)) {
+		int height = pbmi->bmiHeader.biHeight;
+		if (height < 0) height = -height;
+
+		int stride = (pbmi->bmiHeader.biWidth * pbmi->bmiHeader.biBitCount + 7) / 8;
+		stride = (stride + 3) & ~3;
+
+		sizeBits = stride * height;
+	}
+
+	return GetBitmapOffsetBits(pbmi) + sizeBits;
+}
+
+COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+	//get handles to clipboard DIB and PNG objects.
+	HGLOBAL hDib = GetClipboardData(CF_DIB);
+	HGLOBAL hPng = GetClipboardData(EnsurePngClipboardFormat());
+
+	//if neither format is available, return failure
+	if (hDib == NULL && hPng == NULL) {
+		*pWidth = 0;
+		*pHeight = 0;
+		*indexed = NULL;
+		*pplt = NULL;
+		*pPaletteSize = 0;
+		return NULL;
+	}
+
+	//if PNG but no DIB, return PNG data
+	if (hPng != NULL && hDib == NULL) {
+		void *pngData = GlobalLock(hPng);
+		SIZE_T size = GlobalSize(hPng);
+
+		COLOR32 *px = ImgReadMemEx(pngData, size, pWidth, pHeight, indexed, pplt, pPaletteSize);
+
+		GlobalUnlock(hPng);
+		return px;
+	}
+
+	//if we've made it this far, we have DIB data on the clipboard. Read it now.
+	BITMAPINFO *pbmi = (BITMAPINFO *) GlobalLock(hDib);
+	SIZE_T dibSize = GetBitmapSize(pbmi);
+	BITMAPFILEHEADER *bmfh = (BITMAPFILEHEADER *) malloc(sizeof(BITMAPFILEHEADER) + dibSize);
+	memcpy(bmfh + 1, pbmi, dibSize);
+	bmfh->bfType = 0x4D42; //'BM'
+	bmfh->bfSize = sizeof(BITMAPFILEHEADER) + GetBitmapSize(pbmi);
+	bmfh->bfReserved1 = 0;
+	bmfh->bfReserved2 = 0;
+	bmfh->bfOffBits = sizeof(BITMAPFILEHEADER) + GetBitmapOffsetBits(pbmi);
+
+	int dibWidth, dibHeight, dibPaletteSize = 0;
+	COLOR32 *dibPalette = NULL;
+	unsigned char *dibIndex = NULL;
+	COLOR32 *pxDib = ImgReadMemEx((unsigned char *) bmfh, bmfh->bfSize, &dibWidth, &dibHeight, &dibIndex, &dibPalette, &dibPaletteSize);
+	free(bmfh);
+	GlobalUnlock(hDib);
+
+	//if DIB but no PNG, return DIB data
+	if (hDib != NULL && hPng == NULL) {
+		//return DIB
+		*pWidth = dibWidth;
+		*pHeight = dibHeight;
+		*pplt = dibPalette;
+		*indexed = dibIndex;
+		*pPaletteSize = dibPaletteSize;
+		return pxDib;
+	}
+
+	//else, we have both data available. Read the PNG data and compare against the DIB data.
+	void *png = GlobalLock(hPng);
+	int pngWidth, pngHeight, pngPaletteSize = 0;
+	COLOR32 *pngPalette = NULL;
+	unsigned char *pngIndex = NULL;
+	COLOR32 *pxPng = ImgReadMemEx(png, GlobalSize(hPng), &pngWidth, &pngHeight, &pngIndex, &pngPalette, &pngPaletteSize);
+	GlobalUnlock(hPng);
+
+	//now try to determine which to return. If the PNG has transparent/translucent pixels, return the PNG data.
+	int usePng = 0;
+	if (pxPng != NULL) {
+		for (int i = 0; i < pngWidth * pngHeight; i++) {
+			COLOR32 c = pxPng[i];
+			int a = (c >> 24);
+			if (a != 0xFF) {
+				usePng = 1;
+				break;
+			}
+		}
+	}
+
+	if (usePng) {
+		if (pxDib != NULL) free(pxDib);
+		if (dibIndex != NULL) free(dibIndex);
+		if (dibPalette != NULL) free(dibPalette);
+
+		*pWidth = pngWidth;
+		*pHeight = pngHeight;
+		*pplt = pngPalette;
+		*indexed = pngIndex;
+		*pPaletteSize = pngPaletteSize;
+		return pxPng;
+	} else {
+		if (pxPng != NULL) free(pxPng);
+		if (pngIndex != NULL) free(pngIndex);
+		if (pngPalette != NULL) free(pngPalette);
+
+		*pWidth = dibWidth;
+		*pHeight = dibHeight;
+		*pplt = dibPalette;
+		*indexed = dibIndex;
+		*pPaletteSize = dibPaletteSize;
+		return pxDib;
+	}
+}
+
+
+
 
 LPCWSTR GetFileName(LPCWSTR lpszPath) {
 	const WCHAR *current = lpszPath;
