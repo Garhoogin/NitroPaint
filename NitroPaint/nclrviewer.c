@@ -1039,9 +1039,9 @@ static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, i
 			} else if (isInPalOpDest) {
 				outlineColor = RGB(0, 192, 128);
 				outlineStyle = PS_DOT;
-			} else if (index == data->hoverIndex && !data->movingSelection) {
-				outlineColor = RGB(255, 255, 255);
 			} else if (PalViewerIndexInSelection(data, index)) {
+				outlineColor = RGB(255, 255, 255);
+			} else if (index == data->hoverIndex && !data->movingSelection) {
 				outlineColor = RGB(128, 128, 128);
 			} else if (previewPalette != -1 && (y >= highlightRowStart && y < highlightRowEnd)) {
 				if (!data->showFrequency) outlineColor = RGB(255, 0, 0); //
