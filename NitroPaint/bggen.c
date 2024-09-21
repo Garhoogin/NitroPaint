@@ -897,7 +897,7 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	nscr->header.compression = compressScreen;
 
 	int paletteCompression = params->compressPalette;
-	int colorOutputBase = paletteCompression ? (nBits == 4 ? (paletteBase * 16) : 0) : 0;
+	int colorOutputBase = paletteCompression ? (paletteBase << nBits) : 0;
 	int nColorsOutput = paletteCompression ? (nBits == 4 ? (16 * nPalettes) : (paletteOffset + paletteSize)) : (nBits == 4 ? 256 : (256 * nPalettes));
 	int nPalettesOutput = paletteCompression ? (nPalettes) : (nBits == 4 ? 16 : nPalettes);
 	nclr->nBits = nBits;
@@ -950,12 +950,10 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	nscr->fmt = nBits == 4 ? SCREENFORMAT_TEXT : ((nPalettes == 1 && paletteBase == 0) ? SCREENFORMAT_TEXT : SCREENFORMAT_AFFINEEXT);
 	nscr->dataSize = nTiles * 2;
 	nscr->data = (uint16_t *) malloc(nscr->dataSize);
-	int nHighestIndex = 0;
 	for (int i = 0; i < nTiles; i++) {
 		nscr->data[i] = indices[i] | (modes[i] << 10) | (paletteIndices[i] << 12);
-		if (indices[i] > nHighestIndex) nHighestIndex = indices[i];
 	}
-	nscr->nHighestIndex = nHighestIndex;
+	ScrComputeHighestCharacter(nscr);
 
 	free(modes);
 	free(blocks);
