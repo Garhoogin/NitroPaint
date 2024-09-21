@@ -1742,11 +1742,14 @@ void RegisterGenericClass(LPCWSTR lpszClassName, WNDPROC pWndProc, int cbWndExtr
 
 typedef struct {
 	HWND hWndMain;
-	DWORD *bbits;
+	COLOR32 *bbits;
 
 	NCLR nclr;
 	NCGR ncgr;
 	NSCR nscr;
+
+	//copy of parameters for creation callback
+	BgGenerateParameters genParams;
 } CREATENSCRDATA;
 
 void nscrCreateCallback(void *data) {
@@ -1768,6 +1771,15 @@ void nscrCreateCallback(void *data) {
 	//link data
 	ObjLinkObjects(palobj, chrobj);
 	ObjLinkObjects(chrobj, scrobj);
+
+	//if a character base was used, the BG screen viewer might guess the character base incorrectly. 
+	//in these cases, we need to set the correct character base here.
+	if (createData->genParams.characterSetting.base > 0) {
+		NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
+		nscrViewerData->tileBase = createData->genParams.characterSetting.base;
+		SetEditNumber(nscrViewerData->hWndTileBase, nscrViewerData->tileBase);
+	}
+
 
 	free(createData->bbits);
 	free(data);
@@ -1952,6 +1964,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					params.characterSetting.compress = GetCheckboxChecked(data->hWndMergeTiles);
 					params.characterSetting.nMax = GetEditNumber(data->hWndMaxChars);
 
+					memcpy(&createData->genParams, &params, sizeof(params));
 					threadedNscrCreate(progressData, createData, bbits, width, height, &params);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);

@@ -257,7 +257,6 @@ int ScrReadBin(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 	ScrInit(nscr, NSCR_TYPE_BIN);
 	nscr->fmt = SCREENFORMAT_TEXT;
 	nscr->colorMode = SCREENCOLORMODE_16x16;
-	nscr->nHighestIndex = 0;
 	ScriReadScreenData(nscr, file, dwFileSize);
 	ScrComputeHighestCharacter(nscr);
 
@@ -426,7 +425,6 @@ int ScrReadNscr(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	nscr->fmt = fmt;
 	nscr->nWidth = nWidth;
 	nscr->nHeight = nHeight;
-	nscr->nHighestIndex = 0;
 	ScriReadScreenData(nscr, scrn + 0xC, dwDataSize);
 	ScrComputeHighestCharacter(nscr);
 

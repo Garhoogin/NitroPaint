@@ -44,11 +44,11 @@ typedef struct NSCR_ {
 	uint16_t *data;
 	int colorMode;
 	int fmt;
-	int nHighestIndex;//weird hack
-	uint16_t clearValue; //default tile value
-	int showGrid;     //for NC
-	short gridWidth;  //for NC
-	short gridHeight; //for NC
+	int nHighestIndex;   // weird hack
+	uint16_t clearValue; // default tile value
+	int showGrid;        // for NC
+	short gridWidth;     // for NC
+	short gridHeight;    // for NC
 } NSCR;
 
 #include "combo2d.h"
