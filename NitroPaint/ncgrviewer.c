@@ -2236,17 +2236,21 @@ static void ChrViewerPaintView(NCGRVIEWERDATA *data, HWND hWnd) {
 
 
 	//draw selection border
-	if (selStartX != -1 && selStartY != -1) {
+	if (ChrViewerHasSelection(data)) {
+		//shrink borders by 1px when touching the edges of the editor or when gridlines are hidden, since
+		//that alignment looks out of place there.
 		int dx = -scrollX;
 		int dy = -scrollY;
+		int borderOffsetX = -(!data->showBorders || selEndX == (data->ncgr.tilesX - 1));
+		int borderOffsetY = -(!data->showBorders || selEndY == (data->ncgr.tilesY - 1));
 		ChrViewerDrawLine(&data->fb, 0xFFFF00, selStartX * tileSize + dx, selStartY * tileSize + dy,
-			(selEndX + 1) * tileSize + dx, selStartY * tileSize + dy);
+			(selEndX + 1) * tileSize + dx - 1, selStartY * tileSize + dy);
 		ChrViewerDrawLine(&data->fb, 0xFFFF00, selStartX * tileSize + dx, selStartY * tileSize + dy,
-			selStartX * tileSize + dx, (selEndY + 1) * tileSize + dy);
-		ChrViewerDrawLine(&data->fb, 0xFFFF00, (selEndX + 1) * tileSize + dx, selStartY * tileSize + dy,
-			(selEndX + 1) * tileSize + dx, (selEndY + 1) * tileSize + dy);
-		ChrViewerDrawLine(&data->fb, 0xFFFF00, selStartX * tileSize + dx, (selEndY + 1) * tileSize + dy,
-			(selEndX + 1) * tileSize + dx, (selEndY + 1) * tileSize + dy);
+			selStartX * tileSize + dx, (selEndY + 1) * tileSize + dy - 1);
+		ChrViewerDrawLine(&data->fb, 0xFFFF00, (selEndX + 1) * tileSize + dx + borderOffsetX, selStartY * tileSize + dy,
+			(selEndX + 1) * tileSize + dx + borderOffsetX, (selEndY + 1) * tileSize + dy + borderOffsetY);
+		ChrViewerDrawLine(&data->fb, 0xFFFF00, selStartX * tileSize + dx, (selEndY + 1) * tileSize + dy + borderOffsetY,
+			(selEndX + 1) * tileSize + dx + borderOffsetX, (selEndY + 1) * tileSize + dy + borderOffsetY);
 	}
 
 	//draw background color
