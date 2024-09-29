@@ -10,35 +10,12 @@
 #endif
 
 
-// ----- LZ compressor/decompressor
-
-#define LZ_MIN_DISTANCE        0x01   // minimum distance per LZ encoding
-#define LZ_MIN_SAFE_DISTANCE   0x02   // minimum safe distance per BIOS LZ bug
-#define LZ_MAX_DISTANCE      0x1000   // maximum distance per LZ encoding
-#define LZ_MIN_LENGTH          0x03   // minimum length per LZ encoding
-#define LZ_MAX_LENGTH          0x12   // maximum length per LZ encoding
-
 //struct for mapping an LZ graph
 typedef struct CxiLzNode_ {
 	uint16_t distance;         // distance of node if reference
 	uint16_t length;           // length of node
 	uint32_t weight;           // weight of node
 } CxiLzNode;
-
-static inline int CxiLzNodeIsReference(const CxiLzNode *node) {
-	return node->length >= LZ_MIN_LENGTH;
-}
-
-//length of compressed data output by LZ token
-static inline unsigned int CxiLzTokenCost(unsigned int length) {
-	unsigned int nBytesToken;
-	if (length >= LZ_MIN_LENGTH) {
-		nBytesToken = 2;
-	} else {
-		nBytesToken = 1;
-	}
-	return 1 + nBytesToken * 8;
-}
 
 //struct for representing tokenized LZ data
 typedef struct CxiLzToken_ {
@@ -122,6 +99,31 @@ static unsigned int CxiSearchLZ(const unsigned char *buffer, unsigned int size, 
 	*pDistance = biggestRunIndex;
 	return biggestRun;
 }
+
+
+// ----- LZ77 Routines
+
+#define LZ_MIN_DISTANCE        0x01   // minimum distance per LZ encoding
+#define LZ_MIN_SAFE_DISTANCE   0x02   // minimum safe distance per BIOS LZ bug
+#define LZ_MAX_DISTANCE      0x1000   // maximum distance per LZ encoding
+#define LZ_MIN_LENGTH          0x03   // minimum length per LZ encoding
+#define LZ_MAX_LENGTH          0x12   // maximum length per LZ encoding
+
+static inline int CxiLzNodeIsReference(const CxiLzNode *node) {
+	return node->length >= LZ_MIN_LENGTH;
+}
+
+//length of compressed data output by LZ token
+static inline unsigned int CxiLzTokenCost(unsigned int length) {
+	unsigned int nBytesToken;
+	if (length >= LZ_MIN_LENGTH) {
+		nBytesToken = 2;
+	} else {
+		nBytesToken = 1;
+	}
+	return 1 + nBytesToken * 8;
+}
+
 
 unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
 	//create node list
@@ -235,7 +237,6 @@ unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsi
 	return realloc(buf, outSize); //reduce buffer size
 }
 
-
 unsigned char *CxDecompressLZ(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize){
 	if (size < 4) return NULL;
 
@@ -280,13 +281,192 @@ unsigned char *CxDecompressLZ(const unsigned char *buffer, unsigned int size, un
 	return result;
 }
 
+int CxIsCompressedLZ(const unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+	if (*buffer != 0x10) return 0;
+	uint32_t length = (*(uint32_t *) buffer) >> 8;
+	if ((length / 144) * 17 + 4 > size) return 0;
+
+	//start a dummy decompression
+	uint32_t offset = 4;
+	uint32_t dstOffset = 0;
+	while (1) {
+		uint8_t head = buffer[offset];
+		offset++;
+
+		//loop 8 times
+		for (int i = 0; i < 8; i++) {
+			int flag = head >> 7;
+			head <<= 1;
+
+			if (!flag) {
+				if (dstOffset >= length || offset >= size) return 0;
+				dstOffset++, offset++;
+				if (dstOffset == length) goto checkSize;
+			} else {
+				if (offset + 1 >= size) return 0;
+				uint8_t high = buffer[offset++];
+				uint8_t low = buffer[offset++];
+
+				//length of uncompressed chunk and offset
+				uint32_t offs = (((high & 0xF) << 8) | low) + 1;
+				uint32_t len = (high >> 4) + 3;
+
+				if (dstOffset < offs) return 0;
+				for (uint32_t j = 0; j < len; j++) {
+					if (dstOffset >= length) return 0;
+					dstOffset++;
+					if (dstOffset == length) goto checkSize;
+				}
+			}
+		}
+	}
+
+	//check the size of the remaining data
+	unsigned int remaining;
+checkSize:
+	remaining = size - offset;
+	if (remaining > 7) return 0;
+
+	return 1;
+}
+
+
+// ----- LZ77 With Header Routines
+
 unsigned char *CxDecompressLZHeader(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
 	if (size < 8) return NULL;
 	return CxDecompressLZ(buffer + 4, size - 4, uncompressedSize);
 }
 
+unsigned char *CxCompressLZHeader(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
+	char *compressed = CxCompressLZ(buffer, size, compressedSize);
+	if (compressed == NULL) return NULL;
+	*compressedSize += 4;
+	compressed = realloc(compressed, *compressedSize);
+	memmove(compressed + 4, compressed, *compressedSize - 4);
+	compressed[0] = 'L';
+	compressed[1] = 'Z';
+	compressed[2] = '7';
+	compressed[3] = '7';
+	return compressed;
+}
+
+int CxIsFilteredLZHeader(const unsigned char *buffer, unsigned int size) {
+	if (size < 8) return 0;
+	if (buffer[0] != 'L' || buffer[1] != 'Z' || buffer[2] != '7' || buffer[3] != '7') return 0;
+	return CxIsCompressedLZ(buffer + 4, size - 4);
+}
 
 
+
+
+// ----- LZX Routines
+
+#define LZX_MIN_DISTANCE        0x01   // minimum distance per LZX encoding
+#define LZX_MIN_SAFE_DISTANCE   0x02   // minimum safe distance per BIOS LZ bug
+#define LZX_MAX_DISTANCE      0x1000   // maximum distance per LZX encoding
+#define LZX_MIN_LENGTH          0x03   // minimum length per LZX encoding
+#define LZX_MAX_LENGTH       0x10110   // maximum length per LZX encoding
+#define LZX_MIN_LENGTH_1        0x03   // size bracket 1: min length
+#define LZX_MAX_LENGTH_1        0x10   // size bracket 1: max length
+#define LZX_MIN_LENGTH_2        0x11   // size bracket 2: min length
+#define LZX_MAX_LENGTH_2       0x110   // size bracket 2: max length
+#define LZX_MIN_LENGTH_3       0x111   // size bracket 3: min length
+#define LZX_MAX_LENGTH_3     0x10110   // size bracket 3: max length
+
+static inline int CxiLzxNodeIsReference(const CxiLzNode *node) {
+	return node->length >= LZX_MIN_LENGTH;
+}
+
+//length of compressed data output by LZ token
+static inline unsigned int CxiLzxTokenCost(unsigned int length) {
+	unsigned int nBytesToken;
+	if (length >= LZX_MIN_LENGTH_3) {
+		nBytesToken = 4;
+	} else if (length >= LZX_MIN_LENGTH_2) {
+		nBytesToken = 3;
+	} else if (length >= LZX_MIN_LENGTH_1) {
+		nBytesToken = 2;
+	} else {
+		nBytesToken = 1;
+	}
+	return 1 + nBytesToken * 8;
+}
+
+
+unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
+	unsigned int compressedMaxSize = 7 + 9 * ((size + 7) >> 3);
+	unsigned char *compressed = (unsigned char *) malloc(compressedMaxSize);
+	unsigned char *compressedBase = compressed;
+	*(uint32_t *) compressed = 0x11 | (size << 8);
+
+	unsigned int nProcessedBytes = 0;
+	unsigned int nSize = 4;
+	compressed += 4;
+
+	while (nProcessedBytes < size) {
+		//make note of where to store the head for later.
+		unsigned char *headLocation = compressed++;
+		unsigned char head = 0;
+		nSize++;
+
+		//repeat 8x (8 bits per byte)
+		for (int i = 0; i < 8; i++) {
+			head <<= 1;
+
+			if (nProcessedBytes >= size) {
+				continue; //allows head byte to shift one place
+			}
+
+			unsigned int biggestRun = 0, biggestRunIndex = 0;
+			biggestRun = CxiSearchLZ(buffer, size, nProcessedBytes, 2, 0x1000, 0xFFFF + 0x111, &biggestRunIndex);
+
+			//if the biggest run is at least 3, then we use it.
+			if (biggestRun >= 3) {
+				head |= 1;
+				nProcessedBytes += biggestRun;
+				//encode the match.
+
+				if (biggestRun <= LZX_MAX_LENGTH_1) {
+					//First byte has high nybble as length minus 1, low nybble as the high byte of the offset.
+					*(compressed++) = ((biggestRun - 1) << 4) | (((biggestRunIndex - 1) >> 8) & 0xF);
+					*(compressed++) = (biggestRunIndex - 1) & 0xFF;
+					nSize += 2;
+				} else if (biggestRun <= LZX_MAX_LENGTH_2) {
+					//First byte has the high 4 bits of run length minus 0x11
+					//Second byte has the low 4 bits of the run length minus 0x11 in the high nybble
+					*(compressed++) = (biggestRun - LZX_MIN_LENGTH_2) >> 4;
+					*(compressed++) = (((biggestRun - LZX_MIN_LENGTH_2) & 0xF) << 4) | ((biggestRunIndex - 1) >> 8);
+					*(compressed++) = (biggestRunIndex - 1) & 0xFF;
+					nSize += 3;
+				} else if (biggestRun <= LZX_MAX_LENGTH_3) {
+					//First byte is 0x10 ORed with the high 4 bits of run length minus 0x111
+					*(compressed++) = 0x10 | (((biggestRun - LZX_MIN_LENGTH_3) >> 12) & 0xF);
+					*(compressed++) = ((biggestRun - LZX_MIN_LENGTH_3) >> 4) & 0xFF;
+					*(compressed++) = (((biggestRun - LZX_MIN_LENGTH_3) & 0xF) << 4) | (((biggestRunIndex - 1) >> 8) & 0xF);
+					*(compressed++) = (biggestRunIndex - 1) & 0xFF;
+
+					nSize += 4;
+				}
+				//advance the buffer
+				buffer += biggestRun;
+			} else {
+				*(compressed++) = *(buffer++);
+				nProcessedBytes++;
+				nSize++;
+			}
+		}
+		*headLocation = head;
+	}
+
+	while (nSize & 3) {
+		*(compressed++) = 0;
+		nSize++;
+	}
+	*compressedSize = nSize;
+	return realloc(compressedBase, nSize);
+}
 
 unsigned char *CxDecompressLZX(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
 	//decompress the input buffer. 
@@ -419,6 +599,27 @@ unsigned char *CxAdvanceLZX(const unsigned char *buffer, unsigned int size) {
 	return (unsigned char *) (buffer + offset);;
 }
 
+
+// ----- Huffman Routines
+
+typedef struct CxiHuffNode_ {
+	uint16_t sym;
+	uint16_t symMin; //had space to spare, maybe make searches a little simpler
+	uint16_t symMax;
+	uint16_t nRepresent;
+	int freq;
+	struct CxiHuffNode_ *left;
+	struct CxiHuffNode_ *right;
+} CxiHuffNode;
+
+typedef struct BITSTREAM_ {
+	uint32_t *bits;
+	int nWords;
+	int nBitsInLastWord;
+	int nWordsAlloc;
+	int length;
+} BITSTREAM;
+
 unsigned char *CxDecompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
 	if (size < 5) return NULL;
 
@@ -468,158 +669,8 @@ unsigned char *CxDecompressHuffman(const unsigned char *buffer, unsigned int siz
 	return out;
 }
 
-unsigned char *CxDecompressRL(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
-	unsigned int uncompSize = (*(uint32_t *) buffer) >> 8;
-	unsigned char *out = (unsigned char *) calloc(uncompSize, 1);
-	*uncompressedSize = uncompSize;
 
-	unsigned int dstOfs = 0;
-	unsigned int srcOfs = 4;
-	while (dstOfs < uncompSize) {
-		unsigned char head = buffer[srcOfs++];
-
-		int compressed = head >> 7;
-		if (compressed) {
-			int chunkLen = (head & 0x7F) + 3;
-			unsigned char b = buffer[srcOfs++];
-			for (int i = 0; i < chunkLen; i++) {
-				out[dstOfs++] = b;
-			}
-		} else {
-			int chunkLen = (head & 0x7F) + 1;
-			for (int i = 0; i < chunkLen; i++) {
-				out[dstOfs++] = buffer[srcOfs++];
-			}
-		}
-	}
-
-	return out;
-}
-
-unsigned char *CxUnfilterDiff8(const unsigned char *buffer, unsigned int size, unsigned int *unfilteredSize) {
-	uint32_t header = *(uint32_t *) buffer;
-	unsigned int uncompSize = header >> 8;
-	unsigned int dstOfs = 0, srcOfs = 4;;
-	*unfilteredSize = uncompSize;
-
-	unsigned char *out = (unsigned char *) calloc(uncompSize, 1);
-
-	unsigned char last = 0;
-	while (dstOfs < uncompSize) {
-		last += buffer[srcOfs++];
-		out[dstOfs++] = last;
-	}
-
-	return out;
-}
-
-unsigned char *CxUnfilterDiff16(const unsigned char *buffer, unsigned int size, unsigned int *unfilteredSize) {
-	uint32_t header = *(uint32_t *) buffer;
-	unsigned int uncompSize = header >> 8;
-	unsigned int dstOfs = 0, srcOfs = 4;;
-	*unfilteredSize = uncompSize;
-
-	unsigned char *out = (unsigned char *) calloc(uncompSize, 1);
-	uint16_t last = 0;
-	while (dstOfs < uncompSize) {
-		last += *(uint16_t *) (buffer + srcOfs);
-		srcOfs += 2;
-		*(uint16_t *) (out + dstOfs) = last;
-		dstOfs += 2;
-	}
-
-	return out;
-}
-
-
-// ----- LZ compressor
-
-
-unsigned char *CxCompressLZHeader(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
-	char *compressed = CxCompressLZ(buffer, size, compressedSize);
-	if (compressed == NULL) return NULL;
-	*compressedSize += 4;
-	compressed = realloc(compressed, *compressedSize);
-	memmove(compressed + 4, compressed, *compressedSize - 4);
-	compressed[0] = 'L';
-	compressed[1] = 'Z';
-	compressed[2] = '7';
-	compressed[3] = '7';
-	return compressed;
-}
-
-unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
-	unsigned int compressedMaxSize = 7 + 9 * ((size + 7) >> 3);
-	unsigned char *compressed = (unsigned char *) malloc(compressedMaxSize);
-	unsigned char *compressedBase = compressed;
-	*(uint32_t *) compressed = 0x11 | (size << 8);
-
-	unsigned int nProcessedBytes = 0;
-	unsigned int nSize = 4;
-	compressed += 4;
-
-	while (nProcessedBytes < size) {
-		//make note of where to store the head for later.
-		unsigned char *headLocation = compressed++;
-		unsigned char head = 0;
-		nSize++;
-
-		//repeat 8x (8 bits per byte)
-		for (int i = 0; i < 8; i++) {
-			head <<= 1;
-
-			if (nProcessedBytes >= size) {
-				continue; //allows head byte to shift one place
-			}
-
-			unsigned int biggestRun = 0, biggestRunIndex = 0;
-			biggestRun = CxiSearchLZ(buffer, size, nProcessedBytes, 2, 0x1000, 0xFFFF + 0x111, &biggestRunIndex);
-
-			//if the biggest run is at least 3, then we use it.
-			if (biggestRun >= 3) {
-				head |= 1;
-				nProcessedBytes += biggestRun;
-				//encode the match.
-
-				if (biggestRun <= 0x10) {
-					//First byte has high nybble as length minus 1, low nybble as the high byte of the offset.
-					*(compressed++) = ((biggestRun - 1) << 4) | (((biggestRunIndex - 1) >> 8) & 0xF);
-					*(compressed++) = (biggestRunIndex - 1) & 0xFF;
-					nSize += 2;
-				} else if (biggestRun <= 0xFF + 0x11) {
-					//First byte has the high 4 bits of run length minus 0x11
-					//Second byte has the low 4 bits of the run length minus 0x11 in the high nybble
-					*(compressed++) = (biggestRun - 0x11) >> 4;
-					*(compressed++) = (((biggestRun - 0x11) & 0xF) << 4) | ((biggestRunIndex - 1) >> 8);
-					*(compressed++) = (biggestRunIndex - 1) & 0xFF;
-					nSize += 3;
-				} else if (biggestRun <= 0xFFFF + 0x111) {
-					//First byte is 0x10 ORed with the high 4 bits of run length minus 0x111
-					*(compressed++) = 0x10 | (((biggestRun - 0x111) >> 12) & 0xF);
-					*(compressed++) = ((biggestRun - 0x111) >> 4) & 0xFF;
-					*(compressed++) = (((biggestRun - 0x111) & 0xF) << 4) | (((biggestRunIndex - 1) >> 8) & 0xF);
-					*(compressed++) = (biggestRunIndex - 1) & 0xFF;
-
-					nSize += 4;
-				}
-				//advance the buffer
-				buffer += biggestRun;
-			} else {
-				*(compressed++) = *(buffer++);
-				nProcessedBytes++;
-				nSize++;
-			}
-		}
-		*headLocation = head;
-	}
-
-	while (nSize & 3) {
-		*(compressed++) = 0;
-		nSize++;
-	}
-	*compressedSize = nSize;
-	return realloc(compressedBase, nSize);
-}
+// ----- RLE Routines
 
 unsigned char *CxCompressRL(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
 	//worst-case size: 4+size*129/128
@@ -688,6 +739,76 @@ unsigned char *CxCompressRL(const unsigned char *buffer, unsigned int size, unsi
 	return out;
 }
 
+unsigned char *CxDecompressRL(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
+	unsigned int uncompSize = (*(uint32_t *) buffer) >> 8;
+	unsigned char *out = (unsigned char *) calloc(uncompSize, 1);
+	*uncompressedSize = uncompSize;
+
+	unsigned int dstOfs = 0;
+	unsigned int srcOfs = 4;
+	while (dstOfs < uncompSize) {
+		unsigned char head = buffer[srcOfs++];
+
+		int compressed = head >> 7;
+		if (compressed) {
+			int chunkLen = (head & 0x7F) + 3;
+			unsigned char b = buffer[srcOfs++];
+			for (int i = 0; i < chunkLen; i++) {
+				out[dstOfs++] = b;
+			}
+		} else {
+			int chunkLen = (head & 0x7F) + 1;
+			for (int i = 0; i < chunkLen; i++) {
+				out[dstOfs++] = buffer[srcOfs++];
+			}
+		}
+	}
+
+	return out;
+}
+
+int CxIsCompressedRL(const unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+	if (*buffer != 0x30) return 0;
+	uint32_t header = *(uint32_t *) buffer;
+	unsigned int uncompSize = header >> 8;
+
+	unsigned int dstOfs = 0;
+	unsigned int srcOfs = 4;
+	while (dstOfs < uncompSize) {
+		if (srcOfs >= size) return 0;
+		unsigned char head = buffer[srcOfs++];
+
+		int compressed = head >> 7;
+		if (compressed) {
+			int chunkLen = (head & 0x7F) + 3;
+			if (srcOfs >= size) return 0;
+			srcOfs++;
+
+			for (int i = 0; i < chunkLen; i++) {
+				dstOfs++;
+			}
+		} else {
+			int chunkLen = (head & 0x7F) + 1;
+			for (int i = 0; i < chunkLen; i++) {
+				if (srcOfs >= size) return 0;
+				dstOfs++;
+				srcOfs++;
+			}
+		}
+
+		if (dstOfs > uncompSize) return 0;
+	}
+
+	//allow up to 3 bytes padding
+	if (size - srcOfs > 3) return 0;
+
+	return 1;
+}
+
+
+// ----- Diff Routines
+
 unsigned char *CxFilterDiff8(const unsigned char *buffer, unsigned int size, unsigned int *filteredSize) {
 	char *out = (char *) calloc(size + 4, 1);
 	*filteredSize = size + 4;
@@ -725,23 +846,71 @@ unsigned char *CxFilterDiff16(const unsigned char *buffer, unsigned int size, un
 	return out;
 }
 
-typedef struct HUFFNODE_ {
-	uint16_t sym;
-	uint16_t symMin; //had space to spare, maybe make searches a little simpler
-	uint16_t symMax;
-	uint16_t nRepresent;
-	int freq;
-	struct HUFFNODE_ *left;
-	struct HUFFNODE_ *right;
-} HUFFNODE;
+unsigned char *CxUnfilterDiff8(const unsigned char *buffer, unsigned int size, unsigned int *unfilteredSize) {
+	uint32_t header = *(uint32_t *) buffer;
+	unsigned int uncompSize = header >> 8;
+	unsigned int dstOfs = 0, srcOfs = 4;;
+	*unfilteredSize = uncompSize;
 
-typedef struct BITSTREAM_ {
-	uint32_t *bits;
-	int nWords;
-	int nBitsInLastWord;
-	int nWordsAlloc;
-	int length;
-} BITSTREAM;
+	unsigned char *out = (unsigned char *) calloc(uncompSize, 1);
+
+	unsigned char last = 0;
+	while (dstOfs < uncompSize) {
+		last += buffer[srcOfs++];
+		out[dstOfs++] = last;
+	}
+
+	return out;
+}
+
+unsigned char *CxUnfilterDiff16(const unsigned char *buffer, unsigned int size, unsigned int *unfilteredSize) {
+	uint32_t header = *(uint32_t *) buffer;
+	unsigned int uncompSize = header >> 8;
+	unsigned int dstOfs = 0, srcOfs = 4;;
+	*unfilteredSize = uncompSize;
+
+	unsigned char *out = (unsigned char *) calloc(uncompSize, 1);
+	uint16_t last = 0;
+	while (dstOfs < uncompSize) {
+		last += *(uint16_t *) (buffer + srcOfs);
+		srcOfs += 2;
+		*(uint16_t *) (out + dstOfs) = last;
+		dstOfs += 2;
+	}
+
+	return out;
+}
+
+int CxIsFilteredDiff8(const unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+
+	uint32_t head = *(uint32_t *) buffer;
+	unsigned int uncompSize = head >> 8;
+	if (buffer[0] != 0x80) return 0;
+
+	if (uncompSize > size) return 0;
+
+	//round up to a multiple of 4
+	if (((size - 4 + 3) & ~3) != ((uncompSize + 3) & ~3)) return 0;
+	return 1;
+}
+
+int CxIsFilteredDiff16(const unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+	if (size & 1) return 0;
+
+	uint32_t head = *(uint32_t *) buffer;
+	unsigned int uncompSize = head >> 8;
+	if (buffer[0] != 0x81) return 0;
+
+	if (uncompSize > size) return 0;
+
+	//round up to a multiple of 4
+	if (((size - 4 + 3) & ~3) != ((uncompSize + 3) & ~3)) return 0;
+	return 1;
+}
+
+
 
 static void CxiBitStreamCreate(BITSTREAM *stream) {
 	stream->nWords = 0;
@@ -818,45 +987,45 @@ static void CxiBitStreamWriteBitsBE(BITSTREAM *stream, uint32_t bits, int nBits)
 #define ISLEAF(n) ((n)->left==NULL&&(n)->right==NULL)
 
 static int CxiHuffmanNodeComparator(const void *p1, const void *p2) {
-	return ((HUFFNODE *) p2)->freq - ((HUFFNODE *) p1)->freq;
+	return ((CxiHuffNode *) p2)->freq - ((CxiHuffNode *) p1)->freq;
 }
 
-static unsigned int CxiHuffmanWriteNode(unsigned char *tree, unsigned int pos, HUFFNODE *node) {
-	HUFFNODE *left = node->left;
-	HUFFNODE *right = node->right;
+static unsigned int CxiHuffmanWriteNode(unsigned char *tree, unsigned int pos, CxiHuffNode *node) {
+	CxiHuffNode *left = node->left;
+	CxiHuffNode *right = node->right;
 
 	//we will write two bytes. 
 	unsigned int afterPos = pos + 2;
 	if (ISLEAF(left)) {
 		tree[pos] = (unsigned char) left->sym;
 	} else {
-		HUFFNODE *leftLeft = left->left;
-		HUFFNODE *leftRight = left->right;
+		CxiHuffNode *leftLeft = left->left;
+		CxiHuffNode *leftRight = left->right;
 		unsigned char flag = (ISLEAF(leftLeft) << 7) | (ISLEAF(leftRight) << 6);
 		unsigned lastAfterPos = afterPos;
 		afterPos = CxiHuffmanWriteNode(tree, afterPos, left);
 		tree[pos] = flag | ((((lastAfterPos - pos) >> 1) - 1) & 0x3F);
-		if (((lastAfterPos - pos) >> 1) - 1 > 0x3F) _asm int 3;
+		if (((lastAfterPos - pos) >> 1) - 1 > 0x3F) __debugbreak();
 	}
 
 	if (ISLEAF(right)) {
 		tree[pos + 1] = (unsigned char) right->sym;
 	} else {
-		HUFFNODE *rightLeft = right->left;
-		HUFFNODE *rightRight = right->right;
+		CxiHuffNode *rightLeft = right->left;
+		CxiHuffNode *rightRight = right->right;
 		unsigned char flag = (ISLEAF(rightLeft) << 7) | (ISLEAF(rightRight) << 6);
 		unsigned lastAfterPos = afterPos;
 		afterPos = CxiHuffmanWriteNode(tree, afterPos, right);
 		tree[pos + 1] = flag | ((((lastAfterPos - pos) >> 1) - 1) & 0x3F);
-		if (((lastAfterPos - pos) >> 1) - 1 > 0x3F) _asm int 3;
+		if (((lastAfterPos - pos) >> 1) - 1 > 0x3F) __debugbreak();
 	}
 	return afterPos;
 }
 
-static void CxiHuffmanMakeShallowFirst(HUFFNODE *node) {
+static void CxiHuffmanMakeShallowFirst(CxiHuffNode *node) {
 	if (ISLEAF(node)) return;
 	if (node->left->nRepresent > node->right->nRepresent) {
-		HUFFNODE *left = node->left;
+		CxiHuffNode *left = node->left;
 		node->left = node->right;
 		node->right = left;
 	}
@@ -864,18 +1033,18 @@ static void CxiHuffmanMakeShallowFirst(HUFFNODE *node) {
 	CxiHuffmanMakeShallowFirst(node->right);
 }
 
-static int CxiHuffmanHasSymbol(HUFFNODE *node, uint16_t sym) {
+static int CxiHuffmanHasSymbol(CxiHuffNode *node, uint16_t sym) {
 	if (ISLEAF(node)) return node->sym == sym;
 	if (sym < node->symMin || sym > node->symMax) return 0;
-	HUFFNODE *left = node->left;
-	HUFFNODE *right = node->right;
+	CxiHuffNode *left = node->left;
+	CxiHuffNode *right = node->right;
 	return CxiHuffmanHasSymbol(left, sym) || CxiHuffmanHasSymbol(right, sym);
 }
 
-static void CxiHuffmanWriteSymbol(BITSTREAM *bits, uint16_t sym, HUFFNODE *tree) {
+static void CxiHuffmanWriteSymbol(BITSTREAM *bits, uint16_t sym, CxiHuffNode *tree) {
 	if (ISLEAF(tree)) return;
-	HUFFNODE *left = tree->left;
-	HUFFNODE *right = tree->right;
+	CxiHuffNode *left = tree->left;
+	CxiHuffNode *right = tree->right;
 	if (CxiHuffmanHasSymbol(left, sym)) {
 		CxiBitStreamWrite(bits, 0);
 		CxiHuffmanWriteSymbol(bits, sym, left);
@@ -885,9 +1054,9 @@ static void CxiHuffmanWriteSymbol(BITSTREAM *bits, uint16_t sym, HUFFNODE *tree)
 	}
 }
 
-static void CxiHuffmanConstructTree(HUFFNODE *nodes, int nNodes) {
+static void CxiHuffmanConstructTree(CxiHuffNode *nodes, int nNodes) {
 	//sort by frequency, then cut off the remainder (freq=0).
-	qsort(nodes, nNodes, sizeof(HUFFNODE), CxiHuffmanNodeComparator);
+	qsort(nodes, nNodes, sizeof(CxiHuffNode), CxiHuffmanNodeComparator);
 	for (int i = 0; i < nNodes; i++) {
 		if (nodes[i].freq == 0) {
 			nNodes = i;
@@ -900,13 +1069,13 @@ static void CxiHuffmanConstructTree(HUFFNODE *nodes, int nNodes) {
 	int nTotalNodes = nNodes;
 	while (nRoots > 1) {
 		//copy bottom two nodes to just outside the current range
-		HUFFNODE *srcA = nodes + nRoots - 2;
-		HUFFNODE *destA = nodes + nTotalNodes;
-		memcpy(destA, srcA, sizeof(HUFFNODE));
+		CxiHuffNode *srcA = nodes + nRoots - 2;
+		CxiHuffNode *destA = nodes + nTotalNodes;
+		memcpy(destA, srcA, sizeof(CxiHuffNode));
 
-		HUFFNODE *left = destA;
-		HUFFNODE *right = nodes + nRoots - 1;
-		HUFFNODE *branch = srcA;
+		CxiHuffNode *left = destA;
+		CxiHuffNode *right = nodes + nRoots - 1;
+		CxiHuffNode *branch = srcA;
 
 		branch->freq = left->freq + right->freq;
 		branch->sym = 0;
@@ -918,7 +1087,7 @@ static void CxiHuffmanConstructTree(HUFFNODE *nodes, int nNodes) {
 
 		nRoots--;
 		nTotalNodes++;
-		qsort(nodes, nRoots, sizeof(HUFFNODE), CxiHuffmanNodeComparator);
+		qsort(nodes, nRoots, sizeof(CxiHuffNode), CxiHuffmanNodeComparator);
 	}
 
 	//just to be sure, make sure the shallow node always comes first
@@ -927,7 +1096,7 @@ static void CxiHuffmanConstructTree(HUFFNODE *nodes, int nNodes) {
 
 unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize, int nBits) {
 	//create a histogram of each byte in the file.
-	HUFFNODE *nodes = (HUFFNODE *) calloc(512, sizeof(HUFFNODE));
+	CxiHuffNode *nodes = (CxiHuffNode *) calloc(512, sizeof(CxiHuffNode));
 	int nSym = 1 << nBits;
 	for (int i = 0; i < nSym; i++) {
 		nodes[i].sym = i;
@@ -991,62 +1160,6 @@ unsigned char *CxCompressHuffman8(const unsigned char *buffer, unsigned int size
 
 unsigned char *CxCompressHuffman4(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
 	return CxCompressHuffman(buffer, size, compressedSize, 4);
-}
-
-int CxIsCompressedLZ(const unsigned char *buffer, unsigned int size) {
-	if (size < 4) return 0;
-	if (*buffer != 0x10) return 0;
-	uint32_t length = (*(uint32_t *) buffer) >> 8;
-	if ((length / 144) * 17 + 4 > size) return 0;
-
-	//start a dummy decompression
-	uint32_t offset = 4;
-	uint32_t dstOffset = 0;
-	while (1) {
-		uint8_t head = buffer[offset];
-		offset++;
-
-		//loop 8 times
-		for(int i = 0; i < 8; i++){
-			int flag = head >> 7;
-			head <<= 1;
-
-			if (!flag) {
-				if (dstOffset >= length || offset >= size) return 0;
-				dstOffset++, offset++;
-				if (dstOffset == length) goto checkSize;
-			} else {
-				if (offset + 1 >= size) return 0;
-				uint8_t high = buffer[offset++];
-				uint8_t low = buffer[offset++];
-
-				//length of uncompressed chunk and offset
-				uint32_t offs = (((high & 0xF) << 8) | low) + 1;
-				uint32_t len = (high >> 4) + 3;
-
-				if (dstOffset < offs) return 0;
-				for (uint32_t j = 0; j < len; j++) {
-					if (dstOffset >= length) return 0;
-					dstOffset++;
-					if (dstOffset == length) goto checkSize;
-				}
-			}
-		}
-	}
-
-	//check the size of the remaining data
-	unsigned int remaining;
-checkSize:
-	remaining = size - offset;
-	if (remaining > 7) return 0;
-
-	return 1;
-}
-
-int CxIsFilteredLZHeader(const unsigned char *buffer, unsigned int size) {
-	if (size < 8) return 0;
-	if (buffer[0] != 'L' || buffer[1] != 'Z' || buffer[2] != '7' || buffer[3] != '7') return 0;
-	return CxIsCompressedLZ(buffer + 4, size - 4);
 }
 
 int CxIsCompressedLZX(const unsigned char *buffer, unsigned int size) {
@@ -1119,74 +1232,6 @@ int CxIsCompressedLZXComp(const unsigned char *buffer, unsigned int size) {
 	}
 	if (uncompSize != *(uint32_t *) (buffer + 0x4)) return 0;
 
-	return 1;
-}
-
-int CxIsCompressedRL(const unsigned char *buffer, unsigned int size) {
-	if (size < 4) return 0;
-	if (*buffer != 0x30) return 0;
-	uint32_t header = *(uint32_t *) buffer;
-	unsigned int uncompSize = header >> 8;
-
-	unsigned int dstOfs = 0;
-	unsigned int srcOfs = 4;
-	while (dstOfs < uncompSize) {
-		if (srcOfs >= size) return 0;
-		unsigned char head = buffer[srcOfs++];
-
-		int compressed = head >> 7;
-		if (compressed) {
-			int chunkLen = (head & 0x7F) + 3;
-			if (srcOfs >= size) return 0;
-			srcOfs++;
-
-			for (int i = 0; i < chunkLen; i++) {
-				dstOfs++;
-			}
-		} else {
-			int chunkLen = (head & 0x7F) + 1;
-			for (int i = 0; i < chunkLen; i++) {
-				if (srcOfs >= size) return 0;
-				dstOfs++;
-				srcOfs++;
-			}
-		}
-
-		if (dstOfs > uncompSize) return 0;
-	}
-
-	//allow up to 3 bytes padding
-	if (size - srcOfs > 3) return 0;
-
-	return 1;
-}
-
-int CxIsFilteredDiff8(const unsigned char *buffer, unsigned int size) {
-	if (size < 4) return 0;
-
-	uint32_t head = *(uint32_t *) buffer;
-	unsigned int uncompSize = head >> 8;
-	if (buffer[0] != 0x80) return 0;
-
-	if (uncompSize > size) return 0;
-	
-	//round up to a multiple of 4
-	if (((size - 4 + 3) & ~3) != ((uncompSize + 3) & ~3)) return 0;
-	return 1;
-}
-
-int CxIsFilteredDiff16(const unsigned char *buffer, unsigned int size) {
-	if (size < 4) return 0;
-	if (size & 1) return 0;
-
-	uint32_t head = *(uint32_t *) buffer;
-	unsigned int uncompSize = head >> 8;
-	if (buffer[0] != 0x81) return 0;
-
-	if (uncompSize > size) return 0;
-
-	//round up to a multiple of 4
-	if (((size - 4 + 3) & ~3) != ((uncompSize + 3) & ~3)) return 0;
 	return 1;
 }
 
@@ -1708,7 +1753,7 @@ static int CxiMvdkLookupDeflateTableEntry(const DEFLATE_TABLE_ENTRY *table, int 
 	return 0;
 }
 
-static void CxiMvdkInsertDummyNode(HUFFNODE *nodes, int nNodes) {
+static void CxiMvdkInsertDummyNode(CxiHuffNode *nodes, int nNodes) {
 	//find first node with a 0 frequency and give it a dummy frequency.
 	for (int i = 0; i < nNodes; i++) {
 		if (nodes[i].freq > 0) continue;
@@ -1726,7 +1771,7 @@ typedef struct CxiHuffmanCode_ {
 	uint16_t length;
 } CxiHuffmanCode;
 
-static int CxiMvdkAppendCanonicalNode(HUFFNODE *tree, CxiHuffmanCode *codes, uint32_t encoding, int depth) {
+static int CxiMvdkAppendCanonicalNode(CxiHuffNode *tree, CxiHuffmanCode *codes, uint32_t encoding, int depth) {
 	if (ISLEAF(tree)) {
 		codes[tree->sym].length = depth;
 		return 1;
@@ -1762,7 +1807,7 @@ static int CxiMvdkHuffmanSymbolComparator(const void *p1, const void *p2) {
 	return 0;
 }
 
-static void CxiMvdkMakeCanonicalTree(HUFFNODE *tree, CxiHuffmanCode *codes, int nMaxNodes) {
+static void CxiMvdkMakeCanonicalTree(CxiHuffNode *tree, CxiHuffmanCode *codes, int nMaxNodes) {
 	//first, recursively append to the list.
 	int nNodes = CxiMvdkAppendCanonicalNode(tree, codes, 0, 1);
 	for (int i = 0; i < nMaxNodes; i++) {
@@ -1865,14 +1910,14 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 	}
 
 	//next: create Huffman tree.
-	HUFFNODE *symbolTree = (HUFFNODE *) calloc((0x100 + 29) * 2, sizeof(HUFFNODE));
-	HUFFNODE *offsetTree = (HUFFNODE *) calloc(30 * 2, sizeof(HUFFNODE));
+	CxiHuffNode *symbolTree = (CxiHuffNode *) calloc((0x100 + 29) * 2, sizeof(CxiHuffNode));
+	CxiHuffNode *offsetTree = (CxiHuffNode *) calloc(30 * 2, sizeof(CxiHuffNode));
 
 	int symbolTreeSize = 0, lengthTreeSize = 0;
 	for (int i = 0; i < 0x100 + 29; i++) {
 		if (symbolFrequencies[i] == 0) continue;
 
-		HUFFNODE *node = symbolTree + symbolTreeSize;
+		CxiHuffNode *node = symbolTree + symbolTreeSize;
 		node->sym = node->symMin = node->symMax = i;
 		node->freq = symbolFrequencies[i];
 		node->nRepresent = 1;
@@ -1881,7 +1926,7 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 	for (int i = 0; i < 30; i++) {
 		if (offsetBinFrequencies[i] == 0) continue;
 
-		HUFFNODE *node = offsetTree + lengthTreeSize;
+		CxiHuffNode *node = offsetTree + lengthTreeSize;
 		node->sym = node->symMin = node->symMax = i;
 		node->freq = offsetBinFrequencies[i];
 		node->nRepresent = 1;
@@ -2466,7 +2511,7 @@ static CxiLzToken *CxiVlxComputeLzStatistics(const unsigned char *buffer, unsign
 	return tokenBuffer;
 }
 
-static int CxiVlxWriteHuffmanTree(HUFFNODE *tree, uint16_t *dest, int pos, uint16_t *reps, int *lengths, uint16_t curval, int nBitsVal) {
+static int CxiVlxWriteHuffmanTree(CxiHuffNode *tree, uint16_t *dest, int pos, uint16_t *reps, int *lengths, uint16_t curval, int nBitsVal) {
 	if (tree->nRepresent == 1) {
 		dest[pos] = (tree->sym << 12) | (curval | (1 << nBitsVal));
 		lengths[tree->sym] = nBitsVal;
@@ -2500,7 +2545,7 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 	}
 
 	//arrange tree
-	HUFFNODE lengthNodes[24] = { 0 }, distNodes[24] = { 0 };
+	CxiHuffNode lengthNodes[24] = { 0 }, distNodes[24] = { 0 };
 	int nLengthNodes = 0, nDistNodes = 0;
 	for (int i = 0; i < 12; i++) {
 		if (lengthCounts[i] == 0) continue;
