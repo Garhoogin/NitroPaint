@@ -1382,6 +1382,12 @@ void CxiInitBitReader(BIT_READER_8 *reader, const unsigned char *pos, const unsi
 }
 
 uint32_t CxiConsumeBit(BIT_READER_8 *reader) {
+	if (reader->pos >= reader->end) {
+		//error
+		reader->error = 1;
+		return 0;
+	}
+
 	unsigned char byteVal = reader->current;
 	reader->nBitsBuffered--;
 	reader->nBitsRead++;
@@ -1390,9 +1396,7 @@ uint32_t CxiConsumeBit(BIT_READER_8 *reader) {
 		reader->current >>= 1;
 	} else {
 		reader->pos++;
-		if (reader->pos >= reader->end) {
-			reader->error = 1;
-		} else {
+		if (reader->pos < reader->end) {
 			reader->nBitsBuffered = 8;
 			reader->current = *reader->pos;
 		}
@@ -1404,6 +1408,12 @@ uint32_t CxiConsumeBit(BIT_READER_8 *reader) {
 uint32_t CxiConsumeBits(BIT_READER_8 *bitReader, unsigned int nBits) {
 	uint32_t string = 0, i = 0;
 	for (i = 0; i < nBits; i++) {
+		if (bitReader->pos >= bitReader->end) {
+			//error
+			bitReader->error = 1;
+			return string;
+		}
+
 		bitReader->nBitsBuffered--;
 		bitReader->nBitsRead++;
 		string |= (bitReader->current & 1) << i;
@@ -1412,10 +1422,7 @@ uint32_t CxiConsumeBits(BIT_READER_8 *bitReader, unsigned int nBits) {
 			bitReader->current >>= 1;
 		} else {
 			bitReader->pos++;
-			if (bitReader->pos >= bitReader->end) {
-				bitReader->error = 1;
-				return string;
-			} else {
+			if (bitReader->pos < bitReader->end) {
 				bitReader->nBitsBuffered = 8;
 				bitReader->current = *bitReader->pos;
 			}
@@ -1691,7 +1698,9 @@ static int CxiMvdkIsValidDeflate(const unsigned char *buffer, unsigned int size)
 	//test buffer remaining (allow up to 3 bytes trailing for 4-byte aligned file size)
 	unsigned int nConsumed = pos - buffer;
 	nConsumed = (nConsumed + 3) & ~3;
-	if (nConsumed < ((size + 3) & ~3)) return 0; //bytes unconsumed
+
+	//check bytes unconsumed (Nintendo's encoder sometimes adds 4 bytes? uncompressed block indicator?)
+	if ((nConsumed + 4) < ((size + 3) & ~3)) return 0;
 
 	return 1;
 }
