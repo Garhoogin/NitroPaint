@@ -940,7 +940,7 @@ static void PalViewerOutlineSelection(NCLRVIEWERDATA *data, HDC hDC, int selStar
 
 static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
 	COLOR *cols = data->nclr.colors;
-	int nRows = data->nclr.nColors / 16;
+	int nRows = (data->nclr.nColors + 15) / 16;
 
 	//if we're dragging a selection, preview that here.
 	if (data->movingSelection) {
@@ -1005,7 +1005,7 @@ static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, i
 		for (int x = 0; x < 16; x++) {
 			int index = x + y * 16;
 			int colorIndex = index;
-			if (index > data->nclr.nColors) break;
+			if (index >= data->nclr.nColors) break;
 
 			COLOR col = cols[colorIndex];
 			COLOR32 rgb = ColorConvertFromDS(col);
