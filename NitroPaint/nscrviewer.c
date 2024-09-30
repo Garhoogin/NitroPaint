@@ -1028,17 +1028,29 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 		{
 			HWND hWndEditor = (HWND) lParam;
 			HWND hWndMain = getMainWindow(hWndEditor);
-			HWND hWndNcgrEditor = NULL;
+			HWND hWndNcgrEditor = NULL, hWndNclrEditor = NULL;
 			GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
+			GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrEditor, 1);
 			NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor);
 			NCGR *ncgr = &ncgrViewerData->ncgr;
 
+			NCLRVIEWERDATA *nclrViewerData = NULL;
+			NCLR *nclr = NULL;
+			if (hWndNclrEditor != NULL) {
+				nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(hWndNclrEditor);
+				nclr = &nclrViewerData->nclr;
+			}
+
 			//set appropriate fields using data from NCGR
-			WCHAR bf[16];
-			int len = wsprintfW(bf, L"%d", ncgr->nBits == 4 ? 16 : 256);
-			SendMessage(data->hWndPaletteSize, WM_SETTEXT, len, (LPARAM) bf);
-			len = wsprintfW(bf, L"%d", ncgr->nTiles);
-			SendMessage(data->hWndCharacterCount, WM_SETTEXT, len, (LPARAM) bf);
+			int nMaxColors = 1 << ncgr->nBits;
+			if (nclr != NULL) {
+				if (nMaxColors > nclr->nColors) {
+					nMaxColors = nclr->nColors;
+				}
+			}
+
+			SetEditNumber(data->hWndPaletteSize, nMaxColors);
+			SetEditNumber(data->hWndCharacterCount, ncgr->nTiles);
 
 			data->hWndEditor = hWndEditor;
 			break;
