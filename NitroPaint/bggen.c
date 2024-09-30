@@ -898,7 +898,7 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 
 	int paletteCompression = params->compressPalette;
 	int colorOutputBase = paletteCompression ? (paletteBase << nBits) : 0;
-	int nColorsOutput = paletteCompression ? (nBits == 4 ? (16 * nPalettes) : (paletteOffset + paletteSize)) : (nBits == 4 ? 256 : (256 * nPalettes));
+	int nColorsOutput = paletteCompression ? (nPalettes << nBits) : (nBits == 4 ? 256 : (256 * (paletteBase + nPalettes)));
 	int nPalettesOutput = paletteCompression ? (nPalettes) : (nBits == 4 ? 16 : nPalettes);
 	nclr->nBits = nBits;
 	nclr->nColors = nColorsOutput;
