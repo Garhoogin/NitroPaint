@@ -974,7 +974,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			data->hWndBrowseButton = CreateButton(hWnd, L"...", width - 10 - 50, 10, 50, 22, FALSE);
 
 			data->hWndWriteScreenCheckbox = CreateCheckbox(hWnd, L"Overwrite Screen", leftX, topY, 150, 22, TRUE);
-			data->hWndWriteCharIndicesCheckbox = CreateCheckbox(hWnd, L"Overwrite Character Indices", leftX, topY + 27, 150, 22, FALSE);
+			data->hWndWriteCharIndicesCheckbox = CreateCheckbox(hWnd, L"Overwrite Character Indices", leftX, topY + 27, 150, 22, TRUE);
 
 			data->hWndNewPaletteCheckbox = CreateCheckbox(hWnd, L"Overwrite Palette", leftX, middleY, 150, 22, TRUE);
 			CreateStatic(hWnd, L"Palettes:", leftX, middleY + 27, 75, 22);
@@ -1017,9 +1017,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 				wsprintf(textBuffer, L"%d", i);
 				SendMessage(data->hWndPaletteInput, CB_ADDSTRING, wcslen(textBuffer), (LPARAM) textBuffer);
 			}
-
-			setStyle(data->hWndCharacterBase, TRUE, WS_DISABLED);
-			setStyle(data->hWndCharacterCount, TRUE, WS_DISABLED);
+			
 			setStyle(data->hWndDiffuseAmount, TRUE, WS_DISABLED);
 
 			SetWindowSize(hWnd, width, height);
