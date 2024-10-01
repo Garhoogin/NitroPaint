@@ -48,6 +48,7 @@ typedef struct {
 
 
 	int selectedPalette;
+	int useAttribute;
 	int verifyStart;
 	int verifyEnd;
 	int verifySelMode;
@@ -56,6 +57,7 @@ typedef struct {
 	HWND hWndViewer;
 	HWND hWndCharacterLabel;
 	HWND hWndPaletteDropdown;
+	HWND hWndUseAttribute;
 	HWND hWndWidthLabel;
 	HWND hWndWidthDropdown;
 	HWND hWndTileEditorWindow;
