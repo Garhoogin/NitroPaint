@@ -722,6 +722,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					case ID_ZOOM_200:
 					case ID_ZOOM_400:
 					case ID_ZOOM_800:
+					case ID_ZOOM_1600:
 						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
 						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 						break;
