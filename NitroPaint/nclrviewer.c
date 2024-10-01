@@ -1701,7 +1701,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						ID_MENU_IMPORT, ID_MENU_CREATE,
 						ID_MENU_INVERTCOLOR, ID_MENU_MAKEGRAYSCALE,
 						ID_ARRANGEPALETTE_BYHUE, ID_ARRANGEPALETTE_BYLIGHTNESS, ID_ARRANGEPALETTE_NEURO,
-						ID_MENU_ANIMATEPALETTE
+						ID_MENU_ANIMATEPALETTE, ID_MENU_GENERATE
 					};
 					for (int i = 0; i < sizeof(cmdsForSelection) / sizeof(int); i++) {
 						EnableMenuItem(hPopup, cmdsForSelection[i], (data->selStart != -1) ? MF_ENABLED : MF_DISABLED);
@@ -1986,9 +1986,21 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					case ID_MENU_CREATE:
 					{
 						HWND hWndMain = getMainWindow(hWnd);
-						HWND hWndPaletteDialog = CreateWindow(L"PaletteGeneratorClass", L"Generate Palette", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT, 200, 200, hWndMain, NULL, NULL, NULL);
+						HWND hWndPaletteDialog = CreateWindow(L"PaletteGeneratorClass", L"Generate Palette",
+							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT,
+							200, 200, hWndMain, NULL, NULL, NULL);
 						SendMessage(hWndPaletteDialog, NV_INITIALIZE, 0, (LPARAM) data);
 						DoModal(hWndPaletteDialog);
+						break;
+					}
+					case ID_MENU_GENERATE:
+					{
+						HWND hWndMain = getMainWindow(hWnd);
+						HWND hWndGenerateDialog = CreateWindow(L"GeneratePaletteClass", L"Generate Palette",
+							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
+							CW_USEDEFAULT, CW_USEDEFAULT, 200, 200, hWndMain, NULL, NULL, NULL);
+						SendMessage(hWndGenerateDialog, NV_INITIALIZE, 0, (LPARAM) data);
+						DoModal(hWndGenerateDialog);
 						break;
 					}
 					case ID_MENU_ANIMATEPALETTE:
@@ -2205,8 +2217,131 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct PalViewerFillPaletteData_ {
+	HWND hWndType;
+	HWND hWndChoose1;
+	HWND hWndChoose2;
+	HWND hWndOK;
+	COLOR col1;
+	COLOR col2;
+	NCLRVIEWERDATA *nclrViewerData;
+} PalViewerFillPaletteData;
+
+static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	PalViewerFillPaletteData *data = (PalViewerFillPaletteData *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			data = (PalViewerFillPaletteData *) calloc(1, sizeof(PalViewerFillPaletteData));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			data->col1 = 0;
+			data->col2 = 0;
+
+			CreateStatic(hWnd, L"Type:", 10, 10, 50, 22);
+			CreateStatic(hWnd, L"Color 1:", 10, 37, 50, 22);
+			CreateStatic(hWnd, L"Color 2:", 10, 64, 50, 22);
+
+			LPCWSTR typeStrs[] = { L"Single Color", L"Gradient" };
+			data->hWndType = CreateCombobox(hWnd, typeStrs, sizeof(typeStrs) / sizeof(typeStrs[0]), 70, 10, 200, 100, 0);
+			data->hWndChoose1 = CreateButton(hWnd, L"Choose", 70, 37, 100, 22, FALSE);
+			data->hWndChoose2 = CreateButton(hWnd, L"Choose", 70, 64, 100, 22, FALSE);
+
+			setStyle(data->hWndChoose2, TRUE, WS_DISABLED);
+
+			data->hWndOK = CreateButton(hWnd, L"OK", 70, 91, 100, 22, TRUE);
+
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 280, 123);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			data->nclrViewerData = (NCLRVIEWERDATA *) lParam;
+			break;
+		}
+		case WM_COMMAND:
+		{
+			int idc = LOWORD(wParam);
+			HWND hWndControl = (HWND) lParam;
+			int cmd = HIWORD(wParam);
+				
+			if (hWndControl == data->hWndType && cmd == CBN_SELCHANGE) {
+				int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+				setStyle(data->hWndChoose2, sel == 0, WS_DISABLED);
+				InvalidateRect(data->hWndChoose2, NULL, TRUE);
+			} else if ((hWndControl == data->hWndChoose1 || hWndControl == data->hWndChoose2) && cmd == BN_CLICKED) {
+				HWND hWndMain = getMainWindow(data->nclrViewerData->hWnd);
+
+				int idx = (hWndControl == data->hWndChoose1) ? 0 : 1;
+
+				CHOOSECOLOR cc = { 0 };
+				cc.lStructSize = sizeof(cc);
+				cc.hInstance = NULL;
+				cc.hwndOwner = hWnd;
+				cc.rgbResult = ColorConvertFromDS(idx == 0 ? data->col1 : data->col2);
+				cc.lpCustColors = data->nclrViewerData->tmpCust;
+				cc.Flags = 0x103;
+				BOOL (__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
+				if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
+
+				if (ChooseColorFunction(&cc)) {
+					if (idx == 0) data->col1 = ColorConvertToDS(cc.rgbResult);
+					else data->col2 = ColorConvertToDS(cc.rgbResult);
+				}
+			} else if ((hWndControl == data->hWndOK || idc == IDOK) && cmd == BN_CLICKED) {
+				//OK button selected. get mode and colors
+				int mode = SendMessage(data->hWndType, CB_GETCURSEL, 0, 0);
+				COLOR32 col1 = ColorConvertFromDS(data->col1);
+				COLOR32 col2 = ColorConvertFromDS(data->col2);
+
+				NCLRVIEWERDATA *nclrViewerData = data->nclrViewerData;
+				int size = PalViewerGetSelectionSize(nclrViewerData);
+				if (mode == 0) {
+					//single color
+					for (int i = 0; i < nclrViewerData->nclr.nColors; i++) {
+						if (PalViewerIndexInSelection(nclrViewerData, i)) {
+							nclrViewerData->nclr.colors[i] = ColorConvertToDS(col1);
+						}
+					}
+				} else if (mode == 1) {
+					//gradient
+					unsigned int j = 0;
+					for (int i = 0; i < nclrViewerData->nclr.nColors; i++) {
+						if (PalViewerIndexInSelection(nclrViewerData, i)) {
+							//interpolate
+							unsigned int r = ((((col1 >>  0) & 0xFF) * (size - 1 - j) + ((col2 >>  0) & 0xFF) * j) * 2 + size - 1) / (2 * (size - 1));
+							unsigned int g = ((((col1 >>  8) & 0xFF) * (size - 1 - j) + ((col2 >>  8) & 0xFF) * j) * 2 + size - 1) / (2 * (size - 1));
+							unsigned int b = ((((col1 >> 16) & 0xFF) * (size - 1 - j) + ((col2 >> 16) & 0xFF) * j) * 2 + size - 1) / (2 * (size - 1));
+
+							nclrViewerData->nclr.colors[i] = ColorConvertToDS(r | (g << 8) | (b << 16));
+							j++;
+						}
+					}
+				}
+
+				PalViewerUpdatePreview(nclrViewerData->hWnd);
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+		case WM_DESTROY:
+		{
+			free(data);
+			SetWindowLongPtr(hWnd, 0, 0);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 static void PalViewerRegisterPaletteGenerationClass(void) {
 	RegisterGenericClass(L"PaletteGeneratorClass", PaletteGeneratorDialogProc, sizeof(LPVOID));
+}
+
+static void PalViewerRegisterPaletteFillClass(void) {
+	RegisterGenericClass(L"GeneratePaletteClass", GeneratePaletteDialogProc, sizeof(LPVOID));
 }
 
 void RegisterNclrViewerClass(void) {
@@ -2220,6 +2355,7 @@ void RegisterNclrViewerClass(void) {
 	EditorAddFilter(cls, NCLR_TYPE_ISTUDIO, L"5pl", L"5PL Files (*.5pl)\0*.5pl\0");
 	EditorAddFilter(cls, NCLR_TYPE_ISTUDIOC, L"5pc", L"5PC Files (*.5pc)\0*.5pc\0");
 	PalViewerRegisterPaletteGenerationClass();
+	PalViewerRegisterPaletteFillClass();
 }
 
 HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {

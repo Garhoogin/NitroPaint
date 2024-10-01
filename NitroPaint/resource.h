@@ -145,13 +145,14 @@
 #define ID_EDITMODE_STAMP               40157
 #define ID_NCGRMENU_FLIPHORIZONTALLY    40158
 #define ID_NCGRMENU_FLIPVERTICALLY      40159
+#define ID_MENU_GENERATE                40160
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40160
+#define _APS_NEXT_COMMAND_VALUE         40161
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
