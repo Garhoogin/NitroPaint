@@ -5,6 +5,7 @@
 #include "ncgrviewer.h"
 #include "nclrviewer.h"
 #include "nscrviewer.h"
+#include "ncerviewer.h"
 #include "childwindow.h"
 #include "nitropaint.h"
 #include "resource.h"
@@ -1422,6 +1423,92 @@ static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int 
 	DoModal(h);
 }
 
+static void ChrViewerImportAttributesFromScreen(NCGRVIEWERDATA *data, NSCRVIEWERDATA *nscrViewerData) {
+	NCGR *ncgr = &data->ncgr;
+	NSCR *nscr = &nscrViewerData->nscr;
+
+	int nTiles = nscr->nWidth / 8 * nscr->nHeight / 8;
+	for (int i = 0; i < nTiles; i++) {
+		uint16_t d = nscr->data[i];
+		int chrno = (d >>  0) & 0x03FF;
+		int palno = (d >> 12) & 0x000F;
+		chrno -= nscrViewerData->tileBase;
+
+		ChrViewerSetAttribute(data, chrno % ncgr->tilesX, chrno / ncgr->tilesX, palno);
+	}
+}
+
+static void ChrViewerImportAttributesFromCell(NCGRVIEWERDATA *data, NCERVIEWERDATA *ncerViewerData) {
+	NCGR *ncgr = &data->ncgr;
+	NCER *ncer = &ncerViewerData->ncer;
+
+	int nCells = ncer->nCells;
+	int mapping = ncer->mappingMode;
+	for (int i = 0; i < nCells; i++) {
+		NCER_CELL *cell = ncer->cells + i;
+		
+		//for each OBJ...
+		for (int j = 0; j < cell->nAttribs; j++) {
+			NCER_CELL_INFO info;
+			CellDecodeOamAttributes(&info, cell, j);
+
+			int objPlt = info.palette;
+			int objW = info.width / 8;
+			int objH = info.height / 8;
+			int nObjChar = objW * objH;
+
+			//process w.r.t. mapping mode
+			int chStart = NCGR_CHNAME(info.characterName, mapping, ncgr->nBits);
+			int chStartX = chStart % ncgr->tilesX;
+			int chStartY = chStart / ncgr->tilesX;
+			if (NCGR_2D(mapping)) {
+				//2D mapping, process graphically
+				for (int y = 0; y < objH; y++) {
+					for (int x = 0; x < objW; x++) {
+						ChrViewerSetAttribute(data, chStartX + x, chStartY + y, objPlt);
+					}
+				}
+			} else {
+				//1D mapping, process linearly
+				for (int k = 0; k < nObjChar; k++) {
+					ChrViewerSetAttribute(data, (chStart + k) % ncgr->tilesX, (chStart + k) / ncgr->tilesX, objPlt);
+				}
+			}
+		}
+	}
+}
+
+static void ChrViewerImportAttributes(NCGRVIEWERDATA *data) {
+	//if no attribute data, create it.
+	if (data->ncgr.attr == NULL) {
+		data->ncgr.attr = (unsigned char *) calloc(data->ncgr.tilesX * data->ncgr.tilesY, 1);
+	}
+
+	HWND hWndMain = getMainWindow(data->hWnd);
+	int nScrEditors = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
+	int nCellEditors = GetAllEditors(hWndMain, FILE_TYPE_CELL, NULL, 0);
+
+	if (nScrEditors > 0) {
+		HWND *scrEditors = (HWND *) calloc(nScrEditors, sizeof(HWND));
+		GetAllEditors(hWndMain, FILE_TYPE_SCREEN, scrEditors, nScrEditors);
+		for (int i = 0; i < nScrEditors; i++) {
+			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(scrEditors[i]);
+			ChrViewerImportAttributesFromScreen(data, nscrViewerData);
+		}
+		free(scrEditors);
+	}
+	if (nCellEditors > 0) {
+		HWND *cellEditors = (HWND *) calloc(nCellEditors, sizeof(HWND));
+		GetAllEditors(hWndMain, FILE_TYPE_CELL, cellEditors, nCellEditors);
+		for (int i = 0; i < nCellEditors; i++) {
+			NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(cellEditors[i]);
+			ChrViewerImportAttributesFromCell(data, ncerViewerData);
+		}
+		free(cellEditors);
+	}
+	InvalidateRect(data->hWndViewer, NULL, FALSE);
+}
+
 static void ChrViewerOnMenuCommand(HWND hWnd, int idMenu) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
 
@@ -1460,6 +1547,9 @@ static void ChrViewerOnMenuCommand(HWND hWnd, int idMenu) {
 			//do not free px: owned by the convert process now
 			break;
 		}
+		case ID_NCGRMENU_GENERATEATTRIBUTES:
+			ChrViewerImportAttributes(data);
+			break;
 		case ID_FILE_SAVEAS:
 			EditorSaveAs(hWnd);
 			break;
