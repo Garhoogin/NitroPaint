@@ -132,6 +132,9 @@
     <ClCompile Include="framebuffer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="tilededitor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tiler.h">
@@ -249,6 +252,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framebuffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tilededitor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

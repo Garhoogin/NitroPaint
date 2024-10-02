@@ -205,7 +205,7 @@ static void ScrViewerPaint(HWND hWnd, HDC hWindowDC, int xOffs, int yOffs) {
 	if (hWndNcgrViewer != NULL) {
 		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 		ncgr = &ncgrViewerData->ncgr;
-		hoveredNcgrTile = ncgrViewerData->hoverIndex;
+		hoveredNcgrTile = ncgrViewerData->ted.hoverIndex;
 	}
 
 	int hlStart = data->hlStart;
