@@ -974,16 +974,9 @@ static void ChrViewerOnCreate(HWND hWnd) {
 	data->useAttribute = 0;
 	data->transparent = g_configuration.renderTransparent;
 
-	data->ted.hoverX = -1;
-	data->ted.hoverY = -1;
-	data->ted.mouseX = data->ted.lastMouseX = -1;
-	data->ted.mouseY = data->ted.lastMouseY = -1;
-	data->ted.hoverIndex = -1;
-	data->ted.selStartX = -1;
-	data->ted.selStartY = -1;
-	data->ted.selEndX = -1;
-	data->ted.selEndY = -1;
-
+	HWND hWndViewer = CreateWindow(L"NcgrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL,
+		MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, 256, 256, hWnd, NULL, NULL, NULL);
+	TedInit(&data->ted, hWnd, hWndViewer);
 	data->ted.getCursorProc = ChrViewerGetCursor;
 	data->ted.tileHoverCallback = ChrViewerOnHoverChange;
 	data->ted.renderCallback = ChrViewerRender;
@@ -991,9 +984,6 @@ static void ChrViewerOnCreate(HWND hWnd) {
 	data->ted.isSelectionModeCallback = ChrViewerIsSelectionMode;
 	data->ted.updateCursorCallback = ChrViewerUpdateCursorCallback;
 
-	data->ted.hWnd = hWnd;
-	data->ted.hWndViewer = CreateWindow(L"NcgrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 
-		MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, 256, 256, hWnd, NULL, NULL, NULL);
 	data->hWndCharacterLabel = CreateStatic(hWnd, L" Character 0", 0, 0, 100, 22);
 	data->hWndPaletteDropdown = CreateCombobox(hWnd, NULL, 0, 0, 0, 200, 100, 0);
 	data->hWndWidthDropdown = CreateCombobox(hWnd, NULL, 0, 0, 0, 200, 100, 0);
@@ -1038,8 +1028,6 @@ static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immed
 	int controlHeight = (int) (dpiScale * 21.0f + 0.5f);
 	int controlWidth = (int) (dpiScale * 100.0f + 0.5f);
 	ChrViewerGetGraphicsSize(data, &data->frameData.contentWidth, &data->frameData.contentHeight);
-	FbCreate(&data->ted.fb, hWnd, data->frameData.contentWidth, data->frameData.contentHeight);
-	FbCreate(&data->ted.fbMargin, hWnd, rcClient.right, rcClient.bottom);
 
 	int width = data->frameData.contentWidth + GetSystemMetrics(SM_CXVSCROLL) + 4 + MARGIN_TOTAL_SIZE;
 	int height = data->frameData.contentHeight + 3 * controlHeight + GetSystemMetrics(SM_CYHSCROLL) + 4 + MARGIN_TOTAL_SIZE;
@@ -1105,8 +1093,7 @@ static void ChrViewerOnDestroy(HWND hWnd) {
 
 	HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
 	if (hWndNclrViewer != NULL) InvalidateRect(hWndNclrViewer, NULL, FALSE);
-	FbDestroy(&data->ted.fb);
-	FbDestroy(&data->ted.fbMargin);
+	TedDestroy(&data->ted);
 }
 
 static int ChrViewerOnTimer(HWND hWnd, int idTimer) {

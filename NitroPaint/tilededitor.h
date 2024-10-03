@@ -123,3 +123,7 @@ void TedOnLButtonDown(EDITOR_DATA *data, TedData *ted);
 void TedOnRButtonDown(TedData *ted);
 void TedViewerOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam, LPARAM lParam);
 void TedViewerOnLButtonDown(EDITOR_DATA *data, TedData *ted);
+
+
+void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer);
+void TedDestroy(TedData *ted);

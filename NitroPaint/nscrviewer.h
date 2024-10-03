@@ -4,15 +4,15 @@
 #include "childwindow.h"
 #include "nscr.h"
 #include "framebuffer.h"
+#include "tilededitor.h"
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
 	NSCR nscr;
 	int transparent;
 
-	FrameBuffer fb;
-	HWND hWndTileEditor;
-	HWND hWndPreview;
+	TedData ted;
+
 	HWND hWndCharacterLabel;
 	HWND hWndCharacterNumber;
 	HWND hWndPaletteLabel;
@@ -25,23 +25,11 @@ typedef struct {
 	HWND hWndSize;
 	HWND hWndSelectionSize;
 
-	int hoverX;
-	int hoverY;
-	int contextHoverX;
-	int contextHoverY;
-	int editingX;
-	int editingY;
 	int hlStart;
 	int hlEnd;
 	int hlMode;
 	int verifyFrames;
 	int tileBase;
-
-	int mouseDown;
-	int selStartX; //-1 when no selection.
-	int selStartY;
-	int selEndX;
-	int selEndY;
 } NSCRVIEWERDATA;
 
 void NscrViewerSetTileBase(HWND hWnd, int tileBase);

@@ -78,6 +78,17 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 	//get render size
 	int renderWidth = rcClient.right;
 	int renderHeight = rcClient.bottom;
+
+	//clamp size of render area to the size of graphics view
+	if (ted->hWndViewer != NULL) {
+		RECT rcView;
+		GetWindowRect(ted->hWndViewer, &rcView);
+
+		int viewWndWidth = rcView.right - rcView.left + MARGIN_TOTAL_SIZE;
+		int viewWndHeight = rcView.bottom - rcView.top + MARGIN_TOTAL_SIZE;
+		if (viewWndWidth < renderWidth) renderWidth = viewWndWidth;
+		if (viewWndHeight < renderHeight) renderHeight = viewWndHeight;
+	}
 	int viewWidth = renderWidth - MARGIN_TOTAL_SIZE;
 	int viewHeight = renderHeight - MARGIN_TOTAL_SIZE;
 
@@ -1069,4 +1080,30 @@ void TedViewerOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
 			}
 		}
 	}
+}
+
+
+
+void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer) {
+	memset(ted, 0, sizeof(TedData));
+	ted->hoverX = -1;
+	ted->hoverY = -1;
+	ted->mouseX = ted->lastMouseX = -1;
+	ted->mouseY = ted->lastMouseY = -1;
+	ted->hoverIndex = -1;
+	ted->selStartX = -1;
+	ted->selStartY = -1;
+	ted->selEndX = -1;
+	ted->selEndY = -1;
+	ted->hWnd = hWnd;
+	ted->hWndViewer = hWndViewer;
+
+	//create dummy framebuffers
+	FbCreate(&ted->fb, hWnd, 1, 1);
+	FbCreate(&ted->fbMargin, hWnd, 1, 1);
+}
+
+void TedDestroy(TedData *ted) {
+	FbDestroy(&ted->fb);
+	FbDestroy(&ted->fbMargin);
 }

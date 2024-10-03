@@ -1,42 +1,5 @@
 #include "tiler.h"
 
-HBITMAP CreateTileBitmap(LPDWORD lpBits, UINT nWidth, UINT nHeight, int hiliteX, int hiliteY, PUINT pOutWidth, PUINT pOutHeight, UINT scale, BOOL bBorders) {
-	//first off, find the number of tiles.
-	unsigned tilesX = nWidth / 8;
-	unsigned tilesY = nHeight / 8;
-
-	//next, how many borders do we need?
-	int bordersX = tilesX + 1;
-	int bordersY = tilesY + 1;
-	if (!bBorders) {
-		bordersX = 0;
-		bordersY = 0;
-	}
-
-	//next, find the size of a tile.
-	unsigned tileSize = scale * 8;
-
-	//now we can find the size of the output.
-	unsigned outWidth = tilesX * tileSize + bordersX;
-	unsigned outHeight = tilesY * tileSize + bordersY;
-
-	//allocate a buffer for this.
-	LPDWORD lpOutBits = (LPDWORD) calloc(outWidth * outHeight, 4);
-	RenderTileBitmap(lpOutBits, outWidth, outHeight, 0, 0, outWidth, outHeight,
-		lpBits, nWidth, nHeight, hiliteX, hiliteY, scale, bBorders, 8, FALSE, FALSE, FALSE);
-
-	//create bitmap
-	HBITMAP hBitmap = CreateBitmap(outWidth, outHeight, 1, 32, lpOutBits);
-
-	//free out bits
-	free(lpOutBits);
-
-	*pOutWidth = outWidth;
-	*pOutHeight = outHeight;
-
-	return hBitmap;
-}
-
 void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UINT startY, UINT viewWidth, UINT viewHeight, DWORD *lpBits, UINT nWidth, UINT nHeight, int hiliteX, int hiliteY, UINT scale, BOOL bBorders, UINT tileWidth, BOOL bReverseColors, BOOL blend) {
 	unsigned tilesX = nWidth / tileWidth;
 	unsigned tilesY = nHeight / tileWidth;
@@ -159,12 +122,6 @@ void RenderTileBitmap(DWORD *out, UINT outWidth, UINT outHeight, UINT startX, UI
 
 int getDimension2(int tiles, int border, int scale, int tileSize) {
 	int width = tiles * tileSize * scale;
-	if (border) width += 1 + tiles;
-	return width;
-}
-
-int getDimension(int tiles, int border, int scale) {
-	int width = tiles * 8 * scale;
 	if (border) width += 1 + tiles;
 	return width;
 }
