@@ -334,25 +334,9 @@ static HCURSOR ScrViewerGetCursorProc(HWND hWnd, int hit) {
 }
 
 static void ScrViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
-	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWnd);
-
-	int hit = data->ted.mouseDownHit;
-	int hitType = hit & HIT_TYPE_MASK;
-
-	//if in content, start or continue a selection.
-	if (hitType == HIT_CONTENT) {
-		//if the mouse is down, start or continue a selection.
-		if (!TedHasSelection(&data->ted)) {
-			data->ted.selStartX = data->ted.hoverX;
-			data->ted.selStartY = data->ted.hoverY;
-
-			//set cursor to crosshair
-			SetCursor(LoadCursor(NULL, IDC_CROSS));
-		}
-
-		data->ted.selEndX = data->ted.hoverX;
-		data->ted.selEndY = data->ted.hoverY;
-	}
+	(void) hWnd;
+	(void) pxX;
+	(void) pxY;
 }
 
 static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -417,7 +401,6 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			MoveWindow(data->hWndCharacterLabel, rcClient.right - 190, 10, 70, 22, TRUE);
 			MoveWindow(data->hWndPaletteLabel, rcClient.right - 190, 37, 70, 22, TRUE);
 			MoveWindow(data->hWndCharacterNumber, rcClient.right - 110, 10, 100, 22, TRUE);
-			MoveWindow(data->hWndPaletteNumber, rcClient.right - 110, 37, 100, 100, TRUE);
 			MoveWindow(data->hWndApply, rcClient.right - 110, 64, 100, 22, TRUE);
 			MoveWindow(data->hWndAdd, rcClient.right - 110, 91, 100, 22, TRUE);
 			MoveWindow(data->hWndSubtract, rcClient.right - 110, 118, 100, 22, TRUE);
@@ -425,6 +408,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			MoveWindow(data->hWndTileBase, 50, rcClient.bottom - 22, 100, 22, TRUE);
 			MoveWindow(data->hWndSize, 160, rcClient.bottom - 22, 100, 22, TRUE);
 			MoveWindow(data->hWndSelectionSize, 260, rcClient.bottom - 22, 100, 22, TRUE);
+			MoveWindow(data->hWndPaletteNumber, rcClient.right - 110, 37, 100, 100, TRUE);
 
 			if (wParam == SIZE_RESTORED) InvalidateRect(hWnd, NULL, TRUE); //full update
 			return DefMDIChildProc(hWnd, WM_SIZE, wParam, lParam);
@@ -501,6 +485,8 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			break;
 		case WM_KEYDOWN:
 		{
+			TedViewerOnKeyDown((EDITOR_DATA *) data, &data->ted, wParam, lParam);
+
 			int selX, selY, selW, selH;
 			TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
 
@@ -513,46 +499,6 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					TedDeselect(&data->ted);
 					ScrViewerGraphicsChanged(data);
 					break;
-				case VK_ESCAPE:
-					SendMessage(hWnd, WM_COMMAND, ID_NSCRMENU_DESELECT, 0);
-					break;
-				case VK_UP:
-				case VK_DOWN:
-				case VK_LEFT:
-				case VK_RIGHT:
-				{
-					if (TedHasSelection(&data->ted)) {
-						int shift = GetKeyState(VK_SHIFT) < 0;
-
-						int dx = 0, dy = 0;
-						switch (wParam) {
-							case VK_UP: dy = -1; break;
-							case VK_DOWN: dy = 1; break;
-							case VK_LEFT: dx = -1; break;
-							case VK_RIGHT: dx = 1; break;
-						}
-
-						if (!shift) {
-							//offset whole selection
-							int newX = selX + dx, newY = selY + dy;
-							if (newX >= 0 && newY >= 0 && (newX + selW) < (int) data->nscr.nWidth / 8 && (newY + selH) < (int) data->nscr.nHeight / 8) {
-								TedOffsetSelection(&data->ted, dx, dy);
-							}
-						} else {
-							//offset selection end
-							int newX = data->ted.selEndX + dx, newY = data->ted.selEndY + dy;
-							if (newX >= 0 && newX < (int) data->nscr.nWidth / 8 && newY >= 0 && newY < (int) data->nscr.nHeight / 8) {
-								data->ted.selEndX += dx;
-								data->ted.selEndY += dy;
-							}
-						}
-
-						InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
-						TedUpdateMargins(&data->ted);
-						TedUpdateCursor((EDITOR_DATA *) data, &data->ted);
-					}
-					break;
-				}
 				case 'H':
 					PostMessage(hWnd, WM_COMMAND, ID_NSCRMENU_FLIPHORIZONTALLY, 0);
 					break;
@@ -751,7 +697,17 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 									clip += 4;
 								}
 							}
+
+							//select paste region
+							data->ted.selStartX = tileX;
+							data->ted.selStartY = tileY;
+							data->ted.selEndX = tileX + tilesX - 1;
+							data->ted.selEndY = tileY + tilesY - 1;
+							if (data->ted.selEndX >= data->ted.tilesX) data->ted.selEndX = data->ted.tilesX - 1;
+							if (data->ted.selEndY >= data->ted.tilesY) data->ted.selEndY = data->ted.tilesY - 1;
+
 							ScrViewerGraphicsChanged(data);
+							TedUpdateMargins(&data->ted);
 						}
 
 						GlobalUnlock(hString);
@@ -1290,7 +1246,6 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 		case WM_NCMOUSEMOVE:
 		case WM_MOUSELEAVE:
 			TedViewerOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
-			TedUpdateCursor((EDITOR_DATA *) data, &data->ted);
 			break;
 		case WM_KEYDOWN:
 		case WM_KEYUP:
@@ -1303,16 +1258,18 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			TedUpdateMargins(&data->ted);
 			ScrViewerUpdateSelLabel(data);
 
-			int selX, selY, selW, selH;
-			TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
+			if (TedHasSelection(&data->ted)) {
+				int selX, selY, selW, selH;
+				TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
 
-			int tile = selX + selY * (data->nscr.nWidth / 8);
-			uint16_t d = data->nscr.data[tile];
-			int character = d & 0x3FF;
-			int palette = d >> 12;
+				int tile = selX + selY * (data->nscr.nWidth / 8);
+				uint16_t d = data->nscr.data[tile];
+				int character = d & 0x3FF;
+				int palette = d >> 12;
 
-			SendMessage(data->hWndPaletteNumber, CB_SETCURSEL, palette, 0);
-			SetEditNumber(data->hWndCharacterNumber, character);
+				SendMessage(data->hWndPaletteNumber, CB_SETCURSEL, palette, 0);
+				SetEditNumber(data->hWndCharacterNumber, character);
+			}
 			break;
 		}
 		case WM_LBUTTONUP:
@@ -1320,8 +1277,6 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			break;
 		case WM_RBUTTONUP:
 		{
-			SetFocus(hWnd);
-
 			POINT mousePos;
 			GetCursorPos(&mousePos);
 			ScreenToClient(hWnd, &mousePos);

@@ -63,8 +63,6 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 static int ChrViewerShouldSuppressHighlight(HWND hWnd);
 static HCURSOR ChrViewerGetCursor(HWND hWnd, int hit);
 static void ChrViewerOnHoverChange(HWND hWnd, int tileX, int tileY);
-static void ChrViewerReleaseCursor(NCGRVIEWERDATA *data);
-static void ChrViewerUpdateCursor(NCGRVIEWERDATA *data);
 static BOOL ChrViewerSetCursor(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lParam);
 static void ChrViewerPutPixel(NCGRVIEWERDATA *data, int x, int y, int col);
 static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int pasteX, int pasteY, COLOR32 *px, int width, int height);
@@ -539,7 +537,7 @@ static void ChrViewerSetMode(NCGRVIEWERDATA *data, ChrViewerMode mode) {
 
 	//update cursor
 	ChrViewerSetCursor(data, 0, HTCLIENT);
-	ChrViewerUpdateCursor(data);
+	TedUpdateCursor((EDITOR_DATA *) data, &data->ted);
 }
 
 static int ChrViewerGetSelectedColor(NCGRVIEWERDATA *data) {
@@ -908,8 +906,7 @@ static void ChrViewerSetWidth(HWND hWnd, int width) {
 
 	//update width
 	ChrSetWidth(&data->ncgr, width);
-	TedUpdateSize(&data->ted, data->ncgr.tilesX, data->ncgr.tilesY);
-	ChrViewerUpdateCursor(data);
+	TedUpdateSize((EDITOR_DATA *) data, &data->ted, data->ncgr.tilesX, data->ncgr.tilesY);
 
 	//update
 	ChrViewerPopulateWidthField(hWnd);
@@ -922,7 +919,7 @@ static void ChrViewerSetDepth(HWND hWnd, int depth) {
 
 	//set depth and update UI
 	ChrSetDepth(&data->ncgr, depth);
-	TedUpdateSize(&data->ted, data->ncgr.tilesX, data->ncgr.tilesY);
+	TedUpdateSize((EDITOR_DATA *) data, &data->ted, data->ncgr.tilesX, data->ncgr.tilesY);
 	
 	ChrViewerPopulateWidthField(hWnd);
 	SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
@@ -1427,24 +1424,6 @@ static void ChrViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
 	TedGetScroll(&data->ted, &scrollX, &scrollY);
 
 	switch (data->mode) {
-		case CHRVIEWER_MODE_SELECT:
-		{
-			//if in content, start or continue a selection.
-			if (hitType == HIT_CONTENT) {
-				//if the mouse is down, start or continue a selection.
-				if (data->ted.selStartX == -1 || data->ted.selStartY == -1) {
-					data->ted.selStartX = data->ted.hoverX;
-					data->ted.selStartY = data->ted.hoverY;
-
-					//set cursor to crosshair
-					SetCursor(LoadCursor(NULL, IDC_CROSS));
-				}
-
-				data->ted.selEndX = data->ted.hoverX;
-				data->ted.selEndY = data->ted.hoverY;
-			}
-			break;
-		}
 		case CHRVIEWER_MODE_PEN:
 		{
 			int pcol = ChrViewerGetSelectedColor(data);
@@ -1477,30 +1456,8 @@ static void ChrViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
 	}
 }
 
-static void ChrViewerUpdateCursor(NCGRVIEWERDATA *data) {
-	TedUpdateCursor((EDITOR_DATA *) data, &data->ted);
-}
-
-static void ChrViewerReleaseCursor(NCGRVIEWERDATA *data) {
-	TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
-}
-
 static void ChrViewerMainOnMouseMove(NCGRVIEWERDATA *data, HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TedMainOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
-	InvalidateAllEditors(getMainWindow(data->hWnd), FILE_TYPE_SCREEN); //update screen viewers
-}
-
-static void ChrViewerMainOnLButtonDown(NCGRVIEWERDATA *data) {
-	TedOnLButtonDown((EDITOR_DATA *) data, &data->ted);
-
-	if (data->ted.mouseDownHit == HIT_NOWHERE) {
-		//hit nowhere, release cursor.
-		ChrViewerReleaseCursor(data);
-	}
-}
-
-static void ChrViewerMainOnLButtonUp(NCGRVIEWERDATA *data) {
-	ChrViewerReleaseCursor(data);
 }
 
 static HCURSOR ChrViewerGetCursor(HWND hWnd, int hit) {
@@ -1522,7 +1479,21 @@ static void ChrViewerOnHoverChange(HWND hWnd, int tileX, int tileY) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
 
 	ChrViewerUpdateCharacterLabel(hWnd);
-	InvalidateAllEditors(getMainWindow(hWnd), FILE_TYPE_SCREEN); //update screen viewers
+
+	//update screen viewers
+	int nScrViewers = GetAllEditors(getMainWindow(hWnd), FILE_TYPE_SCREEN, NULL, 0);
+	if (nScrViewers > 0) {
+		HWND *hWnds = (HWND *) calloc(nScrViewers, sizeof(HWND));
+		GetAllEditors(getMainWindow(hWnd), FILE_TYPE_SCREEN, hWnds, nScrViewers);
+
+		//invalidate viewer region of each BG screen editor
+		for (int i = 0; i < nScrViewers; i++) {
+			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWnds[i]);
+			InvalidateRect(nscrViewerData->ted.hWndViewer, NULL, FALSE);
+		}
+
+		free(hWnds);
+	}
 }
 
 static BOOL ChrViewerSetCursor(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
@@ -1530,9 +1501,13 @@ static BOOL ChrViewerSetCursor(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lPara
 }
 
 static void ChrViewerOnKeyDown(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
+	//pass message
+	TedViewerOnKeyDown((EDITOR_DATA *) data, &data->ted, wParam, lParam);
+
 	int selX, selY, selW, selH;
 	TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
 
+	//extra handling
 	switch (wParam) {
 		case VK_RETURN:
 			SendMessage(data->hWnd, WM_COMMAND, ID_NCGRMENU_IMPORTBITMAPHERE, 0);
@@ -1550,15 +1525,6 @@ static void ChrViewerOnKeyDown(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lPara
 			ChrViewerUpdateCharacterLabel(data->hWnd);
 			break;
 		}
-		case VK_ESCAPE:
-		{
-			//deselect
-			TedDeselect(&data->ted);
-			TedUpdateMargins(&data->ted);
-			ChrViewerGraphicsUpdated(data);
-			ChrViewerUpdateCharacterLabel(data->hWnd);
-			break;
-		}
 		case ' ':
 		{
 			if (TedHasSelection(&data->ted)) {
@@ -1570,43 +1536,6 @@ static void ChrViewerOnKeyDown(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lPara
 				}
 				ChrViewerFill(data, selX, selY, selW, selH, fill);
 				ChrViewerGraphicsUpdated(data);
-			}
-			break;
-		}
-		case VK_UP:
-		case VK_DOWN:
-		case VK_LEFT:
-		case VK_RIGHT:
-		{
-			if (TedHasSelection(&data->ted)) {
-				int shift = GetKeyState(VK_SHIFT) < 0;
-
-				int dx = 0, dy = 0;
-				switch (wParam) {
-					case VK_UP: dy = -1; break;
-					case VK_DOWN: dy = 1; break;
-					case VK_LEFT: dx = -1; break;
-					case VK_RIGHT: dx = 1; break;
-				}
-
-				if (!shift) {
-					//offset whole selection
-					int newX = selX + dx, newY = selY + dy;
-					if (newX >= 0 && newY >= 0 && (newX + selW) <= data->ncgr.tilesX && (newY + selH) <= data->ncgr.tilesY) {
-						TedOffsetSelection(&data->ted, dx, dy);
-					}
-				} else {
-					//offset selection end
-					int newX = data->ted.selEndX + dx, newY = data->ted.selEndY + dy;
-					if (newX >= 0 && newX < data->ncgr.tilesX && newY >= 0 && newY < data->ncgr.tilesY) {
-						data->ted.selEndX += dx;
-						data->ted.selEndY += dy;
-					}
-				}
-
-				InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
-				TedUpdateMargins(&data->ted);
-				ChrViewerUpdateCursor(data);
 			}
 			break;
 		}
@@ -1664,10 +1593,10 @@ static LRESULT WINAPI ChrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_SETCURSOR:
 			return ChrViewerSetCursor(data, wParam, lParam);
 		case WM_LBUTTONDOWN:
-			ChrViewerMainOnLButtonDown(data);
+			TedOnLButtonDown((EDITOR_DATA *) data, &data->ted);
 			break;
 		case WM_LBUTTONUP:
-			ChrViewerMainOnLButtonUp(data);
+			TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
 			break;
 		case WM_PAINT:
 			ChrViewerOnMainPaint(data);
@@ -1752,16 +1681,6 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 	}
 }
 
-static void ChrViewerPaintView(NCGRVIEWERDATA *data, HWND hWnd) {
-	TedOnViewerPaint((EDITOR_DATA *) data, &data->ted);
-}
-
-static void ChrViewerOnMouseMove(NCGRVIEWERDATA *data, HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	TedViewerOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
-
-	ChrViewerUpdateCursor(data);
-}
-
 static void ChrViewerOnLButtonDown(NCGRVIEWERDATA *data) {
 	TedViewerOnLButtonDown((EDITOR_DATA *) data, &data->ted);
 
@@ -1787,7 +1706,7 @@ static void ChrViewerOnLButtonDown(NCGRVIEWERDATA *data) {
 			int pcol = ChrViewerGetSelectedColor(data);
 			if (pcol == -1) {
 				//must have a selected color to paint with.
-				ChrViewerReleaseCursor(data); //necessary to prevent UI issues with mouse capture
+				TedReleaseCursor((EDITOR_DATA *) data, &data->ted); //necessary to prevent UI issues with mouse capture
 				MessageBox(data->hWnd, L"Must have a color selected in the palette window to draw with.", L"No color selected", MB_ICONERROR);
 			} else {
 				//put pixel at coordinates
@@ -1802,7 +1721,7 @@ static void ChrViewerOnLButtonDown(NCGRVIEWERDATA *data) {
 			int pcol = ChrViewerGetSelectedColor(data);
 			if (pcol == -1) {
 				//must have a selected color to fill with.
-				ChrViewerReleaseCursor(data); //necessary to prevent UI issues with mouse capture
+				TedReleaseCursor((EDITOR_DATA *) data, &data->ted); //necessary to prevent UI issues with mouse capture
 				MessageBox(data->hWnd, L"Must have a color selected in the palette window to draw with.", L"No color selected", MB_ICONERROR);
 			} else {
 				ChrViewerFloodFill(data, pxX, pxY, pcol);
@@ -1818,7 +1737,7 @@ static void ChrViewerOnLButtonDown(NCGRVIEWERDATA *data) {
 				MessageBox(data->hWnd, L"Must have a color palette open to use this tool.", L"No palette", MB_ICONERROR);
 			} else {
 				//release mouse capture
-				ChrViewerReleaseCursor(data);
+				TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
 
 				//switch to previous tool
 				ChrViewerSetMode(data, data->lastMode);
@@ -1829,7 +1748,7 @@ static void ChrViewerOnLButtonDown(NCGRVIEWERDATA *data) {
 		{
 			if (hit != HIT_CONTENT) break;
 			if (!TedHasSelection(&data->ted)) {
-				ChrViewerReleaseCursor(data);
+				TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
 				MessageBox(data->hWnd, L"Must have a selection to use this tool.", L"No selection", MB_ICONERROR);
 			} else {
 				ChrViewerStampTile(data, data->ted.hoverX, data->ted.hoverY);
@@ -1843,7 +1762,7 @@ static void ChrViewerOnLButtonDown(NCGRVIEWERDATA *data) {
 }
 
 static void ChrViewerOnLButtonUp(NCGRVIEWERDATA *data) {
-	ChrViewerReleaseCursor(data);
+	TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
 }
 
 static void ChrViewerOnRButtonDown(NCGRVIEWERDATA *data) {
@@ -1884,7 +1803,7 @@ static void ChrViewerOnRButtonDown(NCGRVIEWERDATA *data) {
 	}
 
 	//release mouse to prevent input issues
-	ChrViewerReleaseCursor(data);
+	TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
 
 	POINT mouse;
 	GetCursorPos(&mouse);
@@ -1933,14 +1852,14 @@ static LRESULT WINAPI ChrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			ShowScrollBar(hWnd, SB_BOTH, FALSE);
 			break;
 		case WM_PAINT:
-			ChrViewerPaintView(data, hWnd);
+			TedOnViewerPaint((EDITOR_DATA *) data, &data->ted);
 			break;
 		case WM_ERASEBKGND:
 			return 1;
 		case WM_MOUSEMOVE:
 		case WM_MOUSELEAVE:
 		case WM_NCMOUSELEAVE:
-			ChrViewerOnMouseMove(data, hWnd, msg, wParam, lParam);
+			TedViewerOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
 			break;
 		case WM_LBUTTONDOWN:
 			ChrViewerOnLButtonDown(data);
@@ -1952,14 +1871,14 @@ static LRESULT WINAPI ChrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 		case WM_VSCROLL:
 		case WM_MOUSEWHEEL:
 			TedUpdateMargins(&data->ted);
-			ChrViewerUpdateCursor(data);
+			TedUpdateCursor((EDITOR_DATA *) data, &data->ted);
 			return DefChildProc(hWnd, msg, wParam, lParam);
 		case WM_RBUTTONDOWN:
 			ChrViewerOnRButtonDown(data);
 			break;
 		case NV_RECALCULATE:
 			ChrViewerUpdateContentSize(data);
-			ChrViewerUpdateCursor(data);
+			TedUpdateCursor((EDITOR_DATA *) data, &data->ted);
 			break;
 		case WM_SIZE:
 		{

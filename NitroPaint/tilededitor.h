@@ -112,7 +112,7 @@ int TedIsSelectedAll(TedData *ted);
 void TedSelectAll(TedData *ted);
 void TedOffsetSelection(TedData *ted, int dx, int dy);
 void TedMakeSelectionCornerEnd(TedData *ted, int hit);
-void TedUpdateSize(TedData *ted, int tilesX, int tilesY);
+void TedUpdateSize(EDITOR_DATA *data, TedData *ted, int tilesX, int tilesY);
 
 
 // ----- message handling functions
@@ -123,6 +123,7 @@ void TedOnLButtonDown(EDITOR_DATA *data, TedData *ted);
 void TedOnRButtonDown(TedData *ted);
 void TedViewerOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam, LPARAM lParam);
 void TedViewerOnLButtonDown(EDITOR_DATA *data, TedData *ted);
+void TedViewerOnKeyDown(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM lParam);
 
 
 void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer);

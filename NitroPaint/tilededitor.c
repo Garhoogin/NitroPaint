@@ -616,6 +616,24 @@ void TedUpdateCursor(EDITOR_DATA *data, TedData *ted) {
 			}
 		} else {
 
+			//else, if the editor is in a selection mode, handle select mode mouse down.
+			if (ted->isSelectionModeCallback != NULL && ted->isSelectionModeCallback(ted->hWnd)) {
+				//if in content, start or continue a selection.
+				if (hitType == HIT_CONTENT) {
+					//if the mouse is down, start or continue a selection.
+					if (!TedHasSelection(ted)) {
+						ted->selStartX = ted->hoverX;
+						ted->selStartY = ted->hoverY;
+
+						//set cursor to crosshair
+						SetCursor(LoadCursor(NULL, IDC_CROSS));
+					}
+
+					ted->selEndX = ted->hoverX;
+					ted->selEndY = ted->hoverY;
+				}
+			}
+
 			if (ted->updateCursorCallback != NULL) {
 				ted->updateCursorCallback(ted->hWnd, pxX, pxY);
 			}
@@ -716,7 +734,7 @@ void TedMakeSelectionCornerEnd(TedData *ted, int hit) {
 	}
 }
 
-void TedUpdateSize(TedData *ted, int tilesX, int tilesY) {
+void TedUpdateSize(EDITOR_DATA *data, TedData *ted, int tilesX, int tilesY) {
 	ted->tilesX = tilesX;
 	ted->tilesY = tilesY;
 
@@ -728,6 +746,7 @@ void TedUpdateSize(TedData *ted, int tilesX, int tilesY) {
 
 	//update
 	TedUpdateMargins(ted);
+	TedUpdateCursor(data, ted);
 	InvalidateRect(ted->hWndViewer, NULL, FALSE);
 }
 
@@ -954,6 +973,9 @@ void TedOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
 		if (ted->tileHoverCallback != NULL) {
 			ted->tileHoverCallback(ted->hWnd, ted->hoverX, ted->hoverY);
 		}
+	} else if (ted->mouseDownHit == HIT_NOWHERE) {
+		//hit nowhere, release cursor.
+		TedReleaseCursor(data, ted);
 	}
 
 	//set capture
@@ -1017,6 +1039,9 @@ void TedViewerOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wPar
 		tme.hwndTrack = ted->hWndViewer;
 		TrackMouseEvent(&tme);
 	}
+
+	//update cursor
+	TedUpdateCursor(data, ted);
 }
 
 void TedViewerOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
@@ -1078,6 +1103,61 @@ void TedViewerOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
 			} else if (hitType == HIT_SEL) {
 				//do not clear selection.
 			}
+		}
+	}
+}
+
+void TedViewerOnKeyDown(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM lParam) {
+	int selX, selY, selW, selH;
+	TedGetSelectionBounds(ted, &selX, &selY, &selW, &selH);
+
+	switch (wParam) {
+		case VK_LEFT:
+		case VK_RIGHT:
+		case VK_UP:
+		case VK_DOWN:
+		{
+			if (TedHasSelection(ted)) {
+				int shift = GetKeyState(VK_SHIFT) < 0;
+
+				int dx = 0, dy = 0;
+				switch (wParam) {
+					case VK_UP: dy = -1; break;
+					case VK_DOWN: dy = 1; break;
+					case VK_LEFT: dx = -1; break;
+					case VK_RIGHT: dx = 1; break;
+				}
+
+				if (!shift) {
+					//offset whole selection
+					int newX = selX + dx, newY = selY + dy;
+					if (newX >= 0 && newY >= 0 && (newX + selW) <= ted->tilesX && (newY + selH) <= ted->tilesY) {
+						TedOffsetSelection(ted, dx, dy);
+					}
+				} else {
+					//offset selection end
+					int newX = ted->selEndX + dx, newY = ted->selEndY + dy;
+					if (newX >= 0 && newX < ted->tilesX && newY >= 0 && newY < ted->tilesY) {
+						ted->selEndX += dx;
+						ted->selEndY += dy;
+					}
+				}
+
+				InvalidateRect(ted->hWndViewer, NULL, FALSE);
+				TedUpdateMargins(ted);
+				TedUpdateCursor(data, ted);
+				if (ted->tileHoverCallback != NULL) ted->tileHoverCallback(ted->hWnd, ted->hoverX, ted->hoverY);
+			}
+			break;
+		}
+		case VK_ESCAPE:
+		{
+			//deselect
+			InvalidateRect(ted->hWndViewer, NULL, FALSE);
+			TedDeselect(ted);
+			TedUpdateMargins(ted);
+			if (ted->tileHoverCallback != NULL) ted->tileHoverCallback(ted->hWnd, ted->hoverX, ted->hoverY);
+			break;
 		}
 	}
 }
