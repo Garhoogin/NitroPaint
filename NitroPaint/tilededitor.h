@@ -81,6 +81,8 @@ typedef struct TedData_ {
 
 	int tilesX;         // width in tiles
 	int tilesY;         // height in tiles
+	int tileWidth;      // width of tile
+	int tileHeight;     // height of tile
 
 	HWND hWnd;
 	HWND hWndViewer;
@@ -126,5 +128,5 @@ void TedViewerOnLButtonDown(EDITOR_DATA *data, TedData *ted);
 void TedViewerOnKeyDown(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM lParam);
 
 
-void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer);
+void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer, int tileWidth, int tileHeight);
 void TedDestroy(TedData *ted);

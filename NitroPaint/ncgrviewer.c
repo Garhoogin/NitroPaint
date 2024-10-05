@@ -973,7 +973,7 @@ static void ChrViewerOnCreate(HWND hWnd) {
 
 	HWND hWndViewer = CreateWindow(L"NcgrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL,
 		MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, 256, 256, hWnd, NULL, NULL, NULL);
-	TedInit(&data->ted, hWnd, hWndViewer);
+	TedInit(&data->ted, hWnd, hWndViewer, 8, 8);
 	data->ted.getCursorProc = ChrViewerGetCursor;
 	data->ted.tileHoverCallback = ChrViewerOnHoverChange;
 	data->ted.renderCallback = ChrViewerRender;

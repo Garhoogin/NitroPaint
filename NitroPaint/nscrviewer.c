@@ -352,7 +352,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 
 			HWND hWndViewer = CreateWindow(L"NscrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
-			TedInit(&data->ted, hWnd, hWndViewer);
+			TedInit(&data->ted, hWnd, hWndViewer, 8, 8);
 			
 			data->ted.getCursorProc = ScrViewerGetCursorProc;
 			data->ted.tileHoverCallback = ScrViewerTileHoverCallback;
@@ -408,7 +408,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			MoveWindow(data->hWndTileBase, 50, rcClient.bottom - 22, 100, 22, TRUE);
 			MoveWindow(data->hWndSize, 160, rcClient.bottom - 22, 100, 22, TRUE);
 			MoveWindow(data->hWndSelectionSize, 260, rcClient.bottom - 22, 100, 22, TRUE);
-			MoveWindow(data->hWndPaletteNumber, rcClient.right - 110, 37, 100, 100, TRUE);
+			MoveWindow(data->hWndPaletteNumber, rcClient.right - 110, 37, 100, 22, TRUE);
 
 			if (wParam == SIZE_RESTORED) InvalidateRect(hWnd, NULL, TRUE); //full update
 			return DefMDIChildProc(hWnd, WM_SIZE, wParam, lParam);

@@ -64,7 +64,8 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 	//margin dimensions
 	int marginSize = MARGIN_SIZE;
 	int marginBorderSize = MARGIN_BORDER_SIZE;
-	int tileSize = 8 * data->scale;
+	int tileW = ted->tileWidth * data->scale;
+	int tileH = ted->tileHeight * data->scale;
 
 	RECT rcClient;
 	GetClientRect(hWnd, &rcClient);
@@ -118,7 +119,7 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 				COLOR32 col = 0x000000;
 
 				if (x >= MARGIN_TOTAL_SIZE) {
-					int curCol = (x - MARGIN_TOTAL_SIZE + scrollX) / (8 * data->scale);
+					int curCol = (x - MARGIN_TOTAL_SIZE + scrollX) / tileW;
 					BOOL inSel = (curCol >= min(ted->selStartX, ted->selEndX)) && (curCol <= max(ted->selStartX, ted->selEndX));
 
 					if (inSel) col = 0x808000; //indicate selection
@@ -147,7 +148,7 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 				COLOR32 col = 0x000000;
 
 				if (y >= MARGIN_TOTAL_SIZE) {
-					int curRow = (y - MARGIN_TOTAL_SIZE + scrollY) / (8 * data->scale);
+					int curRow = (y - MARGIN_TOTAL_SIZE + scrollY) / tileH;
 					BOOL inSel = (curRow >= min(ted->selStartY, ted->selEndY)) && (curRow <= max(ted->selStartY, ted->selEndY));
 
 					if (inSel) col = 0x808000; //indicate selection
@@ -172,23 +173,23 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 		//draw ticks
 		int tickHeight = 4;
 		for (int x = 0; x < viewWidth; x++) {
-			if (((x + scrollX) % (8 * data->scale)) == 0) {
+			if (((x + scrollX) % tileW) == 0) {
 				//tick
 				TedDrawLine(&ted->fbMargin, 0xFFFFFF, x + MARGIN_TOTAL_SIZE, 0, x + MARGIN_TOTAL_SIZE, tickHeight - 1);
 			}
 		}
 		for (int y = 0; y < viewHeight; y++) {
-			if (((y + scrollY) % (8 * data->scale)) == 0) {
+			if (((y + scrollY) % tileH) == 0) {
 				TedDrawLine(&ted->fbMargin, 0xFFFFFF, 0, y + MARGIN_TOTAL_SIZE, tickHeight - 1, y + MARGIN_TOTAL_SIZE);
 			}
 		}
 
 		//draw selection edges
 		if (ted->selStartX != -1 && ted->selStartY != -1) {
-			int selX1 = (min(ted->selStartX, ted->selEndX) + 0) * tileSize + MARGIN_TOTAL_SIZE - scrollX;
-			int selX2 = (max(ted->selStartX, ted->selEndX) + 1) * tileSize + MARGIN_TOTAL_SIZE - scrollX;
-			int selY1 = (min(ted->selStartY, ted->selEndY) + 0) * tileSize + MARGIN_TOTAL_SIZE - scrollY;
-			int selY2 = (max(ted->selStartY, ted->selEndY) + 1) * tileSize + MARGIN_TOTAL_SIZE - scrollY;
+			int selX1 = (min(ted->selStartX, ted->selEndX) + 0) * tileW + MARGIN_TOTAL_SIZE - scrollX;
+			int selX2 = (max(ted->selStartX, ted->selEndX) + 1) * tileW + MARGIN_TOTAL_SIZE - scrollX;
+			int selY1 = (min(ted->selStartY, ted->selEndY) + 0) * tileH + MARGIN_TOTAL_SIZE - scrollY;
+			int selY2 = (max(ted->selStartY, ted->selEndY) + 1) * tileH + MARGIN_TOTAL_SIZE - scrollY;
 			TedDrawLine(&ted->fbMargin, 0xFFFF00, selX1, 0, selX1, MARGIN_SIZE - 1);
 			TedDrawLine(&ted->fbMargin, 0xFFFF00, selX2, 0, selX2, MARGIN_SIZE - 1);
 			TedDrawLine(&ted->fbMargin, 0xFFFF00, 0, selY1, MARGIN_SIZE - 1, selY1);
@@ -248,7 +249,8 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 	//margin dimensions
 	int marginSize = MARGIN_SIZE;
 	int marginBorderSize = MARGIN_BORDER_SIZE;
-	int tileSize = 8 * data->scale;
+	int tileW = ted->tileWidth * data->scale;
+	int tileH = ted->tileHeight * data->scale;
 
 	RECT rcClient;
 	GetClientRect(hWnd, &rcClient);
@@ -275,10 +277,14 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 
 	//get graphics bounding size
 	int tilesX = ted->tilesX, tilesY = ted->tilesY;
-	int renderWidth = tilesX * tileSize - scrollX;
-	int renderHeight = tilesY * tileSize - scrollY;
+	int renderWidth = tilesX * tileW - scrollX;
+	int renderHeight = tilesY * tileH - scrollY;
 	if (renderWidth > viewWidth) renderWidth = viewWidth;
 	if (renderHeight > viewHeight) renderHeight = viewHeight;
+
+	//render size can become negative
+	if (renderWidth < 0) renderWidth = 0;
+	if (renderHeight < 0) renderHeight = 0;
 
 	//get hovered row/column
 	int hovRow = ted->hoverY, hovCol = ted->hoverX;
@@ -303,8 +309,8 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 
 		for (int y = 0; y < renderHeight; y++) {
 			for (int x = 0; x < renderWidth; x++) {
-				int curRow = (y + scrollY) / tileSize;
-				int curCol = (x + scrollX) / tileSize;
+				int curRow = (y + scrollY) / tileH;
+				int curCol = (x + scrollX) / tileW;
 
 				if (curCol >= selStartX && curCol <= selEndX && curRow >= selStartY && curRow <= selEndY) {
 					//mark selected
@@ -333,10 +339,10 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 
 		if (highlightTile) {
 			if (hitType != HIT_SEL) {
-				for (int y = 0; y < tileSize; y++) {
-					for (int x = 0; x < tileSize; x++) {
-						int pxX = x - scrollX + hovCol * tileSize;
-						int pxY = y - scrollY + hovRow * tileSize;
+				for (int y = 0; y < tileH; y++) {
+					for (int x = 0; x < tileW; x++) {
+						int pxX = x - scrollX + hovCol * tileW;
+						int pxY = y - scrollY + hovRow * tileH;
 
 						if (pxX >= 0 && pxY >= 0 && pxX < renderWidth && pxY < renderHeight) {
 							COLOR32 col = ted->fb.px[pxX + pxY * viewWidth];
@@ -353,8 +359,8 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 		//mark hovered row/column
 		for (int y = 0; y < renderHeight; y++) {
 			for (int x = 0; x < renderWidth; x++) {
-				int curRow = (y + scrollY) / tileSize;
-				int curCol = (x + scrollX) / tileSize;
+				int curRow = (y + scrollY) / tileH;
+				int curCol = (x + scrollX) / tileW;
 
 				if (curRow == hovRow || curCol == hovCol) {
 					COLOR32 col = ted->fb.px[x + y * viewWidth];
@@ -370,7 +376,7 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 	//render gridlines
 	if (data->showBorders) {
 		//mark tile boundaries (deliberately do not mark row/col 0)
-		for (int y = tileSize - (scrollY % tileSize); y < renderHeight; y += tileSize) {
+		for (int y = tileH - (scrollY % tileH); y < renderHeight; y += tileH) {
 			for (int x = 0; x < renderWidth; x++) {
 				//invert the pixel if (x^y) is even
 				if (((x ^ y) & 1) == 0) {
@@ -379,15 +385,15 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 			}
 		}
 		for (int y = 0; y < renderHeight; y++) {
-			for (int x = tileSize - (scrollX % tileSize); x < renderWidth; x += tileSize) {
+			for (int x = tileW - (scrollX % tileW); x < renderWidth; x += tileW) {
 				//invert the pixel if (x^y) is even
 				if (((x ^ y) & 1) == 0) {
 					ted->fb.px[x + y * viewWidth] ^= 0xFFFFFF;
 				}
 			}
 		}
-		for (int y = tileSize - (scrollY % tileSize); y < renderHeight; y += tileSize) {
-			for (int x = tileSize - (scrollX % tileSize); x < renderWidth; x += tileSize) {
+		for (int y = tileH - (scrollY % tileH); y < renderHeight; y += tileH) {
+			for (int x = tileW - (scrollX % tileW); x < renderWidth; x += tileW) {
 				//since we did the gridlines in two passes, pass over the intersections to flip them once more
 				if (((x ^ y) & 1) == 0) {
 					ted->fb.px[x + y * viewWidth] ^= 0xFFFFFF;
@@ -399,10 +405,10 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 		if (data->scale >= 16) {
 			int pxSize = data->scale;
 			for (int y = pxSize - (scrollY % pxSize); y < renderHeight; y += pxSize) {
-				if ((y + scrollY) % tileSize == 0) continue; //skip grid-marked rows
+				if ((y + scrollY) % tileH == 0) continue; //skip grid-marked rows
 
 				for (int x = pxSize - (scrollX % pxSize); x < renderWidth; x += pxSize) {
-					if ((x + scrollX) % tileSize == 0) continue; //skip grid-marked columns
+					if ((x + scrollX) % tileW == 0) continue; //skip grid-marked columns
 
 					ted->fb.px[x + y * viewWidth] ^= 0xFFFFFF;
 				}
@@ -419,14 +425,14 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 		int dy = -scrollY;
 		int borderOffsetX = -(!data->showBorders || selEndX == (ted->tilesX - 1));
 		int borderOffsetY = -(!data->showBorders || selEndY == (ted->tilesY - 1));
-		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileSize + dx, selStartY * tileSize + dy,
-			(selEndX + 1) * tileSize + dx - 1, selStartY * tileSize + dy);
-		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileSize + dx, selStartY * tileSize + dy,
-			selStartX * tileSize + dx, (selEndY + 1) * tileSize + dy - 1);
-		TedDrawLine(&ted->fb, 0xFFFF00, (selEndX + 1) * tileSize + dx + borderOffsetX, selStartY * tileSize + dy,
-			(selEndX + 1) * tileSize + dx + borderOffsetX, (selEndY + 1) * tileSize + dy + borderOffsetY);
-		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileSize + dx, (selEndY + 1) * tileSize + dy + borderOffsetY,
-			(selEndX + 1) * tileSize + dx + borderOffsetX, (selEndY + 1) * tileSize + dy + borderOffsetY);
+		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, selStartY * tileH + dy,
+			(selEndX + 1) * tileW + dx - 1, selStartY * tileH + dy);
+		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, selStartY * tileH + dy,
+			selStartX * tileW + dx, (selEndY + 1) * tileH + dy - 1);
+		TedDrawLine(&ted->fb, 0xFFFF00, (selEndX + 1) * tileW + dx + borderOffsetX, selStartY * tileH + dy,
+			(selEndX + 1) * tileW + dx + borderOffsetX, (selEndY + 1) * tileH + dy + borderOffsetY);
+		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, (selEndY + 1) * tileH + dy + borderOffsetY,
+			(selEndX + 1) * tileW + dx + borderOffsetX, (selEndY + 1) * tileH + dy + borderOffsetY);
 	}
 
 	//draw background color
@@ -489,7 +495,8 @@ int TedHitTest(EDITOR_DATA *data, TedData *ted, int x, int y) {
 		return HIT_NOWHERE;
 	}
 
-	int tileSize = 8 * data->scale;
+	int tileW = ted->tileWidth * data->scale;
+	int tileH = ted->tileHeight * data->scale;
 
 	//get scroll info
 	int scrollX, scrollY;
@@ -499,11 +506,10 @@ int TedHitTest(EDITOR_DATA *data, TedData *ted, int x, int y) {
 	if (TedHasSelection(ted)) {
 
 		//get selection bounds in client area
-		int tileSize = 8 * data->scale;
-		int selX1 = (min(ted->selStartX, ted->selEndX) + 0) * tileSize - scrollX - SEL_BORDER_THICKNESS / 2; //padding for convenience
-		int selX2 = (max(ted->selStartX, ted->selEndX) + 1) * tileSize - scrollX + SEL_BORDER_THICKNESS / 2;
-		int selY1 = (min(ted->selStartY, ted->selEndY) + 0) * tileSize - scrollY - SEL_BORDER_THICKNESS / 2;
-		int selY2 = (max(ted->selStartY, ted->selEndY) + 1) * tileSize - scrollY + SEL_BORDER_THICKNESS / 2;
+		int selX1 = (min(ted->selStartX, ted->selEndX) + 0) * tileW - scrollX - SEL_BORDER_THICKNESS / 2; //padding for convenience
+		int selX2 = (max(ted->selStartX, ted->selEndX) + 1) * tileW - scrollX + SEL_BORDER_THICKNESS / 2;
+		int selY1 = (min(ted->selStartY, ted->selEndY) + 0) * tileH - scrollY - SEL_BORDER_THICKNESS / 2;
+		int selY2 = (max(ted->selStartY, ted->selEndY) + 1) * tileH - scrollY + SEL_BORDER_THICKNESS / 2;
 		if (x >= selX1 && x < selX2 && y >= selY1 && y < selY2) {
 			//within selection bounds
 			int hit = HIT_SEL;
@@ -523,8 +529,8 @@ int TedHitTest(EDITOR_DATA *data, TedData *ted, int x, int y) {
 	}
 
 	//no selection hit. try content hit.
-	int contentWidth = ted->tilesX * 8 * data->scale;
-	int contentHeight = ted->tilesY * 8 * data->scale;
+	int contentWidth = ted->tilesX * tileW;
+	int contentHeight = ted->tilesY * tileH;
 	if ((x + scrollX) < contentWidth && (y + scrollY) < contentHeight) {
 		//content hit
 		return HIT_CONTENT;
@@ -551,8 +557,8 @@ void TedUpdateCursor(EDITOR_DATA *data, TedData *ted) {
 
 	//if mouse is hovered, get hoeverd character pos
 	if (ted->mouseOver && (curHit & HIT_FLAGS_MASK) != HIT_NOWHERE) {
-		ted->hoverX = (ted->mouseX + scrollX) / (8 * data->scale);
-		ted->hoverY = (ted->mouseY + scrollY) / (8 * data->scale);
+		ted->hoverX = (ted->mouseX + scrollX) / (ted->tileWidth * data->scale);
+		ted->hoverY = (ted->mouseY + scrollY) / (ted->tileHeight * data->scale);
 	} else {
 		//un-hover
 		ted->hoverX = -1;
@@ -574,8 +580,8 @@ void TedUpdateCursor(EDITOR_DATA *data, TedData *ted) {
 		int dy = ted->mouseY - ted->dragStartY;
 
 		//get mouse drag start position if mouse down
-		int dragStartTileX = (ted->dragStartX + scrollX) / (8 * data->scale);
-		int dragStartTileY = (ted->dragStartY + scrollY) / (8 * data->scale);
+		int dragStartTileX = (ted->dragStartX + scrollX) / (ted->tileWidth * data->scale);
+		int dragStartTileY = (ted->dragStartY + scrollY) / (ted->tileHeight * data->scale);
 
 		//check hit type for mouse-down.
 		int hit = ted->mouseDownHit;
@@ -847,8 +853,8 @@ void TedMainOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam
 			if (ted->mouseX < 0) ted->mouseX = 0;
 			if (ted->mouseY < 0) ted->mouseY = 0;
 		}
-		int curCol = (ted->mouseX + scrollX) / (8 * data->scale);
-		int curRow = (ted->mouseY + scrollY) / (8 * data->scale);
+		int curCol = (ted->mouseX + scrollX) / (ted->tileWidth * data->scale);
+		int curRow = (ted->mouseY + scrollY) / (ted->tileHeight * data->scale);
 
 		//if the mouse is down, handle gesture
 		if (ted->mouseDown) {
@@ -878,12 +884,12 @@ void TedMainOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam
 
 		if (inLeft && !inTop) {
 			//on left margin
-			ted->hoverY = (ted->mouseY + scrollY) / (8 * data->scale);
+			ted->hoverY = (ted->mouseY + scrollY) / (ted->tileHeight * data->scale);
 			ted->hoverX = -1;
 		}
 		if (inTop && !inLeft) {
 			//on top margin
-			ted->hoverX = (ted->mouseX + scrollX) / (8 * data->scale);
+			ted->hoverX = (ted->mouseX + scrollX) / (ted->tileWidth * data->scale);
 			ted->hoverY = -1;
 		}
 		if (inTop && inLeft) {
@@ -932,11 +938,11 @@ void TedOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
 
 	//get content view size
 	int contentW, contentH;
-	contentW = ted->tilesX * 8 * data->scale - scrollX;
-	contentH = ted->tilesY * 8 * data->scale - scrollY;
+	contentW = ted->tilesX * ted->tileWidth * data->scale - scrollX;
+	contentH = ted->tilesY * ted->tileHeight * data->scale - scrollY;
 
-	int curRow = (ted->mouseY + scrollY) / (8 * data->scale);
-	int curCol = (ted->mouseX + scrollX) / (8 * data->scale);
+	int curRow = (ted->mouseY + scrollY) / (ted->tileHeight * data->scale);
+	int curCol = (ted->mouseX + scrollX) / (ted->tileWidth * data->scale);
 
 	if ((hit & HIT_TYPE_MASK) == HIT_MARGIN) {
 		int hitWhere = hit & HIT_FLAGS_MASK;
@@ -1023,8 +1029,8 @@ void TedViewerOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wPar
 			//clamp additionally to the valid content.
 			int scrollX, scrollY, contentW, contentH;
 			TedGetScroll(ted, &scrollX, &scrollY);
-			contentW = ted->tilesX * 8 * data->scale - scrollX;
-			contentH = ted->tilesY * 8 * data->scale - scrollY;
+			contentW = ted->tilesX * ted->tileWidth * data->scale - scrollX;
+			contentH = ted->tilesY * ted->tileHeight * data->scale - scrollY;
 
 			if (ted->mouseX >= contentW) ted->mouseX = contentW - 1;
 			if (ted->mouseY >= contentH) ted->mouseY = contentH - 1;
@@ -1164,8 +1170,10 @@ void TedViewerOnKeyDown(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM l
 
 
 
-void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer) {
+void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer, int tileWidth, int tileHeight) {
 	memset(ted, 0, sizeof(TedData));
+	ted->tileWidth = tileWidth;
+	ted->tileHeight = tileHeight;
 	ted->hoverX = -1;
 	ted->hoverY = -1;
 	ted->mouseX = ted->lastMouseX = -1;
