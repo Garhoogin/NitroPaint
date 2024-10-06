@@ -722,6 +722,19 @@ void TedOffsetSelection(TedData *ted, int dx, int dy) {
 	ted->selEndY += dy;
 }
 
+void TedSelect(TedData *ted, int selX, int selY, int selW, int selH) {
+	ted->selStartX = selX;
+	ted->selStartY = selY;
+	ted->selEndX = selX + selW - 1;
+	ted->selEndY = selY + selH - 1;
+
+	//bounds check
+	if (ted->selStartX >= ted->tilesX) ted->selStartX = ted->tilesX - 1;
+	if (ted->selStartY >= ted->tilesY) ted->selStartY = ted->tilesY - 1;
+	if (ted->selEndX >= ted->tilesX) ted->selEndX = ted->tilesX - 1;
+	if (ted->selEndY >= ted->tilesY) ted->selEndY = ted->tilesY - 1;
+}
+
 void TedMakeSelectionCornerEnd(TedData *ted, int hit) {
 	//if hit test hits top, make min Y first
 	if (hit & HIT_SEL_TOP && ted->selEndY > ted->selStartY) {

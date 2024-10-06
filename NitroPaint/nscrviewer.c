@@ -321,12 +321,7 @@ static void ScrViewerPaste(NSCRVIEWERDATA *data, BOOL contextMenu) {
 		}
 
 		//select paste region
-		data->ted.selStartX = tileX;
-		data->ted.selStartY = tileY;
-		data->ted.selEndX = tileX + tilesX - 1;
-		data->ted.selEndY = tileY + tilesY - 1;
-		if (data->ted.selEndX >= data->ted.tilesX) data->ted.selEndX = data->ted.tilesX - 1;
-		if (data->ted.selEndY >= data->ted.tilesY) data->ted.selEndY = data->ted.tilesY - 1;
+		TedSelect(&data->ted, tileX, tileY, tilesX, tilesY);
 
 		ScrViewerGraphicsChanged(data);
 		TedUpdateMargins(&data->ted);

@@ -113,6 +113,7 @@ int TedGetSelectionBounds(TedData *ted, int *x, int *y, int *width, int *height)
 int TedIsSelectedAll(TedData *ted);
 void TedSelectAll(TedData *ted);
 void TedOffsetSelection(TedData *ted, int dx, int dy);
+void TedSelect(TedData *ted, int selX, int selY, int selW, int selH);
 void TedMakeSelectionCornerEnd(TedData *ted, int hit);
 void TedGetPasteLocation(TedData *ted, BOOL contextMenu, int *tileX, int *tileY);
 void TedUpdateSize(EDITOR_DATA *data, TedData *ted, int tilesX, int tilesY);

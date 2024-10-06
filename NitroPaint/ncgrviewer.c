@@ -437,12 +437,7 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 		}
 
 		//mark selection
-		data->ted.selStartX = pasteX;
-		data->ted.selStartY = pasteY;
-		data->ted.selEndX = pasteX + npc->width - 1;
-		data->ted.selEndY = pasteY + npc->height - 1;
-		if (data->ted.selEndX >= ncgr->tilesX) data->ted.selEndX = ncgr->tilesX - 1;
-		if (data->ted.selEndY >= ncgr->tilesY) data->ted.selEndY = ncgr->tilesY - 1;
+		TedSelect(&data->ted, pasteX, pasteY, npc->width, npc->height);
 
 		GlobalUnlock(hNpChars);
 		goto ReleaseClipboard;
@@ -508,12 +503,7 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 			}
 
 			//next, mark the pasted region as selected.
-			data->ted.selStartX = pasteX;
-			data->ted.selStartY = pasteY;
-			data->ted.selEndX = pasteX + tilesX - 1;
-			data->ted.selEndY = pasteY + tilesY - 1;
-			if (data->ted.selEndX >= ncgr->tilesX) data->ted.selEndX = ncgr->tilesX - 1;
-			if (data->ted.selEndY >= ncgr->tilesY) data->ted.selEndY = ncgr->tilesY - 1;
+			TedSelect(&data->ted, pasteX, pasteY, tilesX, tilesY);
 		}
 
 	Done:
@@ -2002,17 +1992,9 @@ static int ChrImportCallback(void *cbdata) {
 
 	//select the import region
 	if (import1D) {
-		data->ted.selStartX = -1;
-		data->ted.selEndX = -1;
-		data->ted.selStartY = -1;
-		data->ted.selEndY = -1;
+		TedDeselect(&data->ted);
 	} else {
-		data->ted.selStartX = cim->originX;
-		data->ted.selStartY = cim->originY;
-		data->ted.selEndX = cim->originX + cim->width / 8 - 1;
-		data->ted.selEndY = cim->originY + cim->height / 8 - 1;
-		if (data->ted.selEndX >= data->ncgr.tilesX) data->ted.selEndX = data->ncgr.tilesX - 1;
-		if (data->ted.selEndY >= data->ncgr.tilesY) data->ted.selEndY = data->ncgr.tilesY - 1;
+		TedSelect(&data->ted, cim->originX, cim->originY, cim->width / 8, cim->height / 8);
 	}
 
 	//set attribute of import region
