@@ -170,8 +170,14 @@ static void ChrViewerCopyDIB(NCGRVIEWERDATA *data) {
 	int selX, selY, selW, selH;
 	TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
 
-	//TODO: handle attribute data?
-	int nBits = (data->useAttribute && ncgr->nBits == 8) ? 24 : (data->useAttribute ? (ncgr->nBits + 4) : ncgr->nBits);
+	//compute bit depth and palette size of clipboard DIB
+	int nBits;
+	if (data->useAttribute && ncgr->nBits == 8) {
+		nBits = 24;
+	} else {
+		if (data->useAttribute) nBits = ncgr->nBits + 4;
+		else nBits = ncgr->nBits;
+	}
 	int nColors = (nBits == 32 || nBits == 24) ? 0 : (1 << nBits);
 	
 	
@@ -226,7 +232,7 @@ static void ChrViewerCopyDIB(NCGRVIEWERDATA *data) {
 
 			int idx = chr[(x % 8) + (y % 8) * 8];
 			if (data->useAttribute) {
-				idx |= ChrViewerGetCharPalette(data, tileX, tileY) << ncgr->nBits;
+				idx |= ChrViewerGetCharPalette(data, selX + tileX, selY + tileY) << ncgr->nBits;
 			}
 
 			if (nBits == 4) {
@@ -357,6 +363,24 @@ static void ChrViewerCopyNP_CHARS(NCGRVIEWERDATA *data) {
 	SetClipboardData(sNpCharsFormat, hGlobal);
 }
 
+static void ChrViewerCopyNP_SCRN(NCGRVIEWERDATA *data) {
+	int selX, selY, selW, selH;
+	TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
+
+	uint16_t *bgdat = (uint16_t *) calloc(selW * selH, sizeof(uint16_t));
+
+	for (int y = 0; y < selH; y++) {
+		for (int x = 0; x < selW; x++) {
+			int attr = ChrViewerGetCharPalette(data, x + selX, y + selY);
+			int chrno = (x + selX) + (y + selY) * data->ncgr.tilesX;
+			bgdat[x + y * selW] = (attr << 12) | (chrno & 0x3FF);
+		}
+	}
+
+	ScrViewerCopyNP_SCRN(selW, selH, bgdat);
+	free(bgdat);
+}
+
 static void ChrViewerCopy(NCGRVIEWERDATA *data) {
 	HWND hWnd = data->hWnd;
 	OpenClipboard(hWnd);
@@ -366,6 +390,7 @@ static void ChrViewerCopy(NCGRVIEWERDATA *data) {
 	ChrViewerCopyDIB(data);      // DIB data
 	ChrViewerCopyOPX(data);      // OPTPiX data
 	ChrViewerCopyNP_CHARS(data); // NitroPaint data
+	ChrViewerCopyNP_SCRN(data);  // NitroPaint data
 
 	CloseClipboard();
 }

@@ -39,3 +39,14 @@ VOID RegisterNscrViewerClass(VOID);
 HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 
 HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr);
+
+
+//NP_SCRN clipboard format
+typedef struct NP_SCRN_ {
+	uint32_t size;
+	uint16_t tilesX;
+	uint16_t tilesY;
+	uint16_t bgdat[0];
+} NP_SCRN;
+
+int ScrViewerCopyNP_SCRN(unsigned int tilesX, unsigned int tilesY, const uint16_t *bgdat);

@@ -21,6 +21,35 @@ extern HICON g_appIcon;
 
 static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight);
 
+static void ScrViewerGraphicsChanged(NSCRVIEWERDATA *data) {
+	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
+	PreviewLoadBgScreen(&data->nscr);
+}
+
+static int ScrViewerGetFormat_NP_SCRN(void) {
+	static int fmt = 0;
+	if (!fmt) {
+		fmt = RegisterClipboardFormat(L"NP_SCRN");
+	}
+	return fmt;
+}
+
+int ScrViewerCopyNP_SCRN(unsigned int tilesX, unsigned int tilesY, const uint16_t *bgdat) {
+	int fmt = ScrViewerGetFormat_NP_SCRN();
+
+	unsigned int size = (tilesX * tilesY) * sizeof(uint16_t) + sizeof(NP_SCRN);
+	HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, size);
+	NP_SCRN *scrn = (NP_SCRN *) GlobalLock(hGlobal);
+
+	scrn->size = size;
+	scrn->tilesX = tilesX;
+	scrn->tilesY = tilesY;
+	memcpy(scrn->bgdat, bgdat, tilesX * tilesY * sizeof(uint16_t));
+
+	GlobalUnlock(hGlobal);
+	SetClipboardData(fmt, hGlobal);
+	return 1;
+}
 
 static COLOR32 *ScrViewerRenderBits(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int *width, int *height, BOOL transparent) {
 	int bWidth = nscr->nWidth;
@@ -219,41 +248,30 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 }
 
 static void ScrViewerCopy(NSCRVIEWERDATA *data) {
+	HWND hWndNclrEditor = NULL, hWndNcgrEditor = NULL;
+	HWND hWndMain = getMainWindow(data->hWnd);
+	GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrEditor, 1);
+	GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
+
 	OpenClipboard(data->hWnd);
 	EmptyClipboard();
 
-	//clipboard format: "0000", "N", w, h, d
 	int tileX = data->ted.contextHoverX;
 	int tileY = data->ted.contextHoverY;
 	int tilesX = 1, tilesY = 1;
 	if (TedHasSelection(&data->ted)) {
 		TedGetSelectionBounds(&data->ted, &tileX, &tileY, &tilesX, &tilesY);
 	}
-	HANDLE hString = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 10 + 4 * tilesX * tilesY);
-	LPSTR clip = (LPSTR) GlobalLock(hString);
-	*(uint32_t *) clip = 0x30303030;
-	clip[4] = 'N';
-	clip[5] = (tilesX & 0xF) + 0x30;
-	clip[6] = ((tilesX >> 4) & 0xF) + 0x30;
-	clip[7] = (tilesY & 0xF) + 0x30;
-	clip[8] = ((tilesY >> 4) & 0xF) + 0x30;
 
-	int i = 0;
-	for (int y = tileY; y < tileY + tilesY; y++) {
-		for (int x = tileX; x < tileX + tilesX; x++) {
-			WORD d = data->nscr.data[x + y * (data->nscr.nWidth / 8)];
-			clip[9 + i * 4] = (d & 0xF) + 0x30;
-			clip[9 + i * 4 + 1] = ((d >> 4) & 0xF) + 0x30;
-			clip[9 + i * 4 + 2] = ((d >> 8) & 0xF) + 0x30;
-			clip[9 + i * 4 + 3] = ((d >> 12) & 0xF) + 0x30;
-			i++;
+	//copy BG screen data
+	uint16_t *bgdat = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
+	for (int y = 0; y < tilesY; y++) {
+		for (int x = 0; x < tilesX; x++) {
+			bgdat[x + y * tilesX] = data->nscr.data[(x + tileX) + (y + tileY) * (data->nscr.nWidth / 8)];
 		}
 	}
-
-	HWND hWndNclrEditor = NULL, hWndNcgrEditor = NULL;
-	HWND hWndMain = getMainWindow(data->hWnd);
-	GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrEditor, 1);
-	GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
+	ScrViewerCopyNP_SCRN(tilesX, tilesY, bgdat);
+	free(bgdat);
 
 	COLOR32 *bm = NULL;
 	if (hWndNclrEditor != NULL && hWndNcgrEditor != NULL) {
@@ -272,14 +290,57 @@ static void ScrViewerCopy(NSCRVIEWERDATA *data) {
 		free(sub);
 	}
 
-	GlobalUnlock(hString);
-	SetClipboardData(CF_TEXT, hString);
 	CloseClipboard();
 }
 
-static void ScrViewerGraphicsChanged(NSCRVIEWERDATA *data) {
-	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
-	PreviewLoadBgScreen(&data->nscr);
+static void ScrViewerPaste(NSCRVIEWERDATA *data) {
+	int fmt = ScrViewerGetFormat_NP_SCRN();
+
+	OpenClipboard(data->hWnd);
+
+	HANDLE hGlobal = GetClipboardData(fmt);
+	if (hGlobal != NULL) {
+		NP_SCRN *scrn = (NP_SCRN *) GlobalLock(hGlobal);
+
+		int tileX, tileY;
+		if (TedHasSelection(&data->ted)) {
+			int selW, selH;
+			TedGetSelectionBounds(&data->ted, &tileX, &tileY, &selW, &selH);
+		} else if (data->ted.mouseOver) {
+			tileX = data->ted.hoverX;
+			tileY = data->ted.hoverY;
+		} else {
+			tileX = data->ted.contextHoverX;
+			tileY = data->ted.contextHoverY;
+		}
+
+		GlobalUnlock(hGlobal);
+
+		int maxX = data->nscr.nWidth / 8, maxY = data->nscr.nHeight / 8;
+
+		int tilesX = scrn->tilesX;
+		int tilesY = scrn->tilesY;
+		for (int y = tileY; y < tileY + tilesY; y++) {
+			for (int x = tileX; x < tileX + tilesX; x++) {
+				uint16_t d = scrn->bgdat[(x - tileX) + (y - tileY) * tilesX];
+				if (x < (int) (data->nscr.nWidth / 8) && y < (int) (data->nscr.nHeight / 8)) {
+					if (x >= 0 && x <= maxX && y >= 0 && y <= maxY) data->nscr.data[x + y * (data->nscr.nWidth / 8)] = d;
+				}
+			}
+		}
+
+		//select paste region
+		data->ted.selStartX = tileX;
+		data->ted.selStartY = tileY;
+		data->ted.selEndX = tileX + tilesX - 1;
+		data->ted.selEndY = tileY + tilesY - 1;
+		if (data->ted.selEndX >= data->ted.tilesX) data->ted.selEndX = data->ted.tilesX - 1;
+		if (data->ted.selEndY >= data->ted.tilesY) data->ted.selEndY = data->ted.tilesY - 1;
+
+		ScrViewerGraphicsChanged(data);
+		TedUpdateMargins(&data->ted);
+	}
+	CloseClipboard();
 }
 
 static void ScrViewerErase(NSCRVIEWERDATA *data) {
@@ -662,57 +723,8 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						ScrViewerCopy(data);
 						break;
 					case ID_NSCRMENU_PASTE:
-					{
-						OpenClipboard(hWnd);
-						HANDLE hString = GetClipboardData(CF_TEXT);
-						CloseClipboard();
-						LPSTR clip = GlobalLock(hString);
-
-						int tileX, tileY;
-						if (TedHasSelection(&data->ted)) {
-							int selW, selH;
-							TedGetSelectionBounds(&data->ted, &tileX, &tileY, &selW, &selH);
-						} else if (data->ted.mouseOver) {
-							tileX = data->ted.hoverX;
-							tileY = data->ted.hoverY;
-						} else {
-							tileX = data->ted.contextHoverX;
-							tileY = data->ted.contextHoverY;
-						}
-
-						if (*(uint32_t *) clip == 0x30303030 && clip[4] == 'N') {
-							int tilesX = (clip[5] & 0xF) | ((clip[6] & 0xF) << 4);
-							int tilesY = (clip[7] & 0xF) | ((clip[8] & 0xF) << 4);
-							clip += 9; //advance info part
-
-							int maxX = data->nscr.nWidth / 8, maxY = data->nscr.nHeight / 8;
-
-							for (int y = tileY; y < tileY + tilesY; y++) {
-								for (int x = tileX; x < tileX + tilesX; x++) {
-									uint16_t d = (clip[0] & 0xF) | ((clip[1] & 0xF) << 4) | ((clip[2] & 0xF) << 8) | ((clip[3] & 0xF) << 12);
-									if (x < (int) (data->nscr.nWidth / 8) && y < (int) (data->nscr.nHeight / 8)) {
-										if (x >= 0 && x <= maxX && y >= 0 && y <= maxY) data->nscr.data[x + y * (data->nscr.nWidth / 8)] = d;
-									}
-
-									clip += 4;
-								}
-							}
-
-							//select paste region
-							data->ted.selStartX = tileX;
-							data->ted.selStartY = tileY;
-							data->ted.selEndX = tileX + tilesX - 1;
-							data->ted.selEndY = tileY + tilesY - 1;
-							if (data->ted.selEndX >= data->ted.tilesX) data->ted.selEndX = data->ted.tilesX - 1;
-							if (data->ted.selEndY >= data->ted.tilesY) data->ted.selEndY = data->ted.tilesY - 1;
-
-							ScrViewerGraphicsChanged(data);
-							TedUpdateMargins(&data->ted);
-						}
-
-						GlobalUnlock(hString);
+						ScrViewerPaste(data);
 						break;
-					}
 					case ID_NSCRMENU_DESELECT:
 						TedDeselect(&data->ted);
 						InvalidateRect(hWnd, NULL, FALSE);
