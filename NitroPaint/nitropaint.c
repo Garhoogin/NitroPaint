@@ -393,10 +393,6 @@ LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 void copyBitmap(COLOR32 *px, int width, int height) {
 	//assume clipboard is already owned and emptied
 
-	//set DDB
-	HBITMAP hBitmap = CreateBitmap(width, height, 1, 32, px);
-	SetClipboardData(CF_BITMAP, hBitmap);
-
 	//set DIBv5
 	HGLOBAL hBmi = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(BITMAPV5HEADER) + width * height * sizeof(COLOR32));
 	BITMAPV5HEADER *bmi = (BITMAPV5HEADER *) GlobalLock(hBmi);
