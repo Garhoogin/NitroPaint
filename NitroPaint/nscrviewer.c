@@ -386,6 +386,24 @@ static void ScrViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
 	(void) pxY;
 }
 
+static HMENU ScrViewerGetPopupMenu(HWND hWnd) {
+	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWnd);
+
+	HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 2);
+
+	//disable non-applicable options
+	const int needsSel[] = {
+		ID_NSCRMENU_DESELECT, ID_NSCRMENU_CUT, ID_NSCRMENU_COPY,
+		ID_NSCRMENU_FLIPHORIZONTALLY, ID_NSCRMENU_FLIPVERTICALLY,
+		ID_NSCRMENU_MAKEIDENTITY
+	};
+	int hasSel = TedHasSelection(&data->ted);
+	for (int i = 0; i < sizeof(needsSel) / sizeof(int); i++) {
+		EnableMenuItem(hPopup, needsSel[i], (!hasSel) ? MF_DISABLED : MF_ENABLED);
+	}
+	return hPopup;
+}
+
 static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWnd);
 	float dpiScale = GetDpiScale();
@@ -407,6 +425,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->ted.suppressHighlightCallback = NULL;
 			data->ted.isSelectionModeCallback = ScrViewerIsSelectionModeCallback;
 			data->ted.updateCursorCallback = ScrViewerUpdateCursorCallback;
+			data->ted.getPopupMenuCallback = ScrViewerGetPopupMenu;
 
 			data->hWndCharacterLabel = CreateCheckbox(hWnd, L"Character:", 0, 0, 0, 0, TRUE);
 			data->hWndPaletteLabel = CreateCheckbox(hWnd, L"Palette:", 0, 0, 0, 0, TRUE);
@@ -1288,22 +1307,7 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < (int) (data->nscr.nWidth * data->scale) && mousePos.y < (int) (data->nscr.nHeight * data->scale)) {
 				TedOnRButtonDown(&data->ted);
 				//if it is within the colors area, open a color chooser
-				HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 2);
-
-				//disable non-applicable options
-				const int needsSel[] = {
-					ID_NSCRMENU_DESELECT, ID_NSCRMENU_CUT, ID_NSCRMENU_COPY,
-					ID_NSCRMENU_FLIPHORIZONTALLY, ID_NSCRMENU_FLIPVERTICALLY,
-					ID_NSCRMENU_MAKEIDENTITY
-				};
-				int hasSel = TedHasSelection(&data->ted);
-				for (int i = 0; i < sizeof(needsSel) / sizeof(int); i++) {
-					EnableMenuItem(hPopup, needsSel[i], (!hasSel) ? MF_DISABLED : MF_ENABLED);
-				}
-
-				POINT mouse;
-				GetCursorPos(&mouse);
-				TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWndNscrViewer, NULL);
+				TedTrackPopup((EDITOR_DATA *) data, &data->ted);
 			}
 			break;
 		}

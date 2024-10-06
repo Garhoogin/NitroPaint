@@ -41,6 +41,7 @@ typedef void    (*TedRenderCallback)            (HWND hWnd, FrameBuffer *fb, int
 typedef int     (*TedSuppressHighlightCallback) (HWND hWnd);
 typedef int     (*TedIsSelectionModeCallback)   (HWND hWnd);
 typedef void    (*TedUpdateCursorCallback)      (HWND hWnd, int pxX, int pxY);
+typedef HMENU   (*TedGetPopupMenuCallback)      (HWND hWnd);
 
 typedef struct TedData_ {
 	FrameBuffer fb;
@@ -53,6 +54,7 @@ typedef struct TedData_ {
 	TedSuppressHighlightCallback suppressHighlightCallback; // callback to suppress tile highlight
 	TedIsSelectionModeCallback isSelectionModeCallback;     // callback to determine selection mode
 	TedUpdateCursorCallback updateCursorCallback;           // callback to update cursor
+	TedGetPopupMenuCallback getPopupMenuCallback;           // callback to get popup menu
 
 	BOOL mouseOver;     // is mouse in client area?
 	HWND hWndLastMouse; // last mouse event (cleared on mouse leave)
@@ -117,6 +119,7 @@ void TedSelect(TedData *ted, int selX, int selY, int selW, int selH);
 void TedMakeSelectionCornerEnd(TedData *ted, int hit);
 void TedGetPasteLocation(TedData *ted, BOOL contextMenu, int *tileX, int *tileY);
 void TedUpdateSize(EDITOR_DATA *data, TedData *ted, int tilesX, int tilesY);
+void TedTrackPopup(EDITOR_DATA *data, TedData *ted);
 
 
 // ----- message handling functions

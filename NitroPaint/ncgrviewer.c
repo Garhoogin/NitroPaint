@@ -58,6 +58,7 @@ static int sOpxCharmapFormat = 0;
 static int sPngFormat = 0;
 static int sNpCharsFormat = 0;
 
+static HMENU ChrViewerGetPopupMenu(HWND hWnd);
 static void ChrViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY);
 static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight);
 static int ChrViewerShouldSuppressHighlight(HWND hWnd);
@@ -986,6 +987,7 @@ static void ChrViewerOnCreate(HWND hWnd) {
 	data->ted.suppressHighlightCallback = ChrViewerShouldSuppressHighlight;
 	data->ted.isSelectionModeCallback = ChrViewerIsSelectionMode;
 	data->ted.updateCursorCallback = ChrViewerUpdateCursorCallback;
+	data->ted.getPopupMenuCallback = ChrViewerGetPopupMenu;
 
 	data->hWndCharacterLabel = CreateStatic(hWnd, L" Character 0", 0, 0, 100, 22);
 	data->hWndPaletteDropdown = CreateCombobox(hWnd, NULL, 0, 0, 0, 200, 100, 0);
@@ -1356,6 +1358,10 @@ static void ChrViewerOnMenuCommand(HWND hWnd, int idMenu) {
 			break;
 		case ID_NCGRMENU_PASTE:
 			ChrViewerPaste(data, TRUE);
+			ChrViewerGraphicsUpdated(data);
+			break;
+		case ID_NCGRMENU_CUT:
+			ChrViewerCut(data);
 			ChrViewerGraphicsUpdated(data);
 			break;
 		case ID_EDITMODE_SELECTION:
@@ -1771,10 +1777,8 @@ static void ChrViewerOnLButtonUp(NCGRVIEWERDATA *data) {
 	TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
 }
 
-static void ChrViewerOnRButtonDown(NCGRVIEWERDATA *data) {
-	//mark hovered tile
-	TedOnRButtonDown(&data->ted);
-
+static HMENU ChrViewerGetPopupMenu(HWND hWnd) {
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
 	HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 1);
 
 	//set current tool in popup menu
@@ -1807,13 +1811,15 @@ static void ChrViewerOnRButtonDown(NCGRVIEWERDATA *data) {
 		EnableMenuItem(hPopup, ID_NCGRMENU_FLIPHORIZONTALLY, MF_DISABLED);
 		EnableMenuItem(hPopup, ID_NCGRMENU_FLIPVERTICALLY, MF_DISABLED);
 	}
+	return hPopup;
+}
 
-	//release mouse to prevent input issues
-	TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
+static void ChrViewerOnRButtonDown(NCGRVIEWERDATA *data) {
+	//mark hovered tile
+	TedOnRButtonDown(&data->ted);
 
-	POINT mouse;
-	GetCursorPos(&mouse);
-	TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, data->hWnd, NULL);
+	//context menu
+	TedTrackPopup((EDITOR_DATA *) data, &data->ted);
 }
 
 static void ChrViewerUpdateContentSize(NCGRVIEWERDATA *data) {

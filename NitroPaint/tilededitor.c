@@ -789,6 +789,20 @@ void TedUpdateSize(EDITOR_DATA *data, TedData *ted, int tilesX, int tilesY) {
 	InvalidateRect(ted->hWndViewer, NULL, FALSE);
 }
 
+void TedTrackPopup(EDITOR_DATA *data, TedData *ted) {
+	//release mouse to prevent input issues
+	TedReleaseCursor(data, ted);
+
+	HMENU hPopup = NULL;
+	hPopup = ted->getPopupMenuCallback(ted->hWnd);
+	if (hPopup == NULL) return;
+
+	POINT mouse;
+	GetCursorPos(&mouse);
+	TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, ted->hWnd, NULL);
+	DeleteObject(hPopup);
+}
+
 
 
 // ----- message handling functions
