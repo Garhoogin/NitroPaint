@@ -54,7 +54,7 @@ typedef struct TedData_ {
 	TedIsSelectionModeCallback isSelectionModeCallback;     // callback to determine selection mode
 	TedUpdateCursorCallback updateCursorCallback;           // callback to update cursor
 
-	BOOL mouseOver;
+	BOOL mouseOver;     // is mouse in client area?
 	HWND hWndLastMouse; // last mouse event (cleared on mouse leave)
 	int lastMouseX;     // mouse client Y prev
 	int lastMouseY;     // mouse client X prev
@@ -114,6 +114,7 @@ int TedIsSelectedAll(TedData *ted);
 void TedSelectAll(TedData *ted);
 void TedOffsetSelection(TedData *ted, int dx, int dy);
 void TedMakeSelectionCornerEnd(TedData *ted, int hit);
+void TedGetPasteLocation(TedData *ted, BOOL contextMenu, int *tileX, int *tileY);
 void TedUpdateSize(EDITOR_DATA *data, TedData *ted, int tilesX, int tilesY);
 
 

@@ -740,6 +740,26 @@ void TedMakeSelectionCornerEnd(TedData *ted, int hit) {
 	}
 }
 
+void TedGetPasteLocation(TedData *ted, BOOL contextMenu, int *tileX, int *tileY) {
+	if (TedHasSelection(ted)) {
+		//has selection: paste at top-left corner of selection region
+		int selW, selH;
+		TedGetSelectionBounds(ted, tileX, tileY, &selW, &selH);
+	} else if (contextMenu) {
+		//context modal: paste at last mouse position before modal
+		*tileX = ted->contextHoverX;
+		*tileY = ted->contextHoverY;
+	} else if (ted->mouseOver && ted->hoverIndex != -1) {
+		//mouse in client area: paste at mouse position
+		*tileX = ted->hoverX;
+		*tileY = ted->hoverY;
+	} else {
+		//mouse out of client area: paste at origin
+		*tileX = 0;
+		*tileY = 0;
+	}
+}
+
 void TedUpdateSize(EDITOR_DATA *data, TedData *ted, int tilesX, int tilesY) {
 	ted->tilesX = tilesX;
 	ted->tilesY = tilesY;

@@ -395,19 +395,10 @@ static void ChrViewerCopy(NCGRVIEWERDATA *data) {
 	CloseClipboard();
 }
 
-static void ChrViewerPaste(NCGRVIEWERDATA *data) {
+static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 	//get selection paste point
 	int pasteX = -1, pasteY = -1;
-	if (TedHasSelection(&data->ted)) {
-		int selW, selH;
-		TedGetSelectionBounds(&data->ted, &pasteX, &pasteY, &selW, &selH);
-	} else if (data->ted.mouseOver) {
-		pasteX = data->ted.hoverX;
-		pasteY = data->ted.hoverY;
-	} else {
-		pasteX = data->ted.contextHoverX;
-		pasteY = data->ted.contextHoverY;
-	}
+	TedGetPasteLocation(&data->ted, contextMenu, &pasteX, &pasteY);
 
 	//has point?
 	if (pasteX == -1 || pasteY == -1) {
@@ -1374,7 +1365,7 @@ static void ChrViewerOnMenuCommand(HWND hWnd, int idMenu) {
 			ChrViewerCopy(data);
 			break;
 		case ID_NCGRMENU_PASTE:
-			ChrViewerPaste(data);
+			ChrViewerPaste(data, TRUE);
 			ChrViewerGraphicsUpdated(data);
 			break;
 		case ID_EDITMODE_SELECTION:
@@ -1403,7 +1394,7 @@ static void ChrViewerOnAccelerator(HWND hWnd, int idAccel) {
 			ChrViewerCopy(data);
 			break;
 		case ID_ACCELERATOR_PASTE:
-			ChrViewerPaste(data);
+			ChrViewerPaste(data, FALSE);
 			ChrViewerGraphicsUpdated(data);
 			break;
 		case ID_ACCELERATOR_CUT:

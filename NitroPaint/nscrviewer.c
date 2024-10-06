@@ -293,7 +293,7 @@ static void ScrViewerCopy(NSCRVIEWERDATA *data) {
 	CloseClipboard();
 }
 
-static void ScrViewerPaste(NSCRVIEWERDATA *data) {
+static void ScrViewerPaste(NSCRVIEWERDATA *data, BOOL contextMenu) {
 	int fmt = ScrViewerGetFormat_NP_SCRN();
 
 	OpenClipboard(data->hWnd);
@@ -303,16 +303,7 @@ static void ScrViewerPaste(NSCRVIEWERDATA *data) {
 		NP_SCRN *scrn = (NP_SCRN *) GlobalLock(hGlobal);
 
 		int tileX, tileY;
-		if (TedHasSelection(&data->ted)) {
-			int selW, selH;
-			TedGetSelectionBounds(&data->ted, &tileX, &tileY, &selW, &selH);
-		} else if (data->ted.mouseOver) {
-			tileX = data->ted.hoverX;
-			tileY = data->ted.hoverY;
-		} else {
-			tileX = data->ted.contextHoverX;
-			tileY = data->ted.contextHoverY;
-		}
+		TedGetPasteLocation(&data->ted, contextMenu, &tileX, &tileY);
 
 		GlobalUnlock(hGlobal);
 
@@ -582,7 +573,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						PostMessage(hWnd, WM_COMMAND, ID_NSCRMENU_COPY, 0);
 						break;
 					case ID_ACCELERATOR_PASTE:
-						PostMessage(hWnd, WM_COMMAND, ID_NSCRMENU_PASTE, 0);
+						ScrViewerPaste(data, FALSE);
 						break;
 					case ID_ACCELERATOR_DESELECT:
 						PostMessage(hWnd, WM_COMMAND, ID_NSCRMENU_DESELECT, 0);
@@ -723,7 +714,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						ScrViewerCopy(data);
 						break;
 					case ID_NSCRMENU_PASTE:
-						ScrViewerPaste(data);
+						ScrViewerPaste(data, TRUE);
 						break;
 					case ID_NSCRMENU_DESELECT:
 						TedDeselect(&data->ted);
