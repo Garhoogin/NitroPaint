@@ -461,20 +461,31 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
-			MoveWindow(data->ted.hWndViewer, MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, 
-				rcClient.right - 200 - MARGIN_TOTAL_SIZE, rcClient.bottom - 22 - MARGIN_TOTAL_SIZE, FALSE);
 
-			MoveWindow(data->hWndCharacterLabel, rcClient.right - 190, 10, 70, 22, TRUE);
-			MoveWindow(data->hWndPaletteLabel, rcClient.right - 190, 37, 70, 22, TRUE);
-			MoveWindow(data->hWndCharacterNumber, rcClient.right - 110, 10, 100, 22, TRUE);
-			MoveWindow(data->hWndApply, rcClient.right - 110, 64, 100, 22, TRUE);
-			MoveWindow(data->hWndAdd, rcClient.right - 110, 91, 100, 22, TRUE);
-			MoveWindow(data->hWndSubtract, rcClient.right - 110, 118, 100, 22, TRUE);
-			MoveWindow(data->hWndTileBaseLabel, 0, rcClient.bottom - 22, 50, 22, TRUE);
-			MoveWindow(data->hWndTileBase, 50, rcClient.bottom - 22, 100, 22, TRUE);
-			MoveWindow(data->hWndSize, 160, rcClient.bottom - 22, 100, 22, TRUE);
-			MoveWindow(data->hWndSelectionSize, 260, rcClient.bottom - 22, 100, 22, TRUE);
-			MoveWindow(data->hWndPaletteNumber, rcClient.right - 110, 37, 100, 22, TRUE);
+			float dpiScale = GetDpiScale();
+			int controlHeight = (int) (22.0f * dpiScale + 0.5f);
+			int controlWidth = (int) (100.0f * dpiScale + 0.5f);
+			int partialWidth = (int) (70.0f * dpiScale + 0.5f);
+			int halfWidth = (int) (50.0f * dpiScale + 0.5f);
+			int rightSize = (int) (200.0f * dpiScale + 0.5f);
+			int bottomSize = (int) (22.0f * dpiScale + 0.5f);
+			int padSize = (int) (10.0f * dpiScale + 0.5f);
+			int sepSize = (int) (5.0f * dpiScale + 0.5f);
+
+			MoveWindow(data->ted.hWndViewer, MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, 
+				rcClient.right - rightSize - MARGIN_TOTAL_SIZE, rcClient.bottom - bottomSize - MARGIN_TOTAL_SIZE, FALSE);
+
+			MoveWindow(data->hWndCharacterLabel,  rcClient.right - (rightSize - padSize),    padSize + (controlHeight + sepSize) * 0, partialWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndCharacterNumber, rcClient.right - (controlWidth + padSize), padSize + (controlHeight + sepSize) * 0, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndPaletteLabel,    rcClient.right - (rightSize - padSize),    padSize + (controlHeight + sepSize) * 1, partialWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndApply,           rcClient.right - (controlWidth + padSize), padSize + (controlHeight + sepSize) * 2, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndAdd,             rcClient.right - (controlWidth + padSize), padSize + (controlHeight + sepSize) * 3, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndSubtract,        rcClient.right - (controlWidth + padSize), padSize + (controlHeight + sepSize) * 4, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndTileBaseLabel,   0,         rcClient.bottom - bottomSize, halfWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndTileBase,        halfWidth, rcClient.bottom - bottomSize, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndSize,            controlWidth + halfWidth + padSize, rcClient.bottom - bottomSize, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndSelectionSize,   controlWidth + halfWidth + padSize + controlWidth, rcClient.bottom - bottomSize, controlWidth, controlHeight, TRUE);
+			MoveWindow(data->hWndPaletteNumber,   rcClient.right - (controlWidth + padSize), padSize + (controlHeight + sepSize) * 1, controlWidth, controlHeight, TRUE);
 
 			if (wParam == SIZE_RESTORED) InvalidateRect(hWnd, NULL, TRUE); //full update
 			return DefMDIChildProc(hWnd, WM_SIZE, wParam, lParam);
@@ -503,12 +514,16 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->frameData.contentWidth = data->nscr.nWidth * data->scale;
 			data->frameData.contentHeight = data->nscr.nHeight * data->scale;
 
+			float dpiScale = GetDpiScale();
+			int rightSize = (int) (200.0f * dpiScale + 0.5f);
+			int bottomSize = (int) (22.0f * dpiScale + 0.5f);
+
 			RECT rc = { 0 };
 			rc.right = data->frameData.contentWidth;
 			rc.bottom = data->frameData.contentHeight;
 			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200 + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
-			int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22 + MARGIN_TOTAL_SIZE;
+			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + rightSize + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
+			int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + bottomSize + MARGIN_TOTAL_SIZE;
 			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
 
 			RECT rcClient;
@@ -1350,12 +1365,16 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 	height = nscr.nHeight;
 
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
+		float dpiScale = GetDpiScale();
+		int rightSize = (int) (200.0f * dpiScale + 0.5f);
+		int bottomSize = (int) (22.0f * dpiScale + 0.5f);
+
 		RECT rc = { 0 };
 		rc.right = width;
 		rc.bottom = height;
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200 + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22 + MARGIN_TOTAL_SIZE;
+		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + rightSize + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
+		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + bottomSize + MARGIN_TOTAL_SIZE;
 	}
 
 	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, width, height, hWndParent);
@@ -1371,12 +1390,16 @@ HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndPar
 	height = nscr->nHeight;
 
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
+		float dpiScale = GetDpiScale();
+		int rightSize = (int) (200.0f * dpiScale + 0.5f);
+		int bottomSize = (int) (22.0f * dpiScale + 0.5f);
+
 		RECT rc = { 0 };
 		rc.right = width;
 		rc.bottom = height;
 		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + 200 + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + 22 + MARGIN_TOTAL_SIZE;
+		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + rightSize + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
+		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + bottomSize + MARGIN_TOTAL_SIZE;
 	}
 
 	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, width, height, hWndParent);
