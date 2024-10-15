@@ -315,9 +315,9 @@ int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int
 	//add screen
 	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
 	ScrInit(nscr, NSCR_TYPE_COMBO);
-	nscr->nWidth = 256;
-	nscr->nHeight = 256;
-	nscr->dataSize = (nscr->nWidth / 8) * (nscr->nHeight / 8) * 2;
+	nscr->tilesX = 256 / 8;
+	nscr->tilesY = 256 / 8;
+	nscr->dataSize = nscr->tilesX * nscr->tilesY * 2;
 	nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
 	memcpy(nscr->data, buffer + 0x208, nscr->dataSize);
 	ScrComputeHighestCharacter(nscr);
@@ -344,8 +344,6 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	int scrX = *(uint16_t *) (bgdt + 0x8);
 	int scrY = *(uint16_t *) (bgdt + 0xA);
 	int scrDataSize = scrX * scrY * 2;
-	int scrWidth = scrX * 8;
-	int scrHeight = scrY * 8;
 
 	//addpalette
 	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
@@ -374,8 +372,8 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	//add screen
 	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
 	ScrInit(nscr, NSCR_TYPE_COMBO);
-	nscr->nWidth = scrWidth;
-	nscr->nHeight = scrHeight;
+	nscr->tilesX = scrX;
+	nscr->tilesY = scrY;
 	nscr->dataSize = scrDataSize;
 	nscr->data = (uint16_t *) calloc(scrDataSize, 1);
 	memcpy(nscr->data, bgdt + 0x14, scrDataSize);
@@ -469,8 +467,8 @@ int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 		//add screen
 		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
 		ScrInit(nscr, NSCR_TYPE_COMBO);
-		nscr->nWidth = scrWidth;
-		nscr->nHeight = scrHeight;
+		nscr->tilesX = scrWidth / 8;
+		nscr->tilesY = scrHeight / 8;
 		nscr->dataSize = scrDataSize;
 		nscr->data = (uint16_t *) calloc(scrDataSize, 1);
 		memcpy(nscr->data, buffer + scrnofs, scrDataSize);
@@ -604,7 +602,7 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 
 		int nSections = ncgr->nBits == 4 ? 3 : 2; //no flags for 8-bit images
 		int paltSize = 0xC + nclr->nColors * 2;
-		int bgdtSize = 0x1C + nCharsWrite * (8 * ncgr->nBits) + (nscr->nWidth / 8 * nscr->nHeight / 8) * 2;
+		int bgdtSize = 0x1C + nCharsWrite * (8 * ncgr->nBits) + nscr->tilesX * nscr->tilesY * 2;
 		int dfplSize = nSections == 2 ? 0 : (0xC + ncgr->nTiles);
 		*(uint32_t *) (header + 0x08) = sizeof(header) + paltSize + bgdtSize + dfplSize;
 		*(uint16_t *) (header + 0x0E) = nSections;
@@ -624,8 +622,8 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 		*(uint32_t *) (bgdtHeader + 0x04) = bgdtSize;
 		*(uint32_t *) (bgdtHeader + 0x08) = ncgr->mappingMode;
 		*(uint32_t *) (bgdtHeader + 0x0C) = nscr->dataSize;
-		*(uint16_t *) (bgdtHeader + 0x10) = nscr->nWidth / 8;
-		*(uint16_t *) (bgdtHeader + 0x12) = nscr->nHeight / 8;
+		*(uint16_t *) (bgdtHeader + 0x10) = nscr->tilesX;
+		*(uint16_t *) (bgdtHeader + 0x12) = nscr->tilesY;
 		*(uint16_t *) (bgdtHeader + 0x14) = ncgr->tilesX;
 		*(uint16_t *) (bgdtHeader + 0x16) = ncgr->tilesY;
 		*(uint32_t *) (bgdtHeader + 0x18) = nCharsWrite * (8 * ncgr->nBits);
@@ -678,8 +676,8 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 
 			NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, nScreensWritten);
 			*(uint32_t *) (header + 0x08 + i * 4) = currentScreenOffset;
-			*(uint16_t *) (header + 0x18 + i * 0x10 + 0x8) = nscr->nWidth;
-			*(uint16_t *) (header + 0x18 + i * 0x10 + 0xA) = nscr->nHeight;
+			*(uint16_t *) (header + 0x18 + i * 0x10 + 0x8) = nscr->tilesX * 8;
+			*(uint16_t *) (header + 0x18 + i * 0x10 + 0xA) = nscr->tilesY * 8;
 			currentScreenOffset += nscr->dataSize;
 		}
 

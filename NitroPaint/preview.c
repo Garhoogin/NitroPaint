@@ -517,7 +517,7 @@ int PreviewLoadBgScreen(NSCR *nscr) {
 	}
 
 	int screenSize = 0, bgWidth, bgHeight, bgTilesX, bgTilesY;
-	screenSize = NvcGetBgSize(nscr->nWidth, nscr->nHeight, useExtPalette, &bgWidth, &bgHeight);
+	screenSize = NvcGetBgSize(nscr->tilesX * 8, nscr->tilesY * 8, useExtPalette, &bgWidth, &bgHeight);
 	bgTilesX = bgWidth / 8, bgTilesY = bgHeight / 8;
 
 	//setup BG control
@@ -526,12 +526,12 @@ int PreviewLoadBgScreen(NSCR *nscr) {
 	status = status && NvcWriteRegister16(REG_BG0CNT + 2 * PREVIEW_BG, sBgCnt[PREVIEW_BG]);
 
 	//load BG screen
-	if (bgWidth == nscr->nWidth && bgHeight == nscr->nHeight) {
+	if (bgWidth == (nscr->tilesX * 8) && bgHeight == (nscr->tilesY * 8)) {
 		//copy direct
 		status = status && NvcCopyData(MM_VRAM_START, nscr->data, nscr->dataSize);
 	} else {
 		//resize to hw-supported size
-		int tilesX = nscr->nWidth / 8, tilesY = nscr->nHeight / 8;
+		int tilesX = nscr->tilesX, tilesY = nscr->tilesY;
 		uint16_t *copy = (uint16_t *) calloc(bgTilesX * bgTilesY, sizeof(uint16_t));
 
 		for (int y = 0; y < tilesY; y++) {

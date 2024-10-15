@@ -1208,7 +1208,7 @@ static void ChrViewerImportAttributesFromScreen(NCGRVIEWERDATA *data, NSCRVIEWER
 	NCGR *ncgr = &data->ncgr;
 	NSCR *nscr = &nscrViewerData->nscr;
 
-	int nTiles = nscr->nWidth / 8 * nscr->nHeight / 8;
+	int nTiles = nscr->tilesX * nscr->tilesY;
 	for (int i = 0; i < nTiles; i++) {
 		uint16_t d = nscr->data[i];
 		int chrno = (d >>  0) & 0x03FF;

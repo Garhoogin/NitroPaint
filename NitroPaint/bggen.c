@@ -945,8 +945,8 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		ncgr->attr[i] = attr;
 	}
 
-	nscr->nWidth = width;
-	nscr->nHeight = height;
+	nscr->tilesX = tilesX;
+	nscr->tilesY = tilesY;
 	nscr->fmt = nBits == 4 ? SCREENFORMAT_TEXT : ((nPalettes == 1 && paletteBase == 0) ? SCREENFORMAT_TEXT : SCREENFORMAT_AFFINEEXT);
 	nscr->dataSize = nTiles * 2;
 	nscr->data = (uint16_t *) malloc(nscr->dataSize);
@@ -1099,8 +1099,8 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	}
 
 	int charBase = tileBase;
-	int nscrTilesX = nscr->nWidth / 8;
-	int nscrTilesY = nscr->nHeight / 8;
+	int nscrTilesX = nscr->tilesX;
+	int nscrTilesY = nscr->tilesY;
 	uint16_t *nscrData = nscr->data;
 
 	//create dummy reduction to setup parameters for color matching
@@ -1251,7 +1251,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 
 					if (x + nscrTileX < nscrTilesX && y + nscrTileY < nscrTilesY) {
 						uint16_t d = (tile->flipMode << 10) | (palette << 12) | charIndex;
-						nscrData[x + nscrTileX + (y + nscrTileY) * (nscr->nWidth >> 3)] = d;
+						nscrData[x + nscrTileX + (y + nscrTileY) * nscr->tilesX] = d;
 					}
 				}
 			}
@@ -1321,7 +1321,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						uint16_t d = nscrData[nscrX + nscrY * nscrTilesX];
 						d = d & 0x3FF;
 						d |= (leastIndex + paletteNumber) << 12;
-						nscrData[nscrX + nscrY * (nscr->nWidth >> 3)] = d;
+						nscrData[nscrX + nscrY * nscr->tilesX] = d;
 
 						int charOrigin = d & 0x3FF;
 						if (charOrigin - charBase < 0) continue;

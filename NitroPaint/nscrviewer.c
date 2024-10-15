@@ -52,15 +52,15 @@ int ScrViewerCopyNP_SCRN(unsigned int tilesX, unsigned int tilesY, const uint16_
 }
 
 static COLOR32 *ScrViewerRenderBits(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tileBase, int *width, int *height, BOOL transparent) {
-	int bWidth = nscr->nWidth;
-	int bHeight = nscr->nHeight;
+	int bWidth = nscr->tilesX * 8;
+	int bHeight = nscr->tilesY * 8;
 	*width = bWidth;
 	*height = bHeight;
 
 	LPDWORD bits = (LPDWORD) calloc(bWidth * bHeight, 4);
 
-	int tilesX = nscr->nWidth >> 3;
-	int tilesY = nscr->nHeight >> 3;
+	int tilesX = nscr->tilesX;
+	int tilesY = nscr->tilesY;
 
 	COLOR32 block[64];
 
@@ -83,15 +83,15 @@ static COLOR32 *ScrViewerRenderBits(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tile
 }
 
 unsigned char *ScrViewerRenderIndexed(NSCR *nscr, NCGR *ncgr, int tileBase, int *width, int *height, BOOL transparent) {
-	int bWidth = nscr->nWidth;
-	int bHeight = nscr->nHeight;
+	int bWidth = nscr->tilesX * 8;
+	int bHeight = nscr->tilesY * 8;
 	*width = bWidth;
 	*height = bHeight;
 
 	unsigned char *bits = (unsigned char *) calloc(bWidth * bHeight, 1);
 
-	int tilesX = nscr->nWidth >> 3;
-	int tilesY = nscr->nHeight >> 3;
+	int tilesX = nscr->tilesX;
+	int tilesY = nscr->tilesY;
 
 	unsigned char block[64];
 	for (int y = 0; y < tilesY; y++) {
@@ -161,8 +161,8 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 		chrHover += data->tileBase;
 	}
 
-	int tilesX = nscr->nWidth / 8;
-	int tilesY = nscr->nHeight / 8;
+	int tilesX = nscr->tilesX;
+	int tilesY = nscr->tilesY;
 
 
 	for (int y = 0; y < renderHeight; y++) {
@@ -267,7 +267,7 @@ static void ScrViewerCopy(NSCRVIEWERDATA *data) {
 	uint16_t *bgdat = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
-			bgdat[x + y * tilesX] = data->nscr.data[(x + tileX) + (y + tileY) * (data->nscr.nWidth / 8)];
+			bgdat[x + y * tilesX] = data->nscr.data[(x + tileX) + (y + tileY) * (data->nscr.tilesX)];
 		}
 	}
 	ScrViewerCopyNP_SCRN(tilesX, tilesY, bgdat);
@@ -307,15 +307,15 @@ static void ScrViewerPaste(NSCRVIEWERDATA *data, BOOL contextMenu) {
 
 		GlobalUnlock(hGlobal);
 
-		int maxX = data->nscr.nWidth / 8, maxY = data->nscr.nHeight / 8;
+		int maxX = data->nscr.tilesX, maxY = data->nscr.tilesY;
 
 		int tilesX = scrn->tilesX;
 		int tilesY = scrn->tilesY;
 		for (int y = tileY; y < tileY + tilesY; y++) {
 			for (int x = tileX; x < tileX + tilesX; x++) {
 				uint16_t d = scrn->bgdat[(x - tileX) + (y - tileY) * tilesX];
-				if (x < (int) (data->nscr.nWidth / 8) && y < (int) (data->nscr.nHeight / 8)) {
-					if (x >= 0 && x <= maxX && y >= 0 && y <= maxY) data->nscr.data[x + y * (data->nscr.nWidth / 8)] = d;
+				if (x < (int) data->nscr.tilesX && y < (int) data->nscr.tilesY) {
+					if (x >= 0 && x <= maxX && y >= 0 && y <= maxY) data->nscr.data[x + y * (data->nscr.tilesX)] = d;
 				}
 			}
 		}
@@ -335,7 +335,7 @@ static void ScrViewerErase(NSCRVIEWERDATA *data) {
 
 	for (int y = 0; y < selH; y++) {
 		for (int x = 0; x < selW; x++) {
-			data->nscr.data[(x + selX) + (y + selY) * (data->nscr.nWidth / 8)] = data->nscr.clearValue;
+			data->nscr.data[(x + selX) + (y + selY) * (data->nscr.tilesX)] = data->nscr.clearValue;
 		}
 	}
 }
@@ -507,12 +507,12 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				NSCR *nscr = (NSCR *) wParam;
 				memcpy(&data->nscr, nscr, sizeof(NSCR));
 			}
-			data->ted.tilesX = data->nscr.nWidth / 8;
-			data->ted.tilesY = data->nscr.nHeight / 8;
+			data->ted.tilesX = data->nscr.tilesX;
+			data->ted.tilesY = data->nscr.tilesY;
 			PreviewLoadBgScreen(&data->nscr);
 
-			data->frameData.contentWidth = data->nscr.nWidth * data->scale;
-			data->frameData.contentHeight = data->nscr.nHeight * data->scale;
+			data->frameData.contentWidth = data->nscr.tilesX * 8 * data->scale;
+			data->frameData.contentHeight = data->nscr.tilesY * 8 * data->scale;
 
 			float dpiScale = GetDpiScale();
 			int rightSize = (int) (200.0f * dpiScale + 0.5f);
@@ -557,7 +557,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			//set size label
 			WCHAR buffer[32];
-			int len = wsprintfW(buffer, L"Size: %dx%d", data->nscr.nWidth, data->nscr.nHeight);
+			int len = wsprintfW(buffer, L"Size: %dx%d", data->nscr.tilesX * 8, data->nscr.tilesY * 8);
 			SendMessage(data->hWndSize, WM_SETTEXT, len, (LPARAM) buffer);
 			return 1;
 		}
@@ -674,10 +674,10 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 								for (int x = 0; x < (selWidth + 1) / 2; x++) {
 									//swap x with selWidth-1-x
 									int t1 = x + selStartX, t2 = selWidth - 1 - x + selStartX;
-									uint16_t d1 = data->nscr.data[t1 + y * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPX << 10);
-									uint16_t d2 = data->nscr.data[t2 + y * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPX << 10);
-									data->nscr.data[t1 + y * (data->nscr.nWidth >> 3)] = d2;
-									if(x != selWidth) data->nscr.data[t2 + y * (data->nscr.nWidth >> 3)] = d1;
+									uint16_t d1 = data->nscr.data[t1 + y * (data->nscr.tilesX * 8 >> 3)] ^ (TILE_FLIPX << 10);
+									uint16_t d2 = data->nscr.data[t2 + y * (data->nscr.tilesX * 8 >> 3)] ^ (TILE_FLIPX << 10);
+									data->nscr.data[t1 + y * (data->nscr.tilesX * 8 >> 3)] = d2;
+									if(x != selWidth) data->nscr.data[t2 + y * (data->nscr.tilesX * 8 >> 3)] = d1;
 								}
 							}
 						}
@@ -695,10 +695,10 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 								//for every row/2
 								for (int y = 0; y < (selHeight + 1) / 2; y++) {
 									int t1 = y + selStartY, t2 = selHeight - 1 - y + selStartY;
-									uint16_t d1 = data->nscr.data[x + t1 * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPY << 10);
-									uint16_t d2 = data->nscr.data[x + t2 * (data->nscr.nWidth >> 3)] ^ (TILE_FLIPY << 10);
-									data->nscr.data[x + t1 * (data->nscr.nWidth >> 3)] = d2;
-									if(y != selHeight) data->nscr.data[x + t2 * (data->nscr.nWidth >> 3)] = d1;
+									uint16_t d1 = data->nscr.data[x + t1 * (data->nscr.tilesX * 8 >> 3)] ^ (TILE_FLIPY << 10);
+									uint16_t d2 = data->nscr.data[x + t2 * (data->nscr.tilesX * 8 >> 3)] ^ (TILE_FLIPY << 10);
+									data->nscr.data[x + t1 * (data->nscr.tilesX * 8 >> 3)] = d2;
+									if(y != selHeight) data->nscr.data[x + t2 * (data->nscr.tilesX * 8 >> 3)] = d1;
 								}
 							}
 						}
@@ -716,7 +716,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						for (int y = 0; y < selHeight; y++) {
 							//for every column
 							for (int x = selStartX; x < selStartX + selWidth; x++) {
-								data->nscr.data[x + (y + selStartY) * (data->nscr.nWidth >> 3)] = index & 0x3FF;
+								data->nscr.data[x + (y + selStartY) * (data->nscr.tilesX * 8 >> 3)] = index & 0x3FF;
 								index++;
 							}
 						}
@@ -734,7 +734,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						HWND hWndMain = getMainWindow(hWnd);
 						HWND h = CreateWindow(L"NscrBitmapImportClass", L"Import Bitmap", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
 						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) hWnd);
-						WORD d = data->nscr.data[data->ted.contextHoverX + data->ted.contextHoverY * (data->nscr.nWidth >> 3)];
+						WORD d = data->nscr.data[data->ted.contextHoverX + data->ted.contextHoverY * (data->nscr.tilesX * 8 >> 3)];
 						SendMessage(h, NV_INITIMPORTDIALOG, d, data->ted.contextHoverX | (data->ted.contextHoverY << 16));
 						DoModal(h);
 						break;
@@ -777,7 +777,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int palette = SendMessage(data->hWndPaletteNumber, CB_GETCURSEL, 0, 0);
 					HWND hWndMain = getMainWindow(hWnd);
 					SendMessage(hWnd, NV_SETDATA, (WPARAM) character, (LPARAM) palette);
-					int tilesX = data->nscr.nWidth / 8, tilesY = data->nscr.nHeight / 8;
+					int tilesX = data->nscr.tilesX, tilesY = data->nscr.tilesY;
 					int nTiles = tilesX * tilesY;
 
 					int selX, selY, selW, selH;
@@ -1149,8 +1149,8 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 
 					NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(data->hWndEditor);
-					int maxTilesX = (nscr->nWidth / 8) - data->nscrTileX;
-					int maxTilesY = (nscr->nHeight / 8) - data->nscrTileY;
+					int maxTilesX = (nscr->tilesX) - data->nscrTileX;
+					int maxTilesY = (nscr->tilesY) - data->nscrTileY;
 
 					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 100, hWndMain, NULL, NULL, NULL);
 					ScrViewerImportData *nscrImportData = (ScrViewerImportData *) calloc(1, sizeof(ScrViewerImportData));
@@ -1216,8 +1216,8 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
 	int contentWidth = 0, contentHeight = 0;
 	if (data) {
-		contentWidth = data->nscr.nWidth * data->scale;
-		contentHeight = data->nscr.nHeight * data->scale;
+		contentWidth = data->nscr.tilesX * 8 * data->scale;
+		contentHeight = data->nscr.tilesY * 8 * data->scale;
 	}
 
 	//little hack for code reuse >:)
@@ -1294,7 +1294,7 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				int selX, selY, selW, selH;
 				TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
 
-				int tile = selX + selY * (data->nscr.nWidth / 8);
+				int tile = selX + selY * (data->nscr.tilesX);
 				uint16_t d = data->nscr.data[tile];
 				int character = d & 0x3FF;
 				int palette = d >> 12;
@@ -1319,7 +1319,7 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			mousePos.x += scrollX;
 			mousePos.y += scrollY;
 			
-			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < (int) (data->nscr.nWidth * data->scale) && mousePos.y < (int) (data->nscr.nHeight * data->scale)) {
+			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < (int) (data->nscr.tilesX * 8 * data->scale) && mousePos.y < (int) (data->nscr.tilesY * 8 * data->scale)) {
 				TedOnRButtonDown(&data->ted);
 				//if it is within the colors area, open a color chooser
 				TedTrackPopup((EDITOR_DATA *) data, &data->ted);
@@ -1361,8 +1361,8 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}
-	width = nscr.nWidth;
-	height = nscr.nHeight;
+	width = nscr.tilesX * 8;
+	height = nscr.tilesY * 8;
 
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
 		float dpiScale = GetDpiScale();
@@ -1386,8 +1386,8 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 }
 
 HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr) {
-	width = nscr->nWidth;
-	height = nscr->nHeight;
+	width = nscr->tilesX * 8;
+	height = nscr->tilesY * 8;
 
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
 		float dpiScale = GetDpiScale();

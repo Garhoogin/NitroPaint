@@ -22,9 +22,8 @@ int ScrScreenSizeValid(int nPx) {
 	return 0;
 }
 
-static void ScriReadScreenData(NSCR *nscr, const void *src, int srcSize) {
-	//take the file's data and translate it internally to text/affine ext format.
-	switch (nscr->fmt) {
+static void ScriReadScreenDataAs(NSCR *nscr, const void *src, int srcSize, int fmt) {
+	switch (fmt) {
 		case SCREENFORMAT_AFFINE:
 		{
 			const uint8_t *data = (const uint8_t *) src;
@@ -47,8 +46,13 @@ static void ScriReadScreenData(NSCR *nscr, const void *src, int srcSize) {
 	}
 }
 
-static void ScriWriteScreenData(NSCR *nscr, BSTREAM *stream) {
-	switch (nscr->fmt) {
+static void ScriReadScreenData(NSCR *nscr, const void *src, int srcSize) {
+	//take the file's data and translate it internally to text/affine ext format.
+	ScriReadScreenDataAs(nscr, src, srcSize, nscr->fmt);
+}
+
+static void ScriWriteScreenDataAs(NSCR *nscr, BSTREAM *stream, int fmt) {
+	switch (fmt) {
 		case SCREENFORMAT_TEXT:
 		case SCREENFORMAT_AFFINEEXT:
 			bstreamWrite(stream, nscr->data, nscr->dataSize);
@@ -64,8 +68,12 @@ static void ScriWriteScreenData(NSCR *nscr, BSTREAM *stream) {
 	}
 }
 
-static int ScriGetDataSize(NSCR *nscr) {
-	switch (nscr->fmt) {
+static void ScriWriteScreenData(NSCR *nscr, BSTREAM *stream) {
+	ScriWriteScreenDataAs(nscr, stream, nscr->fmt);
+}
+
+static int ScriGetDataSizeAs(NSCR *nscr, int fmt) {
+	switch (fmt) {
 		case SCREENFORMAT_TEXT:
 		case SCREENFORMAT_AFFINEEXT:
 			return nscr->dataSize;
@@ -73,6 +81,10 @@ static int ScriGetDataSize(NSCR *nscr) {
 			return nscr->dataSize / 2;
 	}
 	return 0;
+}
+
+static int ScriGetDataSize(NSCR *nscr) {
+	return ScriGetDataSizeAs(nscr, nscr->fmt);
 }
 
 int ScrComputeHighestCharacter(NSCR *nscr) {
@@ -246,8 +258,8 @@ int ScrReadHudson(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize
 	ScrInit(nscr, type);
 	nscr->fmt = SCREENFORMAT_TEXT;
 	nscr->colorMode = SCREENCOLORMODE_16x16;
-	nscr->nWidth = tilesX * 8;
-	nscr->nHeight = tilesY * 8;
+	nscr->tilesX = tilesX;
+	nscr->tilesY = tilesY;
 	ScriReadScreenData(nscr, srcData, tilesX * tilesY * 2);
 	ScrComputeHighestCharacter(nscr);
 	return 0;
@@ -263,32 +275,32 @@ int ScrReadBin(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 	//guess size
 	switch ((dwFileSize >> 1) * 64) {
 		case 256*192:
-			nscr->nWidth = 256;
-			nscr->nHeight = 192;
+			nscr->tilesX = 256 / 8;
+			nscr->tilesY = 192 / 8;
 			break;
 		case 256*256:
-			nscr->nWidth = 256;
-			nscr->nHeight = 256;
+			nscr->tilesX = 256 / 8;
+			nscr->tilesY = 256 / 8;
 			break;
 		case 512*512:
-			nscr->nWidth = 512;
-			nscr->nHeight = 512;
+			nscr->tilesX = 512 / 8;
+			nscr->tilesY = 512 / 8;
 			break;
 		case 1024*1024:
-			nscr->nWidth = 1024;
-			nscr->nHeight = 1024;
+			nscr->tilesX = 1024 / 8;
+			nscr->tilesY = 1024 / 8;
 			break;
 		case 128*128:
-			nscr->nWidth = 128;
-			nscr->nHeight = 128;
+			nscr->tilesX = 128 / 8;
+			nscr->tilesY = 128 / 8;
 			break;
 		case 1024*512:
-			nscr->nWidth = 1024;
-			nscr->nHeight = 512;
+			nscr->tilesX = 1024 / 8;
+			nscr->tilesY = 512 / 8;
 			break;
 		case 512*256:
-			nscr->nWidth = 256;
-			nscr->nHeight = 512;
+			nscr->tilesX = 256 / 8;
+			nscr->tilesY = 512 / 8;
 			break;
 	}
 	return 0;
@@ -310,9 +322,11 @@ int ScrReadNsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	int colorMode = *(uint32_t *) (scrn + 0xC);
 	nscr->colorMode = colorMode;
 	nscr->fmt = affine ? (colorMode == SCREENCOLORMODE_256x16 ? SCREENFORMAT_AFFINEEXT : SCREENFORMAT_AFFINE) : SCREENFORMAT_TEXT;
-	nscr->nWidth = *(uint32_t *) (scrn + 0x0) * 8;
-	nscr->nHeight = *(uint32_t *) (scrn + 0x4) * 8;
-	ScriReadScreenData(nscr, scrn + 0x10, scrnSize - 0x10);
+	nscr->tilesX = *(uint32_t *) (scrn + 0x0);
+	nscr->tilesY = *(uint32_t *) (scrn + 0x4);
+
+	int fmtAs = (colorMode == SCREENCOLORMODE_256x16) ? SCREENFORMAT_AFFINEEXT : SCREENFORMAT_TEXT;
+	ScriReadScreenDataAs(nscr, scrn + 0x10, scrnSize - 0x10, fmtAs);
 
 	if (link != NULL) {
 		nscr->header.fileLink = (char *) malloc(linkSize);
@@ -388,8 +402,8 @@ static int ScriIsCommonRead(NSCR *nscr, const unsigned char *file, unsigned int 
 	}
 
 	ScrInit(nscr, type);
-	nscr->nWidth = width * 8;
-	nscr->nHeight = height * 8;
+	nscr->tilesX = width;
+	nscr->tilesY = height;
 	nscr->gridWidth = 8;
 	nscr->gridHeight = 8;
 	nscr->showGrid = 0;
@@ -423,8 +437,8 @@ int ScrReadNscr(NSCR *nscr, const unsigned char *file, unsigned int size) {
 
 	nscr->colorMode = colorMode;
 	nscr->fmt = fmt;
-	nscr->nWidth = nWidth;
-	nscr->nHeight = nHeight;
+	nscr->tilesX = nWidth / 8;
+	nscr->tilesY = nHeight / 8;
 	ScriReadScreenData(nscr, scrn + 0xC, dwDataSize);
 	ScrComputeHighestCharacter(nscr);
 
@@ -460,8 +474,8 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int charBase, int x, int y
 		return 0;
 	}
 
-	int nWidthTiles = nscr->nWidth >> 3;
-	int nHeightTiles = nscr->nHeight >> 3;
+	int nWidthTiles = nscr->tilesX;
+	int nHeightTiles = nscr->tilesY;
 	if (x >= nWidthTiles || y >= nHeightTiles) {
 		memset(out, 0, 64 * sizeof(COLOR32));
 		return 1;
@@ -526,8 +540,8 @@ int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int charBase, int x, int y
 int ScrWriteNscr(NSCR *nscr, BSTREAM *stream) {
 	unsigned char scrnHeader[] = { 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
 
-	*(uint16_t *) (scrnHeader + 0x0) = nscr->nWidth;
-	*(uint16_t *) (scrnHeader + 0x2) = nscr->nHeight;
+	*(uint16_t *) (scrnHeader + 0x0) = nscr->tilesX * 8;
+	*(uint16_t *) (scrnHeader + 0x2) = nscr->tilesY * 8;
 	*(uint16_t *) (scrnHeader + 0x4) = nscr->colorMode;
 	*(uint16_t *) (scrnHeader + 0x6) = nscr->fmt;
 	*(uint32_t *) (scrnHeader + 0x8) = ScriGetDataSize(nscr);
@@ -551,24 +565,25 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	unsigned char clrcHeader[] = { 0, 0, 0, 0 };
 	unsigned char gridHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	
-	*(uint32_t *) (scrnHeader + 0x0) = nscr->nWidth / 8;
-	*(uint32_t *) (scrnHeader + 0x4) = nscr->nHeight / 8;
+	*(uint32_t *) (scrnHeader + 0x0) = nscr->tilesX;
+	*(uint32_t *) (scrnHeader + 0x4) = nscr->tilesY;
 	*(uint32_t *) (scrnHeader + 0x8) = (nscr->fmt == SCREENFORMAT_TEXT) ? 0 : 1;
 	*(uint32_t *) (scrnHeader + 0xC) = nscr->colorMode;
-	*(uint32_t *) (escrHeader + 0x0) = nscr->nWidth / 8;
-	*(uint32_t *) (escrHeader + 0x4) = nscr->nHeight / 8;
+	*(uint32_t *) (escrHeader + 0x0) = nscr->tilesX;
+	*(uint32_t *) (escrHeader + 0x4) = nscr->tilesY;
 	*(uint32_t *) (escrHeader + 0x8) = (nscr->clearValue & 0x3FF) | ((nscr->clearValue & 0xF000) << 4) | ((nscr->clearValue & 0x0C00) << 16);
-	*(uint32_t *) (clrfHeader + 0x0) = nscr->nWidth / 8;
-	*(uint32_t *) (clrfHeader + 0x4) = nscr->nHeight / 8;
+	*(uint32_t *) (clrfHeader + 0x0) = nscr->tilesX;
+	*(uint32_t *) (clrfHeader + 0x4) = nscr->tilesY;
 	*(uint32_t *) (clrcHeader + 0x0) = nscr->clearValue;
 	*(uint32_t *) (gridHeader + 0x0) = nscr->showGrid;
 	*(uint16_t *) (gridHeader + 0x4) = nscr->gridWidth;
 	*(uint16_t *) (gridHeader + 0x6) = nscr->gridHeight;
 
-	int clrfSize = ((nscr->nWidth / 8) * (nscr->nHeight / 8) + 7) / 8;
+	int fmtAs = nscr->colorMode == SCREENCOLORMODE_16x16 ? SCREENFORMAT_AFFINEEXT : SCREENFORMAT_TEXT;
+	int clrfSize = (nscr->tilesX * nscr->tilesY + 7) / 8;
 	void *dummyClrf = calloc(clrfSize, 1);
 
-	uint32_t *escr = (uint32_t *) calloc(nscr->nWidth * nscr->nHeight / 64, 4);
+	uint32_t *escr = (uint32_t *) calloc(nscr->tilesX * nscr->tilesY, 4);
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		uint16_t t = nscr->data[i];
 		int chr = t & 0x03FF;
@@ -582,12 +597,12 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 
 	NnsStreamStartBlock(&nnsStream, "SCRN");
 	NnsStreamWrite(&nnsStream, scrnHeader, sizeof(scrnHeader));
-	ScriWriteScreenData(nscr, NnsStreamGetBlockStream(&nnsStream));
+	ScriWriteScreenDataAs(nscr, NnsStreamGetBlockStream(&nnsStream), fmtAs);
 	NnsStreamEndBlock(&nnsStream);
 
 	NnsStreamStartBlock(&nnsStream, "ESCR");
 	NnsStreamWrite(&nnsStream, escrHeader, sizeof(escrHeader));
-	NnsStreamWrite(&nnsStream, escr, nscr->nWidth * nscr->nHeight / 64 * 4);
+	NnsStreamWrite(&nnsStream, escr, nscr->tilesX * nscr->tilesY * 4);
 	NnsStreamEndBlock(&nnsStream);
 
 	NnsStreamStartBlock(&nnsStream, "CLRF");
@@ -654,11 +669,11 @@ static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
 	*(uint32_t *) (linkFooter + 0x4) = linkLen;
 	*(uint32_t *) (cmntFooter + 0x4) = commentLen + 2;
 	*(uint16_t *) (clrcFooter + 0x8) = nscr->clearValue;
-	*(uint16_t *) (sizeFooter + 0x8) = nscr->nWidth / 8;
-	*(uint16_t *) (sizeFooter + 0xA) = nscr->nHeight / 8;
+	*(uint16_t *) (sizeFooter + 0x8) = nscr->tilesX;
+	*(uint16_t *) (sizeFooter + 0xA) = nscr->tilesY;
 	cmntFooter[9] = commentLen;
-	modeFooter[0x8] = nscr->nWidth / 8;
-	modeFooter[0x9] = nscr->nHeight / 8;
+	modeFooter[0x8] = nscr->tilesX;
+	modeFooter[0x9] = nscr->tilesY;
 	modeFooter[0xA] = (nscr->fmt == SCREENFORMAT_AFFINE) ? 1 : 0;
 	modeFooter[0xB] = 2;
 	*(uint32_t *) (verFooter + 0x4) = strlen(ver);
@@ -699,19 +714,19 @@ int ScrWriteIsc(NSCR *nscr, BSTREAM *stream) {
 }
 
 int ScrWriteHudson(NSCR *nscr, BSTREAM *stream) {
-	int nTotalTiles = (nscr->nWidth * nscr->nHeight) >> 6;
+	int nTotalTiles = nscr->tilesX * nscr->tilesY;
 	if (nscr->header.format == NSCR_TYPE_HUDSON) {
 		unsigned char header[8] = { 0 };
 		*(uint16_t *) (header + 1) = 2 * nTotalTiles + 4;
 		*(uint16_t *) (header + 4) = 2 * nTotalTiles;
-		header[6] = nscr->nWidth / 8;
-		header[7] = nscr->nHeight / 8;
+		header[6] = nscr->tilesX;
+		header[7] = nscr->tilesY;
 		bstreamWrite(stream, header, sizeof(header));
 	} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
 		unsigned char header[4] = { 0, 0, 0, 0 };
 		*(uint16_t *) header = nTotalTiles * 2;
-		header[2] = nscr->nWidth / 8;
-		header[3] = nscr->nHeight / 8;
+		header[2] = nscr->tilesX;
+		header[3] = nscr->tilesY;
 		bstreamWrite(stream, header, sizeof(header));
 	}
 

@@ -2548,8 +2548,8 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
 				NSCR nscr;
 				ScrInit(&nscr, NSCR_TYPE_NSCR);
-				nscr.nWidth = tilesX * 8;
-				nscr.nHeight = tilesY * 8;
+				nscr.tilesX = tilesX;
+				nscr.tilesY = tilesY;
 				nscr.dataSize = tilesX * tilesY * sizeof(uint16_t);
 				nscr.data = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
 				CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, nitroPaintStruct->hWndMdi, &nscr);
@@ -2607,16 +2607,16 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				HWND hWndScreen = (HWND) SendMessage(nitroPaintStruct->hWndMdi, WM_MDIGETACTIVE, 0, 0);
 				NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndScreen, 0);
 				NSCR *nscr = &nscrViewerData->nscr;
-				int tilesX = nscr->nWidth / 8;
-				int tilesY = nscr->nHeight / 8;
+				int tilesX = nscr->tilesX;
+				int tilesY = nscr->tilesY;
 
 				int newTilesX = tilesX / x;
 				int newTilesY = tilesY / y;
 
 				NSCR newNscr;
 				ScrInit(&newNscr, nscr->header.format);
-				newNscr.nWidth = newTilesX * 8;
-				newNscr.nHeight = newTilesY * 8;
+				newNscr.tilesX = newTilesX;
+				newNscr.tilesY = newTilesY;
 				newNscr.dataSize = newTilesX * newTilesY * sizeof(uint16_t);
 				for (int i = 0; i < y; i++) {
 					for (int j = 0; j < x; j++) {

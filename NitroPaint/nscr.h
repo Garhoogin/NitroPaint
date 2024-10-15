@@ -38,8 +38,8 @@ extern LPCWSTR screenFormatNames[];
 
 typedef struct NSCR_ {
 	OBJECT_HEADER header;
-	unsigned int nWidth;
-	unsigned int nHeight;
+	unsigned int tilesX;
+	unsigned int tilesY;
 	unsigned int dataSize;
 	uint16_t *data;
 	int colorMode;
