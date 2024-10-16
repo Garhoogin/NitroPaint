@@ -39,6 +39,7 @@ LPCWSTR g_ObjCompressionNames[] = {
 	L"LZ77 Header", 
 	L"MvDK", 
 	L"VLX",
+	L"ASH",
 	NULL
 };
 

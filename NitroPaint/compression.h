@@ -12,8 +12,9 @@
 #define COMPRESSION_LZ77_HEADER      9
 #define COMPRESSION_MVDK             10
 #define COMPRESSION_VLX              11
+#define COMPRESSION_ASH              12
 
-//----- LZ77 functions
+
 
 /******************************************************************************\
 *
@@ -38,8 +39,9 @@ unsigned char *CxUnfilterDiff8(const unsigned char *buffer, unsigned int size, u
 unsigned char *CxUnfilterDiff16(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 unsigned char *CxDecompressLZHeader(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 unsigned char *CxDecompressMvDK(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
-unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 unsigned char *CxDecompressVlx(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompressAsh(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 
 
 /******************************************************************************\
@@ -82,6 +84,8 @@ unsigned char *CxFilterDiff8(const unsigned char *buffer, unsigned int size, uns
 unsigned char *CxFilterDiff16(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
 unsigned char *CxCompressLZHeader(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
 unsigned char *CxCompressMvDK(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressVlx(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
+unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize);
 unsigned char *CxCompress(const unsigned char *buffer, unsigned int size, int compression, unsigned int *compressedSize);
 
 
@@ -110,6 +114,7 @@ int CxIsFilteredDiff16(const unsigned char *buffer, unsigned int size);
 int CxIsFilteredLZHeader(const unsigned char *buffer, unsigned int size);
 int CxIsCompressedMvDK(const unsigned char *buffer, unsigned int size);
 int CxIsCompressedVlx(const unsigned char *src, unsigned int size);
+int CxIsCompressedAsh(const unsigned char *src, unsigned int size);
 
 //----- Common functions
 
