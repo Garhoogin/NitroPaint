@@ -22,10 +22,62 @@ int ScrScreenSizeValid(int nPx) {
 	return 0;
 }
 
-static void ScriReadScreenDataAs(NSCR *nscr, const void *src, int srcSize, int fmt) {
+static void ScriReadScreenDataAs(NSCR *nscr, const void *src, int srcSize, int fmt, int doSwizzle) {
 	switch (fmt) {
+		case SCREENFORMAT_TEXT:
+		{
+			//NITRO-CHARACTER creates NSC files without swizzling the order of the screen data. It is optional
+			//thus. If no swizzling is used, then the process is the same as for affine extended screens.
+			if (doSwizzle) {
+				//text: read data in 256x256 pixel panels
+				const uint16_t *src16 = (const uint16_t *) src;
+				nscr->data = (uint16_t *) malloc(srcSize);
+				nscr->dataSize = srcSize;
+
+				//split data in panels.
+				unsigned int nPnlX = (nscr->tilesX + 31) / 32;
+				unsigned int nPnlY = (nscr->tilesY + 31) / 32;
+
+				unsigned int nTiles = nscr->tilesX * nscr->tilesY;
+				unsigned int curPnlX = 0, curPnlY = 0, curPnlTileX = 0, curPnlTileY = 0;
+				for (unsigned int i = 0; i < nTiles; i++) {
+					//data in
+					uint16_t d = src16[i];
+
+					//locate data out
+					nscr->data[(curPnlX * 32 + curPnlTileX) + (curPnlY * 32 + curPnlTileY) * nscr->tilesX] = d;
+
+					//increment destination
+					curPnlTileX++;
+					if (curPnlTileX >= 32 || (32 * curPnlX + curPnlTileX) >= nscr->tilesX) {
+						curPnlTileX = 0;
+						curPnlTileY++;
+						if (curPnlTileY >= 32 || (32 * curPnlY + curPnlTileY) >= nscr->tilesY) {
+							curPnlTileY = 0;
+							curPnlX++;
+							if (curPnlX >= nPnlX) {
+								curPnlX = 0;
+								curPnlY++;
+							}
+						}
+					}
+				}
+				return;
+			}
+
+			//fall through
+		}
+		case SCREENFORMAT_AFFINEEXT:
+		{
+			//affine ext: read data direct
+			nscr->data = (uint16_t *) malloc(srcSize);
+			nscr->dataSize = srcSize;
+			memcpy(nscr->data, src, srcSize);
+			break;
+		}
 		case SCREENFORMAT_AFFINE:
 		{
+			//affine: read data direct
 			const uint8_t *data = (const uint8_t *) src;
 			nscr->dataSize = srcSize * 2;
 			nscr->data = (uint16_t *) malloc(nscr->dataSize);
@@ -35,25 +87,48 @@ static void ScriReadScreenDataAs(NSCR *nscr, const void *src, int srcSize, int f
 			}
 			break;
 		}
-		case SCREENFORMAT_AFFINEEXT:
-		case SCREENFORMAT_TEXT:
-		{
-			nscr->data = (uint16_t *) malloc(srcSize);
-			nscr->dataSize = srcSize;
-			memcpy(nscr->data, src, srcSize);
-			break;
-		}
 	}
 }
 
 static void ScriReadScreenData(NSCR *nscr, const void *src, int srcSize) {
 	//take the file's data and translate it internally to text/affine ext format.
-	ScriReadScreenDataAs(nscr, src, srcSize, nscr->fmt);
+	ScriReadScreenDataAs(nscr, src, srcSize, nscr->fmt, 1);
 }
 
-static void ScriWriteScreenDataAs(NSCR *nscr, BSTREAM *stream, int fmt) {
+static void ScriWriteScreenDataAs(NSCR *nscr, BSTREAM *stream, int fmt, int swizzle) {
 	switch (fmt) {
 		case SCREENFORMAT_TEXT:
+		{
+			//NITRO-CHARACTER does not swizzle.
+			if (swizzle) {
+				uint16_t *out = (uint16_t *) malloc(nscr->dataSize);
+
+				//split data into panels.
+				unsigned int nPnlX = (nscr->tilesX + 31) / 32;
+				unsigned int nPnlY = (nscr->tilesY + 31) / 32;
+
+				unsigned int outpos = 0;
+				for (unsigned int pnlY = 0; pnlY < nPnlY; pnlY++) {
+					for (unsigned int pnlX = 0; pnlX < nPnlX; pnlX++) {
+						for (unsigned int y = 0; y < 32; y++) {
+							for (unsigned int x = 0; x < 32; x++) {
+
+								if ((pnlY * 32 + y) < nscr->tilesY && (pnlX * 32 + x) < nscr->tilesX) {
+									out[outpos++] = nscr->data[(pnlX * 32 + x) + (pnlY * 32 + y) * nscr->tilesX];
+								}
+
+							}
+						}
+					}
+				}
+
+				bstreamWrite(stream, out, nscr->dataSize);
+				free(out);
+				return;
+			}
+
+			//fall through
+		}
 		case SCREENFORMAT_AFFINEEXT:
 			bstreamWrite(stream, nscr->data, nscr->dataSize);
 			break;
@@ -69,7 +144,7 @@ static void ScriWriteScreenDataAs(NSCR *nscr, BSTREAM *stream, int fmt) {
 }
 
 static void ScriWriteScreenData(NSCR *nscr, BSTREAM *stream) {
-	ScriWriteScreenDataAs(nscr, stream, nscr->fmt);
+	ScriWriteScreenDataAs(nscr, stream, nscr->fmt, 1);
 }
 
 static int ScriGetDataSizeAs(NSCR *nscr, int fmt) {
@@ -324,9 +399,9 @@ int ScrReadNsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	nscr->fmt = affine ? (colorMode == SCREENCOLORMODE_256x16 ? SCREENFORMAT_AFFINEEXT : SCREENFORMAT_AFFINE) : SCREENFORMAT_TEXT;
 	nscr->tilesX = *(uint32_t *) (scrn + 0x0);
 	nscr->tilesY = *(uint32_t *) (scrn + 0x4);
-
-	int fmtAs = (colorMode == SCREENCOLORMODE_256x16) ? SCREENFORMAT_AFFINEEXT : SCREENFORMAT_TEXT;
-	ScriReadScreenDataAs(nscr, scrn + 0x10, scrnSize - 0x10, fmtAs);
+	
+	//NITRO-CHARACTER: do not swizzle BG screen data
+	ScriReadScreenDataAs(nscr, scrn + 0x10, scrnSize - 0x10, nscr->fmt, 0);
 
 	if (link != NULL) {
 		nscr->header.fileLink = (char *) malloc(linkSize);
@@ -579,7 +654,6 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	*(uint16_t *) (gridHeader + 0x4) = nscr->gridWidth;
 	*(uint16_t *) (gridHeader + 0x6) = nscr->gridHeight;
 
-	int fmtAs = nscr->colorMode == SCREENCOLORMODE_16x16 ? SCREENFORMAT_AFFINEEXT : SCREENFORMAT_TEXT;
 	int clrfSize = (nscr->tilesX * nscr->tilesY + 7) / 8;
 	void *dummyClrf = calloc(clrfSize, 1);
 
@@ -597,7 +671,7 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 
 	NnsStreamStartBlock(&nnsStream, "SCRN");
 	NnsStreamWrite(&nnsStream, scrnHeader, sizeof(scrnHeader));
-	ScriWriteScreenDataAs(nscr, NnsStreamGetBlockStream(&nnsStream), fmtAs);
+	ScriWriteScreenDataAs(nscr, NnsStreamGetBlockStream(&nnsStream), nscr->fmt, 0); //do not swizzle
 	NnsStreamEndBlock(&nnsStream);
 
 	NnsStreamStartBlock(&nnsStream, "ESCR");
