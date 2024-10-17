@@ -2531,6 +2531,7 @@ typedef struct CREATESCREENDATA_ {
 	HWND hWndWidth;
 	HWND hWndHeight;
 	HWND hWndCreate;
+	HWND hWndFormat;
 } CREATESCREENDATA;
 
 LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2542,14 +2543,49 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			CreateStatic(hWnd, L"Width:", 10, 10, 75, 22);
-			CreateStatic(hWnd, L"Height:", 10, 37, 75, 22);
+			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+
+			CreateStatic(hWnd, L"Width (dots):", 10, 10, 75, 22);
+			CreateStatic(hWnd, L"Height (dots):", 10, 37, 75, 22);
+			CreateStatic(hWnd, L"Format:", 10, 64, 75, 22);
+
+			LPCWSTR formats[] = {
+				L"Text 16x16",
+				L"Text 256x1",
+				L"Affine 256x1",
+				L"Affine Extended 256x16"
+			};
+			int defFmt = 0;
+
+			//determine which default format to use. If we have an open BG screen, copy its settings.
+			HWND hWndNscrViewer = NULL;
+			if (GetAllEditors(hWndMain, FILE_TYPE_SCREEN, &hWndNscrViewer, 1)) {
+				//has open screen editor, duplicate its setting
+				NSCR *nscr = (NSCR *) EditorGetData(hWndNscrViewer);
+
+				if (nscr->fmt == SCREENFORMAT_AFFINE) defFmt = 2;
+				else if (nscr->colorMode == SCREENCOLORMODE_16x16) defFmt = 0;
+				else if (nscr->colorMode == SCREENCOLORMODE_256x1) defFmt = 1;
+				else if (nscr->colorMode == SCREENCOLORMODE_256x16) defFmt = 3;
+			} else {
+				//no open screen editor, search for open character editor
+				HWND hWndNcgrViewer = NULL;
+				if (GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrViewer, 1)) {
+					NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
+
+					if (ncgr->nBits == 4) defFmt = 0;
+					else if (ncgr->nBits == 8 && ncgr->nTiles <= 256) defFmt = 2;
+					else if (ncgr->nBits == 8) defFmt = 3;
+				}
+			}
 			
-			data->hWndWidth = CreateEdit(hWnd, L"256", 85, 10, 100, 22, TRUE);
-			data->hWndHeight = CreateEdit(hWnd, L"256", 85, 37, 100, 22, TRUE);
-			data->hWndCreate = CreateButton(hWnd, L"Create", 85, 64, 100, 22, TRUE);
+			data->hWndWidth = CreateEdit(hWnd, L"256", 85, 10, 150, 22, TRUE);
+			data->hWndHeight = CreateEdit(hWnd, L"256", 85, 37, 150, 22, TRUE);
+			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(formats[0]), 85, 64, 150, 100, defFmt);
+			data->hWndCreate = CreateButton(hWnd, L"Create", 85, 91, 150, 22, TRUE);
 			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 195, 96);
+			SetWindowSize(hWnd, 245, 123);
 		}
 		case WM_COMMAND:
 		{
@@ -2562,6 +2598,28 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				int tilesX = width / 8;
 				int height = GetEditNumber(data->hWndHeight);
 				int tilesY = height / 8;
+				int fmtSel = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0);
+
+				//translate format selection to format and color mode
+				int colorMode = SCREENCOLORMODE_16x16, format = SCREENFORMAT_TEXT;
+				switch (fmtSel) {
+					case 0:
+						colorMode = SCREENCOLORMODE_16x16;
+						format = SCREENFORMAT_TEXT;
+						break;
+					case 1:
+						colorMode = SCREENCOLORMODE_256x1;
+						format = SCREENFORMAT_TEXT;
+						break;
+					case 2:
+						colorMode = SCREENCOLORMODE_256x1;
+						format = SCREENFORMAT_AFFINE;
+						break;
+					case 3:
+						colorMode = SCREENCOLORMODE_256x16;
+						format = SCREENFORMAT_AFFINEEXT;
+						break;
+				}
 
 				NSCR nscr;
 				ScrInit(&nscr, NSCR_TYPE_NSCR);
