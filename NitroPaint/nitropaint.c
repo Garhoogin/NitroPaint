@@ -1007,25 +1007,51 @@ NITROPAINTSTRUCT *NpGetData(HWND hWndMain) {
 	return (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 }
 
+static const int sZoomMenuCommands[] = {
+	ID_ZOOM_100,
+	ID_ZOOM_200,
+	ID_ZOOM_400,
+	ID_ZOOM_800,
+	ID_ZOOM_1600
+};
+
+static const int sZoomLevels[] = {
+	1, 2, 4, 8, 16
+};
+
+int MainGetZoomByCommand(int cmd) {
+	for (int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
+		if (cmd == sZoomMenuCommands[i]) return sZoomLevels[i];
+	}
+	return 1;
+}
+
+int MainGetZoomCommand(int zoom) {
+	for (int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
+		if (zoom == sZoomLevels[i]) return sZoomMenuCommands[i];
+	}
+	return -1;
+}
+
 int MainGetZoom(HWND hWnd) {
 	HMENU hMenu = GetMenu(hWnd);
-	if (GetMenuState(hMenu, ID_ZOOM_100, MF_BYCOMMAND)) return 1;
-	if (GetMenuState(hMenu, ID_ZOOM_200, MF_BYCOMMAND)) return 2;
-	if (GetMenuState(hMenu, ID_ZOOM_400, MF_BYCOMMAND)) return 4;
-	if (GetMenuState(hMenu, ID_ZOOM_800, MF_BYCOMMAND)) return 8;
-	if (GetMenuState(hMenu, ID_ZOOM_1600, MF_BYCOMMAND)) return 16;
-	return 0;
+	for (int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
+		if (GetMenuState(hMenu, sZoomMenuCommands[i], MF_BYCOMMAND)) return sZoomLevels[i];
+	}
+	return 1;
 }
 
 void MainSetZoom(HWND hWnd, int zoom) {
-	if (!zoom) return;
-	int menuIndex = -1;
-	while (zoom) {
-		menuIndex++;
-		zoom >>= 1;
+	int cmd = -1;
+	for (int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
+		if (sZoomLevels[i] == zoom) {
+			cmd = sZoomMenuCommands[i];
+			break;
+		}
 	}
-	int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
-	SendMessage(hWnd, WM_COMMAND, ids[menuIndex], 0);
+	if (cmd == -1) return;
+
+	SendMessage(hWnd, WM_COMMAND, cmd, 0);
 }
 
 VOID MainZoomIn(HWND hWnd) {

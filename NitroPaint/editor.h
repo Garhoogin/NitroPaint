@@ -45,6 +45,7 @@ typedef struct EDITOR_CLASS_ {
 	FRAMEDATA frameData;         \
 	HWND hWnd;                   \
 	int scale;                   \
+	int scalePrev;               \
 	int showBorders;             \
 	int dirty;                   \
 	WCHAR szOpenFile[MAX_PATH]

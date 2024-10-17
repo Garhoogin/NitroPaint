@@ -37,29 +37,14 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 		case ID_ZOOM_800:
 		case ID_ZOOM_1600:
 		{
-			int scale = 1;
-			if (LOWORD(wParam) == ID_ZOOM_100) scale = 1;
-			if (LOWORD(wParam) == ID_ZOOM_200) scale = 2;
-			if (LOWORD(wParam) == ID_ZOOM_400) scale = 4;
-			if (LOWORD(wParam) == ID_ZOOM_800) scale = 8;
-			if (LOWORD(wParam) == ID_ZOOM_1600) scale = 16;
+			int scale = MainGetZoomByCommand(LOWORD(wParam));
+			data->scalePrev = data->scale;
 			data->scale = scale;
 
-			int checkBox = ID_ZOOM_100;
-			if (scale == 2) {
-				checkBox = ID_ZOOM_200;
-			} else if (scale == 4) {
-				checkBox = ID_ZOOM_400;
-			} else if (scale == 8) {
-				checkBox = ID_ZOOM_800;
-			} else if (scale == 16) {
-				checkBox = ID_ZOOM_1600;
-			}
-			int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
-			for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-				int id = ids[i];
-				CheckMenuItem(GetMenu(getMainWindow(hWnd)), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-			}
+			int checkBox = MainGetZoomCommand(scale);
+			int other = MainGetZoomCommand(data->scalePrev);
+			CheckMenuItem(GetMenu(getMainWindow(hWnd)), other, MF_UNCHECKED);
+			CheckMenuItem(GetMenu(getMainWindow(hWnd)), checkBox, MF_CHECKED);
 			break;
 		}
 		case ID_EDIT_COMMENT:

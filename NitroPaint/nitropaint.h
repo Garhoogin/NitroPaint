@@ -181,6 +181,16 @@ void getPathFromPaths(LPCWSTR paths, int index, WCHAR *path);
 NITROPAINTSTRUCT *NpGetData(HWND hWndMain);
 
 //
+// Get zoom level by menu command.
+//
+int MainGetZoomByCommand(int cmd);
+
+//
+// Get menu command for zoom.
+//
+int MainGetZoomCommand(int zoom);
+
+//
 // Get the current zoom level
 //
 int MainGetZoom(HWND hWnd);
