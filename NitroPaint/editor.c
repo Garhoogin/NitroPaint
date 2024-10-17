@@ -494,10 +494,12 @@ HWND EditorCreate(LPCWSTR lpszClassName, int x, int y, int width, int height, HW
 	DWORD dwExStyle = WS_EX_CLIENTEDGE | WS_EX_MDICHILD;
 	DWORD dwStyle = WS_CLIPSIBLINGS | WS_CAPTION | WS_CLIPCHILDREN;
 	HWND hWnd = CreateWindowEx(dwExStyle, lpszClassName, L"", dwStyle, x, y, width, height, hWndParent, NULL, NULL, NULL);
+	ShowWindow(hWnd, SW_HIDE);
+
 	LPCWSTR title = (LPCWSTR) GetClassLongPtr(hWnd, EDITOR_CD_TITLE);
 	SendMessage(hWnd, WM_SETTEXT, wcslen(title), (LPARAM) title);
 
-	//show
-	ShowWindow(hWnd, SW_SHOW);
+	//show (only if size is specified, else remain hidden)
+	if (width && height) ShowWindow(hWnd, SW_SHOW);
 	return hWnd;
 }

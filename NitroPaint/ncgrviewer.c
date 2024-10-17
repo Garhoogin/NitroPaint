@@ -1072,6 +1072,7 @@ static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immed
 		}
 		free(nscrEditors);
 	}
+	ShowWindow(hWnd, SW_SHOW);
 }
 
 static LRESULT ChrViewerOnSize(HWND hWnd, WPARAM wParam, LPARAM lParam) {

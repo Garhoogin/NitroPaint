@@ -573,6 +573,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			WCHAR buffer[32];
 			int len = wsprintfW(buffer, L"Size: %dx%d", data->nscr.tilesX * 8, data->nscr.tilesY * 8);
 			SendMessage(data->hWndSize, WM_SETTEXT, len, (LPARAM) buffer);
+			ShowWindow(hWnd, SW_SHOW);
 			return 1;
 		}
 		case NV_UPDATEPREVIEW:
