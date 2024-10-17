@@ -1026,8 +1026,8 @@ static void ChrViewerSetPreferredSize(NCGRVIEWERDATA *data) {
 	HWND hWndMdi = (HWND) GetWindowLongPtr(data->hWnd, GWL_HWNDPARENT);
 	GetClientRect(hWndMdi, &rcMdi);
 
-	int maxHeight = rcMdi.bottom * 4 / 5; // 80% of client height
-	int maxWidth = rcMdi.right * 4 / 5;  // 80% of client height
+	int maxHeight = rcMdi.bottom * 9 / 10; // 90% of client height
+	int maxWidth = rcMdi.right * 9 / 10;  // 90% of client height
 	if (height >= maxHeight) height = maxHeight;
 	if (width >= maxWidth) width = maxWidth;
 
