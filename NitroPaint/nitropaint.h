@@ -176,6 +176,11 @@ int getPathCount(LPCWSTR paths);
 void getPathFromPaths(LPCWSTR paths, int index, WCHAR *path);
 
 //
+// Get NitroPaint struct
+//
+NITROPAINTSTRUCT *NpGetData(HWND hWndMain);
+
+//
 // Get the current zoom level
 //
 int MainGetZoom(HWND hWnd);

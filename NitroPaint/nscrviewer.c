@@ -138,7 +138,7 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 
 	//get NCLR and NCGR pointers
 	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	if (nitroPaintStruct->hWndNclrViewer != NULL) {
 		nclr = (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 	}
@@ -559,7 +559,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			//guess a tile base based on an open NCGR (if any)
 			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 			if (hWndNcgrViewer != NULL) {
 				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
@@ -637,7 +637,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						int width, height;
 
 						HWND hWndMain = getMainWindow(hWnd);
-						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+						NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 
@@ -1157,7 +1157,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					if (!writeScreen) writeCharacterIndices = 0;
 
 					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+					NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 					NCLR *nclr = (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 					NCGR *ncgr = (NCGR *) EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
 					NSCR *nscr = (NSCR *) EditorGetObject(data->hWndEditor);

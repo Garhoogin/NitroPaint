@@ -73,7 +73,7 @@ static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int 
 HWND ChrViewerGetAssociatedPaletteViewer(NCGRVIEWERDATA *data) {
 	HWND hWnd = data->hWnd;
 	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	return nitroPaintStruct->hWndNclrViewer;
 }
 
@@ -1104,7 +1104,7 @@ static void ChrViewerOnDestroy(HWND hWnd) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
 
 	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	nitroPaintStruct->hWndNcgrViewer = NULL;
 
 	HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
@@ -1655,7 +1655,7 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 	NCLR *nclr = NULL;
 
 	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	if (nitroPaintStruct->hWndNclrViewer != NULL) {
 		nclr = (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 	}

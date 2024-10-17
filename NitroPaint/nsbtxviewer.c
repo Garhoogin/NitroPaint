@@ -309,7 +309,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 	} else {
 		//must be converted.
 		HWND hWndMain = getMainWindow(data->hWnd);
-		NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+		NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 		HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 		free(px); //for validation

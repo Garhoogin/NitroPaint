@@ -20,17 +20,15 @@ VOID PaintNcerViewer(HWND hWnd) {
 	
 	NCGR *ncgr = NULL;
 	NCLR *nclr = NULL;
-	HWND hWndMain = (HWND) GetWindowLong((HWND) GetWindowLong(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	HWND hWndMain = getMainWindow(hWnd);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	if (nitroPaintStruct->hWndNclrViewer) {
-		NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(nitroPaintStruct->hWndNclrViewer, 0);
-		nclr = &nclrViewerData->nclr;
+		nclr = (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 	}
 	if (nitroPaintStruct->hWndNcgrViewer) {
-		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(nitroPaintStruct->hWndNcgrViewer, 0);
-		ncgr = &ncgrViewerData->ncgr;
+		ncgr = (NCGR *) EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
 	}
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 	
 	NCER_CELL *cell = data->ncer.cells + data->cell;
 	NCER_CELL_INFO info;
@@ -40,7 +38,7 @@ VOID PaintNcerViewer(HWND hWnd) {
 	CHAR_VRAM_TRANSFER *transferEntry = NULL;
 	if (data->ncer.vramTransfer != NULL)
 		transferEntry = data->ncer.vramTransfer + data->cell;
-	DWORD *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, data->ncer.mappingMode, ncgr, nclr, transferEntry, 
+	COLOR32 *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, data->ncer.mappingMode, ncgr, nclr, transferEntry, 
 		256, 128, g_configuration.renderTransparent, data->showObjOutline ? data->oam : -1, 1.0f, 0.0f, 0.0f, 1.0f);
 
 	//draw lines if needed
@@ -249,8 +247,8 @@ void ncerCreateCopy(NCER *dest, NCER *src) {
 	memcpy(dest->cells, src->cells, src->nCells * sizeof(NCER_CELL));
 	for (int i = 0; i < dest->nCells; i++) {
 		NCER_CELL *cell = dest->cells + i;
-		WORD *attr = cell->attr;
-		cell->attr = (WORD *) malloc(cell->nAttribs * 3 * 2);
+		uint16_t *attr = cell->attr;
+		cell->attr = (uint16_t *) malloc(cell->nAttribs * 3 * 2);
 		memcpy(cell->attr, attr, cell->nAttribs * 3 * 2);
 	}
 	if (src->vramTransfer != NULL) {
@@ -287,7 +285,7 @@ void ncerEditorUndoRedo(NCERVIEWERDATA *data) {
 	//fix it up so that the attribute pointers are duplicates. Don't want to mess up undo states here.
 	for (int i = 0; i < ncer->nCells; i++) {
 		NCER_CELL *cell = ncer->cells + i;
-		WORD *oldAttr = cell->attr;
+		uint16_t *oldAttr = cell->attr;
 		cell->attr = malloc(cell->nAttribs * 3 * 2);
 		memcpy(cell->attr, oldAttr, cell->nAttribs * 3 * 2);
 	}
@@ -331,7 +329,7 @@ static void CellPreviewUpdate(HWND hWnd, int cellno) {
 
 static HWND CellEditorGetAssociatedEditor(HWND hWnd, int type) {
 	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 	switch (type) {
 		case FILE_TYPE_PALETTE:
@@ -570,7 +568,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			if (data->mouseDown) {
 				POINT pos;
-				WORD *attribs = data->ncer.cells[data->cell].attr + (3 * data->oam);
+				uint16_t *attribs = data->ncer.cells[data->cell].attr + (3 * data->oam);
 				GetCursorPos(&pos);
 				ScreenToClient(hWnd, &pos);
 				int dx = pos.x - data->dragStartX;
@@ -592,7 +590,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT) {
 				NCER_CELL *cell = data->ncer.cells + data->cell;
-				WORD *attr = cell->attr + (3 * data->oam);
+				uint16_t *attr = cell->attr + (3 * data->oam);
 				int change = 1;
 				switch (wParam) {
 					case VK_UP:
@@ -638,7 +636,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				WORD notification = HIWORD(wParam);
 
 				HWND hWndMain = getMainWindow(hWnd);
-				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 				int changed = 0;
 
@@ -990,7 +988,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						if (!location) break;
 
 						HWND hWndMain = getMainWindow(hWnd);
-						NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+						NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 
@@ -1024,7 +1022,7 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		case WM_DESTROY:
 		{
 			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			nitroPaintStruct->hWndNcerViewer = NULL;
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 			undoDestroy(&data->undo);
@@ -1448,7 +1446,7 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				//get NCER, NCGR, NCLR
 				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *npStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+				NITROPAINTSTRUCT *npStruct = NpGetData(hWndMain);
 
 				HWND hWndNclrViewer =  NULL, hWndNcgrViewer = NULL, hWndNcerViewer = NULL;
 				GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrViewer, 1);

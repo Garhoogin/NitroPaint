@@ -1003,6 +1003,10 @@ cleanup:
 	free(buffer);
 }
 
+NITROPAINTSTRUCT *NpGetData(HWND hWndMain) {
+	return (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+}
+
 int MainGetZoom(HWND hWnd) {
 	HMENU hMenu = GetMenu(hWnd);
 	if (GetMenuState(hMenu, ID_ZOOM_100, MF_BYCOMMAND)) return 1;
@@ -1053,7 +1057,7 @@ BOOL CALLBACK InvalidateAllEditorsProc(HWND hWnd, LPARAM lParam) {
 }
 
 void InvalidateAllEditors(HWND hWndMain, int type) {
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	HWND hWndMdi = nitroPaintStruct->hWndMdi;
 	EnumChildWindows(hWndMdi, InvalidateAllEditorsProc, type);
 }
@@ -1751,7 +1755,7 @@ typedef struct {
 void nscrCreateCallback(void *data) {
 	CREATENSCRDATA *createData = (CREATENSCRDATA *) data;
 	HWND hWndMain = createData->hWndMain;
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 	if (nitroPaintStruct->hWndNcgrViewer) DestroyChild(nitroPaintStruct->hWndNcgrViewer);
@@ -1921,7 +1925,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					COLOR32 *bbits = ImgRead(location, &width, &height);
 
 					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-					NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+					NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 					HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 					HWND hWndProgress = CreateWindow(L"ProgressWindowClass", L"In Progress...", 
@@ -2279,7 +2283,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				//texture editor takes ownership of texture data, no need to free
 				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 				HWND hWndMdi = nitroPaintStruct->hWndMdi;
 				CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, &texture);
 
@@ -2390,7 +2394,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			HWND hWndControl = (HWND) lParam;
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 			if (hWndControl != NULL) {
@@ -2458,7 +2462,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			HWND hWndControl = (HWND) lParam;
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 			if (hWndControl != NULL) {
@@ -2544,7 +2548,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 		case WM_CREATE:
 		{
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 			CreateStatic(hWnd, L"Width (dots):", 10, 10, 75, 22);
 			CreateStatic(hWnd, L"Height (dots):", 10, 37, 75, 22);
@@ -2592,7 +2596,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl != NULL && hWndControl == data->hWndCreate) {
 				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 				int width = GetEditNumber(data->hWndWidth);
 				int tilesX = width / 8;
@@ -2678,7 +2682,7 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int y = GetEditNumber(data->hWndY);
 
 				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 				HWND hWndScreen = (HWND) SendMessage(nitroPaintStruct->hWndMdi, WM_MDIGETACTIVE, 0, 0);
 				NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndScreen, 0);
 				NSCR *nscr = &nscrViewerData->nscr;

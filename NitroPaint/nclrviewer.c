@@ -84,7 +84,7 @@ static int PalViewerHasClipboard(HWND hWnd) {
 
 static HWND PalViewerGetAssociatedWindow(HWND hWnd, int type) {
 	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	switch (type) {
 		case FILE_TYPE_CHARACTER:
 			return nitroPaintStruct->hWndNcgrViewer;
@@ -2083,7 +2083,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_DESTROY:
 		{
 			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			nitroPaintStruct->hWndNclrViewer = NULL;
 			PalViewerUpdateViewers(hWnd, PALVIEWER_UPDATE_ALL);
 			break;
