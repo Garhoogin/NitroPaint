@@ -4,11 +4,14 @@
 #include "texture.h"
 #include "childwindow.h"
 #include "editor.h"
+#include "tilededitor.h"
 #include "framebuffer.h"
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
 	TextureObject texture;
+
+	TedData ted;
 
 	WCHAR szInitialFile[MAX_PATH]; //source image file
 	BOOL hasPalette;
@@ -17,15 +20,7 @@ typedef struct {
 	COLOR32 *px;
 	int width;
 	int height;
-	FrameBuffer fb;
 
-	int hoverX;
-	int hoverY;
-	int hoverIndex;
-	int contextHoverX;
-	int contextHoverY;
-
-	HWND hWndPreview;
 	HWND hWndFormatLabel;
 	HWND hWndPaletteLabel;
 	HWND hWndEditPalette;

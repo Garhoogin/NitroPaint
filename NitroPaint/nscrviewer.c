@@ -13,7 +13,6 @@
 #include "bggen.h"
 #include "gdip.h"
 #include "palette.h"
-#include "tiler.h"
 
 #include "preview.h"
 

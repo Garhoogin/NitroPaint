@@ -198,7 +198,6 @@
     <ClCompile Include="texture.c" />
     <ClCompile Include="textureeditor.c" />
     <ClCompile Include="tilededitor.c" />
-    <ClCompile Include="tiler.c" />
     <ClCompile Include="ui.c" />
     <ClCompile Include="undo.c" />
   </ItemGroup>
@@ -240,7 +239,6 @@
     <ClInclude Include="texture.h" />
     <ClInclude Include="textureeditor.h" />
     <ClInclude Include="tilededitor.h" />
-    <ClInclude Include="tiler.h" />
     <ClInclude Include="ui.h" />
     <ClInclude Include="undo.h" />
   </ItemGroup>

@@ -56,6 +56,8 @@ typedef struct TedData_ {
 	TedUpdateCursorCallback updateCursorCallback;           // callback to update cursor
 	TedGetPopupMenuCallback getPopupMenuCallback;           // callback to get popup menu
 
+	int allowSelection; // allow selection?
+
 	BOOL mouseOver;     // is mouse in client area?
 	HWND hWndLastMouse; // last mouse event (cleared on mouse leave)
 	int lastMouseX;     // mouse client Y prev

@@ -3,7 +3,6 @@
 #include "nitropaint.h"
 #include "ncgr.h"
 #include "nclr.h"
-#include "tiler.h"
 #include "resource.h"
 #include "nclrviewer.h"
 #include "ncgrviewer.h"

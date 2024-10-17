@@ -6,7 +6,6 @@
 #include "palette.h"
 #include "colorchooser.h"
 #include "resource.h"
-#include "tiler.h"
 #include "gdip.h"
 #include "texconv.h"
 #include "nclr.h"
@@ -20,23 +19,15 @@ extern HICON g_appIcon;
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
-static int GetPreviewWidth(TEXTUREEDITORDATA *data) {
-	int size = data->width * data->scale;
-	if (data->showBorders) {
-		size += data->width / 4 + 1;
-	}
-	return size;
+static int TexViewerGetContentWidth(TEXTUREEDITORDATA *data) {
+	return data->width * data->scale;
 }
 
-static int GetPreviewHeight(TEXTUREEDITORDATA *data) {
-	int size = data->height * data->scale;
-	if (data->showBorders) {
-		size += data->height / 4 + 1;
-	}
-	return size;
+static int TexViewerGetContentHeight(TEXTUREEDITORDATA *data) {
+	return data->height * data->scale;
 }
 
-static void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
+static void TexViewerExportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	//export as PNG
 	//if texture is palette4, palette16 or palette256, output indexed image with appropriate color 0
 	//if texture is direct or 4x4, output non-indexed
@@ -113,7 +104,7 @@ static void exportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	}
 }
 
-static void UpdatePaletteLabel(HWND hWnd) {
+static void TexViewerUpdatePaletteLabel(HWND hWnd) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 
 	WCHAR bf[32];
@@ -175,56 +166,263 @@ static HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt
 	return CreateThread(NULL, 0, textureStartConvertThreadEntry, (LPVOID) params, 0, NULL);
 }
 
+static HCURSOR TexViewerGetCursorProc(HWND hWnd, int hit) {
+	return LoadCursor(NULL, IDC_ARROW);
+}
+
+static void TexViewerTileHoverCallback(HWND hWnd, int tileX, int tileY) {
+
+}
+
+static void TexViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight) {
+	//texture image rendered 
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
+	COLOR32 *px = data->px;
+	int width = data->width, height = data->height;
+
+	//render texture to framebuffer
+	for (int y = 0; y < renderHeight; y++) {
+		for (int x = 0; x < renderWidth; x++) {
+			COLOR32 c = px[(x + scrollX) / data->scale + ((y + scrollY) / data->scale) * width];
+
+			//alpha blend
+			unsigned int a = (c >> 24);
+			COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
+			if (a == 0) {
+				c = checker[((x ^ y) >> 2) & 1];
+			} else if (a < 255) {
+				COLOR32 bg = checker[((x ^ y) >> 2) & 1];
+
+				unsigned int r = (((c >>  0) & 0xFF) * a + ((bg >>  0) & 0xFF) * (255 - a) + 127) / 255;
+				unsigned int g = (((c >>  8) & 0xFF) * a + ((bg >>  8) & 0xFF) * (255 - a) + 127) / 255;
+				unsigned int b = (((c >> 16) & 0xFF) * a + ((bg >> 16) & 0xFF) * (255 - a) + 127) / 255;
+				c = r | (g << 8) | (b << 16);
+			}
+
+			fb->px[x + y * fb->width] = REVERSE(c);
+		}
+	}
+
+}
+
+static int TexViewerIsSelectionModeCallback(HWND hWnd) {
+	return 0;
+}
+
+static void TexViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
+
+}
+
+static HMENU TexViewerGetPopupMenu(HWND hWnd) {
+	return GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 4);
+}
+
+static void TexViewerOnCreate(HWND hWnd) {
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
+	data->scale = 1;
+	
+	HWND hWndViewer = CreateWindow(L"TexturePreviewClass", L"Texture Preview", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 
+		0, 0, 300, 300, hWnd, NULL, NULL, NULL);
+	TedInit(&data->ted, hWnd, hWndViewer, 4, 4);
+
+	data->ted.allowSelection = 0;
+	data->ted.getCursorProc = TexViewerGetCursorProc;
+	data->ted.tileHoverCallback = TexViewerTileHoverCallback;
+	data->ted.renderCallback = TexViewerRender;
+	data->ted.suppressHighlightCallback = NULL;
+	data->ted.isSelectionModeCallback = TexViewerIsSelectionModeCallback;
+	data->ted.updateCursorCallback = TexViewerUpdateCursorCallback;
+	data->ted.getPopupMenuCallback = TexViewerGetPopupMenu;
+
+	data->hWndFormatLabel = CreateStatic(hWnd, L"Format: none", 310, 10, 100, 22);
+	data->hWndConvert = CreateButton(hWnd, L"Convert To...", 310, 37, 100, 22, FALSE);
+	data->hWndPaletteLabel = CreateStatic(hWnd, L"No palette", 310, 69, 100, 22);
+	data->hWndEditPalette = CreateButton(hWnd, L"Edit Palette", 310, 123, 100, 22, FALSE);
+	data->hWndExportNTF = CreateButton(hWnd, L"Export NTF", 310, 150, 100, 22, FALSE);
+	data->hWndUniqueColors = CreateStatic(hWnd, L"Colors: 0", 310, 155, 100, 22);
+
+	data->hWndTexelVram = CreateStatic(hWnd, L"Texel: 0KB", 310, 182, 100, 22);
+	data->hWndPaletteVram = CreateStatic(hWnd, L"Palette: 0KB", 310, 209, 110, 22);
+}
+
+static void TexViewerOnPaint(TEXTUREEDITORDATA *data) {
+	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
+	TedMarginPaint(data->hWnd, (EDITOR_DATA *) data, &data->ted);
+}
+
+static LRESULT TexViewerOnSize(TEXTUREEDITORDATA *data, WPARAM wParam, LPARAM lParam) {
+	RECT rcClient;
+	GetClientRect(data->hWnd, &rcClient);
+
+	MoveWindow(data->ted.hWndViewer, MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE,
+		rcClient.right - 120 - MARGIN_TOTAL_SIZE, rcClient.bottom - MARGIN_TOTAL_SIZE, FALSE);
+	MoveWindow(data->hWndFormatLabel, rcClient.right - 110, 10, 100, 22, TRUE);
+	MoveWindow(data->hWndConvert, rcClient.right - 110, 37, 100, 22, TRUE);
+	MoveWindow(data->hWndPaletteLabel, rcClient.right - 110, 69, 100, 22, TRUE);
+	MoveWindow(data->hWndEditPalette, rcClient.right - 110, 96, 100, 22, TRUE);
+	MoveWindow(data->hWndExportNTF, rcClient.right - 110, 123, 100, 22, TRUE);
+	MoveWindow(data->hWndUniqueColors, rcClient.right - 110, 155, 100, 22, TRUE);
+	MoveWindow(data->hWndTexelVram, rcClient.right - 110, 182, 100, 22, TRUE);
+	MoveWindow(data->hWndPaletteVram, rcClient.right - 110, 209, 110, 22, TRUE);
+
+	if (wParam == SIZE_RESTORED) InvalidateRect(data->hWnd, NULL, TRUE); //full update
+	return DefMDIChildProc(data->hWnd, WM_SIZE, wParam, lParam);
+}
+
+static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int notification) {
+	HWND hWnd = data->hWnd;
+	if (hWndControl == data->hWndEditPalette) {
+		int format = FORMAT(data->texture.texture.texels.texImageParam);
+		if (format == CT_DIRECT || format == 0) {
+			MessageBox(hWnd, L"No palette for this texture.", L"No palette", MB_ICONERROR);
+		} else {
+			HWND hWndMdi = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+			if (data->hWndPaletteEditor == NULL) {
+				data->hWndPaletteEditor = CreateTexturePaletteEditor(CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWndMdi, data);
+			} else {
+				SendMessage(hWndMdi, WM_MDIACTIVATE, (WPARAM) data->hWndPaletteEditor, 0);
+			}
+		}
+	} else if (hWndControl == data->hWndConvert) {
+		HWND hWndMain = getMainWindow(hWnd);
+		data->hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
+			WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
+			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
+		SetWindowLongPtr(data->hWndConvertDialog, 0, (LONG_PTR) data);
+		SendMessage(data->hWndConvertDialog, NV_INITIALIZE, 0, 0);
+		DoModal(data->hWndConvertDialog);
+	} else if (hWndControl == data->hWndExportNTF) {
+		HWND hWndMain = getMainWindow(hWnd);
+		//if not in any format, it cannot be exported.
+		if (!data->isNitro) {
+			MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
+			return;
+		}
+
+		LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0\0", L"ntft");
+		if (ntftPath == NULL) return;
+
+		LPWSTR ntfiPath = NULL;
+		if (FORMAT(data->texture.texture.texels.texImageParam) == CT_4x4) {
+			ntfiPath = saveFileDialog(hWndMain, L"Save NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0\0", L"ntfi");
+			if (ntfiPath == NULL) {
+				free(ntftPath);
+				return;
+			}
+		}
+
+		DWORD dwWritten;
+		int texImageParam = data->texture.texture.texels.texImageParam;
+		int texelSize = TxGetTexelSize(TEXW(texImageParam), data->texture.texture.texels.height, texImageParam);
+		HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		WriteFile(hFile, data->texture.texture.texels.texel, texelSize, &dwWritten, NULL);
+		CloseHandle(hFile);
+		free(ntftPath);
+
+		if (ntfiPath != NULL) {
+			hFile = CreateFile(ntfiPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+			WriteFile(hFile, data->texture.texture.texels.cmp, texelSize / 2, &dwWritten, NULL);
+			CloseHandle(hFile);
+			free(ntfiPath);
+		}
+
+		//palette export
+		if (data->texture.texture.palette.pal != NULL) {
+			COLOR *colors = data->texture.texture.palette.pal;
+			int nColors = data->texture.texture.palette.nColors;
+
+			HWND hWndMain = getMainWindow(hWnd);
+			LPWSTR ntfpPath = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
+			if (ntfpPath == NULL) return;
+
+			DWORD dwWritten;
+			HANDLE hFile = CreateFile(ntfpPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+			WriteFile(hFile, colors, nColors * 2, &dwWritten, NULL);
+			CloseHandle(hFile);
+
+			free(ntfpPath);
+		}
+	}
+}
+
+static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
+	HWND hWnd = data->hWnd;
+	switch (idMenu) {
+		case ID_VIEW_GRIDLINES:
+		case ID_ZOOM_100:
+		case ID_ZOOM_200:
+		case ID_ZOOM_400:
+		case ID_ZOOM_800:
+		case ID_ZOOM_1600:
+			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			TedUpdateMargins(&data->ted);
+			break;
+		case ID_FILE_SAVE:
+			if (!data->isNitro) {
+				MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
+				break;
+			}
+			EditorSave(hWnd);
+			break;
+		case ID_FILE_SAVEAS:
+			if (!data->isNitro) {
+				MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
+				break;
+			}
+			EditorSaveAs(hWnd);
+			break;
+		case ID_FILE_EXPORT:
+		{
+			//PNG export
+			HWND hWndMain = getMainWindow(hWnd);
+			LPWSTR path = saveFileDialog(hWndMain, L"Export Texture", L"PNG files (*.png)\0*.png\0All Files\0*.*\0", L".png");
+			if (path == NULL) break;
+
+			//if texture is in DS format, export from texture data
+			if (data->isNitro) {
+				TexViewerExportTextureImage(path, &data->texture.texture);
+			} else {
+				ImgWrite(data->px, data->width, data->height, path);
+			}
+			free(path);
+			break;
+		}
+		case ID_TEXTUREMENU_COPY:
+		{
+			OpenClipboard(hWnd);
+			EmptyClipboard();
+			copyBitmap(data->px, data->width, data->height);
+			CloseClipboard();
+			break;
+		}
+	}
+}
+
+static void TexViewerOnCommand(TEXTUREEDITORDATA *data, WPARAM wParam, LPARAM lParam) {
+	if (lParam) {
+		TexViewerOnCtlCommand(data, (HWND) lParam, HIWORD(wParam));
+	} else if (HIWORD(wParam) == 0) {
+		TexViewerOnMenuCommand(data, LOWORD(wParam));
+	}
+}
+
 static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
 	switch (msg) {
 		case WM_CREATE:
-		{
-			/*
-			+----------------------+  Format: none
-			|                      |  [Convert to...]
-			|                      |  
-			| Texture Preview      |  Palette: <x> colors
-			|                      |  [Edit Palette]
-			|                      |
-			+----------------------+
-			*/
-			data->scale = 1;
-			data->hoverX = -1;
-			data->hoverY = -1;
-			data->hoverIndex = -1;
-			data->hWndPreview = CreateWindow(L"TexturePreviewClass", L"Texture Preview", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);
-			data->hWndFormatLabel = CreateStatic(hWnd, L"Format: none", 310, 10, 100, 22);
-			data->hWndConvert = CreateButton(hWnd, L"Convert To...", 310, 37, 100, 22, FALSE);
-			data->hWndPaletteLabel = CreateStatic(hWnd, L"No palette", 310, 69, 100, 22);
-			data->hWndEditPalette = CreateButton(hWnd, L"Edit Palette", 310, 123, 100, 22, FALSE);
-			data->hWndExportNTF = CreateButton(hWnd, L"Export NTF", 310, 150, 100, 22, FALSE);
-			data->hWndUniqueColors = CreateStatic(hWnd, L"Colors: 0", 310, 155, 100, 22);
-
-			data->hWndTexelVram = CreateStatic(hWnd, L"Texel: 0KB", 310, 182, 100, 22);
-			data->hWndPaletteVram = CreateStatic(hWnd, L"Palette: 0KB", 310, 209, 110, 22);
+			TexViewerOnCreate(hWnd);
 			break;
-		}
 		case WM_PAINT:
-		{
-			InvalidateRect(data->hWndPreview, NULL, FALSE);
+			TexViewerOnPaint(data);
 			break;
-		}
 		case WM_SIZE:
-		{
-			RECT rcClient;
-			GetClientRect(hWnd, &rcClient);
-			MoveWindow(data->hWndPreview, 0, 0, rcClient.right - 120, rcClient.bottom, TRUE);
-			MoveWindow(data->hWndFormatLabel, rcClient.right - 110, 10, 100, 22, TRUE);
-			MoveWindow(data->hWndConvert, rcClient.right - 110, 37, 100, 22, TRUE);
-			MoveWindow(data->hWndPaletteLabel, rcClient.right - 110, 69, 100, 22, TRUE);
-			MoveWindow(data->hWndEditPalette, rcClient.right - 110, 96, 100, 22, TRUE);
-			MoveWindow(data->hWndExportNTF, rcClient.right - 110, 123, 100, 22, TRUE);
-			MoveWindow(data->hWndUniqueColors, rcClient.right - 110, 155, 100, 22, TRUE);
-			MoveWindow(data->hWndTexelVram, rcClient.right - 110, 182, 100, 22, TRUE);
-			MoveWindow(data->hWndPaletteVram, rcClient.right - 110, 209, 110, 22, TRUE);
-			return DefMDIChildProc(hWnd, msg, wParam, lParam);
-		}
+			return TexViewerOnSize(data, wParam, lParam);
+		case WM_MOUSEMOVE:
+		case WM_MOUSELEAVE:
+		case WM_NCMOUSELEAVE:
+			TedMainOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
+			break;
 		case NV_INITIALIZE:
 		{
 			TxInit(&data->texture, TEXTURE_TYPE_NNSTGA);
@@ -234,8 +432,8 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->hasPalette = FALSE;
 			data->frameData.contentWidth = data->width;
 			data->frameData.contentHeight = data->height;
-
-			FbCreate(&data->fb, hWnd, GetPreviewWidth(data), GetPreviewHeight(data));
+			data->ted.tilesX = data->width / 4;
+			data->ted.tilesY = data->height / 4;
 
 			//check: is it a Nitro TGA?
 			if (!TxReadFile(&data->texture, data->szInitialFile)) {
@@ -244,7 +442,7 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 				data->hasPalette = (format != CT_DIRECT && format != 0);
 				data->isNitro = 1;
 				TxRender(data->px, data->width, data->height, &data->texture.texture.texels, &data->texture.texture.palette, 0);
-				UpdatePaletteLabel(hWnd);
+				TexViewerUpdatePaletteLabel(hWnd);
 			}
 
 			WCHAR buffer[16];
@@ -252,8 +450,8 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			int len = wsprintfW(buffer, L"Colors: %d", nColors);
 			SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) buffer);
 
-			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 			break;
 		}
 		case NV_INITIALIZE_IMMEDIATE:
@@ -268,11 +466,12 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->frameData.contentWidth = data->width;
 			data->frameData.contentHeight = data->height;
 			data->px = (COLOR32 *) calloc(data->width * data->height, sizeof(COLOR32));
+			data->ted.tilesX = data->width / 4;
+			data->ted.tilesY = data->height / 4;
 
 			//decode texture data for preview
 			int nPx = data->width * data->height;
 			TxRender(data->px, data->width, data->height, &texture->texture.texels, &texture->texture.palette, 0);
-			FbCreate(&data->fb, hWnd, GetPreviewWidth(data), GetPreviewHeight(data));
 
 			//update UI
 			WCHAR buffer[16];
@@ -280,148 +479,30 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			int len = wsprintfW(buffer, L"Colors: %d", nColors);
 			SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) buffer);
 
-			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
-			UpdatePaletteLabel(hWnd);
+			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			TexViewerUpdatePaletteLabel(hWnd);
 			break;
 		}
 		case NV_SETPATH:
-		{
 			memcpy(data->szInitialFile, (LPWSTR) lParam, 2 * wParam + 2);
 			break;
-		}
 		case WM_COMMAND:
-		{
-			if (lParam) {
-				HWND hWndControl = (HWND) lParam;
-				if (hWndControl == data->hWndEditPalette) {
-					int format = FORMAT(data->texture.texture.texels.texImageParam);
-					if (format == CT_DIRECT || format == 0) {
-						MessageBox(hWnd, L"No palette for this texture.", L"No palette", MB_ICONERROR);
-					} else {
-						HWND hWndMdi = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-						if (data->hWndPaletteEditor == NULL) {
-							data->hWndPaletteEditor = CreateTexturePaletteEditor(CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWndMdi, data);
-						} else {
-							SendMessage(hWndMdi, WM_MDIACTIVATE, (WPARAM) data->hWndPaletteEditor, 0);
-						}
-					}
-				} else if (hWndControl == data->hWndConvert) {
-					HWND hWndMain = getMainWindow(hWnd);
-					data->hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
-														   WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME, 
-														   CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
-					SetWindowLongPtr(data->hWndConvertDialog, 0, (LONG_PTR) data);
-					SendMessage(data->hWndConvertDialog, NV_INITIALIZE, 0, 0);
-					DoModal(data->hWndConvertDialog);
-				} else if (hWndControl == data->hWndExportNTF) {
-					HWND hWndMain = getMainWindow(hWnd);
-					//if not in any format, it cannot be exported.
-					if (!data->isNitro) {
-						MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
-						break;
-					}
-
-					LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0\0", L"ntft");
-					if (ntftPath == NULL) break;
-
-					LPWSTR ntfiPath = NULL;
-					if (FORMAT(data->texture.texture.texels.texImageParam) == CT_4x4) {
-						ntfiPath = saveFileDialog(hWndMain, L"Save NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0\0", L"ntfi");
-						if (ntfiPath == NULL) {
-							free(ntftPath);
-							break;
-						}
-					}
-
-					DWORD dwWritten;
-					int texImageParam = data->texture.texture.texels.texImageParam;
-					int texelSize = TxGetTexelSize(TEXW(texImageParam), data->texture.texture.texels.height, texImageParam);
-					HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-					WriteFile(hFile, data->texture.texture.texels.texel, texelSize, &dwWritten, NULL);
-					CloseHandle(hFile);
-					free(ntftPath);
-
-					if (ntfiPath != NULL) {
-						hFile = CreateFile(ntfiPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-						WriteFile(hFile, data->texture.texture.texels.cmp, texelSize / 2, &dwWritten, NULL);
-						CloseHandle(hFile);
-						free(ntfiPath);
-					}
-
-					//palette export
-					if (data->texture.texture.palette.pal != NULL) {
-						COLOR *colors = data->texture.texture.palette.pal;
-						int nColors = data->texture.texture.palette.nColors;
-
-						HWND hWndMain = getMainWindow(hWnd);
-						LPWSTR ntfpPath = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
-						if (ntfpPath == NULL) break;
-
-						DWORD dwWritten;
-						HANDLE hFile = CreateFile(ntfpPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-						WriteFile(hFile, colors, nColors * 2, &dwWritten, NULL);
-						CloseHandle(hFile);
-
-						free(ntfpPath);
-					}
-				}
-			}
-			if (lParam == 0 && HIWORD(wParam) == 0) {
-				switch (LOWORD(wParam)) {
-					case ID_VIEW_GRIDLINES:
-						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
-						break;
-					case ID_ZOOM_100:
-					case ID_ZOOM_200:
-					case ID_ZOOM_400:
-					case ID_ZOOM_800:
-					case ID_ZOOM_1600:
-						SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-						RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
-						break;
-					case ID_FILE_SAVE:
-						if (!data->isNitro) {
-							MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
-							break;
-						}
-						EditorSave(hWnd);
-						break;
-					case ID_FILE_SAVEAS:
-						if (!data->isNitro) {
-							MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
-							break;
-						}
-						EditorSaveAs(hWnd);
-						break;
-					case ID_FILE_EXPORT:
-					{
-						//PNG export
-						HWND hWndMain = getMainWindow(hWnd);
-						LPWSTR path = saveFileDialog(hWndMain, L"Export Texture", L"PNG files (*.png)\0*.png\0All Files\0*.*\0", L".png");
-						if (path == NULL) break;
-
-						//if texture is in DS format, export from texture data
-						if (data->isNitro) {
-							exportTextureImage(path, &data->texture.texture);
-						} else {
-							ImgWrite(data->px, data->width, data->height, path);
-						}
-						free(path);
-						break;
-					}
-				}
-			}
+			TexViewerOnCommand(data, wParam, lParam);
 			break;
-		}
+		case WM_LBUTTONDOWN:
+			TedOnLButtonDown((EDITOR_DATA *) data, &data->ted);
+			break;
+		case WM_LBUTTONUP:
+			TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
+			break;
 		case WM_DESTROY:
 		{
-			if (data->hWndPaletteEditor) DestroyWindow(data->hWndPaletteEditor);
-			if (data->hWndTileEditor) DestroyWindow(data->hWndTileEditor);
-			SetWindowLongPtr(data->hWndPreview, 0, 0);
+			if (data->hWndPaletteEditor) DestroyChild(data->hWndPaletteEditor);
+			if (data->hWndTileEditor) DestroyChild(data->hWndTileEditor);
+			SetWindowLongPtr(data->ted.hWndViewer, 0, 0);
 			free(data->px);
-			FbDestroy(&data->fb);
+			TedDestroy(&data->ted);
 			break;
 		}
 		case NV_GETTYPE:
@@ -697,21 +778,19 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 
 				int notification = HIWORD(wParam);
 				if (notification == BN_CLICKED && hWndControl == data->hWndTransparent) {
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
 					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
 					TxRender(data->px, data->width, data->height, texels, &data->texture.texture.palette, 0);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
-					int state = SendMessage(hWndControl, BM_GETCHECK, 0, 0) == BST_CHECKED;
+					int state = GetCheckboxChecked(hWndControl);
 					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
 					TxRender(data->px, data->width, data->height, texels, &data->texture.texture.palette, 0);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndPaletteBase) {
-					WCHAR buffer[8];
-					SendMessage(hWndControl, WM_GETTEXT, 8, (LPARAM) buffer);
-					*pIdx = ((*pIdx) & 0xC000) | (_wtol(buffer) & 0x3FFF);
+					*pIdx = ((*pIdx) & 0xC000) | (GetEditNumber(hWndControl) & 0x3FFF);
 					TxRender(data->px, data->width, data->height, texels, &data->texture.texture.palette, 0);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
@@ -833,104 +912,36 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData((HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT));
 	int contentWidth = 0, contentHeight = 0;
-	if (data) {
-		contentWidth = getDimension2(data->width / 4, data->showBorders, data->scale, 4);
-		contentHeight = getDimension2(data->height / 4, data->showBorders, data->scale, 4);
+	if (data != NULL) {
+		contentWidth = data->width * data->scale;
+		contentHeight = data->height * data->scale;
 	}
 
 	//little hack for code reuse >:)
 	FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!frameData) {
+	if (frameData == NULL) {
 		frameData = calloc(1, sizeof(FRAMEDATA));
 		SetWindowLongPtr(hWnd, 0, (LONG_PTR) frameData);
 	}
 	frameData->contentWidth = contentWidth;
 	frameData->contentHeight = contentHeight;
 
-	UpdateScrollbarVisibility(hWnd);
 	switch (msg) {
 		case WM_CREATE:
-			ShowScrollBar(hWnd, SB_BOTH, FALSE);
+			SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_HSCROLL | WS_VSCROLL);
 			break;
 		case WM_PAINT:
-		{
-			PAINTSTRUCT ps;
-			HDC hDC = BeginPaint(hWnd, &ps);
-
-			RECT rcClient;
-			GetClientRect(hWnd, &rcClient);
-
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-
-			HDC hOffDC = CreateCompatibleDC(hDC);
-			HBITMAP hOffBitmap = CreateCompatibleBitmap(hDC, rcClient.right, rcClient.bottom);
-			SelectObject(hOffDC, hOffBitmap);
-			SelectObject(hOffDC, GetSysColorBrush(GetClassLong(hWnd, GCL_HBRBACKGROUND) - 1));
-			SelectObject(hOffDC, GetStockObject(NULL_PEN));
-			Rectangle(hOffDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
-			
-			int width = GetPreviewWidth(data), height = GetPreviewHeight(data);
-			if (width > rcClient.right) width = rcClient.right;
-			if (height > rcClient.bottom) height = rcClient.bottom;
-
-			FbSetSize(&data->fb, width, height);
-			RenderTileBitmap(data->fb.px, width, height, horiz.nPos, vert.nPos, rcClient.right, rcClient.bottom, 
-				data->px, data->width, data->height, data->hoverX, data->hoverY, data->scale, data->showBorders,
-				4, TRUE, TRUE);
-			FbDraw(&data->fb, hOffDC, 0, 0, width, height, 0, 0);
-
-			BitBlt(hDC, 0, 0, rcClient.right, rcClient.bottom, hOffDC, 0, 0, SRCCOPY);
-			DeleteObject(hOffDC);
-			DeleteObject(hOffBitmap);
-
-			EndPaint(hWnd, &ps);
-			break;
-		}
+			TedOnViewerPaint((EDITOR_DATA *) data, &data->ted);
+			return 1;
 		case WM_LBUTTONDOWN:
 		{
-			POINT mousePos;
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-			GetCursorPos(&mousePos);
-			ScreenToClient(hWnd, &mousePos);
-			mousePos.x += horiz.nPos;
-			mousePos.y += vert.nPos;
+			TedViewerOnLButtonDown((EDITOR_DATA *) data, &data->ted);
+			if (!data->isNitro) break;
 
-			//find the tile coordinates.
-			int x = 0, y = 0;
-			if (data->showBorders) {
-				mousePos.x -= 1;
-				mousePos.y -= 1;
-				if (mousePos.x < 0) mousePos.x = 0;
-				if (mousePos.y < 0) mousePos.y = 0;
-				int cellWidth = 4 * data->scale + 1;
-				mousePos.x /= cellWidth;
-				mousePos.y /= cellWidth;
-				x = mousePos.x;
-				y = mousePos.y;
-			} else {
-				int cellWidth = 4 * data->scale;
-				mousePos.x /= cellWidth;
-				mousePos.y /= cellWidth;
-				x = mousePos.x;
-				y = mousePos.y;
-			}
-
+			int x = data->ted.hoverX;
+			int y = data->ted.hoverY;
 			int texImageParam = data->texture.texture.texels.texImageParam;
-			int tilesX = TEXW(texImageParam) / 4;
-			int tilesY = data->texture.texture.texels.height / 4;
-			if (x >= 0 && y >= 0 && x < tilesX && y < tilesY) {
+			if (x >= 0 && y >= 0 && x < data->ted.tilesX && y < data->ted.tilesY) {
 				HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 				
 				if (data->hWndTileEditor != NULL) DestroyChild(data->hWndTileEditor);
@@ -938,80 +949,25 @@ static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			}
 			break;
 		}
+		case WM_LBUTTONUP:
+			TedReleaseCursor((EDITOR_DATA *) data, &data->ted);
+			break;
 		case WM_RBUTTONDOWN:
 		{
-			POINT mouse;
-			GetCursorPos(&mouse);
-			HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 4);
-			TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
+			//mark hovered tile
+			TedOnRButtonDown(&data->ted);
+
+			//context menu
+			TedTrackPopup((EDITOR_DATA *) data, &data->ted);
 			break;
 		}
 		case WM_MOUSEMOVE:
 		case WM_NCMOUSEMOVE:
-		{
-			TRACKMOUSEEVENT evt;
-			evt.cbSize = sizeof(evt);
-			evt.hwndTrack = hWnd;
-			evt.dwHoverTime = 0;
-			evt.dwFlags = TME_LEAVE;
-			TrackMouseEvent(&evt);
-		}
 		case WM_MOUSELEAVE:
-		{
-			int oldHovered = data->hoverIndex;
-			POINT mousePos;
-			GetCursorPos(&mousePos);
-			ScreenToClient(hWnd, &mousePos);
-
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
-			mousePos.x += horiz.nPos;
-			mousePos.y += vert.nPos;
-
-			int hoverX = -1, hoverY = -1, hoverIndex = -1;
-			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < contentWidth && mousePos.y < contentHeight) {
-				//find the tile coordinates.
-				int x = 0, y = 0;
-				if (data->showBorders) {
-					mousePos.x -= 1;
-					mousePos.y -= 1;
-					if (mousePos.x < 0) mousePos.x = 0;
-					if (mousePos.y < 0) mousePos.y = 0;
-					int cellWidth = 4 * data->scale + 1;
-					mousePos.x /= cellWidth;
-					mousePos.y /= cellWidth;
-					x = mousePos.x;
-					y = mousePos.y;
-				} else {
-					int cellWidth = 4 * data->scale;
-					mousePos.x /= cellWidth;
-					mousePos.y /= cellWidth;
-					x = mousePos.x;
-					y = mousePos.y;
-				}
-				hoverX = x, hoverY = y;
-				hoverIndex = hoverX + hoverY * (data->width / 4);
-			}
-			if (msg == WM_MOUSELEAVE) {
-				hoverX = -1, hoverY = -1, hoverIndex = -1;
-			}
-			data->hoverX = hoverX;
-			data->hoverY = hoverY;
-			data->hoverIndex = hoverIndex;
-			if (data->hoverIndex != oldHovered) {
-				HWND hWndViewer = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-				HWND hWndMain = getMainWindow(hWndViewer);
-				NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-				InvalidateRect(hWndViewer, NULL, FALSE);
-			}
-
+			TedViewerOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
 			break;
-		}
+		case WM_SETCURSOR:
+			return TedSetCursor((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case NV_RECALCULATE:
 		{
 			SCROLLINFO info;
@@ -1028,30 +984,18 @@ static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			SendMessage(hWnd, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
 			break;
 		}
-		case WM_COMMAND:
-		{
-			HWND hWndControl = (HWND) lParam;
-			if (hWndControl == NULL && HIWORD(wParam) == 0) {
-				switch (LOWORD(wParam)) {
-					case ID_TEXTUREMENU_COPY:
-					{
-						OpenClipboard(hWnd);
-						EmptyClipboard();
-						copyBitmap(data->px, data->width, data->height);
-						CloseClipboard();
-						break;
-					}
-				}
-			}
-		}
 		case WM_ERASEBKGND:
 			return 1;
 		case WM_HSCROLL:
 		case WM_VSCROLL:
 		case WM_MOUSEWHEEL:
+			TedUpdateMargins(&data->ted);
+			TedUpdateCursor((EDITOR_DATA *) data, &data->ted);
 			return DefChildProc(hWnd, msg, wParam, lParam);
 		case WM_SIZE:
 		{
+			UpdateScrollbarVisibility(hWnd);
+
 			SCROLLINFO info;
 			info.cbSize = sizeof(info);
 			info.nMin = 0;
@@ -1067,7 +1011,7 @@ static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-static int isTranslucent(COLOR32 *px, int nWidth, int nHeight) {
+static int TexViewerImageHasTranslucentPixels(COLOR32 *px, int nWidth, int nHeight) {
 	for (int i = 0; i < nWidth * nHeight; i++) {
 		int a = px[i] >> 24;
 		if (a >= 5 && a <= 250) return 1;
@@ -1075,7 +1019,7 @@ static int isTranslucent(COLOR32 *px, int nWidth, int nHeight) {
 	return 0;
 }
 
-static int guessFormat(COLOR32 *px, int nWidth, int nHeight) {
+static int TexViewerJudgeFormat(COLOR32 *px, int nWidth, int nHeight) {
 	//Guess a good format for the data. Default to 4x4.
 	int fmt = CT_4x4;
 	
@@ -1083,7 +1027,7 @@ static int guessFormat(COLOR32 *px, int nWidth, int nHeight) {
 	if (nWidth * nHeight == 1024 * 1024) fmt = CT_256COLOR;
 
 	//is there translucency?
-	if (isTranslucent(px, nWidth, nHeight)) {
+	if (TexViewerImageHasTranslucentPixels(px, nWidth, nHeight)) {
 		//then choose a3i5 or a5i3. Do this by using color count.
 		int colorCount = ImgCountColors(px, nWidth * nHeight);
 		if (colorCount < 16) {
@@ -1152,7 +1096,7 @@ float mylog2(float d) { //UGLY!
 
 #endif //_MSC_VER
 
-static int chooseColorCount(int bWidth, int bHeight) {
+static int TexViewerJudgeColorCount(int bWidth, int bHeight) {
 	int area = bWidth * bHeight;
 
 	//for textures smaller than 256x256, use 8*sqrt(area)
@@ -1310,11 +1254,11 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 				SendMessage(data->hWndFormat, CB_ADDSTRING, len, (LPARAM) bf);
 			}
 
-			int format = guessFormat(data->px, data->width, data->height);
+			int format = TexViewerJudgeFormat(data->px, data->width, data->height);
 			SendMessage(data->hWndFormat, CB_SETCURSEL, format - 1, 0);
 
 			//pick default 4x4 color count
-			int maxColors = chooseColorCount(data->width, data->height);
+			int maxColors = TexViewerJudgeColorCount(data->width, data->height);
 			SetEditNumber(data->hWndColorEntries, maxColors);
 
 			//fill palette name
@@ -1422,11 +1366,11 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					//wait progress end
 					DoModal(data->hWndProgress);
 
-					InvalidateRect(data->hWndPreview, NULL, FALSE);
+					InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 					data->isNitro = TRUE;
 					data->hWndProgress = NULL;
 
-					UpdatePaletteLabel(data->hWnd);
+					TexViewerUpdatePaletteLabel(data->hWnd);
 					data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
 					data->selectedColor = 0;
 				} else if (idc == IDCANCEL) {
@@ -1493,7 +1437,7 @@ typedef struct {
 	int hoverY;
 	int hoverIndex;
 	int contextHoverIndex;
-}TEXTUREPALETTEEDITORDATA;
+} TEXTUREPALETTEEDITORDATA;
 
 LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREPALETTEEDITORDATA *data = (TEXTUREPALETTEEDITORDATA *) GetWindowLongPtr(hWnd, 0);
@@ -1581,9 +1525,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			break;
 		}
 		case WM_ERASEBKGND:
-		{
 			return 1;
-		}
 		case WM_MOUSEMOVE:
 		case WM_NCMOUSEMOVE:
 		{
@@ -2086,8 +2028,8 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	COLOR *fixedPalette = NULL;
 
 	//4x4 settings
-	int fmt = guessFormat(px, width, height);
-	int colorEntries = chooseColorCount(width, height);
+	int fmt = TexViewerJudgeFormat(px, width, height);
+	int colorEntries = TexViewerJudgeColorCount(width, height);
 	int threshold4x4 = 0;
 
 	//check the directory. Last directory name after base should be the name
@@ -2323,32 +2265,31 @@ int BatchTextureDialog(HWND hWndParent) {
 	return 0;
 }
 
-void RegisterBatchTextureDialogClass() {
+static void RegisterBatchTextureDialogClass(void) {
 	RegisterGenericClass(L"BatchTextureClass", BatchTextureWndProc, sizeof(LPVOID));
 }
 
-
-VOID RegisterTexturePreviewClass(VOID) {
+static void RegisterTexturePreviewClass(void) {
 	RegisterGenericClass(L"TexturePreviewClass", TexturePreviewWndProc, sizeof(LPVOID));
 }
 
-VOID RegisterConvertDialogClass(VOID) {
+static void RegisterConvertDialogClass(void) {
 	RegisterGenericClass(L"ConvertDialogClass", ConvertDialogWndProc, sizeof(LPVOID));
 }
 
-VOID RegisterCompressionProgressClass(VOID) {
+static void RegisterCompressionProgressClass(void) {
 	RegisterGenericClass(L"CompressionProgress", CompressionProgressProc, sizeof(LPVOID));
 }
 
-VOID RegisterTexturePaletteEditorClass(VOID) {
+static void RegisterTexturePaletteEditorClass(void) {
 	RegisterGenericClass(L"TexturePaletteEditorClass", TexturePaletteEditorWndProc, sizeof(LPVOID));
 }
 
-VOID RegisterTextureTileEditorClass(VOID) {
+static void RegisterTextureTileEditorClass(void) {
 	RegisterGenericClass(L"TextureTileEditorClass", TextureTileEditorWndProc, 3 * sizeof(LONG_PTR));
 }
 
-VOID RegisterTextureEditorClass(VOID) {
+void RegisterTextureEditorClass(void) {
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
 	EDITOR_CLASS *cls = EditorRegister(L"TextureEditorClass", TextureEditorWndProc, L"Texture Editor", sizeof(TEXTUREEDITORDATA), features);
 	EditorAddFilter(cls, TEXTURE_TYPE_NNSTGA, L"tga", L"NNS TGA Files (*.tga)\0*.tga\0");

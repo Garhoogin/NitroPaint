@@ -8,7 +8,6 @@
 #include "filecommon.h"
 #include "palette.h"
 #include "resource.h"
-#include "tiler.h"
 #include "nsbtxviewer.h"
 #include "ncgrviewer.h"
 #include "nclrviewer.h"

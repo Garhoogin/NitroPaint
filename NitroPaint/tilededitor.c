@@ -991,7 +991,7 @@ void TedOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
 	int curRow = (ted->mouseY + scrollY) / (ted->tileHeight * data->scale);
 	int curCol = (ted->mouseX + scrollX) / (ted->tileWidth * data->scale);
 
-	if ((hit & HIT_TYPE_MASK) == HIT_MARGIN) {
+	if ((hit & HIT_TYPE_MASK) == HIT_MARGIN && ted->allowSelection) {
 		int hitWhere = hit & HIT_FLAGS_MASK;
 		if (hitWhere == HIT_MARGIN_LEFT && ted->mouseX < contentH) {
 			ted->mouseDownLeft = TRUE;
@@ -1230,6 +1230,7 @@ void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer, int tileWidth, int tileHe
 	ted->selStartY = -1;
 	ted->selEndX = -1;
 	ted->selEndY = -1;
+	ted->allowSelection = 1;
 	ted->hWnd = hWnd;
 	ted->hWndViewer = hWndViewer;
 
