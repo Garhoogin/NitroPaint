@@ -62,6 +62,7 @@ typedef struct BgCharacterSetting_ {
 typedef struct BgGenerateParameters_ {
 	//global
 	int fmt;                          //Format of output data
+	int affine;                       //BG format affine
 	RxBalanceSetting balance;         //Balance settings to use during conversion
 
 	//palette

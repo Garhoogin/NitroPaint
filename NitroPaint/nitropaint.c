@@ -1709,6 +1709,7 @@ typedef struct {
 	HWND hWndColor0Setting;
 	HWND hWndAlignmentCheckbox;
 	HWND hWndAlignment;
+	HWND hWndAffine;
 } CREATEDIALOGDATA;
 
 BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
@@ -1866,6 +1867,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndTileBase = CreateEdit(hWnd, L"0", rightX + 55, topY + 27 * 3, 100, 22, TRUE);
 			data->hWndAlignmentCheckbox = CreateCheckbox(hWnd, L"Align Size:", rightX, topY + 27 * 4, 75, 22, TRUE);
 			data->hWndAlignment = CreateEdit(hWnd, L"32", rightX + 75, topY + 27 * 4, 80, 22, TRUE);
+			data->hWndAffine = CreateCheckbox(hWnd, L"Affine Mode", rightX, topY + 27 * 5, 100, 22, TRUE);
 			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
 
 			LPCWSTR formatNames[] = { L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed" };
@@ -1958,6 +1960,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					params.characterSetting.alignment = doAlign ? GetEditNumber(data->hWndAlignment) : 1;
 					params.characterSetting.compress = GetCheckboxChecked(data->hWndMergeTiles);
 					params.characterSetting.nMax = GetEditNumber(data->hWndMaxChars);
+					params.affine = GetCheckboxChecked(data->hWndAffine);
 
 					memcpy(&createData->genParams, &params, sizeof(params));
 					threadedNscrCreate(progressData, createData, bbits, width, height, &params);
@@ -1979,6 +1982,13 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					int state = GetCheckboxChecked(hWndControl);
 					setStyle(data->hWndDiffuse, !state, WS_DISABLED);
 					InvalidateRect(hWnd, NULL, FALSE);
+				} else if (hWndControl == data->hWndAffine) {
+					//limit palette size if applicable
+					int state = GetCheckboxChecked(hWndControl);
+					if (!state) {
+						SetEditNumber(data->hWndPalettesInput, 1);
+						SetEditNumber(data->hWndPaletteInput, 0);
+					}
 				}
 			} else if (HIWORD(wParam) == CBN_SELCHANGE) {
 				HWND hWndControl = (HWND) lParam;
@@ -1986,6 +1996,14 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					int index = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 					LPCWSTR sizes[] = { L"16", L"256" };
 					SendMessage(data->hWndPaletteSize, WM_SETTEXT, wcslen(sizes[index]), (LPARAM) sizes[index]);
+
+					//if setting to 4-bit depth, then affine mode can't be selected.
+					int disableAffine = (index == 0);
+					setStyle(data->hWndAffine, disableAffine, WS_DISABLED);
+					InvalidateRect(data->hWndAffine, NULL, FALSE);
+
+					//uncheck affine mode if 4 bit selected
+					if (index == 0) SendMessage(data->hWndAffine, BM_SETCHECK, BST_UNCHECKED, 0);
 				}
 			}
 			break;

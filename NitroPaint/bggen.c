@@ -945,9 +945,26 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		ncgr->attr[i] = attr;
 	}
 
+	int bgScreenFormat = SCREENFORMAT_TEXT, screenColorMode = SCREENCOLORMODE_16x16;
+	if (nBits == 4) {
+		//4-bit: use text BG
+		bgScreenFormat = SCREENFORMAT_TEXT;
+		screenColorMode = SCREENCOLORMODE_16x16;
+	} else {
+		//8-bit: use affine if we have a nonzero palette base, more than 1 palette, or we say so
+		if (nPalettes > 1 || paletteBase > 0 || params->affine) {
+			bgScreenFormat = SCREENFORMAT_AFFINEEXT;
+			screenColorMode = SCREENCOLORMODE_256x16;
+		} else {
+			bgScreenFormat = SCREENFORMAT_TEXT;
+			screenColorMode = SCREENCOLORMODE_256x1;
+		}
+	}
+
 	nscr->tilesX = tilesX;
 	nscr->tilesY = tilesY;
-	nscr->fmt = nBits == 4 ? SCREENFORMAT_TEXT : ((nPalettes == 1 && paletteBase == 0) ? SCREENFORMAT_TEXT : SCREENFORMAT_AFFINEEXT);
+	nscr->fmt = bgScreenFormat;
+	nscr->colorMode = screenColorMode;
 	nscr->dataSize = nTiles * 2;
 	nscr->data = (uint16_t *) malloc(nscr->dataSize);
 	for (int i = 0; i < nTiles; i++) {
