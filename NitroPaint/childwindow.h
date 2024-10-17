@@ -6,11 +6,6 @@
 typedef struct {
 	int contentWidth;
 	int contentHeight;
-	int paddingLeft;
-	int paddingTop;
-	int paddingRight;
-	int paddingBottom;
-	int allowClear;
 	int sizeLevel;
 } FRAMEDATA;
 

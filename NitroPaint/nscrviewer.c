@@ -404,6 +404,51 @@ static HMENU ScrViewerGetPopupMenu(HWND hWnd) {
 	return hPopup;
 }
 
+static void ScrViewerUpdateContentSize(NSCRVIEWERDATA *data) {
+	int contentWidth = data->nscr.tilesX * 8 * data->scale;
+	int contentHeight = data->nscr.tilesY * 8 * data->scale;
+
+	SCROLLINFO info;
+	info.cbSize = sizeof(info);
+	info.nMin = 0;
+	info.nMax = contentWidth;
+	info.fMask = SIF_RANGE;
+	SetScrollInfo(data->ted.hWndViewer, SB_HORZ, &info, TRUE);
+
+	info.nMax = contentHeight;
+	SetScrollInfo(data->ted.hWndViewer, SB_VERT, &info, TRUE);
+	RECT rcClient;
+	GetClientRect(data->ted.hWndViewer, &rcClient);
+	SendMessage(data->ted.hWndViewer, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
+}
+
+static void ScrViewerSetPreferredSize(NSCRVIEWERDATA *data) {
+	float dpiScale = GetDpiScale();
+	int rightSize = (int) (200.0f * dpiScale + 0.5f);
+	int bottomSize = (int) (22.0f * dpiScale + 0.5f);
+
+	RECT rc = { 0 };
+	rc.right = data->frameData.contentWidth + rightSize;
+	rc.bottom = data->frameData.contentHeight + bottomSize;
+	AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
+
+	//compute full window size
+	int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
+	int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + MARGIN_TOTAL_SIZE;
+
+	//get parent size
+	RECT rcMdi;
+	HWND hWndMdi = (HWND) GetWindowLongPtr(data->hWnd, GWL_HWNDPARENT);
+	GetClientRect(hWndMdi, &rcMdi);
+
+	int maxHeight = rcMdi.bottom * 4 / 5; // 80% of client height
+	int maxWidth = rcMdi.right * 4 / 5;  // 80% of client height
+	if (height >= maxHeight) height = maxHeight;
+	if (width >= maxWidth) width = maxWidth;
+
+	SetWindowPos(data->hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
+}
+
 static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWnd);
 	float dpiScale = GetDpiScale();
@@ -491,11 +536,9 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			return DefMDIChildProc(hWnd, WM_SIZE, wParam, lParam);
 		}
 		case WM_PAINT:
-		{
-			TedMarginPaint(hWnd, (EDITOR_DATA *) data, &data->ted);
 			InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
+			TedMarginPaint(hWnd, (EDITOR_DATA *) data, &data->ted);
 			break;
-		}
 		case NV_INITIALIZE:
 		case NV_INITIALIZE_IMMEDIATE:
 		{
@@ -513,35 +556,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			data->frameData.contentWidth = data->nscr.tilesX * 8 * data->scale;
 			data->frameData.contentHeight = data->nscr.tilesY * 8 * data->scale;
-
-			float dpiScale = GetDpiScale();
-			int rightSize = (int) (200.0f * dpiScale + 0.5f);
-			int bottomSize = (int) (22.0f * dpiScale + 0.5f);
-
-			RECT rc = { 0 };
-			rc.right = data->frameData.contentWidth;
-			rc.bottom = data->frameData.contentHeight;
-			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-			int width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + rightSize + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
-			int height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + bottomSize + MARGIN_TOTAL_SIZE;
-			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
-
-			RECT rcClient;
-			GetClientRect(hWnd, &rcClient);
-
-			SCROLLINFO info;
-			info.cbSize = sizeof(info);
-			info.nMin = 0;
-			info.nMax = data->frameData.contentWidth;
-			info.nPos = 0;
-			info.nPage = rcClient.right - rcClient.left + 1;
-			info.nTrackPos = 0;
-			info.fMask = SIF_POS | SIF_RANGE | SIF_POS | SIF_TRACKPOS | SIF_PAGE;
-			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
-
-			info.nMax = data->frameData.contentHeight;
-			info.nPage = rcClient.bottom - rcClient.top + 1;
-			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			ScrViewerSetPreferredSize(data);
 
 			//guess a tile base based on an open NCGR (if any)
 			HWND hWndMain = getMainWindow(hWnd);
@@ -1215,44 +1230,33 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	HWND hWndNscrViewer = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
 	int contentWidth = 0, contentHeight = 0;
-	if (data) {
+	if (data != NULL) {
 		contentWidth = data->nscr.tilesX * 8 * data->scale;
 		contentHeight = data->nscr.tilesY * 8 * data->scale;
 	}
 
 	//little hack for code reuse >:)
 	FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!frameData) {
+	if (frameData == NULL) {
 		frameData = calloc(1, sizeof(FRAMEDATA));
 		SetWindowLongPtr(hWnd, 0, (LONG_PTR) frameData);
 	}
 	frameData->contentWidth = contentWidth;
 	frameData->contentHeight = contentHeight;
 
-	UpdateScrollbarVisibility(hWnd);
-
 	switch (msg) {
+		case WM_CREATE:
+			SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_HSCROLL | WS_VSCROLL);
+			break;
 		case WM_PAINT:
 			TedOnViewerPaint((EDITOR_DATA *) data, &data->ted);
-			break;
+			return 1;
 		case WM_ERASEBKGND:
 			return 1;
 		case NV_RECALCULATE:
-		{
-			SCROLLINFO info;
-			info.cbSize = sizeof(info);
-			info.nMin = 0;
-			info.nMax = contentWidth;
-			info.fMask = SIF_RANGE;
-			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
-
-			info.nMax = contentHeight;
-			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
-			RECT rcClient;
-			GetClientRect(hWnd, &rcClient);
-			SendMessage(hWnd, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
+			ScrViewerUpdateContentSize(data);
+			TedUpdateCursor((EDITOR_DATA *) data, &data->ted);
 			break;
-		}
 		case WM_SETCURSOR:
 			return TedSetCursor((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case WM_HSCROLL:
@@ -1263,6 +1267,8 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			return DefChildProc(hWnd, msg, wParam, lParam);
 		case WM_SIZE:
 		{
+			UpdateScrollbarVisibility(hWnd);
+
 			SCROLLINFO info;
 			info.cbSize = sizeof(info);
 			info.nMin = 0;
@@ -1361,23 +1367,8 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}
-	width = nscr.tilesX * 8;
-	height = nscr.tilesY * 8;
 
-	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
-		float dpiScale = GetDpiScale();
-		int rightSize = (int) (200.0f * dpiScale + 0.5f);
-		int bottomSize = (int) (22.0f * dpiScale + 0.5f);
-
-		RECT rc = { 0 };
-		rc.right = width;
-		rc.bottom = height;
-		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + rightSize + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + bottomSize + MARGIN_TOTAL_SIZE;
-	}
-
-	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, width, height, hWndParent);
+	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, 0, 0, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
 	if (nscr.header.format == NSCR_TYPE_HUDSON || nscr.header.format == NSCR_TYPE_HUDSON2) {
 		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
@@ -1386,23 +1377,7 @@ HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 }
 
 HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr) {
-	width = nscr->tilesX * 8;
-	height = nscr->tilesY * 8;
-
-	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
-		float dpiScale = GetDpiScale();
-		int rightSize = (int) (200.0f * dpiScale + 0.5f);
-		int bottomSize = (int) (22.0f * dpiScale + 0.5f);
-
-		RECT rc = { 0 };
-		rc.right = width;
-		rc.bottom = height;
-		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL) + rightSize + MARGIN_TOTAL_SIZE; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4 + GetSystemMetrics(SM_CYHSCROLL) + bottomSize + MARGIN_TOTAL_SIZE;
-	}
-
-	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, width, height, hWndParent);
+	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, 0, 0, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, (WPARAM) nscr, 0);
 	if (nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
 		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));

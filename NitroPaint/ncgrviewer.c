@@ -969,7 +969,6 @@ static void ChrViewerOnCreate(HWND hWnd) {
 
 	data->frameData.contentWidth = 256;
 	data->frameData.contentHeight = 256;
-	data->frameData.paddingBottom = 21 * 2;
 	data->mode = CHRVIEWER_MODE_SELECT;
 	data->lastMode = CHRVIEWER_MODE_PEN;
 	data->showBorders = 1;
@@ -1013,6 +1012,29 @@ static void ChrViewerOnCreate(HWND hWnd) {
 	SetGUIFont(hWnd);
 }
 
+static void ChrViewerSetPreferredSize(NCGRVIEWERDATA *data) {
+	float dpiScale = GetDpiScale();
+	int controlHeight = (int) (dpiScale * 21.0f + 0.5f);
+	int controlWidth = (int) (dpiScale * 100.0f + 0.5f);
+	ChrViewerGetGraphicsSize(data, &data->frameData.contentWidth, &data->frameData.contentHeight);
+
+	int width = data->frameData.contentWidth + GetSystemMetrics(SM_CXVSCROLL) + 4 + MARGIN_TOTAL_SIZE;
+	int height = data->frameData.contentHeight + 3 * controlHeight + GetSystemMetrics(SM_CYHSCROLL) + 4 + MARGIN_TOTAL_SIZE;
+	if (width < 255 + 4) width = 255 + 4; //min width for controls
+
+	//get parent size
+	RECT rcMdi;
+	HWND hWndMdi = (HWND) GetWindowLongPtr(data->hWnd, GWL_HWNDPARENT);
+	GetClientRect(hWndMdi, &rcMdi);
+
+	int maxHeight = rcMdi.bottom * 4 / 5; // 80% of client height
+	int maxWidth = rcMdi.right * 4 / 5;  // 80% of client height
+	if (height >= maxHeight) height = maxHeight;
+	if (width >= maxWidth) width = maxWidth;
+
+	SetWindowSize(data->hWnd, width, height);
+}
+
 static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immediate) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
 	float dpiScale = GetDpiScale();
@@ -1027,19 +1049,8 @@ static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immed
 	data->ted.tilesY = data->ncgr.tilesY;
 	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
-	RECT rcClient;
-	GetClientRect(hWnd, &rcClient);
-
-	int controlHeight = (int) (dpiScale * 21.0f + 0.5f);
-	int controlWidth = (int) (dpiScale * 100.0f + 0.5f);
-	ChrViewerGetGraphicsSize(data, &data->frameData.contentWidth, &data->frameData.contentHeight);
-
-	int width = data->frameData.contentWidth + GetSystemMetrics(SM_CXVSCROLL) + 4 + MARGIN_TOTAL_SIZE;
-	int height = data->frameData.contentHeight + 3 * controlHeight + GetSystemMetrics(SM_CYHSCROLL) + 4 + MARGIN_TOTAL_SIZE;
-	if (width < 255 + 4) width = 255 + 4; //min width for controls
-	SetWindowSize(hWnd, width, height);
-
-
+	ChrViewerSetPreferredSize(data);
+	
 	ChrViewerPopulateWidthField(hWnd);
 	if (data->ncgr.nBits == 8) SendMessage(data->hWnd8bpp, BM_SETCHECK, 1, 0);
 
@@ -1850,22 +1861,20 @@ static LRESULT WINAPI ChrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 
 	//little hack for code reuse >:)
 	FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!frameData) {
+	if (frameData == NULL) {
 		frameData = calloc(1, sizeof(FRAMEDATA));
 		SetWindowLongPtr(hWnd, 0, (LONG_PTR) frameData);
 	}
 	frameData->contentWidth = contentWidth;
 	frameData->contentHeight = contentHeight;
 
-	UpdateScrollbarVisibility(hWnd);
-
 	switch (msg) {
 		case WM_CREATE:
-			ShowScrollBar(hWnd, SB_BOTH, FALSE);
+			SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_HSCROLL | WS_VSCROLL);
 			break;
 		case WM_PAINT:
 			TedOnViewerPaint((EDITOR_DATA *) data, &data->ted);
-			break;
+			return 1;
 		case WM_ERASEBKGND:
 			return 1;
 		case WM_MOUSEMOVE:
@@ -1894,6 +1903,8 @@ static LRESULT WINAPI ChrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			break;
 		case WM_SIZE:
 		{
+			UpdateScrollbarVisibility(hWnd);
+
 			SCROLLINFO info;
 			info.cbSize = sizeof(info);
 			info.nMin = 0;
@@ -2382,20 +2393,8 @@ HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}
-	width = ncgr.tilesX * 8;
-	height = ncgr.tilesY * 8;
 
-	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
-		RECT rc = { 0 };
-		if (width < 150) width = 150;
-		rc.right = width;
-		rc.bottom = height;
-		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for the combobox
-	}
-
-	HWND hWnd = EditorCreate(L"NcgrViewerClass", x, y, width, height, hWndParent);
+	HWND hWnd = EditorCreate(L"NcgrViewerClass", x, y, 0, 0, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
 	if (ncgr.header.format == NCGR_TYPE_HUDSON || ncgr.header.format == NCGR_TYPE_HUDSON2) {
 		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
@@ -2404,20 +2403,7 @@ HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 }
 
 HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCGR *ncgr) {
-	width = ncgr->tilesX * 8;
-	height = ncgr->tilesY * 8;
-
-	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
-		RECT rc = { 0 };
-		if (width < 150) width = 150;
-		rc.right = width;
-		rc.bottom = height;
-		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4 + GetSystemMetrics(SM_CXVSCROLL); //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4 + 42 + 22 + GetSystemMetrics(SM_CYHSCROLL); //+42 to account for the combobox
-	}
-
-	HWND hWnd = EditorCreate(L"NcgrViewerClass", x, y, width, height, hWndParent);
+	HWND hWnd = EditorCreate(L"NcgrViewerClass", x, y, 0, 0, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncgr);
 	if (ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
 		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));

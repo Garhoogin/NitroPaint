@@ -24,12 +24,14 @@ VOID UpdateScrollbarVisibility(HWND hWnd) {
 	SCROLLINFO scroll;
 	scroll.fMask = SIF_ALL;
 	ShowScrollBar(hWnd, SB_BOTH, TRUE);
+
 	GetScrollInfo(hWnd, SB_HORZ, &scroll);
 	if (scroll.nMax < (int) scroll.nPage) {
 		EnableScrollBar(hWnd, SB_HORZ, ESB_DISABLE_BOTH);
 	} else {
 		EnableScrollBar(hWnd, SB_HORZ, ESB_ENABLE_BOTH);
 	}
+
 	GetScrollInfo(hWnd, SB_VERT, &scroll);
 	if (scroll.nMax < (int) scroll.nPage) {
 		EnableScrollBar(hWnd, SB_VERT, ESB_DISABLE_BOTH);
@@ -161,7 +163,7 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			} else if (ctl == SB_LINEDOWN) {
 				scrollOffsetY += 32;
 				if (scrollOffsetY + rcClient.bottom - rcClient.top > frameData->contentHeight) {
-					scrollOffsetY = frameData->contentHeight - (rcClient.bottom - rcClient.top - frameData->paddingBottom);
+					scrollOffsetY = frameData->contentHeight - (rcClient.bottom - rcClient.top);
 				}
 			} else if (ctl == SB_LINEUP) {
 				scrollOffsetY -= 32;
@@ -210,7 +212,7 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			SetScrollInfo(hWnd, SB_HORZ, &info, FALSE);
 
 			info.fMask = SIF_PAGE;
-			info.nPage = rcClient.bottom - rcClient.top + 1 - frameData->paddingBottom;
+			info.nPage = rcClient.bottom - rcClient.top + 1;
 			if ((int) info.nPage > frameData->contentHeight) {
 				info.nPos = 0;
 				info.fMask |= SIF_POS;
@@ -228,7 +230,7 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		{
 			FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
 			frameData->sizeLevel = 0;
-			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 			SetWindowLong(hWndParent, GWL_EXSTYLE, GetWindowLong(hWndParent, GWL_EXSTYLE) | WS_EX_COMPOSITED);
 			break;
 		}
