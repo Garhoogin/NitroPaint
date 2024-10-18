@@ -647,7 +647,7 @@ BOOL CALLBACK CloseAllProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
-char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
+static char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
 	//lookup value in file of Key: Value pairs
 	const char *end = ptr + size;
 	while (ptr != end) {
@@ -692,7 +692,7 @@ char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
 	return NULL;
 }
 
-const char *propNextLine(const char *ptr, const char *end) {
+static const char *propNextLine(const char *ptr, const char *end) {
 	while (ptr < end && *ptr != '\n' && *ptr != '\r') {
 		//scan for newline
 		ptr++;
@@ -703,7 +703,7 @@ const char *propNextLine(const char *ptr, const char *end) {
 	return ptr;
 }
 
-const char *propToValue(const char *ptr, const char *end) {
+static const char *propToValue(const char *ptr, const char *end) {
 	//scan for :
 	while (ptr < end && *ptr != ':') {
 		ptr++;
@@ -714,7 +714,7 @@ const char *propToValue(const char *ptr, const char *end) {
 	return ptr;
 }
 
-void parseOffsetSizePair(const char *pair, int *offset, int *size) {
+static void parseOffsetSizePair(const char *pair, int *offset, int *size) {
 	//advance past whitespace
 	const char *ptr = pair;
 	while (*ptr <= ' ' && *ptr > '\0') ptr++;
@@ -760,7 +760,7 @@ void parseOffsetSizePair(const char *pair, int *offset, int *size) {
 	*size = tmpSize;
 }
 
-int specIsSpec(char *buffer, int size) {
+static int specIsSpec(char *buffer, int size) {
 	char *refName = propGetProperty(buffer, size, "File");
 	if (refName == NULL) return 0;
 	
@@ -1463,13 +1463,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						if (data->hWndNclrViewer != NULL) DestroyChild(data->hWndNclrViewer);
 						data->hWndNclrViewer = NULL;
 
-						NCLR nclr;
-						PalInit(&nclr, NCLR_TYPE_NCLR);
-						nclr.nColors = 256;
-						nclr.nBits = 4;
-						nclr.nPalettes = 16;
-						nclr.colors = (COLOR *) calloc(256, sizeof(COLOR));
-						data->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, &nclr);
+						HWND h = CreateWindow(L"NewPaletteClass", L"New Palette", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
+						DoModal(h);
 						break;
 					}
 					case ID_NEW_NEWSCREEN:
@@ -3035,36 +3030,103 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
-void RegisterImageDialogClass() {
+typedef struct NEWPALETTEDATA_ {
+	HWND hWndPaletteDepth;
+	HWND hWndPaletteCount;
+	HWND hWndOK;
+} NEWPALETTEDATA;
+
+static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NEWPALETTEDATA *data = (NEWPALETTEDATA *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			data = (NEWPALETTEDATA *) calloc(1, sizeof(NEWPALETTEDATA));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			LPCWSTR depthOptions[] = { L"4 bit", L"8 bit" };
+			LPCWSTR paletteCounts[] = { L"1", L"2", L"3", L"4", L"5", L"6", L"7", L"8", L"9", L"10", L"11", L"12", L"13", L"14", L"15", L"16" };
+
+			CreateStatic(hWnd, L"Palette Depth:", 10, 10, 75, 22);
+			CreateStatic(hWnd, L"Palette Count:", 10, 37, 75, 22);
+			data->hWndPaletteDepth = CreateCombobox(hWnd, depthOptions, 2, 95, 10, 100, 100, 0);
+			data->hWndPaletteCount = CreateCombobox(hWnd, paletteCounts, 16, 95, 37, 100, 100, 15);
+			data->hWndOK = CreateButton(hWnd, L"Create", 95, 64, 100, 22, TRUE);
+
+			SetWindowSize(hWnd, 205, 96);
+			SetGUIFont(hWnd);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			int notif = HIWORD(wParam);
+			if ((hWndControl == data->hWndOK || LOWORD(wParam) == IDOK) && notif == BN_CLICKED) {
+				int depthSel = SendMessage(data->hWndPaletteDepth, CB_GETCURSEL, 0, 0);
+				int countSel = SendMessage(data->hWndPaletteCount, CB_GETCURSEL, 0, 0) + 1;
+
+				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+
+				NCLR nclr;
+				PalInit(&nclr, NCLR_TYPE_NCLR);
+				nclr.nBits = depthSel ? 8 : 4;
+				nclr.nPalettes = countSel;
+				nclr.nColors = nclr.nPalettes << nclr.nBits;
+				nclr.colors = (COLOR *) calloc(nclr.nColors, sizeof(COLOR));
+				nclr.extPalette = (depthSel && nclr.nPalettes > 1);
+				nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, nitroPaintStruct->hWndMdi, &nclr);
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			} else if (LOWORD(wParam) == IDCANCEL) {
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+		case WM_DESTROY:
+		{
+			free(data);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+static void RegisterImageDialogClass(void) {
 	RegisterGenericClass(L"ImageDialogClass", ImageDialogProc, sizeof(LPVOID));
 }
 
-void RegisterFormatConversionClass() {
+static void RegisterFormatConversionClass(void) {
 	RegisterGenericClass(L"ConvertFormatDialogClass", ConvertFormatDialogProc, 3 * sizeof(LPVOID));
 }
 
-void RegisterSpriteSheetDialogClass() {
+static void RegisterSpriteSheetDialogClass(void) {
 	RegisterGenericClass(L"SpriteSheetDialogClass", SpriteSheetDialogProc, sizeof(LPVOID));
 }
 
-void RegisterScreenDialogClass() {
+static void RegisterScreenDialogClass(void) {
 	RegisterGenericClass(L"NewScreenDialogClass", NewScreenDialogProc, sizeof(LPVOID));
 }
 
-void RegisterScreenSplitDialogClass() {
+static void RegisterScreenSplitDialogClass(void) {
 	RegisterGenericClass(L"ScreenSplitDialogClass", ScreenSplitDialogProc, sizeof(LPVOID));
 }
 
-void RegisterTextPromptClass() {
+static void RegisterTextPromptClass(void) {
 	RegisterGenericClass(L"TextPromptClass", TextInputWndProc, sizeof(LPVOID) * 5); //2 HWNDs, status, out info
 }
 
-void RegisterAlphaBlendClass() {
+static void RegisterAlphaBlendClass(void) {
 	RegisterGenericClass(L"AlphaBlendClass", AlphaBlendWndProc, sizeof(LPVOID) * 6);
 }
 
-void RegisterLinkEditClass() {
+static void RegisterLinkEditClass(void) {
 	RegisterGenericClass(L"LinkEditClass", LinkEditWndPRoc, sizeof(LPVOID));
+}
+
+static void RegisterNewPaletteClass(void) {
+	RegisterGenericClass(L"NewPaletteClass", NewPaletteWndProc, sizeof(LPVOID));
 }
 
 VOID ReadConfiguration(LPWSTR lpszPath) {
@@ -3129,7 +3191,7 @@ VOID CheckExistingAppWindow() {
 	ExitProcess(0);
 }
 
-void RegisterClasses() {
+static void RegisterClasses(void) {
 	RegisterNcgrViewerClass();
 	RegisterNclrViewerClass();
 	RegisterNscrViewerClass();
@@ -3149,6 +3211,7 @@ void RegisterClasses() {
 	RegisterTextPromptClass();
 	RegisterAlphaBlendClass();
 	RegisterLinkEditClass();
+	RegisterNewPaletteClass();
 }
 
 void InitializeDpiAwareness(void) {
