@@ -2653,6 +2653,8 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
 				NSCR nscr;
 				ScrInit(&nscr, NSCR_TYPE_NSCR);
+				nscr.fmt = format;
+				nscr.colorMode = colorMode;
 				nscr.tilesX = tilesX;
 				nscr.tilesY = tilesY;
 				nscr.dataSize = tilesX * tilesY * sizeof(uint16_t);
