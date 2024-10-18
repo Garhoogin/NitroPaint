@@ -1235,8 +1235,6 @@ VOID OpenFileByNameRemote(HWND hWnd, LPCWSTR szFile) {
 VOID ProcessCommandLine(HWND hWnd, BOOL remoteWindow) {
 	int argc;
 	wchar_t **argv;
-	wchar_t **env;
-	int startInfo;
 	argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 	if (argc > 1) {
 		argc--;
