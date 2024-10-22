@@ -4,6 +4,7 @@
 
 #include "compression.h"
 #include "bstream.h"
+#include "struct.h"
 
 #ifdef _MSC_VER
 #define inline __inline
@@ -1736,42 +1737,41 @@ static unsigned int CxiIlog2(unsigned int x) {
 }
 
 static CxiLzToken *CxiMvdkTokenizeDeflate(const unsigned char *buffer, unsigned int size, int *pnTokens) {
-	int tokenBufferSize = 16;
-	int tokenBufferLength = 0;
-	CxiLzToken *tokenBuffer = (CxiLzToken *) calloc(tokenBufferSize, sizeof(CxiLzToken));
+	StList tokenBuffer;
+	StStatus s = StListCreateInline(&tokenBuffer, CxiLzToken, NULL);
+	if (!ST_SUCCEEDED(s)) return NULL;
 
 	unsigned int curpos = 0;
 	while (curpos < size) {
-		//ensure buffer capacity
-		if (tokenBufferLength + 1 > tokenBufferSize) {
-			tokenBufferSize = (tokenBufferSize + 2) * 3 / 2;
-			tokenBuffer = (CxiLzToken *) realloc(tokenBuffer, tokenBufferSize * sizeof(CxiLzToken));
-		}
-
 		//search backwards
 		unsigned int length, distance;
 		length = CxiSearchLZ(buffer, size, curpos, 1, 0x7FFF, 0x102, &distance);
 
+		CxiLzToken token;
 		if (length >= 3) {
 			//write LZ reference
-			tokenBuffer[tokenBufferLength].isReference = 1;
-			tokenBuffer[tokenBufferLength].distance = distance;
-			tokenBuffer[tokenBufferLength].length = length;
+			token.isReference = 1;
+			token.distance = distance;
+			token.length = length;
 
 			buffer += length;
 			curpos += length;
 		} else {
 			//write byte literal
-			tokenBuffer[tokenBufferLength].isReference = 0;
-			tokenBuffer[tokenBufferLength].symbol = *(buffer++);
+			token.isReference = 0;
+			token.symbol = *(buffer++);
 			curpos++;
 		}
 
-		tokenBufferLength++;
+		s = StListAdd(&tokenBuffer, &token);
+		if (!ST_SUCCEEDED(s)) {
+			StListFree(&tokenBuffer);
+			return NULL;
+		}
 	}
 
-	*pnTokens = tokenBufferLength;
-	return tokenBuffer;
+	*pnTokens = tokenBuffer.length;
+	return (CxiLzToken *) tokenBuffer.buffer;
 }
 
 
@@ -2495,22 +2495,17 @@ int CxIsCompressedVlx(const unsigned char *src, unsigned int size) {
 }
 
 static CxiLzToken *CxiVlxComputeLzStatistics(const unsigned char *buffer, unsigned int size, unsigned int *lengthCounts, unsigned int *distCounts, int *pnTokens) {
-	int tokenBufferSize = 16;
-	int nTokens = 0;
-	CxiLzToken *tokenBuffer = (CxiLzToken *) calloc(tokenBufferSize, sizeof(CxiLzToken));
+	StList tokenBuffer;
+	StStatus s = StListCreateInline(&tokenBuffer, CxiLzToken, NULL);
+	if (!ST_SUCCEEDED(s)) return NULL;
 
 	unsigned int nProcessedBytes = 0;
 	while (nProcessedBytes < size) {
 		unsigned int biggestRun = 0, biggestRunIndex = 0;
 		biggestRun = CxiSearchLZ(buffer, size, nProcessedBytes, 1, 0xFFE, 0xFFF, &biggestRunIndex);
 
-		//ensure token buffer capacity
-		if ((nTokens + 1) > tokenBufferSize) {
-			tokenBufferSize = (tokenBufferSize + 1) * 3 / 2;
-			tokenBuffer = (CxiLzToken *) realloc(tokenBuffer, tokenBufferSize * sizeof(CxiLzToken));
-		}
-
 		//minimum run length is 2 bytes
+		CxiLzToken token;
 		if (biggestRun >= 2) {
 			//advance the buffer
 			buffer += biggestRun;
@@ -2523,23 +2518,28 @@ static CxiLzToken *CxiVlxComputeLzStatistics(const unsigned char *buffer, unsign
 			distCounts[CxiIlog2(biggestRunIndex + 1)]++;
 
 			//append token
-			tokenBuffer[nTokens].isReference = 1;
-			tokenBuffer[nTokens].length = biggestRun;
-			tokenBuffer[nTokens].distance = biggestRunIndex;
+			token.isReference = 1;
+			token.length = biggestRun;
+			token.distance = biggestRunIndex;
 		} else {
 			nProcessedBytes++;
 
 			//no copy found: increment 0-length bin
 			lengthCounts[0]++;
 
-			tokenBuffer[nTokens].isReference = 0;
-			tokenBuffer[nTokens].symbol = *(buffer++);
+			token.isReference = 0;
+			token.symbol = *(buffer++);
 		}
-		nTokens++;
+
+		s = StListAdd(&tokenBuffer, &token);
+		if (!ST_SUCCEEDED(s)) {
+			StListFree(&tokenBuffer);
+			return NULL;
+		}
 	}
 
-	*pnTokens = nTokens;
-	return tokenBuffer;
+	*pnTokens = tokenBuffer.length;
+	return tokenBuffer.buffer;
 }
 
 static int CxiVlxWriteHuffmanTree(CxiHuffNode *tree, uint16_t *dest, int pos, uint16_t *reps, int *lengths, uint16_t curval, int nBitsVal) {
@@ -2783,40 +2783,40 @@ static void CxiAshWriteTree(BITSTREAM *stream, CxiHuffNode *nodes, int nBits) {
 }
 
 static CxiLzToken *CxiAshTokenize(const unsigned char *buffer, unsigned int size, int nSymBits, int nDstBits, unsigned int *pnTokens) {
-	unsigned int nTokens = 0, tokenBufferSize = 16;
-	CxiLzToken *tokenBuffer = (CxiLzToken *) calloc(tokenBufferSize, sizeof(CxiLzToken));
+	StList tokenBuffer;
+	StStatus s = StListCreateInline(&tokenBuffer, CxiLzToken, NULL);
+	if (!ST_SUCCEEDED(s)) return NULL;
 
 	//
 	unsigned int curpos = 0;
 	while (curpos < size) {
-		//ensure buffer capacity
-		if (nTokens + 1 > tokenBufferSize) {
-			tokenBufferSize = (tokenBufferSize + 2) * 3 / 2;
-			tokenBuffer = (CxiLzToken *) realloc(tokenBuffer, tokenBufferSize * sizeof(CxiLzToken));
-		}
-
 		//search backwards
 		unsigned int length, distance;
 		length = CxiSearchLZ(buffer, size, curpos, 1, (1 << nDstBits), (1 << nSymBits) - 1 - 0x100 + 3, &distance);
 
-		CxiLzToken *token = &tokenBuffer[nTokens++];
+		CxiLzToken token;
 		if (length >= 3) {
-			token->isReference = 1;
-			token->length = length;
-			token->distance = distance;
+			token.isReference = 1;
+			token.length = length;
+			token.distance = distance;
 
 			buffer += length;
 			curpos += length;
 		} else {
-			token->isReference = 0;
-			token->symbol = *(buffer++);
+			token.isReference = 0;
+			token.symbol = *(buffer++);
 			curpos++;
+		}
+
+		s = StListAdd(&tokenBuffer, &token);
+		if (!ST_SUCCEEDED(s)) {
+			StListFree(&tokenBuffer);
+			return NULL;
 		}
 	}
 
-	*pnTokens = nTokens;
-	tokenBuffer = realloc(tokenBuffer, nTokens * sizeof(CxiLzToken));
-	return tokenBuffer;
+	*pnTokens = tokenBuffer.length;
+	return (CxiLzToken *) tokenBuffer.buffer;
 }
 
 unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {

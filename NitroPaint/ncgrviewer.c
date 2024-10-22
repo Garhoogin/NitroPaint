@@ -14,6 +14,7 @@
 #include "palette.h"
 #include "bggen.h"
 #include "ui.h"
+#include "struct.h"
 
 #include "preview.h"
 
@@ -643,18 +644,18 @@ static void ChrViewerFloodFill(NCGRVIEWERDATA *data, int x, int y, int pcol) {
 	//keep a stack of colors. push the first color. Each time we pop a color from the stack, 
 	//check all 8 neighbors. If they match the initial color, push them to the stack. Fill
 	//the pixel with the new color. Repeat until stack is empty.
-	int stackCap = 16, stackSize = 0;
-	POINT *stack = (POINT *) calloc(stackCap, sizeof(POINT));
-	{
-		POINT *first = &stack[stackSize++];
-		first->x = x;
-		first->y = y;
-	}
+	StStack stack;
+	StStatus s = StStackCreateInline(&stack, POINT);
+	if (!ST_SUCCEEDED(s)) return; //fail
+	
+	POINT first = { x, y };
+	s = StStackPush(&stack, &first);
+	if (!ST_SUCCEEDED(s)) goto AllocFail;
 
-	while (stackSize > 0) {
-		POINT *pt = &stack[--stackSize];
-		int ptX = pt->x, ptY = pt->y;
-		ChrViewerPutPixel(data, ptX, ptY, pcol);
+	while (stack.length) {
+		POINT pt;
+		StStackPop(&stack, &pt);
+		ChrViewerPutPixel(data, pt.x, pt.y, pcol);
 		
 		//search vicinity
 		for (int y_ = 0; y_ < 3; y_++) {
@@ -663,23 +664,15 @@ static void ChrViewerFloodFill(NCGRVIEWERDATA *data, int x, int y, int pcol) {
 				if (x_ != 1 && y_ != 1) continue;
 				if (x_ == 1 && y_ == 1) continue;
 
-				int drawX = ptX + (x_ - 1);
-				int drawY = ptY + (y_ - 1);
+				int drawX = pt.x + (x_ - 1);
+				int drawY = pt.y + (y_ - 1);
 				if (drawX >= 0 && drawY >= 0 && drawX < gfxW && drawY < gfxH) {
 					int c = ChrViewerGetPixel(data, drawX, drawY);
 					if (c == bkcol) {
-						//increase stack
-						if (stackSize >= stackCap) {
-							stackCap = (stackCap + 2) * 3 / 2;
-							POINT *newstack = realloc(stack, stackCap * sizeof(POINT));
-							if (newstack == NULL) goto AllocFail;
-
-							stack = newstack;
-						}
-
-						POINT *next = &stack[stackSize++];
-						next->x = drawX;
-						next->y = drawY;
+						//push
+						POINT next = { drawX, drawY };
+						s = StStackPush(&stack, &next);
+						if (!ST_SUCCEEDED(s)) goto AllocFail;
 					}
 				}
 			}
@@ -687,7 +680,7 @@ static void ChrViewerFloodFill(NCGRVIEWERDATA *data, int x, int y, int pcol) {
 	}
 
 AllocFail:
-	free(stack);
+	StStackFree(&stack);
 }
 
 static void ChrViewerFlipSelection(NCGRVIEWERDATA *data, BOOL flipH, BOOL flipV) {
