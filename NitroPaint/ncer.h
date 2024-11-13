@@ -86,9 +86,13 @@ int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
 
 int CellFree(OBJECT_HEADER *header);
 
-void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out, int *width, int *height, int checker);
+void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out);
 
-COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d);
+COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, float a, float b, float c, float d);
+
+void CellDeleteCell(NCER *ncer, int idx);
+
+void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst);
 
 int CellWrite(NCER *ncer, BSTREAM *stream);
 

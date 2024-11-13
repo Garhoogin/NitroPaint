@@ -147,13 +147,62 @@
 #define ID_NCGRMENU_FLIPVERTICALLY      40159
 #define ID_MENU_GENERATE                40160
 #define ID_NCGRMENU_GENERATEATTRIBUTES  40161
+#define ID_CELLMENU_OBJSIZE             40162
+#define ID_CELLMENU_OBJTYPE             40163
+#define ID_CELLMENU_OBJPALETTE          40164
+#define ID_CELLMENU_OBJPRIORITY         40165
+#define ID_OBJTYPE_NORMAL               40166
+#define ID_OBJTYPE_WINDOW               40167
+#define ID_OBJTYPE_TRANSLUCENT          40168
+#define ID_OBJTYPE_BITMAP               40169
+#define ID_OBJPRIORITY_0                40170
+#define ID_OBJPRIORITY_1                40171
+#define ID_OBJPRIORITY_2                40172
+#define ID_OBJPRIORITY_3                40173
+#define ID_OBJPALETTE_0                 40174
+#define ID_OBJPALETTE_1                 40175
+#define ID_OBJPALETTE_2                 40176
+#define ID_OBJPALETTE_3                 40177
+#define ID_OBJPALETTE_4                 40178
+#define ID_OBJPALETTE_5                 40179
+#define ID_OBJPALETTE_6                 40180
+#define ID_OBJPALETTE_7                 40181
+#define ID_OBJPALETTE_8                 40182
+#define ID_OBJPALETTE_9                 40183
+#define ID_OBJPALETTE_10                40184
+#define ID_OBJPALETTE_11                40185
+#define ID_OBJPALETTE_12                40186
+#define ID_OBJPALETTE_13                40187
+#define ID_OBJPALETTE_14                40188
+#define ID_OBJPALETTE_15                40189
+#define ID_OBJSIZE_8X8                  40190
+#define ID_OBJSIZE_8X16                 40191
+#define ID_OBJSIZE_8X32                 40192
+#define ID_OBJSIZE_16X8                 40193
+#define ID_OBJSIZE_16X16                40194
+#define ID_OBJSIZE_16X32                40195
+#define ID_OBJSIZE_32X8                 40196
+#define ID_OBJSIZE_32X16                40197
+#define ID_OBJSIZE_32X32                40198
+#define ID_OBJSIZE_32X64                40199
+#define ID_OBJSIZE_64X32                40200
+#define ID_OBJSIZE_64X64                40201
+#define ID_CELLMENU_CUT                 40202
+#define ID_CELLMENU_COPY                40203
+#define ID_CELLMENU_PASTE               40204
+#define ID_CELLMENU_SENDTOFRONT         40205
+#define ID_CELLMENU_SENDTOBACK          40206
+#define ID_CELLMENU_AFFINE              40207
+#define ID_CELLMENU_DOUBLESIZE          40208
+#define ID_CELLMENU_HFLIP               40209
+#define ID_CELLMENU_VFLIP               40210
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40162
+#define _APS_NEXT_COMMAND_VALUE         40211
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

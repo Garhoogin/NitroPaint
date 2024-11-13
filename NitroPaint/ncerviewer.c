@@ -1,3 +1,7 @@
+#include <Windows.h>
+#include <CommCtrl.h>
+#include <math.h>
+
 #include "editor.h"
 #include "ncerviewer.h"
 #include "nitropaint.h"
@@ -12,206 +16,190 @@
 
 #include "cellgen.h"
 
+#define PREVIEW_ICON_WIDTH      64 // width of cell preview icon
+#define PREVIEW_ICON_HEIGHT     64 // height of cell preview icon
+#define PREVIEW_ICON_PADDING_V  10 // vertical padding of cell preview
+
+#define ID_TIMER_GFX_UPDATE      1 // internal timer used to update graphics
+#define GFX_UPDATE_TIMER       500 // deferment of updating from foreign graphics data (lessen CPU load)
+
+
+#define CV_HIT_NOWHERE           0 // nowhere
+#define CV_HIT_BACKGROUND        1 // background
+#define CV_HIT_SELECTION         2 // selection region
+#define CV_HIT_OBJ               3 // here and above for OBJ index
+
+
 extern HICON g_appIcon;
 
-VOID PaintNcerViewer(HWND hWnd) {
-	PAINTSTRUCT ps;
-	HDC hWindowDC = BeginPaint(hWnd, &ps);
-	
-	NCGR *ncgr = NULL;
-	NCLR *nclr = NULL;
-	HWND hWndMain = getMainWindow(hWnd);
+static int sObjClipboardFormat = 0;
+
+
+// ----- menu defines
+
+static const unsigned short sMenuIdPalettes[] = {
+		ID_OBJPALETTE_0,  ID_OBJPALETTE_1,  ID_OBJPALETTE_2,  ID_OBJPALETTE_3,
+		ID_OBJPALETTE_4,  ID_OBJPALETTE_5,  ID_OBJPALETTE_6,  ID_OBJPALETTE_7,
+		ID_OBJPALETTE_8,  ID_OBJPALETTE_9,  ID_OBJPALETTE_10, ID_OBJPALETTE_11,
+		ID_OBJPALETTE_12, ID_OBJPALETTE_13, ID_OBJPALETTE_14, ID_OBJPALETTE_15,
+};
+static const unsigned short sMenuIdPrios[] = {
+	ID_OBJPRIORITY_0, ID_OBJPRIORITY_1, ID_OBJPRIORITY_2, ID_OBJPRIORITY_3
+};
+static const unsigned short sMenuIdTypes[] = {
+	ID_OBJTYPE_NORMAL, ID_OBJTYPE_TRANSLUCENT, ID_OBJTYPE_WINDOW, ID_OBJTYPE_BITMAP
+};
+static const unsigned short sMenuIdSizes[] = {
+	ID_OBJSIZE_8X8,  ID_OBJSIZE_16X16, ID_OBJSIZE_32X32, ID_OBJSIZE_64X64,
+	ID_OBJSIZE_16X8, ID_OBJSIZE_32X8,  ID_OBJSIZE_32X16, ID_OBJSIZE_64X32,
+	ID_OBJSIZE_8X16, ID_OBJSIZE_8X32,  ID_OBJSIZE_16X32, ID_OBJSIZE_32X64
+};
+
+static void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, float a, float b, float c, float d);
+static COLOR32 *CellViewerCropRenderedCell(COLOR32 *px, int width, int height, int *pMinX, int *pMinY, int *outWidth, int *outHeight);
+
+
+// ----- basic editor routines
+
+#define SEXT8(n)   (((n)<0x080)?(n):((n)-0x100))
+#define SEXT9(n)   (((n)<0x100)?(n):((n)-0x200))
+
+static NCLR *CellViewerGetAssociatedPalette(NCERVIEWERDATA *data) {
+	HWND hWndMain = getMainWindow(data->hWnd);
 	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-	if (nitroPaintStruct->hWndNclrViewer) {
-		nclr = (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
+	if (nitroPaintStruct->hWndNclrViewer == NULL) return NULL;
+
+	return (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
+}
+
+static NCGR *CellViewerGetAssociatedCharacter(NCERVIEWERDATA *data) {
+	HWND hWndMain = getMainWindow(data->hWnd);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	if (nitroPaintStruct->hWndNcgrViewer == NULL) return NULL;
+
+	return (NCGR *) EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
+}
+
+static NCER_CELL *CellViewerGetCurrentCell(NCERVIEWERDATA *data) {
+	if (data->cell < 0 || data->cell >= data->ncer.nCells) return NULL;
+	return &data->ncer.cells[data->cell];
+}
+
+static int CellViewerIsDragging(NCERVIEWERDATA *data) {
+	return data->dragStartX != -1 && data->dragStartY != -1;
+}
+
+static int CellViewerGetDragBounds(NCERVIEWERDATA *data, int *pMinX, int *pMinY, int *pWidth, int *pHeight) {
+	if (!CellViewerIsDragging(data)) return 0;
+
+	int x1 = data->dragStartX, y1 = data->dragStartY;
+	int x2 = data->dragEndX, y2 = data->dragEndY;
+
+	int xMin = min(x1, x2);
+	int width = max(x1, x2) + 1 - xMin;
+	int yMin = min(y1, y2);
+	int height = max(y1, y2) + 1 - yMin;
+	*pMinX = xMin;
+	*pMinY = yMin;
+	*pWidth = width;
+	*pHeight = height;
+
+	return 1;
+}
+
+static int CellViewerIsRectInSelection(NCERVIEWERDATA *data, int x, int y, int w, int h) {
+	int selX, selY, selW, selH;
+	int sel = CellViewerGetDragBounds(data, &selX, &selY, &selW, &selH);
+	if (!sel) return 0;
+
+	//bound check
+	if ((x + w) < selX) return 0;
+	if (x >= (selX + selW)) return 0;
+	if ((y + h) < selY) return 0;
+	if (y >= (selY + selH)) return 0;
+	return 1;
+}
+
+static int *CellViewerGetSelectedOamObjects(NCERVIEWERDATA *data, int *pnSel) {
+	//no cell viewing, no OBJ can be in selection
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) {
+		*pnSel = 0;
+		return NULL;
 	}
-	if (nitroPaintStruct->hWndNcgrViewer) {
-		ncgr = (NCGR *) EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
+
+	//check selection
+	if (data->nSelectedOBJ > 0) {
+		int *cpy = (int *) calloc(data->nSelectedOBJ, sizeof(int));
+		memcpy(cpy, data->selectedOBJ, data->nSelectedOBJ * sizeof(int));
+		*pnSel = data->nSelectedOBJ;
+		return cpy;
 	}
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
+
+	int nOBJ = 0;
+	int *indices = (int *) calloc(cell->nAttribs, sizeof(int));
+
+	//test OBJ
+	for (int i = 0; i < cell->nAttribs; i++) {
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, i);
+
+		//get OBJ bounds
+		int objX = SEXT9(info.x) + 256, objY = SEXT8(info.y) + 128;
+		int objW = info.width << info.doubleSize, objH = info.height << info.doubleSize;
+
+		if (CellViewerIsRectInSelection(data, objX, objY, objW, objH)) {
+			indices[nOBJ++] = i;
+		}
+	}
+
+	*pnSel = nOBJ;
+	indices = realloc(indices, nOBJ * sizeof(int));
+	return indices;
+}
+
+
+static void CellViewerPreviewGetScroll(NCERVIEWERDATA *data, int *scrollX, int *scrollY) {
+	//get scroll info
+	SCROLLINFO scrollH = { 0 }, scrollV = { 0 };
+	scrollH.cbSize = scrollV.cbSize = sizeof(scrollH);
+	scrollH.fMask = scrollV.fMask = SIF_ALL;
+	GetScrollInfo(data->hWndViewer, SB_HORZ, &scrollH);
+	GetScrollInfo(data->hWndViewer, SB_VERT, &scrollV);
+
+	*scrollX = scrollH.nPos;
+	*scrollY = scrollV.nPos;
+}
+
+static void CellViewerPreviewCenter(NCERVIEWERDATA *data) {
+	//get client
+	RECT rcClient;
+	GetClientRect(data->hWndViewer, &rcClient);
+
+	//get view size
+	int viewWidth = 512 * data->scale;
+	int viewHeight = 256 * data->scale;
 	
-	NCER_CELL *cell = data->ncer.cells + data->cell;
-	NCER_CELL_INFO info;
-	CellDecodeOamAttributes(&info, cell, data->oam);
-
-	memset(data->frameBuffer, 0, sizeof(data->frameBuffer));
-	CHAR_VRAM_TRANSFER *transferEntry = NULL;
-	if (data->ncer.vramTransfer != NULL)
-		transferEntry = data->ncer.vramTransfer + data->cell;
-	COLOR32 *bits = CellRenderCell(data->frameBuffer, data->ncer.cells + data->cell, data->ncer.mappingMode, ncgr, nclr, transferEntry, 
-		256, 128, g_configuration.renderTransparent, data->showObjOutline ? data->oam : -1, 1.0f, 0.0f, 0.0f, 1.0f);
-
-	//draw lines if needed
-	if (data->showCellBounds) {
-		int minX = cell->minX + 256, maxX = cell->maxX + 256 - 1;
-		int minY = cell->minY + 128, maxY = cell->maxY + 128 - 1;
-		minX &= 0x1FF, maxX &= 0x1FF, minY &= 0xFF, maxY &= 0xFF;
-
-		for (int i = 0; i < 256; i++) {
-			if (bits[i * 512 + minX] >> 24 != 0xFE) bits[i * 512 + minX] = 0xFF0000FF;
-			if (bits[i * 512 + maxX] >> 24 != 0xFE) bits[i * 512 + maxX] = 0xFF0000FF;
-		}
-		for (int i = 0; i < 512; i++) {
-			if (bits[minY * 512 + i] >> 24 != 0xFE) bits[minY * 512 + i] = 0xFF0000FF;
-			if (bits[maxY * 512 + i] >> 24 != 0xFE) bits[maxY * 512 + i] = 0xFF0000FF;
-		}
+	//check dimensions of view
+	if (rcClient.right < viewWidth) {
+		//set scroll H
+		SCROLLINFO scroll = { 0 };
+		scroll.cbSize = sizeof(scroll);
+		scroll.fMask = SIF_POS;
+		scroll.nPos = (viewWidth - rcClient.right) / 2;
+		SetScrollInfo(data->hWndViewer, SB_HORZ, &scroll, TRUE);
 	}
-
-	//draw solid color background if transparency disabled
-	if (!g_configuration.renderTransparent) {
-		COLOR32 bgColor = 0;
-		if (nclr!= NULL) bgColor = ColorConvertFromDS(nclr->colors[0]);
-		bgColor = REVERSE(bgColor);
-		for (int i = 0; i < 256 * 512; i++) {
-			COLOR32 c = bits[i];
-			if ((c >> 24) == 0) bits[i] = bgColor;
-			else if ((c >> 24) == 0xFE) bits[i] = ((bgColor + 0x808080) & 0xFFFFFF) | 0xFE000000;
-		}
+	if (rcClient.bottom < viewHeight) {
+		//set scroll V
+		SCROLLINFO scroll = { 0 };
+		scroll.cbSize = sizeof(scroll);
+		scroll.fMask = SIF_POS;
+		scroll.nPos = (viewHeight - rcClient.bottom) / 2;
+		SetScrollInfo(data->hWndViewer, SB_VERT, &scroll, TRUE);
 	}
-
-	//draw editor guidelines if enabled
-	if (data->showGuidelines) {
-		//dotted lines at X=0 an Y=0
-		COLOR32 centerColor = 0xFF0000; //red
-		COLOR32 auxColor = 0x00FF00; //green
-		COLOR32 minorColor = 0x002F00;
-
-		for (int i = 0; i < 512; i++) {
-			//major guideline
-			COLOR32 c = bits[i + 128 * 512];
-			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 128 * 512] ^= centerColor;
-
-			//auxiliary guidelines
-			c = bits[i + 64 * 512];
-			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 64 * 512] ^= auxColor;
-			c = bits[i + 192 * 512];
-			if ((c >> 24) != 0xFE) if (i & 1) bits[i + 192 * 512] ^= auxColor;
-
-			//minor guidelines
-			for (int j = 0; j < 256; j += 8) {
-				if (j == 64 || j == 128 || j == 192) continue;
-
-				c = bits[i + j * 512];
-				if ((c >> 24) != 0xFE) if (i & 1) bits[i + j * 512] ^= minorColor;
-			}
-		}
-		for (int i = 0; i < 256; i++) {
-			//major guideline
-			COLOR32 c = bits[256 + i * 512];
-			if ((c >> 24) != 0xFE) if (i & 1) bits[256 + i * 512] ^= centerColor;
-
-			//auxiliary guidelines
-			c = bits[128 + i * 512];
-			if ((c >> 24) != 0xFE) if (i & 1) bits[128 + i * 512] ^= auxColor;
-			c = bits[384 + i * 512];
-			if ((c >> 24) != 0xFE) if (i & 1) bits[384 + i * 512] ^= auxColor;
-
-			//minor guidelines
-			for (int j = 0; j < 512; j += 8) {
-				if (j == 128 || j == 256 || j == 384) continue;
-
-				c = bits[j + i * 512];
-				if ((c >> 24) != 0xFE) if (i & 1) bits[j + i * 512] ^= minorColor;
-			}
-		}
-	}
-
-	HBITMAP hbm = CreateBitmap(512, 256, 1, 32, bits);
-	HDC hCompatibleDC = CreateCompatibleDC(hWindowDC);
-	SelectObject(hCompatibleDC, hbm);
-	BitBlt(hWindowDC, 0, 0, 512, 256, hCompatibleDC, 0, 0, SRCCOPY);
-	DeleteObject(hbm);
-
-	int width, height;
-	bits = (COLOR32 *) calloc(info.width * info.height, sizeof(COLOR32));
-	CellRenderObj(&info, data->ncer.mappingMode, ncgr, nclr, NULL, bits, &width, &height, 1);
-	hbm = CreateBitmap(width, height, 1, 32, bits);
-	SelectObject(hCompatibleDC, hbm);
-	BitBlt(hWindowDC, 512 - 69, 256 + 5, width, height, hCompatibleDC, 0, 0, SRCCOPY);
-	DeleteObject(hbm);
-	free(bits);
-
-	DeleteObject(hCompatibleDC);
-
-	EndPaint(hWnd, &ps);
 }
 
-void UpdateEnabledControls(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
-
-	NCER_CELL *cell = data->ncer.cells + data->cell;
-	NCER_CELL_INFO info;
-	CellDecodeOamAttributes(&info, cell, data->oam);
-
-	//if rotate/scale, disable HV Flip and Disable, enable matrix.
-	if (info.rotateScale) {
-		setStyle(data->hWndHFlip, TRUE, WS_DISABLED);
-		setStyle(data->hWndVFlip, TRUE, WS_DISABLED);
-		setStyle(data->hWndDisable, TRUE, WS_DISABLED);
-		setStyle(data->hWndMatrix, FALSE, WS_DISABLED);
-		setStyle(data->hWndDoubleSize, FALSE, WS_DISABLED);
-	} else {
-		setStyle(data->hWndHFlip, FALSE, WS_DISABLED);
-		setStyle(data->hWndVFlip, FALSE, WS_DISABLED);
-		setStyle(data->hWndDisable, FALSE, WS_DISABLED);
-		setStyle(data->hWndMatrix, TRUE, WS_DISABLED);
-		setStyle(data->hWndDoubleSize, TRUE, WS_DISABLED);
-	}
-	RedrawWindow(hWnd, NULL, NULL, RDW_ALLCHILDREN | RDW_INVALIDATE);
-}
-
-void UpdateControls(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
-
-	NCER_CELL *cell = data->ncer.cells + data->cell;
-	NCER_CELL_INFO info;
-	CellDecodeOamAttributes(&info, cell, data->oam);
-
-	if (!data->mouseDown) {
-		SendMessage(data->hWnd8bpp, BM_SETCHECK, info.characterBits == 8, 0);
-		SendMessage(data->hWndRotateScale, BM_SETCHECK, info.rotateScale, 0);
-		SendMessage(data->hWndHFlip, BM_SETCHECK, info.flipX, 0);
-		SendMessage(data->hWndVFlip, BM_SETCHECK, info.flipY, 0);
-		SendMessage(data->hWndMosaic, BM_SETCHECK, info.mosaic, 0);
-		SendMessage(data->hWndDisable, BM_SETCHECK, info.disable, 0);
-		SendMessage(data->hWndPaletteDropdown, CB_SETCURSEL, info.palette, 0);
-		SendMessage(data->hWndDoubleSize, BM_SETCHECK, info.doubleSize, 0);
-		SendMessage(data->hWndPriority, CB_SETCURSEL, info.priority, 0);
-		SendMessage(data->hWndType, CB_SETCURSEL, info.mode, 0);
-
-		SetEditNumber(data->hWndMatrix, info.matrix);
-		SetEditNumber(data->hWndCharacterOffset, info.characterName);
-	}
-	SetEditNumber(data->hWndXInput, info.x >= 256 ? (info.x - 512) : info.x);
-	SetEditNumber(data->hWndYInput, info.y >= 128 ? (info.y - 256) : info.y);
-
-	int sizes[] = { 0, 0, 1, 0, 1, 2, 1, 2, 2, 3, 3, 3 };
-	int shapes[] = { 0, 2, 2, 1, 0, 2, 1, 1, 0, 2, 1, 0 };
-	int sizeIndex = 0;
-	for (int i = 0; i < 12; i++) {
-		if (sizes[i] == info.size && shapes[i] == info.shape) {
-			sizeIndex = i;
-			break;
-		}
-	}
-	SendMessage(data->hWndSizeDropdown, CB_SETCURSEL, sizeIndex, 0);
-
-	UpdateEnabledControls(hWnd);
-}
-
-void UpdateOamDropdown(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
-	SendMessage(data->hWndOamDropdown, CB_RESETCONTENT, 0, 0);
-
-	WCHAR name[13];
-	for (int i = 0; i < data->ncer.cells[data->cell].nAttribs; i++) {
-		wsprintf(name, L"OAM %d", i);
-		SendMessage(data->hWndOamDropdown, CB_ADDSTRING, 0, (LPARAM) name);
-	}
-	SendMessage(data->hWndOamDropdown, CB_SETCURSEL, 0, 0);
-}
-
-int getOamFromPoint(NCER_CELL *cell, int x, int y) {
+static int CellViewerGetOamObjFromPoint(NCER_CELL *cell, int x, int y) {
 	int oam = -1;
 	for (int i = 0; i < cell->nAttribs; i++) {
 		NCER_CELL_INFO info;
@@ -222,7 +210,7 @@ int getOamFromPoint(NCER_CELL *cell, int x, int y) {
 		int height = info.height << info.doubleSize;
 
 		//this is ugly, but it takes wrapping into account.
-		if ((x >= info.x && y >= info.y && x < info.x + width && y < info.y + height) || 
+		if ((x >= info.x && y >= info.y && x < info.x + width && y < info.y + height) ||
 			(x + 512 >= info.x && y >= info.y && x + 512 < info.x + width && y < info.y + height) ||
 			(x >= info.x && y + 256 >= info.y && x < info.x + width && y + 256 < info.y + height) ||
 			(x + 512 >= info.x && y + 256 >= info.y && x + 512 < info.x + width && y + 256 < info.y + height)) {
@@ -233,95 +221,635 @@ int getOamFromPoint(NCER_CELL *cell, int x, int y) {
 	return oam;
 }
 
-void ncerCreateCopy(NCER *dest, NCER *src) {
-	memcpy(dest, src, sizeof(NCER));
-	if (src->labl != NULL) {
-		dest->labl = (char *) malloc(src->lablSize);
-		memcpy(dest->labl, src->labl, src->lablSize);
+static int CellViewerHasSelection(NCERVIEWERDATA *data) {
+	return data->nSelectedOBJ > 0;
+}
+
+static int CellViewerHitTest(NCERVIEWERDATA *data, int x, int y) {
+	int scrollX, scrollY;
+	CellViewerPreviewGetScroll(data, &scrollX, &scrollY);
+
+	//get view size
+	int viewWidth = 512 * data->scale - scrollX;
+	int viewHeight = 256 * data->scale - scrollY;
+	if (x < 0 || x >= viewWidth || y < 0 || y >= viewHeight) return CV_HIT_NOWHERE;
+
+	//test hit
+	int hit = CV_HIT_BACKGROUND;
+	if (data->cell >= 0 && data->cell < data->ncer.nCells) {
+		NCER_CELL *cell = &data->ncer.cells[data->cell];
+		int objHit = CellViewerGetOamObjFromPoint(cell, (x + scrollX) / data->scale - 256, (y + scrollY) / data->scale - 128);
+		if (objHit != -1) hit = CV_HIT_OBJ + objHit;
+
+		//do we have a selection? check this OBJ against selection
+		if (objHit != -1 && CellViewerHasSelection(data)) {
+			for (int i = 0; i < data->nSelectedOBJ; i++) {
+				if (data->selectedOBJ[i] == objHit) {
+					hit = CV_HIT_SELECTION;
+					break;
+				}
+			}
+		}
 	}
-	if (src->uext != NULL) {
-		dest->uext = (char *) malloc(src->uextSize);
-		memcpy(dest->uext, src->uext, src->uextSize);
+	return hit;
+}
+
+static void CellViewerDeselect(NCERVIEWERDATA *data) {
+	if (data->selectedOBJ != NULL) free(data->selectedOBJ);
+	data->selectedOBJ = NULL;
+	data->nSelectedOBJ = 0;
+}
+
+static void CellViewerSelectAll(NCERVIEWERDATA *data) {
+	CellViewerDeselect(data);
+
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	int *sel = (int *) calloc(cell->nAttribs, sizeof(int));
+	for (int i = 0; i < cell->nAttribs; i++) sel[i] = i;
+
+	data->selectedOBJ = sel;
+	data->nSelectedOBJ = cell->nAttribs;
+}
+
+static void CellViewerCommitSelection(NCERVIEWERDATA *data) {
+	CellViewerDeselect(data);
+
+	int nSel;
+	int *sel = CellViewerGetSelectedOamObjects(data, &nSel);
+
+	data->selectedOBJ = sel;
+	data->nSelectedOBJ = nSel;
+}
+
+static int CellViewerIsMakingSelection(NCERVIEWERDATA *data) {
+	return data->mouseDown && data->mouseDownHit == CV_HIT_BACKGROUND;
+}
+
+static int CellViewerIsMovingOBJ(NCERVIEWERDATA *data) {
+	return data->mouseDown && data->mouseDownHit >= CV_HIT_OBJ;
+}
+
+static void CellViewerSelectSingleOBJ(NCERVIEWERDATA *data, int i) {
+	if (CellViewerHasSelection(data)) CellViewerDeselect(data);
+
+	data->nSelectedOBJ = 1;
+	data->selectedOBJ = (int *) calloc(1, sizeof(int));
+	data->selectedOBJ[0] = i;
+}
+
+static int CellViewerSelectionComparator(const void *p1, const void *p2) {
+	return (*(const int *) p1) - (*(const int *) p2);
+}
+
+static void CellViewerAddObjToSelection(NCERVIEWERDATA *data, int iObj) {
+	//test for presence in selection
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		if (data->selectedOBJ[i] == iObj) {
+			//OBJ in selection, remove it.
+			memmove(data->selectedOBJ + i, data->selectedOBJ + i + 1, (data->nSelectedOBJ - i - 1) * sizeof(int));
+			data->nSelectedOBJ--;
+			data->selectedOBJ = (int *) realloc(data->selectedOBJ, data->nSelectedOBJ * sizeof(int));
+			return;
+		}
 	}
-	dest->cells = (NCER_CELL *) malloc(src->nCells * sizeof(NCER_CELL));
-	memcpy(dest->cells, src->cells, src->nCells * sizeof(NCER_CELL));
-	for (int i = 0; i < dest->nCells; i++) {
-		NCER_CELL *cell = dest->cells + i;
-		uint16_t *attr = cell->attr;
-		cell->attr = (uint16_t *) malloc(cell->nAttribs * 3 * 2);
-		memcpy(cell->attr, attr, cell->nAttribs * 3 * 2);
-	}
-	if (src->vramTransfer != NULL) {
-		dest->vramTransfer = (CHAR_VRAM_TRANSFER *) calloc(src->nCells, sizeof(CHAR_VRAM_TRANSFER));
-		memcpy(dest->vramTransfer, src->vramTransfer, src->nCells * sizeof(CHAR_VRAM_TRANSFER));
+
+	//add to selection
+	data->nSelectedOBJ++;
+	data->selectedOBJ = realloc(data->selectedOBJ, data->nSelectedOBJ * sizeof(int));
+	data->selectedOBJ[data->nSelectedOBJ - 1] = iObj;
+	qsort(data->selectedOBJ, data->nSelectedOBJ, sizeof(int), CellViewerSelectionComparator);
+}
+
+static void CellViewerSelectRange(NCERVIEWERDATA *data, int start, int n) {
+	if (CellViewerHasSelection(data)) CellViewerDeselect(data);
+
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+	if (start >= cell->nAttribs) return;
+	if ((start + n) > cell->nAttribs) n = cell->nAttribs - start;
+
+	int *sel = (int *) calloc(n, sizeof(int));
+	for (int i = 0; i < n; i++) sel[i] = start + i;
+	data->selectedOBJ = sel;
+	data->nSelectedOBJ = n;
+}
+
+static void CellViewerMoveSelection(NCERVIEWERDATA *data, int dx, int dy) {
+	if (data->nSelectedOBJ == 0) return;
+
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		int ii = data->selectedOBJ[i];
+		uint16_t attr0 = cell->attr[ii * 3 + 0];
+		uint16_t attr1 = cell->attr[ii * 3 + 1];
+
+		attr1 = (attr1 & 0xFE00) | (((attr1 & 0x01FF) + dx) & 0x01FF);
+		attr0 = (attr0 & 0xFF00) | (((attr0 & 0x00FF) + dy) & 0x00FF);
+		cell->attr[ii * 3 + 0] = attr0;
+		cell->attr[ii * 3 + 1] = attr1;
 	}
 }
 
-void ncerEditorUndoRedo(NCERVIEWERDATA *data) {
-	//write fields into main NCER copy. 
-	NCER *ncer = &data->ncer;
-	NCER *newState = (NCER *) undoGetStackPosition(&data->undo);
+static void CellViewerDeleteSelection(NCERVIEWERDATA *data) {
+	if (!CellViewerHasSelection(data)) return;
 
-	//free attributes for all cells
-	for (int i = 0; i < ncer->nCells; i++) {
-		free(ncer->cells[i].attr);
-		ncer->cells[i].attr = NULL;
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	uint16_t *attr = cell->attr;
+	while (data->nSelectedOBJ > 0) {
+		int i = data->selectedOBJ[data->nSelectedOBJ - 1];
+
+		//remove this OBJ
+		memmove(attr + 3 * i, attr + 3 * (i + 1), (cell->nAttribs - i - 1) * 6);
+		cell->nAttribs--;
+
+		data->nSelectedOBJ--;
 	}
+	cell->attr = realloc(cell->attr, cell->nAttribs * 6);
 
-	ncer->bankAttribs = newState->bankAttribs;
-	ncer->lablSize = newState->lablSize;
-	ncer->uextSize = newState->uextSize;
-	ncer->nCells = newState->nCells;
-
-	//now make new allocations for UEXT and LABL
-	ncer->uext = realloc(ncer->uext, ncer->uextSize);
-	ncer->labl = realloc(ncer->labl, ncer->lablSize);
-	memcpy(ncer->uext, newState->uext, ncer->uextSize);
-	memcpy(ncer->labl, newState->labl, ncer->lablSize);
-
-	//reallocate cell data
-	ncer->cells = realloc(ncer->cells, ncer->nCells * sizeof(NCER_CELL));
-	memcpy(ncer->cells, newState->cells, newState->nCells * sizeof(NCER_CELL));
-	//fix it up so that the attribute pointers are duplicates. Don't want to mess up undo states here.
-	for (int i = 0; i < ncer->nCells; i++) {
-		NCER_CELL *cell = ncer->cells + i;
-		uint16_t *oldAttr = cell->attr;
-		cell->attr = malloc(cell->nAttribs * 3 * 2);
-		memcpy(cell->attr, oldAttr, cell->nAttribs * 3 * 2);
-	}
-
-	//if the selected OAM or cell is out of bounds, bring it back in-bounds.
-	if (data->cell >= data->ncer.nCells) {
-		data->cell = data->ncer.nCells - 1;
-	}
-	SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
-	if (data->oam >= data->ncer.cells[data->cell].nAttribs) {
-		data->oam = data->ncer.cells[data->cell].nAttribs - 1;
-	}
-	SendMessage(data->hWndOamDropdown, CB_SETCURSEL, data->oam, 0);
+	if (data->selectedOBJ != NULL) free(data->selectedOBJ);
+	data->selectedOBJ = NULL;
+	data->nSelectedOBJ = 0;
 }
 
-void ncerEditorUndo(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
-	undo(&data->undo);
-
-	ncerEditorUndoRedo(data);
-	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
-
-	UpdateControls(hWnd);
+static float CellViewerComputeDistanceToCenter(int cx, int cy, int x, int y) {
+	int d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+	return (float) sqrt((float) d2);
 }
 
-void ncerEditorRedo(HWND hWnd) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
-	redo(&data->undo);
+static void CellViewerUpdateBounds(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
 
-	ncerEditorUndoRedo(data);
-	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
+	int xMin = 0, xMax = 0, yMin = 0, yMax = 0;
 
-	UpdateControls(hWnd);
+	for (int i = 0; i < cell->nAttribs; i++) {
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, i);
+
+		int objX = SEXT9(info.x), objY = SEXT8(info.y);
+		int objW = info.width << info.doubleSize, objH = info.height << info.doubleSize;
+		if (i == 0 || objX < xMin) xMin = objX;
+		if (i == 0 || objY < yMin) yMin = objY;
+		if (i == 0 || (objX + objW) > xMax) xMax = objX + objW;
+		if (i == 0 || (objY + objH) > yMax) yMax = objY + objH;
+	}
+
+	cell->minX = xMin;
+	cell->minY = yMin;
+	cell->maxX = xMax;
+	cell->maxY = yMax;
+
+	int centerX = (xMin + xMax) / 2;
+	int centerY = (yMin + yMax) / 2;
+
+	//find OBJ with furthest extent point
+	float dMax = 0.0f;
+	for (int i = 0; i < cell->nAttribs; i++) {
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, i);
+
+		int objX = SEXT9(info.x), objY = SEXT8(info.y);
+		int objW = info.width << info.doubleSize, objH = info.height << info.doubleSize;
+
+		float d1 = CellViewerComputeDistanceToCenter(centerX, centerY, objX,        objY       );
+		float d2 = CellViewerComputeDistanceToCenter(centerX, centerY, objX + objW, objY       );
+		float d3 = CellViewerComputeDistanceToCenter(centerX, centerY, objX,        objY + objH);
+		float d4 = CellViewerComputeDistanceToCenter(centerX, centerY, objX + objW, objY + objH);
+
+		if (d1 > dMax) dMax = d1;
+		if (d2 > dMax) dMax = d2;
+		if (d3 > dMax) dMax = d3;
+		if (d4 > dMax) dMax = d4;
+	}
+
+	int dInt = (int) ceil(dMax);
+	dInt = (dInt + 3) >> 2;
+	cell->cellAttr = (cell->cellAttr & ~0x3F) | (dInt & 0x3F);
 }
 
-static void CellPreviewUpdate(HWND hWnd, int cellno) {
+
+// ----- copy/paste code
+
+static int CellviewerGetObjClipboardFormat(void) {
+	if (sObjClipboardFormat) return sObjClipboardFormat;
+
+	sObjClipboardFormat = RegisterClipboardFormat(L"NP_OBJ");
+	return sObjClipboardFormat;
+}
+
+static uint16_t *CellViewerGetSelectedOamAttributes(NCERVIEWERDATA *data, int *pnOBJ) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) {
+		*pnOBJ = 0;
+		return NULL;
+	}
+
+	uint16_t *attrs = (uint16_t *) calloc(data->nSelectedOBJ, 6);
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		int ii = data->selectedOBJ[i];
+		memcpy(attrs + i * 3, cell->attr + ii * 3, 6);
+	}
+
+	*pnOBJ = data->nSelectedOBJ;
+	return attrs;
+}
+
+static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	int nSel;
+	uint16_t *selAttr = CellViewerGetSelectedOamAttributes(data, &nSel);
+
+	COLOR32 *buf = (COLOR32 *) calloc(512 * 256, sizeof(COLOR32));
+
+	//get render params
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	NCLR *nclr = CellViewerGetAssociatedPalette(data);
+	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
+	if (data->ncer.vramTransfer != NULL) {
+		vramTransfer = data->ncer.vramTransfer + data->cell;
+	}
+	
+	//construct temporary cell
+	NCER_CELL *tmpCell = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
+	tmpCell->nAttribs = nSel;
+	tmpCell->attr = selAttr;
+
+	CellViewerRenderCell(buf, NULL, tmpCell, data->ncer.mappingMode, ncgr, nclr, vramTransfer, 256, 128, 1.0f, 0.0f, 0.0f, 1.0f);
+	free(tmpCell);
+	free(selAttr);
+
+	//crop to view
+	int minX, minY, width, height;
+	COLOR32 *crop = CellViewerCropRenderedCell(buf, 512, 256, &minX, &minY, &width, &height);
+	free(buf);
+
+	if (width != 0 && height != 0) {
+		copyBitmap(crop, width, height);
+	}
+
+	free(crop);
+}
+
+static void CellViewerCopy(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	//copy selected OBJ
+	OpenClipboard(data->hWnd);
+	EmptyClipboard();
+
+	int nSel = 0;
+	int *sel = CellViewerGetSelectedOamObjects(data, &nSel);
+	
+	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + nSel * 6, 1);
+	for (int i = 0; i < nSel; i++) {
+		int ii = sel[i];
+		memcpy(cpy->attr + i * 3, cell->attr + ii * 3, 6);
+	}
+	cpy->nOBJ = nSel;
+
+	//get bounding box size of selection
+	int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
+	for (int i = 0; i < nSel; i++) {
+		int ii = sel[i];
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, ii);
+
+		int objX = SEXT9(info.x), objY = SEXT8(info.y);
+		int objW = info.width << info.doubleSize, objH = info.height << info.doubleSize;
+		if (i == 0 || objX < xMin) xMin = objX;
+		if (i == 0 || objY < yMin) yMin = objY;
+		if (i == 0 || (objX + objW) > xMax) xMax = objX + objW;
+		if (i == 0 || (objY + objH) > yMax) yMax = objY + objH;
+	}
+	cpy->xMin = xMin;
+	cpy->yMin = yMin;
+	cpy->width = xMax - xMin;
+	cpy->height = yMax - yMin;
+
+	CellViewerCopyObjData(cpy);
+	free(cpy);
+
+	//TODO: copy image
+	CellViewerCopyDIB(data);
+
+	CloseClipboard();
+}
+
+static void CellViewerPaste(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	//paste selected OBJ
+	OpenClipboard(data->hWnd);
+
+	NP_OBJ *attr = CellViewerGetCopiedObjData();
+	
+	if (attr != NULL) {
+		//mouse in-bounds?
+		POINT pt;
+		GetCursorPos(&pt);
+		ScreenToClient(data->hWndViewer, &pt);
+
+		RECT rcClient;
+		GetClientRect(data->hWndViewer, &rcClient);
+
+		int scrollX, scrollY;
+		CellViewerPreviewGetScroll(data, &scrollX, &scrollY);
+
+		//get paste center
+		int pasteX = (pt.x + scrollX) / data->scale;
+		int pasteY = (pt.y + scrollY) / data->scale;
+		if (pasteX < 0 || pasteX >= 512 || pasteY < 0 || pasteY >= 256 || pt.x < 0 || pt.x >= rcClient.right || pt.y < 0 || pt.y >= rcClient.bottom) {
+			//fall back to pasting where selection was copied
+			pasteX = attr->xMin + attr->width / 2 + 256;
+			pasteY = attr->yMin + attr->height / 2 + 128;
+		}
+		pasteX -= 256;
+		pasteY -= 128;
+
+		if (pasteX < -256 || pasteX >= 256 || pasteY < -128 || pasteY >= 128) {
+			//fall back to center of canvas
+			pasteX = 0;
+			pasteY = 0;
+		}
+
+		//paste to beginning of OBJ list (brings to front)
+		cell->nAttribs += attr->nOBJ;
+		cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 6);
+		memmove(cell->attr + 3 * attr->nOBJ, cell->attr, (cell->nAttribs - attr->nOBJ) * 6);
+		memcpy(cell->attr, attr->attr, 6 * attr->nOBJ);
+
+		//select
+		CellViewerDeselect(data);
+		int *sel = (int *) calloc(attr->nOBJ, sizeof(int));
+		for (int i = 0; i < attr->nOBJ; i++) sel[i] = i;
+		data->selectedOBJ = sel;
+		data->nSelectedOBJ = attr->nOBJ;
+
+		//offset selection
+		int selDx = pasteX - (attr->xMin + attr->width / 2), selDy = pasteY - (attr->yMin + attr->height / 2);
+		CellViewerMoveSelection(data, selDx, selDy);
+		if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+
+		free(attr);
+	}
+	CloseClipboard();
+}
+
+
+// ----- rendering helper routines
+
+
+static void CellViewerRenderObj(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
+	int tilesX = info->width / 8;
+	int tilesY = info->height / 8;
+
+	if (ncgr == NULL) {
+		//null NCGR, render opaque coverage by OBJ
+		COLOR32 fill = 0xFF000000;
+		if (nclr != NULL && nclr->nColors >= 1) {
+			fill = 0xFF000000 | ColorConvertFromDS(nclr->colors[0]);
+		}
+		for (int i = 0; i < (tilesX * tilesY * 8 * 8); i++) out[i] = fill;
+		return;
+	}
+
+	int ncgrStart = NCGR_CHNAME(info->characterName, mapping, ncgr->nBits);
+	for (int y = 0; y < tilesY; y++) {
+		for (int x = 0; x < tilesX; x++) {
+			COLOR32 block[64];
+
+			int bitsOffset = x * 8 + (y * 8 * tilesX * 8);
+			int index;
+			if (NCGR_2D(mapping)) {
+				int ncx = x + ncgrStart % ncgr->tilesX;
+				int ncy = y + ncgrStart / ncgr->tilesX;
+				index = ncx + ncgr->tilesX * ncy;
+			} else {
+				index = ncgrStart + x + y * tilesX;
+			}
+
+			ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette, TRUE);
+			for (int i = 0; i < 8; i++) {
+				memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
+			}
+		}
+	}
+}
+
+static void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, float a, float b, float c, float d) {
+	COLOR32 *block = (COLOR32 *) calloc(64 * 64, sizeof(COLOR32));
+	for (int i = cell->nAttribs - 1; i >= 0; i--) {
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, i);
+
+		//if OBJ is marked disabled, skip rendering
+		if (info.disable) continue;
+
+		CellViewerRenderObj(block, &info, ncgr, nclr, mapping, vramTransfer);
+
+		//HV flip? Only if not affine!
+		if (!info.rotateScale) {
+			COLOR32 temp[64];
+			if (info.flipY) {
+				for (int i = 0; i < info.height / 2; i++) {
+					memcpy(temp, block + i * info.width, info.width * 4);
+					memcpy(block + i * info.width, block + (info.height - 1 - i) * info.width, info.width * 4);
+					memcpy(block + (info.height - 1 - i) * info.width, temp, info.width * 4);
+
+				}
+			}
+			if (info.flipX) {
+				for (int i = 0; i < info.width / 2; i++) {
+					for (int j = 0; j < info.height; j++) {
+						COLOR32 left = block[i + j * info.width];
+						block[i + j * info.width] = block[info.width - 1 - i + j * info.width];
+						block[info.width - 1 - i + j * info.width] = left;
+					}
+				}
+			}
+		}
+
+		int x = info.x;
+		int y = info.y;
+
+		//adjust for double size
+		if (info.doubleSize) {
+			x += info.width / 2;
+			y += info.height / 2;
+		}
+
+		//copy data
+		if (!info.rotateScale) {
+			for (int j = 0; j < info.height; j++) {
+				int _y = (y + j + yOffs) & 0xFF;
+				for (int k = 0; k < info.width; k++) {
+					int _x = (x + k + xOffs) & 0x1FF;
+					COLOR32 col = block[j * info.width + k];
+					if (col >> 24) {
+						px[_x + _y * 512] = col;
+						if (covbuf != NULL) covbuf[_x + _y * 512] = i + 1; // 0=no OBJ
+					}
+				}
+			}
+		} else {
+			//transform about center
+			int realWidth = info.width << info.doubleSize;
+			int realHeight = info.height << info.doubleSize;
+			int cx = realWidth / 2;
+			int cy = realHeight / 2;
+			int realX = x - (realWidth - info.width) / 2;
+			int realY = y - (realHeight - info.height) / 2;
+			for (int j = 0; j < realHeight; j++) {
+				int destY = (realY + j + yOffs) & 0xFF;
+				for (int k = 0; k < realWidth; k++) {
+					int destX = (realX + k + xOffs) & 0x1FF;
+
+					int srcX = (int) ((k - cx) * a + (j - cy) * b) + cx;
+					int srcY = (int) ((k - cx) * c + (j - cy) * d) + cy;
+
+					if (info.doubleSize) {
+						srcX -= realWidth / 4;
+						srcY -= realHeight / 4;
+					}
+					if (srcX >= 0 && srcY >= 0 && srcX < info.width && srcY < info.height) {
+						COLOR32 src = block[srcY * info.width + srcX];
+						if (src >> 24) {
+							px[destX + destY * 512] = src;
+							if (covbuf != NULL) covbuf[destX + destY * 512] = i + 1; // 0=no OBJ
+						}
+					}
+
+				}
+			}
+		}
+	}
+	free(block);
+}
+
+static void CellViewerRenderCellByIndex(COLOR32 *buf, int *covbuf, NCER *ncer, NCGR *ncgr, NCLR *nclr, int cellno) {
+	NCER_CELL *cell = ncer->cells + cellno;
+
+	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
+	if (ncer->vramTransfer != NULL) vramTransfer = ncer->vramTransfer + cellno;
+
+	CellViewerRenderCell(buf, covbuf, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, 256, 128, 1.0f, 0.0f, 0.0f, 1.0f);
+}
+
+static void CellViewerUpdateCellRender(NCERVIEWERDATA *data) {
+	NCLR *nclr = CellViewerGetAssociatedPalette(data);
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+
+	memset(data->frameBuffer, 0, sizeof(data->frameBuffer));
+	memset(data->covBuffer, 0, sizeof(data->covBuffer));
+	if (data->cell != -1) {
+		CellViewerRenderCellByIndex(data->frameBuffer, data->covBuffer, &data->ncer, ncgr, nclr, data->cell);
+	}
+}
+
+static int CellViewerRowHasOpaque(COLOR32 *scan, int width) {
+	for (int i = 0; i < width; i++) {
+		COLOR32 c = scan[i];
+		unsigned int a = c >> 24;
+		if (a) return 1;
+	}
+	return 0;
+}
+
+static int CellViewerColHasOpaque(COLOR32 *px, int width, int height, int col) {
+	for (int y = 0; y < height; y++) {
+		COLOR32 c = px[col + y * width];
+		unsigned int a = (c >> 24);
+		if (a) return 1;
+	}
+	return 0;
+}
+
+static COLOR32 *CellViewerCropRenderedCell(COLOR32 *px, int width, int height, int *pMinX, int *pMinY, int *outWidth, int *outHeight) {
+	//scan rows for pixel values
+	int startY = height;
+	for (int y = 0; y < height; y++) {
+		if (CellViewerRowHasOpaque(px + y * width, width)) {
+			startY = y;
+			break;
+		}
+	}
+
+	//check whole image transparent
+	if (startY == height) {
+		*pMinX = *pMinY = 0;
+		*outWidth = *outHeight = 0;
+		return NULL;
+	}
+
+	//scan horizontally
+	int startX = 0;
+	for (int x = 0; x < width; x++) {
+		if (CellViewerColHasOpaque(px, width, height, x)) {
+			startX = x;
+			break;
+		}
+	}
+
+	//scan for width and height
+	int endX = startX + 1, endY = startY + 1;
+	for (int y = startY + 1; y < height; y++) {
+		if (CellViewerRowHasOpaque(px + y * width, width)) {
+			endY = y + 1;
+		}
+	}
+	for (int x = startX + 1; x < width; x++) {
+		if (CellViewerColHasOpaque(px, width, height, x)) {
+			endX = x + 1;
+		}
+	}
+
+	//get crop
+	COLOR32 *out = ImgCrop(px, width, height, startX, startY, endX - startX, endY - startY);
+	*pMinX = startX;
+	*pMinY = startY;
+	*outWidth = endX - startX;
+	*outHeight = endY - startY;
+	return out;
+}
+
+static HBITMAP CellViewerRenderImageListBitmap(NCER *ncer, int cellno, NCGR *ncgr, NCLR *nclr, HBITMAP *pMaskBitmap) {
+	//first, render the cell to a framebuffer.
+	COLOR32 *pxbuf = (COLOR32 *) calloc(512 * 256, sizeof(COLOR32));
+	CellViewerRenderCellByIndex(pxbuf, NULL, ncer, ncgr, nclr, cellno);
+
+	//next, crop the rendered cell
+	int minX, minY, cropW, cropH;
+	COLOR32 *crop = CellViewerCropRenderedCell(pxbuf, 512, 256, &minX, &minY, &cropW, &cropH);
+	free(pxbuf);
+
+	//produce scaled+cropped image
+	COLOR32 *scaled = ImgScaleEx(crop, cropW, cropH, PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, IMG_SCALE_FIT);
+	free(crop);
+
+	//render mask
+	unsigned char *mask = ImgCreateAlphaMask(scaled, PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, 0x80, NULL, NULL);
+
+	//create bitmaps
+	HBITMAP hBmColor = CreateBitmap(PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, 1, 32, scaled);
+	HBITMAP hBmAlpha = CreateBitmap(PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, 1, 1, mask);
+	free(scaled);
+	free(mask);
+
+	*pMaskBitmap = hBmAlpha;
+	return hBmColor;
+}
+
+static void CellViewerUpdatePreview(HWND hWnd, int cellno) {
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 	NCER *ncer = &data->ncer;
 	PreviewLoadObjCell(ncer, NULL, cellno);
@@ -340,76 +868,867 @@ static HWND CellEditorGetAssociatedEditor(HWND hWnd, int type) {
 	return NULL;
 }
 
-LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+
+// ----- Cell list functions
+
+static void CellViewerDeleteCell(NCERVIEWERDATA *data, int i);
+static void CellViewerMoveCell(NCERVIEWERDATA *data, int iSrc, int iDst);
+
+static LRESULT CALLBACK CellViewerCellListSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data_) {
+	HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWndEditor);
+
+	switch (msg) {
+		case WM_LBUTTONDOWN:
+			SetFocus(hWnd);
+			break;
+		case WM_LBUTTONUP:
+		{
+			if (!data->cellListDragging) break;
+
+			//desktop owns drag
+			ImageList_DragLeave(GetDesktopWindow());
+			ImageList_EndDrag();
+			ReleaseCapture();
+			data->cellListDragging = 0;
+
+			LVINSERTMARK lvim = { 0 };
+			lvim.cbSize = sizeof(lvim);
+			lvim.iItem = -1;
+			ListView_SetInsertMark(hWnd, &lvim);
+
+			//get dest
+			LVHITTESTINFO htinfo = { 0 };
+			htinfo.pt.x = (int) (short) LOWORD(lParam);
+			htinfo.pt.y = (int) (short) HIWORD(lParam);
+			ListView_HitTest(hWnd, &htinfo);
+			if (htinfo.iItem == -1) break; // hit nowhere
+			
+			//move item
+			CellViewerMoveCell(data, data->cellListDraggingItem, htinfo.iItem);
+			break;
+		}
+		case WM_MOUSEMOVE:
+		{
+			if (!data->cellListDragging) break;
+
+			//update drag move
+			POINT pt;
+			GetCursorPos(&pt);
+			ImageList_DragMove(pt.x, pt.y);
+
+			//hit test current destination
+			LVHITTESTINFO htinfo = { 0 };
+			htinfo.pt.x = (int) (short) LOWORD(lParam);
+			htinfo.pt.y = (int) (short) HIWORD(lParam);
+			ListView_HitTest(hWnd, &htinfo);
+			
+			LVINSERTMARK lvim = { 0 };
+			lvim.cbSize = sizeof(lvim);
+			lvim.iItem = htinfo.iItem;
+			ListView_SetInsertMark(hWnd, &lvim);
+			ListView_SetInsertMarkColor(hWnd, 0);
+			break;
+		}
+		case WM_KEYDOWN:
+		{
+			if (wParam == VK_DELETE) {
+				int sel = ListView_GetNextItem(hWnd, -1, LVIS_SELECTED);
+				if (sel != -1) CellViewerDeleteCell(data, sel);
+			}
+			break;
+		}
+	}
+	return DefSubclassProc(hWnd, msg, wParam, lParam);
+}
+
+static void CellViewerSuppressRedraw(NCERVIEWERDATA *data) {
+	if (data->cellListRedrawCount++ == 0) {
+		//suppress redraw
+		SendMessage(data->hWndCellList, WM_SETREDRAW, 0, 0);
+	}
+}
+
+static void CellViewerRestoreRedraw(NCERVIEWERDATA *data) {
+	if (--data->cellListRedrawCount == 0) {
+		//restore redraw
+		SendMessage(data->hWndCellList, WM_SETREDRAW, 1, 0);
+		InvalidateRect(data->hWndCellList, NULL, FALSE);
+	}
+}
+
+static void CellViewerSetCurrentCell(NCERVIEWERDATA *data, int cellno, BOOL updateList) {
+	if (cellno != data->cell) CellViewerDeselect(data);
+	data->cell = cellno;
+
+	//edit focused state
+	if (updateList) {
+		CellViewerSuppressRedraw(data);
+		ListView_SetItemState(data->hWndCellList, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+		if (cellno != -1) ListView_SetItemState(data->hWndCellList, cellno, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+		CellViewerRestoreRedraw(data);
+	}
+
+	//update cell render
+	CellViewerUpdateCellRender(data);
+	InvalidateRect(data->hWndViewer, NULL, FALSE);
+}
+
+static HWND CellViewerCreateCellList(HWND hWndParent, int width) {
+	DWORD lvStyle = WS_VISIBLE | WS_CHILD | WS_BORDER | WS_CLIPCHILDREN | WS_VSCROLL | LVS_EDITLABELS | LVS_SINGLESEL | LVS_ICON | LVS_SHOWSELALWAYS;
+	HWND h = CreateWindow(WC_LISTVIEW, L"", lvStyle, 0, 0, width, 300, hWndParent, NULL, NULL, NULL);
+
+	//set extended style
+	ListView_SetExtendedListViewStyle(h, LVS_EX_FULLROWSELECT | LVS_EX_HEADERDRAGDROP | LVS_EX_JUSTIFYCOLUMNS | LVS_EX_SNAPTOGRID);
+	SendMessage(h, LVM_SETVIEW, LV_VIEW_TILE, 0);
+
+	RECT rcClient;
+	GetClientRect(h, &rcClient);
+
+	//set tile view info
+	LVTILEVIEWINFO lvtvi = { 0 };
+	lvtvi.cbSize = sizeof(lvtvi);
+	lvtvi.dwMask = LVTVIM_COLUMNS | LVTVIM_TILESIZE;
+	lvtvi.dwFlags = LVTVIF_FIXEDSIZE;
+	lvtvi.cLines = 2;
+	lvtvi.sizeTile.cx = rcClient.right - GetSystemMetrics(SM_CXVSCROLL);
+	lvtvi.sizeTile.cy = PREVIEW_ICON_HEIGHT + PREVIEW_ICON_PADDING_V;
+	ListView_SetTileViewInfo(h, &lvtvi);
+
+	//init columns
+	LVCOLUMN lvc = { 0 };
+	lvc.mask = LVCF_FMT | LVCF_TEXT | LVCF_SUBITEM;
+	lvc.iSubItem = 0;
+	lvc.pszText = L"";
+	lvc.fmt = LVCFMT_LEFT;
+	ListView_InsertColumn(h, 0, &lvc);
+	lvc.iSubItem = 1;
+	ListView_InsertColumn(h, 1, &lvc);
+
+	//create image list
+	HIMAGELIST hLarge = ImageList_Create(PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, ILC_MASK | ILC_COLOR24, 1, 1);
+	ListView_SetImageList(h, hLarge, LVSIL_NORMAL);
+
+	SetWindowSubclass(h, CellViewerCellListSubclassProc, 1, 0);
+
+	return h;
+}
+
+static void CellViewerUpdateCellListPreview(NCERVIEWERDATA *data, int i) {
+	//render cell preview to color and alpha mask
+	NCLR *nclr = CellViewerGetAssociatedPalette(data);
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	HBITMAP hMaskbm;
+	HBITMAP hColorbm = CellViewerRenderImageListBitmap(&data->ncer, i, ncgr, nclr, &hMaskbm);
+
+	//
+	HIMAGELIST himl = ListView_GetImageList(data->hWndCellList, LVSIL_NORMAL);
+
+	//get original image list index
+	LVITEM item;
+	item.iItem = i;
+	item.iSubItem = 0;
+	item.mask = LVIF_IMAGE;
+	ListView_GetItem(data->hWndCellList, &item);
+
+	int imgidx = -1;
+	if (item.iImage == -1) {
+		//no image index, add to the list
+		imgidx = ImageList_Add(himl, hColorbm, hMaskbm);
+
+		if (imgidx != -1) {
+			item.iImage = imgidx;
+			ListView_SetItem(data->hWndCellList, &item);
+		}
+	} else {
+		//item exists, replace it
+		imgidx = ImageList_Replace(himl, item.iImage, hColorbm, hMaskbm);
+	}
+
+	//
+	DeleteObject(hMaskbm);
+	DeleteObject(hColorbm);
+}
+
+static void CellViewerInsertCellToCellList(NCERVIEWERDATA *data, int i, LPCWSTR name, NCER_CELL *cell) {
+	HWND hWndList = data->hWndCellList;
+	UINT subColIdxs[] = { 1 };
+
+	WCHAR textbuf[64];
+	wsprintfW(textbuf, L"[%d] %s", i, name);
+
+	LVITEM lvi = { 0 };
+	lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_IMAGE | LVIF_COLUMNS;
+	lvi.pszText = textbuf; // cast away const for this struct
+	lvi.state = 0;
+	lvi.iSubItem = 0; // col
+	lvi.iImage = -1; // filled in by CellViewerUpdateCellListPreview
+	lvi.iItem = i;
+	lvi.cColumns = 1; // num sub items
+	lvi.puColumns = subColIdxs;
+	ListView_InsertItem(hWndList, &lvi);
+
+	wsprintfW(textbuf, L"%d OBJ", cell->nAttribs);
+
+	lvi.mask = LVIF_TEXT | LVIF_STATE;
+	lvi.pszText = textbuf;
+	lvi.iSubItem = 1; // col
+	lvi.iItem = i;
+	ListView_SetItem(hWndList, &lvi);
+
+	CellViewerUpdateCellListPreview(data, i);
+}
+
+static void CellViewerUpdateCellSubItemText(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	WCHAR textbuf[64];
+	wsprintfW(textbuf, L"%d OBJ", cell->nAttribs);
+
+	LVITEM lvi = { 0 };
+	lvi.mask = LVIF_TEXT;
+	lvi.pszText = textbuf;
+	lvi.iSubItem = 1;
+	lvi.iItem = data->cell;
+	ListView_SetItem(data->hWndCellList, &lvi);
+}
+
+static void CellViewerAppendCellToCellList(NCERVIEWERDATA *data, LPCWSTR name, NCER_CELL *cell) {
+	int n = ListView_GetItemCount(data->hWndCellList);
+	CellViewerInsertCellToCellList(data, n, name, cell);
+}
+
+static void CellViewerPopulateCellList(NCERVIEWERDATA *data) {
+	CellViewerSuppressRedraw(data);
+
+	//add each cell
+	for (int i = 0; i < data->ncer.nCells; i++) {
+		WCHAR name[32];
+		wsprintfW(name, L"Cell %d", i);
+		NCER_CELL *celli = data->ncer.cells + i;
+		CellViewerAppendCellToCellList(data, name, celli);
+	}
+
+	//set default selection
+	if (data->ncer.nCells > 0) {
+		data->cell = 0;
+		CellViewerSetCurrentCell(data, 0, TRUE);
+	}
+
+	CellViewerRestoreRedraw(data);
+}
+
+static void CellViewerUpdateCellPreviews(NCERVIEWERDATA *data) {
+	CellViewerSuppressRedraw(data);
+
+	for (int i = 0; i < data->ncer.nCells; i++) {
+		CellViewerUpdateCellListPreview(data, i);
+	}
+
+	CellViewerRestoreRedraw(data);
+}
+
+static void CellViewerMoveCell(NCERVIEWERDATA *data, int iSrc, int iDst) {
+	if (iSrc == iDst) return; // do nothing
+
+	CellViewerSuppressRedraw(data);
+
+	//is source selected?
+	BOOL srcSel = FALSE;
+	int sel = ListView_GetNextItem(data->hWndCellList, -1, LVIS_SELECTED);
+	if (sel != -1 && sel == iSrc) srcSel = TRUE;
+
+	//rearrange
+	CellMoveCellIndex(&data->ncer, iSrc, iDst);
+
+	//move cell listing (TODO: a better way?)
+	HIMAGELIST himl = ListView_GetImageList(data->hWndCellList, LVSIL_NORMAL);
+	ListView_DeleteAllItems(data->hWndCellList);
+	ImageList_RemoveAll(himl);
+	CellViewerPopulateCellList(data);
+
+	//if the source was selected, select the destination index
+	if (iDst > iSrc) iDst--;
+	CellViewerSetCurrentCell(data, iDst, TRUE);
+
+	CellViewerRestoreRedraw(data);
+}
+
+static void CellViewerDeleteCell(NCERVIEWERDATA *data, int i) {
+	CellViewerSuppressRedraw(data);
+
+	//update cell bank structure
+	int newsel = data->cell;
+	CellDeleteCell(&data->ncer, i);
+
+	//move cell listing (TODO: a better way?)
+	HIMAGELIST himl = ListView_GetImageList(data->hWndCellList, LVSIL_NORMAL);
+	ListView_DeleteAllItems(data->hWndCellList);
+	ImageList_RemoveAll(himl);
+	CellViewerPopulateCellList(data);
+
+	//set new selection
+	if (newsel >= data->ncer.nCells) newsel = data->ncer.nCells - 1;
+	CellViewerSetCurrentCell(data, newsel, TRUE);
+	
+	CellViewerRestoreRedraw(data);
+}
+
+static void CellViewerSetMappingMode(NCERVIEWERDATA *data, int mapping) {
+	CellViewerSuppressRedraw(data);
+
+	//update mapping mode
+	int sel = data->cell;
+	data->ncer.mappingMode = mapping;
+
+	//recalculate previews
+	CellViewerUpdateCellPreviews(data);
+
+	//set selection
+	CellViewerSetCurrentCell(data, sel, TRUE);
+
+	CellViewerRestoreRedraw(data);
+}
+
+static void CellViewerSetScale(NCERVIEWERDATA *data, int scale) {
+	data->scale = scale;
+	data->frameData.contentWidth = 512 * scale;
+	data->frameData.contentHeight = 256 * scale;
+	
+	//update
+	SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
+	InvalidateRect(data->hWndViewer, NULL, FALSE);
+}
+
+static LRESULT CellViewerOnCellListNotify(NCERVIEWERDATA *data, HWND hWnd, WPARAM wParam, LPNMLISTVIEW nm) {
+	switch (nm->hdr.code) {
+		case LVN_ITEMCHANGED:
+		{
+			if (nm->uNewState & LVIS_SELECTED) {
+				//selection changed
+				CellViewerSetCurrentCell(data, nm->iItem, FALSE);
+			}
+			break;
+		}
+		case NM_CLICK:
+		case NM_DBLCLK:
+		{
+			LPNMITEMACTIVATE nma = (LPNMITEMACTIVATE) nm;
+			if (nma->iItem == -1) {
+				//item being unselected. Mark variable to cancel the deselection.
+				ListView_SetItemState(data->hWndCellList, data->cell, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+			}
+			break;
+		}
+		case LVN_ITEMCHANGING:
+		{
+			break;
+		}
+		case LVN_BEGINDRAG:
+		{
+			int sel = ListView_GetNextItem(data->hWndCellList, -1, LVNI_SELECTED);
+			if (sel == -1) break;
+
+			POINT *pt = &nm->ptAction;
+			ClientToScreen(data->hWndCellList, pt);
+
+			HIMAGELIST himl = ListView_GetImageList(data->hWndCellList, LVSIL_NORMAL);
+			ImageList_BeginDrag(himl, sel, PREVIEW_ICON_WIDTH / 2, PREVIEW_ICON_HEIGHT / 2);
+			ImageList_DragEnter(GetDesktopWindow(), pt->x, pt->y);
+			SetCapture(data->hWndCellList);
+			data->cellListDragging = 1;
+			data->cellListDraggingItem = sel;
+			break;
+		}
+		case LVN_BEGINLABELEDIT:
+		{
+			NMLVDISPINFO *nmd = (NMLVDISPINFO *) nm;
+			int iItem = nmd->item.iItem;
+			
+			//get edit
+			HWND hWndEdit = ListView_GetEditControl(data->hWndCellList);
+			NCER_CELL *cell = data->ncer.cells + iItem;
+			
+			(void) cell;
+			(void) hWndEdit;
+			//TODO
+
+			break;
+		}
+	}
+
+	return DefWindowProc(hWnd, WM_NOTIFY, wParam, (LPARAM) nm);
+}
+
+static LRESULT CellViewerOnNotify(NCERVIEWERDATA *data, HWND hWnd, WPARAM wParam, LPARAM lParam) {
+	LPNMHDR hdr = (LPNMHDR) lParam;
+	
+	if (data != NULL) {
+		if (hdr->hwndFrom == data->hWndCellList) {
+			return CellViewerOnCellListNotify(data, hWnd, wParam, (LPNMLISTVIEW) hdr);
+		}
+	}
+
+	return DefWindowProc(hWnd, WM_NOTIFY, wParam, lParam);
+}
+
+static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int notification) {
+	HWND hWnd = data->hWnd;
+	HWND hWndMain = getMainWindow(hWnd);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+
+	int changed = 0;
+	if (notification == BN_CLICKED && hWndControl == data->hWndCreateCell) {
+		//check for palette and character open as well
+		int nPalettes = GetAllEditors(hWndMain, FILE_TYPE_PALETTE, NULL, 0);
+		int nChars = GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, NULL, 0);
+		if (nPalettes == 0 || nChars == 0) {
+			MessageBox(hWnd, L"Requires open palette and character.", L"Error", MB_ICONERROR);
+			return;
+		}
+
+		HWND hWndNclrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_PALETTE);
+		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
+		NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
+		if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+			MessageBox(hWnd, L"Cannot be used with 2D mapping.", L"Error", MB_ICONERROR);
+			return;
+		}
+
+		LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
+		LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
+		if (path == NULL) return;
+
+		int width, height;
+		COLOR32 *px = ImgRead(path, &width, &height);
+		free(path);
+
+		//reject images too large
+		if (width > 512 || height > 256) {
+			MessageBox(hWnd, L"Image too large.", L"Too large", MB_ICONERROR);
+			free(px);
+			return;
+		}
+
+		//create generator dialog
+		HWND h = CreateWindow(L"NcerCreateCellClass", L"Generate Cell", WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
+			CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
+		SendMessage(h, NV_INITIALIZE, width | (height << 16), (LPARAM) px);
+		DoModal(h);
+
+		//update UI elements
+		changed = 1;
+
+		//update palette and character window
+		SendMessage(hWndNcgrViewer, NV_UPDATEPREVIEW, 0, 0);
+		SendMessage(hWndNclrViewer, NV_UPDATEPREVIEW, 0, 0);
+
+		//free px
+		free(px);
+	} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndMappingMode) {
+		const int mappings[] = {
+			GX_OBJVRAMMODE_CHAR_2D,
+			GX_OBJVRAMMODE_CHAR_1D_32K,
+			GX_OBJVRAMMODE_CHAR_1D_64K,
+			GX_OBJVRAMMODE_CHAR_1D_128K,
+			GX_OBJVRAMMODE_CHAR_1D_256K
+		};
+		int sel = mappings[SendMessage(data->hWndMappingMode, CB_GETCURSEL, 0, 0)];
+		CellViewerSetMappingMode(data, sel);
+		changed = 1;
+	} else if (notification == BN_CLICKED && hWndControl == data->hWndShowBounds) {
+		int state = GetCheckboxChecked(hWndControl);
+		data->showCellBounds = state;
+		InvalidateRect(data->hWndViewer, NULL, FALSE);
+	} else if (notification == BN_CLICKED && hWndControl == data->hWndAutoCalcBounds) {
+		data->autoCalcBounds = GetCheckboxChecked(hWndControl);
+	} else if (notification == BN_CLICKED && hWndControl == data->hWndCellAdd) {
+		WCHAR name[64];
+		wsprintfW(name, L"Cell %d", data->ncer.nCells);
+
+		data->ncer.nCells++;
+		data->ncer.cells = (NCER_CELL *) realloc(data->ncer.cells, data->ncer.nCells * sizeof(NCER_CELL));
+
+		NCER_CELL *cell = data->ncer.cells + data->ncer.nCells - 1;
+		memset(cell, 0, sizeof(NCER_CELL));
+
+		CellViewerAppendCellToCellList(data, name, cell);
+		CellViewerSetCurrentCell(data, data->ncer.nCells - 1, TRUE);
+	}
+
+	//log a change
+	if (changed) {
+		SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
+	}
+}
+
+static int CellViewerGetMenuIndexByID(int id, const unsigned short *pIds, int nIds) {
+	for (int i = 0; i < nIds; i++) {
+		if ((int) pIds[i] == id) return i;
+	}
+	return -1;
+}
+
+
+// ----- Cell manipulation helpers
+
+static void CellViewerSetSelectionPalette(NCERVIEWERDATA *data, int palno) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		uint16_t *pAttr2 = &cell->attr[3 * data->selectedOBJ[i] + 2];
+		*pAttr2 = (*pAttr2 & 0x0FFF) | (palno << 12);
+	}
+}
+
+static void CellViewerSetSelectionShapeSize(NCERVIEWERDATA *data, int shape, int size) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		uint16_t *pAttr0 = &cell->attr[3 * data->selectedOBJ[i] + 0];
+		uint16_t *pAttr1 = &cell->attr[3 * data->selectedOBJ[i] + 1];
+		*pAttr0 = (*pAttr0 & 0x3FFF) | (shape << 14);
+		*pAttr1 = (*pAttr1 & 0x3FFF) | (size << 14);
+	}
+}
+
+static void CellViewerSetSelectionType(NCERVIEWERDATA *data, int type) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		uint16_t *pAttr0 = &cell->attr[3 * data->selectedOBJ[i] + 0];
+		*pAttr0 = (*pAttr0 & 0xF3FF) | (type << 10);
+	}
+}
+
+static void CellViewerSetSelectionPriority(NCERVIEWERDATA *data, int prio) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		uint16_t *pAttr2 = &cell->attr[3 * data->selectedOBJ[i] + 2];
+		*pAttr2 = (*pAttr2 & 0xF3FF) | (prio << 10);
+	}
+}
+
+static void CellViewerFlipSelection(NCERVIEWERDATA *data, int h, int v) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		uint16_t *pAttr0 = &cell->attr[3 * data->selectedOBJ[i] + 0];
+		if (*pAttr0 & 0x0100) continue; //affine (cannot be flipped)
+
+		uint16_t *pAttr1 = &cell->attr[3 * data->selectedOBJ[i] + 1];
+		if (h) *pAttr1 ^= 0x1000;
+		if (v) *pAttr1 ^= 0x2000;
+	}
+}
+
+static void CellViewerToggleAffineSelection(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		uint16_t *pAttr0 = &cell->attr[3 * data->selectedOBJ[i] + 0];
+		uint16_t *pAttr1 = &cell->attr[3 * data->selectedOBJ[i] + 1];
+		*pAttr0 ^= 0x0100; // toggle affine
+		*pAttr1 &= 0x3E00; // clear H/V and affine parameter
+	}
+}
+
+static void CellViewerToggleDoubleSizeSelection(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		uint16_t *pAttr0 = &cell->attr[3 * data->selectedOBJ[i] + 0];
+		if (!(*pAttr0 & 0x0100)) continue; //not affine (cannot be double size)
+		
+		*pAttr0 ^= 0x0200;
+	}
+}
+
+static void CellViewerSendSelectionToFront(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	//create copy of selection and delete it
+	int nSel;
+	uint16_t *sel = CellViewerGetSelectedOamAttributes(data, &nSel);
+	CellViewerDeleteSelection(data);
+
+	//send to front: copy OBJ to front of list
+	cell->nAttribs += nSel;
+	cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 6);
+	memmove(cell->attr + 3 * nSel, cell->attr, (cell->nAttribs - nSel) * 6);
+	memcpy(cell->attr, sel, nSel * 6);
+
+	//re-select moved OBJ
+	int *selidxs = (int *) calloc(nSel, sizeof(int));
+	for (int i = 0; i < nSel; i++) selidxs[i] = i;
+	CellViewerDeselect(data);
+	data->nSelectedOBJ = nSel;
+	data->selectedOBJ = selidxs;
+
+	free(sel);
+}
+
+static void CellViewerSendSelectionToBack(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	//create copy of selection and delete it
+	int nSel;
+	uint16_t *sel = CellViewerGetSelectedOamAttributes(data, &nSel);
+	CellViewerDeleteSelection(data);
+
+	//send to front: copy OBJ to end of list
+	cell->nAttribs += nSel;
+	cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 6);
+	memcpy(cell->attr + 3 * (cell->nAttribs - nSel), sel, nSel * 6);
+
+	//re-select moved OBJ
+	int *selidxs = (int *) calloc(nSel, sizeof(int));
+	for (int i = 0; i < nSel; i++) selidxs[i] = i + cell->nAttribs - nSel;
+	CellViewerDeselect(data);
+	data->nSelectedOBJ = nSel;
+	data->selectedOBJ = selidxs;
+
+	free(sel);
+}
+
+static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
+	HWND hWnd = data->hWnd;
+	switch (idMenu) {
+		case ID_FILE_SAVEAS:
+		case ID_FILE_SAVE:
+		{
+			if (data->szOpenFile[0] == L'\0' || idMenu == ID_FILE_SAVEAS) {
+				LPCWSTR filter = L"NCER Files (*.ncer)\0*.ncer\0All Files\0*.*\0";
+				switch (data->ncer.header.format) {
+					case NCER_TYPE_HUDSON:
+						filter = L"Cell Files (*.bin)\0*.bin;\0All Files\0*.*\0";
+						break;
+				}
+				LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncer");
+				if (path != NULL) {
+					EditorSetFile(hWnd, path);
+					free(path);
+				} else break;
+			}
+			CellWriteFile(&data->ncer, data->szOpenFile);
+			break;
+		}
+		case ID_FILE_EXPORT:
+		{
+			LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
+			if (location == NULL) break;
+
+			NCER *ncer = &data->ncer;
+			NCLR *nclr = CellViewerGetAssociatedPalette(data);
+			NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+
+			COLOR32 *bits = (COLOR32 *) calloc(256 * 512, sizeof(COLOR32));
+			CellViewerRenderCellByIndex(bits, NULL, ncer, ncgr, nclr, data->cell);
+			ImgSwapRedBlue(bits, 512, 256);
+			ImgWrite(bits, 512, 256, location);
+
+			free(bits);
+			free(location);
+			break;
+		}
+		case ID_ZOOM_100:
+		case ID_ZOOM_200:
+		case ID_ZOOM_400:
+		case ID_ZOOM_800:
+		case ID_ZOOM_1600:
+		case ID_VIEW_GRIDLINES:
+			SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			break;
+
+		case ID_CELLMENU_CUT:
+			CellViewerCopy(data);
+			CellViewerDeleteSelection(data);
+			if (data->hWndAutoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			CellViewerUpdateCellSubItemText(data);
+			break;
+		case ID_CELLMENU_COPY:
+			CellViewerCopy(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_CELLMENU_PASTE:
+			CellViewerPaste(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			CellViewerUpdateCellSubItemText(data);
+			break;
+		case ID_CELLMENU_SENDTOFRONT:
+			CellViewerSendSelectionToFront(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_CELLMENU_SENDTOBACK:
+			CellViewerSendSelectionToBack(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_OBJPALETTE_0:
+		case ID_OBJPALETTE_1:
+		case ID_OBJPALETTE_2:
+		case ID_OBJPALETTE_3:
+		case ID_OBJPALETTE_4:
+		case ID_OBJPALETTE_5:
+		case ID_OBJPALETTE_6:
+		case ID_OBJPALETTE_7:
+		case ID_OBJPALETTE_8:
+		case ID_OBJPALETTE_9:
+		case ID_OBJPALETTE_10:
+		case ID_OBJPALETTE_11:
+		case ID_OBJPALETTE_12:
+		case ID_OBJPALETTE_13:
+		case ID_OBJPALETTE_14:
+		case ID_OBJPALETTE_15:
+		{
+			int palno = CellViewerGetMenuIndexByID(idMenu, sMenuIdPalettes, 16);
+			CellViewerSetSelectionPalette(data, palno);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		}
+		case ID_OBJSIZE_8X8:
+		case ID_OBJSIZE_8X16:
+		case ID_OBJSIZE_8X32:
+		case ID_OBJSIZE_16X8:
+		case ID_OBJSIZE_16X16:
+		case ID_OBJSIZE_16X32:
+		case ID_OBJSIZE_32X8:
+		case ID_OBJSIZE_32X16:
+		case ID_OBJSIZE_32X32:
+		case ID_OBJSIZE_32X64:
+		case ID_OBJSIZE_64X32:
+		case ID_OBJSIZE_64X64:
+		{
+			int size = CellViewerGetMenuIndexByID(idMenu, sMenuIdSizes, 12);
+			CellViewerSetSelectionShapeSize(data, size / 4, size % 4);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		}
+		case ID_OBJTYPE_NORMAL:
+		case ID_OBJTYPE_TRANSLUCENT:
+		case ID_OBJTYPE_WINDOW:
+		case ID_OBJTYPE_BITMAP:
+		{
+			int type = CellViewerGetMenuIndexByID(idMenu, sMenuIdTypes, 4);
+			CellViewerSetSelectionType(data, type);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		}
+		case ID_OBJPRIORITY_0:
+		case ID_OBJPRIORITY_1:
+		case ID_OBJPRIORITY_2:
+		case ID_OBJPRIORITY_3:
+		{
+			int prio = CellViewerGetMenuIndexByID(idMenu, sMenuIdPrios, 4);
+			CellViewerSetSelectionPriority(data, prio);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		}
+		case ID_CELLMENU_HFLIP:
+		case ID_CELLMENU_VFLIP:
+			CellViewerFlipSelection(data, idMenu == ID_CELLMENU_HFLIP, idMenu == ID_CELLMENU_VFLIP);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_CELLMENU_AFFINE:
+			CellViewerToggleAffineSelection(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_CELLMENU_DOUBLESIZE:
+			CellViewerToggleDoubleSizeSelection(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+	}
+}
+
+static void CellViewerOnAccelerator(NCERVIEWERDATA *data, int idAccelerator) {
+	switch (idAccelerator) {
+		case ID_ACCELERATOR_CUT:
+			CellViewerCopy(data);
+			CellViewerDeleteSelection(data);
+			if (data->hWndAutoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			CellViewerUpdateCellSubItemText(data);
+			break;
+		case ID_ACCELERATOR_COPY:
+			CellViewerCopy(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_ACCELERATOR_PASTE:
+			CellViewerPaste(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			CellViewerUpdateCellSubItemText(data);
+			break;
+		case ID_ACCELERATOR_SELECT_ALL:
+			CellViewerSelectAll(data);
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
+			break;
+		case ID_ACCELERATOR_DESELECT:
+			CellViewerDeselect(data);
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
+			break;
+	}
+}
+
+static void CellViewerOnCommand(NCERVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
+	if (lParam) {
+		CellViewerOnCtlCommand(data, (HWND) lParam, HIWORD(wParam));
+	} else if (HIWORD(wParam) == 0) {
+		CellViewerOnMenuCommand(data, LOWORD(wParam));
+	} else if (HIWORD(wParam) == 1) {
+		CellViewerOnAccelerator(data, LOWORD(wParam));
+	}
+}
+
+static void CellViewerOnTimer(NCERVIEWERDATA *data, int idTimer) {
+	switch (idTimer) {
+		case ID_TIMER_GFX_UPDATE:
+		{
+			//timer for graphics update: re-render the cell previews
+			CellViewerUpdateCellPreviews(data);
+			CellViewerUpdateCellRender(data);
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
+
+			//ACK event
+			data->foreignDataUpdate = 0;
+			KillTimer(data->hWnd, idTimer);
+			break;
+		}
+	}
+}
+
+static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
 		{
+			float dpiScale = GetDpiScale();
+
+			data->scale = 2;
+			data->showBorders = 1;
+			data->showCellBounds = 1;
+			data->cellListRedrawCount = 0;
+			data->autoCalcBounds = 0;
+			FbCreate(&data->fb, hWnd, 0, 0);
+			data->hWndViewer = CreateWindow(L"CellPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL | WS_CLIPSIBLINGS, 200, 0, 200, 20, hWnd, NULL, NULL, NULL);
 
 			//mapping modes
 			LPCWSTR mappingNames[] = {
 				L"2D", L"1D 32K", L"1D 64K", L"1D 128K", L"1D 256K"
 			};
 
-			//OBJ types
-			LPCWSTR objTypes[] = {
-				L"Normal", L"Translucent", L"Window"
-			};
 
-			//OBJ priorities
-			LPCWSTR objPriorities[] = {
-				L"0", L"1", L"2", L"3"
-			};
-
-			data->hWndCellDropdown = CreateCombobox(hWnd, NULL, 0, 0, 256, 132, 100, 0);
-			data->hWndOamDropdown = CreateCombobox(hWnd, NULL, 0, 512, 0, 68, 100, 0);
-			CreateStatic(hWnd, L"Character:", 512, 21, 50, 21);
-			data->hWndCharacterOffset = CreateEdit(hWnd, L"0", 512 + 50, 21, 30, 21, TRUE);
-			data->hWndCharacterOffsetButton = CreateButton(hWnd, L"Set", 512 + 50 + 30, 21, 20, 21, FALSE);
-			data->hWndPaletteDropdown = CreateCombobox(hWnd, NULL, 0, 512, 42, 100, 100, 0);
-			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", 0, 282, 164, 22, FALSE);
-			data->hWndDuplicateCell = CreateButton(hWnd, L"Duplicate Cell", 0, 304, 164, 22, FALSE);
-			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, 169, 256 + 22 + 5, 75, 100, 0);
-			CreateStatic(hWnd, L"Size:", 512, 63, 25, 21);
-			CreateStatic(hWnd, L"OBJ:", 418, 261, 25, 22);
-
-			CreateStatic(hWnd, L"X:", 512, 85, 25, 22);
-			CreateStatic(hWnd, L"Y:", 512, 107, 25, 22);
-			data->hWndXInput = CreateEdit(hWnd, L"0", 537, 85, 75, 22, FALSE);
-			data->hWndYInput = CreateEdit(hWnd, L"0", 537, 107, 75, 22, FALSE);
-			data->hWndRotateScale = CreateCheckbox(hWnd, L"Rotate/Scale", 512, 129, 100, 22, FALSE);
-			data->hWndHFlip = CreateCheckbox(hWnd, L"H Flip", 512, 151, 50, 22, FALSE);
-			data->hWndVFlip = CreateCheckbox(hWnd, L"V Flip", 562, 151, 50, 22, FALSE);
-			data->hWndDisable = CreateCheckbox(hWnd, L"Disable", 512, 173, 100, 22, FALSE);
-			CreateStatic(hWnd, L"Matrix:", 512, 195, 50, 22);
-			data->hWndMatrix = CreateEdit(hWnd, L"0", 562, 195, 50, 22, TRUE);
-			data->hWnd8bpp = CreateCheckbox(hWnd, L"8bpp", 512, 217 + 22, 25 + 20, 22, FALSE);
-			data->hWndMosaic = CreateCheckbox(hWnd, L"Mosaic", 537 + 20, 217 + 22, 75 - 20, 22, FALSE);
-
-			data->hWndOamRemove = CreateButton(hWnd, L"-", 580, 0, 16, 21, FALSE);
-			data->hWndOamAdd = CreateButton(hWnd, L"+", 596, 0, 16, 21, FALSE);
-			data->hWndCellRemove = CreateButton(hWnd, L"-", 132, 256, 16, 21, FALSE);
-			data->hWndCellAdd = CreateButton(hWnd, L"+", 148, 256, 16, 21, FALSE);
-
-			data->hWndDoubleSize = CreateCheckbox(hWnd, L"Double Size", 512, 239 - 22, 100, 22, FALSE);
-			CreateStatic(hWnd, L"Priority:", 512, 261, 50, 21);
-			data->hWndPriority = CreateCombobox(hWnd, objPriorities, 4, 512 + 50, 261, 50, 100, 0);
-			CreateStatic(hWnd, L"Type:", 512, 282, 30, 21);
-			data->hWndType = CreateCombobox(hWnd, objTypes, 3, 512 + 30, 282, 70, 100, 0);
-
-			data->hWndSizeDropdown = CreateCombobox(hWnd, NULL, 0, 537, 63, 75, 100, 0);
-			data->hWndCellBoundsCheckbox = CreateCheckbox(hWnd, L"Show cell bounds", 169, 256, 100, 22, FALSE);
-			data->hWndGuidelines = CreateCheckbox(hWnd, L"Show Guidelines", 274, 256, 100, 22, TRUE);
-			data->hWndOutlineObj = CreateCheckbox(hWnd, L"Outline OBJ", 274, 256 + 27, 100, 22, TRUE);
+			int ctlWidth = UI_SCALE_COORD(100, dpiScale);
+			int ctlWidthNarrow = UI_SCALE_COORD(75, dpiScale);
+			int ctlWidthWide = UI_SCALE_COORD(150, dpiScale);
+			int ctlHeight = UI_SCALE_COORD(22, dpiScale);
+			int cellListWidth = UI_SCALE_COORD(200, dpiScale);
+			data->hWndCellList = CellViewerCreateCellList(hWnd, cellListWidth);
+			data->hWndCellAdd = CreateButton(hWnd, L"New Cell", 175, 300, 25, 22, FALSE);
+			data->hWndMappingModeLabel = CreateStatic(hWnd, L" Mapping Mode:", UI_SCALE_COORD(200, dpiScale), 0, ctlWidth, ctlHeight);
+			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, UI_SCALE_COORD(300, dpiScale), 0, ctlWidthNarrow, 100, 0);
+			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", UI_SCALE_COORD(385, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
+			data->hWndShowBounds = CreateCheckbox(hWnd, L"Show Bounds", UI_SCALE_COORD(495, dpiScale), 0, ctlWidth, ctlHeight, data->showCellBounds);
+			data->hWndAutoCalcBounds = CreateCheckbox(hWnd, L"Auto-Calculate Bounds", UI_SCALE_COORD(595, dpiScale), 0, ctlWidthWide, ctlHeight, data->autoCalcBounds);
 			break;
-		}
-		case WM_NCHITTEST:	//make the border non-sizeable
-		{
-			LRESULT ht = DefMDIChildProc(hWnd, msg, wParam, lParam);
-			if (ht == HTTOP || ht == HTBOTTOM || ht == HTLEFT || ht == HTRIGHT || ht == HTTOPLEFT || ht == HTTOPRIGHT || ht == HTBOTTOMLEFT || ht == HTBOTTOMRIGHT)
-				return HTBORDER;
-			return ht;
 		}
 		case NV_INITIALIZE_IMMEDIATE:
 		case NV_INITIALIZE:
@@ -424,8 +1743,8 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
-			data->frameData.contentWidth = 612;
-			data->frameData.contentHeight = 326;
+			data->frameData.contentWidth = 512 * data->scale;
+			data->frameData.contentHeight = 256 * data->scale;
 
 			//set mapping mode selection
 			int mappingIndex = 0;
@@ -443,589 +1762,53 @@ LRESULT WINAPI NcerViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			}
 			SendMessage(data->hWndMappingMode, CB_SETCURSEL, mappingIndex, 0);
 
-			RECT rc = { 0 };
-			rc.right = data->frameData.contentWidth;
-			rc.bottom = data->frameData.contentHeight;
-			if (rc.right < 150) rc.right = 612;
-			AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-			int width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
-			int height = rc.bottom - rc.top + 4;
-			SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE);
+			//init cell editor
+			CellViewerPopulateCellList(data);
 
+			data->showGuidelines = 1;
+			SetFocus(data->hWndCellList);
+			CellViewerPreviewCenter(data);
+			break;
+		}
+		case WM_SIZE:
+		{
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
 
-			SCROLLINFO info;
-			info.cbSize = sizeof(info);
-			info.nMin = 0;
-			info.nMax = data->frameData.contentWidth;
-			info.nPos = 0;
-			info.nPage = rcClient.right - rcClient.left + 1;
-			info.nTrackPos = 0;
-			info.fMask = SIF_POS | SIF_RANGE | SIF_POS | SIF_TRACKPOS | SIF_PAGE;
-			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+			float dpiScale = GetDpiScale();
+			int ctlHeight = UI_SCALE_COORD(22, dpiScale);
+			int cellListWidth = UI_SCALE_COORD(200, dpiScale);
 
-			info.nMax = data->frameData.contentHeight;
-			info.nPage = rcClient.bottom - rcClient.top + 1;
-			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			int ctlY = rcClient.bottom - ctlHeight;
+			MoveWindow(data->hWndCellList, 0, 0, cellListWidth, ctlY, TRUE);
+			MoveWindow(data->hWndCellAdd, 0, ctlY, cellListWidth, ctlHeight, TRUE);
+			MoveWindow(data->hWndViewer, cellListWidth, ctlHeight, rcClient.right - cellListWidth, rcClient.bottom - ctlHeight, TRUE);
 
-			WCHAR palStr[] = L"Palette 00";
-			int nPalettes = 16;
-			
-			for (int i = 0; i < 16; i++) {
-				wsprintf(palStr, L"Palette %02d", i);
-				SendMessage(data->hWndPaletteDropdown, CB_ADDSTRING, 0, (LPARAM) palStr);
-			}
-			SendMessage(data->hWndPaletteDropdown, CB_SETCURSEL, 0, 0);
-			
-			NCER_CELL_INFO cinfo;
-			CellDecodeOamAttributes(&cinfo, data->ncer.cells, 0);
-			
-			WCHAR size[13];
-			int sizes[] = { 0, 0, 1, 0, 1, 2, 1, 2, 2, 3, 3, 3 };
-			int shapes[] = { 0, 2, 2, 1, 0, 2, 1, 1, 0, 2, 1, 0 };
-
-			for (int i = 0; i < 12; i++) {
-				int shape = shapes[i];
-				int objSize = sizes[i];
-				int objWidth, objHeight;
-				CellGetObjDimensions(shape, objSize, &objWidth, &objHeight);
-				wsprintfW(size, L"%dx%d", objWidth, objHeight);
-				SendMessage(data->hWndSizeDropdown, CB_ADDSTRING, 0, (LPARAM) size);
-			}
-
-			int sizeIndex = 0;
-			for (int i = 0; i < 12; i++) {
-				if (sizes[i] == cinfo.size && shapes[i] == cinfo.shape) {
-					sizeIndex = i;
-					break;
-				}
-			}
-			SendMessage(data->hWndSizeDropdown, CB_SETCURSEL, sizeIndex, 0);
-
-			for (int i = 0; i < data->ncer.nCells; i++) {
-				wsprintf(size, L"Cell %02d", i);
-				SendMessage(data->hWndCellDropdown, CB_ADDSTRING, 0, (LPARAM) size);
-			}
-			SendMessage(data->hWndCellDropdown, CB_SETCURSEL, 0, 0);
-
-			UpdateOamDropdown(hWnd);
-			UpdateControls(hWnd);
-
-			undoInitialize(&data->undo, sizeof(NCER));
-			data->undo.freeFunction = (void (*) (void *)) CellFree;
-			NCER copy;
-			ncerCreateCopy(&copy, &data->ncer);
-			undoAdd(&data->undo, &copy);
-
-			data->showGuidelines = 1;
-			data->showObjOutline = 1;
-			break;
+			if (wParam == SIZE_RESTORED) InvalidateRect(hWnd, NULL, TRUE); //full update
+			return DefMDIChildProc(hWnd, WM_SIZE, wParam, lParam);
 		}
-		case NV_UPDATEPREVIEW:
-			CellPreviewUpdate(hWnd, data->cell);
+		case WM_TIMER:
+			CellViewerOnTimer(data, wParam);
 			break;
-		case WM_LBUTTONDOWN:
-		{
-			POINT pos;
-			GetCursorPos(&pos);
-			ScreenToClient(hWnd, &pos);
-			SetFocus(hWnd);
-			if (pos.x >= 0 && pos.y >= 0 && pos.x < 512 && pos.y < 256) {
-				NCER_CELL *cell = data->ncer.cells + data->cell;
-				int x = (pos.x - 256) & 0x1FF;
-				int y = (pos.y - 128) & 0xFF;
-				int oam = getOamFromPoint(cell, x, y);
-				if (oam != -1) {
-					NCER_CELL_INFO info;
-					CellDecodeOamAttributes(&info, cell, oam);
-					data->oam = oam;
-					data->dragStartX = pos.x;
-					data->dragStartY = pos.y;
-					data->oamStartX = info.x;
-					data->oamStartY = info.y;
-					SendMessage(data->hWndOamDropdown, CB_SETCURSEL, data->oam, 0);
-					UpdateControls(hWnd);
-					InvalidateRect(hWnd, NULL, TRUE);
-					SetCapture(hWnd);
-					data->mouseDown = 1;
-
-					NCER copy;
-					ncerCreateCopy(&copy, &data->ncer);
-					undoAdd(&data->undo, &copy);
-				}
-			}
-			break;
-		}
-		case WM_LBUTTONUP:
-		{
-			data->mouseDown = 0;
-			ReleaseCapture();
-			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
-			break;
-		}
-		case WM_MOUSEMOVE:
-		{
-			if (data->mouseDown) {
-				POINT pos;
-				uint16_t *attribs = data->ncer.cells[data->cell].attr + (3 * data->oam);
-				GetCursorPos(&pos);
-				ScreenToClient(hWnd, &pos);
-				int dx = pos.x - data->dragStartX;
-				int dy = pos.y - data->dragStartY;
-				int x = (data->oamStartX + dx) & 0x1FF;
-				int y = (data->oamStartY + dy) & 0xFF;
-				attribs[0] = (attribs[0] & 0xFF00) | y;
-				attribs[1] = (attribs[1] & 0xFE00) | x;
-
-				NCER *currentSlot = undoGetStackPosition(&data->undo);
-				memcpy(currentSlot->cells[data->cell].attr, data->ncer.cells[data->cell].attr, currentSlot->cells[data->cell].nAttribs * 3 * 2);
-
-				UpdateControls(hWnd);
-				InvalidateRect(hWnd, NULL, FALSE);
-			}
-			break;
-		}
-		case WM_KEYDOWN:
-		{
-			if (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT || wParam == VK_RIGHT) {
-				NCER_CELL *cell = data->ncer.cells + data->cell;
-				uint16_t *attr = cell->attr + (3 * data->oam);
-				int change = 1;
-				switch (wParam) {
-					case VK_UP:
-						attr[0] = (attr[0] & 0xFF00) | (((attr[0] & 0xFF) - 1) & 0xFF);
-						break;
-					case VK_DOWN:
-						attr[0] = (attr[0] & 0xFF00) | (((attr[0] & 0xFF) + 1) & 0xFF);
-						break;
-					case VK_LEFT:
-						attr[1] = (attr[1] & 0xFE00) | (((attr[1] & 0x1FF) - 1) & 0x1FF);
-						break;
-					case VK_RIGHT:
-						attr[1] = (attr[1] & 0xFE00) | (((attr[1] & 0x1FF) + 1) & 0x1FF);
-						break;
-					default:
-						change = 0;
-						break;
-				}
-				if (change) {
-					if (!(HIWORD(lParam) & KF_REPEAT)) {
-						NCER copy;
-						ncerCreateCopy(&copy, &data->ncer);
-						undoAdd(&data->undo, &copy);
-					} else {
-						NCER *currentSlot = undoGetStackPosition(&data->undo);
-						memcpy(currentSlot->cells[data->cell].attr, data->ncer.cells[data->cell].attr, currentSlot->cells[data->cell].nAttribs * 3 * 2);
-					}
-				}
-				UpdateControls(hWnd);
-				InvalidateRect(hWnd, NULL, FALSE);
-			}
-			break;
-		}
 		case WM_PAINT:
-		{
-			PaintNcerViewer(hWnd);
-			return 0;
-		}
-		case WM_COMMAND:
-		{
-			if (lParam) {
-				HWND hWndControl = (HWND) lParam;
-				WORD notification = HIWORD(wParam);
-
-				HWND hWndMain = getMainWindow(hWnd);
-				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-
-				int changed = 0;
-
-				if (notification == CBN_SELCHANGE && hWndControl == data->hWndCellDropdown) {
-					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-					data->cell = sel;
-					data->oam = 0;
-					NCER_CELL_INFO cinfo;
-					NCER_CELL *cell = data->ncer.cells + sel;
-					CellDecodeOamAttributes(&cinfo, cell, data->oam);
-					
-					UpdateOamDropdown(hWnd);
-
-					UpdateControls(hWnd);
-					InvalidateRect(hWnd, NULL, TRUE);
-					SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
-
-					if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
-				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndPaletteDropdown) {
-					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-					WORD attr2 = cell->attr[2 + 3 * data->oam];
-					cell->attr[2 + 3 * data->oam] = (attr2 & 0x0FFF) | (sel << 12);
-					InvalidateRect(hWnd, NULL, TRUE);
-
-					if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
-					changed = 1;
-				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndOamDropdown){
-					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-					data->oam = sel;
-
-					InvalidateRect(hWnd, NULL, TRUE);
-					UpdateControls(hWnd);
-
-					if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndCharacterOffsetButton) {
-					int chr = GetEditNumber(data->hWndCharacterOffset);
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-					uint16_t attr2 = cell->attr[2 + 3 * data->oam];
-					uint16_t attr0 = cell->attr[0 + 3 * data->oam];
-					if ((attr0 >> 13) & 1) chr &= ~1;
-					attr2 = attr2 & 0xFC00;
-					attr2 |= chr & 0x3FF;
-					cell->attr[2 + 3 * data->oam] = attr2;
-					InvalidateRect(hWnd, NULL, TRUE);
-					changed = 1;
-				} else if (notification == BN_CLICKED && (
-					hWndControl == data->hWnd8bpp || hWndControl == data->hWndDisable || hWndControl == data->hWndHFlip
-					|| hWndControl == data->hWndVFlip || hWndControl == data->hWndMosaic || hWndControl == data->hWndRotateScale
-					|| hWndControl == data->hWndDoubleSize)) {
-					int state = GetCheckboxChecked(hWndControl);
-
-					int bit = 0, attr = 0;
-					//really wish I could've used a switch/case here :(
-					if (hWndControl == data->hWnd8bpp) {
-						bit = 13;
-						attr = 0;
-					} else if (hWndControl == data->hWndDisable || hWndControl == data->hWndDoubleSize) {
-						bit = 9;
-						attr = 0;
-					} else if (hWndControl == data->hWndHFlip) {
-						bit = 12;
-						attr = 1;
-					} else if (hWndControl == data->hWndVFlip) {
-						bit = 13;
-						attr = 1;
-					} else if (hWndControl == data->hWndMosaic) {
-						bit = 12;
-						attr = 0;
-					} else if (hWndControl == data->hWndRotateScale) {
-						bit = 8;
-						attr = 0;
-					}
-
-					if (attr != -1) {
-						WORD *dest = data->ncer.cells[data->cell].attr + (attr + 3 * data->oam);
-
-						WORD mask = (-!state) ^ (1 << bit);
-						if (state) *dest |= mask;
-						else *dest &= mask;
-					}
-					InvalidateRect(hWnd, NULL, FALSE);
-					UpdateControls(hWnd);
-					changed = 1;
-				} else if (notification == EN_CHANGE && hWndControl == data->hWndXInput) {
-					int x = GetEditNumber(hWndControl);
-					uint16_t *dest = data->ncer.cells[data->cell].attr + (data->oam * 3 + 1);
-					*dest = (*dest & 0xFE00) | (x & 0x1FF);
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (notification == EN_CHANGE && hWndControl == data->hWndYInput) {
-					int y = GetEditNumber(hWndControl);
-					uint16_t *dest = data->ncer.cells[data->cell].attr + (data->oam * 3);
-					*dest = (*dest & 0xFF00) | (y & 0xFF);
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (notification == EN_CHANGE && hWndControl == data->hWndMatrix) {
-					int mtx = GetEditNumber(hWndControl);
-					uint16_t *dest = data->ncer.cells[data->cell].attr + (data->oam * 3 + 1);
-					uint16_t attr0 = dest[-1];
-					if (attr0 & 0x100) {
-						*dest = (*dest & 0xC1FF) | ((mtx & 0x1F) << 9);
-						InvalidateRect(hWnd, NULL, FALSE);
-					}
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndOamRemove) {
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-
-					//don't remove an entry if it's the only entry!
-					if (cell->nAttribs > 1) {
-						memmove(cell->attr + (data->oam * 3), cell->attr + ((data->oam + 1) * 3), (cell->nAttribs - data->oam - 1) * 6);
-						cell->nAttribs--;
-						if (data->oam) data->oam--;
-						SendMessage(data->hWndOamDropdown, CB_SETCURSEL, data->oam, 0);
-						SendMessage(data->hWndOamDropdown, CB_DELETESTRING, cell->nAttribs, 0);
-						UpdateControls(hWnd);
-						InvalidateRect(hWnd, NULL, TRUE);
-						changed = 1;
-					}
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndOamAdd) {
-					//reallocate the attribute buffer
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-					WCHAR name[16];
-					WORD *attributes = cell->attr;
-					attributes = realloc(attributes, (cell->nAttribs + 1) * 6);
-					memset(attributes + (3 * cell->nAttribs), 0, 6);
-					cell->attr = attributes;
-					cell->nAttribs++;
-					data->oam = cell->nAttribs - 1;
-					wsprintfW(name, L"OAM %d", cell->nAttribs - 1);
-					SendMessage(data->hWndOamDropdown, CB_ADDSTRING, 0, (LPARAM) name);
-					SendMessage(data->hWndOamDropdown, CB_SETCURSEL, cell->nAttribs - 1, 0);
-					UpdateControls(hWnd);
-					InvalidateRect(hWnd, NULL, TRUE);
-					changed = 1;
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellRemove) {
-					NCER *ncer = &data->ncer;
-					//don't delete the last cell
-					if (ncer->nCells > 1) {
-						NCER_CELL *cell = ncer->cells + data->cell;
-						WORD *attr = cell->attr;
-						memmove(ncer->cells + data->cell, ncer->cells + data->cell + 1, (ncer->nCells - data->cell - 1) * sizeof(NCER_CELL));
-						ncer->nCells--;
-						data->oam = 0;
-						SendMessage(data->hWndCellDropdown, CB_DELETESTRING, ncer->nCells, 0);
-						if (data->cell) {
-							data->cell--;
-							SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
-						}
-						free(attr);
-						UpdateOamDropdown(hWnd);
-						UpdateControls(hWnd);
-						InvalidateRect(hWnd, NULL, TRUE);
-						changed = 1;
-					}
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellAdd) {
-					NCER *ncer = &data->ncer;
-
-					//add the cell
-					ncer->nCells++;
-					ncer->cells = realloc(ncer->cells, ncer->nCells * sizeof(NCER_CELL));
-					NCER_CELL *cell = ncer->cells + ncer->nCells - 1;
-					memset(cell, 0, sizeof(NCER_CELL));
-					cell->nAttribs = 1;
-					cell->attr = (WORD *) calloc(1, 6);
-					data->cell = ncer->nCells - 1;
-					data->oam = 0;
-
-					WCHAR name[16];
-					wsprintfW(name, L"Cell %02d", data->cell);
-
-					UpdateOamDropdown(hWnd);
-					SendMessage(data->hWndCellDropdown, CB_ADDSTRING, 0, (LPARAM) name);
-					SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
-					UpdateControls(hWnd);
-					InvalidateRect(hWnd, NULL, TRUE);
-					changed = 1;
-				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndSizeDropdown) {
-					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-					int sizes[] = { 0, 0, 1, 0, 1, 2, 1, 2, 2, 3, 3, 3 };
-					int shapes[] = { 0, 2, 2, 1, 0, 2, 1, 1, 0, 2, 1, 0 };
-					int shape = shapes[sel], size = sizes[sel];
-
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-					WORD *attr = cell->attr + (3 * data->oam);
-					attr[0] = (attr[0] & 0x3FFF) | (shape << 14);
-					attr[1] = (attr[1] & 0x3FFF) | (size << 14);
-					UpdateControls(hWnd);
-					InvalidateRect(hWnd, NULL, TRUE);
-					changed = 1;
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndCellBoundsCheckbox) {
-					int state = GetCheckboxChecked(hWndControl);
-					data->showCellBounds = state;
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndGuidelines) {
-					int state = GetCheckboxChecked(hWndControl);
-					data->showGuidelines = state;
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndOutlineObj) {
-					int state = GetCheckboxChecked(hWndControl);
-					data->showObjOutline = state;
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndType) {
-					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-					WORD *attr = cell->attr + (3 * data->oam);
-					attr[0] = (attr[0] & 0xF3FF) | (sel << 10);
-					InvalidateRect(hWnd, NULL, FALSE);
-					changed = 1;
-				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndPriority) {
-					int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-					WORD *attr = cell->attr + (3 * data->oam);
-					attr[2] = (attr[2] & 0xF3FF) | (sel << 10);
-					InvalidateRect(hWnd, NULL, FALSE);
-					changed = 1;
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndCreateCell) {
-					//check for palette and character open as well
-					int nPalettes = GetAllEditors(hWndMain, FILE_TYPE_PALETTE, NULL, 0);
-					int nChars = GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, NULL, 0);
-					if (nPalettes == 0 || nChars == 0) {
-						MessageBox(hWnd, L"Requires open palette and character.", L"Error", MB_ICONERROR);
-						break;
-					}
-
-					HWND hWndNclrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_PALETTE);
-					HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
-					NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
-					if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
-						MessageBox(hWnd, L"Cannot be used with 2D mapping.", L"Error", MB_ICONERROR);
-						break;
-					}
-
-					LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
-					LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
-					if (path == NULL) break;
-
-					int width, height;
-					COLOR32 *px = ImgRead(path, &width, &height);
-					free(path);
-
-					//reject images too large
-					if (width > 512 || height > 256) {
-						MessageBox(hWnd, L"Image too large.", L"Too large", MB_ICONERROR);
-						free(px);
-						break;
-					}
-
-					//create generator dialog
-					HWND h = CreateWindow(L"NcerCreateCellClass", L"Generate Cell", WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
-						CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
-					SendMessage(h, NV_INITIALIZE, width | (height << 16), (LPARAM) px);
-					DoModal(h);
-
-					//update UI elements
-					SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
-					UpdateOamDropdown(hWnd);
-					UpdateControls(hWnd);
-					changed = 1;
-
-					//update palette and character window
-					SendMessage(hWndNcgrViewer, NV_UPDATEPREVIEW, 0, 0);
-					SendMessage(hWndNclrViewer, NV_UPDATEPREVIEW, 0, 0);
-
-					//free px
-					free(px);
-				} else if (notification == BN_CLICKED && hWndControl == data->hWndDuplicateCell) {
-					//duplicate cell
-					data->ncer.nCells++;
-					data->ncer.cells = realloc(data->ncer.cells, data->ncer.nCells * sizeof(NCER_CELL));
-
-					NCER_CELL *cell = data->ncer.cells + data->cell;
-					NCER_CELL *dup = data->ncer.cells + data->ncer.nCells - 1;
-
-					//copy
-					dup->cellAttr = cell->cellAttr;
-					dup->minX = cell->minX, dup->maxX = cell->maxX;
-					dup->minY = cell->minY, dup->maxY = cell->maxY;
-					dup->nAttribs = cell->nAttribs;
-					dup->attr = (uint16_t *) calloc(cell->nAttribs, 3 * sizeof(uint16_t));
-					memcpy(dup->attr, cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
-
-					data->cell = data->ncer.nCells - 1;
-					data->oam = 0;
-					changed = 1;
-
-					//select
-					WCHAR name[16];
-					wsprintfW(name, L"Cell %02d", data->cell);
-					SendMessage(data->hWndCellDropdown, CB_ADDSTRING, 0, (LPARAM) name);
-					SendMessage(data->hWndCellDropdown, CB_SETCURSEL, data->cell, 0);
-
-					UpdateOamDropdown(hWnd);
-					UpdateControls(hWnd);
-				} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndMappingMode) {
-					const int mappings[] = {
-						GX_OBJVRAMMODE_CHAR_2D,
-						GX_OBJVRAMMODE_CHAR_1D_32K,
-						GX_OBJVRAMMODE_CHAR_1D_64K,
-						GX_OBJVRAMMODE_CHAR_1D_128K,
-						GX_OBJVRAMMODE_CHAR_1D_256K
-					};
-					int sel = mappings[SendMessage(data->hWndMappingMode, CB_GETCURSEL, 0, 0)];
-					data->ncer.mappingMode = sel;
-					changed = 1;
-
-					InvalidateRect(hWnd, NULL, FALSE);
-				}
-
-				//log a change
-				if (changed) {
-					NCER copy;
-					ncerCreateCopy(&copy, &data->ncer);
-					undoAdd(&data->undo, &copy);
-					SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
-				}
-			}
-			if (lParam == 0 && HIWORD(wParam) == 0) {
-				switch (LOWORD(wParam)) {
-					case ID_FILE_SAVEAS:
-					case ID_FILE_SAVE:
-					{
-						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
-							LPCWSTR filter = L"NCER Files (*.ncer)\0*.ncer\0All Files\0*.*\0";
-							switch (data->ncer.header.format) {
-								case NCER_TYPE_HUDSON:
-									filter = L"Cell Files (*.bin)\0*.bin;\0All Files\0*.*\0";
-									break;
-							}
-							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncer");
-							if (path != NULL) {
-								EditorSetFile(hWnd, path);
-								free(path);
-							} else break;
-						}
-						CellWriteFile(&data->ncer, data->szOpenFile);
-						break;
-					}
-					case ID_EDIT_UNDO:
-					{
-						ncerEditorUndo(hWnd);
-						break;
-					}
-					case ID_EDIT_REDO:
-					{
-						ncerEditorRedo(hWnd);
-						break;
-					}
-					case ID_FILE_EXPORT:
-					{
-						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
-						if (!location) break;
-
-						HWND hWndMain = getMainWindow(hWnd);
-						NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-
-						NCGR *ncgr = NULL;
-						NCLR *nclr = NULL;
-						NCER *ncer = &data->ncer;
-						NCER_CELL *cell = ncer->cells + data->cell;
-						NCER_CELL_INFO info;
-						CellDecodeOamAttributes(&info, cell, data->oam);
-
-						if (hWndNclrViewer) {
-							nclr = (NCLR*) EditorGetObject(hWndNclrViewer);
-						}
-						if (hWndNcgrViewer) {
-							ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
-						}
-
-						COLOR32 *bits = (COLOR32 *) calloc(256 * 512, sizeof(COLOR32));
-						CellRenderCell(bits, cell, ncer->mappingMode, ncgr, nclr, NULL, 256, 128, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
-						ImgSwapRedBlue(bits, 512, 256);
-						ImgWrite(bits, 512, 256, location);
-
-						free(bits);
-						free(location);
-						break;
-					}
-				}
-			}
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
 			break;
-		}
+		case NV_UPDATEPREVIEW:
+			CellViewerUpdatePreview(hWnd, data->cell);
+			break;
+		case WM_NOTIFY:
+			return CellViewerOnNotify(data, hWnd, wParam, lParam);
+		case WM_COMMAND:
+			CellViewerOnCommand(data, wParam, lParam);
+			break;
 		case WM_DESTROY:
 		{
 			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			nitroPaintStruct->hWndNcerViewer = NULL;
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
-			undoDestroy(&data->undo);
+			FbDestroy(&data->fb);
+			CellViewerDeselect(data);
 			break;
 		}
 	}
@@ -1078,7 +1861,7 @@ typedef struct CELLGENDATA_ {
 	HWND hWndEnhanceColors;
 } CELLGENDATA;
 
-LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	CELLGENDATA *data = (CELLGENDATA *) GetWindowLongPtr(hWnd, 3 * sizeof(LONG_PTR));
 
 	COLOR32 *px = (COLOR32 *) GetWindowLongPtr(hWnd, 0 * sizeof(LONG_PTR));
@@ -1489,9 +2272,6 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					MessageBox(hWnd, L"Cell generation results in >128 OBJ.", L"Too many OBJ", MB_ICONWARNING);
 				}
 
-				//clear out current cell
-				ncerViewerData->oam = 0;
-
 				//OBJ VRAM granularity
 				int granularity = ncgr->mappingMode;
 				int charRShift = 0;
@@ -1674,7 +2454,17 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				//import complete, update UIs
 				InvalidateAllEditors(hWndMain, FILE_TYPE_PALETTE);
 				InvalidateAllEditors(hWndMain, FILE_TYPE_CHARACTER);
-				InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
+				
+				if (hWndNcerViewer != NULL) {
+					NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(hWndNcerViewer);
+					CellViewerGraphicsUpdated(ncerViewerData->hWnd);
+					CellViewerUpdateCellSubItemText(ncerViewerData);
+
+					//select imported graphics
+					CellViewerSelectRange(ncerViewerData, attrBase, nObj);
+
+					InvalidateRect(ncerViewerData->hWndViewer, NULL, FALSE);
+				}
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			} else if (notif == BN_CLICKED && (hWndControl == data->hWndCancel || idc == IDCANCEL)) {
@@ -1690,11 +2480,640 @@ LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-VOID RegisterNcerViewerClass(VOID) {
-	int features = EDITOR_FEATURE_UNDO;
-	EditorRegister(L"NcerViewerClass", NcerViewerWndProc, L"Cell Editor", sizeof(NCERVIEWERDATA), features);
-	RegisterGenericClass(L"NcerCreateCellClass", NcerCreateCellWndProc, 12 * sizeof(void *));
+
+// ----- preview code
+
+static void CellViewerPutPixel(FrameBuffer *fb, int x, int y, COLOR32 col) {
+	if (x < 0 || x >= fb->width) return;
+	if (y < 0 || y >= fb->height) return;
+	
+	fb->px[x + y * fb->width] = col;
 }
+
+static void CellViewerRenderHighContrastPixel(FrameBuffer *fb, int x, int y, int chno) {
+	if (x < 0 || x >= fb->width) return;
+	if (y < 0 || y >= fb->height) return;
+
+	COLOR32 *cdest = &fb->px[x + y * fb->width];
+	if ((*cdest >> 24) == 0) {
+		unsigned int val = (*cdest >> (8 * chno)) & 0xFF;
+		if (val < 0x80) val = 0xFF;
+		else val = 0x00;
+
+		*cdest = (*cdest & ~(0xFF << (8 * chno))) | (val << (8 * chno));
+		*cdest |= 0xFF000000;
+	}
+}
+
+static void CellViewerRenderDottedLineH(FrameBuffer *fb, int y, int ch, int dotted) {
+	for (int x = 0; x < fb->width; x++) {
+		if (((x ^ y) & 1) || !dotted) CellViewerRenderHighContrastPixel(fb, x, y, ch);
+	}
+}
+
+static void CellViewerRenderDottedLineV(FrameBuffer *fb, int x, int ch, int dotted) {
+	for (int y = 0; y < fb->height; y++) {
+		if (((x ^ y) & 1) || !dotted) CellViewerRenderHighContrastPixel(fb, x, y, ch);
+	}
+}
+
+static void CellViewerRenderSolidLineH(FrameBuffer *fb, int y, int width, COLOR32 c) {
+	if (y < 0 || y >= fb->height) return;
+	for (int x = 0; x < fb->width && x < width; x++) {
+		fb->px[x + y * fb->width] = REVERSE(c);
+	}
+}
+
+static void CellViewerRenderSolidLineV(FrameBuffer *fb, int x, int height, COLOR32 c) {
+	if (x < 0 || x >= fb->width) return;
+	for (int y = 0; y < fb->height && y < height; y++) {
+		fb->px[x + y * fb->width] = REVERSE(c);
+	}
+}
+
+static void CellViewerRenderInvertPixel(FrameBuffer *fb, int x, int y) {
+	if (x < 0 || x >= fb->width) return;
+	if (y < 0 || y >= fb->height) return;
+
+	COLOR32 c = fb->px[x + y * fb->width];
+	if ((c >> 24) != 0x80) {
+		fb->px[x + y * fb->width] = ((c ^ 0xFFFFFF) & 0xFFFFFF) | 0x80000000;
+	}
+}
+
+static void CellViewerRenderDottedRect(FrameBuffer *fb, int x, int y, int w, int h) {
+	for (int pxX = x; pxX < (x + w); pxX++) {
+		if (pxX >= 0 && pxX < fb->width) {
+			CellViewerRenderInvertPixel(fb, pxX, y);
+			CellViewerRenderInvertPixel(fb, pxX, y + h - 1);
+		}
+	}
+	for (int pxY = y + 1; pxY < (y + h - 1); pxY++) {
+		if (pxY >= 0 && pxY < fb->height) {
+			CellViewerRenderInvertPixel(fb, x, pxY);
+			CellViewerRenderInvertPixel(fb, x + w - 1, pxY);
+		}
+	}
+}
+
+static void CellViewerRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
+	int r2 = cr * cr;
+	col = REVERSE(col);
+
+	//use midpoint circle algorithm
+	int nStep = (int) ceil(((float) cr) * 0.7071f);
+	for (int x = 0; x < nStep; x++) {
+		//compute intersection
+		int y = (int) (sqrt(r2 - x * x) + 0.5f);
+		CellViewerPutPixel(fb, cx + x, cy + y, col);
+		CellViewerPutPixel(fb, cx - x, cy + y, col);
+		CellViewerPutPixel(fb, cx + x, cy - y, col);
+		CellViewerPutPixel(fb, cx - x, cy - y, col);
+		CellViewerPutPixel(fb, cx + y, cy + x, col);
+		CellViewerPutPixel(fb, cx - y, cy + x, col);
+		CellViewerPutPixel(fb, cx + y, cy - x, col);
+		CellViewerPutPixel(fb, cx - y, cy - x, col);
+	}
+}
+
+static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
+	PAINTSTRUCT ps;
+	HWND hWnd = data->hWndViewer;
+	HDC hDC = BeginPaint(hWnd, &ps);
+
+	NCLR *nclr = CellViewerGetAssociatedPalette(data);
+
+	NCER_CELL *cell = NULL;
+	if (data->cell >= 0 && data->cell < data->ncer.nCells) {
+		cell = &data->ncer.cells[data->cell];
+	}
+
+	//ensure framebuffer size
+	RECT rcClient;
+	GetClientRect(hWnd, &rcClient);
+	FbSetSize(&data->fb, rcClient.right, rcClient.bottom);
+
+	int scrollX = 0, scrollY = 0;
+	CellViewerPreviewGetScroll(data, &scrollX, &scrollY);
+
+	int viewWidth = 512 * data->scale - scrollX;
+	int viewHeight = 256 * data->scale - scrollY;
+	if (viewWidth > rcClient.right) viewWidth = rcClient.right;
+	if (viewHeight > rcClient.bottom) viewHeight = rcClient.bottom;
+
+	int nSelectedOBJ = 0;
+	int *selectedOBJ = NULL;
+	if (CellViewerIsMakingSelection(data) || CellViewerHasSelection(data)) {
+		selectedOBJ = CellViewerGetSelectedOamObjects(data, &nSelectedOBJ);
+	}
+
+	//render graphics
+	if (data->cell < data->ncer.nCells) {
+		for (int y = 0; y < rcClient.bottom; y++) {
+			for (int x = 0; x < rcClient.right; x++) {
+				int srcX = (x + scrollX) / data->scale, srcY = (y + scrollY) / data->scale;
+
+				//sample coordinate
+				COLOR32 sample = 0xFFF0F0F0;
+				if (srcX < 512 && srcY < 256) {
+					sample = data->frameBuffer[srcX + srcY * 512];
+					sample = REVERSE(sample); // internal framebuffer is reversed color order
+				}
+
+				if ((sample >> 24) == 0) {
+					if (g_configuration.renderTransparent) {
+						//render transparent checkerboard
+						COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
+						sample = checker[((x ^ y) >> 2) & 1];
+					} else {
+						//render backdrop color
+						if (nclr != NULL && nclr->nColors > 0) sample = ColorConvertFromDS(nclr->colors[0]);
+						else sample = 0;
+					}
+				}
+				data->fb.px[x + y * data->fb.width] = REVERSE(sample);
+			}
+		}
+	}
+
+	//render guidelines
+	if (data->showBorders) {
+		//main borders: red (X=256, Y=128)
+		CellViewerRenderDottedLineV(&data->fb, 256 * data->scale - scrollX, 0, 1);
+		CellViewerRenderDottedLineH(&data->fb, 128 * data->scale - scrollY, 0, 1);
+
+		//secondary (screen) borders: (X=128, X=384, Y=64, Y=192)
+		CellViewerRenderDottedLineV(&data->fb, 128 * data->scale - scrollX, 1, 1);
+		CellViewerRenderDottedLineV(&data->fb, 384 * data->scale - scrollX, 1, 1);
+		CellViewerRenderDottedLineH(&data->fb,  64 * data->scale - scrollY, 1, 1);
+		CellViewerRenderDottedLineH(&data->fb, 192 * data->scale - scrollY, 1, 1);
+
+		//tertiary lines (16x16 boundaries)
+		for (int y = 0; y < 256; y += 16) {
+			CellViewerRenderDottedLineH(&data->fb, y * data->scale - scrollY, 2, 1);
+		}
+		for (int x = 0; x < 512; x += 16) {
+			CellViewerRenderDottedLineV(&data->fb, x * data->scale - scrollX, 2, 1);
+		}
+	}
+
+	//show bounding box if available
+	if (data->showCellBounds && cell != NULL && !(cell->minX == cell->maxX && cell->minY == cell->maxY)) {
+		CellViewerRenderSolidLineV(&data->fb, (cell->minX + 256) * data->scale - scrollX, viewHeight, 0xFFFF00);
+		CellViewerRenderSolidLineH(&data->fb, (cell->minY + 128) * data->scale - scrollY, viewWidth,  0xFFFF00);
+		CellViewerRenderSolidLineV(&data->fb, (cell->maxX + 256) * data->scale - scrollX, viewHeight, 0xFFFF00);
+		CellViewerRenderSolidLineH(&data->fb, (cell->maxY + 128) * data->scale - scrollY, viewWidth,  0xFFFF00);
+
+		//get mid point
+		int midX = (cell->minX + cell->maxX) / 2;
+		int midY = (cell->minY + cell->maxY) / 2;
+		CellViewerRenderSolidCircle(&data->fb, (midX + 256) * data->scale - scrollX, (midY + 128) * data->scale - scrollY, 
+			((cell->cellAttr & 0x3F) << 2) * data->scale, 0x00FFFF);
+	}
+
+	//draw bounding boxes for selected OAM objects, but hide the borders and marking when dragging a selection
+	if (nSelectedOBJ > 0 && !(data->mouseDown && data->mouseDownHit == CV_HIT_SELECTION && data->selMoved)) {
+		//mark selected OBJ (highlight white)
+		for (int y = 0; y < viewHeight; y++) {
+			for (int x = 0; x < viewWidth; x++) {
+				int pxX = (x + scrollX) / data->scale;
+				int pxY = (y + scrollY) / data->scale;
+
+				int objno = data->covBuffer[pxX + pxY * 512] - 1;
+				if (objno != -1 && ((x ^ y) & 1)) {
+					int doMark = 0;
+					for (int i = 0; i < nSelectedOBJ; i++) {
+						if (selectedOBJ[i] == objno) {
+							doMark = 1;
+							break;
+						}
+					}
+					if (doMark) data->fb.px[x + y * data->fb.width] = 0xFFFFFFFF;
+				}
+			}
+		}
+
+		//highlight OBJ in selection
+		for (int i = 0; i < nSelectedOBJ; i++) {
+			NCER_CELL_INFO info;
+			CellDecodeOamAttributes(&info, &data->ncer.cells[data->cell], selectedOBJ[i]);
+
+			int objX = SEXT9(info.x) + 256, objY = SEXT8(info.y) + 128;
+			int objW = info.width, objH = info.height;
+			if (info.doubleSize) {
+				objW *= 2;
+				objH *= 2;
+			}
+
+			CellViewerRenderDottedRect(&data->fb, objX * data->scale - scrollX, objY * data->scale - scrollY,
+				objW * data->scale, objH * data->scale);
+		}
+	}
+
+	//render selection
+	if (CellViewerIsMakingSelection(data)) {
+		int selX, selY, selW, selH;
+		CellViewerGetDragBounds(data, &selX, &selY, &selW, &selH);
+
+		selX *= data->scale;
+		selY *= data->scale;
+		selW *= data->scale;
+		selH *= data->scale;
+		CellViewerRenderDottedRect(&data->fb, selX - scrollX, selY - scrollY, selW, selH);
+	}
+
+	if (selectedOBJ != NULL) {
+		free(selectedOBJ);
+	}
+
+	//finalize
+	FbDraw(&data->fb, hDC, 0, 0, rcClient.right, rcClient.bottom, 0, 0);
+	EndPaint(hWnd, &ps);
+}
+
+static void CellViewerPreviewOnRecalculate(NCERVIEWERDATA *data) {
+	int contentWidth = 512 * data->scale, contentHeight = 256 * data->scale;
+
+	SCROLLINFO info;
+	info.cbSize = sizeof(info);
+	info.nMin = 0;
+	info.nMax = contentWidth;
+	info.fMask = SIF_RANGE;
+	SetScrollInfo(data->hWndViewer, SB_HORZ, &info, TRUE);
+
+	info.nMax = contentHeight;
+	SetScrollInfo(data->hWndViewer, SB_VERT, &info, TRUE);
+	RECT rcClient;
+	GetClientRect(data->hWndViewer, &rcClient);
+	SendMessage(data->hWndViewer, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
+}
+
+static void CellViewerOnLButtonDown(NCERVIEWERDATA *data) {
+	SetFocus(data->hWndViewer);
+	SetCapture(data->hWndViewer);
+	data->mouseDown = 1;
+	data->selMoved = 0;
+
+	int scrollX, scrollY;
+	CellViewerPreviewGetScroll(data, &scrollX, &scrollY);
+	
+	POINT pt;
+	GetCursorPos(&pt);
+	ScreenToClient(data->hWndViewer, &pt);
+	data->mouseDownHit = CellViewerHitTest(data, pt.x, pt.y);
+
+	switch (data->mouseDownHit) {
+		case CV_HIT_BACKGROUND:
+		{
+			//discard selection
+			CellViewerDeselect(data);
+
+			//hit background: start selection
+			data->dragStartX = (pt.x + scrollX) / data->scale;
+			data->dragStartY = (pt.y + scrollY) / data->scale;
+			data->dragEndX = data->dragStartX;
+			data->dragEndY = data->dragStartY;
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
+			break;
+		}
+		case CV_HIT_NOWHERE:
+			//do nothing
+			break;
+		case CV_HIT_SELECTION:
+		default: // >= CV_HIT_OBJ
+		{
+			if (data->mouseDownHit >= CV_HIT_OBJ) {
+				//Ctrl key pressed?
+				if (GetKeyState(VK_CONTROL) < 0) {
+					//add this OBJ to selection
+					CellViewerAddObjToSelection(data, data->mouseDownHit - CV_HIT_OBJ);
+				} else {
+					//select only the OBJ
+					CellViewerSelectSingleOBJ(data, data->mouseDownHit - CV_HIT_OBJ);
+				}
+			}
+
+			//start dragging selection
+			data->dragStartX = (pt.x + scrollX) / data->scale;
+			data->dragStartY = (pt.y + scrollY) / data->scale;
+			data->dragEndX = data->dragStartX;
+			data->dragEndY = data->dragStartY;
+			data->mouseDownHit = CV_HIT_SELECTION;
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
+			break;
+		}
+	}
+}
+
+static void CellViewerOnLButtonUp(NCERVIEWERDATA *data) {
+	ReleaseCapture();
+
+	if (data->mouseDown) {
+		switch (data->mouseDownHit) {
+			case CV_HIT_BACKGROUND:
+			{
+				CellViewerCommitSelection(data);
+
+				//free selection
+				data->dragStartX = data->dragEndX = -1;
+				data->dragStartY = data->dragEndY = -1;
+				InvalidateRect(data->hWndViewer, NULL, FALSE);
+				break;
+			}
+			case CV_HIT_NOWHERE:
+				//do nothing
+				break;
+		}
+		InvalidateRect(data->hWndViewer, NULL, FALSE);
+	}
+
+	data->mouseDown = 0;
+	data->mouseDownHit = CV_HIT_NOWHERE;
+	data->dragStartX = -1;
+	data->dragStartY = -1;
+}
+
+static void CellViewerOnMouseMove(NCERVIEWERDATA *data) {
+	int scrollX, scrollY;
+	CellViewerPreviewGetScroll(data, &scrollX, &scrollY);
+
+	POINT pt;
+	GetCursorPos(&pt);
+	ScreenToClient(data->hWndViewer, &pt);
+
+	if (data->mouseDown) {
+
+		switch (data->mouseDownHit) {
+			case CV_HIT_BACKGROUND:
+			{
+				//continue selection
+				data->dragEndX = (pt.x + scrollX) / data->scale;
+				data->dragEndY = (pt.y + scrollY) / data->scale;
+				InvalidateRect(data->hWndViewer, NULL, FALSE);
+				break;
+			}
+			case CV_HIT_NOWHERE:
+				//do nothing
+				break;
+			case CV_HIT_SELECTION:
+			{
+				//compute move
+				int curX = (pt.x + scrollX) / data->scale;
+				int curY = (pt.y + scrollY) / data->scale;
+
+				int dx = curX - data->dragEndX;
+				int dy = curY - data->dragEndY;
+				if (dx != 0 || dy != 0) {
+					//update selection movement
+					CellViewerMoveSelection(data, dx, dy);
+					if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+					CellViewerUpdateCellRender(data);
+					CellViewerGraphicsUpdated(data->hWnd);
+					data->selMoved = 1;
+				}
+
+				data->dragEndX = curX;
+				data->dragEndY = curY;
+				InvalidateRect(data->hWndViewer, NULL, FALSE);
+
+				break;
+			}
+		}
+	}
+
+	TRACKMOUSEEVENT tme = { 0 };
+	tme.cbSize = sizeof(tme);
+	tme.dwFlags = TME_LEAVE;
+	tme.hwndTrack = data->hWndViewer;
+	TrackMouseEvent(&tme);
+}
+
+static void CellViewerOnKeyDown(NCERVIEWERDATA *data, int cc) {
+	switch (cc) {
+		case VK_LEFT:
+			CellViewerMoveSelection(data, -1, 0);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case VK_RIGHT:
+			CellViewerMoveSelection(data, 1, 0);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case VK_UP:
+			CellViewerMoveSelection(data, 0, -1);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case VK_DOWN:
+			CellViewerMoveSelection(data, 0, 1);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case VK_DELETE:
+			CellViewerDeleteSelection(data);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			CellViewerUpdateCellSubItemText(data);
+			break;
+		case VK_ESCAPE:
+			CellViewerDeselect(data);
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
+			break;
+	}
+}
+
+static void CellViewerOnRButtonDown(NCERVIEWERDATA *data) {
+	HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 5);
+
+	//init menu state
+	int nSel;
+	int *sel = CellViewerGetSelectedOamObjects(data, &nSel);
+
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+
+	if (nSel == 0 || cell == NULL) {
+		//no selection: disable all OBJ options, and cut/copy
+		EnableMenuItem(hPopup, ID_CELLMENU_CUT, MF_DISABLED);
+		EnableMenuItem(hPopup, ID_CELLMENU_COPY, MF_DISABLED);
+		EnableMenuItem(hPopup, ID_CELLMENU_SENDTOFRONT, MF_DISABLED);
+		EnableMenuItem(hPopup, ID_CELLMENU_SENDTOBACK, MF_DISABLED);
+
+		EnableMenuItem(hPopup, ID_CELLMENU_AFFINE, MF_DISABLED);
+		EnableMenuItem(hPopup, ID_CELLMENU_DOUBLESIZE, MF_DISABLED);
+		EnableMenuItem(hPopup, ID_CELLMENU_HFLIP, MF_DISABLED);
+		EnableMenuItem(hPopup, ID_CELLMENU_VFLIP, MF_DISABLED);
+
+		for (int i = 0; i < 16; i++) EnableMenuItem(hPopup, sMenuIdPalettes[i], MF_DISABLED);
+		for (int i = 0; i < 12; i++) EnableMenuItem(hPopup, sMenuIdSizes[i], MF_DISABLED);
+		for (int i = 0; i < 4; i++) EnableMenuItem(hPopup, sMenuIdPrios[i], MF_DISABLED);
+		for (int i = 0; i < 4; i++) EnableMenuItem(hPopup, sMenuIdTypes[i], MF_DISABLED);
+	} else {
+		//has selection: items Cut and Copy are enabled by default.
+		int allAffine = 1, allNotAffine = 1, commonPalette = 0, commonShape = 0, commonSize = 0, commonPrio = 0, commonType = 0, commonDoubleSize = 1;
+		for (int i = 0; i < nSel; i++) {
+			NCER_CELL_INFO info;
+			CellDecodeOamAttributes(&info, cell, sel[i]);
+
+			if (i == 0) {
+				commonPalette = info.palette;
+				commonShape = info.shape;
+				commonSize = info.size;
+				commonPrio = info.priority;
+				commonType = info.mode;
+				commonDoubleSize = info.doubleSize;
+			} else {
+				//check each attribute against the current "common" attribute values
+				if (commonPalette != info.palette) commonPalette = -1;
+				if (commonShape != info.shape) commonShape = -1;
+				if (commonSize != info.size) commonSize = -1;
+				if (commonPrio != info.priority) commonPrio = -1;
+				if (commonType != info.mode) commonType = -1;
+				if (!info.doubleSize) commonDoubleSize = 0;
+			}
+
+			allAffine = allAffine && info.rotateScale;
+			allNotAffine = allNotAffine && !info.rotateScale;
+		}
+
+		//if all OBJ are affine, disable H/V flip options.
+		if (allAffine) {
+			EnableMenuItem(hPopup, ID_CELLMENU_HFLIP, MF_DISABLED);
+			EnableMenuItem(hPopup, ID_CELLMENU_VFLIP, MF_DISABLED);
+		}
+
+		//if all OBJ are not affine, disable double size.
+		if (allNotAffine) {
+			EnableMenuItem(hPopup, ID_CELLMENU_DOUBLESIZE, MF_DISABLED);
+		}
+
+		//set common attributes
+		if (commonPalette != -1) CheckMenuItem(hPopup, sMenuIdPalettes[commonPalette], MF_CHECKED);
+		if (commonShape != -1 && commonSize != -1) CheckMenuItem(hPopup, sMenuIdSizes[commonShape * 4 + commonSize], MF_CHECKED);
+		if (commonPrio != -1) CheckMenuItem(hPopup, sMenuIdPrios[commonPrio], MF_CHECKED);
+		if (commonType != -1) CheckMenuItem(hPopup, sMenuIdTypes[commonType], MF_CHECKED);
+		if (commonDoubleSize) CheckMenuItem(hPopup, ID_CELLMENU_DOUBLESIZE, MF_CHECKED);
+
+	}
+	free(sel);
+
+	POINT mouse;
+	GetCursorPos(&mouse);
+	TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, data->hWnd, NULL);
+	DeleteObject(hPopup);
+}
+
+static LRESULT CALLBACK CellViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWndEditor);
+	if (GetWindowLongPtr(hWnd, 0) == (LONG_PTR) NULL) {
+		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+	}
+
+	if (data != NULL) {
+		data->frameData.contentWidth = 512 * data->scale;
+		data->frameData.contentHeight = 256 * data->scale;
+	}
+
+	switch (msg) {
+		case WM_PAINT:
+			CellViewerPreviewOnPaint(data);
+			break;
+		case WM_ERASEBKGND:
+			return 1;
+		case WM_HSCROLL:
+		case WM_VSCROLL:
+		case WM_MOUSEWHEEL:
+			return DefChildProc(hWnd, msg, wParam, lParam);
+		case NV_RECALCULATE:
+			CellViewerPreviewOnRecalculate(data);
+			break;
+		case WM_LBUTTONDOWN:
+			CellViewerOnLButtonDown(data);
+			break;
+		case WM_MOUSEMOVE:
+			CellViewerOnMouseMove(data);
+			break;
+		case WM_LBUTTONUP:
+			CellViewerOnLButtonUp(data);
+			break;
+		case WM_RBUTTONDOWN:
+			CellViewerOnRButtonDown(data);
+			break;
+		case WM_KEYDOWN:
+			CellViewerOnKeyDown(data, wParam);
+			break;
+		case WM_SIZE:
+		{
+			UpdateScrollbarVisibility(hWnd);
+
+			SCROLLINFO info;
+			info.cbSize = sizeof(info);
+			info.nMin = 0;
+			info.nMax = data->frameData.contentWidth;
+			info.fMask = SIF_RANGE;
+			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+			info.nMax = data->frameData.contentHeight;
+			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			return DefChildProc(hWnd, msg, wParam, lParam);
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+void RegisterNcerViewerClass(void) {
+	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
+	EditorRegister(L"NcerViewerClass", CellViewerWndProc, L"Cell Editor", sizeof(NCERVIEWERDATA), features);
+	RegisterGenericClass(L"NcerCreateCellClass", NcerCreateCellWndProc, 12 * sizeof(void *));
+	RegisterGenericClass(L"CellPreviewClass", CellViewerPreviewWndProc, sizeof(void *));
+}
+
+
+
+// ----- public API
+
+void CellViewerGraphicsUpdated(HWND hWndEditor) {
+	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWndEditor);
+
+	//mark graphics update
+	KillTimer(hWndEditor, ID_TIMER_GFX_UPDATE);
+	data->foreignDataUpdate = 1;
+	SetTimer(hWndEditor, ID_TIMER_GFX_UPDATE, GFX_UPDATE_TIMER, NULL);
+
+	//invalidate editor
+	CellViewerUpdateCellRender(data);
+	InvalidateRect(data->hWndViewer, NULL, FALSE);
+}
+
+void CellViewerCopyObjData(NP_OBJ *obj) {
+	int fmt = CellviewerGetObjClipboardFormat();
+
+	HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, sizeof(NP_OBJ) + obj->nOBJ * 6);
+	NP_OBJ *clip = (NP_OBJ *) GlobalLock(hGlobal);
+	memcpy(clip, obj, sizeof(NP_OBJ) + obj->nOBJ * 6);
+
+	GlobalUnlock(hGlobal);
+	SetClipboardData(fmt, hGlobal);
+}
+
+NP_OBJ *CellViewerGetCopiedObjData(void) {
+	int fmt = CellviewerGetObjClipboardFormat();
+	if (!fmt) return NULL;
+
+	HGLOBAL hGlobal = GetClipboardData(fmt);
+	if (hGlobal == NULL) {
+		return NULL;
+	}
+	NP_OBJ *clip = (NP_OBJ *) GlobalLock(hGlobal);
+
+	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + clip->nOBJ * 6, 1);
+	memcpy(cpy, clip, sizeof(NP_OBJ) + clip->nOBJ * 6);
+
+	GlobalUnlock(hGlobal);
+	return cpy;
+}
+
 
 HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
 	NCER ncer;

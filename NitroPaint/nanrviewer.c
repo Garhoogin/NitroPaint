@@ -170,7 +170,7 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + ofsX, translateY + ofsY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
+		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + ofsX, translateY + ofsY, 1.0f, 0.0f, 0.0f, 1.0f);
 	} else if (animType == 1) { //SRT
 		ANIM_DATA_SRT *animData = (ANIM_DATA_SRT *) frameData->animationData;
 
@@ -189,13 +189,13 @@ DWORD *nanrDrawFrame(DWORD *frameBuffer, NCLR *nclr, NCGR *ncgr, NCER *ncer, NAN
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, a, b, c, d);
+		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + animData->px + ofsX, translateY + animData->py + ofsY, a, b, c, d);
 	} else if (animType == 2) { //index+translation
 		ANIM_DATA_T *animData = (ANIM_DATA_T *) frameData->animationData;
 
 		NCER_CELL *cell = ncer->cells + animData->index;
 		int translateX = 256 - (cell->maxX + cell->minX) / 2, translateY = 128 - (cell->maxY + cell->minY) / 2;
-		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 0, -1, 1.0f, 0.0f, 0.0f, 1.0f);
+		CellRenderCell(frameBuffer, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, translateX + animData->px + ofsX, translateY + animData->py + ofsY, 1.0f, 0.0f, 0.0f, 1.0f);
 	}
 
 	return frameBuffer;

@@ -122,10 +122,15 @@ static void SwapPoints(int *x1, int *y1, int *x2, int *y2) {
 
 static void ChrViewerInvalidateAllDependents(HWND hWnd) {
 	HWND hWndMain = getMainWindow(hWnd);
-	InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
 	InvalidateAllEditors(hWndMain, FILE_TYPE_NANR);
 	InvalidateAllEditors(hWndMain, FILE_TYPE_NMCR);
 	InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+
+	//update cell editor
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	if (nitroPaintStruct->hWndNcerViewer != NULL) {
+		CellViewerGraphicsUpdated(nitroPaintStruct->hWndNcerViewer);
+	}
 }
 
 static void ChrViewerGraphicsUpdated(NCGRVIEWERDATA *data) {
@@ -382,6 +387,130 @@ static void ChrViewerCopyNP_SCRN(NCGRVIEWERDATA *data) {
 	free(bgdat);
 }
 
+static int ChViewerObjDimensionToShape(int width, int height) {
+	if (width == height) return 0; // square
+	if (width > height) return 1;  // wide rectangle
+	if (height > width) return 2;  // tall rectangle
+	return 0; // invalid shape?
+}
+
+static int ChrViewerObjDimensionToSize(int width, int height) {
+	if ((width == 1 && height == 1) || (width == 1 && height == 2) || (width == 2 && height == 1)) return 0;
+	if ((width == 2 && height == 2) || (width == 1 && height == 4) || (width == 4 && height == 1)) return 1;
+	if ((width == 4 && height == 4) || (width == 2 && height == 4) || (width == 4 && height == 2)) return 2;
+	if ((width == 8 && height == 8) || (width == 4 && height == 8) || (width == 8 && height == 4)) return 3;
+	return 0; // invalid shape?
+}
+
+static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
+	int selX, selY, selW, selH;
+	TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
+
+	//allocate max
+	uint16_t *obj = (uint16_t *) calloc(selW * selH, 6 * sizeof(uint16_t));
+	int nOBJ = 0;
+
+	//OBJ origin
+	int startX = -(selW * 8 / 2);
+	int startY = -(selH * 8 / 2);
+
+	//construct rectangle from set of OAM objects
+	for (int y = 0; y < selH;) {
+		//compute height of row
+		int rowY = startY + y * 8;
+		int rowHeight = 8;
+		if ((y + rowHeight) > selH) rowHeight = 4;
+		if ((y + rowHeight) > selH) rowHeight = 2;
+		if ((y + rowHeight) > selH) rowHeight = 1;
+
+		for (int x = 0; x < selW;) {
+			int colX = startX + x * 8;
+			int colWidth = 8;
+			if ((x + colWidth) > selW) colWidth = 4;
+			if ((x + colWidth) > selW) colWidth = 2;
+			if ((x + colWidth) > selW) colWidth = 1;
+
+			int chno = (selX + x) + (selY + y) * data->ncgr.tilesX;
+			int pltt = ChrViewerGetCharPalette(data, selX + x, selY + y);
+			if (data->ncgr.nBits == 8) chno <<= 1;
+			
+			//check valid size
+			if (colWidth <= 4 && rowHeight <= 4 || colWidth == rowHeight || (colWidth == 8 && rowHeight == 4) || (colWidth == 4 && rowHeight == 8)) {
+				int shape = ChViewerObjDimensionToShape(colWidth, rowHeight);
+				int size = ChrViewerObjDimensionToSize(colWidth, rowHeight);
+
+				//valid size
+				uint16_t attr[3] = { 0 };
+				attr[0] = 0x0000 | (rowY & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
+				attr[1] = 0x0000 | (colX & 0x01FF) | (size << 14);
+				attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
+
+				memcpy(obj + nOBJ * 3, attr, sizeof(attr));
+				nOBJ++;
+			} else {
+				//invalid size (64x something, or something x64)
+				//can reach a valid OBJ size by dividing the longer dimension in half.
+				int objW = colWidth, objH = rowHeight;
+				int wide = objW > objH;
+				if (wide) objW /= 2;
+				else objH /= 2;
+
+				int shape = ChViewerObjDimensionToShape(objW, objH);
+				int size = ChrViewerObjDimensionToSize(objW, objH);
+				int objX = colX, objY = rowY;
+
+				//create 2 OBJ of same size
+				uint16_t attr[3] = { 0 };
+				attr[0] = 0x0000 | (objY & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
+				attr[1] = 0x0000 | (objX & 0x01FF) | (size << 14);
+				attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
+
+				//add first oBJ
+				memcpy(obj + nOBJ * 3, attr, sizeof(attr));
+				nOBJ++;
+
+				int x2, y2;
+				if (wide) {
+					objX += objW * 8;
+					x2 = x + objW;
+					y2 = y;
+				} else {
+					objY += objH * 8;
+					x2 = x;
+					y2 = y + objH;
+				}
+				chno = (selX + x2) + (selY + y2) * data->ncgr.tilesX;
+				pltt = ChrViewerGetCharPalette(data, selX + x2, selY + y2);
+				if (data->ncgr.nBits == 8) chno <<= 1;
+				
+				attr[0] = 0x0000 | (objY & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
+				attr[1] = 0x0000 | (objX & 0x01FF) | (size << 14);
+				attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
+
+				//add seond OBJ
+				memcpy(obj + nOBJ * 3, attr, sizeof(attr));
+				nOBJ++;
+			}
+
+			x += colWidth;
+		}
+		y += rowHeight;
+	}
+
+	//create clipboard data
+	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + 6 * nOBJ, 1);
+	memcpy(cpy->attr, obj, nOBJ * 6);
+	cpy->xMin = startX;
+	cpy->yMin = startY;
+	cpy->width = selW * 8;
+	cpy->height = selH * 8;
+	cpy->nOBJ = nOBJ;
+	free(obj);
+
+	CellViewerCopyObjData(cpy);
+	free(cpy);
+}
+
 static void ChrViewerCopy(NCGRVIEWERDATA *data) {
 	HWND hWnd = data->hWnd;
 	OpenClipboard(hWnd);
@@ -392,6 +521,7 @@ static void ChrViewerCopy(NCGRVIEWERDATA *data) {
 	ChrViewerCopyOPX(data);      // OPTPiX data
 	ChrViewerCopyNP_CHARS(data); // NitroPaint data
 	ChrViewerCopyNP_SCRN(data);  // NitroPaint data
+	ChrViewerCopyNP_OBJ(data);   // NitroPaint data
 
 	CloseClipboard();
 }
@@ -1066,6 +1196,7 @@ static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immed
 		free(nscrEditors);
 	}
 	ShowWindow(hWnd, SW_SHOW);
+	ChrViewerInvalidateAllDependents(hWnd);
 }
 
 static LRESULT ChrViewerOnSize(HWND hWnd, WPARAM wParam, LPARAM lParam) {
@@ -1102,6 +1233,7 @@ static void ChrViewerOnDestroy(HWND hWnd) {
 
 	HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
 	if (hWndNclrViewer != NULL) InvalidateRect(hWndNclrViewer, NULL, FALSE);
+	ChrViewerInvalidateAllDependents(hWnd);
 	TedDestroy(&data->ted);
 }
 
@@ -1453,6 +1585,7 @@ static void ChrViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
 					//draw single pixel
 					ChrViewerPutPixel(data, pxX, pxY, pcol);
 				}
+				ChrViewerInvalidateAllDependents(data->hWnd);
 			}
 			break;
 		}

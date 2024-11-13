@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <wincodec.h>
+#include <math.h>
 
 #include "gdip.h"
 
@@ -602,4 +603,181 @@ COLOR32 *ImgComposite(COLOR32 *back, int backWidth, int backHeight, COLOR32 *fro
 		}
 	}
 	return out;
+}
+
+unsigned char *ImgCreateAlphaMask(COLOR32 *px, int width, int height, unsigned int threshold, int *pRows, int *pStride) {
+	int stride = ((width + 7) / 8 + 3) & ~3, nRows = height;
+
+	unsigned char *bits = (unsigned char *) calloc(stride * nRows, sizeof(unsigned char));
+	for (int y = 0; y < height; y++) {
+		unsigned char *row = bits + (y) * stride;
+		for (int x = 0; x < width; x++) {
+			unsigned char *pp = row + (x / 8);
+			int bitno = (x & 7) ^ 7;
+
+			*pp &= ~(1 << bitno);
+			*pp |= (((px[x + y * width] >> 24) < threshold) << bitno);
+
+		}
+	}
+
+	if (pRows != NULL) *pRows = nRows;
+	if (pStride != NULL) *pStride = stride;
+	return bits;
+}
+
+unsigned char *ImgCreateColorMask(COLOR32 *px, int width, int height, int *pRows, int *pStride) {
+	int stride = (width * 4 + 3) & ~3, nRows = height;
+
+	unsigned char *bits = (unsigned char *) calloc(stride * nRows, 1);
+	for (int y = 0; y < height; y++) {
+		unsigned char *row = bits + (y) * stride;
+		for (int x = 0; x < width; x++) {
+			COLOR32 c = px[x + y * width];
+
+			row[x * 4 + 0] = (c >> 16) & 0xFF;
+			row[x * 4 + 1] = (c >>  8) & 0xFF;
+			row[x * 4 + 2] = (c >>  0) & 0xFF;
+		}
+	}
+
+	if (pRows != NULL) *pRows = nRows;
+	if (pStride != NULL) *pStride = stride;
+	return bits;
+}
+
+COLOR32 *ImgScale(COLOR32 *px, int width, int height, int outWidth, int outHeight) {
+	//alloc out
+	COLOR32 *out = (COLOR32 *) calloc(outWidth * outHeight, sizeof(COLOR32));
+
+	//trivial case: inSize == outSize
+	if (width == outWidth && height == outHeight) {
+		memcpy(out, px, width * height * sizeof(COLOR32));
+		return out;
+	}
+
+	//0x0 input image case: render transparent bitmap
+	if (width == 0 || height == 0) {
+		return out;
+	}
+
+	//scale image
+	for (int y = 0; y < outHeight; y++) {
+		for (int x = 0; x < outWidth; x++) {
+			//determine sample rectangle in source image
+			float sX1 = ((float) (x + 0)) * ((float) width)  / ((float) outWidth);
+			float sY1 = ((float) (y + 0)) * ((float) height) / ((float) outHeight);
+			float sX2 = ((float) (x + 1)) * ((float) width)  / ((float) outWidth);
+			float sY2 = ((float) (y + 1)) * ((float) height) / ((float) outHeight);
+
+			//compute sample
+			double tr = 0.0, tg = 0.0, tb = 0.0, ta = 0.0;
+			double sampleArea = (sX2 - sX1) * (sY2 - sY1);
+
+			//determine the pixel rectangle to sample. Float coordinates are between pixels, and integer
+			//coordinates are in the centers of pixels.
+			int sampleRectX = (int) sX1;
+			int sampleRectY = (int) sY1;
+			int sampleRectW = (int) ceil(sX2) - sampleRectX;
+			int sampleRectH = (int) ceil(sY2) - sampleRectY;
+
+			//compute rectangle trims
+			double trimL = sX1 - (double) (int) sX1;
+			double trimR = ceil(sX2) - sX2;
+			double trimU = sY1 - (double) (int) sY1;
+			double trimD = ceil(sY2) - sY2;
+
+			for (int sy = 0; sy < sampleRectH; sy++) {
+				double rowH = 1.0;
+				if (sy == 0) rowH -= trimU;                 // trim from top
+				if (sy == (sampleRectH - 1)) rowH -= trimD; // trim from bottom
+
+
+				for (int sx = 0; sx < sampleRectW; sx++) {
+					double colW = 1.0;
+					if (sx == 0) colW -= trimL;                 // trim from left
+					if (sx == (sampleRectW - 1)) colW -= trimR; // trim from right
+
+					//sum colors
+					COLOR32 col = px[(sampleRectX + sx) + (sampleRectY + sy) * width];
+					unsigned int colA = (col >> 24);
+					double weight = colW * rowH * colA;
+					tr += ((col >>  0) & 0xFF) * weight;
+					tg += ((col >>  8) & 0xFF) * weight;
+					tb += ((col >> 16) & 0xFF) * weight;
+					ta += weight;
+				}
+			}
+
+			if (ta > 0) {
+				tr /= ta;
+				tg /= ta;
+				tb /= ta;
+				ta /= sampleArea;
+			} else {
+				tr = tg = tb = ta = 0.0;
+			}
+
+			unsigned int sampleR = (unsigned int) (int) (tr + 0.5);
+			unsigned int sampleG = (unsigned int) (int) (tg + 0.5);
+			unsigned int sampleB = (unsigned int) (int) (tb + 0.5);
+			unsigned int sampleA = (unsigned int) (int) (ta + 0.5);
+			COLOR32 sample = sampleR | (sampleG << 8) | (sampleB << 16) | (sampleA << 24);
+			out[x + y * outWidth] = sample;
+		}
+	}
+
+	return out;
+}
+
+COLOR32 *ImgScaleEx(COLOR32 *px, int width, int height, int outWidth, int outHeight, ImgScaleSetting setting) {
+	if (width == 0 || height == 0) {
+		//size of 0x0: fall back
+		return ImgScale(px, width, height, outWidth, outHeight);
+	}
+
+	switch (setting) {
+		case IMG_SCALE_FILL:
+			//fill: operation is default
+			return ImgScale(px, width, height, outWidth, outHeight);
+		case IMG_SCALE_COVER:
+		case IMG_SCALE_FIT:
+		{
+			//cover and fit may pad the image.
+			int scaleW = outWidth, scaleH = outHeight;
+			int width1 = outWidth, height1 = height * outWidth / width;
+			int width2 = width * outHeight / height, height2 = outHeight;
+
+			//cover: choose the larger of the two scales.
+			//fit: choose the smaller of the two scales.
+			if (setting == IMG_SCALE_COVER) {
+				if (width1 > width2) scaleW = width1, scaleH = height1;
+				else scaleW = width2, scaleH = height2;
+			} else {
+				if (width1 < width2) scaleW = width1, scaleH = height1;
+				else scaleW = width2, scaleH = height2;
+			}
+
+			//scale to dimensions
+			COLOR32 *scaled = ImgScale(px, width, height, scaleW, scaleH);
+
+			//construct output image data
+			COLOR32 *out = (COLOR32 *) calloc(outWidth * outHeight, sizeof(COLOR32));
+			int transX = -(outWidth - scaleW) / 2;
+			int transY = -(outHeight - scaleH) / 2;
+			for (int y = 0; y < outHeight; y++) {
+				for (int x = 0; x < outWidth; x++) {
+					int sampleX = x + transX, sampleY = y + transY;
+					if (sampleX >= 0 && sampleY >= 0 && sampleX < scaleW && sampleY < scaleH) {
+						out[x + y * outWidth] = scaled[sampleX + sampleY * scaleW];
+					}
+				}
+			}
+			free(scaled);
+			return out;
+		}
+	}
+
+	//bad mode
+	return NULL;
 }

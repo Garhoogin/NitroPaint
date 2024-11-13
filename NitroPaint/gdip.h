@@ -3,6 +3,16 @@
 
 #include "color.h"
 
+//
+// Image resize modes
+//
+typedef enum ImgScaleSetting_ {
+	IMG_SCALE_FILL,                // stretch to fill whole output, destryoing aspect ratio
+	IMG_SCALE_COVER,               // stretch to cover the whole output, preserving the aspect ratio
+	IMG_SCALE_FIT                  // stretch to maximize the size while keeping full visibility and aspect ratio
+} ImgScaleSetting;
+
+
 int ImgIsValidTGA(const unsigned char *buffer, unsigned int dwSize);
 
 COLOR32 *ImgReadEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize);
@@ -62,3 +72,24 @@ void ImgCropInPlace(COLOR32 *px, int width, int height, COLOR32 *out, int srcX, 
 // Composite two translucent images.
 //
 COLOR32 *ImgComposite(COLOR32 *back, int backWidth, int backHeight, COLOR32 *front, int frontWidth, int frontHeight, int *outWidth, int *outHeight);
+
+//
+// Create an alpha mask for rendering an image with a transparent region.
+//
+unsigned char *ImgCreateAlphaMask(COLOR32 *px, int width, int height, unsigned int threshold, int *pRows, int *pStride);
+
+//
+// Create a color mask for a bitmap.
+//
+unsigned char *ImgCreateColorMask(COLOR32 *px, int width, int height, int *pRows, int *pStride);
+
+//
+// Resize an image. When downscaling, the pixels are resampled to lose as little image information
+// as possible. When upscaling, pixels are preserved.
+//
+COLOR32 *ImgScale(COLOR32 *px, int width, int height, int outWidth, int outHeight);
+
+//
+// Scales an image, with additional options to specify how the aspect ratio should be handled.
+//
+COLOR32 *ImgScaleEx(COLOR32 *px, int width, int height, int outWidth, int outHeight, ImgScaleSetting setting);

@@ -668,6 +668,14 @@ static void PalViewerPastePalette(NCLRVIEWERDATA *data) {
 #define PALVIEWER_UPDATE_CELL    4
 #define PALVIEWER_UPDATE_ALL     (PALVIEWER_UPDATE_CHAR|PALVIEWER_UPDATE_SCREEN|PALVIEWER_UPDATE_CELL)
 
+static void PalViewerUpdateNcerViewer(HWND hWndMain) {
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	HWND hWndNcerViewer = nitroPaintStruct->hWndNcerViewer;
+	if (hWndNcerViewer != NULL) {
+		CellViewerGraphicsUpdated(hWndNcerViewer);
+	}
+}
+
 static void PalViewerUpdateViewers(HWND hWnd, int updateMask) {
 	HWND hWndMain = getMainWindow(hWnd);
 
@@ -682,7 +690,7 @@ static void PalViewerUpdateViewers(HWND hWnd, int updateMask) {
 	}
 	if (updateMask & PALVIEWER_UPDATE_CELL) {
 		//all cell viewers
-		InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
+		PalViewerUpdateNcerViewer(hWndMain);
 	}
 }
 
@@ -948,23 +956,14 @@ static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, i
 	}
 
 	int previewPalette = -1;
-	int ncerPalette = -1;
 	int nRowsPerPalette = (1 << data->nclr.nBits) / 16;
 
 	HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CHARACTER);
 	HWND hWndNscrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_SCREEN);
-	HWND hWndNcerViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CELL);
 	if (hWndNcgrViewer != NULL) {
 		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 		previewPalette = ncgrViewerData->selectedPalette;
 		nRowsPerPalette = (1 << ncgrViewerData->ncgr.nBits) / 16;
-	}
-	if (hWndNcerViewer != NULL) {
-		NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(hWndNcerViewer);
-		NCER_CELL *cell = ncerViewerData->ncer.cells + ncerViewerData->cell;
-		NCER_CELL_INFO info;
-		CellDecodeOamAttributes(&info, cell, ncerViewerData->oam);
-		ncerPalette = info.palette;
 	}
 	
 	int highlightRowStart = previewPalette * nRowsPerPalette;
@@ -1046,8 +1045,6 @@ static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, i
 			} else if (previewPalette != -1 && (y >= highlightRowStart && y < highlightRowEnd)) {
 				if (!data->showFrequency) outlineColor = RGB(192, 0, 0); //
 				else outlineColor = RGB(192, level, level);
-			} else if(ncerPalette != -1 && (y >= (ncerPalette * nRowsPerPalette) && y < ((ncerPalette + 1) * nRowsPerPalette))){
-				outlineColor = RGB(0, 192, 32);
 			} else {
 				if (!data->showFrequency) outlineColor = RGB(0, 0, 0);
 				else outlineColor = RGB(level, level, level);
@@ -1368,7 +1365,7 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 		//update all editors dependent
 		InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
 		InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
-		InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
+		PalViewerUpdateNcerViewer(hWndMain);
 	} else {
 		PalViewerSortNeuroThreadProc(data);
 	}
@@ -1449,6 +1446,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			HWND hWndMain = getMainWindow(hWnd);
 			InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
 			InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+			PalViewerUpdateNcerViewer(hWndMain);
 
 			if (data->nclr.header.format == NCLR_TYPE_HUDSON) {
 				SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
@@ -1626,8 +1624,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							data->nclr.colors[index] = ColorConvertToDS(result);
 							
 							InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
-							InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
 							InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+							PalViewerUpdateNcerViewer(hWndMain);
 							PalViewerUpdatePreview(hWnd);
 						}
 					}

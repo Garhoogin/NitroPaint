@@ -6,6 +6,9 @@
 #define SCA_RIGHT   1
 #define SCA_CENTER  2
 
+#define UI_SCALE_COORD(x,scale)    ((int)((x)*(scale)+0.5f))
+
+
 //
 // Sets or clears a window style.
 //

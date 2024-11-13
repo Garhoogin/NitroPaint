@@ -323,12 +323,9 @@ int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	return 0;
 }
 
-void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out, int *width, int *height, int checker) {
-	*width = info->width;
-	*height = info->height;
-
-	int tilesX = *width / 8;
-	int tilesY = *height / 8;
+void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out) {
+	int tilesX = info->width / 8;
+	int tilesY = info->height / 8;
 
 	if (ncgr != NULL) {
 		int charSize = ncgr->nBits * 8;
@@ -354,29 +351,15 @@ void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CH
 			}
 		}
 	}
-
-	//render checker
-	if (checker) {
-		for (int i = 0; i < info->width * info->height; i++) {
-			int x = i % info->width;
-			int y = i / info->width;
-			int ch = ((x >> 2) ^ (y >> 2)) & 1;
-			COLOR32 c = out[i];
-			if ((c & 0xFF000000) == 0) {
-				out[i] = ch ? 0xFFFFFF : 0xC0C0C0;
-			}
-		}
-	}
 }
 
-COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, int checker, int outline, float a, float b, float c, float d) {
+COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, float a, float b, float c, float d) {
 	DWORD *block = (DWORD *) calloc(64 * 64, 4);
 	for (int i = cell->nAttribs - 1; i >= 0; i--) {
 		NCER_CELL_INFO info;
-		int entryWidth, entryHeight;
 		CellDecodeOamAttributes(&info, cell, i);
 
-		CellRenderObj(&info, mapping, ncgr, nclr, vramTransfer, block, &entryWidth, &entryHeight, 0);
+		CellRenderObj(&info, mapping, ncgr, nclr, vramTransfer, block);
 
 		//HV flip? Only if not affine!
 		if (!info.rotateScale) {
@@ -448,47 +431,56 @@ COLOR32 *CellRenderCell(COLOR32 *px, NCER_CELL *cell, int mapping, NCGR *ncgr, N
 					}
 				}
 			}
-
-			//outline
-			if (outline == -2 || outline == i) {
-				int outlineWidth = info.width << info.doubleSize;
-				int outlineHeight = info.height << info.doubleSize;
-				for (int j = 0; j < outlineWidth; j++) {
-					int _x = (j + info.x + xOffs) & 0x1FF;
-					int _y = (info.y + yOffs) & 0xFF;
-					int _y2 = (_y + outlineHeight - 1) & 0xFF;
-					px[_x + _y * 512] = 0xFE000000;
-					px[_x + _y2 * 512] = 0xFE000000;
-				}
-				for (int j = 0; j < outlineHeight; j++) {
-					int _x = (info.x + xOffs) & 0x1FF;
-					int _y = (info.y + j + yOffs) & 0xFF;
-					int _x2 = (_x + outlineWidth - 1) & 0x1FF;
-					px[_x + _y * 512] = 0xFE000000;
-					px[_x2 + _y * 512] = 0xFE000000;
-				}
-			}
 		}
 	}
 	free(block);
-
-	//apply checker background
-	if (checker) {
-		for (int y = 0; y < 256; y++) {
-			for (int x = 0; x < 512; x++) {
-				int index = y * 512 + x;
-				if (px[index] >> 24 == 0) {
-					int p = ((x >> 2) ^ (y >> 2)) & 1;
-					if (p) {
-						px[index] = 0xFFFFFF;
-					} else {
-						px[index] = 0xC0C0C0;
-					}
-				}
-			}
-		}
-	}
 	return px;
+}
+
+void CellDeleteCell(NCER *ncer, int idx) {
+	memmove(ncer->cells + idx, ncer->cells + idx + 1, (ncer->nCells - idx - 1) * sizeof(NCER_CELL));
+	if (ncer->vramTransfer != NULL) {
+		memmove(ncer->vramTransfer + idx, ncer->vramTransfer + idx + 1, (ncer->nCells - idx - 1) * sizeof(CHAR_VRAM_TRANSFER));
+	}
+
+	ncer->nCells--;
+	ncer->cells = (NCER_CELL *) realloc(ncer->cells, ncer->nCells * sizeof(NCER_CELL));
+	if (ncer->vramTransfer != NULL) {
+		ncer->vramTransfer = (CHAR_VRAM_TRANSFER *) realloc(ncer->vramTransfer, ncer->nCells * sizeof(CHAR_VRAM_TRANSFER));
+	}
+}
+
+void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst) {
+	if (iSrc == iDst) return; // no-op
+
+	//copy temporarily
+	NCER_CELL cellTmp;
+	CHAR_VRAM_TRANSFER transTmp;
+	memcpy(&cellTmp, ncer->cells + iSrc, sizeof(cellTmp));
+	if (ncer->vramTransfer != NULL) {
+		memcpy(&transTmp, ncer->vramTransfer + iSrc, sizeof(transTmp));
+	}
+
+	//slide over the source
+	memmove(ncer->cells + iSrc, ncer->cells + iSrc + 1, (ncer->nCells - iSrc - 1) * sizeof(NCER_CELL));
+	if (ncer->vramTransfer != NULL) {
+		memmove(ncer->vramTransfer + iSrc, ncer->vramTransfer + iSrc + 1, (ncer->nCells - iSrc - 1) * sizeof(CHAR_VRAM_TRANSFER));
+	}
+	
+	//adjust destination index to account for changed indices
+	if (iDst > iSrc) iDst--;
+
+	//move items to make space
+	memmove(ncer->cells + iDst + 1, ncer->cells + iDst, (ncer->nCells - iDst - 1) * sizeof(NCER_CELL));
+	if (ncer->vramTransfer != NULL) {
+		memmove(ncer->vramTransfer + iDst + 1, ncer->vramTransfer + iDst, (ncer->nCells - iDst - 1) * sizeof(CHAR_VRAM_TRANSFER));
+	}
+
+	//copy from temp
+	memcpy(ncer->cells + iDst, &cellTmp, sizeof(cellTmp));
+	if (ncer->vramTransfer != NULL) {
+		memcpy(ncer->vramTransfer + iDst, &transTmp, sizeof(transTmp));
+	}
 }
 
 int CellFree(OBJECT_HEADER *header) {

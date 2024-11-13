@@ -906,7 +906,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		case FILE_TYPE_CELL:
 			//if there is already an NCER open, close it.
 			if (data->hWndNcerViewer) DestroyChild(data->hWndNcerViewer);
-			data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
+			data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 			break;
 		case FILE_TYPE_NSBTX:
@@ -1441,8 +1441,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						ncer.mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 						ncer.nCells = 1;
 						ncer.cells = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
-						ncer.cells[0].attr = (WORD *) calloc(3, 2);
-						ncer.cells[0].nAttribs = 1;
+						ncer.cells[0].attr = NULL;
+						ncer.cells[0].nAttribs = 0;
 						ncer.cells[0].cellAttr = 0;
 
 						//if a character editor is open, use its mapping mode
@@ -1453,7 +1453,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							ncer.mappingMode = ncgrViewerData->ncgr.mappingMode;
 						}
 
-						data->hWndNcerViewer = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 50, data->hWndMdi, &ncer);
+						data->hWndNcerViewer = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &ncer);
 						break;
 					}
 					case ID_NEW_NEWPALETTE:
