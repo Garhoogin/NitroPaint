@@ -61,6 +61,8 @@ void NnsStreamEndBlock(NnsStream *stream);
 
 void NnsStreamWrite(NnsStream *stream, const void *bytes, unsigned int size);
 
+void NnsStreamAlign(NnsStream *stream, int to);
+
 BSTREAM *NnsStreamGetBlockStream(NnsStream *stream);
 
 void NnsStreamFinalize(NnsStream *stream);

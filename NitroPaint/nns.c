@@ -654,6 +654,10 @@ void NnsStreamWrite(NnsStream *stream, const void *bytes, unsigned int size) {
 	bstreamWrite(&stream->currentStream, (void *) bytes, size);
 }
 
+void NnsStreamAlign(NnsStream *stream, int to) {
+	bstreamAlign(&stream->currentStream, to);
+}
+
 BSTREAM *NnsStreamGetBlockStream(NnsStream *stream) {
 	return &stream->currentStream;
 }

@@ -13,6 +13,7 @@ extern LPCWSTR cellFormatNames[];
 typedef struct NCER_CELL_ {
 	int nAttribs;
 	int cellAttr;
+	uint32_t attrEx; // UCAT extended attribute data
 
 	int maxX;
 	int maxY;
@@ -59,6 +60,7 @@ typedef struct NCER_ {
 
 	CHAR_VRAM_TRANSFER *vramTransfer;
 	int nVramTransferEntries;
+	int useExtAttr;
 
 	int uextSize;
 	char *uext;

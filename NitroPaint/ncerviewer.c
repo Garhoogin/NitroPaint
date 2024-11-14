@@ -2659,10 +2659,10 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 
 	//show bounding box if available
 	if (data->showCellBounds && cell != NULL && !(cell->minX == cell->maxX && cell->minY == cell->maxY)) {
-		CellViewerRenderSolidLineV(&data->fb, (cell->minX + 256) * data->scale - scrollX, viewHeight, 0xFFFF00);
-		CellViewerRenderSolidLineH(&data->fb, (cell->minY + 128) * data->scale - scrollY, viewWidth,  0xFFFF00);
-		CellViewerRenderSolidLineV(&data->fb, (cell->maxX + 256) * data->scale - scrollX, viewHeight, 0xFFFF00);
-		CellViewerRenderSolidLineH(&data->fb, (cell->maxY + 128) * data->scale - scrollY, viewWidth,  0xFFFF00);
+		CellViewerRenderSolidLineV(&data->fb, (cell->minX + 0 + 256) * data->scale - scrollX - 0, viewHeight, 0xFFFF00);
+		CellViewerRenderSolidLineH(&data->fb, (cell->minY + 0 + 128) * data->scale - scrollY - 0, viewWidth,  0xFFFF00);
+		CellViewerRenderSolidLineV(&data->fb, (cell->maxX + 1 + 256) * data->scale - scrollX - 1, viewHeight, 0xFFFF00);
+		CellViewerRenderSolidLineH(&data->fb, (cell->maxY + 1 + 128) * data->scale - scrollY - 1, viewWidth,  0xFFFF00);
 
 		//get mid point
 		int midX = (cell->minX + cell->maxX) / 2;
