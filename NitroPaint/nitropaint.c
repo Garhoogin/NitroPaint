@@ -910,7 +910,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 			break;
 		case FILE_TYPE_NSBTX:
-			CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, path);
+			CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
 		case FILE_TYPE_TEXTURE:
 			CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
@@ -1498,7 +1498,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						TexarcInit(&nsbtx, NSBTX_TYPE_NNS);
 						
 						//no need to init further
-						CreateNsbtxViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 450, 350, data->hWndMdi, &nsbtx);
+						CreateNsbtxViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &nsbtx);
 						break;
 					}
 					case ID_FILE_CONVERTTO:

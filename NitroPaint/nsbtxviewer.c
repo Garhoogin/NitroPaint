@@ -425,6 +425,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			PAINTSTRUCT ps;
 			HDC hDC = BeginPaint(hWnd, &ps);
 
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+
 			int t = GetListBoxSelection(data->hWndTextureSelect);
 			int p = GetListBoxSelection(data->hWndPaletteSelect);
 			TEXELS *texture = data->nsbtx.textures + t;
@@ -442,10 +445,14 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				return 0;
 			}
 
+			float dpiScale = GetDpiScale();
+			int panelWidth = UI_SCALE_COORD(150, dpiScale);
+			int ctlHeight = UI_SCALE_COORD(22, dpiScale);
+
 			HBITMAP hBitmap = renderTexture(texture, palette, data->scale);
 			HDC hCompat = CreateCompatibleDC(hDC);
 			SelectObject(hCompat, hBitmap);
-			BitBlt(hDC, 150, 22, TEXW(texture->texImageParam) * data->scale, texture->height * data->scale, hCompat, 0, 0, SRCCOPY);
+			BitBlt(hDC, panelWidth, ctlHeight, TEXW(texture->texImageParam) * data->scale, texture->height * data->scale, hCompat, 0, 0, SRCCOPY);
 
 			char bf[64];
 			SelectObject(hDC, GetGUIFont());
@@ -456,10 +463,10 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				sprintf(bf, "%s texture, %dx%d; palette: %d colors", TxNameFromTexFormat(FORMAT(texture->texImageParam)), TEXW(texture->texImageParam), texture->height, palette->nColors);
 			}
 			RECT rcText;
-			rcText.left = 155;
+			rcText.left = UI_SCALE_COORD(155, dpiScale);
 			rcText.top = 0;
-			rcText.right = 350;
-			rcText.bottom = 22;
+			rcText.right = rcClient.right;
+			rcText.bottom = ctlHeight;
 			DrawTextA(hDC, bf, -1, &rcText, DT_SINGLELINE | DT_NOCLIP | DT_NOPREFIX | DT_VCENTER);
 
 			EndPaint(hWnd, &ps);
@@ -731,13 +738,19 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		{
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
+
+			float dpiScale = GetDpiScale();
+			int ctlHeight = UI_SCALE_COORD(22, dpiScale);
+			int ctlWidth = UI_SCALE_COORD(100, dpiScale);
+			int paneWidth = UI_SCALE_COORD(150, dpiScale);
+
 			int height = rcClient.bottom;
-			MoveWindow(data->hWndTextureSelect, 0, 0, 150, height / 2 - 11, TRUE);
-			MoveWindow(data->hWndPaletteSelect, 0, height / 2 - 11, 150, height / 2 - 11, TRUE);
-			MoveWindow(data->hWndExportAll, 0, height - 22, 75, 22, TRUE);
-			MoveWindow(data->hWndResourceButton, 75, height - 22, 75, 22, TRUE);
-			MoveWindow(data->hWndReplaceButton, 150, height - 22, 100, 22, TRUE);
-			MoveWindow(data->hWndAddButton, 250, height - 22, 100, 22, TRUE);
+			MoveWindow(data->hWndTextureSelect, 0, 0, paneWidth, (height - ctlHeight) / 2, TRUE);
+			MoveWindow(data->hWndPaletteSelect, 0, (height - ctlHeight) / 2, paneWidth, (height - ctlHeight) / 2, TRUE);
+			MoveWindow(data->hWndExportAll, 0, height - ctlHeight, paneWidth / 2, ctlHeight, TRUE);
+			MoveWindow(data->hWndResourceButton, paneWidth / 2, height - ctlHeight, paneWidth / 2, ctlHeight, TRUE);
+			MoveWindow(data->hWndReplaceButton, paneWidth, height - ctlHeight, ctlWidth, ctlHeight, TRUE);
+			MoveWindow(data->hWndAddButton, paneWidth + ctlWidth, height - ctlHeight, ctlWidth, ctlHeight, TRUE);
 			break;
 		}
 	}
