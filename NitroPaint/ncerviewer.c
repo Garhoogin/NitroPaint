@@ -80,6 +80,170 @@ static NCGR *CellViewerGetAssociatedCharacter(NCERVIEWERDATA *data) {
 	return (NCGR *) EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
 }
 
+static unsigned char *CellViewerMapGraphicsUsage(NCERVIEWERDATA *data, int excludeNonClearCharacters, unsigned int *pMapSize) {
+	//plot a map of VRAM usage in character units.
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	if (ncgr == NULL) {
+		//cannot construct map.
+		*pMapSize = 0;
+		return NULL;
+	}
+
+	unsigned int chrSize = (ncgr->nBits == 8) ? 64 : 32;
+	unsigned int mapSize = ncgr->nTiles;
+	unsigned char *map = (unsigned char *) calloc(1, mapSize);
+
+	//check for VRAM transfer data
+	CHAR_VRAM_TRANSFER *vramTransfer = data->ncer.vramTransfer;
+	if (vramTransfer != NULL) {
+		//VRAM transfer data present: carve blocks out of the available space
+		for (int i = 0; i < data->ncer.nCells; i++) {
+			CHAR_VRAM_TRANSFER *xfer = &vramTransfer[i];
+
+			//get overlapping character index region
+			unsigned int chrStart = xfer->srcAddr / chrSize; // round down
+			unsigned int chrSize = (xfer->srcAddr + xfer->size + chrSize - 1) / chrSize - chrStart; // round up
+
+			//fill use map
+			unsigned int reqSize = chrStart + chrSize;
+			if (reqSize > mapSize) {
+				//expand map
+				map = (unsigned char *) realloc(map, reqSize);
+				memset(map + mapSize, 0, reqSize - mapSize);
+				mapSize = reqSize;
+			}
+			memset(map + chrStart, 1, chrSize);
+		}
+	} else {
+		//no VRAM transfer data present: iterate each cell and its constituent OBJ
+		for (int i = 0; i < data->ncer.nCells; i++) {
+			NCER_CELL *cell = &data->ncer.cells[i];
+
+			for (int j = 0; j < cell->nAttribs; j++) {
+				NCER_CELL_INFO info;
+				CellDecodeOamAttributes(&info, cell, j);
+
+				//compute VRAM destination address
+				unsigned int sizeChars = (info.width * info.height) / 64;
+				unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer.mappingMode, info.characterBits);
+
+				//fill use map
+				unsigned int reqSize = vramAddr + sizeChars;
+				if (reqSize > mapSize) {
+					//expand map
+					map = (unsigned char *) realloc(map, reqSize);
+					memset(map + mapSize, 0, reqSize - mapSize);
+					mapSize = reqSize;
+				}
+				memset(map + vramAddr, 1, sizeChars);
+			}
+		}
+	}
+
+	//last: exclude non-clear character ranges
+	if (excludeNonClearCharacters) {
+		unsigned char zero[64] = { 0 };
+		for (int i = 0; i < ncgr->nTiles; i++) {
+			if (memcmp(ncgr->tiles[i], zero, sizeof(zero)) != 0) {
+				map[i] = 1;
+			}
+		}
+	}
+
+	*pMapSize = mapSize;
+	return map;
+}
+
+static unsigned int CellViewerAllocCharSpace(NCERVIEWERDATA *data, int ignoreFilledCharacters, unsigned int sizeChars) {
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	if (ncgr == NULL) {
+		return UINT_MAX;
+	}
+
+	//allocate space in character graphics. Compute filled map.
+	unsigned int mapSize;
+	unsigned char *map = CellViewerMapGraphicsUsage(data, ignoreFilledCharacters, &mapSize);
+	
+	unsigned int granularity = 1;
+	if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) granularity = 1;
+	else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_1D_32K) granularity = 1;
+	else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_1D_64K) granularity = 2;
+	else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_1D_128K) granularity = 4;
+	else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_1D_256K) granularity = 8;
+
+	//adjust for 8-bit graphics
+	if (ncgr->nBits == 8) granularity /= 2;
+	if (granularity == 0) granularity = 1;
+
+	//find sizeChars continuous characters in the map equal to zero, accounting for alignment requirements by the
+	//current cell bank's mapping mode.
+	unsigned int foundAddr = UINT_MAX;
+	for (unsigned int i = 0; i < mapSize; i += granularity) {
+		//check upper bound
+		if ((i + sizeChars) <= mapSize) {
+			int hasSpace = 1;
+			for (unsigned int j = 0; j < sizeChars; j++) {
+				if (map[i + j]) {
+					hasSpace = 0;
+					break;
+				}
+			}
+
+			if (hasSpace) {
+				//found space.
+				foundAddr = i;
+				break;
+			}
+		}
+	}
+
+	free(map);
+	return foundAddr;
+}
+
+static unsigned int CellViewerGetFirstUnusedCharacter(NCERVIEWERDATA *data, int excludeCell) {
+	//find the first unused character at the end of all used ones, rounded up to the mapping mode's granularity.
+	unsigned int end = 0;
+
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	unsigned int chrSize = 32; //fallback
+	if (ncgr != NULL) {
+		chrSize = (ncgr->nBits == 8) ? 64 : 32;
+	}
+
+	for (int i = 0; i < data->ncer.nCells; i++) {
+		NCER_CELL *cell = &data->ncer.cells[i];
+		if (i == excludeCell) continue;
+		
+		//process VRAM transfer animation
+		if (data->ncer.vramTransfer != NULL) {
+			CHAR_VRAM_TRANSFER *xfer = &data->ncer.vramTransfer[i];
+			unsigned int vramAddr = xfer->srcAddr / chrSize;
+			unsigned int sizeChars = xfer->size / chrSize;
+			unsigned int thisEnd = vramAddr + sizeChars;
+			if (thisEnd > end) end = thisEnd;
+
+			//TODO: other formats with more complex VRAM transfer formats?
+		} else {
+			//process each OBJ in cell to find graphics usage
+			for (int j = 0; j < cell->nAttribs; j++) {
+				NCER_CELL_INFO info;
+				CellDecodeOamAttributes(&info, cell, j);
+
+				//compute VRAM destination address
+				unsigned int sizeChars = (info.width * info.height) / 64;
+				unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer.mappingMode, info.characterBits);
+
+				unsigned int thisEnd = vramAddr + sizeChars;
+				if (thisEnd > end) end = thisEnd;
+			}
+		}
+	}
+
+	//round up?
+	return end;
+}
+
 static NCER_CELL *CellViewerGetCurrentCell(NCERVIEWERDATA *data) {
 	if (data->cell < 0 || data->cell >= data->ncer.nCells) return NULL;
 	return &data->ncer.cells[data->cell];
@@ -2126,17 +2290,21 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 
 			//lastly, try populate character base
 			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT), hWndNcgrEditor;
+			HWND hWndNcerViewer;
+			GetAllEditors(hWndMain, FILE_TYPE_CELL, &hWndNcerViewer, 1);
 			GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
 			NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrEditor);
+			NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(hWndNcerViewer);
 
-			int lastIndex = -1;
+			/*int lastIndex = -1;
 			unsigned char zeroChar[64] = { 0 };
 			for (int i = 0; i < ncgr->nTiles; i++) {
 				if (memcmp(ncgr->tiles[i], zeroChar, sizeof(zeroChar)) != 0) {
 					lastIndex = i;
 				}
-			}
-			SetEditNumber(data->hWndCharacter, lastIndex + 1);
+			}*/
+			unsigned int lastIndex = CellViewerGetFirstUnusedCharacter(ncerViewerData, -1);
+			SetEditNumber(data->hWndCharacter, lastIndex);
 			break;
 		}
 		case WM_COMMAND:
