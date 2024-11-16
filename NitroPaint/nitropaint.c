@@ -2512,8 +2512,6 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					PalInit(&nclr, palFormat);
 					nclr.colors = (COLOR *) calloc(256, sizeof(COLOR));
 					nclr.nColors = 256;
-					nclr.nPalettes = (nBits == 8) ? 1 : 16;
-					nclr.totalSize = nclr.nColors * 2;
 					nclr.nBits = nBits;
 					
 					NCGR ncgr;
@@ -3076,10 +3074,9 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				NCLR nclr;
 				PalInit(&nclr, NCLR_TYPE_NCLR);
 				nclr.nBits = depthSel ? 8 : 4;
-				nclr.nPalettes = countSel;
-				nclr.nColors = nclr.nPalettes << nclr.nBits;
+				nclr.nColors = countSel << nclr.nBits;
 				nclr.colors = (COLOR *) calloc(nclr.nColors, sizeof(COLOR));
-				nclr.extPalette = (depthSel && nclr.nPalettes > 1);
+				nclr.extPalette = (depthSel && countSel > 1);
 				nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, nitroPaintStruct->hWndMdi, &nclr);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);

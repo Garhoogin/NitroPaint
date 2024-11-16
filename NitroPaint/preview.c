@@ -415,24 +415,10 @@ static int NvcLoadPalette(NCLR *nclr, uint32_t stdAddr, uint32_t extAddr) {
 	if (sNvcStream == NULL) return 0;
 	if (sPreviewMode != PREVIEW_MODE_BG && sPreviewMode != PREVIEW_MODE_OBJ) NvcResetStateForBG();
 
-	//should we copy using an index table?
-	if (nclr->idxTable == NULL) {
-		//copy up to 512 bytes to standard paeltte, copy up to 0x2000 bytes to extended palette
-		int paletteSize = nclr->nColors * sizeof(COLOR);
-		status = status && NvcCopyData(stdAddr, nclr->colors, (paletteSize > 0x200) ? 0x200 : paletteSize);
-		status = status && NvcCopyData(extAddr, nclr->colors, (paletteSize > 0x2000) ? 0x2000 : paletteSize);
-	} else {
-		//copy with index table
-		int paletteSize = (1 << nclr->nBits) * sizeof(COLOR);
-		for (int i = 0; i < nclr->nPalettes; i++) {
-			int srcofs = i * paletteSize;
-			int dstofs = nclr->idxTable[i] * paletteSize;
-			int end = dstofs + paletteSize;
-
-			if (end <= 0x200) status = status && NvcCopyData(stdAddr + dstofs, nclr->colors + (srcofs / 2), paletteSize);
-			if (end <= 0x2000) status = status && NvcCopyData(extAddr + dstofs, nclr->colors + (srcofs / 2), paletteSize);
-		}
-	}
+	//copy up to 512 bytes to standard palette, copy up to 0x2000 bytes to extended palette
+	int paletteSize = nclr->nColors * sizeof(COLOR);
+	status = status && NvcCopyData(stdAddr, nclr->colors, (paletteSize > 0x200) ? 0x200 : paletteSize);
+	status = status && NvcCopyData(extAddr, nclr->colors, (paletteSize > 0x2000) ? 0x2000 : paletteSize);
 
 	return status;
 }

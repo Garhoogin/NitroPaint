@@ -17,13 +17,12 @@ extern LPCWSTR paletteFormatNames[];
 
 typedef struct NCLR_ {
 	OBJECT_HEADER header;
-	int nBits;
-	int nColors;
-	int nPalettes; //for compressed palettes
-	int totalSize; //for extended palettes
-	int extPalette;
-	short *idxTable;
-	COLOR *colors;
+	int nBits;             // bit depth of graphics this palette is intended for
+	int nColors;           // number of colors in the unpacked palette
+	int extPalette;        // whether this palette is an extended palette or not
+	int compressedPalette; // omit unused palettes from the file
+	int g2dBug;            // replicate converter bug for compressed palettes
+	COLOR *colors;         // raw color data
 } NCLR;
 
 #include "combo2d.h"

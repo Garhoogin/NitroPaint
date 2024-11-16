@@ -293,10 +293,7 @@ int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int
 	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = 256;
 	nclr->extPalette = 0;
-	nclr->idxTable = NULL;
 	nclr->nBits = 4;
-	nclr->nPalettes = 0;
-	nclr->totalSize = 256 * sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
 	memcpy(nclr->colors, buffer + 4, 512);
 	combo2dLink(combo, &nclr->header);
@@ -350,10 +347,7 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = nColors;
 	nclr->extPalette = 0;
-	nclr->idxTable = NULL;
 	nclr->nBits = 4;
-	nclr->nPalettes = 0;
-	nclr->totalSize = nColors * sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
 	memcpy(nclr->colors, palt + 0x4, nColors * sizeof(COLOR));
 	combo2dLink(combo, &nclr->header);
@@ -396,10 +390,7 @@ int combo2dReadBanner(COMBO2D *combo, const unsigned char *buffer, unsigned int 
 	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = 16;
 	nclr->extPalette = 0;
-	nclr->idxTable = NULL;
 	nclr->nBits = 4;
-	nclr->nPalettes = 0;
-	nclr->totalSize = 16 * sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(16, sizeof(COLOR));
 	memcpy(nclr->colors, buffer + 0x220, 32);
 	combo2dLink(combo, &nclr->header);
@@ -436,10 +427,7 @@ int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = 256;
 	nclr->extPalette = 0;
-	nclr->idxTable = NULL;
 	nclr->nBits = nBits;
-	nclr->nPalettes = 0;
-	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
 	memcpy(nclr->colors, buffer + palofs, nclr->nColors * sizeof(COLOR));
 	combo2dLink(combo, &nclr->header);

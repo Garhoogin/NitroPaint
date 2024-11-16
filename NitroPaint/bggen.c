@@ -896,27 +896,22 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	ncgr->header.compression = compressCharacter;
 	nscr->header.compression = compressScreen;
 
-	int paletteCompression = params->compressPalette;
-	int colorOutputBase = paletteCompression ? (paletteBase << nBits) : 0;
-	int nColorsOutput = paletteCompression ? (nPalettes > 1 ? (nPalettes << nBits) : paletteSize) : (nBits == 4 ? 256 : (256 * (paletteBase + nPalettes)));
-	int nPalettesOutput = paletteCompression ? (nPalettes) : (nBits == 4 ? 16 : nPalettes);
+	int nColorsOutput = (nBits == 4) ? 256 : (256 * (paletteBase + nPalettes));
 	nclr->nBits = nBits;
 	nclr->nColors = nColorsOutput;
-	nclr->totalSize = nclr->nColors * 2;
-	nclr->nPalettes = nPalettesOutput;
-	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
-	nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
-	nclr->extPalette = (nBits == 8 && (nPalettes > 1 || paletteBase > 0));
+	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+	nclr->compressedPalette = params->compressPalette;
+	nclr->extPalette = nBits == 8 && (nPalettes > 1 || paletteBase > 0);
 	for (int i = 0; i < nclr->nColors; i++) {
-		nclr->colors[i] = ColorConvertToDS(palette[i + colorOutputBase]);
+		nclr->colors[i] = ColorConvertToDS(palette[i]);
 	}
-	for (int i = 0; i < nclr->nPalettes; i++) {
-		nclr->idxTable[i] = compressPalette ? (i + paletteBase) : i;
-	}
+
+	//TODO: revise compresed palettes
+	// 2. for raw files, revise the file I/O code to omit unused palettes
 
 	int nCharsFile = ((nChars + alignment - 1) / alignment) * alignment;
 	ncgr->nBits = nBits;
-	ncgr->extPalette = (nBits == 4) ? 0 : ((nPalettes > 1 || paletteBase > 0) ? 1 : 0);
+	ncgr->extPalette = nclr->extPalette;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nTiles = nCharsFile;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);

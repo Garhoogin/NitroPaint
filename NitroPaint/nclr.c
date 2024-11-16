@@ -10,8 +10,6 @@ void PalFree(OBJECT_HEADER *header) {
 	NCLR *nclr = (NCLR *) header;
 	if (nclr->colors != NULL) free(nclr->colors);
 	nclr->colors = NULL;
-	if (nclr->idxTable != NULL) free(nclr->idxTable);
-	nclr->idxTable = NULL;
 
 	COMBO2D *combo2d = (COMBO2D *) nclr->header.combo;
 	if (combo2d != NULL) {
@@ -136,7 +134,6 @@ int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 
 	PalInit(nclr, NCLR_TYPE_HUDSON);
 	nclr->nColors = nColors;
-	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
 	memcpy(nclr->colors, buffer + 4, nColors * 2);
@@ -150,7 +147,6 @@ int PalReadBin(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 
 	PalInit(nclr, PalIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP);
 	nclr->nColors = nColors;
-	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
 	memcpy(nclr->colors, buffer, nColors * 2);
@@ -166,11 +162,10 @@ int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, &paltSize);
 	const unsigned char *cmnt = NnsG2dFindBlockBySignature(buffer, size, "CMNT", NNS_SIG_BE, &cmntSize);
 
-	nclr->nPalettes = *(uint32_t *) (palt + 0x4);
-	nclr->nColors = nclr->nPalettes * *(uint32_t *) (palt + 0x0);
+	unsigned int nPalettes = *(uint32_t *) (palt + 0x4);
+	nclr->nColors = nPalettes * *(uint32_t *) (palt + 0x0);
 	nclr->extPalette = nclr->nColors > 256;
 	nclr->nBits = *(uint32_t *) (palt + 0x0) > 16 ? 8 : 4;
-	nclr->totalSize = nclr->nColors * sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
 	memcpy(nclr->colors, palt + 0x8, nclr->nColors * 2);
 	if (cmnt != NULL) {
@@ -186,10 +181,8 @@ void PaliReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size)
 	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, &paltSize);
 
 	nclr->nColors = *(uint32_t *) (palt + 0x0);
-	nclr->nPalettes = (nclr->nColors + 15) / 16;
 	nclr->extPalette = nclr->nColors > 256;
 	nclr->nBits = 4;
-	nclr->totalSize = nclr->nColors;
 	nclr->colors = (COLOR *) calloc(nclr->nColors, 2);
 	memcpy(nclr->colors, palt + 0x4, nclr->nColors * 2);
 }
@@ -218,25 +211,45 @@ int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 
 	int bits = *(uint32_t *) (pltt + 0x0);
 	bits = 1 << (bits - 1);
-	int dataSize = *(uint32_t *) (pltt + 0x8);
 	int dataOffset = *(uint32_t *) (pltt + 0xC);
-	int nColors = (plttSize - dataOffset) >> 1;
+	int nColors = (plttSize - dataOffset) / sizeof(COLOR);
 
 	PalInit(nclr, NCLR_TYPE_NCLR);
-	nclr->nColors = nColors;
 	nclr->nBits = bits;
-	nclr->colors = (COLOR *) calloc(nColors, sizeof(COLOR));
 	nclr->extPalette = *(uint32_t *) (pltt + 0x4);
-	nclr->totalSize = *(uint32_t *) (pltt + 0x8);
-	nclr->nPalettes = 0;
-	nclr->idxTable = NULL;
+	nclr->nColors = nColors;
 
-	if (pcmp != NULL) {
-		nclr->nPalettes = *(uint16_t *) (pcmp + 0);
-		nclr->idxTable = (short *) calloc(nclr->nPalettes, 2);
-		memcpy(nclr->idxTable, pcmp + *(uint32_t *) (pcmp + 0x4), nclr->nPalettes * 2);
+	unsigned int sizePerPalette = 1 << nclr->nBits;
+	const uint16_t *plttSrc = (const uint16_t *) (pltt + dataOffset);
+	if (pcmp == NULL) {
+		//no palette compression used: write colors directly
+		nclr->nColors = (*(uint32_t *) (pltt + 0x8)) / sizeof(COLOR);
+		nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+		nclr->compressedPalette = 0;
+		memcpy(nclr->colors, plttSrc, nclr->nColors * sizeof(COLOR));
+	} else {
+		//palette compression used, load using PCMP index table
+		const uint16_t *idxTable = (const uint16_t *) (pcmp + *(const uint32_t *) (pcmp + 0x4));
+		int nPalettes = *(uint16_t *) (pcmp + 0x0);
+
+		if (nclr->nBits == 4 || nclr->extPalette) {
+			nclr->nColors = 16 << nclr->nBits; // size of full 16 palettes
+		} else {
+			nclr->nColors = 256; // size of one 256-color palette
+		}
+		nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+
+		unsigned int sizePerPalette = 1 << nclr->nBits;
+		for (int i = 0; i < nPalettes; i++) {
+			memcpy(nclr->colors + (idxTable[i] << nclr->nBits), plttSrc + (i << nclr->nBits), sizePerPalette * sizeof(COLOR));
+		}
+
+		unsigned int dataSize = (*(uint32_t *) (pltt + 0x8)) / sizeof(COLOR);
+		unsigned int realDataSize = nPalettes << nclr->nBits;
+		if (dataSize != realDataSize && dataSize == (nclr->nColors - realDataSize)) nclr->g2dBug = 1;
+		nclr->compressedPalette = 1;
 	}
-	memcpy(nclr->colors, pltt + dataOffset, nColors * 2);
+
 	return 0;
 }
 
@@ -265,41 +278,128 @@ int PalReadFile(NCLR *nclr, LPCWSTR path) {
 	return ObjReadFile(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) PalRead);
 }
 
+static uint16_t *PalConstructDataOutput(NCLR *nclr, unsigned int *size, uint16_t **pOutIndexTable, unsigned int *pSizeIndexTable) {
+	if (!nclr->compressedPalette) {
+		//palette compression not used, write directly
+		uint16_t *buf = (uint16_t *) calloc(nclr->nColors, sizeof(COLOR));
+		memcpy(buf, nclr->colors, nclr->nColors * sizeof(COLOR));
+		*size = nclr->nColors;
+
+		if (pOutIndexTable != NULL) *pOutIndexTable = NULL;
+		if (pSizeIndexTable != NULL) *pSizeIndexTable = 0;
+		return buf;
+	}
+
+	//count number of palettes
+	unsigned int sizePalette = 1 << nclr->nBits;
+	unsigned int nPalettes = (nclr->nColors + sizePalette - 1) / sizePalette;
+
+	unsigned char *plttUsed = (unsigned char *) calloc(nPalettes, 1);
+	unsigned int nUsedPalettes = 0, dataBlockSize = 0;
+	for (unsigned int i = 0; i < nPalettes; i++) {
+		unsigned int nColsThisPalette = sizePalette;
+		if ((i << nclr->nBits) + nColsThisPalette > (unsigned int) nclr->nColors) {
+			nColsThisPalette = nclr->nColors - (i << nclr->nBits);
+		}
+
+		//determine used status by checking that the whole palette is zeroed. This is how
+		//official converters perform this check.
+		int used = 0;
+		for (unsigned int j = 0; j < nColsThisPalette; j++) {
+			if (nclr->colors[(i << nclr->nBits) + j]) {
+				used = 1;
+				break;
+			}
+		}
+		plttUsed[i] = used;
+		nUsedPalettes += used;
+		if (used) dataBlockSize += nColsThisPalette;
+	}
+
+	uint16_t *data = (uint16_t *) calloc(dataBlockSize, sizeof(COLOR));
+	unsigned int destI = 0;
+	for (unsigned int i = 0; i < nPalettes; i++) {
+		if (!plttUsed[i]) continue;
+
+		unsigned int thisPlttSize = 1 << nclr->nBits;
+		if ((i << nclr->nBits) + thisPlttSize > (unsigned int) nclr->nColors) {
+			thisPlttSize = nclr->nColors - (i << nclr->nBits);
+		}
+		memcpy(data + (destI << nclr->nBits), nclr->colors + (i << nclr->nBits), thisPlttSize * sizeof(COLOR));
+		destI++;
+	}
+	*size = dataBlockSize;
+
+	//construct index table
+	if (pOutIndexTable != NULL) {
+		uint16_t *table = (uint16_t *) calloc(nUsedPalettes, sizeof(uint16_t));
+		destI = 0;
+		for (unsigned int i = 0; i < nPalettes; i++) {
+			if (!plttUsed[i]) continue;
+
+			table[destI++] = i;
+		}
+
+		*pSizeIndexTable = nUsedPalettes;
+		*pOutIndexTable = table;
+	}
+	free(plttUsed);
+
+	return data;
+}
+
 int PalWriteNclr(NCLR *nclr, BSTREAM *stream) {
-	uint8_t plttHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
-	uint8_t pcmpHeader[] = { 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
+	unsigned char plttHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10, 0, 0, 0 };
+
+	unsigned int palDataSize, sizeIndexTable;
+	uint16_t *palIndexTable = NULL;
+	uint16_t *data = PalConstructDataOutput(nclr, &palDataSize, &palIndexTable, &sizeIndexTable);
+
+	//count number of palettes
+	unsigned int sizePalette = 1 << nclr->nBits;
+	unsigned int nPalettes = (nclr->nColors + sizePalette - 1) / sizePalette;
+
+	unsigned int usedPaletteSize = nclr->nColors;
+	if (nclr->compressedPalette && nclr->g2dBug) {
+		//replicate converter bug
+		usedPaletteSize = nclr->nColors - (sizeIndexTable << nclr->nBits);
+	}
 
 	if (nclr->nBits == 8) *(uint32_t *) (plttHeader + 0x0) = 4;
 	else *(uint32_t *) (plttHeader + 0x0) = 3;
 	*(uint32_t *) (plttHeader + 0x4) = nclr->extPalette;
-	*(uint32_t *) (plttHeader + 0x8) = nclr->totalSize;
-
-	*(uint16_t *) (pcmpHeader + 0) = nclr->nPalettes;
+	*(uint32_t *) (plttHeader + 0x8) = usedPaletteSize * sizeof(COLOR);
 
 	NnsStream nnsStream;
 	NnsStreamCreate(&nnsStream, "NCLR", 1, 0, NNS_TYPE_G2D, NNS_SIG_LE);
 	NnsStreamStartBlock(&nnsStream, "PLTT");
 	NnsStreamWrite(&nnsStream, plttHeader, sizeof(plttHeader));
-	NnsStreamWrite(&nnsStream, nclr->colors, nclr->nColors * sizeof(COLOR));
+	NnsStreamWrite(&nnsStream, data, palDataSize * sizeof(COLOR));
 	NnsStreamEndBlock(&nnsStream);
 
-	if (nclr->nPalettes && nclr->idxTable != NULL) {
+	if (nclr->compressedPalette) {
+		unsigned char pcmpHeader[] = { 0, 0, 0xEF, 0xBE, 0x8, 0, 0, 0 };
+		*(uint16_t *) (pcmpHeader + 0) = sizeIndexTable;
+
 		NnsStreamStartBlock(&nnsStream, "PCMP");
 		NnsStreamWrite(&nnsStream, pcmpHeader, sizeof(pcmpHeader));
-		NnsStreamWrite(&nnsStream, nclr->idxTable, nclr->nPalettes * 2);
+		NnsStreamWrite(&nnsStream, palIndexTable, sizeIndexTable * sizeof(uint16_t));
 		NnsStreamEndBlock(&nnsStream);
 	}
 
 	NnsStreamFinalize(&nnsStream);
 	NnsStreamFlushOut(&nnsStream, stream);
 	NnsStreamFree(&nnsStream);
+
+	free(data);
+	if (palIndexTable != NULL) free(palIndexTable);
 	return 0;
 }
 
 int PalWriteNcl(NCLR *nclr, BSTREAM *stream) {
 	uint8_t paltHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	*(uint32_t *) (paltHeader + 0x0) = nclr->nColors / nclr->nPalettes;
-	*(uint32_t *) (paltHeader + 0x4) = nclr->nPalettes;
+	*(uint32_t *) (paltHeader + 0x0) = 1 << nclr->nBits;
+	*(uint32_t *) (paltHeader + 0x4) = nclr->nColors >> nclr->nBits;
 
 	NnsStream nnsStream;
 	NnsStreamCreate(&nnsStream, "NCCL", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
@@ -329,7 +429,10 @@ int PalWriteHudson(NCLR *nclr, BSTREAM *stream) {
 }
 
 int PalWriteBin(NCLR *nclr, BSTREAM *stream) {
-	bstreamWrite(stream, nclr->colors, nclr->nColors * 2);
+	unsigned int dataSize = 0;
+	uint16_t *data = PalConstructDataOutput(nclr, &dataSize, NULL, NULL);
+	bstreamWrite(stream, data, dataSize * sizeof(COLOR));
+	free(data);
 	return 0;
 }
 
