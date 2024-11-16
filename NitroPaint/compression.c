@@ -673,70 +673,106 @@ unsigned char *CxDecompressHuffman(const unsigned char *buffer, unsigned int siz
 
 // ----- RLE Routines
 
+typedef struct CxiRlNode_ {
+	uint32_t weight : 31; // weight of this node
+	uint32_t isRun  :  1; // is node compressed run
+	uint8_t length  :  8; // length of node in bytes
+} CxiRlNode;
+
+static unsigned int CxiFindRlRun(const unsigned char *buffer, unsigned int size, unsigned int maxSize) {
+	if (maxSize > size) maxSize = size;
+	if (maxSize == 0) return 0;
+
+	unsigned char first = buffer[0];
+	for (unsigned int i = 1; i < maxSize; i++) {
+		if (buffer[i] != first) return i;
+	}
+	return maxSize;
+}
+
 unsigned char *CxCompressRL(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
-	//worst-case size: 4+size*129/128
-	int maxSize = 4 + size + (size + 127) / 128 + 3;
-	unsigned char *out = (unsigned char *) calloc(maxSize, 1);
+	//construct a graph
+	CxiRlNode *nodes = (CxiRlNode *) calloc(size, sizeof(CxiRlNode));
 
-	*(uint32_t *) out = 0x30 | (size << 8);
-	unsigned int srcOfs = 0, dstOfs = 4;
-	while (srcOfs < size) {
-		unsigned char b = buffer[srcOfs];
+	unsigned int pos = size;
+	while (pos--) {
+		CxiRlNode *node = nodes + pos;
 
-		//scan forward - if found >= 3 bytes, make RL block
-		unsigned int blockSize = 1;
-		for (unsigned int i = 1; i < 130 && (srcOfs + i) < size; i++) {
-			if (buffer[srcOfs + i] == b) {
-				blockSize++;
-			} else {
-				break;
-			}
-		}
+		//find longest run up to 130 bytes
+		unsigned int runLength = CxiFindRlRun(buffer + pos, size - pos, 130);
+		
+		unsigned int bestLength = 1, bestCost = UINT_MAX, bestRun = 0;
+		if (runLength >= 3) {
+			//meets threshold, explore run lengths.
+			unsigned int tmpLength = runLength;
+			bestRun = 1;
+			while (tmpLength >= 3) {
+				unsigned int cost = 2;
+				if ((pos + tmpLength) < size) cost += nodes[pos + tmpLength].weight;
 
-		//if blockSize >= 3, write RL block
-		if (blockSize >= 3) {
-			out[dstOfs++] = 0x80 | (blockSize - 3);
-			out[dstOfs++] = b;
-			srcOfs += blockSize;
-			continue;
-		}
-
-		//else, scan bytes until we reach a run of 3
-		int foundRun = 0;
-		unsigned int runOffset = 0;
-		for (unsigned int i = 1; i < 128 && (srcOfs + i) < size; i++) {
-			unsigned char c = buffer[srcOfs + i];
-			blockSize = 1;
-			for (unsigned int j = 1; j < 3 && (srcOfs + i + j) < size; j++) {
-				if (buffer[srcOfs + i + j] == c) {
-					blockSize++;
-				} else {
-					break;
+				if (cost < bestCost) {
+					bestCost = cost;
+					bestLength = tmpLength;
 				}
-			}
 
-			if (blockSize == 3) {
-				foundRun = 1;
-				runOffset = i;
-				break;
+				tmpLength--;
 			}
 		}
 
-		//if no run found, copy max bytes
-		if (!foundRun) {
-			runOffset = 128;
-			if (srcOfs + runOffset > size) runOffset = size - srcOfs;
+		//explore cost of storing a byte run
+		unsigned int tmpLength = 0x80;
+		if ((pos + tmpLength) > size) tmpLength = size - pos;
+		while (tmpLength >= 1) {
+			unsigned int cost = (1 + tmpLength);
+			if ((pos + tmpLength) < size) cost += nodes[pos + tmpLength].weight;
+
+			if (cost < bestCost) {
+				bestCost = cost;
+				bestLength = tmpLength;
+				bestRun = 0; // best is not a run
+			}
+			tmpLength--;
 		}
 
-		//write uncompressed block
-		out[dstOfs++] = (runOffset - 1) & 0x7F;
-		memcpy(out + dstOfs, buffer + srcOfs, runOffset);
-		srcOfs += runOffset;
-		dstOfs += runOffset;
+		//put best
+		node->weight = bestCost;
+		node->length = bestLength;
+		node->isRun = bestRun;
 	}
 
-	*compressedSize = dstOfs;
-	out = realloc(out, dstOfs);
+	//produce RL encoding
+	pos = 0;
+	unsigned int outLength = 4;
+	while (pos < size) {
+		CxiRlNode *node = nodes + pos;
+
+		if (node->isRun) outLength += 2;
+		else             outLength += 1 + node->length;
+		pos += node->length;
+	}
+
+	unsigned char *out = (unsigned char *) calloc(outLength, 1);
+	*(uint32_t *) out = 0x30 | (size << 8);
+
+	pos = 0;
+	unsigned int outpos = 4;
+	while (pos < size) {
+		CxiRlNode *node = nodes + pos;
+
+		if (node->isRun) {
+			out[outpos++] = 0x80 | (node->length - 3);
+			out[outpos++] = buffer[pos];
+		} else {
+			out[outpos++] = 0x00 | (node->length - 1);
+			memcpy(out + outpos, buffer + pos, node->length);
+			outpos += node->length;
+		}
+		pos += node->length;
+	}
+
+	free(nodes);
+
+	*compressedSize = outLength;
 	return out;
 }
 
