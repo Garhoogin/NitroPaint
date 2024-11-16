@@ -47,13 +47,25 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndCellAdd;
 } NCERVIEWERDATA;
 
+
+
+#define MAPPING_2D               0
+#define MAPPING_1D_32K           1
+#define MAPPING_1D_64K           2
+#define MAPPING_1D_128K          3
+#define MAPPING_1D_256K          4
+
 //NitroPaint OBJ clipboard data
 typedef struct NP_OBJ_ {
-	int nOBJ;
-	int xMin;
-	int yMin;
-	int width;
-	int height;
+	int xMin;                            // minimal X coordinate of bounding box
+	int yMin;                            // minimal Y coordinate of bounding box
+	int width;                           // width of bounding box
+	int height;                          // height of bounding box
+
+	uint32_t offsObjData[5];             // offsets to OBJ data in 6-byte units (for each mapping mode)
+	uint16_t presenceMask;               // presence of OBJ data for each mapping mode
+	uint16_t nObj[5];                    // number of OBJ for each mapping mode
+
 	uint16_t attr[0];
 } NP_OBJ;
 

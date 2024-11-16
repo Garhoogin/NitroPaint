@@ -471,9 +471,9 @@ COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, 
 	if (hDib == NULL && hPng == NULL) {
 		*pWidth = 0;
 		*pHeight = 0;
-		*indexed = NULL;
-		*pplt = NULL;
-		*pPaletteSize = 0;
+		if (indexed != NULL) *indexed = NULL;
+		if (pplt != NULL) *pplt = NULL;
+		if (pPaletteSize != NULL) *pPaletteSize = 0;
 		return NULL;
 	}
 
@@ -511,9 +511,11 @@ COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, 
 		//return DIB
 		*pWidth = dibWidth;
 		*pHeight = dibHeight;
-		*pplt = dibPalette;
-		*indexed = dibIndex;
-		*pPaletteSize = dibPaletteSize;
+		if (pplt != NULL) *pplt = dibPalette;
+		else free(dibPalette);
+		if (indexed != NULL) *indexed = dibIndex;
+		else free(dibIndex);
+		if (pPaletteSize != NULL) *pPaletteSize = dibPaletteSize;
 		return pxDib;
 	}
 
@@ -545,9 +547,11 @@ COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, 
 
 		*pWidth = pngWidth;
 		*pHeight = pngHeight;
-		*pplt = pngPalette;
-		*indexed = pngIndex;
-		*pPaletteSize = pngPaletteSize;
+		if (pplt != NULL) *pplt = pngPalette;
+		else free(pngPalette);
+		if (indexed != NULL) *indexed = pngIndex;
+		else free(pngIndex);
+		if (pPaletteSize != NULL) *pPaletteSize = pngPaletteSize;
 		return pxPng;
 	} else {
 		if (pxPng != NULL) free(pxPng);
@@ -556,9 +560,11 @@ COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, 
 
 		*pWidth = dibWidth;
 		*pHeight = dibHeight;
-		*pplt = dibPalette;
-		*indexed = dibIndex;
-		*pPaletteSize = dibPaletteSize;
+		if (pplt != NULL) *pplt = dibPalette;
+		else free(dibPalette);
+		if (indexed != NULL) *indexed = dibIndex;
+		else free(dibIndex);
+		if (pPaletteSize != NULL) *pPaletteSize = dibPaletteSize;
 		return pxDib;
 	}
 }

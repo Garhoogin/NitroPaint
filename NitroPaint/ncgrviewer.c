@@ -15,6 +15,7 @@
 #include "bggen.h"
 #include "ui.h"
 #include "struct.h"
+#include "cellgen.h"
 
 #include "preview.h"
 
@@ -402,94 +403,76 @@ static int ChrViewerObjDimensionToSize(int width, int height) {
 	return 0; // invalid shape?
 }
 
-static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
-	int selX, selY, selW, selH;
-	TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
-
-	//allocate max
-	uint16_t *obj = (uint16_t *) calloc(selW * selH, 6 * sizeof(uint16_t));
-	int nOBJ = 0;
-
-	//OBJ origin
-	int startX = -(selW * 8 / 2);
-	int startY = -(selH * 8 / 2);
-
-	//construct rectangle from set of OAM objects
-	for (int y = 0; y < selH;) {
+static OBJ_BOUNDS *ChrViewerGenObjSplit(int nChrX, int nChrY, int xMin, int yMin, int maxW, int maxH, int consider1D, int *pnObj) {
+	//split region into OBJ.
+	int maxObj = nChrX * nChrY, nOBJ = 0;
+	OBJ_BOUNDS *bounds = (OBJ_BOUNDS *) calloc(maxObj, sizeof(OBJ_BOUNDS));
+	
+	for (int y = 0; y < nChrY;) {
 		//compute height of row
-		int rowY = startY + y * 8;
-		int rowHeight = 8;
-		if ((y + rowHeight) > selH) rowHeight = 4;
-		if ((y + rowHeight) > selH) rowHeight = 2;
-		if ((y + rowHeight) > selH) rowHeight = 1;
+		int rowY = yMin + y * 8;
+		int rowHeight = maxH;
+		if ((y + rowHeight) > nChrY) rowHeight = 4;
+		if ((y + rowHeight) > nChrY) rowHeight = 2;
+		if ((y + rowHeight) > nChrY) rowHeight = 1;
 
-		for (int x = 0; x < selW;) {
-			int colX = startX + x * 8;
-			int colWidth = 8;
-			if ((x + colWidth) > selW) colWidth = 4;
-			if ((x + colWidth) > selW) colWidth = 2;
-			if ((x + colWidth) > selW) colWidth = 1;
+		for (int x = 0; x < nChrX;) {
+			//compute width of column
+			int colX = xMin + x * 8;
+			int colWidth = maxW;
+			if ((x + colWidth) > nChrX) colWidth = 4;
+			if ((x + colWidth) > nChrX) colWidth = 2;
+			if ((x + colWidth) > nChrX) colWidth = 1;
 
-			int chno = (selX + x) + (selY + y) * data->ncgr.tilesX;
-			int pltt = ChrViewerGetCharPalette(data, selX + x, selY + y);
-			if (data->ncgr.nBits == 8) chno <<= 1;
-			
+			//put oBJ
+			OBJ_BOUNDS *bound = &bounds[nOBJ++];
+			bound->x = colX;
+			bound->y = rowY;
+			bound->width = colWidth;
+			bound->height = rowHeight;
+
 			//check valid size
 			if (colWidth <= 4 && rowHeight <= 4 || colWidth == rowHeight || (colWidth == 8 && rowHeight == 4) || (colWidth == 4 && rowHeight == 8)) {
-				int shape = ChViewerObjDimensionToShape(colWidth, rowHeight);
-				int size = ChrViewerObjDimensionToSize(colWidth, rowHeight);
-
-				//valid size
-				uint16_t attr[3] = { 0 };
-				attr[0] = 0x0000 | (rowY & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
-				attr[1] = 0x0000 | (colX & 0x01FF) | (size << 14);
-				attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
-
-				memcpy(obj + nOBJ * 3, attr, sizeof(attr));
-				nOBJ++;
+				//valid OBJ size, no further action needed
 			} else {
-				//invalid size (64x something, or something x64)
-				//can reach a valid OBJ size by dividing the longer dimension in half.
-				int objW = colWidth, objH = rowHeight;
-				int wide = objW > objH;
-				if (wide) objW /= 2;
-				else objH /= 2;
-
-				int shape = ChViewerObjDimensionToShape(objW, objH);
-				int size = ChrViewerObjDimensionToSize(objW, objH);
-				int objX = colX, objY = rowY;
-
-				//create 2 OBJ of same size
-				uint16_t attr[3] = { 0 };
-				attr[0] = 0x0000 | (objY & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
-				attr[1] = 0x0000 | (objX & 0x01FF) | (size << 14);
-				attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
-
-				//add first oBJ
-				memcpy(obj + nOBJ * 3, attr, sizeof(attr));
-				nOBJ++;
-
-				int x2, y2;
-				if (wide) {
-					objX += objW * 8;
-					x2 = x + objW;
-					y2 = y;
+				//invalid OBJ size, divide OBJ in half to make it more square-like
+				if (colWidth > rowHeight) {
+					bound->width /= 2;
 				} else {
-					objY += objH * 8;
-					x2 = x;
-					y2 = y + objH;
+					bound->height /= 2;
 				}
-				chno = (selX + x2) + (selY + y2) * data->ncgr.tilesX;
-				pltt = ChrViewerGetCharPalette(data, selX + x2, selY + y2);
-				if (data->ncgr.nBits == 8) chno <<= 1;
 				
-				attr[0] = 0x0000 | (objY & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
-				attr[1] = 0x0000 | (objX & 0x01FF) | (size << 14);
-				attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
+				//add OBJ for second half
+				OBJ_BOUNDS *bound2 = &bounds[nOBJ++];
+				bound2->x = bound->x;
+				bound2->y = bound->y;
+				bound2->width = bound->width;
+				bound2->height = bound->height;
+				if (colWidth > rowHeight) {
+					bound2->x += bound->width * 8;
+				} else {
+					bound2->y += bound->height * 8;
+				}
 
-				//add seond OBJ
-				memcpy(obj + nOBJ * 3, attr, sizeof(attr));
-				nOBJ++;
+				if (consider1D && colWidth == 8 && rowHeight == 2) {
+					//since OBJ data is being created for 1D mapping, when splitting, we must ensure that
+					//we do not break a 64x16 OBJ into two 32x16 OBJ, since this would break the reconstruction
+					//of graphics data. In this case, we must break it into 4 OBJ of 32x8.
+					bound->height /= 2;
+					bound2->height /= 2;
+
+					OBJ_BOUNDS *bound3 = &bounds[nOBJ++];
+					bound3->x = bound->x;
+					bound3->y = bound->y + bound->height * 8;
+					bound3->width = bound->width;
+					bound3->height = bound->height;
+
+					OBJ_BOUNDS *bound4 = &bounds[nOBJ++];
+					bound4->x = bound2->x;
+					bound4->y = bound2->y + bound2->height * 8;
+					bound4->width = bound3->width;
+					bound4->height = bound3->height;
+				}
 			}
 
 			x += colWidth;
@@ -497,15 +480,116 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 		y += rowHeight;
 	}
 
+	//shrink alloc
+	bounds = realloc(bounds, nOBJ * sizeof(OBJ_BOUNDS));
+	*pnObj = nOBJ;
+	return bounds;
+}
+
+static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
+	int selX, selY, selW, selH;
+	TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
+
+	NCGR *ncgr = &data->ncgr;
+
+	//OBJ origin
+	int startX = -(selW * 8 / 2);
+	int startY = -(selH * 8 / 2);
+
+	int nTotalObj = 0;
+	uint16_t *attrForMapping[5] = { 0 };
+	uint16_t nObjForMapping[5] = { 0 };
+	uint16_t presenceMask = 0;
+
+	//get OBJ split
+	for (int j = 0; j < 5; j++) {
+		//for 2D mapping, we can freely copy OBJ sizes of any dimension.
+		int maxObjW = 8, maxObjH = 8;
+		if (j != MAPPING_2D) {
+			//when 1D mapping is used, though, graphics do not follow the required order. They may, however,
+			//if we select the whole width of the graphics area, and that width is the size of a valid OBJ.
+
+			if (selW == ncgr->tilesX && (ncgr->tilesX == 1 || ncgr->tilesX == 2 || ncgr->tilesX == 4 || ncgr->tilesX == 8)) {
+				//good in all scenarios except when the width is 8 (64px) and an OBJ of 16px height is created.
+				//This 64x16 OBJ will need to be split due to being an invalid size, thus breaking the mapping
+				//because it is more than 8px (1chr) tall. This will be accounted for when creating the split.
+			} else {
+				//limit OBJ height to 1 to preserve graphics
+				maxObjH = 1;
+			}
+		}
+
+		int granularity = 1;
+		switch (j) {
+			case MAPPING_1D_64K:
+				granularity = 2;
+				break;
+			case MAPPING_1D_128K:
+				granularity = 4;
+				break;
+			case MAPPING_1D_256K:
+				granularity = 8;
+				break;
+		}
+
+		int nObj = 0, badObj = 0;
+		OBJ_BOUNDS *bounds = ChrViewerGenObjSplit(selW, selH, startX, startY, maxObjW, maxObjH, j != MAPPING_2D, &nObj);
+		uint16_t *obj = (uint16_t *) calloc(nObj, 6 * sizeof(uint16_t));
+		for (int i = 0; i < nObj; i++) {
+			OBJ_BOUNDS *bound = &bounds[i];
+			int x = (bound->x - startX) / 8;
+			int y = (bound->y - startY) / 8;
+
+			int chno = (selX + x) + (selY + y) * data->ncgr.tilesX;
+			int pltt = ChrViewerGetCharPalette(data, selX + x, selY + y);
+			if (data->ncgr.nBits == 8) chno <<= 1;
+
+			if (chno % granularity) {
+				//cannot reproduce cell
+				badObj = 1;
+				break;
+			}
+			chno /= granularity;
+
+			int shape = ChViewerObjDimensionToShape(bound->width, bound->height);
+			int size = ChrViewerObjDimensionToSize(bound->width, bound->height);
+
+			uint16_t *attr = obj + i * 3;
+			attr[0] = 0x0000 | (bound->y & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
+			attr[1] = 0x0000 | (bound->x & 0x01FF) | (size << 14);
+			attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
+		}
+		free(bounds);
+
+		if (!badObj) {
+			nTotalObj += nObj;
+			nObjForMapping[j] = nObj;
+			attrForMapping[j] = obj;
+			presenceMask |= 1 << j;
+		} else {
+			free(obj);
+		}
+	}
+
 	//create clipboard data
-	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + 6 * nOBJ, 1);
-	memcpy(cpy->attr, obj, nOBJ * 6);
+	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + 6 * nTotalObj, 1);
 	cpy->xMin = startX;
 	cpy->yMin = startY;
 	cpy->width = selW * 8;
 	cpy->height = selH * 8;
-	cpy->nOBJ = nOBJ;
-	free(obj);
+	memcpy(cpy->nObj, nObjForMapping, sizeof(nObjForMapping));
+	cpy->presenceMask = presenceMask;
+
+	unsigned int offsDest = 0;
+	for (int i = 0; i < 5; i++) {
+		if (attrForMapping[i] != NULL) {
+			memcpy(cpy->attr + offsDest * 3, attrForMapping[i], nObjForMapping[i] * 6);
+			cpy->offsObjData[i] = offsDest;
+
+			free(attrForMapping[i]);
+			offsDest += nObjForMapping[i];
+		}
+	}
 
 	CellViewerCopyObjData(cpy);
 	free(cpy);

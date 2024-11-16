@@ -607,6 +607,43 @@ static int CellviewerGetObjClipboardFormat(void) {
 	return sObjClipboardFormat;
 }
 
+static int CellViewerObjVramMappingToID(int mapping) {
+	switch (mapping) {
+		case GX_OBJVRAMMODE_CHAR_2D:
+			return MAPPING_2D;
+		case GX_OBJVRAMMODE_CHAR_1D_32K:
+			return MAPPING_1D_32K;
+		case GX_OBJVRAMMODE_CHAR_1D_64K:
+			return MAPPING_1D_64K;
+		case GX_OBJVRAMMODE_CHAR_1D_128K:
+			return MAPPING_1D_128K;
+		case GX_OBJVRAMMODE_CHAR_1D_256K:
+			return MAPPING_1D_256K;
+	}
+	return 0;
+}
+
+static int CellViewerIdToObjVramMode(int id) {
+	switch (id) {
+		case MAPPING_2D:
+			return GX_OBJVRAMMODE_CHAR_2D;
+		case MAPPING_1D_32K:
+			return GX_OBJVRAMMODE_CHAR_1D_32K;
+		case MAPPING_1D_64K:
+			return GX_OBJVRAMMODE_CHAR_1D_64K;
+		case MAPPING_1D_128K:
+			return GX_OBJVRAMMODE_CHAR_1D_128K;
+		case MAPPING_1D_256K:
+			return GX_OBJVRAMMODE_CHAR_1D_256K;
+	}
+	return 0;
+}
+
+static int CellViewerClipboardHasMapping(NP_OBJ *obj, int mapping) {
+	int id = CellViewerObjVramMappingToID(mapping);
+	return (obj->presenceMask & (1 << id)) != 0;
+}
+
 static uint16_t *CellViewerGetSelectedOamAttributes(NCERVIEWERDATA *data, int *pnOBJ) {
 	NCER_CELL *cell = CellViewerGetCurrentCell(data);
 	if (cell == NULL) {
@@ -650,6 +687,11 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	free(tmpCell);
 	free(selAttr);
 
+	//cell renders inverted color channel order, so flip themh here.
+	for (int i = 0; i < 512 * 256; i++) {
+		buf[i] = REVERSE(buf[i]);
+	}
+
 	//crop to view
 	int minX, minY, width, height;
 	COLOR32 *crop = CellViewerCropRenderedCell(buf, 512, 256, &minX, &minY, &width, &height);
@@ -672,13 +714,16 @@ static void CellViewerCopy(NCERVIEWERDATA *data) {
 
 	int nSel = 0;
 	int *sel = CellViewerGetSelectedOamObjects(data, &nSel);
+	int mappingID = CellViewerObjVramMappingToID(data->ncer.mappingMode);
 	
 	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + nSel * 6, 1);
 	for (int i = 0; i < nSel; i++) {
 		int ii = sel[i];
 		memcpy(cpy->attr + i * 3, cell->attr + ii * 3, 6);
 	}
-	cpy->nOBJ = nSel;
+	cpy->nObj[mappingID] = nSel;
+	cpy->presenceMask = 1 << mappingID;
+	cpy->offsObjData[mappingID] = 0;
 
 	//get bounding box size of selection
 	int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
@@ -702,7 +747,6 @@ static void CellViewerCopy(NCERVIEWERDATA *data) {
 	CellViewerCopyObjData(cpy);
 	free(cpy);
 
-	//TODO: copy image
 	CellViewerCopyDIB(data);
 
 	CloseClipboard();
@@ -716,57 +760,96 @@ static void CellViewerPaste(NCERVIEWERDATA *data) {
 	OpenClipboard(data->hWnd);
 
 	NP_OBJ *attr = CellViewerGetCopiedObjData();
-	
 	if (attr != NULL) {
-		//mouse in-bounds?
-		POINT pt;
-		GetCursorPos(&pt);
-		ScreenToClient(data->hWndViewer, &pt);
+		if (CellViewerClipboardHasMapping(attr, data->ncer.mappingMode)) {
+			int mappingId = CellViewerObjVramMappingToID(data->ncer.mappingMode);
 
-		RECT rcClient;
-		GetClientRect(data->hWndViewer, &rcClient);
+			//mouse in-bounds?
+			POINT pt;
+			GetCursorPos(&pt);
+			ScreenToClient(data->hWndViewer, &pt);
 
-		int scrollX, scrollY;
-		CellViewerPreviewGetScroll(data, &scrollX, &scrollY);
+			RECT rcClient;
+			GetClientRect(data->hWndViewer, &rcClient);
 
-		//get paste center
-		int pasteX = (pt.x + scrollX) / data->scale;
-		int pasteY = (pt.y + scrollY) / data->scale;
-		if (pasteX < 0 || pasteX >= 512 || pasteY < 0 || pasteY >= 256 || pt.x < 0 || pt.x >= rcClient.right || pt.y < 0 || pt.y >= rcClient.bottom) {
-			//fall back to pasting where selection was copied
-			pasteX = attr->xMin + attr->width / 2 + 256;
-			pasteY = attr->yMin + attr->height / 2 + 128;
+			int scrollX, scrollY;
+			CellViewerPreviewGetScroll(data, &scrollX, &scrollY);
+
+			//get paste center
+			int pasteX = (pt.x + scrollX) / data->scale;
+			int pasteY = (pt.y + scrollY) / data->scale;
+			if (pasteX < 0 || pasteX >= 512 || pasteY < 0 || pasteY >= 256 || pt.x < 0 || pt.x >= rcClient.right || pt.y < 0 || pt.y >= rcClient.bottom) {
+				//fall back to pasting where selection was copied
+				pasteX = attr->xMin + attr->width / 2 + 256;
+				pasteY = attr->yMin + attr->height / 2 + 128;
+			}
+			pasteX -= 256;
+			pasteY -= 128;
+
+			if (pasteX < -256 || pasteX >= 256 || pasteY < -128 || pasteY >= 128) {
+				//fall back to center of canvas
+				pasteX = 0;
+				pasteY = 0;
+			}
+
+			//paste to beginning of OBJ list (brings to front)
+			int nObj = attr->nObj[mappingId];
+			int offsObj = attr->offsObjData[mappingId];
+			cell->nAttribs += nObj;
+			cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 6);
+			memmove(cell->attr + 3 * nObj, cell->attr, (cell->nAttribs - nObj) * 6);
+			memcpy(cell->attr, attr->attr + 3 * offsObj, 6 * nObj);
+
+			//select
+			CellViewerDeselect(data);
+			int *sel = (int *) calloc(nObj, sizeof(int));
+			for (int i = 0; i < nObj; i++) sel[i] = i;
+			data->selectedOBJ = sel;
+			data->nSelectedOBJ = nObj;
+
+			//offset selection
+			int selDx = pasteX - (attr->xMin + attr->width / 2), selDy = pasteY - (attr->yMin + attr->height / 2);
+			CellViewerMoveSelection(data, selDx, selDy);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+		} else {
+			//does not have a clipboard for the current mapping mode
+			MessageBox(data->hWnd, L"Clipboard does not have data for the current mapping mode.", L"Error", MB_ICONERROR);
 		}
-		pasteX -= 256;
-		pasteY -= 128;
-
-		if (pasteX < -256 || pasteX >= 256 || pasteY < -128 || pasteY >= 128) {
-			//fall back to center of canvas
-			pasteX = 0;
-			pasteY = 0;
-		}
-
-		//paste to beginning of OBJ list (brings to front)
-		cell->nAttribs += attr->nOBJ;
-		cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 6);
-		memmove(cell->attr + 3 * attr->nOBJ, cell->attr, (cell->nAttribs - attr->nOBJ) * 6);
-		memcpy(cell->attr, attr->attr, 6 * attr->nOBJ);
-
-		//select
-		CellViewerDeselect(data);
-		int *sel = (int *) calloc(attr->nOBJ, sizeof(int));
-		for (int i = 0; i < attr->nOBJ; i++) sel[i] = i;
-		data->selectedOBJ = sel;
-		data->nSelectedOBJ = attr->nOBJ;
-
-		//offset selection
-		int selDx = pasteX - (attr->xMin + attr->width / 2), selDy = pasteY - (attr->yMin + attr->height / 2);
-		CellViewerMoveSelection(data, selDx, selDy);
-		if (data->autoCalcBounds) CellViewerUpdateBounds(data);
-
 		free(attr);
+		CloseClipboard();
+	} else {
+		//check for image data
+		int width, height;
+		COLOR32 *px = GetClipboardBitmap(&width, &height, NULL, NULL, NULL);
+		if (px != NULL) {
+			//paste image data
+			CloseClipboard();
+
+			if (width > 512 || height > 256) {
+				MessageBox(data->hWnd, L"Image too large.", L"Too large", MB_ICONERROR);
+				free(px);
+				return;
+			}
+
+			//create generator dialog
+			HWND hWndMain = getMainWindow(data->hWnd);
+			HWND h = CreateWindow(L"NcerCreateCellClass", L"Generate Cell", WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
+				CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
+			SendMessage(h, NV_INITIALIZE, width | (height << 16), (LPARAM) px);
+			DoModal(h);
+
+			//update palette and character window
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+			SendMessage(nitroPaintStruct->hWndNcgrViewer, NV_UPDATEPREVIEW, 0, 0);
+			SendMessage(nitroPaintStruct->hWndNclrViewer, NV_UPDATEPREVIEW, 0, 0);
+
+			//free px
+			free(px);
+		} else {
+			//no clipboard data supported
+			CloseClipboard();
+		}
 	}
-	CloseClipboard();
 }
 
 
@@ -2185,7 +2268,7 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			//try get initial Optimization setting. Balances VRAM use with OBJ usage with a simple heuristic.
 			int bestUsage = 0, bestOptimization = 0;
 			if (px != NULL) {
-				for (int i = 0; i < 100; i++) {
+				for (int i = 0; i <= 100; i += 4) {
 					int nObj, nChars = 0;
 					OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, i, 0, 0, &nObj);
 					for (int i = 0; i < nObj; i++) nChars += (bounds[i].width * bounds[i].height) / 64;
@@ -2296,13 +2379,6 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrEditor);
 			NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(hWndNcerViewer);
 
-			/*int lastIndex = -1;
-			unsigned char zeroChar[64] = { 0 };
-			for (int i = 0; i < ncgr->nTiles; i++) {
-				if (memcmp(ncgr->tiles[i], zeroChar, sizeof(zeroChar)) != 0) {
-					lastIndex = i;
-				}
-			}*/
 			unsigned int lastIndex = CellViewerGetFirstUnusedCharacter(ncerViewerData, -1);
 			SetEditNumber(data->hWndCharacter, lastIndex);
 			break;
@@ -3254,12 +3330,25 @@ void CellViewerGraphicsUpdated(HWND hWndEditor) {
 	InvalidateRect(data->hWndViewer, NULL, FALSE);
 }
 
+static unsigned int CellViewerGetCopiedObjSize(NP_OBJ *obj) {
+	unsigned int clipboardSize = 0;
+	for (int i = 0; i < 5; i++) {
+		if (!(obj->presenceMask & (1 << i))) continue;
+
+		unsigned int n = obj->offsObjData[i] * 6 + obj->nObj[i] * 6;
+		if (n > clipboardSize) clipboardSize = n;
+	}
+	return clipboardSize + sizeof(NP_OBJ);
+}
+
 void CellViewerCopyObjData(NP_OBJ *obj) {
 	int fmt = CellviewerGetObjClipboardFormat();
 
-	HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, sizeof(NP_OBJ) + obj->nOBJ * 6);
+	unsigned int clipboardSize = CellViewerGetCopiedObjSize(obj);
+
+	HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, clipboardSize);
 	NP_OBJ *clip = (NP_OBJ *) GlobalLock(hGlobal);
-	memcpy(clip, obj, sizeof(NP_OBJ) + obj->nOBJ * 6);
+	memcpy(clip, obj, clipboardSize);
 
 	GlobalUnlock(hGlobal);
 	SetClipboardData(fmt, hGlobal);
@@ -3275,8 +3364,9 @@ NP_OBJ *CellViewerGetCopiedObjData(void) {
 	}
 	NP_OBJ *clip = (NP_OBJ *) GlobalLock(hGlobal);
 
-	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + clip->nOBJ * 6, 1);
-	memcpy(cpy, clip, sizeof(NP_OBJ) + clip->nOBJ * 6);
+	unsigned int size = CellViewerGetCopiedObjSize(clip);
+	NP_OBJ *cpy = (NP_OBJ *) calloc(size, 1);
+	memcpy(cpy, clip, size);
 
 	GlobalUnlock(hGlobal);
 	return cpy;
