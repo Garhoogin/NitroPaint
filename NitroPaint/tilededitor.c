@@ -1099,6 +1099,7 @@ void TedViewerOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wPar
 
 void TedViewerOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
 	ted->mouseDown = TRUE;
+	SetFocus(ted->hWnd);
 	SetCapture(ted->hWndViewer);
 
 	//hit test
