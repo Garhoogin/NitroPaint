@@ -196,13 +196,19 @@
 #define ID_CELLMENU_DOUBLESIZE          40208
 #define ID_CELLMENU_HFLIP               40209
 #define ID_CELLMENU_VFLIP               40210
+#define ID_CELLMENU_MOSAIC              40211
+#define ID_CELLMENU_BITS                40212
+#define ID_BITS_4BIT                    40213
+#define ID_BITS_8BIT                    40214
+#define ID_CELLMENU_ADDOBJ              40215
+#define ID_CELLMENU_CHARACTERINDEX      40216
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40211
+#define _APS_NEXT_COMMAND_VALUE         40217
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

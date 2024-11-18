@@ -8,11 +8,7 @@
 typedef struct NCERVIEWERDATA_ {
 	EDITOR_BASIC_MEMBERS;
 	NCER ncer;
-	int hoverX;
-	int hoverY;
 	int cell;
-	int oamStartX;
-	int oamStartY;
 	int showCellBounds;
 	int showGuidelines;
 	int autoCalcBounds;                  // automatically recalculate cell bounds
@@ -31,6 +27,7 @@ typedef struct NCERVIEWERDATA_ {
 	int selMoved;                        // has the selection moved in this gesture?
 	int *selectedOBJ;                    // array of selected OBJ indices
 	int nSelectedOBJ;                    // number of selected OBJ indices
+	int suppressObjListNotifications;    // suppress notifications for OBJ list
 
 	COLOR32 frameBuffer[256 * 512];      // buffer where the current cell is rendered
 	int covBuffer[256 * 512];            // coverage buffer for current cell render
@@ -43,6 +40,10 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndMappingMode;
 	HWND hWndShowBounds;                 // show cell bounds
 	HWND hWndAutoCalcBounds;             // auto-calculate bounds
+
+	HWND hWndShowObjButton;              // button to show OBJ list
+	HWND hWndObjWindow;                  // window holding the OBJ list
+	HWND hWndObjList;                    // OBJ list
 
 	HWND hWndCellAdd;
 } NCERVIEWERDATA;
