@@ -1,25 +1,95 @@
 # NitroPaint
 
-NitroPaint is a general purpose DS graphics editor. It is capable of editing NCLR, NCGR, NCBR, NSCR, NCER, and NSBTX files.
+NitroPaint is a general purpose DS graphics editor. It supports a wide range of file formats. It is geared towards editing color palettes, character graphics, BG screen data, OBJ cell data, cell animations, textures, and texture archives. NitroPaint automatically detects if files are compressed if they are in one of the supported compression types, and automatically decompresses it (and recompresses on save). The file format is also automatically idenfitied if it is supported. Malformed or unsupported files may open as raw data when the file type cannot be determined.
 
-## NCLR Editor
+# Supported File Formats
 
-In the NCLR editor, click any color space to open a color chooser. Here is where you can change the color of this entry. Right click an entry and you get the options to row copy and row paste, which copies the row of the highlighted entry and pastes it respectively. Click and drag a color entry to reposition it in the file. Do this while holding Ctrl to move the entire row. Editing the NCLR will have its changes reflected in the NCGR, NSCR, and NCER windows, if open. To show where colors are used, right click a color and select Verify Color. This will flash the color in the open NCGR and NSCR.
+The list of file formats supported by NitroPaint is outlined as follows:
 
-## NCGR Editor
+| Type | Formats |
+| ---- | ------- |
+| Color Palette | NCLR, NCPR, NCL, ICL, ACL, 5PL, 5PC, Hudson, raw |
+| Character Graphics | NCGR, NCBR, NCG, ICG, ACG, Hudson, raw |
+| Background Screen | NSCR, NSC, ISC, ASC, Hudson, raw |
+| Cell | NCER, Hudson, Ghost Trick |
+| Cell Animation | NANR, Ghost Trick |
+| Texture | NNS TGA, 5TX, NTGA, Ghost Trick |
+| Texture Archive | NSBMD/NSBTX, BMD (Super Mario 64 DS) |
+| Mixed | BNR, MBB, 5BG, Time Ace |
 
-In the NCGR editor, click any tile to open the tile editor. Here you can select a color and draw in the tile pixel-by-pixel. Near the bottom of the NCGR window is the palette select. This changes which palette in the NCLR is used to display the NCGR in the editor. Next to that is the width select, which can change the width of an NCGR, which may make editing some parts easier. Right click on a tile to get the option to import a bitmap at that location. It can either create a new palette, overwriting the currently selected NCLR palette, or it can use the palette already being selected. Changes here are reflected in the NSCR and NCER windows if open. Zoom in/out and toggle gridlines in the View menu. Under File->Export Bitmap, you can export the NCGR file as a bmp image.
+The following are the supported compression formats:
 
-## NSCR Editor
+| Type | Formats |
+| ---- | ------- |
+| BIOS Standard | LZ, RLE, Huffman, Differential Filter |
+| Extended Formats | LZX, ASH |
+| Third Party | LZX Chunked (Lego Battles), Mario vs Donkey Kong, VLX (Pac Man World) |
 
-In the NSCR editor, click any tile to edit its palette or character location. Right click it to flip it horizontally or vertically. Under File->Export Bitmap, you can export the NSCR file as an image. The NSCR editor also allows flipping of selections, as well as mass editing of the selected area.
 
-## NCER Editor
+# BG Generator
 
-In the NCER editor, each object can be displayed, as well as each of its cells. In here you can edit the character origin and palette of each cell. Under File->Export Bitmap, you can export the currently viewed cell as a bitmap.
+The BG generator enables easy generation of background graphics data. It supports generating graphics in 4bpp Text, 8bpp Text, and 8bpp Affine Extended formats. Go to File->New->New BG, or drop an image file onto the editor and select "Generate BG". Enter the BG conversion settings here and click Convert to generate data.
 
-## NSBTX Editor
+The palette settings are on the top left of the window. The Palette Base setting sets the index of the first palette to generate. The Palettes field controls the number of palettes generated. The Palette Offset field controls the offset into each palette to use. Setting this to 4, for example, will not use the first 4 colors of each palette. Lastly, the Palette Size field controls the number of colors to use from each palette. 
 
-In the NSBTX editor, there are two windows on the left; one with the textures, and one with the palettes. Select a tetxure and its corresponding palette to preview that texture. On the top of the window will display the texture's format, size, and number of color entries in its palette. Click the replace button to replace the currently viewed texture with a Nitro TGA file. Under File->Export Bitmap, you can export the current selected texture as a Nitro TGA.
+On the right are the settings for generating graphics. The bit depth dropdown enables 4bpp or 8bpp data to be generated. Check the Dither checkbox to enable dithering of graphics, and select the dithering amount needed. The Tile Base field generates BG data assuming the charcater data will be loaded at an offset in VRAM, use this option to adjust for such cases. The Align Size field aligns the size of graphics data to a multiple of the character count specified, to make graphics more presentable in editor. This can be outright disabled to add no padding to the end. Lastly, when 8bpp graphics are generated, check the Affine Mode checkbox to generate data for an affine BG.
 
-Any questions, email me at declan.c.moore [at] gmail.com.
+In the Char Compression group, when enabled, the character compression reduces the number of unique graphical tiles in the background to the specified amount. On the right side, select the output file format that will be used. This can also be edited after the data is generated by using the File->Convert To dialog.
+
+
+# Color Palette Editor
+
+The color palette editor displays the color palette with each square in the editor for a color in the palette. Double click a color in the palette to edit that color. By default, the editor uses the 5 bits-per-channel color chooser to closely model the DS's color depth. This can be changed to use the Windows native color picker, though on committing a color, it will be rounded to the nearest representable color value.
+
+Make a selection by clicking a color and dragging the mouse cursor. Depending on if the selection mode is 1D or 2D, the selection will be a rectangular or linear shape. Press the `1` or `2` keys to switch selection modes. The selection can be moved by clicking and dragging. Hold the Control key while moving the selection to preserve graphics when moving the colors. You can select a single row of the palette by holding the control key and clicking a palette color.
+
+To examine where a color or set of colors are used, select the colors and press the V key, or right click and select "Verify Selection." This will flash the colors in the character graphics window to show where they are used.
+
+# Character Graphics Editor
+
+The graphics editor presents the graphics in a tiled manner. This applies to graphics stored in bitmap order as well. In the editor, the default edit mode is Selection. By pressing the E key, you can switch to the Eyedropper tool, which allows you to click a pixel in the editor window and select that color in the palette. Press P to switch to the Pen tool to draw pixels. Press F to use the Fill tool to fill a continuous range of pixels. Press T to switch to the Stamp tool to fill tiles with those from the selection.
+
+Switch the current viewing palette by using the Palette dropdown on the bottom of the editor. For formats that support storing attribute data, you may click the "Use Attribute Data" checkbox to display the graphics with the attribute data from the file. If no attribute data is present, then the graphics are presented using palette index zero. The palette index selection is not used in this mode.
+
+The graphics region can be extended by pressing the Resize button. This preserves the graphical qualities of the file, extending or shrinking it from the right or bottom. The Width dropdown allows the graphics to be reinterpreted at different widths. This does not preserve the graphical quality of the data, but instead preserves the byte representation of it. 
+
+You may import images into the editor by selecting a tile and right clicking there, then selecting the "Import Bitmap Here" option. This prompts you for an image file as input, and gives options for importing. Import 2D imports the image in a rectangular fashion, while Import 1D imports the tiles in a linear order starting at the selection point. 1D Import additionally allows Character Compression to be selected, and a maximum character count to be specified. Alternatively to using the context menu, you may paste an image from the clipboard as well.
+
+Select a whole row of graphical tiles by clicking on that row in the left margin, or select a whole column by clicking that column in the top margin. Select or deselect the whole view by clicking the top-left corner of the margins.
+
+# BG Screen Editor
+
+The BG Screen editor is presented in a similar way to the character graphics editor. It displays data in a tiled manner. The selection system is the same as in the graphics editor, though there are no tools for drawing pixel data here. You may paste selections from the character editor into the BG screen editor to generate screen data for the selection. 
+
+Select a range of tiles and then the commands on the right of the window are usable. The checkboxes next to the "Character " and "Palette" inputs enable those inputs. Clicking the Apply button applies the enabled settings to the whole range of the selection. Click Add to add the inputs to those of the selection, and Subtract to subtract from it. This can be used to re-base the palette indices or graphics data for a different load address.
+
+# Cell Editor
+
+The cell editor enables editing of 2D engine cell data made up of OBJ. On the left is the list of cells in the file, along with their OBJ count and a preview image. On the top, the mapping mode can be configured, as well as options for viewing and editing data. 
+
+Click on an OBJ to select it, or click and drag in the viewer to select a range of them. Click and drag the selection to move it around, or right click to open a list of editor commands for the selection. 
+
+You may copy graphics from the character graphics window into the cell editor, though this is only ideal for a cell using 2D mapping mode. Other mapping modes require excess OBJ to reproduce the graphics, or may not be able to reproduce them at all. To circumvent this, the "Generate Cell" button opens the cell generator dialog that creates a set of OBJ automatically based on input settings. The slider at the top of the window controls the OAM/VRAM size tradeoff used to generate the data. As you move the slider, see the OBJ count and character size change on the bottom of the dialog. Drag the slider to the far left to simply arrange the OBJ in a simple rectangular fashion. 
+
+Click the "OBJ List" button to show the OBJ list window. Here you can see each OBJ in the current cell listed, along with their attibribute data. These can be selected and edited here just the same as via the graphical view.
+
+# Cell Animation Editor
+
+In the cell animation editor, the left hand side of the editor displays the preview of the current frame of animation. On the right, you can select the current animation sequence, and add or remove animation sequences. Play the sequence by clicking "Play," or single step the sequence by clicking "Step." The list box on the left shows a listing of the animation frames in the sequence, and the controls to its right view the settings for that frame of animation. 
+
+# Texture Editor
+
+In the texture editor, the current texture preview is on the left, and the texture properties and commands on the right. When an image file is opened in the texture editor, it exists unconverted and must be converted before it is saved. Click the "Convert To..." button to open the conversion dialog where you select the texture format, palette size, and other parameters. Click Convert to start the conversion. Do note that 4x4 compression takes much longer than the other texture formats.
+
+On the right the editor will list the texture format, size of the color palette, and the usage of VRAM by the texture. When it is converted, it can then be saved.
+
+# Texture Archive Editor
+
+The texture archive editor places the list of textures and color palettes on the left, and the currently selected texture and palette are used to render the preview image on the right.
+
+Add a texture by clicking the Add button. By default it will only prompt for an already-converted texture, but in the file types dropdown you can select any image file. When a normal image file is opened, the editor prompts you to convert the texture on the fly. You may also add just a color palette from one of the supported color palette formats.
+
+You can export all the textures by clicking the "Export All" button. Since texture archive formats typically do not store which palettes belong to which textures, the editor attempts to map palettes to textures based on their name, the texture format, and size of the color palette. As such, it may not always be reliable, especially when one texture is made to be used with multiple palettes.
+
+You can examine the VRAM usage of the texture archive by clicking the "VRAM Use" button. This opens a window that shows the total usage of VRAM by both textures and color palettes. The texture VRAM usage is further broken up into texture image data and palette index data. The list boxes list the texture format and VRAM usage for each texture and color palette.
+
