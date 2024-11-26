@@ -268,7 +268,7 @@ void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE 
 	}
 }
 
-LPCWSTR textureFormatNames[] = { L"Invalid", L"NNS TGA", L"5TX", L"TDS", L"NTGA", NULL };
+LPCWSTR textureFormatNames[] = { L"Invalid", L"NNS TGA", L"5TX", L"TDS", L"NTGA", L"To Love-Ru", NULL };
 
 #pragma comment(lib, "Version.lib")
 
@@ -472,11 +472,46 @@ int TxIsValidNtga(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+static int TxIsValidToLoveRu(const unsigned char *buffer, unsigned int size) {
+	//check header
+	if (size < 0x28) return 0;
+	if (buffer[0] != 't' || buffer[1] != 'e' || buffer[2] != 'x' || buffer[3] != 0) return 0;
+
+	uint16_t fmt = *(uint16_t *) (buffer + 0x06);
+	uint16_t width = *(uint16_t *) (buffer + 0x08);
+	uint16_t height = *(uint16_t *) (buffer + 0x0A);
+	uint32_t offsPltt = *(uint32_t *) (buffer + 0x0C);
+	uint32_t sizePltt = *(uint32_t *) (buffer + 0x10);
+	uint32_t offsTexImage = *(uint32_t *) (buffer + 0x18);
+	uint32_t sizeTexImage = *(uint32_t *) (buffer + 0x1C);
+	uint32_t offsPlttIdx = *(uint32_t *) (buffer + 0x20);
+	uint32_t sizePlttIdx = *(uint32_t *) (buffer + 0x24);
+
+	if (fmt < 1 || fmt > 7) return 0;
+	if ((8 << width) > 1024) return 0;
+	if ((8 << height) > 1024) return 0;
+
+	if (offsTexImage >= size || (size - offsTexImage) < sizeTexImage) return 0;
+	if (fmt == CT_4x4) {
+		//check palette index fields
+		if (sizePlttIdx != (sizeTexImage / 2)) return 0;
+		if (offsPlttIdx == 0 || sizePlttIdx == 0) return 0;
+		if (offsPlttIdx >= size || (size - offsPlttIdx) < sizePlttIdx) return 0;
+	}
+	if (fmt != CT_DIRECT) {
+		//check texture palette fields
+		if (offsPltt >= size || (size - offsPltt) < sizePltt) return 0;
+		if (sizePltt & 1) return 0;
+	}
+	return 1;
+}
+
 int TxIdentify(const unsigned char *buffer, unsigned int size) {
 	if (TxIsValidNnsTga(buffer, size)) return TEXTURE_TYPE_NNSTGA;
 	if (TxIsValidIStudio(buffer, size)) return TEXTURE_TYPE_ISTUDIO;
 	if (TxIsValidTds(buffer, size)) return TEXTURE_TYPE_TDS;
 	if (TxIsValidNtga(buffer, size)) return TEXTURE_TYPE_NTGA;
+	if (TxIsValidToLoveRu(buffer, size)) return TEXTURE_TYPE_TOLOVERU;
 	return TEXTURE_TYPE_INVALID;
 }
 
@@ -693,6 +728,42 @@ int TxReadNtga(TextureObject *texture, const unsigned char *buffer, unsigned int
 	return 0;
 }
 
+int TxReadToLoveRu(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
+	TxInit(texture, TEXTURE_TYPE_TOLOVERU);
+
+	//? + 0x04
+	uint16_t fmt = *(uint16_t *) (buffer + 0x06);
+	uint16_t width = *(uint16_t *) (buffer + 0x08);
+	uint16_t height = *(uint16_t *) (buffer + 0x0A);
+	uint32_t offsPltt = *(uint32_t *) (buffer + 0x0C);
+	uint32_t sizePltt = *(uint32_t *) (buffer + 0x10);
+	//? + 0x14
+	uint32_t offsTexImage = *(uint32_t *) (buffer + 0x18);
+	uint32_t sizeTexImage = *(uint32_t *) (buffer + 0x1C);
+	uint32_t offsPlttIdx = *(uint32_t *) (buffer + 0x20);
+	uint32_t sizePlttIdx = *(uint32_t *) (buffer + 0x24);
+
+	texture->texture.texels.height = 8 << height;
+	texture->texture.texels.texImageParam = (width << 20) | (height << 23) | (fmt << 26);
+	texture->texture.texels.texel = (unsigned char *) calloc(sizeTexImage, 1);
+	memcpy(texture->texture.texels.texel, buffer + offsTexImage, sizeTexImage);
+
+	if (fmt != CT_DIRECT) {
+		texture->texture.palette.nColors = sizePltt / 2;
+		texture->texture.palette.pal = (COLOR *) calloc(sizePltt / 2, sizeof(COLOR));
+		memcpy(texture->texture.palette.pal, buffer + offsPltt, sizePltt);
+	}
+
+	if (fmt == CT_4x4) {
+		texture->texture.texels.cmp = (uint16_t *) calloc(sizePlttIdx, 1);
+		memcpy(texture->texture.texels.cmp, buffer + offsPlttIdx, sizePlttIdx);
+	}
+
+	//if (fmt != CT_DIRECT && fmt != CT_4x4) texture->texture.texels.texImageParam |= (1 << 29); // c0xp
+
+	return 0;
+}
+
 int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
 	int type = TxIdentify(buffer, size);
 	switch (type) {
@@ -704,6 +775,8 @@ int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int siz
 			return TxReadTds(texture, buffer, size);
 		case TEXTURE_TYPE_NTGA:
 			return TxReadNtga(texture, buffer, size);
+		case TEXTURE_TYPE_TOLOVERU:
+			return TxReadToLoveRu(texture, buffer, size);
 	}
 	return 1;
 }
@@ -979,6 +1052,50 @@ int TxWriteNtga(TextureObject *texture, BSTREAM *stream) {
 	return 0;
 }
 
+static int TxWriteToLoveRu(TextureObject *texture, BSTREAM *stream) {
+	unsigned char header[0x28] = { 't', 'e', 'x', 0 };
+
+	int texImageParam = texture->texture.texels.texImageParam;
+	int fmt = FORMAT(texImageParam);
+	unsigned int txelSize = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+
+	unsigned int offsPltt = 0, sizePltt = 0, offsTexImage = 0, sizeTexImage = 0, offsPlttIdx = 0, sizePlttIdx = 0;
+	sizeTexImage = txelSize;
+	if (FORMAT(texImageParam) != CT_DIRECT) {
+		sizePltt = texture->texture.palette.nColors * 2;
+		offsPltt = sizeof(header);
+		offsTexImage = offsPltt + sizePltt;
+		if (FORMAT(texImageParam) == CT_4x4) {
+			sizePlttIdx = txelSize / 2;
+			offsPlttIdx = offsTexImage + sizeTexImage;
+		}
+	} else {
+		offsTexImage = sizeof(header);
+	}
+
+	*(uint16_t *) (header + 0x06) = fmt;
+	*(uint16_t *) (header + 0x08) = (texImageParam >> 20) & 0x7;
+	*(uint16_t *) (header + 0x0A) = (texImageParam >> 23) & 0x7;
+	*(uint32_t *) (header + 0x0C) = offsPltt;
+	*(uint32_t *) (header + 0x10) = sizePltt;
+	*(uint32_t *) (header + 0x14) = (fmt == CT_DIRECT || fmt == CT_4x4 || fmt == CT_256COLOR) ? 1 : (texture->texture.palette.nColors);
+	*(uint32_t *) (header + 0x18) = offsTexImage;
+	*(uint32_t *) (header + 0x1C) = sizeTexImage;
+	*(uint32_t *) (header + 0x20) = offsPlttIdx;
+	*(uint32_t *) (header + 0x24) = sizePlttIdx;
+	bstreamWrite(stream, header, sizeof(header));
+	
+	if (FORMAT(texImageParam) != CT_DIRECT) {
+		bstreamWrite(stream, texture->texture.palette.pal, texture->texture.palette.nColors * 2);
+	}
+
+	bstreamWrite(stream, texture->texture.texels.texel, txelSize);
+	if (FORMAT(texImageParam) == CT_4x4) {
+		bstreamWrite(stream, texture->texture.texels.cmp, txelSize / 2);
+	}
+	return 0;
+}
+
 int TxWrite(TextureObject *texture, BSTREAM *stream) {
 	switch (texture->header.format) {
 		case TEXTURE_TYPE_NNSTGA:
@@ -989,6 +1106,8 @@ int TxWrite(TextureObject *texture, BSTREAM *stream) {
 			return TxWriteTds(texture, stream);
 		case TEXTURE_TYPE_NTGA:
 			return TxWriteNtga(texture, stream);
+		case TEXTURE_TYPE_TOLOVERU:
+			return TxWriteToLoveRu(texture, stream);
 	}
 	return 1;
 }
