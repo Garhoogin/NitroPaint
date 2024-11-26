@@ -132,6 +132,12 @@
     <ClCompile Include="tilededitor.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="struct.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="setosa.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ncgrviewer.h">
@@ -249,6 +255,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="tilededitor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="struct.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="setosa.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

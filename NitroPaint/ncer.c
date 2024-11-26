@@ -2,8 +2,9 @@
 #include "nclr.h"
 #include "ncgr.h"
 #include "nns.h"
+#include "setosa.h"
 
-LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Hudson", L"Ghost Trick", NULL };
+LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Setosa", L"Hudson", L"Ghost Trick", NULL };
 
 void CellInit(NCER *ncer, int format) {
 	ncer->header.size = sizeof(NCER);
@@ -699,12 +700,70 @@ static int CellWriteHudson(NCER *ncer, BSTREAM *stream) {
 	return 0;
 }
 
+static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
+	SetStream setStream;
+	SetStreamCreate(&setStream);
+
+	SetStreamStartBlock(&setStream, "CELL");
+
+	//write header
+	uint32_t header[2];
+	header[0] = ncer->nCells;
+	header[1] = ncer->mappingMode;
+	SetStreamWrite(&setStream, header, sizeof(header));
+
+	//build data directory
+	SetResDirectory dir;
+	SetResDirCreate(&dir, 0);
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = ncer->cells + i;
+
+		//get cell attributes
+		int cellAffine = 0, commonPalette = 0;
+		for (int j = 0; j < cell->nAttribs; j++) {
+			NCER_CELL_INFO info;
+			CellDecodeOamAttributes(&info, cell, j);
+
+			if (info.rotateScale) cellAffine = 1;
+			if (j == 0) commonPalette = info.palette;
+			else if (commonPalette != info.palette) commonPalette = -1;
+		}
+
+		//create OBJ data
+		unsigned char *cellData = calloc(0xC + 0x6 * cell->nAttribs, 1);
+		*(int16_t *) (cellData + 0x0) = cell->minX;
+		*(int16_t *) (cellData + 0x2) = cell->minY;
+		*(int16_t *) (cellData + 0x4) = cell->maxX;
+		*(int16_t *) (cellData + 0x6) = cell->maxY;
+		*(uint16_t *) (cellData + 0x8) = cell->nAttribs;
+		*(uint16_t *) (cellData + 0xA) = (commonPalette & 0xF) | ((commonPalette != -1) << 4) | (cellAffine << 5);
+		memcpy(cellData + 0xC, cell->attr, cell->nAttribs * 0x6);
+
+		SetResDirAdd(&dir, NULL, cellData, 0xC + 0x6 * cell->nAttribs);
+		free(cellData);
+	}
+
+	SetResDirFinalize(&dir);
+	SetResDirFlushOut(&dir, &setStream);
+	SetResDirFree(&dir);
+
+	SetStreamEndBlock(&setStream);
+
+	SetStreamFinalize(&setStream);
+	SetStreamFlushOut(&setStream, stream);
+	SetStreamFree(&setStream);
+
+	return 0;
+}
+
 int CellWrite(NCER *ncer, BSTREAM *stream) {
 	switch (ncer->header.format) {
 		case NCER_TYPE_NCER:
 			return CellWriteNcer(ncer, stream);
 		case NCER_TYPE_HUDSON:
 			return CellWriteHudson(ncer, stream);
+		case NCER_TYPE_SETOSA:
+			return CellWriteSetosa(ncer, stream);
 	}
 
 	return OBJ_STATUS_UNSUPPORTED;

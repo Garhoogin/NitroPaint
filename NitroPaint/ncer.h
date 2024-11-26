@@ -5,8 +5,9 @@
 
 #define NCER_TYPE_INVALID    0
 #define NCER_TYPE_NCER       1
-#define NCER_TYPE_HUDSON     2
-#define NCER_TYPE_GHOSTTRICK 3
+#define NCER_TYPE_SETOSA     2
+#define NCER_TYPE_HUDSON     3
+#define NCER_TYPE_GHOSTTRICK 4
 
 extern LPCWSTR cellFormatNames[];
 
