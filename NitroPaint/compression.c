@@ -101,6 +101,30 @@ static unsigned int CxiSearchLZ(const unsigned char *buffer, unsigned int size, 
 	return biggestRun;
 }
 
+static int CxiLzConfirmMatch(const unsigned char *buffer, unsigned int size, unsigned int pos, unsigned int distance, unsigned int length) {
+	(void) size;
+
+	//confirm that the <length, distance> pair matches length bytes at pos in the buffer.
+	if (length <= distance) {
+		//if the source and destination don't overlap, simple memcmp
+		return memcmp(buffer + pos, buffer + pos - distance, length) == 0;
+	}
+
+	//else, length > distance, compare the leading bytes repeating
+	unsigned int nTotalCompare = length;
+	unsigned int compareSrc = pos;
+	while (nTotalCompare) {
+		//get number of byte to compare this run
+		unsigned int nCompare = nTotalCompare;
+		if (nCompare > distance) nCompare = distance;
+
+		if (memcmp(buffer + compareSrc, buffer + pos - distance, nCompare) != 0) return 0;
+		nTotalCompare -= nCompare;
+		compareSrc += nCompare;
+	}
+	return 1;
+}
+
 
 // ----- LZ77 Routines
 
@@ -1811,11 +1835,43 @@ static CxiLzToken *CxiMvdkTokenizeDeflate(const unsigned char *buffer, unsigned 
 }
 
 
+typedef struct CxiHuffmanCode_ {
+	uint32_t encoding;
+	uint16_t value;
+	uint16_t length;
+} CxiHuffmanCode;
+
 static int CxiMvdkLookupDeflateTableEntry(const DEFLATE_TABLE_ENTRY *table, int tableSize, unsigned int n) {
 	for (int i = tableSize - 1; i >= 0; i--) {
 		if (n >= table[i].majorPart) return i;
 	}
 	return 0;
+}
+
+static unsigned int CxiMvdkGetLengthCost(unsigned int length, CxiHuffmanCode *symCodes) {
+	//get length node from table
+	int idx = CxiMvdkLookupDeflateTableEntry(sDeflateLengthTable, 29, length - 3);
+
+	//compute cost
+	unsigned int cost = 0;
+	cost += sDeflateLengthTable[idx].nMinorBits; // number of directly stored least significant bits
+	cost += symCodes[idx + 0x100].length;        // number of bits to store the Huffman code for most significant bits
+	return cost;
+}
+
+static unsigned int CxiMvdkGetDistanceCost(unsigned int distance, CxiHuffmanCode *distCodes) {
+	//get distance node from table
+	int idx = CxiMvdkLookupDeflateTableEntry(sDeflateOffsetTable, 30, distance - 1);
+	
+	unsigned int cost = 0;
+	cost += sDeflateOffsetTable[idx].nMinorBits; // number of directly stored least significant bits
+	cost += distCodes[idx].length;               // number of bits to store the Huffman code for most significant bits
+	return cost;
+}
+
+static unsigned int CxiMvdkGetByteCost(unsigned int symbol, CxiHuffmanCode *symCodes) {
+	//return cost as direct stored symbol
+	return symCodes[symbol].length;
 }
 
 static void CxiMvdkInsertDummyNode(CxiHuffNode *nodes, int nNodes) {
@@ -1829,12 +1885,6 @@ static void CxiMvdkInsertDummyNode(CxiHuffNode *nodes, int nNodes) {
 		break;
 	}
 }
-
-typedef struct CxiHuffmanCode_ {
-	uint32_t encoding;
-	uint16_t value;
-	uint16_t length;
-} CxiHuffmanCode;
 
 static int CxiMvdkAppendCanonicalNode(CxiHuffNode *tree, CxiHuffmanCode *codes, uint32_t encoding, int depth) {
 	if (ISLEAF(tree)) {
@@ -1946,11 +1996,7 @@ static void CxiMvdkWriteHuffmanTree(BITSTREAM *stream, CxiHuffmanCode *codes, in
 	}
 }
 
-static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize, unsigned int *nOutBits) {
-	//first, tokenize the input string.
-	int nTokens;
-	CxiLzToken *tokens = CxiMvdkTokenizeDeflate(buffer, size, &nTokens);
-
+static void CxiMvdkCreateHuffmanTree(CxiLzToken *tokens, int nTokens, CxiHuffNode **pSymbolTree, CxiHuffNode **pOffsetTree) {
 	//next, compute statistics on the data.
 	unsigned int *symbolFrequencies = (unsigned int *) calloc(0x100 + 29, sizeof(unsigned int));
 	unsigned int *offsetBinFrequencies = (unsigned int *) calloc(30, sizeof(unsigned int));
@@ -1962,7 +2008,7 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 			//LZ reference
 			unsigned int distance = tokens[i].distance;
 			unsigned int length = tokens[i].length;
-			
+
 			//if length is 0x102, special case
 			if (length == 0x102) {
 				symbolFrequencies[0x100 + 28]++;
@@ -2015,6 +2061,281 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 	CxiHuffmanConstructTree(offsetTree, lengthTreeSize);
 	free(symbolFrequencies);
 	free(offsetBinFrequencies);
+
+	*pSymbolTree = symbolTree;
+	*pOffsetTree = offsetTree;
+}
+
+static int CxiMvdkIsLengthAvailable(unsigned int length, CxiHuffmanCode *encLengths) {
+	if (length == 1) return 1; // 1: direct byte (always available)
+	if (length == 2) return 0; // 2: never available
+
+	//get index of table
+	int idx = CxiMvdkLookupDeflateTableEntry(sDeflateLengthTable, 29, length - 3);
+
+	//nonzero length indicates it is within our Huffman code table
+	return encLengths[0x100 + idx].length != 0;
+}
+
+static unsigned int CxiMvdkRoundDownLength(unsigned int length, CxiHuffmanCode *encLengths) {
+	if (length == 1 || length == 2) return 1;
+	if (length < 3) return 0;
+
+	//get index of table
+	int idx = CxiMvdkLookupDeflateTableEntry(sDeflateLengthTable, 29, length - 3);
+	if (encLengths[0x100 + idx].length != 0) return length; // in encoding table
+
+	//else
+	while (1) {
+		idx--;
+		if (idx < 0) return 0;
+
+		if (encLengths[0x100 + idx].length != 0) {
+			return (sDeflateLengthTable[idx].majorPart + (1 << sDeflateLengthTable[idx].nMinorBits) - 1) + 3;
+		}
+	}
+}
+
+static unsigned int CxiMvdkSearchLZzestricted(const unsigned char *buffer, unsigned int size, unsigned int curpos, CxiHuffmanCode *distanceCodes, unsigned int maxLength, unsigned int *pDistance) {
+	//nProcessedBytes = curpos
+	unsigned int nBytesLeft = size - curpos;
+
+	//keep track of the biggest match and where it was
+	unsigned int biggestRun = 0, biggestRunIndex = 0;
+
+	//the longest string we can match, including repetition by overwriting the source.
+	unsigned int nMaxCompare = maxLength;
+	if (nMaxCompare > nBytesLeft) nMaxCompare = nBytesLeft;
+
+	//begin searching backwards.
+	for (int i = 0; i < 30; i++) {
+		if (distanceCodes[i].length == 0) continue; // skip symbols without codes
+		if (sDeflateOffsetTable[i].majorPart > curpos) break; // exceeds max distance
+
+		for (int k = 0; k < (1 << sDeflateOffsetTable[i].nMinorBits); k++) {
+			unsigned int j = sDeflateOffsetTable[i].majorPart + k + 1;
+			if (j > curpos) break;
+
+			//compare up to 0xF bytes, at most j bytes.
+			unsigned int nCompare = maxLength;
+			if (nCompare > j) nCompare = j;
+			if (nCompare > nMaxCompare) nCompare = nMaxCompare;
+
+			unsigned int nMatched = CxiCompareMemory(buffer + curpos - j, buffer + curpos, nCompare, nMaxCompare);
+			if (nMatched > biggestRun) {
+				biggestRun = nMatched;
+				biggestRunIndex = j;
+				if (biggestRun == nMaxCompare) break;
+			}
+		}
+	}
+
+	*pDistance = biggestRunIndex;
+	return biggestRun;
+}
+
+static CxiLzToken *CxiMvdkRetokenize(const unsigned char *buffer, unsigned int size, int *pnTokens, CxiHuffNode *symbolTree, CxiHuffNode *offsetTree) {
+	//create canonical tree and get encodings
+	CxiHuffmanCode *lengthEncodings = (CxiHuffmanCode *) calloc(0x100 + 29, sizeof(CxiHuffmanCode));
+	CxiHuffmanCode *offsetEncodings = (CxiHuffmanCode *) calloc(30, sizeof(CxiHuffmanCode));
+	CxiMvdkMakeCanonicalTree(symbolTree, lengthEncodings, 0x100 + 29);
+	CxiMvdkMakeCanonicalTree(offsetTree, offsetEncodings, 30);
+
+	//count available length nodes
+	int nLenNodesAvailable = 0;
+	for (int i = 0x100; i < 0x100 + 29; i++) {
+		if (lengthEncodings[i].length == 0) continue;
+		nLenNodesAvailable++;
+	}
+	
+
+	CxiLzNode *nodes = (CxiLzNode *) calloc(size, sizeof(CxiLzNode));
+
+	unsigned int pos = size;
+	while (pos-- > 0) {
+		//search backwards
+		unsigned int length = 0, distance = 0;
+		if (nLenNodesAvailable > 0) {
+			//length = CxiSearchLZ(buffer, size, pos, 1, 0x7FFF, 0x102, &distance);
+			length = CxiMvdkSearchLZzestricted(buffer, size, pos, offsetEncodings, 0x102, &distance);
+
+			//TODO: the above does not consider the effects of reduced range of values the distance may take.
+		}
+
+		//check: length must be in the allowed lengths list.
+		int lengthIndex = -1;
+		if (length >= 3) {
+			//round down length to an encodable length
+			length = CxiMvdkRoundDownLength(length, lengthEncodings);
+		} else {
+			length = 1;
+		}
+
+		//NOTE: all byte values that appear in the file will have a symbol associated since they must appear at least once.
+		//thus we do not need to check that any byte value exists.
+
+		//check length (should store reference?)
+		unsigned int weight = 0;
+		if (length < 3) {
+			//byte literal (can't go lower)
+			length = 1;
+
+			//compute cost of byte literal
+			weight = CxiMvdkGetByteCost(buffer[pos], lengthEncodings);
+			if ((pos + 1) < size) {
+				//add next weight
+				weight += nodes[pos + 1].weight;
+			}
+		} else {
+			//get cost of selected distance
+			unsigned int dstCost = CxiMvdkGetDistanceCost(distance, offsetEncodings);
+
+			//scan size down
+			unsigned int weightBest = UINT_MAX, lengthBest = length;
+			while (length) {
+				//skip unavailable lengths
+				if (length != 1 && !CxiMvdkIsLengthAvailable(length, lengthEncodings)) {
+					length--;
+					continue;
+				}
+
+				unsigned int thisWeight;
+
+				//compute weight of this length value
+				unsigned int thisLengthWeight;
+				if (length > 1) {
+					//length > 1: symbol (use cost of length symbol)
+					thisLengthWeight = CxiMvdkGetLengthCost(length, lengthEncodings);
+				} else {
+					//length = 1: byte literal (use cost of byte literal)
+					thisLengthWeight = CxiMvdkGetByteCost(buffer[pos], lengthEncodings);
+				}
+
+				//takes us to end of file? 
+				if ((pos + length) == size) {
+					//cost is just this node's weight
+					thisWeight = thisLengthWeight;
+				} else {
+					//cost is this node's weight plus the weight of the next node
+					CxiLzNode *next = nodes + pos + length;
+					thisWeight = thisLengthWeight + next->weight;
+				}
+				if (thisWeight < weightBest) {
+					weightBest = thisWeight;
+					lengthBest = length;
+				}
+
+				//decrement length
+				length--;
+			}
+
+			length = lengthBest;
+			if (length < 3) {
+				//byte literal (distance cost is thus now zero since we have no distance component)
+				length = 1;
+				dstCost = 0;
+			} else {
+				//we ended up selecting an LZ copy-able length. but did we select the most optimal distance
+				//encoding?
+				//search possible distances where we can match the string at. We'll take the lowest-cost one.
+				for (int i = 0; i < 30; i++) {
+					if (offsetEncodings[i].length == 0) continue;
+
+					unsigned int distanceBinCost = offsetEncodings[i].length + sDeflateOffsetTable[i].nMinorBits;
+					for (int j = 0; j < (1 << sDeflateOffsetTable[i].nMinorBits); j++) {
+						unsigned int dst = (sDeflateOffsetTable[i].majorPart + j) + 1;
+						if (dst > pos) break;
+
+						//matching distance, check the cost
+						if (distanceBinCost < dstCost) {
+							//check matching LZ string...
+							if (CxiLzConfirmMatch(buffer, size, pos, dst, length)) {
+								dstCost = distanceBinCost;
+								distance = dst;
+
+								//further iteration in this distance bin is unnecessary: low bit cost is fixed.
+								break;
+							}
+						}
+					}
+				}
+			}
+			weight = weightBest + dstCost;
+		}
+
+		//write node
+		if (length >= 3) {
+			nodes[pos].distance = distance;
+			nodes[pos].length = length;
+		} else {
+			nodes[pos].length = 1;
+			nodes[pos].distance = 0;
+		}
+		nodes[pos].weight = weight;
+	}
+
+	free(lengthEncodings);
+	free(offsetEncodings);
+
+	//convert graph into node array
+	unsigned int nTokens = 0;
+	pos = 0;
+	while (pos < size) {
+		CxiLzNode *node = nodes + pos;
+		nTokens++;
+
+		if (node->length >= 3) pos += node->length;
+		else pos++;
+	}
+
+	CxiLzToken *tokens = (CxiLzToken *) calloc(nTokens, sizeof(CxiLzToken));
+	{
+		pos = 0;
+		unsigned int i = 0;
+		while (pos < size) {
+			CxiLzNode *node = nodes + pos;
+
+			tokens[i].isReference = node->length >= 3;
+			if (tokens[i].isReference) {
+				tokens[i].length = node->length;
+				tokens[i].distance = node->distance;
+			} else {
+				tokens[i].symbol = buffer[pos];
+			}
+			i++;
+
+			if (node->length >= 3) pos += node->length;
+			else pos++;
+		}
+		free(nodes);
+	}
+
+	*pnTokens = nTokens;
+	return tokens;
+}
+
+static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize, unsigned int *nOutBits) {
+	//first, tokenize the input string.
+	int nTokens;
+	CxiLzToken *tokens = CxiMvdkTokenizeDeflate(buffer, size, &nTokens);
+
+	//create Huffman tree
+	CxiHuffNode *symbolTree, *offsetTree;
+	CxiMvdkCreateHuffmanTree(tokens, nTokens, &symbolTree, &offsetTree);
+
+	//re-tokenize
+	//NOTE: this code is only theoretical. In reality it is very slow and provides little to no material benefit. 
+	//left here for theory's sake. (change the loop count to 1 or 2 to see it in effect)
+	for (int i = 0; i < 0; i++) {
+		//create new tokenization
+		free(tokens);
+		tokens = CxiMvdkRetokenize(buffer, size, &nTokens, symbolTree, offsetTree);
+
+		//create new Huffman tree
+		free(symbolTree);
+		free(offsetTree);
+		CxiMvdkCreateHuffmanTree(tokens, nTokens, &symbolTree, &offsetTree);
+	}
 
 	//convert Huffman tree to canonical form
 	CxiHuffmanCode *lengthEncodings = (CxiHuffmanCode *) calloc(0x100 + 29, sizeof(CxiHuffmanCode));
