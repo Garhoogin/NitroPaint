@@ -1250,7 +1250,7 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			break;
 		case WM_PAINT:
 			TedOnViewerPaint((EDITOR_DATA *) data, &data->ted);
-			return 1;
+			return 0;
 		case WM_ERASEBKGND:
 			return 1;
 		case NV_RECALCULATE:
@@ -1267,17 +1267,19 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			return DefChildProc(hWnd, msg, wParam, lParam);
 		case WM_SIZE:
 		{
-			UpdateScrollbarVisibility(hWnd);
+			if (ObjIsValid(&data->nscr.header)) {
+				UpdateScrollbarVisibility(hWnd);
 
-			SCROLLINFO info;
-			info.cbSize = sizeof(info);
-			info.nMin = 0;
-			info.nMax = contentWidth;
-			info.fMask = SIF_RANGE;
-			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+				SCROLLINFO info;
+				info.cbSize = sizeof(info);
+				info.nMin = 0;
+				info.nMax = contentWidth;
+				info.fMask = SIF_RANGE;
+				SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
 
-			info.nMax = contentHeight;
-			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+				info.nMax = contentHeight;
+				SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			}
 			return DefChildProc(hWnd, msg, wParam, lParam);
 		}
 		case WM_MOUSEMOVE:
