@@ -980,6 +980,13 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 						h = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, (NSCR *) object);
 						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
 						break;
+
+					case FILE_TYPE_CELL:
+						//create NSCR and make it active
+						object->combo = (void *) combo;
+						h = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NSCR *) object);
+						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
+						break;
 				}
 
 				//if we created a copy, free the original and keep the copy

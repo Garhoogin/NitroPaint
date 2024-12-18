@@ -8,6 +8,7 @@
 #define NCER_TYPE_SETOSA     2
 #define NCER_TYPE_HUDSON     3
 #define NCER_TYPE_GHOSTTRICK 4
+#define NCER_TYPE_COMBO      5
 
 extern LPCWSTR cellFormatNames[];
 

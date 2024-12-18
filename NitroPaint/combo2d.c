@@ -5,6 +5,7 @@
 
 #include "nclr.h"
 #include "ncgr.h"
+#include "ncer.h"
 #include "nscr.h"
 
 extern const wchar_t *gComboFormats[] = {
@@ -14,6 +15,7 @@ extern const wchar_t *gComboFormats[] = {
 	L"Data File",
 	L"5BG",
 	L"MBB",
+	L"BNCD",
 	NULL
 };
 
@@ -107,6 +109,11 @@ int combo2dGetObjMinCount(int comboType, int objType) {
 			if (objType == FILE_TYPE_CHARACTER) return 1;
 			if (objType == FILE_TYPE_SCREEN) return 1;
 			return 0;
+		case COMBO2D_TYPE_BNCD:
+			//requires one charcater, one cell
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_CELL) return 1;
+			return 0;
 		case COMBO2D_TYPE_DATAFILE:
 			//no particular requirements
 			return 0;
@@ -137,6 +144,11 @@ int combo2dGetObjMaxCount(int comboType, int objType) {
 			if (objType == FILE_TYPE_PALETTE) return 1;
 			if (objType == FILE_TYPE_CHARACTER) return 1;
 			if (objType == FILE_TYPE_SCREEN) return 1;
+			return 0;
+		case COMBO2D_TYPE_BNCD:
+			//requires exactly one character, one cell
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_CELL) return 1;
 			return 0;
 		case COMBO2D_TYPE_DATAFILE:
 			//no particular requirements
@@ -279,8 +291,80 @@ int combo2dIsValid5bg(const unsigned char *file, unsigned int size) {
 	return 1;
 }
 
+static int combo2dBncdGetBitDepth(const unsigned char *file) {
+	//count OBJ bit depths
+	int depth = 4;
+
+	uint16_t nCell = *(uint16_t *) (file + 0x06);
+	uint32_t offsCell = *(uint32_t *) (file + 0x08);
+	uint32_t offsObj = *(uint32_t *) (file + 0x0C);
+	for (unsigned int i = 0; i < nCell; i++) {
+		const unsigned char *cellInfo = file + offsCell + i * 0x6;
+		uint16_t objIndex = *(uint16_t *) (cellInfo + 0x2);
+		uint16_t nObj = *(uint16_t *) (cellInfo + 0x4);
+
+		unsigned int thisCellObjOffset = offsObj + objIndex * 0xC;
+		const unsigned char *cellObj = file + thisCellObjOffset;
+		for (unsigned int j = 0; j < nObj; j++) {
+			const unsigned char *thisObj = cellObj + j * 0xC;
+			const uint16_t *attr = (const uint16_t *) thisObj;
+			uint16_t attr0 = attr[0];
+			
+			if (attr0 & 0x2000) depth = 8;
+		}
+	}
+
+	return depth;
+}
+
+static int combo2dBncdGetMappingMode(const unsigned char *file) {
+	uint32_t mappingShift = *(uint32_t *) (file + 0x18);
+	if (mappingShift > 3) return -1;
+
+	const int mappings[] = {
+		GX_OBJVRAMMODE_CHAR_1D_32K,
+		GX_OBJVRAMMODE_CHAR_1D_64K,
+		GX_OBJVRAMMODE_CHAR_1D_128K,
+		GX_OBJVRAMMODE_CHAR_1D_256K
+	};
+	return mappings[mappingShift];
+}
+
+int combo2dIsValidBncd(const unsigned char *file, unsigned int size) {
+	if (size < 0x1C) return 0; // size of header
+	if (memcmp(file, "JNCD", 4) != 0) return 0;
+
+	uint16_t ver = *(uint16_t *) (file + 0x04);
+	uint16_t nCell = *(uint16_t *) (file + 0x06);
+	uint32_t offsCell = *(uint32_t *) (file + 0x08);
+	uint32_t offsObj = *(uint32_t *) (file + 0x0C);
+	uint32_t offsChar = *(uint32_t *) (file + 0x10);
+	uint32_t sizeChar = *(uint32_t *) (file + 0x14);
+	uint32_t mappingShift = *(uint32_t *) (file + 0x18);
+
+	if (offsCell > size) return 0;
+	if ((offsCell + nCell * 0x6) > size) return 0;
+	if (offsObj > size) return 0;
+	if (offsChar > size) return 0;
+	if ((offsChar + sizeChar) > size) return 0;
+	if (mappingShift > 3) return 0;
+
+	//verify cell and OBJ data
+	for (unsigned i = 0; i < nCell; i++) {
+		const unsigned char *cellInfo = file + offsCell + i * 0x6;
+		uint16_t objIndex = *(uint16_t *) (cellInfo + 0x2);
+		uint16_t nObj = *(uint16_t *) (cellInfo + 0x4);
+
+		unsigned int thisCellObjOffset = offsObj + objIndex * 0xC;
+		if ((thisCellObjOffset + nObj * 0xC) > size) return 0;
+	}
+
+	return 1;
+}
+
 int combo2dIsValid(const unsigned char *file, unsigned int size) {
 	if (combo2dIsValid5bg(file, size)) return COMBO2D_TYPE_5BG;
+	if (combo2dIsValidBncd(file, size)) return COMBO2D_TYPE_BNCD;
 	if (combo2dIsValidTimeAce(file, size)) return COMBO2D_TYPE_TIMEACE;
 	if (combo2dIsValidBanner(file, size)) return COMBO2D_TYPE_BANNER;
 	if (combo2dIsValidMbb(file, size)) return COMBO2D_TYPE_MBB;
@@ -320,6 +404,70 @@ int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int
 	ScrComputeHighestCharacter(nscr);
 	combo2dLink(combo, &nscr->header);
 
+	return 0;
+}
+
+int combo2dReadBncd(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
+	uint16_t ver = *(uint16_t *) (buffer + 0x04);
+	uint16_t nCell = *(uint16_t *) (buffer + 0x06);
+	uint32_t offsCell = *(uint32_t *) (buffer + 0x08);
+	uint32_t offsObj = *(uint32_t *) (buffer + 0x0C);
+	uint32_t offsChar = *(uint32_t *) (buffer + 0x10);
+	uint32_t sizeChar = *(uint32_t *) (buffer + 0x14);
+
+	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+	NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
+	ChrInit(ncgr, NCGR_TYPE_COMBO);
+	CellInit(ncer, NCER_TYPE_COMBO);
+
+	int depth = combo2dBncdGetBitDepth(buffer);
+	int mappingMode = combo2dBncdGetMappingMode(buffer);
+
+	NCER_CELL *cells = (NCER_CELL *) calloc(nCell, sizeof(NCER_CELL));
+
+	const unsigned char *objData = buffer + offsObj;
+
+	unsigned int i;
+	for (i = 0; i < nCell; i++) {
+		const unsigned char *cellInfo = buffer + offsCell + i * 0x6;
+		uint16_t objIndex = *(uint16_t *) (cellInfo + 0x2);
+		uint16_t nObj = *(uint16_t *) (cellInfo + 0x4);
+		const unsigned char *cellObj = objData + objIndex * 0xC;
+
+		NCER_CELL *cell = cells + i;
+		cell->nAttribs = nObj;
+		cell->minX = 0;
+		cell->maxX = 0;
+		cell->maxX = cell->minX + *(uint8_t *) (cellInfo + 0x0);
+		cell->maxY = cell->minY + *(uint8_t *) (cellInfo + 0x1);
+		cell->attr = (uint16_t *) calloc(nObj, 6);
+		for (unsigned int j = 0; j < nObj; j++) {
+			const unsigned char *thisObj = cellObj + j * 0xC;
+			memcpy(cell->attr + j * 3, thisObj, 6);
+
+			//OBJ character name must be relocated
+			uint16_t attr2 = cell->attr[j * 3 + 2];
+			cell->attr[j * 3 + 2] = (attr2 & ~0x3FF) | (*(uint16_t *) (thisObj + 0x8) & 0x3FF);
+		}
+	}
+
+	//init graphics
+	unsigned int nTiles = sizeChar / (8 * depth);
+	ncgr->nBits = depth;
+	ncgr->mappingMode = mappingMode;
+	ncgr->nTiles = nTiles;
+	ncgr->tilesX = ChrGuessWidth(nTiles);
+	ncgr->tilesY = nTiles / ncgr->tilesX;
+	ChrReadChars(ncgr, buffer + offsChar);
+
+	//init cells
+	ncer->nCells = 0;
+	ncer->mappingMode = mappingMode;
+	ncer->nCells = nCell;
+	ncer->cells = cells;
+
+	combo2dLink(combo, &ncgr->header);
+	combo2dLink(combo, &ncer->header);
 	return 0;
 }
 
@@ -483,206 +631,325 @@ int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size) 
 			return combo2dReadBanner(combo, buffer, size);
 		case COMBO2D_TYPE_MBB:
 			return combo2dReadMbb(combo, buffer, size);
+		case COMBO2D_TYPE_BNCD:
+			return combo2dReadBncd(combo, buffer, size);
 	}
 	return 1;
 }
 
+static int combo2dWriteTimeAce(COMBO2D *combo, BSTREAM *stream) {
+	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+	NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
+	BOOL is8bpp = ncgr->nBits == 8;
+	int dummy = 0;
+
+	bstreamWrite(stream, &is8bpp, sizeof(is8bpp));
+	bstreamWrite(stream, nclr->colors, 2 * nclr->nColors);
+	bstreamWrite(stream, &dummy, sizeof(dummy));
+	bstreamWrite(stream, nscr->data, nscr->dataSize);
+	bstreamWrite(stream, &ncgr->nTiles, 4);
+
+	ChrWriteChars(ncgr, stream);
+	return 0;
+}
+
+static int combo2dWriteBanner(COMBO2D *combo, BSTREAM *stream) {
+	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+
+	BANNER_INFO *info = (BANNER_INFO *) combo->extraData;
+	unsigned short header[16] = { 0 };
+	bstreamWrite(stream, header, sizeof(header));
+	ChrWriteChars(ncgr, stream);
+
+	//write palette
+	bstreamWrite(stream, nclr->colors, 32);
+
+	//write titles
+	bstreamWrite(stream, info->titleJp, 0x600);
+	if (info->version >= 2) bstreamWrite(stream, info->titleCn, 0x100);
+	if (info->version >= 3) bstreamWrite(stream, info->titleHn, 0x100);
+
+	//go back and write the CRCs
+	bstreamSeek(stream, 0, 0);
+	header[0] = info->version;
+	header[1] = ObjComputeCrc16(stream->buffer + 0x20, 0x820, 0xFFFF);
+	if (info->version >= 2) header[2] = ObjComputeCrc16(stream->buffer + 0x20, 0x920, 0xFFFF);
+	if (info->version >= 3) header[3] = ObjComputeCrc16(stream->buffer + 0x20, 0xA20, 0xFFFF);
+	bstreamWrite(stream, header, sizeof(header));
+	return 0;
+}
+
+static int combo2dWriteBncd(COMBO2D *combo, BSTREAM *stream) {
+	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+	NCER *ncer = (NCER *) combo2dGet(combo, FILE_TYPE_CELL, 0);
+
+	//header
+	unsigned char header[] = { 'J', 'N', 'C', 'D', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	unsigned int nOam = 0;
+	for (int i = 0; i < ncer->nCells; i++) nOam += ncer->cells[i].nAttribs;
+
+	unsigned int offsCells = sizeof(header);
+	unsigned int sizeCells = ncer->nCells * 6;
+	unsigned int offsOam = (offsCells + sizeCells + 3) & ~3;
+	unsigned int sizeOam = nOam * 0xC;
+	unsigned int offsChars = (offsOam + sizeOam + 3) & ~3;
+	unsigned int sizeChars = ncgr->nTiles * (8 * ncgr->nBits);
+
+	unsigned int mappingShift = 0;
+	switch (ncer->mappingMode) {
+		case GX_OBJVRAMMODE_CHAR_1D_32K:
+			mappingShift = 0; break;
+		case GX_OBJVRAMMODE_CHAR_1D_64K:
+			mappingShift = 1; break;
+		case GX_OBJVRAMMODE_CHAR_1D_128K:
+			mappingShift = 2; break;
+		case GX_OBJVRAMMODE_CHAR_1D_256K:
+			mappingShift = 3; break;
+	}
+
+	*(uint16_t *) (header + 0x04) = 0x0101;       // version 1.1
+	*(uint16_t *) (header + 0x06) = ncer->nCells; // number of cells
+	*(uint32_t *) (header + 0x08) = offsCells;    // offset to cell info
+	*(uint32_t *) (header + 0x0C) = offsOam;      // offset to OAM attribute data
+	*(uint32_t *) (header + 0x10) = offsChars;    // offset to OBJ character data
+	*(uint32_t *) (header + 0x14) = sizeChars;    // OBJ character size
+	*(uint32_t *) (header + 0x18) = mappingShift; // mapping mode
+
+	bstreamWrite(stream, header, sizeof(header));
+
+	//cell data
+	unsigned int curObjIndex = 0;
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = ncer->cells + i;
+		unsigned char cellData[6] = { 0 };
+
+		*(uint8_t *) (cellData + 0x0) = cell->maxX - cell->minX;
+		*(uint8_t *) (cellData + 0x1) = cell->maxY - cell->minY;
+		*(uint16_t *) (cellData + 0x2) = curObjIndex;
+		*(uint16_t *) (cellData + 0x4) = cell->nAttribs;
+		bstreamWrite(stream, cellData, sizeof(cellData));
+
+		curObjIndex += cell->nAttribs;
+	}
+
+	//OBJ data
+	bstreamAlign(stream, 4);
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = ncer->cells + i;
+		for (int j = 0; j < cell->nAttribs; j++) {
+			NCER_CELL_INFO info;
+			CellDecodeOamAttributes(&info, cell, j);
+
+			unsigned int nCharsSize = info.width * info.height / 64;
+			unsigned int nCharUnits = nCharsSize;
+			if (info.characterBits == 8) nCharUnits <<= 1;
+			if (ncer->mappingMode == GX_OBJVRAMMODE_CHAR_1D_32K) nCharUnits >>= 0;
+			if (ncer->mappingMode == GX_OBJVRAMMODE_CHAR_1D_64K) nCharUnits >>= 1;
+			if (ncer->mappingMode == GX_OBJVRAMMODE_CHAR_1D_128K) nCharUnits >>= 2;
+			if (ncer->mappingMode == GX_OBJVRAMMODE_CHAR_1D_256K) nCharUnits >>= 3;
+
+
+			unsigned char objData[0xC] = { 0 };
+			*(uint16_t *) (objData + 0x00) = cell->attr[j * 3 + 0];           // attr 0
+			*(uint16_t *) (objData + 0x02) = cell->attr[j * 3 + 1];           // attr 1
+			*(uint16_t *) (objData + 0x04) = cell->attr[j * 3 + 2] & ~0x3FF;  // attr 2 (sans character name)
+			*(uint16_t *) (objData + 0x06) = 0;
+			*(uint16_t *) (objData + 0x08) = cell->attr[j * 3 + 2] & 0x3FF;   // character name
+			*(uint16_t *) (objData + 0x0A) = nCharUnits;                      // character name units
+
+			bstreamWrite(stream, objData, sizeof(objData));
+		}
+	}
+
+	//graphics data
+	bstreamAlign(stream, 4);
+	ChrWriteChars(ncgr, stream);
+	
+	return 0;
+}
+
+static int combo2dWriteDataFile(COMBO2D *combo, BSTREAM *stream) {
+	//the original data is in combo->extraData->data, but has key replacements
+	DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
+	char *copy = (char *) malloc(dfc->size);
+	memcpy(copy, dfc->data, dfc->size);
+
+	//process all contained objects
+	for (int i = 0; i < combo->nLinks; i++) {
+		OBJECT_HEADER *object = combo->links[i];
+		int type = object->type;
+
+		//write object
+		switch (type) {
+			case FILE_TYPE_PALETTE:
+			{
+				NCLR *nclr = (NCLR *) object;
+
+				int palDataSize = nclr->nColors * 2;
+				if (palDataSize > dfc->pltSize) palDataSize = dfc->pltSize;
+				memcpy(copy + dfc->pltOffset, nclr->colors, 2 * nclr->nColors);
+				break;
+			}
+			case FILE_TYPE_CHARACTER:
+			{
+				NCGR *ncgr = (NCGR *) object;
+
+				BSTREAM chrStream;
+				bstreamCreate(&chrStream, NULL, 0);
+				ChrWriteChars(ncgr, &chrStream);
+
+				if (chrStream.size > dfc->chrSize) chrStream.size = dfc->chrSize;
+				memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
+				bstreamFree(&chrStream);
+				break;
+			}
+			case FILE_TYPE_SCREEN:
+			{
+				NSCR *nscr = (NSCR *) object;
+
+				int scrDataSize = nscr->dataSize;
+				if (scrDataSize > dfc->scrSize) scrDataSize = dfc->scrSize;
+				memcpy(copy + dfc->scrOffset, nscr->data, scrDataSize);
+				break;
+			}
+		}
+	}
+
+	bstreamWrite(stream, copy, dfc->size);
+	free(copy);
+	return 0;
+}
+
+static int combo2dWrite5bg(COMBO2D *combo, BSTREAM *stream) {
+	unsigned char header[] = { 'N', 'T', 'B', 'G', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 0, 0 };
+
+	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+	NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
+
+	//how many characters do we write?
+	int nCharsWrite = ScrComputeHighestCharacter(nscr) + 1;
+
+	int nSections = ncgr->nBits == 4 ? 3 : 2; //no flags for 8-bit images
+	int paltSize = 0xC + nclr->nColors * 2;
+	int bgdtSize = 0x1C + nCharsWrite * (8 * ncgr->nBits) + nscr->tilesX * nscr->tilesY * 2;
+	int dfplSize = nSections == 2 ? 0 : (0xC + ncgr->nTiles);
+	*(uint32_t *) (header + 0x08) = sizeof(header) + paltSize + bgdtSize + dfplSize;
+	*(uint16_t *) (header + 0x0E) = nSections;
+
+	//write header
+	bstreamWrite(stream, header, sizeof(header));
+
+	//write PALT
+	unsigned char paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
+	*(uint32_t *) (paltHeader + 0x04) = paltSize;
+	*(uint32_t *) (paltHeader + 0x08) = nclr->nColors;
+	bstreamWrite(stream, paltHeader, sizeof(paltHeader));
+	bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
+
+	//write BGDT
+	unsigned char bgdtHeader[0x1C] = { 'B', 'G', 'D', 'T' };
+	*(uint32_t *) (bgdtHeader + 0x04) = bgdtSize;
+	*(uint32_t *) (bgdtHeader + 0x08) = ncgr->mappingMode;
+	*(uint32_t *) (bgdtHeader + 0x0C) = nscr->dataSize;
+	*(uint16_t *) (bgdtHeader + 0x10) = nscr->tilesX;
+	*(uint16_t *) (bgdtHeader + 0x12) = nscr->tilesY;
+	*(uint16_t *) (bgdtHeader + 0x14) = ncgr->tilesX;
+	*(uint16_t *) (bgdtHeader + 0x16) = ncgr->tilesY;
+	*(uint32_t *) (bgdtHeader + 0x18) = nCharsWrite * (8 * ncgr->nBits);
+	bstreamWrite(stream, bgdtHeader, sizeof(bgdtHeader));
+	bstreamWrite(stream, nscr->data, nscr->dataSize);
+
+	//quick n' dirty write graphics data
+	int nTilesOld = ncgr->nTiles;
+	ncgr->nTiles = nCharsWrite;
+	ncgr->header.format = NCGR_TYPE_BIN;
+	ChrWrite(ncgr, stream);
+	ncgr->header.type = NCGR_TYPE_COMBO;
+	ncgr->nTiles = nTilesOld;
+
+	//write DFPL
+	if (nSections > 2) {
+		unsigned char dfplHeader[] = { 'D', 'F', 'P', 'L', 0, 0, 0, 0, 0, 0, 0, 0 };
+		*(uint32_t *) (dfplHeader + 0x04) = dfplSize;
+		*(uint32_t *) (dfplHeader + 0x08) = ncgr->nTiles;
+
+		//iterate the screen and set attributes
+		uint8_t *attr = (uint8_t *) calloc(ncgr->nTiles, 1);
+		for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+			uint16_t tile = nscr->data[i];
+			int charNum = tile & 0x3FF;
+			int palNum = tile >> 12;
+			attr[charNum] = palNum;
+		}
+		bstreamWrite(stream, dfplHeader, sizeof(dfplHeader));
+		bstreamWrite(stream, attr, ncgr->nTiles);
+		free(attr);
+	}
+	return 0;
+}
+
+static int combo2dWriteMbb(COMBO2D *combo, BSTREAM *stream) {
+	MBBCOMBO *mbbInfo = (MBBCOMBO *) combo->extraData;
+	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+
+	unsigned char header[0x74] = { 0 };
+	*(uint32_t *) (header + 0x00) = sizeof(header);
+	*(uint32_t *) (header + 0x04) = sizeof(header) + 0x200;
+	*(uint16_t *) (header + 0x60) = ncgr->nTiles * (8 * ncgr->nBits) / 0x20;
+	header[0x59] = (ncgr->nBits == 8) ? 0x80 : 0;
+
+	//write screen offset infos
+	int nScreensWritten = 0;
+	uint32_t currentScreenOffset = sizeof(header) + 0x200 + ncgr->nTiles * (8 * ncgr->nBits);
+	for (int i = 0; i < 4; i++) {
+		if (!(mbbInfo->screenBitmap & (1 << i))) continue;
+
+		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, nScreensWritten);
+		*(uint32_t *) (header + 0x08 + i * 4) = currentScreenOffset;
+		*(uint16_t *) (header + 0x18 + i * 0x10 + 0x8) = nscr->tilesX * 8;
+		*(uint16_t *) (header + 0x18 + i * 0x10 + 0xA) = nscr->tilesY * 8;
+		currentScreenOffset += nscr->dataSize;
+	}
+
+	bstreamWrite(stream, header, sizeof(header));
+	bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
+	ChrWriteChars(ncgr, stream);
+
+	//write screens
+	nScreensWritten = 0;
+	for (int i = 0; i < 4; i++) {
+		if (!(mbbInfo->screenBitmap & (1 << i))) continue;
+		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, nScreensWritten);
+
+		bstreamWrite(stream, nscr->data, nscr->dataSize);
+
+		nScreensWritten++;
+	}
+	return 0;
+}
+
 int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
-	if(!combo2dCanSave(combo)) return 1;
+	if (!combo2dCanSave(combo)) return 1;
 
 	//write out 
-	if (combo->header.format == COMBO2D_TYPE_TIMEACE) {
-		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
-		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
-		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
-		BOOL is8bpp = ncgr->nBits == 8;
-		int dummy = 0;
-
-		bstreamWrite(stream, &is8bpp, sizeof(is8bpp));
-		bstreamWrite(stream, nclr->colors, 2 * nclr->nColors);
-		bstreamWrite(stream, &dummy, sizeof(dummy));
-		bstreamWrite(stream, nscr->data, nscr->dataSize);
-		bstreamWrite(stream, &ncgr->nTiles, 4);
-
-		ChrWriteChars(ncgr, stream);
-	} else if (combo->header.format == COMBO2D_TYPE_BANNER) {
-		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
-		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
-
-		BANNER_INFO *info = (BANNER_INFO *) combo->extraData;
-		unsigned short header[16] = { 0 };
-		bstreamWrite(stream, header, sizeof(header));
-		ChrWriteChars(ncgr, stream);
-
-		//write palette
-		bstreamWrite(stream, nclr->colors, 32);
-
-		//write titles
-		bstreamWrite(stream, info->titleJp, 0x600);
-		if (info->version >= 2) bstreamWrite(stream, info->titleCn, 0x100);
-		if (info->version >= 3) bstreamWrite(stream, info->titleHn, 0x100);
-
-		//go back and write the CRCs
-		bstreamSeek(stream, 0, 0);
-		header[0] = info->version;
-		header[1] = ObjComputeCrc16(stream->buffer + 0x20, 0x820, 0xFFFF);
-		if (info->version >= 2) header[2] = ObjComputeCrc16(stream->buffer + 0x20, 0x920, 0xFFFF);
-		if (info->version >= 3) header[3] = ObjComputeCrc16(stream->buffer + 0x20, 0xA20, 0xFFFF);
-		bstreamWrite(stream, header, sizeof(header));
-	} else if (combo->header.format == COMBO2D_TYPE_DATAFILE) {
-		//the original data is in combo->extraData->data, but has key replacements
-		DATAFILECOMBO *dfc = (DATAFILECOMBO *) combo->extraData;
-		char *copy = (char *) malloc(dfc->size);
-		memcpy(copy, dfc->data, dfc->size);
-
-		//process all contained objects
-		for (int i = 0; i < combo->nLinks; i++) {
-			OBJECT_HEADER *object = combo->links[i];
-			int type = object->type;
-
-			//write object
-			switch (type) {
-				case FILE_TYPE_PALETTE:
-				{
-					NCLR *nclr = (NCLR *) object;
-
-					int palDataSize = nclr->nColors * 2;
-					if (palDataSize > dfc->pltSize) palDataSize = dfc->pltSize;
-					memcpy(copy + dfc->pltOffset, nclr->colors, 2 * nclr->nColors);
-					break;
-				}
-				case FILE_TYPE_CHARACTER:
-				{
-					NCGR *ncgr = (NCGR *) object;
-
-					BSTREAM chrStream;
-					bstreamCreate(&chrStream, NULL, 0);
-					ChrWriteChars(ncgr, &chrStream);
-
-					if (chrStream.size > dfc->chrSize) chrStream.size = dfc->chrSize;
-					memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
-					bstreamFree(&chrStream);
-					break;
-				}
-				case FILE_TYPE_SCREEN:
-				{
-					NSCR *nscr = (NSCR *) object;
-
-					int scrDataSize = nscr->dataSize;
-					if (scrDataSize > dfc->scrSize) scrDataSize = dfc->scrSize;
-					memcpy(copy + dfc->scrOffset, nscr->data, scrDataSize);
-					break;
-				}
-			}
-		}
-
-		bstreamWrite(stream, copy, dfc->size);
-		free(copy);
-	} else if (combo->header.format == COMBO2D_TYPE_5BG) {
-		unsigned char header[] = { 'N', 'T', 'B', 'G', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 0, 0 };
-
-		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
-		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
-		NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
-
-		//how many characters do we write?
-		int nCharsWrite = ScrComputeHighestCharacter(nscr) + 1;
-
-		int nSections = ncgr->nBits == 4 ? 3 : 2; //no flags for 8-bit images
-		int paltSize = 0xC + nclr->nColors * 2;
-		int bgdtSize = 0x1C + nCharsWrite * (8 * ncgr->nBits) + nscr->tilesX * nscr->tilesY * 2;
-		int dfplSize = nSections == 2 ? 0 : (0xC + ncgr->nTiles);
-		*(uint32_t *) (header + 0x08) = sizeof(header) + paltSize + bgdtSize + dfplSize;
-		*(uint16_t *) (header + 0x0E) = nSections;
-
-		//write header
-		bstreamWrite(stream, header, sizeof(header));
-
-		//write PALT
-		unsigned char paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
-		*(uint32_t *) (paltHeader + 0x04) = paltSize;
-		*(uint32_t *) (paltHeader + 0x08) = nclr->nColors;
-		bstreamWrite(stream, paltHeader, sizeof(paltHeader));
-		bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
-
-		//write BGDT
-		unsigned char bgdtHeader[0x1C] = { 'B', 'G', 'D', 'T' };
-		*(uint32_t *) (bgdtHeader + 0x04) = bgdtSize;
-		*(uint32_t *) (bgdtHeader + 0x08) = ncgr->mappingMode;
-		*(uint32_t *) (bgdtHeader + 0x0C) = nscr->dataSize;
-		*(uint16_t *) (bgdtHeader + 0x10) = nscr->tilesX;
-		*(uint16_t *) (bgdtHeader + 0x12) = nscr->tilesY;
-		*(uint16_t *) (bgdtHeader + 0x14) = ncgr->tilesX;
-		*(uint16_t *) (bgdtHeader + 0x16) = ncgr->tilesY;
-		*(uint32_t *) (bgdtHeader + 0x18) = nCharsWrite * (8 * ncgr->nBits);
-		bstreamWrite(stream, bgdtHeader, sizeof(bgdtHeader));
-		bstreamWrite(stream, nscr->data, nscr->dataSize);
-		
-		//quick n' dirty write graphics data
-		int nTilesOld = ncgr->nTiles;
-		ncgr->nTiles = nCharsWrite;
-		ncgr->header.format = NCGR_TYPE_BIN;
-		ChrWrite(ncgr, stream);
-		ncgr->header.type = NCGR_TYPE_COMBO;
-		ncgr->nTiles = nTilesOld;
-
-		//write DFPL
-		if (nSections > 2) {
-			unsigned char dfplHeader[] = { 'D', 'F', 'P', 'L', 0, 0, 0, 0, 0, 0, 0, 0 };
-			*(uint32_t *) (dfplHeader + 0x04) = dfplSize;
-			*(uint32_t *) (dfplHeader + 0x08) = ncgr->nTiles;
-
-			//iterate the screen and set attributes
-			uint8_t *attr = (uint8_t *) calloc(ncgr->nTiles, 1);
-			for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-				uint16_t tile = nscr->data[i];
-				int charNum = tile & 0x3FF;
-				int palNum = tile >> 12;
-				attr[charNum] = palNum;
-			}
-			bstreamWrite(stream, dfplHeader, sizeof(dfplHeader));
-			bstreamWrite(stream, attr, ncgr->nTiles);
-			free(attr);
-		}
-
-	} else if (combo->header.format == COMBO2D_TYPE_MBB) {
-		MBBCOMBO *mbbInfo = (MBBCOMBO *) combo->extraData;
-		NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
-		NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
-
-		unsigned char header[0x74] = { 0 };
-		*(uint32_t *) (header + 0x00) = sizeof(header);
-		*(uint32_t *) (header + 0x04) = sizeof(header) + 0x200;
-		*(uint16_t *) (header + 0x60) = ncgr->nTiles * (8 * ncgr->nBits) / 0x20;
-		header[0x59] = (ncgr->nBits == 8) ? 0x80 : 0;
-
-		//write screen offset infos
-		int nScreensWritten = 0;
-		uint32_t currentScreenOffset = sizeof(header) + 0x200 + ncgr->nTiles * (8 * ncgr->nBits);
-		for (int i = 0; i < 4; i++) {
-			if (!(mbbInfo->screenBitmap & (1 << i))) continue;
-
-			NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, nScreensWritten);
-			*(uint32_t *) (header + 0x08 + i * 4) = currentScreenOffset;
-			*(uint16_t *) (header + 0x18 + i * 0x10 + 0x8) = nscr->tilesX * 8;
-			*(uint16_t *) (header + 0x18 + i * 0x10 + 0xA) = nscr->tilesY * 8;
-			currentScreenOffset += nscr->dataSize;
-		}
-
-		bstreamWrite(stream, header, sizeof(header));
-		bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
-		ChrWriteChars(ncgr, stream);
-
-		//write screens
-		nScreensWritten = 0;
-		for (int i = 0; i < 4; i++) {
-			if (!(mbbInfo->screenBitmap & (1 << i))) continue;
-			NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, nScreensWritten);
-
-			bstreamWrite(stream, nscr->data, nscr->dataSize);
-
-			nScreensWritten++;
-		}
+	switch (combo->header.format) {
+		case COMBO2D_TYPE_BANNER:
+			return combo2dWriteBanner(combo, stream);
+		case COMBO2D_TYPE_BNCD:
+			return combo2dWriteBncd(combo, stream);
+		case COMBO2D_TYPE_5BG:
+			return combo2dWrite5bg(combo, stream);
+		case COMBO2D_TYPE_TIMEACE:
+			return combo2dWriteTimeAce(combo, stream);
+		case COMBO2D_TYPE_DATAFILE:
+			return combo2dWriteDataFile(combo, stream);
+		case COMBO2D_TYPE_MBB:
+			return combo2dWriteMbb(combo, stream);
 	}
 
 	return 0;

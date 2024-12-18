@@ -764,6 +764,8 @@ int CellWrite(NCER *ncer, BSTREAM *stream) {
 			return CellWriteHudson(ncer, stream);
 		case NCER_TYPE_SETOSA:
 			return CellWriteSetosa(ncer, stream);
+		case NCER_TYPE_COMBO:
+			return combo2dWrite((COMBO2D *) ncer->header.combo, stream);
 	}
 
 	return OBJ_STATUS_UNSUPPORTED;
