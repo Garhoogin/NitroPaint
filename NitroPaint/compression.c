@@ -793,13 +793,13 @@ typedef struct CxiHuffNode_ {
 	struct CxiHuffNode_ *right;
 } CxiHuffNode;
 
-typedef struct BITSTREAM_ {
+typedef struct CxiBitStream_ {
 	uint32_t *bits;
 	int nWords;
 	int nBitsInLastWord;
 	int nWordsAlloc;
 	int length;
-} BITSTREAM;
+} CxiBitStream;
 
 unsigned char *CxDecompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
 	if (size < 5) return NULL;
@@ -1129,7 +1129,7 @@ int CxIsFilteredDiff16(const unsigned char *buffer, unsigned int size) {
 
 
 
-static void CxiBitStreamCreate(BITSTREAM *stream) {
+static void CxiBitStreamCreate(CxiBitStream *stream) {
 	stream->nWords = 0;
 	stream->length = 0;
 	stream->nBitsInLastWord = 32;
@@ -1137,11 +1137,11 @@ static void CxiBitStreamCreate(BITSTREAM *stream) {
 	stream->bits = (uint32_t *) calloc(stream->nWordsAlloc, 4);
 }
 
-static void CxiBitStreamFree(BITSTREAM *stream) {
+static void CxiBitStreamFree(CxiBitStream *stream) {
 	free(stream->bits);
 }
 
-static void CxiBitStreamWrite(BITSTREAM *stream, int bit) {
+static void CxiBitStreamWrite(CxiBitStream *stream, int bit) {
 	if (stream->nBitsInLastWord == 32) {
 		stream->nBitsInLastWord = 0;
 		stream->nWords++;
@@ -1158,7 +1158,7 @@ static void CxiBitStreamWrite(BITSTREAM *stream, int bit) {
 	stream->length++;
 }
 
-static void *CxiBitStreamGetBytes(BITSTREAM *stream, int wordAlign, int beBytes, int beBits, unsigned int *size) {
+static void *CxiBitStreamGetBytes(CxiBitStream *stream, int wordAlign, int beBytes, int beBits, unsigned int *size) {
 	//allocate buffer
 	unsigned int outSize = stream->nWords * 4;
 	if (!wordAlign) {
@@ -1193,11 +1193,11 @@ static void *CxiBitStreamGetBytes(BITSTREAM *stream, int wordAlign, int beBytes,
 	return outbuf;
 }
 
-static void CxiBitStreamWriteBits(BITSTREAM *stream, uint32_t bits, int nBits) {
+static void CxiBitStreamWriteBits(CxiBitStream *stream, uint32_t bits, int nBits) {
 	for (int i = 0; i < nBits; i++) CxiBitStreamWrite(stream, (bits >> i) & 1);
 }
 
-static void CxiBitStreamWriteBitsBE(BITSTREAM *stream, uint32_t bits, int nBits) {
+static void CxiBitStreamWriteBitsBE(CxiBitStream *stream, uint32_t bits, int nBits) {
 	for (int i = 0; i < nBits; i++) CxiBitStreamWrite(stream, (bits >> (nBits - 1 - i)) & 1);
 }
 
@@ -1205,38 +1205,6 @@ static void CxiBitStreamWriteBitsBE(BITSTREAM *stream, uint32_t bits, int nBits)
 
 static int CxiHuffmanNodeComparator(const void *p1, const void *p2) {
 	return ((CxiHuffNode *) p2)->freq - ((CxiHuffNode *) p1)->freq;
-}
-
-static unsigned int CxiHuffmanWriteNode(unsigned char *tree, unsigned int pos, CxiHuffNode *node) {
-	CxiHuffNode *left = node->left;
-	CxiHuffNode *right = node->right;
-
-	//we will write two bytes. 
-	unsigned int afterPos = pos + 2;
-	if (ISLEAF(left)) {
-		tree[pos] = (unsigned char) left->sym;
-	} else {
-		CxiHuffNode *leftLeft = left->left;
-		CxiHuffNode *leftRight = left->right;
-		unsigned char flag = (ISLEAF(leftLeft) << 7) | (ISLEAF(leftRight) << 6);
-		unsigned lastAfterPos = afterPos;
-		afterPos = CxiHuffmanWriteNode(tree, afterPos, left);
-		tree[pos] = flag | ((((lastAfterPos - pos) >> 1) - 1) & 0x3F);
-		if (((lastAfterPos - pos) >> 1) - 1 > 0x3F) __debugbreak();
-	}
-
-	if (ISLEAF(right)) {
-		tree[pos + 1] = (unsigned char) right->sym;
-	} else {
-		CxiHuffNode *rightLeft = right->left;
-		CxiHuffNode *rightRight = right->right;
-		unsigned char flag = (ISLEAF(rightLeft) << 7) | (ISLEAF(rightRight) << 6);
-		unsigned lastAfterPos = afterPos;
-		afterPos = CxiHuffmanWriteNode(tree, afterPos, right);
-		tree[pos + 1] = flag | ((((lastAfterPos - pos) >> 1) - 1) & 0x3F);
-		if (((lastAfterPos - pos) >> 1) - 1 > 0x3F) __debugbreak();
-	}
-	return afterPos;
 }
 
 static void CxiHuffmanMakeShallowFirst(CxiHuffNode *node) {
@@ -1258,7 +1226,7 @@ static int CxiHuffmanHasSymbol(CxiHuffNode *node, uint16_t sym) {
 	return CxiHuffmanHasSymbol(left, sym) || CxiHuffmanHasSymbol(right, sym);
 }
 
-static void CxiHuffmanWriteSymbol(BITSTREAM *bits, uint16_t sym, CxiHuffNode *tree) {
+static void CxiHuffmanWriteSymbol(CxiBitStream *bits, uint16_t sym, CxiHuffNode *tree) {
 	if (ISLEAF(tree)) return;
 	CxiHuffNode *left = tree->left;
 	CxiHuffNode *right = tree->right;
@@ -1311,6 +1279,118 @@ static void CxiHuffmanConstructTree(CxiHuffNode *nodes, int nNodes) {
 	CxiHuffmanMakeShallowFirst(nodes);
 }
 
+
+// ----- Standard Huffman routines
+
+typedef struct CxiHuffTreeCode_ {
+	uint8_t value;
+	uint8_t leaf;
+	uint8_t lrbit : 7;
+} CxiHuffTreeCode;
+
+static uint8_t CxiHuffmanGetFlagForNode(CxiHuffNode *root) {
+	CxiHuffNode *left = root->left;
+	CxiHuffNode *right = root->right;
+
+	return (ISLEAF(left) << 1) | (ISLEAF(right) << 0);
+}
+
+static CxiHuffTreeCode *CxiHuffmanCreateTreeCode(CxiHuffNode *root, CxiHuffTreeCode *treeCode) {
+	CxiHuffNode *left = root->left;
+	CxiHuffNode *right = root->right;
+
+	CxiHuffTreeCode *base = treeCode;
+
+	//left node
+	{
+		if (ISLEAF(left)) {
+			base[0].value = (uint8_t) left->sym;
+			base[0].leaf = 1;
+		} else {
+			uint8_t flag = CxiHuffmanGetFlagForNode(left);
+
+			CxiHuffTreeCode *wr = treeCode + 2;
+			treeCode = CxiHuffmanCreateTreeCode(left, wr);
+
+			base[0].value = ((wr - base - 2) / 2);
+			base[0].lrbit = flag;
+			base[0].leaf = 0;
+		}
+	}
+
+	//right node
+	{
+		if (ISLEAF(right)) {
+			base[1].value = (uint8_t) right->sym;
+			base[1].leaf = 1;
+		} else {
+			uint8_t flag = CxiHuffmanGetFlagForNode(right);
+
+			CxiHuffTreeCode *wr = treeCode + 2;
+			treeCode = CxiHuffmanCreateTreeCode(right, wr);
+
+			base[1].value = ((wr - base - 2) / 2);
+			base[1].lrbit = flag;
+			base[1].leaf = 0;
+		}
+	}
+	return treeCode;
+}
+
+static void CxiHuffmanCheckTree(CxiHuffTreeCode *treeCode, int nNode) {
+	for (int i = 2; i < nNode; i++) {
+		if (treeCode[i].leaf) continue;
+
+		//check node distance out of range
+		if (treeCode[i].value <= 0x3F) continue;
+
+		int slideDst = 1;
+		if (treeCode[i ^ 1].value == 0x3F) {
+			//other node in pair is at maximum distance
+			i ^= 1;
+		} else {
+			//required slide distnace to bring node in range
+			slideDst = treeCode[i].value - 0x3F;
+		}
+
+		int slideMax = (i >> 1) + treeCode[i].value + 1;
+		int slideMin = slideMax - slideDst;
+
+		//move node back and rotate node pair range forward one position
+		CxiHuffTreeCode cpy[2];
+		memcpy(cpy, &treeCode[(slideMax << 1)], sizeof(cpy));
+		memmove(&treeCode[(slideMin + 1) << 1], &treeCode[(slideMin + 0) << 1], 2 * slideDst * sizeof(CxiHuffTreeCode));
+		memcpy(&treeCode[(slideMin << 1)], cpy, sizeof(cpy));
+
+		//update node references to rotated range
+		treeCode[i].value -= slideDst;
+
+		//if the moved node pair is branch nodes, adjust outgoing references
+		if (!treeCode[(slideMin << 1) + 0].leaf) treeCode[(slideMin << 1) + 0].value += slideDst;
+		if (!treeCode[(slideMin << 1) + 1].leaf) treeCode[(slideMin << 1) + 1].value += slideDst;
+
+		for (int j = i + 1; j < (slideMin << 1); j++) {
+			if (treeCode[j].leaf) continue;
+
+			//increment node values referring to slid nodes
+			int refb = (j >> 1) + treeCode[j].value + 1;
+			if ((refb >= slideMin) && (refb < slideMax)) treeCode[j].value++;
+		}
+
+		for (int j = (slideMin + 1) << 1; j < ((slideMax + 1) << 1); j++) {
+			if (treeCode[j].leaf) continue;
+
+			//adjust outgoing references from slid nodes
+			int refb = (j >> 1) + treeCode[j].value + 1;
+			if (refb > slideMax) treeCode[j].value--;
+		}
+
+		//continue again from start of this node pair
+		i &= ~1;
+		i--;
+	}
+}
+
 unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize, int nBits) {
 	//create a histogram of each byte in the file.
 	CxiHuffNode *nodes = (CxiHuffNode *) calloc(512, sizeof(CxiHuffNode));
@@ -1329,22 +1409,37 @@ unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size,
 		}
 	} else {
 		for (unsigned int i = 0; i < size; i++) {
-			nodes[buffer[i] & 0xF].freq++;
-			nodes[buffer[i] >> 4].freq++;
+			nodes[(buffer[i] >> 0) & 0xF].freq++;
+			nodes[(buffer[i] >> 4) & 0xF].freq++;
 		}
 	}
 
+	//count nodes
+	int nLeaf = 0;
+	for (int i = 0; i < nSym; i++) {
+		if (nodes[i].freq) nLeaf++;
+	}
+	if (nLeaf < 2) {
+		//insert dummy nodes
+		for (int i = 0; i < nSym && nLeaf < 2; i++) {
+			if (nodes[i].freq == 0) nodes[i].freq = 1;
+		}
+	}
+
+	//build Huffman tree
 	CxiHuffmanConstructTree(nodes, nSym);
 
-	//now we've got a proper Huffman tree. Great! 
-	unsigned char *tree = (unsigned char *) calloc(512, 1);
-	uint32_t treeSize = CxiHuffmanWriteNode(tree, 2, nodes);
-	treeSize = (treeSize + 3) & ~3; //round up
-	tree[0] = (treeSize >> 1) - 1;
-	tree[1] = 0;
+	//construct Huffman tree encoding
+	CxiHuffTreeCode treeCode[512] = { 0 };
+	treeCode[0].value = ((nLeaf + 1) & ~1) - 1;
+	treeCode[0].lrbit = 0;
+	treeCode[1].value = 0;
+	treeCode[1].lrbit = CxiHuffmanGetFlagForNode(nodes);
+	CxiHuffmanCreateTreeCode(nodes, treeCode + 2);
+	CxiHuffmanCheckTree(treeCode, nLeaf * 2);
 
 	//now write bits out.
-	BITSTREAM stream;
+	CxiBitStream stream;
 	CxiBitStreamCreate(&stream);
 	if (nBits == 8) {
 		for (unsigned int i = 0; i < size; i++) {
@@ -1352,23 +1447,27 @@ unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size,
 		}
 	} else {
 		for (unsigned int i = 0; i < size; i++) {
-			CxiHuffmanWriteSymbol(&stream, buffer[i] & 0xF, nodes);
-			CxiHuffmanWriteSymbol(&stream, buffer[i] >> 4, nodes);
+			CxiHuffmanWriteSymbol(&stream, (buffer[i] >> 0) & 0xF, nodes);
+			CxiHuffmanWriteSymbol(&stream, (buffer[i] >> 4) & 0xF, nodes);
 		}
 	}
 
-	//combine into one
-	uint32_t outSize = 4 + treeSize + stream.nWords * 4;
-	char *finBuf = (char *) malloc(outSize);
-	*(uint32_t *) finBuf = 0x20 | nBits | (size << 8);
-	memcpy(finBuf + 4, tree, treeSize);
-	memcpy(finBuf + 4 + treeSize, stream.bits, stream.nWords * 4);
-	free(tree);
+	//create output bytes
+	unsigned int treeSize = (nLeaf * 2 + 3) & ~3;
+	unsigned int outSize = 4 + treeSize + stream.nWords * 4;
+	unsigned char *finbuf = (unsigned char *) malloc(outSize);
+	*(uint32_t *) finbuf = 0x20 | nBits | (size << 8);
+
+	for (int i = 0; i < nLeaf * 2; i++) {
+		finbuf[4 + i] = treeCode[i].value | (treeCode[i].leaf ? 0 : (treeCode[i].lrbit << 6));
+	}
+
+	memcpy(finbuf + 4 + treeSize, stream.bits, stream.nWords * 4);
 	free(nodes);
 	CxiBitStreamFree(&stream);
 
 	*compressedSize = outSize;
-	return finBuf;
+	return finbuf;
 }
 
 unsigned char *CxCompressHuffman8(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
@@ -2117,7 +2216,7 @@ static void CxiMvdkMakeCanonicalTree(CxiHuffNode *tree, CxiHuffmanCode *codes, i
 	qsort(codes, nMaxNodes, sizeof(CxiHuffmanCode), CxiMvdkHuffmanSymbolComparator);
 }
 
-static void CxiMvdkWriteHuffmanTree(BITSTREAM *stream, CxiHuffmanCode *codes, int nCodes) {
+static void CxiMvdkWriteHuffmanTree(CxiBitStream *stream, CxiHuffmanCode *codes, int nCodes) {
 	//write tree
 	for (int i = 0; i < nCodes;) {
 		//same as next nodes?
@@ -2555,7 +2654,7 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 	unsigned char *treeData = NULL;
 	unsigned int treeSize = 0;
 	{
-		BITSTREAM symbolStream, offsetStream;
+		CxiBitStream symbolStream, offsetStream;
 		CxiBitStreamCreate(&symbolStream);
 		CxiBitStreamCreate(&offsetStream);
 		CxiMvdkWriteHuffmanTree(&symbolStream, lengthEncodings, 0x100 + 29);
@@ -2581,7 +2680,7 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 	}
 
 	//TEST: write out bit stream
-	BITSTREAM bitStream;
+	CxiBitStream bitStream;
 	CxiBitStreamCreate(&bitStream);
 	for (int i = 0; i < nTokens; i++) {
 
@@ -3115,7 +3214,7 @@ static int CxiVlxWriteHuffmanTree(CxiHuffNode *tree, uint16_t *dest, int pos, ui
 	}
 }
 
-static void CxiVlxWriteSymbol(BITSTREAM *stream, uint32_t string, int length) {
+static void CxiVlxWriteSymbol(CxiBitStream *stream, uint32_t string, int length) {
 	for (int i = 0; i < length; i++) {
 		CxiBitStreamWrite(stream, (string >> (length - 1 - i)) & 1);
 	}
@@ -3189,7 +3288,7 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 	treeDataSize = CxiVlxWriteHuffmanTree(distNodes, treeData, treeDataSize, distReps, distLengths, 0, 0);
 
 	//write tokens
-	BITSTREAM stream;
+	CxiBitStream stream;
 	CxiBitStreamCreate(&stream);
 	for (int i = 0; i < nTokens; i++) {
 		CxiLzToken *token = tokens + i;
@@ -3329,7 +3428,7 @@ static void CxiAshEnsureTreeElements(CxiHuffNode *nodes, int nNodes, int nMinNod
 	}
 }
 
-static void CxiAshWriteTree(BITSTREAM *stream, CxiHuffNode *nodes, int nBits) {
+static void CxiAshWriteTree(CxiBitStream *stream, CxiHuffNode *nodes, int nBits) {
 	if (nodes->left != NULL) {
 		//
 		CxiBitStreamWrite(stream, 1);
@@ -3426,7 +3525,7 @@ unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, uns
 	CxiHuffmanConstructTree(dstNodes, nDstNodes);
 
 	//init streams
-	BITSTREAM symStream, dstStream;
+	CxiBitStream symStream, dstStream;
 	CxiBitStreamCreate(&symStream);
 	CxiBitStreamCreate(&dstStream);
 
