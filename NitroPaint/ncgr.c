@@ -992,7 +992,7 @@ void ChrSetDepth(NCGR *ncgr, int depth) {
 			}
 
 			//second half, only if it exists
-			if ((nTiles2 & 1) == 0) {
+			if ((i * 2 + 1) < ncgr->nTiles) {
 				unsigned char *tile2 = ncgr->tiles[i * 2 + 1];
 				for (int j = 0; j < 32; j++) {
 					dest[j + 32] = tile2[j * 2] | (tile2[j * 2 + 1] << 4);
