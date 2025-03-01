@@ -982,9 +982,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 						break;
 
 					case FILE_TYPE_CELL:
-						//create NSCR and make it active
+						//create NCER and make it active
 						object->combo = (void *) combo;
-						h = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NSCR *) object);
+						h = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NCER *) object);
 						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
 						break;
 				}
@@ -2221,8 +2221,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				InvalidateRect(hWnd, NULL, FALSE);
 			} else if (hWndControl == data->hWndConvertButton) {
 				WCHAR src[MAX_PATH + 1];
-				SendMessage(data->hWndWidthInput, WM_GETTEXT, 16, (LPARAM) src);
-				int width = _wtol(src);
+				int width = GetEditNumber(data->hWndWidthInput);
 				int format = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
 
 				int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
@@ -2308,7 +2307,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				texture.palette.pal = (COLOR *) ntfp;
 				texture.palette.nColors = ntfpSize / 2;
 				texture.texels.texel = ntft;
-				texture.texels.cmp = (short *) ntfi;
+				texture.texels.cmp = (uint16_t *) ntfi;
 				texture.texels.texImageParam = (format << 26) | ((ilog2(width) - 3) << 20) | ((ilog2(height) - 3) << 23);
 				texture.texels.height = height;
 				memcpy(&texture.palette.name, palName, 16);
