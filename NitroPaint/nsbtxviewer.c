@@ -585,24 +585,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							InvalidateRect(hWnd, NULL, TRUE);
 						}
 					} else if (hWndControl == data->hWndExportAll) {
-						WCHAR path[MAX_PATH]; //we will overwrite this with the *real* path
-
-						BROWSEINFO bf;
-						bf.hwndOwner = getMainWindow(hWnd);
-						bf.pidlRoot = NULL;
-						bf.pszDisplayName = path;
-						bf.lpszTitle = L"Select output folder...";
-						bf.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX | BIF_VALIDATE; //I don't much like the new dialog style
-						bf.lpfn = NULL;
-						bf.lParam = 0;
-						bf.iImage = 0;
-						PIDLIST_ABSOLUTE idl = SHBrowseForFolder(&bf);
-
-						if (idl == NULL) {
-							break;
-						}
-						SHGetPathFromIDList(idl, path);
-						CoTaskMemFree(idl);
+						//we will overwrite this with the *real* path
+						WCHAR *path = UiDlgBrowseForFolder(getMainWindow(hWnd), L"Select output folder...");
+						if (path == NULL) break;
 
 						int pathLen = wcslen(path);
 						if (path[pathLen - 1] != L'\\' && path[pathLen - 1] != '/') {
@@ -640,6 +625,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							free(palNames[i]);
 						}
 						free(palNames);
+						free(path);
 					} else if (hWndControl == data->hWndResourceButton) {
 						HWND hWndMain = getMainWindow(hWnd);
 						CreateVramUseWindow(hWndMain, &data->nsbtx);

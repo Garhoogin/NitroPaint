@@ -1,6 +1,8 @@
 #include <Windows.h>
 #include <CommCtrl.h>
 #include <Uxtheme.h>
+#include <Shlwapi.h>
+#include <ShlObj.h>
 
 #include "ui.h"
 #include "nitropaint.h"
@@ -170,6 +172,69 @@ int CheckedListViewIsChecked(HWND hWnd, int item) {
 	int state = SendMessage(hWnd, LVM_GETITEMSTATE, item, LVIS_STATEIMAGEMASK);
 	return (state >> 12) - 1;
 }
+
+
+// ----- dialog routines
+
+wchar_t *UiDlgBrowseForFolder(HWND hWndParent, const wchar_t *title) {
+	//use new browse for folder
+	LPWSTR ppName = NULL;
+	IFileOpenDialog *dlg = NULL;
+	IShellItem *item = NULL;
+	wchar_t *path = NULL;
+
+	HRESULT hr = CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, &IID_IFileDialog, &dlg);
+	if (SUCCEEDED(hr)) {
+
+		//set options
+		SUCCEEDED(hr) && (hr = dlg->lpVtbl->SetOptions(dlg, FOS_PICKFOLDERS | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST));
+		SUCCEEDED(hr) && (hr = dlg->lpVtbl->SetTitle(dlg, title));
+
+		//show dialog
+		SUCCEEDED(hr) && (hr = dlg->lpVtbl->Show(dlg, hWndParent));
+
+		//get result
+		SUCCEEDED(hr) && (hr = dlg->lpVtbl->GetResult(dlg, &item));
+		SUCCEEDED(hr) && (hr = item->lpVtbl->GetDisplayName(item, SIGDN_FILESYSPATH, &ppName));
+		if (!SUCCEEDED(hr)) goto Error;
+
+		//copy string
+		path = calloc(wcslen(ppName), sizeof(WCHAR));
+		memcpy(path, ppName, wcslen(ppName) * sizeof(WCHAR));
+		CoTaskMemFree(ppName);
+	Error:
+		if (item != NULL) item->lpVtbl->Release(item);
+		if (dlg != NULL) dlg->lpVtbl->Release(dlg);
+
+	} else {
+		//use old browse for folder
+		path = (WCHAR *) calloc(MAX_PATH, sizeof(WCHAR));
+
+		BROWSEINFO bf;
+		bf.hwndOwner = hWndParent;
+		bf.pidlRoot = NULL;
+		bf.pszDisplayName = path;
+		bf.lpszTitle = title;
+		bf.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX | BIF_VALIDATE; //I don't much like the new dialog style
+		bf.lpfn = NULL;
+		bf.lParam = 0;
+		bf.iImage = 0;
+		PIDLIST_ABSOLUTE idl = SHBrowseForFolder(&bf);
+
+		if (idl == NULL) {
+			free(path);
+			return NULL;
+		}
+
+		SHGetPathFromIDList(idl, path);
+		CoTaskMemFree(idl);
+	}
+	return path;
+}
+
+
+
+// ----- modal routines
 
 //subclass proc that focuses the parent on WM_CLOSE (less flicker)
 LRESULT CALLBACK ModalCloseHookProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {

@@ -35,6 +35,11 @@ void DoModalEx(HWND hWnd, BOOL closeHook);
 void DoModalWait(HWND hWnd, HANDLE hWait);
 
 //
+// Browse for folder dialog.
+//
+wchar_t *UiDlgBrowseForFolder(HWND hWndParent, const wchar_t *title);
+
+//
 // Create a button, optionally a default button.
 //
 HWND CreateButton(HWND hWnd, LPCWSTR text, int x, int y, int width, int height, BOOL def);

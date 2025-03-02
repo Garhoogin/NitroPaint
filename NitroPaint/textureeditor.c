@@ -2193,25 +2193,12 @@ LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			HWND hWndControl = (HWND) lParam;
 			int notif = HIWORD(wParam);
 			if (notif == BN_CLICKED && hWndControl == data->hWndBrowse) { //browse button
-				WCHAR path[MAX_PATH]; //we will overwrite this with the *real* path
+				//we will overwrite this with the *real* path
+				WCHAR *path = UiDlgBrowseForFolder(getMainWindow(hWnd), L"Select output folder...");
+				if (path == NULL) break;
 
-				BROWSEINFO bf;
-				bf.hwndOwner = getMainWindow(hWnd);
-				bf.pidlRoot = NULL;
-				bf.pszDisplayName = path;
-				bf.lpszTitle = L"Select output folder...";
-				bf.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX | BIF_VALIDATE; //I don't much like the new dialog style
-				bf.lpfn = NULL;
-				bf.lParam = 0;
-				bf.iImage = 0;
-				PIDLIST_ABSOLUTE idl = SHBrowseForFolder(&bf);
-
-				if (idl == NULL) {
-					break;
-				}
-				SHGetPathFromIDList(idl, path);
-				CoTaskMemFree(idl);
 				SendMessage(data->hWndDirectory, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				free(path);
 			} else if (notif == BN_CLICKED && (hWndControl == data->hWndClean || hWndControl == data->hWndConvert)) { //clean and convert buttons
 				//delete directory\converted, if it exists
 				WCHAR path[MAX_PATH] = { 0 };

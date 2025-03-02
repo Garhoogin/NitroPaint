@@ -1669,26 +1669,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_TOOLS_TEXTUREVRAMSUMMARY:
 					{
 						//select directory
-						WCHAR path[MAX_PATH];
-
-						BROWSEINFO bf;
-						bf.hwndOwner = getMainWindow(hWnd);
-						bf.pidlRoot = NULL;
-						bf.pszDisplayName = path;
-						bf.lpszTitle = L"Select texture folder...";
-						bf.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX | BIF_VALIDATE; //I don't much like the new dialog style
-						bf.lpfn = NULL;
-						bf.lParam = 0;
-						bf.iImage = 0;
-						PIDLIST_ABSOLUTE idl = SHBrowseForFolder(&bf);
-
-						if (idl == NULL) {
-							break;
-						}
-						SHGetPathFromIDList(idl, path);
-						CoTaskMemFree(idl);
+						WCHAR *path = UiDlgBrowseForFolder(getMainWindow(hWnd), L"Select texture folder...");
+						if (path == NULL) break;
 
 						BatchTexShowVramStatistics(hWnd, path);
+						free(path);
 						break;
 					}
 					case ID_TOOLS_EDITLINK:
