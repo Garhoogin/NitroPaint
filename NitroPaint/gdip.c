@@ -687,13 +687,13 @@ COLOR32 *ImgScale(COLOR32 *px, int width, int height, int outWidth, int outHeigh
 			double trimU = sY1 - (double) (int) sY1;
 			double trimD = ceil(sY2) - sY2;
 
-			for (int sy = 0; sy < sampleRectH; sy++) {
+			for (int sy = 0; sy < sampleRectH && (sampleRectY + sy) < height; sy++) {
 				double rowH = 1.0;
 				if (sy == 0) rowH -= trimU;                 // trim from top
 				if (sy == (sampleRectH - 1)) rowH -= trimD; // trim from bottom
 
 
-				for (int sx = 0; sx < sampleRectW; sx++) {
+				for (int sx = 0; sx < sampleRectW && (sampleRectX + sx) < width; sx++) {
 					double colW = 1.0;
 					if (sx == 0) colW -= trimL;                 // trim from left
 					if (sx == (sampleRectW - 1)) colW -= trimR; // trim from right

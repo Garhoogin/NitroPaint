@@ -435,12 +435,9 @@ int combo2dReadBncd(COMBO2D *combo, const unsigned char *buffer, unsigned int si
 		const unsigned char *cellObj = objData + objIndex * 0xC;
 
 		NCER_CELL *cell = cells + i;
-		cell->nAttribs = nObj;
-		cell->minX = 0;
-		cell->maxX = 0;
+		CellInitBankCell(ncer, cell, nObj);
 		cell->maxX = cell->minX + *(uint8_t *) (cellInfo + 0x0);
 		cell->maxY = cell->minY + *(uint8_t *) (cellInfo + 0x1);
-		cell->attr = (uint16_t *) calloc(nObj, 6);
 		for (unsigned int j = 0; j < nObj; j++) {
 			const unsigned char *thisObj = cellObj + j * 0xC;
 			memcpy(cell->attr + j * 3, thisObj, 6);

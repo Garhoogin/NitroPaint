@@ -474,7 +474,7 @@ static void CellViewerUpdateObjList(NCERVIEWERDATA *data) {
 			wsprintfW(textbuf, L"%d", info.priority); AddListViewItem(data->hWndObjList, textbuf, i, 10);
 			wsprintfW(textbuf, L"%c", info.mosaic ? 'X' : ' '); AddListViewItem(data->hWndObjList, textbuf, i, 11);
 
-			LPCWSTR modes[] = { L"Normal", L"Translucent", L"Window", L"Bitmap" };
+			LPWSTR modes[] = { L"Normal", L"Translucent", L"Window", L"Bitmap" };
 			AddListViewItem(data->hWndObjList, modes[info.mode], i, 12);
 		}
 	}
@@ -619,12 +619,9 @@ static void CellViewerDeleteSelection(NCERVIEWERDATA *data) {
 		int i = data->selectedOBJ[data->nSelectedOBJ - 1];
 
 		//remove this OBJ
-		memmove(attr + 3 * i, attr + 3 * (i + 1), (cell->nAttribs - i - 1) * 6);
-		cell->nAttribs--;
-
+		CellDeleteOBJ(cell, i, 1);
 		data->nSelectedOBJ--;
 	}
-	cell->attr = realloc(cell->attr, cell->nAttribs * 6);
 
 	if (data->selectedOBJ != NULL) free(data->selectedOBJ);
 	data->selectedOBJ = NULL;
@@ -735,7 +732,7 @@ static int CellViewerClipboardHasMapping(NP_OBJ *obj, int mapping) {
 	return (obj->presenceMask & (1 << id)) != 0;
 }
 
-static uint16_t *CellViewerGetSelectedOamAttributes(NCERVIEWERDATA *data, int *pnOBJ) {
+static uint16_t *CellViewerGetSelectedOamAttributes(NCERVIEWERDATA *data, int *pnOBJ, uint32_t **pExAttr) {
 	NCER_CELL *cell = CellViewerGetCurrentCell(data);
 	if (cell == NULL) {
 		*pnOBJ = 0;
@@ -748,6 +745,18 @@ static uint16_t *CellViewerGetSelectedOamAttributes(NCERVIEWERDATA *data, int *p
 		memcpy(attrs + i * 3, cell->attr + ii * 3, 6);
 	}
 
+	if (pExAttr != NULL) {
+		*pExAttr = NULL;
+		if (cell->useEx2d != NULL) {
+			uint32_t *exAttr = (uint32_t *) calloc(data->nSelectedOBJ, sizeof(uint32_t));
+			for (int i = 0; i < data->nSelectedOBJ; i++) {
+				int ii = data->selectedOBJ[i];
+				exAttr[i] = cell->ex2dCharNames[ii];
+			}
+			*pExAttr = exAttr;
+		}
+	}
+
 	*pnOBJ = data->nSelectedOBJ;
 	return attrs;
 }
@@ -757,7 +766,8 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	if (cell == NULL) return;
 
 	int nSel;
-	uint16_t *selAttr = CellViewerGetSelectedOamAttributes(data, &nSel);
+	uint32_t *exAttr = NULL;
+	uint16_t *selAttr = CellViewerGetSelectedOamAttributes(data, &nSel, &exAttr);
 
 	COLOR32 *buf = (COLOR32 *) calloc(512 * 256, sizeof(COLOR32));
 
@@ -773,10 +783,13 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	NCER_CELL *tmpCell = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
 	tmpCell->nAttribs = nSel;
 	tmpCell->attr = selAttr;
+	tmpCell->useEx2d = cell->useEx2d;
+	tmpCell->ex2dCharNames = exAttr;
 
 	CellViewerRenderCell(buf, NULL, tmpCell, data->ncer.mappingMode, ncgr, nclr, vramTransfer, 256, 128, 1.0f, 0.0f, 0.0f, 1.0f);
 	free(tmpCell);
 	free(selAttr);
+	if (exAttr != NULL) free(exAttr);
 
 	//cell renders inverted color channel order, so flip themh here.
 	for (int i = 0; i < 512 * 256; i++) {
@@ -807,10 +820,15 @@ static void CellViewerCopy(NCERVIEWERDATA *data) {
 	int *sel = CellViewerGetSelectedOamObjects(data, &nSel);
 	int mappingID = CellViewerObjVramMappingToID(data->ncer.mappingMode);
 	
-	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + nSel * 6, 1);
+	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + nSel * 8, 1);
 	for (int i = 0; i < nSel; i++) {
 		int ii = sel[i];
-		memcpy(cpy->attr + i * 3, cell->attr + ii * 3, 6);
+		memcpy(cpy->attr + i * 4, cell->attr + ii * 3, 6);
+
+		uint32_t charName = cell->attr[ii * 3 + 2] & 0x03FF;
+		if (cell->useEx2d) charName = cell->ex2dCharNames[ii];
+		cpy->attr[i * 4 + 2] = (cpy->attr[i * 4 + 2] & 0xFC00) | (charName & 0x03FF);
+		cpy->attr[i * 4 + 3] = charName >> 10;
 	}
 	cpy->nObj[mappingID] = nSel;
 	cpy->presenceMask = 1 << mappingID;
@@ -886,10 +904,16 @@ static void CellViewerPaste(NCERVIEWERDATA *data) {
 			//paste to beginning of OBJ list (brings to front)
 			int nObj = attr->nObj[mappingId];
 			int offsObj = attr->offsObjData[mappingId];
-			cell->nAttribs += nObj;
-			cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 6);
-			memmove(cell->attr + 3 * nObj, cell->attr, (cell->nAttribs - nObj) * 6);
-			memcpy(cell->attr, attr->attr + 3 * offsObj, 6 * nObj);
+			CellInsertOBJ(cell, 0, nObj);
+
+			for (int i = 0; i < nObj; i++) memcpy(cell->attr + i * 3, attr->attr + 4 * (offsObj + i), 6);
+			if (cell->useEx2d) {
+				for (int i = 0; i < nObj; i++) {
+					uint16_t *objAttr = &attr->attr[4 * (offsObj + i)];
+					cell->ex2dCharNames[i] = (objAttr[2] & 0x03FF) | (objAttr[3] << 10);
+				}
+			}
+
 
 			//select
 			CellViewerDeselect(data);
@@ -1530,6 +1554,21 @@ static void CellViewerSetMappingMode(NCERVIEWERDATA *data, int mapping) {
 	CellViewerRestoreRedraw(data);
 }
 
+static void CellViewerSetMappingModeSelection(NCERVIEWERDATA *data, int mapping) {
+	int idx = -1;
+	switch (mapping) {
+		case GX_OBJVRAMMODE_CHAR_2D:      idx = 0; break;
+		case GX_OBJVRAMMODE_CHAR_1D_32K:  idx = 1; break;
+		case GX_OBJVRAMMODE_CHAR_1D_64K:  idx = 2; break;
+		case GX_OBJVRAMMODE_CHAR_1D_128K: idx = 3; break;
+		case GX_OBJVRAMMODE_CHAR_1D_256K: idx = 4; break;
+	}
+	if (idx != -1) {
+		CellViewerSetMappingMode(data, mapping);
+		SendMessage(data->hWndMappingMode, CB_SETCURSEL, idx, 0);
+	}
+}
+
 static void CellViewerSetScale(NCERVIEWERDATA *data, int scale) {
 	data->scale = scale;
 	data->frameData.contentWidth = 512 * scale;
@@ -1710,6 +1749,36 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 				CW_USEDEFAULT, CW_USEDEFAULT, 500, CW_USEDEFAULT, hWndMdi, NULL, NULL, NULL);
 			SendMessage(data->hWndObjWindow, NV_INITIALIZE, 0, (LPARAM) data);
 		}
+	} else if (notification == BN_CLICKED && hWndControl == data->hWndMake2D) {
+		NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+		NCER *ncer = &data->ncer;
+		if (ncgr == NULL) {
+			MessageBox(hWnd, L"Requires open character graphics file.", L"Error", MB_ICONERROR);
+			return;
+		}
+
+		if (!data->ncer.isEx2d) {
+			//convert to extended 2D
+			if (CellSetBankExt2D(ncer, ncgr, 1)) {
+				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
+				CellViewerSetMappingModeSelection(data, GX_OBJVRAMMODE_CHAR_2D);
+			} else {
+				MessageBox(hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
+			}
+		} else {
+			//convert from extended 2D
+			if (CellSetBankExt2D(ncer, ncgr, 0)) {
+				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
+				CellViewerSetMappingModeSelection(data, data->ncer.mappingMode);
+			} else {
+				MessageBox(hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
+			}
+		}
+
+		//update character editor
+		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
+		CellViewerGraphicsUpdated(data->hWnd);
+		ChrViewerGraphicsSizeUpdated(hWndNcgrViewer);
 	}
 
 	//log a change
@@ -1815,7 +1884,9 @@ static void CellViewerSetSelectionCharacterIndex(NCERVIEWERDATA *data, int chno)
 	NCER_CELL *cell = CellViewerGetCurrentCell(data);
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
 		uint16_t *pAttr2 = &cell->attr[3 * data->selectedOBJ[i] + 2];
+
 		*pAttr2 = (*pAttr2 & 0xFC00) | (chno & 0x03FF);
+		if (cell->useEx2d) cell->ex2dCharNames[data->selectedOBJ[i]] = chno;
 	}
 }
 
@@ -1825,14 +1896,14 @@ static void CellViewerSendSelectionToFront(NCERVIEWERDATA *data) {
 
 	//create copy of selection and delete it
 	int nSel;
-	uint16_t *sel = CellViewerGetSelectedOamAttributes(data, &nSel);
+	uint32_t *exSel = NULL;
+	uint16_t *sel = CellViewerGetSelectedOamAttributes(data, &nSel, &exSel);
 	CellViewerDeleteSelection(data);
 
 	//send to front: copy OBJ to front of list
-	cell->nAttribs += nSel;
-	cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 6);
-	memmove(cell->attr + 3 * nSel, cell->attr, (cell->nAttribs - nSel) * 6);
+	CellInsertOBJ(cell, 0, nSel);
 	memcpy(cell->attr, sel, nSel * 6);
+	if (cell->useEx2d) memcpy(cell->ex2dCharNames, exSel, nSel * sizeof(uint32_t));
 
 	//re-select moved OBJ
 	int *selidxs = (int *) calloc(nSel, sizeof(int));
@@ -1842,6 +1913,7 @@ static void CellViewerSendSelectionToFront(NCERVIEWERDATA *data) {
 	data->selectedOBJ = selidxs;
 
 	free(sel);
+	if (exSel != NULL) free(exSel);
 }
 
 static void CellViewerSendSelectionToBack(NCERVIEWERDATA *data) {
@@ -1850,13 +1922,14 @@ static void CellViewerSendSelectionToBack(NCERVIEWERDATA *data) {
 
 	//create copy of selection and delete it
 	int nSel;
-	uint16_t *sel = CellViewerGetSelectedOamAttributes(data, &nSel);
+	uint32_t *exSel = NULL;
+	uint16_t *sel = CellViewerGetSelectedOamAttributes(data, &nSel, &exSel);
 	CellViewerDeleteSelection(data);
 
 	//send to front: copy OBJ to end of list
-	cell->nAttribs += nSel;
-	cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 6);
+	CellInsertOBJ(cell, cell->nAttribs, nSel);
 	memcpy(cell->attr + 3 * (cell->nAttribs - nSel), sel, nSel * 6);
+	if (cell->useEx2d) memcpy(cell->ex2dCharNames + cell->nAttribs - nSel, exSel, nSel * sizeof(uint32_t));
 
 	//re-select moved OBJ
 	int *selidxs = (int *) calloc(nSel, sizeof(int));
@@ -1866,6 +1939,7 @@ static void CellViewerSendSelectionToBack(NCERVIEWERDATA *data) {
 	data->selectedOBJ = selidxs;
 
 	free(sel);
+	if (exSel != NULL) free(exSel);
 }
 
 static void CellViewerAppendDummyObj(NCERVIEWERDATA *data) {
@@ -1894,6 +1968,11 @@ static void CellViewerAppendDummyObj(NCERVIEWERDATA *data) {
 	pAttr[0] = 0x0000 | (bbp8 << 13);
 	pAttr[1] = 0x0000;
 	pAttr[2] = 0x0000;
+
+	if (cell->useEx2d) {
+		cell->ex2dCharNames = (uint32_t *) realloc(cell->ex2dCharNames, cell->nAttribs * sizeof(uint32_t));
+		cell->ex2dCharNames[cell->nAttribs - 1] = 0;
+	}
 
 	//select
 	CellViewerSelectSingleOBJ(data, cell->nAttribs - 1);
@@ -2039,7 +2118,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		}
 		case ID_CELLMENU_CHARACTERINDEX:
 		{
-			WCHAR textbuf[5];
+			WCHAR textbuf[10];
 
 			//find common character index
 			int commonCharIndex = -1;
@@ -2054,7 +2133,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			if (commonCharIndex != -1) wsprintfW(textbuf, L"%d", commonCharIndex);
 			else textbuf[0] = L'\0';
 
-			if (PromptUserText(hWndMain, L"Character Index", L"Character Index:", textbuf, 5)) {
+			if (PromptUserText(hWndMain, L"Character Index", L"Character Index:", textbuf, 9)) {
 				CellViewerSetSelectionCharacterIndex(data, _wtol(textbuf));
 				CellViewerGraphicsUpdated(data->hWnd);
 			}
@@ -2174,19 +2253,20 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			};
 
 
-			int ctlWidth = UI_SCALE_COORD(100, dpiScale);
+			int ctlWidth = UI_SCALE_COORD(85, dpiScale); // 100 -> 85
 			int ctlWidthNarrow = UI_SCALE_COORD(75, dpiScale);
-			int ctlWidthWide = UI_SCALE_COORD(150, dpiScale);
+			int ctlWidthWide = UI_SCALE_COORD(130, dpiScale);
 			int ctlHeight = UI_SCALE_COORD(22, dpiScale);
 			int cellListWidth = UI_SCALE_COORD(200, dpiScale);
 			data->hWndCellList = CellViewerCreateCellList(hWnd, cellListWidth);
 			data->hWndCellAdd = CreateButton(hWnd, L"New Cell", 175, 300, 25, 22, FALSE);
 			data->hWndMappingModeLabel = CreateStatic(hWnd, L" Mapping Mode:", UI_SCALE_COORD(200, dpiScale), 0, ctlWidth, ctlHeight);
-			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, UI_SCALE_COORD(300, dpiScale), 0, ctlWidthNarrow, 100, 0);
-			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", UI_SCALE_COORD(385, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
-			data->hWndShowBounds = CreateCheckbox(hWnd, L"Show Bounds", UI_SCALE_COORD(495, dpiScale), 0, ctlWidth, ctlHeight, data->showCellBounds);
-			data->hWndAutoCalcBounds = CreateCheckbox(hWnd, L"Auto-Calculate Bounds", UI_SCALE_COORD(595, dpiScale), 0, ctlWidthWide, ctlHeight, data->autoCalcBounds);
-			data->hWndShowObjButton = CreateButton(hWnd, L"OBJ List", UI_SCALE_COORD(745, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
+			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, UI_SCALE_COORD(285, dpiScale), 0, ctlWidthNarrow, 100, 0);
+			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", UI_SCALE_COORD(365, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
+			data->hWndShowBounds = CreateCheckbox(hWnd, L"Show Bounds", UI_SCALE_COORD(455, dpiScale), 0, ctlWidth, ctlHeight, data->showCellBounds);
+			data->hWndAutoCalcBounds = CreateCheckbox(hWnd, L"Auto-Calculate Bounds", UI_SCALE_COORD(555, dpiScale), 0, ctlWidthWide, ctlHeight, data->autoCalcBounds);
+			data->hWndMake2D = CreateButton(hWnd, L"Make 2D", UI_SCALE_COORD(685, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
+			data->hWndShowObjButton = CreateButton(hWnd, L"OBJ List", UI_SCALE_COORD(765, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
 			break;
 		}
 		case NV_INITIALIZE_IMMEDIATE:
@@ -3739,7 +3819,7 @@ static unsigned int CellViewerGetCopiedObjSize(NP_OBJ *obj) {
 	for (int i = 0; i < 5; i++) {
 		if (!(obj->presenceMask & (1 << i))) continue;
 
-		unsigned int n = obj->offsObjData[i] * 6 + obj->nObj[i] * 6;
+		unsigned int n = obj->offsObjData[i] * 8 + obj->nObj[i] * 8;
 		if (n > clipboardSize) clipboardSize = n;
 	}
 	return clipboardSize + sizeof(NP_OBJ);

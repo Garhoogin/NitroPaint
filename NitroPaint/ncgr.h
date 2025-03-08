@@ -40,11 +40,12 @@ typedef struct NCGR_{
 	int mappingMode;
 	int bitmap;
 	int nBits;
-	int extPalette;     //whether character is using an extended palette
-	unsigned char *attr; //unused by most things
+	int extPalette;           // whether character is using an extended palette
+	unsigned char *attr;      // per-character palette attribute data
+	int isExChar;             // is extended character data
 	BYTE **tiles;
-	CHAR_SLICE *slices;       //for Ghost Trick files
-	int nSlices;              //for Ghost Trick files
+	CHAR_SLICE *slices;       // for Ghost Trick files
+	int nSlices;              // for Ghost Trick files
 } NCGR;
 
 typedef struct CHAR_VRAM_TRANSFER_ {

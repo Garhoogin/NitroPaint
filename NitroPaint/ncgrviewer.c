@@ -534,7 +534,7 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 
 		int nObj = 0, badObj = 0;
 		OBJ_BOUNDS *bounds = ChrViewerGenObjSplit(selW, selH, startX, startY, maxObjW, maxObjH, j != MAPPING_2D, &nObj);
-		uint16_t *obj = (uint16_t *) calloc(nObj, 6 * sizeof(uint16_t));
+		uint16_t *obj = (uint16_t *) calloc(nObj, 8 * sizeof(uint16_t));
 		for (int i = 0; i < nObj; i++) {
 			OBJ_BOUNDS *bound = &bounds[i];
 			int x = (bound->x - startX) / 8;
@@ -554,10 +554,11 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 			int shape = ChViewerObjDimensionToShape(bound->width, bound->height);
 			int size = ChrViewerObjDimensionToSize(bound->width, bound->height);
 
-			uint16_t *attr = obj + i * 3;
+			uint16_t *attr = obj + i * 4;
 			attr[0] = 0x0000 | (bound->y & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
 			attr[1] = 0x0000 | (bound->x & 0x01FF) | (size << 14);
 			attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
+			attr[3] = chno >> 10; // fake OAM attribute but used in intermediate representation
 		}
 		free(bounds);
 
@@ -572,7 +573,7 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 	}
 
 	//create clipboard data
-	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + 6 * nTotalObj, 1);
+	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + 8 * nTotalObj, 1);
 	cpy->xMin = startX;
 	cpy->yMin = startY;
 	cpy->width = selW * 8;
@@ -583,7 +584,7 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 	unsigned int offsDest = 0;
 	for (int i = 0; i < 5; i++) {
 		if (attrForMapping[i] != NULL) {
-			memcpy(cpy->attr + offsDest * 3, attrForMapping[i], nObjForMapping[i] * 6);
+			memcpy(cpy->attr + offsDest * 4, attrForMapping[i], nObjForMapping[i] * 8);
 			cpy->offsObjData[i] = offsDest;
 
 			free(attrForMapping[i]);
@@ -2137,6 +2138,19 @@ static LRESULT WINAPI ChrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+void ChrViewerGraphicsSizeUpdated(HWND hWnd) {
+	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+
+	ChrViewerPopulateWidthField(data->hWnd);
+	data->ted.tilesX = data->ncgr.tilesX;
+	data->ted.tilesY = data->ncgr.tilesY;
+	SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
+
+	//invalidate viewers
+	ChrViewerGraphicsUpdated(data);
+	TedUpdateMargins(&data->ted);
+}
+
 static LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
 	switch (msg) {
@@ -2165,14 +2179,7 @@ static LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int nRows = GetEditNumber(data->hWndExpandRowsInput);
 				int nCols = GetEditNumber(data->hWndExpandColsInput);
 				ChrResize(&data->ncgr, nCols, nRows);
-				ChrViewerPopulateWidthField(data->hWnd);
-				data->ted.tilesX = data->ncgr.tilesX;
-				data->ted.tilesY = data->ncgr.tilesY;
-				SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
-
-				//invalidate viewers
-				ChrViewerGraphicsUpdated(data);
-				TedUpdateMargins(&data->ted);
+				ChrViewerGraphicsSizeUpdated(data->hWnd);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}

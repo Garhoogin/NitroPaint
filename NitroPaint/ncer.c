@@ -4,6 +4,9 @@
 #include "nns.h"
 #include "setosa.h"
 
+#define SEXT8(n)   (((n)<0x080)?(n):((n)-0x100))
+#define SEXT9(n)   (((n)<0x100)?(n):((n)-0x200))
+
 LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Setosa", L"Hudson", L"Ghost Trick", NULL };
 
 void CellInit(NCER *ncer, int format) {
@@ -94,9 +97,8 @@ int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 		uint32_t ofs = ((uint32_t *) (buffer + 4))[i] + 4;
 		int nOAM = *(uint16_t *) (buffer + ofs);
 		NCER_CELL *thisCell = cells + i;
-		thisCell->nAttribs = nOAM;
-		thisCell->attr = (uint16_t *) calloc(3 * nOAM, 2);
-		thisCell->cellAttr = 0;
+		CellInitBankCell(ncer, thisCell, nOAM);
+
 		int minX = 0x7FFF, maxX = -0x7FFF, minY = 0x7FFF, maxY = -0x7FFF;
 		uint16_t *attrs = (uint16_t *) (buffer + ofs + 2);
 		for (int j = 0; j < nOAM; j++) {
@@ -111,6 +113,7 @@ int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 			if (y < minY) minY = y;
 			if (y + info.height > maxY) maxY = y + info.height;
 		}
+
 		thisCell->maxX = maxX;
 		thisCell->minX = minX;
 		thisCell->maxY = maxY;
@@ -160,12 +163,11 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 			uint32_t pOamAttrs = *(uint32_t *) (cellData + 4);
 
 			NCER_CELL *cell = ncer->cells + i;
-			cell->nAttribs = nOAMEntries;
+			CellInitBankCell(ncer, cell, nOAMEntries ? nOAMEntries : 1);
 			cell->cellAttr = cellAttr;
 
 			if (nOAMEntries != 0) {
 				uint16_t *cellOam = (uint16_t *) (oamData + pOamAttrs);
-				cell->attr = calloc(cell->nAttribs * 3, 2);
 				memcpy(cell->attr, oamData + pOamAttrs, cell->nAttribs * 3 * 2);
 
 				if (perCellDataSize >= 16) {
@@ -176,9 +178,6 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 				}
 			} else {
 				// Provide at least one OAM attribute for empty cells
-				cell->nAttribs = 1;
-				cell->attr = calloc(3, 2);
-				memset(cell->attr, 0, 3 * 2);
 				cell->attr[0] = 0x0200; // Disable rendering
 			}
 
@@ -246,17 +245,12 @@ int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int siz
 	for (int i = 0; i < nCells; i++) {
 		const unsigned char *cell = buffer + cellOffs[i] * 2;
 		int nObj = *(uint16_t *) cell;
-
-		cells[i].nAttribs = nObj;
+		CellInitBankCell(ncer, &cells[i], nObj ? nObj : 1);
 
 		if (nObj != 0) {
-			cells[i].attr = (uint16_t *) calloc(nObj, 3 * 2);
 			memcpy(cells[i].attr, cell + 2, nObj * 3 * 2);
 		} else {
 			// Provide at least one OAM attribute for empty cells
-			cells[i].nAttribs = 1;
-			cells[i].attr = calloc(1, 3 * 2);
-			memset(cells[i].attr, 0, 3 * 2);
 			cells[i].attr[0] = 0x0200; // Disable rendering
 		}
 
@@ -285,9 +279,17 @@ int CellReadFile(NCER *ncer, LPCWSTR path) {
 	return ObjReadFile(path, (OBJECT_HEADER *) ncer, (OBJECT_READER) CellRead);
 }
 
+void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj) {
+	memset(cell, 0, sizeof(NCER_CELL));
+
+	cell->nAttribs = nObj;
+	cell->attr = (uint16_t *) calloc(nObj, 3 * sizeof(uint16_t));
+}
+
 void CellGetObjDimensions(int shape, int size, int *width, int *height) {
-	int widths[3][4] = { {8, 16, 32, 64}, {16, 32, 32, 64}, {8, 8, 16, 32} };
-	int heights[3][4] = { {8, 16, 32, 64}, {8, 8, 16, 32}, {16, 32, 32, 64} };
+	//on hardware, shape=3 gives an 8x8 OBJ
+	int widths [4][4] = { { 8, 16, 32, 64 }, { 16, 32, 32, 64 }, {  8,  8, 16, 32 }, { 8, 8, 8, 8 } };
+	int heights[4][4] = { { 8, 16, 32, 64 }, {  8,  8, 16, 32 }, { 16, 32, 32, 64 }, { 8, 8, 8, 8 } };
 
 	*width = widths[shape][size];
 	*height = heights[shape][size];
@@ -311,7 +313,7 @@ int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	info->size = size;
 	info->shape = shape;
 
-	info->characterName = attr2 & 0x3FF;
+	info->characterName = cell->useEx2d ? cell->ex2dCharNames[oam] : attr2 & 0x3FF;
 	info->priority = (attr2 >> 10) & 0x3;
 	info->palette = (attr2 >> 12) & 0xF;
 	info->mode = (attr0 >> 10) & 3;
@@ -510,9 +512,11 @@ int CellFree(OBJECT_HEADER *header) {
 	if (ncer->labl) free(ncer->labl);
 	for (int i = 0; i < ncer->nCells; i++) {
 		free(ncer->cells[i].attr);
+		if (ncer->cells[i].ex2dCharNames) free(ncer->cells[i].ex2dCharNames);
 	}
 	if (ncer->cells) free(ncer->cells);
 	if (ncer->vramTransfer) free(ncer->vramTransfer);
+	
 	
 	return 0;
 }
@@ -774,3 +778,517 @@ int CellWrite(NCER *ncer, BSTREAM *stream) {
 int CellWriteFile(NCER *ncer, LPWSTR name) {
 	return ObjWriteFile(name, (OBJECT_HEADER *) ncer, (OBJECT_WRITER) CellWrite);
 }
+
+
+void CellInsertOBJ(NCER_CELL *cell, int index, int nObj) {
+	int nMove = cell->nAttribs - index;
+
+	cell->nAttribs += nObj;
+	cell->attr = realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
+	memmove(cell->attr + 3 * (index + nObj), cell->attr + 3 * index, nMove * 3 * sizeof(uint16_t));
+	memset(cell->attr + 3 * index, 0, nObj * 3 * sizeof(uint16_t));
+
+	if (cell->useEx2d) {
+		cell->ex2dCharNames = realloc(cell->ex2dCharNames, cell->nAttribs * sizeof(uint32_t));
+		memmove(cell->ex2dCharNames + index + nObj, cell->ex2dCharNames + index, nMove * sizeof(uint32_t));
+		memset(cell->ex2dCharNames + index, 0, nObj * sizeof(uint32_t));
+	}
+}
+
+void CellDeleteOBJ(NCER_CELL *cell, int index, int nObj) {
+	int nMove = cell->nAttribs - (index + nObj);
+
+	cell->nAttribs -= nObj;
+
+	memmove(cell->attr + (index) * 3, cell->attr + (index + nObj) * 3, nMove * 3 * sizeof(uint16_t));
+	cell->attr = realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
+
+	if (cell->useEx2d) {
+		memmove(cell->ex2dCharNames + index, cell->ex2dCharNames + index + nObj, nMove * sizeof(uint32_t));
+		cell->ex2dCharNames = realloc(cell->ex2dCharNames, cell->nAttribs * sizeof(uint32_t));
+	}
+}
+
+static void CellGetCellBounds(NCER_CELL *cell, int *pxMin, int *pyMin, int *pxMax, int *pyMax) {
+	int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
+
+	for (int i = 0; i < cell->nAttribs; i++) {
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, i);
+		int objX = SEXT9(info.x), objY = SEXT8(info.y);
+		int objW = info.width << info.doubleSize, objH = info.height << info.doubleSize;
+
+		if (i == 0 || objX < xMin) xMin = objX;
+		if (i == 0 || objY < yMin) yMin = objY;
+		if (i == 0 || (objX + objW) > xMax) xMax = objX + objW;
+		if (i == 0 || (objY + objH) > yMax) yMax = objY + objH;
+	}
+
+	*pxMin = xMin;
+	*pxMax = xMax;
+	*pyMin = yMin;
+	*pyMax = yMax;
+}
+
+static int CellIsCellSimple(NCER_CELL *cell) {
+	//we'll determine if (relative to a minimum coordinate) all OBJ are non-overlapping and on
+	//8x8 boundaries.
+	int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
+	CellGetCellBounds(cell, &xMin, &yMin, &xMax, &yMax);
+
+	for (int i = 0; i < cell->nAttribs; i++) {
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, i);
+		int objX = SEXT9(info.x), objY = SEXT8(info.y);
+		int objW = info.width << info.doubleSize, objH = info.height << info.doubleSize;
+
+		//check overflow on right and bottom edges
+		if ((objX + objW) > 256) return 0;
+		if ((objY + objH) > 128) return 0;
+	}
+
+	//width must be within 256px for simple shape
+	if ((xMax - xMin) > 256) return 0;
+
+	//check 8x8 boundaries
+	for (int i = 0; i < cell->nAttribs; i++) {
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, i);
+		int objX = SEXT9(info.x) - xMin, objY = SEXT8(info.y) - yMin;
+
+		if ((objX & 7) || (objY & 7)) return 0;
+	}
+
+	//check overlap
+	for (int i = 0; i < cell->nAttribs; i++) {
+		NCER_CELL_INFO info1;
+		CellDecodeOamAttributes(&info1, cell, i);
+		int obj1X = SEXT9(info1.x), obj1Y = SEXT8(info1.y);
+		int obj1W = info1.width << info1.doubleSize, obj1H = info1.height << info1.doubleSize;
+
+		for (int j = i + 1; j < cell->nAttribs; j++) {
+			NCER_CELL_INFO info2;
+			CellDecodeOamAttributes(&info2, cell, j);
+
+			int obj2X = SEXT9(info2.x), obj2Y = SEXT8(info2.y);
+			int obj2W = info2.width << info2.doubleSize, obj2H = info2.height << info2.doubleSize;
+
+			//check bounds
+			if ((obj2X + obj2W) <= obj1X) continue;
+			if ((obj1X + obj1W) <= obj2X) continue;
+			if ((obj2Y + obj2H) <= obj1Y) continue;
+			if ((obj1Y + obj1H) <= obj2Y) continue;
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static void CellMapGraphicsTo2D(
+	unsigned char **outChars,
+	unsigned char  *outAttr,
+	unsigned int    dstStride,
+	unsigned int    destX,
+	unsigned int    destY,
+	unsigned char **srcChars,
+	unsigned char  *srcAttr,
+	unsigned int    srcSize,
+	unsigned int    chrAddr,
+	unsigned int    nCharsX,
+	unsigned int    nCharsY,
+	int             flipX,
+	int             flipY
+) {
+	unsigned int nObjChars = nCharsX * nCharsY;
+
+	//transform for pixel index in character
+	unsigned int xorMask = 0;
+	if (flipX) xorMask |= 007;
+	if (flipY) xorMask |= 070;
+
+	for (unsigned int k = 0; k < nObjChars; k++) {
+		unsigned int dstOffsX = k % nCharsX;
+		unsigned int dstOffsY = k / nCharsX;
+		if (flipX) dstOffsX = (nCharsX - 1 - dstOffsX);
+		if (flipY) dstOffsY = (nCharsY - 1 - dstOffsY);
+
+		unsigned int dstAddr = (destY + dstOffsY) * dstStride + (destX + dstOffsX);
+		unsigned int srcAddr = chrAddr + k;
+		if (outAttr != NULL && srcAttr != NULL) outAttr[dstAddr] = srcAttr[srcAddr];
+
+		//copy OBJ graphics
+		if (srcAddr < srcSize) {
+			for (unsigned int l = 0; l < 64; l++) {
+				outChars[dstAddr][l] = srcChars[srcAddr][l ^ xorMask];
+			}
+		} else {
+			memset(outChars[dstAddr], 0, 64);
+		}
+
+	}
+}
+
+static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int *pGraphicsHeight, unsigned char **outChars, unsigned char *outAttr) {
+	*pGraphicsWidth = 32; // default: width=32 chars
+	*pGraphicsHeight = 0; // default: height=0 chars
+
+	unsigned int chrSizeShift = ncgr->nBits == 8; // 4-bit: shift=0, 8-bit: shift=1
+	unsigned int mappingShift = (ncer->mappingMode >> 20) & 0x7;
+	unsigned int chnameShift = ncgr->nBits == 8;
+
+	//iterate cells and find places to put each OBJ.
+	int curX = 0, curY = 0, curRowHeight = 0;
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = &ncer->cells[i];
+
+		int xMin, xMax, yMin, yMax;
+		CellGetCellBounds(cell, &xMin, &yMin, &xMax, &yMax);
+
+		//determine if it's a simple cell or a complex one
+		if (CellIsCellSimple(cell)) {
+			//simple cell: arrange OBJ relative to their position in space
+			for (int j = 0; j < cell->nAttribs; j++) {
+				NCER_CELL_INFO objInfo;
+				CellDecodeOamAttributes(&objInfo, cell, j);
+
+				//get placement of OBJ
+				unsigned int chrName = cell->attr[j * 3 + 2] & 0x3FF; // use from OBJ directly, decode is overridden
+				unsigned int chrAddr = (chrName << mappingShift) >> chrSizeShift;
+
+				int charX = (SEXT9(objInfo.x) - xMin) / 8;
+				int charY = (SEXT8(objInfo.y) - yMin) / 8;
+
+				if (outChars != NULL) {
+					//wrap graphics into 2D mapping
+					unsigned int nObjCharsX = objInfo.width / 8;
+					unsigned int nObjCharsY = objInfo.height / 8;
+					CellMapGraphicsTo2D(
+						outChars, outAttr,
+						*pGraphicsWidth,
+						curX + charX, curY + charY,
+						ncgr->tiles, ncgr->attr,
+						ncgr->nTiles,
+						chrAddr,
+						nObjCharsX, nObjCharsY,
+						objInfo.flipX, objInfo.flipY
+					);
+
+					//write extended character name
+					cell->ex2dCharNames[j] = ((curX + charX) + ((curY + charY) * *pGraphicsWidth)) << chnameShift;
+
+					//reset flip state of current OBJ
+					if (objInfo.flipX || objInfo.flipY) {
+						cell->attr[j * 3 + 1] &= 0xCFFF;
+					}
+				}
+			}
+
+			//simple cell: advance row
+			curX = 0;
+			curRowHeight = 0;
+			curY += (yMax - yMin) / 8;
+		} else {
+			//complex cell: arrange OBJ in order of occurrence
+			for (int j = 0; j < cell->nAttribs; j++) {
+				NCER_CELL_INFO objInfo;
+				CellDecodeOamAttributes(&objInfo, cell, j);
+
+				//get placement of OBJ
+				unsigned int chrName = cell->attr[j * 3 + 2] & 0x3FF; // use from OBJ directly, decode is overridden
+				unsigned int chrAddr = (chrName << mappingShift) >> chrSizeShift;
+				if ((curX + objInfo.width / 8) > *pGraphicsWidth) {
+					//advance to next row
+					curY += curRowHeight;
+					curX = 0;
+					curRowHeight = 0;
+				}
+
+				//check size of row
+				if (objInfo.height / 8 > curRowHeight) curRowHeight = objInfo.height / 8;
+
+				//do write output?
+				if (outChars != NULL) {
+					//wrap graphics into 2D mapping
+					unsigned int nObjCharsX = objInfo.width / 8;
+					unsigned int nObjCharsY = objInfo.height / 8;
+					CellMapGraphicsTo2D(
+						outChars, outAttr,
+						*pGraphicsWidth,
+						curX, curY,
+						ncgr->tiles, ncgr->attr,
+						ncgr->nTiles,
+						chrAddr,
+						nObjCharsX, nObjCharsY,
+						objInfo.flipX, objInfo.flipY
+					);
+
+					//write extended character name
+					cell->ex2dCharNames[j] = (curX + (curY * *pGraphicsWidth)) << chnameShift;
+
+					//reset flip state of current OBJ
+					if (objInfo.flipX || objInfo.flipY) {
+						cell->attr[j * 3 + 1] &= 0xCFFF;
+					}
+				}
+
+				curX += objInfo.width / 8;
+			}
+		}
+
+		//advance to a new line
+		if (curX) {
+			curY += curRowHeight;
+			curX = 0;
+			curRowHeight = 0;
+		}
+	}
+
+	*pGraphicsHeight = curY;
+}
+
+static unsigned char CellSampleObjPixelWithFlip(const unsigned char *gfx, unsigned int nCharsX, unsigned int nCharsY, unsigned int pi, int flipX, int flipY) {
+	//xor mask for transforming coordinates
+	unsigned int xorMask = 0;
+	if (flipX) xorMask |= 007;
+	if (flipY) xorMask |= 070;
+
+	unsigned int charno = pi / 64;
+
+	//get char index to retrieve
+	unsigned int charSrcX = charno % nCharsX;
+	unsigned int charSrcY = charno / nCharsX;
+	if (flipX) charSrcX = nCharsX - 1 - charSrcX;
+	if (flipY) charSrcY = nCharsY - 1 - charSrcY;
+
+	const unsigned char *chr2 = gfx + 64 * (charSrcX + charSrcY * nCharsX);
+	return chr2[(pi % 64) ^ xorMask];
+}
+
+static unsigned int CellSearchGraphics(
+	unsigned char *buf,
+	unsigned int   nCharsBuf,
+	unsigned char *needle,
+	unsigned int   nCharsXNeedle,
+	unsigned int   nCharsYNeedle,
+	unsigned int   granularity,
+	int            allowFlip,
+	int           *pFoundFlipX,
+	int           *pFoundFlipY
+) {
+	//we allow the match to run off the end (partial match)
+	unsigned int nCharsNeedle = nCharsXNeedle * nCharsYNeedle;
+	for (unsigned int i = 0; i < nCharsBuf; i += granularity) {
+		unsigned int nCharsCompare = nCharsNeedle;
+		if ((nCharsBuf - i) < nCharsCompare) nCharsCompare = nCharsBuf - i;
+
+		//iterate flips
+		for (int flip = 0; flip < 4 && (flip == 0 || allowFlip); flip++) {
+			int flipX = (flip >> 0) & 1;
+			int flipY = (flip >> 1) & 1;
+
+			int matched = 1;
+			for (unsigned int j = 0; j < (nCharsCompare * 64); j++) {
+				if (buf[i * 64 + j] != CellSampleObjPixelWithFlip(needle, nCharsXNeedle, nCharsYNeedle, j, flipX, flipY)) {
+					matched = 0;
+					break;
+				}
+			}
+
+			if (matched) {
+				*pFoundFlipX = flipX;
+				*pFoundFlipY = flipY;
+				return i;
+			}
+		}
+	}
+
+	*pFoundFlipX = 0;
+	*pFoundFlipY = 0;
+	return nCharsBuf;
+}
+
+static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsigned int *pGraphicsSize, unsigned char **outChars, unsigned char *outAttr) {
+	//arrange all cell graphics in space.
+
+	unsigned char *curbuf = NULL;
+	unsigned int curbufSize = 0;
+
+	//get mapping mode parameters
+	unsigned int mappingShift = (ncer->ex2dBaseMappingMode >> 20) & 7;
+	unsigned int mappingGranularity = (1 << mappingShift) >> (ncgr->nBits == 8);
+	if (mappingGranularity == 0) mappingGranularity = 1;
+
+	int status = 1; // OK
+
+	unsigned char *tempbuf = (unsigned char *) calloc(64 * 64, 1);
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = &ncer->cells[i];
+
+		//search start: beginning of file (cell mode: limit to within cell)
+		unsigned int searchStart = 0;
+		if (cellCompression) searchStart = curbufSize;
+
+		for (int j = 0; j < cell->nAttribs; j++) {
+			NCER_CELL_INFO info;
+			CellDecodeOamAttributes(&info, cell, j);
+
+			//lay out graphics into temp buffer
+			uint32_t chrAddr = info.characterName >> (ncgr->nBits == 8);
+			unsigned int chrX = chrAddr % (unsigned int) ncgr->tilesX;
+			unsigned int chrY = chrAddr / (unsigned int) ncgr->tilesX;
+			unsigned int nCharsX = info.width / 8;
+			unsigned int nCharsY = info.height / 8;
+
+			for (unsigned int x = 0; x < nCharsX; x++) {
+				for (unsigned int y = 0; y < nCharsY; y++) {
+					unsigned int srcAddr = (x + chrX) + (y + chrY) * ncgr->tilesX;
+
+					if (srcAddr < (unsigned int) ncgr->nTiles) {
+						memcpy(tempbuf + 64 * (x + y * nCharsX), ncgr->tiles[srcAddr], 64);
+					} else {
+						memset(tempbuf + 64 * (x + y * nCharsX), 0, 64);
+					}
+				}
+			}
+
+			//search
+			int foundFlipX, foundFlipY;
+			unsigned int foundAt = CellSearchGraphics(curbuf, curbufSize, tempbuf, nCharsX, nCharsY, mappingGranularity, !info.rotateScale, &foundFlipX, &foundFlipY);
+			if ((curbufSize - foundAt) < (nCharsX * nCharsY)) {
+				//append graphics to buffer
+				unsigned int offsWrite = curbufSize - foundAt;
+
+				//compute needed expansion plus padding to round up to a mapping unit
+				unsigned int newbufSize = curbufSize + nCharsX * nCharsY - offsWrite;
+				newbufSize = (newbufSize + mappingGranularity - 1) / mappingGranularity * mappingGranularity;
+
+				unsigned char *newbuf = realloc(curbuf, newbufSize * 64);
+				if (newbuf == NULL) {
+					status = 0; // fail
+					curbufSize = 0;
+					goto Done;
+				}
+				curbuf = newbuf;
+				memset(curbuf + curbufSize * 64, 0, (newbufSize - curbufSize) * 64);
+
+				//write graphics flipped
+				for (unsigned int l = 64 * offsWrite; l < 64 * (nCharsX * nCharsY); l++) {
+					curbuf[foundAt * 64 + l] = CellSampleObjPixelWithFlip(tempbuf, nCharsX, nCharsY, l, foundFlipX, foundFlipY);
+				}
+				if (outAttr != NULL) {
+					memset(outAttr + foundAt + offsWrite, info.palette, nCharsX * nCharsY - offsWrite);
+				}
+				curbufSize = newbufSize;
+			}
+			
+			unsigned int chrName = (foundAt << (ncgr->nBits == 8)) >> mappingShift;
+			if (chrName & ~0x03FF) {
+				status = 0;
+				curbufSize = 0;
+				goto Done;
+			}
+
+			if (outChars != NULL) {
+				cell->attr[3 * j + 2] = (cell->attr[3 * j + 2] & 0xFC00) | (chrName & 0x03FF);
+				if (foundFlipX) cell->attr[3 * j + 1] |= 0x1000; // flip H
+				if (foundFlipY) cell->attr[3 * j + 1] |= 0x2000; // flip V
+			}
+		}
+	}
+
+	if (outChars != NULL) {
+		for (unsigned int i = 0; i < curbufSize; i++) {
+			memcpy(outChars[i], curbuf + 64 * i, 64);
+		}
+	}
+
+Done:
+	if (curbuf != NULL) free(curbuf);
+	if (tempbuf != NULL) free(tempbuf);
+	*pGraphicsSize = curbufSize;
+	return status;
+}
+
+int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
+	enable = !!enable;
+	if (ncer->isEx2d == enable) return 1; // do nothing
+
+	if (!enable) {
+		int cellCompression = (ncer->vramTransfer != NULL);
+		unsigned int graphicsSize;
+		int status = CellArrangeBankIn1D(ncer, ncgr, cellCompression, &graphicsSize, NULL, NULL);
+		if (!status) return 0;
+
+		//allocate new graphics
+		unsigned char *outAttr = (unsigned char *) calloc(graphicsSize, 1);
+		unsigned char **outChars = (unsigned char **) calloc(graphicsSize, sizeof(void *));
+		for (unsigned int i = 0; i < graphicsSize; i++) {
+			outChars[i] = calloc(64, 1);
+		}
+		CellArrangeBankIn1D(ncer, ncgr, cellCompression, &graphicsSize, outChars, outAttr);
+
+		//replace graphics data with rearranged graphics
+		for (int i = 0; i < ncgr->nTiles; i++) {
+			free(ncgr->tiles[i]);
+		}
+		if (ncgr->attr != NULL) free(ncgr->attr);
+		free(ncgr->tiles);
+		ncgr->tiles = outChars;
+		ncgr->attr = outAttr;
+		ncgr->nTiles = graphicsSize;
+		ncgr->tilesX = ChrGuessWidth(graphicsSize);
+		ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+
+		//restore mapping mode
+		ncer->mappingMode = ncer->ex2dBaseMappingMode;
+		ncer->ex2dBaseMappingMode = 0;
+	}
+
+	//update ext 2D field
+	ncer->isEx2d = enable;
+	ncgr->isExChar = enable;
+	for (int i = 0; i < ncer->nCells; i++) {
+		ncer->cells[i].useEx2d = enable;
+
+		if (enable) {
+			ncer->cells[i].ex2dCharNames = calloc(ncer->cells[i].nAttribs, sizeof(uint32_t));
+		} else {
+			if (ncer->cells[i].ex2dCharNames != NULL) {
+				free(ncer->cells[i].ex2dCharNames);
+				ncer->cells[i].ex2dCharNames = NULL;
+			}
+		}
+	}
+
+	if (enable) {
+		//save mapping mode
+		ncer->ex2dBaseMappingMode = ncer->mappingMode;
+
+		int graphicsWidth, graphicsHeight;
+		CellArrangeBankIn2D(ncer, ncgr, &graphicsWidth, &graphicsHeight, NULL, NULL);
+
+		//allocate new graphics
+		unsigned char *outAttr = (unsigned char *) calloc(graphicsWidth * graphicsHeight, 1);
+		unsigned char **outChars = (unsigned char **) calloc(graphicsWidth * graphicsHeight, sizeof(void *));
+		for (int i = 0; i < graphicsWidth * graphicsHeight; i++) {
+			outChars[i] = calloc(64, 1);
+		}
+		CellArrangeBankIn2D(ncer, ncgr, &graphicsWidth, &graphicsHeight, outChars, outAttr);
+
+		//replace graphics data with rearranged graphics
+		for (int i = 0; i < ncgr->nTiles; i++) {
+			free(ncgr->tiles[i]);
+		}
+		if (ncgr->attr != NULL) free(ncgr->attr);
+		free(ncgr->tiles);
+		ncgr->tiles = outChars;
+		ncgr->attr = outAttr;
+		ncgr->tilesX = graphicsWidth;
+		ncgr->tilesY = graphicsHeight;
+		ncgr->nTiles = graphicsWidth * graphicsHeight;
+
+	}
+	return 1;
+}
+

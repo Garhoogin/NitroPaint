@@ -23,6 +23,8 @@ typedef struct NCER_CELL_ {
 	int minY;
 	
 	uint16_t *attr;
+	uint32_t *ex2dCharNames;
+	int useEx2d;
 } NCER_CELL;
 
 typedef struct NCER_CELL_INFO_ {
@@ -54,20 +56,22 @@ typedef struct NCER_CELL_INFO_ {
 } NCER_CELL_INFO;
 
 typedef struct NCER_ {
-	OBJECT_HEADER header;
-	int nCells;
-	int bankAttribs;
-	int mappingMode;
-	NCER_CELL *cells;
+	OBJECT_HEADER header;              // object header
+	int nCells;                        // number of cells in cell bank
+	int bankAttribs;                   // cell bank attribute
+	int mappingMode;                   // cell mapping mode
+	NCER_CELL *cells;                  // list of cells
 
-	CHAR_VRAM_TRANSFER *vramTransfer;
-	int nVramTransferEntries;
-	int useExtAttr;
+	CHAR_VRAM_TRANSFER *vramTransfer;  // list of VRAM transfer entries
+	int nVramTransferEntries;          // number of VRAM transfer animation entries
+	int useExtAttr;                    // use NCER extended attributes
+	int isEx2d;                        // use of pseudo extended 2D mapping
+	int ex2dBaseMappingMode;           // base mapping mode when extended 2D is used
 
-	int uextSize;
-	char *uext;
-	int lablSize;
-	char *labl;
+	int uextSize;                      // size of UEXT
+	char *uext;                        // UEXT
+	int lablSize;                      // size of LABL
+	char *labl;                        // LABL
 } NCER;
 
 void CellInit(NCER *ncer, int format);
@@ -83,6 +87,14 @@ int CellIsValidNcer(const unsigned char *buffer, unsigned int size);
 int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size);
 
 int CellReadFile(NCER *ncer, LPCWSTR path);
+
+void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj);
+
+void CellInsertOBJ(NCER_CELL *cell, int index, int nObj);
+
+void CellDeleteOBJ(NCER_CELL *cell, int index, int nObj);
+
+int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable);
 
 void CellGetObjDimensions(int shape, int size, int *width, int *height);
 

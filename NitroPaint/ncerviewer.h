@@ -40,6 +40,7 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndMappingMode;
 	HWND hWndShowBounds;                 // show cell bounds
 	HWND hWndAutoCalcBounds;             // auto-calculate bounds
+	HWND hWndMake2D;                     // make 2D
 
 	HWND hWndShowObjButton;              // button to show OBJ list
 	HWND hWndObjWindow;                  // window holding the OBJ list
