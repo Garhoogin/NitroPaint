@@ -1044,6 +1044,11 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 		}
 	}
 
+	//if graphics are empty, provide a minimum default
+	if (curY == 0) {
+		curY = 32;
+	}
+
 	*pGraphicsHeight = curY;
 }
 
@@ -1195,6 +1200,12 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 				if (foundFlipY) cell->attr[3 * j + 1] |= 0x2000; // flip V
 			}
 		}
+	}
+
+	if (curbufSize == 0) {
+		curbufSize++;
+		curbuf = realloc(curbuf, curbufSize * 64);
+		memset(curbuf, 0, curbufSize * 64);
 	}
 
 	if (outChars != NULL) {
