@@ -747,7 +747,7 @@ static uint16_t *CellViewerGetSelectedOamAttributes(NCERVIEWERDATA *data, int *p
 
 	if (pExAttr != NULL) {
 		*pExAttr = NULL;
-		if (cell->useEx2d != NULL) {
+		if (cell->useEx2d) {
 			uint32_t *exAttr = (uint32_t *) calloc(data->nSelectedOBJ, sizeof(uint32_t));
 			for (int i = 0; i < data->nSelectedOBJ; i++) {
 				int ii = data->selectedOBJ[i];
@@ -1715,6 +1715,22 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		int sel = mappings[SendMessage(data->hWndMappingMode, CB_GETCURSEL, 0, 0)];
 		CellViewerSetMappingMode(data, sel);
 		changed = 1;
+
+		if (sel == GX_OBJVRAMMODE_CHAR_2D) {
+			SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
+
+			//enable/disable
+			int disable = !data->ncer.isEx2d;
+			setStyle(data->hWndMake2D, disable, WS_DISABLED);
+		} else {
+			SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
+
+			//enable/disable
+			int disable = data->ncer.isEx2d;
+			setStyle(data->hWndMake2D, disable, WS_DISABLED);
+		}
+		InvalidateRect(data->hWndMake2D, NULL, FALSE);
+
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndShowBounds) {
 		int state = GetCheckboxChecked(hWndControl);
 		data->showCellBounds = state;
@@ -1757,7 +1773,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			return;
 		}
 
-		if (!data->ncer.isEx2d) {
+		if (data->ncer.mappingMode != GX_OBJVRAMMODE_CHAR_2D) {
 			//convert to extended 2D
 			if (CellSetBankExt2D(ncer, ncgr, 1)) {
 				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
@@ -1986,6 +2002,11 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		case ID_FILE_SAVEAS:
 		case ID_FILE_SAVE:
 		{
+			if (data->ncer.isEx2d) {
+				MessageBox(hWnd, L"Cannot save cell bank while in extended 2D mode.", L"Error", MB_ICONERROR);
+				break;
+			}
+
 			if (data->szOpenFile[0] == L'\0' || idMenu == ID_FILE_SAVEAS) {
 				LPCWSTR filter = L"NCER Files (*.ncer)\0*.ncer\0All Files\0*.*\0";
 				switch (data->ncer.header.format) {
@@ -2300,6 +2321,12 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 					mappingIndex = 4; break;
 			}
 			SendMessage(data->hWndMappingMode, CB_SETCURSEL, mappingIndex, 0);
+
+			if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+				//disable Make 2D
+				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
+				setStyle(data->hWndMake2D, TRUE, WS_DISABLED);
+			}
 
 			//init cell editor
 			CellViewerPopulateCellList(data);
