@@ -164,3 +164,54 @@ void SetResDirFree(SetResDirectory *dir) {
 	bstreamFree(&dir->objStream);
 	bstreamFree(&dir->nameStream);
 }
+
+
+int SetIsValid(const unsigned char *buffer, unsigned int size) {
+	//check buffer size
+	if (size < 0x8) return 0;
+
+	//check signature
+	if (memcmp(buffer, "RSRC", 4) != 0) return 0;
+
+	//check block array
+	uint32_t nBlocks = *(const uint32_t *) (buffer + 0x4);
+	const uint32_t *blockOffs = (const uint32_t *) (buffer + 0x8);
+	if ((size - 0x8) / 4 < nBlocks) return 0;
+	if (nBlocks == 0) return 0;
+
+	for (unsigned int i = 0; i < nBlocks; i++) {
+		uint32_t offs = blockOffs[i];
+		if (offs & 3) return 0;
+		if (offs < 0x8) return 0;
+		if ((offs + 4) > size) return 0;
+
+		const unsigned char *block = buffer + offs;
+		if (block[0] < ' ' || block[0] > 0x7F) return 0;
+		if (block[1] < ' ' || block[1] > 0x7F) return 0;
+		if (block[2] < ' ' || block[2] > 0x7F) return 0;
+		if (block[3] < ' ' || block[3] > 0x7F) return 0;
+	}
+	return 1;
+}
+
+unsigned char *SetGetBlock(const unsigned char *buffer, unsigned int size, const char *sig) {
+	//check block array
+	uint32_t nBlocks = *(const uint32_t *) (buffer + 0x4);
+	const uint32_t *blockOffs = (const uint32_t *) (buffer + 0x8);
+
+	for (unsigned int i = 0; i < nBlocks; i++) {
+		const unsigned char *block = buffer + blockOffs[i];
+		if (memcmp(block, sig, 4) == 0) return (unsigned char *) (block + 4);
+	}
+
+	return NULL;
+}
+
+unsigned char *SetResDirGetByIndex(const unsigned char *dir, unsigned int index) {
+	uint16_t nEntries = *(const uint16_t *) (dir + 0x0);
+	if (index >= nEntries) return NULL;
+	
+	const unsigned char *dirent = dir + 4 + index * 0xC;
+	uint32_t offsObj = *(const uint32_t *) (dirent + 0x8);
+	return (unsigned char *) (dir + offsObj);
+}

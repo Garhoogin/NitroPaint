@@ -74,8 +74,17 @@ int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+int CellIsValidSetosa(const unsigned char *buffer, unsigned int size) {
+	if (!SetIsValid(buffer, size)) return 0;
+
+	const unsigned char *cellBlock = SetGetBlock(buffer, size, "CELL");
+	const unsigned char *cbexBlock = SetGetBlock(buffer, size, "CBEX");
+	return cellBlock != NULL || cbexBlock != NULL;
+}
+
 int CellIdentify(const unsigned char *buffer, unsigned int size) {
 	if (CellIsValidNcer(buffer, size)) return NCER_TYPE_NCER;
+	if (CellIsValidSetosa(buffer, size)) return NCER_TYPE_SETOSA;
 	if (CellIsValidHudson(buffer, size)) return NCER_TYPE_HUDSON;
 	if (CellIsValidGhostTrick(buffer, size)) return NCER_TYPE_GHOSTTRICK;
 	return NCER_TYPE_INVALID;
@@ -263,11 +272,67 @@ int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int siz
 	return 0;
 }
 
+static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int size) {
+	CellInit(ncer, NCER_TYPE_SETOSA);
+
+	const unsigned char *cellBlock = SetGetBlock(buffer, size, "CELL");
+	const unsigned char *cbexBlock = SetGetBlock(buffer, size, "CBEX");
+
+	const unsigned char *block = cellBlock;
+	if (block == NULL) block = cbexBlock;
+
+	ncer->nCells = *(const uint32_t *) (block + 0x0);
+	ncer->mappingMode = *(const uint32_t *) (block + 0x4);
+	ncer->labl = NULL;
+	ncer->lablSize = 0;
+	ncer->uext = NULL;
+	ncer->uextSize = 0;
+	ncer->vramTransfer = NULL;
+	ncer->nVramTransferEntries = 0;
+	ncer->isEx2d = (block == cbexBlock);
+	ncer->ex2dBaseMappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	if (ncer->isEx2d) {
+		ncer->ex2dBaseMappingMode = ncer->mappingMode;
+		ncer->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
+	}
+
+	const unsigned char *dir = block + 8;
+
+	//read cells
+	ncer->cells = (NCER_CELL *) calloc(ncer->nCells, sizeof(NCER_CELL));
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = &ncer->cells[i];
+
+		const unsigned char *celldat = SetResDirGetByIndex(dir, i);
+		cell->minX = *(const int16_t *) (celldat + 0x00);
+		cell->minY = *(const int16_t *) (celldat + 0x02);
+		cell->maxX = *(const int16_t *) (celldat + 0x04);
+		cell->maxY = *(const int16_t *) (celldat + 0x06);
+		cell->nAttribs = *(const uint16_t *) (celldat + 0x08);
+		cell->useEx2d = ncer->isEx2d;
+
+		cell->attr = (uint16_t *) calloc(cell->nAttribs, 3 * sizeof(uint16_t));
+		memcpy(cell->attr, celldat + 0xC, cell->nAttribs * 3 * sizeof(uint16_t));
+
+		if (cell->useEx2d) {
+			const uint16_t *exAttr = (const uint16_t *) (celldat + 0xC + 6 * cell->nAttribs);
+			cell->ex2dCharNames = (uint32_t *) calloc(cell->nAttribs, sizeof(uint32_t));
+			for (int j = 0; j < cell->nAttribs; j++) {
+				cell->ex2dCharNames[j] = (cell->attr[j * 3 + 2] & 0x03FF) | (exAttr[j] << 10);
+			}
+		}
+	}
+
+	return 0;
+}
+
 int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 	int type = CellIdentify(buffer, size);
 	switch (type) {
 		case NCER_TYPE_NCER:
 			return CellReadNcer(ncer, buffer, size);
+		case NCER_TYPE_SETOSA:
+			return CellReadSetosa(ncer, buffer, size);
 		case NCER_TYPE_HUDSON:
 			return CellReadHudson(ncer, buffer, size);
 		case NCER_TYPE_GHOSTTRICK:
@@ -708,12 +773,20 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 	SetStream setStream;
 	SetStreamCreate(&setStream);
 
-	SetStreamStartBlock(&setStream, "CELL");
+	//the standard block signature is 'CELL'.
+	//when extended 2D is used in intermediate files, we use the block signature 'CBEX'.
+	unsigned int objSize = 0x6; // size of data for a single OBJ
+	if (!ncer->isEx2d) {
+		SetStreamStartBlock(&setStream, "CELL");
+	} else {
+		SetStreamStartBlock(&setStream, "CBEX");
+		objSize += 2; // add extra uint16_t for high 16-bit of character name for a 26-bit field
+	}
 
 	//write header
 	uint32_t header[2];
 	header[0] = ncer->nCells;
-	header[1] = ncer->mappingMode;
+	header[1] = ncer->isEx2d ? ncer->ex2dBaseMappingMode : ncer->mappingMode;
 	SetStreamWrite(&setStream, header, sizeof(header));
 
 	//build data directory
@@ -734,7 +807,7 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 		}
 
 		//create OBJ data
-		unsigned char *cellData = calloc(0xC + 0x6 * cell->nAttribs, 1);
+		unsigned char *cellData = calloc(0xC + objSize * cell->nAttribs, 1);
 		*(int16_t *) (cellData + 0x0) = cell->minX;
 		*(int16_t *) (cellData + 0x2) = cell->minY;
 		*(int16_t *) (cellData + 0x4) = cell->maxX;
@@ -743,7 +816,18 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 		*(uint16_t *) (cellData + 0xA) = (commonPalette & 0xF) | ((commonPalette != -1) << 4) | (cellAffine << 5);
 		memcpy(cellData + 0xC, cell->attr, cell->nAttribs * 0x6);
 
-		SetResDirAdd(&dir, NULL, cellData, 0xC + 0x6 * cell->nAttribs);
+		if (ncer->isEx2d) {
+			//fil in OBJ extended attributes
+			uint16_t *pCellAttr = (uint16_t *) (cellData + 0xC);
+			uint16_t *pCellExAttr = (uint16_t *) (cellData + 0xC + cell->nAttribs * 0x6);
+
+			for (int j = 0; j < cell->nAttribs; j++) {
+				pCellAttr[3 * j + 2] = (pCellAttr[3 * j + 2] & ~0x03FF) | (cell->ex2dCharNames[j] & 0x03FF);
+				pCellExAttr[i] = cell->ex2dCharNames[j] >> 10;
+			}
+		}
+
+		SetResDirAdd(&dir, NULL, cellData, 0xC + objSize * cell->nAttribs);
 		free(cellData);
 	}
 

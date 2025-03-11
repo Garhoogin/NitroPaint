@@ -376,6 +376,7 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 				else if (ScrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (ChrIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (ChrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+				else if (CellIsValidSetosa(buffer, bufferSize)) type = FILE_TYPE_CELL;
 				else if (CellIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
 				else if (CellIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_CELL;
 				else if (AnmIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_NANR;

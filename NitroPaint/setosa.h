@@ -35,3 +35,8 @@ void SetResDirAdd(SetResDirectory *dir, const char *name, const void *data, unsi
 void SetResDirFinalize(SetResDirectory *dir);
 void SetResDirFlushOut(SetResDirectory *dir, SetStream *out);
 void SetResDirFree(SetResDirectory *dir);
+
+
+int SetIsValid(const unsigned char *buffer, unsigned int size);
+unsigned char *SetGetBlock(const unsigned char *buffer, unsigned int size, const char *sig);
+unsigned char *SetResDirGetByIndex(const unsigned char *dir, unsigned int index);

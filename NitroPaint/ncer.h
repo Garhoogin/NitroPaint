@@ -82,6 +82,8 @@ int CellIsValidHudson(const unsigned char *buffer, unsigned int size);
 
 int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 
+int CellIsValidSetosa(const unsigned char *buffer, unsigned int size);
+
 int CellIsValidNcer(const unsigned char *buffer, unsigned int size);
 
 int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size);

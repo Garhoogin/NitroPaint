@@ -2002,7 +2002,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		case ID_FILE_SAVEAS:
 		case ID_FILE_SAVE:
 		{
-			if (data->ncer.isEx2d) {
+			if (data->ncer.isEx2d && data->ncer.header.format != NCER_TYPE_SETOSA) {
 				MessageBox(hWnd, L"Cannot save cell bank while in extended 2D mode.", L"Error", MB_ICONERROR);
 				break;
 			}
@@ -2325,7 +2325,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
 				//disable Make 2D
 				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
-				setStyle(data->hWndMake2D, TRUE, WS_DISABLED);
+				setStyle(data->hWndMake2D, !data->ncer.isEx2d, WS_DISABLED);
 			}
 
 			//init cell editor

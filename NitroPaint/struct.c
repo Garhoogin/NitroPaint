@@ -91,7 +91,7 @@ static size_t StListSearchElem(StList *list, const void *elem) {
 
 	//narrow in on an insertion point (hi non-inclusive)
 	size_t lo = 0, hi = list->length;
-	while ((hi - lo) > 1) {
+	while ((hi - lo) >= 1) {
 		size_t med = lo + (hi - lo) / 2;
 		void *atmed = StListGetElemPtr(list, med);
 		int cmp = list->comparator(atmed, elem);
