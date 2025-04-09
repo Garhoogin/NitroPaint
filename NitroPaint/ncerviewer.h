@@ -47,6 +47,7 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndObjList;                    // OBJ list
 
 	HWND hWndCellAdd;
+	HWND hWndExportAll;
 } NCERVIEWERDATA;
 
 

@@ -1795,6 +1795,39 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
 		CellViewerGraphicsUpdated(data->hWnd);
 		ChrViewerGraphicsSizeUpdated(hWndNcgrViewer);
+	} else if (notification == BN_CLICKED && hWndControl == data->hWndExportAll) {
+		NCER *ncer = &data->ncer;
+		NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+		NCLR *nclr = CellViewerGetAssociatedPalette(data);
+
+		if (ncer == NULL || ncgr == NULL || nclr == NULL) {
+			MessageBox(hWnd, L"Requires open palette and character to export.", L"Error", MB_ICONERROR);
+			return;
+		}
+
+		WCHAR *path = UiDlgBrowseForFolder(hWndMain, L"Select a Destination");
+		if (path == NULL) return;
+
+		int pathlen = wcslen(path);
+		if (pathlen > 0 && (path[pathlen - 1] == L'\\' || path[pathlen - 1] == L'/')) {
+			path[pathlen - 1] = L'\0';
+		}
+		WCHAR *pathbuf = (WCHAR *) calloc(pathlen + 256, sizeof(WCHAR));
+
+		//write cells
+		COLOR32 *pxbuf = (COLOR32 *) calloc(256 * 512, sizeof(COLOR32));
+		for (int i = 0; i < data->ncer.nCells; i++) {
+			memset(pxbuf, 0, 256 * 512 * sizeof(COLOR32));
+			CellViewerRenderCellByIndex(pxbuf, NULL, ncer, ncgr, nclr, i);
+			ImgSwapRedBlue(pxbuf, 512, 256);
+
+			wsprintfW(pathbuf, L"%s\\Cell_%04d.PNG", path, i);
+			ImgWrite(pxbuf, 512, 256, pathbuf);
+		}
+		free(pxbuf);
+
+		free(pathbuf);
+		free(path);
 	}
 
 	//log a change
@@ -2281,6 +2314,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			int cellListWidth = UI_SCALE_COORD(200, dpiScale);
 			data->hWndCellList = CellViewerCreateCellList(hWnd, cellListWidth);
 			data->hWndCellAdd = CreateButton(hWnd, L"New Cell", 175, 300, 25, 22, FALSE);
+			data->hWndExportAll = CreateButton(hWnd, L"Export All", 0, 0, 300, 22, FALSE);
 			data->hWndMappingModeLabel = CreateStatic(hWnd, L" Mapping Mode:", UI_SCALE_COORD(200, dpiScale), 0, ctlWidth, ctlHeight);
 			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, UI_SCALE_COORD(285, dpiScale), 0, ctlWidthNarrow, 100, 0);
 			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", UI_SCALE_COORD(365, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
@@ -2346,7 +2380,8 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			int cellListWidth = UI_SCALE_COORD(200, dpiScale);
 
 			int ctlY = rcClient.bottom - ctlHeight;
-			MoveWindow(data->hWndCellList, 0, 0, cellListWidth, ctlY, TRUE);
+			MoveWindow(data->hWndExportAll, 0, 0, cellListWidth, ctlHeight, TRUE);
+			MoveWindow(data->hWndCellList, 0, ctlHeight, cellListWidth, ctlY - ctlHeight, TRUE);
 			MoveWindow(data->hWndCellAdd, 0, ctlY, cellListWidth, ctlHeight, TRUE);
 			MoveWindow(data->hWndViewer, cellListWidth, ctlHeight, rcClient.right - cellListWidth, rcClient.bottom - ctlHeight, TRUE);
 
