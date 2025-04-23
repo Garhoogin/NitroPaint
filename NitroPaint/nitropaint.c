@@ -25,6 +25,7 @@
 #include "bggen.h"
 #include "editor.h"
 #include "preview.h"
+#include "nftrviewer.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -927,6 +928,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		case FILE_TYPE_NMCR:
 			data->hWndNmcrViewer = CreateNmcrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
+		case FILE_TYPE_FONT:
+			CreateNftrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
 		case FILE_TYPE_IMAGE:
 			CreateImageDialog(hWnd, path);
 			break;
@@ -1178,10 +1182,12 @@ static int SortWindowsComputeOrder(int type) {
 			return 6;
 		case FILE_TYPE_NMAR:
 			return 7;
-		case FILE_TYPE_TEXTURE:
+		case FILE_TYPE_FONT:
 			return 8;
-		case FILE_TYPE_NSBTX:
+		case FILE_TYPE_TEXTURE:
 			return 9;
+		case FILE_TYPE_NSBTX:
+			return 10;
 	}
 	return 0;
 }
@@ -3190,6 +3196,7 @@ static void RegisterClasses(void) {
 	RegisterNcerViewerClass();
 	RegisterCreateDialogClass();
 	RegisterNsbtxViewerClass();
+	RegisterNftrViewerClass();
 	RegisterProgressWindowClass();
 	RegisterNtftConvertDialogClass();
 	RegisterTextureEditorClass();

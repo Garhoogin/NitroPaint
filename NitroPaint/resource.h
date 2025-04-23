@@ -202,13 +202,20 @@
 #define ID_BITS_8BIT                    40214
 #define ID_CELLMENU_ADDOBJ              40215
 #define ID_CELLMENU_CHARACTERINDEX      40216
+#define ID_FONTMENU_COPYCHARACTER       40217
+#define ID_FONTMENU_COPYGLYPH           40218
+#define ID_FONTMENU_DELETE              40219
+#define ID_FONTMENU_REASSIGN            40220
+#define ID_FONTMENU_MAKEINVALID         40221
+#define ID_FONTMENU2_NEWGLYPH           40222
+#define ID_FONTMENU2_GOTO               40223
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40217
+#define _APS_NEXT_COMMAND_VALUE         40224
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

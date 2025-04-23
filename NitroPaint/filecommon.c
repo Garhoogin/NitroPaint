@@ -5,6 +5,7 @@
 #include "ncer.h"
 #include "nsbtx.h"
 #include "nanr.h"
+#include "nftr.h"
 #include "texture.h"
 #include "gdip.h"
 #include "nns.h"
@@ -23,6 +24,7 @@ const wchar_t *gFileTypeNames[] = {
 	L"Combination",
 	L"Multi-Cell",
 	L"Multi-Cell Animation",
+	L"Font",
 	NULL
 };
 
@@ -119,6 +121,8 @@ LPCWSTR *ObjGetFormatNamesByType(int type) {
 			return cellAnimationFormatNames;
 		case FILE_TYPE_TEXTURE:
 			return textureFormatNames;
+		case FILE_TYPE_FONT:
+			return fontFormatNames;
 		default:
 			return NULL;
 	}
@@ -349,6 +353,10 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 			case 'RCMN':
 				type = FILE_TYPE_NMCR;
 				break;
+			case 'NFTR':
+			case 'RTFN':
+				type = FILE_TYPE_FONT;
+				break;
 		}
 	}
 	
@@ -366,7 +374,8 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 			} else {
 
 				//test other formats
-				if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
+				if (NftrIdentify(buffer, bufferSize)) type = FILE_TYPE_FONT;
+				else if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
 				else if (ChrIsValidIcg(buffer, bufferSize)) type = FILE_TYPE_CHAR;
 				else if (ChrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;

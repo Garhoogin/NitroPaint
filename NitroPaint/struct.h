@@ -40,6 +40,7 @@ typedef struct StList_ {
 	size_t elemSize;             // size of each element
 	size_t length;               // length of list
 	size_t capacity;             // buffer capacity of list
+	int distinct;                // different entries do not compare equal
 	void *buffer;                // list buffer
 	StComparator comparator;     // comparator function for ordered lists
 } StList;
@@ -47,6 +48,7 @@ typedef struct StList_ {
 StStatus StListCreate(StList *list, size_t elemSize, StComparator comparator);
 StStatus StListFree(StList *list);
 StStatus StListAdd(StList *list, const void *elem);
+StStatus StListInsert(StList *list, size_t idx, const void *elem);
 StStatus StListGet(StList *list, size_t idx, void *dest);
 void *StListGetPtr(StList *list, size_t idx);
 size_t StListIndexOf(StList *list, const void *elem);
@@ -54,10 +56,11 @@ StStatus StListRemove(StList *list, size_t idx);
 StStatus StListClear(StList *list);
 StStatus StListSort(StList *list, StComparator comparator);
 StStatus StListMakeSorted(StList *list, StComparator comparator);
+void *StListDecapsulate(StList *list, size_t *pLength);
 
 #define StListCreateInline(list,type,comparator) (StListCreate((list),sizeof(type),(comparator)))
 #define StListGetInline(list,type,idx)           (*((type)*)StListGetPtr((list),(idx)))
-#define StListAddInline(list,type,elem)          do{(type) _x=(elem);(void)StListAdd((list),&_x);}while(0)
+#define StListAddInline(list,type,elem)          do{type _x=(elem);(void)StListAdd((list),&_x);}while(0)
 
 
 // ----- stack structure
@@ -76,3 +79,19 @@ StStatus StStackClear(StStack *stack);
 #define StStackPopInline(stack,type)             (*((type)*)StStackPopPtr((stack)))
 #define StStackPushInline(stack,type,elem)       do{(type) _x=(elem);(void)StStackPush((stack),&_x);}while(0)
 
+
+// ----- map structure
+
+typedef struct StMap_ {
+	StList list;
+	size_t sizeKey;
+	size_t sizeValue;
+	unsigned char *scratch;
+} StMap;
+
+StStatus StMapCreate(StMap *map, size_t sizeKey, size_t sizeValue);
+StStatus StMapFree(StMap *map);
+StStatus StMapPut(StMap *map, const void *key, const void *value);
+StStatus StMapGet(StMap *map, const void *key, void *outValue);
+StStatus StMapGetKeyValue(StMap *map, size_t i, void *outKey, void *outValue);
+void *StMapGetPtr(StMap *map, const void *key);

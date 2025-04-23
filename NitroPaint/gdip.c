@@ -606,7 +606,7 @@ COLOR32 *ImgComposite(COLOR32 *back, int backWidth, int backHeight, COLOR32 *fro
 }
 
 unsigned char *ImgCreateAlphaMask(COLOR32 *px, int width, int height, unsigned int threshold, int *pRows, int *pStride) {
-	int stride = ((width + 7) / 8 + 3) & ~3, nRows = height;
+	int stride = ((width + 7) / 8), nRows = height;
 
 	unsigned char *bits = (unsigned char *) calloc(stride * nRows, sizeof(unsigned char));
 	for (int y = 0; y < height; y++) {
@@ -617,7 +617,6 @@ unsigned char *ImgCreateAlphaMask(COLOR32 *px, int width, int height, unsigned i
 
 			*pp &= ~(1 << bitno);
 			*pp |= (((px[x + y * width] >> 24) < threshold) << bitno);
-
 		}
 	}
 

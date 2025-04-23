@@ -118,6 +118,7 @@ StStatus StListCreate(StList *list, size_t elemSize, StComparator comparator) {
 	list->comparator = comparator;
 	list->elemSize = elemSize;
 	list->length = 0;
+	list->distinct = 0;
 	list->capacity = ST_LIST_DEFAULT_CAPACITY;
 	list->buffer = malloc(list->capacity * list->elemSize);
 
@@ -198,9 +199,15 @@ size_t StListIndexOf(StList *list, const void *elem) {
 		}
 	} else {
 		size_t pos = StListSearchElem(list, elem);
+		if (pos >= list->length) return ST_INDEX_NOT_FOUND;
 		void *at = StListGetElemPtr(list, pos);
 
 		//if we found it, return the index (optimize for unique comparisons)
+		if (list->distinct) {
+			//compare only using comparator
+			if (list->comparator(at, elem) == 0) return pos;
+			return ST_INDEX_NOT_FOUND;
+		}
 		if (memcmp(at, elem, list->elemSize) == 0) return pos;
 
 		//scan backwards for other matching
@@ -262,6 +269,16 @@ StStatus StListMakeSorted(StList *list, StComparator comparator) {
 	return ST_STATUS_OK;
 }
 
+void *StListDecapsulate(StList *list, size_t *pLength) {
+	(void) StListShrink(list);
+
+	void *pp = list->buffer;
+	*pLength = list->length;
+
+	memset(list, 0, sizeof(StList));
+	return pp;
+}
+
 
 
 
@@ -298,3 +315,112 @@ void *StStackPopPtr(StStack *stack) {
 StStatus StStackClear(StStack *stack) {
 	return StListClear((StList *) stack);
 }
+
+
+// ----- map internal function
+
+typedef struct StMapEntry_ {
+	size_t keySize;
+	unsigned char data[0];
+} StMapEntry;
+
+static int StMapComparator(const void *e1, const void *e2) {
+	const StMapEntry *p1 = (const StMapEntry *) e1;
+	const StMapEntry *p2 = (const StMapEntry *) e2;
+
+	for (size_t i = 0; i < p1->keySize; i++) {
+		if (p1->data[i] < p2->data[i]) return -1;
+		if (p1->data[i] > p2->data[i]) return 1;
+	}
+	return 0;
+}
+
+static StMapEntry *StMapGetElemPtr(StMap *map, const void *key) {
+	//create dummy search key
+	StMapEntry *dummy = (StMapEntry *) map->scratch;
+	dummy->keySize = map->sizeKey;
+	memcpy(dummy->data, key, map->sizeKey);
+	
+	size_t idx = StListIndexOf(&map->list, dummy);
+	if (idx == ST_INDEX_NOT_FOUND) return NULL;
+
+	return (StMapEntry *) StListGetElemPtr(&map->list, idx);
+}
+
+
+// ----- map API
+
+StStatus StMapCreate(StMap *map, size_t sizeKey, size_t sizeValue) {
+	StStatus status = StListCreate(&map->list, sizeof(StMapEntry) + sizeKey + sizeValue, StMapComparator);
+	if (!ST_SUCCEEDED(status)) return status;
+
+	//allocate scratch entry
+	map->scratch = malloc(sizeof(StMapEntry) + sizeKey + sizeValue);
+	if (map->scratch == NULL) {
+		StListFree(&map->list);
+		return ST_STATUS_NOMEM;
+	}
+
+	map->list.distinct = 1;
+	map->sizeKey = sizeKey;
+	map->sizeValue = sizeValue;
+	return ST_STATUS_OK;
+}
+
+StStatus StMapFree(StMap *map) {
+	(void) StListFree(&map->list);
+	free(map->scratch);
+	return ST_STATUS_OK;
+}
+
+StStatus StMapPut(StMap *map, const void *key, const void *value) {
+	//get key-value pair
+	StMapEntry *p = StMapGetElemPtr(map, key);
+	if (p != NULL) {
+		//replace value
+		void *dest = (void *) (p->data + map->sizeKey);
+		memcpy(dest, value, map->sizeValue);
+		return ST_STATUS_OK;
+	} else {
+		//add value
+		StMapEntry *comb = (StMapEntry *) map->scratch;
+		comb->keySize = map->sizeKey;
+		memcpy(comb->data, key, map->sizeKey);
+		memcpy(comb->data + map->sizeKey, value, map->sizeValue);
+		return StListAdd(&map->list, comb);
+	}
+}
+
+StStatus StMapGet(StMap *map, const void *key, void *outValue) {
+	//get index
+	StMapEntry *entry = StMapGetElemPtr(map, key);
+	if (entry == NULL) return ST_STATUS_NOTFOUND;
+
+	//copy out
+	void *value = (void *) (entry->data + map->sizeKey);
+	memcpy(outValue, value, map->sizeValue);
+	return ST_STATUS_OK;
+}
+
+StStatus StMapGetKeyValue(StMap *map, size_t i, void *outKey, void *outValue) {
+	//check bounds
+	if (i >= map->list.length) return ST_STATUS_NOTFOUND;
+
+	StMapEntry *entry = StListGetElemPtr(&map->list, i);
+	void *key = (void *) entry->data;
+	void *value = (void *) (entry->data + map->sizeKey);
+
+	//copy out
+	memcpy(outKey, key, map->sizeKey);
+	memcpy(outValue, value, map->sizeValue);
+	return ST_STATUS_OK;
+}
+
+void *StMapGetPtr(StMap *map, const void *key) {
+	//get pair
+	StMapEntry *entry = StMapGetElemPtr(map, key);
+	if (entry == NULL) return NULL;
+
+	return (void *) (entry->data + map->sizeKey);
+}
+

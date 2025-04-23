@@ -15,17 +15,20 @@
 #define FILE_TYPE_COMBO2D    10
 #define FILE_TYPE_NMCR       11
 #define FILE_TYPE_NMAR       12
-#define FILE_TYPE_MAX        13  //highest file type +1
+#define FILE_TYPE_FONT       13
+#define FILE_TYPE_CMAP       14
+#define FILE_TYPE_MAX        15  //highest file type +1
 
 extern const wchar_t *gFileTypeNames[];
 
 // ----- common status codes
-#define OBJ_STATUS_SUCCESS     0  //the operation completed successfully
-#define OBJ_STATUS_INVALID     1  //the byte stream was not a valid object
-#define OBJ_STATUS_NO_MEMORY   2  //not enough memory
-#define OBJ_STATUS_UNSUPPORTED 3  //feature unsupported
-#define OBJ_STATUS_NO_ACCESS   4  //access denied accessing a resource
-#define OBJ_STATUS_MAX         5
+#define OBJ_STATUS_SUCCESS     0  // the operation completed successfully
+#define OBJ_STATUS_INVALID     1  // the byte stream was not a valid object
+#define OBJ_STATUS_NO_MEMORY   2  // not enough memory
+#define OBJ_STATUS_UNSUPPORTED 3  // feature unsupported
+#define OBJ_STATUS_NO_ACCESS   4  // access denied accessing a resource
+#define OBJ_STATUS_MISMATCH    5  // a data mismatch error occurred
+#define OBJ_STATUS_MAX         6
 
 #define OBJ_SUCCEEDED(s)       ((s)==OBJ_STATUS_SUCCESS)
 

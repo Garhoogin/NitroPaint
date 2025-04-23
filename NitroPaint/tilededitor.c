@@ -1032,7 +1032,7 @@ void TedOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
 	}
 
 	//set capture
-	SetCapture(data->hWnd);
+	SetCapture(ted->hWnd);
 }
 
 void TedOnRButtonDown(TedData *ted) {
