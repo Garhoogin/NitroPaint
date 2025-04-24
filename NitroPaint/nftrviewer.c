@@ -412,55 +412,11 @@ static void NftrViewerGetGlyphListText(NFTRVIEWERDATA *data, int i, WCHAR *textb
 	}
 }
 
-static void NftrViewerInsertToGlyphlist(NFTRVIEWERDATA *data, int i) {
-	UINT subColIdxs[] = { 1 };
-	WCHAR textbuf[64];
-	NftrViewerGetGlyphListText(data, i, textbuf);
-
-	LVITEM lvi = { 0 };
-	lvi.mask = LVIF_TEXT | LVIF_STATE | LVIF_IMAGE | LVIF_COLUMNS;
-	lvi.pszText = textbuf; // cast away const for this struct
-	lvi.state = 0;
-	lvi.iSubItem = 0; // col
-	lvi.iImage = i;// -1;
-	lvi.iItem = i;
-	lvi.cColumns = 1; // num sub items
-	lvi.puColumns = subColIdxs;
-	ListView_InsertItem(data->hWndGlyphList, &lvi);
-}
-
 static void NftrViewerUpdateGlyphListImage(NFTRVIEWERDATA *data, int i) {
 	if (i < 0 || i >= data->nftr.nGlyph) return;
-	NFTR_GLYPH *glyph = &data->nftr.glyphs[i];
 
-	//render glyph
-	HBITMAP hColorbm = NULL, hMaskbm = NULL;
-	NftrViewerRenderGlyphMasks(&data->nftr, glyph, 1, 0x000000, &hColorbm, &hMaskbm);
-
-	HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
-
-	//get original image list index
-	LVITEM item;
-	item.iItem = i;
-	item.iSubItem = 0;
-	item.mask = LVIF_IMAGE;
-	ListView_GetItem(data->hWndGlyphList, &item);
-
-	if (item.iImage == -1) {
-		//no image index, add to the list
-		int imgidx = ImageList_Add(himl, hColorbm, hMaskbm);
-
-		if (imgidx != -1) {
-			item.iImage = imgidx;
-			ListView_SetItem(data->hWndGlyphList, &item);
-		}
-	} else {
-		//item exists, replace it
-		ImageList_Replace(himl, item.iImage, hColorbm, hMaskbm);
-	}
-
-	DeleteObject(hColorbm);
-	DeleteObject(hMaskbm);
+	//refresh list view
+	InvalidateRect(data->hWndGlyphList, NULL, FALSE);
 }
 
 static void NftrViewerReassignGlyph(NFTRVIEWERDATA *data, int i, uint16_t inputCP) {
@@ -479,20 +435,6 @@ static void NftrViewerReassignGlyph(NFTRVIEWERDATA *data, int i, uint16_t inputC
 
 		//for the cleanest edit to the list view, iterate all glyphs and update them.
 		for (int j = min(i, newI); j <= max(i, newI); j++) {
-			//get item info
-			LVITEM item = { 0 };
-			item.mask = LVIF_IMAGE;
-			item.iItem = j;
-			item.iSubItem = 0;
-			ListView_GetItem(data->hWndGlyphList, &item);
-
-			//replace text
-			WCHAR textbuf[64];
-			NftrViewerGetGlyphListText(data, j, textbuf);
-			item.mask = LVIF_TEXT;
-			item.pszText = textbuf;
-			ListView_SetItem(data->hWndGlyphList, &item);
-
 			//re-render
 			NftrViewerUpdateGlyphListImage(data, j);
 		}
@@ -501,28 +443,7 @@ static void NftrViewerReassignGlyph(NFTRVIEWERDATA *data, int i, uint16_t inputC
 	//update font
 	NftrViewerFontUpdated(data);
 
-	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
-}
-
-static void NftrViewerUpdateAllGlyphTextAndImage(NFTRVIEWERDATA *data) {
-	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
-
-	for (int i = 0; i < data->nftr.nGlyph; i++) {
-		//replace text
-		WCHAR textbuf[64];
-		NftrViewerGetGlyphListText(data, i, textbuf);
-
-		LVITEM item = { 0 };
-		item.mask = LVIF_TEXT;
-		item.pszText = textbuf;
-		item.iItem = i;
-		item.iSubItem = 0;
-		ListView_SetItem(data->hWndGlyphList, &item);
-
-		//re-render
-		NftrViewerUpdateGlyphListImage(data, i);
-	}
-
+	InvalidateRect(data->hWndGlyphList, NULL, FALSE);
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
 }
 
@@ -530,13 +451,17 @@ static void NftrViewerResetImageList(NFTRVIEWERDATA *data) {
 	//get and reset image list
 	HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
 	ImageList_RemoveAll(himl);
+	ImageList_SetImageCount(himl, 1);
+}
 
-	//set all glyph images
-	HBITMAP hColorbm = NULL, hMaskbm = NULL;
-	NftrViewerRenderGlyphMasks(&data->nftr, &data->nftr.glyphs[0], data->nftr.nGlyph, 0x000000, &hColorbm, &hMaskbm);
-	ImageList_Add(himl, hColorbm, hMaskbm);
-	DeleteObject(hColorbm);
-	DeleteObject(hMaskbm);
+static void NftrViewerUpdateAllGlyphTextAndImage(NFTRVIEWERDATA *data) {
+	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
+
+	//re-render
+	NftrViewerResetImageList(data);
+	
+	InvalidateRect(data->hWndGlyphList, NULL, FALSE);
+	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
 }
 
 static void NftrViewerFullRefreshGlyphList(NFTRVIEWERDATA *data, int iFirst, int iLast) {
@@ -545,20 +470,7 @@ static void NftrViewerFullRefreshGlyphList(NFTRVIEWERDATA *data, int iFirst, int
 
 	//put new images
 	NftrViewerResetImageList(data);
-
-	for (int j = iFirst; j <= iLast; j++) {
-		//update text
-		LVITEM item = { 0 };
-		WCHAR textbuf[64];
-		NftrViewerGetGlyphListText(data, j, textbuf);
-
-		item.mask = LVIF_TEXT | LVIF_IMAGE;
-		item.iItem = j;
-		item.iImage = j;
-		item.iSubItem = 0;
-		item.pszText = textbuf;
-		ListView_SetItem(data->hWndGlyphList, &item);
-	}
+	InvalidateRect(data->hWndGlyphList, NULL, FALSE);
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
 }
 
@@ -572,7 +484,7 @@ static void NftrViewerDeleteGlyph(NFTRVIEWERDATA *data, int i) {
 	NftrViewerFullRefreshGlyphList(data, i, data->nftr.nGlyph - 1);
 
 	//delete last from list view
-	ListView_DeleteItem(data->hWndGlyphList, data->nftr.nGlyph);
+	ListView_SetItemCount(data->hWndGlyphList, data->nftr.nGlyph);
 
 	//set selection
 	int iNewSel = i;
@@ -599,7 +511,7 @@ static void NftrViewerCreateGlyph(NFTRVIEWERDATA *data, int cc) {
 	NftrViewerFullRefreshGlyphList(data, ins - data->nftr.glyphs, data->nftr.nGlyph - 2);
 
 	//add and update last item
-	NftrViewerInsertToGlyphlist(data, data->nftr.nGlyph - 1);
+	ListView_SetItemCount(data->hWndGlyphList, data->nftr.nGlyph);
 	NftrViewerFullRefreshGlyphList(data, data->nftr.nGlyph - 1, data->nftr.nGlyph - 1);
 	NftrViewerFontUpdated(data);
 }
@@ -675,11 +587,8 @@ static void NftrViewerInitGlyphList(NFTRVIEWERDATA *data) {
 
 	//create glyph image list
 	NftrViewerResetImageList(data);
-
-	for (int i = 0; i < data->nftr.nGlyph; i++) {
-		NftrViewerInsertToGlyphlist(data, i);
-	}
-
+	ListView_SetItemCount(data->hWndGlyphList, data->nftr.nGlyph);
+	
 	SendMessage(hWndList, WM_SETREDRAW, 1, 0);
 }
 
@@ -764,6 +673,45 @@ static void NftrViewerPreviewPaintCallback(HWND hWnd, FrameBuffer *fb, int scrol
 
 }
 
+static LRESULT CALLBACK NftrViewerGlyphListSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data_) {
+	switch (msg) {
+		case WM_ERASEBKGND:
+			//prevent erasing (we will paint the whole client area anyway)
+			return 1;
+		case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hDC = BeginPaint(hWnd, &ps);
+
+			//create offscreen DC
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+
+			HDC hCompatDC = CreateCompatibleDC(hDC);
+			HBITMAP hbm = CreateCompatibleBitmap(hDC, rcClient.right, rcClient.bottom);
+			SelectObject(hCompatDC, hbm);
+
+			//fill background (off-screen buffer to prevent flicker)
+			HBRUSH hbrBack = GetSysColorBrush(COLOR_WINDOW);
+			HPEN hNullPen = GetStockObject(NULL_PEN);
+			SelectObject(hCompatDC, hbrBack);
+			SelectObject(hCompatDC, hNullPen);
+			Rectangle(hCompatDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
+
+			//forward to default proc
+			DefSubclassProc(hWnd, msg, (WPARAM) hCompatDC, 0);
+
+			BitBlt(hDC, 0, 0, rcClient.right, rcClient.bottom, hCompatDC, 0, 0, SRCCOPY);
+			DeleteDC(hCompatDC);
+			DeleteObject(hbm);
+
+			EndPaint(hWnd, &ps);
+			return 0;
+		}
+	}
+	return DefSubclassProc(hWnd, msg, wParam, lParam);
+}
+
 static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 	HWND hWnd = data->hWnd;
 	HWND hWndMain = getMainWindow(hWnd);
@@ -813,13 +761,14 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 		WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_AUTOVSCROLL | ES_MULTILINE | ES_WANTRETURN | WS_HSCROLL | WS_VSCROLL,
 		0, 0, 100, 100, hWnd, NULL, NULL, NULL);
 
-	DWORD lvStyle = WS_VISIBLE | WS_CHILD | WS_BORDER | WS_CLIPCHILDREN | WS_VSCROLL | LVS_SINGLESEL | LVS_ICON | LVS_SHOWSELALWAYS | LVS_AUTOARRANGE;
+	DWORD lvStyle = WS_VISIBLE | WS_CHILD | WS_BORDER | WS_CLIPCHILDREN | WS_VSCROLL | LVS_SINGLESEL | LVS_ICON | LVS_SHOWSELALWAYS | LVS_AUTOARRANGE | LVS_OWNERDATA;
 	data->hWndGlyphList = CreateWindow(WC_LISTVIEW, L"", lvStyle, 0, 0, posCellEditor.left, posCellEditor.bottom,
 		hWnd, NULL, NULL, NULL);
 
 	//set extended style
 	//ListView_SetExtendedListViewStyle(data->hWndGlyphList, LVS_EX_JUSTIFYCOLUMNS | LVS_EX_SNAPTOGRID);
 	SendMessage(data->hWndGlyphList, LVM_SETVIEW, LV_VIEW_ICON, 0);
+	SetWindowSubclass(data->hWndGlyphList, NftrViewerGlyphListSubclassProc, 1, 0);
 
 	//init columns
 	LVCOLUMN lvc = { 0 };
@@ -995,6 +944,47 @@ static void NftrViewerOnPaint(NFTRVIEWERDATA *data) {
 
 static void NftrViewerOnNotify(NFTRVIEWERDATA *data, HWND hWnd, WPARAM wParam, LPNMLISTVIEW nm) {
 	switch (nm->hdr.code) {
+		case LVN_GETDISPINFO:
+		{
+			NMLVDISPINFO *di = (NMLVDISPINFO *) nm;
+			if (di->item.iSubItem != 0) break;
+			
+			//fill out item structure
+			if (di->item.mask & LVIF_COLFMT) {
+				di->item.piColFmt = NULL;
+			}
+			if (di->item.mask & LVIF_COLUMNS) {
+				di->item.cColumns = 0;
+			}
+			if (di->item.mask & LVIF_IMAGE) {
+				di->item.iImage = 0; // re-use imagelist image 0
+
+				//set imagelist
+				HBITMAP hbmColor, hbmMask;
+				HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
+				NftrViewerRenderGlyphMasks(&data->nftr, &data->nftr.glyphs[di->item.iItem], 1, 0x00000, &hbmColor, &hbmMask);
+				ImageList_Replace(himl, 0, hbmColor, hbmMask);
+				DeleteObject(hbmColor);
+				DeleteObject(hbmMask);
+			}
+			if (di->item.mask & LVIF_TEXT) {
+				//buffer is valid until the next call
+				static WCHAR textbuf[32];
+				NftrViewerGetGlyphListText(data, di->item.iItem, textbuf);
+				di->item.pszText = textbuf;
+			}
+
+			return TRUE;
+		}
+		case LVN_ODCACHEHINT:
+		{
+			break;
+		}
+		case LVN_ODFINDITEM:
+		{
+			NMLVFINDITEM *fi = (NMLVFINDITEM *) nm;
+			break;
+		}
 		case LVN_ITEMCHANGED:
 		{
 			if (nm->uNewState & LVIS_SELECTED) {
@@ -1109,20 +1099,11 @@ static void NftrViewerMakeCurrentGlyphInvalid(NFTRVIEWERDATA *data) {
 		int isInvalid = (i == data->curGlyph);
 		if (isInvalid != data->nftr.glyphs[i].isInvalid) {
 			data->nftr.glyphs[i].isInvalid = isInvalid;
-
-			WCHAR textbuf[64];
-			NftrViewerGetGlyphListText(data, i, textbuf);
-
-			LVITEM item = { 0 };
-			item.iItem = i;
-			item.iSubItem = 0;
-			item.mask = LVIF_TEXT;
-			item.pszText = textbuf;
-			ListView_SetItem(data->hWndGlyphList, &item);
 		}
 	}
 
 	NftrViewerFontUpdated(data);
+	InvalidateRect(data->hWndGlyphList, NULL, FALSE);
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
 }
 
