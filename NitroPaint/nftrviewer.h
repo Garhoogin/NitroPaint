@@ -9,16 +9,17 @@ typedef struct NFTRVIEWERDATA_ {
 	EDITOR_BASIC_MEMBERS;
 	NFTR nftr;
 	TedData ted;
+	UiCtlManager mgr;            // UI manager
 
 	int renderTransparent;
 	int curGlyph;
 	int selectedColor;
-	FrameBuffer fbPreview;      // text render preview framebuffer
-	wchar_t *previewText;       // preview text
+	FrameBuffer fbPreview;       // text render preview framebuffer
+	wchar_t *previewText;        // preview text
 
-	int spaceX;                 // text preview space X
-	int spaceY;                 // text preview space Y
-	COLOR palette[16];          // color palette to render with
+	int spaceX;                  // text preview space X
+	int spaceY;                  // text preview space Y
+	COLOR palette[16];           // color palette to render with
 
 	HWND hWndMargin;
 	HWND hWndPreview;

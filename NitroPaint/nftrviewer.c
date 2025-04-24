@@ -20,6 +20,20 @@ static NFTR_GLYPH *NftrViewerGetGlyphByCP(NFTRVIEWERDATA *data, uint16_t cp);
 static NFTR_GLYPH *NftrViewerGetDefaultGlyph(NFTRVIEWERDATA *data);
 static void NftrViewerFullRefreshGlyphList(NFTRVIEWERDATA *data, int iFirst, int iLast);
 
+// UI commands
+static void NftrViewerCmdPreviewTextChanged(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdPrevSpaceXChanged(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdPrevSpaceYChanged(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdImportCodeMap(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdSetBitDepth(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdSetAscent(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdSetGlyphLeading(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdSetGlyphWidth(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdSetGlyphTrailing(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdSetCellWidth(HWND hWnd, HWND hWndControl, int notif, void *data);
+static void NftrViewerCmdSetCellHeight(HWND hWnd, HWND hWndControl, int notif, void *data);
+
 
 
 // ----- glyph rendering routines
@@ -785,6 +799,21 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 	FbCreate(&data->fbPreview, hWnd, 1, 1);
 	data->previewText = _wcsdup(L"Preview text...");
 	SendMessage(data->hWndPreviewInput, WM_SETTEXT, 0, (LPARAM) data->previewText);
+
+	//create command list
+	UiCtlMgrInit(&data->mgr, data);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndPreviewInput, EN_CHANGE, NftrViewerCmdPreviewTextChanged);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndInputPrevSpaceX, EN_CHANGE, NftrViewerCmdPrevSpaceXChanged);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndInputPrevSpaceY, EN_CHANGE, NftrViewerCmdPrevSpaceYChanged);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndImportCMap, BN_CLICKED, NftrViewerCmdImportCodeMap);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndExportCMap, BN_CLICKED, NftrViewerCmdExportCodeMap);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndDepthList, CBN_SELCHANGE, NftrViewerCmdSetBitDepth);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndInputAscent, EN_CHANGE, NftrViewerCmdSetAscent);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndInputGlyphLeading, EN_CHANGE, NftrViewerCmdSetGlyphLeading);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndInputGlyphWidth, EN_CHANGE, NftrViewerCmdSetGlyphWidth);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndInputGlyphTrailing, EN_CHANGE, NftrViewerCmdSetGlyphTrailing);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndInputCellWidth, BN_CLICKED, NftrViewerCmdSetCellWidth);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndInputCellHeight, BN_CLICKED, NftrViewerCmdSetCellHeight);
 }
 
 static LRESULT NftrViewerOnSize(NFTRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
@@ -973,8 +1002,6 @@ static void NftrViewerOnNotify(NFTRVIEWERDATA *data, HWND hWnd, WPARAM wParam, L
 				NftrViewerGetGlyphListText(data, di->item.iItem, textbuf);
 				di->item.pszText = textbuf;
 			}
-
-			return TRUE;
 		}
 		case LVN_ODCACHEHINT:
 		{
@@ -1201,153 +1228,191 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 	}
 }
 
-static void NftrViewerOnCtlCommand(NFTRVIEWERDATA *data, HWND hWndControl, int notif) {
-	if (hWndControl == data->hWndPreviewInput && notif == EN_CHANGE) {
-		//preview text updated
-		int length = SendMessage(data->hWndPreviewInput, WM_GETTEXTLENGTH, 0, 0);
-		wchar_t *buf = (wchar_t *) calloc(length + 1, sizeof(wchar_t));
-		SendMessage(data->hWndPreviewInput, WM_GETTEXT, length + 1, (LPARAM) buf);
 
-		if (data->previewText != NULL) {
-			free(data->previewText);
-		}
-		data->previewText = buf;
+// ----- UI control commands
 
-		RECT rcPreview;
-		NftrViewerCalcPosPreview(data, NULL, &rcPreview);
-		InvalidateRect(data->hWnd, &rcPreview, FALSE);
-	} else if (hWndControl == data->hWndInputPrevSpaceX && notif == EN_CHANGE) {
-		//preview X spacing update
-		data->spaceX = GetEditNumber(hWndControl);
-		NftrViewerUpdatePreview(data);
-	} else if (hWndControl == data->hWndInputPrevSpaceY && notif == EN_CHANGE) {
-		//preview Y spacing update
-		data->spaceY = GetEditNumber(hWndControl);
-		NftrViewerUpdatePreview(data);
-	} else if (hWndControl == data->hWndImportCMap && notif == BN_CLICKED) {
-		//import code map
-		HWND hWndMain = getMainWindow(data->hWnd);
+static void NftrViewerCmdPreviewTextChanged(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//preview text updated
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	int length = SendMessage(data->hWndPreviewInput, WM_GETTEXTLENGTH, 0, 0);
+	wchar_t *buf = (wchar_t *) calloc(length + 1, sizeof(wchar_t));
+	SendMessage(data->hWndPreviewInput, WM_GETTEXT, length + 1, (LPARAM) buf);
 
-		if (data->nftr.hasCodeMap) {
-			MessageBox(hWndMain, L"Font already has a code map.", L"Error", MB_ICONERROR);
-			return;
-		}
+	if (data->previewText != NULL) {
+		free(data->previewText);
+	}
+	data->previewText = buf;
 
-		LPWSTR path = openFileDialog(hWndMain, L"Select Code Map File", L"BNCMP Files (*.bncmp)\0*.bncmp\0All Files\0*.*\0", L"");
-		if (path == NULL) return;
+	RECT rcPreview;
+	NftrViewerCalcPosPreview(data, NULL, &rcPreview);
+	InvalidateRect(data->hWnd, &rcPreview, FALSE);
+}
 
-		int size;
-		void *buf = ObjReadWholeFile(path, &size);
-		free(path);
-		if (BncmpIdentify(buf, size) == BNCMP_TYPE_INVALID) {
-			free(buf);
-			MessageBox(hWndMain, L"Invalid code map file.", L"Error", MB_ICONERROR);
-			return;
-		}
+static void NftrViewerCmdPrevSpaceXChanged(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//preview X spacing update
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	data->spaceX = GetEditNumber(hWndCtl);
+	NftrViewerUpdatePreview(data);
+}
 
-		int status = BncmpRead(&data->nftr, buf, size);
-		if (status != OBJ_STATUS_SUCCESS) {
-			free(buf);
-			MessageBox(hWndMain, L"Code map size mismatch.", L"Error", MB_ICONERROR);
-			return;
-		}
+static void NftrViewerCmdPrevSpaceYChanged(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//preview Y spacing update
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	data->spaceY = GetEditNumber(hWndCtl);
+	NftrViewerUpdatePreview(data);
+}
 
-		//success
+static void NftrViewerCmdImportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//import code map
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	HWND hWndMain = getMainWindow(data->hWnd);
+
+	if (data->nftr.hasCodeMap) {
+		MessageBox(hWndMain, L"Font already has a code map.", L"Error", MB_ICONERROR);
+		return;
+	}
+
+	LPWSTR path = openFileDialog(hWndMain, L"Select Code Map File", L"BNCMP Files (*.bncmp)\0*.bncmp\0All Files\0*.*\0", L"");
+	if (path == NULL) return;
+
+	int size;
+	void *buf = ObjReadWholeFile(path, &size);
+	free(path);
+	if (BncmpIdentify(buf, size) == BNCMP_TYPE_INVALID) {
 		free(buf);
+		MessageBox(hWndMain, L"Invalid code map file.", L"Error", MB_ICONERROR);
+		return;
+	}
 
-		NftrViewerUpdateAllGlyphTextAndImage(data);
-		NftrViewerFontUpdated(data);
-	} else if (hWndControl == data->hWndExportCMap && notif == BN_CLICKED) {
-		//export code map
-		HWND hWndMain = getMainWindow(data->hWnd);
-		if (!data->nftr.hasCodeMap) {
-			MessageBox(hWndMain, L"Font has no code map.", L"Error", MB_ICONERROR);
-			return;
-		}
+	int status = BncmpRead(&data->nftr, buf, size);
+	if (status != OBJ_STATUS_SUCCESS) {
+		free(buf);
+		MessageBox(hWndMain, L"Code map size mismatch.", L"Error", MB_ICONERROR);
+		return;
+	}
 
-		int cmapFormat = BNCMP_TYPE_INVALID;
-		switch (data->nftr.header.format) {
-			case NFTR_TYPE_BNFR_11:
-				cmapFormat = BNCMP_TYPE_BNCMP_11; break;
-			case NFTR_TYPE_BNFR_12:
-				cmapFormat = BNCMP_TYPE_BNCMP_12; break;
-		}
+	//success
+	free(buf);
 
-		if (cmapFormat == BNCMP_TYPE_INVALID) {
-			WCHAR textbuf[64];
-			wsprintfW(textbuf, L"%s format does not use a separate code map.", fontFormatNames[data->nftr.header.format]);
-			MessageBox(hWndMain, textbuf, L"Error", MB_ICONERROR);
-			return;
-		}
+	NftrViewerUpdateAllGlyphTextAndImage(data);
+	NftrViewerFontUpdated(data);
+}
 
-		LPWSTR filename = saveFileDialog(hWndMain, L"Select Code Map File", L"BNCMP Files (*.bncmp)\0*.bncmp\0All Files\0*.*\0", L"");
-		if (filename == NULL) return;
+static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//export code map
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	HWND hWndMain = getMainWindow(data->hWnd);
+	if (!data->nftr.hasCodeMap) {
+		MessageBox(hWndMain, L"Font has no code map.", L"Error", MB_ICONERROR);
+		return;
+	}
 
-		BSTREAM stm;
-		bstreamCreate(&stm, NULL, 0);
-		BncmpWrite(&data->nftr, &stm);
+	int cmapFormat = BNCMP_TYPE_INVALID;
+	switch (data->nftr.header.format) {
+		case NFTR_TYPE_BNFR_11:
+			cmapFormat = BNCMP_TYPE_BNCMP_11; break;
+		case NFTR_TYPE_BNFR_12:
+			cmapFormat = BNCMP_TYPE_BNCMP_12; break;
+	}
 
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(filename, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, stm.buffer, stm.size, &dwWritten, NULL);
-		CloseHandle(hFile);
+	if (cmapFormat == BNCMP_TYPE_INVALID) {
+		WCHAR textbuf[64];
+		wsprintfW(textbuf, L"%s format does not use a separate code map.", fontFormatNames[data->nftr.header.format]);
+		MessageBox(hWndMain, textbuf, L"Error", MB_ICONERROR);
+		return;
+	}
 
-		bstreamFree(&stm);
-		free(filename);
-	} else if (hWndControl == data->hWndDepthList && notif == CBN_SELCHANGE) {
-		//set bit depth
-		int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-		int depth = 1 << sel;
-		NftrViewerSetBitDepth(data, depth, FALSE);
-	} else if (hWndControl == data->hWndInputAscent && notif == EN_CHANGE) {
-		//change ascent
-		data->nftr.pxAscent = GetEditNumber(hWndControl);
-		NftrViewerFontUpdated(data);
-	} else if (hWndControl == data->hWndInputGlyphLeading && notif == EN_CHANGE) {
-		//change glyph leading
-		NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
-		if (glyph == NULL) return;
+	LPWSTR filename = saveFileDialog(hWndMain, L"Select Code Map File", L"BNCMP Files (*.bncmp)\0*.bncmp\0All Files\0*.*\0", L"");
+	if (filename == NULL) return;
 
-		glyph->spaceLeft = GetEditNumber(hWndControl);
-		NftrViewerFontUpdated(data);
-	} else if (hWndControl == data->hWndInputGlyphWidth && notif == EN_CHANGE) {
-		//change glyph width
-		NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
-		if (glyph == NULL) return;
+	BSTREAM stm;
+	bstreamCreate(&stm, NULL, 0);
+	BncmpWrite(&data->nftr, &stm);
 
-		glyph->width = GetEditNumber(hWndControl);
-		NftrViewerFontUpdated(data);
-	} else if (hWndControl == data->hWndInputGlyphTrailing && notif == EN_CHANGE) {
-		//change glyph trailing
-		NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
-		if (glyph == NULL) return;
+	DWORD dwWritten;
+	HANDLE hFile = CreateFile(filename, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	WriteFile(hFile, stm.buffer, stm.size, &dwWritten, NULL);
+	CloseHandle(hFile);
 
-		glyph->spaceRight = GetEditNumber(hWndControl);
-		NftrViewerFontUpdated(data);
-	} else if (hWndControl == data->hWndInputCellWidth && notif == BN_CLICKED) {
-		//change cell width
-		HWND hWndMain = getMainWindow(data->hWnd);
-		WCHAR textbuf[16];
-		wsprintfW(textbuf, L"%d", data->nftr.cellWidth);
-		int s = PromptUserText(hWndMain, L"Input", L"Cell Width:", textbuf, sizeof(textbuf));
-		if (s) {
-			NftrViewerSetCellSize(data, _wtol(textbuf), data->nftr.cellHeight);
-		}
-	} else if (hWndControl == data->hWndInputCellHeight && notif == BN_CLICKED) {
-		//change cell height
-		HWND hWndMain = getMainWindow(data->hWnd);
-		WCHAR textbuf[16];
-		wsprintfW(textbuf, L"%d", data->nftr.cellHeight);
-		int s = PromptUserText(hWndMain, L"Input", L"Cell Height:", textbuf, sizeof(textbuf));
-		if (s) {
-			NftrViewerSetCellSize(data, data->nftr.cellWidth, _wtol(textbuf));
-		}
+	bstreamFree(&stm);
+	free(filename);
+}
+
+static void NftrViewerCmdSetBitDepth(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//set bit depth
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	int sel = SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+	int depth = 1 << sel;
+	NftrViewerSetBitDepth(data, depth, FALSE);
+}
+
+static void NftrViewerCmdSetAscent(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//change ascent
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	data->nftr.pxAscent = GetEditNumber(hWndCtl);
+	NftrViewerFontUpdated(data);
+}
+
+static void NftrViewerCmdSetGlyphLeading(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//change glyph leading
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
+	if (glyph == NULL) return;
+
+	glyph->spaceLeft = GetEditNumber(hWndCtl);
+	NftrViewerFontUpdated(data);
+}
+
+static void NftrViewerCmdSetGlyphWidth(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//change glyph width
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
+	if (glyph == NULL) return;
+
+	glyph->width = GetEditNumber(hWndCtl);
+	NftrViewerFontUpdated(data);
+}
+
+static void NftrViewerCmdSetGlyphTrailing(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//change glyph trailing
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
+	if (glyph == NULL) return;
+
+	glyph->spaceRight = GetEditNumber(hWndCtl);
+	NftrViewerFontUpdated(data);
+}
+
+static void NftrViewerCmdSetCellWidth(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//change cell width
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	HWND hWndMain = getMainWindow(data->hWnd);
+	WCHAR textbuf[16];
+	wsprintfW(textbuf, L"%d", data->nftr.cellWidth);
+	int s = PromptUserText(hWndMain, L"Input", L"Cell Width:", textbuf, sizeof(textbuf));
+	if (s) {
+		NftrViewerSetCellSize(data, _wtol(textbuf), data->nftr.cellHeight);
 	}
 }
 
+static void NftrViewerCmdSetCellHeight(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	//change cell height
+	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
+	HWND hWndMain = getMainWindow(data->hWnd);
+	WCHAR textbuf[16];
+	wsprintfW(textbuf, L"%d", data->nftr.cellHeight);
+	int s = PromptUserText(hWndMain, L"Input", L"Cell Height:", textbuf, sizeof(textbuf));
+	if (s) {
+		NftrViewerSetCellSize(data, data->nftr.cellWidth, _wtol(textbuf));
+	}
+}
+
+
+
 static void NftrViewerOnCommand(NFTRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
+	UiCtlMgrOnCommand(&data->mgr, data->hWnd, wParam, lParam);
 	if (lParam) {
-		NftrViewerOnCtlCommand(data, (HWND) lParam, HIWORD(wParam));
+		//
 	} else if (HIWORD(wParam) == 0) {
 		NftrViewerOnMenuCommand(data, LOWORD(wParam));
 	} else if (HIWORD(wParam) == 1) {
@@ -1489,6 +1554,7 @@ static LRESULT CALLBACK NftrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		case WM_SIZE:
 			return NftrViewerOnSize(data, wParam, lParam);
 		case WM_DESTROY:
+			UiCtlMgrFree(&data->mgr);
 			FbDestroy(&data->fbPreview);
 			if (data->previewText != NULL) free(data->previewText);
 			break;

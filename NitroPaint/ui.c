@@ -423,3 +423,66 @@ void DoModalWait(HWND hWnd, HANDLE hWait) {
 		SetForegroundWindow(hWndParent);
 	}
 }
+
+
+typedef struct UiMgrCommandKey_ {
+	HWND hWnd;
+	int notif;
+} UiMgrCommandKey;
+
+static UiMgrCommandProc UiCtlMgrGetCommandProc(UiCtlManager *mgr, HWND hWnd, int notif) {
+	UiMgrCommandProc proc = NULL;
+	UiMgrCommandKey key;
+	key.hWnd = hWnd;
+	key.notif = notif;
+	StStatus status = StMapGet(&mgr->cmdMap, &key, &proc);
+	if (ST_SUCCEEDED(status)) return proc;
+
+	return NULL;
+}
+
+int UiCtlMgrInit(UiCtlManager *mgr, void *param) {
+	//init command map
+	StStatus status = StMapCreate(&mgr->cmdMap, sizeof(UiMgrCommandKey), sizeof(UiMgrCommandProc));
+	if (!ST_SUCCEEDED(status)) return 0;
+
+	mgr->param = param;
+	mgr->init = 1;
+	return 1;
+}
+
+int UiCtlMgrFree(UiCtlManager *mgr) {
+	//free command map
+	if (!mgr->init) return 0;
+
+	mgr->init = 0;
+	StMapFree(&mgr->cmdMap);
+	return 1;
+}
+
+int UiCtlMgrAddCommand(UiCtlManager *mgr, HWND hWnd, int notif, UiMgrCommandProc proc) {
+	if (!mgr->init) return 0;
+
+	//add a command entry
+	UiMgrCommandKey key;
+	key.hWnd = hWnd;
+	key.notif = notif;
+	StStatus status = StMapPut(&mgr->cmdMap, &key, &proc);
+	return ST_SUCCEEDED(status);
+}
+
+void UiCtlMgrOnCommand(UiCtlManager *mgr, HWND hWnd, WPARAM wParam, LPARAM lParam) {
+	if (!mgr->init) return;
+
+	//process UI command
+	HWND hWndControl = (HWND) lParam;
+	if (hWndControl != NULL) {
+		//look up control callback
+		UiMgrCommandProc proc = UiCtlMgrGetCommandProc(mgr, hWndControl, HIWORD(wParam));
+		if (proc != NULL) proc(hWnd, hWndControl, HIWORD(wParam), mgr->param);
+	} else if (HIWORD(wParam) == 0) {
+		//on menu command
+	} else if (HIWORD(wParam) == 1) {
+		//on accelerator
+	}
+}

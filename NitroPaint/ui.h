@@ -1,6 +1,8 @@
 #pragma once
 #include <Windows.h>
 
+#include "struct.h"
+
 //static control alignments
 #define SCA_LEFT    0
 #define SCA_RIGHT   1
@@ -158,3 +160,18 @@ void AddCheckedListViewItem(HWND hWnd, LPWSTR text, int row, BOOL checked);
 // Gets the checked state of a listview item.
 //
 int CheckedListViewIsChecked(HWND hWnd, int item);
+
+
+
+typedef void (*UiMgrCommandProc) (HWND hWnd, HWND hWndCtl, int notif, void *param);
+
+typedef struct UiCtlManager_ {
+	int init;
+	StMap cmdMap;
+	void *param;
+} UiCtlManager;
+
+int UiCtlMgrInit(UiCtlManager *mgr, void *param);
+int UiCtlMgrFree(UiCtlManager *mgr);
+int UiCtlMgrAddCommand(UiCtlManager *mgr, HWND hWnd, int notif, UiMgrCommandProc proc);
+void UiCtlMgrOnCommand(UiCtlManager *mgr, HWND hWnd, WPARAM wParam, LPARAM lParam);
