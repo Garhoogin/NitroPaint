@@ -38,10 +38,9 @@ static void NftrViewerCmdSetCellHeight(HWND hWnd, HWND hWndControl, int notif, v
 
 // ----- glyph rendering routines
 
-static void NftrViewerRenderSingleGlyphListPreview(NFTR *nftr, NFTR_GLYPH *glyph, COLOR32 col, COLOR32 *temp, COLOR32 *dest, int destW, int destH, int destX, int destY) {
+static COLOR32 *NftrViewerRenderSingleGlyphListPreview(NFTR *nftr, NFTR_GLYPH *glyph, COLOR32 col, COLOR32 *temp) {
 	int cellWidth = nftr->cellWidth;
 	int cellHeight = nftr->cellHeight;
-	memset(temp, 0, cellWidth * cellHeight * sizeof(COLOR32));
 
 	unsigned int alphaMax = (1 << nftr->bpp) - 1;
 	for (int y = 0; y < cellHeight; y++) {
@@ -50,8 +49,8 @@ static void NftrViewerRenderSingleGlyphListPreview(NFTR *nftr, NFTR_GLYPH *glyph
 
 			COLOR32 drawColor = col;
 			unsigned int alpha = (c * 510 + alphaMax) / (alphaMax * 2);
-			unsigned int drawR = (drawColor >>  0) & 0xFF;
-			unsigned int drawG = (drawColor >>  8) & 0xFF;
+			unsigned int drawR = (drawColor >> 0) & 0xFF;
+			unsigned int drawG = (drawColor >> 8) & 0xFF;
 			unsigned int drawB = (drawColor >> 16) & 0xFF;
 
 
@@ -65,32 +64,23 @@ static void NftrViewerRenderSingleGlyphListPreview(NFTR *nftr, NFTR_GLYPH *glyph
 
 	//produce scaled+cropped image
 	COLOR32 *scaled = ImgScaleEx(temp, cellWidth, cellHeight, PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, IMG_SCALE_FIT);
-	for (int y = 0; y < PREVIEW_ICON_HEIGHT; y++) {
-		memcpy(dest + y * destW + destX, scaled + y * PREVIEW_ICON_WIDTH, PREVIEW_ICON_WIDTH * sizeof(COLOR32));
-	}
-	free(scaled);
+	return scaled;
 }
 
-static void NftrViewerRenderGlyphMasks(NFTR *nftr, NFTR_GLYPH *glyph, int nGlyph, COLOR32 col, HBITMAP *pColorbm, HBITMAP *pMaskbm) {
+static void NftrViewerRenderGlyphMasks(NFTR *nftr, NFTR_GLYPH *glyph, COLOR32 col, HBITMAP *pColorbm, HBITMAP *pMaskbm) {
 	int cellWidth = nftr->cellWidth, cellHeight = nftr->cellHeight;
-
-	int imglistW = PREVIEW_ICON_WIDTH * nGlyph;
-	int imglistH = PREVIEW_ICON_HEIGHT;
-	COLOR32 *imglist = (COLOR32 *) calloc(imglistW * imglistH, sizeof(COLOR32));
 
 	//render each glyph to the imagelist
 	COLOR32 *px = (COLOR32 *) calloc(cellWidth * cellHeight, sizeof(COLOR32));
-	for (int i = 0; i < nGlyph; i++) {
-		NftrViewerRenderSingleGlyphListPreview(nftr, glyph + i, col, px, imglist, imglistW, imglistH, PREVIEW_ICON_WIDTH * i, 0);
-	}
+	COLOR32 *imglist = NftrViewerRenderSingleGlyphListPreview(nftr, glyph, col, px);
 	free(px);
 
 	//render mask
-	unsigned char *mask = ImgCreateAlphaMask(imglist, imglistW, imglistH, 0x80, NULL, NULL);
+	unsigned char *mask = ImgCreateAlphaMask(imglist, PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, 0x80, NULL, NULL);
 
 	//create bitmaps
-	HBITMAP hBmColor = CreateBitmap(imglistW, imglistH, 1, 32, imglist);
-	HBITMAP hBmAlpha = CreateBitmap(imglistW, imglistH, 1, 1, mask);
+	HBITMAP hBmColor = CreateBitmap(PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, 1, 32, imglist);
+	HBITMAP hBmAlpha = CreateBitmap(PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, 1, 1, mask);
 	free(imglist);
 	free(mask);
 
@@ -991,7 +981,7 @@ static void NftrViewerOnNotify(NFTRVIEWERDATA *data, HWND hWnd, WPARAM wParam, L
 				//set imagelist
 				HBITMAP hbmColor, hbmMask;
 				HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
-				NftrViewerRenderGlyphMasks(&data->nftr, &data->nftr.glyphs[di->item.iItem], 1, 0x00000, &hbmColor, &hbmMask);
+				NftrViewerRenderGlyphMasks(&data->nftr, &data->nftr.glyphs[di->item.iItem], 0x00000, &hbmColor, &hbmMask);
 				ImageList_Replace(himl, 0, hbmColor, hbmMask);
 				DeleteObject(hbmColor);
 				DeleteObject(hbmMask);
