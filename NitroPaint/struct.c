@@ -13,6 +13,20 @@
 #endif
 #endif
 
+// ----- safe allocation functions
+
+static void *safemalloc(size_t size) {
+	if (size == 0) size = 1;
+	return malloc(size);
+}
+
+static void *saferealloc(void *p, size_t size) {
+	if (size == 0) size = 1;
+	return realloc(p, size);
+}
+
+#define malloc safemalloc
+#define realloc saferealloc
 
 
 // ----- internal list function
