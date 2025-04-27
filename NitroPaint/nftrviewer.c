@@ -49,8 +49,8 @@ static COLOR32 *NftrViewerRenderSingleGlyphListPreview(NFTR *nftr, NFTR_GLYPH *g
 
 			COLOR32 drawColor = col;
 			unsigned int alpha = (c * 510 + alphaMax) / (alphaMax * 2);
-			unsigned int drawR = (drawColor >> 0) & 0xFF;
-			unsigned int drawG = (drawColor >> 8) & 0xFF;
+			unsigned int drawR = (drawColor >>  0) & 0xFF;
+			unsigned int drawG = (drawColor >>  8) & 0xFF;
 			unsigned int drawB = (drawColor >> 16) & 0xFF;
 
 
@@ -87,6 +87,110 @@ static void NftrViewerRenderGlyphMasks(NFTR *nftr, NFTR_GLYPH *glyph, COLOR32 co
 	*pColorbm = hBmColor;
 	*pMaskbm = hBmAlpha;
 }
+
+
+// ----- glyph cache routines
+
+#define GLYPH_CACHE_SIZE 64
+
+typedef struct NftrViewerCacheEntry_ {
+	uint16_t cp;
+	int image;
+} NftrViewerCacheEntry;
+
+static void NftrViewerCacheInit(NFTRVIEWERDATA *data) {
+	if (data->glyphCacheInit) return;
+
+	StListCreateInline(&data->glyphCache, NftrViewerCacheEntry, NULL);
+	StListCreateInline(&data->glyphCacheFree, int, NULL);
+
+	//populate free images
+	for (int i = 0; i < GLYPH_CACHE_SIZE; i++) {
+		StListAdd(&data->glyphCacheFree, &i);
+	}
+	data->glyphCacheInit = 1;
+}
+
+static void NftrViewerCacheFree(NFTRVIEWERDATA *data) {
+	if (data->glyphCacheInit) {
+		StListFree(&data->glyphCache);
+		StListFree(&data->glyphCacheFree);
+		data->glyphCacheInit = 0;
+	}
+}
+
+static void NftrViewerCacheInvalidateAll(NFTRVIEWERDATA *data) {
+	StListClear(&data->glyphCache);
+	StListClear(&data->glyphCacheFree);
+	for (int i = 0; i < GLYPH_CACHE_SIZE; i++) {
+		StListAdd(&data->glyphCacheFree, &i);
+	}
+}
+
+static void NftrViewerCacheInvalidateGlyphByCP(NFTRVIEWERDATA *data, uint16_t cp) {
+	//invalidate single code point
+	for (unsigned int i = 0; i < data->glyphCache.length; i++) {
+		NftrViewerCacheEntry *ent = StListGetPtr(&data->glyphCache, i);
+		if (ent->cp == cp) {
+			//remove from cache
+			int remove = ent->image;
+			StListRemove(&data->glyphCache, i);
+			StListAdd(&data->glyphCacheFree, &remove);
+			return;
+		}
+	}
+}
+
+static void NftrViewerCacheInvalidateGlyphByIndex(NFTRVIEWERDATA *data, int i) {
+	NFTR_GLYPH *glyph = NftrViewerGetGlyph(data, i);
+	if (glyph == NULL) return;
+
+	NftrViewerCacheInvalidateGlyphByCP(data, glyph->cp);
+}
+
+static int NftrViewerCacheGetByCP(NFTRVIEWERDATA *data, uint16_t cp) {
+	//check the cache
+	for (unsigned int i = 0; i < data->glyphCache.length; i++) {
+		NftrViewerCacheEntry *ent = StListGetPtr(&data->glyphCache, i);
+		if (ent->cp == cp) {
+			//found
+			return ent->image;
+		}
+	}
+
+	NFTR_GLYPH *glyph = NftrViewerGetGlyphByCP(data, cp);
+	if (glyph == NULL) return -1;
+
+	//create entry
+	int newImage = -1;
+	if (data->glyphCache.length >= GLYPH_CACHE_SIZE) {
+		//remove the oldest glyph cache entry
+		NftrViewerCacheEntry *ent0 = StListGetPtr(&data->glyphCache, 0);
+		newImage = ent0->image;
+		StListRemove(&data->glyphCache, 0);
+	} else {
+		//get next free image index
+		StListGet(&data->glyphCacheFree, 0, &newImage);
+		StListRemove(&data->glyphCacheFree, 0);
+	}
+
+	//add entry
+	NftrViewerCacheEntry newent;
+	newent.cp = cp;
+	newent.image = newImage;
+	StListAdd(&data->glyphCache, &newent);
+
+	//render
+	HBITMAP hbmColor, hbmMask;
+	HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
+	NftrViewerRenderGlyphMasks(&data->nftr, glyph, 0x00000, &hbmColor, &hbmMask);
+	ImageList_Replace(himl, newImage, hbmColor, hbmMask);
+	DeleteObject(hbmColor);
+	DeleteObject(hbmMask);
+
+	return newImage;
+}
+
 
 static void NftrViewerRenderGlyph(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int width, int height, int x, int y, NFTR_GLYPH *glyph) {
 	for (int cellY = 0; cellY < data->nftr.cellHeight; cellY++) {
@@ -420,6 +524,7 @@ static void NftrViewerUpdateGlyphListImage(NFTRVIEWERDATA *data, int i) {
 	if (i < 0 || i >= data->nftr.nGlyph) return;
 
 	//refresh list view
+	NftrViewerCacheInvalidateGlyphByIndex(data, i);
 	InvalidateRect(data->hWndGlyphList, NULL, FALSE);
 }
 
@@ -435,8 +540,6 @@ static void NftrViewerReassignGlyph(NFTRVIEWERDATA *data, int i, uint16_t inputC
 	//next, update the list view.
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
 	{
-		HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
-
 		//for the cleanest edit to the list view, iterate all glyphs and update them.
 		for (int j = min(i, newI); j <= max(i, newI); j++) {
 			//re-render
@@ -451,20 +554,13 @@ static void NftrViewerReassignGlyph(NFTRVIEWERDATA *data, int i, uint16_t inputC
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
 }
 
-static void NftrViewerResetImageList(NFTRVIEWERDATA *data) {
-	//get and reset image list
-	HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
-	ImageList_RemoveAll(himl);
-	ImageList_SetImageCount(himl, 1);
-}
-
 static void NftrViewerUpdateAllGlyphTextAndImage(NFTRVIEWERDATA *data) {
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
 
 	//re-render
-	NftrViewerResetImageList(data);
+	NftrViewerCacheInvalidateAll(data);
+	InvalidateRect(data->hWndGlyphList, NULL, TRUE);
 	
-	InvalidateRect(data->hWndGlyphList, NULL, FALSE);
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
 }
 
@@ -473,7 +569,7 @@ static void NftrViewerFullRefreshGlyphList(NFTRVIEWERDATA *data, int iFirst, int
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
 
 	//put new images
-	NftrViewerResetImageList(data);
+	NftrViewerCacheInvalidateAll(data);
 	InvalidateRect(data->hWndGlyphList, NULL, FALSE);
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
 }
@@ -584,15 +680,15 @@ static void NftrViewerSetCellSize(NFTRVIEWERDATA *data, int width, int height) {
 	SendMessage(data->hWndInputCellHeight, WM_SETTEXT, -1, (LPARAM) textbuf);
 }
 
-
-static void NftrViewerInitGlyphList(NFTRVIEWERDATA *data) {
+static void NftrViewerSetGlyphListSize(NFTRVIEWERDATA *data, int count) {
 	HWND hWndList = data->hWndGlyphList;
 	SendMessage(hWndList, WM_SETREDRAW, 0, 0);
 
 	//create glyph image list
-	NftrViewerResetImageList(data);
-	ListView_SetItemCount(data->hWndGlyphList, data->nftr.nGlyph);
-	
+	HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
+	ImageList_SetImageCount(himl, GLYPH_CACHE_SIZE);
+	ListView_SetItemCount(data->hWndGlyphList, count);
+
 	SendMessage(hWndList, WM_SETREDRAW, 1, 0);
 }
 
@@ -679,39 +775,6 @@ static void NftrViewerPreviewPaintCallback(HWND hWnd, FrameBuffer *fb, int scrol
 
 static LRESULT CALLBACK NftrViewerGlyphListSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data_) {
 	switch (msg) {
-		case WM_ERASEBKGND:
-			//prevent erasing (we will paint the whole client area anyway)
-			return 1;
-		case WM_PAINT:
-		{
-			PAINTSTRUCT ps;
-			HDC hDC = BeginPaint(hWnd, &ps);
-
-			//create offscreen DC
-			RECT rcClient;
-			GetClientRect(hWnd, &rcClient);
-
-			HDC hCompatDC = CreateCompatibleDC(hDC);
-			HBITMAP hbm = CreateCompatibleBitmap(hDC, rcClient.right, rcClient.bottom);
-			SelectObject(hCompatDC, hbm);
-
-			//fill background (off-screen buffer to prevent flicker)
-			HBRUSH hbrBack = GetSysColorBrush(COLOR_WINDOW);
-			HPEN hNullPen = GetStockObject(NULL_PEN);
-			SelectObject(hCompatDC, hbrBack);
-			SelectObject(hCompatDC, hNullPen);
-			Rectangle(hCompatDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
-
-			//forward to default proc
-			DefSubclassProc(hWnd, msg, (WPARAM) hCompatDC, 0);
-
-			BitBlt(hDC, 0, 0, rcClient.right, rcClient.bottom, hCompatDC, 0, 0, SRCCOPY);
-			DeleteDC(hCompatDC);
-			DeleteObject(hbm);
-
-			EndPaint(hWnd, &ps);
-			return 0;
-		}
 	}
 	return DefSubclassProc(hWnd, msg, wParam, lParam);
 }
@@ -723,7 +786,7 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 	data->scale = 16;
 	data->showBorders = 1;
 	data->curGlyph = 0;
-	data->renderTransparent = GetMenuState(GetMenu(hWndMain), ID_VIEW_RENDERTRANSPARENCY, MF_BYCOMMAND);;
+	data->renderTransparent = GetMenuState(GetMenu(hWndMain), ID_VIEW_RENDERTRANSPARENCY, MF_BYCOMMAND);
 	data->spaceX = 1;
 	data->spaceY = 1;
 
@@ -765,6 +828,7 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 		WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL | ES_AUTOVSCROLL | ES_MULTILINE | ES_WANTRETURN | WS_HSCROLL | WS_VSCROLL,
 		0, 0, 100, 100, hWnd, NULL, NULL, NULL);
 
+	NftrViewerCacheInit(data);
 	DWORD lvStyle = WS_VISIBLE | WS_CHILD | WS_BORDER | WS_CLIPCHILDREN | WS_VSCROLL | LVS_SINGLESEL | LVS_ICON | LVS_SHOWSELALWAYS | LVS_AUTOARRANGE | LVS_OWNERDATA;
 	data->hWndGlyphList = CreateWindow(WC_LISTVIEW, L"", lvStyle, 0, 0, posCellEditor.left, posCellEditor.bottom,
 		hWnd, NULL, NULL, NULL);
@@ -783,7 +847,7 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 	ListView_InsertColumn(data->hWndGlyphList, 0, &lvc);
 
 	//create image list
-	HIMAGELIST hLarge = ImageList_Create(PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, ILC_MASK | ILC_COLOR24, 1, 256);
+	HIMAGELIST hLarge = ImageList_Create(PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, ILC_MASK | ILC_COLOR24, GLYPH_CACHE_SIZE, 1);
 	ListView_SetImageList(data->hWndGlyphList, hLarge, LVSIL_NORMAL);
 
 	FbCreate(&data->fbPreview, hWnd, 1, 1);
@@ -976,15 +1040,8 @@ static void NftrViewerOnNotify(NFTRVIEWERDATA *data, HWND hWnd, WPARAM wParam, L
 				di->item.cColumns = 0;
 			}
 			if (di->item.mask & LVIF_IMAGE) {
-				di->item.iImage = 0; // re-use imagelist image 0
-
-				//set imagelist
-				HBITMAP hbmColor, hbmMask;
-				HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
-				NftrViewerRenderGlyphMasks(&data->nftr, &data->nftr.glyphs[di->item.iItem], 0x00000, &hbmColor, &hbmMask);
-				ImageList_Replace(himl, 0, hbmColor, hbmMask);
-				DeleteObject(hbmColor);
-				DeleteObject(hbmMask);
+				int iImage = NftrViewerCacheGetByCP(data, data->nftr.glyphs[di->item.iItem].cp);
+				di->item.iImage = iImage; // re-use imagelist images
 			}
 			if (di->item.mask & LVIF_TEXT) {
 				//buffer is valid until the next call
@@ -995,6 +1052,7 @@ static void NftrViewerOnNotify(NFTRVIEWERDATA *data, HWND hWnd, WPARAM wParam, L
 		}
 		case LVN_ODCACHEHINT:
 		{
+			NMLVCACHEHINT *hint = (NMLVCACHEHINT *) nm;
 			break;
 		}
 		case LVN_ODFINDITEM:
@@ -1507,7 +1565,7 @@ static LRESULT CALLBACK NftrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			if (path != NULL) EditorSetFile(hWnd, path);
 			memcpy(&data->nftr, nftr, sizeof(NFTR));
 
-			NftrViewerInitGlyphList(data);
+			NftrViewerSetGlyphListSize(data, data->nftr.nGlyph);
 
 			data->frameData.contentWidth = nftr->cellWidth * data->scale;
 			data->frameData.contentHeight = nftr->cellHeight * data->scale;
@@ -1544,6 +1602,7 @@ static LRESULT CALLBACK NftrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		case WM_SIZE:
 			return NftrViewerOnSize(data, wParam, lParam);
 		case WM_DESTROY:
+			NftrViewerCacheFree(data);
 			UiCtlMgrFree(&data->mgr);
 			FbDestroy(&data->fbPreview);
 			if (data->previewText != NULL) free(data->previewText);

@@ -11,6 +11,10 @@ typedef struct NFTRVIEWERDATA_ {
 	TedData ted;
 	UiCtlManager mgr;            // UI manager
 
+	int glyphCacheInit;
+	StList glyphCacheFree;
+	StList glyphCache;
+
 	int renderTransparent;
 	int curGlyph;
 	int selectedColor;
