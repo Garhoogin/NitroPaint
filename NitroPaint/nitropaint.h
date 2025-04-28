@@ -67,6 +67,8 @@ typedef struct {
 #define FILTER_NAME_TEXARC         L"Texture Archives"
 #define FILTER_NAME_TEXTURE        L"Texture Files"
 #define FILTER_NAME_ALL            L"All Supported Files"
+#define FILTER_NAME_FONT           L"Font Files"
+#define FILTER_NAME_CMAP           L"Character Code Map Files"
 #define FILTER_NAME_IMAGE          L"Supported Image Files"
 
 //common filter file extensions
@@ -78,8 +80,10 @@ typedef struct {
 #define FILTER_EXTS_COMBO2D        L"*.mbb;*.dat;*.bnr;*.bin"
 #define FILTER_EXTS_TEXARC         L"*.nsbtx;*.nsbmd;*.bmd"
 #define FILTER_EXTS_TEXTURE        L"*.tga;*.5tx;*.tds;*.nnstga"
+#define FILTER_EXTS_FONT           L"*.nftr;*.bnfr"
+#define FILTER_EXTS_CMAP           L"*.bncmp"
 #define FILTER_EXTS_IMAGE          L"*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga"
-#define FILTER_EXTS_ALL            L"*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga;*.5tx;*.tds"
+#define FILTER_EXTS_ALL            L"*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga;*.5tx;*.tds;*.nftr;*.bnfr"
 
 //common filters
 #define FILTER_PALETTE    FILTER_NAME_PALETTE   L"\0" FILTER_EXTS_PALETTE   L"\0"
@@ -90,8 +94,9 @@ typedef struct {
 #define FILTER_COMBO2D    FILTER_NAME_COMBO2D   L"\0" FILTER_EXTS_COMBO2D   L"\0"
 #define FILTER_TEXARC     FILTER_NAME_TEXARC    L"\0" FILTER_EXTS_TEXARC    L"\0"
 #define FILTER_TEXTURE    FILTER_NAME_TEXTURE   L"\0" FILTER_EXTS_TEXTURE   L"\0"
-#define FILTER_ALL        FILTER_NAME_ALL       L"\0" FILTER_EXTS_ALL       L"\0"
+#define FILTER_FONT       FILTER_NAME_FONT      L"\0" FILTER_EXTS_FONT      L"\0"
 #define FILTER_IMAGE      FILTER_NAME_IMAGE     L"\0" FILTER_EXTS_IMAGE     L"\0"
+#define FILTER_ALL        FILTER_NAME_ALL       L"\0" FILTER_EXTS_ALL       L"\0"
 #define FILTER_ALLFILES   L"All Files\0*.*\0"
 
 //
