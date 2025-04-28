@@ -388,7 +388,7 @@ static int NftrReadBnfr1x(NFTR *nftr, const unsigned char *buffer, unsigned int 
 	const unsigned char *pBmp = (const unsigned char *) (pWid + numGlyphs * 2);
 	for (int i = 0; i < nftr->nGlyph; i++) {
 		nftr->glyphs[i].isInvalid = 0;
-		nftr->glyphs[i].cp = 0;
+		nftr->glyphs[i].cp = i; // dummy
 		nftr->glyphs[i].width = pWid[i * 2 + 1] + pWid[i * 2 + 0];
 		nftr->glyphs[i].spaceLeft = -pWid[i * 2 + 0]; // subtract padding space
 		nftr->glyphs[i].px = (unsigned char *) calloc(nftr->cellWidth * nftr->cellHeight, 1);
@@ -652,7 +652,7 @@ int NftrGetGlyphIndexByCP(NFTR *nftr, uint16_t cp) {
 		}
 	}
 
-	if (nftr->glyphs[lo].cp == cp) return lo;
+	if (lo < nftr->nGlyph && nftr->glyphs[lo].cp == cp) return lo;
 	return -1;
 }
 

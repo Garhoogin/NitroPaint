@@ -210,7 +210,7 @@ static void NftrViewerRenderGlyph(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int widt
 }
 
 static void NftrViewerRenderString(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int width, int height, const wchar_t *str) {
-	if (str == NULL) return;
+	if (str == NULL || !data->nftr.hasCodeMap) return;
 
 	//render glyph string
 	int x = 0, y = 0;
