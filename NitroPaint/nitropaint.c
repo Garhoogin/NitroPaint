@@ -2716,6 +2716,12 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				NSCR newNscr;
 				ScrInit(&newNscr, nscr->header.format);
+				newNscr.fmt = nscr->fmt;
+				newNscr.colorMode = nscr->colorMode;
+				newNscr.clearValue = nscr->clearValue;
+				newNscr.gridWidth = nscr->gridWidth;
+				newNscr.gridHeight = nscr->gridHeight;
+				newNscr.nHighestIndex = nscr->nHighestIndex;
 				newNscr.tilesX = newTilesX;
 				newNscr.tilesY = newTilesY;
 				newNscr.dataSize = newTilesX * newTilesY * sizeof(uint16_t);
