@@ -209,13 +209,15 @@
 #define ID_FONTMENU_MAKEINVALID         40221
 #define ID_FONTMENU2_NEWGLYPH           40222
 #define ID_FONTMENU2_GOTO               40223
+#define ID_FONTMENU_GENERATE            40224
+#define ID_FONTMENU2_GENERATEALL        40225
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40224
+#define _APS_NEXT_COMMAND_VALUE         40226
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

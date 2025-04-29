@@ -1226,6 +1226,168 @@ static void NftrViewerNewGlyph(NFTRVIEWERDATA *data) {
 	}
 }
 
+static int NftrViewerSelectFontDialog(NFTRVIEWERDATA *data) {
+	//select font, using last selected font as default
+	CHOOSEFONT cf = { 0 };
+	cf.lStructSize = sizeof(cf);
+	cf.hwndOwner = getMainWindow(data->hWnd);
+	cf.lpLogFont = &data->lastFont;
+	cf.Flags = CF_FORCEFONTEXIST | CF_INACTIVEFONTS;
+	if (data->lastFontSet) cf.Flags |= CF_INITTOLOGFONTSTRUCT;
+
+	return ChooseFont(&cf);
+}
+
+static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, int nGlyph) {
+	//we have a font, create it indirectly.
+	HFONT hFont = CreateFontIndirect(&data->lastFont);
+	if (hFont == NULL) return;
+	data->lastFontSet = 1;
+
+	//create device context
+	HDC hDesktopDC = GetDC(NULL);
+	HDC hDC = CreateCompatibleDC(hDesktopDC);
+	ReleaseDC(NULL, hDesktopDC);
+	SelectObject(hDC, hFont);
+
+	//get text metrics
+	TEXTMETRIC textMetrics = { 0 };
+	GetTextMetricsW(hDC, &textMetrics);
+	DeleteDC(hDC);
+
+	int ascent = textMetrics.tmAscent;
+	int height = textMetrics.tmHeight;
+	int maxWidth = textMetrics.tmMaxCharWidth;
+
+	//create glyph frame buffer
+	FrameBuffer fb;
+	FbCreate(&fb, NULL, maxWidth + 2, height);
+	SelectObject(fb.hDC, hFont);
+
+	for (int i = 0; i < nGlyph; i++) {
+		//render white background
+		memset(fb.px, 0xFF, fb.width * fb.height * sizeof(COLOR32));
+
+		//render glyph code point
+		WCHAR str[2];
+		RECT rcText = { 0 };
+		str[0] = glyph->cp;
+		str[1] = L'\0';
+		rcText.right = maxWidth;
+		rcText.bottom = height;
+		DrawText(fb.hDC, str, 1, &rcText, DT_SINGLELINE | DT_NOPREFIX);
+
+		//clear glyph
+		memset(glyph->px, 0, data->nftr.cellWidth * data->nftr.cellHeight);
+
+		//calculate glyph bounding
+		int offsX = 0, maxX = fb.width;
+		for (int x = 0; x < fb.width; x++) {
+			int opaque = 0;
+			for (int y = 0; y < fb.height; y++) {
+				if ((fb.px[x + y * fb.width] & 0x00FFFFFF) != 0xFFFFFF) {
+					opaque = 1;
+					break;
+				}
+			}
+
+			if (opaque) break;
+			offsX++;
+		}
+		for (int x = fb.width - 1; x >= 0; x--) {
+			int opaque = 0;
+			for (int y = 0; y < fb.height; y++) {
+				if ((fb.px[x + y * fb.width] & 0x00FFFFFF) != 0xFFFFFF) {
+					opaque = 1;
+					break;
+				}
+			}
+
+			if (opaque) break;
+			maxX = x;
+		}
+		if (maxX < offsX) maxX = offsX;
+
+		//render
+		unsigned int cMax = (1 << data->nftr.bpp) - 1;
+		for (int y = 0; y < data->nftr.cellHeight; y++) {
+			for (int x = 0; x < data->nftr.cellWidth; x++) {
+				int srcX = x + offsX;
+				int srcY = y - data->nftr.pxAscent + ascent - 1;
+
+				//sample
+				if (srcX >= 0 && srcX < fb.width && srcY >= 0 && srcY < fb.height) {
+					COLOR32 col = fb.px[srcX + srcY * fb.width];
+					unsigned int b = (col >> 0) & 0xFF;
+					unsigned int g = (col >> 8) & 0xFF;
+					unsigned int r = (col >> 16) & 0xFF;
+					unsigned int l = 255 - (r + b + 2 * g + 2) / 4;
+
+					unsigned int q = (l * cMax * 2 + 255) / 510;
+					glyph->px[x + y * data->nftr.cellWidth] = q;
+				}
+			}
+		}
+
+		//calculate width
+		int width = maxX - offsX;
+		if (glyph->cp == 0x20) {
+			//set space width to width of average character
+			width = textMetrics.tmAveCharWidth;
+		}
+		if (width > data->nftr.cellWidth) {
+			//clamp width to cell size
+			width = data->nftr.cellWidth;
+		}
+
+		glyph->spaceLeft = 0;
+		glyph->spaceRight = 0;
+		glyph->width = width;
+		glyph++;
+	}
+
+	FbDestroy(&fb);
+	DeleteObject(hFont);
+
+	NftrViewerCacheInvalidateGlyphByCP(data, glyph->cp);
+	NftrViewerFontUpdated(data);
+	InvalidateRect(data->hWndGlyphList, NULL, TRUE);
+}
+
+static void NftrViewerGenerateGlyph(NFTRVIEWERDATA *data) {
+	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
+	if (glyph == NULL) return;
+
+	if (!NftrViewerSelectFontDialog(data)) return;
+
+	//font fix-up
+	if (data->nftr.bpp == 1) {
+		data->lastFont.lfQuality = NONANTIALIASED_QUALITY;
+	}
+
+	NftrViewerGenerateGlyphsFromFont(data, glyph, 1);
+	NftrViewerSetCurrentGlyphByCodePoint(data, glyph->cp, FALSE);
+	InvalidateRect(data->hWndGlyphList, NULL, TRUE);
+}
+
+static void NftrViewerGenerateGlyphsForWholeFont(NFTRVIEWERDATA *data) {
+	if (!NftrViewerSelectFontDialog(data)) return;
+
+	//font fix-up
+	if (data->nftr.bpp == 1) {
+		data->lastFont.lfQuality = NONANTIALIASED_QUALITY;
+	}
+
+	NftrViewerGenerateGlyphsFromFont(data, data->nftr.glyphs, data->nftr.nGlyph);
+	NftrViewerCacheInvalidateAll(data);
+	InvalidateRect(data->hWndGlyphList, NULL, TRUE);
+	
+	NFTR_GLYPH *cur = NftrViewerGetCurrentGlyph(data);
+	if (cur != NULL) {
+		NftrViewerSetCurrentGlyphByCodePoint(data, cur->cp, FALSE);
+	}
+}
+
 static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 	switch (idMenu) {
 		case ID_VIEW_GRIDLINES:
@@ -1272,6 +1434,12 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 			break;
 		case ID_FONTMENU2_NEWGLYPH:
 			NftrViewerNewGlyph(data);
+			break;
+		case ID_FONTMENU_GENERATE:
+			NftrViewerGenerateGlyph(data);
+			break;
+		case ID_FONTMENU2_GENERATEALL:
+			NftrViewerGenerateGlyphsForWholeFont(data);
 			break;
 	}
 }

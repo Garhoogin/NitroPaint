@@ -15,6 +15,9 @@ typedef struct NFTRVIEWERDATA_ {
 	StList glyphCacheFree;
 	StList glyphCache;
 
+	LOGFONT lastFont;
+	int lastFontSet;
+
 	int renderTransparent;
 	int curGlyph;
 	int selectedColor;
