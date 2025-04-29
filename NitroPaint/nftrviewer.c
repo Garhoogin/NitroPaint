@@ -1238,6 +1238,15 @@ static int NftrViewerSelectFontDialog(NFTRVIEWERDATA *data) {
 	return ChooseFont(&cf);
 }
 
+static int NftrViewerBmpColumnHasNonWhite(COLOR32 *px, int width, int height, int x) {
+	for (int y = 0; y < height; y++) {
+		if ((px[x + y * width] & 0x00FFFFFF) != 0xFFFFFF) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, int nGlyph) {
 	//we have a font, create it indirectly.
 	HFONT hFont = CreateFontIndirect(&data->lastFont);
@@ -1251,8 +1260,13 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 	SelectObject(hDC, hFont);
 
 	//get text metrics
+	ABC *abc = (ABC *) calloc(65536, sizeof(ABC));
 	TEXTMETRIC textMetrics = { 0 };
 	GetTextMetricsW(hDC, &textMetrics);
+	if (!GetCharABCWidths(hDC, 0, 0xFFFF, abc)) {
+		free(abc);
+		abc = NULL;
+	}
 	DeleteDC(hDC);
 
 	int ascent = textMetrics.tmAscent;
@@ -1261,51 +1275,44 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 
 	//create glyph frame buffer
 	FrameBuffer fb;
-	FbCreate(&fb, NULL, maxWidth + 2, height);
+	FbCreate(&fb, NULL, maxWidth + 3, height); // +1 on the left, +2 on right for rounding
 	SelectObject(fb.hDC, hFont);
 
 	for (int i = 0; i < nGlyph; i++) {
 		//render white background
 		memset(fb.px, 0xFF, fb.width * fb.height * sizeof(COLOR32));
+		int cp = glyph->cp;
 
 		//render glyph code point
 		WCHAR str[2];
 		RECT rcText = { 0 };
 		str[0] = glyph->cp;
 		str[1] = L'\0';
-		rcText.right = maxWidth;
+		rcText.left = 1; // 1-px padding on left to account for rounding
+		rcText.right = rcText.left + maxWidth;
 		rcText.bottom = height;
+		if (abc != NULL) {
+			//adjust based on A
+			rcText.left -= abc[cp].abcA;
+			rcText.right -= abc[cp].abcA;
+		}
 		DrawText(fb.hDC, str, 1, &rcText, DT_SINGLELINE | DT_NOPREFIX);
 
 		//clear glyph
 		memset(glyph->px, 0, data->nftr.cellWidth * data->nftr.cellHeight);
 
-		//calculate glyph bounding
+		//calculate glyph bounding horizontal
 		int offsX = 0, maxX = fb.width;
 		for (int x = 0; x < fb.width; x++) {
-			int opaque = 0;
-			for (int y = 0; y < fb.height; y++) {
-				if ((fb.px[x + y * fb.width] & 0x00FFFFFF) != 0xFFFFFF) {
-					opaque = 1;
-					break;
-				}
-			}
-
-			if (opaque) break;
+			if (NftrViewerBmpColumnHasNonWhite(fb.px, fb.width, fb.height, x)) break;
 			offsX++;
 		}
 		for (int x = fb.width - 1; x >= 0; x--) {
-			int opaque = 0;
-			for (int y = 0; y < fb.height; y++) {
-				if ((fb.px[x + y * fb.width] & 0x00FFFFFF) != 0xFFFFFF) {
-					opaque = 1;
-					break;
-				}
-			}
-
-			if (opaque) break;
+			if (NftrViewerBmpColumnHasNonWhite(fb.px, fb.width, fb.height, x)) break;
 			maxX = x;
 		}
+
+		//clamp max X to offset X (prevent negative B space)
 		if (maxX < offsX) maxX = offsX;
 
 		//render
@@ -1331,21 +1338,55 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 
 		//calculate width
 		int width = maxX - offsX;
-		if (glyph->cp == 0x20) {
-			//set space width to width of average character
-			width = textMetrics.tmAveCharWidth;
+		int spaceA = offsX - 1; // cancel 1-pixel horizontal offset to catch A space rounding
+		int spaceC = -spaceA;   // counteract A spacing from leading overhang
+		if (abc != NULL) {
+			//if the width is 0, then our scan is bad.
+			if (width == 0) {
+				spaceA = abc[cp].abcA;
+				width = abc[cp].abcB;
+				spaceC = abc[cp].abcC;
+			} else {
+				//ABC data present, set AC space
+				spaceA += abc[cp].abcA;
+				spaceC += abc[cp].abcC;
+			}
+
+			//if B space exceeds glyph width, adjust C space
+			int spaceAB = spaceA + width;
+			if (spaceAB != (abc[cp].abcA + abc[cp].abcB)) {
+				//adjust C space based on difference in AB spaces to preserve total spacing
+				spaceC += abc[cp].abcB - spaceAB;
+			}
+		} else {
+			//no ABC data present
+			if (width == 0) {
+				//set space width to width of average character
+				width = textMetrics.tmAveCharWidth;
+			}
 		}
-		if (width > data->nftr.cellWidth) {
-			//clamp width to cell size
+
+		//add negative C space depending on the preview spacing.
+		spaceC -= data->spaceX;
+
+		if (width == 0) {
+			//if width is 0, then all of the spacing is meaningless except the total spacing. We'll
+			//push all the spacing to the A space for maximum compatibility.
+			spaceA += spaceC;
+			spaceC = 0;
+		} else if (width > data->nftr.cellWidth) {
+			//clamp width to cell size, adding excess to C space to preserve total width
+			spaceC += (width - data->nftr.cellWidth);
 			width = data->nftr.cellWidth;
 		}
 
-		glyph->spaceLeft = 0;
-		glyph->spaceRight = 0;
+		glyph->spaceLeft = spaceA;
+		glyph->spaceRight = spaceC;
 		glyph->width = width;
 		glyph++;
 	}
 
+	if (abc != NULL) free(abc);
 	FbDestroy(&fb);
 	DeleteObject(hFont);
 
