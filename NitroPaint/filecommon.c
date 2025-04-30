@@ -375,6 +375,7 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 
 				//test other formats
 				if (NftrIdentify(buffer, bufferSize)) type = FILE_TYPE_FONT;
+				else if (BncmpIdentify(buffer, bufferSize)) type = FILE_TYPE_CMAP;
 				else if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
 				else if (ChrIsValidIcg(buffer, bufferSize)) type = FILE_TYPE_CHAR;
