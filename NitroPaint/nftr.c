@@ -93,6 +93,26 @@ static void JFntWriteHeader(BSTREAM *stream, int verHi, int verLo, int nEntries,
 
 // ----- font routines
 
+static int NftrIsColumnEmpty(NFTR *nftr, NFTR_GLYPH *glyph, int col) {
+	//out of bounds is vacant
+	if (col < 0 || col >= nftr->cellWidth) return 1;
+
+	//check column pixels
+	for (int i = 0; i < nftr->cellHeight; i++) {
+		unsigned char c = glyph->px[col + i * nftr->cellWidth];
+		if (c) return 0;
+	}
+	return 1;
+}
+
+static int NftrGetUsedGlyphWidth(NFTR *nftr, NFTR_GLYPH *glyph) {
+	int xMax = 0;
+	for (int x = 0; x < nftr->cellWidth; x++) {
+		if (!NftrIsColumnEmpty(nftr, glyph, x)) xMax = x + 1;
+	}
+	return xMax;
+}
+
 static int NftrIsValidBnfr1x(const unsigned char *buffer, unsigned int size) {
 	if (size < 0xA) return 0;
 	uint16_t numGlyphs = *(const uint16_t *) (buffer + 0x06);
@@ -359,6 +379,13 @@ static int NftrReadBnfr20(NFTR *nftr, const unsigned char *buffer, unsigned int 
 		}
 	}
 
+	//separate trailing information
+	for (int i = 0; i < nftr->nGlyph; i++) {
+		int usedWidth = NftrGetUsedGlyphWidth(nftr, &nftr->glyphs[i]);
+		nftr->glyphs[i].spaceRight = nftr->glyphs[i].width - usedWidth;
+		nftr->glyphs[i].width = usedWidth;
+	}
+
 	return 0;
 }
 
@@ -400,6 +427,13 @@ static int NftrReadBnfr1x(NFTR *nftr, const unsigned char *buffer, unsigned int 
 				nftr->glyphs[i].px[pxno] = ((bmp[pxno >> 3] >> (pxno & 7)) & 1) ^ 1;
 			}
 		}
+	}
+
+	//separate trailing information
+	for (int i = 0; i < nftr->nGlyph; i++) {
+		int usedWidth = NftrGetUsedGlyphWidth(nftr, &nftr->glyphs[i]);
+		nftr->glyphs[i].spaceRight = nftr->glyphs[i].width - usedWidth;
+		nftr->glyphs[i].width = usedWidth;
 	}
 
 	return 0;
@@ -817,14 +851,15 @@ static int NftrWriteBnfr20(NFTR *nftr, BSTREAM *stream) {
 		//write nRun glyphs to glyph buffer
 		for (int j = 0; j < nRun; j++) {
 			//glyph
+			NFTR_GLYPH *glyph = &nftr->glyphs[i + j];
 			BSTREAM *glyphStream = isContinuous ? &conGlyphStream : &dirGlyphStream;
-			NftrWriteGlyphToStream(glyphStream, nftr, &nftr->glyphs[i + j], 1);
+			NftrWriteGlyphToStream(glyphStream, nftr, glyph, 1);
 
 			//width data
 			BSTREAM *widStream = isContinuous ? &conWidStream : &dirWidStream;
 			uint8_t widData[2];
-			widData[0] = nftr->glyphs[i + j].spaceLeft;
-			widData[1] = nftr->glyphs[i + j].width;
+			widData[0] = -glyph->spaceLeft;
+			widData[1] = glyph->spaceLeft + glyph->width + glyph->spaceRight;
 			bstreamWrite(widStream, widData, sizeof(widData));
 		}
 
@@ -1740,7 +1775,7 @@ static void NftrWriteBnfrBncmp1x(NFTR *nftr, int verHi, int verLo, BSTREAM *stre
 		//write glyph width
 		unsigned char wid[2];
 		wid[0] = -glyph->spaceLeft;
-		wid[1] = glyph->width + glyph->spaceLeft;
+		wid[1] = glyph->width + glyph->spaceLeft + glyph->spaceRight;
 		bstreamWrite(&stmWid, wid, sizeof(wid));
 
 		//write code map entry
