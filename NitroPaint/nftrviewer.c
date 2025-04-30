@@ -807,8 +807,8 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 	data->hWndLabelGlyphLeading = CreateStatic(hWnd, L" Glyph leading:", 200, 27, 75, 22);
 	data->hWndLabelGlyphTrailing = CreateStatic(hWnd, L" Glyph trailing:", 200, 54, 75, 22);
 	data->hWndInputGlyphWidth = CreateEdit(hWnd, L"0", 280, 0, 50, 22, TRUE);
-	data->hWndInputGlyphLeading = CreateEdit(hWnd, L"0", 280, 27, 50, 22, TRUE);
-	data->hWndInputGlyphTrailing = CreateEdit(hWnd, L"0", 280, 54, 50, 22, TRUE);
+	data->hWndInputGlyphLeading = CreateEdit(hWnd, L"0", 280, 27, 50, 22, FALSE);
+	data->hWndInputGlyphTrailing = CreateEdit(hWnd, L"0", 280, 54, 50, 22, FALSE);
 
 	data->hWndLabelFontProp = CreateStatic(hWnd, L"Font Properties:", 200, 0, 100, 22);
 	data->hWndDepthLabel = CreateStatic(hWnd, L" Bit depth:", posCellEditor.left, 0, 100, 22);
