@@ -1673,38 +1673,48 @@ static void NftrWriteBnfrBncmp1x(NFTR *nftr, int verHi, int verLo, BSTREAM *stre
 	StListCreateInline(&listCon, uint16_t[2], NULL);
 	StListCreateInline(&listDir, uint16_t, NULL);
 
-	if (verHi == 1 && verLo == 1) {
-		//version 1.1: list all code points in the direct mapping block
+	//if the font has no code map, simulate one that lists the glyphs in order.
+	if (!nftr->hasCodeMap) {
+		//no code map
 		for (int i = 0; i < nftr->nGlyph; i++) {
 			uint16_t cp = nftr->glyphs[i].cp;
 			StListAdd(&listDir, &cp);
 		}
-	} else if (verHi == 1 && verLo == 2) {
-		//version 1.2: create continuous and direct mappings
-		for (int i = 0; i < nftr->nGlyph;) {
-			//check continuous run of code point assignment
-			int j;
-			for (j = i + 1; j < nftr->nGlyph; j++) {
-				if (nftr->glyphs[j].cp != (nftr->glyphs[j - 1].cp + 1)) break;
-			}
-			int nRun = j - i;
-
-			//a run of 2 glyphs or more is the threshold for size optimization. However since for
-			//both continuous or direct mapping blocks this would be the same size, we will create
-			//a continuous mapping block only if it exceeds this. This creates a bias towards more
-			//direct mapping entries, and hopefully faster O(logn) lookup.
-			if (nRun >= 3) {
-				//run
-				uint16_t rangeCP[2];
-				rangeCP[0] = nftr->glyphs[i].cp;
-				rangeCP[1] = rangeCP[0] + nRun - 1;
-				StListAdd(&listCon, rangeCP);
-				i += nRun;
-			} else {
-				//no run
+	} else {
+		//font has code map
+		if (verHi == 1 && verLo == 1) {
+			//version 1.1: list all code points in the direct mapping block
+			for (int i = 0; i < nftr->nGlyph; i++) {
 				uint16_t cp = nftr->glyphs[i].cp;
 				StListAdd(&listDir, &cp);
-				i++;
+			}
+		} else if (verHi == 1 && verLo == 2) {
+			//version 1.2: create continuous and direct mappings
+			for (int i = 0; i < nftr->nGlyph;) {
+				//check continuous run of code point assignment
+				int j;
+				for (j = i + 1; j < nftr->nGlyph; j++) {
+					if (nftr->glyphs[j].cp != (nftr->glyphs[j - 1].cp + 1)) break;
+				}
+				int nRun = j - i;
+
+				//a run of 2 glyphs or more is the threshold for size optimization. However since for
+				//both continuous or direct mapping blocks this would be the same size, we will create
+				//a continuous mapping block only if it exceeds this. This creates a bias towards more
+				//direct mapping entries, and hopefully faster O(logn) lookup.
+				if (nRun >= 3) {
+					//run
+					uint16_t rangeCP[2];
+					rangeCP[0] = nftr->glyphs[i].cp;
+					rangeCP[1] = rangeCP[0] + nRun - 1;
+					StListAdd(&listCon, rangeCP);
+					i += nRun;
+				} else {
+					//no run
+					uint16_t cp = nftr->glyphs[i].cp;
+					StListAdd(&listDir, &cp);
+					i++;
+				}
 			}
 		}
 	}
