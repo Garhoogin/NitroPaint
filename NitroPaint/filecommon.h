@@ -1,6 +1,7 @@
 #pragma once
 #include "compression.h"
 #include "bstream.h"
+#include "struct.h"
 #include <Windows.h>
 
 #define FILE_TYPE_INVALID    0
@@ -37,9 +38,8 @@ typedef int(*OBJECT_READER) (struct OBJECT_HEADER_ *object, char *buffer, int si
 typedef int(*OBJECT_WRITER) (struct OBJECT_HEADER_ *object, BSTREAM *stream);
 
 typedef struct ObjLink_ {
-	int nFrom;
 	struct OBJECT_HEADER_ *to;
-	struct OBJECT_HEADER_ **from;
+	StList from;
 } ObjLink;
 
 typedef struct OBJECT_HEADER_ {

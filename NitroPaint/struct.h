@@ -48,6 +48,7 @@ typedef struct StList_ {
 StStatus StListCreate(StList *list, size_t elemSize, StComparator comparator);
 StStatus StListFree(StList *list);
 StStatus StListAdd(StList *list, const void *elem);
+StStatus StListPut(StList *list, size_t idx, const void *elem);
 StStatus StListInsert(StList *list, size_t idx, const void *elem);
 StStatus StListGet(StList *list, size_t idx, void *dest);
 void *StListGetPtr(StList *list, size_t idx);

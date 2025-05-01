@@ -949,12 +949,14 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			free(decompressed);
 
 			//open the component objects
-			for (int i = 0; i < combo->nLinks; i++) {
-				OBJECT_HEADER *object = combo->links[i];
+			for (unsigned int i = 0; i < combo->links.length; i++) {
+				OBJECT_HEADER *object;
+				StListGet(&combo->links, i, &object);
 				int type = object->type;
 
 				HWND h = NULL;
-				OBJECT_HEADER *copy = combo->links[i];
+				OBJECT_HEADER *copy;
+				StListGet(&combo->links, i, &copy);
 				switch (type) {
 
 					case FILE_TYPE_PALETTE:
@@ -964,7 +966,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 						if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
 						h = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, (NCLR *) object);
 						data->hWndNclrViewer = h;
-						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
+						copy = EditorGetObject(h);
 						break;
 
 					case FILE_TYPE_CHARACTER:
@@ -975,32 +977,34 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 						h = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, (NCGR *) object);
 						data->hWndNcgrViewer = h;
 						InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
+						copy = EditorGetObject(h);
 						break;
 
 					case FILE_TYPE_SCREEN:
 						//create NSCR and make it active
 						object->combo = (void *) combo;
 						h = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, (NSCR *) object);
-						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
+						copy = EditorGetObject(h);
 						break;
 
 					case FILE_TYPE_CELL:
 						//create NCER and make it active
 						object->combo = (void *) combo;
 						h = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NCER *) object);
-						copy = &((EDITOR_DATA *) EditorGetData(h))->file;
+						copy = EditorGetObject(h);
 						break;
 				}
 
 				//if we created a copy, free the original and keep the copy
-				if (copy != combo->links[i]) {
-					free(combo->links[i]);
-					combo->links[i] = copy;
+				OBJECT_HEADER *oldobj;
+				StListGet(&combo->links, i, &oldobj);
+				if (copy != oldobj) {
+					free(oldobj);
+					StListPut(&combo->links, i, &copy);
 				}
 
 				//set compression type for all links
-				combo->links[i]->compression = compressionType;
+				(*(OBJECT_HEADER **) StListGetPtr(&combo->links, i))->compression = compressionType;
 
 				//point the editor window at the right file
 				EditorSetFile(h, path);

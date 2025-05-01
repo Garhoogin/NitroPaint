@@ -33,12 +33,14 @@ typedef struct BANNER_INFO_ {
 
 void combo2dInit(COMBO2D *combo, int format) {
 	ObjInit(&combo->header, FILE_TYPE_COMBO2D, format);
+	StListCreateInline(&combo->links, OBJECT_HEADER *, NULL);
 }
 
 int combo2dCount(COMBO2D *combo, int type) {
 	int count = 0;
-	for (int i = 0; i < combo->nLinks; i++) {
-		OBJECT_HEADER *header = combo->links[i];
+	for (unsigned int i = 0; i < combo->links.length; i++) {
+		OBJECT_HEADER *header;
+		StListGet(&combo->links, i, &header);
 		if (header->type == type) count++;
 	}
 	return count;
@@ -47,8 +49,9 @@ int combo2dCount(COMBO2D *combo, int type) {
 OBJECT_HEADER *combo2dGet(COMBO2D *combo, int type, int index) {
 	//keep track of number of objects of this type we've counted
 	int nCounted = 0;
-	for (int i = 0; i < combo->nLinks; i++) {
-		OBJECT_HEADER *object = combo->links[i];
+	for (unsigned int i = 0; i < combo->links.length; i++) {
+		OBJECT_HEADER *object;
+		StListGet(&combo->links, i, &object);
 		if (object->type != type) continue;
 
 		if (nCounted == index) return object;
@@ -58,27 +61,25 @@ OBJECT_HEADER *combo2dGet(COMBO2D *combo, int type, int index) {
 }
 
 void combo2dLink(COMBO2D *combo, OBJECT_HEADER *object) {
-	combo->nLinks++;
-	combo->links = (OBJECT_HEADER **) realloc(combo->links, combo->nLinks * sizeof(OBJECT_HEADER *));
-	combo->links[combo->nLinks - 1] = object;
+	StListAdd(&combo->links, &object);
 	object->combo = (void *) combo;
 }
 
 void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object) {
 	object->combo = NULL;
 	object->format = 0;
-	for (int i = 0; i < combo->nLinks; i++) {
-		if (combo->links[i] != object) continue;
+	for (unsigned int i = 0; i < combo->links.length; i++) {
+		OBJECT_HEADER *objI;
+		StListGet(&combo->links, i, &objI);
+		if (objI != object) continue;
 
 		//remove
-		memmove(combo->links + i, combo->links + i + 1, (combo->nLinks - i - 1) * sizeof(OBJECT_HEADER *));
-		combo->nLinks--;
-		combo->links = (OBJECT_HEADER **) realloc(combo->links, combo->nLinks * sizeof(OBJECT_HEADER *));
+		StListRemove(&combo->links, i);
 		break;
 	}
 
 	//free combo if all links are freed
-	if (combo->nLinks == 0) {
+	if (combo->links.length == 0) {
 		combo2dFree(combo);
 		free(combo);
 	}
@@ -171,16 +172,13 @@ int combo2dCanSave(COMBO2D *combo) {
 
 void combo2dFree(COMBO2D *combo) {
 	//free all links
-	for (int i = 0; i < combo->nLinks; i++) {
-		OBJECT_HEADER *object = combo->links[i];
+	for (unsigned int i = 0; i < combo->links.length; i++) {
+		OBJECT_HEADER *object;
+		StListGet(&combo->links, i, &object);
 		ObjFree(object);
 		free(object);
 	}
-	if (combo->links != NULL) {
-		free(combo->links);
-	}
-	combo->links = NULL;
-	combo->nLinks = 0;
+	StListFree(&combo->links);
 
 	if (combo->extraData != NULL) {
 		if (combo->header.format == COMBO2D_TYPE_DATAFILE) {
@@ -775,8 +773,9 @@ static int combo2dWriteDataFile(COMBO2D *combo, BSTREAM *stream) {
 	memcpy(copy, dfc->data, dfc->size);
 
 	//process all contained objects
-	for (int i = 0; i < combo->nLinks; i++) {
-		OBJECT_HEADER *object = combo->links[i];
+	for (unsigned int i = 0; i < combo->links.length; i++) {
+		OBJECT_HEADER *object;
+		StListGet(&combo->links, i, &object);
 		int type = object->type;
 
 		//write object

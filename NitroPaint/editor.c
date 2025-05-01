@@ -183,10 +183,11 @@ static void EditorTerminateCombo(EDITOR_DATA *data) {
 
 	//first unlink all child objects. This will prevent us from accidentally infinitely
 	//recursing as each editor tries to close each other.
-	int nLinks = combo->nLinks;
+	int nLinks = combo->links.length;
 	while (nLinks > 0) {
 		//unlink
-		OBJECT_HEADER *obj = combo->links[0];
+		OBJECT_HEADER *obj;
+		StListGet(&combo->links, 0, &obj);
 		combo2dUnlink(combo, obj);
 		nLinks--;
 

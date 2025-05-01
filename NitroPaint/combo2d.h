@@ -17,8 +17,9 @@ typedef struct COMBO2D_ {
 	OBJECT_HEADER header;
 
 	//component files stored here
-	int nLinks;
-	OBJECT_HEADER **links;
+	//int nLinks;
+	//OBJECT_HEADER **links;
+	StList links;
 
 	void *extraData; //depends on the type, store data we're not interested in particularly
 } COMBO2D;

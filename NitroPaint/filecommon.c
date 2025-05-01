@@ -135,9 +135,8 @@ void ObjInit(OBJECT_HEADER *header, int type, int format) {
 	header->format = format;
 	header->compression = COMPRESSION_NONE;
 	header->size = size;
-	header->link.nFrom = 0;
 	header->link.to = NULL;
-	header->link.from = NULL;
+	StListCreateInline(&header->link.from, OBJECT_HEADER *, NULL);
 }
 
 int ObjIsValid(OBJECT_HEADER *obj) {
@@ -463,9 +462,12 @@ void ObjFree(OBJECT_HEADER *header) {
 	}
 
 	//clean up object incoming links
-	while (header->link.nFrom > 0) {
-		ObjUnlinkObjects(header, header->link.from[0]);
+	while (header->link.from.length > 0) {
+		OBJECT_HEADER *other;
+		StListGet(&header->link.from, 0, &other);
+		ObjUnlinkObjects(header, other);
 	}
+	StListFree(&header->link.from);
 
 	//free strings
 	if (header->fileLink != NULL) free(header->fileLink);
@@ -559,9 +561,7 @@ void ObjLinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
 	}
 
 	//link both ways
-	to->link.nFrom++;
-	to->link.from = (OBJECT_HEADER **) realloc(to->link.from, to->link.nFrom * sizeof(OBJECT_HEADER *));
-	to->link.from[to->link.nFrom - 1] = from;
+	StListAdd(&to->link.from, &from);
 	from->link.to = to;
 }
 
@@ -572,20 +572,16 @@ void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
 	from->link.to = NULL;
 
 	//scan for link in to object
-	int fromIndex = -1;
-	OBJECT_HEADER **fromObj = to->link.from;
-	for (int i = 0; i < to->link.nFrom; i++) {
-		if (fromObj[i] == from) {
-			fromIndex = i;
-			break;
+	for (unsigned int i = 0; i < to->link.from.length; i++) {
+		OBJECT_HEADER *objI;
+		StListGet(&to->link.from, i, &objI);
+
+		if (objI == from) {
+			//remove
+			StListRemove(&to->link.from, i);
+			return;
 		}
 	}
-	if (fromIndex == -1) return;
-
-	//fill over
-	memmove(to->link.from + fromIndex, to->link.from + fromIndex + 1, (to->link.nFrom - fromIndex - 1) * sizeof(OBJECT_HEADER *));
-	to->link.nFrom--;
-	to->link.from = (OBJECT_HEADER **) realloc(to->link.from, to->link.nFrom * sizeof(OBJECT_HEADER *));
 }
 
 void ObjSetFileLink(OBJECT_HEADER *obj, const wchar_t *link) {
@@ -599,8 +595,9 @@ void ObjSetFileLink(OBJECT_HEADER *obj, const wchar_t *link) {
 }
 
 void ObjUpdateLinks(OBJECT_HEADER *obj, const wchar_t *path) {
-	for (int i = 0; i < obj->link.nFrom; i++) {
-		OBJECT_HEADER *linked = obj->link.from[i];
+	for (unsigned int i = 0; i < obj->link.from.length; i++) {
+		OBJECT_HEADER *linked;
+		StListGet(&obj->link.from, i, &linked);
 		ObjSetFileLink(linked, path);
 	}
 }

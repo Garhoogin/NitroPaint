@@ -175,6 +175,15 @@ StStatus StListAdd(StList *list, const void *elem) {
 	return ST_STATUS_OK;
 }
 
+StStatus StListPut(StList *list, size_t idx, const void *elem) {
+	if (idx > list->length) return ST_STATUS_NOTFOUND;
+
+	//copy to list
+	void *dest = StListGetElemPtr(list, idx);
+	memcpy(dest, elem, list->elemSize);
+	return ST_STATUS_OK;
+}
+
 StStatus StListInsert(StList *list, size_t idx, const void *elem) {
 	//cannot insert into a sorted list
 	if (list->comparator != NULL) return ST_STATUS_UNSUPPORTED;
