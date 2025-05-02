@@ -1524,6 +1524,22 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						CreateNsbtxViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &nsbtx);
 						break;
 					}
+					case ID_NEW_NEWFONT:
+					{
+						//init sensible defaults
+						NFTR nftr;
+						NftrInit(&nftr, NFTR_TYPE_NFTR_10);
+						nftr.bpp = 1;
+						nftr.hasCodeMap = 1;
+						nftr.cellWidth = 8;
+						nftr.cellHeight = 12;
+						nftr.pxAscent = 10;
+						nftr.lineHeight = 11;
+						nftr.charset = FONT_CHARSET_UTF16;
+
+						CreateNftrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &nftr);
+						break;
+					}
 					case ID_FILE_CONVERTTO:
 					{
 						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);

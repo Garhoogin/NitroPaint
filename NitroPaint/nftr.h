@@ -66,6 +66,7 @@ int NftrIsValidBnfr12(const unsigned char *buffer, unsigned int size);
 int NftrIsValidBnfr20(const unsigned char *buffer, unsigned int size);
 int NftrIdentify(const unsigned char *buffer, unsigned int size);
 
+void NftrInit(NFTR *nftr, int format);
 int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size);
 int NftrReadFile(NFTR *nftr, LPCWSTR path);
 
