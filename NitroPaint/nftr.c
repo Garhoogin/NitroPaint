@@ -7,7 +7,7 @@
 #define NFTR_MAP_SCAN       2
 
 extern LPCWSTR fontFormatNames[] = {
-	L"Invalid", L"NFTR 0.1", L"NFTR 1.0", L"NFTR 1.1", L"NFTR 1.2", L"BNFR 1.1", L"BNFR 1.2", L"BNFR 2.0", NULL
+	L"Invalid", L"NFTR 0.1", L"NFTR 1.0", L"NFTR 1.1", L"NFTR 1.2", L"BNFR 1.1", L"BNFR 1.2", L"BNFR 2.0", L"GameFreak NFTR 1.1", NULL
 };
 
 
@@ -235,6 +235,17 @@ static int NftrIsValidNftr(const unsigned char *buffer, unsigned int size) {
 	const unsigned char *cglp = NnsG2dFindBlockBySignature(buffer, size, "CGLP", NNS_SIG_LE, &cglpSize);
 	if (finf == NULL || cglp == NULL) return 0;
 
+	//to disambiguate GF variant, check glyph bitmap size.
+	uint16_t ver = *(const uint16_t *) (buffer + 0x06);
+	if (ver == 0x0101) {
+		unsigned int cellW = *(const uint8_t *) (cglp + 0x0);
+		unsigned int cellH = *(const uint8_t *) (cglp + 0x1);
+		unsigned int bpp = *(const uint8_t *) (cglp + 0x6);
+		unsigned int cellS = *(const uint16_t *) (cglp + 0x2);
+		unsigned int cellSizeExpected = (cellW * cellH * bpp + 7) / 8;
+		if (cellS >= (cellSizeExpected + 3)) return 0;
+	}
+
 	return 1;
 }
 
@@ -258,6 +269,40 @@ static int NftrIsValidNftr12(const unsigned char *buffer, unsigned int size) {
 	return (*(const uint16_t *) (buffer + 0x06)) == 0x0102;
 }
 
+static int NftrIsValidGfNftr11(const unsigned char *buffer, unsigned int size) {
+	//almost valid NNS G2D structure, verify header fields manually.
+	if (size < 0x10) return 0;
+	if (buffer[3] != 'N' || buffer[2] != 'F' || buffer[1] != 'T' || buffer[0] != 'R') return 0;
+	if (buffer[4] != 0xFF || buffer[5] != 0xFE || buffer[6] != 1 || buffer[7] != 1) return 0;
+	if (*(const uint16_t *) (buffer + 0x0C) != 0x10) return 0;
+
+	unsigned char *cpy = (unsigned char *) malloc(size);
+	memcpy(cpy, buffer, size);
+	*(uint32_t *) (buffer + 0x08) = size;
+	if (!NnsIsValid(buffer, size)) {
+		//not valid after header is patched
+		free(cpy);
+		return 0;
+	}
+
+	//needs FINF and CGLP blocks
+	unsigned int finfSize, cglpSize;
+	unsigned char *finf = NnsG2dFindBlockBySignature(cpy, size, "FINF", NNS_SIG_LE, &finfSize);
+	unsigned char *cglp = NnsG2dFindBlockBySignature(cpy, size, "CGLP", NNS_SIG_LE, &cglpSize);
+	if (finf == NULL || cglp == NULL) return 0;
+
+	//glyph data size must have space for 3-byte width data
+	unsigned int cellW = *(const uint8_t *) (cglp + 0x0);
+	unsigned int cellH = *(const uint8_t *) (cglp + 0x1);
+	unsigned int bpp = *(const uint8_t *) (cglp + 0x6);
+	unsigned int cellSize = *(const uint16_t *) (cglp + 0x2);
+	unsigned int bmpSize = (cellW * cellH * bpp + 7) / 8;
+	free(cpy);
+
+	if (cellSize < (bmpSize + 3)) return 0;
+	return 1;
+}
+
 int NftrIdentify(const unsigned char *buffer, unsigned int size) {
 	if (NftrIsValidNftr01(buffer, size)) return NFTR_TYPE_NFTR_01;
 	if (NftrIsValidNftr10(buffer, size)) return NFTR_TYPE_NFTR_10;
@@ -266,6 +311,7 @@ int NftrIdentify(const unsigned char *buffer, unsigned int size) {
 	if (NftrIsValidBnfr20(buffer, size)) return NFTR_TYPE_BNFR_20;
 	if (NftrIsValidBnfr12(buffer, size)) return NFTR_TYPE_BNFR_12;
 	if (NftrIsValidBnfr11(buffer, size)) return NFTR_TYPE_BNFR_11;
+	if (NftrIsValidGfNftr11(buffer, size)) return NFTR_TYPE_GF_NFTR_11;
 	return NFTR_TYPE_INVALID;
 }
 
@@ -449,7 +495,15 @@ static int NftrReadBnfr11(NFTR *nftr, const unsigned char *buffer, unsigned int 
 	return NftrReadBnfr1x(nftr, buffer, size);
 }
 
-static unsigned char *NftrLookupNftrGlyphWidth(const unsigned char *buffer, uint32_t offsWidth, uint16_t gidx, unsigned int widSize, const unsigned char *finf) {
+static unsigned char *NftrLookupNftrGlyphWidth(NFTR *nftr, const unsigned char *buffer, uint32_t offsWidth, uint16_t gidx, const unsigned char *finf, const unsigned char *glyphs, unsigned int glyphSize) {
+	if (nftr->header.format == NFTR_TYPE_GF_NFTR_11) {
+		//GameFreak variant: width stored with glyph images
+		return (unsigned char *) (glyphs + gidx * glyphSize);
+	}
+
+	unsigned int widSize = 3;
+	if (nftr->header.format == NFTR_TYPE_NFTR_01) widSize = 2; // no trailing information
+
 	while (offsWidth) {
 		const unsigned char *cwdh = buffer + offsWidth;
 		uint32_t nextWidth = *(const uint32_t *) (cwdh + 0x04);
@@ -470,11 +524,11 @@ static unsigned char *NftrLookupNftrGlyphWidth(const unsigned char *buffer, uint
 static void NftrReadNftrGlyph(NFTR_GLYPH *glyph, NFTR *nftr, const unsigned char *buffer, uint32_t offsWidth, const unsigned char *glyphs, unsigned int glyphSize, const unsigned char *finf, int cp, int gidx) {
 	unsigned int widSize = 3;
 	if (nftr->header.format == NFTR_TYPE_NFTR_01) widSize = 2; // no trailing information
-	const unsigned char *wid = NftrLookupNftrGlyphWidth(buffer, offsWidth, gidx, widSize, finf);
+	const unsigned char *wid = NftrLookupNftrGlyphWidth(nftr, buffer, offsWidth, gidx, finf, glyphs, glyphSize);
 
 	glyph->cp = cp;
 	glyph->isInvalid = gidx == nftr->invalid;
-	glyph->width = 0;
+	glyph->width = nftr->cellWidth;
 	glyph->spaceLeft = 0;
 	glyph->spaceRight = 0;
 	glyph->px = (unsigned char *) calloc(nftr->cellWidth * nftr->cellHeight, 1);
@@ -493,6 +547,8 @@ static void NftrReadNftrGlyph(NFTR_GLYPH *glyph, NFTR *nftr, const unsigned char
 	//read glyph bits
 	unsigned int pxPerByte = 8 / (nftr->bpp);
 	const unsigned char *bmp = glyphs + glyphSize * gidx;
+	if (nftr->header.format == NFTR_TYPE_GF_NFTR_11) bmp += 3;
+
 	for (int y = 0; y < nftr->cellHeight; y++) {
 		for (int x = 0; x < nftr->cellWidth; x++) {
 			unsigned int pxno = x + y * nftr->cellWidth;
@@ -534,7 +590,7 @@ static int NftrReadNftrCommon(NFTR *nftr, const unsigned char *buffer, unsigned 
 		nftr->charset = (FontCharacterSet) *(const uint8_t *) (finf + 0x07);
 	}
 
-	if (nftr->header.format == NFTR_TYPE_NFTR_11 || nftr->header.format == NFTR_TYPE_NFTR_12) {
+	if (nftr->header.format == NFTR_TYPE_NFTR_11 || nftr->header.format == NFTR_TYPE_NFTR_12 || nftr->header.format == NFTR_TYPE_GF_NFTR_11) {
 		//NFTR 1.1, 1.2: rotation information
 		uint8_t flg = *(const uint8_t *) (cglp + 0x07);
 		nftr->rotation = (FontRotation) ((flg >> 1) & 3);
@@ -554,7 +610,7 @@ static int NftrReadNftrCommon(NFTR *nftr, const unsigned char *buffer, unsigned 
 	StListCreateInline(&list, NFTR_GLYPH, NULL);
 
 	//process code to glyph map
-	while (offsCmap) {
+	while (offsCmap && offsCmap < size) {
 		const unsigned char *cmap = buffer + offsCmap;
 		uint32_t nextCmap = *(const uint32_t *) (cmap + 0x08);
 
@@ -639,6 +695,11 @@ static int NftrReadNftr12(NFTR *nftr, const unsigned char *buffer, unsigned int 
 	return NftrReadNftrCommon(nftr, buffer, size);
 }
 
+static int NftrReadGfNftr11(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
+	NftrInit(nftr, NFTR_TYPE_GF_NFTR_11);
+	return NftrReadNftrCommon(nftr, buffer, size);
+}
+
 int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
 	switch (NftrIdentify(buffer, size)) {
 		case NFTR_TYPE_NFTR_01:
@@ -655,6 +716,8 @@ int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
 			return NftrReadBnfr12(nftr, buffer, size);
 		case NFTR_TYPE_BNFR_11:
 			return NftrReadBnfr11(nftr, buffer, size);
+		case NFTR_TYPE_GF_NFTR_11:
+			return NftrReadGfNftr11(nftr, buffer, size);
 	}
 	return OBJ_STATUS_INVALID;
 }
@@ -778,6 +841,15 @@ void NftrSetCellSize(NFTR *nftr, int width, int height) {
 // ----- Font write routines
 
 static void NftrWriteGlyphToBytes(unsigned char *buf, NFTR *nftr, NFTR_GLYPH *glyph, int isJNFR) {
+	//GF variant: allocate 3 bytes before glyph bitmap for width info
+	unsigned int pxOffs = 0;
+	if (nftr->header.format == NFTR_TYPE_GF_NFTR_11) {
+		pxOffs += 3;
+		buf[0] = glyph->spaceLeft;
+		buf[1] = glyph->width;
+		buf[2] = glyph->spaceLeft + glyph->width + glyph->spaceRight;
+	}
+
 	unsigned char pxmask = (1 << nftr->bpp) - 1;
 	unsigned int pxPerByte = 8 / nftr->bpp;
 	unsigned char pxXor = 0;
@@ -790,10 +862,10 @@ static void NftrWriteGlyphToBytes(unsigned char *buf, NFTR *nftr, NFTR_GLYPH *gl
 			unsigned char pxval = (glyph->px[pxno] ^ pxXor) & pxmask;
 			if (isJNFR) {
 				//JNFR format glyphs: store at least significant bits first
-				buf[pxno / pxPerByte] |= pxval << ((pxno % pxPerByte) * nftr->bpp);
+				buf[pxOffs + pxno / pxPerByte] |= pxval << ((pxno % pxPerByte) * nftr->bpp);
 			} else {
 				//else: store as most significant bits first
-				buf[pxno / pxPerByte] |= pxval << ((pxPerByte - 1 - (pxno % pxPerByte)) * nftr->bpp);
+				buf[pxOffs + pxno / pxPerByte] |= pxval << ((pxPerByte - 1 - (pxno % pxPerByte)) * nftr->bpp);
 			}
 		}
 	}
@@ -802,6 +874,8 @@ static void NftrWriteGlyphToBytes(unsigned char *buf, NFTR *nftr, NFTR_GLYPH *gl
 static void NftrWriteGlyphToStream(BSTREAM *stream, NFTR *nftr, NFTR_GLYPH *glyph, int isJNFR) {
 	//create buffer
 	unsigned int nBytes = (nftr->cellWidth * nftr->cellHeight * nftr->bpp + 7) / 8;
+	if (nftr->header.format == NFTR_TYPE_GF_NFTR_11) nBytes += 3;
+
 	if (isJNFR) {
 		//round up glyph size to a halfword alignment
 		nBytes = (nBytes + 1) & ~1;
@@ -1248,11 +1322,15 @@ static int NftrSearchMatchingNftrGlyph(
 static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 	int verMajor = 1, verMinor = 0;
 	switch (nftr->header.format) {
-		case NFTR_TYPE_NFTR_01: verMajor = 0; verMinor = 1; break;
-		case NFTR_TYPE_NFTR_10: verMajor = 1; verMinor = 0; break;
-		case NFTR_TYPE_NFTR_11: verMajor = 1; verMinor = 1; break;
-		case NFTR_TYPE_NFTR_12: verMajor = 1; verMinor = 2; break;
+		case NFTR_TYPE_NFTR_01:    verMajor = 0; verMinor = 1; break;
+		case NFTR_TYPE_NFTR_10:    verMajor = 1; verMinor = 0; break;
+		case NFTR_TYPE_NFTR_11:    verMajor = 1; verMinor = 1; break;
+		case NFTR_TYPE_NFTR_12:    verMajor = 1; verMinor = 2; break;
+		case NFTR_TYPE_GF_NFTR_11: verMajor = 1; verMinor = 1; break;
 	}
+
+	unsigned int glyphSize = (nftr->cellWidth * nftr->cellHeight * nftr->bpp + 7) / 8;
+	if (nftr->header.format == NFTR_TYPE_GF_NFTR_11) glyphSize += 3;
 
 	//NFTR 0.1: does not store trailing pixels
 	unsigned int widEntrySize = (nftr->header.format == NFTR_TYPE_NFTR_01) ? 2 : 3;
@@ -1301,7 +1379,6 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 
 		//process tail mapping block
 		if (tailListCP.length > 0) {
-			unsigned int glyphSize = (nftr->cellWidth * nftr->cellHeight * nftr->bpp + 7) / 8;
 			unsigned char *tmpbuf = (unsigned char *) calloc(glyphSize, 1);
 
 			//we process the glyphs in this particular order determined by the division process that is
@@ -1347,7 +1424,8 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 	StList listWidBlock;
 	StListCreateInline(&listWidBlock, FontGlyphWidBlock, NULL);
 
-	if (iOutGlyph > 0) {
+	//if we have glyph data output and not in GF NFTR format, generate CWDH block data.
+	if (iOutGlyph > 0 && nftr->header.format != NFTR_TYPE_GF_NFTR_11) {
 		//We'll optimize the size of the width data block by cutting repeated width data.
 		//We must find the width data that saves the most space when cut, so we'll do that
 		//here.
@@ -1524,7 +1602,7 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 		unsigned char cglp[8] = { 0 };
 		cglp[0] = nftr->cellWidth;   // cell width
 		cglp[1] = nftr->cellHeight;  // cell height
-		*(uint16_t *) (cglp + 2) = ((nftr->cellWidth * nftr->cellHeight * nftr->bpp) + 7) / 8;
+		*(uint16_t *) (cglp + 2) = glyphSize;
 		cglp[4] = nftr->pxAscent;    // glyph ascent
 		cglp[5] = maxWidth;          // glyph max width
 		cglp[6] = nftr->bpp;         // glyph bit depth
@@ -1828,6 +1906,7 @@ int NftrWrite(NFTR *nftr, BSTREAM *stream) {
 		case NFTR_TYPE_NFTR_10:
 		case NFTR_TYPE_NFTR_11:
 		case NFTR_TYPE_NFTR_12:
+		case NFTR_TYPE_GF_NFTR_11:
 			return NftrWriteNftrCommon(nftr, stream);
 	}
 	return OBJ_STATUS_UNSUPPORTED;

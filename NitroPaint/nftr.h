@@ -14,6 +14,7 @@
 #define NFTR_TYPE_BNFR_11       5  // BNFR 1.1
 #define NFTR_TYPE_BNFR_12       6  // BNFR 1.2
 #define NFTR_TYPE_BNFR_20       7  // BNFR 2.0
+#define NFTR_TYPE_GF_NFTR_11    8  // GameFreak NFTR 1.1
 
 extern LPCWSTR fontFormatNames[];
 
