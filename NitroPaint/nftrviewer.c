@@ -41,27 +41,41 @@ static void NftrViewerCmdSetCellHeight(HWND hWnd, HWND hWndControl, int notif, v
 
 // ----- glyph rendering routines
 
-static COLOR32 *NftrViewerRenderSingleGlyphListPreview(NFTR *nftr, NFTR_GLYPH *glyph, COLOR32 col, COLOR32 *temp) {
-	int cellWidth = nftr->cellWidth;
-	int cellHeight = nftr->cellHeight;
+static COLOR32 NftrViewerSampleGlyph(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, int x, int y, int renderTransparent) {
+	unsigned int cidx = 0;
+	if (glyph != NULL) {
+		cidx = glyph->px[x + y * data->nftr.cellWidth];
+	}
 
-	unsigned int alphaMax = (1 << nftr->bpp) - 1;
+	COLOR32 col = 0;
+	unsigned int cmax = (1 << data->nftr.bpp) - 1;
+	if (renderTransparent) {
+		//render transparent: use last palette color and alpha blend
+		COLOR32 drawCol = ColorConvertFromDS(data->palette[cmax]);
+		unsigned int drawR = (drawCol >>  0) & 0xFF;
+		unsigned int drawG = (drawCol >>  8) & 0xFF;
+		unsigned int drawB = (drawCol >> 16) & 0xFF;
+
+		//round alpha to scale of 0-255
+		unsigned int a = (cidx * 510 + cmax) / (cmax * 2);
+		col = (drawR << 0) | (drawG << 8) | (drawB << 16) | (a << 24);
+	} else {
+		//no render transparent: use color palette
+		col = ColorConvertFromDS(data->palette[cidx]) | 0xFF000000;
+	}
+	return col;
+}
+
+static COLOR32 *NftrViewerRenderSingleGlyphListPreview(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, COLOR32 col, COLOR32 *temp) {
+	int cellWidth = data->nftr.cellWidth;
+	int cellHeight = data->nftr.cellHeight;
+
+	unsigned int alphaMax = (1 << data->nftr.bpp) - 1;
 	for (int y = 0; y < cellHeight; y++) {
 		for (int x = 0; x < cellWidth; x++) {
-			unsigned char c = glyph->px[x + y * cellWidth];
-
-			COLOR32 drawColor = col;
-			unsigned int alpha = (c * 510 + alphaMax) / (alphaMax * 2);
-			unsigned int drawR = (drawColor >>  0) & 0xFF;
-			unsigned int drawG = (drawColor >>  8) & 0xFF;
-			unsigned int drawB = (drawColor >> 16) & 0xFF;
-
-
-			unsigned int r = ((alpha * drawR + (255 - alpha) * 0xFF) * 2 + 255) / 510;
-			unsigned int g = ((alpha * drawG + (255 - alpha) * 0xFF) * 2 + 255) / 510;
-			unsigned int b = ((alpha * drawB + (255 - alpha) * 0xFF) * 2 + 255) / 510;
-
-			temp[x + y * cellWidth] = 0xFF000000 | (r << 16) | (g << 8) | (b << 0);
+			COLOR32 drawColor = NftrViewerSampleGlyph(data, glyph, x, y, 0);
+			
+			temp[x + y * cellWidth] = 0xFF000000 | REVERSE(drawColor);
 		}
 	}
 
@@ -70,12 +84,12 @@ static COLOR32 *NftrViewerRenderSingleGlyphListPreview(NFTR *nftr, NFTR_GLYPH *g
 	return scaled;
 }
 
-static void NftrViewerRenderGlyphMasks(NFTR *nftr, NFTR_GLYPH *glyph, COLOR32 col, HBITMAP *pColorbm, HBITMAP *pMaskbm) {
-	int cellWidth = nftr->cellWidth, cellHeight = nftr->cellHeight;
+static void NftrViewerRenderGlyphMasks(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, COLOR32 col, HBITMAP *pColorbm, HBITMAP *pMaskbm) {
+	int cellWidth = data->nftr.cellWidth, cellHeight = data->nftr.cellHeight;
 
 	//render each glyph to the imagelist
 	COLOR32 *px = (COLOR32 *) calloc(cellWidth * cellHeight, sizeof(COLOR32));
-	COLOR32 *imglist = NftrViewerRenderSingleGlyphListPreview(nftr, glyph, col, px);
+	COLOR32 *imglist = NftrViewerRenderSingleGlyphListPreview(data, glyph, col, px);
 	free(px);
 
 	//render mask
@@ -186,7 +200,7 @@ static int NftrViewerCacheGetByCP(NFTRVIEWERDATA *data, uint16_t cp) {
 	//render
 	HBITMAP hbmColor, hbmMask;
 	HIMAGELIST himl = ListView_GetImageList(data->hWndGlyphList, LVSIL_NORMAL);
-	NftrViewerRenderGlyphMasks(&data->nftr, glyph, 0x00000, &hbmColor, &hbmMask);
+	NftrViewerRenderGlyphMasks(data, glyph, 0x00000, &hbmColor, &hbmMask);
 	ImageList_Replace(himl, newImage, hbmColor, hbmMask);
 	DeleteObject(hbmColor);
 	DeleteObject(hbmMask);
@@ -733,44 +747,24 @@ static int NftrViewerSuppressHighlightCallback(HWND hWnd) {
 static void NftrViewerPreviewPaintCallback(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight) {
 	HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 	NFTRVIEWERDATA *data = EditorGetData(hWndEditor);
-	NFTR_GLYPH *glyph = NULL;
-	if (data->curGlyph != -1 && data->curGlyph < data->nftr.nGlyph) {
-		glyph = &data->nftr.glyphs[data->curGlyph];
-	}
+	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
 
-	unsigned int cmax = (1 << data->nftr.bpp) - 1;
 	static const COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
-
-	COLOR32 drawColor = data->palette[cmax];
-	unsigned int drawR = (drawColor >>  0) & 0xFF;
-	unsigned int drawG = (drawColor >>  8) & 0xFF;
-	unsigned int drawB = (drawColor >> 16) & 0xFF;
 
 	for (int y = 0; y < renderHeight; y++) {
 		for (int x = 0; x < renderWidth; x++) {
 
 			int srcX = (x + scrollX) / data->scale;
 			int srcY = (y + scrollY) / data->scale;
+			COLOR32 col = NftrViewerSampleGlyph(data, glyph, srcX, srcY, data->renderTransparent);
+			COLOR32 backCol = checker[((x ^ y) >> 2) & 1];
 
-			unsigned int cidx = 0;
-			if (glyph != NULL) {
-				cidx = glyph->px[srcX + srcY * data->nftr.cellWidth];
-			}
-
-			COLOR32 col = 0;
-			if (data->renderTransparent) {
-				//render transparent: use last palette color and alpha blend to checker
-				COLOR32 backCol = checker[((x ^ y) >> 2) & 1];
-
-				unsigned int r = ((cidx * drawR) + (cmax - cidx) * ((backCol >>  0) & 0xFF)) / cmax;
-				unsigned int g = ((cidx * drawG) + (cmax - cidx) * ((backCol >>  8) & 0xFF)) / cmax;
-				unsigned int b = ((cidx * drawB) + (cmax - cidx) * ((backCol >> 16) & 0xFF)) / cmax;
-				col = (r << 0) | (g << 8) | (b << 16);
-			} else {
-				//no render transparent: use color palette
-				col = ColorConvertFromDS(data->palette[cidx]);
-			}
-			fb->px[x + y * fb->width] = REVERSE(col);
+			//alpha blend to checker
+			unsigned int a = (col >> 24) & 0xFF;
+			unsigned int r = ((a * ((col >>  0) & 0xFF)) + (255 - a) * ((backCol >>  0) & 0xFF)) / 255;
+			unsigned int g = ((a * ((col >>  8) & 0xFF)) + (255 - a) * ((backCol >>  8) & 0xFF)) / 255;
+			unsigned int b = ((a * ((col >> 16) & 0xFF)) + (255 - a) * ((backCol >> 16) & 0xFF)) / 255;
+			fb->px[x + y * fb->width] = (r << 16) | (g << 8) | (b << 0);
 		}
 	}
 
@@ -979,7 +973,13 @@ static void NftrViewerOnPaint(NFTRVIEWERDATA *data) {
 	//preview render
 	if (previewWidth > 0 && previewHeight > 0) {
 		FbSetSize(&data->fbPreview, previewWidth, previewHeight);
-		memset(data->fbPreview.px, -1, data->fbPreview.width * data->fbPreview.height * sizeof(COLOR32)); // fill white
+
+		//fill with first palette color
+		COLOR32 bgColor = ColorConvertFromDS(data->palette[0]) | 0xFF000000;
+		bgColor = REVERSE(bgColor);
+		for (int i = 0; i < data->fbPreview.width * data->fbPreview.height; i++) {
+			data->fbPreview.px[i] = bgColor;
+		}
 
 		NftrViewerRenderString(data, data->fbPreview.px, data->fbPreview.width, data->fbPreview.height, data->previewText);
 
@@ -1741,9 +1741,11 @@ static void NftrViewerOnLButtonDown(NFTRVIEWERDATA *data) {
 				RECT rcPalette, rcPreview;
 				NftrViewerCalcPosPalette(data, &rcPalette);
 				NftrViewerCalcPosPreview(data, NULL, &rcPreview);
+				NftrViewerCacheInvalidateAll(data);
 				InvalidateRect(data->hWnd, &rcPalette, FALSE);
 				InvalidateRect(data->hWnd, &rcPreview, FALSE);
 				InvalidateRect(data->hWndPreview, NULL, FALSE);
+				InvalidateRect(data->hWndGlyphList, NULL, FALSE);
 			}
 			data->dblClickTimer = 0;
 		}
