@@ -1479,15 +1479,18 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 			NftrViewerMakeCurrentGlyphInvalid(data);
 			break;
 		case ID_FONTMENU2_GOTO:
+		case ID_FONTMENU_GOTO:
 			NftrViewerGoTo(data);
 			break;
 		case ID_FONTMENU2_NEWGLYPH:
+		case ID_FONTMENU_NEWGLYPH:
 			NftrViewerNewGlyph(data);
 			break;
 		case ID_FONTMENU_GENERATE:
 			NftrViewerGenerateGlyph(data);
 			break;
 		case ID_FONTMENU2_GENERATEALL:
+		case ID_FONTMENU_GENERATEALL:
 			NftrViewerGenerateGlyphsForWholeFont(data);
 			break;
 	}
