@@ -1719,7 +1719,7 @@ static void NftrViewerOnLButtonDown(NFTRVIEWERDATA *data) {
 			cc.hInstance = NULL;
 			cc.hwndOwner = hWndMain;
 			cc.rgbResult = ColorConvertFromDS(orig);
-			cc.lpCustColors = NULL;
+			cc.lpCustColors = data->dlgCustomColors;
 			cc.Flags = 0x103;
 			BOOL (WINAPI *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
 			if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
