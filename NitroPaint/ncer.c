@@ -1018,6 +1018,7 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 	*pGraphicsHeight = 0; // default: height=0 chars
 
 	unsigned int chrSizeShift = ncgr->nBits == 8; // 4-bit: shift=0, 8-bit: shift=1
+	unsigned int chrSizeBytes = 0x20 << chrSizeShift;
 	unsigned int mappingShift = (ncer->mappingMode >> 20) & 0x7;
 	unsigned int chnameShift = ncgr->nBits == 8;
 
@@ -1039,6 +1040,14 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 				//get placement of OBJ
 				unsigned int chrName = cell->attr[j * 3 + 2] & 0x3FF; // use from OBJ directly, decode is overridden
 				unsigned int chrAddr = (chrName << mappingShift) >> chrSizeShift;
+				if (ncer->vramTransfer != NULL) {
+					//transform character address in accordance with the VRAM transfer entry
+					CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
+					unsigned int chrAddrByte = chrAddr * chrSizeBytes;
+					if (chrAddrByte >= trans->dstAddr && chrAddrByte < (trans->dstAddr + trans->size)) {
+						chrAddr = (chrAddrByte + trans->srcAddr - trans->dstAddr) / chrSizeBytes;
+					}
+				}
 
 				int charX = (SEXT9(objInfo.x) - xMin) / 8;
 				int charY = (SEXT8(objInfo.y) - yMin) / 8;
@@ -1128,6 +1137,16 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 		}
 	}
 
+	//on final output, stub out VRAM transfer entries
+	if (outChars != NULL && ncer->vramTransfer != NULL) {
+		for (int i = 0; i < ncer->nCells; i++) {
+			CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
+			trans->srcAddr = 0;
+			trans->dstAddr = 0;
+			trans->size = 0;
+		}
+	}
+
 	//if graphics are empty, provide a minimum default
 	if (curY == 0) {
 		curY = 32;
@@ -1161,13 +1180,14 @@ static unsigned int CellSearchGraphics(
 	unsigned int   nCharsXNeedle,
 	unsigned int   nCharsYNeedle,
 	unsigned int   granularity,
+	unsigned int   searchStart,
 	int            allowFlip,
 	int           *pFoundFlipX,
 	int           *pFoundFlipY
 ) {
 	//we allow the match to run off the end (partial match)
 	unsigned int nCharsNeedle = nCharsXNeedle * nCharsYNeedle;
-	for (unsigned int i = 0; i < nCharsBuf; i += granularity) {
+	for (unsigned int i = searchStart; i < nCharsBuf; i += granularity) {
 		unsigned int nCharsCompare = nCharsNeedle;
 		if ((nCharsBuf - i) < nCharsCompare) nCharsCompare = nCharsBuf - i;
 
@@ -1206,6 +1226,7 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 	//get mapping mode parameters
 	unsigned int mappingShift = (ncer->ex2dBaseMappingMode >> 20) & 7;
 	unsigned int mappingGranularity = (1 << mappingShift) >> (ncgr->nBits == 8);
+	unsigned int charSizeBytes = 8 * ncgr->nBits;
 	if (mappingGranularity == 0) mappingGranularity = 1;
 
 	int status = 1; // OK
@@ -1216,7 +1237,14 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 
 		//search start: beginning of file (cell mode: limit to within cell)
 		unsigned int searchStart = 0;
-		if (cellCompression) searchStart = curbufSize;
+		if (cellCompression) searchStart = (curbufSize + mappingGranularity - 1) & ~(mappingGranularity - 1);
+
+		if (ncer->vramTransfer != NULL) {
+			//cell bank with VRAM transfer animation: set up source and destination
+			CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
+			trans->dstAddr = 0;
+			trans->srcAddr = searchStart * charSizeBytes;
+		}
 
 		for (int j = 0; j < cell->nAttribs; j++) {
 			NCER_CELL_INFO info;
@@ -1243,7 +1271,18 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 
 			//search
 			int foundFlipX, foundFlipY;
-			unsigned int foundAt = CellSearchGraphics(curbuf, curbufSize, tempbuf, nCharsX, nCharsY, mappingGranularity, !info.rotateScale, &foundFlipX, &foundFlipY);
+			unsigned int foundAt = CellSearchGraphics(
+				curbuf,
+				curbufSize,
+				tempbuf,
+				nCharsX,
+				nCharsY,
+				mappingGranularity,
+				searchStart,
+				!info.rotateScale,
+				&foundFlipX,
+				&foundFlipY
+			);
 			if ((curbufSize - foundAt) < (nCharsX * nCharsY)) {
 				//append graphics to buffer
 				unsigned int offsWrite = curbufSize - foundAt;
@@ -1271,7 +1310,14 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 				curbufSize = newbufSize;
 			}
 			
+			//compute character name
 			unsigned int chrName = (foundAt << (ncgr->nBits == 8)) >> mappingShift;
+			if (ncer->vramTransfer != NULL) {
+				//cell bank uses VRAM transfer animations, subtract the base character name
+				chrName = ((foundAt - searchStart) << (ncgr->nBits == 8)) >> mappingShift;
+			}
+
+			//check the character name did not overflow
 			if (chrName & ~0x03FF) {
 				status = 0;
 				curbufSize = 0;
@@ -1283,6 +1329,12 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 				if (foundFlipX) cell->attr[3 * j + 1] |= 0x1000; // flip H
 				if (foundFlipY) cell->attr[3 * j + 1] |= 0x2000; // flip V
 			}
+		}
+
+		//after adding OBJ to cell, finalize VRAM transfer settings
+		if (ncer->vramTransfer != NULL) {
+			CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
+			trans->size = curbufSize * charSizeBytes - trans->srcAddr;
 		}
 	}
 
