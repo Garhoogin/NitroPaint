@@ -171,7 +171,12 @@ static int NftrViewerCacheGetByCP(NFTRVIEWERDATA *data, uint16_t cp) {
 		NftrViewerCacheEntry *ent = StListGetPtr(&data->glyphCache, i);
 		if (ent->cp == cp) {
 			//found
-			return ent->image;
+			int iImage = ent->image;
+			NftrViewerCacheEntry cpy;
+			StListGet(&data->glyphCache, i, &cpy);
+			StListRemove(&data->glyphCache, i);
+			StListAdd(&data->glyphCache, &cpy);
+			return iImage;
 		}
 	}
 
