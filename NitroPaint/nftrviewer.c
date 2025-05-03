@@ -13,6 +13,9 @@
 #define PREVIEW_ICON_WIDTH  48
 #define PREVIEW_ICON_HEIGHT 48
 
+#define TIMER_DBLCLICK            1
+#define TIMER_DBLCLICK_DURATION 500
+
 static NFTR_GLYPH *NftrViewerGetGlyph(NFTRVIEWERDATA *data, int i);
 static NFTR_GLYPH *NftrViewerGetCurrentGlyph(NFTRVIEWERDATA *data);
 static int NftrViewerGetGlyphIndexByCP(NFTRVIEWERDATA *data, uint16_t cp);
@@ -1708,9 +1711,14 @@ static void NftrViewerOnLButtonDown(NFTRVIEWERDATA *data) {
 
 	int pltColor = NftrViewerGetPltColorByPoint(data, ptMouse.x, ptMouse.y);
 	if (pltColor != -1) {
-		//double-click
-		if (pltColor == data->selectedColor) {
-			//choose color
+
+		if (!data->dblClickTimer || pltColor != data->dblClickElement) {
+			//start double-click timer
+			data->dblClickTimer = 1;
+			data->dblClickElement = pltColor;
+			SetTimer(data->hWnd, TIMER_DBLCLICK, TIMER_DBLCLICK_DURATION, NULL);
+		} else {
+			//double-click: choose color
 			HWND hWndMain = getMainWindow(data->hWnd);
 			COLOR orig = data->palette[pltColor];
 
@@ -1737,7 +1745,7 @@ static void NftrViewerOnLButtonDown(NFTRVIEWERDATA *data) {
 				InvalidateRect(data->hWnd, &rcPreview, FALSE);
 				InvalidateRect(data->hWndPreview, NULL, FALSE);
 			}
-
+			data->dblClickTimer = 0;
 		}
 
 
@@ -1749,6 +1757,16 @@ static void NftrViewerOnLButtonDown(NFTRVIEWERDATA *data) {
 	}
 }
 
+static void NftrViewerOnTimer(NFTRVIEWERDATA *data, int id, LPARAM lParam) {
+	switch (id) {
+		case TIMER_DBLCLICK:
+		{
+			KillTimer(data->hWnd, id);
+			data->dblClickTimer = 0;
+			break;
+		}
+	}
+}
 
 static LRESULT CALLBACK NftrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) EditorGetData(hWnd);
@@ -1807,6 +1825,9 @@ static LRESULT CALLBACK NftrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		}
 		case WM_NOTIFY:
 			NftrViewerOnNotify(data, hWnd, wParam, (LPNMLISTVIEW) lParam);
+			break;
+		case WM_TIMER:
+			NftrViewerOnTimer(data, wParam, lParam);
 			break;
 		case WM_SIZE:
 			return NftrViewerOnSize(data, wParam, lParam);

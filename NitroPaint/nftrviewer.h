@@ -11,6 +11,9 @@ typedef struct NFTRVIEWERDATA_ {
 	TedData ted;
 	UiCtlManager mgr;            // UI manager
 
+	int dblClickElement;
+	int dblClickTimer;
+
 	int glyphCacheInit;
 	StList glyphCacheFree;
 	StList glyphCache;
