@@ -1292,6 +1292,274 @@ static void NftrCreateNftrDivions(NFTR *nftr, StList *divs, StList *tailCP, StLi
 	StListFree(&listCpWidth);
 }
 
+typedef struct FontWidFreq_ {
+	unsigned int wid;
+	unsigned int freq;
+} FontWidFreq;
+
+typedef struct FontWidMapList_ {
+	StList glyphs;       // -> unsigned int (glyph index)
+} FontWidMapList;
+
+static int NftrCreateGfWidthBlockFreqComparator(const void *e1, const void *e2) {
+	const FontWidFreq *f1 = (const FontWidFreq *) e1;
+	const FontWidFreq *f2 = (const FontWidFreq *) e2;
+
+	//arrange descending frequency, descending width
+	if (f1->freq < f2->freq) return 1;
+	if (f1->freq > f2->freq) return -1;
+	if (f1->wid < f2->wid) return 1;
+	if (f1->wid > f2->wid) return -1;
+	return 0;
+}
+
+static unsigned int NftrCreateGfWidthBlock(NFTR *nftr, NnsStream *nns, StList *widList) {
+	FontWidFreq widFreqs[0x100] = { 0 };
+	for (unsigned int i = 0; i < 0x100; i++) widFreqs[i].wid = i;
+
+	for (unsigned int i = 0; i < widList->length; i++) {
+		int wid;
+		StListGet(widList, i, &wid);
+
+		widFreqs[wid & 0xFF].freq++;
+	}
+
+	//find most frequent widths
+	qsort(widFreqs, 0x100, sizeof(FontWidFreq), NftrCreateGfWidthBlockFreqComparator);
+
+	//most frequent 3 width entries
+	unsigned char common[4] = { 0 };
+	common[0] = widFreqs[0].wid;
+	common[1] = widFreqs[1].wid;
+	common[2] = widFreqs[2].wid;
+
+	unsigned int freqWidSize = ((widList->length + 3) / 4 + 3) & ~3;
+	unsigned int hashWidSize = 0;
+	unsigned int scanWidSize = 0;
+	unsigned char *freqWid = (unsigned char *) calloc(freqWidSize, 1);
+	unsigned char *hashWid = NULL;
+	unsigned char *scanWid = NULL;
+
+	StList hashedList;
+	StListCreateInline(&hashedList, unsigned int, NULL);
+
+	//map glyphs to frequent 3
+	for (unsigned int i = 0; i < widList->length; i++) {
+		int wid;
+		StListGet(widList, i, &wid);
+		wid &= 0xFF;
+
+		//get index
+		int found = 3;
+		for (int j = 0; j < 3; j++) if (wid == common[j]) found = j;
+
+		//put
+		freqWid[i / 4] |= found << (6 - ((i % 4) * 2));
+
+		//if found=3, then no matching common width exists. Add to hash list.
+		if (found == 3) {
+			StListAdd(&hashedList, &i);
+		}
+	}
+
+	//if any glyphs [3] or beyond have nonzero frequency, create hash widths.
+	if (widFreqs[3].freq > 0) {
+		//next stage is hash widths, static 0x200 byte allocation
+		hashWidSize = 0x200;
+		hashWid = (unsigned char *) calloc(hashWidSize, 1);
+
+		//keep track of currently used 
+		StList *bucketLists = (StList *) calloc(0x200, sizeof(StList));
+		for (unsigned int i = 0; i < 0x200; i++) {
+			StListCreateInline(&bucketLists[i], unsigned int, NULL);
+		}
+
+		//put widths into the hash map
+		unsigned int highestHash = 0;
+		for (unsigned int i = 0; i < hashedList.length; i++) {
+			unsigned int gno; // glyph index
+			int gwid;         // glyph width
+			StListGet(&hashedList, i, &gno);
+			StListGet(widList, gno, &gwid);
+
+			//hash glyph index
+			unsigned int hash = (gno ^ ((((gno >> 9) ^ (gno >> 10) ^ (gno >> 11) ^ (gno >> 12)) & 1) << 3)) & 0x1FF;
+			if ((bucketLists[hash].length == 0 || hashWid[hash] == gwid) && !(gwid & 0x80)) {
+				//entry not used and or width matches existing and width is nonnegative, put to map
+				hashWid[hash] = gwid;
+				StListAdd(&bucketLists[hash], &gno);
+			} else {
+				//indicate chained hash bucket
+				hashWid[hash] = 0xFF; // placeholder list indicator
+				StListAdd(&bucketLists[hash], &gno);
+			}
+
+			//keep track of highest hash
+			if (hash > highestHash) highestHash = hash;
+		}
+
+		//map hash table slots to chains when applicable
+		unsigned int *chainIndices = (unsigned int *) calloc(0x200, sizeof(unsigned int));
+
+		//make list of the chain lists
+		StList chains;
+		StListCreateInline(&chains, FontWidMapList, NULL);
+		for (unsigned int i = 0; i < 0x200; i++) {
+			if (hashWid[i] == 0xFF) {
+				chainIndices[i] = chains.length;
+
+				//add to list of chains
+				FontWidMapList entry;
+				memcpy(&entry.glyphs, &bucketLists[i], sizeof(StList));
+				StListAdd(&chains, &entry);
+			} else {
+				//mark no list
+				chainIndices[i] = UINT_MAX;
+
+				//free the list
+				StListFree(&bucketLists[i]);
+			}
+		}
+		free(bucketLists);
+		
+		//if we have chained data, generate it.
+		if (chains.length > 0) {
+			//if we have more than 128 lists, reduce by combining.
+			while (chains.length > 1) {
+				//find two smallest buckets to merge
+				unsigned int bucket1 = UINT_MAX, bucket2 = UINT_MAX;
+				unsigned int bucket1Length = UINT_MAX, bucket2Length = UINT_MAX;
+
+				for (unsigned int i = 0; i < chains.length; i++) {
+					//find smallest
+					FontWidMapList entry;
+					StListGet(&chains, i, &entry);
+					if (entry.glyphs.length < bucket1Length) {
+						bucket1 = i;
+						bucket1Length = entry.glyphs.length;
+					}
+				}
+				for (unsigned int i = 0; i < chains.length; i++) {
+					if (i == bucket1) continue;
+
+					FontWidMapList entry;
+					StListGet(&chains, i, &entry);
+					if (entry.glyphs.length < bucket2Length) {
+						bucket2 = i;
+						bucket2Length = entry.glyphs.length;
+					}
+				}
+
+				//swap bucket1 to be lower
+				if (bucket1 > bucket2) {
+					unsigned int tmp = bucket1;
+					bucket1 = bucket2;
+					bucket2 = tmp;
+				}
+
+				//copy all from bucket2 to bucket1, free bucket2, then remove it from the list.
+				FontWidMapList *b1 = StListGetPtr(&chains, bucket1);
+				FontWidMapList *b2 = StListGetPtr(&chains, bucket2);
+				if ((b1->glyphs.length + b2->glyphs.length) > 255) break; // cannot merge anymore
+
+				for (unsigned int i = 0; i < b2->glyphs.length; i++) {
+					void *p = StListGetPtr(&b2->glyphs, i);
+					StListAdd(&b1->glyphs, p);
+				}
+				StListFree(&b2->glyphs);
+				StListRemove(&chains, bucket2);
+
+				//adjust pointers to bucket2 to point to bucket1, and pointers > bucket2 to point to n-1
+				for (unsigned int i = 0; i < 0x200; i++) {
+					if (chainIndices[i] == UINT_MAX) continue;
+
+					if (chainIndices[i] == bucket2) {
+						//re-point
+						chainIndices[i] = bucket1;
+					} else if (chainIndices[i] > bucket2) {
+						//adjust pointer
+						chainIndices[i]--;
+					}
+				}
+			}
+
+			//put chain indices to width hash map
+			for (unsigned int i = 0; i < 0x200; i++) {
+				if (chainIndices[i] != UINT_MAX) {
+					hashWid[i] = ~chainIndices[i];
+				}
+			}
+
+			//compute chain size
+			scanWidSize = chains.length;
+			for (unsigned int i = 0; i < chains.length; i++) {
+				FontWidMapList ent;
+				StListGet(&chains, i, &ent);
+				scanWidSize += ent.glyphs.length * 3;
+			}
+			scanWid = (unsigned char *) calloc(scanWidSize, 1);
+
+			//write chains
+			unsigned char *chainp = scanWid;
+			for (unsigned int i = 0; i < chains.length; i++) {
+				FontWidMapList ent;
+				StListGet(&chains, i, &ent);
+
+				*(chainp++) = ent.glyphs.length;
+				for (unsigned int j = 0; j < ent.glyphs.length; j++) {
+					unsigned int glyphno;
+					StListGet(&ent.glyphs, j, &glyphno);
+
+					//glyph no
+					*(chainp++) = (glyphno >> 8) & 0xFF;
+					*(chainp++) = (glyphno >> 0) & 0xFF;
+
+					//width
+					int wid;
+					StListGet(widList, glyphno, &wid);
+					*(chainp++) = (unsigned char) wid;
+				}
+			}
+		}
+
+		//optimization: truncate width map. Truncate it to highestHash bytes.
+		hashWidSize = highestHash + 1;
+
+		//free chain lists
+		free(chainIndices);
+		StListFree(&chains);
+		for (unsigned int i = 0; i < chains.length; i++) {
+			FontWidMapList entry;
+			StListGet(&chains, i, &entry);
+			StListFree(&entry.glyphs);
+		}
+		StListFree(&chains);
+	}
+
+	//emit
+	if (nns != NULL) {
+		unsigned char header[0x10];
+		memcpy(header, common, sizeof(common));
+		*(uint32_t *) (header + 0x04) = sizeof(header);
+		*(uint32_t *) (header + 0x08) = sizeof(header) + freqWidSize;
+		*(uint32_t *) (header + 0x0C) = sizeof(header) + freqWidSize + hashWidSize;
+
+		NnsStreamStartBlock(nns, "CWDH");
+		NnsStreamWrite(nns, header, sizeof(header));
+		NnsStreamWrite(nns, freqWid, freqWidSize);
+		if (hashWidSize > 0) NnsStreamWrite(nns, hashWid, hashWidSize);
+		if (scanWidSize > 0) NnsStreamWrite(nns, scanWid, scanWidSize);
+		NnsStreamEndBlock(nns);
+	}
+
+	//free
+	StListFree(&hashedList);
+	free(freqWid);
+	if (hashWid != NULL) free(hashWid);
+	if (scanWid != NULL) free(scanWid);
+	return ((0x10 + freqWidSize + hashWidSize + scanWidSize) + 3) & ~3; // size
+}
+
 static int NftrSearchMatchingNftrGlyph(
 	const unsigned char *bmp, 
 	unsigned int glyphSize, 
@@ -1339,11 +1607,12 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 	NnsStreamCreate(&nns, "NFTR", verMajor, verMinor, NNS_TYPE_G2D, NNS_SIG_LE);
 
 	//we'll create divisions. We will create a list of lengths of glyph runs.
-	StList divList, tailListCP, tailListGlyphCP, tailListGlyph;
+	StList divList, tailListCP, tailListGlyphCP, tailListGlyph, widList;
 	StListCreateInline(&divList, unsigned int, NULL);      // list of code map division lengths
 	StListCreateInline(&tailListCP, uint16_t, NULL);       // list of tail block code points in ascending order of glyph
 	StListCreateInline(&tailListGlyphCP, uint16_t, NULL);  // list of tail block code points in ascending order of code point
 	StListCreateInline(&tailListGlyph, uint16_t, NULL);    // list of tail block glyph indices in ascending order of code point
+	StListCreateInline(&widList, int, NULL);               // list of glyph widths by output index
 	NftrCreateNftrDivions(nftr, &divList, &tailListCP, &tailListGlyphCP, &tailListGlyph);
 
 	//write glyph data to streams
@@ -1366,6 +1635,9 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 					wid[0] = nftr->glyphs[gidx].spaceLeft;
 					wid[1] = nftr->glyphs[gidx].width;
 					wid[2] = nftr->glyphs[gidx].width + nftr->glyphs[gidx].spaceLeft + nftr->glyphs[gidx].spaceRight;
+
+					int totalWidth = wid[2];
+					StListAdd(&widList, &totalWidth);
 
 					NftrWriteGlyphToStream(&glyphStream, nftr, &nftr->glyphs[gidx], 0);
 					bstreamWrite(&widStream, wid, widEntrySize);
@@ -1394,6 +1666,9 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 				wid[1] = glyph->width;
 				wid[2] = glyph->width + glyph->spaceLeft + glyph->spaceRight;
 
+				int totalWidth = wid[2];
+				StListAdd(&widList, &totalWidth);
+
 				//test: search for the glyph bitmap before
 				NftrWriteGlyphToBytes(tmpbuf, nftr, glyph, 0);
 				int found = NftrSearchMatchingNftrGlyph(tmpbuf, glyphSize, wid, widEntrySize, glyphStream.buffer, glyphStream.size,
@@ -1419,7 +1694,9 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 
 	//optimize width block
 	unsigned char defWid[3] = { 0 };
-	uint16_t widFirst = 0, widLast = iOutGlyph - 1;
+	defWid[0] = 0; // 0px default leading
+	defWid[1] = nftr->cellWidth; // default width = cell width
+	defWid[2] = defWid[0] + defWid[1] + 0; // 0px default trailing
 
 	StList listWidBlock;
 	StListCreateInline(&listWidBlock, FontGlyphWidBlock, NULL);
@@ -1541,6 +1818,11 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 
 		cwdhSize += (((block.cphi + 1 - block.cplo) * widEntrySize) + 3) & ~3;
 	}
+
+	if (nftr->header.format == NFTR_TYPE_GF_NFTR_11) {
+		//compute size
+		cwdhSize += 0x8 + NftrCreateGfWidthBlock(nftr, NULL, &widList);
+	}
 	
 	unsigned int offsCglp = 0x10 + finfSize + 8;
 	unsigned int offsCwdh = 0x10 + finfSize + cglpSize + 8;
@@ -1615,25 +1897,31 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 	}
 
 	//CWDH block
-	unsigned int curWidOffs = offsCwdh;
-	for (unsigned int i = 0; i < listWidBlock.length; i++) {
-		FontGlyphWidBlock *wid = StListGetPtr(&listWidBlock, i);
-		unsigned int blockSize = (wid->cphi + 1 - wid->cplo) * widEntrySize;
-		unsigned int blockSizeRound = (blockSize + 3) & ~3;
+	if (nftr->header.format != NFTR_TYPE_GF_NFTR_11) {
+		//standard format: emit CWDH block sequence
+		unsigned int curWidOffs = offsCwdh;
+		for (unsigned int i = 0; i < listWidBlock.length; i++) {
+			FontGlyphWidBlock *wid = StListGetPtr(&listWidBlock, i);
+			unsigned int blockSize = (wid->cphi + 1 - wid->cplo) * widEntrySize;
+			unsigned int blockSizeRound = (blockSize + 3) & ~3;
 
-		unsigned char wid1[8] = { 0 };
-		*(uint16_t *) (wid1 + 0x00) = wid->cplo; // first glyph
-		*(uint16_t *) (wid1 + 0x02) = wid->cphi; // last glyph
-		*(uint32_t *) (wid1 + 0x04) = 0;         // no next block
-		if (i < (listWidBlock.length - 1)) {
-			*(uint32_t *) (wid1 + 0x04) = curWidOffs + 0x10 + blockSizeRound;
+			unsigned char wid1[8] = { 0 };
+			*(uint16_t *) (wid1 + 0x00) = wid->cplo; // first glyph
+			*(uint16_t *) (wid1 + 0x02) = wid->cphi; // last glyph
+			*(uint32_t *) (wid1 + 0x04) = 0;         // no next block
+			if (i < (listWidBlock.length - 1)) {
+				*(uint32_t *) (wid1 + 0x04) = curWidOffs + 0x10 + blockSizeRound;
+			}
+
+			NnsStreamStartBlock(&nns, "CWDH");
+			NnsStreamWrite(&nns, wid1, sizeof(wid1));
+			NnsStreamWrite(&nns, wid->wid, blockSize);
+			NnsStreamEndBlock(&nns);
+			curWidOffs += 0x10 + blockSizeRound;
 		}
-
-		NnsStreamStartBlock(&nns, "CWDH");
-		NnsStreamWrite(&nns, wid1, sizeof(wid1));
-		NnsStreamWrite(&nns, wid->wid, blockSize);
-		NnsStreamEndBlock(&nns);
-		curWidOffs += 0x10 + blockSizeRound;
+	} else {
+		//GameFreak variant.
+		NftrCreateGfWidthBlock(nftr, &nns, &widList);
 	}
 
 	//mapping blocks
@@ -1727,6 +2015,7 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 	StListFree(&tailListGlyphCP);
 	StListFree(&tailListGlyph);
 	StListFree(&listWidBlock);
+	StListFree(&widList);
 	NnsStreamFinalize(&nns);
 	NnsStreamFlushOut(&nns, stream);
 	NnsStreamFree(&nns);
