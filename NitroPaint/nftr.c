@@ -1527,7 +1527,6 @@ static unsigned int NftrCreateGfWidthBlock(NFTR *nftr, NnsStream *nns, StList *w
 
 		//free chain lists
 		free(chainIndices);
-		StListFree(&chains);
 		for (unsigned int i = 0; i < chains.length; i++) {
 			FontWidMapList entry;
 			StListGet(&chains, i, &entry);
