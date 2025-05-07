@@ -502,7 +502,7 @@ static int NftrViewerPromptCharacter(NFTRVIEWERDATA *data, LPCWSTR title, LPCWST
 	wsprintf(textbuf, L"%c+%04X", data->nftr.charset == FONT_CHARSET_SJIS ? 'J' : 'U', defCP);
 
 	while (1) {
-		int s = PromptUserText(hWndMain, L"Reassign Glyph", L"Enter new character or code point:", textbuf, sizeof(textbuf));
+		int s = PromptUserText(hWndMain, title, prompt, textbuf, sizeof(textbuf));
 		if (!s) return -1;
 
 		int inputCP = NftrViewerParseCharacter(textbuf, data->nftr.charset == FONT_CHARSET_SJIS);
@@ -1437,6 +1437,53 @@ static void NftrViewerGenerateGlyphsForWholeFont(NFTRVIEWERDATA *data) {
 	}
 }
 
+static void NftrViewerNewGlyphRange(NFTRVIEWERDATA *data) {
+	uint16_t defCP = 0;
+	HWND hWndMain = getMainWindow(data->hWnd);
+	
+	int inputCP1 = NftrViewerPromptCharacter(data, L"Enter First Character", L"Enter a character or code point:", defCP);
+	if (inputCP1 == -1) return; // exit
+	
+	int inputCP2 = NftrViewerPromptCharacter(data, L"Enter Last Character", L"Enter a character or code point:", defCP);
+	if (inputCP2 == -1) return; // exit
+
+	//check bounds (swap)
+	if (inputCP1 > inputCP2) {
+		int temp = inputCP1;
+		inputCP1 = inputCP2;
+		inputCP2 = temp;
+	}
+
+	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
+
+	//add glyphs in range
+	int nAdd = 0, iLastAdd = -1;
+	for (int i = inputCP1; i <= inputCP2; i++) {
+		//check exists
+		NFTR_GLYPH *glyph = NftrViewerGetGlyphByCP(data, i);
+		if (glyph != NULL) continue;
+
+		//add
+		NftrViewerCreateGlyph(data, i);
+		iLastAdd = i;
+		nAdd++;
+	}
+
+	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 1, 0);
+
+	if (iLastAdd != -1) {
+		//show
+		int newIndex = NftrViewerGetGlyphIndexByCP(data, iLastAdd);
+		NftrViewerSetCurrentGlyphByCodePoint(data, iLastAdd, TRUE);
+		ListView_EnsureVisible(data->hWndGlyphList, newIndex, FALSE);
+	}
+
+	//confirm add
+	WCHAR buf[32];
+	wsprintfW(buf, L"Added %d glyph(s).", nAdd);
+	MessageBox(hWndMain, buf, L"Success", MB_ICONINFORMATION);
+}
+
 static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 	switch (idMenu) {
 		case ID_VIEW_GRIDLINES:
@@ -1492,6 +1539,10 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 		case ID_FONTMENU2_GENERATEALL:
 		case ID_FONTMENU_GENERATEALL:
 			NftrViewerGenerateGlyphsForWholeFont(data);
+			break;
+		case ID_FONTMENU2_NEWGLYPHRANGE:
+		case ID_FONTMENU_NEWGLYPHRANGE:
+			NftrViewerNewGlyphRange(data);
 			break;
 	}
 }
