@@ -2774,7 +2774,7 @@ static int CxiMvdkGetCompressionType(const unsigned char *buffer, unsigned int s
 }
 
 int CxIsCompressedMvDK(const unsigned char *buffer, unsigned int size) {
-	if (size < 4) return MVDK_INVALID;
+	if (size < 4) return 0;
 
 	uint32_t uncompSize = (*(uint32_t *) buffer) >> 2;
 	int type = CxiMvdkGetCompressionType(buffer, size);
