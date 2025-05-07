@@ -993,6 +993,15 @@ static int NftrWriteBnfr20(NFTR *nftr, BSTREAM *stream) {
 
 // ----- NFTR code mapping routines
 
+#define NFTR_SIZE_FILE_HEADER         0x10
+#define NFTR_SIZE_BLOCK_HEADER        0x08
+#define NFTR_SIZE_FINF                0x1C
+#define NFTR_SIZE_FINF_EX             0x20
+#define NFTR_SIZE_CGLP_HEADER         0x10 // CGLP header plus block header
+#define NFTR_SIZE_CWDH_HEADER         0x10 // CWDH header plus block header
+#define NFTR_SIZE_CWDH_HEADER_GF      0x10 // GameFreak CWDH header plus block header
+
+
 //structure used to sort the font glyphs by their width bytes
 typedef struct FontGlyphCpWidth_ {
 	uint16_t cp;
@@ -1537,7 +1546,7 @@ static unsigned int NftrCreateGfWidthBlock(NFTR *nftr, NnsStream *nns, StList *w
 
 	//emit
 	if (nns != NULL) {
-		unsigned char header[0x10];
+		unsigned char header[NFTR_SIZE_CWDH_HEADER_GF];
 		memcpy(header, common, sizeof(common));
 		*(uint32_t *) (header + 0x04) = sizeof(header);
 		*(uint32_t *) (header + 0x08) = sizeof(header) + freqWidSize;
@@ -1729,13 +1738,13 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 			
 			//determine cost savings by cutting this range
 			unsigned int runCost = nRun * widEntrySize;
-			unsigned int splitCost = 0x10;
+			unsigned int splitCost = NFTR_SIZE_CWDH_HEADER;
 			if (i == 0 || (i + nRun) == iOutGlyph) splitCost = 0; // no added block overhead to cut beginning/end
 
 			if (runCost > splitCost) {
 				//compute amount saved (bytes omitted, less the size of block overhead)
 				unsigned int saved = runCost - splitCost;
-				unsigned int curSaved = 0x12345678;
+				unsigned int curSaved;
 				StMapGet(&savingMap, entryI, &curSaved);
 				curSaved += saved;
 				StMapPut(&savingMap, entryI, &curSaved);
@@ -1784,7 +1793,7 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 				if (memcmp(entryI2, defWid, widEntrySize) == 0) {
 					//default width
 					defCount++;
-					if (defCount > (0x10 / widEntrySize)) {
+					if (defCount > (NFTR_SIZE_CWDH_HEADER / widEntrySize)) {
 						break;
 					}
 				} else {
@@ -1808,9 +1817,9 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 
 	bstreamFree(&widStream);
 
-	unsigned int finfSize = 0x1C; // constant
-	unsigned int cglpSize = (0x10 + glyphStream.size + 3) & ~3;
-	unsigned int cwdhSize = 0x10 * listWidBlock.length;
+	unsigned int finfSize = NFTR_SIZE_FINF; // constant
+	unsigned int cglpSize = (NFTR_SIZE_CGLP_HEADER + glyphStream.size + 3) & ~3;
+	unsigned int cwdhSize = NFTR_SIZE_CWDH_HEADER * listWidBlock.length;
 	for (unsigned int i = 0; i < listWidBlock.length; i++) {
 		FontGlyphWidBlock block;
 		StListGet(&listWidBlock, i, &block);
@@ -1820,18 +1829,22 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 
 	if (nftr->header.format == NFTR_TYPE_GF_NFTR_11) {
 		//compute size
-		cwdhSize += 0x8 + NftrCreateGfWidthBlock(nftr, NULL, &widList);
+		cwdhSize += NFTR_SIZE_BLOCK_HEADER + NftrCreateGfWidthBlock(nftr, NULL, &widList);
 	}
 	
-	unsigned int offsCglp = 0x10 + finfSize + 8;
-	unsigned int offsCwdh = 0x10 + finfSize + cglpSize + 8;
-	unsigned int offsCmap = 0x10 + finfSize + cglpSize + cwdhSize + 8;
+	unsigned int offsCglp = NFTR_SIZE_FILE_HEADER + finfSize + NFTR_SIZE_BLOCK_HEADER;
+	unsigned int offsCwdh = NFTR_SIZE_FILE_HEADER + finfSize + cglpSize + NFTR_SIZE_BLOCK_HEADER;
+	unsigned int offsCmap = NFTR_SIZE_FILE_HEADER + finfSize + cglpSize + cwdhSize + NFTR_SIZE_BLOCK_HEADER;
 	if (nftr->header.format == NFTR_TYPE_NFTR_12) {
 		//increase size of FINF
-		offsCglp += 4;
-		offsCwdh += 4;
-		offsCmap += 4;
+		offsCglp += NFTR_SIZE_FINF_EX - NFTR_SIZE_FINF;
+		offsCwdh += NFTR_SIZE_FINF_EX - NFTR_SIZE_FINF;
+		offsCmap += NFTR_SIZE_FINF_EX - NFTR_SIZE_FINF;
 	}
+
+	//if data is not present, null the offsets to it.
+	if (cwdhSize == 0) offsCwdh = 0;
+	if (nftr->nGlyph == 0) offsCmap = 0;
 
 	//FINF block
 	{
