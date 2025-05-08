@@ -545,10 +545,11 @@ static void NftrReadNftrGlyph(NFTR_GLYPH *glyph, NFTR *nftr, const unsigned char
 	}
 
 	//read glyph bits
-	unsigned int pxPerByte = 8 / (nftr->bpp);
 	const unsigned char *bmp = glyphs + glyphSize * gidx;
 	if (nftr->header.format == NFTR_TYPE_GF_NFTR_11) bmp += 3;
 
+	/*
+	unsigned int pxPerByte = 8 / (nftr->bpp);
 	for (int y = 0; y < nftr->cellHeight; y++) {
 		for (int x = 0; x < nftr->cellWidth; x++) {
 			unsigned int pxno = x + y * nftr->cellWidth;
@@ -556,6 +557,24 @@ static void NftrReadNftrGlyph(NFTR_GLYPH *glyph, NFTR *nftr, const unsigned char
 			unsigned int byteno = pxno / pxPerByte;
 			unsigned int bitno = (pxPerByte - 1 - (pxno % pxPerByte)) * nftr->bpp;
 			glyph->px[x + y * nftr->cellWidth] = (bmp[byteno] >> bitno) & ((1 << nftr->bpp) - 1);
+		}
+	}*/
+
+	unsigned int mask = (1 << nftr->bpp) - 1;
+	for (int y = 0; y < nftr->cellHeight; y++) {
+		for (int x = 0; x < nftr->cellWidth; x++) {
+			int pxno = x + y * nftr->cellWidth;
+
+			//
+			unsigned int pxval = 0;
+			for (int i = 0; i < nftr->bpp; i++) {
+				int bitno = pxno * nftr->bpp + i;
+				unsigned int bit = (bmp[bitno / 8] >> (7 - (bitno % 8))) & 1;
+				pxval |= bit << (nftr->bpp - 1 - i);
+			}
+			
+			glyph->px[x + y * nftr->cellWidth] = pxval;
+
 		}
 	}
 }
@@ -783,8 +802,11 @@ void NftrEnsureSorted(NFTR *nftr) {
 
 void NftrSetBitDepth(NFTR *nftr, int depth) {
 	//check invalid depth or same depth
-	if (depth != 1 && depth != 2 && depth != 4) return;
+	if (depth > 8) return;
 	if (depth == nftr->bpp) return;
+
+	unsigned int maxNewDepth = (1 << depth) - 1;
+	unsigned int maxOldDepth = (1 << nftr->bpp) - 1;
 
 	//update pixel data
 	for (int i = 0; i < nftr->nGlyph; i++) {
@@ -793,15 +815,7 @@ void NftrSetBitDepth(NFTR *nftr, int depth) {
 		int nPx = nftr->cellWidth * nftr->cellHeight;
 
 		for (int j = 0; j < nPx; j++) {
-			int curdepth = nftr->bpp;
-			while (depth < curdepth) {
-				curdepth /= 2;
-				px[j] = (px[j] >> curdepth);
-			}
-			while (depth > curdepth) {
-				px[j] = (px[j] << curdepth) | (px[j]);
-				curdepth *= 2;
-			}
+			px[j] = (px[j] * maxNewDepth * 2 + maxOldDepth) / (maxOldDepth * 2);
 		}
 	}
 
@@ -851,21 +865,26 @@ static void NftrWriteGlyphToBytes(unsigned char *buf, NFTR *nftr, NFTR_GLYPH *gl
 	}
 
 	unsigned char pxmask = (1 << nftr->bpp) - 1;
-	unsigned int pxPerByte = 8 / nftr->bpp;
 	unsigned char pxXor = 0;
-	if (isJNFR) pxXor = 0xFF; // invert pixel color for JNFR
+	if (isJNFR) pxXor = pxmask; // invert pixel color for JNFR
 
+	unsigned int pxPerByte = 8 / nftr->bpp;
 	for (int y = 0; y < nftr->cellHeight; y++) {
 		for (int x = 0; x < nftr->cellWidth; x++) {
 			unsigned int pxno = x + y * nftr->cellWidth;
 
-			unsigned char pxval = (glyph->px[pxno] ^ pxXor) & pxmask;
-			if (isJNFR) {
-				//JNFR format glyphs: store at least significant bits first
-				buf[pxOffs + pxno / pxPerByte] |= pxval << ((pxno % pxPerByte) * nftr->bpp);
-			} else {
-				//else: store as most significant bits first
-				buf[pxOffs + pxno / pxPerByte] |= pxval << ((pxPerByte - 1 - (pxno % pxPerByte)) * nftr->bpp);
+			unsigned char pxval = glyph->px[pxno] ^ pxXor;
+			for (int i = 0; i < nftr->bpp; i++) {
+				int bitno = pxno * nftr->bpp + i;
+				unsigned int bit = (pxval >> (nftr->bpp - 1 - i)) & 1;
+
+				if (isJNFR) {
+					//JNFR is storing at the least significant bits first
+					buf[pxOffs + bitno / 8] |= bit << (bitno % 8);
+				} else {
+					//NFTR is storing at the most significant bits first
+					buf[pxOffs + bitno / 8] |= bit << (7 - (bitno % 8));
+				}
 			}
 		}
 	}

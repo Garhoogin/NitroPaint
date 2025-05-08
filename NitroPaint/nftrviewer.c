@@ -657,12 +657,7 @@ static void NftrViewerSetBitDepth(NFTRVIEWERDATA *data, int depth, BOOL setDropd
 	//update dropdown
 	if (setDropdown) {
 		//set font parameters
-		int bppsel = 0;
-		switch (depth) {
-			case 1: bppsel = 0; break;
-			case 2: bppsel = 1; break;
-			case 4: bppsel = 2; break;
-		}
+		int bppsel = depth - 1;
 		SendMessage(data->hWndDepthList, CB_SETCURSEL, bppsel, 0);
 	}
 
@@ -795,7 +790,7 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 	RECT posCellEditor;
 	NftrViewerCalcPosCellEditor(data, &posCellEditor);
 
-	LPWSTR depths[] = { L"1", L"2", L"4" };
+	LPWSTR depths[] = { L"1", L"2", L"3", L"4", L"5", L"6", L"7" };
 
 	data->hWndMargin = CreateWindow(NFTR_VIEWER_MARGIN_CLASS, L"", WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN, 
 		posCellEditor.left, posCellEditor.top, posCellEditor.right - posCellEditor.left, posCellEditor.bottom - posCellEditor.top,
@@ -1710,7 +1705,7 @@ static void NftrViewerCmdSetBitDepth(HWND hWnd, HWND hWndCtl, int notif, void *p
 	//set bit depth
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
 	int sel = SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
-	int depth = 1 << sel;
+	int depth = sel + 1;
 	NftrViewerSetBitDepth(data, depth, FALSE);
 }
 

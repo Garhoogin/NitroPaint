@@ -29,7 +29,7 @@ typedef struct NFTRVIEWERDATA_ {
 
 	int spaceX;                  // text preview space X
 	int spaceY;                  // text preview space Y
-	COLOR palette[16];           // color palette to render with
+	COLOR palette[256];          // color palette to render with
 	COLORREF dlgCustomColors[16];
 
 	HWND hWndMargin;
