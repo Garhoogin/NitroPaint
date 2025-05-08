@@ -1437,6 +1437,51 @@ static void NftrViewerGenerateGlyphsForWholeFont(NFTRVIEWERDATA *data) {
 	}
 }
 
+static void NftrViewerGenerateGlyphRange(NFTRVIEWERDATA *data) {
+	if (!NftrViewerSelectFontDialog(data)) return;
+
+	//get range
+	uint16_t defCP = 0;
+	int inputCP1 = NftrViewerPromptCharacter(data, L"Enter First Character", L"Enter a character or code point:", defCP);
+	if (inputCP1 == -1) return; // exit
+
+	int inputCP2 = NftrViewerPromptCharacter(data, L"Enter Last Character", L"Enter a character or code point:", defCP);
+	if (inputCP2 == -1) return; // exit
+
+	//check bounds (swap)
+	if (inputCP1 > inputCP2) {
+		int temp = inputCP1;
+		inputCP1 = inputCP2;
+		inputCP2 = temp;
+	}
+
+	//find first glyph with CP >= inputCP1
+	int glyphStart = -1, nGlyph = 0;
+	for (int i = 0; i < data->nftr.nGlyph; i++) {
+
+		//starting glyph
+		if (glyphStart == -1 && data->nftr.glyphs[i].cp >= (uint16_t) inputCP1) {
+			glyphStart = i;
+		}
+
+		//increase count
+		if (glyphStart != -1 && data->nftr.glyphs[i].cp <= (uint16_t) inputCP2) {
+			nGlyph++;
+		}
+	}
+
+	if (glyphStart != -1) {
+		NftrViewerGenerateGlyphsFromFont(data, &data->nftr.glyphs[glyphStart], nGlyph);
+		NftrViewerCacheInvalidateAll(data);
+		InvalidateRect(data->hWndGlyphList, NULL, TRUE);
+
+		NFTR_GLYPH *cur = NftrViewerGetCurrentGlyph(data);
+		if (cur != NULL) {
+			NftrViewerSetCurrentGlyphByCodePoint(data, cur->cp, FALSE);
+		}
+	}
+}
+
 static void NftrViewerNewGlyphRange(NFTRVIEWERDATA *data) {
 	uint16_t defCP = 0;
 	HWND hWndMain = getMainWindow(data->hWnd);
@@ -1543,6 +1588,10 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 		case ID_FONTMENU2_NEWGLYPHRANGE:
 		case ID_FONTMENU_NEWGLYPHRANGE:
 			NftrViewerNewGlyphRange(data);
+			break;
+		case ID_FONTMENU2_GENERATEGLYPHRANGE:
+		case ID_FONTMENU_GENERATEGLYPHRANGE:
+			NftrViewerGenerateGlyphRange(data);
 			break;
 	}
 }
