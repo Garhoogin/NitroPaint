@@ -2300,6 +2300,17 @@ int BncmpIdentify(const unsigned char *buffer, unsigned int size) {
 	return BNCMP_TYPE_INVALID;
 }
 
+static int BncmpSetDefaultGlyph(NFTR *nftr, uint16_t cp) {
+	NFTR_GLYPH *glyph = NftrGetGlyphByCP(nftr, cp);
+	if (glyph == NULL) return 0;
+
+	for (int i = 0; i < nftr->nGlyph; i++) {
+		if (nftr->glyphs[i].cp == cp) nftr->glyphs[i].isInvalid = 1;
+		else nftr->glyphs[i].isInvalid = 0;
+	}
+	return 1;
+}
+
 static int BncmpReadBncmp11(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
 	//map glyphs
 	unsigned int nMapped = *(const uint16_t *) (buffer + 0x06);
@@ -2316,6 +2327,14 @@ static int BncmpReadBncmp11(NFTR *nftr, const unsigned char *buffer, unsigned in
 
 	nftr->hasCodeMap = 1;
 	NftrEnsureSorted(nftr);
+
+	//set default glyph
+	if (!BncmpSetDefaultGlyph(nftr, '@')) {
+		if (!BncmpSetDefaultGlyph(nftr, ' ')) {
+			//fall-back
+			if (nftr->nGlyph >= 0) nftr->glyphs[0].isInvalid = 1;
+		}
+	}
 
 	return OBJ_STATUS_SUCCESS;
 }
@@ -2353,6 +2372,14 @@ static int BncmpReadBncmp12(NFTR *nftr, const unsigned char *buffer, unsigned in
 
 	nftr->hasCodeMap = 1;
 	NftrEnsureSorted(nftr);
+
+	//set default glyph
+	if (!BncmpSetDefaultGlyph(nftr, '@')) {
+		if (!BncmpSetDefaultGlyph(nftr, ' ')) {
+			//fall-back
+			if (nftr->nGlyph >= 0) nftr->glyphs[0].isInvalid = 1;
+		}
+	}
 
 	return OBJ_STATUS_SUCCESS;
 }
