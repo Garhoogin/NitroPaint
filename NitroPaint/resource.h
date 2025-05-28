@@ -219,13 +219,24 @@
 #define ID_FONTMENU2_NEWGLYPHRANGE      40231
 #define ID_FONTMENU2_GENERATEGLYPHRANGE 40232
 #define ID_FONTMENU_GENERATEGLYPHRANGE  40233
+#define ID_ANMMENU_SETINDEX             40234
+#define ID_ANMMENU_SETX                 40235
+#define ID_ANMMENU_SETY                 40236
+#define ID_ANMMENU_SETSCALEX            40237
+#define ID_ANMMENU_SETSCALEY            40238
+#define ID_ANMMENU_SETROTATION          40239
+#define ID_ANMMENU_                     40240
+#define ID_ANMMENU_DELETE               40241
+#define ID_ANMMENU_INSERTABOVE          40242
+#define ID_ANMMENU_INSERTBELOW          40243
+#define ID_ANMMENU_SETDURATION          40244
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40234
+#define _APS_NEXT_COMMAND_VALUE         40245
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

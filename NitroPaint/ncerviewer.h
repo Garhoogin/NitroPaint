@@ -84,3 +84,12 @@ NP_OBJ *CellViewerGetCopiedObjData(void);
 HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 
 HWND CreateNcerViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCER *ncer);
+
+
+// ----- common cell preview rendering routines
+
+void CellViewerRenderGridlines(FrameBuffer *fb, int scale, int scrollX, int scrollY);
+
+void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER *ncer, NCGR *ncgr, NCLR *nclr, int cellIndex, NCER_CELL *cell, int xOffs, int yOffs, float a, float b, float c, float d);
+
+COLOR32 *CellViewerCropRenderedCell(COLOR32 *px, int width, int height, int *pMinX, int *pMinY, int *outWidth, int *outHeight);

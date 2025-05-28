@@ -137,6 +137,11 @@ void ReplaceListBoxItem(HWND hWnd, int index, LPCWSTR newitem);
 HWND CreateListView(HWND hWnd, int x, int y, int width, int height);
 
 //
+// Creates a virtual ListView in report mode.
+//
+HWND CreateVirtualListView(HWND hWnd, int x, int y, int width, int height);
+
+//
 // Create a ListView in multiple select mode.
 //
 HWND CreateCheckedListView(HWND hWnd, int x, int y, int width, int height);

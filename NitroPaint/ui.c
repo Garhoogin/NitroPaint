@@ -123,6 +123,14 @@ HWND CreateListView(HWND hWnd, int x, int y, int width, int height) {
 	return hWndLv;
 }
 
+HWND CreateVirtualListView(HWND hWnd, int x, int y, int width, int height) {
+	DWORD dwStyle = WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN | LVS_REPORT | LVS_EDITLABELS
+		| LVS_SINGLESEL | LVS_OWNERDATA | WS_VSCROLL | WS_BORDER;
+	HWND hWndLv = CreateWindowEx(0, WC_LISTVIEW, L"", dwStyle, x, y, width, height, hWnd, NULL, NULL, NULL);
+	SendMessage(hWndLv, LVM_SETEXTENDEDLISTVIEWSTYLE, LVS_EX_FULLROWSELECT, LVS_EX_FULLROWSELECT);
+	return hWndLv;
+}
+
 HWND CreateCheckedListView(HWND hWnd, int x, int y, int width, int height) {
 	DWORD dwExStyle = LVS_EX_CHECKBOXES;
 	DWORD dwStyle = WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN | LVS_REPORT | LVS_NOCOLUMNHEADER | WS_VSCROLL | WS_BORDER;

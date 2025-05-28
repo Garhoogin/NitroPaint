@@ -4,6 +4,7 @@
 
 #include "editor.h"
 #include "ncerviewer.h"
+#include "nanrviewer.h"
 #include "nitropaint.h"
 #include "ncgr.h"
 #include "nclr.h"
@@ -54,9 +55,6 @@ static const unsigned short sMenuIdSizes[] = {
 	ID_OBJSIZE_16X8, ID_OBJSIZE_32X8,  ID_OBJSIZE_32X16, ID_OBJSIZE_64X32,
 	ID_OBJSIZE_8X16, ID_OBJSIZE_8X32,  ID_OBJSIZE_16X32, ID_OBJSIZE_32X64
 };
-
-static void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, float a, float b, float c, float d);
-static COLOR32 *CellViewerCropRenderedCell(COLOR32 *px, int width, int height, int *pMinX, int *pMinY, int *outWidth, int *outHeight);
 
 
 // ----- basic editor routines
@@ -786,7 +784,7 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	tmpCell->useEx2d = cell->useEx2d;
 	tmpCell->ex2dCharNames = exAttr;
 
-	CellViewerRenderCell(buf, NULL, tmpCell, data->ncer.mappingMode, ncgr, nclr, vramTransfer, 256, 128, 1.0f, 0.0f, 0.0f, 1.0f);
+	CellViewerRenderCell(buf, NULL, &data->ncer, ncgr, nclr, data->cell, tmpCell, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f);
 	free(tmpCell);
 	free(selAttr);
 	if (exAttr != NULL) free(exAttr);
@@ -1008,7 +1006,47 @@ static void CellViewerRenderObj(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, 
 	}
 }
 
-static void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER_CELL *cell, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, int xOffs, int yOffs, float a, float b, float c, float d) {
+void CellViewerRenderCell(
+	COLOR32   *px,
+	int       *covbuf,
+	NCER      *ncer,
+	NCGR      *ncgr,
+	NCLR      *nclr,
+	int        cellIndex,
+	NCER_CELL *cell,
+	int        xOffs,
+	int        yOffs,
+	float      a,
+	float      b, 
+	float      c,
+	float      d
+) {
+	//adjust (X,Y) offset to center of preview
+	xOffs += 256;
+	yOffs += 128;
+
+	//get VRAM transfer entry
+	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
+	if (ncer->vramTransfer != NULL) vramTransfer = &ncer->vramTransfer[cellIndex];
+
+	//if cell is NULL, we use cell at cellInex.
+	if (cell == NULL) {
+		cell = &ncer->cells[cellIndex];
+	}
+
+	//compute inverse matrix parameters.
+	float invA = 1.0f, invB = 0.0f, invC = 0.0f, invD = 1.0f;
+	if (a != 1.0f || b != 0.0f || c != 0.0f || d != 1.0f) {
+		//not identity matrix
+		float det = a * d - b * c; // DBCA
+		if (det != 0.0f) {
+			invA = d / det;
+			invB = -b / det;
+			invC = -c / det;
+			invD = a / det;
+		}
+	}
+
 	COLOR32 *block = (COLOR32 *) calloc(64 * 64, sizeof(COLOR32));
 	for (int i = cell->nAttribs - 1; i >= 0; i--) {
 		NCER_CELL_INFO info;
@@ -1017,7 +1055,7 @@ static void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER_CELL *cell, int 
 		//if OBJ is marked disabled, skip rendering
 		if (info.disable) continue;
 
-		CellViewerRenderObj(block, &info, ncgr, nclr, mapping, vramTransfer);
+		CellViewerRenderObj(block, &info, ncgr, nclr, ncer->mappingMode, vramTransfer);
 
 		//HV flip? Only if not affine!
 		if (!info.rotateScale) {
@@ -1044,14 +1082,15 @@ static void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER_CELL *cell, int 
 		int x = info.x;
 		int y = info.y;
 
-		//adjust for double size
-		if (info.doubleSize) {
-			x += info.width / 2;
-			y += info.height / 2;
-		}
-
 		//copy data
 		if (!info.rotateScale) {
+			//adjust for double size
+			if (info.doubleSize) {
+				x += info.width / 2;
+				y += info.height / 2;
+			}
+
+			//no rotate/scale enabled, copy output directly.
 			for (int j = 0; j < info.height; j++) {
 				int _y = (y + j + yOffs) & 0xFF;
 				for (int k = 0; k < info.width; k++) {
@@ -1064,25 +1103,40 @@ static void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER_CELL *cell, int 
 				}
 			}
 		} else {
+			//adjust sign of OBJ coordinates, since we rely on signed coordinates
+			if (x >= 256) x -= 512;
+			if (y >= 128) y -= 256;
+
 			//transform about center
 			int realWidth = info.width << info.doubleSize;
 			int realHeight = info.height << info.doubleSize;
-			int cx = realWidth / 2;
-			int cy = realHeight / 2;
-			int realX = x - (realWidth - info.width) / 2;
-			int realY = y - (realHeight - info.height) / 2;
+			float cx = (realWidth - 1) * 0.5f; // rotation center X in OBJ
+			float cy = (realHeight - 1) * 0.5f; // rotation center Y in OBJ
+
+			//transform coordinate origin by matrix transform
+			int movedX = x + realWidth / 2;
+			int movedY = y + realHeight / 2;
+			int movedX2 = (int) (movedX * a + movedY * b);
+			int movedY2 = (int) (movedX * c + movedY * d);
+
+			//un-correct moved position from center to top-left
+			movedX = movedX2 - realWidth / 2;
+			movedY = movedY2 - realHeight / 2;
+
 			for (int j = 0; j < realHeight; j++) {
-				int destY = (realY + j + yOffs) & 0xFF;
+				int destY = (movedY + j + yOffs) & 0xFF;
 				for (int k = 0; k < realWidth; k++) {
-					int destX = (realX + k + xOffs) & 0x1FF;
+					int destX = (movedX + k + xOffs) & 0x1FF;
 
-					int srcX = (int) ((k - cx) * a + (j - cy) * b) + cx;
-					int srcY = (int) ((k - cx) * c + (j - cy) * d) + cy;
+					int srcX = (int) (((((float) k) - cx) * invA + (((float) j) - cy) * invB) + cx);
+					int srcY = (int) (((((float) k) - cx) * invC + (((float) j) - cy) * invD) + cy);
 
+					//if double size, adjust source coordinate by the excess size
 					if (info.doubleSize) {
 						srcX -= realWidth / 4;
 						srcY -= realHeight / 4;
 					}
+
 					if (srcX >= 0 && srcY >= 0 && srcX < info.width && srcY < info.height) {
 						COLOR32 src = block[srcY * info.width + srcX];
 						if (src >> 24) {
@@ -1099,12 +1153,7 @@ static void CellViewerRenderCell(COLOR32 *px, int *covbuf, NCER_CELL *cell, int 
 }
 
 static void CellViewerRenderCellByIndex(COLOR32 *buf, int *covbuf, NCER *ncer, NCGR *ncgr, NCLR *nclr, int cellno) {
-	NCER_CELL *cell = ncer->cells + cellno;
-
-	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
-	if (ncer->vramTransfer != NULL) vramTransfer = ncer->vramTransfer + cellno;
-
-	CellViewerRenderCell(buf, covbuf, cell, ncer->mappingMode, ncgr, nclr, vramTransfer, 256, 128, 1.0f, 0.0f, 0.0f, 1.0f);
+	CellViewerRenderCell(buf, covbuf, ncer, ncgr, nclr, cellno, NULL, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f);
 }
 
 static void CellViewerUpdateCellRender(NCERVIEWERDATA *data) {
@@ -1136,7 +1185,7 @@ static int CellViewerColHasOpaque(COLOR32 *px, int width, int height, int col) {
 	return 0;
 }
 
-static COLOR32 *CellViewerCropRenderedCell(COLOR32 *px, int width, int height, int *pMinX, int *pMinY, int *outWidth, int *outHeight) {
+COLOR32 *CellViewerCropRenderedCell(COLOR32 *px, int width, int height, int *pMinX, int *pMinY, int *outWidth, int *outHeight) {
 	//scan rows for pixel values
 	int startY = height;
 	for (int y = 0; y < height; y++) {
@@ -2322,6 +2371,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->hWndAutoCalcBounds = CreateCheckbox(hWnd, L"Auto-Calculate Bounds", UI_SCALE_COORD(555, dpiScale), 0, ctlWidthWide, ctlHeight, data->autoCalcBounds);
 			data->hWndMake2D = CreateButton(hWnd, L"Make 2D", UI_SCALE_COORD(685, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
 			data->hWndShowObjButton = CreateButton(hWnd, L"OBJ List", UI_SCALE_COORD(765, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
+
 			break;
 		}
 		case NV_INITIALIZE_IMMEDIATE:
@@ -2368,6 +2418,20 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->showGuidelines = 1;
 			SetFocus(data->hWndCellList);
 			CellViewerPreviewCenter(data);
+
+			HWND hWndMain = getMainWindow(hWnd);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			nitroPaintStruct->hWndNcerViewer = hWnd;
+
+			//ensure that when the cell editor is opened later than the animation editors receive the correct bounding information.
+			int nAnmEditor = GetAllEditors(hWndMain, FILE_TYPE_NANR, NULL, 0);
+			HWND *hWndAnmEditors = (HWND *) calloc(nAnmEditor, sizeof(HWND));
+			GetAllEditors(hWndMain, FILE_TYPE_NANR, hWndAnmEditors, nAnmEditor);
+			for (int i = 0; i < nAnmEditor; i++) {
+				AnmViewerUpdateCellBounds(hWndAnmEditors[i]);
+			}
+			free(hWndAnmEditors);
+
 			break;
 		}
 		case WM_SIZE:
@@ -3162,6 +3226,26 @@ static void CellViewerRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr,
 	}
 }
 
+void CellViewerRenderGridlines(FrameBuffer *fb, int scale, int scrollX, int scrollY) {
+	//main borders: red (X=256, Y=128)
+	CellViewerRenderDottedLineV(fb, 256 * scale - scrollX, 0, 1);
+	CellViewerRenderDottedLineH(fb, 128 * scale - scrollY, 0, 1);
+
+	//secondary (screen) borders: (X=128, X=384, Y=64, Y=192)
+	CellViewerRenderDottedLineV(fb, 128 * scale - scrollX, 1, 1);
+	CellViewerRenderDottedLineV(fb, 384 * scale - scrollX, 1, 1);
+	CellViewerRenderDottedLineH(fb, 64 * scale - scrollY, 1, 1);
+	CellViewerRenderDottedLineH(fb, 192 * scale - scrollY, 1, 1);
+
+	//tertiary lines (16x16 boundaries)
+	for (int y = 0; y < 256; y += 16) {
+		CellViewerRenderDottedLineH(fb, y * scale - scrollY, 2, 1);
+	}
+	for (int x = 0; x < 512; x += 16) {
+		CellViewerRenderDottedLineV(fb, x * scale - scrollX, 2, 1);
+	}
+}
+
 static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 	PAINTSTRUCT ps;
 	HWND hWnd = data->hWndViewer;
@@ -3224,23 +3308,7 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 
 	//render guidelines
 	if (data->showBorders) {
-		//main borders: red (X=256, Y=128)
-		CellViewerRenderDottedLineV(&data->fb, 256 * data->scale - scrollX, 0, 1);
-		CellViewerRenderDottedLineH(&data->fb, 128 * data->scale - scrollY, 0, 1);
-
-		//secondary (screen) borders: (X=128, X=384, Y=64, Y=192)
-		CellViewerRenderDottedLineV(&data->fb, 128 * data->scale - scrollX, 1, 1);
-		CellViewerRenderDottedLineV(&data->fb, 384 * data->scale - scrollX, 1, 1);
-		CellViewerRenderDottedLineH(&data->fb,  64 * data->scale - scrollY, 1, 1);
-		CellViewerRenderDottedLineH(&data->fb, 192 * data->scale - scrollY, 1, 1);
-
-		//tertiary lines (16x16 boundaries)
-		for (int y = 0; y < 256; y += 16) {
-			CellViewerRenderDottedLineH(&data->fb, y * data->scale - scrollY, 2, 1);
-		}
-		for (int x = 0; x < 512; x += 16) {
-			CellViewerRenderDottedLineV(&data->fb, x * data->scale - scrollX, 2, 1);
-		}
+		CellViewerRenderGridlines(&data->fb, data->scale, scrollX, scrollY);
 	}
 
 	//show bounding box if available
