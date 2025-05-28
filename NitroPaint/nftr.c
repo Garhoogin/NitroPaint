@@ -1697,6 +1697,7 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 				StListAdd(&widList, &totalWidth);
 
 				//test: search for the glyph bitmap before
+				memset(tmpbuf, 0, glyphSize);
 				NftrWriteGlyphToBytes(tmpbuf, nftr, glyph, 0);
 				int found = NftrSearchMatchingNftrGlyph(tmpbuf, glyphSize, wid, widEntrySize, glyphStream.buffer, glyphStream.size,
 					widStream.buffer, widStream.size);
