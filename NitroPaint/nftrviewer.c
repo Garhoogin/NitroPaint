@@ -2101,7 +2101,16 @@ static LRESULT CALLBACK NftrViewerCellEditorWndProc(HWND hWnd, UINT msg, WPARAM 
 
 void RegisterNftrViewerClass(void) {
 	int features = EDITOR_FEATURE_GRIDLINES | EDITOR_FEATURE_ZOOM;
-	EditorRegister(NFTR_VIEWER_CLASS_NAME, NftrViewerWndProc, L"Font Editor", sizeof(NFTRVIEWERDATA), features);
+	EDITOR_CLASS *cls = EditorRegister(NFTR_VIEWER_CLASS_NAME, NftrViewerWndProc, L"Font Editor", sizeof(NFTRVIEWERDATA), features);
+
+	EditorAddFilter(cls, NFTR_TYPE_BNFR_11, L"bnfr", L"BNFR Files (*.bnfr)\0*.bnfr\0");
+	EditorAddFilter(cls, NFTR_TYPE_BNFR_12, L"bnfr", L"BNFR Files (*.bnfr)\0*.bnfr\0");
+	EditorAddFilter(cls, NFTR_TYPE_BNFR_20, L"bnfr", L"BNFR Files (*.bnfr)\0*.bnfr\0");
+	EditorAddFilter(cls, NFTR_TYPE_NFTR_01, L"nftr", L"NFTR Files (*.nftr)\0*.nftr\0");
+	EditorAddFilter(cls, NFTR_TYPE_NFTR_10, L"nftr", L"NFTR Files (*.nftr)\0*.nftr\0");
+	EditorAddFilter(cls, NFTR_TYPE_NFTR_11, L"nftr", L"NFTR Files (*.nftr)\0*.nftr\0");
+	EditorAddFilter(cls, NFTR_TYPE_NFTR_12, L"nftr", L"NFTR Files (*.nftr)\0*.nftr\0");
+	EditorAddFilter(cls, NFTR_TYPE_GF_NFTR_11, L"nftr", L"NFTR Files (*.nftr)\0*.nftr\0");
 
 	RegisterGenericClass(NFTR_VIEWER_MARGIN_CLASS, NftrViewerMarginWndProc, sizeof(void *));
 	RegisterGenericClass(NFTR_VIEWER_PREVIEW_CLASS, NftrViewerCellEditorWndProc, sizeof(void *));
