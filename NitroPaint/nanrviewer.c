@@ -2180,6 +2180,7 @@ static void AnmViewerCmdSetDuration(NANRVIEWERDATA *data) {
 	wsprintfW(buf, L"%d", duration);
 
 	PromptUserText(data->hWnd, L"Enter Duration", L"Duration:", buf, sizeof(buf) / sizeof(buf[0]));
+	duration = _wtol(buf);
 	AnmViewerPutCurrentAnimFrame(data, NULL, &duration);
 }
 
