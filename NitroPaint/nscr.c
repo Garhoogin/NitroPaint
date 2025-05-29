@@ -310,10 +310,7 @@ void ScrInit(NSCR *nscr, int format) {
 	nscr->header.combo = NULL;
 }
 
-int ScrReadHudson(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
-	if (*file == 0x10) return 1; //TODO: implement LZ77 decompression
-	if (dwFileSize < 8) return 1; //file too small
-	//if (file[4] != 0) return 1; //not a screen file
+static int ScrReadHudson(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 	int type = ScrIsValidHudson(file, dwFileSize);
 
 	int tilesX = 0, tilesY = 0;
@@ -337,10 +334,10 @@ int ScrReadHudson(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize
 	nscr->tilesY = tilesY;
 	ScriReadScreenData(nscr, srcData, tilesX * tilesY * 2);
 	ScrComputeHighestCharacter(nscr);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-int ScrReadBin(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
+static int ScrReadBin(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 	ScrInit(nscr, NSCR_TYPE_BIN);
 	nscr->fmt = SCREENFORMAT_TEXT;
 	nscr->colorMode = SCREENCOLORMODE_16x16;
@@ -379,10 +376,10 @@ int ScrReadBin(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 	nscr->dataSize = nscr->tilesX * nscr->tilesY * 2;
 	ScriReadScreenData(nscr, file, dwFileSize);
 	ScrComputeHighestCharacter(nscr);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-int ScrReadNsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
+static int ScrReadNsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	ScrInit(nscr, NSCR_TYPE_NC);
 
 	unsigned int scrnSize = 0, escrSize = 0, clrfSize = 0, clrcSize = 0, gridSize = 0, linkSize = 0, cmntSize = 0;
@@ -423,7 +420,7 @@ int ScrReadNsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 
 	//calculate highest index
 	ScrComputeHighestCharacter(nscr);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
 static int ScriIsCommonRead(NSCR *nscr, const unsigned char *file, unsigned int size, int type) {
@@ -487,18 +484,18 @@ static int ScriIsCommonRead(NSCR *nscr, const unsigned char *file, unsigned int 
 
 	ScrComputeHighestCharacter(nscr);
 
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-int ScrReadAsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
+static int ScrReadAsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	return ScriIsCommonRead(nscr, file, size, NSCR_TYPE_AC);
 }
 
-int ScrReadIsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
+static int ScrReadIsc(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	return ScriIsCommonRead(nscr, file, size, NSCR_TYPE_IC);
 }
 
-int ScrReadNscr(NSCR *nscr, const unsigned char *file, unsigned int size) {
+static int ScrReadNscr(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	ScrInit(nscr, NSCR_TYPE_NSCR);
 
 	unsigned int scrnSize = 0;
@@ -518,7 +515,7 @@ int ScrReadNscr(NSCR *nscr, const unsigned char *file, unsigned int size) {
 	ScriReadScreenData(nscr, scrn + 0xC, dwDataSize);
 	ScrComputeHighestCharacter(nscr);
 
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
 int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
@@ -537,7 +534,7 @@ int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 		case NSCR_TYPE_BIN:
 			return ScrReadBin(nscr, file, dwFileSize);
 	}
-	return 1;
+	return OBJ_STATUS_INVALID;
 }
 
 int ScrReadFile(NSCR *nscr, LPCWSTR path) {

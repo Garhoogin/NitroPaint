@@ -200,7 +200,7 @@ void ChrInit(NCGR *ncgr, int format) {
 void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
 	int nChars = ncgr->nTiles;
 
-	unsigned char **tiles = (unsigned char **) calloc(nChars, sizeof(BYTE **));
+	unsigned char **tiles = (unsigned char **) calloc(nChars, sizeof(unsigned char **));
 	for (int i = 0; i < nChars; i++) {
 		tiles[i] = (unsigned char *) calloc(64, 1);
 		unsigned char *tile = tiles[i];
@@ -214,7 +214,7 @@ void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
 			//4-bit graphics: unpack
 
 			for (int j = 0; j < 32; j++) {
-				BYTE b = *buffer;
+				unsigned char b = *buffer;
 				tile[j * 2] = b & 0xF;
 				tile[j * 2 + 1] = b >> 4;
 				buffer++;
@@ -270,11 +270,8 @@ void ChrReadGraphics(NCGR *ncgr, const unsigned char *buffer) {
 	}
 }
 
-int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	if (size < 8) return 1; //file too small
-	if (*buffer == 0x10) return 1; //TODO: LZ77 decompress
+static int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	int type = ChrIsValidHudson(buffer, size);
-	if (type == NCGR_TYPE_INVALID) return 1;
 
 	int nCharacters = 0;
 	if (type == NCGR_TYPE_HUDSON) {
@@ -318,10 +315,10 @@ int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
 	ChrReadGraphics(ncgr, buffer);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size, int type) {
+static int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size, int type) {
 	int footerOffset = ChriIsCommonScanFooter(buffer, size, type);
 
 	int width = 0, height = 0, depth = 4;
@@ -383,18 +380,18 @@ int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size,
 	for (int i = 0; i < width * height; i++) {
 		ncgr->attr[i] = attr[i] & 0xF;
 	}
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+static int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	return ChriIsCommonRead(ncgr, buffer, size, NCGR_TYPE_AC);
 }
 
-int ChrReadIcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+static int ChrReadIcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	return ChriIsCommonRead(ncgr, buffer, size, NCGR_TYPE_IC);
 }
 
-int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+static int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_BIN);
 	ncgr->nTiles = size / 0x20;
 	ncgr->nBits = 4;
@@ -404,10 +401,10 @@ int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
 
 	ChrReadGraphics(ncgr, buffer);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+static int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_GHOSTTRICK);
 	ncgr->nBits = 4;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_128K;
@@ -452,10 +449,10 @@ int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size
 	ncgr->nSlices = nSlices;
 	ChrReadGraphics(ncgr, uncomp);
 	free(uncomp);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+static int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_NC);
 
 	unsigned int charSize = 0, attrSize = 0, linkSize = 0, cmntSize = 0;
@@ -495,10 +492,10 @@ int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 		}
 	}
 
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+static int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	unsigned int charSize = 0;
 	const unsigned char *sChar = NnsG2dFindBlockBySignature(buffer, size, "CHAR", NNS_SIG_LE, &charSize);
 
@@ -530,7 +527,7 @@ int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ncgr->bitmap = (type == 1);
 
 	ChrReadGraphics(ncgr, sChar + gfxOffset);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
 int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
@@ -551,7 +548,7 @@ int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 		case NCGR_TYPE_BIN:
 			return ChrReadBin(ncgr, buffer, size);
 	}
-	return 1;
+	return OBJ_STATUS_INVALID;
 }
 
 int ChrReadFile(NCGR *ncgr, LPCWSTR path) {
@@ -645,11 +642,11 @@ void ChrSetWidth(NCGR *ncgr, int width) {
 	}
 
 	//use a temporary buffer to unswizzle and reswizzle
-	BYTE *bmp = (BYTE *) calloc(ncgr->tilesX * ncgr->tilesY * 64, 1);
+	unsigned char *bmp = (unsigned char *) calloc(ncgr->tilesX * ncgr->tilesY * 64, 1);
 	int bmpWidth = ncgr->tilesX * 8, bmpHeight = ncgr->tilesY * 8;
 	for (int y = 0; y < ncgr->tilesY; y++) {
 		for (int x = 0; x < ncgr->tilesX; x++) {
-			BYTE *tile = ncgr->tiles[y * ncgr->tilesX + x];
+			unsigned char *tile = ncgr->tiles[y * ncgr->tilesX + x];
 			int bmpX = x * 8;
 			int bmpY = y * 8;
 
@@ -665,7 +662,7 @@ void ChrSetWidth(NCGR *ncgr, int width) {
 	bmpWidth = ncgr->tilesX * 8, bmpHeight = ncgr->tilesY * 8;
 	for (int y = 0; y < ncgr->tilesY; y++) {
 		for (int x = 0; x < ncgr->tilesX; x++) {
-			BYTE *tile = ncgr->tiles[y * ncgr->tilesX + x];
+			unsigned char *tile = ncgr->tiles[y * ncgr->tilesX + x];
 			int bmpX = x * 8;
 			int bmpY = y * 8;
 

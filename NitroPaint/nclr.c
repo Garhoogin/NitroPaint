@@ -127,8 +127,6 @@ int PalIdentify(const unsigned char *lpFile, unsigned int size) {
 }
 
 int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	if (size < 4) return 1;
-
 	int dataLength = *(uint16_t *) buffer;
 	int nColors = *(uint16_t *) (buffer + 2);
 
@@ -137,7 +135,7 @@ int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
 	memcpy(nclr->colors, buffer + 4, nColors * 2);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
 int PalReadBin(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
@@ -150,12 +148,10 @@ int PalReadBin(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
 	memcpy(nclr->colors, buffer, nColors * 2);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
 int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	if (!PalIsValidNcl(buffer, size)) return 1;
-
 	PalInit(nclr, NCLR_TYPE_NC);
 
 	unsigned int paltSize = 0, cmntSize = 0;
@@ -173,10 +169,10 @@ int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 		memcpy(nclr->header.comment, cmnt, cmntSize);
 	}
 
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
-void PaliReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+static void PaliReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	unsigned int paltSize = 0;
 	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, &paltSize);
 
@@ -188,26 +184,21 @@ void PaliReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size)
 }
 
 int PalReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	if (!PalIsValidIStudio(buffer, size)) return 1;
-
 	PalInit(nclr, NCLR_TYPE_ISTUDIO);
 	PaliReadIStudio(nclr, buffer, size);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
 int PalReadIStudioCompressed(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	if (!PalIsValidIStudioCompressed(buffer, size)) return 1;
-
 	PalInit(nclr, NCLR_TYPE_ISTUDIOC);
 	PaliReadIStudio(nclr, buffer, size);
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
 int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	unsigned int plttSize = 0, pcmpSize = 0;
 	const unsigned char *pltt = NnsG2dFindBlockBySignature(buffer, size, "PLTT", NNS_SIG_LE, &plttSize);
 	const unsigned char *pcmp = NnsG2dFindBlockBySignature(buffer, size, "PCMP", NNS_SIG_LE, &pcmpSize);
-	if (pltt == NULL) return 1;
 
 	int bits = *(uint32_t *) (pltt + 0x0);
 	bits = 1 << (bits - 1);
@@ -250,7 +241,7 @@ int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 		nclr->compressedPalette = 1;
 	}
 
-	return 0;
+	return OBJ_STATUS_SUCCESS;
 }
 
 int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
@@ -271,7 +262,7 @@ int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 		case NCLR_TYPE_NTFP:
 			return PalReadBin(nclr, buffer, size);
 	}
-	return 1;
+	return OBJ_STATUS_INVALID;
 }
 
 int PalReadFile(NCLR *nclr, LPCWSTR path) {
