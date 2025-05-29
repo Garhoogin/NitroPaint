@@ -6,6 +6,18 @@
 #include "nclr.h"
 #include "nns.h"
 
+#define NANR_SEQ_TYPE_INDEX         0
+#define NANR_SEQ_TYPE_INDEX_SRT     1
+#define NANR_SEQ_TYPE_INDEX_T       2
+
+#define NANR_SEQ_TYPE_CELL          1
+#define NANR_SEQ_TYPE_MULTICELL     2
+
+#define NANR_SEQ_MODE_FORWARD       1
+#define NANR_SEQ_MODE_FORWARD_LOOP  2
+#define NANR_SEQ_MODE_BACKWARD      3
+#define NANR_SEQ_MODE_BACKWARD_LOOP 4
+
 LPCWSTR cellAnimationFormatNames[] = { L"Invalid", L"NANR", L"Ghost Trick", NULL };
 
 static int AnmiOffsetComparator(const void *p1, const void *p2) {
@@ -14,6 +26,119 @@ static int AnmiOffsetComparator(const void *p1, const void *p2) {
 	if (ofs1 < ofs2) return -1;
 	if (ofs1 > ofs2) return 1;
 	return 0;
+}
+
+static void AnmiConvertSequence(NANR_SEQUENCE *seq, int newType) {
+	int type = seq->type & 0xFFFF;
+	if (type == newType) return;
+
+	for (int i = 0; i < seq->nFrames; i++) {
+		FRAME_DATA *data = &seq->frames[i];
+		void *orig = data->animationData;
+
+		ANIM_DATA_SRT srt = { 0 };
+		srt.sx = 4096; // FX32_CONST(1.0)
+		srt.sy = 4096; // FX32_CONST(1.0)
+
+		switch (type) {
+			case NANR_SEQ_TYPE_INDEX_SRT:
+			{
+				memcpy(&srt, orig, sizeof(srt));
+				break;
+			}
+			case NANR_SEQ_TYPE_INDEX_T:
+			{
+				ANIM_DATA_T *frm = (ANIM_DATA_T *) orig;
+				srt.index = frm->index;
+				srt.px = frm->px;
+				srt.py = frm->py;
+				break;
+			}
+			case NANR_SEQ_TYPE_INDEX:
+			{
+				ANIM_DATA *frm = (ANIM_DATA *) orig;
+				srt.index = frm->index;
+				break;
+			}
+		}
+
+		//write
+		const int elementSizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+		void *newdata = malloc(elementSizes[newType]);
+
+		switch (newType) {
+			case NANR_SEQ_TYPE_INDEX:
+			{
+				ANIM_DATA *frm = (ANIM_DATA *) newdata;
+				frm->index = srt.index;
+				break;
+			}
+			case NANR_SEQ_TYPE_INDEX_T:
+			{
+				ANIM_DATA_T *frm = (ANIM_DATA_T *) newdata;
+				frm->index = srt.index;
+				frm->px = srt.px;
+				frm->py = srt.py;
+				frm->pad_ = 0xBEEF;
+				break;
+			}
+			case NANR_SEQ_TYPE_INDEX_SRT:
+			{
+				memcpy(newdata, &srt, sizeof(srt));
+				break;
+			}
+		}
+
+		data->animationData = newdata;
+		free(orig);
+	}
+	
+	seq->type = (seq->type & ~0xFFFF) | newType;
+}
+
+static void AnmiConvertSequenceToSRT(NANR_SEQUENCE *seq) {
+	AnmiConvertSequence(seq, NANR_SEQ_TYPE_INDEX_SRT);
+}
+
+static int AnmiGetCompressedSequenceType(NANR_SEQUENCE *seq) {
+	//find the lowest required data storage to represent the sequence.
+	int type = seq->type & 0xFFFF;
+	if (type == NANR_SEQ_TYPE_INDEX) return NANR_SEQ_TYPE_INDEX; // best representation
+
+	int hasTranslation = 0;
+	for (int i = 0; i < seq->nFrames; i++) {
+		FRAME_DATA *frm = &seq->frames[i];
+
+		ANIM_DATA_SRT srt = { 0 };
+		switch (type) {
+			case NANR_SEQ_TYPE_INDEX_SRT:
+			{
+				memcpy(&srt, frm->animationData, sizeof(srt));
+				break;
+			}
+			case NANR_SEQ_TYPE_INDEX_T:
+			{
+				ANIM_DATA_T *d = (ANIM_DATA_T *) frm->animationData;
+				srt.sx = 4096;
+				srt.sy = 4096;
+				srt.rotZ = 0;
+				srt.px = d->px;
+				srt.py = d->py;
+				break;
+			}
+		}
+
+		//if scale or rotate not default, return SRT
+		if (srt.sx != 4096) return NANR_SEQ_TYPE_INDEX_SRT;
+		if (srt.sy != 4096) return NANR_SEQ_TYPE_INDEX_SRT;
+		if (srt.rotZ != 0) return NANR_SEQ_TYPE_INDEX_SRT;
+
+		if (srt.px != 0 || srt.py != 0) hasTranslation = 1;
+	}
+
+	//if we have translation, use Index+T. Oterwise use index.
+	if (hasTranslation) return NANR_SEQ_TYPE_INDEX_T;
+	return NANR_SEQ_TYPE_INDEX;
 }
 
 int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
@@ -156,6 +281,11 @@ int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 	nanr->sequences = sequences;
 	nanr->nSequences = nSequences;
 
+	//convert sequence data to Index+SRT
+	for (int i = 0; i < nanr->nSequences; i++) {
+		AnmiConvertSequenceToSRT(&nanr->sequences[i]);
+	}
+
 	return 0;
 }
 
@@ -237,8 +367,8 @@ static int AnmiNanrWriteFrame(BSTREAM *stream, void *data, int element) {
 	//search for element
 	int found = 0, foundOffset = 0, i = 0;
 	switch (element) {
-		case 0:
-		case 1:
+		case NANR_SEQ_TYPE_INDEX:
+		case NANR_SEQ_TYPE_INDEX_SRT:
 			//both Index and Index+SRT, compare whole animation dat
 			for (i = 0; i <= stream->size - size; i += 2) { //2-byte alignment
 				if (memcmp(stream->buffer + i, data, size) == 0) {
@@ -248,7 +378,7 @@ static int AnmiNanrWriteFrame(BSTREAM *stream, void *data, int element) {
 				}
 			}
 			break;
-		case 2:
+		case NANR_SEQ_TYPE_INDEX_T:
 		{
 			//Index+T: compare all but padding
 			ANIM_DATA_T *d1 = (ANIM_DATA_T *) data;
@@ -270,8 +400,8 @@ static int AnmiNanrWriteFrame(BSTREAM *stream, void *data, int element) {
 	}
 
 	uint32_t pad0 = 0;
-	if (element != 0 && (stream->pos & 3)) {
-		//align
+	if (element != NANR_SEQ_TYPE_INDEX && (stream->pos & 3)) {
+		//align stream before writing data out
 		bstreamWrite(stream, &pad0, 4 - (stream->pos & 3));
 	}
 
@@ -288,9 +418,17 @@ int AnmWrite(NANR *nanr, BSTREAM *stream) {
 	NnsStreamCreate(&nnsStream, "NANR", 1, 0, NNS_TYPE_G2D, NNS_SIG_LE);
 	uint32_t sequencesSize = nanr->nSequences * sizeof(NANR_SEQUENCE);
 
-	int abnkStart = stream->pos;
 	int nFrames = AnmiCountFrames(nanr);
 	int animFramesSize = nFrames * sizeof(FRAME_DATA);
+
+	//convert frame data to minimal representation
+	int *seqTypes = (int *) calloc(nanr->nSequences, sizeof(int));
+	for (int i = 0; i < nanr->nSequences; i++) {
+		seqTypes[i] = nanr->sequences[i].type & 0xFFFF;
+
+		int newtype = AnmiGetCompressedSequenceType(&nanr->sequences[i]);
+		AnmiConvertSequence(&nanr->sequences[i], newtype);
+	}
 
 	NnsStreamStartBlock(&nnsStream, "ABNK");
 	unsigned char abnkHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -318,6 +456,7 @@ int AnmWrite(NANR *nanr, BSTREAM *stream) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;
 		FRAME_DATA *frames = sequence->frames;
 
+		//get minimal representation and convert
 		int element = sequence->type & 0xFFFF;
 
 		//write frame data offset
@@ -336,6 +475,12 @@ int AnmWrite(NANR *nanr, BSTREAM *stream) {
 			bstreamWrite(blockStream, &frame, sizeof(frame));
 		}
 	}
+
+	//restore sequence types
+	for (int i = 0; i < nanr->nSequences; i++) {
+		AnmiConvertSequence(&nanr->sequences[i], seqTypes[i]);
+	}
+	free(seqTypes);
 
 	//need alignment?
 	bstreamAlign(blockStream, 4);
