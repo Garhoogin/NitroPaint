@@ -1040,6 +1040,7 @@ void CellViewerRenderCell(
 
 	//compute inverse matrix parameters.
 	double invA = 1.0, invB = 0.0, invC = 0.0, invD = 1.0;
+	int isMtxIdentity = 1;
 	if (a != 1.0 || b != 0.0 || c != 0.0 || d != 1.0) {
 		//not identity matrix
 		double det = a * d - b * c; // DBCA
@@ -1055,6 +1056,7 @@ void CellViewerRenderCell(
 			invC = 0.0;
 			invD = 127.99609375;
 		}
+		isMtxIdentity = 0; // not identity
 	}
 
 	COLOR32 *block = (COLOR32 *) calloc(64 * 64, sizeof(COLOR32));
@@ -1089,8 +1091,24 @@ void CellViewerRenderCell(
 			}
 		}
 
+		//apply transformation matrix to OBJ position
 		int x = info.x;
 		int y = info.y;
+		if (!isMtxIdentity) {
+			//adjust sign of OBJ coordinates, since we rely on signed coordinates
+			if (x >= 256) x -= 512;
+			if (y >= 128) y -= 256;
+
+			//adjust coordinates by correction for double-size
+			int realWidth = info.width << info.doubleSize;
+			int realHeight = info.height << info.doubleSize;
+			int movedX = x + realWidth / 2;
+			int movedY = y + realHeight / 2;
+
+			//un-correct moved position from center to top-left, un-correct for double-size
+			x = FloatToInt(movedX * a + movedY * b) - realWidth / 2;
+			y = FloatToInt(movedX * c + movedY * d) - realHeight / 2;
+		}
 
 		//copy data
 		if (!info.rotateScale) {
@@ -1113,30 +1131,16 @@ void CellViewerRenderCell(
 				}
 			}
 		} else {
-			//adjust sign of OBJ coordinates, since we rely on signed coordinates
-			if (x >= 256) x -= 512;
-			if (y >= 128) y -= 256;
-
 			//transform about center
 			int realWidth = info.width << info.doubleSize;
 			int realHeight = info.height << info.doubleSize;
 			double cx = (realWidth - 1) * 0.5; // rotation center X in OBJ
 			double cy = (realHeight - 1) * 0.5; // rotation center Y in OBJ
 
-			//transform coordinate origin by matrix transform
-			int movedX = x + realWidth / 2;
-			int movedY = y + realHeight / 2;
-			int movedX2 = FloatToInt(movedX * a + movedY * b);
-			int movedY2 = FloatToInt(movedX * c + movedY * d);
-
-			//un-correct moved position from center to top-left
-			movedX = movedX2 - realWidth / 2;
-			movedY = movedY2 - realHeight / 2;
-
 			for (int j = 0; j < realHeight; j++) {
-				int destY = (movedY + j + yOffs) & 0xFF;
+				int destY = (y + j + yOffs) & 0xFF;
 				for (int k = 0; k < realWidth; k++) {
-					int destX = (movedX + k + xOffs) & 0x1FF;
+					int destX = (x + k + xOffs) & 0x1FF;
 
 					int srcX = FloatToInt(((((double) k) - cx) * invA + (((double) j) - cy) * invB) + cx);
 					int srcY = FloatToInt(((((double) k) - cx) * invC + (((double) j) - cy) * invD) + cy);

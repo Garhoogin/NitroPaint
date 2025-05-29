@@ -1021,6 +1021,9 @@ static void AnmViewerPausePlayback(NANRVIEWERDATA *data) {
 static void AnmViewerStopPlayback(NANRVIEWERDATA *data) {
 	AnmViewerPausePlayback(data);
 	data->resetFlag = 1; // set the reset flag
+
+	//set anchor
+	AnmViewerSetDefaultAnchor(data);
 }
 
 static void AnmViewerAdvanceSequence(NANRVIEWERDATA *data) {
@@ -1573,7 +1576,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	}
 
 	//render bounds
-	if (cell != NULL) {
+	if (cell != NULL && !data->playing) {
 		int boxX, boxY, boxW, boxH;
 		AnmViewerGetCellBounds(cell, &boxX, &boxY, &boxW, &boxH);
 
@@ -2098,6 +2101,12 @@ static LRESULT CALLBACK AnmViewerFrameListSubclassProc(HWND hWnd, UINT msg, WPAR
 
 // ----- frame list procedures
 
+static void AnmViewerPutCurrentAnimFrameResetAnchor(NANRVIEWERDATA *data, const ANIM_DATA_SRT *srt, const int *pDuration) {
+	AnmViewerPutCurrentAnimFrame(data, srt, pDuration);
+	AnmViewerSetDefaultAnchor(data);
+	InvalidateRect(data->hWndAnimList, NULL, FALSE);
+}
+
 static void AnmViewerCmdSetIndex(NANRVIEWERDATA *data) {
 	WCHAR buf[16] = { 0 };
 	ANIM_DATA_SRT srt;
@@ -2106,7 +2115,7 @@ static void AnmViewerCmdSetIndex(NANRVIEWERDATA *data) {
 
 	PromptUserText(data->hWnd, L"Cell Index", L"Cell Index:", buf, sizeof(buf) / sizeof(buf[0]));
 	srt.index = (unsigned short) _wtol(buf);
-	AnmViewerPutCurrentAnimFrame(data, &srt, NULL);
+	AnmViewerPutCurrentAnimFrameResetAnchor(data, &srt, NULL);
 }
 
 static void AnmViewerCmdSetDuration(NANRVIEWERDATA *data) {
@@ -2117,7 +2126,7 @@ static void AnmViewerCmdSetDuration(NANRVIEWERDATA *data) {
 
 	PromptUserText(data->hWnd, L"Enter Duration", L"Duration:", buf, sizeof(buf) / sizeof(buf[0]));
 	duration = _wtol(buf);
-	AnmViewerPutCurrentAnimFrame(data, NULL, &duration);
+	AnmViewerPutCurrentAnimFrameResetAnchor(data, NULL, &duration);
 }
 
 static void AnmViewerCmdSetX(NANRVIEWERDATA *data) {
@@ -2128,7 +2137,7 @@ static void AnmViewerCmdSetX(NANRVIEWERDATA *data) {
 
 	PromptUserText(data->hWnd, L"Enter X Translation", L"X:", buf, sizeof(buf) / sizeof(buf[0]));
 	srt.px = (short) _wtol(buf);
-	AnmViewerPutCurrentAnimFrame(data, &srt, NULL);
+	AnmViewerPutCurrentAnimFrameResetAnchor(data, &srt, NULL);
 }
 
 static void AnmViewerCmdSetY(NANRVIEWERDATA *data) {
@@ -2139,7 +2148,7 @@ static void AnmViewerCmdSetY(NANRVIEWERDATA *data) {
 
 	PromptUserText(data->hWnd, L"Enter Y Translation", L"Y:", buf, sizeof(buf) / sizeof(buf[0]));
 	srt.py = (short) _wtol(buf);
-	AnmViewerPutCurrentAnimFrame(data, &srt, NULL);
+	AnmViewerPutCurrentAnimFrameResetAnchor(data, &srt, NULL);
 }
 
 static void AnmViewerCmdSetScaleX(NANRVIEWERDATA *data) {
@@ -2150,7 +2159,7 @@ static void AnmViewerCmdSetScaleX(NANRVIEWERDATA *data) {
 
 	PromptUserText(data->hWnd, L"Enter X Scale", L"X:", buf, sizeof(buf) / sizeof(buf[0]));
 	srt.sx = FloatToInt(my_wtof(buf) * 4096.0f);
-	AnmViewerPutCurrentAnimFrame(data, &srt, NULL);
+	AnmViewerPutCurrentAnimFrameResetAnchor(data, &srt, NULL);
 }
 
 static void AnmViewerCmdSetScaleY(NANRVIEWERDATA *data) {
@@ -2161,7 +2170,7 @@ static void AnmViewerCmdSetScaleY(NANRVIEWERDATA *data) {
 
 	PromptUserText(data->hWnd, L"Enter Y Scale", L"Y:", buf, sizeof(buf) / sizeof(buf[0]));
 	srt.sy = FloatToInt(my_wtof(buf) * 4096.0f);
-	AnmViewerPutCurrentAnimFrame(data, &srt, NULL);
+	AnmViewerPutCurrentAnimFrameResetAnchor(data, &srt, NULL);
 }
 
 static void AnmViewerCmdSetRotation(NANRVIEWERDATA *data) {
@@ -2172,7 +2181,7 @@ static void AnmViewerCmdSetRotation(NANRVIEWERDATA *data) {
 
 	PromptUserText(data->hWnd, L"Enter Rotation", L"Rotation:", buf, sizeof(buf) / sizeof(buf[0]));
 	srt.rotZ = FloatToInt(my_wtof(buf) * 65536.0f / 360.0f) & 0xFFFF;
-	AnmViewerPutCurrentAnimFrame(data, &srt, NULL);
+	AnmViewerPutCurrentAnimFrameResetAnchor(data, &srt, NULL);
 }
 
 static void AnmViewerInsertFrame(NANRVIEWERDATA *data, int i) {
@@ -2199,6 +2208,7 @@ static void AnmViewerInsertFrame(NANRVIEWERDATA *data, int i) {
 	AnmViewerPutCurrentAnimFrame(data, &frm, NULL);
 	data->currentFrame = oldI;
 	AnmViewerSetCurrentFrame(data, i, TRUE);
+	AnmViewerSetDefaultAnchor(data);
 }
 
 static void AnmViewerCmdInsertFrameAbove(NANRVIEWERDATA *data) {
@@ -2247,6 +2257,8 @@ static void AnmViewerCmdInterpolateBelow(NANRVIEWERDATA *data) {
 		AnmViewerPutCurrentAnimFrame(data, &setting.result[i], NULL);
 	}
 	AnmViewerSetCurrentFrame(data, frame0, TRUE);
+	AnmViewerSetDefaultAnchor(data);
+	InvalidateRect(data->hWndAnimList, NULL, FALSE);
 
 	free(setting.result);
 	free(setting.durations);
