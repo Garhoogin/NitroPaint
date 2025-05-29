@@ -12,11 +12,11 @@
 #include "framebuffer.h"
 
 typedef struct AnmTransSrt_ {
-	float sx;  // scale Y
-	float sy;  // scale X
-	float rot; // rotation (radians)
-	float tx;  // translate X
-	float ty;  // translate Y
+	double sx;  // scale Y
+	double sy;  // scale X
+	double rot; // rotation (radians)
+	double tx;  // translate X
+	double ty;  // translate Y
 } AnmTransSrt;
 
 typedef struct {
@@ -43,7 +43,7 @@ typedef struct {
 	int mouseDownCircleR; // guide circle radius size on mouse down (to stabilize view)
 	int mouseDownCircleX; // guide circle X on mouse down
 	int mouseDownCircleY; // guide circle Y on mouse down
-	float rotAngleOffset; // rotation angle offset when changing
+	double rotAngleOffset; // rotation angle offset when changing
 	AnmTransSrt transStart;
 
 	int anchorX;                 // edit anchor X

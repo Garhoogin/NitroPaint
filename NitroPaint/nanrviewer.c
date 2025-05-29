@@ -21,12 +21,12 @@ extern HICON g_appIcon;
 #define FX32_HALF              (FX32_ONE/2)
 #define FX32_FROM_F32(x)       ((int)(((x)<0.0f)?((x)*FX32_ONE+0.5f):((x)*FX32_ONE-0.5f)))
 
-#define RAD_0DEG               0.00000000f
-#define RAD_22_5DEG            0.39269908f
-#define RAD_45DEG              0.78539816f
-#define RAD_90DEG              1.57079633f
-#define RAD_180DEG             3.14159265f
-#define RAD_360DEG             6.28318531f
+#define RAD_0DEG               0.00000000000000000
+#define RAD_22_5DEG            0.39269908169872415
+#define RAD_45DEG              0.78539816339744831
+#define RAD_90DEG              1.57079632679489662
+#define RAD_180DEG             3.14159265358979323
+#define RAD_360DEG             6.28318530717958648
 
 #define SEXT8(n) (((n)<0x080)?(n):((n)-0x100))
 #define SEXT9(n) (((n)<0x100)?(n):((n)-0x200))
@@ -95,7 +95,7 @@ static int AnmViewerGetAnimFrame(NANRVIEWERDATA *data, int iSeq, int iFrm, ANIM_
 
 static void AnmViewerPreviewGetScroll(NANRVIEWERDATA *data, int *pScrollX, int *pScrollY);
 
-static int FloatToInt(float x) {
+static int FloatToInt(double x) {
 	return (int) (x + (x < 0.0f ? -0.5f : 0.5f));
 }
 
@@ -144,9 +144,9 @@ static void FormatFxToString(WCHAR *buf, int fx) {
 
 static void FormatAngleToString(WCHAR *buf, int fx) {
 	fx &= 0xFFFF;
-	float deg = ((float) fx) / 65536.0f * 360.0f;
+	double deg = ((double) fx) / 65536.0 * 360.0;
 
-	int asInt = (int) (deg * 1000.0f + 0.5f);
+	int asInt = (int) (deg * 1000.0 + 0.5);
 	buf += wsprintfW(buf, L"%d", asInt / 1000);
 	*(buf++) = L'.';
 
@@ -189,11 +189,11 @@ static OBJECT_HEADER *AnmViewerGetAssociatedObject(HWND hWnd, int type) {
 
 // ----- transformation calculation routines
 
-static void AnmViewerInvMtx(float *pMtx) {
-	float mtx[2][2];
+static void AnmViewerInvMtx(double *pMtx) {
+	double mtx[2][2];
 	memcpy(mtx, pMtx, sizeof(mtx));
 
-	float det = mtx[0][0] * mtx[1][1] - mtx[1][0] * mtx[0][1];
+	double det = mtx[0][0] * mtx[1][1] - mtx[1][0] * mtx[0][1];
 	if (det == 0.0f) return;
 
 	pMtx[0 * 2 + 0] = mtx[1][1] / det;
@@ -203,18 +203,18 @@ static void AnmViewerInvMtx(float *pMtx) {
 }
 
 static void AnmViewerCalcTransformMatrix(
-	float  centerX,     // center point X of transformation
-	float  centerY,     // center point Y of transformation
-	float  scaleX,      // 1. scale X
-	float  scaleY,      // 1. scale Y
-	float  rotZ,        // 2. rotation (radians)
-	float  transX,      // 3. translation X
-	float  transY,      // 3. translation Y
-	float *pMtx,        // -> output transformation matrix
-	float *pTrans       // -> output translation vector
+	double  centerX,     // center point X of transformation
+	double  centerY,     // center point Y of transformation
+	double  scaleX,      // 1. scale X
+	double  scaleY,      // 1. scale Y
+	double  rotZ,        // 2. rotation (radians)
+	double  transX,      // 3. translation X
+	double  transY,      // 3. translation Y
+	double *pMtx,        // -> output transformation matrix
+	double *pTrans       // -> output translation vector
 ) {
-	float mtx[2][2];
-	float trans[2];
+	double mtx[2][2];
+	double trans[2];
 
 	if (rotZ == 0.0f) {
 		//no rotation
@@ -227,8 +227,8 @@ static void AnmViewerCalcTransformMatrix(
 		trans[1] = centerY * (1.0f - scaleY) + transY;
 	} else {
 		//with rotation
-		float sinR = (float) sin(rotZ);
-		float cosR = (float) cos(rotZ);
+		double sinR = sin(rotZ);
+		double cosR = cos(rotZ);
 
 		mtx[0][0] = scaleX * cosR;
 		mtx[0][1] = -scaleY * sinR;
@@ -244,17 +244,17 @@ static void AnmViewerCalcTransformMatrix(
 	memcpy(pTrans, trans, sizeof(trans));
 }
 
-static void AnmViewerApplyScaleTransform(float cx, float cy, float *pTx, float *pTy, float *pSx, float *pSy, float rot, float newSx, float newSy) {
-	float mtxNew[2][2], transNew[2], mtxOld[2][2], transOld[2];
+static void AnmViewerApplyScaleTransform(double cx, double cy, double *pTx, double *pTy, double *pSx, double *pSy, double rot, double newSx, double newSy) {
+	double mtxNew[2][2], transNew[2], mtxOld[2][2], transOld[2];
 	AnmViewerCalcTransformMatrix(0.0f, 0.0f, newSx, newSy, rot, *pTx, *pTy, &mtxNew[0][0], &transNew[0]);
 	AnmViewerCalcTransformMatrix(0.0f, 0.0f, *pSx, *pSy, rot, *pTx, *pTy, &mtxOld[0][0], &transOld[0]);
 	AnmViewerInvMtx(&mtxOld[0][0]);
 
 	//set (tx, ty) such that it transforms the same by the inverses of both new and original.
-	float cxAdj = cx - transOld[0];
-	float cyAdj = cy - transOld[1];
-	float cxAdj2 = (cxAdj * mtxOld[0][0] + cyAdj * mtxOld[0][1]);
-	float cyAdj2 = (cxAdj * mtxOld[1][0] + cyAdj * mtxOld[1][1]);
+	double cxAdj = cx - transOld[0];
+	double cyAdj = cy - transOld[1];
+	double cxAdj2 = (cxAdj * mtxOld[0][0] + cyAdj * mtxOld[0][1]);
+	double cyAdj2 = (cxAdj * mtxOld[1][0] + cyAdj * mtxOld[1][1]);
 
 	//transform by new matrix
 	cxAdj = (cxAdj2 * mtxNew[0][0] + cyAdj2 * mtxNew[0][1]) + transNew[0];
@@ -266,17 +266,17 @@ static void AnmViewerApplyScaleTransform(float cx, float cy, float *pTx, float *
 	*pSy = newSy;
 }
 
-static void AnmViewerApplyRotateTransform(float cx, float cy, float *pTx, float *pTy, float sx, float sy, float *pRot, float newRot) {
-	float mtxNew[2][2], transNew[2], mtxOld[2][2], transOld[2];
+static void AnmViewerApplyRotateTransform(double cx, double cy, double *pTx, double *pTy, double sx, double sy, double *pRot, double newRot) {
+	double mtxNew[2][2], transNew[2], mtxOld[2][2], transOld[2];
 	AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, newRot, *pTx, *pTy, &mtxNew[0][0], &transNew[0]);
 	AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, *pRot, *pTx, *pTy, &mtxOld[0][0], &transOld[0]);
 	AnmViewerInvMtx(&mtxOld[0][0]);
 
 	//set (tx, ty) such that it transforms the same by the inverses of both new and original.
-	float cxAdj = cx - transOld[0];
-	float cyAdj = cy - transOld[1];
-	float cxAdj2 = (cxAdj * mtxOld[0][0] + cyAdj * mtxOld[0][1]);
-	float cyAdj2 = (cxAdj * mtxOld[1][0] + cyAdj * mtxOld[1][1]);
+	double cxAdj = cx - transOld[0];
+	double cyAdj = cy - transOld[1];
+	double cxAdj2 = (cxAdj * mtxOld[0][0] + cyAdj * mtxOld[0][1]);
+	double cyAdj2 = (cxAdj * mtxOld[1][0] + cyAdj * mtxOld[1][1]);
 
 	//transform by new matrix
 	cxAdj = (cxAdj2 * mtxNew[0][0] + cyAdj2 * mtxNew[0][1]) + transNew[0];
@@ -287,39 +287,36 @@ static void AnmViewerApplyRotateTransform(float cx, float cy, float *pTx, float 
 	*pRot = newRot;
 }
 
-static void AnmViewerTransform(int *pX, int *pY, float a, float b, float c, float d) {
-	float x = (float) *pX;
-	float y = (float) *pY;
+static void AnmViewerTransform(int *pX, int *pY, double a, double b, double c, double d) {
+	double x = (double) *pX;
+	double y = (double) *pY;
 
-	float x2 = (x * a + y * b);
-	float y2 = (x * c + y * d);
+	double x2 = (x * a + y * b);
+	double y2 = (x * c + y * d);
 
-	*pX = (int) (x2 + (x2 >= 0.0f ? 0.5f : -0.5f));
-	*pY = (int) (y2 + (y2 >= 0.0f ? 0.5f : -0.5f));
+	*pX = FloatToInt(x2);
+	*pY = FloatToInt(y2);
 }
 
 static void AnmViewerEncodeTransform(ANIM_DATA_SRT *dst, const AnmTransSrt *src) {
-	dst->px = (int) (src->tx + (src->tx < 0.0f ? -0.5f : 0.5f));
-	dst->py = (int) (src->ty + (src->ty < 0.0f ? -0.5f : 0.5f));
+	dst->px = FloatToInt(src->tx);
+	dst->py = FloatToInt(src->ty);
+	dst->sx = FloatToInt(src->sx * 4096.0);
+	dst->sy = FloatToInt(src->sy * 4096.0);
 
-	float sx = src->sx * 4096.0f;
-	float sy = src->sy * 4096.0f;
-	dst->sx = (int) (sx + (sx < 0.0f ? -0.5f : 0.5f));
-	dst->sy = (int) (sy + (sy < 0.0f ? -0.5f : 0.5f));
-
-	float rot = src->rot * 65536.0f / RAD_360DEG;
-	dst->rotZ = ((int) (rot + (rot < 0.0f ? -0.5f : 0.5f))) & 0xFFFF;
+	double rot = src->rot * 65536.0 / RAD_360DEG;
+	dst->rotZ = FloatToInt(rot) & 0xFFFF;
 }
 
 static void AnmViewerDecodeTransform(AnmTransSrt *dst, const ANIM_DATA_SRT *src) {
-	dst->tx = (float) src->px;
-	dst->ty = (float) src->py;
-	dst->sx = src->sx / 4096.0f;
-	dst->sy = src->sy / 4096.0f;
-	dst->rot = src->rotZ / 65536.0f * RAD_360DEG;
+	dst->tx = (double) src->px;
+	dst->ty = (double) src->py;
+	dst->sx = src->sx / 4096.0;
+	dst->sy = src->sy / 4096.0;
+	dst->rot = src->rotZ / 65536.0 * RAD_360DEG;
 }
 
-static void AnmViewerGetCurrentFrameTransform(NANRVIEWERDATA *data, float *pMtx, float *pTrans) {
+static void AnmViewerGetCurrentFrameTransform(NANRVIEWERDATA *data, double *pMtx, double *pTrans) {
 	pMtx[0] = 1.0f;
 	pMtx[1] = 0.0f;
 	pMtx[2] = 0.0f;
@@ -423,7 +420,7 @@ static void AnmViewerRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, 
 	}
 }
 
-static void AnmViewerGetCellBoundCorners(int *ptUL, int *ptUR, int *ptDL, int *ptDR, int x, int y, int w, int h, float a, float b, float c, float d, int tx, int ty) {
+static void AnmViewerGetCellBoundCorners(int *ptUL, int *ptUR, int *ptDL, int *ptDR, int x, int y, int w, int h, double a, double b, double c, double d, int tx, int ty) {
 	//get transformed coordinates
 	ptUL[0] = x; ptUL[1] = y;
 	ptUR[0] = x + w; ptUR[1] = y;
@@ -437,7 +434,7 @@ static void AnmViewerGetCellBoundCorners(int *ptUL, int *ptUR, int *ptDL, int *p
 	AnmViewerTransform(&ptDR[0], &ptDR[1], a, b, c, d); ptDR[0] += tx; ptDR[1] += ty;
 }
 
-static void AnmViewerDrawBoxRot(FrameBuffer *fb, const COLOR32 *cols, int x, int y, int w, int h, int cx, int cy, float a, float b, float c, float d) {
+static void AnmViewerDrawBoxRot(FrameBuffer *fb, const COLOR32 *cols, int x, int y, int w, int h, int cx, int cy, double a, double b, double c, double d) {
 	//transform
 	int ptUL[2], ptUR[2], ptDL[2], ptDR[2];
 	AnmViewerGetCellBoundCorners(&ptUL[0], &ptUR[0], &ptDL[0], &ptDR[0], x, y, w, h, a, b, c, d, cx, cy);
@@ -484,19 +481,19 @@ static void AnmViewerGetCellBounds(NCER_CELL *cell, int *pBoundX, int *pBoundY, 
 
 // ----- hit testing routines
 
-static float AnmViewerGetPtAngle(NANRVIEWERDATA *data, float rotX, float rotY) {
+static double AnmViewerGetPtAngle(NANRVIEWERDATA *data, double rotX, double rotY) {
 	//rotation point
-	float rotD = (float) sqrt(rotX * rotX + rotY * rotY);
+	double rotD = sqrt(rotX * rotX + rotY * rotY);
 	if (rotD != 0.0f) {
 		rotX /= rotD;
 		rotY /= rotD;
 	}
 
-	float newrot;
-	if (rotY <= 0.0f) {
-		newrot = (float) -acos(rotX) + RAD_180DEG;
+	double newrot;
+	if (rotY <= 0.0) {
+		newrot = -acos(rotX) + RAD_180DEG;
 	} else {
-		newrot = (float) -acos(-rotX);
+		newrot = -acos(-rotX);
 	}
 	newrot -= RAD_90DEG;
 	return newrot;
@@ -554,7 +551,7 @@ static int AnmViewerHitTest(NANRVIEWERDATA *data, int clientX, int clientY) {
 	AnmViewerGetCellBounds(cell, &cellX, &cellY, &cellW, &cellH);
 
 	//get transform
-	float mtx[2][2], trans[2];
+	double mtx[2][2], trans[2];
 	AnmViewerGetCurrentFrameTransform(data, &mtx[0][0], &trans[0]);
 
 	//effective rectangle: we'll scale it up to the viewe's size.
@@ -569,12 +566,12 @@ static int AnmViewerHitTest(NANRVIEWERDATA *data, int clientX, int clientY) {
 	cellH += CELL_PADDING_SIZE;
 
 	//tranform cursor position by the inverse matrix
-	float invMtx[2][2];
+	double invMtx[2][2];
 	memcpy(invMtx, mtx, sizeof(mtx));
 	AnmViewerInvMtx(&invMtx[0][0]);
 
-	int effectiveX = x - 256 * data->scale - ((int) (trans[0] + (trans[0] < 0.0f ? -0.5f : 0.5f)));
-	int effectiveY = y - 128 * data->scale - ((int) (trans[1] + (trans[1] < 0.0f ? -0.5f : 0.5f)));
+	int effectiveX = x - 256 * data->scale - FloatToInt(trans[0]);
+	int effectiveY = y - 128 * data->scale - FloatToInt(trans[1]);
 	AnmViewerTransform(&effectiveX, &effectiveY, invMtx[0][0], invMtx[0][1], invMtx[1][0], invMtx[1][1]);
 
 	if (effectiveX >= cellX && effectiveY >= cellY && effectiveX < (cellX + cellW) && effectiveY < (cellY + cellH)) {
@@ -620,10 +617,10 @@ static int AnmViewerGetEffectiveHit(NANRVIEWERDATA *data) {
 	return data->mouseDownHit;
 }
 
-static HCURSOR AnmViewerGetArrowCursorForAngle(NANRVIEWERDATA *data, float angle) {
+static HCURSOR AnmViewerGetArrowCursorForAngle(NANRVIEWERDATA *data, double angle) {
 	//in rotations, adjusted by 22.5 degrees, scaled up to octants
-	float adj = (angle / RAD_360DEG) * 8.0f;
-	int octant = (int) (adj + (adj < 0.0f ? -0.5f : 0.5f));
+	double adj = (angle / RAD_360DEG) * 8.0;
+	int octant = FloatToInt(adj);
 	octant &= 0x7;
 
 	switch (octant) {
@@ -648,9 +645,9 @@ static HCURSOR AnmViewerHitCursorRotCircle(NANRVIEWERDATA *data) {
 
 	AnmViewerPreviewGetScroll(data, &scrollX, &scrollY);
 	
-	float rotX = (float) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
-	float rotY = (float) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
-	float newrot = AnmViewerGetPtAngle(data, rotX, rotY);
+	double rotX = (double) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
+	double rotY = (double) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
+	double newrot = AnmViewerGetPtAngle(data, rotX, rotY);
 
 	return AnmViewerGetArrowCursorForAngle(data, newrot + RAD_90DEG);
 }
@@ -661,11 +658,11 @@ static HCURSOR AnmViewerHitCursorBox(NANRVIEWERDATA *data, int hit) {
 	if (flag == 0) return LoadCursor(NULL, IDC_SIZEALL);
 
 	//get matrix transform to map edge hits to sizing cursors
-	float mtx[2][2], trans[2];
+	double mtx[2][2], trans[2];
 	AnmViewerGetCurrentFrameTransform(data, &mtx[0][0], &trans[0]);
 
-	float upX = mtx[0][1], upY = mtx[1][1];
-	float upMag = (float) sqrt(upX * upX + upY * upY);
+	double upX = mtx[0][1], upY = mtx[1][1];
+	double upMag = sqrt(upX * upX + upY * upY);
 	if (upMag > 0.0f) {
 		upX /= upMag;
 		upY /= upMag;
@@ -676,26 +673,26 @@ static HCURSOR AnmViewerHitCursorBox(NANRVIEWERDATA *data, int hit) {
 		upY = -upY;
 	}
 
-	float baseAngle = (float) acos(-upY);
+	double baseAngle = acos(-upY);
 	baseAngle = baseAngle / RAD_360DEG; // to rotations
 
 	//hit edges
 	switch (flag) {
 		case ANM_HIT_U:
 		case ANM_HIT_D:
-			baseAngle += 0.000f;
+			baseAngle += 0.000;
 			break;
 		case ANM_HIT_L:
 		case ANM_HIT_R:
-			baseAngle += 0.250f;
+			baseAngle += 0.250;
 			break;
 		case ANM_HIT_U | ANM_HIT_L:
 		case ANM_HIT_D | ANM_HIT_R:
-			baseAngle += 0.375f;
+			baseAngle += 0.375;
 			break;
 		case ANM_HIT_U | ANM_HIT_R:
 		case ANM_HIT_D | ANM_HIT_L:
-			baseAngle += 0.125f;
+			baseAngle += 0.125;
 			break;
 	}
 
@@ -813,15 +810,15 @@ static void AnmViewerRenderGlyphListImage(NANRVIEWERDATA *data, int i) {
 	//render
 	memset(data->cellRender, 0, sizeof(data->cellRender));
 	if (cell != NULL) {
-		float mtx[2][2], trans[2];
+		double mtx[2][2], trans[2];
 
-		float sx = frm.sx / 4096.0f;
-		float sy = frm.sy / 4096.0f;
-		float rot = (frm.rotZ / 65536.0f) * RAD_360DEG;
+		double sx = frm.sx / 4096.0;
+		double sy = frm.sy / 4096.0;
+		double rot = (frm.rotZ / 65536.0) * RAD_360DEG;
 
-		AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, rot, (float) frm.px, (float) frm.py, &mtx[0][0], trans);
+		AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
 		CellViewerRenderCell(data->cellRender, NULL, ncer, ncgr, nclr, frm.index, cell,
-			(int) trans[0], (int) trans[1],
+			FloatToInt(trans[0]), FloatToInt(trans[1]),
 			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1]);
 	}
 
@@ -862,13 +859,13 @@ static void AnmViewerSetRotationPoint(NANRVIEWERDATA *data) {
 	int xMin, yMin, w, h;
 	AnmViewerGetCellBounds(cell, &xMin, &yMin, &w, &h);
 
-	float mtx[2][2], trans[2];
+	double mtx[2][2], trans[2];
 	AnmViewerGetCurrentFrameTransform(data, &mtx[0][0], &trans[0]);
 
 	//get the bounding coordinates
 	int ptUL[2], ptUR[2], ptDL[2], ptDR[2];
 	AnmViewerGetCellBoundCorners(&ptUL[0], &ptUR[0], &ptDL[0], &ptDR[0], xMin, yMin, w, h,
-		mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1], (int) trans[0], (int) trans[1]);
+		mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1], FloatToInt(trans[0]), FloatToInt(trans[1]));
 
 	int cx = data->anchorX, cy = data->anchorY;
 	int d2UL = (ptUL[0] - cx) * (ptUL[0] - cx) + (ptUL[1] - cy) * (ptUL[1] - cy);
@@ -881,14 +878,14 @@ static void AnmViewerSetRotationPoint(NANRVIEWERDATA *data) {
 	if (d2UR > maxD2) maxD2 = d2UR;
 	if (d2DL > maxD2) maxD2 = d2DL;
 	if (d2DR > maxD2) maxD2 = d2DR;
-	float maxD = (float) sqrt((float) maxD2);
+	double maxD = sqrt((double) maxD2);
 
 	//rotate and add displacement
-	float rot = frame.rotZ / 65536.0f * RAD_360DEG;
-	float rotX = (float) cos(rot - RAD_90DEG) * maxD + (float) cx;
-	float rotY = (float) sin(rot - RAD_90DEG) * maxD + (float) cy;
-	data->rotPtX = (int) rotX;
-	data->rotPtY = (int) rotY;
+	double rot = frame.rotZ / 65536.0 * RAD_360DEG;
+	double rotX = cos(rot - RAD_90DEG) * maxD + (double) cx;
+	double rotY = sin(rot - RAD_90DEG) * maxD + (double) cy;
+	data->rotPtX = FloatToInt(rotX);
+	data->rotPtY = FloatToInt(rotY);
 }
 
 static void AnmViewerSetAnchor(NANRVIEWERDATA *data, int x, int y) {
@@ -915,7 +912,7 @@ static void AnmViewerSetDefaultAnchor(NANRVIEWERDATA *data) {
 	int xMin, yMin, w, h;
 	AnmViewerGetCellBounds(cell, &xMin, &yMin, &w, &h);
 
-	float mtx[2][2], trans[2];
+	double mtx[2][2], trans[2];
 	AnmViewerGetCurrentFrameTransform(data, &mtx[0][0], &trans[0]);
 
 	int anchorX = xMin + w / 2;
@@ -923,8 +920,8 @@ static void AnmViewerSetDefaultAnchor(NANRVIEWERDATA *data) {
 	AnmViewerTransform(&anchorX, &anchorY, mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1]);
 
 	//set anchor
-	anchorX += (int) (trans[0] + (trans[0] < 0.0f ? -0.5f : 0.5f));
-	anchorY += (int) (trans[1] + (trans[1] < 0.0f ? -0.5f : 0.5f));
+	anchorX += FloatToInt(trans[0]);
+	anchorY += FloatToInt(trans[1]);
 	AnmViewerSetAnchor(data, anchorX, anchorY);
 }
 
@@ -1600,16 +1597,16 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	}
 
 	//render
-	float mtx[2][2] = { { 1.0f, 0.0f }, { 0.0f, 1.0f } }, trans[2] = { 0 };
+	double mtx[2][2] = { { 1.0f, 0.0f }, { 0.0f, 1.0f } }, trans[2] = { 0 };
 	memset(data->cellRender, 0, sizeof(data->cellRender));
 	if (cell != NULL) {
-		float sx = frm.sx / 4096.0f;
-		float sy = frm.sy / 4096.0f;
-		float rot = (frm.rotZ / 65536.0f) * RAD_360DEG;
+		double sx = frm.sx / 4096.0;
+		double sy = frm.sy / 4096.0;
+		double rot = (frm.rotZ / 65536.0) * RAD_360DEG;
 
-		AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, rot, (float) frm.px, (float) frm.py, &mtx[0][0], trans);
+		AnmViewerCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
 		CellViewerRenderCell(data->cellRender, NULL, ncer, ncgr, nclr, frm.index, cell,
-			(int) trans[0], (int) trans[1], 
+			FloatToInt(trans[0]), FloatToInt(trans[1]), 
 			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1]);
 	}
 
@@ -1662,8 +1659,8 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 		int boxX, boxY, boxW, boxH;
 		AnmViewerGetCellBounds(cell, &boxX, &boxY, &boxW, &boxH);
 
-		int cx = (int) (trans[0] + (trans[0] < 0.0f ? -0.5f : 0.5f));
-		int cy = (int) (trans[1] + (trans[1] < 0.0f ? -0.5f : 0.5f));
+		int cx = FloatToInt(trans[0]);
+		int cy = FloatToInt(trans[1]);
 
 		COLOR32 lineCols[] = { 0x00FFFF, 0x00FFFF, 0x00FFFF, 0x00FFFF }; // up down left right
 		int hit = AnmViewerGetEffectiveHit(data);
@@ -1774,9 +1771,9 @@ static void AnmViewerPreviewOnLButtonDown(NANRVIEWERDATA *data) {
 
 			if (hitType == ANM_HIT_ROT_CIRCLE) {
 				//start rotation on circle, calculate rotation offset
-				float rotX = (float) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
-				float rotY = (float) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
-				float mouseRot = AnmViewerGetPtAngle(data, rotX, rotY);
+				double rotX = (double) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
+				double rotY = (double) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
+				double mouseRot = AnmViewerGetPtAngle(data, rotX, rotY);
 
 				data->rotAngleOffset = data->transStart.rot - mouseRot;
 			}
@@ -1823,28 +1820,28 @@ static void AnmViewerPreviewOnMouseMove(NANRVIEWERDATA *data) {
 					int dx = (ptCursor.x - data->mouseDownX) / data->scale;
 					int dy = (ptCursor.y - data->mouseDownY) / data->scale;
 
-					srt.tx += (float) dx;
-					srt.ty += (float) dy;
+					srt.tx += (double) dx;
+					srt.ty += (double) dy;
 
 					//move anchor
 					AnmViewerSetAnchor(data, data->mouseDownAnchorX + dx, data->mouseDownAnchorY + dy);
 				} else {
 					//scale
-					float centeredX1 = (float) (data->mouseDownX + scrollX - 256 * data->scale - data->anchorX * data->scale);
-					float centeredY1 = (float) (data->mouseDownY + scrollY - 128 * data->scale - data->anchorY * data->scale);
-					float centeredX2 = (float) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
-					float centeredY2 = (float) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
+					double centeredX1 = (double) (data->mouseDownX + scrollX - 256 * data->scale - data->anchorX * data->scale);
+					double centeredY1 = (double) (data->mouseDownY + scrollY - 128 * data->scale - data->anchorY * data->scale);
+					double centeredX2 = (double) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
+					double centeredY2 = (double) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
 
-					float mtx[2][2], trans[2];
+					double mtx[2][2], trans[2];
 					AnmViewerGetCurrentFrameTransform(data, &mtx[0][0], &trans[0]);
 					AnmViewerInvMtx(&mtx[0][0]);
 
-					float vecUX = mtx[1][0];
-					float vecUY = mtx[1][1];
-					float vecRX = mtx[0][0];
-					float vecRY = mtx[0][1];
+					double vecUX = mtx[1][0];
+					double vecUY = mtx[1][1];
+					double vecRX = mtx[0][0];
+					double vecRY = mtx[0][1];
 
-					float gx = 1.0f, gy = 1.0f; // growth factors
+					double gx = 1.0f, gy = 1.0f; // growth factors
 					if (flg & (ANM_HIT_R | ANM_HIT_L)) {
 						gx = (centeredX2 * vecRX + centeredY2 * vecRY) / (centeredX1 * vecRX + centeredY1 * vecRY);
 					}
@@ -1852,35 +1849,35 @@ static void AnmViewerPreviewOnMouseMove(NANRVIEWERDATA *data) {
 						gy = (centeredX2 * vecUX + centeredY2 * vecUY) / (centeredX1 * vecUX + centeredY1 * vecUY);
 					}
 
-					float sx2 = srt.sx * gx;
-					float sy2 = srt.sy * gy;
+					double sx2 = srt.sx * gx;
+					double sy2 = srt.sy * gy;
 
 					//shift pressed, round to integer scales
 					if (shiftState) {
 						//X scale
 						if (sx2 >= 1.0f || sx2 <= -1.0f) {
 							//round scale to integer
-							sx2 = (float) (int) (sx2 + (sx2 < 0.0f ? -0.5f : 0.5f));
+							sx2 = (double) FloatToInt(sx2);
 						} else if (sx2 != 0.0f) {
 							//round inverse scale to integer
 							sx2 = 1.0f / sx2;
-							sx2 = (float) (int) (sx2 + (sx2 < 0.0f ? -0.5f : 0.5f));
+							sx2 = (double) FloatToInt(sx2);
 							sx2 = 1.0f / sx2;
 						}
 
 						//Y scale
 						if (sy2 >= 1.0f || sy2 <= -1.0f) {
 							//round scale to integer
-							sy2 = (float) (int) (sy2 + (sy2 < 0.0f ? -0.5f : 0.5f));
+							sy2 = (double) FloatToInt(sy2);
 						} else if (sy2 != 0.0f) {
 							//round inverse scale to integer
 							sy2 = 1.0f / sy2;
-							sy2 = (float) (int) (sy2 + (sy2 < 0.0f ? -0.5f : 0.5f));
+							sy2 = (double) FloatToInt(sy2);
 							sy2 = 1.0f / sy2;
 						}
 					}
 
-					AnmViewerApplyScaleTransform((float) data->anchorX, (float) data->anchorY, &srt.tx, &srt.ty, &srt.sx, &srt.sy, srt.rot, sx2, sy2);
+					AnmViewerApplyScaleTransform((double) data->anchorX, (double) data->anchorY, &srt.tx, &srt.ty, &srt.sx, &srt.sy, srt.rot, sx2, sy2);
 				}
 
 				//put
@@ -1914,7 +1911,7 @@ static void AnmViewerPreviewOnMouseMove(NANRVIEWERDATA *data) {
 					if (AnmViewerGetCurrentAnimFrame(data, &frm, NULL) && ncer != NULL && frm.index >= 0 && frm.index < ncer->nCells) {
 						NCER_CELL *cell = &ncer->cells[frm.index];
 
-						float mtx[2][2], trans[2];
+						double mtx[2][2], trans[2];
 						AnmViewerGetCurrentFrameTransform(data, &mtx[0][0], &trans[0]);
 
 						int cellX, cellY, cellW, cellH;
@@ -1927,8 +1924,8 @@ static void AnmViewerPreviewOnMouseMove(NANRVIEWERDATA *data) {
 							&clampCoords[9][0], // 9: bottom-right
 							cellX, cellY, cellW, cellH,
 							mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
-							(int) (trans[0] + (trans[0] < 0.0f ? -0.5f : 0.5f)),
-							(int) (trans[1] + (trans[1] < 0.0f ? -0.5f : 0.5f)));
+							FloatToInt(trans[0]),
+							FloatToInt(trans[1]));
 
 						//interpolate edge points
 						AvgPoint(&clampCoords[2][0], &clampCoords[1][0], &clampCoords[3][0]);
@@ -1968,21 +1965,21 @@ static void AnmViewerPreviewOnMouseMove(NANRVIEWERDATA *data) {
 				memcpy(&srt, &data->transStart, sizeof(AnmTransSrt));
 
 				//rotation point
-				float rotX = (float) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
-				float rotY = (float) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
-				float newrot = AnmViewerGetPtAngle(data, rotX, rotY);
+				double rotX = (double) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
+				double rotY = (double) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
+				double newrot = AnmViewerGetPtAngle(data, rotX, rotY);
 				newrot += data->rotAngleOffset;
 
 				//if shift pressed, round to 1/8 rotations
 				if (shiftState) {
 					newrot /= RAD_360DEG;
 					newrot *= 8.0f;
-					newrot = (float) (int) (newrot + (newrot < 0.0f ? -0.5f : 0.5f));
+					newrot = (double) FloatToInt(newrot);
 					newrot /= 8.0f;
 					newrot *= RAD_360DEG;
 				}
 
-				AnmViewerApplyRotateTransform((float) data->anchorX, (float) data->anchorY,
+				AnmViewerApplyRotateTransform((double) data->anchorX, (double) data->anchorY,
 					&srt.tx, &srt.ty, srt.sx, srt.sy, &srt.rot, newrot);
 
 				ANIM_DATA_SRT frm;
@@ -2658,9 +2655,9 @@ static LRESULT CALLBACK AnmViweerInterpProc(HWND hWnd, UINT msg, WPARAM wParam, 
 						}
 						angle *= angleMult;
 
-						setting->result[i].sx = FloatToInt((float) sxMag * 4096.0f);
-						setting->result[i].sy = FloatToInt((float) syMag * 4096.0f);
-						setting->result[i].rotZ = FloatToInt((float) angle * 65536.0f / RAD_360DEG) & 0xFFFF;
+						setting->result[i].sx = FloatToInt(sxMag * 4096.0);
+						setting->result[i].sy = FloatToInt(syMag * 4096.0);
+						setting->result[i].rotZ = FloatToInt(angle * 65536.0 / RAD_360DEG) & 0xFFFF;
 					} else {
 						//nonlinear: interpolate each parameter
 						int sx = setting->start.sx * weight0 + setting->end.sx * weight1;

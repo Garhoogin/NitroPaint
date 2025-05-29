@@ -1006,6 +1006,10 @@ static void CellViewerRenderObj(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, 
 	}
 }
 
+static int FloatToInt(double x) {
+	return (int) (x + (x < 0.0f ? -0.5f : 0.5f));
+}
+
 void CellViewerRenderCell(
 	COLOR32   *px,
 	int       *covbuf,
@@ -1016,10 +1020,10 @@ void CellViewerRenderCell(
 	NCER_CELL *cell,
 	int        xOffs,
 	int        yOffs,
-	float      a,
-	float      b, 
-	float      c,
-	float      d
+	double     a,
+	double     b, 
+	double     c,
+	double     d
 ) {
 	//adjust (X,Y) offset to center of preview
 	xOffs += 256;
@@ -1035,21 +1039,21 @@ void CellViewerRenderCell(
 	}
 
 	//compute inverse matrix parameters.
-	float invA = 1.0f, invB = 0.0f, invC = 0.0f, invD = 1.0f;
-	if (a != 1.0f || b != 0.0f || c != 0.0f || d != 1.0f) {
+	double invA = 1.0, invB = 0.0, invC = 0.0, invD = 1.0;
+	if (a != 1.0 || b != 0.0 || c != 0.0 || d != 1.0) {
 		//not identity matrix
-		float det = a * d - b * c; // DBCA
-		if (det != 0.0f) {
+		double det = a * d - b * c; // DBCA
+		if (det != 0.0) {
 			invA = d / det;
 			invB = -b / det;
 			invC = -c / det;
 			invD = a / det;
 		} else {
 			//max scale identity
-			invA = 127.99609375f;
-			invB = 0.0f;
-			invC = 0.0f;
-			invD = 127.99609375f;
+			invA = 127.99609375;
+			invB = 0.0;
+			invC = 0.0;
+			invD = 127.99609375;
 		}
 	}
 
@@ -1116,14 +1120,14 @@ void CellViewerRenderCell(
 			//transform about center
 			int realWidth = info.width << info.doubleSize;
 			int realHeight = info.height << info.doubleSize;
-			float cx = (realWidth - 1) * 0.5f; // rotation center X in OBJ
-			float cy = (realHeight - 1) * 0.5f; // rotation center Y in OBJ
+			double cx = (realWidth - 1) * 0.5; // rotation center X in OBJ
+			double cy = (realHeight - 1) * 0.5; // rotation center Y in OBJ
 
 			//transform coordinate origin by matrix transform
 			int movedX = x + realWidth / 2;
 			int movedY = y + realHeight / 2;
-			int movedX2 = (int) (movedX * a + movedY * b);
-			int movedY2 = (int) (movedX * c + movedY * d);
+			int movedX2 = FloatToInt(movedX * a + movedY * b);
+			int movedY2 = FloatToInt(movedX * c + movedY * d);
 
 			//un-correct moved position from center to top-left
 			movedX = movedX2 - realWidth / 2;
@@ -1134,8 +1138,8 @@ void CellViewerRenderCell(
 				for (int k = 0; k < realWidth; k++) {
 					int destX = (movedX + k + xOffs) & 0x1FF;
 
-					int srcX = (int) (((((float) k) - cx) * invA + (((float) j) - cy) * invB) + cx);
-					int srcY = (int) (((((float) k) - cx) * invC + (((float) j) - cy) * invD) + cy);
+					int srcX = FloatToInt(((((double) k) - cx) * invA + (((double) j) - cy) * invB) + cx);
+					int srcY = FloatToInt(((((double) k) - cx) * invC + (((double) j) - cy) * invD) + cy);
 
 					//if double size, adjust source coordinate by the excess size
 					if (info.doubleSize) {
