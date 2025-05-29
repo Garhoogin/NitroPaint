@@ -64,6 +64,27 @@ extern HICON g_appIcon;
 #define ANCHOR_SIZE                 6 // anchor point size
 #define CELL_PADDING_SIZE           8 // cell padding size
 
+// interpolation settings
+typedef struct AnmViewerInterpolateSetting_ {
+	//inputs:
+	ANIM_DATA_SRT start;              // start transformation
+	ANIM_DATA_SRT end;                // end transformation
+
+	//UI inputs:
+	unsigned int linear    : 1;       // interpolate linear transformation (rather than SRT)
+	unsigned int clockwise : 1;       // interpolate angle clockwise (if not linear)
+	unsigned int totalDuration;       // total duration of generated animation
+	unsigned int nFrames;             // number of frames to generate
+
+	//outputs:
+	ANIM_DATA_SRT *result;            // resulting interpolated frames (excluding start+end)
+	int *durations;                   // resulting frame durations
+	int nResult;                      // number of interpolated frames
+} AnmViewerInterpolateSetting;
+
+static int AnmViewerPromptInterpolation(NANRVIEWERDATA *data, AnmViewerInterpolateSetting *setting);
+
+
 static void AnmViewerStopPlayback(NANRVIEWERDATA *data);
 static void AnmViewerStartPlayback(NANRVIEWERDATA *data);
 static void AnmViewerTickPlayback(NANRVIEWERDATA *data);
@@ -2273,6 +2294,49 @@ static void AnmViewerCmdInsertFrameBelow(NANRVIEWERDATA *data) {
 	AnmViewerInsertFrame(data, data->currentFrame + 1);
 }
 
+static void AnmViewerCmdInterpolateBelow(NANRVIEWERDATA *data) {
+	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
+	if (seq == NULL) return;
+
+	int frame0 = data->currentFrame;
+	int frame1 = frame0 + 1;
+
+	//bound check
+	if (frame0 < 0 || frame0 >= seq->nFrames) return;
+	if (frame1 < 0 || frame1 >= seq->nFrames) return;
+
+	//prompt interpolation parameters
+	AnmViewerInterpolateSetting setting = { 0 };
+	setting.linear = 0;        // default: not linear
+	setting.clockwise = 1;     // default: rotations clockwise
+	setting.nFrames = 1;       // default: 1 generated frame
+	setting.totalDuration = 4; // default: 4 frames duration
+	AnmViewerGetAnimFrame(data, data->currentAnim, frame0, &setting.start, NULL);
+	AnmViewerGetAnimFrame(data, data->currentAnim, frame1, &setting.end, NULL);
+
+	int status = AnmViewerPromptInterpolation(data, &setting);
+	if (!status) return;
+
+	//put
+	seq->nFrames += setting.nResult;
+	seq->frames = (FRAME_DATA *) realloc(seq->frames, seq->nFrames * sizeof(FRAME_DATA));
+	memmove(&seq->frames[frame1 + setting.nResult], &seq->frames[frame1], (seq->nFrames - frame1 - setting.nResult) * sizeof(FRAME_DATA));
+
+	const unsigned int frameSizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+	FRAME_DATA *dest = &seq->frames[frame1];
+	for (int i = 0; i < setting.nResult; i++) {
+		dest[i].pad_ = 0xBEEF;
+		dest[i].nFrames = setting.durations[i];
+		dest[i].animationData = calloc(1, frameSizes[seq->type & 0xFFFF]);
+		data->currentFrame = frame1 + i;
+		AnmViewerPutCurrentAnimFrame(data, &setting.result[i], NULL);
+	}
+	AnmViewerSetCurrentFrame(data, frame0, TRUE);
+
+	free(setting.result);
+	free(setting.durations);
+}
+
 static LRESULT CALLBACK AnmViewerFrameListProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
 
@@ -2425,6 +2489,9 @@ static LRESULT CALLBACK AnmViewerFrameListProc(HWND hWnd, UINT msg, WPARAM wPara
 					case ID_ANMMENU_INSERTBELOW:
 						AnmViewerCmdInsertFrameBelow(data);
 						break;
+					case ID_ANMMENU_INTERPOLATEBELOW:
+						AnmViewerCmdInterpolateBelow(data);
+						break;
 				}
 				AnmViewerFrameListUpdate(data);
 				InvalidateRect(data->hWndPreview, NULL, FALSE);
@@ -2442,6 +2509,195 @@ static LRESULT CALLBACK AnmViewerFrameListProc(HWND hWnd, UINT msg, WPARAM wPara
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
+
+static LRESULT CALLBACK AnmViweerInterpProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case NV_INITIALIZE:
+		{
+			data = (NANRVIEWERDATA *) lParam;
+			SetWindowLongPtr(hWnd, 0, lParam);
+
+			AnmViewerInterpolateSetting *setting = data->interpData;
+
+			WCHAR framesbuf[16], durationbuf[16];
+			wsprintfW(framesbuf, L"%d", setting->nFrames);
+			wsprintfW(durationbuf, L"%d", setting->totalDuration);
+
+			CreateStatic(hWnd, L"Generate Frames:", 10, 10, 100, 22);
+			data->hWndInterpFrames = CreateEdit(hWnd, framesbuf, 110, 10, 75, 22, TRUE);
+			CreateStatic(hWnd, L"Total Duration:", 10, 37, 100, 22);
+			data->hWndInterpDuration = CreateEdit(hWnd, durationbuf, 110, 37, 75, 22, TRUE);
+			data->hWndCheckboxLinear = CreateCheckbox(hWnd, L"Linear", 10, 64, 100, 22, setting->linear);
+			data->hWndCheckboxClockwise = CreateCheckbox(hWnd, L"Clockwise", 10, 91, 100, 22, setting->clockwise);
+			data->hWndInterpOK = CreateButton(hWnd, L"OK", 110, 116, 75, 22, TRUE);
+
+			//in linear mode, disable clockwise setting
+			if (setting->linear) setStyle(data->hWndCheckboxClockwise, TRUE, WS_DISABLED);
+
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 100 + 75 + 20, 116 + 22 + 10);
+			SetFocus(data->hWndInterpFrames);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			if (data == NULL) break;
+			AnmViewerInterpolateSetting *setting = data->interpData;
+
+			HWND hWndCtl = (HWND) lParam;
+			int notif = HIWORD(wParam);
+			if (hWndCtl == data->hWndCheckboxLinear && notif == BN_CLICKED) {
+				int state = GetCheckboxChecked(hWndCtl);
+				setting->linear = state;
+
+				setStyle(data->hWndCheckboxClockwise, setting->linear, WS_DISABLED);
+				InvalidateRect(data->hWndCheckboxClockwise, NULL, FALSE);
+			} else if (hWndCtl == data->hWndCheckboxClockwise && notif == BN_CLICKED) {
+				int state = GetCheckboxChecked(hWndCtl);
+				setting->clockwise = state;
+			} else if ((hWndCtl == data->hWndInterpOK || LOWORD(wParam) == IDOK) && notif == BN_CLICKED) {
+
+				//fill out interpolation
+				unsigned int nFrames = GetEditNumber(data->hWndInterpFrames);
+				unsigned int totalDuration = GetEditNumber(data->hWndInterpDuration);
+
+				setting->nFrames = nFrames;
+				setting->totalDuration = totalDuration;
+				setting->nResult = nFrames;
+				setting->durations = (int *) calloc(nFrames, sizeof(int));
+				setting->result = (ANIM_DATA_SRT *) calloc(nFrames, sizeof(ANIM_DATA_SRT));
+
+				//evenly divide total duration
+				unsigned int nFramesDenom = nFrames;
+				for (unsigned int i = 0; i < nFrames; i++) {
+					setting->durations[i] = (2 * totalDuration + nFramesDenom) / (2 * nFramesDenom);
+
+					nFramesDenom--;
+					totalDuration -= setting->durations[i];
+				}
+
+				//get rotation parameter
+				unsigned int rot0 = setting->start.rotZ;
+				unsigned int rot1 = setting->end.rotZ;
+				if (setting->clockwise) {
+					//clockwise: ensure rot1 >= rot0
+					if (rot1 < rot0) {
+						rot1 += 65536;
+					}
+				} else {
+					//counterclockwise: ensure rot0 >= rot1
+					if (rot0 < rot1) {
+						rot0 += 65536;
+					}
+				}
+
+				//initial matrix transformation
+				double mtxA0 = (setting->start.sx / 4096.0f) * cos(RAD_360DEG * setting->start.rotZ / 65536.0f);
+				double mtxA1 = (setting->end.sx / 4096.0f) * cos(RAD_360DEG * setting->end.rotZ / 65536.0f);
+				double mtxB0 = (setting->start.sy / 4096.0f) * sin(RAD_360DEG * setting->start.rotZ / 65536.0f);
+				double mtxB1 = (setting->end.sy / 4096.0f) * sin(RAD_360DEG * setting->end.rotZ / 65536.0f);
+				double mtxC0 = (setting->start.sx / 4096.0f) * -sin(RAD_360DEG * setting->start.rotZ / 65536.0f);
+				double mtxC1 = (setting->end.sx / 4096.0f) * -sin(RAD_360DEG * setting->end.rotZ / 65536.0f);
+				double mtxD0 = (setting->start.sy / 4096.0f) * cos(RAD_360DEG * setting->start.rotZ / 65536.0f);
+				double mtxD1 = (setting->end.sy / 4096.0f) * cos(RAD_360DEG * setting->end.rotZ / 65536.0f);
+
+				//write interpolation
+				for (unsigned int i = 0; i < nFrames; i++) {
+					int weight0 = 2 * (nFrames - i);
+					int weight1 = 2 * (i + 1);
+					int totalWeight = weight0 + weight1;
+
+					//set index, px, py (same whether linear or not)
+					int px = setting->start.px * weight0 + setting->end.px * weight1;
+					int py = setting->start.py * weight0 + setting->end.py * weight1;
+
+					setting->result[i].index = (setting->start.index * weight0 + setting->end.index * weight1 + totalWeight / 2) / totalWeight;
+					setting->result[i].px = (px + (px < 0 ? -totalWeight : totalWeight) / 2) / totalWeight;
+					setting->result[i].py = (py + (py < 0 ? -totalWeight : totalWeight) / 2) / totalWeight;
+
+					if (setting->linear) {
+						//linear: interpolate linearly
+						double mtxA = (mtxA0 * weight0 + mtxA1 * weight1) / ((double) totalWeight);
+						double mtxB = (mtxB0 * weight0 + mtxB1 * weight1) / ((double) totalWeight);
+						double mtxC = (mtxC0 * weight0 + mtxC1 * weight1) / ((double) totalWeight);
+						double mtxD = (mtxD0 * weight0 + mtxD1 * weight1) / ((double) totalWeight);
+
+						//correct for scale, ensure valid bounds
+						double sxMag = sqrt(mtxA * mtxA + mtxC * mtxC);
+						double syMag = sqrt(mtxB * mtxB + mtxD * mtxD);
+						if (sxMag > 0.0f) {
+							mtxA /= sxMag;
+							mtxC /= sxMag;
+						}
+						if (syMag > 0.0f) {
+							mtxB /= syMag;
+							mtxD /= syMag;
+						}
+
+						if (mtxA > 1.0f) mtxA = 1.0f; if (mtxA < -1.0f) mtxA = -1.0f;
+						if (mtxB > 1.0f) mtxB = 1.0f; if (mtxB < -1.0f) mtxB = -1.0f;
+						if (mtxC > 1.0f) mtxC = 1.0f; if (mtxC < -1.0f) mtxC = -1.0f;
+						if (mtxD > 1.0f) mtxD = 1.0f; if (mtxD < -1.0f) mtxD = -1.0f;
+
+						//if matrix B and C have the same sign, then flip sign of ScaleY.
+						double angleMult = 1.0;
+						if ((mtxA < 0.0f && mtxD > 0.0f) || (mtxA > 0.0f && mtxD < 0.0f)) {
+							syMag = -syMag;
+							mtxC = -mtxC;
+							mtxD = -mtxD;
+							angleMult = -1.0;
+						}
+
+						//mtxA and mtxB both scaled by Sx, so have the same sign w.r.t. each other.
+						double angle = acos(mtxA);
+						if (mtxC >= 0.0f) {
+							//other half of circle
+							angle = -angle;
+						}
+						angle *= angleMult;
+
+						setting->result[i].sx = FloatToInt((float) sxMag * 4096.0f);
+						setting->result[i].sy = FloatToInt((float) syMag * 4096.0f);
+						setting->result[i].rotZ = FloatToInt((float) angle * 65536.0f / RAD_360DEG) & 0xFFFF;
+					} else {
+						//nonlinear: interpolate each parameter
+						int sx = setting->start.sx * weight0 + setting->end.sx * weight1;
+						int sy = setting->start.sy * weight0 + setting->end.sy * weight1;
+
+						setting->result[i].sx = (sx + (sx < 0 ? -totalWeight : totalWeight) / 2) / totalWeight;
+						setting->result[i].sy = (sy + (sy < 0 ? -totalWeight : totalWeight) / 2) / totalWeight;
+						setting->result[i].rotZ = ((rot0 * weight0 + rot1 * weight1 + totalWeight / 2) / totalWeight) & 0xFFFF;
+					}
+				}
+
+				data->interpResult = 1;
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			} else if (LOWORD(wParam) == IDCANCEL && notif == BN_CLICKED) {
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+static int AnmViewerPromptInterpolation(NANRVIEWERDATA *data, AnmViewerInterpolateSetting *setting) {
+	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND h = CreateWindow(L"NanrInterpClass", L"Create Interpolation", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+		hWndMain, NULL, NULL, NULL);
+	data->interpData = setting;
+	data->interpResult = 0;
+	SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
+	ShowWindow(h, SW_SHOW);
+	DoModal(h);
+
+	return data->interpResult;
+}
+
+
+
 void AnmViewerUpdateCellBounds(HWND hWnd) {
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) EditorGetData(hWnd);
 	AnmViewerSetDefaultAnchor(data);
@@ -2455,6 +2711,7 @@ void RegisterNanrViewerClass(void) {
 	EditorAddFilter(cls, NANR_TYPE_GHOSTTRICK, L"bin", L"Ghost Trick Files (*.bin)\0*.bin\0");
 	RegisterGenericClass(L"NanrPreviewClass", AnmViewerPreviewWndProc, sizeof(void *));
 	RegisterGenericClass(L"NanrFrameClass", AnmViewerFrameListProc, sizeof(void *));
+	RegisterGenericClass(L"NanrInterpClass", AnmViweerInterpProc, sizeof(void *));
 }
 
 HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {

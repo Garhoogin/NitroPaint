@@ -70,6 +70,14 @@ typedef struct {
 	WCHAR frameListBuffers[8][16];
 	int suppressFrameList;
 
+	int interpResult;
+	void *interpData;
+	HWND hWndCheckboxLinear;
+	HWND hWndCheckboxClockwise;
+	HWND hWndInterpFrames;
+	HWND hWndInterpDuration;
+	HWND hWndInterpOK;
+
 } NANRVIEWERDATA;
 
 VOID RegisterNanrViewerClass(VOID);

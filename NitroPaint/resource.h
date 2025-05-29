@@ -230,13 +230,14 @@
 #define ID_ANMMENU_INSERTABOVE          40242
 #define ID_ANMMENU_INSERTBELOW          40243
 #define ID_ANMMENU_SETDURATION          40244
+#define ID_ANMMENU_INTERPOLATEBELOW     40245
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40245
+#define _APS_NEXT_COMMAND_VALUE         40246
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
