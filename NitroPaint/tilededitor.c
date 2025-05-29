@@ -6,57 +6,6 @@ static void SwapInts(int *i1, int *i2) {
 	*i2 = temp;
 }
 
-static void SwapPoints(int *x1, int *y1, int *x2, int *y2) {
-	SwapInts(x1, x2);
-	SwapInts(y1, y2);
-}
-
-
-// ----- internal functions for rendering
-
-static void TedDrawLine(FrameBuffer *fb, COLOR32 col, int x1, int y1, int x2, int y2) {
-	//compute deltas
-	int dx = x2 - x1, dy = y2 - y1;
-	if (dx < 0) dx = -dx;
-	if (dy < 0) dy = -dy;
-
-	//if dx and dy are zero, put one pixel (avoid divide by zero)
-	if (dx == 0 && dy == 0) {
-		if (x1 >= 0 && y1 >= 0 && x1 < fb->width && y1 < fb->height) {
-			fb->px[x1 + y1 * fb->width] = col;
-		}
-		return;
-	}
-
-	//draw horizontally or vertically
-	if (dx >= dy) {
-		//draw left->right
-		if (x2 < x1) SwapPoints(&x1, &y1, &x2, &y2);
-
-		//scan
-		for (int i = 0; i <= dx; i++) {
-			int px = i + x1;
-			int py = ((i * (y2 - y1)) * 2 + dx) / (dx * 2) + y1;
-			if (px >= 0 && py >= 0 && px < fb->width && py < fb->height) {
-				fb->px[px + py * fb->width] = col;
-			}
-		}
-	} else {
-		//draw top->bottom. ensure top point first
-		if (y2 < y1) SwapPoints(&x1, &y1, &x2, &y2);
-
-		//scan
-		for (int i = 0; i <= dy; i++) {
-			int px = ((i * (x2 - x1)) * 2 + dy) / (dy * 2) + x1;
-			int py = i + y1;
-			if (px >= 0 && py >= 0 && px < fb->width && py < fb->height) {
-				fb->px[px + py * fb->width] = col;
-			}
-		}
-	}
-}
-
-
 
 // ----- margin functions
 
@@ -175,12 +124,12 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 		for (int x = 0; x < viewWidth; x++) {
 			if (((x + scrollX) % tileW) == 0) {
 				//tick
-				TedDrawLine(&ted->fbMargin, 0xFFFFFF, x + MARGIN_TOTAL_SIZE, 0, x + MARGIN_TOTAL_SIZE, tickHeight - 1);
+				FbDrawLine(&ted->fbMargin, 0xFFFFFF, x + MARGIN_TOTAL_SIZE, 0, x + MARGIN_TOTAL_SIZE, tickHeight - 1);
 			}
 		}
 		for (int y = 0; y < viewHeight; y++) {
 			if (((y + scrollY) % tileH) == 0) {
-				TedDrawLine(&ted->fbMargin, 0xFFFFFF, 0, y + MARGIN_TOTAL_SIZE, tickHeight - 1, y + MARGIN_TOTAL_SIZE);
+				FbDrawLine(&ted->fbMargin, 0xFFFFFF, 0, y + MARGIN_TOTAL_SIZE, tickHeight - 1, y + MARGIN_TOTAL_SIZE);
 			}
 		}
 
@@ -190,16 +139,16 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 			int selX2 = (max(ted->selStartX, ted->selEndX) + 1) * tileW + MARGIN_TOTAL_SIZE - scrollX;
 			int selY1 = (min(ted->selStartY, ted->selEndY) + 0) * tileH + MARGIN_TOTAL_SIZE - scrollY;
 			int selY2 = (max(ted->selStartY, ted->selEndY) + 1) * tileH + MARGIN_TOTAL_SIZE - scrollY;
-			TedDrawLine(&ted->fbMargin, 0xFFFF00, selX1, 0, selX1, MARGIN_SIZE - 1);
-			TedDrawLine(&ted->fbMargin, 0xFFFF00, selX2, 0, selX2, MARGIN_SIZE - 1);
-			TedDrawLine(&ted->fbMargin, 0xFFFF00, 0, selY1, MARGIN_SIZE - 1, selY1);
-			TedDrawLine(&ted->fbMargin, 0xFFFF00, 0, selY2, MARGIN_SIZE - 1, selY2);
+			FbDrawLine(&ted->fbMargin, 0xFFFF00, selX1, 0, selX1, MARGIN_SIZE - 1);
+			FbDrawLine(&ted->fbMargin, 0xFFFF00, selX2, 0, selX2, MARGIN_SIZE - 1);
+			FbDrawLine(&ted->fbMargin, 0xFFFF00, 0, selY1, MARGIN_SIZE - 1, selY1);
+			FbDrawLine(&ted->fbMargin, 0xFFFF00, 0, selY2, MARGIN_SIZE - 1, selY2);
 		}
 
 		//draw mouse pos?
 		if (mouse.x != -1 && mouse.y != -1) {
-			TedDrawLine(&ted->fbMargin, 0xFF0000, mouse.x + MARGIN_TOTAL_SIZE, 0, mouse.x + MARGIN_TOTAL_SIZE, marginSize - 1);
-			TedDrawLine(&ted->fbMargin, 0xFF0000, 0, mouse.y + MARGIN_TOTAL_SIZE, marginSize - 1, mouse.y + MARGIN_TOTAL_SIZE);
+			FbDrawLine(&ted->fbMargin, 0xFF0000, mouse.x + MARGIN_TOTAL_SIZE, 0, mouse.x + MARGIN_TOTAL_SIZE, marginSize - 1);
+			FbDrawLine(&ted->fbMargin, 0xFF0000, 0, mouse.y + MARGIN_TOTAL_SIZE, marginSize - 1, mouse.y + MARGIN_TOTAL_SIZE);
 		}
 	}
 
@@ -425,13 +374,13 @@ void TedOnViewerPaint(EDITOR_DATA *data, TedData *ted) {
 		int dy = -scrollY;
 		int borderOffsetX = -(!data->showBorders || selEndX == (ted->tilesX - 1));
 		int borderOffsetY = -(!data->showBorders || selEndY == (ted->tilesY - 1));
-		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, selStartY * tileH + dy,
+		FbDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, selStartY * tileH + dy,
 			(selEndX + 1) * tileW + dx - 1, selStartY * tileH + dy);
-		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, selStartY * tileH + dy,
+		FbDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, selStartY * tileH + dy,
 			selStartX * tileW + dx, (selEndY + 1) * tileH + dy - 1);
-		TedDrawLine(&ted->fb, 0xFFFF00, (selEndX + 1) * tileW + dx + borderOffsetX, selStartY * tileH + dy,
+		FbDrawLine(&ted->fb, 0xFFFF00, (selEndX + 1) * tileW + dx + borderOffsetX, selStartY * tileH + dy,
 			(selEndX + 1) * tileW + dx + borderOffsetX, (selEndY + 1) * tileH + dy + borderOffsetY);
-		TedDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, (selEndY + 1) * tileH + dy + borderOffsetY,
+		FbDrawLine(&ted->fb, 0xFFFF00, selStartX * tileW + dx, (selEndY + 1) * tileH + dy + borderOffsetY,
 			(selEndX + 1) * tileW + dx + borderOffsetX, (selEndY + 1) * tileH + dy + borderOffsetY);
 	}
 

@@ -336,89 +336,7 @@ static void AnmViewerGetCurrentFrameTransform(NANRVIEWERDATA *data, double *pMtx
 }
 
 
-
-
 // ----- rendering helper routines
-
-static void SwapInts(int *i1, int *i2) {
-	int temp = *i1;
-	*i1 = *i2;
-	*i2 = temp;
-}
-
-static void SwapPoints(int *x1, int *y1, int *x2, int *y2) {
-	SwapInts(x1, x2);
-	SwapInts(y1, y2);
-}
-
-static void AnmViewerPutPixel(FrameBuffer *fb, int x, int y, COLOR32 col) {
-	if (x < 0 || x >= fb->width) return;
-	if (y < 0 || y >= fb->height) return;
-
-	fb->px[x + y * fb->width] = col;
-}
-
-static void AnmViewerDrawLine(FrameBuffer *fb, COLOR32 col, int x1, int y1, int x2, int y2) {
-	//compute deltas
-	int dx = x2 - x1, dy = y2 - y1;
-	if (dx < 0) dx = -dx;
-	if (dy < 0) dy = -dy;
-
-	//if dx and dy are zero, put one pixel (avoid divide by zero)
-	if (dx == 0 && dy == 0) {
-		if (x1 >= 0 && y1 >= 0 && x1 < fb->width && y1 < fb->height) {
-			fb->px[x1 + y1 * fb->width] = col;
-		}
-		return;
-	}
-
-	//draw horizontally or vertically
-	if (dx >= dy) {
-		//draw left->right
-		if (x2 < x1) SwapPoints(&x1, &y1, &x2, &y2);
-
-		//scan
-		for (int i = 0; i <= dx; i++) {
-			int px = i + x1;
-			int py = ((i * (y2 - y1)) * 2 + dx) / (dx * 2) + y1;
-			if (px >= 0 && py >= 0 && px < fb->width && py < fb->height) {
-				fb->px[px + py * fb->width] = col;
-			}
-		}
-	} else {
-		//draw top->bottom. ensure top point first
-		if (y2 < y1) SwapPoints(&x1, &y1, &x2, &y2);
-
-		//scan
-		for (int i = 0; i <= dy; i++) {
-			int px = ((i * (x2 - x1)) * 2 + dy) / (dy * 2) + x1;
-			int py = i + y1;
-			if (px >= 0 && py >= 0 && px < fb->width && py < fb->height) {
-				fb->px[px + py * fb->width] = col;
-			}
-		}
-	}
-}
-
-static void AnmViewerRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
-	int r2 = cr * cr;
-	col = REVERSE(col);
-
-	//use midpoint circle algorithm
-	int nStep = (int) ceil(((float) cr) * 0.7071f);
-	for (int x = 0; x < nStep; x++) {
-		//compute intersection
-		int y = (int) (sqrt(r2 - x * x) + 0.5f);
-		AnmViewerPutPixel(fb, cx + x, cy + y, col);
-		AnmViewerPutPixel(fb, cx - x, cy + y, col);
-		AnmViewerPutPixel(fb, cx + x, cy - y, col);
-		AnmViewerPutPixel(fb, cx - x, cy - y, col);
-		AnmViewerPutPixel(fb, cx + y, cy + x, col);
-		AnmViewerPutPixel(fb, cx - y, cy + x, col);
-		AnmViewerPutPixel(fb, cx + y, cy - x, col);
-		AnmViewerPutPixel(fb, cx - y, cy - x, col);
-	}
-}
 
 static void AnmViewerGetCellBoundCorners(int *ptUL, int *ptUR, int *ptDL, int *ptDR, int x, int y, int w, int h, double a, double b, double c, double d, int tx, int ty) {
 	//get transformed coordinates
@@ -440,10 +358,10 @@ static void AnmViewerDrawBoxRot(FrameBuffer *fb, const COLOR32 *cols, int x, int
 	AnmViewerGetCellBoundCorners(&ptUL[0], &ptUR[0], &ptDL[0], &ptDR[0], x, y, w, h, a, b, c, d, cx, cy);
 
 	//draw lines
-	AnmViewerDrawLine(fb, cols[0], ptUL[0], ptUL[1], ptUR[0], ptUR[1]);
-	AnmViewerDrawLine(fb, cols[3], ptUR[0], ptUR[1], ptDR[0], ptDR[1]);
-	AnmViewerDrawLine(fb, cols[1], ptDR[0], ptDR[1], ptDL[0], ptDL[1]);
-	AnmViewerDrawLine(fb, cols[2], ptDL[0], ptDL[1], ptUL[0], ptUL[1]);
+	FbDrawLine(fb, cols[0], ptUL[0], ptUL[1], ptUR[0], ptUR[1]);
+	FbDrawLine(fb, cols[3], ptUR[0], ptUR[1], ptDR[0], ptDR[1]);
+	FbDrawLine(fb, cols[1], ptDR[0], ptDR[1], ptDL[0], ptDL[1]);
+	FbDrawLine(fb, cols[2], ptDL[0], ptDL[1], ptUL[0], ptUL[1]);
 }
 
 static void AnmViewerGetCellBounds(NCER_CELL *cell, int *pBoundX, int *pBoundY, int *pBoundW, int *pBoundH) {
@@ -1691,7 +1609,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 
 		int cx, cy, r;
 		AnmViewerGetRotCircle(data, &cx, &cy, &r);
-		AnmViewerRenderSolidCircle(&data->fb, cx + 256 * data->scale - scrollX, cy + 128 * data->scale - scrollY, r, col);
+		FbRenderSolidCircle(&data->fb, cx + 256 * data->scale - scrollX, cy + 128 * data->scale - scrollY, r, col);
 	}
 
 	//draw anchor
@@ -1703,10 +1621,10 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 		int hit = AnmViewerGetEffectiveHit(data);
 
 		COLOR32 col = (hit == ANM_HIT_ANCHOR ? 0xFF0000 : 0xFFFF00);
-		AnmViewerDrawLine(&data->fb, col, anchorX - ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2, anchorX + ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2);
-		AnmViewerDrawLine(&data->fb, col, anchorX + ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2, anchorX + ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2);
-		AnmViewerDrawLine(&data->fb, col, anchorX + ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2, anchorX - ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2);
-		AnmViewerDrawLine(&data->fb, col, anchorX - ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2, anchorX - ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2);
+		FbDrawLine(&data->fb, col, anchorX - ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2, anchorX + ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2);
+		FbDrawLine(&data->fb, col, anchorX + ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2, anchorX + ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2);
+		FbDrawLine(&data->fb, col, anchorX + ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2, anchorX - ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2);
+		FbDrawLine(&data->fb, col, anchorX - ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2, anchorX - ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2);
 	}
 
 	//draw rotation point
@@ -1718,10 +1636,10 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 		int hit = AnmViewerGetEffectiveHit(data);
 
 		COLOR32 col = (hit == ANM_HIT_ROT_POINT ? 0xFF0000 : 0xFFFF00);
-		AnmViewerDrawLine(&data->fb, col, anchorX - ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2, anchorX + ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2);
-		AnmViewerDrawLine(&data->fb, col, anchorX + ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2, anchorX + ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2);
-		AnmViewerDrawLine(&data->fb, col, anchorX + ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2, anchorX - ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2);
-		AnmViewerDrawLine(&data->fb, col, anchorX - ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2, anchorX - ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2);
+		FbDrawLine(&data->fb, col, anchorX - ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2, anchorX + ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2);
+		FbDrawLine(&data->fb, col, anchorX + ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2, anchorX + ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2);
+		FbDrawLine(&data->fb, col, anchorX + ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2, anchorX - ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2);
+		FbDrawLine(&data->fb, col, anchorX - ANCHOR_SIZE / 2, anchorY + ANCHOR_SIZE / 2, anchorX - ANCHOR_SIZE / 2, anchorY - ANCHOR_SIZE / 2);
 	}
 
 	FbDraw(&data->fb, hDC, 0, 0, rcClient.right, rcClient.bottom, 0, 0);

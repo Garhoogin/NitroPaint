@@ -61,3 +61,87 @@ void FbDraw(FrameBuffer *fb, HDC hDC, int x, int y, int width, int height, int s
 
 	BitBlt(hDC, x, y, width, height, fb->hDC, srcX, srcY, SRCCOPY);
 }
+
+
+// ----- rendering helper routines
+
+static void SwapInts(int *i1, int *i2) {
+	int temp = *i1;
+	*i1 = *i2;
+	*i2 = temp;
+}
+
+static void SwapPoints(int *x1, int *y1, int *x2, int *y2) {
+	SwapInts(x1, x2);
+	SwapInts(y1, y2);
+}
+
+void FbPutPixel(FrameBuffer *fb, int x, int y, COLOR32 col) {
+	if (x < 0 || x >= fb->width) return;
+	if (y < 0 || y >= fb->height) return;
+
+	fb->px[x + y * fb->width] = col;
+}
+
+void FbDrawLine(FrameBuffer *fb, COLOR32 col, int x1, int y1, int x2, int y2) {
+	//compute deltas
+	int dx = x2 - x1, dy = y2 - y1;
+	if (dx < 0) dx = -dx;
+	if (dy < 0) dy = -dy;
+
+	//if dx and dy are zero, put one pixel (avoid divide by zero)
+	if (dx == 0 && dy == 0) {
+		if (x1 >= 0 && y1 >= 0 && x1 < fb->width && y1 < fb->height) {
+			fb->px[x1 + y1 * fb->width] = col;
+		}
+		return;
+	}
+
+	//draw horizontally or vertically
+	if (dx >= dy) {
+		//draw left->right
+		if (x2 < x1) SwapPoints(&x1, &y1, &x2, &y2);
+
+		//scan
+		for (int i = 0; i <= dx; i++) {
+			int px = i + x1;
+			int py = ((i * (y2 - y1)) * 2 + dx) / (dx * 2) + y1;
+			if (px >= 0 && py >= 0 && px < fb->width && py < fb->height) {
+				fb->px[px + py * fb->width] = col;
+			}
+		}
+	} else {
+		//draw top->bottom. ensure top point first
+		if (y2 < y1) SwapPoints(&x1, &y1, &x2, &y2);
+
+		//scan
+		for (int i = 0; i <= dy; i++) {
+			int px = ((i * (x2 - x1)) * 2 + dy) / (dy * 2) + x1;
+			int py = i + y1;
+			if (px >= 0 && py >= 0 && px < fb->width && py < fb->height) {
+				fb->px[px + py * fb->width] = col;
+			}
+		}
+	}
+}
+
+void FbRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
+	int r2 = cr * cr;
+	col = REVERSE(col);
+
+	//use midpoint circle algorithm
+	int nStep = (int) ceil(((float) cr) * 0.7071f);
+	for (int x = 0; x < nStep; x++) {
+		//compute intersection
+		int y = (int) (sqrt(r2 - x * x) + 0.5f);
+		FbPutPixel(fb, cx + x, cy + y, col);
+		FbPutPixel(fb, cx - x, cy + y, col);
+		FbPutPixel(fb, cx + x, cy - y, col);
+		FbPutPixel(fb, cx - x, cy - y, col);
+		FbPutPixel(fb, cx + y, cy + x, col);
+		FbPutPixel(fb, cx - y, cy + x, col);
+		FbPutPixel(fb, cx + y, cy - x, col);
+		FbPutPixel(fb, cx - y, cy - x, col);
+	}
+}
+

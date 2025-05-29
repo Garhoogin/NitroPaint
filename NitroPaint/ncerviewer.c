@@ -3143,13 +3143,6 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 
 // ----- preview code
 
-static void CellViewerPutPixel(FrameBuffer *fb, int x, int y, COLOR32 col) {
-	if (x < 0 || x >= fb->width) return;
-	if (y < 0 || y >= fb->height) return;
-	
-	fb->px[x + y * fb->width] = col;
-}
-
 static void CellViewerRenderHighContrastPixel(FrameBuffer *fb, int x, int y, int chno) {
 	if (x < 0 || x >= fb->width) return;
 	if (y < 0 || y >= fb->height) return;
@@ -3213,26 +3206,6 @@ static void CellViewerRenderDottedRect(FrameBuffer *fb, int x, int y, int w, int
 			CellViewerRenderInvertPixel(fb, x, pxY);
 			CellViewerRenderInvertPixel(fb, x + w - 1, pxY);
 		}
-	}
-}
-
-static void CellViewerRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
-	int r2 = cr * cr;
-	col = REVERSE(col);
-
-	//use midpoint circle algorithm
-	int nStep = (int) ceil(((float) cr) * 0.7071f);
-	for (int x = 0; x < nStep; x++) {
-		//compute intersection
-		int y = (int) (sqrt(r2 - x * x) + 0.5f);
-		CellViewerPutPixel(fb, cx + x, cy + y, col);
-		CellViewerPutPixel(fb, cx - x, cy + y, col);
-		CellViewerPutPixel(fb, cx + x, cy - y, col);
-		CellViewerPutPixel(fb, cx - x, cy - y, col);
-		CellViewerPutPixel(fb, cx + y, cy + x, col);
-		CellViewerPutPixel(fb, cx - y, cy + x, col);
-		CellViewerPutPixel(fb, cx + y, cy - x, col);
-		CellViewerPutPixel(fb, cx - y, cy - x, col);
 	}
 }
 
@@ -3331,7 +3304,7 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 		//get mid point
 		int midX = (cell->minX + cell->maxX) / 2;
 		int midY = (cell->minY + cell->maxY) / 2;
-		CellViewerRenderSolidCircle(&data->fb, (midX + 256) * data->scale - scrollX, (midY + 128) * data->scale - scrollY, 
+		FbRenderSolidCircle(&data->fb, (midX + 256) * data->scale - scrollX, (midY + 128) * data->scale - scrollY, 
 			((cell->cellAttr & 0x3F) << 2) * data->scale, 0x00FFFF);
 	}
 
