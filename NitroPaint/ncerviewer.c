@@ -1044,6 +1044,12 @@ void CellViewerRenderCell(
 			invB = -b / det;
 			invC = -c / det;
 			invD = a / det;
+		} else {
+			//max scale identity
+			invA = 127.99609375f;
+			invB = 0.0f;
+			invC = 0.0f;
+			invD = 127.99609375f;
 		}
 	}
 
