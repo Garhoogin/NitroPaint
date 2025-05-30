@@ -1753,14 +1753,13 @@ static void AnmViewerPreviewOnMouseMove(NANRVIEWERDATA *data) {
 					double centeredX2 = (double) (ptCursor.x + scrollX - 256 * data->scale - data->anchorX * data->scale);
 					double centeredY2 = (double) (ptCursor.y + scrollY - 128 * data->scale - data->anchorY * data->scale);
 
-					double mtx[2][2], trans[2];
-					AnmViewerGetCurrentFrameTransform(data, &mtx[0][0], &trans[0]);
-					AnmViewerInvMtx(&mtx[0][0]);
-
-					double vecUX = mtx[1][0];
-					double vecUY = mtx[1][1];
-					double vecRX = mtx[0][0];
-					double vecRY = mtx[0][1];
+					//compute basis vectors for the current rotation
+					double cosR = cos(data->transStart.rot);
+					double sinR = sin(data->transStart.rot);
+					double vecUX = -sinR;
+					double vecUY = cosR;
+					double vecRX = cosR;
+					double vecRY = sinR;
 
 					double gx = 1.0f, gy = 1.0f; // growth factors
 					if (flg & (ANM_HIT_R | ANM_HIT_L)) {
