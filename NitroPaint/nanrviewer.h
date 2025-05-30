@@ -33,6 +33,9 @@ typedef struct {
 	int direction;               // current animation direction
 	int resetFlag;               // sequence is stopped and will be restarted
 
+	int forceAffine;             // force affine mode for OBJ
+	int forceDoubleSize;         // force double size for OBJ
+
 	int mouseDown;
 	int hit;
 	int mouseDownHit;
@@ -58,6 +61,8 @@ typedef struct {
 	HWND hWndAnimList;           // animation list
 	HWND hWndPreview;            // preview
 	HWND hWndNewSequence;
+	HWND hWndForceAffine;
+	HWND hWndForceDoubleSize;
 
 	HWND hWndPlayPause;
 	HWND hWndStop;

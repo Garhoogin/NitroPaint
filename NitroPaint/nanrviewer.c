@@ -737,7 +737,8 @@ static void AnmViewerRenderGlyphListImage(NANRVIEWERDATA *data, int i) {
 		AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
 		CellViewerRenderCell(data->cellRender, NULL, ncer, ncgr, nclr, frm.index, cell,
 			FloatToInt(trans[0]), FloatToInt(trans[1]),
-			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1]);
+			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
+			data->forceAffine, data->forceDoubleSize);
 	}
 
 	//next, crop the rendered cell
@@ -1252,6 +1253,20 @@ static void AnmViewerCmdOnNewSequence(HWND hWnd, HWND hWndCtl, int notif, void *
 	AnmViewerSetCurrentSequence(data, data->nanr.nSequences - 1, TRUE);
 }
 
+static void AnmViewerCmdOnToggleForceAffine(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) param;
+	data->forceAffine = GetCheckboxChecked(hWndCtl);
+	InvalidateRect(data->hWndPreview, NULL, FALSE);
+	InvalidateRect(data->hWndAnimList, NULL, FALSE);
+}
+
+static void AnmViewerCmdOnToggleForceDoubleSize(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) param;
+	data->forceDoubleSize = GetCheckboxChecked(hWndCtl);
+	InvalidateRect(data->hWndPreview, NULL, FALSE);
+	InvalidateRect(data->hWndAnimList, NULL, FALSE);
+}
+
 static LRESULT CALLBACK AnmViewerSeqListSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT idSubclass, DWORD_PTR data_) {
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) data_;
 
@@ -1277,6 +1292,7 @@ static void AnmViewerOnCreate(NANRVIEWERDATA *data) {
 	data->showBorders = 1;
 
 	data->hWndAnimList = AnmViewerAnimListCreate(data);
+	data->hWndNewSequence = CreateButton(data->hWnd, L"New Sequence", 0, 0, 0, 0, FALSE);
 	data->hWndPreview = CreateWindow(L"NanrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL | WS_CLIPSIBLINGS,
 		300, 0, 300, 300, data->hWnd, NULL, NULL, NULL);
 	FbCreate(&data->fb, data->hWndPreview, 0, 0);
@@ -1284,7 +1300,8 @@ static void AnmViewerOnCreate(NANRVIEWERDATA *data) {
 	data->hWndPlayPause = CreateButton(data->hWnd, L"Play", 0, 0, 0, 0, FALSE);
 	data->hWndStop = CreateButton(data->hWnd, L"Step", 0, 0, 0, 0, FALSE);
 	data->hWndShowFrames = CreateButton(data->hWnd, L"Frames", 0, 0, 0, 0, FALSE);
-	data->hWndNewSequence = CreateButton(data->hWnd, L"New Sequence", 0, 0, 0, 0, FALSE);
+	data->hWndForceAffine = CreateCheckbox(data->hWnd, L"Force Affine", 0, 0, 0, 0, FALSE);
+	data->hWndForceDoubleSize = CreateCheckbox(data->hWnd, L"Force Double Size", 0, 0, 0, 0, FALSE);
 
 	LPCWSTR playModes[] = {
 		//L"[\xFF0F\xFFE3\xFFE3\xFFE3] Forward",
@@ -1304,6 +1321,8 @@ static void AnmViewerOnCreate(NANRVIEWERDATA *data) {
 	UiCtlMgrAddCommand(&data->mgr, data->hWndShowFrames, BN_CLICKED, AnmViewerCmdOnShowFrames);
 	UiCtlMgrAddCommand(&data->mgr, data->hWndPlayMode, CBN_SELCHANGE, AnmViewerCmdOnSetPlayMode);
 	UiCtlMgrAddCommand(&data->mgr, data->hWndNewSequence, BN_CLICKED, AnmViewerCmdOnNewSequence);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndForceAffine, BN_CLICKED, AnmViewerCmdOnToggleForceAffine);
+	UiCtlMgrAddCommand(&data->mgr, data->hWndForceDoubleSize, BN_CLICKED, AnmViewerCmdOnToggleForceDoubleSize);
 
 	SetWindowSubclass(data->hWndAnimList, AnmViewerSeqListSubclassProc, 2, (DWORD_PTR) data);
 }
@@ -1331,6 +1350,10 @@ static int AnmViewerOnSize(NANRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
 
 	int frameButtonX = cellPropX + ctlWidthWide + UI_SCALE_COORD(10, dpiScale);
 	MoveWindow(data->hWndShowFrames, frameButtonX, 0, UI_SCALE_COORD(75, dpiScale), ctlHeight, TRUE);
+
+	int forceCtlX = frameButtonX + UI_SCALE_COORD(75, dpiScale) + UI_SCALE_COORD(10, dpiScale);
+	MoveWindow(data->hWndForceAffine, forceCtlX, 0, UI_SCALE_COORD(80, dpiScale), ctlHeight, TRUE);
+	MoveWindow(data->hWndForceDoubleSize, forceCtlX + UI_SCALE_COORD(80, dpiScale), 0, UI_SCALE_COORD(125, dpiScale), ctlHeight, TRUE);
 
 	if (wParam == SIZE_RESTORED) InvalidateRect(data->hWndPreview, NULL, TRUE); //full update
 	return DefMDIChildProc(data->hWnd, WM_SIZE, wParam, lParam);
@@ -1577,7 +1600,8 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 		AnmViewerCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
 		CellViewerRenderCell(data->cellRender, NULL, ncer, ncgr, nclr, frm.index, cell,
 			FloatToInt(trans[0]), FloatToInt(trans[1]), 
-			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1]);
+			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
+			data->forceAffine, data->forceDoubleSize);
 	}
 
 	//ensure framebuffer size

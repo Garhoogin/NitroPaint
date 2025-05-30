@@ -790,7 +790,7 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	tmpCell->useEx2d = cell->useEx2d;
 	tmpCell->ex2dCharNames = exAttr;
 
-	CellViewerRenderCell(buf, NULL, &data->ncer, ncgr, nclr, data->cell, tmpCell, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f);
+	CellViewerRenderCell(buf, NULL, &data->ncer, ncgr, nclr, data->cell, tmpCell, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
 	free(tmpCell);
 	free(selAttr);
 	if (exAttr != NULL) free(exAttr);
@@ -1029,7 +1029,9 @@ void CellViewerRenderCell(
 	double     a,
 	double     b, 
 	double     c,
-	double     d
+	double     d,
+	int        forceAffine,
+	int        forceDoubleSize
 ) {
 	//adjust (X,Y) offset to center of preview
 	xOffs += 256;
@@ -1037,7 +1039,7 @@ void CellViewerRenderCell(
 
 	//get VRAM transfer entry
 	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
-	if (ncer->vramTransfer != NULL) vramTransfer = &ncer->vramTransfer[cellIndex];
+	if (ncer != NULL && ncer->vramTransfer != NULL && cellIndex != -1) vramTransfer = &ncer->vramTransfer[cellIndex];
 
 	//if cell is NULL, we use cell at cellInex.
 	if (cell == NULL) {
@@ -1076,7 +1078,7 @@ void CellViewerRenderCell(
 		CellViewerRenderObj(block, &info, ncgr, nclr, ncer->mappingMode, vramTransfer);
 
 		//HV flip? Only if not affine!
-		if (!info.rotateScale) {
+		if (!(info.rotateScale || forceAffine)) {
 			COLOR32 temp[64];
 			if (info.flipY) {
 				for (int i = 0; i < info.height / 2; i++) {
@@ -1097,17 +1099,23 @@ void CellViewerRenderCell(
 			}
 		}
 
-		//apply transformation matrix to OBJ position
-		int x = info.x;
-		int y = info.y;
-		if (!isMtxIdentity) {
-			//adjust sign of OBJ coordinates, since we rely on signed coordinates
-			if (x >= 256) x -= 512;
-			if (y >= 128) y -= 256;
+		int doubleSize = info.doubleSize;
+		if ((info.rotateScale || forceAffine) && forceDoubleSize) doubleSize = 1;
 
+		//apply transformation matrix to OBJ position
+		int x = SEXT9(info.x);
+		int y = SEXT8(info.y);
+
+		//when forcing double size on an OBJ that isn't naturally double size, we'll correct its position.
+		if ((forceDoubleSize && (info.rotateScale || forceAffine)) && !info.doubleSize) {
+			x -= info.width / 2;
+			y -= info.height / 2;
+		}
+
+		if (!isMtxIdentity) {
 			//adjust coordinates by correction for double-size
-			int realWidth = info.width << info.doubleSize;
-			int realHeight = info.height << info.doubleSize;
+			int realWidth = info.width << doubleSize;
+			int realHeight = info.height << doubleSize;
 			int movedX = x + realWidth / 2;
 			int movedY = y + realHeight / 2;
 
@@ -1117,9 +1125,9 @@ void CellViewerRenderCell(
 		}
 
 		//copy data
-		if (!info.rotateScale) {
+		if (!(info.rotateScale || forceAffine)) {
 			//adjust for double size
-			if (info.doubleSize) {
+			if (doubleSize) {
 				x += info.width / 2;
 				y += info.height / 2;
 			}
@@ -1138,8 +1146,8 @@ void CellViewerRenderCell(
 			}
 		} else {
 			//transform about center
-			int realWidth = info.width << info.doubleSize;
-			int realHeight = info.height << info.doubleSize;
+			int realWidth = info.width << doubleSize;
+			int realHeight = info.height << doubleSize;
 			double cx = (realWidth - 1) * 0.5; // rotation center X in OBJ
 			double cy = (realHeight - 1) * 0.5; // rotation center Y in OBJ
 
@@ -1152,7 +1160,7 @@ void CellViewerRenderCell(
 					int srcY = FloatToInt(((((double) k) - cx) * invC + (((double) j) - cy) * invD) + cy);
 
 					//if double size, adjust source coordinate by the excess size
-					if (info.doubleSize) {
+					if (doubleSize) {
 						srcX -= realWidth / 4;
 						srcY -= realHeight / 4;
 					}
@@ -1173,7 +1181,7 @@ void CellViewerRenderCell(
 }
 
 static void CellViewerRenderCellByIndex(COLOR32 *buf, int *covbuf, NCER *ncer, NCGR *ncgr, NCLR *nclr, int cellno) {
-	CellViewerRenderCell(buf, covbuf, ncer, ncgr, nclr, cellno, NULL, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f);
+	CellViewerRenderCell(buf, covbuf, ncer, ncgr, nclr, cellno, NULL, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
 }
 
 static void CellViewerUpdateCellRender(NCERVIEWERDATA *data) {
