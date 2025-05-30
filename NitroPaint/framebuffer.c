@@ -1,5 +1,7 @@
 #include "framebuffer.h"
 
+#include <math.h>
+
 void FbCreate(FrameBuffer *fb, HWND hWnd, int width, int height) {
 	//create DC
 	HDC hDC = GetDC(hWnd);
@@ -130,10 +132,11 @@ void FbRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
 	col = REVERSE(col);
 
 	//use midpoint circle algorithm
-	int nStep = (int) ceil(((float) cr) * 0.7071f);
-	for (int x = 0; x < nStep; x++) {
+	for (int x = 0; x < cr; x++) {
 		//compute intersection
 		int y = (int) (sqrt(r2 - x * x) + 0.5f);
+		if (y < x) break;
+
 		FbPutPixel(fb, cx + x, cy + y, col);
 		FbPutPixel(fb, cx - x, cy + y, col);
 		FbPutPixel(fb, cx + x, cy - y, col);
@@ -142,6 +145,9 @@ void FbRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
 		FbPutPixel(fb, cx - y, cy + x, col);
 		FbPutPixel(fb, cx + y, cy - x, col);
 		FbPutPixel(fb, cx - y, cy - x, col);
+
+		//fixes 1-pixel corner artifacts
+		if (y == (x + 1)) break;
 	}
 }
 
