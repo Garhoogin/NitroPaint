@@ -442,6 +442,8 @@ static void CellViewerUpdateObjList(NCERVIEWERDATA *data) {
 	GetScrollInfo(data->hWndObjList, SB_HORZ, &scrollH);
 	GetScrollInfo(data->hWndObjList, SB_VERT, &scrollV);
 
+	int mappingShift = (data->ncer.mappingMode >> 20) & 0x7;
+
 	// #, X, Y, Size, Char, Palette, 8bit, Affine, Double Size, HV, Priority, Mosaic, Type
 
 	//
@@ -455,6 +457,10 @@ static void CellViewerUpdateObjList(NCERVIEWERDATA *data) {
 			NCER_CELL_INFO info;
 			CellDecodeOamAttributes(&info, cell, i);
 
+			int charAddr = (info.characterName << mappingShift) * 0x20;
+			if (info.characterBits == 8) charAddr /= 0x40;
+			else charAddr /= 0x20;
+
 			//#
 			WCHAR textbuf[32];
 			wsprintfW(textbuf, L"%d", i);
@@ -463,7 +469,7 @@ static void CellViewerUpdateObjList(NCERVIEWERDATA *data) {
 			wsprintfW(textbuf, L"%d", SEXT9(info.x)); AddListViewItem(data->hWndObjList, textbuf, i, 1);
 			wsprintfW(textbuf, L"%d", SEXT8(info.y)); AddListViewItem(data->hWndObjList, textbuf, i, 2);
 			wsprintfW(textbuf, L"%d x %d", info.width, info.height); AddListViewItem(data->hWndObjList, textbuf, i, 3);
-			wsprintfW(textbuf, L"%d", info.characterName); AddListViewItem(data->hWndObjList, textbuf, i, 4);
+			wsprintfW(textbuf, L"%d", charAddr); AddListViewItem(data->hWndObjList, textbuf, i, 4);
 			wsprintfW(textbuf, L"%d", info.palette); AddListViewItem(data->hWndObjList, textbuf, i, 5);
 			wsprintfW(textbuf, L"%d", info.characterBits); AddListViewItem(data->hWndObjList, textbuf, i, 6);
 			wsprintfW(textbuf, L"%c", info.rotateScale ? 'X' : ' '); AddListViewItem(data->hWndObjList, textbuf, i, 7);
@@ -1970,7 +1976,7 @@ static void CellViewerToggleAffineSelection(NCERVIEWERDATA *data) {
 		//if was double size, adjust by position.
 		if (wasDoubleSize) {
 			NCER_CELL_INFO info;
-			CellDecodeOamAttributes(&info, cell, i);
+			CellDecodeOamAttributes(&info, cell, data->selectedOBJ[i]);
 
 			//unsetting: add correction
 			int dispX = info.width / 2;
@@ -1993,7 +1999,7 @@ static void CellViewerToggleDoubleSizeSelection(NCERVIEWERDATA *data) {
 		*pAttr0 ^= 0x0200;
 
 		NCER_CELL_INFO info;
-		CellDecodeOamAttributes(&info, cell, i);
+		CellDecodeOamAttributes(&info, cell, data->selectedOBJ[i]);
 
 		int dispX, dispY;
 		if (*pAttr0 & 0x0200) {
@@ -2029,12 +2035,18 @@ static void CellViewerSetSelectionBits(NCERVIEWERDATA *data, int nBits) {
 }
 
 static void CellViewerSetSelectionCharacterIndex(NCERVIEWERDATA *data, int chno) {
+	int mappingShift = (data->ncer.mappingMode >> 20) & 0x7;
+
 	NCER_CELL *cell = CellViewerGetCurrentCell(data);
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
 		uint16_t *pAttr2 = &cell->attr[3 * data->selectedOBJ[i] + 2];
 
-		*pAttr2 = (*pAttr2 & 0xFC00) | (chno & 0x03FF);
-		if (cell->useEx2d) cell->ex2dCharNames[data->selectedOBJ[i]] = chno;
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, data->selectedOBJ[i]);
+
+		int oamCharName = (chno << (info.characterBits == 8)) >> mappingShift;
+		*pAttr2 = (*pAttr2 & 0xFC00) | (oamCharName & 0x03FF);
+		if (cell->useEx2d) cell->ex2dCharNames[data->selectedOBJ[i]] = oamCharName;
 	}
 }
 
@@ -2273,6 +2285,8 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		{
 			WCHAR textbuf[10];
 
+			int mappingShift = (data->ncer.mappingMode >> 20) & 0x7;
+
 			//find common character index
 			int commonCharIndex = -1;
 			NCER_CELL *cell = CellViewerGetCurrentCell(data);
@@ -2280,8 +2294,12 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 				NCER_CELL_INFO info;
 				CellDecodeOamAttributes(&info, cell, data->selectedOBJ[i]);
 
-				if (i == 0) commonCharIndex = info.characterName;
-				else if (commonCharIndex != info.characterName) commonCharIndex = -1;
+				int charAddr = (info.characterName << mappingShift) * 0x20;
+				if (info.characterBits == 8) charAddr /= 0x40;
+				else charAddr /= 0x20;
+
+				if (i == 0) commonCharIndex = charAddr;
+				else if (commonCharIndex != charAddr) commonCharIndex = -1;
 			}
 			if (commonCharIndex != -1) wsprintfW(textbuf, L"%d", commonCharIndex);
 			else textbuf[0] = L'\0';
