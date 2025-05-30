@@ -1132,6 +1132,33 @@ static void AnmViewerDeleteCurrentFrame(NANRVIEWERDATA *data) {
 	InvalidateRect(data->hWndPreview, NULL, FALSE);
 }
 
+static void AnmViewerDeleteCurrentSequence(NANRVIEWERDATA *data) {
+	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
+	if (seq == NULL) return;
+
+	//free the sequence data
+	for (int i = 0; i < seq->nFrames; i++) {
+		FRAME_DATA *frm = &seq->frames[i];
+		free(frm->animationData);
+	}
+	free(seq->frames);
+
+	//remove
+	int i = data->currentAnim;
+	memmove(&data->nanr.sequences[i], &data->nanr.sequences[i + 1], (data->nanr.nSequences - 1 - i) * sizeof(NANR_SEQUENCE));
+	data->nanr.nSequences--;
+	data->nanr.sequences = (NANR_SEQUENCE *) realloc(data->nanr.sequences, data->nanr.nSequences * sizeof(NANR_SEQUENCE));
+	ListView_SetItemCount(data->hWndAnimList, data->nanr.nSequences);
+
+	//update current
+	if (i >= data->nanr.nSequences) i--;
+	if (i < 0) i++;
+	AnmViewerSetCurrentSequence(data, i, TRUE);
+	AnmViewerSetDefaultAnchor(data);
+	InvalidateRect(data->hWndAnimList, NULL, FALSE);
+	InvalidateRect(data->hWndPreview, NULL, FALSE);
+}
+
 static void AnmViewerPreviewGetScroll(NANRVIEWERDATA *data, int *scrollX, int *scrollY) {
 	//get scroll info
 	SCROLLINFO scrollH = { 0 }, scrollV = { 0 };
@@ -1225,6 +1252,26 @@ static void AnmViewerCmdOnNewSequence(HWND hWnd, HWND hWndCtl, int notif, void *
 	AnmViewerSetCurrentSequence(data, data->nanr.nSequences - 1, TRUE);
 }
 
+static LRESULT CALLBACK AnmViewerSeqListSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT idSubclass, DWORD_PTR data_) {
+	NANRVIEWERDATA *data = (NANRVIEWERDATA *) data_;
+
+	switch (msg) {
+		case WM_KEYDOWN:
+		{
+			switch (wParam) {
+				case VK_DELETE:
+				{
+					AnmViewerDeleteCurrentSequence(data);
+					break;
+				}
+			}
+			break;
+		}
+	}
+
+	return DefSubclassProc(hWnd, msg, wParam, lParam);
+}
+
 static void AnmViewerOnCreate(NANRVIEWERDATA *data) {
 	data->scale = 2;
 	data->showBorders = 1;
@@ -1257,6 +1304,8 @@ static void AnmViewerOnCreate(NANRVIEWERDATA *data) {
 	UiCtlMgrAddCommand(&data->mgr, data->hWndShowFrames, BN_CLICKED, AnmViewerCmdOnShowFrames);
 	UiCtlMgrAddCommand(&data->mgr, data->hWndPlayMode, CBN_SELCHANGE, AnmViewerCmdOnSetPlayMode);
 	UiCtlMgrAddCommand(&data->mgr, data->hWndNewSequence, BN_CLICKED, AnmViewerCmdOnNewSequence);
+
+	SetWindowSubclass(data->hWndAnimList, AnmViewerSeqListSubclassProc, 2, (DWORD_PTR) data);
 }
 
 static int AnmViewerOnSize(NANRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
