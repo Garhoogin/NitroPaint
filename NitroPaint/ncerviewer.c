@@ -1960,9 +1960,25 @@ static void CellViewerToggleAffineSelection(NCERVIEWERDATA *data) {
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
 		uint16_t *pAttr0 = &cell->attr[3 * data->selectedOBJ[i] + 0];
 		uint16_t *pAttr1 = &cell->attr[3 * data->selectedOBJ[i] + 1];
+
+		int wasDoubleSize = (*pAttr0 & 0x0100) && (*pAttr0 & 0x0200);
+
 		*pAttr0 ^= 0x0100; // toggle affine
 		*pAttr0 &= 0xFDFF; // clear disable/double size
 		*pAttr1 &= 0xC1FF; // clear H/V and affine parameter
+
+		//if was double size, adjust by position.
+		if (wasDoubleSize) {
+			NCER_CELL_INFO info;
+			CellDecodeOamAttributes(&info, cell, i);
+
+			//unsetting: add correction
+			int dispX = info.width / 2;
+			int dispY = info.height / 2;
+			*pAttr0 = (*pAttr0 & 0xFF00) | (((*pAttr0 & 0x00FF) + dispY) & 0x00FF);
+			*pAttr1 = (*pAttr1 & 0xFE00) | (((*pAttr1 & 0x01FF) + dispX) & 0x01FF);
+		}
+		
 	}
 }
 
