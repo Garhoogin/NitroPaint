@@ -1970,9 +1970,29 @@ static void CellViewerToggleDoubleSizeSelection(NCERVIEWERDATA *data) {
 	NCER_CELL *cell = CellViewerGetCurrentCell(data);
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
 		uint16_t *pAttr0 = &cell->attr[3 * data->selectedOBJ[i] + 0];
+		uint16_t *pAttr1 = &cell->attr[3 * data->selectedOBJ[i] + 1];
 		if (!(*pAttr0 & 0x0100)) continue; //not affine (cannot be double size)
 		
+		//toggle double size flag
 		*pAttr0 ^= 0x0200;
+
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, i);
+
+		int dispX, dispY;
+		if (*pAttr0 & 0x0200) {
+			//setting double size: subtract
+			dispX = -info.width / 2;
+			dispY = -info.height / 2;
+		} else {
+			//unsetting: add correction
+			dispX = info.width / 2;
+			dispY = info.height / 2;
+		}
+
+		//displace position
+		*pAttr0 = (*pAttr0 & 0xFF00) | (((*pAttr0 & 0x00FF) + dispY) & 0x00FF);
+		*pAttr1 = (*pAttr1 & 0xFE00) | (((*pAttr1 & 0x01FF) + dispX) & 0x01FF);
 	}
 }
 
