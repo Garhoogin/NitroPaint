@@ -92,6 +92,7 @@ static void AnmViewerTickPlayback(NANRVIEWERDATA *data);
 static NANR_SEQUENCE *AnmViewerGetCurrentSequence(NANRVIEWERDATA *data);
 static int AnmViewerGetCurrentAnimFrame(NANRVIEWERDATA *data, ANIM_DATA_SRT *pFrm, int *pDuration);
 static int AnmViewerGetAnimFrame(NANRVIEWERDATA *data, int iSeq, int iFrm, ANIM_DATA_SRT *pFrm, int *pDuration);
+static void AnmViewerRenderFrameFromCurrentSequence(NANRVIEWERDATA *data, COLOR32 *dest, int iFrm, BOOL fillBG);
 
 static void AnmViewerPreviewGetScroll(NANRVIEWERDATA *data, int *pScrollX, int *pScrollY);
 
@@ -1267,6 +1268,40 @@ static void AnmViewerCmdOnToggleForceDoubleSize(HWND hWnd, HWND hWndCtl, int not
 	InvalidateRect(data->hWndAnimList, NULL, FALSE);
 }
 
+static void AnmViewerExportSequence(NANRVIEWERDATA *data) {
+	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
+	if (seq == NULL) return;
+
+	LPWSTR path = saveFileDialog(data->hWnd, L"Export GIF", L"GIF Files (*.gif)\0*.gif\0All Files\0*.*\0", L"gif");
+	if (path == NULL) return;
+
+	//prepare frames
+	int *durations = (int *) calloc(seq->nFrames, sizeof(int));
+	COLOR32 **frames = (COLOR32 **) calloc(seq->nFrames, sizeof(COLOR32 **));
+	for (int i = 0; i < seq->nFrames; i++) {
+		frames[i] = (COLOR32 *) calloc(512 * 256, sizeof(COLOR32));
+	}
+
+	//render animation sequence
+	for (int i = 0; i < seq->nFrames; i++) {
+		durations[i] = (seq->frames[i].nFrames * 1000 + 30) / 60; // frame to millisecond
+		AnmViewerRenderFrameFromCurrentSequence(data, frames[i], i, TRUE);
+
+		//reverse color order
+		for (int j = 0; j < 512 * 256; j++) {
+			COLOR32 c = frames[i][j];
+			frames[i][j] = REVERSE(c);
+		}
+	}
+
+	ImgWriteAnimatedGif(path, frames, 512, 256, durations, seq->nFrames);
+
+	for (int i = 0; i < seq->nFrames; i++) free(frames[i]);
+	free(frames);
+	free(durations);
+	free(path);
+}
+
 static LRESULT CALLBACK AnmViewerSeqListSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT idSubclass, DWORD_PTR data_) {
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) data_;
 
@@ -1442,6 +1477,9 @@ static void AnmViewerOnMenuCommand(NANRVIEWERDATA *data, int idMenu) {
 		case ID_FILE_SAVEAS:
 			EditorSaveAs(data->hWnd);
 			break;
+		case ID_FILE_EXPORT:
+			AnmViewerExportSequence(data);
+			break;
 	}
 }
 
@@ -1569,6 +1607,45 @@ static void AvgPoint(int *ptOut, const int *pt1, const int *pt2) {
 	ptOut[1] = ptY / 2;
 }
 
+static void AnmViewerRenderFrameFromCurrentSequence(NANRVIEWERDATA *data, COLOR32 *dest, int iFrm, BOOL fillBG) {
+	//get data
+	NCLR *nclr = (NCLR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_PALETTE);
+	NCGR *ncgr = (NCGR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CHARACTER);
+	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+
+	//fill BG
+	if (fillBG) {
+		if (nclr != NULL) {
+			COLOR32 bg = ColorConvertFromDS(nclr->colors[0]);
+			for (int i = 0; i < 256 * 512; i++) {
+				dest[i] = bg;
+			}
+		} else {
+			memset(dest, 0, 256 * 512 * sizeof(COLOR32));
+		}
+	}
+
+	if (ncer == NULL) return;
+
+	//get frame data
+	ANIM_DATA_SRT frm;
+	if (!AnmViewerGetAnimFrame(data, data->currentAnim, iFrm, &frm, NULL)) return;
+	if (frm.index < 0 || frm.index >= ncer->nCells) return;
+
+	//get referenced cell
+	NCER_CELL *cell = &ncer->cells[frm.index];
+	double sx = frm.sx / 4096.0;
+	double sy = frm.sy / 4096.0;
+	double rot = (frm.rotZ / 65536.0) * RAD_360DEG;
+
+	double mtx[2][2] = { { 1.0, 0.0 }, { 0.0, 1.0 } }, trans[2] = { 0 };
+	AnmViewerCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
+	CellViewerRenderCell(dest, NULL, ncer, ncgr, nclr, frm.index, cell,
+		FloatToInt(trans[0]), FloatToInt(trans[1]),
+		mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
+		data->forceAffine, data->forceDoubleSize);
+}
+
 static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	HWND hWnd = data->hWndPreview;
 	PAINTSTRUCT ps;
@@ -1576,7 +1653,6 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 
 	//get data
 	NCLR *nclr = (NCLR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_PALETTE);
-	NCGR *ncgr = (NCGR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CHARACTER);
 	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
 
 	//get frame data
@@ -1589,20 +1665,12 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 		cell = &ncer->cells[frm.index];
 	}
 
-	//render
 	double mtx[2][2] = { { 1.0f, 0.0f }, { 0.0f, 1.0f } }, trans[2] = { 0 };
-	memset(data->cellRender, 0, sizeof(data->cellRender));
-	if (cell != NULL) {
-		double sx = frm.sx / 4096.0;
-		double sy = frm.sy / 4096.0;
-		double rot = (frm.rotZ / 65536.0) * RAD_360DEG;
+	AnmViewerGetCurrentFrameTransform(data, &mtx[0][0], trans);
 
-		AnmViewerCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
-		CellViewerRenderCell(data->cellRender, NULL, ncer, ncgr, nclr, frm.index, cell,
-			FloatToInt(trans[0]), FloatToInt(trans[1]), 
-			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
-			data->forceAffine, data->forceDoubleSize);
-	}
+	//render
+	memset(data->cellRender, 0, sizeof(data->cellRender));
+	AnmViewerRenderFrameFromCurrentSequence(data, data->cellRender, data->currentFrame, FALSE);
 
 	//ensure framebuffer size
 	RECT rcClient;

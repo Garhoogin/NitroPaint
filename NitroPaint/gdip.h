@@ -44,6 +44,11 @@ HRESULT ImgWrite(COLOR32 *px, int width, int height, LPCWSTR path);
 HRESULT ImgWriteIndexed(unsigned char *bits, int width, int height, COLOR32 *palette, int paletteSize, LPCWSTR path);
 
 //
+// Write an animated GIF to a file.
+//
+HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, int width, int height, const int *pDurations, int nFrames);
+
+//
 // Flip an image horizontally and/or vertically.
 //
 void ImgFlip(COLOR32 *px, int width, int height, int hFlip, int vFlip);

@@ -222,6 +222,113 @@ cleanup:
 	return result;
 }
 
+HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, int width, int height, const int *pDurations, int nFrames) {
+	WICPixelFormatGUID fmtSrc = GUID_WICPixelFormat32bppRGBA, fmtDst = GUID_WICPixelFormat8bppIndexed;
+	IWICImagingFactory *factory = NULL;
+	IWICBitmapEncoder *encoder = NULL;
+	IWICStream *stream = NULL;
+	IWICMetadataQueryWriter *encMdWriter = NULL;
+	HRESULT result = CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, &factory);
+	CHECK_RESULT(result);
+
+	result = factory->lpVtbl->CreateStream(factory, &stream);
+	CHECK_RESULT(result);
+
+	result = stream->lpVtbl->InitializeFromFilename(stream, path, GENERIC_WRITE);
+	CHECK_RESULT(result);
+
+	//create bitmap encoder
+	SUCCEEDED(result) && (result = factory->lpVtbl->CreateEncoder(factory, &GUID_ContainerFormatGif, NULL, &encoder));
+	SUCCEEDED(result) && (result = encoder->lpVtbl->Initialize(encoder, (IStream *) stream, WICBitmapEncoderNoCache));
+
+	//setup metadata attributes
+	static UCHAR applicationStr[] = "NETSCAPE2.0";
+	PROPVARIANT pvApplication = { 0 };
+	pvApplication.vt = VT_UI1 | VT_VECTOR;
+	pvApplication.caub.cElems = sizeof(applicationStr) - 1; // no null terminator
+	pvApplication.caub.pElems = applicationStr;
+
+	UCHAR gifInfo[5] = { 3, 1, 0, 0, 0 };
+	PROPVARIANT pvData = { 0 };
+	pvData.vt = VT_UI1 | VT_VECTOR;
+	pvData.caub.cElems = sizeof(gifInfo);
+	pvData.caub.pElems = gifInfo;
+
+	//write metadata
+	SUCCEEDED(result) && (result = encoder->lpVtbl->GetMetadataQueryWriter(encoder, &encMdWriter));
+	SUCCEEDED(result) && (result = encMdWriter->lpVtbl->SetMetadataByName(encMdWriter, L"/appext/Application", &pvApplication));
+	SUCCEEDED(result) && (result = encMdWriter->lpVtbl->SetMetadataByName(encMdWriter, L"/appext/Data", &pvData));
+	SUCCEEDED(result) && (result = encMdWriter->lpVtbl->Release(encMdWriter));
+
+	int delayBias = 0;
+	for (int i = 0; i < nFrames; i++) {
+		IWICBitmapFrameEncode *frameEncode = NULL;
+		IWICFormatConverter *converter = NULL;
+		IWICPalette *plt = NULL;
+		IWICBitmap *pInBmp = NULL;
+		IWICMetadataQueryWriter *frameMdWriter = NULL;
+
+		//compute effective delay diffusing errors
+		int targetDelay = pDurations[i] + delayBias;
+		int effectiveDelay = (targetDelay + 5) / 10 * 10; // round to nearest multiple of 10ms
+		if (effectiveDelay < 10) effectiveDelay = 10;     // min frame delay (10ms)
+		delayBias = targetDelay - effectiveDelay;
+
+		PROPVARIANT pvDelay = { 0 };
+		pvDelay.vt = VT_UI2;
+		pvDelay.uiVal = (uint16_t) (effectiveDelay / 10);
+
+		PROPVARIANT pvDisposal = { 0 };
+		pvDisposal.vt = VT_UI1;
+		pvDisposal.uintVal = 2; // for transparent area overwrite
+
+		PROPVARIANT pvTransparency = { 0 };
+		pvTransparency.vt = VT_BOOL;
+		pvTransparency.boolVal = VARIANT_TRUE;
+
+		//create bitmap from frame pixels
+		SUCCEEDED(result) && (result = factory->lpVtbl->CreateBitmapFromMemory(factory, width, height, &fmtSrc, width * sizeof(COLOR32),
+			height * width * sizeof(COLOR32), (BYTE *) pFrames[i], &pInBmp));
+
+		//create palette from bitmap
+		SUCCEEDED(result) && (result = factory->lpVtbl->CreatePalette(factory, &plt));
+		SUCCEEDED(result) && (result = plt->lpVtbl->InitializeFromBitmap(plt, (IWICBitmapSource *) pInBmp, 256, TRUE));
+
+		//convert bitmap to 8-bit indexed
+		SUCCEEDED(result) && (result = factory->lpVtbl->CreateFormatConverter(factory, &converter));
+		SUCCEEDED(result) && (result = converter->lpVtbl->Initialize(converter, (IWICBitmapSource *) pInBmp, &fmtDst,
+			WICBitmapDitherTypeNone, plt, 0.0, WICBitmapPaletteTypeCustom));
+		
+		//write frame to encoder
+		SUCCEEDED(result) && (result = encoder->lpVtbl->CreateNewFrame(encoder, &frameEncode, NULL));
+		SUCCEEDED(result) && (result = frameEncode->lpVtbl->Initialize(frameEncode, NULL));
+		SUCCEEDED(result) && (result = frameEncode->lpVtbl->GetMetadataQueryWriter(frameEncode, &frameMdWriter));
+		SUCCEEDED(result) && (result = frameMdWriter->lpVtbl->SetMetadataByName(frameMdWriter, L"/grctlext/Delay", &pvDelay));
+		SUCCEEDED(result) && (result = frameMdWriter->lpVtbl->SetMetadataByName(frameMdWriter, L"/grctlext/Disposal", &pvDisposal));
+		SUCCEEDED(result) && (result = frameMdWriter->lpVtbl->SetMetadataByName(frameMdWriter, L"/grctlext/TransparencyFLag", &pvTransparency));
+		SUCCEEDED(result) && (result = frameEncode->lpVtbl->WriteSource(frameEncode, (IWICBitmapSource *) converter, NULL));
+		SUCCEEDED(result) && (result = frameEncode->lpVtbl->Commit(frameEncode));
+		
+		if (frameMdWriter != NULL) frameMdWriter->lpVtbl->Release(frameMdWriter);
+		if (pInBmp != NULL) pInBmp->lpVtbl->Release(pInBmp);
+		if (converter != NULL) converter->lpVtbl->Release(converter);
+		if (plt != NULL) plt->lpVtbl->Release(plt);
+		if (frameEncode != NULL) frameEncode->lpVtbl->Release(frameEncode);
+		CHECK_RESULT(result);
+	}
+
+	//commit frames to file
+	SUCCEEDED(result) && (result = encoder->lpVtbl->Commit(encoder));
+	SUCCEEDED(result) && (result = stream->lpVtbl->Commit(stream, STGC_DEFAULT));
+
+
+cleanup:
+	if (stream != NULL) stream->lpVtbl->Release(stream);
+	if (encoder != NULL) encoder->lpVtbl->Release(encoder);
+	if (factory != NULL) factory->lpVtbl->Release(factory);
+	return result;
+}
+
 static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsigned char **ppIndices, int *pWidth, int *pHeight, COLOR32 **ppPalette, int *pPaletteSize) {
 	IWICImagingFactory *factory = NULL;
 	IWICStream *stream = NULL;
