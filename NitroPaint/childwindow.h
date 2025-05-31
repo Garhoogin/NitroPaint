@@ -6,7 +6,6 @@
 typedef struct {
 	int contentWidth;
 	int contentHeight;
-	int sizeLevel;
 } FRAMEDATA;
 
 BOOL __stdcall SetFontProc(HWND hWnd, LPARAM lParam);

@@ -194,11 +194,6 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			GetClientRect(hWnd, &rcClient);
 
 			FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-			frameData->sizeLevel++;
-			if (frameData->sizeLevel == 10) { //HACK: fix bug where some resizes cause the entire nonclient to disappear
-				frameData->sizeLevel--;
-				return DefWindowProc(hWnd, msg, wParam, lParam);
-			}
 
 			SCROLLINFO info;
 			info.cbSize = sizeof(info);
@@ -220,25 +215,18 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			}
 			SetScrollInfo(hWnd, SB_VERT, &info, FALSE);
 
-			if (repaint)InvalidateRect(hWnd, NULL, TRUE);
-
-			//RedrawWindow(hWnd, NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | RDW_INTERNALPAINT);
-			frameData->sizeLevel--;
+			if (repaint) InvalidateRect(hWnd, NULL, TRUE);
 			break;
 		}
 		case WM_ENTERSIZEMOVE:
 		{
-			FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-			frameData->sizeLevel = 0;
-			HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+			//HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 			//SetWindowLong(hWndParent, GWL_EXSTYLE, GetWindowLong(hWndParent, GWL_EXSTYLE) | WS_EX_COMPOSITED);
 			break;
 		}
 		case WM_EXITSIZEMOVE:
 		{
-			FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-			frameData->sizeLevel = 0;
-			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			//HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 			//SetWindowLong(hWndParent, GWL_EXSTYLE, GetWindowLong(hWndParent, GWL_EXSTYLE) & ~WS_EX_COMPOSITED);
 			break;
 		}
