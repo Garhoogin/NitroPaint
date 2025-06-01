@@ -115,3 +115,25 @@ void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst);
 int CellWrite(NCER *ncer, BSTREAM *stream);
 
 int CellWriteFile(NCER *ncer, LPWSTR name);
+
+
+
+// ----- render cell
+
+void CellRender(
+	COLOR32   *px,             // output 512x256 pixel buffer
+	int       *covbuf,         // output coverage buffer (optional)
+	NCER      *ncer,           // cell data bank
+	NCGR      *ncgr,           // character graphics
+	NCLR      *nclr,           // color palette
+	int        cellIndex,      // cell index (required if cell is in the cell data bank)
+	NCER_CELL *cell,           // cell data (required if not in the cell data bank)
+	int        xOffs,          // horizontal displacement of render
+	int        yOffs,          // vertical displacement of render
+	double     a,              // affine parameter A
+	double     b,              // affine parameter B
+	double     c,              // affine parameter C
+	double     d,              // affine parameter D
+	int        forceAffine,    // forces all OBJ to be in affine mode
+	int        forceDoubleSize // forces all affine OBJ to be in double size mode
+);

@@ -31,6 +31,7 @@ HBITMAP RenderNmcrFrame(NMCR *nmcr, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *na
 			int seqId = entry->sequenceNumber;
 
 			//nanrDrawFrame(px, nclr, ncgr, ncer, nanr, seqId, frame, 0, x, y);
+
 		}
 	}
 

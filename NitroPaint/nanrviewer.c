@@ -736,7 +736,7 @@ static void AnmViewerRenderGlyphListImage(NANRVIEWERDATA *data, int i) {
 		double rot = (frm.rotZ / 65536.0) * RAD_360DEG;
 
 		AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
-		CellViewerRenderCell(data->cellRender, NULL, ncer, ncgr, nclr, frm.index, cell,
+		CellRender(data->cellRender, NULL, ncer, ncgr, nclr, frm.index, cell,
 			FloatToInt(trans[0]), FloatToInt(trans[1]),
 			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
 			data->forceAffine, data->forceDoubleSize);
@@ -1640,7 +1640,7 @@ static void AnmViewerRenderFrameFromCurrentSequence(NANRVIEWERDATA *data, COLOR3
 
 	double mtx[2][2] = { { 1.0, 0.0 }, { 0.0, 1.0 } }, trans[2] = { 0 };
 	AnmViewerCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
-	CellViewerRenderCell(dest, NULL, ncer, ncgr, nclr, frm.index, cell,
+	CellRender(dest, NULL, ncer, ncgr, nclr, frm.index, cell,
 		FloatToInt(trans[0]), FloatToInt(trans[1]),
 		mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
 		data->forceAffine, data->forceDoubleSize);
