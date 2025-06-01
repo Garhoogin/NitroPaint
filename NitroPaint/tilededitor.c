@@ -936,9 +936,10 @@ int TedMainOnEraseBkgnd(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM l
 	rcLeft.bottom = rcClient.bottom;
 	rcLeft.right = MARGIN_TOTAL_SIZE;
 
+	//erase all but clipped
 	DefWindowProc(ted->hWnd, WM_ERASEBKGND, wParam, lParam);
-	InvalidateRect(ted->hWnd, &rcLeft, FALSE);
-	InvalidateRect(ted->hWnd, &rcTop, FALSE);
+	RedrawWindow(data->hWnd, &rcLeft, NULL, RDW_VALIDATE | RDW_INTERNALPAINT | RDW_UPDATENOW | RDW_NOCHILDREN);
+	RedrawWindow(data->hWnd, &rcTop, NULL, RDW_VALIDATE | RDW_INTERNALPAINT | RDW_UPDATENOW | RDW_NOCHILDREN);
 
 	return 1;
 }
@@ -1223,6 +1224,7 @@ void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer, int tileWidth, int tileHe
 	//create dummy framebuffers
 	FbCreate(&ted->fb, hWnd, 1, 1);
 	FbCreate(&ted->fbMargin, hWnd, 1, 1);
+	InvalidateRect(ted->hWnd, NULL, FALSE);
 }
 
 void TedDestroy(TedData *ted) {
