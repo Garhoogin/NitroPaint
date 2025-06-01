@@ -1977,6 +1977,8 @@ static LRESULT CALLBACK NftrViewerMarginWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			TedMarginPaint(hWnd, (EDITOR_DATA *) data, &data->ted);
 			InvalidateRect(data->hWndPreview, NULL, FALSE);
 			break;
+		case WM_ERASEBKGND:
+			return TedMainOnEraseBkgnd((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case WM_LBUTTONUP:
 			NftrViewerMarginOnLButtonUp(data);
 			break;
@@ -1985,8 +1987,6 @@ static LRESULT CALLBACK NftrViewerMarginWndProc(HWND hWnd, UINT msg, WPARAM wPar
 		case WM_NCMOUSELEAVE:
 			TedMainOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
 			break;
-		case WM_ERASEBKGND:
-			return 1;
 		case WM_SIZE:
 		{
 			RECT rcClient;

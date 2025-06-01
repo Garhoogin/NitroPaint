@@ -907,6 +907,42 @@ void TedMainOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam
 	TedUpdateMargins(ted);
 }
 
+int TedMainOnEraseBkgnd(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM lParam) {
+	HDC hDC = (HDC) wParam;
+
+	//do not erase margins
+	RECT rcClient;
+	GetClientRect(ted->hWnd, &rcClient);
+
+	//clamp size of render area to the size of graphics view
+	if (ted->hWndViewer != NULL) {
+		RECT rcView;
+		GetWindowRect(ted->hWndViewer, &rcView);
+
+		int viewWndWidth = rcView.right - rcView.left + MARGIN_TOTAL_SIZE;
+		int viewWndHeight = rcView.bottom - rcView.top + MARGIN_TOTAL_SIZE;
+		if (viewWndWidth < rcClient.right) rcClient.right = viewWndWidth;
+		if (viewWndHeight < rcClient.bottom) rcClient.bottom = viewWndHeight;
+	}
+
+	//exclude the margins from the background erase
+	ExcludeClipRect(hDC, 0, 0, rcClient.right, MARGIN_TOTAL_SIZE);
+	ExcludeClipRect(hDC, 0, 0, MARGIN_TOTAL_SIZE, rcClient.bottom);
+
+	//invalidate margins
+	RECT rcLeft = { 0 }, rcTop = { 0 };
+	rcTop.right = rcClient.right;
+	rcTop.bottom = MARGIN_TOTAL_SIZE;
+	rcLeft.bottom = rcClient.bottom;
+	rcLeft.right = MARGIN_TOTAL_SIZE;
+
+	DefWindowProc(ted->hWnd, WM_ERASEBKGND, wParam, lParam);
+	InvalidateRect(ted->hWnd, &rcLeft, FALSE);
+	InvalidateRect(ted->hWnd, &rcTop, FALSE);
+
+	return 1;
+}
+
 void TedOnLButtonDown(EDITOR_DATA *data, TedData *ted) {
 	ted->mouseDown = TRUE;
 	ted->dragStartX = ted->mouseX;

@@ -128,6 +128,7 @@ void TedTrackPopup(EDITOR_DATA *data, TedData *ted);
 
 BOOL TedSetCursor(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM lParam);
 void TedMainOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam, LPARAM lParam);
+int TedMainOnEraseBkgnd(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM lParam);
 void TedOnLButtonDown(EDITOR_DATA *data, TedData *ted);
 void TedOnRButtonDown(TedData *ted);
 void TedViewerOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam, LPARAM lParam);

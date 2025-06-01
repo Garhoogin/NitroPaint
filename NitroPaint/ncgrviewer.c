@@ -1835,6 +1835,8 @@ static LRESULT WINAPI ChrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_PAINT:
 			ChrViewerOnMainPaint(data);
 			break;
+		case WM_ERASEBKGND:
+			return TedMainOnEraseBkgnd((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case WM_TIMER:
 			return ChrViewerOnTimer(hWnd, wParam);
 		case WM_DESTROY:

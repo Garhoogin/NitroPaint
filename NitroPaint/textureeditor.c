@@ -416,6 +416,8 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		case WM_PAINT:
 			TexViewerOnPaint(data);
 			break;
+		case WM_ERASEBKGND:
+			return TedMainOnEraseBkgnd((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case WM_SIZE:
 			return TexViewerOnSize(data, wParam, lParam);
 		case WM_MOUSEMOVE:

@@ -2,12 +2,14 @@
 #include "nitropaint.h"
 #include <Uxtheme.h>
 
-BOOL __stdcall SetFontProc(HWND hWnd, LPARAM lParam) {
+#define SCROLL_LINE_SIZE          32 // pixels per scroll line
+
+BOOL CALLBACK SetFontProc(HWND hWnd, LPARAM lParam) {
 	SendMessage(hWnd, WM_SETFONT, (WPARAM) lParam, TRUE);
 	return TRUE;
 }
 
-VOID SetWindowSize(HWND hWnd, int width, int height) {
+void SetWindowSize(HWND hWnd, int width, int height) {
 	RECT rc = { 0 };
 	rc.bottom = height;
 	rc.right = width;
@@ -15,12 +17,12 @@ VOID SetWindowSize(HWND hWnd, int width, int height) {
 	SetWindowPos(hWnd, HWND_TOP, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_NOMOVE);
 }
 
-VOID DestroyChild(HWND hWnd) {
+void DestroyChild(HWND hWnd) {
 	SendMessage(hWnd, WM_CLOSE, 0, 0);
 	if (IsWindow(hWnd)) DestroyWindow(hWnd);
 }
 
-VOID UpdateScrollbarVisibility(HWND hWnd) {
+void UpdateScrollbarVisibility(HWND hWnd) {
 	SCROLLINFO scroll;
 	scroll.fMask = SIF_ALL;
 	ShowScrollBar(hWnd, SB_BOTH, TRUE);
@@ -67,7 +69,7 @@ BOOL CALLBACK ScaleInterfaceProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
-VOID ScaleInterface(HWND hWnd, float scale) {
+void ScaleInterface(HWND hWnd, float scale) {
 	//iterate child windows recursively
 	EnumChildWindows(hWnd, ScaleInterfaceProc, (LPARAM) &scale);
 
@@ -88,12 +90,14 @@ void setStyle(HWND hWnd, BOOL set, DWORD style) {
 }
 
 HWND getMainWindow(HWND hWnd) {
-	HWND hWndMdi = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-	HWND hWndMain = (HWND) GetWindowLong(hWndMdi, GWL_HWNDPARENT);
+	HWND hWndMdi = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	HWND hWndMain = (HWND) GetWindowLongPtr(hWndMdi, GWL_HWNDPARENT);
 	return hWndMain;
 }
 
 LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
+
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -105,117 +109,117 @@ LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			return 1;
 		}
 		case WM_HSCROLL:
-		{
-			WORD ctl = LOWORD(wParam);
-			RECT rcClient;
-			GetClientRect(hWnd, &rcClient);
-
-			SCROLLINFO scrollInfo;
-			scrollInfo.cbSize = sizeof(scrollInfo);
-			scrollInfo.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &scrollInfo);
-
-			FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-
-			int scrollOffsetX = scrollInfo.nPos;
-
-			if (ctl == SB_THUMBPOSITION || ctl == SB_THUMBTRACK) {
-				scrollOffsetX = HIWORD(wParam);
-			} else if (ctl == SB_LEFT) {
-				scrollOffsetX = 0;
-			} else if (ctl == SB_RIGHT) {
-				scrollOffsetX = frameData->contentWidth - (rcClient.right - rcClient.left);
-			} else if (ctl == SB_LINERIGHT) {
-				scrollOffsetX += 32;
-				if (scrollOffsetX + rcClient.right - rcClient.left > frameData->contentWidth) {
-					scrollOffsetX = frameData->contentWidth - (rcClient.right - rcClient.left);
-				}
-			} else if (ctl == SB_LINELEFT) {
-				scrollOffsetX -= 32;
-				if (scrollOffsetX < 0) scrollOffsetX = 0;
-			}
-			SetScrollPos(hWnd, SB_HORZ, scrollOffsetX, TRUE);
-
-			InvalidateRect(hWnd, NULL, FALSE);
-			break;
-		}
 		case WM_VSCROLL:
 		{
-			WORD ctl = LOWORD(wParam);
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
+
+			int scrollbar = (msg == WM_HSCROLL) ? SB_HORZ : SB_VERT;
 
 			SCROLLINFO scrollInfo;
 			scrollInfo.cbSize = sizeof(scrollInfo);
 			scrollInfo.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_VERT, &scrollInfo);
+			GetScrollInfo(hWnd, scrollbar, &scrollInfo);
 
-			FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-
-			int scrollOffsetY = scrollInfo.nPos;
-
-			if (ctl == SB_THUMBPOSITION || ctl == SB_THUMBTRACK) {
-				scrollOffsetY = HIWORD(wParam);
-			} else if (ctl == SB_TOP) {
-				scrollOffsetY = 0;
-			} else if (ctl == SB_BOTTOM) {
-				scrollOffsetY = frameData->contentHeight - (rcClient.bottom - rcClient.top);
-			} else if (ctl == SB_LINEDOWN) {
-				scrollOffsetY += 32;
-				if (scrollOffsetY + rcClient.bottom - rcClient.top > frameData->contentHeight) {
-					scrollOffsetY = frameData->contentHeight - (rcClient.bottom - rcClient.top);
-				}
-			} else if (ctl == SB_LINEUP) {
-				scrollOffsetY -= 32;
-				if (scrollOffsetY < 0) scrollOffsetY = 0;
+			int scrollOffset = scrollInfo.nPos;
+			int maxScroll = 0, pageSize = 0, contentSize = 0;
+			switch (scrollbar) {
+				case SB_HORZ:
+					pageSize = rcClient.right;
+					contentSize = frameData->contentWidth;
+					break;
+				case SB_VERT:
+					pageSize = rcClient.bottom;
+					contentSize = frameData->contentHeight;
+					break;
 			}
-			SetScrollPos(hWnd, SB_VERT, scrollOffsetY, TRUE);
+			maxScroll = contentSize - pageSize;
 
+			switch (LOWORD(wParam)) {
+				case SB_THUMBPOSITION:
+				case SB_THUMBTRACK:
+					scrollOffset = HIWORD(wParam);
+					break;
+				case SB_LEFT:
+				//case SB_TOP:
+					scrollOffset = 0;
+					break;
+				case SB_RIGHT:
+				//case SB_BOTTOM:
+					scrollOffset = maxScroll;
+					break;
+				case SB_LINERIGHT:
+				//case SB_LINEDOWN:
+					scrollOffset += SCROLL_LINE_SIZE;
+					break;
+				case SB_LINELEFT:
+				//case SB_LINEUP:
+					scrollOffset -= SCROLL_LINE_SIZE;
+					break;
+				case SB_PAGELEFT:
+				//case SB_PAGEUP:
+					scrollOffset -= pageSize;
+					break;
+				case SB_PAGERIGHT:
+				//case SB_PAGEDOWN:
+					scrollOffset += pageSize;
+					break;
+			}
+
+			if (scrollOffset > maxScroll) scrollOffset = maxScroll;
+			if (scrollOffset < 0) scrollOffset = 0;
+
+			SetScrollPos(hWnd, scrollbar, scrollOffset, TRUE);
 			InvalidateRect(hWnd, NULL, FALSE);
 			break;
 		}
 		case WM_MOUSEWHEEL:
 		{
-			int amt = ((int) (short) HIWORD(wParam)) / WHEEL_DELTA;
-			if (amt < 0) {
-				amt = -amt;
-				while(amt--)
-					SendMessage(hWnd, WM_VSCROLL, SB_LINEDOWN, 0);
-			} else if (amt > 0) {
-				while(amt--)
-					SendMessage(hWnd, WM_VSCROLL, SB_LINEUP, 0);
-			}
+			//scroll delta
+			int amt = SCROLL_LINE_SIZE * (int) (short) HIWORD(wParam);
+			amt = (amt + (amt < 0 ? -WHEEL_DELTA : WHEEL_DELTA) / 2) / WHEEL_DELTA;
+			amt = -amt;
+
+			//move
+			SCROLLINFO scrollInfo = { 0 };
+			scrollInfo.cbSize = sizeof(scrollInfo);
+			scrollInfo.fMask = SIF_ALL;
+			GetScrollInfo(hWnd, SB_VERT, &scrollInfo);
+
+			scrollInfo.nPos += amt;
+			if (scrollInfo.nPos < 0) scrollInfo.nPos = 0;
+			if (scrollInfo.nPos >= scrollInfo.nMax) scrollInfo.nPos = scrollInfo.nMax;
+			SendMessage(hWnd, WM_VSCROLL, MAKELONG(SB_THUMBPOSITION, scrollInfo.nPos), 0);
+
 			break;
 		}
+		case WM_MOUSEHWHEEL:
+			return 0;
 		case WM_SIZE:
 		{
 			BOOL repaint = FALSE;
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
 
-			FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
-
 			SCROLLINFO info;
 			info.cbSize = sizeof(info);
-			info.nPage = rcClient.right - rcClient.left + 1;
+			info.nPage = rcClient.right + 1;
 			info.fMask = SIF_PAGE;
-			if ((int) info.nPage > frameData->contentWidth) {
+			if (rcClient.right >= frameData->contentWidth) {
 				info.nPos = 0;
 				info.fMask |= SIF_POS;
 				repaint = TRUE;
 			}
-			SetScrollInfo(hWnd, SB_HORZ, &info, FALSE);
+			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
 
 			info.fMask = SIF_PAGE;
-			info.nPage = rcClient.bottom - rcClient.top + 1;
-			if ((int) info.nPage > frameData->contentHeight) {
+			info.nPage = rcClient.bottom + 1;
+			if (rcClient.bottom >= frameData->contentHeight) {
 				info.nPos = 0;
 				info.fMask |= SIF_POS;
 				repaint = TRUE;
 			}
-			SetScrollInfo(hWnd, SB_VERT, &info, FALSE);
-
-			if (repaint) InvalidateRect(hWnd, NULL, TRUE);
+			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
 			break;
 		}
 		case WM_ENTERSIZEMOVE:

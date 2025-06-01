@@ -538,6 +538,8 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 			TedMarginPaint(hWnd, (EDITOR_DATA *) data, &data->ted);
 			break;
+		case WM_ERASEBKGND:
+			return TedMainOnEraseBkgnd((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case NV_INITIALIZE:
 		case NV_INITIALIZE_IMMEDIATE:
 		{
