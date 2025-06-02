@@ -743,11 +743,11 @@ static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
 	*(uint16_t *) (clrcFooter + 0x8) = nscr->clearValue;
 	*(uint16_t *) (sizeFooter + 0x8) = nscr->tilesX;
 	*(uint16_t *) (sizeFooter + 0xA) = nscr->tilesY;
-	cmntFooter[9] = commentLen;
+	cmntFooter[0x09] = commentLen;
 	modeFooter[0x8] = nscr->tilesX;
 	modeFooter[0x9] = nscr->tilesY;
 	modeFooter[0xA] = (nscr->fmt == SCREENFORMAT_AFFINE) ? 1 : 0;
-	modeFooter[0xB] = 2;
+	modeFooter[0xB] = 0x02 | (nscr->colorMode = SCREENCOLORMODE_256x1 || nscr->colorMode == SCREENCOLORMODE_256x16);
 	*(uint32_t *) (verFooter + 0x4) = strlen(ver);
 
 	bstreamWrite(stream, clrfFooter, sizeof(clrfFooter));
