@@ -70,3 +70,22 @@ void NnsStreamFinalize(NnsStream *stream);
 void NnsStreamFlushOut(NnsStream *stream, BSTREAM *out);
 
 void NnsStreamFree(NnsStream *stream);
+
+
+// ----- ISCAD stream functions
+
+typedef struct IscadStream_ {
+	BSTREAM stream;          // file stream
+	int inFooter;            // in footer
+	unsigned int blockStart; // current block starting offset
+} IscadStream;
+
+void IscadStreamCreate(IscadStream *stream);
+void IscadStreamFree(IscadStream *stream);
+void IscadStreamStartBlock(IscadStream *stream, const char *signature);
+void IscadStreamEndBlock(IscadStream *stream);
+void IscadStreamFinalize(IscadStream *stream);
+void IscadStreamWrite(IscadStream *stream, const void *data, unsigned int len);
+void IscadStreamWriteCountedString(IscadStream *stream, const char *str);
+void IscadWriteBlock(IscadStream *stream, const char *signature, const void *data, unsigned int len);
+void IscadStreamFlushOut(IscadStream *stream, BSTREAM *out);

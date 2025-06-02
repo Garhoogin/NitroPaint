@@ -809,12 +809,13 @@ int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream) {
 }
 
 static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
-	int attrSize = ncgr->tilesX * ncgr->tilesY;
-
-	ChrWriteChars(ncgr, stream);
+	IscadStream cadStream;
+	IscadStreamCreate(&cadStream);
+	ChrWriteChars(ncgr, &cadStream.stream);
 
 	//write attribute for ACG
-	for (int i = 0; i < attrSize; i++) {
+	unsigned int attrSize = ncgr->tilesX * ncgr->tilesY;
+	for (unsigned int i = 0; i < attrSize; i++) {
 		unsigned char a = 0;
 		if (ncgr->attr != NULL) {
 			a = ncgr->attr[i];
@@ -825,16 +826,8 @@ static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
 			a |= (ncgr->nBits == 8) ? 0x10 : 0x00;
 		}
 
-		bstreamWrite(stream, &a, sizeof(a));
+		IscadStreamWrite(&cadStream, &a, sizeof(a));
 	}
-
-	//footer
-	unsigned char linkFooter[] = { 'L', 'I', 'N', 'K', 2, 0, 0, 0, 1, 0 };
-	unsigned char cmntFooter[] = { 'C', 'M', 'N', 'T', 2, 0, 0, 0, 1, 0 };
-	unsigned char modeFooter[] = { 'M', 'O', 'D', 'E', 4, 0, 0, 0, 1, 0, 0, 0 };
-	unsigned char sizeFooter[] = { 'S', 'I', 'Z', 'E', 4, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char verFooter[] = { 'V', 'E', 'R', ' ', 0, 0, 0, 0 };
-	unsigned char endFooter[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 0 };
 
 	char *version = "";
 	switch (ncgr->header.format) {
@@ -844,10 +837,7 @@ static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
 			version = "IS-ICG01"; break;
 	}
 
-	int linkLen = (ncgr->header.fileLink == NULL) ? 0 : strlen(ncgr->header.fileLink);
-	int commentLen = (ncgr->header.comment == NULL) ? 0 : strlen(ncgr->header.comment);
-
-	int mode = 0;
+	uint32_t mode = 0;
 	if (ncgr->header.format == NCGR_TYPE_AC) {
 		//3: 8bpp, 1: 4bpp
 		if (ncgr->nBits == 8) mode = 3;
@@ -859,24 +849,26 @@ static int ChriIsCommonWrite(NCGR *ncgr, BSTREAM *stream) {
 		else mode = 8;
 	}
 
-	*(uint32_t *) (linkFooter + 4) = linkLen + 2;
-	linkFooter[9] = (unsigned char) linkLen;
-	*(uint32_t *) (cmntFooter + 4) = commentLen + 2;
-	cmntFooter[9] = (unsigned char) commentLen;
-	*(uint32_t *) (modeFooter + 8) = mode;
-	*(uint16_t *) (sizeFooter + 8) = ncgr->tilesX;
-	*(uint16_t *) (sizeFooter + 10) = ncgr->tilesY;
-	*(uint32_t *) (verFooter + 4) = strlen(version);
+	uint16_t sizeFooter[2];
+	sizeFooter[0] = ncgr->tilesX;
+	sizeFooter[1] = ncgr->tilesY;
 
-	bstreamWrite(stream, linkFooter, sizeof(linkFooter));
-	bstreamWrite(stream, ncgr->header.fileLink, linkLen);
-	bstreamWrite(stream, cmntFooter, sizeof(cmntFooter));
-	bstreamWrite(stream, ncgr->header.comment, commentLen);
-	bstreamWrite(stream, modeFooter, sizeof(modeFooter));
-	bstreamWrite(stream, sizeFooter, sizeof(sizeFooter));
-	bstreamWrite(stream, verFooter, sizeof(verFooter));
-	bstreamWrite(stream, version, strlen(version));
-	bstreamWrite(stream, endFooter, sizeof(endFooter));
+	IscadStreamStartBlock(&cadStream, "LINK");
+	IscadStreamWriteCountedString(&cadStream, ncgr->header.fileLink);
+	IscadStreamEndBlock(&cadStream);
+
+	IscadStreamStartBlock(&cadStream, "CMNT");
+	IscadStreamWriteCountedString(&cadStream, ncgr->header.comment);
+	IscadStreamEndBlock(&cadStream);
+
+	IscadWriteBlock(&cadStream, "MODE", &mode, sizeof(mode));
+	IscadWriteBlock(&cadStream, "SIZE", sizeFooter, sizeof(sizeFooter));
+	IscadWriteBlock(&cadStream, "VER ", version, strlen(version));
+	IscadWriteBlock(&cadStream, "END ", NULL, 0);
+
+	IscadStreamFinalize(&cadStream);
+	IscadStreamFlushOut(&cadStream, stream);
+	IscadStreamFree(&cadStream);
 	return 0;
 }
 

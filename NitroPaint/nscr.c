@@ -713,23 +713,20 @@ int ScrWriteNsc(NSCR *nscr, BSTREAM *stream) {
 	return 0;
 }
 
-static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
-	bstreamWrite(stream, nscr->data, nscr->dataSize);
 
-	unsigned char clrfFooter[] = { 'C', 'L', 'R', 'F', 0, 0, 0, 0 };
-	unsigned char linkFooter[] = { 'L', 'I', 'N', 'K', 0, 0, 0, 0 };
-	unsigned char cmntFooter[] = { 'C', 'M', 'N', 'T', 0, 0, 0, 0, 1, 0 };
-	unsigned char clrcFooter[] = { 'C', 'L', 'R', 'C', 2, 0, 0, 0, 0, 0 };
-	unsigned char modeFooter[] = { 'M', 'O', 'D', 'E', 4, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char sizeFooter[] = { 'S', 'I', 'Z', 'E', 4, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned char verFooter[] = { 'V', 'E', 'R', ' ', 0, 0, 0, 0 };
-	unsigned char endFooter[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 0 };
+
+static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
+	IscadStream cadStream;
+	IscadStreamCreate(&cadStream);
+	IscadStreamWrite(&cadStream, nscr->data, nscr->dataSize);
+
+	unsigned char clrcFooter[2];
+	unsigned char modeFooter[4];
 
 	//expects null terminated for ISC/ASC LINK specifically (not the others for some reason)
 	int linkLen = (nscr->header.fileLink == NULL) ? 0 : (strlen(nscr->header.fileLink) + 1);
-	int commentLen = (nscr->header.comment == NULL) ? 0 : strlen(nscr->header.comment);
 
-	char *ver = "";
+	const char *ver = "";
 	switch (nscr->header.format) {
 		case NSCR_TYPE_AC:
 			ver = "IS-ASC03"; break;
@@ -737,43 +734,53 @@ static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
 			ver = "IS-ISC01"; break;
 	}
 
-	*(uint32_t *) (clrfFooter + 0x4) = (nscr->dataSize + 15) / 16;
-	*(uint32_t *) (linkFooter + 0x4) = linkLen;
-	*(uint32_t *) (cmntFooter + 0x4) = commentLen + 2;
-	*(uint16_t *) (clrcFooter + 0x8) = nscr->clearValue;
-	*(uint16_t *) (sizeFooter + 0x8) = nscr->tilesX;
-	*(uint16_t *) (sizeFooter + 0xA) = nscr->tilesY;
-	cmntFooter[0x09] = commentLen;
-	modeFooter[0x8] = nscr->tilesX;
-	modeFooter[0x9] = nscr->tilesY;
-	modeFooter[0xA] = (nscr->fmt == SCREENFORMAT_AFFINE) ? 1 : 0;
-	modeFooter[0xB] = 0x02 | (nscr->colorMode = SCREENCOLORMODE_256x1 || nscr->colorMode == SCREENCOLORMODE_256x16);
-	*(uint32_t *) (verFooter + 0x4) = strlen(ver);
+	*(uint16_t *) (clrcFooter + 0x0) = nscr->clearValue;
 
-	bstreamWrite(stream, clrfFooter, sizeof(clrfFooter));
-	for (unsigned int i = 0; i < (nscr->dataSize + 15) / 16; i++) {
-		unsigned char f = 0x00; //not clear character
-		bstreamWrite(stream, &f, sizeof(f));
+	modeFooter[0] = nscr->tilesX;
+	modeFooter[1] = nscr->tilesY;
+	modeFooter[2] = (nscr->fmt == SCREENFORMAT_AFFINE) ? 1 : 0;
+	modeFooter[3] = 0x02 | (nscr->colorMode = SCREENCOLORMODE_256x1 || nscr->colorMode == SCREENCOLORMODE_256x16);
+
+	IscadStreamStartBlock(&cadStream, "CLRF");
+	{
+		//write zeroed CLRF (no tile marked "unused")
+		unsigned int clrfSize = (nscr->dataSize + 15) / 16;
+		unsigned char *clrf = (unsigned char *) calloc(clrfSize, 1);
+		IscadStreamWrite(&cadStream, clrf, clrfSize);
+		free(clrf);
 	}
-	bstreamWrite(stream, linkFooter, sizeof(linkFooter));
-	bstreamWrite(stream, nscr->header.fileLink, linkLen);
-	bstreamWrite(stream, cmntFooter, sizeof(cmntFooter));
-	bstreamWrite(stream, nscr->header.comment, commentLen);
-	bstreamWrite(stream, clrcFooter, sizeof(clrcFooter));
+	IscadStreamEndBlock(&cadStream);
+
+	IscadWriteBlock(&cadStream, "LINK", nscr->header.fileLink, linkLen);
+
+	IscadStreamStartBlock(&cadStream, "CMNT");
+	IscadStreamWriteCountedString(&cadStream, nscr->header.comment);
+	IscadStreamEndBlock(&cadStream);
+
+	IscadWriteBlock(&cadStream, "CLRC", clrcFooter, sizeof(clrcFooter));
+
 	if (nscr->header.format == NSCR_TYPE_AC) {
 		//ASC: MODE footer contains the size
-		bstreamWrite(stream, modeFooter, sizeof(modeFooter));
+		IscadWriteBlock(&cadStream, "MODE", modeFooter, sizeof(modeFooter));
 	} else if (nscr->header.format == NSCR_TYPE_IC) {
 		//ISC: MODE footer does not contain the size, has separate SIZE footer
-		unsigned char iscModeFooter[] = { 'M', 'O', 'D', 'E', 2, 0, 0, 0, 0, 0 };
-		iscModeFooter[0x8] = (nscr->fmt == SCREENFORMAT_AFFINE) ? 1 : 0;
-		bstreamWrite(stream, iscModeFooter, sizeof(iscModeFooter));
-		bstreamWrite(stream, sizeFooter, sizeof(sizeFooter));
-	}
-	bstreamWrite(stream, verFooter, sizeof(verFooter));
-	bstreamWrite(stream, ver, strlen(ver));
-	bstreamWrite(stream, endFooter, sizeof(endFooter));
+		unsigned char iscModeFooter[] = { 0, 0 };
+		iscModeFooter[0] = (nscr->fmt == SCREENFORMAT_AFFINE) ? 1 : 0;
 
+		unsigned char sizeFooter[] = { 0, 0, 0, 0 };
+		*(uint16_t *) (sizeFooter + 0x0) = nscr->tilesX;
+		*(uint16_t *) (sizeFooter + 0x2) = nscr->tilesY;
+
+		IscadWriteBlock(&cadStream, "MODE", iscModeFooter, sizeof(iscModeFooter));
+		IscadWriteBlock(&cadStream, "SIZE", sizeFooter, sizeof(sizeFooter));
+	}
+
+	IscadWriteBlock(&cadStream, "VER ", ver, strlen(ver));
+	IscadWriteBlock(&cadStream, "END ", NULL, 0);
+
+	IscadStreamFinalize(&cadStream);
+	IscadStreamFlushOut(&cadStream, stream);
+	IscadStreamFree(&cadStream);
 	return 0;
 }
 

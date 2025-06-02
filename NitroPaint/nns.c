@@ -690,3 +690,60 @@ void NnsStreamFree(NnsStream *stream) {
 	bstreamFree(&stream->blockStream);
 	bstreamFree(&stream->currentStream);
 }
+
+
+
+// ----- ISCAD functions
+
+void IscadStreamCreate(IscadStream *stream) {
+	stream->inFooter = 0;
+	bstreamCreate(&stream->stream, NULL, 0);
+}
+
+void IscadStreamFree(IscadStream *stream) {
+	bstreamFree(&stream->stream);
+}
+
+void IscadStreamStartBlock(IscadStream *stream, const char *signature) {
+	stream->inFooter = 1;
+	stream->blockStart = stream->stream.pos;
+
+	uint32_t tmpSize = 0;
+	bstreamWrite(&stream->stream, signature, 4);
+	bstreamWrite(&stream->stream, &tmpSize, sizeof(tmpSize));
+}
+
+void IscadStreamEndBlock(IscadStream *stream) {
+	unsigned int blockSize = stream->stream.pos - stream->blockStart;
+	blockSize -= 8; // block header size
+	*(uint32_t *) (stream->stream.buffer + stream->blockStart + 4) = blockSize;
+}
+
+void IscadStreamFinalize(IscadStream *stream) {
+	//tbd
+	(void) stream;
+}
+
+void IscadStreamWrite(IscadStream *stream, const void *data, unsigned int len) {
+	bstreamWrite(&stream->stream, (void *) data, len);
+}
+
+void IscadStreamWriteCountedString(IscadStream *stream, const char *str) {
+	unsigned char header[2];
+	unsigned int len = 0;
+	if (str != NULL) len = strlen(str);
+	header[0] = 1;
+	header[1] = len;
+	IscadStreamWrite(stream, header, sizeof(header));
+	IscadStreamWrite(stream, str, len);
+}
+
+void IscadWriteBlock(IscadStream *stream, const char *signature, const void *data, unsigned int len) {
+	IscadStreamStartBlock(stream, signature);
+	IscadStreamWrite(stream, data, len);
+	IscadStreamEndBlock(stream);
+}
+
+void IscadStreamFlushOut(IscadStream *stream, BSTREAM *out) {
+	bstreamWrite(out, stream->stream.buffer, stream->stream.size);
+}
