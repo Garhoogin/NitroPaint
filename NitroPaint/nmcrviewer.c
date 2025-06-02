@@ -10,8 +10,8 @@
 
 extern HICON g_appIcon;
 
-HBITMAP RenderNmcrFrame(NMCR *nmcr, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *nanr, int cellIndex, int frame) {
-	DWORD *px = (DWORD *) calloc(256 * 512, 4);
+static HBITMAP RenderNmcrFrame(NMCR *nmcr, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *nanr, int cellIndex, int frame) {
+	COLOR32 *px = (COLOR32 *) calloc(256 * 512, 4);
 
 	for (int i = 0; i < 512 * 256; i++) {
 		int cc = ((i ^ (i >> 9)) >> 2) & 1;
@@ -40,11 +40,7 @@ HBITMAP RenderNmcrFrame(NMCR *nmcr, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *na
 }
 
 LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NMCRVIEWERDATA *data = (NMCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (NMCRVIEWERDATA *) calloc(1, sizeof(NMCRVIEWERDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	NMCRVIEWERDATA *data = (NMCRVIEWERDATA *) EditorGetData(hWnd);
 	switch (msg) {
 		case NV_INITIALIZE:
 		{
@@ -52,8 +48,6 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
 			memcpy(&data->nmcr, (NMCR *) lParam, sizeof(NMCR));
 			data->multiCell = 0;
-			data->frameTimes = (int *) calloc(data->nmcr.multiCells[data->multiCell].nNodes, sizeof(int));
-			data->frameNumbers = (int *) calloc(data->nmcr.multiCells[data->multiCell].nNodes, sizeof(int));
 
 			InvalidateRect(hWnd, NULL, FALSE);
 			SetTimer(hWnd, 1, 17, NULL);
@@ -62,27 +56,7 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		case WM_TIMER:
 		{
 			//increment timers
-			int nNode = data->nmcr.multiCells[data->multiCell].nNodes;
-			for (int i = 0; i < nNode; i++) {
-				data->frameTimes[i]++;
-			}
 			data->frame++;
-
-			//increment frame if applicable
-			NANR *nanr = NULL;
-			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nps = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			HWND hWndNanrViewer = nps->hWndNanrViewer;
-			if (hWndNanrViewer != NULL) {
-				NANRVIEWERDATA *nanrViewerData = (NANRVIEWERDATA *) GetWindowLongPtr(hWndNanrViewer, 0);
-				nanr = &nanrViewerData->nanr;
-			}
-			
-			if (nanr != NULL) {
-				for (int i = 0; i < nNode; i++) {
-
-				}
-			}
 
 			InvalidateRect(hWnd, NULL, FALSE);
 			break;
@@ -98,22 +72,11 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			NANR *nanr = NULL;
 			HWND hWndMain = getMainWindow(hWnd);
 			NITROPAINTSTRUCT *nps = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
-			if (nps->hWndNclrViewer != NULL) {
-				NCLRVIEWERDATA *nclrViewerData = (NCLRVIEWERDATA *) GetWindowLongPtr(nps->hWndNclrViewer, 0);
-				nclr = &nclrViewerData->nclr;
-			}
-			if (nps->hWndNcgrViewer != NULL) {
-				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(nps->hWndNcgrViewer, 0);
-				ncgr = &ncgrViewerData->ncgr;
-			}
-			if (nps->hWndNcerViewer != NULL) {
-				NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) GetWindowLongPtr(nps->hWndNcerViewer, 0);
-				ncer = &ncerViewerData->ncer;
-			}
-			if (nps->hWndNanrViewer != NULL) {
-				NANRVIEWERDATA *nanrViewerData = (NANRVIEWERDATA *) GetWindowLongPtr(nps->hWndNanrViewer, 0);
-				nanr = &nanrViewerData->nanr;
-			}
+			if (nps->hWndNclrViewer != NULL) nclr = (NCLR *) EditorGetObject(nps->hWndNclrViewer);
+			if (nps->hWndNcgrViewer != NULL) ncgr = (NCGR *) EditorGetObject(nps->hWndNcgrViewer);
+			if (nps->hWndNcerViewer != NULL) ncer = (NCER *) EditorGetObject(nps->hWndNcerViewer);
+			if (nps->hWndNanrViewer != NULL) nanr = (NANR *) EditorGetObject(nps->hWndNanrViewer);
+
 			HBITMAP hBitmap = RenderNmcrFrame(&data->nmcr, nclr, ncgr, ncer, nanr, data->multiCell, data->frame);
 			HDC hOffDC = CreateCompatibleDC(hDC);
 			SelectObject(hOffDC, hBitmap);
@@ -124,19 +87,12 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			EndPaint(hWnd, &ps);
 			break;
 		}
-		case WM_DESTROY:
-		{
-			free(data);
-			break;
-		}
-		case NV_GETTYPE:
-			return FILE_TYPE_NMCR;
 	}
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
-VOID RegisterNmcrViewerClass(VOID) {
-	RegisterGenericClass(L"NmcrViewerClass", NmcrViewerWndProc, sizeof(LPVOID));
+void RegisterNmcrViewerClass(void) {
+	EditorRegister(L"NmcrViewerClass", NmcrViewerWndProc, L"NMCR Viewer", sizeof(NMCRVIEWERDATA), 0);
 }
 
 HWND CreateNmcrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
