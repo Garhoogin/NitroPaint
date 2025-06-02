@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include <math.h>
 
 #include "ncer.h"
 #include "nanr.h"
@@ -6,17 +7,16 @@
 #include "nclr.h"
 #include "nns.h"
 
-#define NANR_SEQ_TYPE_INDEX         0
-#define NANR_SEQ_TYPE_INDEX_SRT     1
-#define NANR_SEQ_TYPE_INDEX_T       2
+#define FX32_ONE               4096
+#define FX32_HALF              (FX32_ONE/2)
+#define FX32_FROM_F32(x)       ((int)(((x)<0.0f)?((x)*FX32_ONE+0.5f):((x)*FX32_ONE-0.5f)))
 
-#define NANR_SEQ_TYPE_CELL          1
-#define NANR_SEQ_TYPE_MULTICELL     2
-
-#define NANR_SEQ_MODE_FORWARD       1
-#define NANR_SEQ_MODE_FORWARD_LOOP  2
-#define NANR_SEQ_MODE_BACKWARD      3
-#define NANR_SEQ_MODE_BACKWARD_LOOP 4
+#define RAD_0DEG               0.00000000000000000
+#define RAD_22_5DEG            0.39269908169872415
+#define RAD_45DEG              0.78539816339744831
+#define RAD_90DEG              1.57079632679489662
+#define RAD_180DEG             3.14159265358979323
+#define RAD_360DEG             6.28318530717958648
 
 LPCWSTR cellAnimationFormatNames[] = { L"Invalid", L"NANR", L"Ghost Trick", NULL };
 
@@ -529,3 +529,136 @@ void AnmFree(OBJECT_HEADER *obj) {
 	}
 	free(nanr->sequences);
 }
+
+
+
+// ----- animation routines
+
+static int FloatToInt(double x) {
+	return (int) (x + (x < 0.0f ? -0.5f : 0.5f));
+}
+
+int AnmGetAnimFrame(
+	NANR          *nanr,
+	int            iSeq,
+	int            iFrm,
+	ANIM_DATA_SRT *pFrame,
+	int           *pDuration
+) {
+	if (pFrame != NULL) memset(pFrame, 0, sizeof(ANIM_DATA_SRT));
+	if (pDuration != NULL) *pDuration = 0;
+	if (iSeq < 0 || iSeq >= nanr->nSequences) return 0;
+
+	NANR_SEQUENCE *seq = &nanr->sequences[iSeq];
+	if (iFrm < 0 || iFrm >= seq->nFrames) return 0;
+
+	FRAME_DATA *frame = &seq->frames[iFrm];
+	void *frameData = frame->animationData;
+
+	if (pDuration != NULL) *pDuration = frame->nFrames;
+
+	if (pFrame != NULL) {
+		switch (seq->type & 0xFFFF) {
+			case NANR_SEQ_TYPE_INDEX:
+			{
+				//convert Index to Index+SRT
+				ANIM_DATA *dat = (ANIM_DATA *) frameData;
+				pFrame->index = dat->index;
+				pFrame->px = 0;
+				pFrame->py = 0;
+				pFrame->sx = FX32_ONE; // identity scale
+				pFrame->sy = FX32_ONE; // identity scale
+				pFrame->rotZ = 0;      // no rotation
+				break;
+			}
+			case NANR_SEQ_TYPE_INDEX_T:
+			{
+				//convert Index+T to Index+SRT
+				ANIM_DATA_T *dat = (ANIM_DATA_T *) frameData;
+				pFrame->index = dat->index;
+				pFrame->px = dat->px;
+				pFrame->py = dat->py;
+				pFrame->sx = FX32_ONE; // identity scale
+				pFrame->sy = FX32_ONE; // identity scale
+				pFrame->rotZ = 0;      // no rotation
+				break;
+			}
+			case NANR_SEQ_TYPE_INDEX_SRT:
+			{
+				//copy Index+SRT
+				ANIM_DATA_SRT *dat = (ANIM_DATA_SRT *) frameData;
+				memcpy(pFrame, dat, sizeof(ANIM_DATA_SRT));
+				break;
+			}
+			default:
+				return 0;
+		}
+	}
+
+	return 1;
+}
+
+void AnmCalcTransformMatrix(
+	double  centerX,     // center point X of transformation
+	double  centerY,     // center point Y of transformation
+	double  scaleX,      // 1. scale X
+	double  scaleY,      // 1. scale Y
+	double  rotZ,        // 2. rotation (radians)
+	double  transX,      // 3. translation X
+	double  transY,      // 3. translation Y
+	double *pMtx,        // -> output transformation matrix
+	double *pTrans       // -> output translation vector
+) {
+	double mtx[2][2];
+	double trans[2];
+
+	if (rotZ == 0.0f) {
+		//no rotation
+		mtx[0][0] = scaleX;
+		mtx[0][1] = 0.0f;
+		mtx[1][0] = 0.0f;
+		mtx[1][1] = scaleY;
+
+		trans[0] = centerX * (1.0f - scaleX) + transX;
+		trans[1] = centerY * (1.0f - scaleY) + transY;
+	} else {
+		//with rotation
+		double sinR = sin(rotZ);
+		double cosR = cos(rotZ);
+
+		mtx[0][0] = scaleX * cosR;
+		mtx[0][1] = -scaleY * sinR;
+		mtx[1][0] = scaleX * sinR;
+		mtx[1][1] = scaleY * cosR;
+
+		trans[0] = centerX * (1.0f - scaleX * cosR) + scaleY * centerY * sinR + transX;
+		trans[1] = centerY * (1.0f - scaleY * cosR) - scaleX * centerX * sinR + transY;
+	}
+
+	//output matrix
+	memcpy(pMtx, mtx, sizeof(mtx));
+	memcpy(pTrans, trans, sizeof(trans));
+}
+
+void AnmRenderSequenceFrame(COLOR32 *dest, NANR *nanr, NCER *ncer, NCGR *ncgr, NCLR *nclr, int iSeq, int iFrm, int x, int y, int forceAffine, int forceDoubleSize) {
+	if (nanr == NULL || ncer == NULL) return;
+
+	//get frame data
+	ANIM_DATA_SRT frm;
+	if (!AnmGetAnimFrame(nanr, iSeq, iFrm, &frm, NULL)) return;
+	if (frm.index < 0 || frm.index >= ncer->nCells) return;
+
+	//get referenced cell
+	NCER_CELL *cell = &ncer->cells[frm.index];
+	double sx = frm.sx / 4096.0;
+	double sy = frm.sy / 4096.0;
+	double rot = (frm.rotZ / 65536.0) * RAD_360DEG;
+
+	double mtx[2][2] = { { 1.0, 0.0 }, { 0.0, 1.0 } }, trans[2] = { 0 };
+	AnmCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
+	CellRender(dest, NULL, ncer, ncgr, nclr, frm.index, cell,
+		FloatToInt(trans[0]) + x, FloatToInt(trans[1]) + y,
+		mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
+		forceAffine, forceDoubleSize);
+}
+

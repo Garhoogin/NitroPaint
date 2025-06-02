@@ -31,18 +31,6 @@ extern HICON g_appIcon;
 #define SEXT8(n) (((n)<0x080)?(n):((n)-0x100))
 #define SEXT9(n) (((n)<0x100)?(n):((n)-0x200))
 
-#define NANR_SEQ_TYPE_INDEX         0
-#define NANR_SEQ_TYPE_INDEX_SRT     1
-#define NANR_SEQ_TYPE_INDEX_T       2
-
-#define NANR_SEQ_TYPE_CELL          1
-#define NANR_SEQ_TYPE_MULTICELL     2
-
-#define NANR_SEQ_MODE_FORWARD       1
-#define NANR_SEQ_MODE_FORWARD_LOOP  2
-#define NANR_SEQ_MODE_BACKWARD      3
-#define NANR_SEQ_MODE_BACKWARD_LOOP 4
-
 #define NANRVIEWER_TIMER_TICK       1
 
 #define PREVIEW_ICON_WIDTH         64 // width of cell preview icon
@@ -203,52 +191,10 @@ static void AnmViewerInvMtx(double *pMtx) {
 	pMtx[1 * 2 + 1] = mtx[0][0] / det;
 }
 
-static void AnmViewerCalcTransformMatrix(
-	double  centerX,     // center point X of transformation
-	double  centerY,     // center point Y of transformation
-	double  scaleX,      // 1. scale X
-	double  scaleY,      // 1. scale Y
-	double  rotZ,        // 2. rotation (radians)
-	double  transX,      // 3. translation X
-	double  transY,      // 3. translation Y
-	double *pMtx,        // -> output transformation matrix
-	double *pTrans       // -> output translation vector
-) {
-	double mtx[2][2];
-	double trans[2];
-
-	if (rotZ == 0.0f) {
-		//no rotation
-		mtx[0][0] = scaleX;
-		mtx[0][1] = 0.0f;
-		mtx[1][0] = 0.0f;
-		mtx[1][1] = scaleY;
-
-		trans[0] = centerX * (1.0f - scaleX) + transX;
-		trans[1] = centerY * (1.0f - scaleY) + transY;
-	} else {
-		//with rotation
-		double sinR = sin(rotZ);
-		double cosR = cos(rotZ);
-
-		mtx[0][0] = scaleX * cosR;
-		mtx[0][1] = -scaleY * sinR;
-		mtx[1][0] = scaleX * sinR;
-		mtx[1][1] = scaleY * cosR;
-
-		trans[0] = centerX * (1.0f - scaleX * cosR) + scaleY * centerY * sinR + transX;
-		trans[1] = centerY * (1.0f - scaleY * cosR) - scaleX * centerX * sinR + transY;
-	}
-
-	//output matrix
-	memcpy(pMtx, mtx, sizeof(mtx));
-	memcpy(pTrans, trans, sizeof(trans));
-}
-
 static void AnmViewerApplyScaleTransform(double cx, double cy, double *pTx, double *pTy, double *pSx, double *pSy, double rot, double newSx, double newSy) {
 	double mtxNew[2][2], transNew[2], mtxOld[2][2], transOld[2];
-	AnmViewerCalcTransformMatrix(0.0f, 0.0f, newSx, newSy, rot, *pTx, *pTy, &mtxNew[0][0], &transNew[0]);
-	AnmViewerCalcTransformMatrix(0.0f, 0.0f, *pSx, *pSy, rot, *pTx, *pTy, &mtxOld[0][0], &transOld[0]);
+	AnmCalcTransformMatrix(0.0f, 0.0f, newSx, newSy, rot, *pTx, *pTy, &mtxNew[0][0], &transNew[0]);
+	AnmCalcTransformMatrix(0.0f, 0.0f, *pSx, *pSy, rot, *pTx, *pTy, &mtxOld[0][0], &transOld[0]);
 	AnmViewerInvMtx(&mtxOld[0][0]);
 
 	//set (tx, ty) such that it transforms the same by the inverses of both new and original.
@@ -269,8 +215,8 @@ static void AnmViewerApplyScaleTransform(double cx, double cy, double *pTx, doub
 
 static void AnmViewerApplyRotateTransform(double cx, double cy, double *pTx, double *pTy, double sx, double sy, double *pRot, double newRot) {
 	double mtxNew[2][2], transNew[2], mtxOld[2][2], transOld[2];
-	AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, newRot, *pTx, *pTy, &mtxNew[0][0], &transNew[0]);
-	AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, *pRot, *pTx, *pTy, &mtxOld[0][0], &transOld[0]);
+	AnmCalcTransformMatrix(0.0f, 0.0f, sx, sy, newRot, *pTx, *pTy, &mtxNew[0][0], &transNew[0]);
+	AnmCalcTransformMatrix(0.0f, 0.0f, sx, sy, *pRot, *pTx, *pTy, &mtxOld[0][0], &transOld[0]);
 	AnmViewerInvMtx(&mtxOld[0][0]);
 
 	//set (tx, ty) such that it transforms the same by the inverses of both new and original.
@@ -333,7 +279,7 @@ static void AnmViewerGetCurrentFrameTransform(NANRVIEWERDATA *data, double *pMtx
 
 	AnmTransSrt srt;
 	AnmViewerDecodeTransform(&srt, &frm);
-	AnmViewerCalcTransformMatrix(0.0f, 0.0f, srt.sx, srt.sy, srt.rot, srt.tx, srt.ty, pMtx, pTrans);
+	AnmCalcTransformMatrix(0.0f, 0.0f, srt.sx, srt.sy, srt.rot, srt.tx, srt.ty, pMtx, pTrans);
 }
 
 
@@ -735,7 +681,7 @@ static void AnmViewerRenderGlyphListImage(NANRVIEWERDATA *data, int i) {
 		double sy = frm.sy / 4096.0;
 		double rot = (frm.rotZ / 65536.0) * RAD_360DEG;
 
-		AnmViewerCalcTransformMatrix(0.0f, 0.0f, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
+		AnmCalcTransformMatrix(0.0f, 0.0f, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
 		CellRender(data->cellRender, NULL, ncer, ncgr, nclr, frm.index, cell,
 			FloatToInt(trans[0]), FloatToInt(trans[1]),
 			mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
@@ -894,57 +840,7 @@ static NANR_SEQUENCE *AnmViewerGetCurrentSequence(NANRVIEWERDATA *data) {
 }
 
 static int AnmViewerGetAnimFrame(NANRVIEWERDATA *data, int iSeq, int iFrm, ANIM_DATA_SRT *pFrame, int *pDuration) {
-	if (pFrame != NULL) memset(pFrame, 0, sizeof(ANIM_DATA_SRT));
-	if (pDuration != NULL) *pDuration = 0;
-	if (iSeq < 0 || iSeq >= data->nanr.nSequences) return 0;
-
-	NANR_SEQUENCE *seq = &data->nanr.sequences[iSeq];
-	if (iFrm < 0 || iFrm >= seq->nFrames) return 0;
-
-	FRAME_DATA *frame = &seq->frames[iFrm];
-	void *frameData = frame->animationData;
-
-	if (pDuration != NULL) *pDuration = frame->nFrames;
-
-	if (pFrame != NULL) {
-		switch (seq->type & 0xFFFF) {
-			case NANR_SEQ_TYPE_INDEX:
-			{
-				//convert Index to Index+SRT
-				ANIM_DATA *dat = (ANIM_DATA *) frameData;
-				pFrame->index = dat->index;
-				pFrame->px = 0;
-				pFrame->py = 0;
-				pFrame->sx = FX32_ONE; // identity scale
-				pFrame->sy = FX32_ONE; // identity scale
-				pFrame->rotZ = 0;      // no rotation
-				break;
-			}
-			case NANR_SEQ_TYPE_INDEX_T:
-			{
-				//convert Index+T to Index+SRT
-				ANIM_DATA_T *dat = (ANIM_DATA_T *) frameData;
-				pFrame->index = dat->index;
-				pFrame->px = dat->px;
-				pFrame->py = dat->py;
-				pFrame->sx = FX32_ONE; // identity scale
-				pFrame->sy = FX32_ONE; // identity scale
-				pFrame->rotZ = 0;      // no rotation
-				break;
-			}
-			case NANR_SEQ_TYPE_INDEX_SRT:
-			{
-				//copy Index+SRT
-				ANIM_DATA_SRT *dat = (ANIM_DATA_SRT *) frameData;
-				memcpy(pFrame, dat, sizeof(ANIM_DATA_SRT));
-				break;
-			}
-			default:
-				return 0;
-		}
-	}
-
-	return 1;
+	return AnmGetAnimFrame(&data->nanr, iSeq, iFrm, pFrame, pDuration);
 }
 
 static int AnmViewerGetCurrentAnimFrame(NANRVIEWERDATA *data, ANIM_DATA_SRT *pFrame, int *pDuration) {
@@ -1639,7 +1535,7 @@ static void AnmViewerRenderFrameFromCurrentSequence(NANRVIEWERDATA *data, COLOR3
 	double rot = (frm.rotZ / 65536.0) * RAD_360DEG;
 
 	double mtx[2][2] = { { 1.0, 0.0 }, { 0.0, 1.0 } }, trans[2] = { 0 };
-	AnmViewerCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
+	AnmCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
 	CellRender(dest, NULL, ncer, ncgr, nclr, frm.index, cell,
 		FloatToInt(trans[0]), FloatToInt(trans[1]),
 		mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
