@@ -695,6 +695,44 @@ void NnsStreamFree(NnsStream *stream) {
 
 // ----- ISCAD functions
 
+int IscadIsValidFooter(const unsigned char *footer, unsigned int size) {
+	//check blocks
+	unsigned int pos = 0;
+	while (pos < size) {
+		const unsigned char *hdr = footer + pos;
+		if ((size - pos) < 8) return 0;
+		if (!NnsiSigNameIsValid((const char *) hdr)) return 0;
+
+		//check block size
+		pos += 8;
+		unsigned int blockSize = *(const uint32_t *) (hdr + 4);
+		if ((size - pos) < blockSize) return 0;
+
+		pos += blockSize;
+	}
+	return 1;
+}
+
+unsigned char *IscadFindBlockBySignature(const unsigned char *buffer, unsigned int size, const char *signature, unsigned int *pSize) {
+	//check blocks
+	unsigned int pos = 0;
+	while (pos < size) {
+		const unsigned char *hdr = buffer + pos;
+		if (memcmp(hdr, signature, 4) == 0) {
+			//return block
+			*pSize = *(const uint32_t *) (hdr + 4);
+			return (unsigned char *) (hdr + 8);
+		}
+
+		//check block size
+		pos += 8;
+		unsigned int blockSize = *(const uint32_t *) (hdr + 4);
+		pos += blockSize;
+	}
+	return NULL;
+}
+
+
 void IscadStreamCreate(IscadStream *stream) {
 	stream->inFooter = 0;
 	bstreamCreate(&stream->stream, NULL, 0);

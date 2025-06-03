@@ -74,6 +74,10 @@ void NnsStreamFree(NnsStream *stream);
 
 // ----- ISCAD stream functions
 
+int IscadIsValidFooter(const unsigned char *footer, unsigned int size);
+unsigned char *IscadFindBlockBySignature(const unsigned char *buffer, unsigned int size, const char *signature, unsigned int *pSize);
+
+
 typedef struct IscadStream_ {
 	BSTREAM stream;          // file stream
 	int inFooter;            // in footer

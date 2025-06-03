@@ -7,6 +7,7 @@
 #include "ncgr.h"
 #include "ncer.h"
 #include "nscr.h"
+#include "nanr.h"
 
 extern const wchar_t *gComboFormats[] = {
 	L"Invalid",
@@ -16,6 +17,7 @@ extern const wchar_t *gComboFormats[] = {
 	L"5BG",
 	L"MBB",
 	L"BNCD",
+	L"AOB",
 	NULL
 };
 
@@ -115,6 +117,10 @@ int combo2dGetObjMinCount(int comboType, int objType) {
 			if (objType == FILE_TYPE_CHARACTER) return 1;
 			if (objType == FILE_TYPE_CELL) return 1;
 			return 0;
+		case COMBO2D_TYPE_AOB:
+			if (objType == FILE_TYPE_CELL) return 1;
+			if (objType == FILE_TYPE_NANR) return 1;
+			return 0;
 		case COMBO2D_TYPE_DATAFILE:
 			//no particular requirements
 			return 0;
@@ -150,6 +156,10 @@ int combo2dGetObjMaxCount(int comboType, int objType) {
 			//requires exactly one character, one cell
 			if (objType == FILE_TYPE_CHARACTER) return 1;
 			if (objType == FILE_TYPE_CELL) return 1;
+			return 0;
+		case COMBO2D_TYPE_AOB:
+			if (objType == FILE_TYPE_CELL) return 1;
+			if (objType == FILE_TYPE_NANR) return 1;
 			return 0;
 		case COMBO2D_TYPE_DATAFILE:
 			//no particular requirements
@@ -360,8 +370,21 @@ int combo2dIsValidBncd(const unsigned char *file, unsigned int size) {
 	return 1;
 }
 
+static int combo2dIsValidAob(const unsigned char *file, unsigned int size) {
+	if (!IscadIsValidFooter(file, size)) return 0;
+
+	unsigned int agbSize, animSize, grpSize;
+	const unsigned char *agb = IscadFindBlockBySignature(file, size, "AGB ", &agbSize);
+	const unsigned char *anim = IscadFindBlockBySignature(file, size, "ANIM", &animSize);
+	const unsigned char *grp = IscadFindBlockBySignature(file, size, "GRP ", &grpSize);
+	if (agb == NULL || anim == NULL || grp == NULL) return 0;
+
+	return 1;
+}
+
 int combo2dIsValid(const unsigned char *file, unsigned int size) {
 	if (combo2dIsValid5bg(file, size)) return COMBO2D_TYPE_5BG;
+	if (combo2dIsValidAob(file, size)) return COMBO2D_TYPE_AOB;
 	if (combo2dIsValidBncd(file, size)) return COMBO2D_TYPE_BNCD;
 	if (combo2dIsValidTimeAce(file, size)) return COMBO2D_TYPE_TIMEACE;
 	if (combo2dIsValidBanner(file, size)) return COMBO2D_TYPE_BANNER;
@@ -612,6 +635,144 @@ int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	return 0;
 }
 
+static int combo2dReadAob(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
+	unsigned int agbSize, animSize, achrSize, objSize, grpSize, cmntSize, anmcSize, p2dmSize, ccamSize, linkSize;
+	unsigned char *agb = IscadFindBlockBySignature(buffer, size, "AGB ", &agbSize);  // read
+	unsigned char *anim = IscadFindBlockBySignature(buffer, size, "ANIM", &animSize);
+	unsigned char *achr = IscadFindBlockBySignature(buffer, size, "ACHR", &achrSize);
+	unsigned char *obj = IscadFindBlockBySignature(buffer, size, "OBJ ", &objSize);
+	unsigned char *grp = IscadFindBlockBySignature(buffer, size, "GRP ", &grpSize);
+	unsigned char *cmnt = IscadFindBlockBySignature(buffer, size, "CMNT", &cmntSize); // read
+	unsigned char *anmc = IscadFindBlockBySignature(buffer, size, "ANMC", &anmcSize); // read
+	unsigned char *p2dm = IscadFindBlockBySignature(buffer, size, "2DM ", &p2dmSize); // read
+	unsigned char *ccam = IscadFindBlockBySignature(buffer, size, "CCAM", &ccamSize);
+	unsigned char *link = IscadFindBlockBySignature(buffer, size, "LINK", &linkSize); // read
+
+	/*
+	TODO: handling character compressed animation mode
+		byte 0 of CCAM will be set nonzero, and an ACHR block will be present with 1D compressed character data
+		OBJ block may be present
+	*/
+
+	int mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	if (p2dm != NULL && p2dmSize > 0 && *p2dm) mappingMode = GX_OBJVRAMMODE_CHAR_2D;
+
+	unsigned int nObjEntry = *(const unsigned char *) (agb + 0x0);
+
+	NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
+	CellInit(ncer, NCER_TYPE_COMBO);
+	ncer->mappingMode = mappingMode;
+	ncer->nCells = nObjEntry;
+	ncer->cells = (NCER_CELL *) calloc(ncer->nCells, sizeof(NCER_CELL));
+	if (cmnt != NULL) {
+		unsigned int commentLength = cmnt[1];
+		ncer->header.comment = calloc(commentLength + 1, 1);
+		memcpy(ncer->header.comment, cmnt + 2, commentLength);
+	}
+
+	//read cell OBJ data
+	const unsigned char *pCell = agb + 1;
+	ANIM_DATA_SRT *trans = (ANIM_DATA_SRT *) calloc(nObjEntry, sizeof(ANIM_DATA_SRT));
+	for (unsigned int i = 0; i < nObjEntry; i++) {
+		trans[i].sx = trans[i].sy = 4096;
+	}
+
+	for (unsigned int curCellCount = 0; curCellCount < nObjEntry;) {
+		uint16_t nObj = *(const uint16_t *) (pCell + 0);
+		pCell += 2;
+
+		if (nObj & 0x8000) {
+			//msb=1: SRT data
+			nObj &= ~0x8000;
+
+			for (unsigned int j = 0; j < nObj; j++) {
+				int deg = *(const int16_t *) (pCell + 0);
+				int grad = (deg * 65536 + (deg >= 0 ? 180 : -180)) / 360;
+
+				//TODO: support multiple transforms per cell?
+				trans[curCellCount].rotZ = grad;
+				trans[curCellCount].sx = (*(const int16_t *) (pCell + 2)) * 16; // 8-bit fraction -> 12-bit fraction
+				trans[curCellCount].sy = (*(const int16_t *) (pCell + 4)) * 16; // 8-bit fraction -> 12-bit fraction
+				pCell += 0x6;
+			}
+		} else {
+			//msb=0: OBJ data
+			int cellI = curCellCount;
+
+			ncer->cells[cellI].nAttribs = nObj;
+			ncer->cells[cellI].attr = (uint16_t *) calloc(nObj, 6);
+
+			for (unsigned int j = 0; j < nObj; j++) {
+				memcpy(ncer->cells[cellI].attr + j * 3, pCell, 6);
+
+				pCell += 0x6;
+			}
+			curCellCount++;
+		}
+
+	}
+
+	NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
+	AnmInit(nanr, NANR_TYPE_COMBO);
+
+	//read animation sequences
+	unsigned int nSeq = *(anim++);
+	
+	nanr->nSequences = nSeq;
+	nanr->sequences = (NANR_SEQUENCE *) calloc(nanr->nSequences, sizeof(NANR_SEQUENCE));
+
+	for (unsigned int i = 0; i < nSeq; i++) {
+		//sequence properties
+		NANR_SEQUENCE *seq = &nanr->sequences[i];
+		int offsX = *(const int16_t *) (anim + 0x0);
+		int offsY = *(const int16_t *) (anim + 0x2);
+		unsigned int nFrame = *(const uint8_t *) (anim + 0x4);
+		anim += 0x5;
+
+		seq->startFrameIndex = 0;
+		seq->type = (NANR_SEQ_TYPE_CELL << 16) | NANR_SEQ_TYPE_INDEX_SRT;
+		seq->mode = NANR_SEQ_MODE_FORWARD_LOOP;
+		seq->nFrames = nFrame;
+		seq->frames = (FRAME_DATA *) calloc(seq->nFrames, sizeof(FRAME_DATA));
+
+		for (unsigned int j = 0; j < nFrame; j++) {
+			unsigned int cellno = *(const uint16_t *) (anim + 0x0);
+			unsigned int dur = *(const uint16_t *) (anim + 0x2);
+
+			seq->frames[j].nFrames = dur;
+			seq->frames[j].animationData = calloc(1, sizeof(ANIM_DATA_SRT));
+
+			ANIM_DATA_SRT *pSrt = (ANIM_DATA_SRT *) seq->frames[j].animationData;
+			pSrt->index = cellno;
+			pSrt->px = offsX;
+			pSrt->py = offsY;
+			pSrt->sx = trans[cellno].sx;
+			pSrt->sy = trans[cellno].sy;
+			pSrt->rotZ = trans[cellno].rotZ;
+
+			anim += 4;
+		}
+	}
+	free(trans);
+
+	if (anmc != NULL) {
+		unsigned int commentLength = anmc[1];
+		nanr->header.comment = calloc(commentLength + 1, 1);
+		memcpy(nanr->header.comment, anmc + 2, commentLength);
+	}
+
+	combo2dLink(combo, &ncer->header);
+	combo2dLink(combo, &nanr->header);
+
+	if (link != NULL) {
+		unsigned int linkLength = link[1];
+		combo->header.fileLink = calloc(linkLength + 1, 1);
+		memcpy(combo->header.fileLink, link + 2, linkLength);
+	}
+
+	return 0;
+}
+
 int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	int format = combo2dIsValid(buffer, size);
 	if (format == COMBO2D_TYPE_INVALID) return 1;
@@ -628,6 +789,8 @@ int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size) 
 			return combo2dReadMbb(combo, buffer, size);
 		case COMBO2D_TYPE_BNCD:
 			return combo2dReadBncd(combo, buffer, size);
+		case COMBO2D_TYPE_AOB:
+			return combo2dReadAob(combo, buffer, size);
 	}
 	return 1;
 }

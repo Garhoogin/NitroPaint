@@ -993,6 +993,12 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 						h = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NCER *) object);
 						copy = EditorGetObject(h);
 						break;
+
+					case FILE_TYPE_NANR:
+						object->combo = (void *) combo;
+						h = CreateNanrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NANR *) object);
+						copy = EditorGetObject(h);
+						break;
 				}
 
 				//if we created a copy, free the original and keep the copy

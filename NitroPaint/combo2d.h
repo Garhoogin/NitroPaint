@@ -8,7 +8,8 @@
 #define COMBO2D_TYPE_5BG         4
 #define COMBO2D_TYPE_MBB         5
 #define COMBO2D_TYPE_BNCD        6
-#define COMBO2D_TYPE_MAX         7 //max +1
+#define COMBO2D_TYPE_AOB         7
+#define COMBO2D_TYPE_MAX         8 // max +1
 
 extern const wchar_t *gComboFormats[];
 
