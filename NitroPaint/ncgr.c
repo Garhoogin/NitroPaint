@@ -87,49 +87,21 @@ int ChrIsValidNcg(const unsigned char *buffer, unsigned int size) {
 }
 
 static int ChriIsCommonScanFooter(const unsigned char *buffer, unsigned int size, int type) {
-	if (size < 8) return -1;
+	//scan for footer with these required blocks
+	const char *const requiredBlocks[] = { "LINK", "CMNT", "MODE", "SIZE", "VER ", "END " };
+	int offs = IscadScanFooter(buffer, size, requiredBlocks, sizeof(requiredBlocks) / sizeof(requiredBlocks[0]));
+	if (offs == -1) return -1;
 
-	//scan for possible locations of the footer
-	for (unsigned int i = 0; i < size - 8; i++) {
-		if (buffer[i] != 'L') continue;
-		if (memcmp(buffer + i, "LINK", 4) != 0) continue;
-		
-		//candidate location
-		int hasLink = 0, hasCmnt = 0, hasMode = 0, hasSize = 0, hasVer = 0, hasEnd = 0;
+	unsigned int footerSize = size - (unsigned int) offs;
+	const unsigned char *footer = buffer + offs;
 
-		//scan sections
-		unsigned int offset = i;
-		while (1) {
-			const unsigned char *section = buffer + offset;
-			unsigned int length = *(uint32_t *) (buffer + offset + 4);
-			offset += 8;
+	//check blocks
+	unsigned int verSize;
+	const unsigned char *verBlock = IscadFindBlockBySignature(footer, footerSize, "VER ", &verSize);
 
-			if (memcmp(section, "LINK", 4) == 0) hasLink = 1;
-			else if (memcmp(section, "CMNT", 4) == 0) hasCmnt = 1;
-			else if (memcmp(section, "MODE", 4) == 0) hasMode = 1;
-			else if (memcmp(section, "SIZE", 4) == 0) hasSize = 1;
-			else if (memcmp(section, "VER ", 4) == 0) hasVer = 1;
-			else if (memcmp(section, "END ", 4) == 0) hasEnd = 1;
-
-			if (memcmp(section, "VER ", 4) == 0) {
-				//ACG: ver = "IS-ACG0x" (1-3)
-				//ICG: ver = "IS-ICG01"
-				const char *ver = section + 8;
-				if (type == NCGR_TYPE_AC && (length < 8 || memcmp(ver, "IS-ACG", 6))) return -1;
-				if (type == NCGR_TYPE_IC && (length < 8 || memcmp(ver, "IS-ICG", 6))) return -1;
-			}
-
-			offset += length;
-			if (offset >= size) break;
-			if (hasEnd) break;
-		}
-
-		if (hasLink && hasCmnt && hasMode && hasSize && hasVer && hasEnd && offset <= size) {
-			//candidate found
-			return i;
-		}
-	}
-	return -1;
+	if (type == NCGR_TYPE_AC && (verSize < 8 || memcmp(verBlock, "IS-ACG", 6))) return -1; // ASC must have version IS-ACGxx
+	if (type == NCGR_TYPE_IC && (verSize < 8 || memcmp(verBlock, "IS-ICG", 6))) return -1; // ISC must have version IS-ICGxx
+	return offs;
 }
 
 int ChrIsValidAcg(const unsigned char *buffer, unsigned int size) {

@@ -210,53 +210,23 @@ int ScrIsValidNsc(const unsigned char *buffer, unsigned int size) {
 }
 
 int ScriIsCommonScanFooter(const unsigned char *buffer, unsigned int size, int type) {
-	if (size < 8) return -1;
+	//scan for a footer with the required blocks
+	const char *requiredBlocks[] = { "CLRF", "LINK", "CMNT", "CLRC", "MODE", "VER ", "END " };
+	int offs = IscadScanFooter(buffer, size, requiredBlocks, sizeof(requiredBlocks) / sizeof(requiredBlocks[0]));
+	if (offs == -1) return -1;
 
-	//scan for possible locations of the footer
-	for (unsigned int i = 0; i < size - 8; i++) {
-		if (buffer[i] != 'C') continue;
-		if (memcmp(buffer + i, "CLRF", 4) != 0) continue;
+	unsigned int footerSize = size - (unsigned int) offs;
+	const unsigned char *footer = buffer + offs;
 
-		//candidate location
-		int hasClrf = 0, hasLink = 0, hasCmnt = 0, hasClrc = 0, hasMode = 0, hasVer = 0, hasEnd = 0, hasSize = 0;
+	//check blocks
+	unsigned int verSize, sizeSize;
+	const unsigned char *verBlock = IscadFindBlockBySignature(footer, footerSize, "VER ", &verSize);
+	const unsigned char *sizeBlock = IscadFindBlockBySignature(footer, footerSize, "SIZE", &sizeSize);
 
-		//scan sections
-		unsigned int offset = i;
-		while (1) {
-			const char *section = buffer + offset;
-			unsigned int length = *(unsigned int *) (buffer + offset + 4);
-			offset += 8;
-
-			if (memcmp(section, "CLRF", 4) == 0) hasClrf = 1;
-			else if (memcmp(section, "LINK", 4) == 0) hasLink = 1;
-			else if (memcmp(section, "CMNT", 4) == 0) hasCmnt = 1;
-			else if (memcmp(section, "CLRC", 4) == 0) hasClrc = 1;
-			else if (memcmp(section, "MODE", 4) == 0) hasMode = 1;
-			else if (memcmp(section, "SIZE", 4) == 0) hasSize = 1;
-			else if (memcmp(section, "VER ", 4) == 0) hasVer = 1;
-			else if (memcmp(section, "END ", 4) == 0) hasEnd = 1;
-
-			if (memcmp(section, "VER ", 4) == 0) {
-				//ACG: ver = "IS-ACG0x" (1-3)
-				//ICG: ver = "IS-ICG01"
-				const char *ver = section + 8;
-				if (type == NSCR_TYPE_AC && (length < 8 || memcmp(ver, "IS-ASC", 6))) return -1;
-				if (type == NSCR_TYPE_IC && (length < 8 || memcmp(ver, "IS-ISC", 6))) return -1;
-			}
-
-			offset += length;
-			if (offset >= size) break;
-			if (hasEnd) break;
-		}
-
-		//ISC files have a SIZE section, but ASC files do not
-		int sizeSatisfied = (type == NSCR_TYPE_IC && hasSize) || (type != NSCR_TYPE_IC);
-		if (hasClrf && hasLink && hasCmnt && hasClrc && hasMode && sizeSatisfied && hasVer && hasEnd && offset <= size) {
-			//candidate found
-			return i;
-		}
-	}
-	return -1;
+	if (type == NSCR_TYPE_AC && (verSize < 8 || memcmp(verBlock, "IS-ASC", 6))) return -1; // ASC must have version IS-ASCxx
+	if (type == NSCR_TYPE_IC && (verSize < 8 || memcmp(verBlock, "IS-ISC", 6))) return -1; // ISC must have version IS-ISCxx
+	if (type == NSCR_TYPE_IC && sizeBlock == NULL) return -1;                              // ISC must have a SIZE block
+	return offs;
 }
 
 int ScrIsValidAsc(const unsigned char *file, unsigned int size) {

@@ -709,6 +709,9 @@ int IscadIsValidFooter(const unsigned char *footer, unsigned int size) {
 		if ((size - pos) < blockSize) return 0;
 
 		pos += blockSize;
+
+		//check for 'END ' signature
+		if (memcmp(hdr, "END ", 4) == 0) break;
 	}
 	return 1;
 }
@@ -728,8 +731,38 @@ unsigned char *IscadFindBlockBySignature(const unsigned char *buffer, unsigned i
 		pos += 8;
 		unsigned int blockSize = *(const uint32_t *) (hdr + 4);
 		pos += blockSize;
+
+		//check for 'END ' signature
+		if (memcmp(hdr, "END ", 4) == 0) break;
 	}
 	return NULL;
+}
+
+int IscadScanFooter(const unsigned char *buffer, unsigned int size, const char *const *requiredBlocks, unsigned int nRequiredBlocks) {
+	//scan for locations, check for required blocks.
+	for (unsigned int i = 0; i < size; i++) {
+		//check valid footer data
+		if (!IscadIsValidFooter(buffer + i, size - i)) continue;
+
+		//check required blocks
+		int foundAll = 1;
+		for (unsigned int j = 0; j < nRequiredBlocks; j++) {
+			unsigned int blockSize;
+			const unsigned char *block = IscadFindBlockBySignature(buffer + i, size - i, requiredBlocks[j], &blockSize);
+			if (block == NULL) {
+				foundAll = 0;
+				break;
+			}
+		}
+
+		//buffer here
+		if (foundAll) {
+			return (int) i;
+		}
+	}
+
+	//not found
+	return -1;
 }
 
 
@@ -747,7 +780,7 @@ void IscadStreamStartBlock(IscadStream *stream, const char *signature) {
 	stream->blockStart = stream->stream.pos;
 
 	uint32_t tmpSize = 0;
-	bstreamWrite(&stream->stream, signature, 4);
+	bstreamWrite(&stream->stream, (void *) signature, 4);
 	bstreamWrite(&stream->stream, &tmpSize, sizeof(tmpSize));
 }
 
