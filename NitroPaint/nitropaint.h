@@ -80,10 +80,10 @@ typedef struct {
 #define FILTER_EXTS_COMBO2D        L"*.mbb;*.dat;*.bnr;*.bin"
 #define FILTER_EXTS_TEXARC         L"*.nsbtx;*.nsbmd;*.bmd"
 #define FILTER_EXTS_TEXTURE        L"*.tga;*.5tx;*.tds;*.nnstga"
-#define FILTER_EXTS_FONT           L"*.nftr;*.bnfr"
+#define FILTER_EXTS_FONT           L"*.nftr;*.rtfn;*.bnfr"
 #define FILTER_EXTS_CMAP           L"*.bncmp"
 #define FILTER_EXTS_IMAGE          L"*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga"
-#define FILTER_EXTS_ALL            L"*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga;*.5tx;*.tds;*.nftr;*.bnfr"
+#define FILTER_EXTS_ALL            L"*.nclr;*.rlcn;*.ncl;*.icl;*.acl;*.5pl;*.5pc;*.ntfp;*.nbfp;*.bin;*.pltt;*.ncgr;*.rgcn;*.ncbr;*.ncg;*.icg;*.acg;*.nbfc;*.char;*.nscr;*.rcsn;*.nsc;*.isc;*.asc;*.nbfs;*.ncer;*.recn;*.nanr;*.rnan;*.dat;*.nsbmd;*.nsbtx;*.bmd;*.bnr;*.tga;*.5tx;*.tds;*.nftr;*.rtfn;*.bnfr"
 
 //common filters
 #define FILTER_PALETTE    FILTER_NAME_PALETTE   L"\0" FILTER_EXTS_PALETTE   L"\0"
