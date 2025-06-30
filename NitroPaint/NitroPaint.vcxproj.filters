@@ -138,6 +138,12 @@
     <ClCompile Include="setosa.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="nftr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nftrviewer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ncgrviewer.h">
@@ -261,6 +267,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="setosa.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nftr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nftrviewer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

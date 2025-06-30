@@ -207,7 +207,7 @@ wchar_t *UiDlgBrowseForFolder(HWND hWndParent, const wchar_t *title) {
 		if (!SUCCEEDED(hr)) goto Error;
 
 		//copy string
-		path = calloc(wcslen(ppName), sizeof(WCHAR));
+		path = calloc(wcslen(ppName) + 1, sizeof(WCHAR));
 		memcpy(path, ppName, wcslen(ppName) * sizeof(WCHAR));
 		CoTaskMemFree(ppName);
 	Error:

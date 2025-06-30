@@ -172,6 +172,8 @@
     <ClCompile Include="exceptions.c" />
     <ClCompile Include="filecommon.c" />
     <ClCompile Include="framebuffer.c" />
+    <ClCompile Include="nftr.c" />
+    <ClCompile Include="nftrviewer.c" />
     <ClCompile Include="nns.c" />
     <ClCompile Include="gdip.c" />
     <ClCompile Include="compression.c" />
@@ -194,6 +196,8 @@
     <ClCompile Include="palette.c" />
     <ClCompile Include="palops.c" />
     <ClCompile Include="preview.c" />
+    <ClCompile Include="setosa.c" />
+    <ClCompile Include="struct.c" />
     <ClCompile Include="texconv.c" />
     <ClCompile Include="texture.c" />
     <ClCompile Include="textureeditor.c" />
@@ -214,6 +218,8 @@
     <ClInclude Include="exceptions.h" />
     <ClInclude Include="filecommon.h" />
     <ClInclude Include="framebuffer.h" />
+    <ClInclude Include="nftr.h" />
+    <ClInclude Include="nftrviewer.h" />
     <ClInclude Include="nns.h" />
     <ClInclude Include="gdip.h" />
     <ClInclude Include="nanr.h" />
@@ -235,6 +241,8 @@
     <ClInclude Include="palops.h" />
     <ClInclude Include="preview.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="setosa.h" />
+    <ClInclude Include="struct.h" />
     <ClInclude Include="texconv.h" />
     <ClInclude Include="texture.h" />
     <ClInclude Include="textureeditor.h" />
