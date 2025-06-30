@@ -879,6 +879,7 @@ static void CellRenderOBJ(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *
 		COLOR32 fill = 0xFF000000;
 		if (nclr != NULL && nclr->nColors >= 1) {
 			fill = 0xFF000000 | ColorConvertFromDS(nclr->colors[0]);
+			fill = REVERSE(fill);
 		}
 		for (int i = 0; i < (tilesX * tilesY * 8 * 8); i++) out[i] = fill;
 		return;

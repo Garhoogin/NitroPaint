@@ -1581,6 +1581,12 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	if (viewWidth > rcClient.right) viewWidth = rcClient.right;
 	if (viewHeight > rcClient.bottom) viewHeight = rcClient.bottom;
 
+	COLOR32 bgColor = 0;
+	if (nclr != NULL && nclr->nColors >= 1) {
+		bgColor = ColorConvertFromDS(nclr->colors[0]);
+		bgColor = REVERSE(bgColor);
+	}
+
 	for (int y = 0; y < rcClient.bottom; y++) {
 		for (int x = 0; x < rcClient.right; x++) {
 			int srcX = (x + scrollX) / data->scale, srcY = (y + scrollY) / data->scale;
@@ -1598,8 +1604,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 					sample = checker[((x ^ y) >> 2) & 1];
 				} else {
 					//render backdrop color
-					if (nclr != NULL && nclr->nColors > 0) sample = ColorConvertFromDS(nclr->colors[0]);
-					else sample = 0;
+					sample = bgColor;
 				}
 			}
 
