@@ -23,8 +23,8 @@ static void *CxiShrink(void *block, unsigned int to) {
 
 //struct for mapping an LZ graph
 typedef struct CxiLzNode_ {
-	uint16_t distance;         // distance of node if reference
-	uint16_t length;           // length of node
+	uint32_t distance : 15;    // distance of node if reference
+	uint32_t length   : 17;    // length of node
 	uint32_t weight;           // weight of node
 } CxiLzNode;
 
