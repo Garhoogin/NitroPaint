@@ -49,6 +49,10 @@ typedef struct {
 	HWND hWndEnhanceColors;
 	HWND hWndPaletteSize;
 	HWND hWndLimitPalette;
+	HWND hWndColor0Transparent;
+	HWND hWndCheckboxAlphaKey;
+	HWND hWndSelectAlphaKey;
+	COLOR32 alphaKey;
 
 	HWND hWndProgress;
 

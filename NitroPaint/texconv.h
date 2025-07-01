@@ -14,6 +14,7 @@ typedef struct TxConversionParameters_ {
 	int dither;
 	float diffuseAmount;
 	int ditherAlpha;
+	int c0xp;
 	int colorEntries;
 	int useFixedPalette;
 	COLOR *fixedPalette;

@@ -142,7 +142,27 @@ static DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
 	return TxConvert(params);
 }
 
-static HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt, int dither, float diffuse, int ditherAlpha, int colorEntries, int useFixedPalette, COLOR *fixedPalette, int threshold, int balance, int colorBalance, int enhanceColors, char *pnam, TEXTURE *dest, void(*callback) (void *), void *callbackParam) {
+static HANDLE textureConvertThreaded(
+	COLOR32 *px,                 // pixel data of the input image.
+	int      width,              // width of the input image.
+	int      height,             // height of the input image.
+	int      fmt,                // texture format to generate.
+	int      dither,             // enables dithering.
+	float    diffuse,            // level of diffusion to use for dithering.
+	int      ditherAlpha,        // controls dithering of the alpha channel.
+	int      c0xp,               // indicates color-0 transparency (valid for palette4, palette16, palette256).
+	int      colorEntries,       // size of palette to be created.
+	int      useFixedPalette,    // indicates use of fixed palette
+	COLOR   *fixedPalette,       // fixed palette (should hold colorEntries colors, or be NULL for no fixed palette)
+	int      threshold,          // 4x4 compression threshold setting
+	int      balance,            // balance setting
+	int      colorBalance,       // color balance setting
+	int      enhanceColors,      // enhance colors setting
+	char    *pnam,               // the palette name
+	TEXTURE *dest,               // the destination texture object (make sure this object is valid while texture conversion is in process!)
+	void   (*callback) (void *), // callback function to be called when texture conversion completes
+	void    *callbackParam       // parameter to pass to the callback function when texture convresion completes
+){
 	TxConversionParameters *params = (TxConversionParameters *) calloc(1, sizeof(TxConversionParameters));
 	g_texCompressionFinished = 0;
 	params->px = px;
@@ -151,6 +171,7 @@ static HANDLE textureConvertThreaded(COLOR32 *px, int width, int height, int fmt
 	params->fmt = fmt;
 	params->dither = dither;
 	params->diffuseAmount = diffuse;
+	params->c0xp = c0xp;
 	params->ditherAlpha = ditherAlpha;
 	params->colorEntries = colorEntries;
 	params->threshold = threshold;
@@ -1021,6 +1042,13 @@ static int TexViewerImageHasTranslucentPixels(COLOR32 *px, int nWidth, int nHeig
 	return 0;
 }
 
+static int TexViewerJudgeColor0Mode(COLOR32 *px, int width, int height) {
+	for (int i = 0; i < width * height; i++) {
+		if ((px[i] >> 24) < 0x80) return 1; // transparent
+	}
+	return 0;
+}
+
 static int TexViewerJudgeFormat(COLOR32 *px, int nWidth, int nHeight) {
 	//Guess a good format for the data. Default to 4x4.
 	int fmt = CT_4x4;
@@ -1156,6 +1184,7 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	if (fixedPalette && !disables[5]) {
 		disables[2] = TRUE;
 	}
+
 	setStyle(data->hWndDitherAlpha, disables[0], WS_DISABLED);
 	setStyle(data->hWndDither, disables[1], WS_DISABLED);
 	setStyle(data->hWndColorEntries, disables[2] || !limitPalette, WS_DISABLED);
@@ -1171,6 +1200,21 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	setStyle(data->hWndEnhanceColors, fmt == CT_DIRECT, WS_DISABLED);
 
 	setStyle(data->hWndDiffuseAmount, !((dither && !disables[1]) || (ditherAlpha && !disables[0])), WS_DISABLED);
+
+	if (fmt == CT_4COLOR || fmt == CT_16COLOR || fmt == CT_256COLOR) {
+		//paletteN formats: enable color 0 mode
+		setStyle(data->hWndColor0Transparent, FALSE, WS_DISABLED);
+	} else {
+		setStyle(data->hWndColor0Transparent, TRUE, WS_DISABLED);
+	}
+
+	if (GetCheckboxChecked(data->hWndCheckboxAlphaKey)) {
+		//when alpha key is enabled, enable the select button
+		setStyle(data->hWndSelectAlphaKey, FALSE, WS_DISABLED);
+	} else {
+		setStyle(data->hWndSelectAlphaKey, TRUE, WS_DISABLED);
+	}
+
 	SetFocus(data->hWndConvertDialog);
 	InvalidateRect(data->hWndConvertDialog, NULL, FALSE);
 }
@@ -1184,12 +1228,12 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 	switch (msg) {
 		case WM_CREATE:
-			SetWindowSize(hWnd, 490, 417);
+			SetWindowSize(hWnd, 490, 444);
 			break;
 		case NV_INITIALIZE:
 		{
 			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
-			int boxHeight = 4 * 27 - 5 + 10 + 10 + 10; //first row height
+			int boxHeight = 5 * 27 - 5 + 10 + 10 + 10; //first row height
 			int boxHeight2 = 3 * 27 - 5 + 10 + 10 + 10; //second row height
 			int boxHeight3 = 3 * 27 - 5 + 10 + 10 + 10; //third row height
 			int width = 30 + 2 * boxWidth; //window width
@@ -1207,6 +1251,8 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->hWndDitherAlpha = CreateCheckbox(hWnd, L"Dither Alpha", leftX, topY + 27 * 2, 100, 22, FALSE);
 			CreateStatic(hWnd, L"Diffusion:", leftX, topY + 27 * 3, 75, 22);
 			data->hWndDiffuseAmount = CreateEdit(hWnd, L"100", leftX + 85, topY + 27 * 3, 100, 22, TRUE);
+			data->hWndCheckboxAlphaKey = CreateCheckbox(hWnd, L"Alpha Key:", leftX, topY + 27 * 4, 85, 22, FALSE);
+			data->hWndSelectAlphaKey = CreateButton(hWnd, L"...", leftX + 85, topY + 27 * 4, 50, 22, FALSE);
 
 			CreateStatic(hWnd, L"Palette Name:", rightX, topY, 75, 22);
 			data->hWndPaletteName = CreateEdit(hWnd, L"", rightX + 85, topY, 100, 22, FALSE);
@@ -1216,6 +1262,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->hWndPaletteBrowse = CreateButton(hWnd, L"...", rightX + 85 + 75, topY + 27 * 2, 25, 22, FALSE);
 			CreateStatic(hWnd, L"Colors:", rightX, topY + 27 * 3, 75, 22);
 			data->hWndPaletteSize = CreateEdit(hWnd, L"256", rightX + 85, topY + 27 * 3, 100, 22, TRUE);
+			data->hWndColor0Transparent = CreateCheckbox(hWnd, L"Color 0 is Transparent", rightX, topY + 27 * 4, 150, 22, FALSE);
 
 			data->hWndLimitPalette = CreateCheckbox(hWnd, L"Limit Palette Size", leftX, middleY, 100, 22, TRUE);
 			CreateStatic(hWnd, L"Maximum Colors:", leftX, middleY + 27, 100, 22);
@@ -1258,6 +1305,45 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 			int format = TexViewerJudgeFormat(data->px, data->width, data->height);
 			SendMessage(data->hWndFormat, CB_SETCURSEL, format - 1, 0);
+
+			//based on the texture format and presence of transparent pixels, select default color 0 mode. This option
+			//only applies to paletteN texture formats, but we'll decide as though we were using one of those formats,
+			//in case the user changes the texture format, the default settings will still be applicable.
+			if (TexViewerJudgeColor0Mode(data->px, data->width, data->height)) {
+				SendMessage(data->hWndColor0Transparent, BM_SETCHECK, BST_CHECKED, 0);
+			}
+
+			//set default alpha key
+			{
+				data->alphaKey = 0xFF00FF; // default color: magenta
+
+				//we'll scan the image for appearances of common alpha keys.
+				int nFF00FF = 0, n00FF00 = 0, nFFFF00 = 0;
+				for (int i = 0; i < data->width * data->height; i++) {
+					COLOR32 c = data->px[i] & 0xFFFFFF;
+					
+					switch (c) {
+						case 0xFF00FF: // magenta
+							nFF00FF++; break;
+						case 0x00FF00: // green
+							n00FF00++; break;
+						case 0xFFFF00: // cyan
+							nFFFF00++; break;
+					}
+				}
+
+				if (nFF00FF) data->alphaKey = 0xFF00FF;
+				else if (n00FF00) data->alphaKey = 0x00FF00;
+				else if (nFFFF00) data->alphaKey = 0xFFFF00;
+				else {
+					//select top-left color.
+					if (data->width >= 1 && data->height >= 0) {
+						data->alphaKey = data->px[0] & 0xFFFFFF;
+					} else {
+						data->alphaKey = 0xFF00FF;
+					}
+				}
+			}
 
 			//pick default 4x4 color count
 			int maxColors = TexViewerJudgeColorCount(data->width, data->height);
@@ -1305,6 +1391,23 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					updateConvertDialog(data);
 				} else if (hWndControl == data->hWndLimitPalette && controlCode == BN_CLICKED) {
 					updateConvertDialog(data);
+				} else if (hWndControl == data->hWndCheckboxAlphaKey && controlCode == BN_CLICKED) {
+					updateConvertDialog(data);
+				} else if (hWndControl == data->hWndCheckboxAlphaKey && controlCode == BN_CLICKED) {
+					updateConvertDialog(data);
+				} else if (hWndControl == data->hWndSelectAlphaKey && controlCode == BN_CLICKED) {
+					//choose a color for the alpha key
+					HWND hWndMain = getMainWindow(hWnd);
+					CHOOSECOLOR cc = { 0 };
+					cc.lStructSize = sizeof(cc);
+					cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition
+					cc.hwndOwner = hWndMain;
+					cc.rgbResult = data->alphaKey;
+					cc.lpCustColors = data->tmpCust;
+					cc.Flags = 0x103;
+					if (ChooseColorW(&cc)) {
+						data->alphaKey = cc.rgbResult;
+					}
 				} else if (hWndControl == data->hWndPaletteBrowse && controlCode == BN_CLICKED) {
 					LPWSTR path = openFileDialog(hWnd, L"Select palette", L"Palette Files\0*.nclr;*ncl.bin;*.ntfp\0All Files\0*.*\0\0", L"");
 					if (path != NULL) {
@@ -1343,9 +1446,11 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
 					BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
 					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
+					BOOL c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
+					BOOL useAlphaKey = GetCheckboxChecked(data->hWndCheckboxAlphaKey);
 
 					//if we set to not limit palette, set the max size to the max allowed
-					if (!limitPalette) {
+					if (!limitPalette || colorEntries > 32768) {
 						colorEntries = 32768;
 					}
 
@@ -1354,19 +1459,37 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						mbpnam[i] = (char) bf[i];
 					}
 
+					//alpha key preprocessing of input image
+					if (useAlphaKey) {
+						for (int i = 0; i < data->width * data->height; i++) {
+							COLOR32 c = data->px[i];
+							if ((c & 0x00FFFFFF) == (data->alphaKey & 0x00FFFFFF)) {
+								data->px[i] = 0;
+							}
+						}
+					}
+
 					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 					data->hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), 
 													  CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, hWndMain, NULL, NULL, NULL);
 					ShowWindow(data->hWndProgress, SW_SHOW);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					SetActiveWindow(data->hWndProgress);
-					textureConvertThreaded(data->px, data->width, data->height, fmt, dither, diffuse, ditherAlpha, 
+					textureConvertThreaded(data->px, data->width, data->height, fmt, dither, diffuse, ditherAlpha, c0xp,
 									fixedPalette ? paletteFile.nColors : (fmt == CT_4x4 ? colorEntries : paletteSize), 
 									fixedPalette, paletteFile.colors, optimization, balance, colorBalance, enhanceColors,
 									mbpnam, &data->texture.texture, conversionCallback, (void *) data);
 
 					//wait progress end
 					DoModal(data->hWndProgress);
+
+					//if the format is paletteN, we have not used fixed palette, color 0 was transparent and we used alpha keying, put 
+					//the alpha key into color index 0.
+					if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && c0xp && useAlphaKey && !fixedPalette) {
+						if (data->texture.texture.palette.nColors > 0) {
+							data->texture.texture.palette.pal[0] = ColorConvertToDS(data->alphaKey);
+						}
+					}
 
 					InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 					data->isNitro = TRUE;
@@ -1801,7 +1924,7 @@ int g_batchTexConvertedTex = 0; //number of textures converted
 LPCWSTR g_batchTexOut = NULL;
 HWND g_hWndBatchTexWindow;
 
-BOOL BatchTexReadOptions(LPCWSTR path, int *fmt, int *dither, int *ditherAlpha, float *diffuse, int *paletteSize, char *pnam,
+BOOL BatchTexReadOptions(LPCWSTR path, int *fmt, int *dither, int *ditherAlpha, float *diffuse, int *paletteSize, int *c0xp, char *pnam,
 	int *balance, int *colorBalance, int *enhanceColors) {
 
 	char narrow[MAX_PATH] = { 0 };
@@ -1848,6 +1971,9 @@ BOOL BatchTexReadOptions(LPCWSTR path, int *fmt, int *dither, int *ditherAlpha, 
 			if (buffer[i] == L'\0') break;
 		}
 	}
+	rawInt = GetPrivateProfileInt(L"Texture", L"C0xp", -1, path);
+	if (rawInt == -1) hasMissing = TRUE;
+	else *c0xp = rawInt;
 
 	//balance
 	rawInt = GetPrivateProfileInt(L"Texture", L"Balance", -1, path);
@@ -1863,7 +1989,7 @@ BOOL BatchTexReadOptions(LPCWSTR path, int *fmt, int *dither, int *ditherAlpha, 
 	return hasMissing;
 }
 
-void BatchTexWriteOptions(LPCWSTR path, int fmt, int dither, int ditherAlpha, float diffuse, int paletteSize, char *pnam, 
+void BatchTexWriteOptions(LPCWSTR path, int fmt, int dither, int ditherAlpha, float diffuse, int paletteSize, int c0xp, char *pnam, 
 	int balance, int colorBalance, int enhanceColors) {
 
 	//format
@@ -1884,6 +2010,8 @@ void BatchTexWriteOptions(LPCWSTR path, int fmt, int dither, int ditherAlpha, fl
 	WritePrivateProfileString(L"Texture", L"PaletteSize", buffer, path);
 	wsprintfW(buffer, L"%S", pnam);
 	WritePrivateProfileString(L"Texture", L"PaletteName", buffer, path);
+	wsprintfW(buffer, L"%d", c0xp);
+	WritePrivateProfileString(L"Texture", L"C0xp", buffer, path);
 
 	//balance
 	wsprintfW(buffer, L"%d", balance);
@@ -2026,6 +2154,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	float diffuse = 0.0f;
 
 	//palette settings
+	int c0xp = TexViewerJudgeColor0Mode(px, width, height);
 	int useFixedPalette = 0;
 	COLOR *fixedPalette = NULL;
 
@@ -2062,12 +2191,12 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	int enhanceColors = 0;
 
 	//read overrides from file.
-	BOOL hasMissing = BatchTexReadOptions(configPath, &fmt, &dither, &ditherAlpha, &diffuse, &colorEntries, pnam,
+	BOOL hasMissing = BatchTexReadOptions(configPath, &fmt, &dither, &ditherAlpha, &diffuse, &colorEntries, &c0xp, pnam,
 		&balance, &colorBalance, &enhanceColors);
 
 	//write back options to file (if there were any missing entries)
 	if (hasMissing) {
-		BatchTexWriteOptions(configPath, fmt, dither, ditherAlpha, diffuse, colorEntries, pnam, balance, colorBalance, enhanceColors);
+		BatchTexWriteOptions(configPath, fmt, dither, ditherAlpha, diffuse, colorEntries, c0xp, pnam, balance, colorBalance, enhanceColors);
 	}
 
 	HWND hWndMain = g_hWndBatchTexWindow;
@@ -2076,7 +2205,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	ShowWindow(hWndProgress, SW_SHOW);
 
 	TEXTURE texture = { 0 };
-	HANDLE hThread = textureConvertThreaded(px, width, height, fmt, dither, diffuse, ditherAlpha, colorEntries,
+	HANDLE hThread = textureConvertThreaded(px, width, height, fmt, dither, diffuse, ditherAlpha, c0xp, colorEntries,
 		useFixedPalette, fixedPalette, threshold4x4, balance, colorBalance, enhanceColors, pnam, &texture,
 		NULL, NULL);
 	DoModalWait(hWndProgress, hThread); //modal wait progress window

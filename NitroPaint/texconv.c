@@ -106,13 +106,7 @@ int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	COLOR32 *palette = (COLOR32 *) calloc(nColors, 4);
 
 	//should we reserve a color for transparent?
-	int hasTransparent = 0;
-	for (int i = 0; i < width * height; i++) {
-		if ((params->px[i] >> 24) < 0x80) {
-			hasTransparent = 1;
-			break;
-		}
-	}
+	int hasTransparent = !!params->c0xp;
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
