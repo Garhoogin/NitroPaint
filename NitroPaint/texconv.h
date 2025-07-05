@@ -25,7 +25,7 @@ typedef struct TxConversionParameters_ {
 	TEXTURE *dest;
 	void (*callback) (void *);
 	void *callbackParam;
-	char pnam[17];
+	char *pnam;
 } TxConversionParameters;
 
 //

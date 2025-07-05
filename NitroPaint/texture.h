@@ -39,13 +39,13 @@ typedef struct {
 	int height;
 	unsigned char *texel;
 	uint16_t *cmp;
-	char name[16]; //NOT necessarily null terminated!
+	char *name;
 } TEXELS;
 
 typedef struct {
 	int nColors;
 	COLOR *pal;
-	char name[16]; //NOT necessarily null terminated!
+	char *name;
 } PALETTE;
 
 typedef struct {

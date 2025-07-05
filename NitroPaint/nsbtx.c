@@ -5,6 +5,12 @@
 #include <Windows.h>
 #include <stdio.h>
 
+extern size_t my_strnlen(const char *_Str, size_t _MaxCount);
+extern size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
+#define strnlen my_strnlen
+#define wcsnlen my_wcsnlen
+
+
 //----- BEGIN Code for constructing an TexArc dictionary
 
 typedef struct DICTENTRY_ {
@@ -253,7 +259,11 @@ int TexarcReadNsbtx(TexArc *nsbtx, char *buffer, int size) {
 			texels[i].texel = calloc(texelSize, 1);
 			memcpy(texels[i].texel, tex0 + offset + baseOffsetTex, texelSize);
 		}
-		memcpy(texels[i].name, dictTex.namesPtr + i * 16, 16);
+
+		int texNameLen = strnlen(dictTex.namesPtr + i * 16, 16);
+		texels[i].name = calloc(texNameLen + 1, 1);
+		memcpy(texels[i].name, dictTex.namesPtr + i * 16, texNameLen);
+
 		texels[i].height = origHeight;
 	}
 
@@ -276,7 +286,9 @@ int TexarcReadNsbtx(TexArc *nsbtx, char *buffer, int size) {
 		palettes[i].pal = (COLOR *) calloc(nColors, 2);
 		memcpy(palettes[i].pal, tex0 + paletteDataOffset + (palData->offset << 3), nColors * 2);
 
-		memcpy(palettes[i].name, dictPal.namesPtr + i * 16, 16);
+		int palNameLen = strnlen(dictPal.namesPtr + i * 16, 16);
+		palettes[i].name = calloc(palNameLen + 1, 1);
+		memcpy(palettes[i].name, dictPal.namesPtr + i * 16, palNameLen);
 	}
 
 	//finally write out tex and pal info
@@ -324,7 +336,6 @@ int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
 		int format = FORMAT(texImageParam);
 
 		texture->texImageParam = texImageParam;
-		memcpy(texture->name, name, min(strlen(name), 16));
 		texture->texel = (char *) calloc(texelSize, 1);
 		memcpy(texture->texel, buffer + texelOffset, texelSize);
 		if (format == CT_4x4) {
@@ -332,6 +343,10 @@ int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
 			memcpy(texture->cmp, buffer + texelOffset + texelSize, texelSize / 2);
 		}
 		texture->height = TEXH(texImageParam);
+
+		unsigned int namelen = strlen(name);
+		texture->name = (char *) calloc(namelen + 1, 1);
+		memcpy(texture->name, name, namelen);
 	}
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
 		unsigned char *thisPal = palDescriptors + i * 0x10;
@@ -345,7 +360,10 @@ int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
 		palette->nColors = paletteSize / 2;
 		palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
 		memcpy(palette->pal, buffer + paletteOffset, paletteSize);
-		memcpy(palette->name, name, min(strlen(name), 16));
+
+		unsigned int namelen = strlen(name);
+		palette->name = (char *) calloc(namelen + 1, 1);
+		memcpy(palette->name, name, namelen);
 	}
 
 	//all the other stuff
@@ -590,10 +608,7 @@ int TexarcWriteBmd(TexArc *nsbtx, BSTREAM *stream) {
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		TEXELS *texture = nsbtx->textures + i;
 		char *name = texture->name;
-		int len = 0;
-		for (; len < 16; len++) {
-			if (name[len] == '\0') break;
-		}
+		int len = strlen(name);
 
 		uint32_t pos = stream->pos;
 		bstreamSeek(stream, texturePos + i * 0x14, 0);
@@ -622,10 +637,7 @@ int TexarcWriteBmd(TexArc *nsbtx, BSTREAM *stream) {
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
 		PALETTE *palette = nsbtx->palettes + i;
 		char *name = palette->name;
-		int len = 0;
-		for (; len < 16; len++) {
-			if (name[len] == '\0') break;
-		}
+		int len = strlen(name);
 
 		uint32_t pos = stream->pos;
 		bstreamSeek(stream, palettePos + i * 0x10, 0);
@@ -715,7 +727,7 @@ int TexarcWriteFile(TexArc *nsbtx, LPWSTR name) {
 
 int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name) {
 	for (int i = 0; i < nsbtx->nTextures; i++) {
-		if (strncmp(nsbtx->textures[i].name, name, 16) == 0) {
+		if (strcmp(nsbtx->textures[i].name, name) == 0) {
 			return i;
 		}
 	}
@@ -724,7 +736,7 @@ int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name) {
 
 int TexarcGetPaletteIndexByName(TexArc *nsbtx, const char *name) {
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
-		if (strncmp(nsbtx->palettes[i].name, name, 16) == 0) {
+		if (strcmp(nsbtx->palettes[i].name, name) == 0) {
 			return i;
 		}
 	}

@@ -1304,12 +1304,8 @@ int TxConvert(TxConversionParameters *params) {
 
 	//copy name (null-terminated unless 16-char long)
 	if (params->fmt != CT_DIRECT) {
-		memset(params->dest->palette.name, 0, 16);
-		for (int i = 0; i < 16; i++) {
-			char c = params->pnam[i];
-			if (!c) break;
-			params->dest->palette.name[i] = c;
-		}
+		params->dest->palette.name = calloc(strlen(params->pnam) + 1, 1);
+		memcpy(params->dest->palette.name, params->pnam, strlen(params->pnam));
 	}
 
 	TxRender(params->px, sourceWidth, sourceHeight, &params->dest->texels, &params->dest->palette, 0);
@@ -1317,5 +1313,6 @@ int TxConvert(TxConversionParameters *params) {
 	g_texCompressionFinished = 1;
 	if (params->callback) params->callback(params->callbackParam);
 	if (params->useFixedPalette) free(params->fixedPalette);
+	if (params->pnam != NULL) free(params->pnam);
 	return 0;
 }

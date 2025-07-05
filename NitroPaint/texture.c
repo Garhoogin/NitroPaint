@@ -45,16 +45,6 @@ int TxGetTexPlttVramSize(PALETTE *palette) {
 	return palette->nColors * sizeof(COLOR);
 }
 
-int max16Len(char *str) {
-	int len = 0;
-	for (int i = 0; i < 16; i++) {
-		char c = str[i];
-		if (!c) return len;
-		len++;
-	}
-	return len;
-}
-
 const char *TxNameFromTexFormat(int fmt) {
 	const char *fmts[] = { "", "a3i5", "palette4", "palette16", "palette256", "tex4x4", "a5i3", "direct" };
 	return fmts[fmt];
@@ -541,7 +531,7 @@ int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned
 
 	int frmt = 0;
 	int c0xp = 0;
-	char pnam[16] = { 0 };
+	char *pnam = NULL;
 	unsigned char *txel = NULL;
 	unsigned char *pcol = NULL;
 	unsigned char *pidx = NULL;
@@ -586,6 +576,7 @@ int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned
 		} else if (!strcmp(sect, "nns_c0xp")) {
 			c0xp = 1;
 		} else if (!strcmp(sect, "nns_pnam")) {
+			pnam = calloc(length + 1, 1);
 			memcpy(pnam, buffer, length);
 		}
 
@@ -595,7 +586,9 @@ int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned
 	if (frmt != CT_DIRECT) {
 		texture->texture.palette.pal = (COLOR *) pcol;
 		texture->texture.palette.nColors = nColors;
-		memcpy(texture->texture.palette.name, pnam, 16);
+		texture->texture.palette.name = pnam;
+	} else {
+		if (pnam != NULL) free(pnam);
 	}
 	texture->texture.texels.cmp = (uint16_t *) pidx;
 	texture->texture.texels.texel = txel;
@@ -792,11 +785,12 @@ int TxReadFile(TextureObject *texture, LPCWSTR path) {
 		}
 
 		LPCWSTR name = path + nameOffset;
-		memset(texture->texture.texels.name, 0, 16);
-		WCHAR *lastDot = wcsrchr(name, L'.');
-		for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
-			if (i == 16) break;
-			if (name + i == lastDot) break; //file extension
+		const WCHAR *pEnd = wcsrchr(name, L'.');
+		if (pEnd == NULL) pEnd = name + wcslen(name);
+
+		unsigned int nameLength = pEnd - name;
+		texture->texture.texels.name = calloc(nameLength + 1, 1);
+		for (unsigned int i = 0; i < nameLength; i++) {
 			texture->texture.texels.name[i] = (char) name[i];
 		}
 	}
@@ -898,8 +892,7 @@ int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
 
 	//palette (if applicable)
 	if (FORMAT(texels->texImageParam) != CT_DIRECT) {
-		int pnamLength = max16Len(palette->name);
-		TxiNnsTgaWriteSection(stream, "nns_pnam", palette->name, pnamLength);
+		TxiNnsTgaWriteSection(stream, "nns_pnam", palette->name, strlen(palette->name));
 
 		int nColors = palette->nColors;
 		if (FORMAT(texels->texImageParam) == CT_4COLOR && nColors > 4) nColors = 4;

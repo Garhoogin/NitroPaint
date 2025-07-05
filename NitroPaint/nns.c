@@ -460,7 +460,11 @@ static void NnsiG3dConstructTreeFromResources(BSTREAM *stream, void *items, int 
 	for (int i = 0; i < nItems; i++) {
 		namesBuf[i] = namesBlob + i * 16;
 		void *obj = (void *) (i * itemSize + (uintptr_t) items);
-		memcpy(namesBuf[i], getNamePtr(obj), 16);
+
+		const char *name = getNamePtr(obj);
+		unsigned int namelen = strlen(name);
+		if (namelen > 16) namelen = 16; // trunacate name
+		memcpy(namesBuf[i], name, namelen);
 
 		int zeroFill = 0;
 		for (int j = 0; j < 16; j++) {
@@ -508,7 +512,15 @@ int NnsG3dWriteDictionary(BSTREAM *stream, void *resources, int itemSize, int nI
 	//write names
 	for (int i = 0; i < nItems; i++) {
 		void *data = (void *) (i * itemSize + (uintptr_t) resources);
-		bstreamWrite(stream, getNamePtr(data), 16);
+
+		//name buffer
+		char name[16] = { 0 };
+		char *nameNt = getNamePtr(data);
+		unsigned int namelen = strlen(nameNt);
+		if (namelen > 16) namelen = 16;
+		memcpy(name, nameNt, namelen);
+
+		bstreamWrite(stream, name, sizeof(name));
 	}
 
 	int endPos = stream->pos;

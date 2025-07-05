@@ -43,6 +43,25 @@ long _ftol2_sse(float f) { //ugly hack
 	return _ftol(f);
 }
 
+size_t my_strnlen(const char *_Str, size_t _MaxCount);
+size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
+#define strnlen my_strnlen
+#define wcsnlen my_wcsnlen
+
+// implementation of strnlen (comment out if you have an implementation of strnlen)
+size_t my_strnlen(const char *_Str, size_t _MaxCount) {
+	size_t len = 0;
+	while (*(_Str++) && len < _MaxCount) len++;
+	return len;
+}
+
+// implementation of wcsnlen (comment out if you have an implementation of wcsnlen)
+size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount) {
+	size_t len = 0;
+	while (*(_Str++) && len < _MaxCount) len++;
+	return len;
+}
+
 int __wgetmainargs(int *argc, wchar_t ***argv, wchar_t ***env, int doWildCard, int *startInfo);
 
 HICON g_appIcon = NULL;
@@ -2249,7 +2268,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					
 				//read files
 				DWORD dwSizeHigh, dwRead;
-				char palName[16] = { 0 };
+				char palName[17] = { 0 };
 				SendMessage(data->hWndNtftInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
 				if (wcslen(src)) {
 					HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -2327,7 +2346,8 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				texture.texels.cmp = (uint16_t *) ntfi;
 				texture.texels.texImageParam = (format << 26) | ((ilog2(width) - 3) << 20) | ((ilog2(height) - 3) << 23);
 				texture.texels.height = height;
-				memcpy(&texture.palette.name, palName, 16);
+				texture.palette.name = calloc(strlen(palName) + 1, 1);
+				memcpy(texture.palette.name, palName, strlen(palName));
 
 				//texture editor takes ownership of texture data, no need to free
 				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);

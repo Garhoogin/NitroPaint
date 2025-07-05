@@ -14,7 +14,11 @@
 
 extern HICON g_appIcon;
 
-extern int max16Len(char *str);
+extern size_t my_strnlen(const char *_Str, size_t _MaxCount);
+extern size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
+#define strnlen my_strnlen
+#define wcsnlen my_wcsnlen
+
 
 HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	if (texture == NULL) return NULL;
@@ -246,15 +250,16 @@ LRESULT CALLBACK ListboxDeleteSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 void CreateVramUseWindow(HWND hWndParent, TexArc *nsbtx);
 
-static void ConstructResourceNameFromFilePath(LPCWSTR path, char *out) {
+static void ConstructResourceNameFromFilePath(LPCWSTR path, char **out) {
 	LPCWSTR name = GetFileName(path);
 	const WCHAR *lastDot = wcsrchr(name, L'.');
 
-	memset(out, 0, 16);
-	for (unsigned int i = 0; i <= wcslen(name); i++) { //copy up to including null terminator
-		if (i == 16) break;
-		if (name + i == lastDot) break; //file extension
-		out[i] = (char) name[i];
+	unsigned int len = wcsnlen(name, 16);
+	if (lastDot != NULL && len > (unsigned int) (lastDot - name)) len = lastDot - name;
+	*out = (char *) calloc(len + 1, 1);
+
+	for (unsigned int i = 0; i < len; i++) {
+		(*out)[i] = (char) name[i];
 	}
 }
 
@@ -296,7 +301,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 			memcpy(palette->pal, nclr.colors, palette->nColors * sizeof(COLOR));
 
 			//name
-			ConstructResourceNameFromFilePath(path, palette->name);
+			ConstructResourceNameFromFilePath(path, &palette->name);
 			
 			succeeded = 1;
 			ObjFree(&nclr.header);
@@ -354,14 +359,16 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 
 			//palette
 			if (FORMAT(texImageParam) != CT_DIRECT) {
+				unsigned int namelen = strlen(srcPal->name);
 				palette->nColors = srcPal->nColors;
 				palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
+				palette->name = (char *) calloc(namelen + 1, 1);
 				memcpy(palette->pal, srcPal->pal, palette->nColors * sizeof(COLOR));
-				memcpy(palette->name, srcPal->name, sizeof(palette->name));
+				memcpy(palette->name, srcPal->name, namelen);
 			}
 
 			//texture name
-			ConstructResourceNameFromFilePath(path, texels->name);
+			ConstructResourceNameFromFilePath(path, &texels->name);
 		} else {
 			succeeded = 0;
 		}
@@ -397,24 +404,26 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			}
 			memcpy(&data->nsbtx, (TexArc *) lParam, sizeof(TexArc));
 
-			WCHAR buffer[17];
 			for (int i = 0; i < data->nsbtx.nTextures; i++) {
 				char *name = data->nsbtx.textures[i].name;
-				int len = max16Len(name);
-				for (int j = 0; j < len; j++) {
+				unsigned int len = strlen(name);
+				WCHAR *buffer = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
+				for (unsigned int j = 0; j < len; j++) {
 					buffer[j] = name[j];
 				}
-				buffer[len] = 0;
 				AddListBoxItem(data->hWndTextureSelect, buffer);
+				free(buffer);
 			}
+
 			for (int i = 0; i < data->nsbtx.nPalettes; i++) {
 				char *name = data->nsbtx.palettes[i].name;
-				int len = max16Len(name);
-				for (int j = 0; j < len; j++) {
+				unsigned int len = strlen(name);
+				WCHAR *buffer = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
+				for (unsigned int j = 0; j < len; j++) {
 					buffer[j] = name[j];
 				}
-				buffer[len] = 0;
 				AddListBoxItem(data->hWndPaletteSelect, buffer);
+				free(buffer);
 			}
 			SetListBoxSelection(data->hWndTextureSelect, 0);
 			SetListBoxSelection(data->hWndPaletteSelect, 0);
@@ -567,9 +576,13 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							if (FORMAT(texels.texImageParam) != 0) {
 								//only replace texture if there's one to replace it with
 								int oldTexImageParam = destTex->texImageParam;
-								memcpy(texels.name, destTex->name, 16);
-								if (destTex->cmp) free(destTex->cmp);
-								memcpy(destTex, &texels, sizeof(TEXELS));
+
+								//transfer ownership (except name)
+								if (destTex->texel != NULL) free(destTex->texel);
+								if (destTex->cmp != NULL) free(destTex->cmp);
+								if (texels.name != NULL) free(texels.name);
+								texels.name = destTex->name;
+								memcpy(destTex, &texels, sizeof(texels));
 
 								//keep flipping, repeat, and transfomation
 								int mask = 0xC00F0000;
@@ -577,9 +590,12 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							}
 
 							if (FORMAT(texels.texImageParam) != CT_DIRECT) {
-								memcpy(palette.name, destPal->name, 16);
 								free(destPal->pal);
-								memcpy(destPal, &palette, sizeof(PALETTE));
+								if (palette.name != NULL) free(palette.name);
+
+								//transfer ownership of data (except name)
+								destPal->pal = palette.pal;
+								destPal->nColors = palette.nColors;
 							}
 
 							InvalidateRect(hWnd, NULL, TRUE);
@@ -598,16 +614,12 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						//iterate over textures. First, create an array of palette names.
 						char **palNames = (char **) calloc(data->nsbtx.nPalettes, sizeof(char *));
 						for (int i = 0; i < data->nsbtx.nPalettes; i++) {
-							char *nameBuffer = (char *) calloc(17, 1); //null terminator for convenience
-							memcpy(nameBuffer, data->nsbtx.palettes[i].name, 16);
-							palNames[i] = nameBuffer;
+							palNames[i] = data->nsbtx.palettes[i].name;
 						}
 
 						//next, associate each texture with a palette. Write out Nitro TGA files.
 						for (int i = 0; i < data->nsbtx.nTextures; i++) {
-							char name[17];
-							memcpy(name, data->nsbtx.textures[i].name, 16);
-							name[16] = '\0';
+							char *name = data->nsbtx.textures[i].name;
 							int pltt = guessTexPlttByName(name, palNames, data->nsbtx.nPalettes, &data->nsbtx.textures[i], data->nsbtx.palettes);
 
 							//copy texture name to the end of `path`
@@ -621,9 +633,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						}
 
 						//free palette name array
-						for (int i = 0; i < data->nsbtx.nPalettes; i++) {
-							free(palNames[i]);
-						}
 						free(palNames);
 						free(path);
 					} else if (hWndControl == data->hWndResourceButton) {
@@ -636,7 +645,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						int s = TexarcViewerPromptTexImage(data, &texels, &palette);
 						if (s) {
 							//add
-							WCHAR strbuf[17] = { 0 };
 							int texImageParam = texels.texImageParam;
 							int fmt = FORMAT(texImageParam);
 							int hasPalette = fmt != CT_DIRECT;
@@ -648,11 +656,13 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 								int texIndex = TexarcAddTexture(&data->nsbtx, &texels);
 								if (texIndex != -1) {
 									//update UI
-									for (int i = 0; i < 16; i++) {
+									WCHAR *strbuf = (WCHAR *) calloc(strlen(texels.name) + 1, 1);
+									for (unsigned int i = 0; i < strlen(texels.name); i++) {
 										strbuf[i] = (WCHAR) texels.name[i];
 									}
 									AddListBoxItem(data->hWndTextureSelect, strbuf);
 									SetListBoxSelection(data->hWndTextureSelect, data->nsbtx.nTextures - 1);
+									free(strbuf);
 								} else {
 									int existingIndex = TexarcGetTextureIndexByName(&data->nsbtx, texels.name);
 									SetListBoxSelection(data->hWndTextureSelect, existingIndex);
@@ -674,10 +684,12 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 									int nPalettesAfter = data->nsbtx.nPalettes;
 									if (nPalettesAfter > nOriginalPalettes) {
 										//add to UI
-										for (int i = 0; i < 16; i++) {
+										WCHAR *strbuf = (WCHAR *) calloc(strlen(palette.name) + 1, 1);
+										for (unsigned int i = 0; i < strlen(palette.name); i++) {
 											strbuf[i] = (WCHAR) palette.name[i];
 										}
 										AddListBoxItem(data->hWndPaletteSelect, strbuf);
+										free(strbuf);
 									}
 
 									//select
@@ -691,28 +703,31 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					}
 				} else if (m == LBN_DBLCLK) {
 					if (hWndControl == data->hWndTextureSelect || hWndControl == data->hWndPaletteSelect) {
-						WCHAR textBuffer[17] = { 0 }; //enforced: items <= 16 chars long
+						WCHAR textBuffer[256] = { 0 };
 						int sel = GetListBoxSelection(hWndControl);
 						SendMessage(hWndControl, LB_GETTEXT, sel, (LPARAM) textBuffer);
 						
 						//make prompt
 						HWND hWndMain = getMainWindow(hWnd);
-						int n = PromptUserText(hWndMain, L"Name Entry", L"Enter a name:", textBuffer, 17);
+						int n = PromptUserText(hWndMain, L"Name Entry", L"Enter a name:", textBuffer, 256);
 						if (n) {
 							//replace selected text
 							ReplaceListBoxItem(hWndControl, sel, textBuffer);
 							SetFocus(hWndControl);
 
 							//update TexArc
-							char *destName = NULL;
+							char **destName = NULL;
 							if (hWndControl == data->hWndTextureSelect) {
-								destName = data->nsbtx.textures[sel].name;
+								destName = &data->nsbtx.textures[sel].name;
 							} else {
-								destName = data->nsbtx.palettes[sel].name;
+								destName = &data->nsbtx.palettes[sel].name;
 							}
-							memset(destName, 0, 16);
-							for (unsigned int i = 0; i < wcslen(textBuffer); i++) {
-								destName[i] = (char) textBuffer[i];
+							if (*destName != NULL) free(*destName);
+							
+							unsigned int namelen = wcslen(textBuffer);
+							*destName = calloc(namelen + 1, 1);
+							for (unsigned int i = 0; i < namelen; i++) {
+								(*destName)[i] = (char) textBuffer[i];
 							}
 						}
 					}
@@ -803,9 +818,10 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 				int indexSize = TxGetIndexVramSize(tex);
 
 				//copy name. Beware, not null terminated
-				for (unsigned int j = 0; j < 16; j++) {
+				unsigned int len = strnlen(tex->name, 255);
+				textBuffer[len] = L'\0';
+				for (unsigned int j = 0; j < len; j++) {
 					textBuffer[j] = (WCHAR) tex->name[j];
-					textBuffer[j + 1] = L'\0';
 				}
 				AddListViewItem(hWndTexList, textBuffer, i, 0);
 
@@ -839,10 +855,11 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 				int nCols = pal->nColors;
 				int paletteSize = nCols * 2;
 
-				//copy name. Beware, not null terminated
-				for (unsigned int j = 0; j < 16; j++) {
+				//copy name.
+				unsigned int len = strnlen(pal->name, 255);
+				textBuffer[len] = L'\0';
+				for (unsigned int j = 0; j < len; j++) {
 					textBuffer[j] = (WCHAR) pal->name[j];
-					textBuffer[j + 1] = L'\0';
 				}
 				AddListViewItem(hWndPalList, textBuffer, i, 0);
 

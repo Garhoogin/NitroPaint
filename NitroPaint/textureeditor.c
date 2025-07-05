@@ -183,7 +183,10 @@ static HANDLE textureConvertThreaded(
 	params->callbackParam = callbackParam;
 	params->useFixedPalette = useFixedPalette;
 	params->fixedPalette = useFixedPalette ? fixedPalette : NULL;
-	memcpy(params->pnam, pnam, strlen(pnam) + 1);
+
+	unsigned int pnamLen = strlen(pnam);
+	params->pnam = (char *) calloc(pnamLen + 1, 1);
+	memcpy(params->pnam, pnam, pnamLen + 1);
 	return CreateThread(NULL, 0, textureStartConvertThreadEntry, (LPVOID) params, 0, NULL);
 }
 
@@ -1350,19 +1353,22 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			SetEditNumber(data->hWndColorEntries, maxColors);
 
 			//fill palette name
-			WCHAR pname[16] = { 0 };
+			WCHAR *pname = NULL;
 			if (data->isNitro) {
 				//fill existing palette name
-				for (int i = 0; i < 16; i++) {
-					WCHAR c = (WCHAR) data->texture.texture.palette.name[i];
-					pname[i] = c;
-					if (c == L'\0') break;
+				int len = strlen(data->texture.texture.palette.name);
+				pname = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
+
+				for (int i = 0; i < len + 1; i++) {
+					pname[i] = (WCHAR) data->texture.texture.palette.name[i];
 				}
 			} else {
 				//generate a palette name
+				pname = (WCHAR *) calloc(16, sizeof(WCHAR));
 				createPaletteName(pname, data->szInitialFile);
 			}
 			SendMessage(data->hWndPaletteName, WM_SETTEXT, wcslen(pname), (LPARAM) pname);
+			free(pname);
 
 			updateConvertDialog(data);
 			SetGUIFont(hWnd);
@@ -1433,12 +1439,12 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						}
 					}
 
-					WCHAR bf[32];
+					WCHAR bf[64];
 					int colorEntries = GetEditNumber(data->hWndColorEntries); //for 4x4
 					float diffuse = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
 					int paletteSize = GetEditNumber(data->hWndPaletteSize); //for non-4x4
 					int optimization = GetTrackbarPosition(data->hWndOptimizationSlider);
-					SendMessage(data->hWndPaletteName, WM_GETTEXT, 17, (LPARAM) bf);
+					SendMessage(data->hWndPaletteName, WM_GETTEXT, 63, (LPARAM) bf);
 
 					BOOL dither = GetCheckboxChecked(data->hWndDither);
 					BOOL ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
@@ -1454,8 +1460,8 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						colorEntries = 32768;
 					}
 
-					char mbpnam[16];
-					for (int i = 0; i < 16; i++) {
+					char mbpnam[64] = { 0 };
+					for (unsigned int i = 0; i < wcslen(bf); i++) {
 						mbpnam[i] = (char) bf[i];
 					}
 
