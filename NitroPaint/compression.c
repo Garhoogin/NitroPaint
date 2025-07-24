@@ -1919,7 +1919,8 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 		uint32_t table1SizeBytes = (lzLen2 + 7) >> 3;
 		const unsigned char *postTree = reader.pos + table1SizeBytes;
 		DEFLATE_TREE_NODE *huffRoot1 = CxiHuffmanReadTree(auxBuffer, &reader, auxBuffer->symbolNodeBuffer, 0x11D);
-		if (huffRoot1 == NULL) return NULL;
+		if (huffRoot1 == NULL) return NULL; // Huffman tree error
+		if (postTree > srcEnd) return NULL; // Validate tree size
 
 		//Reposition stream after the Huffman tree. Read out the LZ distance tree next.
 		//Its size in bits is given by the following 16 bits from the stream.
@@ -1930,7 +1931,8 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 
 		postTree = reader.pos + table2SizeBytes;
 		DEFLATE_TREE_NODE *huffDistancesRoot = CxiHuffmanReadTree(auxBuffer, &reader, auxBuffer->lengthNodeBuffer, 0x1E);
-		if (huffDistancesRoot == NULL) return NULL;
+		if (huffDistancesRoot == NULL) return NULL; // Huffman tree error
+		if (postTree > srcEnd) return NULL;         // Validate tree size
 
 		//Reposition stream after this tree to prepare for reading the compressed sequence.
 		CxiInitBitReader(&reader, postTree, srcEnd, 0);
