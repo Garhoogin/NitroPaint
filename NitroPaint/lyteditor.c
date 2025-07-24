@@ -1120,6 +1120,12 @@ static void LytEditorOnMenuCommand(LYTEDITOR *data, int idMenu) {
 			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 			//TedUpdateMargins(&data->ted);
 			break;
+		case ID_FILE_SAVE:
+			EditorSave(data->hWnd);
+			break;
+		case ID_FILE_SAVEAS:
+			EditorSaveAs(data->hWnd);
+			break;
 	}
 }
 
@@ -1908,9 +1914,14 @@ HWND CreateBnblViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 
 void RegisterLytEditor(void) {
 	int features = EDITOR_FEATURE_GRIDLINES | EDITOR_FEATURE_ZOOM;
-	EditorRegister(L"BnllEditorClass", BnllEditorWndProc, L"BNLL Editor", sizeof(BNLLEDITORDATA), features);
-	EditorRegister(L"BnclEditorClass", BnclEditorWndProc, L"BNCL Editor", sizeof(BNCLEDITORDATA), features);
-	EditorRegister(L"BnblEditorClass", BnblEditorWndProc, L"BNBL Editor", sizeof(BNBLEDITORDATA), features);
+	EDITOR_CLASS *clsBnll = EditorRegister(L"BnllEditorClass", BnllEditorWndProc, L"BNLL Editor", sizeof(BNLLEDITORDATA), features);
+	EDITOR_CLASS *clsBncl = EditorRegister(L"BnclEditorClass", BnclEditorWndProc, L"BNCL Editor", sizeof(BNCLEDITORDATA), features);
+	EDITOR_CLASS *clsBnbl = EditorRegister(L"BnblEditorClass", BnblEditorWndProc, L"BNBL Editor", sizeof(BNBLEDITORDATA), features);
+
+	EditorAddFilter(clsBnll, BNLL_TYPE_BNLL, L"bnll", L"BNLL Files (*.bnll)\0*.bnll\0");
+	EditorAddFilter(clsBncl, BNCL_TYPE_BNCL, L"bncl", L"BNCL Files (*.bncl)\0*.bncl\0");
+	EditorAddFilter(clsBnbl, BNBL_TYPE_BNBL, L"bnbl", L"BNBL Files (*.bnbl)\0*.bnbl\0");
+
 	RegisterGenericClass(L"LytPreview", LytPreviewWndProc, sizeof(void *));
 	RegisterGenericClass(L"ReferenceTargetClass", LytReferenceTargetProc, sizeof(void *));
 }

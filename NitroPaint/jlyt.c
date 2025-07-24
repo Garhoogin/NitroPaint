@@ -110,6 +110,7 @@ static void BnllInit(BNLL *bnll, int fmt) {
 	bnll->header.size = sizeof(BNLL);
 	ObjInit(&bnll->header, FILE_TYPE_BNLL, fmt);
 	bnll->header.dispose = BnllFree;
+	bnll->header.writer = (OBJECT_WRITER) BnllWrite;
 }
 
 static int BnllReadBnll(BNLL *bnll, const unsigned char *buffer, unsigned int size) {
@@ -271,6 +272,7 @@ static void BnclInit(BNCL *bncl, int fmt) {
 	bncl->header.size = sizeof(BNCL);
 	ObjInit(&bncl->header, FILE_TYPE_BNCL, fmt);
 	bncl->header.dispose = BnclFree;
+	bncl->header.writer = (OBJECT_WRITER) BnclWrite;
 }
 
 static int BnclReadBncl(BNCL *bncl, const unsigned char *buffer, unsigned int size) {
@@ -369,6 +371,7 @@ static void BnblInit(BNBL *bnbl) {
 	bnbl->header.size = sizeof(BNBL);
 	ObjInit(&bnbl->header, FILE_TYPE_BNBL, BNBL_TYPE_BNBL);
 	bnbl->header.dispose = BnblFree;
+	bnbl->header.writer = (OBJECT_WRITER) BnblWrite;
 }
 
 static int BnblReadBnbl(BNBL *bnbl, const unsigned char *buffer, unsigned int size) {
