@@ -151,3 +151,47 @@ void FbRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
 	}
 }
 
+void FbDrawRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col) {
+	for (int i = 0; i < width; i++) {
+		FbPutPixel(fb, x + i, y, col);
+	}
+	for (int i = 0; i < width; i++) {
+		FbPutPixel(fb, x + i, y + height - 1, col);
+	}
+
+	for (int i = 0; i < height; i++) {
+		FbPutPixel(fb, x, y + i, col);
+	}
+	for (int i = 0; i < height; i++) {
+		FbPutPixel(fb, x + width - 1, y + i, col);
+	}
+}
+
+void FbFillRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col) {
+	//if X<0, adjust X to 0
+	if (x < 0) {
+		width += x;
+		x = 0;
+	}
+	if ((x + width) > fb->width) {
+		width = fb->width - x;
+	}
+
+	//if Y<0, adjust Y to 0
+	if (y < 0) {
+		height += y;
+		y = 0;
+	}
+	if ((y + height) > fb->height) {
+		height = fb->height - y;
+	}
+
+	//fill
+	for (int i = 0; i < height; i++) {
+		COLOR32 *row = &fb->px[(y + i) * fb->width + x];
+		for (int j = 0; j < width; j++) {
+			row[j] = col;
+		}
+	}
+}
+

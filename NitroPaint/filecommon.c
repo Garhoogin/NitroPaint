@@ -9,6 +9,7 @@
 #include "texture.h"
 #include "gdip.h"
 #include "nns.h"
+#include "jlyt.h"
 
 const wchar_t *gFileTypeNames[] = {
 	L"Invalid",
@@ -25,6 +26,9 @@ const wchar_t *gFileTypeNames[] = {
 	L"Multi-Cell",
 	L"Multi-Cell Animation",
 	L"Font",
+	L"Letter Layout",
+	L"Cell Layout",
+	L"Button Layout",
 	NULL
 };
 
@@ -377,6 +381,9 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 				else if (BncmpIdentify(buffer, bufferSize)) type = FILE_TYPE_CMAP;
 				else if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
+				else if (BnllIdentify(buffer, bufferSize)) type = FILE_TYPE_BNLL;
+				else if (BnclIdentify(buffer, bufferSize)) type = FILE_TYPE_BNCL;
+				else if (BnblIdentify(buffer, bufferSize)) type = FILE_TYPE_BNBL;
 				else if (ChrIsValidIcg(buffer, bufferSize)) type = FILE_TYPE_CHAR;
 				else if (ChrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (ScrIsValidIsc(buffer, bufferSize)) type = FILE_TYPE_SCREEN;

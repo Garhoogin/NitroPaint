@@ -144,6 +144,12 @@
     <ClCompile Include="nftrviewer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="jlyt.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="lyteditor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ncgrviewer.h">
@@ -273,6 +279,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="nftrviewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="jlyt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lyteditor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

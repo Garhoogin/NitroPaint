@@ -3,6 +3,7 @@
 #include "childwindow.h"
 #include "ui.h"
 #include "filecommon.h"
+#include "struct.h"
 
 typedef struct EDITOR_CLASS_ {
 	ATOM aclass;
@@ -48,6 +49,7 @@ typedef struct EDITOR_CLASS_ {
 	int scalePrev;               \
 	int showBorders;             \
 	int dirty;                   \
+	StList destroyCallbacks;     \
 	WCHAR szOpenFile[MAX_PATH]
 
 
@@ -60,6 +62,9 @@ typedef struct EDITOR_DATA_ {
 
 	//after here may vary...
 } EDITOR_DATA;
+
+// ----- editor destroyed callback function
+typedef void (*EditorDestroyCallback) (EDITOR_DATA *data, void *param);
 
 
 EDITOR_CLASS *EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize, int features);
@@ -79,3 +84,7 @@ int EditorSave(HWND hWnd);
 int EditorSaveAs(HWND hWnd);
 
 HWND EditorCreate(LPCWSTR lpszClassName, int x, int y, int width, int height, HWND hWndParent);
+
+void EditorRegisterDestroyCallback(EDITOR_DATA *data, EditorDestroyCallback callback, void *param);
+
+void EditorRemoveDestroyCallback(EDITOR_DATA *data, EditorDestroyCallback callback, void *param);

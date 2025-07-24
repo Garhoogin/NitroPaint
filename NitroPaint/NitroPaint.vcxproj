@@ -162,6 +162,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="bggen.c" />
+    <ClCompile Include="jlyt.c" />
     <ClCompile Include="bstream.c" />
     <ClCompile Include="cellgen.c" />
     <ClCompile Include="childwindow.c" />
@@ -172,6 +173,7 @@
     <ClCompile Include="exceptions.c" />
     <ClCompile Include="filecommon.c" />
     <ClCompile Include="framebuffer.c" />
+    <ClCompile Include="lyteditor.c" />
     <ClCompile Include="nftr.c" />
     <ClCompile Include="nftrviewer.c" />
     <ClCompile Include="nns.c" />
@@ -207,6 +209,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bggen.h" />
+    <ClInclude Include="jlyt.h" />
     <ClInclude Include="bstream.h" />
     <ClInclude Include="cellgen.h" />
     <ClInclude Include="childwindow.h" />
@@ -218,6 +221,7 @@
     <ClInclude Include="exceptions.h" />
     <ClInclude Include="filecommon.h" />
     <ClInclude Include="framebuffer.h" />
+    <ClInclude Include="lyteditor.h" />
     <ClInclude Include="nftr.h" />
     <ClInclude Include="nftrviewer.h" />
     <ClInclude Include="nns.h" />

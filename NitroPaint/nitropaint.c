@@ -26,6 +26,7 @@
 #include "editor.h"
 #include "preview.h"
 #include "nftrviewer.h"
+#include "lyteditor.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -949,6 +950,15 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			break;
 		case FILE_TYPE_FONT:
 			CreateNftrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
+		case FILE_TYPE_BNLL:
+			CreateBnllViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
+		case FILE_TYPE_BNCL:
+			CreateBnclViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
+		case FILE_TYPE_BNBL:
+			CreateBnblViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
 		case FILE_TYPE_IMAGE:
 			CreateImageDialog(hWnd, path);
@@ -3263,6 +3273,7 @@ static void RegisterClasses(void) {
 	RegisterAlphaBlendClass();
 	RegisterLinkEditClass();
 	RegisterNewPaletteClass();
+	RegisterLytEditor();
 }
 
 void InitializeDpiAwareness(void) {

@@ -6,6 +6,12 @@
 #include "editor.h"
 #include "combo2d.h"
 
+typedef struct EditorDestroyCallbackEntry_ {
+	EditorDestroyCallback callback;
+	void *param;
+} EditorDestroyCallbackEntry;
+
+
 static BOOL CALLBACK EditorSetThemeProc(HWND hWnd, LPARAM lParam) {
 	SetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
 	return TRUE;
@@ -224,6 +230,9 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			SetWindowLongPtr(hWnd, EDITOR_WD_DATA, (LONG_PTR) data);
 			SetWindowLongPtr(hWnd, EDITOR_WD_INITIALIZED, 1);
 			data->hWnd = hWnd;
+
+			//initialize destroy callback
+			StListCreate(&data->destroyCallbacks, sizeof(EditorDestroyCallbackEntry), NULL);
 		}
 
 		//handle common editor messages
@@ -286,6 +295,15 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		if (msg == WM_DESTROY) {
 			EDITOR_DATA *data = (EDITOR_DATA *) GetWindowLongPtr(hWnd, EDITOR_WD_DATA);
 			if (data != NULL) {
+				//call all destroy callback subscribers.
+				for (size_t i = 0; i < data->destroyCallbacks.length; i++) {
+					EditorDestroyCallbackEntry *ent = StListGetPtr(&data->destroyCallbacks, i);
+					ent->callback(data, ent->param);
+				}
+
+				//free callback list
+				StListFree(&data->destroyCallbacks);
+
 				if (ObjIsValid(&data->file)) ObjFree(&data->file);
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
 				free(data);
@@ -488,4 +506,24 @@ HWND EditorCreate(LPCWSTR lpszClassName, int x, int y, int width, int height, HW
 	//show (only if size is specified, else remain hidden)
 	if (width && height) ShowWindow(hWnd, SW_SHOW);
 	return hWnd;
+}
+
+void EditorRegisterDestroyCallback(EDITOR_DATA *data, EditorDestroyCallback callback, void *param) {
+	//add to callback list
+	EditorDestroyCallbackEntry ent;
+	ent.callback = callback;
+	ent.param = param;
+	StListAdd(&data->destroyCallbacks, &ent);
+}
+
+void EditorRemoveDestroyCallback(EDITOR_DATA *data, EditorDestroyCallback callback, void *param) {
+	//search for and remove from list
+	EditorDestroyCallbackEntry ent;
+	ent.callback = callback;
+	ent.param = param;
+
+	size_t index = StListIndexOf(&data->destroyCallbacks, &ent);
+	if (index != ST_INDEX_NOT_FOUND) {
+		StListRemove(&data->destroyCallbacks, index);
+	}
 }

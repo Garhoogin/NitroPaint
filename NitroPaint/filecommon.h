@@ -18,7 +18,10 @@
 #define FILE_TYPE_NMAR       12
 #define FILE_TYPE_FONT       13
 #define FILE_TYPE_CMAP       14
-#define FILE_TYPE_MAX        15  //highest file type +1
+#define FILE_TYPE_BNLL       15
+#define FILE_TYPE_BNCL       16
+#define FILE_TYPE_BNBL       17
+#define FILE_TYPE_MAX        18  //highest file type +1
 
 extern const wchar_t *gFileTypeNames[];
 
