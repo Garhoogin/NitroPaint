@@ -231,13 +231,26 @@
 #define ID_ANMMENU_INSERTBELOW          40243
 #define ID_ANMMENU_SETDURATION          40244
 #define ID_ANMMENU_INTERPOLATEBELOW     40245
+#define ID_CELLMENU_SPLIT               40246
+#define ID_SPLITINTO_8X8                40247
+#define ID_SPLITINTO_8X16               40248
+#define ID_SPLITINTO_8X32               40249
+#define ID_SPLITINTO_16X8               40250
+#define ID_SPLITINTO_16X16              40251
+#define ID_SPLITINTO_16X32              40252
+#define ID_SPLITINTO_32X8               40253
+#define ID_SPLITINTO_32X16              40254
+#define ID_SPLITINTO_32X32              40255
+#define ID_SPLITINTO_32X64              40256
+#define ID_SPLITINTO_64X32              40257
+#define ID_SPLITINTO_64X64              40258
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40246
+#define _APS_NEXT_COMMAND_VALUE         40259
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

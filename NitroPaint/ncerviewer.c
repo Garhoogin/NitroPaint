@@ -39,10 +39,10 @@ static int sObjClipboardFormat = 0;
 // ----- menu defines
 
 static const unsigned short sMenuIdPalettes[] = {
-		ID_OBJPALETTE_0,  ID_OBJPALETTE_1,  ID_OBJPALETTE_2,  ID_OBJPALETTE_3,
-		ID_OBJPALETTE_4,  ID_OBJPALETTE_5,  ID_OBJPALETTE_6,  ID_OBJPALETTE_7,
-		ID_OBJPALETTE_8,  ID_OBJPALETTE_9,  ID_OBJPALETTE_10, ID_OBJPALETTE_11,
-		ID_OBJPALETTE_12, ID_OBJPALETTE_13, ID_OBJPALETTE_14, ID_OBJPALETTE_15,
+	ID_OBJPALETTE_0,  ID_OBJPALETTE_1,  ID_OBJPALETTE_2,  ID_OBJPALETTE_3,
+	ID_OBJPALETTE_4,  ID_OBJPALETTE_5,  ID_OBJPALETTE_6,  ID_OBJPALETTE_7,
+	ID_OBJPALETTE_8,  ID_OBJPALETTE_9,  ID_OBJPALETTE_10, ID_OBJPALETTE_11,
+	ID_OBJPALETTE_12, ID_OBJPALETTE_13, ID_OBJPALETTE_14, ID_OBJPALETTE_15,
 };
 static const unsigned short sMenuIdPrios[] = {
 	ID_OBJPRIORITY_0, ID_OBJPRIORITY_1, ID_OBJPRIORITY_2, ID_OBJPRIORITY_3
@@ -54,6 +54,11 @@ static const unsigned short sMenuIdSizes[] = {
 	ID_OBJSIZE_8X8,  ID_OBJSIZE_16X16, ID_OBJSIZE_32X32, ID_OBJSIZE_64X64,
 	ID_OBJSIZE_16X8, ID_OBJSIZE_32X8,  ID_OBJSIZE_32X16, ID_OBJSIZE_64X32,
 	ID_OBJSIZE_8X16, ID_OBJSIZE_8X32,  ID_OBJSIZE_16X32, ID_OBJSIZE_32X64
+};
+static const unsigned short sMenuIdSplitSizes[] = {
+	ID_SPLITINTO_8X8,  ID_SPLITINTO_16X16, ID_SPLITINTO_32X32, ID_SPLITINTO_64X64,
+	ID_SPLITINTO_16X8, ID_SPLITINTO_32X8,  ID_SPLITINTO_32X16, ID_SPLITINTO_64X32,
+	ID_SPLITINTO_8X16, ID_SPLITINTO_8X32,  ID_SPLITINTO_16X32, ID_SPLITINTO_32X64
 };
 
 
@@ -1940,6 +1945,108 @@ static void CellViewerAppendDummyObj(NCERVIEWERDATA *data) {
 	CellViewerSelectSingleOBJ(data, cell->nAttribs - 1);
 }
 
+static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int size) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	int chrsX = 32;
+	if (ncgr != NULL) chrsX = ncgr->tilesX;
+
+	//get size of split OBJ
+	int splitWidth, splitHeight;
+	CellGetObjDimensions(shape, size, &splitWidth, &splitHeight);
+
+	int mappingMode = data->ncer.mappingMode;
+	int mappingShift = (mappingMode >> 20) & 3;
+
+	//iterate all selected OBJ
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		int iSel = data->selectedOBJ[i];
+
+		//get OBJ info
+		uint16_t attr[3];
+		uint32_t exAttr = 0;
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, iSel);
+		memcpy(attr, &cell->attr[3 * iSel], sizeof(attr));
+		if (cell->useEx2d) exAttr = cell->ex2dCharNames[iSel];
+
+		//OBJ size must be smaller than the split OBJ
+		if (info.width < splitWidth || info.height < splitHeight) continue;
+		if (info.width == splitWidth && info.height == splitHeight) continue;
+
+		//split this OBJ
+		int nObjX = info.width / splitWidth;
+		int nObjY = info.height / splitHeight;
+		int nObjSplit = nObjX * nObjY;
+		int nObjCharsX = splitWidth / 8;
+		int nObjCharsY = splitHeight / 8;
+
+		//insert new OBJ
+		int nObjPrev = cell->nAttribs;
+		int nObjInsert = nObjSplit - 1;
+		cell->nAttribs += nObjInsert;
+		cell->attr = (uint16_t *) realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
+		memmove(&cell->attr[3 * (iSel + nObjSplit)], &cell->attr[3 * (iSel + 1)], (nObjPrev - iSel - 1) * 3 * sizeof(uint16_t));
+
+		//insert extended attribute for new OBJ
+		if (cell->useEx2d) {
+			//insert space to ex2d char names
+			cell->ex2dCharNames = (uint32_t *) realloc(cell->ex2dCharNames, cell->nAttribs * sizeof(uint32_t));
+			memmove(&cell->ex2dCharNames[iSel + nObjSplit], &cell->ex2dCharNames[iSel + 1], (nObjPrev - iSel - 1) * sizeof(uint32_t));
+		}
+
+		//write new OBJ attributes
+		for (int objX = 0; objX < nObjX; objX++) {
+			for (int objY = 0; objY < nObjY; objY++) {
+				//set location
+				attr[0] = (attr[0] & ~0x00FF) | ((info.y + objY * splitHeight) & 0x00FF);
+				attr[1] = (attr[1] & ~0x01FF) | ((info.x + objX * splitWidth) & 0x01FF);
+
+				//set size and shape
+				attr[0] = (attr[0] & ~0xC000) | (shape << 14);
+				attr[1] = (attr[1] & ~0xC000) | (size << 14);
+
+				//set character name
+				int charName = info.characterName;
+				if (mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+					//2D mapping mode: add 2-dimensionally to character name
+					int disp = objX * nObjCharsX + (objY * nObjCharsY) * chrsX;
+					if (ncgr != NULL && ncgr->nBits == 8) disp <<= 1;
+					charName += disp;
+				} else {
+					//1D mapping mode: add linearly to character name
+					int disp = objX * nObjCharsX + objY * (info.width / 8);
+					if (ncgr != NULL && ncgr->nBits == 8) disp <<= 1;
+					disp >>= mappingShift;
+					charName += disp;
+				}
+
+				attr[2] = (attr[2] & ~0x03FF) | (charName & 0x03FF);
+				exAttr = charName;
+
+				memcpy(&cell->attr[3 * (iSel + objX + objY * nObjX)], attr, sizeof(attr));
+				if (cell->useEx2d) cell->ex2dCharNames[iSel + objX + objY * nObjX] = exAttr;
+			}
+		}
+		
+		//adjust selection indices to account for inserted selection
+		for (int j = 0; j < data->nSelectedOBJ; j++) {
+			if (data->selectedOBJ[j] > iSel) data->selectedOBJ[j] += nObjInsert;
+		}
+
+		//add created OBJ to selection
+		for (int i = 0; i < nObjInsert; i++) {
+			CellViewerAddObjToSelection(data, iSel + 1 + i);
+		}
+
+		//skip past the generated OBJ
+		i += nObjSplit;
+		i--;
+	}
+}
+
 static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 	HWND hWnd = data->hWnd;
 	HWND hWndMain = getMainWindow(hWnd);
@@ -2060,6 +2167,24 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		{
 			int size = CellViewerGetMenuIndexByID(idMenu, sMenuIdSizes, 12);
 			CellViewerSetSelectionShapeSize(data, size / 4, size % 4);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		}
+		case ID_SPLITINTO_8X8:
+		case ID_SPLITINTO_8X16:
+		case ID_SPLITINTO_8X32:
+		case ID_SPLITINTO_16X8:
+		case ID_SPLITINTO_16X16:
+		case ID_SPLITINTO_16X32:
+		case ID_SPLITINTO_32X8:
+		case ID_SPLITINTO_32X16:
+		case ID_SPLITINTO_32X32:
+		case ID_SPLITINTO_32X64:
+		case ID_SPLITINTO_64X32:
+		case ID_SPLITINTO_64X64:
+		{
+			int size = CellViewerGetMenuIndexByID(idMenu, sMenuIdSplitSizes, 12);
+			CellViewerSubdivideSelection(data, size / 4, size % 4);
 			CellViewerGraphicsUpdated(data->hWnd);
 			break;
 		}
@@ -3454,10 +3579,14 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 		for (int i = 0; i < 12; i++) EnableMenuItem(hPopup, sMenuIdSizes[i], MF_DISABLED);
 		for (int i = 0; i < 4; i++) EnableMenuItem(hPopup, sMenuIdPrios[i], MF_DISABLED);
 		for (int i = 0; i < 4; i++) EnableMenuItem(hPopup, sMenuIdTypes[i], MF_DISABLED);
+
+		//no selection, so cannot split OBJ
+		for (int i = 0; i < 12; i++) EnableMenuItem(hPopup, sMenuIdSplitSizes[i], MF_DISABLED);
 	} else {
 		//has selection: items Cut and Copy are enabled by default.
 		int allAffine = 1, allNotAffine = 1, commonPalette = 0, commonShape = 0, commonSize = 0, commonPrio = 0, commonType = 0, commonDoubleSize = 1;
-		int commonH = 1, commonV = 1, commonMosaic = 1, commonBits = 4;
+		int commonH = 1, commonV = 1, commonWidth = 64, commonHeight = 64, commonMosaic = 1, commonBits = 4;
+		int minW = 64, minH = 64;
 		for (int i = 0; i < nSel; i++) {
 			NCER_CELL_INFO info;
 			CellDecodeOamAttributes(&info, cell, sel[i]);
@@ -3473,6 +3602,8 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 				commonV = info.flipY;
 				commonMosaic = info.mosaic;
 				commonBits = info.characterBits;
+				commonWidth = info.width;
+				commonHeight = info.height;
 			} else {
 				//check each attribute against the current "common" attribute values
 				if (commonPalette != info.palette) commonPalette = -1;
@@ -3485,7 +3616,12 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 				if (commonV != info.flipY) commonV = 0;
 				if (!info.doubleSize) commonDoubleSize = 0;
 				if (commonMosaic != info.mosaic) commonMosaic = 0;
+				if (commonWidth != info.width) commonWidth = -1;
+				if (commonHeight != info.height) commonHeight = -1;
 			}
+
+			if (info.width < minW) minW = info.width;
+			if (info.height < minH) minH = info.height;
 
 			allAffine = allAffine && info.rotateScale;
 			allNotAffine = allNotAffine && !info.rotateScale;
@@ -3515,6 +3651,40 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 		if (commonDoubleSize) CheckMenuItem(hPopup, ID_CELLMENU_DOUBLESIZE, MF_CHECKED);
 		if (commonMosaic) CheckMenuItem(hPopup, ID_CELLMENU_MOSAIC, MF_CHECKED);
 
+		//for split options, must use sizes that are at or below the smallest OBJ size.
+		for (int i = 0; i < 12; i++) {
+			int shape = i / 4, size = i % 4;
+			int width, height;
+			CellGetObjDimensions(shape, size, &width, &height);
+
+			//the split size must be at or smaller than the smallest OBJ in the selection
+			int sizePermitted = (width <= minW) && (height <= minH);
+
+			//in 2D mapping mode, all splits are valid.
+			int mappingPermitted = 1;
+			if (data->ncer.mappingMode != GX_OBJVRAMMODE_CHAR_2D) {
+				//when 1D mapping is used, we cannot reduce the OBJ width for a height above 8.
+				if ((height > 8) && (commonWidth == -1 || width < commonWidth)) {
+					//at least one OBJ has a height above 8, and cannot be split
+					mappingPermitted = 0;
+				}
+
+				//when 1D mapping above 32K is used, OBJ granularity is reduced. If the size of OBJ data at the
+				//requested size is smaller than the granularity, do not allow.
+				int mappingShift = (data->ncer.mappingMode >> 20) & 7;
+				int granularityBytes = 0x20 << mappingShift;
+				int curSizeBytes = (width * height) >> (commonBits != 8);
+				if (curSizeBytes < granularityBytes && !(width == commonWidth && height == commonHeight)) {
+					//if all OBJ are the same size, we allow that size to be enabled (since it would not result in a split).
+					//Otherwise, we disallow this split since it cannot be performed.
+					mappingPermitted = 0;
+				}
+			}
+
+			if (!sizePermitted || !mappingPermitted) {
+				EnableMenuItem(hPopup, sMenuIdSplitSizes[i], MF_DISABLED);
+			}
+		}
 	}
 	free(sel);
 
