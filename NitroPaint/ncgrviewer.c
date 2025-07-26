@@ -597,6 +597,8 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 }
 
 static void ChrViewerCopy(NCGRVIEWERDATA *data) {
+	if (!TedHasSelection(&data->ted)) return;
+
 	HWND hWnd = data->hWnd;
 	OpenClipboard(hWnd);
 	EmptyClipboard();
