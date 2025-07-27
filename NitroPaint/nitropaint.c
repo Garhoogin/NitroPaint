@@ -1537,14 +1537,18 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						nanr.nSequences = 1;
 						nanr.sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
 						nanr.sequences[0].nFrames = 1;
-						nanr.sequences[0].mode = 1;
-						nanr.sequences[0].type = 0 | (1 << 16);
+						nanr.sequences[0].mode = NANR_SEQ_MODE_FORWARD;
+						nanr.sequences[0].type = NANR_SEQ_TYPE_INDEX_SRT | (NANR_SEQ_TYPE_CELL << 16);
 						nanr.sequences[0].startFrameIndex = 0;
 						nanr.sequences[0].frames = (FRAME_DATA *) calloc(1, sizeof(FRAME_DATA));
-						nanr.sequences[0].frames[0].nFrames = 1;
+						nanr.sequences[0].frames[0].nFrames = 4;
 						nanr.sequences[0].frames[0].pad_ = 0xBEEF;
-						nanr.sequences[0].frames[0].animationData = calloc(1, sizeof(ANIM_DATA));
-						memset(nanr.sequences[0].frames[0].animationData, 0, sizeof(ANIM_DATA));
+						nanr.sequences[0].frames[0].animationData = calloc(1, sizeof(ANIM_DATA_SRT));
+						memset(nanr.sequences[0].frames[0].animationData, 0, sizeof(ANIM_DATA_SRT));
+
+						ANIM_DATA_SRT *srt = (ANIM_DATA_SRT *) nanr.sequences[0].frames[0].animationData;
+						srt->sx = 4096; // 1.0
+						srt->sy = 4096; // 1.0
 
 						HWND h = CreateNanrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &nanr);
 						ShowWindow(h, SW_SHOW);
