@@ -2062,12 +2062,18 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 
 			if (data->szOpenFile[0] == L'\0' || idMenu == ID_FILE_SAVEAS) {
 				LPCWSTR filter = L"NCER Files (*.ncer)\0*.ncer\0All Files\0*.*\0";
+				LPCWSTR ext = L"ncer";
 				switch (data->ncer.header.format) {
 					case NCER_TYPE_HUDSON:
-						filter = L"Cell Files (*.bin)\0*.bin;\0All Files\0*.*\0";
+						filter = L"Cell Bank Files (*.bin)\0*.bin;\0All Files\0*.*\0";
+						ext = L"bin";
+						break;
+					case NCER_TYPE_SETOSA:
+						filter = L"Cell Bank Files (*.scbk)\0*.scbk\0All Files\0*.*\0";
+						ext = L"scbk";
 						break;
 				}
-				LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"ncer");
+				LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, ext);
 				if (path != NULL) {
 					EditorSetFile(hWnd, path);
 					free(path);
