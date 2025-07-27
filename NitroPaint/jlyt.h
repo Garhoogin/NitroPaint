@@ -63,6 +63,7 @@ typedef struct BNLL_ {
 	BnllMessage *messages;
 } BNLL;
 
+void BnllInit(BNLL *bnll, int fmt);
 int BnllIdentify(const unsigned char *buffer, unsigned int size);
 int BnllRead(BNLL *bnll, const unsigned char *buffer, unsigned int size);
 int BnllReadFile(BNLL *bnll, LPCWSTR path);
@@ -84,6 +85,7 @@ typedef struct BNCL_ {
 	BnclCell *cells;
 } BNCL;
 
+void BnclInit(BNCL *bncl, int fmt);
 int BnclIdentify(const unsigned char *buffer, unsigned int size);
 int BnclRead(BNCL *bncl, const unsigned char *buffer, unsigned int size);
 int BnclReadFile(BNCL *bncl, LPCWSTR path);
@@ -106,6 +108,7 @@ typedef struct BNBL_ {
 	BnblRegion *regions;
 } BNBL;
 
+void BnblInit(BNBL *bnbl, int fmt);
 int BnblIdentify(const unsigned char *buffer, unsigned int size);
 int BnblRead(BNBL *bnbl, const unsigned char *buffer, unsigned int size);
 int BnblReadFile(BNBL *bnbl, LPCWSTR path);

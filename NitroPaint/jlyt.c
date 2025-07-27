@@ -106,7 +106,7 @@ static void BnllFree(OBJECT_HEADER *hdr) {
 	bnll->nMsg = 0;
 }
 
-static void BnllInit(BNLL *bnll, int fmt) {
+void BnllInit(BNLL *bnll, int fmt) {
 	bnll->header.size = sizeof(BNLL);
 	ObjInit(&bnll->header, FILE_TYPE_BNLL, fmt);
 	bnll->header.dispose = BnllFree;
@@ -268,7 +268,7 @@ static void BnclFree(OBJECT_HEADER *hdr) {
 	bncl->nCell = 0;
 }
 
-static void BnclInit(BNCL *bncl, int fmt) {
+void BnclInit(BNCL *bncl, int fmt) {
 	bncl->header.size = sizeof(BNCL);
 	ObjInit(&bncl->header, FILE_TYPE_BNCL, fmt);
 	bncl->header.dispose = BnclFree;
@@ -367,7 +367,7 @@ static void BnblFree(OBJECT_HEADER *hdr) {
 	bnbl->nRegion = 0;
 }
 
-static void BnblInit(BNBL *bnbl) {
+void BnblInit(BNBL *bnbl) {
 	bnbl->header.size = sizeof(BNBL);
 	ObjInit(&bnbl->header, FILE_TYPE_BNBL, BNBL_TYPE_BNBL);
 	bnbl->header.dispose = BnblFree;

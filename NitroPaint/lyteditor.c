@@ -1912,6 +1912,27 @@ HWND CreateBnblViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 	return hWnd;
 }
 
+HWND CreateBnllViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNLL *bnll) {
+	HWND hWnd = EditorCreate(L"BnllEditorClass", x, y, 0, 0, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) bnll);
+	ShowWindow(hWnd, SW_SHOW);
+	return hWnd;
+}
+
+HWND CreateBnclViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNCL *bncl) {
+	HWND hWnd = EditorCreate(L"BnclEditorClass", x, y, 0, 0, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) bncl);
+	ShowWindow(hWnd, SW_SHOW);
+	return hWnd;
+}
+
+HWND CreateBnblViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNBL *bnbl) {
+	HWND hWnd = EditorCreate(L"BnblEditorClass", x, y, 0, 0, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) bnbl);
+	ShowWindow(hWnd, SW_SHOW);
+	return hWnd;
+}
+
 void RegisterLytEditor(void) {
 	int features = EDITOR_FEATURE_GRIDLINES | EDITOR_FEATURE_ZOOM;
 	EDITOR_CLASS *clsBnll = EditorRegister(L"BnllEditorClass", BnllEditorWndProc, L"BNLL Editor", sizeof(BNLLEDITORDATA), features);

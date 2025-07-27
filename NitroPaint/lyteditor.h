@@ -98,4 +98,8 @@ HWND CreateBnllViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 HWND CreateBnclViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 HWND CreateBnblViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 
+HWND CreateBnllViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNLL *bnll);
+HWND CreateBnclViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNCL *bncl);
+HWND CreateBnblViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNBL *bnbl);
+
 void RegisterLytEditor(void);

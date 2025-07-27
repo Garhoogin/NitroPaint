@@ -1579,6 +1579,41 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						CreateNftrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &nftr);
 						break;
 					}
+					case ID_NEWLAYOUT_LETTERLAYOUT:
+					{
+						BNLL bnll;
+						BnllInit(&bnll, BNLL_TYPE_BNLL);
+						bnll.nMsg = 1;
+						bnll.messages = (BnllMessage *) calloc(1, sizeof(BnllMessage));
+						bnll.messages[0].pos.x.pos = 128;
+						bnll.messages[0].pos.y.pos = 96;
+						CreateBnllViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &bnll);
+						break;
+					}
+					case ID_NEWLAYOUT_CELLLAYOUT:
+					{
+						BNCL bncl;
+						BnclInit(&bncl, BNCL_TYPE_BNCL);
+						bncl.nCell = 1;
+						bncl.cells = (BnclCell *) calloc(1, sizeof(BnclCell));
+						bncl.cells[0].pos.x.pos = 128;
+						bncl.cells[0].pos.y.pos = 96;
+						CreateBnclViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &bncl);
+						break;
+					}
+					case ID_NEWLAYOUT_BUTTONLAYOUT:
+					{
+						BNBL bnbl;
+						BnblInit(&bnbl, BNLL_TYPE_BNLL);
+						bnbl.nRegion = 1;
+						bnbl.regions = (BnblRegion *) calloc(1, sizeof(BnblRegion));
+						bnbl.regions[0].pos.x.pos = 128;
+						bnbl.regions[0].pos.y.pos = 96;
+						bnbl.regions[0].width = 64;
+						bnbl.regions[0].height = 64;
+						CreateBnblViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, &bnbl);
+						break;
+					}
 					case ID_FILE_CONVERTTO:
 					{
 						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
