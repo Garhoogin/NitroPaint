@@ -637,6 +637,70 @@ static void CellViewerDeleteSelection(NCERVIEWERDATA *data) {
 	data->nSelectedOBJ = 0;
 }
 
+static void CellViewerDeleteEmptySelection(NCERVIEWERDATA *data) {
+	if (!CellViewerHasSelection(data)) return;
+
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	if (ncgr == NULL) return; // not enough information to deduce
+
+	int mappingShift = (data->ncer.mappingMode >> 20) & 3;
+
+	//delete any selected OBJ if it is fully transparent
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		int iSel = data->selectedOBJ[i];
+
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, iSel);
+
+		int isTransparent = 1;
+		int chrAddr = (info.characterName * 0x20) << mappingShift;
+		int chrIdx = chrAddr / 0x20;
+		if (ncgr->nBits == 8) chrIdx >>= 1;
+		for (int y = 0; y < info.height; y++) {
+			for (int x = 0; x < info.width; x++) {
+				int chrX = x / 8, chrY = y / 8;
+
+				int thisChrIdx = chrIdx;
+				thisChrIdx += chrX;
+				if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+					thisChrIdx += chrY * ncgr->tilesX;
+				} else {
+					thisChrIdx += chrY * (info.width / 8);
+				}
+
+				unsigned char *chr = NULL;
+				if (thisChrIdx < ncgr->nTiles) {
+					chr = ncgr->tiles[thisChrIdx];
+				}
+
+				if (chr != NULL) {
+					unsigned char px = chr[(x % 8) + (y % 8) * 8];
+					if (px != 0) {
+						isTransparent = 0; // not transparent
+						break;
+					}
+				}
+			}
+		}
+
+
+		if (isTransparent) {
+			//remove OBJ
+			CellDeleteOBJ(cell, iSel, 1);
+
+			//remove from selection
+			CellViewerRemoveObjFromSelection(data, iSel);
+
+			//adjust other selection
+			for (int j = 0; j < data->nSelectedOBJ; j++) if (data->selectedOBJ[j] > iSel) data->selectedOBJ[j]--;
+			i--;
+		}
+	}
+}
+
 static float CellViewerComputeDistanceToCenter(int cx, int cy, int x, int y) {
 	int d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
 	return (float) sqrt((float) d2);
@@ -2115,7 +2179,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		case ID_CELLMENU_CUT:
 			CellViewerCopy(data);
 			CellViewerDeleteSelection(data);
-			if (data->hWndAutoCalcBounds) CellViewerUpdateBounds(data);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
 			CellViewerGraphicsUpdated(data->hWnd);
 			CellViewerUpdateCellSubItemText(data);
 			CellViewerUpdateObjListSelection(data);
@@ -2126,6 +2190,13 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			break;
 		case ID_CELLMENU_PASTE:
 			CellViewerPaste(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			CellViewerUpdateCellSubItemText(data);
+			CellViewerUpdateObjListSelection(data);
+			break;
+		case ID_CELLMENU_DELETEEMPTY:
+			CellViewerDeleteEmptySelection(data);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
 			CellViewerGraphicsUpdated(data->hWnd);
 			CellViewerUpdateCellSubItemText(data);
 			CellViewerUpdateObjListSelection(data);
@@ -2194,6 +2265,8 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			int size = CellViewerGetMenuIndexByID(idMenu, sMenuIdSplitSizes, 12);
 			CellViewerSubdivideSelection(data, size / 4, size % 4);
 			CellViewerGraphicsUpdated(data->hWnd);
+			CellViewerUpdateCellSubItemText(data);
+			CellViewerUpdateObjListSelection(data);
 			break;
 		}
 		case ID_OBJTYPE_NORMAL:
