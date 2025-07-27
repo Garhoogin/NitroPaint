@@ -3,10 +3,20 @@
 #include "nscr.h"
 #include "color.h"
 #include "nns.h"
+#include "setosa.h"
 
 #include <stdio.h>
 
-LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ICG", L"ACG", L"Hudson", L"Hudson 2", L"Ghost Trick", L"Binary", NULL };
+LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ICG", L"ACG", L"Hudson", L"Hudson 2", L"Ghost Trick", L"Setosa", L"Binary", NULL };
+
+//Setosa file flags
+#define RES_CHAR_FLAG_1D        (1<<0)  // 1D mapping flag
+#define RES_CHAR_FLAG_8         (1<<1)  // 8bpp flag
+#define RES_CHAR_FLAG_BMP       (1<<2)  // bitmap flag
+#define RES_CHAR_FLAG_IMD       (1<<3)  // intermediate flag
+#define RES_CHAR_MAP_SHIFT_MASK (3<<4)  // mapping mode shift mask (for 1D mapping)
+#define RES_CHAR_MAP_SHIFT_SHIFT     4  // mapping mode shift shift (for 1D mapping ^)
+#define RES_CHAR_NOWIDTH        (1<<6)  // flag to indicate no specific width
 
 int ChrGuessWidth(int nTiles) {
 	int width = 1;
@@ -129,8 +139,19 @@ int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size) {
+	if (!SetIsValid(buffer, size)) return 0;
+
+	//must have CHAR block
+	const unsigned char *pChar = SetGetBlock(buffer, size, "CHAR");
+	if (pChar == NULL) return 0;
+
+	return 1;
+}
+
 int ChrIdentify(const unsigned char *buffer, unsigned int size) {
 	if (ChrIsValidNcgr(buffer, size)) return NCGR_TYPE_NCGR;
+	if (ChrIsValidSetosa(buffer, size)) return NCGR_TYPE_SETOSA;
 	if (ChrIsValidNcg(buffer, size)) return NCGR_TYPE_NC;
 	if (ChrIsValidIcg(buffer, size)) return NCGR_TYPE_IC;
 	if (ChrIsValidAcg(buffer, size)) return NCGR_TYPE_AC;
@@ -424,6 +445,55 @@ static int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned i
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int ChrReadSetosa(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	ChrInit(ncgr, NCGR_TYPE_SETOSA);
+
+	//CHAR and CATR blocks
+	const unsigned char *pChar = SetGetBlock(buffer, size, "CHAR");
+	const unsigned char *pCatr = SetGetBlock(buffer, size, "CATR");
+
+	unsigned int charsX = *(const uint16_t *) (pChar + 0x04);
+	unsigned int charsY = *(const uint16_t *) (pChar + 0x06);
+	unsigned int flags = *(const uint16_t *) (pChar + 0x08);
+
+	//check size
+	if (flags & RES_CHAR_NOWIDTH) {
+		unsigned int nChar = charsX * charsY;
+		charsX = ChrGuessWidth(nChar);
+		charsY = nChar / charsX;
+	}
+	ncgr->tilesX = charsX;
+	ncgr->tilesY = charsY;
+	ncgr->nTiles = charsX * charsY;
+
+	//get mapping mode
+	if (flags & RES_CHAR_FLAG_1D) {
+		unsigned int shift = (flags & RES_CHAR_MAP_SHIFT_MASK) >> RES_CHAR_MAP_SHIFT_SHIFT;
+		switch (shift) {
+			case 0: ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K; break;
+			case 1: ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_64K; break;
+			case 2: ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_128K; break;
+			case 3: ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_256K; break;
+		}
+	} else {
+		ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
+	}
+
+	//bit depth and bitmap mode
+	ncgr->bitmap = !!(flags & RES_CHAR_FLAG_BMP);
+	ncgr->nBits = (flags & RES_CHAR_FLAG_8) ? 8 : 4;
+	ncgr->isIntermediate = !!(flags & RES_CHAR_FLAG_IMD);
+	ChrReadGraphics(ncgr, pChar + 0x0C);
+
+	//read attribute
+	if ((flags & RES_CHAR_FLAG_IMD) && (pCatr != NULL)) {
+		ncgr->attr = (unsigned char *) calloc(charsX * charsY, 1);
+		memcpy(ncgr->attr, pCatr, charsX * charsY);
+	}
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 static int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	ChrInit(ncgr, NCGR_TYPE_NC);
 
@@ -517,6 +587,8 @@ int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 			return ChrReadHudson(ncgr, buffer, size);
 		case NCGR_TYPE_GHOSTTRICK:
 			return ChrReadGhostTrick(ncgr, buffer, size);
+		case NCGR_TYPE_SETOSA:
+			return ChrReadSetosa(ncgr, buffer, size);
 		case NCGR_TYPE_BIN:
 			return ChrReadBin(ncgr, buffer, size);
 	}
@@ -895,6 +967,56 @@ int ChrWriteGhostTrick(NCGR *ncgr, BSTREAM *stream) {
 	return 0;
 }
 
+static int ChrWriteSetosa(NCGR *ncgr, BSTREAM *stream) {
+	SetStream setStream;
+	SetStreamCreate(&setStream);
+
+	//CHAR block
+	uint16_t flags = 0;
+	if (ncgr->nBits == 8) flags |= RES_CHAR_FLAG_8;
+	if (ncgr->bitmap) flags |= RES_CHAR_FLAG_BMP;
+	if (ncgr->isIntermediate) flags |= RES_CHAR_FLAG_IMD;
+	switch (ncgr->mappingMode) {
+		case GX_OBJVRAMMODE_CHAR_2D:
+			break;
+		case GX_OBJVRAMMODE_CHAR_1D_32K:
+			flags |= RES_CHAR_FLAG_1D | (0 << RES_CHAR_MAP_SHIFT_SHIFT);
+			break;
+		case GX_OBJVRAMMODE_CHAR_1D_64K:
+			flags |= RES_CHAR_FLAG_1D | (1 << RES_CHAR_MAP_SHIFT_SHIFT);
+			break;
+		case GX_OBJVRAMMODE_CHAR_1D_128K:
+			flags |= RES_CHAR_FLAG_1D | (2 << RES_CHAR_MAP_SHIFT_SHIFT);
+			break;
+		case GX_OBJVRAMMODE_CHAR_1D_256K:
+			flags |= RES_CHAR_FLAG_1D | (3 << RES_CHAR_MAP_SHIFT_SHIFT);
+			break;
+	}
+
+	unsigned char charHeader[0xC] = { 0 };
+	*(uint32_t *) (charHeader + 0x0) = ncgr->tilesX * ncgr->tilesY * (8 * ncgr->nBits);
+	*(uint16_t *) (charHeader + 0x4) = ncgr->tilesX;
+	*(uint16_t *) (charHeader + 0x6) = ncgr->tilesY;
+	*(uint16_t *) (charHeader + 0x8) = flags;
+
+	SetStreamStartBlock(&setStream, "CHAR");
+	SetStreamWrite(&setStream, charHeader, sizeof(charHeader));
+	ChrWriteGraphics(ncgr, &setStream.currentStream);
+	SetStreamEndBlock(&setStream);
+
+	//CATR block
+	if (ncgr->isIntermediate && ncgr->attr != NULL) {
+		SetStreamStartBlock(&setStream, "CATR");
+		SetStreamWrite(&setStream, ncgr->attr, ncgr->nTiles);
+		SetStreamEndBlock(&setStream);
+	}
+	
+	SetStreamFinalize(&setStream);
+	SetStreamFlushOut(&setStream, stream);
+	SetStreamFree(&setStream);
+	return OBJ_STATUS_SUCCESS;
+}
+
 int ChrWriteCombo(NCGR *ncgr, BSTREAM *stream) {
 	return combo2dWrite((COMBO2D *) ncgr->header.combo, stream);
 }
@@ -914,6 +1036,8 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 			return ChrWriteHudson(ncgr, stream);
 		case NCGR_TYPE_GHOSTTRICK:
 			return ChrWriteGhostTrick(ncgr, stream);
+		case NCGR_TYPE_SETOSA:
+			return ChrWriteSetosa(ncgr, stream);
 		case NCGR_TYPE_BIN:
 			return ChrWriteBin(ncgr, stream);
 		case NCGR_TYPE_COMBO:

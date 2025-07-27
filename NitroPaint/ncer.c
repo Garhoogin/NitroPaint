@@ -823,7 +823,7 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 
 			for (int j = 0; j < cell->nAttribs; j++) {
 				pCellAttr[3 * j + 2] = (pCellAttr[3 * j + 2] & ~0x03FF) | (cell->ex2dCharNames[j] & 0x03FF);
-				pCellExAttr[i] = cell->ex2dCharNames[j] >> 10;
+				pCellExAttr[j] = cell->ex2dCharNames[j] >> 10;
 			}
 		}
 

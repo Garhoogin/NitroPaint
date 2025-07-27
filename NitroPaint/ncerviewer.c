@@ -1654,6 +1654,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			if (CellSetBankExt2D(ncer, ncgr, 1)) {
 				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
 				CellViewerSetMappingModeSelection(data, GX_OBJVRAMMODE_CHAR_2D);
+				ncgr->isIntermediate = 1; // set intermediate flag
 			} else {
 				MessageBox(hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
 			}
@@ -1662,6 +1663,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			if (CellSetBankExt2D(ncer, ncgr, 0)) {
 				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
 				CellViewerSetMappingModeSelection(data, data->ncer.mappingMode);
+				ncgr->isIntermediate = 0; // clear intermediate flag
 			} else {
 				MessageBox(hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
 			}

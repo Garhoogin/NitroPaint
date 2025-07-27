@@ -10,8 +10,9 @@
 #define NCGR_TYPE_HUDSON	 5
 #define NCGR_TYPE_HUDSON2	 6
 #define NCGR_TYPE_GHOSTTRICK 7
-#define NCGR_TYPE_BIN        8
-#define NCGR_TYPE_COMBO      9
+#define NCGR_TYPE_SETOSA     8
+#define NCGR_TYPE_BIN        9
+#define NCGR_TYPE_COMBO      10
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
@@ -43,6 +44,7 @@ typedef struct NCGR_{
 	int extPalette;           // whether character is using an extended palette
 	unsigned char *attr;      // per-character palette attribute data
 	int isExChar;             // is extended character data
+	int isIntermediate;       // is intermediate file?
 	BYTE **tiles;
 	CHAR_SLICE *slices;       // for Ghost Trick files
 	int nSlices;              // for Ghost Trick files
@@ -95,6 +97,11 @@ int ChrIsValidIcg(const unsigned char *buffer, unsigned int size);
 // Determines if a byte array represents a valid NNS G2D character graphics file for runtime.
 //
 int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size);
+
+//
+// Determines if a byte array represents a valid Setosa format character graphics file.
+//
+int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size);
 
 //
 // Get a 32-bit color render of graphics data

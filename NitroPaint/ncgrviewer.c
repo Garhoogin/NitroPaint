@@ -2601,6 +2601,7 @@ void RegisterNcgrViewerClass(void) {
 	EditorAddFilter(cls, NCGR_TYPE_AC, L"acg", L"ACG Files (*.acg)\0*.acg\0");
 	EditorAddFilter(cls, NCGR_TYPE_HUDSON, L"bin", L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0");
 	EditorAddFilter(cls, NCGR_TYPE_HUDSON2, L"bin", L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0");
+	EditorAddFilter(cls, NCGR_TYPE_SETOSA, L"schr", L"Character Files (*.schr)\0*.schr\0");
 	EditorAddFilter(cls, NCGR_TYPE_BIN, L"bin", L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0");
 	EditorAddFilter(cls, NCGR_TYPE_COMBO, L"bin", L"Combination Files (*.dat, *.bnr, *.bin)\0*.dat;*.bnr;*.bin\0");
 	
