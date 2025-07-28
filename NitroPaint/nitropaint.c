@@ -2808,20 +2808,20 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				int newTilesX = tilesX / x;
 				int newTilesY = tilesY / y;
-
-				NSCR newNscr;
-				ScrInit(&newNscr, nscr->header.format);
-				newNscr.fmt = nscr->fmt;
-				newNscr.colorMode = nscr->colorMode;
-				newNscr.clearValue = nscr->clearValue;
-				newNscr.gridWidth = nscr->gridWidth;
-				newNscr.gridHeight = nscr->gridHeight;
-				newNscr.nHighestIndex = nscr->nHighestIndex;
-				newNscr.tilesX = newTilesX;
-				newNscr.tilesY = newTilesY;
-				newNscr.dataSize = newTilesX * newTilesY * sizeof(uint16_t);
 				for (int i = 0; i < y; i++) {
 					for (int j = 0; j < x; j++) {
+						NSCR newNscr;
+						ScrInit(&newNscr, nscr->header.format);
+						newNscr.fmt = nscr->fmt;
+						newNscr.colorMode = nscr->colorMode;
+						newNscr.clearValue = nscr->clearValue;
+						newNscr.gridWidth = nscr->gridWidth;
+						newNscr.gridHeight = nscr->gridHeight;
+						newNscr.nHighestIndex = nscr->nHighestIndex;
+						newNscr.tilesX = newTilesX;
+						newNscr.tilesY = newTilesY;
+						newNscr.dataSize = newTilesX * newTilesY * sizeof(uint16_t);
+
 						newNscr.data = (uint16_t *) calloc(newTilesX * newTilesY, sizeof(uint16_t));
 						for (int tileY = 0; tileY < newTilesY; tileY++) {
 							for (int tileX = 0; tileX < newTilesX; tileX++) {
