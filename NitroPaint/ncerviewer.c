@@ -758,6 +758,58 @@ static void CellViewerUpdateBounds(NCERVIEWERDATA *data) {
 	cell->cellAttr = (cell->cellAttr & ~0x3F) | (dInt & 0x3F);
 }
 
+static void CellViewerAlignSelection(NCERVIEWERDATA *data, int alignX, int alignY) {
+	if (!CellViewerHasSelection(data)) return;
+
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	//get selection bounds
+	int xMin = 0, xMax = 0, yMin = 0, yMax = 0;
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		int iSel = data->selectedOBJ[i];
+
+		NCER_CELL_INFO info;
+		CellDecodeOamAttributes(&info, cell, iSel);
+
+		int objX = SEXT9(info.x);
+		int objY = SEXT8(info.y);
+		int objXMax = objX + info.width;
+		int objYMax = objY + info.height;
+
+		if (i == 0 || objX < xMin) xMin = objX;
+		if (i == 0 || objY < yMin) yMin = objY;
+		if (i == 0 || objXMax > xMax) xMax = objXMax;
+		if (i == 0 || objYMax > yMax) yMax = objYMax;
+	}
+
+	//calculate bounding size
+	int selW = xMax - xMin;
+	int selH = yMax - yMin;
+	int adjX = -xMin, adjY = -yMin;
+
+	switch (alignX) {
+		case -1: adjX -= 0; break;
+		case  0: adjX -= (selW + 1) / 2; break;
+		case +1: adjX -= selW; break;
+	}
+	switch (alignY) {
+		case -1: adjY -= 0; break;
+		case  0: adjY -= (selH + 1) / 2; break;
+		case +1: adjY -= selH; break;
+	}
+
+	//using the calculated bounds, adjust all OBJ position.
+	for (int i = 0; i < data->nSelectedOBJ; i++) {
+		int iSel = data->selectedOBJ[i];
+
+		//adjust position
+		uint16_t *pOam = &cell->attr[3 * iSel];
+		pOam[0] = (pOam[0] & ~0x00FF) | (((pOam[0] & 0x00FF) + adjY) & 0x00FF);
+		pOam[1] = (pOam[1] & ~0x01FF) | (((pOam[1] & 0x01FF) + adjX) & 0x01FF);
+	}
+}
+
 
 // ----- copy/paste code
 
@@ -1657,11 +1709,13 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		changed = 1;
 
 		if (sel == GX_OBJVRAMMODE_CHAR_2D) {
-			SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
-
-			//enable/disable
-			int disable = !data->ncer.isEx2d;
-			setStyle(data->hWndMake2D, disable, WS_DISABLED);
+			if (data->ncer.isEx2d) {
+				//when in extended 2D mode, show the "Make 1D" text.
+				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
+			} else {
+				//not in extended 2D mode, show "Make Extended" text.
+				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make Extd.");
+			}
 		} else {
 			SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
 
@@ -2209,6 +2263,16 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			CellViewerSendSelectionToBack(data);
 			CellViewerGraphicsUpdated(data->hWnd);
 			break;
+		case ID_ALIGNTO_TOPLEFT:
+			CellViewerAlignSelection(data, -1, -1);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_ALIGNTO_CENTER:
+			CellViewerAlignSelection(data, 0, 0);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
 		case ID_OBJPALETTE_0:
 		case ID_OBJPALETTE_1:
 		case ID_OBJPALETTE_2:
@@ -2483,9 +2547,8 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			SendMessage(data->hWndMappingMode, CB_SETCURSEL, mappingIndex, 0);
 
 			if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
-				//disable Make 2D
-				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
-				setStyle(data->hWndMake2D, !data->ncer.isEx2d, WS_DISABLED);
+				//make 1D -> Make Extended
+				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make Extd.");
 			}
 
 			//init cell editor
