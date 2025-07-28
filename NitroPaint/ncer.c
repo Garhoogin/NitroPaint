@@ -1624,29 +1624,43 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 		//save mapping mode
 		ncer->ex2dBaseMappingMode = ncer->mappingMode;
 
-		int graphicsWidth, graphicsHeight;
-		CellArrangeBankIn2D(ncer, ncgr, &graphicsWidth, &graphicsHeight, NULL, NULL);
+		//check source mapping mode
+		if (ncer->mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+			//mapped in 2D: we will not rearrange graphics, just populate the ex2dCharNames.
+			for (int i = 0; i < ncer->nCells; i++) {
+				NCER_CELL *cell = &ncer->cells[i];
+				for (int j = 0; j < cell->nAttribs; j++) {
+					cell->ex2dCharNames[j] = cell->attr[3 * j + 2] & 0x03FF;
+				}
+			}
 
-		//allocate new graphics
-		unsigned char *outAttr = (unsigned char *) calloc(graphicsWidth * graphicsHeight, 1);
-		unsigned char **outChars = (unsigned char **) calloc(graphicsWidth * graphicsHeight, sizeof(void *));
-		for (int i = 0; i < graphicsWidth * graphicsHeight; i++) {
-			outChars[i] = calloc(64, 1);
+			//override backing mapping mode
+			ncer->ex2dBaseMappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+		} else {
+			//cell bank is not using 2D mapping mode, so reconstruct data.
+			int graphicsWidth, graphicsHeight;
+			CellArrangeBankIn2D(ncer, ncgr, &graphicsWidth, &graphicsHeight, NULL, NULL);
+
+			//allocate new graphics
+			unsigned char *outAttr = (unsigned char *) calloc(graphicsWidth * graphicsHeight, 1);
+			unsigned char **outChars = (unsigned char **) calloc(graphicsWidth * graphicsHeight, sizeof(void *));
+			for (int i = 0; i < graphicsWidth * graphicsHeight; i++) {
+				outChars[i] = calloc(64, 1);
+			}
+			CellArrangeBankIn2D(ncer, ncgr, &graphicsWidth, &graphicsHeight, outChars, outAttr);
+
+			//replace graphics data with rearranged graphics
+			for (int i = 0; i < ncgr->nTiles; i++) {
+				free(ncgr->tiles[i]);
+			}
+			if (ncgr->attr != NULL) free(ncgr->attr);
+			free(ncgr->tiles);
+			ncgr->tiles = outChars;
+			ncgr->attr = outAttr;
+			ncgr->tilesX = graphicsWidth;
+			ncgr->tilesY = graphicsHeight;
+			ncgr->nTiles = graphicsWidth * graphicsHeight;
 		}
-		CellArrangeBankIn2D(ncer, ncgr, &graphicsWidth, &graphicsHeight, outChars, outAttr);
-
-		//replace graphics data with rearranged graphics
-		for (int i = 0; i < ncgr->nTiles; i++) {
-			free(ncgr->tiles[i]);
-		}
-		if (ncgr->attr != NULL) free(ncgr->attr);
-		free(ncgr->tiles);
-		ncgr->tiles = outChars;
-		ncgr->attr = outAttr;
-		ncgr->tilesX = graphicsWidth;
-		ncgr->tilesY = graphicsHeight;
-		ncgr->nTiles = graphicsWidth * graphicsHeight;
-
 	}
 	return 1;
 }

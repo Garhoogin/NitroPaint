@@ -1767,7 +1767,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			return;
 		}
 
-		if (data->ncer.mappingMode != GX_OBJVRAMMODE_CHAR_2D) {
+		if (!data->ncer.isEx2d) {
 			//convert to extended 2D
 			if (CellSetBankExt2D(ncer, ncgr, 1)) {
 				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
