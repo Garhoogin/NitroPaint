@@ -82,6 +82,25 @@ static LPCWSTR sCommonScreenEndings[] = {
 	NULL
 };
 
+LPCWSTR ObjStatusToString(int status) {
+	switch (status) {
+		case OBJ_STATUS_SUCCESS:
+			return L"Success";
+		case OBJ_STATUS_INVALID:
+			return L"Invalid";
+		case OBJ_STATUS_MISMATCH:
+			return L"Mismatch";
+		case OBJ_STATUS_NO_ACCESS:
+			return L"Access denied";
+		case OBJ_STATUS_NO_MEMORY:
+			return L"Out of memory";
+		case OBJ_STATUS_UNSUPPORTED:
+			return L"Unsupported";
+	}
+
+	return NULL;
+}
+
 static int ObjiPathEndsWith(LPCWSTR str, LPCWSTR substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;
 	LPCWSTR str1 = str + wcslen(str) - wcslen(substr);

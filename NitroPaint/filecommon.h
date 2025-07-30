@@ -60,6 +60,11 @@ typedef struct OBJECT_HEADER_ {
 
 extern LPCWSTR g_ObjCompressionNames[];
 
+//
+// Converts a status code into a string.
+//
+LPCWSTR ObjStatusToString(int status);
+
 LPCWSTR *ObjGetFormatNamesByType(int type);
 
 //

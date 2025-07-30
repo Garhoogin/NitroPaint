@@ -12,6 +12,15 @@ typedef struct EditorDestroyCallbackEntry_ {
 } EditorDestroyCallbackEntry;
 
 
+static LPCWSTR EditorStatusToString(int status) {
+	switch (status) {
+		case EDITOR_STATUS_CANCELLED:
+			return L"Canceled";
+	}
+	return ObjStatusToString(status);
+}
+
+
 static BOOL CALLBACK EditorSetThemeProc(HWND hWnd, LPARAM lParam) {
 	SetWindowTheme(hWnd, L"DarkMode_Explorer", NULL);
 	return TRUE;
@@ -396,7 +405,7 @@ static int EditorGetFilterLength(LPCWSTR filter) {
 	}
 }
 
-int EditorSaveAs(HWND hWnd) {
+static int EditorSaveAsInternal(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 	EDITOR_CLASS *cls = (EDITOR_CLASS *) GetClassLong(hWnd, EDITOR_CD_CLASSINFO);
 
@@ -427,13 +436,13 @@ int EditorSaveAs(HWND hWnd) {
 	return EditorSave(hWnd);
 }
 
-int EditorSave(HWND hWnd) {
+static int EditorSaveInternal(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 	EDITOR_CLASS *cls = (EDITOR_CLASS *) GetClassLong(hWnd, EDITOR_CD_CLASSINFO);
 
 	//do we need to open a Save As dialog?
 	if (data->szOpenFile[0] == L'\0') {
-		return EditorSaveAs(hWnd);
+		return EditorSaveAsInternal(hWnd);
 	}
 
 	//else save
@@ -443,6 +452,40 @@ int EditorSave(HWND hWnd) {
 
 	//needs to be written
 	return OBJ_STATUS_UNSUPPORTED;
+}
+
+static void EditorSaveStatus(HWND hWnd, int status) {
+	switch (status) {
+		case OBJ_STATUS_SUCCESS:
+		case EDITOR_STATUS_CANCELLED:
+			//do not display an error message
+			break;
+		default:
+		{
+			WCHAR textbuf[64];
+			wsprintfW(textbuf, L"Save failed with error: %s\n", EditorStatusToString(status));
+			MessageBox(hWnd, textbuf, L"Error", MB_ICONERROR);
+		}
+	}
+
+}
+
+int EditorSaveAs(HWND hWnd) {
+	int status = EditorSaveAsInternal(hWnd);
+
+	//if the status was not successful, display it to the user.
+	EditorSaveStatus(hWnd, status);
+
+	return status;
+}
+
+int EditorSave(HWND hWnd) {
+	int status = EditorSaveInternal(hWnd);
+
+	//if the status was not successful, display it to the user.
+	EditorSaveStatus(hWnd, status);
+
+	return status;
 }
 
 void EditorSetFile(HWND hWnd, LPCWSTR filename) {
