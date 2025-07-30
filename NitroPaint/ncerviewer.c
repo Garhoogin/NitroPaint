@@ -62,6 +62,9 @@ static const unsigned short sMenuIdSplitSizes[] = {
 };
 
 
+static HMENU CellViewerGetCellListContextMenu(NCERVIEWERDATA *data, int i);
+
+
 // ----- basic editor routines
 
 #define SEXT8(n)   (((n)<0x080)?(n):((n)-0x100))
@@ -1626,6 +1629,20 @@ static LRESULT CellViewerOnCellListNotify(NCERVIEWERDATA *data, HWND hWnd, WPARA
 
 			break;
 		}
+		case NM_RCLICK:
+		{
+			LPNMITEMACTIVATE lpnma = (LPNMITEMACTIVATE) nm;
+			int item = lpnma->iItem;
+
+			if (item != -1) {
+				HMENU hPopup = CellViewerGetCellListContextMenu(data, item);
+				POINT mouse;
+				GetCursorPos(&mouse);
+				TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, data->hWnd, NULL);
+				DeleteObject(hPopup);
+			}
+			break;
+		}
 	}
 
 	return DefWindowProc(hWnd, WM_NOTIFY, wParam, (LPARAM) nm);
@@ -2174,6 +2191,13 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 	}
 }
 
+static void CellViewerToggleSwappableCurrentCell(NCERVIEWERDATA *data) {
+	NCER_CELL *cell = CellViewerGetCurrentCell(data);
+	if (cell == NULL) return;
+
+	cell->forbidCompression = !cell->forbidCompression;
+}
+
 static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 	HWND hWnd = data->hWnd;
 	HWND hWndMain = getMainWindow(hWnd);
@@ -2402,6 +2426,13 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		case ID_CELLMENU_ADDOBJ:
 			CellViewerAppendDummyObj(data);
 			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+
+		case ID_CELLMENU2_SWAPPABLE:
+			CellViewerToggleSwappableCurrentCell(data);
+			break;
+		case ID_CELLMENU2_DELETE:
+			CellViewerDeleteCell(data, data->cell);
 			break;
 	}
 }
@@ -3826,6 +3857,19 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 		}
 	}
 	free(sel);
+
+	return hPopup;
+}
+
+static HMENU CellViewerGetCellListContextMenu(NCERVIEWERDATA *data, int i) {
+	HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 9);
+
+	//set properties for requested cell
+	if (i >= 0 || i < data->ncer.nCells) {
+		NCER_CELL *cell = &data->ncer.cells[i];
+
+		CheckMenuItem(hPopup, ID_CELLMENU2_SWAPPABLE, (cell->forbidCompression) ? MF_CHECKED : MF_UNCHECKED);
+	}
 
 	return hPopup;
 }

@@ -25,6 +25,8 @@ typedef struct NCER_CELL_ {
 	uint16_t *attr;
 	uint32_t *ex2dCharNames;
 	int useEx2d;
+
+	int forbidCompression; // forbids compression of graphics
 } NCER_CELL;
 
 typedef struct NCER_CELL_INFO_ {

@@ -313,6 +313,7 @@ static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int 
 		cell->maxY = *(const int16_t *) (celldat + 0x06);
 		cell->nAttribs = *(const uint16_t *) (celldat + 0x08);
 		cell->useEx2d = ncer->isEx2d;
+		cell->forbidCompression = ((*(const uint16_t *) (celldat + 0x0A)) >> 6) & 1;
 
 		cell->attr = (uint16_t *) calloc(cell->nAttribs, 3 * sizeof(uint16_t));
 		memcpy(cell->attr, celldat + 0xC, cell->nAttribs * 3 * sizeof(uint16_t));
@@ -816,7 +817,7 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 		*(int16_t *) (cellData + 0x4) = cell->maxX;
 		*(int16_t *) (cellData + 0x6) = cell->maxY;
 		*(uint16_t *) (cellData + 0x8) = cell->nAttribs;
-		*(uint16_t *) (cellData + 0xA) = (commonPalette & 0xF) | ((commonPalette != -1) << 4) | (cellAffine << 5);
+		*(uint16_t *) (cellData + 0xA) = (commonPalette & 0xF) | ((commonPalette != -1) << 4) | (cellAffine << 5) | ((!!cell->forbidCompression) << 6);
 		memcpy(cellData + 0xC, cell->attr, cell->nAttribs * 0x6);
 
 		if (ncer->isEx2d) {
@@ -1444,112 +1445,133 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 	unsigned int charSizeBytes = 8 * ncgr->nBits;
 	if (mappingGranularity == 0) mappingGranularity = 1;
 
+	unsigned char *tempbuf = (unsigned char *) calloc(64 * 64, 1);
+	if (tempbuf == NULL) return 0;
+
 	int status = 1; // OK
 
-	unsigned char *tempbuf = (unsigned char *) calloc(64 * 64, 1);
-	for (int i = 0; i < ncer->nCells; i++) {
-		NCER_CELL *cell = &ncer->cells[i];
+	//we support two kinds of cells: those that will allow compression and those that do not. When a cell
+	//forbids compression, we'll push it to the front of the graphics to keep them at predictable locations.
+	//to accomplish this, we will run over the cell data twice.
+	unsigned int compressCellstart = 0; // start of compressible cell graphics
+	for (int doCompress = 0; doCompress <= 1; doCompress++) {
+		//iterate cells
+		for (int i = 0; i < ncer->nCells; i++) {
+			NCER_CELL *cell = &ncer->cells[i];
 
-		//search start: beginning of file (cell mode: limit to within cell)
-		unsigned int searchStart = 0;
-		if (cellCompression) searchStart = (curbufSize + mappingGranularity - 1) & ~(mappingGranularity - 1);
+			//we will only process cells with compression modes matching the current phase.
+			if ((!cell->forbidCompression) != doCompress) continue;
 
-		if (ncer->vramTransfer != NULL) {
-			//cell bank with VRAM transfer animation: set up source and destination
-			CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
-			trans->dstAddr = 0;
-			trans->srcAddr = searchStart * charSizeBytes;
-		}
+			//search start: beginning of file (cell mode: limit to within cell)
+			unsigned int searchStart = compressCellstart;
+			if (cellCompression) searchStart = (curbufSize + mappingGranularity - 1) & ~(mappingGranularity - 1);
 
-		for (int j = 0; j < cell->nAttribs; j++) {
-			NCER_CELL_INFO info;
-			CellDecodeOamAttributes(&info, cell, j);
-
-			//lay out graphics into temp buffer
-			uint32_t chrAddr = info.characterName >> (ncgr->nBits == 8);
-			unsigned int chrX = chrAddr % (unsigned int) ncgr->tilesX;
-			unsigned int chrY = chrAddr / (unsigned int) ncgr->tilesX;
-			unsigned int nCharsX = info.width / 8;
-			unsigned int nCharsY = info.height / 8;
-
-			for (unsigned int x = 0; x < nCharsX; x++) {
-				for (unsigned int y = 0; y < nCharsY; y++) {
-					unsigned int srcAddr = (x + chrX) + (y + chrY) * ncgr->tilesX;
-
-					if (srcAddr < (unsigned int) ncgr->nTiles) {
-						memcpy(tempbuf + 64 * (x + y * nCharsX), ncgr->tiles[srcAddr], 64);
-					} else {
-						memset(tempbuf + 64 * (x + y * nCharsX), 0, 64);
-					}
-				}
+			if (ncer->vramTransfer != NULL) {
+				//cell bank with VRAM transfer animation: set up source and destination
+				CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
+				trans->dstAddr = 0;
+				trans->srcAddr = searchStart * charSizeBytes;
 			}
 
-			//search
-			int foundFlipX, foundFlipY;
-			unsigned int foundAt = CellSearchGraphics(
-				curbuf,
-				curbufSize,
-				tempbuf,
-				nCharsX,
-				nCharsY,
-				mappingGranularity,
-				searchStart,
-				!info.rotateScale,
-				&foundFlipX,
-				&foundFlipY
-			);
-			if ((curbufSize - foundAt) < (nCharsX * nCharsY)) {
-				//append graphics to buffer
-				unsigned int offsWrite = curbufSize - foundAt;
+			for (int j = 0; j < cell->nAttribs; j++) {
+				NCER_CELL_INFO info;
+				CellDecodeOamAttributes(&info, cell, j);
 
-				//compute needed expansion plus padding to round up to a mapping unit
-				unsigned int newbufSize = curbufSize + nCharsX * nCharsY - offsWrite;
-				newbufSize = (newbufSize + mappingGranularity - 1) / mappingGranularity * mappingGranularity;
+				//lay out graphics into temp buffer
+				uint32_t chrAddr = info.characterName >> (ncgr->nBits == 8);
+				unsigned int chrX = chrAddr % (unsigned int) ncgr->tilesX;
+				unsigned int chrY = chrAddr / (unsigned int) ncgr->tilesX;
+				unsigned int nCharsX = info.width / 8;
+				unsigned int nCharsY = info.height / 8;
 
-				unsigned char *newbuf = realloc(curbuf, newbufSize * 64);
-				if (newbuf == NULL) {
-					status = 0; // fail
+				for (unsigned int x = 0; x < nCharsX; x++) {
+					for (unsigned int y = 0; y < nCharsY; y++) {
+						unsigned int srcAddr = (x + chrX) + (y + chrY) * ncgr->tilesX;
+
+						if (srcAddr < (unsigned int) ncgr->nTiles) {
+							memcpy(tempbuf + 64 * (x + y * nCharsX), ncgr->tiles[srcAddr], 64);
+						} else {
+							memset(tempbuf + 64 * (x + y * nCharsX), 0, 64);
+						}
+					}
+				}
+
+				//search
+				int foundFlipX = 0, foundFlipY = 0;
+				unsigned int foundAt = curbufSize;
+				if (doCompress) {
+					//if compression of this cell's graphics is allowed, we will search for repeated graphics data
+					foundAt = CellSearchGraphics(
+						curbuf,
+						curbufSize,
+						tempbuf,
+						nCharsX,
+						nCharsY,
+						mappingGranularity,
+						searchStart,
+						!info.rotateScale,
+						&foundFlipX,
+						&foundFlipY
+					);
+				}
+				if ((curbufSize - foundAt) < (nCharsX * nCharsY)) {
+					//append graphics to buffer
+					unsigned int offsWrite = curbufSize - foundAt;
+
+					//compute needed expansion plus padding to round up to a mapping unit
+					unsigned int newbufSize = curbufSize + nCharsX * nCharsY - offsWrite;
+					newbufSize = (newbufSize + mappingGranularity - 1) / mappingGranularity * mappingGranularity;
+
+					unsigned char *newbuf = realloc(curbuf, newbufSize * 64);
+					if (newbuf == NULL) {
+						status = 0; // fail
+						curbufSize = 0;
+						goto Done;
+					}
+					curbuf = newbuf;
+					memset(curbuf + curbufSize * 64, 0, (newbufSize - curbufSize) * 64);
+
+					//write graphics flipped
+					for (unsigned int l = 64 * offsWrite; l < 64 * (nCharsX * nCharsY); l++) {
+						curbuf[foundAt * 64 + l] = CellSampleObjPixelWithFlip(tempbuf, nCharsX, nCharsY, l, foundFlipX, foundFlipY);
+					}
+					if (outAttr != NULL) {
+						memset(outAttr + foundAt + offsWrite, info.palette, nCharsX * nCharsY - offsWrite);
+					}
+					curbufSize = newbufSize;
+				}
+
+				//compute character name
+				unsigned int chrName = (foundAt << (ncgr->nBits == 8)) >> mappingShift;
+				if (ncer->vramTransfer != NULL) {
+					//cell bank uses VRAM transfer animations, subtract the base character name
+					chrName = ((foundAt - searchStart) << (ncgr->nBits == 8)) >> mappingShift;
+				}
+
+				//check the character name did not overflow
+				if (chrName & ~0x03FF) {
+					status = 0;
 					curbufSize = 0;
 					goto Done;
 				}
-				curbuf = newbuf;
-				memset(curbuf + curbufSize * 64, 0, (newbufSize - curbufSize) * 64);
 
-				//write graphics flipped
-				for (unsigned int l = 64 * offsWrite; l < 64 * (nCharsX * nCharsY); l++) {
-					curbuf[foundAt * 64 + l] = CellSampleObjPixelWithFlip(tempbuf, nCharsX, nCharsY, l, foundFlipX, foundFlipY);
+				if (outChars != NULL) {
+					cell->attr[3 * j + 2] = (cell->attr[3 * j + 2] & 0xFC00) | (chrName & 0x03FF);
+					if (foundFlipX) cell->attr[3 * j + 1] ^= 0x1000; // flip H
+					if (foundFlipY) cell->attr[3 * j + 1] ^= 0x2000; // flip V
 				}
-				if (outAttr != NULL) {
-					memset(outAttr + foundAt + offsWrite, info.palette, nCharsX * nCharsY - offsWrite);
-				}
-				curbufSize = newbufSize;
 			}
-			
-			//compute character name
-			unsigned int chrName = (foundAt << (ncgr->nBits == 8)) >> mappingShift;
+
+			//after adding OBJ to cell, finalize VRAM transfer settings
 			if (ncer->vramTransfer != NULL) {
-				//cell bank uses VRAM transfer animations, subtract the base character name
-				chrName = ((foundAt - searchStart) << (ncgr->nBits == 8)) >> mappingShift;
-			}
-
-			//check the character name did not overflow
-			if (chrName & ~0x03FF) {
-				status = 0;
-				curbufSize = 0;
-				goto Done;
-			}
-
-			if (outChars != NULL) {
-				cell->attr[3 * j + 2] = (cell->attr[3 * j + 2] & 0xFC00) | (chrName & 0x03FF);
-				if (foundFlipX) cell->attr[3 * j + 1] ^= 0x1000; // flip H
-				if (foundFlipY) cell->attr[3 * j + 1] ^= 0x2000; // flip V
+				CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
+				trans->size = curbufSize * charSizeBytes - trans->srcAddr;
 			}
 		}
 
-		//after adding OBJ to cell, finalize VRAM transfer settings
-		if (ncer->vramTransfer != NULL) {
-			CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
-			trans->size = curbufSize * charSizeBytes - trans->srcAddr;
+		//at the end of the no-compress pass, set the compressible cells offset.
+		if (!doCompress) {
+			compressCellstart = (curbufSize + mappingGranularity - 1) & ~(mappingGranularity - 1);
 		}
 	}
 

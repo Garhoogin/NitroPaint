@@ -253,13 +253,15 @@
 #define ID_CELLMENU_ALIGNTO             40265
 #define ID_ALIGNTO_CENTER               40266
 #define ID_ALIGNTO_TOPLEFT              40267
+#define ID_CELLMENU2_SWAPPABLE          40268
+#define ID_CELLMENU2_DELETE             40269
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
-#define _APS_NEXT_COMMAND_VALUE         40268
+#define _APS_NEXT_COMMAND_VALUE         40270
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
