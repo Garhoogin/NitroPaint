@@ -405,6 +405,9 @@ static int EditorGetFilterLength(LPCWSTR filter) {
 	}
 }
 
+static int EditorSaveInternal(HWND hWnd);
+static int EditorSaveAsInternal(HWND hWnd);
+
 static int EditorSaveAsInternal(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 	EDITOR_CLASS *cls = (EDITOR_CLASS *) GetClassLong(hWnd, EDITOR_CD_CLASSINFO);
@@ -433,7 +436,7 @@ static int EditorSaveAsInternal(HWND hWnd) {
 
 	EditorSetFile(hWnd, path);
 	free(path);
-	return EditorSave(hWnd);
+	return EditorSaveInternal(hWnd);
 }
 
 static int EditorSaveInternal(HWND hWnd) {
