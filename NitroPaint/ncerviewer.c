@@ -2187,26 +2187,14 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 				break;
 			}
 
-			if (data->szOpenFile[0] == L'\0' || idMenu == ID_FILE_SAVEAS) {
-				LPCWSTR filter = L"NCER Files (*.ncer)\0*.ncer\0All Files\0*.*\0";
-				LPCWSTR ext = L"ncer";
-				switch (data->ncer.header.format) {
-					case NCER_TYPE_HUDSON:
-						filter = L"Cell Bank Files (*.bin)\0*.bin;\0All Files\0*.*\0";
-						ext = L"bin";
-						break;
-					case NCER_TYPE_SETOSA:
-						filter = L"Cell Bank Files (*.scbk)\0*.scbk\0All Files\0*.*\0";
-						ext = L"scbk";
-						break;
-				}
-				LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, ext);
-				if (path != NULL) {
-					EditorSetFile(hWnd, path);
-					free(path);
-				} else break;
+			switch (idMenu) {
+				case ID_FILE_SAVE:
+					EditorSave(hWnd);
+					break;
+				case ID_FILE_SAVEAS:
+					EditorSaveAs(hWnd);
+					break;
 			}
-			CellWriteFile(&data->ncer, data->szOpenFile);
 			break;
 		}
 		case ID_FILE_EXPORT:
@@ -4084,10 +4072,14 @@ static LRESULT CALLBACK CellViewerObjListWndProc(HWND hWnd, UINT msg, WPARAM wPa
 
 void RegisterNcerViewerClass(void) {
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
-	EditorRegister(L"NcerViewerClass", CellViewerWndProc, L"Cell Editor", sizeof(NCERVIEWERDATA), features);
+	EDITOR_CLASS *cls = EditorRegister(L"NcerViewerClass", CellViewerWndProc, L"Cell Editor", sizeof(NCERVIEWERDATA), features);
 	RegisterGenericClass(L"NcerCreateCellClass", NcerCreateCellWndProc, 12 * sizeof(void *));
 	RegisterGenericClass(L"CellPreviewClass", CellViewerPreviewWndProc, sizeof(void *));
 	RegisterGenericClass(L"ObjListClass", CellViewerObjListWndProc, sizeof(void *));
+
+	EditorAddFilter(cls, NCER_TYPE_NCER, L"ncer", L"Cell Bank Files (*.ncer)\0*.ncer\0");
+	EditorAddFilter(cls, NCER_TYPE_HUDSON, L"bin", L"Cell Bank Files (*.bin)\0*.bin\0");
+	EditorAddFilter(cls, NCER_TYPE_SETOSA, L"scbk", L"Cell Bank Files (*.scbk)\0*.scbk\0");
 }
 
 

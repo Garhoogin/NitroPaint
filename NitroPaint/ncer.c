@@ -13,6 +13,7 @@ void CellInit(NCER *ncer, int format) {
 	ncer->header.size = sizeof(NCER);
 	ObjInit((OBJECT_HEADER *) ncer, FILE_TYPE_CELL, format);
 	ncer->header.dispose = CellFree;
+	ncer->header.writer = (OBJECT_WRITER) CellWrite;
 }
 
 int CellIsValidHudson(const unsigned char *buffer, unsigned int size) {
