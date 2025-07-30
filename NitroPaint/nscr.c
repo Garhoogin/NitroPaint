@@ -174,8 +174,8 @@ int ScrComputeHighestCharacter(NSCR *nscr) {
 }
 
 int ScrIsValidHudson(const unsigned char *buffer, unsigned int size) {
-	if (*buffer == 0x10) return 0;
 	if (size < 4) return 0;
+	if (*buffer == 0x10) return 0;
 	int fileSize = 4 + *(uint16_t *) (buffer + 1);
 	if (fileSize != size) {
 		//might be format 2

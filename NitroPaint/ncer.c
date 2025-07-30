@@ -17,6 +17,8 @@ void CellInit(NCER *ncer, int format) {
 }
 
 int CellIsValidHudson(const unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0;
+
 	unsigned int nCells = *(unsigned int *) buffer;
 	if (nCells == 0) return 0;
 
