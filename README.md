@@ -13,6 +13,7 @@ The list of file formats supported by NitroPaint is outlined as follows:
 | Background Screen | NSCR, NSC, ISC, ASC, Hudson, raw |
 | Cell | NCER, Hudson, Ghost Trick |
 | Cell Animation | NANR, Ghost Trick |
+| Layout | BNLL, BNCL, BNBL |
 | Texture | NNS TGA, 5TX, NTGA, Ghost Trick |
 | Texture Archive | NSBMD/NSBTX, BMD (Super Mario 64 DS) |
 | Mixed | BNR, MBB, 5BG, Time Ace |
