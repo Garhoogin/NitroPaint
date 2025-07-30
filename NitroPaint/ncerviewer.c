@@ -2120,9 +2120,16 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 		//write new OBJ attributes
 		for (int objX = 0; objX < nObjX; objX++) {
 			for (int objY = 0; objY < nObjY; objY++) {
+				int thisX = info.x + objX * splitWidth;
+				int thisY = info.y + objY * splitHeight;
+
+				//when OBJ flip modes are used, we'll adjust the position of the subdivided OBJ.
+				if (info.flipX) thisX = info.x + info.width - (objX + 1) * splitWidth;
+				if (info.flipY) thisY = info.y + info.height - (objY + 1) * splitHeight;
+
 				//set location
-				attr[0] = (attr[0] & ~0x00FF) | ((info.y + objY * splitHeight) & 0x00FF);
-				attr[1] = (attr[1] & ~0x01FF) | ((info.x + objX * splitWidth) & 0x01FF);
+				attr[0] = (attr[0] & ~0x00FF) | (thisY & 0x00FF);
+				attr[1] = (attr[1] & ~0x01FF) | (thisX & 0x01FF);
 
 				//set size and shape
 				attr[0] = (attr[0] & ~0xC000) | (shape << 14);

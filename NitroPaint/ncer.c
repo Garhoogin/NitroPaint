@@ -1538,8 +1538,8 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 
 			if (outChars != NULL) {
 				cell->attr[3 * j + 2] = (cell->attr[3 * j + 2] & 0xFC00) | (chrName & 0x03FF);
-				if (foundFlipX) cell->attr[3 * j + 1] |= 0x1000; // flip H
-				if (foundFlipY) cell->attr[3 * j + 1] |= 0x2000; // flip V
+				if (foundFlipX) cell->attr[3 * j + 1] ^= 0x1000; // flip H
+				if (foundFlipY) cell->attr[3 * j + 1] ^= 0x2000; // flip V
 			}
 		}
 
