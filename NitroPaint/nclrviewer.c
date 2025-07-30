@@ -2352,6 +2352,7 @@ void RegisterNclrViewerClass(void) {
 	EditorAddFilter(cls, NCLR_TYPE_NC, L"ncl", L"NCL Files (*.ncl)\0*.ncl\0");
 	EditorAddFilter(cls, NCLR_TYPE_ISTUDIO, L"5pl", L"5PL Files (*.5pl)\0*.5pl\0");
 	EditorAddFilter(cls, NCLR_TYPE_ISTUDIOC, L"5pc", L"5PC Files (*.5pc)\0*.5pc\0");
+	EditorAddFilter(cls, NCLR_TYPE_SETOSA, L"splt", L"SPLT Files (*.splt)\0*.splt\0");
 	PalViewerRegisterPaletteGenerationClass();
 	PalViewerRegisterPaletteFillClass();
 }

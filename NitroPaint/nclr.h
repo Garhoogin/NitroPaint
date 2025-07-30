@@ -9,9 +9,10 @@
 #define NCLR_TYPE_ISTUDIO    3
 #define NCLR_TYPE_ISTUDIOC   4
 #define NCLR_TYPE_HUDSON     5
-#define NCLR_TYPE_BIN        6
-#define NCLR_TYPE_NTFP       7
-#define NCLR_TYPE_COMBO      8
+#define NCLR_TYPE_SETOSA     6
+#define NCLR_TYPE_BIN        7
+#define NCLR_TYPE_NTFP       8
+#define NCLR_TYPE_COMBO      9
 
 extern LPCWSTR paletteFormatNames[];
 
@@ -36,6 +37,11 @@ void PalInit(NCLR *nclr, int format);
 // Determines if an byte array represents a valid Hudson palette file.
 //
 int PalIsValidHudson(const unsigned char *lpFile, unsigned int size);
+
+//
+// Determines if a byte array represents a valid Setosa format palette file.
+//
+int PalIsValidSetosa(const unsigned char *buffer, unsigned int size);
 
 //
 // Determines if a byte array represents a valid raw palette file.
