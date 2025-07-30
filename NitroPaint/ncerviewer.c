@@ -2572,7 +2572,10 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			}
 			SendMessage(data->hWndMappingMode, CB_SETCURSEL, mappingIndex, 0);
 
-			if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+			if (data->ncer.isEx2d) {
+				//make 1D
+				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
+			} else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
 				//make 1D -> Make Extended
 				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make Extd.");
 			}
