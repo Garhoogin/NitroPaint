@@ -6,9 +6,10 @@
 #define TEXTURE_TYPE_INVALID     0
 #define TEXTURE_TYPE_NNSTGA      1 // NNS TGA format
 #define TEXTURE_TYPE_ISTUDIO     2 // iMageStudio 5TX format
-#define TEXTURE_TYPE_TDS         3 // Ghost Trick TDS format
-#define TEXTURE_TYPE_NTGA        4 // Not to be confused with NNS TGA!
-#define TEXTURE_TYPE_TOLOVERU    5 // To Love Ru format
+#define TEXTURE_TYPE_SPT         3 // SPL texture format
+#define TEXTURE_TYPE_TDS         4 // Ghost Trick TDS format
+#define TEXTURE_TYPE_NTGA        5 // Not to be confused with NNS TGA!
+#define TEXTURE_TYPE_TOLOVERU    6 // To Love Ru format
 
 #define CT_A3I5 1			/*can read and write*/
 #define CT_4COLOR 2			/*can read and write*/
