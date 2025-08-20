@@ -1882,6 +1882,7 @@ HWND CreateBnllViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 
 	HWND hWnd = EditorCreate(L"BnllEditorClass", x, y, 0, 0, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &bnll);
+	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
 	ShowWindow(hWnd, SW_SHOW);
 	return hWnd;
 }
@@ -1895,6 +1896,7 @@ HWND CreateBnclViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 
 	HWND hWnd = EditorCreate(L"BnclEditorClass", x, y, 0, 0, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &bncl);
+	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
 	ShowWindow(hWnd, SW_SHOW);
 	return hWnd;
 }
@@ -1908,6 +1910,7 @@ HWND CreateBnblViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 
 	HWND hWnd = EditorCreate(L"BnblEditorClass", x, y, 0, 0, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &bnbl);
+	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
 	ShowWindow(hWnd, SW_SHOW);
 	return hWnd;
 }
