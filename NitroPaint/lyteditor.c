@@ -625,7 +625,7 @@ static void LytEditorOnAddElement(HWND hWnd, HWND hWndCtl, int notif, void *para
 	
 	//add new string
 	WCHAR textbuf[32];
-	LytEditorGetElementName(ed, i, textbuf);
+	LytEditorGetElementName(ed, nElem - 1, textbuf);
 	SendMessage(ed->hWndElementDropdown, CB_ADDSTRING, 0, (LPARAM) textbuf);
 
 	//select new element
