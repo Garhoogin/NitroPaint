@@ -260,26 +260,6 @@ void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE 
 
 LPCWSTR textureFormatNames[] = { L"Invalid", L"NNS TGA", L"5TX", L"SPT", L"TDS", L"NTGA", L"To Love-Ru", NULL };
 
-#pragma comment(lib, "Version.lib")
-
-static void getVersion(char *buffer, int max) {
-	WCHAR path[MAX_PATH];
-	GetModuleFileName(NULL, path, MAX_PATH);
-	DWORD handle;
-	DWORD dwSize = GetFileVersionInfoSize(path, &handle);
-	if (dwSize) {
-		BYTE *buf = (BYTE *) calloc(1, dwSize);
-		if (GetFileVersionInfo(path, handle, dwSize, buf)) {
-			UINT size;
-			VS_FIXEDFILEINFO *info;
-			if (VerQueryValue(buf, L"\\", &info, &size)) {		
-				DWORD ms = info->dwFileVersionMS, ls = info->dwFileVersionLS;
-				sprintf(buffer, "%d.%d.%d.%d", HIWORD(ms), LOWORD(ms), HIWORD(ls), LOWORD(ls));
-			}
-		}
-		free(buf);
-	}
-}
 
 void TxFree(OBJECT_HEADER *obj) {
 	TextureObject *texture = (TextureObject *) obj;
@@ -808,7 +788,7 @@ static int TxReadSpt(TextureObject *texture, const unsigned char *buffer, unsign
 	memcpy(texture->texture.texels.texel, buffer + 0x20, sizTex);
 
 	if (texfmt == CT_4x4) {
-		texture->texture.texels.cmp = (unsigned char *) calloc(sizIdx, 1);
+		texture->texture.texels.cmp = (uint16_t *) calloc(sizIdx, 1);
 		memcpy(texture->texture.texels.cmp, buffer + ofsIdx, sizIdx);
 	}
 
@@ -874,6 +854,9 @@ int TxReadFileDirect(TEXELS *texels, PALETTE *palette, LPCWSTR path) {
 	memcpy(palette, &texture->palette, sizeof(PALETTE));
 	return status;
 }
+
+
+extern const char *NpGetVersion(void);
 
 static void TxiNnsTgaWriteSection(BSTREAM *stream, const char *section, const void *data, int size) {
 	//prepare and write
@@ -978,10 +961,8 @@ int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
 	}
 
 	//NitroPaint generator signature
-	char version[16];
-	getVersion(version, 16);
 	TxiNnsTgaWriteSection(stream, "nns_gnam", "NitroPaint", -1);
-	TxiNnsTgaWriteSection(stream, "nns_gver", version, -1);
+	TxiNnsTgaWriteSection(stream, "nns_gver", NpGetVersion(), -1);
 
 	//dummy imagestudio data
 	TxiNnsTgaWriteSection(stream, "nns_imst", NULL, 0);

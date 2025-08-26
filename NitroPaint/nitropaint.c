@@ -3,6 +3,7 @@
 #include <Uxtheme.h>
 #include <Shlwapi.h>
 #include <ShlObj.h>
+#include <stdio.h>
 
 #include "nitropaint.h"
 #include "filecommon.h"
@@ -35,6 +36,7 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "dbghelp.lib")
+#pragma comment(lib, "version.lib")
 
 int _fltused;
 
@@ -62,6 +64,45 @@ size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount) {
 	while (*(_Str++) && len < _MaxCount) len++;
 	return len;
 }
+
+static const char *GetVersionFetch(void) {
+	WCHAR path[MAX_PATH];
+	GetModuleFileName(NULL, path, MAX_PATH);
+
+	DWORD handle;
+	DWORD dwSize = GetFileVersionInfoSize(path, &handle);
+	if (dwSize == 0) {
+		return "";
+	}
+
+	BYTE *buf = (BYTE *) calloc(1, dwSize);
+	if (!GetFileVersionInfo(path, handle, dwSize, buf)) {
+		free(buf);
+		return "";
+	}
+
+	UINT size;
+	VS_FIXEDFILEINFO *info;
+	if (!VerQueryValue(buf, L"\\", &info, &size)) {
+		free(buf);
+		return "";
+	}
+
+	//format version
+	static char buffer[24] = { 0 };
+	DWORD ms = info->dwFileVersionMS, ls = info->dwFileVersionLS;
+	sprintf(buffer, "%d.%d.%d.%d", HIWORD(ms), LOWORD(ms), HIWORD(ls), LOWORD(ls));
+	return buffer;
+}
+
+const char *NpGetVersion(void) {
+	//fetch version once
+	static const char *text = NULL;
+	if (text == NULL) text = GetVersionFetch();
+
+	return text;
+}
+
 
 int __wgetmainargs(int *argc, wchar_t ***argv, wchar_t ***env, int doWildCard, int *startInfo);
 
@@ -3346,6 +3387,9 @@ void InitializeDpiAwareness(void) {
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+	//fetch version
+	(void) NpGetVersion();
+
 	g_appIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
 	HACCEL hAccel = LoadAccelerators(hInstance, (LPCWSTR) IDR_ACCELERATOR1);
 	CoInitialize(NULL);
