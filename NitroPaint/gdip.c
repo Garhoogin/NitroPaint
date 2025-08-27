@@ -6,40 +6,52 @@
 
 #pragma comment(lib, "windowscodecs.lib")
 
-#define CMAP_NONE     0
-#define CMAP_PRESENT  1
+#define TGA_CMAP_NONE             0 // TGA: no color map
+#define TGA_CMAP_PRESENT          1 // TGA: uses color map
 
-#define CTYPE_NONE         0x00
-#define CTYPE_CMAP         0x01
-#define CTYPE_DIRECT       0x02
-#define CTYPE_GRAYSCALE    0x03
-#define CTYPE_FMT_MASK     0x03
-#define CTYPE_RLE          0x08
+#define TGA_CTYPE_NONE         0x00 // color type: no color type
+#define TGA_CTYPE_CMAP         0x01 // color type: uses color map
+#define TGA_CTYPE_DIRECT       0x02 // color type: direct color
+#define TGA_CTYPE_GRAYSCALE    0x03 // color type: grayscale
+#define TGA_CTYPE_FMT_MASK     0x03 // color format type mask
+#define TGA_CTYPE_RLE          0x08 // RLE flag
 
-int ImgIsValidTGA(const unsigned char *buffer, unsigned int dwSize) {
-	if (dwSize < 0x12) return 0;
+int ImgIsValidTGA(const unsigned char *buffer, unsigned int size) {
+	if (size < 0x12) return 0;
 
-	unsigned int commentLength = buffer[0x00];
+	unsigned int idLength = buffer[0x00];
 	int colorMapType = buffer[0x01];
 	int colorType = buffer[0x02];
-	int colorFormat = colorType & CTYPE_FMT_MASK;
-	int colorMapStart = *(uint16_t *) (buffer + 0x03);
-	int colorMapSize = *(uint16_t *) (buffer + 0x05);
-	int colorMapDepth = buffer[0x07];
-	int depth = buffer[0x10];
-	int attr = buffer[0x11];
-	
-	if (dwSize < commentLength + 0x12u) return 0;
-	if (colorFormat == CTYPE_NONE) return 0;
-	if (colorMapType != CMAP_NONE && colorMapType != CMAP_PRESENT) return 0;
-	if (colorFormat == CTYPE_CMAP && colorMapType != CMAP_PRESENT) return 0; //color map not present but should be?
-	if (colorType & ~(CTYPE_FMT_MASK | CTYPE_RLE)) return 0; //unallowed format
-	if (colorFormat == CTYPE_CMAP && colorMapSize == 0) return 0; //should have a color map size > 0 if required
-	if (colorFormat == CTYPE_CMAP && colorMapDepth == 0) return 0; //color depth 0??
-	if (colorMapStart > 255 || colorMapSize > 256 || (colorMapStart + colorMapSize) > 256) return 0;
-	if (colorFormat != CTYPE_DIRECT && colorFormat != CTYPE_CMAP) return 0; //only direct color and color map supported
-	if (attr & 0xC3) return 0; //unsupported pixel arrangements and alpha depths
-	if (depth & 3) return 0; //non-multiples-of-8 depths not supported right now (ever?)
+	int colorFormat = colorType & TGA_CTYPE_FMT_MASK;
+	unsigned int colorMapStart = *(const uint16_t *) (buffer + 0x03);
+	unsigned int colorMapSize = *(const uint16_t *) (buffer + 0x05);
+	unsigned int colorMapDepth = buffer[0x07];
+	unsigned int depth = buffer[0x10];
+	unsigned int attr = buffer[0x11];
+	if (idLength > (size - 0x12)) return 0;
+
+	if (colorType & ~(TGA_CTYPE_FMT_MASK | TGA_CTYPE_RLE)) return 0;                 // unallowed format
+	if (colorMapType != TGA_CMAP_NONE && colorMapType != TGA_CMAP_PRESENT) return 0; // only valid values
+
+	if (depth != 8 && depth != 24 && depth != 32) return 0; // only 8, 24, 32 bits supported
+
+	if (colorMapStart >= 256) return 0;                 // color map must be within 8bit
+	if (colorMapSize > (256 - colorMapStart)) return 0; // color map must be within 8bit
+	if (attr & 0xC7) return 0;                          // unsupported alpha depths
+
+	switch (colorType & TGA_CTYPE_FMT_MASK) {
+		case TGA_CTYPE_NONE:
+			return 0; // invalid specification
+		case TGA_CTYPE_CMAP:
+			if (colorMapType != TGA_CMAP_PRESENT) return 0; // needs color map present
+			if (colorMapDepth == 0) return 0;               // should have nonzero color map depth (?)
+			if (colorMapSize == 0) return 0;                // should have a nonzero color map size
+			break;
+		case TGA_CTYPE_DIRECT:
+			break;
+		case TGA_CTYPE_GRAYSCALE:
+			break;
+	}
 	return 1;
 }
 
@@ -87,9 +99,41 @@ static void ImgiReadTgaDirect(COLOR32 *pixels, int width, int height, const unsi
 	}
 }
 
-static void ImgiReadTgaMapped(COLOR32 *px, int width, int height, const unsigned char *buffer, int tableBase, int tableSize, int tableDepth, int rle) {
-	COLOR32 *palette = (COLOR32 *) calloc(tableBase + tableSize, sizeof(COLOR32));
+static void ImgiReadTgaIndexedCommon(COLOR32 *px, int width, int height, const unsigned char *buffer, const COLOR32 *palette, int rle) {
 	int nPx = width * height;
+
+	if (!rle) {
+		//read pixel colors from palette
+		for (int i = 0; i < nPx; i++) {
+			unsigned int index = buffer[i];
+			px[i] = palette[index];
+		}
+	} else {
+		//read RLE
+		int nPixelsRead = 0, offset = 0;
+		while (nPixelsRead < nPx) {
+			COLOR32 col = 0;
+			unsigned char b = buffer[offset++];
+			unsigned int num = (b & 0x7F) + 1, rlFlag = b & 0x80;
+
+			//process run of pixels
+			for (unsigned int i = 0; i < num; i++) {
+				//read color values
+				col = palette[buffer[offset]];
+
+				//write and increment
+				px[nPixelsRead + i] = col;
+				if (!rlFlag) offset++;
+			}
+
+			if (rlFlag) offset++;
+			nPixelsRead += num;
+		}
+	}
+}
+
+static void ImgiReadTgaMapped(COLOR32 *px, int width, int height, const unsigned char *buffer, int tableBase, int tableSize, int tableDepth, int rle) {
+	COLOR32 palette[256] = { 0 };
 
 	//read palette
 	for (int i = 0; i < tableSize; i++) {
@@ -100,20 +144,18 @@ static void ImgiReadTgaMapped(COLOR32 *px, int width, int height, const unsigned
 			palette[i + tableBase] = rgb[2] | (rgb[1] << 8) | (rgb[0] << 16) | 0xFF000000;
 		}
 	}
-	buffer += tableSize * tableDepth;
 
-	if (!rle) {
-		//read pixel colors from palette
-		for (int i = 0; i < nPx; i++) {
-			int index = buffer[i];
-			if (index < tableBase + tableSize) {
-				px[i] = palette[index];
-			}
-		}
-	} else {
-		//TODO
+	buffer += tableSize * tableDepth;
+	ImgiReadTgaIndexedCommon(px, width, height, buffer, palette, rle);
+}
+
+static void ImgiReadTgaGrayscale(COLOR32 *px, int width, int height, const unsigned char *buffer, int rle) {
+	COLOR32 palette[256];
+	for (unsigned int i = 0; i < 256; i++) {
+		palette[i] = 0xFF000000 | (i << 0) | (i << 8) | (i << 16);
 	}
-	free(palette);
+
+	ImgiReadTgaIndexedCommon(px, width, height, buffer, palette, rle);
 }
 
 static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight) {
@@ -126,7 +168,7 @@ static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *
 	int colorTableDepth = buffer[0x07] >> 3;
 	int width = *(uint16_t *) (buffer + 0x0C);
 	int height = *(uint16_t *) (buffer + 0x0E);
-	int colorFormat = colorType & CTYPE_FMT_MASK;
+	int colorFormat = colorType & TGA_CTYPE_FMT_MASK;
 
 	*pWidth = width;
 	*pHeight = height;
@@ -136,13 +178,14 @@ static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *
 	int needsHFlip = !!(attr & 0x10); //actual H flip
 	COLOR32 *pixels = (COLOR32 *) calloc(width * height, 4);
 	switch (colorFormat) {
-		case CTYPE_DIRECT:
-			ImgiReadTgaDirect(pixels, width, height, buffer, depth, colorType & CTYPE_RLE);
+		case TGA_CTYPE_DIRECT:
+			ImgiReadTgaDirect(pixels, width, height, buffer, depth, colorType & TGA_CTYPE_RLE);
 			break;
-		case CTYPE_CMAP:
-			ImgiReadTgaMapped(pixels, width, height, buffer, colorTableBase, colorTableLength, colorTableDepth, colorType & CTYPE_RLE);
+		case TGA_CTYPE_CMAP:
+			ImgiReadTgaMapped(pixels, width, height, buffer, colorTableBase, colorTableLength, colorTableDepth, colorType & TGA_CTYPE_RLE);
 			break;
-		case CTYPE_GRAYSCALE: //unsupported
+		case TGA_CTYPE_GRAYSCALE: //unsupported
+			ImgiReadTgaGrayscale(pixels, width, height, buffer, colorType & TGA_CTYPE_RLE);
 			break;
 	}
 
