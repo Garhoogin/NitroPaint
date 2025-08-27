@@ -814,10 +814,16 @@ COLOR32 *ImgScale(COLOR32 *px, int width, int height, int outWidth, int outHeigh
 	for (int y = 0; y < outHeight; y++) {
 		for (int x = 0; x < outWidth; x++) {
 			//determine sample rectangle in source image
-			float sX1 = ((float) (x + 0)) * ((float) width)  / ((float) outWidth);
-			float sY1 = ((float) (y + 0)) * ((float) height) / ((float) outHeight);
-			float sX2 = ((float) (x + 1)) * ((float) width)  / ((float) outWidth);
-			float sY2 = ((float) (y + 1)) * ((float) height) / ((float) outHeight);
+			unsigned int sX1N = (unsigned int) ((x + 0) * width ), sX1D = (unsigned int) outWidth;
+			unsigned int sY1N = (unsigned int) ((y + 0) * height), sY1D = (unsigned int) outHeight;
+			unsigned int sX2N = (unsigned int) ((x + 1) * width ), sX2D = (unsigned int) outWidth;
+			unsigned int sY2N = (unsigned int) ((y + 1) * height), sY2D = (unsigned int) outHeight;
+
+			//determine sample rectangle in source image
+			double sX1 = ((double) sX1N) / ((double) sX1D);
+			double sY1 = ((double) sY1N) / ((double) sY1D);
+			double sX2 = ((double) sX2N) / ((double) sX2D);
+			double sY2 = ((double) sY2N) / ((double) sY2D);
 
 			//compute sample
 			double tr = 0.0, tg = 0.0, tb = 0.0, ta = 0.0;
@@ -825,24 +831,24 @@ COLOR32 *ImgScale(COLOR32 *px, int width, int height, int outWidth, int outHeigh
 
 			//determine the pixel rectangle to sample. Float coordinates are between pixels, and integer
 			//coordinates are in the centers of pixels.
-			int sampleRectX = (int) sX1;
-			int sampleRectY = (int) sY1;
-			int sampleRectW = (int) ceil(sX2) - sampleRectX;
-			int sampleRectH = (int) ceil(sY2) - sampleRectY;
+			unsigned int sampleRectX = sX1N / sX1D;
+			unsigned int sampleRectY = sY1N / sY1D;
+			unsigned int sampleRectW = (sX2N + sX2D - 1) / sX2D - sampleRectX;
+			unsigned int sampleRectH = (sY2N + sY2D - 1) / sY2D - sampleRectY;
 
 			//compute rectangle trims
-			double trimL = sX1 - (double) (int) sX1;
-			double trimR = ceil(sX2) - sX2;
-			double trimU = sY1 - (double) (int) sY1;
-			double trimD = ceil(sY2) - sY2;
+			double trimL = sX1 - (double) sampleRectX;
+			double trimR = ((double) ((sX2N + sX2D - 1) / sX2D)) - sX2;
+			double trimU = sY1 - (double) sampleRectY;
+			double trimD = ((double) ((sY2N + sY2D - 1) / sY2D)) - sY2;
 
-			for (int sy = 0; sy < sampleRectH && (sampleRectY + sy) < height; sy++) {
+			for (unsigned int sy = 0; sy < sampleRectH && (sampleRectY + sy) < (unsigned int) height; sy++) {
 				double rowH = 1.0;
 				if (sy == 0) rowH -= trimU;                 // trim from top
 				if (sy == (sampleRectH - 1)) rowH -= trimD; // trim from bottom
 
 
-				for (int sx = 0; sx < sampleRectW && (sampleRectX + sx) < width; sx++) {
+				for (unsigned int sx = 0; sx < sampleRectW && (sampleRectX + sx) < (unsigned int) width; sx++) {
 					double colW = 1.0;
 					if (sx == 0) colW -= trimL;                 // trim from left
 					if (sx == (sampleRectW - 1)) colW -= trimR; // trim from right
