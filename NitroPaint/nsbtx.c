@@ -45,6 +45,7 @@ void TexarcFree(OBJECT_HEADER *header) {
 			TEXELS *texture = nsbtx->textures + i;
 			if (texture->texel != NULL) free(texture->texel);
 			if (texture->cmp != NULL) free(texture->cmp);
+			if (texture->name != NULL) free(texture->name);
 		}
 		free(nsbtx->textures);
 		nsbtx->textures = NULL;
@@ -53,6 +54,7 @@ void TexarcFree(OBJECT_HEADER *header) {
 		for (int i = 0; i < nsbtx->nPalettes; i++) {
 			PALETTE *palette = nsbtx->palettes + i;
 			if (palette->pal != NULL) free(palette->pal);
+			if (palette->name != NULL) free(palette->name);
 		}
 		free(nsbtx->palettes);
 		nsbtx->palettes = NULL;
@@ -82,27 +84,27 @@ void TexarcInit(TexArc *nsbtx, int format) {
 
 //TexArc code adapted from Gericom's code in Fvery File Explorer.
 
-unsigned char *readDictionary(DICTIONARY *dict, unsigned char *base, int entrySize) {
-	unsigned char *pos = base;
-	int nEntries = *(uint8_t *) (pos + 1);
-	int dictSize = *(uint16_t *) (pos + 4);
-	int ofsEntry = *(uint16_t *) (pos + 6);
+static unsigned char *readDictionary(DICTIONARY *dict, const unsigned char *base, int entrySize) {
+	const unsigned char *pos = base;
+	int nEntries = *(const uint8_t *) (pos + 1);
+	int dictSize = *(const uint16_t *) (pos + 4);
+	int ofsEntry = *(const uint16_t *) (pos + 6);
 	dict->nEntries = nEntries;
 	pos += ofsEntry; //skips the P tree
 
-	dict->entry.sizeUnit = *(uint16_t *) (pos + 0);
-	dict->entry.offsetName = *(uint16_t *) (pos + 2);
+	dict->entry.sizeUnit = *(const uint16_t *) (pos + 0);
+	dict->entry.offsetName = *(const uint16_t *) (pos + 2);
 	pos += 4;
 
-	dict->entry.data = pos;
+	dict->entry.data = (char *) pos;
 	pos += entrySize * dict->nEntries;
 
-	dict->namesPtr = pos;
+	dict->namesPtr = (char *) pos;
 	pos = base + dictSize; //end of dict
-	return pos;
+	return (unsigned char *) pos;
 }
 
-int TexarcIsValidNsbtx(char *buffer, int size) {
+static int TexarcIsValidNsbtx(const unsigned char *buffer, unsigned int size) {
 	if (!NnsIsValid(buffer, size)) return 0;
 
 	//check magic (only TexArc or NSBMD)
@@ -112,21 +114,21 @@ int TexarcIsValidNsbtx(char *buffer, int size) {
 	return 1;
 }
 
-int TexarcIsValidBmd(char *buffer, unsigned int size) {
+int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size) {
 	if (size < 0x3C || (size & 3)) return 0;
 
-	int scale = *(int *) (buffer + 0);
+	int scale = *(const int32_t *) (buffer + 0);
 	if (scale >= 32) return 0;
-	uint32_t boneOffset = *(uint32_t *) (buffer + 0x08);
-	uint32_t displaylistOffset = *(uint32_t *) (buffer + 0x10);
-	uint32_t texturesOffset = *(uint32_t *) (buffer + 0x18);
-	uint32_t palettesOffset = *(uint32_t *) (buffer + 0x20);
-	uint32_t materialsOffset = *(uint32_t *) (buffer + 0x28);
+	uint32_t boneOffset = *(const uint32_t *) (buffer + 0x08);
+	uint32_t displaylistOffset = *(const uint32_t *) (buffer + 0x10);
+	uint32_t texturesOffset = *(const uint32_t *) (buffer + 0x18);
+	uint32_t palettesOffset = *(const uint32_t *) (buffer + 0x20);
+	uint32_t materialsOffset = *(const uint32_t *) (buffer + 0x28);
 
-	uint32_t nDisplaylists = *(uint32_t *) (buffer + 0x0C);
-	uint32_t nTextures = *(uint32_t *) (buffer + 0x14);
-	uint32_t nPalettes = *(uint32_t *) (buffer + 0x1C);
-	uint32_t nMaterials = *(uint32_t *) (buffer + 0x24);
+	uint32_t nDisplaylists = *(const uint32_t *) (buffer + 0x0C);
+	uint32_t nTextures = *(const uint32_t *) (buffer + 0x14);
+	uint32_t nPalettes = *(const uint32_t *) (buffer + 0x1C);
+	uint32_t nMaterials = *(const uint32_t *) (buffer + 0x24);
 
 	//bounds+alignment
 	if (boneOffset < 0x3C || displaylistOffset < 0x3C || texturesOffset < 0x3C
@@ -141,16 +143,16 @@ int TexarcIsValidBmd(char *buffer, unsigned int size) {
 	if (materialsOffset + nMaterials * 0x30 > size) return 0;
 	if (nDisplaylists == 0 && nMaterials == 0) return 0;
 
-	unsigned char *textureSection = buffer + texturesOffset;
+	const unsigned char *textureSection = buffer + texturesOffset;
 	for (unsigned int i = 0; i < nTextures; i++) {
-		unsigned char *thisTex = textureSection + i * 0x14;
+		const unsigned char *thisTex = textureSection + i * 0x14;
 
-		uint32_t nameOffset = *(uint32_t *) (thisTex + 0x00);
-		uint32_t textureOffset = *(uint32_t *) (thisTex + 0x04);
-		uint32_t texelSize = *(uint32_t *) (thisTex + 0x08);
-		uint32_t width = *(uint16_t *) (thisTex + 0x0C);
-		uint32_t height = *(uint16_t *) (thisTex + 0x0E);
-		uint32_t texImageParam = *(uint32_t *) (thisTex + 0x10);
+		uint32_t nameOffset = *(const uint32_t *) (thisTex + 0x00);
+		uint32_t textureOffset = *(const uint32_t *) (thisTex + 0x04);
+		uint32_t texelSize = *(const uint32_t *) (thisTex + 0x08);
+		uint32_t width = *(const uint16_t *) (thisTex + 0x0C);
+		uint32_t height = *(const uint16_t *) (thisTex + 0x0E);
+		uint32_t texImageParam = *(const uint32_t *) (thisTex + 0x10);
 		if (nameOffset < 0x3C || textureOffset < 0x3C || nameOffset >= size || textureOffset >= size)
 			return 0;
 		if (width != TEXW(texImageParam) || height != TEXH(texImageParam) || FORMAT(texImageParam) == 0)
@@ -162,27 +164,29 @@ int TexarcIsValidBmd(char *buffer, unsigned int size) {
 	return 1;
 }
 
-int TexarcReadNsbtx(TexArc *nsbtx, char *buffer, int size) {
+static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size) {
 	//is it valid?
 	if (!TexarcIsValidNsbtx(buffer, size)) return 1;
 
 	TexarcInit(nsbtx, NSBTX_TYPE_NNS);
 	//iterate over each section
-	int *sectionOffsets = (int *) (buffer + 0x10);
-	int nSections = *(short *) (buffer + 0xE);
+	const uint32_t *sectionOffsets = (const uint32_t *) (buffer + 0x10);
+	unsigned int nSections = *(const uint16_t *) (buffer + 0xE);
+
 	//find the TEX0 section
-	char *tex0 = NULL;
-	int tex0Offset = 0;
+	const unsigned char *tex0 = NULL;
+	unsigned int tex0Offset = 0;
+
 	nsbtx->mdl0 = NULL;
 	nsbtx->mdl0Size = 0;
-	for (int i = 0; i < nSections; i++) {
-		char *sect = buffer + sectionOffsets[i];
+	for (unsigned int i = 0; i < nSections; i++) {
+		const unsigned char *sect = buffer + sectionOffsets[i];
 		if (sect[0] == 'T' && sect[1] == 'E' && sect[2] == 'X' && sect[3] == '0') {
 			tex0 = sect;
 			tex0Offset = sect - buffer;
 			break;
 		} else if (sect[0] == 'M' && sect[1] == 'D' && sect[2] == 'L' && sect[3] == '0') {
-			nsbtx->mdl0Size = *(DWORD *) (sect + 4) - 8;
+			nsbtx->mdl0Size = *(const uint32_t *) (sect + 4) - 8;
 			nsbtx->mdl0 = malloc(nsbtx->mdl0Size);
 			memcpy(nsbtx->mdl0, sect + 8, nsbtx->mdl0Size);
 		}
@@ -197,24 +201,24 @@ int TexarcReadNsbtx(TexArc *nsbtx, char *buffer, int size) {
 	}
 
 	//next, process the tex0 section.
-	int blockSize = *(int *) (tex0 + 0x4);
+	unsigned int blockSize = *(const uint32_t *) (tex0 + 0x4);
 	
 	//texture header
-	int textureDataSize = (*(uint16_t *) (tex0 + 0xC)) << 3;
-	int textureInfoOffset = *(uint16_t *) (tex0 + 0xE); //dictionary
-	int textureDataOffset = *(uint32_t *) (tex0 + 0x14); //ofsTex
+	unsigned int textureDataSize = (*(const uint16_t *) (tex0 + 0xC)) << 3;
+	unsigned int textureInfoOffset = *(const uint16_t *) (tex0 + 0xE); //dictionary
+	unsigned int textureDataOffset = *(const uint32_t *) (tex0 + 0x14); //ofsTex
 
-	int compressedTextureDataSize = (*(uint16_t *) (tex0 + 0x1C)) << 3;
-	int compressedTextureInfoOffset = *(uint16_t *) (tex0 + 0x1E); //dictionary
-	int compressedTextureDataOffset = *(uint32_t *) (tex0 + 0x24); //ofsTex
-	int compressedTextureInfoDataOffset = *(uint32_t *) (tex0 + 0x28); //ofsTexPlttIdx
+	unsigned int compressedTextureDataSize = (*(const uint16_t *) (tex0 + 0x1C)) << 3;
+	unsigned int compressedTextureInfoOffset = *(const uint16_t *) (tex0 + 0x1E); //dictionary
+	unsigned int compressedTextureDataOffset = *(const uint32_t *) (tex0 + 0x24); //ofsTex
+	unsigned int compressedTextureInfoDataOffset = *(const uint32_t *) (tex0 + 0x28); //ofsTexPlttIdx
 
-	int paletteDataSize = (*(uint16_t *) (tex0 + 0x30)) << 3;
-	int paletteInfoOffset = *(uint32_t *) (tex0 + 0x34); //dictionary
-	int paletteDataOffset = *(uint32_t *) (tex0 + 0x38);
+	unsigned int paletteDataSize = (*(const uint16_t *) (tex0 + 0x30)) << 3;
+	unsigned int paletteInfoOffset = *(const uint32_t *) (tex0 + 0x34); //dictionary
+	unsigned int paletteDataOffset = *(const uint32_t *) (tex0 + 0x38);
 
-	char *texInfo = tex0 + textureInfoOffset;
-	char *palInfo = tex0 + paletteInfoOffset;
+	const unsigned char *texInfo = tex0 + textureInfoOffset;
+	const unsigned char *palInfo = tex0 + paletteInfoOffset;
 
 	DICTIONARY dictTex;
 	readDictionary(&dictTex, tex0 + textureInfoOffset, sizeof(DICTTEXDATA));
@@ -299,7 +303,7 @@ int TexarcReadNsbtx(TexArc *nsbtx, char *buffer, int size) {
 	return 0;
 }
 
-int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
+int TexarcReadBmd(TexArc *nsbtx, const unsigned char *buffer, unsigned int size) {
 	if (!TexarcIsValidBmd(buffer, size)) return 1;
 
 	TexarcInit(nsbtx, NSBTX_TYPE_BMD);
@@ -322,17 +326,17 @@ int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
 	nsbtx->palettes = (PALETTE *) calloc(nsbtx->nPalettes, sizeof(PALETTE));
 
 	//read textures and palettes
-	unsigned char *texDescriptors = buffer + *(uint32_t *) (buffer + 0x18);
-	unsigned char *palDescriptors = buffer + *(uint32_t *) (buffer + 0x20);
+	const unsigned char *texDescriptors = buffer + *(uint32_t *) (buffer + 0x18);
+	const unsigned char *palDescriptors = buffer + *(uint32_t *) (buffer + 0x20);
 	for (int i = 0; i < nsbtx->nTextures; i++) {
-		unsigned char *thisTex = texDescriptors + i * 0x14;
+		const unsigned char *thisTex = texDescriptors + i * 0x14;
 		TEXELS *texture = nsbtx->textures + i;
 
 		uint32_t nameOffset = *(uint32_t *) (thisTex + 0x00);
 		uint32_t texelOffset = *(uint32_t *) (thisTex + 0x04);
 		uint32_t texelSize = *(uint32_t *) (thisTex + 0x08);
 		uint32_t texImageParam = *(uint32_t *) (thisTex + 0x10);
-		char *name = buffer + nameOffset;
+		const char *name = (const char *) (buffer + nameOffset);
 		int format = FORMAT(texImageParam);
 
 		texture->texImageParam = texImageParam;
@@ -349,13 +353,13 @@ int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
 		memcpy(texture->name, name, namelen);
 	}
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
-		unsigned char *thisPal = palDescriptors + i * 0x10;
+		const unsigned char *thisPal = palDescriptors + i * 0x10;
 		PALETTE *palette = nsbtx->palettes + i;
 
-		uint32_t nameOffset = *(uint32_t *) (thisPal + 0x00);
-		uint32_t paletteOffset = *(uint32_t *) (thisPal + 0x04);
-		uint32_t paletteSize = *(uint32_t *) (thisPal + 0x08);
-		char *name = buffer + nameOffset;
+		uint32_t nameOffset = *(const uint32_t *) (thisPal + 0x00);
+		uint32_t paletteOffset = *(const uint32_t *) (thisPal + 0x04);
+		uint32_t paletteSize = *(const uint32_t *) (thisPal + 0x08);
+		const char *name = (const char *) (buffer + nameOffset);
 
 		palette->nColors = paletteSize / 2;
 		palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
@@ -370,8 +374,8 @@ int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
 	uint32_t materialsOffset = *(uint32_t *) (buffer + 0x28);
 	uint32_t materialsEnd = materialsOffset + bmd->nMaterials * 0x30;
 	for (int i = 0; i < bmd->nMaterials; i++) {
-		unsigned char *material = buffer + materialsOffset + i * 0x30;
-		uint32_t nameOffset = *(uint32_t *) material;
+		const unsigned char *material = buffer + materialsOffset + i * 0x30;
+		uint32_t nameOffset = *(const uint32_t *) material;
 		uint32_t nameEnd = nameOffset + 1 + strlen(buffer + nameOffset);
 		if (nameEnd > materialsEnd) {
 			materialsEnd = nameEnd;
@@ -396,10 +400,10 @@ int TexarcReadBmd(TexArc *nsbtx, unsigned char *buffer, int size) {
 	return 0;
 }
 
-int TexarcRead(TexArc *nsbtx, char *buffer, int size) {
+int TexarcRead(TexArc *nsbtx, const unsigned char *buffer, unsigned int size) {
 	if (TexarcIsValidNsbtx(buffer, size)) return TexarcReadNsbtx(nsbtx, buffer, size);
 	if (TexarcIsValidBmd(buffer, size)) return TexarcReadBmd(nsbtx, buffer, size);
-	return 1;
+	return OBJ_STATUS_INVALID;
 }
 
 int TexarcReadFile(TexArc *nsbtx, LPCWSTR path) {
@@ -416,25 +420,25 @@ static char *TexarciGetPaletteNameCallback(void *palette) {
 
 int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 	if (nsbtx->mdl0 != NULL) {
-		BYTE fileHeader[] = { 'B', 'M', 'D', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 2, 0, 0x18, 0, 0, 0, 0, 0, 0, 0 };
+		unsigned char fileHeader[] = { 'B', 'M', 'D', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 2, 0, 0x18, 0, 0, 0, 0, 0, 0, 0 };
 
 		bstreamWrite(stream, fileHeader, sizeof(fileHeader));
 	} else {
-		BYTE fileHeader[] = { 'B', 'T', 'X', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 1, 0, 0x14, 0, 0, 0 };
+		unsigned char fileHeader[] = { 'B', 'T', 'X', '0', 0xFF, 0xFE, 1, 0, 0, 0, 0, 0, 0x10, 0, 1, 0, 0x14, 0, 0, 0 };
 
 		bstreamWrite(stream, fileHeader, sizeof(fileHeader));
 	}
 
 	if (nsbtx->mdl0 != NULL) {
-		BYTE mdl0Header[] = { 'M', 'D', 'L', '0', 0, 0, 0, 0 };
-		*(DWORD *) (mdl0Header + 4) = nsbtx->mdl0Size + 8;
+		unsigned char mdl0Header[] = { 'M', 'D', 'L', '0', 0, 0, 0, 0 };
+		*(uint32_t *) (mdl0Header + 4) = nsbtx->mdl0Size + 8;
 		bstreamWrite(stream, mdl0Header, sizeof(mdl0Header));
 		bstreamWrite(stream, nsbtx->mdl0, nsbtx->mdl0Size);
 	}
 	
-	DWORD tex0Offset = stream->pos;
+	uint32_t tex0Offset = stream->pos;
 
-	BYTE tex0Header[] = { 'T', 'E', 'X', '0', 0, 0, 0, 0 };
+	unsigned char tex0Header[] = { 'T', 'E', 'X', '0', 0, 0, 0, 0 };
 	bstreamWrite(stream, tex0Header, sizeof(tex0Header));
 
 	BSTREAM texData, tex4x4Data, tex4x4PlttIdxData, paletteData;

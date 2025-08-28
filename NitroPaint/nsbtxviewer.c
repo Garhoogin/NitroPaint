@@ -20,7 +20,7 @@ extern size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
 #define wcsnlen my_wcsnlen
 
 
-HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
+static HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	if (texture == NULL) return NULL;
 	int width = TEXW(texture->texImageParam);
 	int height = texture->height;
@@ -141,7 +141,7 @@ int calculateHighestPaletteIndex(TEXELS *texture) {
 	return nHighest;
 }
 
-int guessTexPlttByName(char *textureName, char **paletteNames, int nPalettes, TEXELS *texture, PALETTE *palettes) {
+static int guessTexPlttByName(const char *textureName, char **paletteNames, int nPalettes, TEXELS *texture, PALETTE *palettes) {
 	int format = FORMAT(texture->texImageParam);
 	if (format == CT_DIRECT) return -1;
 
@@ -405,23 +405,13 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			memcpy(&data->nsbtx, (TexArc *) lParam, sizeof(TexArc));
 
 			for (int i = 0; i < data->nsbtx.nTextures; i++) {
-				char *name = data->nsbtx.textures[i].name;
-				unsigned int len = strlen(name);
-				WCHAR *buffer = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
-				for (unsigned int j = 0; j < len; j++) {
-					buffer[j] = name[j];
-				}
+				WCHAR *buffer = TexNarrowResourceNameToWideChar(data->nsbtx.textures[i].name);
 				AddListBoxItem(data->hWndTextureSelect, buffer);
 				free(buffer);
 			}
 
 			for (int i = 0; i < data->nsbtx.nPalettes; i++) {
-				char *name = data->nsbtx.palettes[i].name;
-				unsigned int len = strlen(name);
-				WCHAR *buffer = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
-				for (unsigned int j = 0; j < len; j++) {
-					buffer[j] = name[j];
-				}
+				WCHAR *buffer = TexNarrowResourceNameToWideChar(data->nsbtx.palettes[i].name);
 				AddListBoxItem(data->hWndPaletteSelect, buffer);
 				free(buffer);
 			}
@@ -656,10 +646,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 								int texIndex = TexarcAddTexture(&data->nsbtx, &texels);
 								if (texIndex != -1) {
 									//update UI
-									WCHAR *strbuf = (WCHAR *) calloc(strlen(texels.name) + 1, 1);
-									for (unsigned int i = 0; i < strlen(texels.name); i++) {
-										strbuf[i] = (WCHAR) texels.name[i];
-									}
+									WCHAR *strbuf = TexNarrowResourceNameToWideChar(texels.name);
 									AddListBoxItem(data->hWndTextureSelect, strbuf);
 									SetListBoxSelection(data->hWndTextureSelect, data->nsbtx.nTextures - 1);
 									free(strbuf);
@@ -673,6 +660,12 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//add palette (if the name is the same as an existing palette, use the larger
 							//of the two palettes)
 							if (hasPalette) {
+								//if the palette name does not exist, create a default name.
+								if (palette.name == NULL) {
+									//create empty name.
+									palette.name = (char *) calloc(1, 1);
+									palette.name[0] = '\0';
+								}
 
 								int nOriginalPalettes = data->nsbtx.nPalettes;
 								int palIndex = TexarcAddPalette(&data->nsbtx, &palette);
@@ -684,10 +677,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 									int nPalettesAfter = data->nsbtx.nPalettes;
 									if (nPalettesAfter > nOriginalPalettes) {
 										//add to UI
-										WCHAR *strbuf = (WCHAR *) calloc(strlen(palette.name) + 1, 1);
-										for (unsigned int i = 0; i < strlen(palette.name); i++) {
-											strbuf[i] = (WCHAR) palette.name[i];
-										}
+										WCHAR *strbuf = TexNarrowResourceNameToWideChar(palette.name);
 										AddListBoxItem(data->hWndPaletteSelect, strbuf);
 										free(strbuf);
 									}
@@ -724,11 +714,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							}
 							if (*destName != NULL) free(*destName);
 							
-							unsigned int namelen = wcslen(textBuffer);
-							*destName = calloc(namelen + 1, 1);
-							for (unsigned int i = 0; i < namelen; i++) {
-								(*destName)[i] = (char) textBuffer[i];
-							}
+							*destName = TexNarrowResourceNameFromWideChar(textBuffer);
 						}
 					}
 				}

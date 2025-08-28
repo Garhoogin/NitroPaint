@@ -19,6 +19,35 @@ extern HICON g_appIcon;
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
+// convert a narrow resource name to a wide character string
+WCHAR *TexNarrowResourceNameToWideChar(const char *name) {
+	//NULL resource name
+	if (name == NULL) return NULL;
+
+	unsigned int len = strlen(name);
+	WCHAR *buf = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
+	if (buf == NULL) return NULL;
+
+	for (unsigned int i = 0; i < len; i++) {
+		buf[i] = (WCHAR) name[i];
+	}
+	return buf;
+}
+
+// convert a wide character string to a narrow resource string
+char *TexNarrowResourceNameFromWideChar(const WCHAR *name) {
+	if (name == NULL) return NULL;
+
+	unsigned int len = wcslen(name);
+	char *buf = (char *) calloc(len + 1, sizeof(char));
+	if (buf == NULL) return NULL;
+
+	for (unsigned int i = 0; i < len; i++) {
+		buf[i] = (char) name[i];
+	}
+	return buf;
+}
+
 static int TexViewerGetContentWidth(TEXTUREEDITORDATA *data) {
 	return data->width * data->scale;
 }
@@ -1356,19 +1385,17 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			WCHAR *pname = NULL;
 			if (data->isNitro) {
 				//fill existing palette name
-				int len = strlen(data->texture.texture.palette.name);
-				pname = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
-
-				for (int i = 0; i < len + 1; i++) {
-					pname[i] = (WCHAR) data->texture.texture.palette.name[i];
-				}
+				pname = TexNarrowResourceNameToWideChar(data->texture.texture.palette.name);
 			} else {
 				//generate a palette name
 				pname = (WCHAR *) calloc(16, sizeof(WCHAR));
 				createPaletteName(pname, data->szInitialFile);
 			}
-			SendMessage(data->hWndPaletteName, WM_SETTEXT, wcslen(pname), (LPARAM) pname);
-			free(pname);
+
+			if (pname != NULL) {
+				SendMessage(data->hWndPaletteName, WM_SETTEXT, wcslen(pname), (LPARAM) pname);
+				free(pname);
+			}
 
 			updateConvertDialog(data);
 			SetGUIFont(hWnd);
@@ -1460,10 +1487,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						colorEntries = 32768;
 					}
 
-					char mbpnam[64] = { 0 };
-					for (unsigned int i = 0; i < wcslen(bf); i++) {
-						mbpnam[i] = (char) bf[i];
-					}
+					char *mbpnam = TexNarrowResourceNameFromWideChar(bf);
 
 					//alpha key preprocessing of input image
 					if (useAlphaKey) {

@@ -69,7 +69,10 @@ typedef struct {
 	HWND hWndPaletteBase;
 } TEXTUREEDITORDATA;
 
-VOID RegisterTextureEditorClass(VOID);
+WCHAR *TexNarrowResourceNameToWideChar(const char *name);
+char *TexNarrowResourceNameFromWideChar(const WCHAR *name);
+
+void RegisterTextureEditorClass(void);
 
 HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 

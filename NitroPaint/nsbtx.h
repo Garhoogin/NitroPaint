@@ -41,9 +41,9 @@ typedef struct TexArc_ { //these should not be converted to other formats
 
 void TexarcInit(TexArc *nsbtx, int format);
 
-int TexarcRead(TexArc *nsbtx, char *buffer, int size);
+int TexarcRead(TexArc *nsbtx, const unsigned char *buffer, unsigned int size);
 
-int TexarcIsValidBmd(char *buffer, unsigned int size);
+int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size);
 
 int TexarcReadFile(TexArc *nsbtx, LPCWSTR path);
 
