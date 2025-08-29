@@ -184,10 +184,10 @@ static int BnllWriteBnll(BNLL *bnll, BSTREAM *stream) {
 		//scan for string
 		uint32_t offs = 0;
 		if (bnll->messages[i].msg != NULL) {
-			int msglen = wcslen(bnll->messages[i].msg) + 1;
+			unsigned int msglen = wcslen(bnll->messages[i].msg) + 1;
 
 			int found = 0;
-			for (int j = 0; (j + 2 * msglen) <= stmStrings.size; j += 2) {
+			for (unsigned int j = 0; (j + 2 * msglen) <= stmStrings.size; j += 2) {
 				if (memcmp(bnll->messages[i].msg, stmStrings.buffer + j, msglen * 2) == 0) {
 					//mark found
 					found = 1;
@@ -367,15 +367,15 @@ static void BnblFree(OBJECT_HEADER *hdr) {
 	bnbl->nRegion = 0;
 }
 
-void BnblInit(BNBL *bnbl) {
+void BnblInit(BNBL *bnbl, int fmt) {
 	bnbl->header.size = sizeof(BNBL);
-	ObjInit(&bnbl->header, FILE_TYPE_BNBL, BNBL_TYPE_BNBL);
+	ObjInit(&bnbl->header, FILE_TYPE_BNBL, fmt);
 	bnbl->header.dispose = BnblFree;
 	bnbl->header.writer = (OBJECT_WRITER) BnblWrite;
 }
 
 static int BnblReadBnbl(BNBL *bnbl, const unsigned char *buffer, unsigned int size) {
-	BnblInit(bnbl);
+	BnblInit(bnbl, BNBL_TYPE_BNBL);
 
 	uint16_t nEntry = *(const uint16_t *) (buffer + 0x6);
 	bnbl->nRegion = nEntry;
