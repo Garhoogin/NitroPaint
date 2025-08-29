@@ -1,21 +1,27 @@
 #pragma once
-#include "compression.h"
+
+typedef enum BstreamStatus_ {
+	BSTREAM_STATUS_OK      = 0,
+	BSTREAM_STATUS_NOMEM   = 1
+} BstreamStatus;
 
 typedef struct BTREAM_ {
 	unsigned char *buffer;
-	int bufferSize;
-	int size;
-	int pos;
+	unsigned int bufferSize;
+	unsigned int size;
+	unsigned int pos;
 } BSTREAM;
 
-void bstreamCreate(BSTREAM *stream, void *init, int initSize);
+BstreamStatus bstreamCreate(BSTREAM *stream, const void *init, unsigned int initSize);
 
-void bstreamFree(BSTREAM *stream);
+BstreamStatus bstreamFree(BSTREAM *stream);
 
-void bstreamWrite(BSTREAM *stream, void *data, int size);
+BstreamStatus bstreamWrite(BSTREAM *stream, const void *data, unsigned int size);
 
-void bstreamAlign(BSTREAM *stream, int by);
+BstreamStatus bstreamAlign(BSTREAM *stream, unsigned int by);
 
 int bstreamSeek(BSTREAM *stream, int pos, int relative);
 
-int bstreamCompress(BSTREAM *stream, int algorithm, int start, int size);
+BstreamStatus bstreamTruncate(BSTREAM *stream, unsigned int to);
+
+unsigned char *bstreamToByteArray(BSTREAM *stream, unsigned int *pSize);

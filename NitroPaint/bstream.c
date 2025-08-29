@@ -3,9 +3,8 @@
 #include <stdlib.h>
 
 #include "bstream.h"
-#include "filecommon.h"
 
-void bstreamCreate(BSTREAM *stream, void *init, int initSize) {
+BstreamStatus bstreamCreate(BSTREAM *stream, const void *init, unsigned int initSize) {
 	stream->buffer = NULL;
 	stream->bufferSize = 0;
 	stream->size = 0;
@@ -13,14 +12,17 @@ void bstreamCreate(BSTREAM *stream, void *init, int initSize) {
 
 	if (initSize && init != NULL) {
 		stream->buffer = malloc(initSize);
+		if (stream->buffer == NULL) return BSTREAM_STATUS_NOMEM;
+
 		memcpy(stream->buffer, init, initSize);
 		stream->bufferSize = initSize;
 		stream->size = initSize;
 		stream->pos = 0;
 	}
+	return BSTREAM_STATUS_OK;
 }
 
-void bstreamFree(BSTREAM *stream) {
+BstreamStatus bstreamFree(BSTREAM *stream) {
 	if (stream->buffer != NULL) {
 		free(stream->buffer);
 		stream->buffer = NULL;
@@ -29,49 +31,64 @@ void bstreamFree(BSTREAM *stream) {
 	stream->pos = 0;
 	stream->size = 0;
 	stream->bufferSize = 0;
+	return BSTREAM_STATUS_OK;
 }
 
-void bstreamWrite(BSTREAM *stream, void *data, int dataSize) {
-	if (data == NULL || dataSize == 0) return;
+BstreamStatus bstreamWrite(BSTREAM *stream, const void *data, unsigned int dataSize) {
+	if (data == NULL || dataSize == 0) return BSTREAM_STATUS_OK;
 
 	//determine required size for buffer. Can write in the middle of the stream, beware!
-	int requiredSize = max(stream->pos + dataSize, stream->size);
+	unsigned int requiredSize = max(stream->pos + dataSize, stream->size);
 	if (stream->bufferSize < requiredSize) {
 
 		//keep expanding by 1.5x until it's big enough
-		int newSize = stream->bufferSize;
+		unsigned int newSize = stream->bufferSize;
 		while (newSize < requiredSize) {
 			newSize = (newSize + 2) * 3 / 2;
 		}
+
+		void *newbuf = realloc(stream->buffer, newSize);
+		if (newbuf == NULL) {
+			//no memory error, try reducing allocation size
+			newSize = requiredSize;
+			newbuf = realloc(stream->buffer, newSize);
+			if (newbuf == NULL) {
+				return BSTREAM_STATUS_NOMEM;
+			}
+		}
+
 		stream->bufferSize = newSize;
-		stream->buffer = realloc(stream->buffer, newSize);
+		stream->buffer = newbuf;
 	}
 
 	//write data to stream.
 	memcpy(stream->buffer + stream->pos, data, dataSize);
 	stream->pos += dataSize;
 	stream->size = requiredSize;
+	return BSTREAM_STATUS_OK;
 }
 
-void bstreamAlign(BSTREAM *stream, int by) {
+BstreamStatus bstreamAlign(BSTREAM *stream, unsigned int by) {
 	//temp buffer for fill
 	unsigned char buf[32] = { 0 };
-	int required = by - (stream->pos % by);
+	unsigned int required = by - (stream->pos % by);
 
 	//if already aligned, required==by.
-	if (required == by) return;
+	if (required == by) return BSTREAM_STATUS_OK;
 
 	while (required > 0) {
 		int nFill = required;
 		if (nFill > sizeof(buf)) nFill = sizeof(buf);
 
-		bstreamWrite(stream, buf, nFill);
+		BstreamStatus status = bstreamWrite(stream, buf, nFill);
 		required -= nFill;
+		if (status != BSTREAM_STATUS_OK) return status;
 	}
+	return BSTREAM_STATUS_OK;
 }
 
 int bstreamSeek(BSTREAM *stream, int pos, int relative) {
-	int newPos = stream->pos;
+	unsigned int newPos = stream->pos;
 	if (relative) newPos += pos;
 	else newPos = pos;
 
@@ -83,34 +100,23 @@ int bstreamSeek(BSTREAM *stream, int pos, int relative) {
 	return newPos;
 }
 
-int bstreamCompress(BSTREAM *stream, int algorithm, int start, int size) {
-	//checks
-	if (size == 0) {
-		size = stream->size - start;
-	}
-	if (start + size > stream->size) {
-		size = stream->size - start;
-	}
-	char *src = stream->buffer + start;
+BstreamStatus bstreamTruncate(BSTREAM *stream, unsigned int to) {
+	if (to >= stream->size) return BSTREAM_STATUS_OK;
 
-	//compress section
-	char *compressed = NULL;
-	int compressedSize = size;
-	compressed = CxCompress(src, size, algorithm, &compressedSize);
+	stream->size = to;
+	return BSTREAM_STATUS_OK;
+}
 
-	//insert section
-	int beforeCompressed = start;
-	int afterCompressed = stream->size - start - size;
-	int bufferSize = beforeCompressed + compressedSize + afterCompressed;
-	char *newBuffer = malloc(bufferSize);
-	memcpy(newBuffer, stream->buffer, beforeCompressed);
-	memcpy(newBuffer + beforeCompressed, compressed, compressedSize);
-	memcpy(newBuffer + beforeCompressed + compressedSize, stream->buffer + start + size, afterCompressed);
-	free(stream->buffer);
-	stream->buffer = newBuffer;
-	stream->bufferSize = bufferSize;
-	stream->size = bufferSize;
+unsigned char *bstreamToByteArray(BSTREAM *stream, unsigned int *pSize) {
+	//shrink buffer size
+	unsigned char *outbuf = realloc(stream->buffer, stream->size);
+	if (outbuf == NULL) outbuf = stream->buffer;
 
-	if (compressed != NULL) free(compressed);
-	return compressedSize;
+	*pSize = stream->size;
+	stream->buffer = NULL;
+	stream->bufferSize = 0;
+	stream->pos = 0;
+	stream->size = 0;
+
+	return outbuf;
 }

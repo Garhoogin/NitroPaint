@@ -360,12 +360,13 @@ static int AnmiCountFrames(NANR *nanr) {
 }
 
 //ensure frame is in the stream, and return the offset to it
-static int AnmiNanrWriteFrame(BSTREAM *stream, void *data, int element) {
-	const int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
-	int size = sizes[element];
+static unsigned int AnmiNanrWriteFrame(BSTREAM *stream, const void *data, int element) {
+	const unsigned int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+	unsigned int size = sizes[element];
 
 	//search for element
-	int found = 0, foundOffset = 0, i = 0;
+	int found = 0;
+	unsigned int i, foundOffset = 0;
 	switch (element) {
 		case NANR_SEQ_TYPE_INDEX:
 		case NANR_SEQ_TYPE_INDEX_SRT:
@@ -406,7 +407,7 @@ static int AnmiNanrWriteFrame(BSTREAM *stream, void *data, int element) {
 	}
 
 	//TODO: search
-	int ofs = stream->pos;
+	unsigned int ofs = stream->pos;
 	bstreamWrite(stream, data, size);
 	return ofs;
 }

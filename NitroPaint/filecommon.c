@@ -563,9 +563,20 @@ int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
 	bstreamCreate(&stream, NULL, 0);
 	int status = writer(object, &stream);
 
+	//to byte array (releases buffer from stream)
+	unsigned int outSize;
+	unsigned char *outbuf = bstreamToByteArray(&stream, &outSize);
+
 	if (OBJ_SUCCEEDED(status)) {
 		if (object->compression != COMPRESSION_NONE) {
-			bstreamCompress(&stream, object->compression, 0, 0);
+			//compress buffer
+			unsigned int compSize;
+			unsigned char *comp = CxCompress(outbuf, outSize, object->compression, &compSize);
+			
+			//replace buffer
+			free(outbuf);
+			outbuf = comp;
+			outSize = compSize;
 		}
 
 		DWORD dwWritten;
@@ -578,7 +589,8 @@ int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
 		CloseHandle(hFile);
 	}
 
-	bstreamFree(&stream);
+	free(outbuf);
+
 	return status;
 }
 

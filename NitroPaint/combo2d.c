@@ -960,7 +960,7 @@ static int combo2dWriteDataFile(COMBO2D *combo, BSTREAM *stream) {
 				bstreamCreate(&chrStream, NULL, 0);
 				ChrWriteChars(ncgr, &chrStream);
 
-				if (chrStream.size > dfc->chrSize) chrStream.size = dfc->chrSize;
+				bstreamTruncate(&chrStream, dfc->chrSize);
 				memcpy(copy + dfc->chrOffset, chrStream.buffer, chrStream.size);
 				bstreamFree(&chrStream);
 				break;
