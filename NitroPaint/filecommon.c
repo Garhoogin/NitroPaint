@@ -585,7 +585,7 @@ int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
 			free(outbuf);
 			return OBJ_STATUS_NO_ACCESS;
 		}
-		WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
+		WriteFile(hFile, outbuf, outSize, &dwWritten, NULL);
 		CloseHandle(hFile);
 	}
 
