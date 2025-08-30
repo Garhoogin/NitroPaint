@@ -136,7 +136,7 @@ HWND CreateCheckedListView(HWND hWnd, int x, int y, int width, int height) {
 	DWORD dwStyle = WS_VISIBLE | WS_CHILD | WS_CLIPCHILDREN | LVS_REPORT | LVS_NOCOLUMNHEADER | WS_VSCROLL | WS_BORDER;
 	HWND hWndLv = CreateWindowEx(0, WC_LISTVIEW, L"", dwStyle, x, y, width, height, hWnd, NULL, NULL, NULL);
 	SendMessage(hWndLv, LVM_SETEXTENDEDLISTVIEWSTYLE, dwExStyle, dwExStyle);
-	AddListViewColumn(hWndLv, L"", 0, width - 2, SCA_LEFT);
+	AddListViewColumn(hWndLv, L"", 0, width - 2 - GetSystemMetrics(SM_CXVSCROLL), SCA_LEFT);
 	return hWndLv;
 }
 

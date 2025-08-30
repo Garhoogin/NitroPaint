@@ -53,6 +53,10 @@ typedef struct {
 	HWND hWndColorBalance;
 	HWND hWndEnhanceColors;
 	HWND hWndGenerate;
+
+	HWND hWndEditCompressionCheckbox;
+	HWND hWndEditCompressionList;
+	HWND hWndEditCompressionOK;
 } NCLRVIEWERDATA;
 
 VOID CopyPalette(COLOR *palette, int nColors);

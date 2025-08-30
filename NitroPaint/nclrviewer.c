@@ -1856,6 +1856,16 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					case ID_ARRANGEPALETTE_NEURO:
 						PalViewerSortSelection(hWnd, data, LOWORD(wParam));
 						break;
+					case ID_MENU_EDITCOMPRESSEDPALETTE:
+					{
+						HWND hWndMdi = getMainWindow(hWnd);
+						HWND h = CreateWindow(L"EditCompressedClass", L"Edit Compressed Palette",
+							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
+							CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, NULL, NULL, NULL);
+						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
+						DoModal(h);
+						break;
+					}
 					case ID_FILE_SAVE:
 						EditorSave(hWnd);
 						break;
@@ -2334,12 +2344,161 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+
+static int PalViewerIsPaletteEmpty(NCLRVIEWERDATA *data, unsigned int n) {
+	unsigned int nColsPalette = 1 << data->nclr.nBits;
+
+	for (unsigned int j = 0; j < nColsPalette; j++) {
+		unsigned int colI = (n * nColsPalette) + j;
+		if (colI >= (unsigned int) data->nclr.nColors) break;
+
+		COLOR c = data->nclr.colors[colI];
+		if (c) {
+			//nonzero color
+			return 0;
+		}
+	}
+
+	//empty
+	return 1;
+}
+
+static uint16_t PalViewerGetPaletteEmptyBitmap(NCLRVIEWERDATA *data) {
+	uint16_t bitmap = 0;
+
+	for (unsigned int i = 0; i < 16; i++) {
+		if (!PalViewerIsPaletteEmpty(data, i)) bitmap |= 1 << i;
+	}
+
+	return bitmap;
+}
+
+static void PalViewerSetCompressedPaletteSettings(NCLRVIEWERDATA *data, BOOL enabled, uint16_t newSelection) {
+	unsigned int nColsPalette = 1 << data->nclr.nBits;
+
+	//get old setting
+	int wasEnabled = data->nclr.compressedPalette;
+
+	uint16_t oldSelection = PalViewerGetPaletteEmptyBitmap(data);
+
+	//if the compressed palette was and still is disabled, do nothing.
+	if (!enabled && !wasEnabled) return;
+
+	//if the compressed palette was enabled and is no longer, we will just disable the compresed palette flag.
+	if (wasEnabled && !enabled) {
+		data->nclr.compressedPalette = 0;
+		return;
+	}
+
+	//otherwise, the compressed palette is going to be enabled. We'll allocate a new buffer and map it.
+	COLOR *newbuf = (COLOR *) calloc(16 * nColsPalette, sizeof(COLOR));
+
+	unsigned int iSrc = 0; // source palette index
+	for (unsigned int i = 0; i < 16; i++) {
+		//skip palettes not selected
+		if (!(newSelection & (1 << i))) continue;
+
+		//if the source index bit in the old selection is not set, increment.
+		while (!(oldSelection & (1 << iSrc)) && iSrc < 16) iSrc++;
+		if (iSrc >= 16) break; // out of palettes
+
+		//copy to i from iSrc
+		for (unsigned int j = 0; j < nColsPalette; j++) {
+			if ((iSrc * nColsPalette + j) >= (unsigned int) data->nclr.nColors) break;
+			newbuf[i * nColsPalette + j] = data->nclr.colors[iSrc * nColsPalette + j];
+		}
+
+		//increment source index
+		iSrc++;
+	}
+
+	//update palette
+	free(data->nclr.colors);
+	data->nclr.colors = newbuf;
+	data->nclr.nColors = 16 * nColsPalette;
+	data->nclr.compressedPalette = 1;
+}
+
+static LRESULT CALLBACK EditCompressedPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case NV_INITIALIZE:
+		{
+			data = (NCLRVIEWERDATA *) lParam;
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			data->hWndEditCompressionCheckbox = CreateCheckbox(hWnd, L"Use Compressed Palette", 10, 10, 150, 22, data->nclr.compressedPalette);
+			data->hWndEditCompressionList = CreateCheckedListView(hWnd, 10, 37, 200, 200);
+			data->hWndEditCompressionOK = CreateButton(hWnd, L"OK", 110, 242, 100, 22, TRUE);
+
+			uint16_t paletteEmptyBitmap = PalViewerGetPaletteEmptyBitmap(data);
+			for (int i = 0; i < 16; i++) {
+				WCHAR buf[16];
+				wsprintfW(buf, L"Palette %d", i);
+				AddCheckedListViewItem(data->hWndEditCompressionList, buf, i, (paletteEmptyBitmap >> i) & 1);
+			}
+
+			//if compressed palette is not used, then disable the palette list.
+			if (!data->nclr.compressedPalette) {
+				EnableWindow(data->hWndEditCompressionList, FALSE);
+				UpdateWindow(data->hWndEditCompressionList);
+			}
+
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 220, 274);
+
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndCtl = (HWND) lParam;
+			int notif = HIWORD(wParam);
+			int idCtl = LOWORD(wParam);
+
+			if (hWndCtl == data->hWndEditCompressionCheckbox && notif == BN_CLICKED) {
+
+				//enabled state changed.
+				int enabled = GetCheckboxChecked(hWndCtl);
+				EnableWindow(data->hWndEditCompressionList, enabled);
+				UpdateWindow(data->hWndEditCompressionList);
+
+			} else if ((hWndCtl == data->hWndEditCompressionOK || idCtl == IDOK) && notif == BN_CLICKED) {
+
+				//get new enable setting
+				int enabled = GetCheckboxChecked(data->hWndEditCompressionCheckbox);
+
+				//create a bitmap of palette indices
+				uint16_t newSelection = 0;
+				for (int i = 0; i < 16; i++) {
+					if (CheckedListViewIsChecked(data->hWndEditCompressionList, i)) newSelection |= 1 << i;
+				}
+
+				//update
+				PalViewerSetCompressedPaletteSettings(data, enabled, newSelection);
+				PalViewerUpdatePreview(data->hWnd);
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			} else if (idCtl == IDCANCEL && notif == BN_CLICKED) {
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 static void PalViewerRegisterPaletteGenerationClass(void) {
 	RegisterGenericClass(L"PaletteGeneratorClass", PaletteGeneratorDialogProc, sizeof(LPVOID));
 }
 
 static void PalViewerRegisterPaletteFillClass(void) {
 	RegisterGenericClass(L"GeneratePaletteClass", GeneratePaletteDialogProc, sizeof(LPVOID));
+}
+
+static void PalViewerRegisterEditCompressedPaletteClass(void) {
+	RegisterGenericClass(L"EditCompressedClass", EditCompressedPaletteWndProc, sizeof(LPVOID));
 }
 
 void RegisterNclrViewerClass(void) {
@@ -2355,6 +2514,7 @@ void RegisterNclrViewerClass(void) {
 	EditorAddFilter(cls, NCLR_TYPE_SETOSA, L"splt", L"SPLT Files (*.splt)\0*.splt\0");
 	PalViewerRegisterPaletteGenerationClass();
 	PalViewerRegisterPaletteFillClass();
+	PalViewerRegisterEditCompressedPaletteClass();
 }
 
 HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
