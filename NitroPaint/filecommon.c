@@ -582,7 +582,7 @@ int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
 		DWORD dwWritten;
 		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hFile == INVALID_HANDLE_VALUE) {
-			bstreamFree(&stream);
+			free(outbuf);
 			return OBJ_STATUS_NO_ACCESS;
 		}
 		WriteFile(hFile, stream.buffer, stream.size, &dwWritten, NULL);
