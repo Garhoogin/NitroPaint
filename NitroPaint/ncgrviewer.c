@@ -1165,6 +1165,9 @@ typedef struct CHARIMPORTDATA_ {
 	HWND hWnd1D;
 	HWND hWndCompression;
 	HWND hWndMaxChars;
+	HWND hWndObjMode;
+	HWND hWndObjSize;
+	HWND hWndMappingGranularity;
 	HWND hWndImport;
 	HWND hWndBalance;
 	HWND hWndColorBalance;
@@ -2205,6 +2208,10 @@ typedef struct ChrImportData_ {
 	int originX;
 	int originY;
 	int paletteNumber;
+	BOOL objMode;
+	int objCharsX;
+	int objCharsY;
+	int objMapGranularity;
 	int balance;
 	int colorBalance;
 	int enhanceColors;
@@ -2227,7 +2234,7 @@ static int ChrImportCallback(void *cbdata) {
 	InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
 	InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
 
-	setStyle(hWndMain, FALSE, WS_DISABLED);
+	EnableWindow(hWndMain, TRUE);
 	SetForegroundWindow(hWndMain);
 
 	//select the import region
@@ -2258,10 +2265,88 @@ static int ChrImportCallback(void *cbdata) {
 	return 0;
 }
 
-static void charImport(NCLR *nclr, NCGR *ncgr, COLOR32 *pixels, int width, int height, BOOL createPalette, int paletteNumber, int paletteSize, int paletteBase, 
-	BOOL dither, float diffuse, BOOL import1D, BOOL charCompression, int nMaxChars, int originX, int originY, 
-	int balance, int colorBalance, int enhanceColors, int *progress) {
+static void charImport(
+	NCLR    *nclr,
+	NCGR    *ncgr,
+	COLOR32 *pixels,
+	int      width,
+	int      height,
+	BOOL     createPalette,
+	int      paletteNumber,
+	int      paletteSize,
+	int      paletteBase, 
+	BOOL     dither,
+	float    diffuse,
+	BOOL     objMode,
+	int      objCharsX,
+	int      objCharsY,
+	int      objMapGranularity,
+	BOOL     import1D,
+	BOOL     charCompression,
+	int      nMaxChars,
+	int      originX,
+	int      originY, 
+	int      balance,
+	int      colorBalance,
+	int      enhanceColors,
+	int     *progress
+) {
 	int maxPaletteSize = 1 << ncgr->nBits;
+	int bReleaseImage = FALSE; // do not release the image buffer
+	
+	//for OBJ mode import, we'll swizzle the input bitmap.
+	if (objMode) {
+		bReleaseImage = TRUE;    // we will replace the image buffer
+		import1D = TRUE;         // import in 1D orientation
+		charCompression = FALSE; // do not character compress
+
+		//derive the image dimensions. (round up)
+		int objPxX = objCharsX * 8;
+		int objPxY = objCharsY * 8;
+		int nObjX = (width + objPxX - 1) / objPxX;
+		int nObjY = (height + objPxY - 1) / objPxY;
+
+		//account for the mapping granularity in the temp width.
+		int nCharsObj = objCharsX * objCharsY;
+		if (nCharsObj < objMapGranularity) nCharsObj = objMapGranularity;
+
+		int tmpWidth = nCharsObj * 8;
+		int tmpHeight = nObjX * nObjY * 8;
+		COLOR32 *tmpbuf = (COLOR32 *) calloc(tmpWidth * tmpHeight, sizeof(COLOR32));
+
+		//copy bits
+		for (int objY = 0; objY < nObjY; objY++) {
+			for (int objX = 0; objX < nObjX; objX++) {
+				int iObj = objX + objY * nObjX; // index of current OBJ
+				int yObj = iObj * 8;            // Y-coordinate in temp buffer of current OBJ
+
+				//in OBJ
+				for (int x_ = 0; x_ < objPxX; x_++) {
+					for (int y_ = 0; y_ < objPxY; y_++) {
+
+						//source bitmap coordinates
+						int x = objX * objPxX + x_;
+						int y = objY * objPxY + y_;
+						COLOR32 srcCol = 0;
+						if (x < width && y < height) srcCol = pixels[y * width + x];
+
+						//character index
+						int charIndex = x_ / 8 + (y_ / 8) * objCharsX;
+						int inCharX = x_ % 8;
+						int inCharY = y_ % 8;
+						
+						tmpbuf[(yObj + inCharY) * tmpWidth + (8 * charIndex + inCharX)] = srcCol;
+					}
+				}
+
+			}
+		}
+
+		//replace buffer
+		width = tmpWidth;
+		height = tmpHeight;
+		pixels = tmpbuf;
+	}
 
 	//if we start at base 0, increment by 1. We'll put a placeholder color in slot 0.
 	if (paletteBase == 0) {
@@ -2414,6 +2499,9 @@ static void charImport(NCLR *nclr, NCGR *ncgr, COLOR32 *pixels, int width, int h
 	}
 
 	free(palette);
+
+	//if needed, free the image buffer.
+	if (bReleaseImage) free(pixels);
 }
 
 static DWORD WINAPI ChrImportInternal(LPVOID lpParameter) {
@@ -2422,9 +2510,32 @@ static DWORD WINAPI ChrImportInternal(LPVOID lpParameter) {
 	progress->progress1Max = 100;
 	progress->progress1 = 100;
 	progress->progress2Max = 1000;
-	charImport(cim->nclr, cim->ncgr, cim->px, cim->width, cim->height, cim->createPalette, cim->paletteNumber, cim->paletteSize, cim->paletteBase, 
-			   cim->dither, cim->diffuse, cim->import1D, cim->charCompression, cim->nMaxChars, cim->originX, cim->originY, 
-			   cim->balance, cim->colorBalance, cim->enhanceColors, &progress->progress2);
+	charImport(
+		cim->nclr,
+		cim->ncgr,
+		cim->px,
+		cim->width,
+		cim->height,
+		cim->createPalette,
+		cim->paletteNumber,
+		cim->paletteSize,
+		cim->paletteBase, 	   
+		cim->dither,
+		cim->diffuse,
+		cim->objMode,
+		cim->objCharsX,
+		cim->objCharsY,
+		cim->objMapGranularity,
+		cim->import1D,
+		cim->charCompression,
+		cim->nMaxChars,
+		cim->originX,
+		cim->originY, 
+		cim->balance,
+		cim->colorBalance,
+		cim->enhanceColors,
+		&progress->progress2
+	);
 	free(cim->px);
 	progress->waitOn = 1;
 	return 0;
@@ -2458,21 +2569,32 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			int middleY = 10 + boxHeight + 10 + 10 + 8; //middle box Y
 			int bottomY = 10 + boxHeight + 10 + boxHeight2 + 10 + 10 + 8; //bottom box Y
 
+			//Palette
 			data->hWndOverwritePalette = CreateCheckbox(hWnd, L"Write Palette", leftX, topY, 150, 22, FALSE);
 			CreateStatic(hWnd, L"Palette Base:", leftX, topY + 27, 75, 22);
 			data->hWndPaletteBase = CreateEdit(hWnd, L"0", leftX + 85, topY + 27, 100, 22, TRUE);
 			CreateStatic(hWnd, L"Palette Size:", leftX, topY + 27 * 2, 75, 22);
 			data->hWndPaletteSize = CreateEdit(hWnd, L"256", leftX + 85, topY + 27 * 2, 100, 22, TRUE);
 
+			//Graphics
 			data->hWndDither = CreateCheckbox(hWnd, L"Dither", rightX, topY, 150, 22, FALSE);
 			CreateStatic(hWnd, L"Diffuse:", rightX, topY + 27, 75, 22);
 			data->hWndDiffuse = CreateEdit(hWnd, L"100", rightX + 85, topY + 27, 100, 22, TRUE);
 
-			data->hWnd1D = CreateCheckbox(hWnd, L"1D Import", leftX, middleY, 150, 22, FALSE);
-			data->hWndCompression = CreateCheckbox(hWnd, L"Compress Character", leftX, middleY + 27, 150, 22, FALSE);
-			CreateStatic(hWnd, L"Max Chars:", leftX, middleY + 27 * 2, 75, 22);
-			data->hWndMaxChars = CreateEdit(hWnd, L"1024", leftX + 85, middleY + 27 * 2, 100, 22, TRUE);
+			//Dimension
+			LPCWSTR objSizes[] = { L"8x8", L"8x16", L"8x32", L"16x8", L"16x16", L"16x32", L"32x8", L"32x16", L"32x32", L"32x64", L"64x32", L"64x64" };
+			LPCWSTR mappings[] = { L"1D 32K", L"1D 64K", L"1D 128K", L"1D 256K" };
+			data->hWndObjMode = CreateCheckbox(hWnd, L"OBJ Mode", leftX, middleY, 75, 22, FALSE);
+			data->hWnd1D = CreateCheckbox(hWnd, L"1D Import", leftX + 85, middleY, 150, 22, FALSE);
+			data->hWndCompression = CreateCheckbox(hWnd, L"Compress Character", leftX + 85, middleY + 27, 150, 22, FALSE);
+			CreateStatic(hWnd, L"Max Chars:", leftX + 85, middleY + 27 * 2, 75, 22);
+			data->hWndMaxChars = CreateEdit(hWnd, L"1024", leftX + 170, middleY + 27 * 2, 100, 22, TRUE);
+			CreateStatic(hWnd, L"OBJ Size:", leftX + 280, middleY, 75, 22);
+			data->hWndObjSize = CreateCombobox(hWnd, objSizes, 12, leftX + 355, middleY, 75, 22, 0);
+			CreateStatic(hWnd, L"Mapping:", leftX + 280, middleY + 27, 75, 22);
+			data->hWndMappingGranularity = CreateCombobox(hWnd, mappings, 4, leftX + 355, middleY + 27, 75, 22, 0);
 
+			//Balance
 			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
 			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
 			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
@@ -2491,9 +2613,10 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateGroupbox(hWnd, L"Color", 10, 10 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3);
 
 			SetGUIFont(hWnd);
-			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
-			setStyle(data->hWndCompression, TRUE, WS_DISABLED);
-			setStyle(data->hWndMaxChars, TRUE, WS_DISABLED);
+			EnableWindow(data->hWndDiffuse, FALSE);
+			EnableWindow(data->hWndCompression, FALSE);
+			EnableWindow(data->hWndMaxChars, FALSE);
+			EnableWindow(data->hWndObjSize, FALSE);
 			SetWindowSize(hWnd, width, height);
 			break;
 		}
@@ -2502,27 +2625,42 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl != NULL) {
 				if (hWndControl == data->hWndDither) {
-					int state = GetCheckboxChecked(hWndControl);
-					setStyle(data->hWndDiffuse, !state, WS_DISABLED);
-					InvalidateRect(hWnd, NULL, TRUE);
+					//toggle dither
+					EnableWindow(data->hWndDiffuse, GetCheckboxChecked(hWndControl));
 				} else if (hWndControl == data->hWnd1D) {
-					int state = GetCheckboxChecked(hWndControl);
+					//toggle 1D mode
 					int ccState = GetCheckboxChecked(data->hWndCompression);
-					if (state) {
-						setStyle(data->hWndCompression, FALSE, WS_DISABLED);
-						if (ccState) setStyle(data->hWndMaxChars, FALSE, WS_DISABLED);
+					if (GetCheckboxChecked(hWndControl)) {
+						EnableWindow(data->hWndCompression, TRUE);
+						if (ccState) EnableWindow(data->hWndMaxChars, TRUE);
 					} else {
-						setStyle(data->hWndCompression, TRUE, WS_DISABLED);
-						setStyle(data->hWndMaxChars, TRUE, WS_DISABLED);
+						EnableWindow(data->hWndCompression, FALSE);
+						EnableWindow(data->hWndMaxChars, FALSE);
 					}
-					InvalidateRect(hWnd, NULL, TRUE);
-				} else if(hWndControl == data->hWndCompression){
+				} else if (hWndControl == data->hWndCompression) {
+					//toggle character compression
+					EnableWindow(data->hWndMaxChars, GetCheckboxChecked(hWndControl));
+				} else if (hWndControl == data->hWndObjMode) {
+					//OBJ mode toggle
 					int state = GetCheckboxChecked(hWndControl);
-					setStyle(data->hWndMaxChars, !state, WS_DISABLED);
-					InvalidateRect(hWnd, NULL, TRUE);
+					if (state) {
+						//OBJ mode enable
+						EnableWindow(data->hWndCompression, FALSE);
+						EnableWindow(data->hWnd1D, FALSE);
+						EnableWindow(data->hWndMaxChars, FALSE);
+						EnableWindow(data->hWndObjSize, TRUE);
+					} else {
+						int ena1D = GetCheckboxChecked(data->hWnd1D);
+						int enaComp = GetCheckboxChecked(data->hWndCompression);
+						EnableWindow(data->hWnd1D, TRUE);
+						EnableWindow(data->hWndCompression, ena1D);
+						EnableWindow(data->hWndMaxChars, ena1D && enaComp);
+						EnableWindow(data->hWndObjSize, FALSE);
+					}
 				} else if (hWndControl == data->hWndImport) {
 					BOOL createPalette = GetCheckboxChecked(data->hWndOverwritePalette);
 					BOOL dither = GetCheckboxChecked(data->hWndDither);
+					BOOL objMode = GetCheckboxChecked(data->hWndObjMode);
 					BOOL import1D = GetCheckboxChecked(data->hWnd1D);
 					BOOL charCompression = GetCheckboxChecked(data->hWndCompression);
 					float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
@@ -2534,6 +2672,17 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
 					BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
 
+					//get OBJ size
+					const int objWidths[] = { 8, 8, 8, 16, 16, 16, 32, 32, 32, 32, 64, 64 };
+					const int objHeights[] = { 8, 16, 32, 8, 16, 32, 8, 16, 32, 64, 32, 64 };
+					int objSizeSelection = SendMessage(data->hWndObjSize, CB_GETCURSEL, 0, 0);
+
+					//get mapping setting
+					const int mapGranularities[] = { 32, 64, 128, 256 };
+					int mappingGranularity = mapGranularities[SendMessage(data->hWndMappingGranularity, CB_GETCURSEL, 0, 0)];
+					mappingGranularity /= (8 * data->ncgr->nBits);
+					if (mappingGranularity == 0) mappingGranularity = 1;
+
 					NCLR *nclr = data->nclr;
 					NCGR *ncgr = data->ncgr;
 
@@ -2542,6 +2691,10 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					PROGRESSDATA *progressData = (PROGRESSDATA *) calloc(1, sizeof(PROGRESSDATA));
 					cimport->createPalette = createPalette;
 					cimport->dither = dither;
+					cimport->objMode = objMode;
+					cimport->objCharsX = objWidths[objSizeSelection] / 8;
+					cimport->objCharsY = objHeights[objSizeSelection] / 8;
+					cimport->objMapGranularity = mappingGranularity;
 					cimport->import1D = import1D;
 					cimport->charCompression = charCompression;
 					cimport->diffuse = diffuse;
