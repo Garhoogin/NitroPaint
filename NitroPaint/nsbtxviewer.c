@@ -150,9 +150,12 @@ static int guessTexPlttByName(const char *textureName, char **paletteNames, int 
 		if (_stricmp(textureName, paletteNames[i]) == 0) return i;
 	}
 
+	int texNameLen = strnlen(textureName, 16);
+
 	//second guess: add "_pl" to texture name (and truncate to 16)
 	char nameBuffer[20];
-	memcpy(nameBuffer, textureName, strlen(textureName) + 1);
+	memcpy(nameBuffer, textureName, texNameLen);
+	nameBuffer[texNameLen] = '\0';
 	memcpy(nameBuffer + strlen(nameBuffer), "_pl", 4);
 	nameBuffer[16] = '\0';
 
@@ -167,7 +170,8 @@ static int guessTexPlttByName(const char *textureName, char **paletteNames, int 
 	}
 
 	//fourth guess: add "_pl" after truncating texture name length to 13
-	memcpy(nameBuffer, textureName, strlen(textureName) + 1);
+	memcpy(nameBuffer, textureName, texNameLen);
+	nameBuffer[texNameLen] = '\0';
 	nameBuffer[13] = '\0';
 	memcpy(nameBuffer + strlen(nameBuffer), "_pl", 4);
 	for (int i = 0; i < nPalettes; i++) {
@@ -175,7 +179,8 @@ static int guessTexPlttByName(const char *textureName, char **paletteNames, int 
 	}
 
 	//fifth guess: same thing but truncate texture name length to 12
-	memcpy(nameBuffer, textureName, strlen(textureName) + 1);
+	memcpy(nameBuffer, textureName, texNameLen);
+	nameBuffer[texNameLen] = '\0';
 	nameBuffer[12] = '\0';
 	memcpy(nameBuffer + strlen(nameBuffer), "_pl", 4);
 	for (int i = 0; i < nPalettes; i++) {
@@ -592,10 +597,14 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						}
 					} else if (hWndControl == data->hWndExportAll) {
 						//we will overwrite this with the *real* path
-						WCHAR *path = UiDlgBrowseForFolder(getMainWindow(hWnd), L"Select output folder...");
-						if (path == NULL) break;
+						WCHAR *dirpath = UiDlgBrowseForFolder(getMainWindow(hWnd), L"Select output folder...");
+						if (dirpath == NULL) break;
 
-						int pathLen = wcslen(path);
+						int pathLen = wcslen(dirpath);
+						WCHAR path[MAX_PATH];
+						memcpy(path, dirpath, (pathLen + 1) * sizeof(WCHAR));
+						free(dirpath);
+
 						if (path[pathLen - 1] != L'\\' && path[pathLen - 1] != '/') {
 							path[pathLen] = '\\';
 							pathLen++;
@@ -624,7 +633,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 						//free palette name array
 						free(palNames);
-						free(path);
 					} else if (hWndControl == data->hWndResourceButton) {
 						HWND hWndMain = getMainWindow(hWnd);
 						CreateVramUseWindow(hWndMain, &data->nsbtx);
