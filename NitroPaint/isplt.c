@@ -14,8 +14,22 @@
 #endif
 #endif
 
+//assumption+assertion macros
+#ifdef NDEBUG
+#ifdef _MSC_VER
+#define RX_ASSUME(x)    __assume(x)
+#else
+#define RX_ASSUME(x)    if(!(x)) __builtin_unreachable()
+#endif
+#else
+#define RX_ASSUME(x)    if(!(x)) __debugbreak()
+#endif
+
 #define TRUE 1
 #define FALSE 0
+
+#define RX_LARGE_NUMBER     1e32 // constant to represent large color difference
+#define RX_SLAB_SIZE    0x100000 // slab size of allocator
 
 //struct for internal processing of color leaves
 typedef struct {
@@ -45,23 +59,39 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int optimizat
 	}
 }
 
-static void *RxiSlabAlloc(RxSlab *allocator, int size) {
+static void *RxiSlabAlloc(RxSlab *allocator, unsigned int size) {
+	RX_ASSUME(size <= RX_SLAB_SIZE);
+
+	//if no slab is allocated, allocate one.
 	if (allocator->allocation == NULL) {
-		allocator->allocation = calloc(0x100000, 1);
-		allocator->nextEntryOffset = 0;
+		allocator->allocation = calloc(RX_SLAB_SIZE, 1);
+		allocator->pos = 0;
 	}
-	while (allocator->nextEntryOffset + size > 0x100000) {
+
+	//search for a slab with a suitable size.
+	while ((allocator->pos + size) > RX_SLAB_SIZE) {
 		if (allocator->next == NULL) {
 			RxSlab *next = calloc(1, sizeof(RxSlab));
-			next->allocation = calloc(0x100000, 1);
-			next->nextEntryOffset = 0;
+			next->allocation = calloc(RX_SLAB_SIZE, 1);
+			next->pos = 0;
 			allocator->next = next;
 		}
 		allocator = allocator->next;
 	}
-	void *res = (void *) (((uintptr_t) allocator->allocation) + allocator->nextEntryOffset);
-	allocator->nextEntryOffset += size;
+
+	void *res = (void *) (((uintptr_t) allocator->allocation) + allocator->pos);
+	allocator->pos += size;
 	return res;
+}
+
+static void RxiSlabFree(RxSlab *allocator) {
+	if (allocator->allocation != NULL) free(allocator->allocation);
+	allocator->allocation = NULL;
+
+	if (allocator->next != NULL) {
+		RxiSlabFree(allocator->next);
+		allocator->next = NULL;
+	}
 }
 
 void RxHistAddColor(RxHistogram *histogram, int y, int i, int q, int a, double weight) {
@@ -85,6 +115,7 @@ void RxHistAddColor(RxHistogram *histogram, int y, int i, int q, int a, double w
 		histogram->nEntries++;
 		return;
 	}
+
 	while (1) {
 		if (slot->color.y == y && slot->color.i == i && slot->color.q == q && slot->color.a == a) {
 			slot->weight += weight;
@@ -110,8 +141,8 @@ void RxHistAddColor(RxHistogram *histogram, int y, int i, int q, int a, double w
 }
 
 void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
-	double doubleR = (double) (rgb & 0xFF);
-	double doubleG = (double) ((rgb >> 8) & 0xFF);
+	double doubleR = (double) ((rgb >>  0) & 0xFF);
+	double doubleG = (double) ((rgb >>  8) & 0xFF);
 	double doubleB = (double) ((rgb >> 16) & 0xFF);
 
 	double y = 2.0 * (doubleR * 0.29900 + doubleG * 0.58700 + doubleB * 0.11400);
@@ -119,35 +150,30 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	double q = 2.0 * (doubleR * 0.21102 - doubleG * 0.52204 + doubleB * 0.31103);
 	double iCopy = i;
 
-	if(iCopy > 245.0) {
+	if (iCopy > 245.0) {
 		iCopy = 2 * (iCopy - 245.0) * 0.3333333 + 245.0;
 	}
 
-	if(q < -215.0) {
+	if (q < -215.0) {
 		q = 2 * (q + 215.0) * 0.3333333 - 215.0;
 	}
 
 	double iqDiff = q - iCopy;
-	if(iqDiff > 265.0){
+	if (iqDiff > 265.0) {
 		double iqDiffShifted = (iqDiff - 265.0) * 0.25;
 		iCopy += iqDiffShifted;
 		q -= iqDiffShifted;
 	}
 
-	double iqProd;
-	if(iCopy >= 0.0 || q <= 0.0) {
-		iqProd = y;
-	} else {
-		iqProd = -(q * iCopy) * 0.00195313 + y;
-	}
+	if (iCopy < 0.0 && q > 0.0) y -= (q * iCopy) * 0.00195313;
 
 	//round to integers
-	int yInt = (int) (iqProd + 0.5);
+	int yInt = (int) (y + 0.5);
 	int iInt = (int) (i + (i < 0.0 ? -0.5 : 0.5));
 	int qInt = (int) (q + (q < 0.0 ? -0.5 : 0.5));
 
 	//clamp variables to good ranges
-	yInt = min(max(yInt, 0), 511);
+	yInt = min(max(yInt,    0), 511);
 	iInt = min(max(iInt, -320), 319);
 	qInt = min(max(qInt, -270), 269);
 
@@ -161,28 +187,20 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 void RxConvertYiqToRgb(RxRgbColor *rgb, const RxYiqColor *yiq) {
 	double i = (double) yiq->i;
 	double q = (double) yiq->q;
-	double y;
-	if(i >= 0.0 || q <= 0.0) {
-		y = (double) yiq->y;
-	} else {
-		y = ((double) yiq->y) + (q * i) * 0.00195313;
-	}
-	if(y >= 0.0) {
-		if(y > 511.0) {
-			y = 511.0;
-		}
-	} else {
-		y = 0.0;
-	}
+	double y = (double) yiq->y;
+	if (i < 0.0 && q > 0.0) y += (q * i) * 0.00195313;
+
+	if (y < 0.0) y = 0.0;
+	else if (y > 511.0) y = 511.0;	
 
 	double iqDiff = q - i;
-	if(iqDiff > 265.0) {
+	if (iqDiff > 265.0) {
 		iqDiff = (iqDiff - 265.0) * 0.5;
 		i -= iqDiff;
 		q += iqDiff;
 	}
 
-	if(q < -215.0) {
+	if (q < -215.0) {
 		q = (q + 215.0) * 3.0 * 0.5 - 215.0;
 	}
 
@@ -221,18 +239,18 @@ void RxHistFinalize(RxReduction *reduction) {
 	}
 }
 
-void RxHistAdd(RxReduction *reduction, const COLOR32 *img, int width, int height) {
+void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, unsigned int height) {
 	if (reduction->histogram == NULL) {
 		reduction->histogram = (RxHistogram *) calloc(1, sizeof(RxHistogram));
 		reduction->histogram->firstSlot = 0x20000;
 	}
 
-	for (int y = 0; y < height; y++) {
+	for (unsigned int y = 0; y < height; y++) {
 		RxYiqColor yiqLeft;
 		RxConvertRgbToYiq(img[y * width], &yiqLeft);
 		int yLeft = yiqLeft.y;
 
-		for (int x = 0; x < width; x++) {
+		for (unsigned int x = 0; x < width; x++) {
 			RxYiqColor yiq;
 			RxConvertRgbToYiq(img[x + y * width], &yiq);
 
@@ -260,16 +278,12 @@ void RxiTreeFree(RxColorNode *colorBlock, int freeThis) {
 	}
 }
 
-static int RxiTreeCountLeaves(RxColorNode *tree) {
-	int count = 0;
+static int RxiTreeCountLeaves(const RxColorNode *tree) {
 	if (tree->left == NULL && tree->right == NULL) return 1; //doesn't necessarily have to be a leaf
 
-	if (tree->left != NULL) {
-		count = RxiTreeCountLeaves(tree->left);
-	}
-	if (tree->right != NULL) {
-		count += RxiTreeCountLeaves(tree->right);
-	}
+	int count = 0;
+	if (tree->left != NULL) count += RxiTreeCountLeaves(tree->left);
+	if (tree->right != NULL) count += RxiTreeCountLeaves(tree->right);
 	return count;
 }
 
@@ -302,19 +316,17 @@ static void RxiTreeSplitNodeAtPivot(RxColorNode *tree, int pivotIndex) {
 	tree->isLeaf = FALSE;
 }
 
-static RxColorNode *RxiTreeFindHighPriorityLeaf(RxColorNode *tree) {
+static RxColorNode *RxiTreeFindHighPriorityLeaf(const RxColorNode *tree) {
 	if (tree->left == NULL && tree->right == NULL) {
-		if (tree->isLeaf) return tree;
+		if (tree->isLeaf) return (RxColorNode *) tree;
 		return NULL;
 	}
+
 	RxColorNode *leafLeft = NULL, *leafRight = NULL;
-	if (tree->left != NULL) {
-		leafLeft = RxiTreeFindHighPriorityLeaf(tree->left);
-	}
-	if (tree->right != NULL) {
-		leafRight = RxiTreeFindHighPriorityLeaf(tree->right);
-	}
+	if (tree->left != NULL) leafLeft = RxiTreeFindHighPriorityLeaf(tree->left);
+	if (tree->right != NULL) leafRight = RxiTreeFindHighPriorityLeaf(tree->right);
 	
+	//in the cases of one or no found nodes
 	if (leafLeft != NULL && leafRight == NULL) return leafLeft;
 	if (leafRight != NULL && leafLeft == NULL) return leafRight;
 	if (leafLeft == NULL && leafRight == NULL) return NULL;
@@ -324,11 +336,12 @@ static RxColorNode *RxiTreeFindHighPriorityLeaf(RxColorNode *tree) {
 
 }
 
-static double RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int endIndex, double *axis) {
+static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int endIndex, double *axis) {
 	double mtx[4][4] = { 0 };
 	double averageY = 0.0, averageI = 0.0, averageQ = 0.0, averageA = 0.0;
 	double sumWeight = 0.0;
 
+	//compute the covariance matrix for the input range of colors.
 	for (int i = startIndex; i < endIndex; i++) {
 		RxHistEntry *entry = reduction->histogramFlat[i];
 
@@ -377,90 +390,115 @@ static double RxiHistComputePrincipal(RxReduction *reduction, int startIndex, in
 	mtx[3][2] = mtx[2][3];
 	mtx[3][3] = mtx[3][3] / sumWeight - averageA * averageA;
 
-	double eigen[4][4];
-	double diag[4];
-	double vec[4];
-	for (int i = 1; i <= 4; i++) {
-		//setup identity matrix in local_88
-		eigen[i - 1][i - 1] = 1.0;
-		if (i < 4) {
-			for (int j = 0; j < 4 - i; j++) {
-				eigen[i - 1][i + j] = 0.0;
-				eigen[i + j][i - 1] = 0.0;
+	//fill identity
+	double E[4][4] = { 0 };
+	for (int i = 0; i < 4; i++) E[i][i] = 1.0;
+
+	double z[4] = { 0 };
+	double e[4] = { 0 };
+	double b[4] = { 0 };
+	for (int i = 0; i < 4; i++) {
+		e[i] = mtx[i][i];
+		b[i] = e[i];
+	}
+	
+	for (int iter = 0; iter < 1000; iter++) {
+		//sum above upper diagonal
+		double sum = 0.0;
+		for (int k = 0; k < 3; k++) {
+			for (int l = k + 1; l < 4; l++) {
+				sum += fabs(mtx[k][l]);
 			}
 		}
+		if (sum == 0.0) break;
 
-		//set up diag with the diagonal
-		diag[i - 1] = mtx[i - 1][i - 1];
+		double th = 0.0;
+		if (iter < 4) th = 0.0125 * sum;
 
-		//setup vec
-		vec[i - 1] = mtx[i % 4][(i + 1) % 4];
-	}
+		for (int k = 0; k < 3; k++) {
+			for (int l = k + 1; l < 4; l++) {
+				double g = 100.0 * fabs(mtx[k][l]);
+				if (iter > 4 && (fabs(e[k]) + g) == fabs(e[k]) && (fabs(e[l]) + g) == fabs(e[l])) {
+					mtx[k][l] = 0.0;
+					continue;
+				}
 
-	for (int i = 0; i < 1000; i++) {
-		if (vec[0] == 0.0 && vec[1] == 0.0 && vec[2] == 0.0 && vec[3] == 0.0) break;
+				//"small" values
+				if (fabs(mtx[k][l]) <= th) continue;
 
-		for (int col0 = 3; col0 >= 0; col0--) {
-			int col1 = (col0 + 1) % 4;
-			int col2 = (col1 + 1) % 4;
-			double absVecComp0 = fabs(vec[col0]);
-			if (absVecComp0 > 0.0) {
-				double diff = diag[col2] - diag[col1];
-				if (absVecComp0 * 100.0 + fabs(diff) == fabs(diff)) { //?
-					diff = vec[col0] / diff;
+				double d, f, h = e[l] - e[k];
+				if ((fabs(h) + g) == fabs(h)) {
+					d = mtx[k][l] / h;
+					f = d * mtx[k][l];
 				} else {
-					absVecComp0 = (diff * 0.5) / vec[col0];
-					diff = 1.0 / (fabs(absVecComp0) + sqrt(absVecComp0 * absVecComp0 + 1.0));
+					double y = 0.5 * h / mtx[k][l];
+					d = 1.0 / (fabs(y) + sqrt(1.0 + y * y));
+					if (y < 0) d = -d;
+					f = d * mtx[k][l];
 				}
 
-				double vecComp0 = vec[col0];
-				double vecComp1 = vec[col1];
-				double vecComp2 = vec[col2];
+				double c2 = 1.0 / sqrt(1.0 + d * d);
+				double s = d * c2;
+				double c = 1.0 - s * s / (1.0 + c2);
+				z[k] -= f;
+				z[l] += f;
+				e[k] -= f;
+				e[l] += f;
+				mtx[k][l] = 0.0;
 
-				diag[col1] -= diff * vecComp0;
-				diag[col2] += diff * vecComp0;
-
-				double recip = 1.0 / sqrt(diff * diff + 1.0);
-				double f2 = recip * diff;
-				double f1 = 1.0 - f2 * f2 / (recip + 1.0);
-				vec[col2] = vecComp2 * f1 - vecComp1 * f2;
-				vec[col1] = vecComp1 * f1 + vecComp2 * f2;
-				vec[col0] = 0.0;
-
-				for(int k = 0; k < 4; k++){
-					double val1 = eigen[3 - k][col1];
-					double val2 = eigen[3 - k][col2];
-					eigen[3 - k][col1] = val1 * f1 - val2 * f2;
-					eigen[3 - k][col2] = val2 * f1 + val1 * f2;
+				//rotations
+				for (int i = 0; i < k; i++) {
+					double Sik = mtx[i][k], Sil = mtx[i][l];
+					mtx[i][k] = c * Sik - s * Sil;
+					mtx[i][l] = s * Sik + c * Sil;
+				}
+				for (int i = k + 1; i < l; i++) {
+					double Ski = mtx[k][i], Sil = mtx[i][l];
+					mtx[k][i] = c * Ski - s * Sil;
+					mtx[i][l] = s * Ski + c * Sil;
+				}
+				for (int i = l + 1; i < 4; i++) {
+					double Ski = mtx[k][i], Sli = mtx[l][i];
+					mtx[k][i] = c * Ski - s * Sli;
+					mtx[l][i] = s * Ski + c * Sli;
 				}
 
+				for (int i = 0; i < 4; i++) {
+					double Eik = E[i][k], Eil = E[i][l];
+					E[i][k] = c * Eik - s * Eil;
+					E[i][l] = s * Eik + c * Eil;
+				}
 			}
+		}
+		for (int k = 0; k < 4; k++) {
+			b[k] += z[k];
+			z[k] = 0;
+			e[k] = b[k];
 		}
 	}
 
-	if (diag[0] < 0.0) diag[0] = -diag[0];
-	if (diag[1] < 0.0) diag[1] = -diag[1];
-	if (diag[2] < 0.0) diag[2] = -diag[2];
-	if (diag[3] < 0.0) diag[3] = -diag[3];
+	//e now holds the eigenvalues. Negate negative one to compare magnitudes.
+	if (e[0] < 0.0) e[0] = -e[0];
+	if (e[1] < 0.0) e[1] = -e[1];
+	if (e[2] < 0.0) e[2] = -e[2];
+	if (e[3] < 0.0) e[3] = -e[3];
 
-	int col1 = (diag[1] > diag[0]);
-	if (diag[2] > diag[col1]) {
-		col1 = 2;
-	}
-	if (diag[3] > diag[col1]) {
-		col1 = 3;
-	}
+	//select the eigenvector with the greatest absolute eigenvalue.
+	int eigenNo = 0;
+	if (e[1] > e[eigenNo]) eigenNo = 1;
+	if (e[2] > e[eigenNo]) eigenNo = 2;
+	if (e[3] > e[eigenNo]) eigenNo = 3;
 
-	axis[0] = eigen[0][col1];
-	axis[1] = eigen[1][col1];
-	axis[2] = eigen[2][col1];
-	axis[3] = eigen[3][col1];
-	return 1e30;
+	axis[0] = E[0][eigenNo];
+	axis[1] = E[1][eigenNo];
+	axis[2] = E[2][eigenNo];
+	axis[3] = E[3][eigenNo];
 }
 
 static int RxiHistEntryComparator(const void *p1, const void *p2) {
-	RxHistEntry *e1 = *(RxHistEntry **) p1;
-	RxHistEntry *e2 = *(RxHistEntry **) p2;
+	const RxHistEntry *e1 = *(const RxHistEntry **) p1;
+	const RxHistEntry *e2 = *(const RxHistEntry **) p2;
+
 	double d = e1->value - e2->value;
 	if (d < 0.0) return -1;
 	if (d > 0.0) return 1;
@@ -474,7 +512,7 @@ static double __inline RxiVec3Mag(double x, double y, double z) {
 void RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
 	double principal[4];
 	int nColors = endIndex - startIndex;
-	RxHistEntry **thisHistogram = reduction->histogramFlat + startIndex;
+	RxHistEntry **thisHistogram = &reduction->histogramFlat[startIndex];
 	RxiHistComputePrincipal(reduction, startIndex, endIndex, principal);
 
 	//check principal component, make sure principal[0] >= 0
@@ -514,8 +552,8 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 		return;
 	}
 
-	double greatestValue = -1e30;
-	double leastValue = 1e30;
+	double greatestValue = -RX_LARGE_NUMBER;
+	double leastValue = RX_LARGE_NUMBER;
 
 	double principal[4];
 	RxiHistComputePrincipal(reduction, colorBlock->startIndex, colorBlock->endIndex, principal);
@@ -609,14 +647,13 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 
 	//determine pivot index
 	int pivotIndex = 0;
-	double leastVariance = 1e30;
+	double leastVariance = RX_LARGE_NUMBER;
 	for (int i = 0; i < nColors; i++) {
 		COLOR_INFO *entry = colorInfo + i;
 		if (entry->weight > 0.0) {
 			double weightAfter = totalWeight - entry->partialSumWeights;
-			if (weightAfter <= 0.0) {
-				weightAfter = 0.0001;
-			}
+			if (weightAfter <= 0.0) weightAfter = 0.0001;
+
 			double averageLeftSquared = RxiVec3Mag(entry->y, entry->i, entry->q) / entry->partialSumWeights;
 			double averageRightSquared = RxiVec3Mag(totalY - entry->y, totalI - entry->i, totalQ - entry->q) / weightAfter;
 			double varianceTotal = sumWeightedSquares - averageLeftSquared - averageRightSquared;
@@ -639,7 +676,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 	free(colorInfo);
 }
 
-static double RxiTreeAddNodePriorities(RxColorNode *n1, RxColorNode *n2, RxReduction *reduction) {
+static double RxiTreeAddNodePriorities(RxReduction *reduction, const RxColorNode *n1, const RxColorNode *n2) {
 	double p1 = n1->priority, p2 = n2->priority;
 	double adjustedWeight = 1.0;
 	if (!reduction->enhanceColors) {
@@ -650,7 +687,7 @@ static double RxiTreeAddNodePriorities(RxColorNode *n1, RxColorNode *n2, RxReduc
 	return (p1 + p2) / adjustedWeight;
 }
 
-static RxColorNode *RxiTreeFindNodeByColor(RxColorNode *treeHead, RxColorNode *src, int maskColors) {
+static RxColorNode *RxiTreeFindNodeByColor(const RxColorNode *treeHead, const RxColorNode *src, int maskColors) {
 	if (treeHead == NULL || treeHead == src) return NULL;
 
 	if (treeHead->left != NULL || treeHead->right != NULL) {
@@ -671,12 +708,12 @@ static RxColorNode *RxiTreeFindNodeByColor(RxColorNode *treeHead, RxColorNode *s
 	COLOR32 thisRgb = rgb.r | (rgb.g << 8) | (rgb.b << 16);
 	if (maskColors) thisRgb = ColorRoundToDS15(thisRgb);
 
-	return (compare == thisRgb) ? treeHead : NULL;
+	return (compare == thisRgb) ? (RxColorNode *) treeHead : NULL;
 }
 
-static RxColorNode *RxiTreeFindNodeByChild(RxColorNode *treeHead, RxColorNode *child) {
+static RxColorNode *RxiTreeFindNodeByChild(const RxColorNode *treeHead, const RxColorNode *child) {
 	if (treeHead == NULL) return NULL;
-	if (treeHead->left == child || treeHead->right == child) return treeHead;
+	if (treeHead->left == child || treeHead->right == child) return (RxColorNode *) treeHead;
 
 	RxColorNode *foundLeft = RxiTreeFindNodeByChild(treeHead->left, child);
 	if (foundLeft != NULL) return foundLeft;
@@ -684,9 +721,9 @@ static RxColorNode *RxiTreeFindNodeByChild(RxColorNode *treeHead, RxColorNode *c
 	return RxiTreeFindNodeByChild(treeHead->right, child);
 }
 
-static RxColorNode *RxiTreeFindNodeByIndex(RxColorNode *treeHead, int index) {
+static RxColorNode *RxiTreeFindNodeByIndex(const RxColorNode *treeHead, int index) {
 	if (treeHead == NULL) return NULL;
-	if (treeHead->left == NULL && treeHead->right == NULL) return treeHead;
+	if (treeHead->left == NULL && treeHead->right == NULL) return (RxColorNode *) treeHead;
 	if (treeHead->left == NULL) return RxiTreeFindNodeByIndex(treeHead->right, index);
 	if (treeHead->right == NULL) return RxiTreeFindNodeByIndex(treeHead->left, index);
 
@@ -707,18 +744,16 @@ static void RxiTreeCleanEmptyNode(RxColorNode *treeHead, RxColorNode *node) {
 	RxiTreeFree(node, TRUE);
 }
 
-static RxColorNode **RxiAddTreeToList(RxColorNode *colorBlock, RxColorNode **colorBlockList) {
-	if (colorBlock->left == NULL && colorBlock->right == NULL) {
-		*colorBlockList = colorBlock;
-		return colorBlockList + 1;
+static RxColorNode **RxiAddTreeToList(const RxColorNode *node, RxColorNode **list) {
+	if (node->left == NULL && node->right == NULL) {
+		//leaf node
+		*(list++) = (RxColorNode *) node;
+		return list;
 	}
-	if (colorBlock->left != NULL) {
-		colorBlockList = RxiAddTreeToList(colorBlock->left, colorBlockList);
-	}
-	if (colorBlock->right != NULL) {
-		colorBlockList = RxiAddTreeToList(colorBlock->right, colorBlockList);
-	}
-	return colorBlockList;
+
+	if (node->left != NULL) list = RxiAddTreeToList(node->left, list);
+	if (node->right != NULL) list = RxiAddTreeToList(node->right, list);
+	return list;
 }
 
 static void RxiPaletteWrite(RxReduction *reduction) {
@@ -737,8 +772,8 @@ static void RxiPaletteWrite(RxReduction *reduction) {
 			if (reduction->maskColors) rgb32 = ColorRoundToDS15(rgb32);
 
 			//write RGB
-			reduction->paletteRgb[ofs][0] = rgb32 & 0xFF;
-			reduction->paletteRgb[ofs][1] = (rgb32 >> 8) & 0xFF;
+			reduction->paletteRgb[ofs][0] = (rgb32 >>  0) & 0xFF;
+			reduction->paletteRgb[ofs][1] = (rgb32 >>  8) & 0xFF;
 			reduction->paletteRgb[ofs][2] = (rgb32 >> 16) & 0xFF;
 
 			//write YIQ (with any loss of information to RGB)
@@ -770,7 +805,7 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 	double qw2 = reduction->qWeight * reduction->qWeight;
 
 	//keep track of error. Used to abort if we mess up the palette
-	double error = 0.0, lastError = 1e32;
+	double error = 0.0, lastError = RX_LARGE_NUMBER;
 
 	//copy main palette to palette copy
 	memcpy(reduction->paletteYiqCopy, reduction->paletteYiq, sizeof(reduction->paletteYiq));
@@ -789,13 +824,13 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 			double weight = entry->weight;
 			int hy = entry->color.y, hi = entry->color.i, hq = entry->color.q, ha = entry->color.a;
 
-			double bestDistance = 1e30;
+			double bestDistance = RX_LARGE_NUMBER;
 			int bestIndex = 0;
 			for (int j = 0; j < reduction->nUsedColors; j++) {
 				RxYiqColor *pyiq = &reduction->paletteYiqCopy[j];
 
-				//double dy = reduction->lumaTable[hy] - reduction->lumaTable[pyiq->y];
-				double dy = hy - pyiq->y;
+				double dy = reduction->lumaTable[hy] - reduction->lumaTable[pyiq->y];
+				//double dy = hy - pyiq->y;
 				double di = hi - pyiq->i;
 				double dq = hq - pyiq->q;
 				double diff = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
@@ -855,8 +890,8 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 				
 				//set this node's center to the point
 				RxConvertRgbToYiq(as32, &reduction->paletteYiqCopy[i]);
-				reduction->paletteRgbCopy[i][0] = (as32 >> 0) & 0xFF;
-				reduction->paletteRgbCopy[i][1] = (as32 >> 8) & 0xFF;
+				reduction->paletteRgbCopy[i][0] = (as32 >>  0) & 0xFF;
+				reduction->paletteRgbCopy[i][1] = (as32 >>  8) & 0xFF;
 				reduction->paletteRgbCopy[i][2] = (as32 >> 16) & 0xFF;
 				
 				//now that we've changed the palette copy, we need to recompute boundaries.
@@ -920,8 +955,8 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 			COLOR32 as32 = rgb.r | (rgb.g << 8) | (rgb.b << 16);
 			if (reduction->maskColors) as32 = ColorRoundToDS15(as32);
 
-			reduction->paletteRgbCopy[i][0] = as32 & 0xFF;
-			reduction->paletteRgbCopy[i][1] = (as32 >> 8) & 0xFF;
+			reduction->paletteRgbCopy[i][0] = (as32 >>  0) & 0xFF;
+			reduction->paletteRgbCopy[i][1] = (as32 >>  8) & 0xFF;
 			reduction->paletteRgbCopy[i][2] = (as32 >> 16) & 0xFF;
 			RxConvertRgbToYiq(as32, &reduction->paletteYiqCopy[i]);
 		}
@@ -937,7 +972,7 @@ finalize:
 		RxYiqColor *histColor = &reduction->histogramFlat[i]->color;
 
 		//find nearest
-		double bestDistance = 1e30;
+		double bestDistance = RX_LARGE_NUMBER;
 		int bestIndex = 0;
 		for (int j = 0; j < reduction->nUsedColors; j++) {
 			RxYiqColor *pyiq = &reduction->paletteYiq[j];
@@ -993,18 +1028,7 @@ void RxComputePalette(RxReduction *reduction) {
 	}
 	RxiTreeNodeInit(reduction, treeHead);
 
-	int numberOfTreeElements = 0;
-	if (treeHead->left == NULL && treeHead->right == NULL) {
-		numberOfTreeElements = 1;
-	} else {
-		if (treeHead->left != NULL) {
-			numberOfTreeElements = RxiTreeCountLeaves(treeHead->left);
-		}
-		if (treeHead->right != NULL) {
-			numberOfTreeElements = RxiTreeCountLeaves(treeHead->right);
-		}
-	}
-
+	int numberOfTreeElements = 1;
 	reduction->nUsedColors = 1;
 	if (numberOfTreeElements < reduction->nPaletteColors) {
 		RxColorNode *colorBlock;
@@ -1118,7 +1142,7 @@ void RxComputePalette(RxReduction *reduction) {
 					RxColorNode *dup = RxiTreeFindNodeByColor(treeHead, node, reduction->maskColors);
 					if (dup != NULL) {
 						double p1 = node->priority, p2 = dup->priority;
-						double total = RxiTreeAddNodePriorities(node, dup, reduction);
+						double total = RxiTreeAddNodePriorities(reduction, node, dup);
 						RxColorNode *toDelete = dup, *toKeep = node, *parent = NULL;
 
 						//find which node should keep, which to remove using priority
@@ -1140,7 +1164,7 @@ void RxComputePalette(RxReduction *reduction) {
 					}
 				}
 
-				if(!prunedNode) break;
+				if (!prunedNode) break;
 			}
 		}
 	}
@@ -1148,9 +1172,9 @@ void RxComputePalette(RxReduction *reduction) {
 	reduction->nUsedColors = numberOfTreeElements;
 
 	//flatten
-	RxColorNode **colorBlockPtr = reduction->colorBlocks;
-	memset(colorBlockPtr, 0, sizeof(reduction->colorBlocks));
-	RxiAddTreeToList(reduction->colorTreeHead, colorBlockPtr);
+	RxColorNode **nodep = reduction->colorBlocks;
+	memset(nodep, 0, sizeof(reduction->colorBlocks));
+	RxiAddTreeToList(reduction->colorTreeHead, nodep);
 
 	//to array
 	RxiPaletteWrite(reduction);
@@ -1159,22 +1183,13 @@ void RxComputePalette(RxReduction *reduction) {
 	RxiPaletteRecluster(reduction);
 }
 
-static void RxiSlabFree(RxSlab *allocator) {
-	if (allocator->allocation != NULL) free(allocator->allocation);
-	allocator->allocation = NULL;
-	if (allocator->next != NULL) {
-		RxiSlabFree(allocator->next);
-		allocator->next = NULL;
-	}
-}
-
 void RxDestroy(RxReduction *reduction) {
-	if(reduction->histogramFlat != NULL) free(reduction->histogramFlat);
+	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 	if (reduction->histogram != NULL) {
 		RxiSlabFree(&reduction->histogram->allocator);
 		free(reduction->histogram);
 	}
-	if(reduction->colorTreeHead != NULL) RxiTreeFree(reduction->colorTreeHead, FALSE);
+	if (reduction->colorTreeHead != NULL) RxiTreeFree(reduction->colorTreeHead, FALSE);
 	free(reduction->colorTreeHead);
 }
 
@@ -1193,9 +1208,7 @@ void RxHistClear(RxReduction *reduction) {
 	memset(reduction->paletteRgb, 0, sizeof(reduction->paletteRgb));
 }
 
-extern int RxColorLightnessComparator(const void *d1, const void *d2);
-
-int RxCreatePalette(const COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors) {
+int RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors) {
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
 	RxInit(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, 15, FALSE, nColors);
 	RxHistAdd(reduction, img, width, height);
@@ -1234,14 +1247,14 @@ static void RxiTileCopy(RxiTile *dest, const COLOR32 *pxOrigin, int width) {
 	}
 }
 
-static int RxiPaletteFindClosestRgbColorYiqPaletteSimple(RxReduction *reduction, const RxYiqColor *palette, int nColors, COLOR32 col, double *outDiff) {
+static int RxiPaletteFindClosestRgbColorYiqPaletteSimple(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, COLOR32 col, double *outDiff) {
 	RxYiqColor yiq;
 	RxConvertRgbToYiq(col, &yiq);
 
-	double leastDiff = 1e32;
+	double leastDiff = RX_LARGE_NUMBER;
 	int leastIndex = 0;
-	for (int i = 0; i < nColors; i++) {
-		const RxYiqColor *yiq2 = palette + i;
+	for (unsigned int i = 0; i < nColors; i++) {
+		const RxYiqColor *yiq2 = &palette[i];
 
 		double diff = RxiComputeColorDifference(reduction, &yiq, yiq2);
 		if (diff < leastDiff) {
@@ -1253,7 +1266,7 @@ static int RxiPaletteFindClosestRgbColorYiqPaletteSimple(RxReduction *reduction,
 	return leastIndex;
 }
 
-double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, int nColors, double maxError) {
+double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, double maxError) {
 	double error = 0.0;
 
 	//sum total weighted squared differences
@@ -1275,7 +1288,7 @@ double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *pa
 	return error;
 }
 
-double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, int nColors, double maxError) {
+double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, unsigned int nColors, double maxError) {
 	RxYiqColor yiqPaletteStack[16];
 	RxYiqColor *yiqPalette = yiqPaletteStack;
 	if (nColors > 16) {
@@ -1283,7 +1296,7 @@ double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette,
 	}
 
 	//convert palette colors
-	for (int i = 0; i < nColors; i++) {
+	for (unsigned int i = 0; i < nColors; i++) {
 		RxConvertRgbToYiq(palette[i], yiqPalette + i);
 	}
 
@@ -1293,11 +1306,11 @@ double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette,
 	return error;
 }
 
-static int RxiPaletteFindClosestColorYiqSimple(RxReduction *reduction, const RxYiqColor *palette, int nColors, const RxYiqColor *col, double *outDiff) {
-	double leastDiff = 1e32;
+static int RxiPaletteFindClosestColorYiqSimple(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff) {
+	double leastDiff = RX_LARGE_NUMBER;
 	int leastIndex = 0;
-	for (int i = 0; i < nColors; i++) {
-		const RxYiqColor *yiq2 = palette + i;
+	for (unsigned int i = 0; i < nColors; i++) {
+		const RxYiqColor *yiq2 = &palette[i];
 
 		double diff = RxiComputeColorDifference(reduction, col, yiq2);
 		if (diff < leastDiff) {
@@ -1309,7 +1322,7 @@ static int RxiPaletteFindClosestColorYiqSimple(RxReduction *reduction, const RxY
 	return leastIndex;
 }
 
-static double RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *tile1, RxiTile *tile2) {
+static double RxiTileComputePaletteDifference(RxReduction *reduction, const RxiTile *tile1, const RxiTile *tile2) {
 	//if either palette has 0 colors, return 0 (perfect fit)
 	if (tile1->nUsedColors == 0 || tile2->nUsedColors == 0) return 0;
 
@@ -1319,7 +1332,7 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *t
 	//map each color from tile2 to one of tile1
 	double totalDiff = 0.0;
 	for (int i = 0; i < tile2->nUsedColors; i++) {
-		RxYiqColor *yiq = &tile2->palette[i];
+		const RxYiqColor *yiq = &tile2->palette[i];
 		double diff = 0.0;
 		RxiPaletteFindClosestColorYiqSimple(reduction, &tile1->palette[0], tile1->nUsedColors, yiq, &diff);
 
@@ -1347,17 +1360,18 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, RxiTile *t
 	return totalDiff;
 }
 
-static double RxiTileFindSimilarTiles(RxiTile *tiles, double *similarities, int nTiles, int *i1, int *i2) {
+static double RxiTileFindSimilarTiles(const RxiTile *tiles, const double *similarities, unsigned int nTiles, int *i1, int *i2) {
 	//find a pair of tiles. Both must be representative tiles.
 
-	double leastDiff = 1e32;
+	double leastDiff = RX_LARGE_NUMBER;
 	int best1 = 0, best2 = 1;
-	for (int i = 0; i < nTiles; i++) {
-		RxiTile *tile1 = tiles + i;
+
+	for (unsigned int i = 0; i < nTiles; i++) {
+		const RxiTile *tile1 = &tiles[i];
 		if (tile1->palIndex != i) continue;
 
-		for (int j = 0; j < nTiles; j++) {
-			RxiTile *tile2 = tiles + j;
+		for (unsigned int j = 0; j < nTiles; j++) {
+			const RxiTile *tile2 = &tiles[j];
 
 			if (tile2->palIndex != j) continue;
 			if (i == j) continue;
@@ -1378,21 +1392,44 @@ done:
 	return leastDiff;
 }
 
-void RxCreateMultiplePalettes(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
+void RxCreateMultiplePalettes(const COLOR32 *px, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
 							int paletteSize, int nColsPerPalette, int paletteOffset, int *progress) {
-	RxCreateMultiplePalettesEx(imgBits, tilesX, tilesY, dest, paletteBase, nPalettes, paletteSize, nColsPerPalette, 
+	RxCreateMultiplePalettesEx(px, tilesX, tilesY, dest, paletteBase, nPalettes, paletteSize, nColsPerPalette, 
 							 paletteOffset, BALANCE_DEFAULT, BALANCE_DEFAULT, 0, progress);
 }
 
-void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
+void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
 							  int paletteSize, int nColsPerPalette, int paletteOffset, int balance, 
 							  int colorBalance, int enhanceColors, int *progress) {
 	if (nPalettes == 0) return;
+
+	//in the case of one palette, call to the faster single-palette routines.
 	if (nPalettes == 1) {
-		if (paletteOffset) {
-			RxCreatePaletteEx(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset, nColsPerPalette, balance, colorBalance, enhanceColors, 0);
+		if (paletteOffset > 0) {
+			RxCreatePaletteEx(
+				imgBits,
+				tilesX * 8,
+				tilesY * 8,
+				dest + (paletteBase * paletteSize) + paletteOffset,
+				nColsPerPalette,
+				balance,
+				colorBalance,
+				enhanceColors,
+				0
+			);
 		} else {
-			RxCreatePaletteEx(imgBits, tilesX * 8, tilesY * 8, dest + (paletteBase * paletteSize) + paletteOffset + 1, nColsPerPalette - 1, balance, colorBalance, enhanceColors, 0);
+			//reserve the first color entry
+			RxCreatePaletteEx(
+				imgBits,
+				tilesX * 8,
+				tilesY * 8,
+				dest + (paletteBase * paletteSize) + paletteOffset + 1,
+				nColsPerPalette - 1,
+				balance,
+				colorBalance,
+				enhanceColors,
+				0
+			);
 			dest[(paletteBase * paletteSize) + paletteOffset] = 0xFF00FF; //transparent fill
 		}
 		return;
@@ -1413,15 +1450,17 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 	//	3 - palette merging
 
 	//------------STAGE 1
-	int nTiles = tilesX * tilesY;
+
+	unsigned int nTiles = tilesX * tilesY;
 	RxiTile *tiles = (RxiTile *) calloc(nTiles, sizeof(RxiTile));
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
 	RxInit(reduction, balance, colorBalance, 15, enhanceColors, nColsPerPalette);
 	reduction->maskColors = FALSE;
-	for (int y = 0; y < tilesY; y++) {
-		for (int x = 0; x < tilesX; x++) {
-			RxiTile *tile = tiles + x + (y * tilesX);
-			COLOR32 *pxOrigin = imgBits + x * 8 + (y * 8 * tilesX * 8);
+
+	for (unsigned int y = 0; y < tilesY; y++) {
+		for (unsigned int x = 0; x < tilesX; x++) {
+			RxiTile *tile = &tiles[x + (y * tilesX)];
+			const COLOR32 *pxOrigin = imgBits + x * 8 + (y * 8 * tilesX * 8);
 			RxiTileCopy(tile, pxOrigin, tilesX * 8);
 
 			//RxCreatePalette(tile->rgb, 8, 8, palBuf + 1, 15);
@@ -1450,14 +1489,15 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 
 	//-------------STAGE 2
 	double *diffBuff = (double *) calloc(nTiles * nTiles, sizeof(double));
-	for (int i = 0; i < nTiles; i++) {
-		RxiTile *tile1 = tiles + i;
-		for (int j = 0; j < nTiles; j++) {
-			RxiTile *tile2 = tiles + j;
+	for (unsigned int i = 0; i < nTiles; i++) {
+		RxiTile *tile1 = &tiles[i];
+		for (unsigned int j = 0; j < nTiles; j++) {
+			RxiTile *tile2 = &tiles[j];
 
 			//write difference
-			if (i == j) diffBuff[i + j * nTiles] = 0;
-			else {
+			if (i == j) {
+				diffBuff[i + j * nTiles] = 0.0;
+			} else {
 				diffBuff[i + j * nTiles] = RxiTileComputePaletteDifference(reduction, tile1, tile2);
 			}
 		}
@@ -1473,7 +1513,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 
 		//find all  instances of index2, replace with index1
 		int nSwitched = 0;
-		for (int i = 0; i < nTiles; i++) {
+		for (unsigned int i = 0; i < nTiles; i++) {
 			if (tiles[i].palIndex == index2) {
 				tiles[i].palIndex = index1;
 				nSwitched++;
@@ -1482,7 +1522,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 
 		//build new palette
 		RxHistClear(reduction);
-		for (int i = 0; i < nTiles; i++) {
+		for (unsigned int i = 0; i < nTiles; i++) {
 			if (tiles[i].palIndex == index1) {
 				RxHistAdd(reduction, tiles[i].rgb, 8, 8);
 			}
@@ -1491,7 +1531,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 		RxComputePalette(reduction);
 
 		//write over the palette of the tile
-		RxiTile *palTile = tiles + index1;
+		RxiTile *palTile = &tiles[index1];
 		for (int i = 0; i < RX_TILE_PALETTE_MAX - 1; i++) {
 			RxYiqColor *yiqDest = &palTile->palette[i];
 			uint8_t *srcRgb = &reduction->paletteRgb[i][0];
@@ -1502,9 +1542,9 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 		palTile->nSwallowed += nSwitched;
 
 		//get new use count
-		RxiTile *rep = tiles + index1;
+		RxiTile *rep = &tiles[index1];
 		memset(rep->useCounts, 0, sizeof(rep->useCounts));
-		for (int i = 0; i < nTiles; i++) {
+		for (unsigned int i = 0; i < nTiles; i++) {
 			RxiTile *tile = tiles + i;
 			if (tile->palIndex != index1) continue;
 
@@ -1518,9 +1558,10 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 		}
 
 		//recompute differences for index1 and representative tiles
-		for (int i = 0; i < nTiles; i++) {
-			RxiTile *t = tiles + i;
+		for (unsigned int i = 0; i < nTiles; i++) {
+			RxiTile *t = &tiles[i];
 			if (t->palIndex != i) continue;
+
 			double diff1 = RxiTileComputePaletteDifference(reduction, t, rep);
 			double diff2 = RxiTileComputePaletteDifference(reduction, rep, t);
 			diffBuff[i + index1 * nTiles] = diff1;
@@ -1538,13 +1579,13 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 	int paletteIndices[RX_TILE_PALETTE_COUNT_MAX] = { 0 };
 
 	reduction->maskColors = TRUE;
-	for (int i = 0; i < nTiles; i++) {
-		RxiTile *t = tiles + i;
+	for (unsigned int i = 0; i < nTiles; i++) {
+		RxiTile *t = &tiles[i];
 		if (t->palIndex != i) continue;
 
 		//rebuild palette but with masking enabled
 		RxHistClear(reduction);
-		for (int j = 0; j < nTiles; j++) {
+		for (unsigned int j = 0; j < nTiles; j++) {
 			if (tiles[j].palIndex == t->palIndex) {
 				RxHistAdd(reduction, tiles[j].rgb, 8, 8);
 			}
@@ -1574,11 +1615,11 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 		}
 
 		//find best palette for each tile again
-		for (int i = 0; i < nTiles; i++) {
+		for (unsigned int i = 0; i < nTiles; i++) {
 			RxiTile *t = tiles + i;
 			COLOR32 *px = t->rgb;
 			int best = 0;
-			double bestError = 1e32;
+			double bestError = RX_LARGE_NUMBER;
 
 			//compute histogram for the tile
 			RxHistClear(reduction);
@@ -1600,7 +1641,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 		//in a way pretty similar to before
 		for (int i = 0; i < nPalettes; i++) {
 			RxHistClear(reduction);
-			for (int j = 0; j < nTiles; j++) {
+			for (unsigned int j = 0; j < nTiles; j++) {
 				if (bestPalettes[j] != i) continue;
 				RxHistAdd(reduction, tiles[j].rgb, 8, 8);
 			}
@@ -1624,7 +1665,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 
 			//palette does need to be created again
 			RxHistClear(reduction);
-			for (int j = 0; j < nTiles; j++) {
+			for (unsigned int j = 0; j < nTiles; j++) {
 				if (bestPalettes[j] != i) continue;
 				RxHistAdd(reduction, tiles[j].rgb, 8, 8);
 			}
@@ -1655,7 +1696,7 @@ void RxCreateMultiplePalettesEx(COLOR32 *imgBits, int tilesX, int tilesY, COLOR3
 	free(diffBuff);
 }
 
-int RxCreatePaletteEx(COLOR32 *img, int width, int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, int sortOnlyUsed) {
+int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, int sortOnlyUsed) {
 	RxReduction *reduction = (RxReduction *) calloc(sizeof(RxReduction), 1);
 
 	RxInit(reduction, balance, colorBalance, 15, enhanceColors, nColors);
@@ -1701,14 +1742,14 @@ static int RxiDiffuseCurveQ(int x) {
 	return (int) (8.5f + pow(x - 8, 0.85) * 0.89453125);
 }
 
-int RxPaletteFindCloestColorYiq(RxReduction *reduction, const RxYiqColor *color, const RxYiqColor *palette, int nColors) {
+int RxPaletteFindCloestColorYiq(RxReduction *reduction, const RxYiqColor *color, const RxYiqColor *palette, unsigned int nColors) {
 	double yw2 = reduction->yWeight * reduction->yWeight;
 	double iw2 = reduction->iWeight * reduction->iWeight;
 	double qw2 = reduction->qWeight * reduction->qWeight;
 
-	double minDistance = 1e32;
+	double minDistance = RX_LARGE_NUMBER;
 	int minIndex = 0;
-	for (int i = 0; i < nColors; i++) {
+	for (unsigned int i = 0; i < nColors; i++) {
 		const RxYiqColor *yiq = palette + i;
 
 		double dy = reduction->lumaTable[yiq->y] - reduction->lumaTable[color->y];
@@ -1725,18 +1766,18 @@ int RxPaletteFindCloestColorYiq(RxReduction *reduction, const RxYiqColor *color,
 	return minIndex;
 }
 
-void RxReduceImage(COLOR32 *img, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse) {
-	RxReduceImageEx(img, NULL, width, height, palette, nColors, touchAlpha, binaryAlpha, c0xp, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
+void RxReduceImage(COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse) {
+	RxReduceImageEx(px, NULL, width, height, palette, nColors, touchAlpha, binaryAlpha, c0xp, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
 }
 
-void RxReduceImageEx(COLOR32 *img, int *indices, int width, int height, COLOR32 *palette, int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse, int balance, int colorBalance, int enhanceColors) {
+void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse, int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
 	RxInit(reduction, balance, colorBalance, 15, enhanceColors, nColors);
 
 	//convert palette to YIQ
 	RxYiqColor *yiqPalette = (RxYiqColor *) calloc(nColors, sizeof(RxYiqColor));
-	for (int i = 0; i < nColors; i++) {
-		RxConvertRgbToYiq(palette[i], yiqPalette + i);
+	for (unsigned int i = 0; i < nColors; i++) {
+		RxConvertRgbToYiq(palette[i], &yiqPalette[i]);
 	}
 
 	//allocate row buffers for color and diffuse.
@@ -1746,28 +1787,28 @@ void RxReduceImageEx(COLOR32 *img, int *indices, int width, int height, COLOR32 
 	RxYiqColor *nextDiffuse = (RxYiqColor *) calloc(width + 2, sizeof(RxYiqColor));
 
 	//fill the last row with the first row, just to make sure we don't run out of bounds
-	for (int i = 0; i < width; i++) {
+	for (unsigned int i = 0; i < width; i++) {
 		RxConvertRgbToYiq(img[i], lastRow + (i + 1));
 	}
 	memcpy(lastRow, lastRow + 1, sizeof(RxYiqColor));
 	memcpy(lastRow + (width + 1), lastRow + width, sizeof(RxYiqColor));
 
 	//start dithering, do so in a serpentine path.
-	for (int y = 0; y < height; y++) {
+	for (unsigned int y = 0; y < height; y++) {
 
 		//which direction?
 		int hDirection = (y & 1) ? -1 : 1;
 		COLOR32 *rgbRow = img + y * width;
-		for (int x = 0; x < width; x++) {
-			RxConvertRgbToYiq(rgbRow[x], thisRow + (x + 1));
+		for (unsigned int x = 0; x < width; x++) {
+			RxConvertRgbToYiq(rgbRow[x], &thisRow[x + 1]);
 		}
-		memcpy(thisRow, thisRow + 1, sizeof(RxYiqColor));
-		memcpy(thisRow + (width + 1), thisRow + width, sizeof(RxYiqColor));
+		memcpy(&thisRow[0], &thisRow[1], sizeof(RxYiqColor));
+		memcpy(&thisRow[width + 1], &thisRow[width], sizeof(RxYiqColor));
 
 		//scan across
-		int startPos = (hDirection == 1) ? 0 : (width - 1);
-		int x = startPos;
-		for (int xPx = 0; xPx < width; xPx++) {
+		unsigned int startPos = (hDirection == 1) ? 0 : (width - 1);
+		unsigned int x = startPos;
+		for (unsigned int xPx = 0; xPx < width; xPx++) {
 			//take a sample of pixels nearby. This will be a gauge of variance around this pixel, and help
 			//determine if dithering should happen. Weight the sampled pixels with respect to distance from center.
 
@@ -1804,7 +1845,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, int width, int height, COLOR32 
 
 			//now measure distance from the actual color to its average surroundings
 			RxYiqColor centerYiq;
-			memcpy(&centerYiq, thisRow + (x + 1), sizeof(RxYiqColor));
+			memcpy(&centerYiq, &thisRow[x + 1], sizeof(RxYiqColor));
 
 			double centerDy = reduction->lumaTable[centerYiq.y] - reduction->lumaTable[colorY];
 			int centerDi = centerYiq.i - colorI;
@@ -1814,8 +1855,8 @@ void RxReduceImageEx(COLOR32 *img, int *indices, int width, int height, COLOR32 
 				centerDq * centerDq * reduction->qWeight * reduction->qWeight;
 
 			//now test: Should we dither?
-			double balanceSquare = reduction->yWeight * reduction->yWeight;
-			if (centerDistance < 110.0 * balanceSquare && paletteDistance >  2.0 * balanceSquare && diffuse > 0.0f) {
+			double yw2 = reduction->yWeight * reduction->yWeight;
+			if (centerDistance < 110.0 * yw2 && paletteDistance >  2.0 * yw2 && diffuse > 0.0f) {
 				//Yes, we should dither :)
 
 				int diffuseY = (int) (thisDiffuse[x + 1].y * diffuse / 16); //correct for Floyd-Steinberg coefficients
@@ -1850,17 +1891,17 @@ void RxReduceImageEx(COLOR32 *img, int *indices, int width, int height, COLOR32 
 				img[x + y * width] = chosen;
 				if (indices != NULL) indices[x + y * width] = matched;
 
-				RxYiqColor *chosenYiq = yiqPalette + matched;
+				RxYiqColor *chosenYiq = &yiqPalette[matched];
 				int offY = colorY - chosenYiq->y;
 				int offI = colorI - chosenYiq->i;
 				int offQ = colorQ - chosenYiq->q;
 				int offA = colorA - chosenYiq->a;
 
 				//now diffuse to neighbors
-				RxYiqColor *diffNextPixel = thisDiffuse + (x + 1 + hDirection);
-				RxYiqColor *diffDownPixel = nextDiffuse + (x + 1);
-				RxYiqColor *diffNextDownPixel = nextDiffuse + (x + 1 + hDirection);
-				RxYiqColor *diffBackDownPixel = nextDiffuse + (x + 1 - hDirection);
+				RxYiqColor *diffNextPixel = &thisDiffuse[x + 1 + hDirection];
+				RxYiqColor *diffDownPixel = &nextDiffuse[x + 1];
+				RxYiqColor *diffNextDownPixel = &nextDiffuse[x + 1 + hDirection];
+				RxYiqColor *diffBackDownPixel = &nextDiffuse[x + 1 - hDirection];
 
 				if (colorA >= 128 || !binaryAlpha) { //don't dither if there's no alpha channel and this is transparent!
 					diffNextPixel->y += offY * 7;
@@ -1923,8 +1964,8 @@ void RxReduceImageEx(COLOR32 *img, int *indices, int width, int height, COLOR32 
 	free(reduction);
 }
 
-double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, int nPx, const COLOR32 *pal, int nColors, int alphaThreshold, double nMaxError) {
-	if (nMaxError == 0) nMaxError = 1e32;
+double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int nPx, const COLOR32 *pal, unsigned int nColors, int alphaThreshold, double nMaxError) {
+	if (nMaxError == 0) nMaxError = RX_LARGE_NUMBER;
 	double error = 0;
 
 	RxYiqColor paletteYiqStack[16]; //small palettes
@@ -1934,14 +1975,14 @@ double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, int nPx,
 	}
 
 	//palette to YIQ
-	for (int i = 0; i < nColors; i++) {
+	for (unsigned int i = 0; i < nColors; i++) {
 		RxConvertRgbToYiq(pal[i], paletteYiq + i);
 	}
 
 	double yw2 = reduction->yWeight * reduction->yWeight;
 	double iw2 = reduction->iWeight * reduction->iWeight;
 	double qw2 = reduction->qWeight * reduction->qWeight;
-	for (int i = 0; i < nPx; i++) {
+	for (unsigned int i = 0; i < nPx; i++) {
 		COLOR32 p = px[i];
 		int a = (p >> 24) & 0xFF;
 		if (a < alphaThreshold) continue;
@@ -1949,7 +1990,7 @@ double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, int nPx,
 		RxYiqColor yiq;
 		RxConvertRgbToYiq(px[i], &yiq);
 		int best = RxPaletteFindCloestColorYiq(reduction, &yiq, paletteYiq, nColors);
-		RxYiqColor *chosen = paletteYiq + best;
+		RxYiqColor *chosen = &paletteYiq[best];
 
 		double dy = reduction->lumaTable[yiq.y] - reduction->lumaTable[chosen->y];
 		double di = yiq.i - chosen->i;

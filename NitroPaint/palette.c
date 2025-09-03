@@ -1,5 +1,6 @@
 #include "palette.h"
 #include <math.h>
+#include <limits.h>
 
 int RxColorLightnessComparator(const void *d1, const void *d2) {
 	COLOR32 c1 = *(COLOR32 *) d1;
@@ -7,41 +8,41 @@ int RxColorLightnessComparator(const void *d1, const void *d2) {
 	if (c1 == c2) return 0;
 	
 	//by properties of linear transformations, this is valid
-	int dr = (c1 & 0xFF) - (c2 & 0xFF);
-	int dg = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
+	int dr = ((c1 >>  0) & 0xFF) - ((c2 >>  0) & 0xFF);
+	int dg = ((c1 >>  8) & 0xFF) - ((c2 >>  8) & 0xFF);
 	int db = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
 	int dy = dr * 299 + dg * 587 + db * 114;
 
 	return dy;
 }
 
-void RxCreatePaletteTransparentReserve(COLOR32 *img, int width, int height, COLOR32 *pal, int nColors) {
-	RxCreatePalette(img, width, height, pal + 1, nColors - 1);
+void RxCreatePaletteTransparentReserve(const COLOR32 *px, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors) {
+	RxCreatePalette(px, width, height, pal + 1, nColors - 1);
 	*pal = 0xFF00FF;
 }
 
-int RxPaletteFindClosestColorSimple(COLOR32 rgb, COLOR32 *palette, int paletteSize) {
-	int smallestDistance = 1 << 24;
-	int index = 0, i = 0;
-	int ey, eu, ev;
+int RxPaletteFindClosestColorSimple(COLOR32 rgb, const COLOR32 *palette, unsigned int paletteSize) {
+	unsigned int smallestDistance = UINT_MAX;
+	int index = 0;
 
 	//test exact matches
-	for (i = 0; i < paletteSize; i++) {
+	for (unsigned int i = 0; i < paletteSize; i++) {
 		if ((rgb & 0xFFFFFF) == (palette[i] & 0xFFFFFF)) {
 			return i;
 		}
 	}
 
 	//else
-	for (i = 0; i < paletteSize; i++) {
+	for (unsigned int i = 0; i < paletteSize; i++) {
 		COLOR32 entry = palette[i];
 		int dr = ((entry >>  0) & 0xFF) - ((rgb >>  0) & 0xFF);
 		int dg = ((entry >>  8) & 0xFF) - ((rgb >>  8) & 0xFF);
 		int db = ((entry >> 16) & 0xFF) - ((rgb >> 16) & 0xFF);
 
+		int ey, eu, ev;
 		RxConvertRgbToYuv(dr, dg, db, &ey, &eu, &ev);
-		int dst = 4 * ey * ey + eu * eu + ev * ev;
 
+		unsigned int dst = 4 * ey * ey + eu * eu + ev * ev;
 		if (dst < smallestDistance) {
 			index = i;
 			smallestDistance = dst;
