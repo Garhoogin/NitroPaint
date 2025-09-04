@@ -53,6 +53,7 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int optimizat
 	reduction->nPaletteColors = nColors;
 	reduction->gamma = 1.27;
 	reduction->maskColors = TRUE;
+	reduction->alphaMode = RX_ALPHA_NONE;
 
 	for (int i = 0; i < 512; i++) {
 		reduction->lumaTable[i] = pow((double) i / 511.0, 1.27) * 511.0;
@@ -94,8 +95,33 @@ static void RxiSlabFree(RxSlab *allocator) {
 	}
 }
 
-void RxHistAddColor(RxHistogram *histogram, int y, int i, int q, int a, double weight) {
-	if (a == 0) return;
+static void RxHistAddColor(RxReduction *reduction, int y, int i, int q, int a, double weight) {
+	RxHistogram *histogram = reduction->histogram;
+
+	//process the alpha value.
+	switch (reduction->alphaMode) {
+		case RX_ALPHA_NONE:
+		case RX_ALPHA_RESERVE:
+			if (a == 0) return;
+			a = 255;
+			break;
+
+		case RX_ALPHA_PIXEL:
+			//we'll discard alpha=0 since it doesn't need to appear in the palette.
+			if (a == 0) return;
+			weight *= ((double) a) / 255.0;
+			a = 255;
+			break;
+
+		case RX_ALPHA_PALETTE:
+			//we explicitly must pass all alpha values.
+			if (a == 0) {
+				//for alpha=0, we'll set YIQ to 0 so we only have one transparent value.
+				y = i = q = 0;
+			}
+			break;
+	}
+
 	int slotIndex = (q + (y * 64 + i) * 4 + 0x60E + a) & 0x1FFFF;
 	if (slotIndex < histogram->firstSlot) histogram->firstSlot = slotIndex;
 
@@ -258,7 +284,7 @@ void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, u
 			double weight = (double) (16 - abs(16 - abs(dy)) / 8);
 			if (weight < 1.0) weight = 1.0;
 
-			RxHistAddColor(reduction->histogram, yiq.y, yiq.i, yiq.q, yiq.a, weight);
+			RxHistAddColor(reduction, yiq.y, yiq.i, yiq.q, yiq.a, weight);
 			yLeft = yiq.y;
 		}
 	}
@@ -1415,7 +1441,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 				balance,
 				colorBalance,
 				enhanceColors,
-				0
+				RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE
 			);
 		} else {
 			//reserve the first color entry
@@ -1428,7 +1454,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 				balance,
 				colorBalance,
 				enhanceColors,
-				0
+				RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE
 			);
 			dest[(paletteBase * paletteSize) + paletteOffset] = 0xFF00FF; //transparent fill
 		}
@@ -1696,10 +1722,18 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	free(diffBuff);
 }
 
-int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, int sortOnlyUsed) {
+int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag) {
 	RxReduction *reduction = (RxReduction *) calloc(sizeof(RxReduction), 1);
-
 	RxInit(reduction, balance, colorBalance, 15, enhanceColors, nColors);
+
+	//set alpha mode
+	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
+		case RX_FLAG_ALPHA_MODE_NONE: reduction->alphaMode = RX_ALPHA_NONE; break;
+		case RX_FLAG_ALPHA_MODE_RESERVE: reduction->alphaMode = RX_ALPHA_RESERVE; break;
+		case RX_FLAG_ALPHA_MODE_PIXEL: reduction->alphaMode = RX_ALPHA_PIXEL; break;
+		case RX_FLAG_ALPHA_MODE_PALETTE: reduction->alphaMode = RX_ALPHA_PALETTE; break;
+	}
+
 	RxHistAdd(reduction, img, width, height);
 	RxHistFinalize(reduction);
 	RxComputePalette(reduction);
@@ -1715,7 +1749,7 @@ int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int heigh
 	int nProduced = reduction->nUsedColors;
 	free(reduction);
 
-	if (sortOnlyUsed) {
+	if (flag & RX_FLAG_SORT_ONLY_USED) {
 		qsort(pal, nProduced, sizeof(COLOR32), RxColorLightnessComparator);
 	} else {
 		qsort(pal, nColors, sizeof(COLOR32), RxColorLightnessComparator);

@@ -115,7 +115,7 @@ int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
 		RxCreatePaletteEx(params->px, width, height, palette + hasTransparent, nColors - hasTransparent,
-			params->balance, params->colorBalance, params->enhanceColors, TRUE);
+			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_NONE);
 
 		//reduce palette color depth
 		for (unsigned int i = 0; i < nColors; i++) {
@@ -182,7 +182,7 @@ int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
 		RxCreatePaletteEx(params->px, width, height, palette, nColors,
-			params->balance, params->colorBalance, params->enhanceColors, TRUE);
+			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_PIXEL);
 
 		//reduce palette color depth
 		for (unsigned int i = 0; i < nColors; i++) {

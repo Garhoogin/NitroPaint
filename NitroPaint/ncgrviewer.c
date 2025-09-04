@@ -2374,7 +2374,7 @@ static void charImport(
 		}
 	} else {
 		//create a palette, then encode them to the nclr
-		RxCreatePaletteEx(pixels, width, height, palette, paletteSize, balance, colorBalance, enhanceColors, 0);
+		RxCreatePaletteEx(pixels, width, height, palette, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE);
 		for (int i = 0; i < paletteSize; i++) {
 			COLOR32 d = palette[i];
 			COLOR ds = ColorConvertToDS(d);

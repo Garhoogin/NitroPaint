@@ -8,12 +8,38 @@
 
 #define RECLUSTER_DEFAULT 8
 
-typedef enum RxAlphaMode_ {
-	RX_ALPHA_NONE,        // alpha processing is not done.
-	RX_ALPHA_RESERVE,     // alpha values are binary, and represented by a reserved color.
-	RX_ALPHA_PIXEL,       // alpha values are part of the bitmap data.
-	RX_ALPHA_PALETTE      // alpha values are part of the color palette.
-} RxAlphaMode;
+// -----------------------------------------------------------------------------------------------
+// Name: enum RxFlag
+//
+// Flags passed to color reduction APIs.
+//
+// Color palette sort flags:
+//   RX_FLAG_SORT_ONLY_USED      When the color palette is produced, there is the possibility that
+//                               not all of the allotted space is used. These unused slots are
+//                               filled with black. This parameter controls whether to include
+//                               these unused slots in the final palette sorting process.
+//   RX_FLAG_SORT_ALL            The whole palette is sorted.
+//
+// Alpha operation flags:
+//   RX_FLAG_ALPHA_MODE_NONE     Alpha processing does not take place.
+//   RX_FLAG_ALPHA_MODE_RESRVE   The alpha channel is considered to be binary (fully opaque or
+//                               fully transparent). This assumes transparency is encoded by using
+//                               a color palette entry reserved for transparent pixels.
+//   RX_FLAG_ALPHA_MODE_PIXEL    The alpha channel is encoded uniquely per-pixel and is not stored
+//                               in the color palette. Produced color palette entries will have
+//                               their entries fully opaque.
+//   RX_FLAG_ALPHA_MODE_PALETTE  The alpha channel is encoded in the color palette. 
+// -----------------------------------------------------------------------------------------------
+typedef enum RxFlag_ {
+	RX_FLAG_SORT_ALL            = (0x00<< 0), // sort the entire output palette
+	RX_FLAG_SORT_ONLY_USED      = (0x01<< 0), // only sorts the used portion of the palette
+
+	RX_FLAG_ALPHA_MODE_MASK     = (0x03<< 1), // mask for alpha modes
+	RX_FLAG_ALPHA_MODE_NONE     = (0x00<< 1), // no alpha awareness
+	RX_FLAG_ALPHA_MODE_RESERVE  = (0x01<< 1), // alpha is binary, and transparency is represented with a palette entry
+	RX_FLAG_ALPHA_MODE_PIXEL    = (0x02<< 1), // alpha is encoded per-pixel and discarded from the palette
+	RX_FLAG_ALPHA_MODE_PALETTE  = (0x03<< 1), // alpha is part of the color palette
+} RxFlag;
 
 typedef struct RxBalanceSetting_ {
 	int balance;          // relative priority of lightness over color information (1-39)
@@ -73,15 +99,12 @@ int RxCreatePalette(
 //   balance       Balance setting.
 //   colorBalance  Color balance setting.
 //   enhanceColors Enhance largely used colors.
-//   sortOnlyUsed  When the color palette is produced, there is the possibility that not all of
-//                 the allotted space is used. These unused slots are filled with black. This
-//                 parameter controls whether to include these unused slots in the final palette
-//                 sorting process.
+//   flag          Color reduction flags (see enum RxFlag).
 //
 // Returns:
 //   The number of colors that were created by palette generation. This number does not include
 //   the black-filled placeholder colors, if they are created, and is not affected by the setting
-//   of the sortOnlyUsed parameter.
+//   of the RX_FLAG_SORT_ONLY_USED flag.
 // -----------------------------------------------------------------------------------------------
 int RxCreatePaletteEx(
 	const COLOR32 *px,             // the image pixels
@@ -92,7 +115,7 @@ int RxCreatePaletteEx(
 	int            balance,        // the balance setting
 	int            colorBalance,   // the color balance setting
 	int            enhanceColors,  // enhance largely used colors
-	int            sortOnlyUsed    // sort only the colors produced
+	RxFlag         flag            // color reduction flags
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -326,6 +349,13 @@ void RxConvertYuvToRgb(
 
 //----------structures used by palette generator
 
+typedef enum RxAlphaMode_ {
+	RX_ALPHA_NONE,        // alpha processing is not done.
+	RX_ALPHA_RESERVE,     // alpha values are binary, and represented by a reserved color.
+	RX_ALPHA_PIXEL,       // alpha values are part of the bitmap data.
+	RX_ALPHA_PALETTE      // alpha values are part of the color palette.
+} RxAlphaMode;
+
 typedef struct RxRgbColor_ {
 	int r;
 	int g;
@@ -397,13 +427,15 @@ typedef struct RxReduction_ {
 	int enhanceColors;
 	int nReclusters;
 	int maskColors;
+	RxAlphaMode alphaMode;
+	unsigned int alphaThreshold;
 	RxHistogram *histogram;
 	RxHistEntry **histogramFlat;
 	RxTotalBuffer blockTotals[256];
 	RxColorNode *colorTreeHead;
 	RxColorNode *colorBlocks[0x2000];
-	uint8_t paletteRgb[256][3];
-	uint8_t paletteRgbCopy[256][3];
+	uint8_t paletteRgb[256][4];
+	uint8_t paletteRgbCopy[256][4];
 	RxYiqColor paletteYiq[256];
 	RxYiqColor paletteYiqCopy[256];
 	double lumaTable[512];
@@ -458,28 +490,6 @@ void RxInit(
 	int          optimization,   // unused
 	int          enhanceColors,  // assign more weight to frequently occurring colors
 	unsigned int nColors         // the number of colors to set the reduction up to calculate
-);
-
-// -----------------------------------------------------------------------------------------------
-// Name: RxHistAddColor
-//
-// Add a YIQA color to a RxReduction's histogram.
-//
-// Parameters:
-//   histogram     The histogram.
-//   y             The color Y.
-//   i             The color I.
-//   q             The color Q.
-//   a             The color A.
-//   weight        The weight to assign the color.
-// -----------------------------------------------------------------------------------------------
-void RxHistAddColor(
-	RxHistogram *histogram,  // the color reduction context
-	int          y,          // the color Y
-	int          i,          // the color I
-	int          q,          // the color Q
-	int          a,          // the color A
-	double       weight      // the weight to assign the color
 );
 
 // -----------------------------------------------------------------------------------------------
