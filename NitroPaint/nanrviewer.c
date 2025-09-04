@@ -2502,7 +2502,7 @@ static LRESULT CALLBACK AnmViweerInterpProc(HWND hWnd, UINT msg, WPARAM wParam, 
 			data->hWndInterpOK = CreateButton(hWnd, L"OK", 110, 116, 75, 22, TRUE);
 
 			//in linear mode, disable clockwise setting
-			if (setting->linear) setStyle(data->hWndCheckboxClockwise, TRUE, WS_DISABLED);
+			if (setting->linear) EnableWindow(data->hWndCheckboxClockwise, FALSE);
 
 			SetGUIFont(hWnd);
 			SetWindowSize(hWnd, 100 + 75 + 20, 116 + 22 + 10);
@@ -2520,7 +2520,7 @@ static LRESULT CALLBACK AnmViweerInterpProc(HWND hWnd, UINT msg, WPARAM wParam, 
 				int state = GetCheckboxChecked(hWndCtl);
 				setting->linear = state;
 
-				setStyle(data->hWndCheckboxClockwise, setting->linear, WS_DISABLED);
+				EnableWindow(data->hWndCheckboxClockwise, !setting->linear);
 				InvalidateRect(data->hWndCheckboxClockwise, NULL, FALSE);
 			} else if (hWndCtl == data->hWndCheckboxClockwise && notif == BN_CLICKED) {
 				int state = GetCheckboxChecked(hWndCtl);

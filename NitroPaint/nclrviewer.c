@@ -2256,7 +2256,7 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 			data->hWndChoose1 = CreateButton(hWnd, L"Choose", 70, 37, 100, 22, FALSE);
 			data->hWndChoose2 = CreateButton(hWnd, L"Choose", 70, 64, 100, 22, FALSE);
 
-			setStyle(data->hWndChoose2, TRUE, WS_DISABLED);
+			EnableWindow(data->hWndChoose2, FALSE);
 
 			data->hWndOK = CreateButton(hWnd, L"OK", 70, 91, 100, 22, TRUE);
 
@@ -2277,7 +2277,7 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 				
 			if (hWndControl == data->hWndType && cmd == CBN_SELCHANGE) {
 				int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-				setStyle(data->hWndChoose2, sel == 0, WS_DISABLED);
+				EnableWindow(data->hWndChoose2, sel != 0);
 				InvalidateRect(data->hWndChoose2, NULL, TRUE);
 			} else if ((hWndControl == data->hWndChoose1 || hWndControl == data->hWndChoose2) && cmd == BN_CLICKED) {
 				HWND hWndMain = getMainWindow(data->nclrViewerData->hWnd);

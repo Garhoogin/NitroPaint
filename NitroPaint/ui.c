@@ -250,7 +250,7 @@ LRESULT CALLBACK ModalCloseHookProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 		//prep parent for focus
 		HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 		if (hWndParent != NULL) {
-			setStyle(hWndParent, FALSE, WS_DISABLED);
+			EnableWindow(hWndParent, TRUE);
 			SetActiveWindow(hWndParent);
 			SetForegroundWindow(hWndParent);
 		}
@@ -344,7 +344,7 @@ void DoModalEx(HWND hWnd, BOOL closeHook) {
 	ShowWindow(hWnd, SW_SHOW);
 	SetActiveWindow(hWnd);
 	SetForegroundWindow(hWnd);
-	if (hWndParent != NULL) setStyle(hWndParent, TRUE, WS_DISABLED);
+	if (hWndParent != NULL) EnableWindow(hWndParent, FALSE);
 
 	//override the WndProc. 
 	if (closeHook) SetWindowSubclass(hWnd, ModalCloseHookProc, 1, 0);
@@ -365,7 +365,7 @@ void DoModalEx(HWND hWnd, BOOL closeHook) {
 	}
 
 	if (hWndParent != NULL) {
-		setStyle(hWndParent, FALSE, WS_DISABLED);
+		EnableWindow(hWndParent, TRUE);
 		SetActiveWindow(hWndParent);
 		SetForegroundWindow(hWndParent);
 	}
@@ -383,7 +383,7 @@ void DoModalWait(HWND hWnd, HANDLE hWait) {
 	ShowWindow(hWnd, SW_SHOW);
 	SetActiveWindow(hWnd);
 	SetForegroundWindow(hWnd);
-	if (hWndParent != NULL) setStyle(hWndParent, TRUE, WS_DISABLED);
+	if (hWndParent != NULL) EnableWindow(hWndParent, FALSE);
 
 	//override the WndProc. 
 	SetWindowSubclass(hWnd, ModalCloseHookProc, 1, 0);
@@ -396,7 +396,7 @@ void DoModalWait(HWND hWnd, HANDLE hWait) {
 		if (waitResult == WAIT_OBJECT_0) { //event signaled
 			//destroy window cleanly
 			if (hWndParent != NULL) {
-				setStyle(hWndParent, FALSE, WS_DISABLED);
+				EnableWindow(hWndParent, TRUE);
 				SetActiveWindow(hWndParent);
 				SetForegroundWindow(hWndParent);
 			}
@@ -426,7 +426,7 @@ void DoModalWait(HWND hWnd, HANDLE hWait) {
 	}
 
 	if (hWndParent != NULL) {
-		setStyle(hWndParent, FALSE, WS_DISABLED);
+		EnableWindow(hWndParent, TRUE);
 		SetActiveWindow(hWndParent);
 		SetForegroundWindow(hWndParent);
 	}

@@ -1738,7 +1738,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 
 			//enable/disable
 			int disable = data->ncer.isEx2d;
-			setStyle(data->hWndMake2D, disable, WS_DISABLED);
+			EnableWindow(data->hWndMake2D, !disable);
 		}
 		InvalidateRect(data->hWndMake2D, NULL, FALSE);
 

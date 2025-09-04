@@ -81,14 +81,6 @@ void ScaleInterface(HWND hWnd, float scale) {
 	SetWindowPos(hWnd, hWnd, 0, 0, width, height, SWP_NOZORDER | SWP_NOMOVE);
 }
 
-void setStyle(HWND hWnd, BOOL set, DWORD style) {
-	if (set) {
-		SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | style);
-	} else {
-		SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) & ~style);
-	}
-}
-
 HWND getMainWindow(HWND hWnd) {
 	HWND hWndMdi = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 	HWND hWndMain = (HWND) GetWindowLongPtr(hWndMdi, GWL_HWNDPARENT);

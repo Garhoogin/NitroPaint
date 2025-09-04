@@ -1982,8 +1982,8 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 	switch (msg) {
 		case WM_CREATE:
 		{
-			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndParent, TRUE, WS_DISABLED);
+			HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+			EnableWindow(hWndParent, FALSE);
 
 			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
 			int boxHeight = 6 * 27 - 5 + 10 + 10 + 10; //first row height
@@ -2030,7 +2030,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndAlignmentCheckbox = CreateCheckbox(hWnd, L"Align Size:", rightX, topY + 27 * 4, 75, 22, TRUE);
 			data->hWndAlignment = CreateEdit(hWnd, L"32", rightX + 75, topY + 27 * 4, 80, 22, TRUE);
 			data->hWndAffine = CreateCheckbox(hWnd, L"Affine Mode", rightX, topY + 27 * 5, 100, 22, TRUE);
-			setStyle(data->hWndDiffuse, TRUE, WS_DISABLED);
+			EnableWindow(data->hWndDiffuse, FALSE);
 
 			LPCWSTR formatNames[] = { L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed" };
 			CreateStatic(hWnd, L"Format:", rightX, middleY, 50, 22);
@@ -2132,17 +2132,17 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				} else if (hWndControl == data->hWndMergeTiles) {
 					//enable/disable max chars field
 					int state = GetCheckboxChecked(hWndControl);
-					setStyle(data->hWndMaxChars, !state, WS_DISABLED);
+					EnableWindow(data->hWndMaxChars, state);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->hWndAlignmentCheckbox) {
 					//enable/disable alignment amount field
 					int state = GetCheckboxChecked(hWndControl);
-					setStyle(data->hWndAlignment, !state, WS_DISABLED);
+					EnableWindow(data->hWndAlignment, state);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->nscrCreateDither) {
 					//enable/disable diffusion amount field
 					int state = GetCheckboxChecked(hWndControl);
-					setStyle(data->hWndDiffuse, !state, WS_DISABLED);
+					EnableWindow(data->hWndDiffuse, state);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->hWndAffine) {
 					//limit palette size if applicable
@@ -2161,7 +2161,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 					//if setting to 4-bit depth, then affine mode can't be selected.
 					int disableAffine = (index == 0);
-					setStyle(data->hWndAffine, disableAffine, WS_DISABLED);
+					EnableWindow(data->hWndAffine, !disableAffine);
 					InvalidateRect(data->hWndAffine, NULL, FALSE);
 
 					//uncheck affine mode if 4 bit selected
@@ -2212,8 +2212,8 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 					KillTimer(hWnd, 1);
 					if (data->callback) data->callback(data->data);
 
-					HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-					setStyle(hWndMain, FALSE, WS_DISABLED);
+					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+					EnableWindow(hWndMain, TRUE);
 					SetActiveWindow(hWndMain);
 					DestroyWindow(hWnd);
 				}
@@ -2232,8 +2232,8 @@ LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				free(data);
 				SetWindowLongPtr(hWnd, 0, 0);
 			}
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndMain, FALSE, WS_DISABLED);
+			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+			EnableWindow(hWndMain, TRUE);
 			SetActiveWindow(hWndMain);
 			break;
 		}
@@ -2306,8 +2306,8 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 			SendMessage(data->hWndFormat, CB_SETCURSEL, CT_4x4 - 1, 0);
 			
-			HWND hWndParent = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			setStyle(hWndParent, TRUE, WS_DISABLED);
+			HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+			EnableWindow(hWndParent, FALSE);
 			break;
 		}
 		case WM_COMMAND:
@@ -2335,13 +2335,13 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					
 				//only 4x4 needs NTFI.
 				int needsNtfi = fmt == CT_4x4;
-				setStyle(data->hWndNtfiInput, !needsNtfi, WS_DISABLED);
-				setStyle(data->hWndNtfiBrowseButton, !needsNtfi, WS_DISABLED);
+				EnableWindow(data->hWndNtfiInput, needsNtfi);
+				EnableWindow(data->hWndNtfiBrowseButton, needsNtfi);
 
 				//only direct doesn't need and NTFP.
 				int needsNtfp = fmt != CT_DIRECT;
-				setStyle(data->hWndNtfpInput, !needsNtfp, WS_DISABLED);
-				setStyle(data->hWndNtfpBrowseButton, !needsNtfp, WS_DISABLED);
+				EnableWindow(data->hWndNtfpInput, needsNtfp);
+				EnableWindow(data->hWndNtfpBrowseButton, needsNtfp);
 
 				//update
 				InvalidateRect(hWnd, NULL, FALSE);

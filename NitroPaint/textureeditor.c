@@ -1173,82 +1173,39 @@ static int TexViewerJudgeColorCount(int bWidth, int bHeight) {
 }
 
 static void updateConvertDialog(TEXTUREEDITORDATA *data) {
-	HWND hWndFormat = data->hWndFormat;
-	int sel = SendMessage(hWndFormat, CB_GETCURSEL, 0, 0);
-	int fixedPalette = GetCheckboxChecked(data->hWndFixedPalette);
-	int dither = GetCheckboxChecked(data->hWndDither);
-	int ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
-	int limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
-	int fmt = sel + 1;
-	//some things are only applicable to certain formats!
-	BOOL disables[] = {TRUE, FALSE, TRUE, FALSE, FALSE, FALSE};
-	switch (fmt) {
-		case CT_A3I5:
-		case CT_A5I3:
-		{
-			disables[0] = FALSE;
-			disables[1] = FALSE;
-			disables[2] = TRUE;
-			disables[3] = FALSE;
-			break;
-		}
-		case CT_4x4:
-		{
-			disables[0] = TRUE;
-			disables[2] = FALSE;
-			disables[3] = FALSE;
-			break;
-		}
-		case CT_DIRECT:
-		{
-			disables[0] = TRUE;
-			disables[1] = FALSE;
-			disables[2] = TRUE;
-			disables[3] = TRUE;
-			disables[4] = TRUE;
-			disables[5] = TRUE;
-			break;
-		}
-	}
-	if (!disables[4]) {
-		if (!fixedPalette) disables[5] = TRUE;
-	}
-	if (fixedPalette && !disables[5]) {
-		disables[2] = TRUE;
-	}
+	int fmt = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+	BOOL isTranslucent = fmt == CT_A3I5 || fmt == CT_A5I3;
+	BOOL isPlttN = fmt == CT_4COLOR || fmt == CT_16COLOR || fmt == CT_256COLOR;
+	BOOL isPltt = fmt != CT_DIRECT;
+	BOOL is4x4 = fmt == CT_4x4;
 
-	setStyle(data->hWndDitherAlpha, disables[0], WS_DISABLED);
-	setStyle(data->hWndDither, disables[1], WS_DISABLED);
-	setStyle(data->hWndColorEntries, disables[2] || !limitPalette, WS_DISABLED);
-	setStyle(data->hWndOptimizationSlider, disables[2], WS_DISABLED);
-	setStyle(data->hWndPaletteName, disables[3], WS_DISABLED);
-	setStyle(data->hWndFixedPalette, disables[4], WS_DISABLED);
-	setStyle(data->hWndPaletteInput, disables[5], WS_DISABLED);
-	setStyle(data->hWndPaletteBrowse, disables[5], WS_DISABLED);
-	setStyle(data->hWndPaletteSize, (fmt == CT_4x4 || fmt == CT_DIRECT) || fixedPalette, WS_DISABLED);
-	setStyle(data->hWndLimitPalette, (fmt != CT_4x4) || fixedPalette, WS_DISABLED);
-	setStyle(data->hWndBalance, fmt == CT_DIRECT, WS_DISABLED);
-	setStyle(data->hWndColorBalance, fmt == CT_DIRECT, WS_DISABLED);
-	setStyle(data->hWndEnhanceColors, fmt == CT_DIRECT, WS_DISABLED);
+	BOOL fixedPalette = GetCheckboxChecked(data->hWndFixedPalette) && isPltt;
+	BOOL dither = GetCheckboxChecked(data->hWndDither);
+	BOOL ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha) && isTranslucent;
+	BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette) && is4x4 && !fixedPalette;
 
-	setStyle(data->hWndDiffuseAmount, !((dither && !disables[1]) || (ditherAlpha && !disables[0])), WS_DISABLED);
+	EnableWindow(data->hWndDitherAlpha, isTranslucent);
+	EnableWindow(data->hWndColorEntries, limitPalette);
+	EnableWindow(data->hWndOptimizationSlider, is4x4 && !fixedPalette);
+	EnableWindow(data->hWndPaletteName, isPltt);
+	EnableWindow(data->hWndFixedPalette, isPltt);
+	EnableWindow(data->hWndPaletteInput, fixedPalette);
+	EnableWindow(data->hWndPaletteBrowse, fixedPalette);
+	EnableWindow(data->hWndPaletteSize, isPltt && !is4x4 && !fixedPalette);
+	EnableWindow(data->hWndLimitPalette, is4x4 && !fixedPalette);
+	EnableWindow(data->hWndBalance, isPltt);
+	EnableWindow(data->hWndColorBalance, isPltt);
+	EnableWindow(data->hWndEnhanceColors, isPltt);
 
-	if (fmt == CT_4COLOR || fmt == CT_16COLOR || fmt == CT_256COLOR) {
-		//paletteN formats: enable color 0 mode
-		setStyle(data->hWndColor0Transparent, FALSE, WS_DISABLED);
-	} else {
-		setStyle(data->hWndColor0Transparent, TRUE, WS_DISABLED);
-	}
+	EnableWindow(data->hWndDiffuseAmount, dither || ditherAlpha);
 
-	if (GetCheckboxChecked(data->hWndCheckboxAlphaKey)) {
-		//when alpha key is enabled, enable the select button
-		setStyle(data->hWndSelectAlphaKey, FALSE, WS_DISABLED);
-	} else {
-		setStyle(data->hWndSelectAlphaKey, TRUE, WS_DISABLED);
-	}
+	//paletteN formats: enable color 0 mode
+	EnableWindow(data->hWndColor0Transparent, isPlttN);
+
+	//when alpha key is enabled, enable the select button
+	EnableWindow(data->hWndSelectAlphaKey, GetCheckboxChecked(data->hWndCheckboxAlphaKey));
 
 	SetFocus(data->hWndConvertDialog);
-	InvalidateRect(data->hWndConvertDialog, NULL, FALSE);
 }
 
 static void conversionCallback(void *p) {

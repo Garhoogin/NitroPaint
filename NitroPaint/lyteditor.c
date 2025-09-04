@@ -442,12 +442,12 @@ static void LLytEditorSetCurrentElement(BNLLEDITORDATA *data, const BnllMessage 
 		//uncheck message and disable input
 		SendMessage(data->hWndMessageLabel, BM_SETCHECK, BST_UNCHECKED, 0);
 		SendMessage(data->hWndMessageInput, WM_SETTEXT, 0, (LPARAM) L"");
-		setStyle(data->hWndMessageInput, TRUE, WS_DISABLED);
+		EnableWindow(data->hWndMessageInput, FALSE);
 	} else {
 		//check message and enable input
 		SendMessage(data->hWndMessageLabel, BM_SETCHECK, BST_CHECKED, 0);
 		SendMessage(data->hWndMessageInput, WM_SETTEXT, 0, (LPARAM) msg->msg);
-		setStyle(data->hWndMessageInput, FALSE, WS_DISABLED);
+		EnableWindow(data->hWndMessageInput, TRUE);
 	}
 	RedrawWindow(data->hWndMessageInput, NULL, NULL, RDW_INVALIDATE | RDW_FRAME);
 }
@@ -827,7 +827,7 @@ static void LLytEditorOnClickedMessageCheckbox(HWND hWnd, HWND hWndCtl, int noti
 
 		if (checked) {
 			//checked: enable message input
-			setStyle(data->hWndMessageInput, FALSE, WS_DISABLED);
+			EnableWindow(data->hWndMessageInput, TRUE);
 
 			//get message
 			int len = SendMessage(data->hWndMessageInput, WM_GETTEXTLENGTH, 0, 0);
@@ -839,7 +839,7 @@ static void LLytEditorOnClickedMessageCheckbox(HWND hWnd, HWND hWndCtl, int noti
 			pmsg->msg = buf;
 		} else {
 			//unchecked: disable message input
-			setStyle(data->hWndMessageInput, TRUE, WS_DISABLED);
+			EnableWindow(data->hWndMessageInput, FALSE);
 
 			//free message
 			if (pmsg->msg != NULL) free(pmsg->msg);

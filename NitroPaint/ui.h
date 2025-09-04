@@ -12,11 +12,6 @@
 
 
 //
-// Sets or clears a window style.
-//
-void setStyle(HWND hWnd, BOOL set, DWORD style);
-
-//
 // Default modal window procedure.
 //
 LRESULT DefModalProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

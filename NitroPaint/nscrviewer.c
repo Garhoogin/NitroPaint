@@ -968,21 +968,21 @@ static void ScrViewerImportDlgUpdate(HWND hWnd) {
 	int writeScreen = GetCheckboxChecked(data->hWndWriteScreenCheckbox);
 	int writeCharIndices = GetCheckboxChecked(data->hWndWriteCharIndicesCheckbox);
 
-	setStyle(data->hWndDitherCheckbox, !writeChars, WS_DISABLED);
+	EnableWindow(data->hWndDitherCheckbox, writeChars);
 
 	//diffuse input only enabled when dithering enabled
-	setStyle(data->hWndDiffuseAmount, !dither || !writeChars, WS_DISABLED);
+	EnableWindow(data->hWndDiffuseAmount, dither && writeChars);
 
 	//write character indices only enabled when writing screen
-	setStyle(data->hWndWriteCharIndicesCheckbox, !writeScreen, WS_DISABLED);
+	EnableWindow(data->hWndWriteCharIndicesCheckbox, writeScreen);
 
 	//character base and count only enabled when overwriting character indices and writing screen
-	setStyle(data->hWndCharacterBase, !writeChars || !writeCharIndices || !writeScreen, WS_DISABLED);
-	setStyle(data->hWndCharacterCount, !writeChars || !writeCharIndices || !writeScreen, WS_DISABLED);
+	EnableWindow(data->hWndCharacterBase, writeChars && writeCharIndices && writeScreen);
+	EnableWindow(data->hWndCharacterCount, writeChars && writeCharIndices && writeScreen);
 
 	//if not overwriting screen, palette base and count are invalid
-	setStyle(data->hWndPaletteInput, !writeScreen, WS_DISABLED);
-	setStyle(data->hWndPalettesInput, !writeScreen, WS_DISABLED);
+	EnableWindow(data->hWndPaletteInput, writeScreen);
+	EnableWindow(data->hWndPalettesInput, writeScreen);
 
 	InvalidateRect(hWnd, NULL, FALSE);
 }
@@ -1067,7 +1067,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 				SendMessage(data->hWndPaletteInput, CB_ADDSTRING, wcslen(textBuffer), (LPARAM) textBuffer);
 			}
 			
-			setStyle(data->hWndDiffuseAmount, TRUE, WS_DISABLED);
+			EnableWindow(data->hWndDiffuseAmount, FALSE);
 
 			SetWindowSize(hWnd, width, height);
 			SetGUIFont(hWnd);
