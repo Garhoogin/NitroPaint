@@ -7,15 +7,15 @@
 //
 typedef struct TxConversionParameters_ {
 	COLOR32 *px;
-	int width;
-	int height;
+	unsigned int width;
+	unsigned int height;
 	int fmt;
 	int forTwl;
 	int dither;
 	float diffuseAmount;
 	int ditherAlpha;
 	int c0xp;
-	int colorEntries;
+	unsigned int colorEntries;
 	int useFixedPalette;
 	COLOR *fixedPalette;
 	int threshold;
@@ -49,9 +49,9 @@ int TxConvertIndexedOpaque(TxConversionParameters *params);
 int TxConvertIndexedTranslucent(TxConversionParameters *params);
 
 //progress markers for TxConvert4x4.
-extern volatile g_texCompressionProgress;
-extern volatile g_texCompressionProgressMax;
-extern volatile g_texCompressionFinished;
+extern volatile int g_texCompressionProgress;
+extern volatile int g_texCompressionProgressMax;
+extern volatile int g_texCompressionFinished;
 
 //
 // Convert an image to a 4x4 compressed texture
