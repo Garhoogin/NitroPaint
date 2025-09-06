@@ -2950,7 +2950,7 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				SendMessage(hWndBackgroundPath, WM_GETTEXT, MAX_PATH, (LPARAM) backpath);
 
 				//read images
-				int foreWidth, foreHeight, backWidth, backHeight, blendWidth, blendHeight;
+				unsigned int foreWidth, foreHeight, backWidth, backHeight, blendWidth, blendHeight;
 				COLOR32 *foreground = ImgRead(forepath, &foreWidth, &foreHeight);
 				COLOR32 *background = ImgRead(backpath, &backWidth, &backHeight);
 				if (foreground == NULL || background == NULL) {
@@ -2970,8 +2970,8 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				}
 
 				//cut out any pixel matching the background
-				for (int y = 0; y < blendHeight; y++) {
-					for (int x = 0; x < blendWidth; x++) {
+				for (unsigned int y = 0; y < blendHeight; y++) {
+					for (unsigned int x = 0; x < blendWidth; x++) {
 						COLOR32 blendC = blend[x + y * blendWidth];
 						COLOR32 bgC = background[x + y * backWidth];
 						if (blendC == bgC) {
@@ -2982,15 +2982,15 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 				//if we're in tiled mode, write background to transparent pixels in occupied tiles
 				if (isTiled) {
-					int tilesX = blendWidth / 8, tilesY = blendHeight / 8;
-					for (int tileY = 0; tileY < tilesY; tileY++) {
-						for (int tileX = 0; tileX < tilesX; tileX++) {
+					unsigned int tilesX = blendWidth / 8, tilesY = blendHeight / 8;
+					for (unsigned int tileY = 0; tileY < tilesY; tileY++) {
+						for (unsigned int tileX = 0; tileX < tilesX; tileX++) {
 
 							//find transparent pixel in the tile
 							int hasTransparent = 0, hasOpaque = 0;
-							for (int i = 0; i < 64; i++) {
-								int x = i % 8;
-								int y = i / 8;
+							for (unsigned int i = 0; i < 64; i++) {
+								unsigned int x = i % 8;
+								unsigned int y = i / 8;
 								COLOR32 c = blend[(x + tileX * 8) + (y + tileY * 8) * blendWidth];
 								if ((c >> 24) == 0) {
 									hasTransparent = 1;
@@ -3002,9 +3002,9 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 							//if has opaque and transparent, copy background to transparent pixels
 							if (hasTransparent && hasOpaque) {
-								for (int i = 0; i < 64; i++) {
-									int x = i % 8;
-									int y = i / 8;
+								for (unsigned int i = 0; i < 64; i++) {
+									unsigned int x = i % 8;
+									unsigned int y = i / 8;
 									COLOR32 c = blend[(x + tileX * 8) + (y + tileY * 8) * blendWidth];
 									if ((c >> 24) == 0) {
 										COLOR32 b = background[(x + tileX * 8) + (y + tileY * 8) * backWidth];

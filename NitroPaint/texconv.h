@@ -31,7 +31,7 @@ typedef struct TxConversionParameters_ {
 //
 // Counts the number of colors in an image (transparent counts as a color)
 //
-int ImgCountColors(COLOR32 *px, int nPx);
+unsigned int ImgCountColors(const COLOR32 *px, unsigned int nPx);
 
 //
 // Convert an image to a direct mode texture
