@@ -335,11 +335,14 @@ void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, u
 	for (unsigned int y = 0; y < height; y++) {
 		RxYiqColor yiqLeft;
 		RxConvertRgbToYiq(img[y * width], &yiqLeft);
-		int yLeft = yiqLeft.y;
+		int yLeft = yiqLeft.y, aLeft = yiqLeft.a;
 
 		for (unsigned int x = 0; x < width; x++) {
 			RxYiqColor yiq;
 			RxConvertRgbToYiq(img[x + y * width], &yiq);
+
+			//when the left pixel is transparent, treat it as same Y value.
+			if (aLeft == 0) yLeft = yiq.y;
 
 			int dy = yiq.y - yLeft;
 			double weight = (double) (16 - abs(16 - abs(dy)) / 8);
@@ -347,6 +350,7 @@ void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, u
 
 			RxHistAddColor(reduction, yiq.y, yiq.i, yiq.q, yiq.a, weight);
 			yLeft = yiq.y;
+			aLeft = yiq.a;
 		}
 	}
 }
