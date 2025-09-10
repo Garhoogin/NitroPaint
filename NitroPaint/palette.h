@@ -29,6 +29,11 @@
 //                               in the color palette. Produced color palette entries will have
 //                               their entries fully opaque.
 //   RX_FLAG_ALPHA_MODE_PALETTE  The alpha channel is encoded in the color palette. 
+//
+// Color masking flags:
+//   RX_FLAG_MASK_BITS           The created color palette data entries are converted to the
+//                               nearest representable color in RGBA5551. 
+//   RX_FLAG_NO_MASK_BITS        The created color palette data is not converted.
 // -----------------------------------------------------------------------------------------------
 typedef enum RxFlag_ {
 	RX_FLAG_SORT_ALL            = (0x00<< 0), // sort the entire output palette
@@ -39,6 +44,9 @@ typedef enum RxFlag_ {
 	RX_FLAG_ALPHA_MODE_RESERVE  = (0x01<< 1), // alpha is binary, and transparency is represented with a palette entry
 	RX_FLAG_ALPHA_MODE_PIXEL    = (0x02<< 1), // alpha is encoded per-pixel and discarded from the palette
 	RX_FLAG_ALPHA_MODE_PALETTE  = (0x03<< 1), // alpha is part of the color palette
+
+	RX_FLAG_MASK_BITS           = (0x00<< 3), // color palette colors are masked to RGBA5551.
+	RX_FLAG_NO_MASK_BITS        = (0x01<< 3), // color palette colors are not masked
 } RxFlag;
 
 typedef struct RxBalanceSetting_ {

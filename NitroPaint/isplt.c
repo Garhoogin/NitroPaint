@@ -263,6 +263,10 @@ void RxConvertYiqToRgb(RxRgbColor *rgb, const RxYiqColor *yiq) {
 	rgb->a = yiq->a;
 }
 
+static inline double RxiDelinearizeLuma(RxReduction *reduction, double luma) {
+	return 511.0 * pow(luma * INV_511, 1.0 / reduction->gamma);
+}
+
 static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *yiq) {
 	RxRgbColor rgb;
 	RxConvertYiqToRgb(&rgb, yiq);
@@ -716,13 +720,13 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 			sumAlpha += weightA * ent->weight;
 		}
 
-		initY = pow((initY / sumAlpha) * INV_511, 1.0 / reduction->gamma) * 511.0;
+		initY = RxiDelinearizeLuma(reduction, initY / sumAlpha);
 		initI = initI / sumAlpha;
 		initQ = initQ / sumAlpha;
 		initA = initA / totalWeight;
 	} else {
 		//compute average color, treating alpha as an independent channel
-		initY = pow(((totalY / totalWeight) / reduction->yWeight) * INV_511, 1.0 / reduction->gamma) * 511.0;
+		initY = RxiDelinearizeLuma(reduction, (totalY / totalWeight) / reduction->yWeight);
 		initI = (totalI / totalWeight) / reduction->iWeight;
 		initQ = (totalQ / totalWeight) / reduction->qWeight;
 		initA = (totalA / totalWeight) / reduction->aWeight;
@@ -762,8 +766,8 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 					double qMeanL = entry->q / (entry->partialSumWeights * reduction->qWeight), qMeanR = (totalQ - entry->q) / (weightR * reduction->qWeight);
 					double aMeanL = entry->a / (entry->partialSumWeights * reduction->aWeight), aMeanR = (totalA - entry->a) / (weightR * reduction->aWeight);
 
-					int yL = (int) (pow(yMeanL * INV_511, 1.0 / reduction->gamma) * 511.0 + 0.5), aL = (int) (aMeanL + 0.5);
-					int yR = (int) (pow(yMeanR * INV_511, 1.0 / reduction->gamma) * 511.0 + 0.5), aR = (int) (aMeanR + 0.5);
+					int yL = (int) (RxiDelinearizeLuma(reduction, yMeanL) + 0.5), aL = (int) (aMeanL + 0.5);
+					int yR = (int) (RxiDelinearizeLuma(reduction, yMeanR) + 0.5), aR = (int) (aMeanR + 0.5);
 					int iL = (int) (iMeanL + (iMeanL < 0.0 ? -0.5 : 0.5)), qL = (int) (qMeanL + (qMeanL < 0.0 ? -0.5 : 0.5));
 					int iR = (int) (iMeanR + (iMeanR < 0.0 ? -0.5 : 0.5)), qR = (int) (qMeanR + (qMeanR < 0.0 ? -0.5 : 0.5));
 
@@ -1002,9 +1006,7 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 
 				//get RGB of new point
 				RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
-				RxRgbColor rgb = { 0 };
-				RxConvertYiqToRgb(&rgb, &entry->color);
-				COLOR32 as32 = reduction->maskColors(rgb.r | (rgb.g << 8) | (rgb.b << 16) | (rgb.a << 24));
+				COLOR32 as32 = RxiMaskYiqToRgb(reduction, &entry->color);
 				
 				//set this node's center to the point
 				RxConvertRgbToYiq(as32, &reduction->paletteYiqCopy[i]);
@@ -1056,7 +1058,7 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 			double avgQ = totalsBuffer[i].q / (totalsBuffer[i].a * INV_255);
 
 			//delinearize Y
-			avgY = 511.0 * pow(avgY * INV_511, 1.0 / reduction->gamma);
+			avgY = RxiDelinearizeLuma(reduction, avgY);
 
 			//convert to integer YIQ
 			int iy = (int) (avgY + 0.5);
@@ -1065,10 +1067,8 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 			int ia = (int) (avgA + 0.5);
 
 			//to RGB
-			RxRgbColor rgb;
 			RxYiqColor yiq = { iy, ii, iq, ia };
-			RxConvertYiqToRgb(&rgb, &yiq);
-			COLOR32 as32 = reduction->maskColors(rgb.r | (rgb.g << 8) | (rgb.b << 16) | (rgb.a << 24));
+			COLOR32 as32 = RxiMaskYiqToRgb(reduction, &yiq);
 
 			reduction->paletteRgbCopy[i] = as32;
 			RxConvertRgbToYiq(as32, &reduction->paletteYiqCopy[i]);
@@ -1775,6 +1775,11 @@ int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int heigh
 		case RX_FLAG_ALPHA_MODE_RESERVE: reduction->alphaMode = RX_ALPHA_RESERVE; break;
 		case RX_FLAG_ALPHA_MODE_PIXEL: reduction->alphaMode = RX_ALPHA_PIXEL; break;
 		case RX_FLAG_ALPHA_MODE_PALETTE: reduction->alphaMode = RX_ALPHA_PALETTE; break;
+	}
+
+	if (flag & RX_FLAG_NO_MASK_BITS) {
+		//no color masking -> use dummy color mask callback
+		reduction->maskColors = RxMaskColorDummy;
 	}
 
 	RxHistAdd(reduction, img, width, height);
