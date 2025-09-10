@@ -381,7 +381,7 @@ typedef struct RxHistEntry_ {
 
 //structure for a node in the color tree
 typedef struct RxColorNode_ {
-	int isLeaf;
+	int canSplit;
 	double weight;
 	double priority;
 	RxYiqColor color;
@@ -422,11 +422,16 @@ typedef struct RxReduction_ {
 	double yWeight;
 	double iWeight;
 	double qWeight;
+	double aWeight;
+	double yWeight2;
+	double iWeight2;
+	double qWeight2;
+	double aWeight2;
 	int nPaletteColors;
 	int nUsedColors;
 	int enhanceColors;
 	int nReclusters;
-	int maskColors;
+	COLOR32 (*maskColors) (COLOR32 col);
 	RxAlphaMode alphaMode;
 	unsigned int alphaThreshold;
 	RxHistogram *histogram;
@@ -434,8 +439,8 @@ typedef struct RxReduction_ {
 	RxTotalBuffer blockTotals[256];
 	RxColorNode *colorTreeHead;
 	RxColorNode *colorBlocks[0x2000];
-	uint8_t paletteRgb[256][4];
-	uint8_t paletteRgbCopy[256][4];
+	COLOR32 paletteRgb[256];
+	COLOR32 paletteRgbCopy[256];
 	RxYiqColor paletteYiq[256];
 	RxYiqColor paletteYiqCopy[256];
 	double lumaTable[512];
@@ -479,7 +484,6 @@ void RxConvertYiqToRgb(
 //   reduction     The color reduction context.
 //   balance       The balance setting.
 //   colorBalance  The color balance setting.
-//   optimization  Unused.
 //   enhanceColors Enhance largely used colors.
 //   nColors       The number of colors to generate in a palette.
 // -----------------------------------------------------------------------------------------------
@@ -487,7 +491,6 @@ void RxInit(
 	RxReduction *reduction,      // the color reduction context
 	int          balance,        // the balance setting
 	int          colorBalance,   // the color balance setting
-	int          optimization,   // unused
 	int          enhanceColors,  // assign more weight to frequently occurring colors
 	unsigned int nColors         // the number of colors to set the reduction up to calculate
 );

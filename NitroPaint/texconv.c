@@ -245,6 +245,11 @@ static COLOR32 TxiBlend18(COLOR32 col1, unsigned int weight1, COLOR32 col2, unsi
 	return ColorRoundToDS18(r3 | (g3 << 8) | (b3 << 16));
 }
 
+//RGB to YUV, for only Y channel
+static double TxiYFromRGB(int r, int g, int b) {
+	return 0.2990 * r + 0.5870 * g + 0.1140 * b;
+}
+
 volatile int g_texCompressionProgress = 0;
 volatile int g_texCompressionProgressMax = 0;
 volatile int g_texCompressionFinished = 0;
@@ -267,8 +272,7 @@ static int TxiCreatePaletteFromHistogram(RxReduction *reduction, int nColors, CO
 	int nUsed = reduction->nUsedColors;
 	for (int i = 0; i < nColors; i++) {
 		if (i < nUsed) {
-			uint8_t *c = &reduction->paletteRgb[i][0];
-			out[i] = c[0] | (c[1] << 8) | (c[2] << 16);
+			out[i] = reduction->paletteRgb[i];
 		} else {
 			out[i] = 0;
 		}
@@ -369,11 +373,10 @@ void TxiComputeEndpoints(RxReduction *reduction, COLOR32 *px, int nPx, COLOR32 *
 			*colorMax = colors[0];
 		} else {
 			//two colors: sort the two colors such that the lighter one is first.
-			int y1, u1, v1, y2, u2, v2;
 			colors[0] = ColorRoundToDS15(colors[0]);
 			colors[1] = ColorRoundToDS15(colors[1]);
-			RxConvertRgbToYuv(colors[0] & 0xFF, (colors[0] >> 8) & 0xFF, (colors[0] >> 16) & 0xFF, &y1, &u1, &v1);
-			RxConvertRgbToYuv(colors[1] & 0xFF, (colors[1] >> 8) & 0xFF, (colors[1] >> 16) & 0xFF, &y2, &u2, &v2);
+			double y1 = TxiYFromRGB(colors[0] & 0xFF, (colors[0] >> 8) & 0xFF, (colors[0] >> 16) & 0xFF);
+			double y2 = TxiYFromRGB(colors[1] & 0xFF, (colors[1] >> 8) & 0xFF, (colors[1] >> 16) & 0xFF);
 			if (y1 > y2) {
 				*colorMin = colors[1];
 				*colorMax = colors[0];
@@ -418,11 +421,10 @@ void TxiComputeEndpoints(RxReduction *reduction, COLOR32 *px, int nPx, COLOR32 *
 	}
 
 	//sanity check: impose color ordering (high Y must come first)
-	int y1, u1, v1, y2, u2, v2;
 	full1 = ColorConvertFromDS(c1);
 	full2 = ColorConvertFromDS(c2);
-	RxConvertRgbToYuv(full1 & 0xFF, (full1 >> 8) & 0xFF, (full1 >> 16) & 0xFF, &y1, &u1, &v1);
-	RxConvertRgbToYuv(full2 & 0xFF, (full2 >> 8) & 0xFF, (full2 >> 16) & 0xFF, &y2, &u2, &v2);
+	double y1 = TxiYFromRGB(full1 & 0xFF, (full1 >> 8) & 0xFF, (full1 >> 16) & 0xFF);
+	double y2 = TxiYFromRGB(full2 & 0xFF, (full2 >> 8) & 0xFF, (full2 >> 16) & 0xFF);
 	if (y2 > y1) {
 		//swap order to keep me sane
 		COLOR32 temp = full2;
@@ -1195,7 +1197,7 @@ int TxConvert4x4(TxConversionParameters *params) {
 
 	//create tile data
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, params->balance, params->colorBalance, 15, params->enhanceColors, 4);
+	RxInit(reduction, params->balance, params->colorBalance, params->enhanceColors, 4);
 	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY);
 
 	//build the palettes.

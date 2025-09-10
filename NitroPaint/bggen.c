@@ -322,7 +322,7 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 	unsigned char *flips = (unsigned char *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
 
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, balance, colorBalance, 15, 0, 255);
+	RxInit(reduction, balance, colorBalance, 0, 255);
 	for (int i = 0; i < nTiles; i++) {
 		BgTile *t1 = tiles + i;
 		for (int j = 0; j < i; j++) {
@@ -526,7 +526,7 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 
 void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, balance, colorBalance, 15, enhanceColors, paletteSize);
+	RxInit(reduction, balance, colorBalance, enhanceColors, paletteSize);
 
 	if (!dither) diffuse = 0.0f;
 	for (int i = 0; i < nTiles; i++) {
@@ -1117,7 +1117,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 
 	//create dummy reduction to setup parameters for color matching
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, balance, colorBalance, 15, enhanceColors, paletteSize - !paletteOffset);
+	RxInit(reduction, balance, colorBalance, enhanceColors, paletteSize - !paletteOffset);
 
 	//generate an nPalettes color palette
 	if (newPalettes) {
@@ -1155,10 +1155,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 
 					COLOR32 *outPal = pals + palNo * maxPaletteSize + paletteOffset + !paletteOffset;
 					for (int i = 0; i < paletteSize - !paletteOffset; i++) {
-						uint8_t r = reduction->paletteRgb[i][0];
-						uint8_t g = reduction->paletteRgb[i][1];
-						uint8_t b = reduction->paletteRgb[i][2];
-						outPal[i] = r | (g << 8) | (b << 16);
+						outPal[i] = reduction->paletteRgb[i];
 					}
 					qsort(outPal, paletteSize - !paletteOffset, sizeof(COLOR32), RxColorLightnessComparator);
 					if (paletteOffset == 0) pals[palNo * maxPaletteSize] = 0xFF00FF;

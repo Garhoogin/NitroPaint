@@ -2182,7 +2182,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 
 				//compute histogram
 				RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-				RxInit(reduction, balance, colorBalance, 15, enhanceColors, nColors - reserveFirst);
+				RxInit(reduction, balance, colorBalance, enhanceColors, nColors - reserveFirst);
 				for (int i = 0; i < nPaths; i++) {
 					getPathFromPaths(paths, i, bf);
 					COLOR32 *bits = ImgRead(bf, &width, &height);
@@ -2195,9 +2195,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 				//create and write palette
 				RxComputePalette(reduction);
 				for (int i = 0; i < nColors - reserveFirst; i++) {
-					uint8_t *c8 = &reduction->paletteRgb[i][0];
-					COLOR32 c = c8[0] | (c8[1] << 8) | (c8[2] << 16);
-					(paletteCopy + reserveFirst)[i] = c;
+					(paletteCopy + reserveFirst)[i] = reduction->paletteRgb[i];
 				}
 				qsort(paletteCopy + reserveFirst, nColors - reserveFirst, sizeof(COLOR32), RxColorLightnessComparator);
 				RxDestroy(reduction);
