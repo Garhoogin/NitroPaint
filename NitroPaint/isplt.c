@@ -378,8 +378,8 @@ static int RxiTreeCountLeaves(const RxColorNode *tree) {
 	return count;
 }
 
-static void RxiTreeSplitNode(RxColorNode *node) {
-	if (!node->canSplit) return;
+static int RxiTreeSplitNode(RxColorNode *node) {
+	if (!node->canSplit) return 0; // did not split
 	node->canSplit = FALSE;
 
 	if (node->left == NULL && node->right == NULL) {
@@ -395,8 +395,10 @@ static void RxiTreeSplitNode(RxColorNode *node) {
 			newNode->startIndex = node->pivotIndex;
 			newNode->endIndex = node->endIndex;
 			node->right = newNode;
+			return 1; // did split
 		}
 	}
+	return 0; // did not split
 }
 
 static RxColorNode *RxiTreeFindSplittableNode(const RxColorNode *tree) {
@@ -907,11 +909,7 @@ static void RxiPaletteWrite(RxReduction *reduction) {
 	RxColorNode **colorBlockPtr = reduction->colorBlocks;
 	for (int i = 0; i < reduction->nPaletteColors; i++) {
 		if (colorBlockPtr[i] != NULL) {
-			RxColorNode *block = colorBlockPtr[i];
-			RxRgbColor rgb;
-			RxConvertYiqToRgb(&rgb, &block->color);
-
-			COLOR32 rgb32 = reduction->maskColors(rgb.r | (rgb.g << 8) | (rgb.b << 16) | (rgb.a << 24));
+			COLOR32 rgb32 = RxiMaskYiqToRgb(reduction, &colorBlockPtr[i]->color);
 
 			//write RGB
 			reduction->paletteRgb[ofs] = rgb32;
@@ -1224,9 +1222,9 @@ void RxComputePalette(RxReduction *reduction) {
 	treeHead->canSplit = TRUE;
 	treeHead->startIndex = 0;
 	treeHead->endIndex = reduction->histogram->nEntries;
+	RxiTreeNodeInit(reduction, treeHead);
 
 	reduction->colorTreeHead = treeHead;
-	RxiTreeNodeInit(reduction, treeHead);
 
 	//main color reduction loop
 	reduction->nUsedColors = 1;
@@ -1234,20 +1232,23 @@ void RxComputePalette(RxReduction *reduction) {
 		//split and initialize children for the found node.
 		RxColorNode *node = RxiTreeFindSplittableNode(treeHead);
 		if (node != NULL) {
-			RxiTreeSplitNode(node);
-			if (node->left != NULL) RxiTreeNodeInit(reduction, node->left);
-			if (node->right != NULL) RxiTreeNodeInit(reduction, node->right);
+			//split node
+			if (RxiTreeSplitNode(node)) {
+				RxiTreeNodeInit(reduction, node->left);
+				RxiTreeNodeInit(reduction, node->right);
 
-			if (node->left != NULL && node->right != NULL) reduction->nUsedColors++;
+				reduction->nUsedColors++;
+			}
 		}
 
-		//count number of leaves
-		reduction->nUsedColors = RxiTreeCountLeaves(treeHead);
+		//when we would reach a termination condition, check first if any colors would be duplicates of each other.
+		//this may especially happen when color masking is used, since the masked colors are not yet known.
 		if (reduction->nUsedColors >= reduction->nPaletteColors || node == NULL) {
 			//merge loop
 			while (RxiMergeTreeNodes(reduction, treeHead));
 		}
 
+		//no more nodes to split?
 		if (node == NULL) break;
 	}
 
@@ -1725,7 +1726,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 			//write back
 			for (int j = 0; j < nColsPerPalette; j++) {
-				palettes[j + i * RX_TILE_PALETTE_MAX] = ColorRoundToDS15(reduction->paletteRgb[j]);
+				palettes[j + i * RX_TILE_PALETTE_MAX] = reduction->paletteRgb[j];
 			}
 		}
 	}
@@ -1748,9 +1749,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 			//write and sort
 			COLOR32 *thisPalDest = dest + paletteSize * (i + paletteBase) + outputOffs;
-			for (int j = 0; j < nFinalColsPerPalette; j++) {
-				thisPalDest[j] = ColorRoundToDS15(reduction->paletteRgb[j]);
-			}
+			memcpy(thisPalDest, reduction->paletteRgb, nFinalColsPerPalette * sizeof(COLOR32));
 			qsort(thisPalDest, nFinalColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
 		} else {
 			//already the correct size; simply sort and copy

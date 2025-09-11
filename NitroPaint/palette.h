@@ -389,10 +389,10 @@ typedef struct RxHistEntry_ {
 
 //structure for a node in the color tree
 typedef struct RxColorNode_ {
-	int canSplit;
+	RxYiqColor color;
 	double weight;
 	double priority;
-	RxYiqColor color;
+	int canSplit;
 	int pivotIndex;
 	int startIndex;
 	int endIndex;
@@ -446,7 +446,7 @@ typedef struct RxReduction_ {
 	RxHistEntry **histogramFlat;
 	RxTotalBuffer blockTotals[256];
 	RxColorNode *colorTreeHead;
-	RxColorNode *colorBlocks[0x2000];
+	RxColorNode *colorBlocks[256];
 	COLOR32 paletteRgb[256];
 	COLOR32 paletteRgbCopy[256];
 	RxYiqColor paletteYiq[256];
