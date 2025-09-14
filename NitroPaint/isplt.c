@@ -1264,19 +1264,45 @@ void RxDestroy(RxReduction *reduction) {
 }
 
 int RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors) {
-	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE, nColors);
+	return RxCreatePaletteEx(img, width, height, pal, nColors, BALANCE_DEFAULT, BALANCE_DEFAULT, 0, 
+		RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_SORT_ALL | RX_FLAG_MASK_BITS);
+}
+
+int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag) {
+	RxReduction *reduction = (RxReduction *) calloc(sizeof(RxReduction), 1);
+	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
+
+	//set alpha mode
+	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
+		case RX_FLAG_ALPHA_MODE_NONE: reduction->alphaMode = RX_ALPHA_NONE; break;
+		case RX_FLAG_ALPHA_MODE_RESERVE: reduction->alphaMode = RX_ALPHA_RESERVE; break;
+		case RX_FLAG_ALPHA_MODE_PIXEL: reduction->alphaMode = RX_ALPHA_PIXEL; break;
+		case RX_FLAG_ALPHA_MODE_PALETTE: reduction->alphaMode = RX_ALPHA_PALETTE; break;
+	}
+
+	if (flag & RX_FLAG_NO_MASK_BITS) {
+		//no color masking -> use dummy color mask callback
+		reduction->maskColors = RxMaskColorDummy;
+	}
+
 	RxHistAdd(reduction, img, width, height);
 	RxHistFinalize(reduction);
 	RxComputePalette(reduction);
-	
+
 	//copy palette out
 	memcpy(pal, reduction->paletteRgb, nColors * sizeof(COLOR32));
-
 	RxDestroy(reduction);
+
+	int nProduced = reduction->nUsedColors;
 	free(reduction);
-	qsort(pal, nColors, 4, RxColorLightnessComparator);
-	return 0;
+
+	if (flag & RX_FLAG_SORT_ONLY_USED) {
+		qsort(pal, nProduced, sizeof(COLOR32), RxColorLightnessComparator);
+	} else {
+		qsort(pal, nColors, sizeof(COLOR32), RxColorLightnessComparator);
+	}
+
+	return nProduced;
 }
 
 #define RX_TILE_PALETTE_MAX       32 //max colors in the internal work buffer
@@ -1714,43 +1740,6 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	free(reduction);
 	free(tiles);
 	free(diffBuff);
-}
-
-int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag) {
-	RxReduction *reduction = (RxReduction *) calloc(sizeof(RxReduction), 1);
-	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
-
-	//set alpha mode
-	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
-		case RX_FLAG_ALPHA_MODE_NONE: reduction->alphaMode = RX_ALPHA_NONE; break;
-		case RX_FLAG_ALPHA_MODE_RESERVE: reduction->alphaMode = RX_ALPHA_RESERVE; break;
-		case RX_FLAG_ALPHA_MODE_PIXEL: reduction->alphaMode = RX_ALPHA_PIXEL; break;
-		case RX_FLAG_ALPHA_MODE_PALETTE: reduction->alphaMode = RX_ALPHA_PALETTE; break;
-	}
-
-	if (flag & RX_FLAG_NO_MASK_BITS) {
-		//no color masking -> use dummy color mask callback
-		reduction->maskColors = RxMaskColorDummy;
-	}
-
-	RxHistAdd(reduction, img, width, height);
-	RxHistFinalize(reduction);
-	RxComputePalette(reduction);
-
-	//copy palette out
-	memcpy(pal, reduction->paletteRgb, nColors * sizeof(COLOR32));
-	RxDestroy(reduction);
-
-	int nProduced = reduction->nUsedColors;
-	free(reduction);
-
-	if (flag & RX_FLAG_SORT_ONLY_USED) {
-		qsort(pal, nProduced, sizeof(COLOR32), RxColorLightnessComparator);
-	} else {
-		qsort(pal, nColors, sizeof(COLOR32), RxColorLightnessComparator);
-	}
-
-	return nProduced;
 }
 
 static int RxiDiffuseCurveY(double x) {
