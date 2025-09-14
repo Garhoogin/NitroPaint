@@ -690,7 +690,6 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 	
 	//gather statistics
 	double totalWeight = 0.0, totalY = 0.0, sumWeightedSquares = 0.0, totalI = 0.0, totalQ = 0.0, totalA = 0.0;
-	double aWeightY = 0.0, aWeightI = 0.0, aWeightQ = 0.0, aWeightTotal = 0.0;
 	for (int i = 0; i < nColors; i++) {
 		COLOR_INFO *entry = &colorInfo[i];
 		totalWeight += entry->weight;
@@ -907,10 +906,6 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 	if (nIterations <= 0) return;
 
 	int nHistEntries = reduction->histogram->nEntries;
-	double yw2 = reduction->yWeight2;
-	double iw2 = reduction->iWeight2;
-	double qw2 = reduction->qWeight2;
-	double aw2 = reduction->aWeight2;
 
 	//keep track of error. Used to abort if we mess up the palette
 	double error = 0.0, lastError = RX_LARGE_NUMBER;
@@ -1163,7 +1158,7 @@ static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
 
 			//we recalculate the new combined node.
 			node->startIndex = loc3;
-			node->endIndex = nHist;
+			node->endIndex = loc4;
 			RxiTreeNodeInit(reduction, node);
 
 			//HACK
@@ -1288,13 +1283,13 @@ int RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height,
 #define RX_TILE_PALETTE_COUNT_MAX 16 //max palettes produced
 
 typedef struct RxiTile_ {
-	COLOR32 rgb[64];
-	uint8_t indices[64];
-	RxYiqColor palette[RX_TILE_PALETTE_MAX]; //YIQ
+	COLOR32 rgb[64];                         // RGBA 8x8 block color
+	uint8_t indices[64];                     // indices into color palette per 8x8 pixels
+	RxYiqColor palette[RX_TILE_PALETTE_MAX]; // YIQ color palette
 	int useCounts[RX_TILE_PALETTE_MAX];
-	unsigned short palIndex; //points to the index of the tile that is maintaining the palette this tile uses
-	unsigned short nUsedColors; //number of filled slots
-	unsigned short nSwallowed;
+	unsigned int palIndex;                   // points to the index of the tile that is maintaining the palette this tile uses
+	unsigned int nUsedColors;                // number of filled slots
+	unsigned int nSwallowed;
 } RxiTile;
 
 static void RxiTileCopy(RxiTile *dest, const COLOR32 *pxOrigin, unsigned int width) {
@@ -1338,9 +1333,9 @@ double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *pa
 	for (int i = 0; i < reduction->histogram->nEntries; i++) {
 		RxHistEntry *entry = reduction->histogramFlat[i];
 		
-		int closest = RxiPaletteFindClosestColor(reduction, palette, nColors, &entry->color, NULL);
-		const RxYiqColor *closestYiq = palette + closest;
-		error += RxiComputeColorDifference(reduction, &entry->color, closestYiq) * entry->weight;
+		double diff = 0.0;
+		(void) RxiPaletteFindClosestColor(reduction, palette, nColors, &entry->color, &diff);
+		error += diff * entry->weight;
 
 		if (error >= maxError) return maxError;
 	}
@@ -1356,7 +1351,7 @@ double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette,
 
 	//convert palette colors
 	for (unsigned int i = 0; i < nColors; i++) {
-		RxConvertRgbToYiq(palette[i], yiqPalette + i);
+		RxConvertRgbToYiq(palette[i], &yiqPalette[i]);
 	}
 
 	double error = RxHistComputePaletteErrorYiq(reduction, yiqPalette, nColors, maxError);
@@ -1374,22 +1369,18 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, const RxiT
 
 	//map each color from tile2 to one of tile1
 	double totalDiff = 0.0;
-	for (int i = 0; i < tile2->nUsedColors; i++) {
-		const RxYiqColor *yiq = &tile2->palette[i];
+	for (unsigned int i = 0; i < tile2->nUsedColors; i++) {
 		double diff = 0.0;
-		RxiPaletteFindClosestColor(reduction, &tile1->palette[0], tile1->nUsedColors, yiq, &diff);
+		(void) RxiPaletteFindClosestColor(reduction, tile1->palette, tile1->nUsedColors, &tile2->palette[i], &diff);
 
-		if (diff > 0) {
-			totalDiff += diff * tile2->useCounts[i];
-		}
-
+		totalDiff += diff * tile2->useCounts[i];
 	}
 	
 	//if all colors match perfectly, return 0
 	if (totalDiff == 0) return 0;
 
 	//imperfect fit. 
-	int fullSize = 2 * reduction->nPaletteColors;
+	unsigned int fullSize = 2 * reduction->nPaletteColors;
 	if (tile1->nUsedColors + tile2->nUsedColors < fullSize) {
 		//one or two palettes not full. Scale down
 		totalDiff *= sqrt(((double) (tile1->nUsedColors + tile2->nUsedColors)) / fullSize);
@@ -1403,11 +1394,11 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, const RxiT
 	return totalDiff;
 }
 
-static double RxiTileFindSimilarTiles(const RxiTile *tiles, const double *similarities, unsigned int nTiles, int *i1, int *i2) {
+static double RxiTileFindSimilarTiles(const RxiTile *tiles, const double *similarities, unsigned int nTiles, unsigned int *i1, unsigned int *i2) {
 	//find a pair of tiles. Both must be representative tiles.
 
 	double leastDiff = RX_LARGE_NUMBER;
-	int best1 = 0, best2 = 1;
+	unsigned int best1 = 0, best2 = 1;
 
 	for (unsigned int i = 0; i < nTiles; i++) {
 		const RxiTile *tile1 = &tiles[i];
@@ -1424,12 +1415,12 @@ static double RxiTileFindSimilarTiles(const RxiTile *tiles, const double *simila
 				leastDiff = similarities[i * nTiles + j];
 				best1 = i;
 				best2 = j;
-				if (!leastDiff) goto done;
+				if (!leastDiff) goto Done;
 			}
 		}
 	}
 
-done:
+Done:
 	*i1 = best1;
 	*i2 = best2;
 	return leastDiff;
@@ -1521,7 +1512,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			for (int i = 0; i < 64; i++) {
 				int index = RxiPaletteFindClosestRgbColor(reduction, &tile->palette[0], tile->nUsedColors, tile->rgb[i], NULL);
 				if ((tile->rgb[i] >> 24) == 0) index = RX_TILE_PALETTE_MAX - 1;
-				tile->indices[i] = index;
+				tile->indices[i] = (uint8_t) index;
 				tile->useCounts[index]++;
 			}
 			tile->palIndex = x + y * tilesX;
@@ -1550,7 +1541,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	int nCurrentPalettes = nTiles;
 	while (nCurrentPalettes > nPalettes) {
 
-		int index1, index2;
+		unsigned int index1, index2;
 		RxiTileFindSimilarTiles(tiles, diffBuff, nTiles, &index1, &index2);
 
 		//find all  instances of index2, replace with index1
@@ -1592,7 +1583,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 				COLOR32 col = tile->rgb[j];
 				int index = RxiPaletteFindClosestRgbColor(reduction, tile->palette, tile->nUsedColors, tile->rgb[j], NULL);
 				if ((col >> 24) == 0) index = RX_TILE_PALETTE_MAX - 1;
-				tile->indices[j] = index;
+				tile->indices[j] = (uint8_t) index;
 				rep->useCounts[index]++;
 			}
 		}

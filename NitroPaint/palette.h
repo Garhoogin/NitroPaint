@@ -2,11 +2,13 @@
 
 #include "color.h"
 
-#define BALANCE_DEFAULT  20
-#define BALANCE_MIN      1
-#define BALANCE_MAX      39
+#define BALANCE_DEFAULT      20 // Balance/Color Balance default setting
+#define BALANCE_MIN           1 // Balance/Color Balance minimum setting
+#define BALANCE_MAX          39 // Balance/Color Balance maximum setting
 
-#define RECLUSTER_DEFAULT 8
+#define RECLUSTER_DEFAULT     8 // Default number of reclusters applied to the color palette
+
+#define RX_PALETTE_MAX_SIZE 256 // Maximum created color palette size
 
 // -----------------------------------------------------------------------------------------------
 // Name: enum RxFlag
@@ -444,13 +446,13 @@ typedef struct RxReduction_ {
 	unsigned int alphaThreshold;
 	RxHistogram *histogram;
 	RxHistEntry **histogramFlat;
-	RxTotalBuffer blockTotals[256];
+	RxTotalBuffer blockTotals[RX_PALETTE_MAX_SIZE];
 	RxColorNode *colorTreeHead;
-	RxColorNode *colorBlocks[256];
-	COLOR32 paletteRgb[256];
-	COLOR32 paletteRgbCopy[256];
-	RxYiqColor paletteYiq[256];
-	RxYiqColor paletteYiqCopy[256];
+	RxColorNode *colorBlocks[RX_PALETTE_MAX_SIZE];
+	COLOR32 paletteRgb[RX_PALETTE_MAX_SIZE];
+	COLOR32 paletteRgbCopy[RX_PALETTE_MAX_SIZE];
+	RxYiqColor paletteYiq[RX_PALETTE_MAX_SIZE];
+	RxYiqColor paletteYiqCopy[RX_PALETTE_MAX_SIZE];
 	double lumaTable[512];
 	double gamma;
 } RxReduction;
