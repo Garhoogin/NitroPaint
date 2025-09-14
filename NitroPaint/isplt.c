@@ -25,9 +25,10 @@
 #define RX_ASSUME(x)    if(!(x)) __debugbreak()
 #endif
 
-//inline functions for MSVC
+//inline and restrict for MSVC
 #ifdef _MSC_VER
-#define inline __inline
+#define inline   __inline
+#define restrict __restrict
 #endif
 
 #define TRUE 1
@@ -1302,43 +1303,44 @@ static void RxiTileCopy(RxiTile *dest, const COLOR32 *pxOrigin, unsigned int wid
 	}
 }
 
-static int RxiPaletteFindClosestRgbColorYiqPaletteSimple(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, COLOR32 col, double *outDiff) {
-	RxYiqColor yiq;
-	RxConvertRgbToYiq(col, &yiq);
-
+static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff) {
 	double leastDiff = RX_LARGE_NUMBER;
 	int leastIndex = 0;
 	for (unsigned int i = 0; i < nColors; i++) {
 		const RxYiqColor *yiq2 = &palette[i];
 
-		double diff = RxiComputeColorDifference(reduction, &yiq, yiq2);
+		double diff = RxiComputeColorDifference(reduction, col, yiq2);
 		if (diff < leastDiff) {
 			leastDiff = diff;
 			leastIndex = i;
+			if (diff == 0.0) break;
 		}
 	}
 	if (outDiff != NULL) *outDiff = leastDiff;
 	return leastIndex;
 }
 
+static int RxiPaletteFindClosestRgbColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, COLOR32 col, double *outDiff) {
+	RxYiqColor yiq;
+	RxConvertRgbToYiq(col, &yiq);
+
+	return RxiPaletteFindClosestColor(reduction, palette, nColors, &yiq, outDiff);
+}
+
+int RxPaletteFindCloestColorYiq(RxReduction *reduction, const RxYiqColor *color, const RxYiqColor *palette, unsigned int nColors) {
+	return RxiPaletteFindClosestColor(reduction, palette, nColors, color, NULL);
+}
+
 double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, double maxError) {
 	double error = 0.0;
 
 	//sum total weighted squared differences
-	double yw2 = reduction->yWeight2;
-	double iw2 = reduction->iWeight2;
-	double qw2 = reduction->qWeight2;
-	double aw2 = reduction->aWeight2;
 	for (int i = 0; i < reduction->histogram->nEntries; i++) {
 		RxHistEntry *entry = reduction->histogramFlat[i];
 		
-		int closest = RxPaletteFindCloestColorYiq(reduction, &entry->color, palette, nColors);
+		int closest = RxiPaletteFindClosestColor(reduction, palette, nColors, &entry->color, NULL);
 		const RxYiqColor *closestYiq = palette + closest;
-		double dy = reduction->lumaTable[entry->color.y] - reduction->lumaTable[closestYiq->y];
-		double di = entry->color.i - closestYiq->i;
-		double dq = entry->color.q - closestYiq->q;
-		double da = entry->color.a - closestYiq->a;
-		error += (yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + aw2 * da * da) * entry->weight;
+		error += RxiComputeColorDifference(reduction, &entry->color, closestYiq) * entry->weight;
 
 		if (error >= maxError) return maxError;
 	}
@@ -1363,22 +1365,6 @@ double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette,
 	return error;
 }
 
-static int RxiPaletteFindClosestColorYiqSimple(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff) {
-	double leastDiff = RX_LARGE_NUMBER;
-	int leastIndex = 0;
-	for (unsigned int i = 0; i < nColors; i++) {
-		const RxYiqColor *yiq2 = &palette[i];
-
-		double diff = RxiComputeColorDifference(reduction, col, yiq2);
-		if (diff < leastDiff) {
-			leastDiff = diff;
-			leastIndex = i;
-		}
-	}
-	if (outDiff != NULL) *outDiff = leastDiff;
-	return leastIndex;
-}
-
 static double RxiTileComputePaletteDifference(RxReduction *reduction, const RxiTile *tile1, const RxiTile *tile2) {
 	//if either palette has 0 colors, return 0 (perfect fit)
 	if (tile1->nUsedColors == 0 || tile2->nUsedColors == 0) return 0;
@@ -1391,7 +1377,7 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, const RxiT
 	for (int i = 0; i < tile2->nUsedColors; i++) {
 		const RxYiqColor *yiq = &tile2->palette[i];
 		double diff = 0.0;
-		RxiPaletteFindClosestColorYiqSimple(reduction, &tile1->palette[0], tile1->nUsedColors, yiq, &diff);
+		RxiPaletteFindClosestColor(reduction, &tile1->palette[0], tile1->nUsedColors, yiq, &diff);
 
 		if (diff > 0) {
 			totalDiff += diff * tile2->useCounts[i];
@@ -1533,7 +1519,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 			//match pixels to palette indices
 			for (int i = 0; i < 64; i++) {
-				int index = RxiPaletteFindClosestRgbColorYiqPaletteSimple(reduction, &tile->palette[0], tile->nUsedColors, tile->rgb[i], NULL);
+				int index = RxiPaletteFindClosestRgbColor(reduction, &tile->palette[0], tile->nUsedColors, tile->rgb[i], NULL);
 				if ((tile->rgb[i] >> 24) == 0) index = RX_TILE_PALETTE_MAX - 1;
 				tile->indices[i] = index;
 				tile->useCounts[index]++;
@@ -1604,7 +1590,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 			for (int j = 0; j < 64; j++) {
 				COLOR32 col = tile->rgb[j];
-				int index = RxiPaletteFindClosestRgbColorYiqPaletteSimple(reduction, tile->palette, tile->nUsedColors, tile->rgb[j], NULL);
+				int index = RxiPaletteFindClosestRgbColor(reduction, tile->palette, tile->nUsedColors, tile->rgb[j], NULL);
 				if ((col >> 24) == 0) index = RX_TILE_PALETTE_MAX - 1;
 				tile->indices[j] = index;
 				rep->useCounts[index]++;
@@ -1794,31 +1780,6 @@ static int RxiDiffuseCurveQ(double x) {
 	return (int) (8.0 + pow(x - 8.0, 0.85) * 0.89453125 + 0.5);
 }
 
-int RxPaletteFindCloestColorYiq(RxReduction *reduction, const RxYiqColor *color, const RxYiqColor *palette, unsigned int nColors) {
-	double yw2 = reduction->yWeight2;
-	double iw2 = reduction->iWeight2;
-	double qw2 = reduction->qWeight2;
-	double aw2 = reduction->aWeight2;
-
-	double minDistance = RX_LARGE_NUMBER;
-	int minIndex = 0;
-	for (unsigned int i = 0; i < nColors; i++) {
-		const RxYiqColor *yiq = &palette[i];
-
-		double dy = reduction->lumaTable[yiq->y] - reduction->lumaTable[color->y];
-		double di = yiq->i - color->i;
-		double dq = yiq->q - color->q;
-		double dst = dy * dy * yw2 + di * di * iw2 + dq * dq * qw2;
-		if (dst < minDistance) {
-			minDistance = dst;
-			minIndex = i;
-			if (minDistance == 0.0) return i;
-		}
-	}
-
-	return minIndex;
-}
-
 void RxReduceImage(COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse) {
 	RxReduceImageEx(px, NULL, width, height, palette, nColors, touchAlpha, binaryAlpha, c0xp, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
 }
@@ -1884,7 +1845,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 
 			//match it to a palette color. We'll measure distance to it as well.
 			RxYiqColor colorYiq = { colorY, colorI, colorQ, colorA };
-			int matched = c0xp + RxPaletteFindCloestColorYiq(reduction, &colorYiq, yiqPalette + c0xp, nColors - c0xp);
+			int matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &colorYiq, NULL);
 			if (colorA == 0 && c0xp) matched = 0;
 
 			//measure distance. From middle color to sampled color, and from palette color to sampled color.
@@ -1939,7 +1900,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 
 				//match to palette color
 				RxYiqColor diffusedYiq = { colorY, colorI, colorQ, colorA };
-				matched = c0xp + RxPaletteFindCloestColorYiq(reduction, &diffusedYiq, yiqPalette + c0xp, nColors - c0xp);
+				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &diffusedYiq, NULL);
 				if (diffusedYiq.a < 128 && c0xp) matched = 0;
 				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (colorA << 24);
 				img[x + y * width] = chosen;
@@ -1988,7 +1949,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 					}
 				}
 
-				matched = c0xp + RxPaletteFindCloestColorYiq(reduction, &centerYiq, yiqPalette + c0xp, nColors - c0xp);
+				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &centerYiq, NULL);
 				if (c0xp && centerYiq.a < 128) matched = 0;
 				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (centerYiq.a << 24);
 				img[x + y * width] = chosen;
@@ -2033,10 +1994,6 @@ double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned
 		RxConvertRgbToYiq(pal[i], paletteYiq + i);
 	}
 
-	double yw2 = reduction->yWeight2;
-	double iw2 = reduction->iWeight2;
-	double qw2 = reduction->qWeight2;
-	double aw2 = reduction->aWeight2;
 	for (unsigned int i = 0; i < nPx; i++) {
 		COLOR32 p = px[i];
 		int a = (p >> 24) & 0xFF;
@@ -2044,19 +2001,10 @@ double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned
 
 		RxYiqColor yiq;
 		RxConvertRgbToYiq(px[i], &yiq);
-		int best = RxPaletteFindCloestColorYiq(reduction, &yiq, paletteYiq, nColors);
-		RxYiqColor *chosen = &paletteYiq[best];
+		double bestDiff;
+		(void) RxiPaletteFindClosestColor(reduction, paletteYiq, nColors, &yiq, &bestDiff);
 
-		double dy = reduction->lumaTable[yiq.y] - reduction->lumaTable[chosen->y];
-		double di = yiq.i - chosen->i;
-		double dq = yiq.q - chosen->q;
-
-		error += dy * dy * yw2;
-		if (error >= nMaxError) {
-			if (paletteYiq != paletteYiqStack) free(paletteYiq);
-			return nMaxError;
-		}
-		error += di * di * iw2 + dq * dq * qw2;
+		error += bestDiff;
 		if (error >= nMaxError) {
 			if (paletteYiq != paletteYiqStack) free(paletteYiq);
 			return nMaxError;

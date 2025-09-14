@@ -757,9 +757,9 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	//by default the palette generator only enforces palette density, but not
 	//the actual truncating of RGB values. Do that here. This will also be
 	//important when fixed palettes are allowed.
-	for (int i = 0; i < 256 * 16; i++) {
-		palette[i] = ColorConvertFromDS(ColorConvertToDS(palette[i]));
-	}
+	//for (int i = 0; i < 256 * 16; i++) {
+	//	palette[i] = ColorRoundToDS15(palette[i]) | 0xFF000000;
+	//}
 
 	//split image into 8x8 tiles.
 	for (int y = 0; y < tilesY; y++) {

@@ -116,14 +116,9 @@ int TxConvertIndexedOpaque(TxConversionParameters *params) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
 		RxCreatePaletteEx(params->px, width, height, palette + hasTransparent, nColors - hasTransparent,
 			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_NONE);
-
-		//reduce palette color depth
-		for (unsigned int i = 0; i < nColors; i++) {
-			palette[i] = ColorConvertFromDS(ColorConvertToDS(palette[i]));
-		}
 	} else {
 		for (unsigned int i = 0; i < nColors; i++) {
-			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
+			palette[i] = ColorConvertFromDS(params->fixedPalette[i]) | 0xFF000000;
 		}
 	}
 
@@ -183,14 +178,9 @@ int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
 		RxCreatePaletteEx(params->px, width, height, palette, nColors,
 			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_PIXEL);
-
-		//reduce palette color depth
-		for (unsigned int i = 0; i < nColors; i++) {
-			palette[i] = ColorConvertFromDS(ColorConvertToDS(palette[i]));
-		}
 	} else {
 		for (unsigned int i = 0; i < nColors; i++) {
-			palette[i] = ColorConvertFromDS(params->fixedPalette[i]);
+			palette[i] = ColorConvertFromDS(params->fixedPalette[i]) | 0xFF000000;
 		}
 	}
 
@@ -242,7 +232,7 @@ static COLOR32 TxiBlend18(COLOR32 col1, unsigned int weight1, COLOR32 col2, unsi
 	unsigned int r3 = (r1 * weight1 + r2 * weight2 + 4) / 8;
 	unsigned int g3 = (g1 * weight1 + g2 * weight2 + 4) / 8;
 	unsigned int b3 = (b1 * weight1 + b2 * weight2 + 4) / 8;
-	return ColorRoundToDS18(r3 | (g3 << 8) | (b3 << 16));
+	return ColorRoundToDS18(r3 | (g3 << 8) | (b3 << 16)) | 0xFF000000;
 }
 
 //RGB to YUV, for only Y channel
@@ -282,11 +272,11 @@ static int TxiCreatePaletteFromHistogram(RxReduction *reduction, int nColors, CO
 	return nUsed;
 }
 
-static double TxiComputeInterpolatedError(RxReduction *reduction, COLOR32 *px, int nPx, COLOR c1, COLOR c2, int transparent, double maxError) {
+static double TxiComputeInterpolatedError(RxReduction *reduction, const COLOR32 *px, int nPx, COLOR c1, COLOR c2, int transparent, double maxError) {
 	//expand palette
-	COLOR32 col0 = ColorConvertFromDS(c1);
-	COLOR32 col1 = ColorConvertFromDS(c2);
-	COLOR32 col2 = 0, col3 = 0;
+	COLOR32 col0 = ColorConvertFromDS(c1) | 0xFF000000;
+	COLOR32 col1 = ColorConvertFromDS(c2) | 0xFF000000;
+	COLOR32 col2 = 0xFF000000, col3 = 0xFF000000;
 	if (!transparent) {
 		col2 = TxiBlend18(col0, 3, col1, 5);
 		col3 = TxiBlend18(col0, 5, col1, 3);
@@ -431,8 +421,8 @@ void TxiComputeEndpoints(RxReduction *reduction, COLOR32 *px, int nPx, COLOR32 *
 		full2 = full1;
 		full1 = temp;
 	}
-	*colorMin = full2;
-	*colorMax = full1;
+	*colorMin = full2 | 0xFF000000;
+	*colorMax = full1 | 0xFF000000;
 }
 
 static int TxiComputeColorDifferenceSimple(COLOR32 c1, COLOR32 c2) {
@@ -518,7 +508,7 @@ static void TxiChoosePaletteAndMode(RxReduction *reduction, TxTileData *tile) {
 	}
 }
 
-static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, const COLOR32 *px, int *totalIndex) {
+static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, const COLOR32 *px, int createPalette, int *totalIndex) {
 	memcpy(data[index].rgb, px, 64);
 	data[index].duplicate = 0;
 	data[index].used = 1;
@@ -564,7 +554,7 @@ static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, cons
 		memcpy(data + index, data + duplicateIndex, sizeof(TxTileData));
 		data[index].duplicate = 1;
 		data[index].paletteIndex = data[duplicateIndex].paletteIndex;
-	} else {
+	} else if (createPalette) {
 		//generate a palette and determine the mode.
 		TxiChoosePaletteAndMode(reduction, data + index);
 		data[index].paletteIndex = *totalIndex;
@@ -585,6 +575,11 @@ static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, cons
 			tile2->paletteIndex = tile1->paletteIndex;
 			break;
 		}
+	} else {
+		//do not create a palette.
+		data[index].duplicate = 0;
+		data[index].paletteIndex = 0;
+		data[index].mode = COMP_FULL | COMP_TRANSPARENT;
 	}
 
 	if (!data[index].duplicate) {
@@ -597,7 +592,7 @@ static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, cons
 	g_texCompressionProgress++;
 }
 
-static TxTileData *TxiCreateTileData(RxReduction *reduction, COLOR32 *px, int tilesX, int tilesY) {
+static TxTileData *TxiCreateTileData(RxReduction *reduction, COLOR32 *px, int tilesX, int tilesY, int createPalette) {
 	TxTileData *data = (TxTileData *) calloc(tilesX * tilesY, sizeof(TxTileData));
 	int paletteIndex = 0;
 	for (int y = 0; y < tilesY; y++) {
@@ -608,7 +603,7 @@ static TxTileData *TxiCreateTileData(RxReduction *reduction, COLOR32 *px, int ti
 			memcpy(tile +  4, px + offs + tilesX *  4, 4 * sizeof(COLOR32));
 			memcpy(tile +  8, px + offs + tilesX *  8, 4 * sizeof(COLOR32));
 			memcpy(tile + 12, px + offs + tilesX * 12, 4 * sizeof(COLOR32));
-			TxiAddTile(reduction, data, x + y * tilesX, tile, &paletteIndex);
+			TxiAddTile(reduction, data, x + y * tilesX, tile, createPalette, &paletteIndex);
 		}
 	}
 	return data;
@@ -833,25 +828,25 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette, int
 }
 
 static void TxiExpandPalette(COLOR *nnsPal, uint16_t mode, COLOR32 *dest, int *nOpaque) {
-	dest[0] = ColorConvertFromDS(nnsPal[0]);
-	dest[1] = ColorConvertFromDS(nnsPal[1]);
+	dest[0] = ColorConvertFromDS(nnsPal[0]) | 0xFF000000;
+	dest[1] = ColorConvertFromDS(nnsPal[1]) | 0xFF000000;
 	mode &= COMP_MODE_MASK;
 
 	if (mode & COMP_OPAQUE) *nOpaque = 4;
 	else *nOpaque = 3;
 	
 	if (mode == (COMP_OPAQUE | COMP_FULL)) {
-		dest[2] = ColorConvertFromDS(nnsPal[2]);
-		dest[3] = ColorConvertFromDS(nnsPal[3]);
+		dest[2] = ColorConvertFromDS(nnsPal[2]) | 0xFF000000;
+		dest[3] = ColorConvertFromDS(nnsPal[3]) | 0xFF000000;
 	} else if (mode == (COMP_TRANSPARENT | COMP_FULL)) {
-		dest[2] = ColorConvertFromDS(nnsPal[2]);
-		dest[3] = 0;
+		dest[2] = ColorConvertFromDS(nnsPal[2]) | 0xFF000000;
+		dest[3] = 0xFF000000;
 	} else if (mode == (COMP_TRANSPARENT | COMP_INTERPOLATE)) {
-		dest[2] = TxiBlend18(dest[0], 4, dest[1], 4);
-		dest[3] = 0;
+		dest[2] = TxiBlend18(dest[0], 4, dest[1], 4) | 0xFF000000;
+		dest[3] = 0xFF000000;
 	} else if (mode == (COMP_OPAQUE | COMP_INTERPOLATE)) {
-		dest[2] = TxiBlend18(dest[0], 5, dest[1], 3);
-		dest[3] = TxiBlend18(dest[0], 3, dest[1], 5);
+		dest[2] = TxiBlend18(dest[0], 5, dest[1], 3) | 0xFF000000;
+		dest[3] = TxiBlend18(dest[0], 3, dest[1], 5) | 0xFF000000;
 	}
 }
 
@@ -1035,7 +1030,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 
 			//better fit?
 			COLOR32 temp[1] = { 0 };
-			temp[0] = ColorConvertFromDS(tile->palette[0]);
+			temp[0] = ColorConvertFromDS(tile->palette[0]) | 0xFF000000;
 			double newErr = RxComputePaletteError(reduction, tile->rgb, 16, temp, 1, 128, entry->error);
 			if (newErr >= entry->error) continue;
 
@@ -1198,7 +1193,7 @@ int TxConvert4x4(TxConversionParameters *params) {
 	//create tile data
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
 	RxInit(reduction, params->balance, params->colorBalance, params->enhanceColors, 4);
-	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY);
+	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY, !params->useFixedPalette);
 
 	//build the palettes.
 	COLOR *nnsPal = (COLOR *) calloc(params->colorEntries, sizeof(COLOR));
