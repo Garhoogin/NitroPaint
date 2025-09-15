@@ -289,10 +289,10 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 		double i1 = a1 * yiq1->i, i2 = a2 * yiq2->i;
 		double q1 = a1 * yiq1->q, q2 = a2 * yiq2->q;
 		double dy = y1 - y2, di = i1 - i2, dq = q1 - q2;
-		double da = yiq1->a - yiq1->a;
+		double da = yiq1->a - yiq2->a;
 
 		return yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq
-			- da * (
+			- (da * INV_255) * (
 				reduction->yWeight * (y1 - y2)
 				+ reduction->iWeight * (i1 - i2)
 				+ reduction->qWeight * (q1 - q2)
@@ -1819,6 +1819,8 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 					colorI = 0;
 					colorQ = 0;
 					colorA = 0;
+				} else {
+					colorA = 255;
 				}
 			}
 
