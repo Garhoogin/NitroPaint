@@ -1879,6 +1879,14 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 				if (colorA < 0) colorA = 0;
 				else if (colorA > 255) colorA = 255;
 
+				if (binaryAlpha && touchAlpha) {
+					if (colorA < 128) {
+						colorA = 0;
+					} else {
+						colorA = 255;
+					}
+				}
+
 				//match to palette color
 				RxYiqColor diffusedYiq = { colorY, colorI, colorQ, colorA };
 				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &diffusedYiq, NULL);
@@ -1921,12 +1929,14 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 			} else {
 				//anomaly in the picture, just match the original color. Don't diffuse, it'll cause issues.
 				//That or the color is pretty homogeneous here, so dithering is bad anyway.
-				if (c0xp && touchAlpha) {
+				if (binaryAlpha && touchAlpha) {
 					if (centerYiq.a < 128) {
 						centerYiq.y = 0;
 						centerYiq.i = 0;
 						centerYiq.q = 0;
 						centerYiq.a = 0;
+					} else {
+						centerYiq.a = 255;
 					}
 				}
 
@@ -1979,6 +1989,7 @@ double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned
 		COLOR32 p = px[i];
 		int a = (p >> 24) & 0xFF;
 		if (a < alphaThreshold) continue;
+		p |= 0xFF000000;
 
 		RxYiqColor yiq;
 		RxConvertRgbToYiq(px[i], &yiq);

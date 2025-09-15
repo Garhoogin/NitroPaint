@@ -520,8 +520,13 @@ static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, cons
 	int nTransparentPixels = 0;
 	for (int i = 0; i < 16; i++) {
 		COLOR32 c = px[i];
-		int a = (c >> 24) & 0xFF;
-		if (a < 0x80) nTransparentPixels++;
+		unsigned int a = (c >> 24) & 0xFF;
+		if (a < 0x80) {
+			nTransparentPixels++;
+			data[index].rgb[i] = 0; // set alpha=0 (under threshold)
+		} else {
+			data[index].rgb[i] |= 0xFF000000; // set alpha=1 (over threshold)
+		}
 	}
 	data[index].transparentPixels = nTransparentPixels;
 
@@ -933,7 +938,7 @@ static void TxiIndexTile(TxTileData *tile, uint32_t *txel, COLOR32 *tilepal, int
 		if ((col >> 24) < 0x80) {
 			index = 3;
 		} else {
-			index = RxPaletteFindClosestColorSimple(col, tilepal, nOpaque) + baseIndex;
+			index = RxPaletteFindClosestColorSimple(col | 0xFF000000, tilepal, nOpaque) + baseIndex;
 		}
 		texel |= index << (j * 2);
 	}
