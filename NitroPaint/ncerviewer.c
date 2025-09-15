@@ -3149,7 +3149,7 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 					}
 				} else {
 					for (int i = paletteOffset; i < paletteOffset + paletteLength; i++) {
-						palette[i] = ColorConvertFromDS(nclr->colors[i + (paletteIndex << depth)]);
+						palette[i] = ColorConvertFromDS(nclr->colors[i + (paletteIndex << depth)]) | 0xFF000000;
 					}
 				}
 

@@ -2369,7 +2369,7 @@ static void charImport(
 	if (!createPalette) {
 		//decode the palette
 		for (int i = 0; i < paletteSize; i++) {
-			COLOR32 col = ColorConvertFromDS(nitroPalette[i]);
+			COLOR32 col = ColorConvertFromDS(nitroPalette[i]) | 0xFF000000;
 			palette[i] = col;
 		}
 	} else {
@@ -2379,7 +2379,7 @@ static void charImport(
 			COLOR32 d = palette[i];
 			COLOR ds = ColorConvertToDS(d);
 			nitroPalette[i] = ds;
-			palette[i] = ColorConvertFromDS(ds);
+			palette[i] = ColorConvertFromDS(ds) | 0xFF000000;
 		}
 	}
 
