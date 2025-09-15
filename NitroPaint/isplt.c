@@ -1771,6 +1771,13 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
 	RxiApplyFlags(reduction, flag);
 
+	RxReduceImageWithContext(reduction, img, indices, width, height, palette, nColors, flag, diffuse);
+
+	RxDestroy(reduction);
+	free(reduction);
+}
+
+void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse) {
 	//decode flags
 	RxFlag alphaMode = flag & RX_FLAG_ALPHA_MODE_MASK;
 	int binaryAlpha = (alphaMode == RX_FLAG_ALPHA_MODE_NONE) || (alphaMode == RX_FLAG_ALPHA_MODE_RESERVE);
@@ -1985,9 +1992,6 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 	free(lastRow);
 	free(thisDiffuse);
 	free(nextDiffuse);
-
-	RxDestroy(reduction);
-	free(reduction);
 }
 
 double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int nPx, const COLOR32 *pal, unsigned int nColors, int alphaThreshold, double nMaxError) {

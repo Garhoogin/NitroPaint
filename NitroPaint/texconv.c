@@ -927,10 +927,11 @@ static TxiTileErrorMapEntry *TxiGetGreatestErrorTile(TxiTileErrorMapEntry *map, 
 	return map;
 }
 
-static void TxiIndexTile(TxTileData *tile, uint32_t *txel, COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
+static void TxiIndexTile(RxReduction *reduction, const TxTileData *tile, uint32_t *txel, const COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
 	COLOR32 tilebuf[16];
+	int idxbuf[16];
 	memcpy(tilebuf, tile->rgb, sizeof(tilebuf));
-	RxReduceImageEx(tile->rgb, NULL, 4, 4, tilepal, nOpaque, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, 0);
+	RxReduceImageWithContext(reduction, tile->rgb, idxbuf, 4, 4, tilepal, nOpaque, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse);
 
 	uint32_t texel = 0;
 	for (int j = 0; j < 16; j++) {
@@ -939,7 +940,7 @@ static void TxiIndexTile(TxTileData *tile, uint32_t *txel, COLOR32 *tilepal, int
 		if ((col >> 24) < 0x80) {
 			index = 3;
 		} else {
-			index = RxPaletteFindClosestColorSimple(col | 0xFF000000, tilepal, nOpaque) + baseIndex;
+			index = idxbuf[j] + baseIndex;
 		}
 		texel |= index << (j * 2);
 	}
@@ -1055,7 +1056,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 			//index
 			entry->error = 0; //no way to improve this tile
 			pidx[entry->tileIndex] = tile->mode | (foundIndex >> 1);
-			TxiIndexTile(tile, txel + entry->tileIndex, temp, 1, foundIndex & 1, diffuse);
+			TxiIndexTile(reduction, tile, txel + entry->tileIndex, temp, 1, foundIndex & 1, diffuse);
 		}
 	}
 
@@ -1130,7 +1131,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 
 			//index tile with palette
 			pidx[worstTile] = tile->mode | (slottedIndex >> 1);
-			TxiIndexTile(tile, txel + worstTile, tilepal, nOpaque, slottedIndex & 1, diffuse);
+			TxiIndexTile(reduction, tile, txel + worstTile, tilepal, nOpaque, slottedIndex & 1, diffuse);
 
 			errorEntry->error = 0.0; //ignore now
 
@@ -1149,7 +1150,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 					//better
 					entry->error = err;
 					pidx[entry->tileIndex] = tile->mode | (slottedIndex >> 1);
-					TxiIndexTile(tile2, txel + entry->tileIndex, tilepal, nOpaque, slottedIndex & 1, diffuse);
+					TxiIndexTile(reduction, tile2, txel + entry->tileIndex, tilepal, nOpaque, slottedIndex & 1, diffuse);
 				}
 			}
 		}
@@ -1180,7 +1181,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 		TxiExpandPalette(nnsPal + COMP_INDEX(newpidx), newpidx & COMP_MODE_MASK, tilepal, &nOpaque);
 
 		pidx[entry->tileIndex] = newpidx;
-		TxiIndexTile(tile, txel + entry->tileIndex, tilepal, nOpaque, 0, diffuse);
+		TxiIndexTile(reduction, tile, txel + entry->tileIndex, tilepal, nOpaque, 0, diffuse);
 	}
 
 	return nUsedColors;
@@ -1247,7 +1248,7 @@ int TxConvert4x4(TxConversionParameters *params) {
 		errorMap[i].idx = index;
 
 		//index this tile
-		TxiIndexTile(&tileData[i], txel + i, palette, paletteSize, 0, diffuse);
+		TxiIndexTile(reduction, &tileData[i], txel + i, palette, paletteSize, 0, diffuse);
 		g_texCompressionProgress++;
 	}
 

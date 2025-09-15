@@ -677,6 +677,35 @@ double RxHistComputePaletteErrorYiq(
 );
 
 // -----------------------------------------------------------------------------------------------
+// Name: RxReduceImageEx
+//
+// Reduce the colors of image according to a given color palette. This function optionally writes
+// the indexed color values to an array with the same dimension as the input image.
+//
+// Parameters:
+//   reduction     The color reduction context.
+//   px            The image pixels.
+//   indices       The output indexed buffer (optional). This may be set to NULL.
+//   width         The image width.
+//   height        The image height.
+//   palette       The color palette with which to reduce the image.
+//   nColors       The number of colors in the color palette.
+//   flag          Color reduction flag.
+//   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
+// -----------------------------------------------------------------------------------------------
+void RxReduceImageWithContext(
+	RxReduction   *reduction,     // the color reduction context
+	COLOR32       *px,            // the image pixels
+	int           *indices,       // the output palette index data (optional)
+	unsigned int   width,         // the image width
+	unsigned int   height,        // the image height
+	const COLOR32 *palette,       // the color palette
+	unsigned int   nColors,       // the color palette size
+	RxFlag         flag,          // color reduction flags
+	float          diffuse       // the error diffusion amount (from 0 to 1)
+);
+
+// -----------------------------------------------------------------------------------------------
 // Name: RxDestroy
 //
 // Frees all resources held by a color reduction context.
