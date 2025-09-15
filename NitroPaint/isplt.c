@@ -87,6 +87,21 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 	}
 }
 
+static void RxiApplyFlags(RxReduction *reduction, RxFlag flag) {
+	//set alpha mode
+	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
+		case RX_FLAG_ALPHA_MODE_NONE: reduction->alphaMode = RX_ALPHA_NONE; break;
+		case RX_FLAG_ALPHA_MODE_RESERVE: reduction->alphaMode = RX_ALPHA_RESERVE; break;
+		case RX_FLAG_ALPHA_MODE_PIXEL: reduction->alphaMode = RX_ALPHA_PIXEL; break;
+		case RX_FLAG_ALPHA_MODE_PALETTE: reduction->alphaMode = RX_ALPHA_PALETTE; break;
+	}
+
+	if (flag & RX_FLAG_NO_MASK_BITS) {
+		//no color masking -> use dummy color mask callback
+		reduction->maskColors = RxMaskColorDummy;
+	}
+}
+
 static void *RxiSlabAlloc(RxSlab *allocator, unsigned int size) {
 	RX_ASSUME(size <= RX_SLAB_SIZE);
 
@@ -1270,19 +1285,7 @@ int RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height,
 int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag) {
 	RxReduction *reduction = (RxReduction *) calloc(sizeof(RxReduction), 1);
 	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
-
-	//set alpha mode
-	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
-		case RX_FLAG_ALPHA_MODE_NONE: reduction->alphaMode = RX_ALPHA_NONE; break;
-		case RX_FLAG_ALPHA_MODE_RESERVE: reduction->alphaMode = RX_ALPHA_RESERVE; break;
-		case RX_FLAG_ALPHA_MODE_PIXEL: reduction->alphaMode = RX_ALPHA_PIXEL; break;
-		case RX_FLAG_ALPHA_MODE_PALETTE: reduction->alphaMode = RX_ALPHA_PALETTE; break;
-	}
-
-	if (flag & RX_FLAG_NO_MASK_BITS) {
-		//no color masking -> use dummy color mask callback
-		reduction->maskColors = RxMaskColorDummy;
-	}
+	RxiApplyFlags(reduction, flag);
 
 	RxHistAdd(reduction, img, width, height);
 	RxHistFinalize(reduction);
@@ -1759,13 +1762,20 @@ static int RxiDiffuseCurveQ(double x) {
 	return (int) (8.0 + pow(x - 8.0, 0.85) * 0.89453125 + 0.5);
 }
 
-void RxReduceImage(COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse) {
-	RxReduceImageEx(px, NULL, width, height, palette, nColors, touchAlpha, binaryAlpha, c0xp, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
+void RxReduceImage(COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, float diffuse) {
+	RxReduceImageEx(px, NULL, width, height, palette, nColors, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
 }
 
-void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, int touchAlpha, int binaryAlpha, int c0xp, float diffuse, int balance, int colorBalance, int enhanceColors) {
+void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse, int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
 	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
+	RxiApplyFlags(reduction, flag);
+
+	//decode flags
+	RxFlag alphaMode = flag & RX_FLAG_ALPHA_MODE_MASK;
+	int binaryAlpha = (alphaMode == RX_FLAG_ALPHA_MODE_NONE) || (alphaMode == RX_FLAG_ALPHA_MODE_RESERVE);
+	int c0xp = (alphaMode == RX_FLAG_ALPHA_MODE_RESERVE); // color 0 transparency
+	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
 
 	//convert palette to YIQ
 	RxYiqColor *yiqPalette = (RxYiqColor *) calloc(nColors, sizeof(RxYiqColor));
@@ -1781,7 +1791,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 
 	//fill the last row with the first row, just to make sure we don't run out of bounds
 	for (unsigned int i = 0; i < width; i++) {
-		RxConvertRgbToYiq(img[i], lastRow + (i + 1));
+		RxConvertRgbToYiq(img[i], &lastRow[i + 1]);
 	}
 	memcpy(lastRow, lastRow + 1, sizeof(RxYiqColor));
 	memcpy(lastRow + (width + 1), lastRow + width, sizeof(RxYiqColor));
@@ -1813,7 +1823,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 						  + lastRow[x].q * 2 + lastRow[x + 2].q * 2) / 16;
 			int colorA = thisRow[x + 1].a;
 
-			if (touchAlpha && binaryAlpha) {
+			if (binaryAlpha) {
 				if (colorA < 128) {
 					colorY = 0;
 					colorI = 0;
@@ -1824,30 +1834,27 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 				}
 			}
 
+			if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
+				//pixel-mode reduction, set alpha=255 to fit the palette.
+				colorA = 255;
+			}
+
 			//match it to a palette color. We'll measure distance to it as well.
 			RxYiqColor colorYiq = { colorY, colorI, colorQ, colorA };
-			int matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &colorYiq, NULL);
-			if (colorA == 0 && c0xp) matched = 0;
-
-			//measure distance. From middle color to sampled color, and from palette color to sampled color.
-			RxYiqColor *matchedYiq = yiqPalette + matched;
-			double paletteDy = reduction->lumaTable[matchedYiq->y] - reduction->lumaTable[colorY];
-			int paletteDi = matchedYiq->i - colorI;
-			int paletteDq = matchedYiq->q - colorQ;
-			double paletteDistance = paletteDy * paletteDy * reduction->yWeight2 +
-				paletteDi * paletteDi * reduction->iWeight2 +
-				paletteDq * paletteDq * reduction->qWeight2;
+			double paletteDistance = 0.0;
+			int matched = 0;
+			if (colorA == 0 && c0xp) {
+				//we're using color-0 transparency
+				matched = 0;
+			} else {
+				//if we're not using the reserved 0-color for transparency
+				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &colorYiq, &paletteDistance);
+			}
 
 			//now measure distance from the actual color to its average surroundings
 			RxYiqColor centerYiq;
 			memcpy(&centerYiq, &thisRow[x + 1], sizeof(RxYiqColor));
-
-			double centerDy = reduction->lumaTable[centerYiq.y] - reduction->lumaTable[colorY];
-			int centerDi = centerYiq.i - colorI;
-			int centerDq = centerYiq.q - colorQ;
-			double centerDistance = centerDy * centerDy * reduction->yWeight2 +
-				centerDi * centerDi * reduction->iWeight2 +
-				centerDq * centerDq * reduction->qWeight2;
+			double centerDistance = RxiComputeColorDifference(reduction, &centerYiq, &colorYiq);
 
 			//now test: Should we dither?
 			double yw2 = reduction->yWeight2;
@@ -1860,12 +1867,12 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 				double diffuseQ = thisDiffuse[x + 1].q * diffuse * 0.0625;
 				double diffuseA = thisDiffuse[x + 1].a * diffuse * 0.0625;
 
-				if (!touchAlpha || binaryAlpha) diffuseA = 0.0; //don't diffuse alpha if no alpha channel, or we're told not to
+				if (binaryAlpha) diffuseA = 0.0; //don't diffuse alpha if no alpha channel, or we're told not to
 
 				colorY += RxiDiffuseCurveY(diffuseY);
 				colorI += RxiDiffuseCurveI(diffuseI);
 				colorQ += RxiDiffuseCurveQ(diffuseQ);
-				colorA += (int) diffuseA;
+				colorA += (int) (diffuseA + (diffuseA < 0.0 ? -0.5 : 0.5));
 				if (colorY < 0) { //clamp just in case
 					colorY = 0;
 					colorI = 0;
@@ -1879,7 +1886,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 				if (colorA < 0) colorA = 0;
 				else if (colorA > 255) colorA = 255;
 
-				if (binaryAlpha && touchAlpha) {
+				if (binaryAlpha) {
 					if (colorA < 128) {
 						colorA = 0;
 					} else {
@@ -1887,12 +1894,19 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 					}
 				}
 
+				if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
+					//pixel-mode reduction, set alpha=255 to fit the palette.
+					colorA = 255;
+				}
+
 				//match to palette color
 				RxYiqColor diffusedYiq = { colorY, colorI, colorQ, colorA };
 				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &diffusedYiq, NULL);
 				if (diffusedYiq.a < 128 && c0xp) matched = 0;
 				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (colorA << 24);
-				img[x + y * width] = chosen;
+
+				if (touchAlpha) img[x + y * width] = chosen;
+				else img[x + y * width] = (chosen & 0x00FFFFFF) | (img[x + y * width] & 0xFF000000);
 				if (indices != NULL) indices[x + y * width] = matched;
 
 				RxYiqColor *chosenYiq = &yiqPalette[matched];
@@ -1929,7 +1943,7 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 			} else {
 				//anomaly in the picture, just match the original color. Don't diffuse, it'll cause issues.
 				//That or the color is pretty homogeneous here, so dithering is bad anyway.
-				if (binaryAlpha && touchAlpha) {
+				if (binaryAlpha) {
 					if (centerYiq.a < 128) {
 						centerYiq.y = 0;
 						centerYiq.i = 0;
@@ -1940,10 +1954,16 @@ void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned in
 					}
 				}
 
+				if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
+					//pixel-mode reduction, set alpha=255 to fit the palette.
+					centerYiq.a = 255;
+				}
+
 				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &centerYiq, NULL);
 				if (c0xp && centerYiq.a < 128) matched = 0;
 				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (centerYiq.a << 24);
-				img[x + y * width] = chosen;
+				if (touchAlpha) img[x + y * width] = chosen;
+				else img[x + y * width] = (chosen & 0x00FFFFFF) | (img[x + y * width] & 0xFF000000);
 				if (indices != NULL) indices[x + y * width] = matched;
 			}
 

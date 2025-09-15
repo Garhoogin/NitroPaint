@@ -494,7 +494,7 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 		//now, match colors to indices.
 		COLOR32 *pal = palette + (bestPalette << nBits);
 		RxReduceImageEx(tile->px, NULL, 8, 8, pal + paletteOffset + !paletteOffset,
-			paletteSize - !paletteOffset, 0, 1, 0, 0.0f, balance, colorBalance, 0);
+			paletteSize - !paletteOffset, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, 0.0f, balance, colorBalance, 0);
 		for (int j = 0; j < 64; j++) {
 			COLOR32 col = tile->px[j];
 			int index = 0;
@@ -553,7 +553,7 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 		COLOR32 *pal = palette + (bestPalette << nBits);
 
 		//do optional dithering (also matches colors at the same time)
-		RxReduceImageEx(tile->px, NULL, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, diffuse, balance, colorBalance, enhanceColors);
+		RxReduceImageEx(tile->px, NULL, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse, balance, colorBalance, enhanceColors);
 		for (int j = 0; j < 64; j++) {
 			COLOR32 col = tile->px[j];
 			int index = 0;
@@ -1208,7 +1208,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					unsigned char *chr = ncgr->tiles[charIndex];
 					COLOR32 *thisPalette = pals + palIndex * maxPaletteSize + paletteOffset + !paletteOffset;
 					RxReduceImageEx(tile->px, NULL, 8, 8, thisPalette, paletteSize - !paletteOffset,
-						FALSE, TRUE, FALSE, dither ? diffuse : 0.0f, balance, colorBalance, enhanceColors);
+						RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, dither ? diffuse : 0.0f, balance, colorBalance, enhanceColors);
 					for (int i = 0; i < 64; i++) {
 						COLOR32 c = tile->px[i];
 						int srcX = i % 8;
@@ -1337,8 +1337,8 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						unsigned char *ncgrTile = ncgr->tiles[charOrigin - charBase];
 
 						COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset + !paletteOffset;
-						RxReduceImageEx(block, NULL, 8, 8, thisPal, paletteSize - !paletteOffset, FALSE, TRUE, FALSE, dither ? diffuse : 0.0f,
-							balance, colorBalance, enhanceColors);
+						RxReduceImageEx(block, NULL, 8, 8, thisPal, paletteSize - !paletteOffset, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA,
+							dither ? diffuse : 0.0f, balance, colorBalance, enhanceColors);
 						for (int i = 0; i < 64; i++) {
 							if ((block[i] & 0xFF000000) < 0x80) ncgrTile[i] = 0;
 							else {

@@ -2385,7 +2385,7 @@ static void charImport(
 
 	//index image with given parameters.
 	if (!dither) diffuse = 0.0f;
-	RxReduceImageEx(pixels, NULL, width, height, palette, paletteSize, 0, 1, 0, diffuse, balance, colorBalance, enhanceColors);
+	RxReduceImageEx(pixels, NULL, width, height, palette, paletteSize, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse, balance, colorBalance, enhanceColors);
 
 	//now, write out indices. 
 	int originOffset = originX + originY * ncgr->tilesX;

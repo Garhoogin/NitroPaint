@@ -36,6 +36,10 @@
 //   RX_FLAG_MASK_BITS           The created color palette data entries are converted to the
 //                               nearest representable color in RGBA5551. 
 //   RX_FLAG_NO_MASK_BITS        The created color palette data is not converted.
+//
+// Color reduction flags:
+//   RX_FLAG_PRESERVE_ALPHA      During color reduction, the alpha channel is not modified.
+//   RX_FLAG_NO_PRESERVE_ALPHA   During color reduction, the alpha channel is modified.
 // -----------------------------------------------------------------------------------------------
 typedef enum RxFlag_ {
 	RX_FLAG_SORT_ALL            = (0x00<< 0), // sort the entire output palette
@@ -49,6 +53,9 @@ typedef enum RxFlag_ {
 
 	RX_FLAG_MASK_BITS           = (0x00<< 3), // color palette colors are masked to RGBA5551.
 	RX_FLAG_NO_MASK_BITS        = (0x01<< 3), // color palette colors are not masked
+
+	RX_FLAG_PRESERVE_ALPHA      = (0x00<< 4), // leaves the alpha channel unaffected in a color reduction operation.
+	RX_FLAG_NO_PRESERVE_ALPHA   = (0x01<< 4), // modifies the alpha channel in a color reduction operation.
 } RxFlag;
 
 typedef struct RxBalanceSetting_ {
@@ -199,7 +206,6 @@ void doDiffuse(
 //   palette       The color palette with which to reduce the image.
 //   nColors       The number of colors in the color palette.
 //   touchAlpha    Set to 1 to modify the pixel alpha values.
-//   binaryAlpha   Set to 1 to indicate that alpha values are binary, or 0 otherwise.
 //   c0xp          Set to 1 to indicate that color index 0 is reserved for transparency.
 //   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
 // -----------------------------------------------------------------------------------------------
@@ -209,9 +215,6 @@ void RxReduceImage(
 	unsigned int   height,       // the image height
 	const COLOR32 *palette,      // the color palette
 	unsigned int   nColors,      // number of colors in the palette
-	int            touchAlpha,   // modifies the alpha channel of the image
-	int            binaryAlpha,  // alpha values are binary
-	int            c0xp,         // color 0 is transparent
 	float          diffuse       // the error diffusion amount (from 0 to 1)
 );
 
@@ -228,9 +231,7 @@ void RxReduceImage(
 //   height        The image height.
 //   palette       The color palette with which to reduce the image.
 //   nColors       The number of colors in the color palette.
-//   touchAlpha    Set to 1 to modify the pixel alpha values.
-//   binaryAlpha   Set to 1 to indicate that alpha values are binary, or 0 otherwise.
-//   c0xp          Set to 1 to indicate that color index 0 is reserved for transparency.
+//   flag          Color reduction flag.
 //   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
 //   balance       The balance setting.
 //   colorBalance  The color balance setting.
@@ -243,9 +244,7 @@ void RxReduceImageEx(
 	unsigned int   height,        // the image height
 	const COLOR32 *palette,       // the color palette
 	unsigned int   nColors,       // the color palette size
-	int            touchAlpha,    // modifies the alpha channel of the image
-	int            binaryAlpha,   // alpha values are binary
-	int            c0xp,          // color 0 is transparent
+	RxFlag         flag,          // color reduction flags
 	float          diffuse,       // the error diffusion amount (from 0 to 1)
 	int            balance,       // the balance setting
 	int            colorBalance,  // the color balance setting

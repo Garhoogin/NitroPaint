@@ -126,8 +126,9 @@ int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	unsigned int nBytes = width * height * bitsPerPixel / 8;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
-	RxReduceImageEx(params->px, NULL, width, height, palette, nColors, TRUE, TRUE, hasTransparent, diffuse, 
-		params->balance, params->colorBalance, params->enhanceColors);
+	RxReduceImageEx(params->px, NULL, width, height, palette, nColors,
+		(hasTransparent ? RX_FLAG_ALPHA_MODE_RESERVE : RX_FLAG_ALPHA_MODE_NONE) | RX_FLAG_NO_PRESERVE_ALPHA,
+		diffuse, params->balance, params->colorBalance, params->enhanceColors);
 
 	//write texel data.
 	for (unsigned int i = 0; i < width * height; i++) {
@@ -188,19 +189,19 @@ int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 	int nBytes = width * height;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
-	RxReduceImageEx(params->px, NULL, width, height, palette, nColors, FALSE, FALSE, FALSE, diffuse,
-		params->balance, params->colorBalance, params->enhanceColors);
+	RxReduceImageEx(params->px, NULL, width, height, palette, nColors, RX_FLAG_ALPHA_MODE_PIXEL | RX_FLAG_PRESERVE_ALPHA,
+		diffuse, params->balance, params->colorBalance, params->enhanceColors);
 
 	//write texel data.
 	for (unsigned int i = 0; i < width * height; i++) {
 		COLOR32 p = params->px[i];
-		int index = RxPaletteFindClosestColorSimple(p, palette, nColors);
-		int alpha = (((p >> 24) & 0xFF) * alphaMax + 127) / 255;
+		unsigned int index = RxPaletteFindClosestColorSimple(p, palette, nColors);
+		unsigned int alpha = (((p >> 24) & 0xFF) * alphaMax * 2 + 255) / 510;
 		txel[i] = index | (alpha << alphaShift);
 
 		if (params->ditherAlpha) {				
-			int backAlpha = (alpha * 255 + (alphaMax >> 1)) / alphaMax;
-			int errorAlpha = ((p >> 24) & 0xFF) - backAlpha;
+			unsigned int backAlpha = (alpha * 510 + alphaMax) / (alphaMax * 2);
+			int errorAlpha = ((p >> 24) & 0xFF) - (int) backAlpha;
 			doDiffuse(i, width, height, params->px, 0, 0, 0, errorAlpha, params->diffuseAmount);
 		}
 	}
@@ -929,7 +930,7 @@ static TxiTileErrorMapEntry *TxiGetGreatestErrorTile(TxiTileErrorMapEntry *map, 
 static void TxiIndexTile(TxTileData *tile, uint32_t *txel, COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
 	COLOR32 tilebuf[16];
 	memcpy(tilebuf, tile->rgb, sizeof(tilebuf));
-	RxReduceImage(tile->rgb, 4, 4, tilepal, nOpaque, 0, 1, 0, diffuse);
+	RxReduceImageEx(tile->rgb, NULL, 4, 4, tilepal, nOpaque, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, 0);
 
 	uint32_t texel = 0;
 	for (int j = 0; j < 16; j++) {
