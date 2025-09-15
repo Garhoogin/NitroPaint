@@ -266,21 +266,20 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 	double qw2 = reduction->qWeight2;
 	double aw2 = reduction->aWeight2;
 
-	if (yiq1->a == 255 && yiq2->a == 255) {
-		//color difference without alpha
-		double dy = reduction->lumaTable[yiq1->y] - reduction->lumaTable[yiq2->y];
-		double di = yiq1->i - yiq2->i;
-		double dq = yiq1->q - yiq2->q;
-		return yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
-	} else if (yiq1->a == yiq2->a) {
+	if (yiq1->a == yiq2->a) {
 		//equal alpha comparison. Because each color is scaled by the same alpha, we can pull it out by
 		//multiplying YIQ squared difference by squared alpha.
-		double a = yiq1->a * INV_255;
-
 		double dy = (double) (reduction->lumaTable[yiq1->y] - reduction->lumaTable[yiq2->y]);
 		double di = (double) (yiq1->i - yiq2->i);
 		double dq = (double) (yiq1->q - yiq2->q);
-		return (yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq) * a * a;
+		double d2 = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
+
+		if (yiq1->a != 255) {
+			//translucent scale factor
+			double a = yiq1->a * INV_255;
+			d2 *= a * a;
+		}
+		return d2;
 	} else {
 		//color difference with alpha.
 		double a1 = yiq1->a * INV_255, a2 = yiq2->a * INV_255;
