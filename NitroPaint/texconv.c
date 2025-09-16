@@ -927,7 +927,7 @@ static TxiTileErrorMapEntry *TxiGetGreatestErrorTile(TxiTileErrorMapEntry *map, 
 	return map;
 }
 
-static void TxiIndexTile(RxReduction *reduction, const TxTileData *tile, uint32_t *txel, const COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
+static void TxiIndexTile(RxReduction *reduction, TxTileData *tile, uint32_t *txel, const COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
 	COLOR32 tilebuf[16];
 	int idxbuf[16];
 	memcpy(tilebuf, tile->rgb, sizeof(tilebuf));

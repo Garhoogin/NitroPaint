@@ -2,6 +2,7 @@
 #include "nclr.h"
 #include "ncgr.h"
 #include "nscr.h"
+#include "palette.h"
 
 
 #define BGGEN_FORMAT_NITROSYSTEM     0          //NCLR, NCGR, NSCR

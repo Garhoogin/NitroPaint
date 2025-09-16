@@ -4,7 +4,6 @@
 
 #include "ncgr.h"
 #include "nclr.h"
-#include "palette.h"
 
 #define SCREENFORMAT_TEXT 0
 #define SCREENFORMAT_AFFINE 1
