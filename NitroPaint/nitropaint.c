@@ -1832,6 +1832,13 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						}
 						break;
 					}
+					case ID_TOOLS_INDEXIMAGE:
+					{
+						HWND h = CreateWindow(L"IndexImageClass", L"Color Reduction", WS_OVERLAPPEDWINDOW & ~(WS_MINIMIZEBOX),
+							CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWnd, NULL, NULL, NULL);
+						DoModal(h);
+						break;
+					}
 				}
 			}
 			HWND hWndActive = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, (LPARAM) NULL);
@@ -3233,6 +3240,437 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+
+typedef struct IndexImageData_ {
+	HWND hWnd;
+	HWND hWndFromFile;
+	HWND hWndFromClip;
+
+	HWND hWnd15bit;
+	HWND hWndDither;
+	HWND hWndDiffuse;
+	HWND hWndColors;
+	HWND hWndAlphaMode;
+
+	HWND hWndBalance;
+	HWND hWndColorBalance;
+	HWND hWndEnhanceColors;
+
+	HWND hWndPreview1;
+	HWND hWndPreview2;
+
+	HWND hWndSaveFile;
+	HWND hWndSaveClip;
+	HWND hWndRun;
+
+	COLOR32 *px;
+	unsigned int width;
+	unsigned int height;
+
+	unsigned int nUsedPltt;
+	COLOR32 pltt[256];
+	COLOR32 *reduced;
+	int *indices;
+
+	FrameBuffer fbSource;
+	FrameBuffer fbReduced;
+} RedGuiData;
+
+static int RedGuiSortPaletteComparator(const void *v1, const void *v2) {
+	COLOR32 c1 = *(const COLOR32 *) v1;
+	COLOR32 c2 = *(const COLOR32 *) v2;
+
+	//same alpha -> compare by alpha (increasing)
+	unsigned int a1 = c1 >> 24, a2 = c2 >> 24;
+	if (a1 < a2) return -1;
+	if (a1 > a2) return 1;
+
+	//same alpha -> compare by Y
+	return RxColorLightnessComparator(v1, v2);
+}
+
+static void RedGuiProcessReduction(RedGuiData *data) {
+	unsigned int nColors = GetEditNumber(data->hWndColors);
+	int balance = GetTrackbarPosition(data->hWndBalance);
+	int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
+	int enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+
+	RxFlag flag = RX_FLAG_NO_PRESERVE_ALPHA | RX_FLAG_SORT_ONLY_USED;
+	if (!GetCheckboxChecked(data->hWnd15bit)) flag |= RX_FLAG_NO_MASK_BITS;
+
+	unsigned int plttOffs = 0;
+	switch (SendMessage(data->hWndAlphaMode, CB_GETCURSEL, 0, 0)) {
+		case 0: // Mode=None
+			flag |= RX_FLAG_ALPHA_MODE_NONE;
+			plttOffs = 0; // no offset
+			break;
+		case 1: // Mode=Color0
+			flag |= RX_FLAG_ALPHA_MODE_RESERVE;
+			plttOffs = 1; // offset 1st color
+			break;
+		case 2: // Mode=Palette
+			flag |= RX_FLAG_ALPHA_MODE_PALETTE;
+			plttOffs = 0; // no offset
+			break;
+	}
+
+	unsigned int nColUse = RxCreatePaletteEx(data->px, data->width, data->height,
+		data->pltt + plttOffs, nColors - plttOffs, balance, colorBalance, enhanceColors, flag);
+	if ((flag & RX_FLAG_ALPHA_MODE_MASK) == RX_FLAG_ALPHA_MODE_RESERVE) {
+		data->pltt[0] = 0; // transparent
+	}
+	data->nUsedPltt = plttOffs + nColUse;
+
+	//apply a special sorting rule: transparent/translucent colors are arranged by alpha, and
+	//opaque colors are arranged by lightness as normal.
+	qsort(data->pltt + plttOffs, nColUse, sizeof(COLOR32), RedGuiSortPaletteComparator);
+
+	//copy bits
+	if (data->reduced != NULL) free(data->reduced);
+	if (data->indices != NULL) free(data->indices);
+	data->reduced = (COLOR32 *) calloc(data->width * data->height, sizeof(COLOR32));
+	data->indices = (int *) calloc(data->width * data->height, sizeof(int));
+	memcpy(data->reduced, data->px, data->width * data->height * sizeof(COLOR32));
+
+	//reduce
+	float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
+	if (!GetCheckboxChecked(data->hWndDither)) diffuse = 0.0f;
+	RxReduceImageEx(data->reduced, data->indices, data->width, data->height, data->pltt, nColUse + plttOffs,
+		flag, diffuse, balance, colorBalance, enhanceColors);
+	InvalidateRect(data->hWndPreview2, NULL, FALSE);
+}
+
+static void RedGuiUpdateScrollbars(RedGuiData *data) {
+	SCROLLINFO infoH = { 0 }, infoV = { 0 };
+	infoH.cbSize = infoV.cbSize = sizeof(SCROLLINFO);
+	infoH.nMin = infoV.nMin = 0;
+	infoH.nMax = data->width;
+	infoV.nMax = data->height;
+	infoH.fMask = infoV.fMask = SIF_RANGE;
+
+	SetScrollInfo(data->hWndPreview1, SB_HORZ, &infoH, TRUE);
+	SetScrollInfo(data->hWndPreview2, SB_HORZ, &infoH, TRUE);
+	SetScrollInfo(data->hWndPreview1, SB_VERT, &infoV, TRUE);
+	SetScrollInfo(data->hWndPreview2, SB_VERT, &infoV, TRUE);
+	RedrawWindow(data->hWndPreview1, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+	RedrawWindow(data->hWndPreview2, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+	UpdateScrollbarVisibility(data->hWndPreview1);
+	UpdateScrollbarVisibility(data->hWndPreview2);
+
+	RECT rcClient;
+	GetClientRect(data->hWndPreview1, &rcClient);
+	SendMessage(data->hWndPreview1, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
+	GetClientRect(data->hWndPreview2, &rcClient);
+	SendMessage(data->hWndPreview2, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
+}
+
+static void RedGuiSetSourceImage(RedGuiData *data, COLOR32 *px, unsigned int width, unsigned int height) {
+	//set new buffer
+	if (data->px != NULL) free(data->px);
+	data->px = px;
+	data->width = width;
+	data->height = height;
+	InvalidateRect(data->hWndPreview1, NULL, FALSE);
+
+	//set scroll
+	RedGuiUpdateScrollbars(data);
+
+	//reduction
+	RedGuiProcessReduction(data);
+}
+
+static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	RedGuiData *data = (RedGuiData *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			data = (RedGuiData *) calloc(1, sizeof(RedGuiData));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+			data->hWnd = hWnd;
+			int boxWidth = 430;
+			int boxHeight1 = 105;
+			int leftX = 10 + 10;
+			int rightX = leftX + boxWidth + 10;
+			int bottomY = 10 + 18;
+			//int boxHeight2 = 0;
+			//int boxHeight3 = 100;
+
+			LPCWSTR modes[] = { L"None", L"Color 0", L"Palette" };
+
+			//Input
+			data->hWndFromFile = CreateButton(hWnd, L"From File", leftX, bottomY, 150, 22, FALSE);
+			data->hWndFromClip = CreateButton(hWnd, L"From Clipboard", leftX + 155, bottomY, 150, 22, FALSE);
+			data->hWnd15bit = CreateCheckbox(hWnd, L"15-bit Color", leftX + 315, bottomY, 100, 22, TRUE);
+			data->hWndDither = CreateCheckbox(hWnd, L"Dither:", leftX, bottomY + 27, 75, 22, FALSE);
+			data->hWndDiffuse = CreateEdit(hWnd, L"100", leftX + 75, bottomY + 27, 50, 22, TRUE);
+			CreateStatic(hWnd, L"Colors:", leftX, bottomY + 54, 75, 22);
+			data->hWndColors = CreateEdit(hWnd, L"256", leftX + 75, bottomY + 54, 50, 22, TRUE);
+			CreateStatic(hWnd, L"Transparency:", leftX + 135, bottomY + 27, 75, 22);
+			data->hWndAlphaMode = CreateCombobox(hWnd, modes, sizeof(modes) / sizeof(modes[0]), leftX + 210, bottomY + 27, 75, 22, 0);
+
+			//Balance
+			CreateStatic(hWnd, L"Balance:", rightX, bottomY, 100, 22);
+			CreateStatic(hWnd, L"Color Balance:", rightX, bottomY + 27, 100, 22);
+			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", rightX, bottomY + 27 * 2, 200, 22, FALSE);
+			CreateStaticAligned(hWnd, L"Lightness", rightX + 110, bottomY, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Color", rightX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
+			CreateStaticAligned(hWnd, L"Green", rightX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
+			CreateStaticAligned(hWnd, L"Red", rightX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
+			data->hWndBalance = CreateTrackbar(hWnd, rightX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndColorBalance = CreateTrackbar(hWnd, rightX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+
+			//command
+			data->hWndSaveClip = CreateButton(hWnd, L"Save Clipboard", (30 + 2 * boxWidth) / 2 - 100 - 210, bottomY + boxHeight1 + 10, 200, 22, FALSE);
+			data->hWndRun = CreateButton(hWnd, L"Run", (30 + 2 * boxWidth) / 2 - 100, bottomY + boxHeight1 + 10, 200, 22, TRUE);
+			data->hWndSaveFile = CreateButton(hWnd, L"Save File", (30 + 2 * boxWidth) / 2 + 110, bottomY + boxHeight1 + 10, 200, 22, FALSE);
+
+			CreateGroupbox(hWnd, L"Image", 10, 10, boxWidth, boxHeight1);
+			CreateGroupbox(hWnd, L"Color", 10 + boxWidth + 10, 10, boxWidth, boxHeight1);
+
+			data->hWndPreview1 = CreateWindowEx(WS_EX_CLIENTEDGE, L"IndexImagePreview", L"Source",
+				WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_CENTER | WS_HSCROLL | WS_VSCROLL,
+				10, bottomY + boxHeight1 + 10 + 27, 256, 256, hWnd, NULL, NULL, NULL);
+			data->hWndPreview2 = CreateWindowEx(WS_EX_CLIENTEDGE, L"IndexImagePreview", L"Reduced",
+				WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_CENTER | WS_HSCROLL | WS_VSCROLL,
+				10 + 256, bottomY + boxHeight1 + 10 + 27, 256, 256, hWnd, NULL, NULL, NULL);
+
+			SetGUIFont(hWnd);
+
+			//test
+			COLOR32 *px = (COLOR32 *) calloc(32 * 32, sizeof(COLOR32));
+			int width = 32;
+			int height = 32;
+			for (int y = 0; y < 32; y++) {
+				for (int x = 0; x < 32; x++) {
+					px[x + y * 32] = ((y * 255 / 31) << 24) | ((x * 255) / 31);
+				}
+			}
+			RedGuiSetSourceImage(data, px, width, height);
+			break;
+		}
+		case WM_SIZE:
+		{
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+
+			int bottomY = 10 + 18;
+			int boxHeight1 = 105;
+			int boxY = bottomY + boxHeight1 + 10;
+			int prevHeight = rcClient.bottom - boxY - 10 - 27;
+
+			MoveWindow(data->hWndPreview1, 10, boxY + 27, (rcClient.right - 20) / 2, prevHeight, TRUE);
+			MoveWindow(data->hWndPreview2, 10 + (rcClient.right - 20) / 2, boxY + 27, rcClient.right - 20 - (rcClient.right - 20) / 2, prevHeight, TRUE);
+
+			RedGuiUpdateScrollbars(data);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndCtl = (HWND) lParam;
+			int notif = HIWORD(wParam), idCtl = LOWORD(wParam);
+			if (hWndCtl == data->hWndFromClip && notif == BN_CLICKED) {
+				//from clipboard
+				if (OpenClipboard(hWnd)) {
+
+					int width, height;
+					COLOR32 *px = GetClipboardBitmap(&width, &height, NULL, NULL, NULL);
+					if (px != NULL) {
+						RedGuiSetSourceImage(data, px, width, height);
+					}
+
+					CloseClipboard();
+				}
+			} else if (hWndCtl == data->hWndFromFile) {
+				//from file
+				LPWSTR path = openFileDialog(hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+				if (path == NULL) break;
+
+				int width, height;
+				COLOR32 *px = ImgRead(path, &width, &height);
+				if (px != NULL) {
+					RedGuiSetSourceImage(data, px, width, height);
+				}
+
+				free(path);
+			} else if ((hWndCtl == data->hWndRun || idCtl == IDOK) && notif == BN_CLICKED) {
+				//run reduction
+				RedGuiProcessReduction(data);
+			} else if (hWndCtl == data->hWndSaveFile && notif == BN_CLICKED) {
+				//save file
+				LPWSTR path = saveFileDialog(hWnd, L"Save image", L"PNG files (*.png)\0All Files\0*.*\0", L"png");
+				if (path == NULL) break;
+
+				//write bitmap data indexed
+				unsigned char *bits = (unsigned char *) calloc(data->width * data->height, sizeof(unsigned char));
+				for (unsigned int i = 0; i < data->width * data->height; i++) {
+					bits[i] = (unsigned char) data->indices[i];
+				}
+				ImgWriteIndexed(bits, data->width, data->height, data->pltt, data->nUsedPltt, path);
+				free(bits);
+
+				free(path);
+			} else if (hWndCtl == data->hWndSaveClip && notif == BN_CLICKED) {
+				//save clipboard
+				if (OpenClipboard(hWnd)) {
+					EmptyClipboard();
+
+					copyBitmap(data->reduced, data->width, data->height);
+
+					CloseClipboard();
+				}
+			} else if (idCtl == IDCANCEL && notif == BN_CLICKED) {
+				//exit
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+
+		case WM_DESTROY:
+			if (data != NULL) {
+				if (data->px != NULL) free(data->px);
+				if (data->reduced != NULL) free(data->reduced);
+				if (data->indices != NULL) free(data->indices);
+				FbDestroy(&data->fbSource);
+				FbDestroy(&data->fbReduced);
+				free(data);
+				SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
+			}
+			break;
+
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+static LRESULT CALLBACK RedGuiIndexImagePreviewProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	RedGuiData *data = (RedGuiData *) GetWindowLongPtr(hWndParent, 0);
+	FRAMEDATA *frame = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
+	
+	int isSrc = 0;
+	FrameBuffer *fb = NULL;
+	if (data != NULL) {
+		isSrc = (hWnd == data->hWndPreview1) || (data->hWndPreview1 == NULL);
+		fb = isSrc ? &data->fbSource : &data->fbReduced;
+	}
+
+	if (data != NULL && frame != NULL) {
+		frame->contentWidth = data->width;
+		frame->contentHeight = data->height;
+	}
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			FbCreate(fb, hWnd, 1, 1);
+			frame = (FRAMEDATA *) calloc(1, sizeof(FRAMEDATA));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) frame);
+
+			frame->contentWidth = data->width;
+			frame->contentHeight = data->height;
+			break;
+		}
+		case WM_SIZE:
+		{
+			if (frame != NULL) {
+				UpdateScrollbarVisibility(hWnd);
+
+				SCROLLINFO info;
+				info.cbSize = sizeof(info);
+				info.nMin = 0;
+				info.nMax = frame->contentWidth;
+				info.fMask = SIF_RANGE;
+				SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+				info.nMax = frame->contentHeight;
+				SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			}
+			return DefChildProc(hWnd, msg, wParam, lParam);
+		}
+		case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hDC = BeginPaint(hWnd, &ps);
+
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+			int clientWidth = rcClient.right, clientHeight = rcClient.bottom;
+
+			FbSetSize(fb, clientWidth, clientHeight);
+
+			int scale = 1;
+			int scrollX = 0, scrollY = 0;
+
+			SCROLLINFO sifV = { 0 }, sifH = { 0 };
+			sifV.cbSize = sifH.cbSize = sizeof(SCROLLINFO);
+			sifV.fMask = sifH.fMask = SIF_POS;
+			GetScrollInfo(hWnd, SB_HORZ, &sifH);
+			GetScrollInfo(hWnd, SB_VERT, &sifV);
+			scrollX = sifH.nPos, scrollY = sifV.nPos;
+
+			const COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
+
+			for (int y = 0; y < clientHeight; y++) {
+				for (int x = 0; x < clientWidth; x++) {
+					unsigned int srcX = (x + scrollX) / scale, srcY = (y + scrollY) / scale;
+
+					COLOR32 col = 0;
+					if (srcX < data->width && srcY < data->height) {
+						if (isSrc) col = data->px != NULL ? data->px[srcY * data->width + srcX] : 0;
+						else col = data->reduced != NULL ? data->reduced[srcY * data->width + srcX] : 0;
+					}
+
+					unsigned int a = col >> 24;
+					COLOR32 back = checker[((x ^ y) >> 3) & 1];
+					if (a < 255) {
+						unsigned int r = (((col >>  0) & 0xFF) * a + ((back >>  0) & 0xFF) * (255 - a)) / 255;
+						unsigned int g = (((col >>  8) & 0xFF) * a + ((back >>  8) & 0xFF) * (255 - a)) / 255;
+						unsigned int b = (((col >> 16) & 0xFF) * a + ((back >> 16) & 0xFF) * (255 - a)) / 255;
+						col = r | (g << 8) | (b << 16);
+					}
+
+					fb->px[y * fb->width + x] = REVERSE(col);
+				}
+			}
+
+			FbDraw(fb, hDC, 0, 0, clientWidth, clientHeight, 0, 0);
+
+			EndPaint(hWnd, &ps);
+			break;
+		}
+		case WM_HSCROLL:
+		case WM_VSCROLL:
+		{
+			LRESULT r = DefChildProc(hWnd, msg, wParam, lParam);
+			HWND hWndOther = isSrc ? data->hWndPreview2 : data->hWndPreview1;
+
+			if (data != NULL && hWndOther != NULL) {
+				SCROLLINFO sifV = { 0 }, sifH = { 0 };
+				sifV.cbSize = sifH.cbSize = sizeof(SCROLLINFO);
+				sifV.fMask = sifH.fMask = SIF_POS;
+				GetScrollInfo(hWnd, SB_HORZ, &sifH);
+				GetScrollInfo(hWnd, SB_VERT, &sifV);
+				int scrollX = sifH.nPos, scrollY = sifV.nPos;
+
+				SetScrollPos(hWndOther, SB_HORZ, scrollX, TRUE);
+				SetScrollPos(hWndOther, SB_VERT, scrollY, TRUE);
+				InvalidateRect(hWndOther, NULL, FALSE);
+			}
+
+			return r;
+		}
+		case WM_DESTROY:
+		{
+			free(frame);
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
+			break;
+		}
+	}
+
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+
 static void RegisterImageDialogClass(void) {
 	RegisterGenericClass(L"ImageDialogClass", ImageDialogProc, sizeof(LPVOID));
 }
@@ -3267,6 +3705,11 @@ static void RegisterLinkEditClass(void) {
 
 static void RegisterNewPaletteClass(void) {
 	RegisterGenericClass(L"NewPaletteClass", NewPaletteWndProc, sizeof(LPVOID));
+}
+
+static void RegisterIndexImageClass(void) {
+	RegisterGenericClass(L"IndexImageClass", RedGuiIndexImageWndProc, sizeof(LPVOID));
+	RegisterGenericClass(L"IndexImagePreview", RedGuiIndexImagePreviewProc, sizeof(LPVOID));
 }
 
 VOID ReadConfiguration(LPWSTR lpszPath) {
@@ -3353,6 +3796,7 @@ static void RegisterClasses(void) {
 	RegisterAlphaBlendClass();
 	RegisterLinkEditClass();
 	RegisterNewPaletteClass();
+	RegisterIndexImageClass();
 	RegisterLytEditor();
 }
 
