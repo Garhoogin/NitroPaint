@@ -451,42 +451,160 @@ LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 // ----- clipboard functions
 
-void copyBitmap(COLOR32 *px, int width, int height) {
-	//assume clipboard is already owned and emptied
-
-	//set DIBv5
-	HGLOBAL hBmi = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(BITMAPV5HEADER) + width * height * sizeof(COLOR32));
-	BITMAPV5HEADER *bmi = (BITMAPV5HEADER *) GlobalLock(hBmi);
-	bmi->bV5Size = sizeof(*bmi);
-	bmi->bV5Width = width;
-	bmi->bV5Height = height;
-	bmi->bV5Planes = 1;
-	bmi->bV5BitCount = 32;
-	bmi->bV5Compression = BI_BITFIELDS;
-	bmi->bV5RedMask = 0x00FF0000;
-	bmi->bV5GreenMask = 0x0000FF00;
-	bmi->bV5BlueMask = 0x000000FF;
-	bmi->bV5AlphaMask = 0xFF000000;
-	bmi->bV5CSType = LCS_sRGB;
-	bmi->bV5Intent = LCS_GM_ABS_COLORIMETRIC;
-
-	COLOR32 *cDest = (COLOR32 *) (bmi + 1);
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++) {
-			COLOR32 c = px[x + y * width];
-			c = REVERSE(c);
-			cDest[x + (height - 1 - y) * width] = c;
-		}
-	}
-	GlobalUnlock(hBmi);
-	SetClipboardData(CF_DIBV5, hBmi);
-}
-
 static int EnsurePngClipboardFormat(void) {
 	static int fmt = 0;
 	if (fmt) return fmt;
-	
+
 	return fmt = RegisterClipboardFormat(L"PNG");
+}
+
+static int EnsureOpxDibAlphaPalClipboardFormat(void) {
+	static int fmt = 0;
+	if (fmt) return fmt;
+
+	return fmt = RegisterClipboardFormat(L"OPX_DIB_ALPHA_PAL");
+}
+
+void NpCopyBitmapEx(const void *bits, unsigned int width, unsigned int height, int indexed, const COLOR32 *pltt, unsigned int nPltt) {
+	//assume clipboard is already owned and emptied
+
+	//fix maximum size of palette
+	if (nPltt > 0x100) nPltt = 0x100;
+	if (!indexed) nPltt = 0;
+
+	//compute size of bitmap data
+	unsigned int nBpp = indexed ? 8 : 32;
+	unsigned int stride = ((width * nBpp + 7) / 8 + 3) & ~3; // round to integer byte count, up to a multiple of 4 bytes
+	unsigned int sizeDibV5 = sizeof(BITMAPV5HEADER) + nPltt * sizeof(COLOR32) + height * stride;
+	unsigned int sizeDib = sizeof(BITMAPINFOHEADER) + nPltt * sizeof(COLOR32) + height * stride;
+
+	//set DIBv5, DIB
+	HGLOBAL hBmi5 = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeDibV5);
+	HGLOBAL hBmi = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeDib);
+
+	//PNG data
+	void *png = NULL;
+	unsigned int pngSize = 0;
+
+	BITMAPV5HEADER *bmi5 = (BITMAPV5HEADER *) GlobalLock(hBmi5);
+	bmi5->bV5Size = sizeof(*bmi5);
+	bmi5->bV5Width = width;
+	bmi5->bV5Height = height;
+	bmi5->bV5Planes = 1;
+	bmi5->bV5BitCount = nBpp;
+	bmi5->bV5Compression = indexed ? BI_RGB : BI_BITFIELDS;
+	bmi5->bV5ClrUsed = nPltt;
+	bmi5->bV5ClrImportant = nPltt;
+	bmi5->bV5RedMask   = 0x00FF0000;
+	bmi5->bV5GreenMask = 0x0000FF00;
+	bmi5->bV5BlueMask  = 0x000000FF;
+	bmi5->bV5AlphaMask = 0xFF000000;
+	bmi5->bV5CSType = LCS_sRGB;
+	bmi5->bV5Intent = LCS_GM_ABS_COLORIMETRIC;
+
+	BITMAPINFOHEADER *bmi = (BITMAPINFOHEADER *) GlobalLock(hBmi);
+	bmi->biSize = sizeof(*bmi);
+	bmi->biWidth = width;
+	bmi->biHeight = height;
+	bmi->biPlanes = 1;
+	bmi->biBitCount = nBpp;
+	bmi->biCompression = BI_RGB;
+	bmi->biClrUsed = nPltt;
+	bmi->biClrImportant = nPltt;
+
+	if (indexed) {
+		//indexed: copy bits direct
+		const unsigned char *px = (const unsigned char *) bits;
+		COLOR32 *cDest = (COLOR32 *) (bmi + 1);
+		COLOR32 *cDest5 = (COLOR32 *) (bmi5 + 1);
+		unsigned char *bDest = (unsigned char *) (cDest + nPltt);
+		unsigned char *bDest5 = (unsigned char *) (cDest5 + nPltt);
+
+		//put palette
+		for (unsigned int i = 0; i < nPltt; i++) {
+			COLOR32 c = pltt[i];
+			c = REVERSE(c);
+
+			cDest[i] = c;
+			cDest5[i] = c;
+		}
+		
+		//put colors
+		for (unsigned int y = 0; y < height; y++) {
+			memcpy(bDest + (height - 1 - y) * stride, px + y * width, width);
+			memcpy(bDest5 + (height - 1 - y) * stride, px + y * width, width);
+		}
+
+		//OPX palette alpha info
+		HGLOBAL hAlpha = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(BITMAPINFOHEADER) + 0x10 * 0x10 + 0x100 * sizeof(COLOR32));
+		BITMAPINFOHEADER *pAlphaBmi = (BITMAPINFOHEADER *) GlobalLock(hAlpha);
+		pAlphaBmi->biSize = sizeof(BITMAPINFOHEADER);
+		pAlphaBmi->biWidth = 0x10;
+		pAlphaBmi->biHeight = 0x10;
+		pAlphaBmi->biClrUsed = 0x100;
+		pAlphaBmi->biClrImportant = 0x100;
+		pAlphaBmi->biPlanes = 1;
+		pAlphaBmi->biBitCount = 8;
+
+		COLOR32 *alphaPltt = (COLOR32 *) (pAlphaBmi + 1);
+		for (unsigned int i = 0; i < nPltt; i++) {
+			unsigned int a = pltt[i] >> 24;
+			alphaPltt[i] = a | (a << 8) | (a << 16);
+		}
+
+		unsigned char *alphaMap = (unsigned char *) (alphaPltt + 0x100);
+		for (unsigned int i = 0; i < 0x100; i++) {
+			alphaMap[i] = i ^ 0xF0; // increasing bits, upside down
+		}
+
+		GlobalUnlock(hAlpha);
+		SetClipboardData(EnsureOpxDibAlphaPalClipboardFormat(), hAlpha);
+
+		//PNG info
+		ImgWriteMemIndexed(bits, width, height, pltt, nPltt, &png, &pngSize);
+	} else {
+		//non-indexed: write raw bits, using alpha premultiplication (required for software like paint.NET)
+		const COLOR32 *px = (const COLOR32 *) bits;
+		COLOR32 *cDest5 = (COLOR32 *) (bmi5 + 1);
+		COLOR32 *cDest = (COLOR32 *) (bmi + 1);
+
+		for (unsigned int y = 0; y < height; y++) {
+			for (unsigned int x = 0; x < width; x++) {
+				COLOR32 c = px[x + y * width];
+				c = REVERSE(c);
+
+				//alpha premultiplication:
+				unsigned int a = c >> 24;
+				unsigned int r = ((c >>  0) & 0xFF) * a / 255;
+				unsigned int g = ((c >>  8) & 0xFF) * a / 255;
+				unsigned int b = ((c >> 16) & 0xFF) * a / 255;
+				COLOR32 c2 = r | (g << 8) | (b << 16) | (a << 24);
+
+				cDest[x + (height - 1 - y) * width] = c;   // non-premultiplied
+				cDest5[x + (height - 1 - y) * width] = c2; // premultiplied
+			}
+		}
+	}
+
+	GlobalUnlock(hBmi5);
+	GlobalUnlock(hBmi);
+	SetClipboardData(CF_DIBV5, hBmi5);
+	SetClipboardData(CF_DIB, hBmi);
+
+	if (png != NULL) {
+		HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, pngSize);
+		void *pGlobal = GlobalLock(hGlobal);
+		memcpy(pGlobal, png, pngSize);
+		free(png);
+		GlobalUnlock(hGlobal);
+
+		int fmtPng = EnsurePngClipboardFormat();
+		SetClipboardData(fmtPng, hGlobal);
+	}
+}
+
+void copyBitmap(COLOR32 *px, int width, int height) {
+	NpCopyBitmapEx(px, width, height, 0, NULL, 0);
 }
 
 static int GetBitmapPaletteSize(BITMAPINFOHEADER *pbmi) {
@@ -3498,7 +3616,7 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 				RedGuiProcessReduction(data);
 			} else if (hWndCtl == data->hWndSaveFile && notif == BN_CLICKED) {
 				//save file
-				LPWSTR path = saveFileDialog(hWnd, L"Save image", L"PNG files (*.png)\0All Files\0*.*\0", L"png");
+				LPWSTR path = saveFileDialog(hWnd, L"Save image", L"PNG files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 				if (path == NULL) break;
 
 				//write bitmap data indexed
@@ -3515,7 +3633,12 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 				if (OpenClipboard(hWnd)) {
 					EmptyClipboard();
 
-					copyBitmap(data->reduced, data->width, data->height);
+					unsigned char *bits = (unsigned char *) calloc(data->width * data->height, sizeof(unsigned char));
+					for (unsigned int i = 0; i < data->width * data->height; i++) {
+						bits[i] = (unsigned char) data->indices[i];
+					}
+					NpCopyBitmapEx(bits, data->width, data->height, 1, data->pltt, data->nUsedPltt);
+					free(bits);
 
 					CloseClipboard();
 				}
