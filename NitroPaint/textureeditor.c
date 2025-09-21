@@ -398,6 +398,78 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 	}
 }
 
+static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
+	//texture format
+	int fmt = 0;
+	if (data->isNitro) fmt = FORMAT(data->texture.texture.texels.texImageParam);
+
+	//color-0 transparency
+	int c0xp = 0;
+	if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && COL0TRANS(data->texture.texture.texels.texImageParam)) c0xp = 1;
+
+	//if the texture is not converted or is direct/4x4, we will copy a direct color bitmap.
+	if (!data->isNitro || fmt == CT_DIRECT || fmt == CT_4x4) {
+		copyBitmap(data->px, data->width, data->height);
+		return;
+	}
+
+	//we will write an indexed color bitmap. 
+	COLOR32 pltbuf[256] = { 0 };
+	for (int i = 0; i < data->texture.texture.palette.nColors && i < 0x100; i++) {
+		COLOR32 c = ColorConvertFromDS(data->texture.texture.palette.pal[i]);
+
+		//set alpha bits (except color 0 of a c0xp-marked palette)
+		if (i > 0 || !c0xp) c |= 0xFF000000;
+		pltbuf[i] = c;
+	}
+
+	//for a3i5 and a5i3 textures, we will duplicate colors of the palette at varying alpha levels.
+	if (fmt == CT_A3I5 || fmt == CT_A5I3) {
+		unsigned int alphaBit = (fmt == CT_A3I5) ? 3 : 5;
+		unsigned int indexBit = 8 - alphaBit;
+
+		unsigned int indexMax = (1 << indexBit) - 1;
+		unsigned int alphaMax = (1 << alphaBit) - 1;
+		for (unsigned int i = 0; i <= indexMax; i++) {
+			COLOR32 c = pltbuf[i] & 0x00FFFFFF;
+
+			//all alphas
+			for (unsigned int j = 0; j <= alphaMax; j++) {
+				unsigned int a = (j * 510 + alphaMax) / (2 * alphaMax);
+				pltbuf[i + (j << indexBit)] = c | (a << 24);
+			}
+		}
+	}
+
+	//create bitmap data for texture image.
+	unsigned int nBpp = 8;
+	if (fmt == CT_4COLOR) nBpp = 2;
+	if (fmt == CT_16COLOR) nBpp = 4;
+
+	unsigned int width = TEXW(data->texture.texture.texels.texImageParam);
+	unsigned int height = TEXH(data->texture.texture.texels.texImageParam);
+	unsigned char *bmp = (unsigned char *) calloc(width * height, sizeof(char));
+
+	unsigned int nPltt = 256;
+	if (nBpp == 8) {
+		//copy direct
+		memcpy(bmp, data->texture.texture.texels.texel, width * height);
+	} else {
+		//copy with bit conversion
+		unsigned int pxPerByte = 8 / nBpp;
+		unsigned int pxMask = (1 << nBpp) - 1;
+		for (unsigned int i = 0; i < width * height; i++) {
+			bmp[i] = (data->texture.texture.texels.texel[i / pxPerByte] >> ((i % pxPerByte) * nBpp)) & pxMask;
+		}
+
+		if (nPltt >= (1u << nBpp)) nPltt = 1u << nBpp;
+	}
+
+	ClipCopyBitmapEx(bmp, width, height, 1, pltbuf, nPltt);
+
+	free(bmp);
+}
+
 static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 	HWND hWnd = data->hWnd;
 	switch (idMenu) {
@@ -445,7 +517,7 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 		{
 			OpenClipboard(hWnd);
 			EmptyClipboard();
-			copyBitmap(data->px, data->width, data->height);
+			TexViewerCopyTexture(data);
 			CloseClipboard();
 			break;
 		}

@@ -1910,7 +1910,7 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 				RxYiqColor diffusedYiq = { colorY, colorI, colorQ, colorA };
 				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &diffusedYiq, NULL);
 				if (diffusedYiq.a < 128 && c0xp) matched = 0;
-				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (colorA << 24);
+				COLOR32 chosen = palette[matched];
 
 				if (touchAlpha) img[x + y * width] = chosen;
 				else img[x + y * width] = (chosen & 0x00FFFFFF) | (img[x + y * width] & 0xFF000000);
@@ -1968,7 +1968,7 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 
 				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &centerYiq, NULL);
 				if (c0xp && centerYiq.a < 128) matched = 0;
-				COLOR32 chosen = (palette[matched] & 0xFFFFFF) | (centerYiq.a << 24);
+				COLOR32 chosen = palette[matched];
 				if (touchAlpha) img[x + y * width] = chosen;
 				else img[x + y * width] = (chosen & 0x00FFFFFF) | (img[x + y * width] & 0xFF000000);
 				if (indices != NULL) indices[x + y * width] = matched;

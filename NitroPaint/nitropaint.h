@@ -161,6 +161,11 @@ LPWSTR saveFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extensio
 void copyBitmap(COLOR32 *px, int width, int height);
 
 //
+// Copy a bitmap to the clipboard.
+//
+void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height, int indexed, const COLOR32 *pltt, unsigned int nPltt);
+
+//
 // Get a copied bitmap from the clipboard.
 //
 COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize);

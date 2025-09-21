@@ -196,10 +196,10 @@ static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *
 
 #define CHECK_RESULT(x) if(!SUCCEEDED(x)) goto cleanup
 
-static HRESULT ImgiWrite(LPCWSTR path, void *scan0, WICPixelFormatGUID *format, int width, int height, int stride, int scan0Size, COLOR32 *palette, int paletteSize) {
+static HRESULT ImgiWrite(const void *scan0, WICPixelFormatGUID *format, int width, int height, int stride, int scan0Size, const COLOR32 *palette, int paletteSize, void **pBuffer, unsigned int *pBufferSize) {
 	//WICPixelFormatGUID format = GUID_WICPixelFormat8bppIndexed;
 	IWICImagingFactory *factory = NULL;
-	IWICStream *stream = NULL;
+	IStream *stream = NULL;
 	IWICPalette *wicPalette = NULL;
 	IWICBitmapEncoder *encoder = NULL;
 	IWICBitmapFrameEncode *frameEncode = NULL;
@@ -210,11 +210,7 @@ static HRESULT ImgiWrite(LPCWSTR path, void *scan0, WICPixelFormatGUID *format, 
 	CHECK_RESULT(result);
 
 	//create stream
-	result = factory->lpVtbl->CreateStream(factory, &stream);
-	CHECK_RESULT(result);
-
-	//point stream to file
-	result = stream->lpVtbl->InitializeFromFilename(stream, path, GENERIC_WRITE);
+	result = CreateStreamOnHGlobal(NULL, TRUE, &stream);
 	CHECK_RESULT(result);
 
 	//create palette
@@ -242,27 +238,65 @@ static HRESULT ImgiWrite(LPCWSTR path, void *scan0, WICPixelFormatGUID *format, 
 	SUCCEEDED(result) && (result = frameEncode->lpVtbl->SetSize(frameEncode, width, height));
 	SUCCEEDED(result) && (result = frameEncode->lpVtbl->SetPixelFormat(frameEncode, format));
 	SUCCEEDED(result) && (wicPalette != NULL) && (result = frameEncode->lpVtbl->SetPalette(frameEncode, wicPalette));
-	SUCCEEDED(result) && (result = frameEncode->lpVtbl->WritePixels(frameEncode, height, stride, scan0Size, scan0));
+	SUCCEEDED(result) && (result = frameEncode->lpVtbl->WritePixels(frameEncode, height, stride, scan0Size, (void *) scan0));
 
 	//flush data
 	SUCCEEDED(result) && (result = frameEncode->lpVtbl->Commit(frameEncode));
 	SUCCEEDED(result) && (result = encoder->lpVtbl->Commit(encoder));
 	SUCCEEDED(result) && (result = stream->lpVtbl->Commit(stream, STGC_DEFAULT));
 
+	//data
+	if (SUCCEEDED(result)) {
+		HGLOBAL hGlobal = NULL;
+		STATSTG stats = { 0 };
+
+		SUCCEEDED(result) && (result = GetHGlobalFromStream(stream, &hGlobal));
+		SUCCEEDED(result) && (result = stream->lpVtbl->Stat(stream, &stats, STATFLAG_NONAME));
+
+		void *src = GlobalLock(hGlobal);
+
+		*pBufferSize = stats.cbSize.LowPart;
+		*pBuffer = malloc(*pBufferSize);
+		memcpy(*pBuffer, src, *pBufferSize);
+
+		GlobalUnlock(hGlobal);
+	}
+
 cleanup:
-	if (stream != NULL)
-		stream->lpVtbl->Release(stream);
-	if (frameEncode != NULL)
-		frameEncode->lpVtbl->Release(frameEncode);
-	if (encoder != NULL)
-		encoder->lpVtbl->Release(encoder);
-	if (wicPalette != NULL)
-		wicPalette->lpVtbl->Release(wicPalette);
-	if (factory != NULL)
-		factory->lpVtbl->Release(factory);
-	if (pWicColors != NULL)
-		free(pWicColors);
+	if (stream != NULL) stream->lpVtbl->Release(stream);
+	if (frameEncode != NULL) frameEncode->lpVtbl->Release(frameEncode);
+	if (encoder != NULL) encoder->lpVtbl->Release(encoder);
+	if (wicPalette != NULL) wicPalette->lpVtbl->Release(wicPalette);
+	if (factory != NULL) factory->lpVtbl->Release(factory);
+	if (pWicColors != NULL) free(pWicColors);
+
+	if (!SUCCEEDED(result)) {
+		*pBuffer = NULL;
+		*pBufferSize = 0;
+	}
 	return result;
+}
+
+static HRESULT ImgiWriteFile(LPCWSTR path, const void *scan0, WICPixelFormatGUID *format, int width, int height, int stride, int scan0Size, const COLOR32 *palette, int paletteSize) {
+	void *buffer;
+	unsigned int size;
+	HRESULT hr = ImgiWrite(scan0, format, width, height, stride, scan0Size, palette, paletteSize, &buffer, &size);
+	if (!SUCCEEDED(hr)) {
+		return hr;
+	}
+
+	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) {
+		free(buffer);
+		return E_OUTOFMEMORY;
+	}
+
+	DWORD dwWritten;
+	WriteFile(hFile, buffer, size, &dwWritten, NULL);
+	CloseHandle(hFile);
+
+	free(buffer);
+	return hr;
 }
 
 HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, int width, int height, const int *pDurations, int nFrames) {
@@ -501,42 +535,28 @@ static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsi
 	}
 
 cleanup:
-	if (converter != NULL)
-		converter->lpVtbl->Release(converter);
-	if (wicPalette != NULL)
-		wicPalette->lpVtbl->Release(wicPalette);
-	if (frame != NULL)
-		frame->lpVtbl->Release(frame);
-	if (decoder != NULL)
-		decoder->lpVtbl->Release(decoder);
-	if (stream != NULL)
-		stream->lpVtbl->Release(stream);
-	if (factory != NULL)
-		factory->lpVtbl->Release(factory);
-	if (scan0 != NULL)
-		free(scan0);
+	if (converter != NULL) converter->lpVtbl->Release(converter);
+	if (wicPalette != NULL) wicPalette->lpVtbl->Release(wicPalette);
+	if (frame != NULL) frame->lpVtbl->Release(frame);
+	if (decoder != NULL) decoder->lpVtbl->Release(decoder);
+	if (stream != NULL) stream->lpVtbl->Release(stream);
+	if (factory != NULL) factory->lpVtbl->Release(factory);
+	if (scan0 != NULL) free(scan0);
 	if (!SUCCEEDED(result)) {
 		*pWidth = 0;
 		*pHeight = 0;
-		if (pPaletteSize != NULL)
-			*pPaletteSize = 0;
-		if (ppPalette != NULL)
-			*ppPalette = NULL;
-		if (ppPixels != NULL)
-			*ppPixels = NULL;
-		if (ppIndices != NULL)
-			*ppIndices = NULL;
-		if (wicPaletteColors != NULL)
-			free(wicPaletteColors);
-		if (pxBuffer != NULL)
-			free(pxBuffer);
-		if (indices != NULL)
-			free(indices);
+		if (pPaletteSize != NULL) *pPaletteSize = 0;
+		if (ppPalette != NULL) *ppPalette = NULL;
+		if (ppPixels != NULL) *ppPixels = NULL;
+		if (ppIndices != NULL) *ppIndices = NULL;
+		if (wicPaletteColors != NULL) free(wicPaletteColors);
+		if (pxBuffer != NULL) free(pxBuffer);
+		if (indices != NULL) free(indices);
 	}
 	return result;
 }
 
-HRESULT ImgWriteIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, LPCWSTR path) {
+HRESULT ImgWriteMemIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, void **pBuffer, unsigned int *pSize) {
 	int depth = paletteSize <= 16 ? 4 : 8;
 	int stride = ((width * depth + 7) / 8 + 3) & ~3;
 
@@ -568,9 +588,31 @@ HRESULT ImgWriteIndexed(const unsigned char *bits, int width, int height, const 
 	//GUID allocated on the stack since it must be writable for some reason
 	WICPixelFormatGUID format;
 	memcpy(&format, depth == 4 ? &GUID_WICPixelFormat4bppIndexed : &GUID_WICPixelFormat8bppIndexed, sizeof(format));
-	HRESULT result = ImgiWrite(path, scan0, &format, width, height, stride, scan0Size, paletteCopy, paletteSize);
+	HRESULT result = ImgiWrite(scan0, &format, width, height, stride, scan0Size, paletteCopy, paletteSize, pBuffer, pSize);
 	free(scan0);
 	free(paletteCopy);
+	return result;
+}
+
+HRESULT ImgWriteIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, LPCWSTR path) {
+	void *buffer;
+	unsigned int size;
+	HRESULT result = ImgWriteMemIndexed(bits, width, height, palette, paletteSize, &buffer, &size);
+	if (!SUCCEEDED(result)) {
+		return result;
+	}
+
+	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) {
+		free(buffer);
+		return E_OUTOFMEMORY;
+	}
+
+	DWORD dwWritten;
+	WriteFile(hFile, buffer, size, &dwWritten, NULL);
+	CloseHandle(hFile);
+
+	free(buffer);
 	return result;
 }
 
@@ -585,7 +627,7 @@ HRESULT ImgWrite(const COLOR32 *px, int width, int height, LPCWSTR path) {
 	int stride = width * 4;
 	WICPixelFormatGUID format;
 	memcpy(&format, &GUID_WICPixelFormat32bppBGRA, sizeof(format));
-	HRESULT result = ImgiWrite(path, bits, &format, width, height, stride, stride * height, NULL, 0);
+	HRESULT result = ImgiWriteFile(path, bits, &format, width, height, stride, stride * height, NULL, 0);
 	free(bits);
 	return result;
 }

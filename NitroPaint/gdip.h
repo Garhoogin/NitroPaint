@@ -35,6 +35,11 @@ HRESULT ImgWrite(const COLOR32 *px, int width, int height, LPCWSTR path);
 HRESULT ImgWriteIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, LPCWSTR path);
 
 //
+// Write an indexed image to a memory buffer.
+//
+HRESULT ImgWriteMemIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, void **pBuffer, unsigned int *pSize);
+
+//
 // Write an animated GIF to a file.
 //
 HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, int width, int height, const int *pDurations, int nFrames);
