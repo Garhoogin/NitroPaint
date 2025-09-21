@@ -465,7 +465,14 @@ static int EnsureOpxDibAlphaPalClipboardFormat(void) {
 	return fmt = RegisterClipboardFormat(L"OPX_DIB_ALPHA_PAL");
 }
 
-void NpCopyBitmapEx(const void *bits, unsigned int width, unsigned int height, int indexed, const COLOR32 *pltt, unsigned int nPltt) {
+static int EnsureOpxDibAlphaImgClipboardFormat(void) {
+	static int fmt = 0;
+	if (fmt) return fmt;
+
+	return fmt = RegisterClipboardFormat(L"OPX_DIB_ALPHA_IMG");
+}
+
+void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height, int indexed, const COLOR32 *pltt, unsigned int nPltt) {
 	//assume clipboard is already owned and emptied
 
 	//fix maximum size of palette
@@ -584,6 +591,32 @@ void NpCopyBitmapEx(const void *bits, unsigned int width, unsigned int height, i
 				cDest5[x + (height - 1 - y) * width] = c2; // premultiplied
 			}
 		}
+
+		//copy alpha bitmap
+		unsigned int alphaStride = (width + 3) & ~3;
+		HGLOBAL hBmiAlpha = GlobalAlloc(GMEM_ZEROINIT | GMEM_MOVEABLE, sizeof(BITMAPINFO) + 0x400 + height * alphaStride);
+		BITMAPINFOHEADER *bmi = (BITMAPINFOHEADER *) GlobalLock(hBmiAlpha);
+		bmi->biSize = sizeof(*bmi);
+		bmi->biWidth = width;
+		bmi->biHeight = height;
+		bmi->biPlanes = 1;
+		bmi->biBitCount = 8;
+		bmi->biCompression = BI_RGB;
+		bmi->biClrUsed = 256;
+		bmi->biClrImportant = 256;
+		
+		COLOR32 *pGray = (COLOR32 *) (bmi + 1);
+		unsigned char *pAlpha = (unsigned char *) (pGray + 0x100);
+		for (unsigned int i = 0; i < 0x100; i++) pGray[i] = i | (i << 8) | (i << 16);
+
+		for (unsigned int y = 0; y < height; y++) {
+			for (unsigned int x = 0; x < width; x++) {
+				pAlpha[(height - 1 - y) * alphaStride + x] = px[y * width + x] >> 24;
+			}
+		}
+
+		GlobalUnlock(hBmiAlpha);
+		SetClipboardData(EnsureOpxDibAlphaImgClipboardFormat(), hBmiAlpha);
 	}
 
 	GlobalUnlock(hBmi5);
@@ -604,7 +637,7 @@ void NpCopyBitmapEx(const void *bits, unsigned int width, unsigned int height, i
 }
 
 void copyBitmap(COLOR32 *px, int width, int height) {
-	NpCopyBitmapEx(px, width, height, 0, NULL, 0);
+	ClipCopyBitmapEx(px, width, height, 0, NULL, 0);
 }
 
 static int GetBitmapPaletteSize(BITMAPINFOHEADER *pbmi) {
@@ -642,34 +675,9 @@ static size_t GetBitmapSize(BITMAPINFO *pbmi) {
 	return GetBitmapOffsetBits(pbmi) + sizeBits;
 }
 
-COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
-	//get handles to clipboard DIB and PNG objects.
-	HGLOBAL hDib = GetClipboardData(CF_DIB);
-	HGLOBAL hPng = GetClipboardData(EnsurePngClipboardFormat());
-
-	//if neither format is available, return failure
-	if (hDib == NULL && hPng == NULL) {
-		*pWidth = 0;
-		*pHeight = 0;
-		if (indexed != NULL) *indexed = NULL;
-		if (pplt != NULL) *pplt = NULL;
-		if (pPaletteSize != NULL) *pPaletteSize = 0;
-		return NULL;
-	}
-
-	//if PNG but no DIB, return PNG data
-	if (hPng != NULL && hDib == NULL) {
-		void *pngData = GlobalLock(hPng);
-		SIZE_T size = GlobalSize(hPng);
-
-		COLOR32 *px = ImgReadMemEx(pngData, size, pWidth, pHeight, indexed, pplt, pPaletteSize);
-
-		GlobalUnlock(hPng);
-		return px;
-	}
-
-	//if we've made it this far, we have DIB data on the clipboard. Read it now.
-	BITMAPINFO *pbmi = (BITMAPINFO *) GlobalLock(hDib);
+static COLOR32 *ClipGetClipboardDIBFromHGlobal(HGLOBAL hGlobal, int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+	//create bitmap file header
+	BITMAPINFO *pbmi = (BITMAPINFO *) GlobalLock(hGlobal);
 	SIZE_T dibSize = GetBitmapSize(pbmi);
 	BITMAPFILEHEADER *bmfh = (BITMAPFILEHEADER *) malloc(sizeof(BITMAPFILEHEADER) + dibSize);
 	memcpy(bmfh + 1, pbmi, dibSize);
@@ -679,45 +687,183 @@ COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, 
 	bmfh->bfReserved2 = 0;
 	bmfh->bfOffBits = sizeof(BITMAPFILEHEADER) + GetBitmapOffsetBits(pbmi);
 
-	int dibWidth, dibHeight, dibPaletteSize = 0;
-	COLOR32 *dibPalette = NULL;
-	unsigned char *dibIndex = NULL;
-	COLOR32 *pxDib = ImgReadMemEx((unsigned char *) bmfh, bmfh->bfSize, &dibWidth, &dibHeight, &dibIndex, &dibPalette, &dibPaletteSize);
+	COLOR32 *pxDib = ImgReadMemEx((unsigned char *) bmfh, bmfh->bfSize, pWidth, pHeight, indexed, pplt, pPaletteSize);
 	free(bmfh);
-	GlobalUnlock(hDib);
+	GlobalUnlock(hGlobal);
+	return pxDib;
+}
 
-	//if DIB but no PNG, return DIB data
-	if (hDib != NULL && hPng == NULL) {
-		//return DIB
-		*pWidth = dibWidth;
-		*pHeight = dibHeight;
-		if (pplt != NULL) *pplt = dibPalette;
-		else free(dibPalette);
-		if (indexed != NULL) *indexed = dibIndex;
-		else free(dibIndex);
-		if (pPaletteSize != NULL) *pPaletteSize = dibPaletteSize;
-		return pxDib;
+static COLOR32 *ClipGetClipboardDIB(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+	HGLOBAL hDib = GetClipboardData(CF_DIB);
+	if (hDib == NULL) {
+		//no DIB
+		*pWidth = *pHeight = *pPaletteSize = 0;
+		*indexed = NULL;
+		*pplt = NULL;
+		return NULL;
+	}
+
+	COLOR32 *pxDib = ClipGetClipboardDIBFromHGlobal(hDib, pWidth, pHeight, indexed, pplt, pPaletteSize);
+	
+	//get opacity info for an indexed palette.
+	if (*indexed != NULL) {
+		//indexed image: get palette alpha data if it exists
+		HGLOBAL hOpx = GetClipboardData(EnsureOpxDibAlphaPalClipboardFormat());
+
+		//exists
+		if (hOpx != NULL) {
+			//the color table should hold the alpha values, referenced by the bitmap
+			//image data with 1 pixel to 1 palette color.
+			int alphaW, alphaH;
+			COLOR32 *alphabm = ClipGetClipboardDIBFromHGlobal(hOpx, &alphaW, &alphaH, NULL, NULL, NULL);
+
+			int nAlpha = alphaW * alphaH;
+			if (nAlpha >= *pPaletteSize) nAlpha = *pPaletteSize;
+			for (int i = 0; i < alphaW * alphaH; i++) {
+				COLOR32 c = alphabm[i];
+				unsigned int a = (c & 0xFF);
+				(*pplt)[i] = ((*pplt)[i] & 0x00FFFFFF) | (a << 24);
+			}
+
+			free(alphabm);
+
+			//rewrite
+			for (int i = 0;  i < *pWidth * *pHeight; i++) {
+				pxDib[i] = (*pplt)[(*indexed)[i]];
+			}
+		}
+	} else {
+		//direct color image: get alpha bitmap if it exists
+		HGLOBAL hAlpha = GetClipboardData(EnsureOpxDibAlphaImgClipboardFormat());
+
+		//exists
+		if (hAlpha != NULL) {
+			//read bitmap: alpha channel per pixel of bitmap
+			int alphaW, alphaH;
+			COLOR32 *alphabm = ClipGetClipboardDIBFromHGlobal(hAlpha, &alphaW, &alphaH, NULL, NULL, NULL);
+
+			for (int y = 0; y < alphaH; y++) {
+				if (y >= *pHeight) break;
+
+				for (int x = 0; x < alphaW; x++) {
+					if (x >= *pWidth) break;
+
+					//set alpha
+					pxDib[y * *pWidth + x] = (pxDib[y * *pWidth + x] & 0x00FFFFFF) | ((alphabm[x + y * alphaW] & 0xFF) << 24);
+				}
+			}
+
+			free(alphabm);
+		}
+	}
+
+	return pxDib;
+}
+
+static COLOR32 *ClipGetClipboardPNG(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+	int fmt = EnsurePngClipboardFormat();
+	HGLOBAL hPng = GetClipboardData(fmt);
+	if (hPng == NULL) {
+		//no clipboard data
+		*pWidth = *pHeight = *pPaletteSize = 0;
+		*indexed = NULL;
+		*pplt = NULL;
+		return NULL;
+	}
+
+	void *pngData = GlobalLock(hPng);
+	SIZE_T size = GlobalSize(hPng);
+
+	COLOR32 *px = ImgReadMemEx(pngData, size, pWidth, pHeight, indexed, pplt, pPaletteSize);
+
+	GlobalUnlock(hPng);
+	return px;
+}
+
+static COLOR32 *ClipGetClipboardFileImage(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+	HANDLE hGDrop = GetClipboardData(CF_HDROP);
+	if (hGDrop != NULL) {
+		HDROP hDrop = (HDROP) GlobalLock(hGDrop);
+
+		//try to read 
+		unsigned int nFile = DragQueryFileW(hDrop, 0xFFFFFFFF, NULL, 0);
+		for (unsigned int i = 0; i < nFile; i++) {
+			unsigned int bufsiz = DragQueryFileW(hDrop, i, NULL, 0);
+			WCHAR *buf = (WCHAR *) calloc(bufsiz + 1, sizeof(WCHAR));
+			DragQueryFile(hDrop, i, buf, bufsiz + 1);
+
+			//try parse
+			COLOR32 *px = ImgReadEx(buf, pWidth, pHeight, indexed, pplt, pPaletteSize);
+			free(buf);
+
+			if (px != NULL) {
+				GlobalUnlock(hGDrop);
+				return px;
+			}
+		}
+
+		GlobalUnlock(hGDrop);
+	}
+
+	//no data
+	*pWidth = *pHeight = 0;
+	if (indexed != NULL) *indexed = NULL;
+	if (pplt != NULL) *pplt = NULL;
+	if (pPaletteSize != NULL) *pPaletteSize = 0;
+	return NULL;
+}
+
+COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+	//if we've made it this far, we have DIB data on the clipboard. Read it now.
+	int dibWidth = 0, dibHeight = 0, pngWidth = 0, pngHeight = 0, dibPaletteSize = 0, pngPaletteSize = 0;
+	unsigned char *dibIndex = NULL, *pngIndex = NULL;
+	COLOR32 *dibPalette = NULL, *pngPalette = NULL;
+	COLOR32 *pxDib = ClipGetClipboardDIB(&dibWidth, &dibHeight, &dibIndex, &dibPalette, &dibPaletteSize);
+	COLOR32 *pxPng = ClipGetClipboardPNG(&pngWidth, &pngHeight, &pngIndex, &pngPalette, &pngPaletteSize);
+
+	//check also 
+
+	//if neither format available...
+	if (pxPng == NULL && pxDib == NULL) {
+		//check clipboard for file
+		int fileWidth, fileHeight, filePaletteSize;
+		unsigned char *fileIndexed;
+		COLOR32 *filePalette;
+		COLOR32 *pxFile = ClipGetClipboardFileImage(&fileWidth, &fileHeight, &fileIndexed, &filePalette, &filePaletteSize);
+		if (pxFile != NULL) {
+			//found
+			*pWidth = fileWidth;
+			*pHeight = fileHeight;
+			if (indexed != NULL) *indexed = fileIndexed;
+			else if (fileIndexed != NULL) free(fileIndexed);
+			if (pplt != NULL) *pplt = filePalette;
+			else if (filePalette != NULL) free(filePalette);
+			if (pPaletteSize != NULL) *pPaletteSize = filePaletteSize;
+			return pxFile;
+		}
+
+		*pWidth = 0;
+		*pHeight = 0;
+		if (pngPalette != NULL) free(pngPalette);
+		if (dibPalette != NULL) free(dibPalette);
+		if (indexed != NULL) *indexed = NULL;
+		if (pplt != NULL) *pplt = NULL;
+		if (pPaletteSize != NULL) *pPaletteSize = 0;
+		return NULL;
 	}
 
 	//else, we have both data available. Read the PNG data and compare against the DIB data.
-	void *png = GlobalLock(hPng);
-	int pngWidth, pngHeight, pngPaletteSize = 0;
-	COLOR32 *pngPalette = NULL;
-	unsigned char *pngIndex = NULL;
-	COLOR32 *pxPng = ImgReadMemEx(png, GlobalSize(hPng), &pngWidth, &pngHeight, &pngIndex, &pngPalette, &pngPaletteSize);
-	GlobalUnlock(hPng);
-
-	//now try to determine which to return. If the PNG has transparent/translucent pixels, return the PNG data.
 	int usePng = 0;
-	if (pxPng != NULL) {
-		for (int i = 0; i < pngWidth * pngHeight; i++) {
-			COLOR32 c = pxPng[i];
-			int a = (c >> 24);
-			if (a != 0xFF) {
-				usePng = 1;
-				break;
-			}
-		}
+	if (pxDib != NULL && pxPng == NULL) {
+		//has only PNG
+		usePng = 0;
+	} else if (pxDib == NULL && pxPng != NULL) {
+		//has only DIB
+		usePng = 1;
+	} else {
+		//we have both DIB and PNG. Use DIB if it is indexed and the PNG is not, otherwise use the PNG.
+		if (dibIndex != NULL && pngIndex == NULL) usePng = 0;
+		else usePng = 1;
 	}
 
 	if (usePng) {
@@ -3637,7 +3783,7 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					for (unsigned int i = 0; i < data->width * data->height; i++) {
 						bits[i] = (unsigned char) data->indices[i];
 					}
-					NpCopyBitmapEx(bits, data->width, data->height, 1, data->pltt, data->nUsedPltt);
+					ClipCopyBitmapEx(bits, data->width, data->height, 1, data->pltt, data->nUsedPltt);
 					free(bits);
 
 					CloseClipboard();
