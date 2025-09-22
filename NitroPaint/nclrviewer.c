@@ -1874,18 +1874,51 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						break;
 					case ID_FILE_EXPORT:
 					{
-						LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Export Palette", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
+						LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Export Palette",
+							L"PNG Files (*.png)\0*.png\0ACT Files (*.act)\0*.act\0All Files\0*.*\0",
+							L"png");
 						if (path == NULL) break;
 
-						//construct bitmap
-						int width = 16;
-						int height = (data->nclr.nColors + 15) / 16;
-						COLOR32 *bits = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-						for (int i = 0; i < data->nclr.nColors; i++) {
-							COLOR32 as32 = ColorConvertFromDS(data->nclr.colors[i]) | 0xFF000000;
-							bits[i] = as32;
+						wchar_t *ext = wcsrchr(path, L'.');
+
+						if (ext != NULL && _wcsicmp(ext, L".act") == 0) {
+							//ACT file
+							if (data->nclr.nColors > 256) {
+								MessageBox(hWnd, L"ACT file does not support more than 256 color palettes.", L"Warning", MB_ICONWARNING);
+							}
+
+							unsigned int bufSize = 256 * 3 + 4;
+							unsigned char *buf = (unsigned char *) calloc(bufSize, 1);
+
+							int nColorsWrite = data->nclr.nColors;
+							if (nColorsWrite > 256) nColorsWrite = 256;
+							for (int i = 0; i < nColorsWrite; i++) {
+								COLOR32 c = ColorConvertFromDS(data->nclr.colors[i]);
+								buf[3 * i + 0] = (c >>  0) & 0xFF;
+								buf[3 * i + 1] = (c >>  8) & 0xFF;
+								buf[3 * i + 2] = (c >> 16) & 0xFF;
+							}
+							*(uint16_t *) (buf + 3 * 0x100 + 0) = nColorsWrite;
+							*(uint16_t *) (buf + 3 * 0x100 + 2) = 0;
+
+							HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+							if (hFile != INVALID_HANDLE_VALUE) {
+								DWORD dwWritten;
+								WriteFile(hFile, buf, bufSize, &dwWritten, NULL);
+								CloseHandle(hFile);
+							}
+							free(buf);
+						} else {
+							//construct bitmap
+							int width = 16;
+							int height = (data->nclr.nColors + 15) / 16;
+							COLOR32 *bits = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+							for (int i = 0; i < data->nclr.nColors; i++) {
+								COLOR32 as32 = ColorConvertFromDS(data->nclr.colors[i]) | 0xFF000000;
+								bits[i] = as32;
+							}
+							ImgWrite(bits, width, height, path);
 						}
-						ImgWrite(bits, width, height, path);
 						free(path);
 
 						break;
