@@ -1163,7 +1163,8 @@ static int TexViewerJudgeFormat(COLOR32 *px, int nWidth, int nHeight) {
 	//is there translucency?
 	if (TexViewerImageHasTranslucentPixels(px, nWidth, nHeight)) {
 		//then choose a3i5 or a5i3. Do this by using color count.
-		int colorCount = ImgCountColors(px, nWidth * nHeight);
+		unsigned int colorCount = ImgCountColorsEx(px, nWidth, nHeight, 
+			IMG_CCM_IGNORE_ALPHA | IMG_CCM_NO_IGNORE_TRANSPARENT_COLOR | IMG_CCM_NO_COUNT_TRANSPARENT);
 		if (colorCount < 16) {
 			//colors < 16, choose a5i3.
 			fmt = CT_A5I3;
@@ -1173,7 +1174,7 @@ static int TexViewerJudgeFormat(COLOR32 *px, int nWidth, int nHeight) {
 		}
 	} else {
 		//weigh the other format options for optimal size.
-		int nColors = ImgCountColors(px, nWidth * nHeight);
+		unsigned int nColors = ImgCountColorsEx(px, nWidth, nHeight, 0);
 		
 		//if <= 4 colors, choose 4-color.
 		if (nColors <= 4) {
@@ -1181,7 +1182,7 @@ static int TexViewerJudgeFormat(COLOR32 *px, int nWidth, int nHeight) {
 		} else {
 			//weigh 16-color, 256-color, and 4x4. 
 			//take the number of pixels per color. 
-			int pixelsPerColor = 2 * nWidth * nHeight / nColors;
+			unsigned int pixelsPerColor = 2 * nWidth * nHeight / nColors;
 			if (pixelsPerColor >= 3 && !(nWidth * nHeight >= 1024 * 512)) {
 				fmt = CT_4x4;
 			} else if (nColors < 32) {

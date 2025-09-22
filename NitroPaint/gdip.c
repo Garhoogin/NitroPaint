@@ -706,37 +706,58 @@ void ImgSwapRedBlue(COLOR32 *px, unsigned int width, unsigned int height) {
 }
 
 static int ImgiPixelComparator(const void *p1, const void *p2) {
-	return *(COLOR32 *) p1 - (*(COLOR32 *) p2);
+	return *(const COLOR32 *) p1 - (*(const COLOR32 *) p2);
 }
 
 unsigned int ImgCountColors(const COLOR32 *px, unsigned int nPx) {
+	return ImgCountColorsEx(px, nPx, 1, 0);
+}
+
+unsigned int ImgCountColorsEx(
+	const COLOR32     *px,
+	unsigned int       width,
+	unsigned int       height,
+	ImgCountColorsMode mode
+) {
 	//sort the colors by raw RGB value. This way, same colors are grouped.
+	unsigned int nPx = width * height;
 	COLOR32 *copy = (COLOR32 *) malloc(nPx * sizeof(COLOR32));
 	memcpy(copy, px, nPx * sizeof(COLOR32));
+
+	if (mode & IMG_CCM_IGNORE_ALPHA) {
+		//when ignore alpha is set, force all pixels opaque
+		for (unsigned int i = 0; i < nPx; i++) copy[i] |= 0xFF000000;
+	}
+	if (mode & IMG_CCM_BINARY_ALPHA) {
+		//when binary alpha is set, force all alpha value to 0 or 255
+		for (unsigned int i = 0; i < nPx; i++) {
+			unsigned int a = copy[i] >> 24;
+			if (a < 0x80) copy[i] &= ~0xFF000000;
+			else          copy[i] |=  0xFF000000;
+		}
+	}
+	if (!(mode & IMG_CCM_NO_IGNORE_TRANSPARENT_COLOR)) {
+		//when we ignore tranparent pixel colors, set them all to black.
+		for (unsigned int i = 0; i < nPx; i++) {
+			//set transparent pixels to transparent black
+			unsigned int a = copy[i] >> 24;
+			if (a == 0) copy[i] = 0;
+		}
+	}
+
+	//sort by raw RGBA value
 	qsort(copy, nPx, sizeof(COLOR32), ImgiPixelComparator);
 
 	unsigned int nColors = 0;
-	int hasTransparent = 0;
 	for (unsigned int i = 0; i < nPx; i++) {
-		int a = copy[i] >> 24;
-		if (!a) hasTransparent = 1;
-		else {
-			COLOR32 color = copy[i] & 0xFFFFFF;
-			//has this color come before?
-			int repeat = 0;
-			if (i) {
-				COLOR32 comp = copy[i - 1] & 0xFFFFFF;
-				if (comp == color) {
-					repeat = 1;
-				}
-			}
-			if (!repeat) {
-				nColors++;
-			}
-		}
+		unsigned int a = copy[i] >> 24;
+		if (a == 0 && (mode & IMG_CCM_NO_COUNT_TRANSPARENT)) continue;
+
+		//has this color come before?
+		if (i == 0 || copy[i - 1] != copy[i]) nColors++;
 	}
 	free(copy);
-	return nColors + hasTransparent;
+	return nColors;
 }
 
 void ImgCropInPlace(const COLOR32 *px, unsigned int width, unsigned int height, COLOR32 *out, int srcX, int srcY, unsigned int srcWidth, unsigned int srcHeight) {

@@ -59,6 +59,13 @@ typedef enum ImgScaleSetting_ {
 	IMG_SCALE_FIT                  // stretch to maximize the size while keeping full visibility and aspect ratio
 } ImgScaleSetting;
 
+typedef enum ImgCountColorsMode_ {
+	IMG_CCM_IGNORE_ALPHA                = 0x01, // ignores the alpha value for purposes of color counting
+	IMG_CCM_BINARY_ALPHA                = 0x02, // rounds off alpha levels by a threshold
+	IMG_CCM_NO_COUNT_TRANSPARENT        = 0x04, // do not count transparency as a color
+	IMG_CCM_NO_IGNORE_TRANSPARENT_COLOR = 0x08, // do not treat all alpha=0 with differing RGB as identical
+} ImgCountColorsMode;
+
 
 // -----------------------------------------------------------------------------------------------
 // Name: ImgFlip
@@ -113,6 +120,13 @@ void ImgSwapRedBlue(
 unsigned int ImgCountColors(
 	const COLOR32 *px,
 	unsigned int   nPx
+);
+
+unsigned int ImgCountColorsEx(
+	const COLOR32     *px,
+	unsigned int       width,
+	unsigned int       height,
+	ImgCountColorsMode mode
 );
 
 // -----------------------------------------------------------------------------------------------
