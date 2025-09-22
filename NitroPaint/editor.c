@@ -6,6 +6,9 @@
 #include "editor.h"
 #include "combo2d.h"
 
+//zoom menu IDs
+static const unsigned short sZoomMenuIds[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
+
 typedef struct EditorDestroyCallbackEntry_ {
 	EditorDestroyCallback callback;
 	void *param;
@@ -105,22 +108,16 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 	}
 
 	if (features & EDITOR_FEATURE_ZOOM) {
-		EnableMenuItem(hMenu, ID_ZOOM_100, MF_ENABLED);
-		EnableMenuItem(hMenu, ID_ZOOM_200, MF_ENABLED);
-		EnableMenuItem(hMenu, ID_ZOOM_400, MF_ENABLED);
-		EnableMenuItem(hMenu, ID_ZOOM_800, MF_ENABLED);
-		EnableMenuItem(hMenu, ID_ZOOM_1600, MF_ENABLED);
+		//enable zoom levels
+		for (int i = 0; i < sizeof(sZoomMenuIds) / sizeof(sZoomMenuIds[0]); i++) {
+			EnableMenuItem(hMenu, sZoomMenuIds[i], MF_ENABLED);
+		}
 	} else {
-		CheckMenuItem(hMenu, ID_ZOOM_100, MF_UNCHECKED);
-		CheckMenuItem(hMenu, ID_ZOOM_200, MF_UNCHECKED);
-		CheckMenuItem(hMenu, ID_ZOOM_400, MF_UNCHECKED);
-		CheckMenuItem(hMenu, ID_ZOOM_800, MF_UNCHECKED);
-		CheckMenuItem(hMenu, ID_ZOOM_1600, MF_UNCHECKED);
-		EnableMenuItem(hMenu, ID_ZOOM_100, MF_DISABLED);
-		EnableMenuItem(hMenu, ID_ZOOM_200, MF_DISABLED);
-		EnableMenuItem(hMenu, ID_ZOOM_400, MF_DISABLED);
-		EnableMenuItem(hMenu, ID_ZOOM_800, MF_DISABLED);
-		EnableMenuItem(hMenu, ID_ZOOM_1600, MF_DISABLED);
+		//uncheck and disable zoom levels
+		for (int i = 0; i < sizeof(sZoomMenuIds) / sizeof(sZoomMenuIds[0]); i++) {
+			CheckMenuItem(hMenu, sZoomMenuIds[i], MF_UNCHECKED);
+			EnableMenuItem(hMenu, sZoomMenuIds[i], MF_DISABLED);
+		}
 	}
 
 	if (features & EDITOR_FEATURE_UNDO) {
@@ -153,9 +150,9 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 		} else if (data->scale == 16) {
 			checkBox = ID_ZOOM_1600;
 		}
-		int ids[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
-		for (int i = 0; i < sizeof(ids) / sizeof(*ids); i++) {
-			int id = ids[i];
+		
+		for (int i = 0; i < sizeof(sZoomMenuIds) / sizeof(sZoomMenuIds[0]); i++) {
+			int id = sZoomMenuIds[i];
 			CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
 		}
 		InvalidateRect(hWnd, NULL, FALSE);
@@ -278,6 +275,24 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				//if editor is editing a combination object, close out editors for the other objects.
 				if (data->file.combo != NULL) {
 					EditorTerminateCombo(data);
+				}
+				break;
+			case WM_MOUSEWHEEL:
+				//handle zoom via ctrl+scroll
+				if (LOWORD(wParam) & MK_CONTROL) {
+					int feature = GetClassLong(hWnd, EDITOR_CD_FEATURES);
+					if (feature & EDITOR_FEATURE_ZOOM) {
+						int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+
+						HWND hWndMain = getMainWindow(hWnd);
+						if (delta > 0) {
+							//scroll down
+							MainZoomIn(hWndMain);
+						} else if (delta < 0) {
+							//scroll up
+							MainZoomOut(hWndMain);
+						}
+					}
 				}
 				break;
 #if(g_useDarkTheme)
