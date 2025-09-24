@@ -56,24 +56,24 @@ static COLOR32 *ScrViewerRenderBits(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int tile
 	*width = bWidth;
 	*height = bHeight;
 
-	LPDWORD bits = (LPDWORD) calloc(bWidth * bHeight, 4);
+	COLOR32 *bits = (COLOR32 *) calloc(bWidth * bHeight, sizeof(COLOR32));
 
 	int tilesX = nscr->tilesX;
 	int tilesY = nscr->tilesY;
 
-	COLOR32 block[64];
+	COLOR32 block[8 * 8];
 
 	for (int y = 0; y < tilesY; y++) {
-		int offsetY = y << 3;
+		int offsetY = y * 8;
 		for (int x = 0; x < tilesX; x++) {
-			int offsetX = x << 3;
+			int offsetX = x * 8;
 
 			int tileNo = -1;
 			nscrGetTileEx(nscr, ncgr, nclr, tileBase, x, y, block, &tileNo, transparent);
-			COLOR32 dwDest = x * 8 + y * 8 * bWidth;
+			unsigned int dwDest = x * 8 + y * 8 * bWidth;
 
 			for (int i = 0; i < 8; i++) {
-				memcpy(bits + dwDest + i * bWidth, block + (i << 3), 32);
+				memcpy(bits + dwDest + i * bWidth, block + (i << 3), 8 * sizeof(COLOR32));
 			}
 		}
 	}
@@ -104,14 +104,14 @@ unsigned char *ScrViewerRenderIndexed(NSCR *nscr, NCGR *ncgr, int tileBase, int 
 			int flip = scr >> 10;
 			int pal = scr >> 12;
 
+			unsigned int idxXor = 0;
+			if (flip & TILE_FLIPX) idxXor |= 007;
+			if (flip & TILE_FLIPY) idxXor |= 070;
+
 			if (chr >= 0 && chr < ncgr->nTiles) {
 				unsigned char *chrData = ncgr->tiles[chr];
-				for (int i = 0; i < 64; i++) {
-					int tileX = i % 8;
-					int tileY = i / 8;
-					if (flip & TILE_FLIPX) tileX ^= 7;
-					if (flip & TILE_FLIPY) tileY ^= 7;
-					block[i] = chrData[tileX + tileY * 8] | (pal << 4);
+				for (unsigned int i = 0; i < 64; i++) {
+					block[i] = chrData[i ^ idxXor] | (pal << 4);
 				}
 			} else {
 				memset(block, 0, sizeof(block));
@@ -125,6 +125,44 @@ unsigned char *ScrViewerRenderIndexed(NSCR *nscr, NCGR *ncgr, int tileBase, int 
 	}
 
 	return bits;
+}
+
+
+static void ScrViewerSaveBitmap(NSCRVIEWERDATA *data, LPCWSTR path) {
+	int width, height;
+
+	HWND hWndMain = getMainWindow(data->hWnd);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
+	HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+
+	NSCR *nscr = &data->nscr;
+	NCGR *ncgr = NULL;
+	NCLR *nclr = NULL;
+	if (hWndNclrViewer != NULL) nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
+	if (hWndNcgrViewer != NULL) ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
+
+	//check: should we output indexed? If palette size > 256, we can't
+	if (nclr->nColors <= 256) {
+		//write 8bpp indexed
+		COLOR32 palette[256] = { 0 };
+		int paletteSize = 1 << ncgr->nBits;
+		if (nclr != NULL) {
+			for (int i = 0; i < nclr->nColors && i < 256; i++) {
+				palette[i] = ColorConvertFromDS(nclr->colors[i]);
+				if ((i % paletteSize) != 0) palette[i] |= 0xFF000000;
+			}
+		}
+		unsigned char *bits = ScrViewerRenderIndexed(nscr, ncgr, data->tileBase, &width, &height, TRUE);
+		ImgWriteIndexed(bits, width, height, palette, 256, path);
+		free(bits);
+	} else {
+		//write direct
+		COLOR32 *bits = ScrViewerRenderBits(nscr, ncgr, nclr, data->tileBase, &width, &height, TRUE);
+		ImgSwapRedBlue(bits, width, height);
+		ImgWrite(bits, width, height, path);
+		free(bits);
+	}
 }
 
 static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight) {
@@ -272,21 +310,49 @@ static void ScrViewerCopy(NSCRVIEWERDATA *data) {
 	ScrViewerCopyNP_SCRN(tilesX, tilesY, bgdat);
 	free(bgdat);
 
-	COLOR32 *bm = NULL;
 	if (hWndNclrEditor != NULL && hWndNcgrEditor != NULL) {
 		//to bitmap
 		NSCR *nscr = &data->nscr;
 		NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor))->ncgr;
 		NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(hWndNclrEditor))->nclr;
 
-		//cut selection region out of the image
-		int wholeWidth, wholeHeight, width = tilesX * 8, height = tilesY * 8;
-		COLOR32 *bm = ScrViewerRenderBits(nscr, ncgr, nclr, data->tileBase, &wholeWidth, &wholeHeight, TRUE);
-		COLOR32 *sub = ImgCrop(bm, wholeWidth, wholeHeight, tileX * 8, tileY * 8, tilesX * 8, tilesY * 8);
-		ImgSwapRedBlue(sub, tilesX * 8, tilesY * 8);
-		copyBitmap(sub, width, height);
-		free(bm);
-		free(sub);
+		//check: should we output indexed? If palette size > 256, we can't
+		int width, height, copyX = tileX * 8, copyY = tileY * 8, copyW = tilesX * 8, copyH = tilesY * 8;
+		if (nclr->nColors <= 256) {
+			//write 8bpp indexed
+			COLOR32 palette[256] = { 0 };
+			int paletteSize = 1 << ncgr->nBits;
+			if (nclr != NULL) {
+				for (int i = 0; i < nclr->nColors && i < 256; i++) {
+					palette[i] = ColorConvertFromDS(nclr->colors[i]);
+					if ((i % paletteSize) != 0) palette[i] |= 0xFF000000;
+				}
+			}
+
+			unsigned char *bits = ScrViewerRenderIndexed(nscr, ncgr, data->tileBase, &width, &height, TRUE);
+
+			//create cropped selection
+			unsigned char *crop = (unsigned char *) calloc(copyW * copyH, sizeof(unsigned char));
+			for (int y = 0; y < copyH; y++) {
+				for (int x = 0; x < copyW; x++) {
+					//copy bits
+					crop[x + y * copyW] = bits[(x + copyX) + (y + copyY) * width];
+				}
+			}
+			free(bits);
+
+			ClipCopyBitmapEx(crop, copyW, copyH, 1, palette, 256);
+			free(crop);
+		} else {
+			//write direct
+			COLOR32 *bits = ScrViewerRenderBits(nscr, ncgr, nclr, data->tileBase, &width, &height, TRUE);
+			COLOR32 *crop = ImgCrop(bits, width, height, copyX, copyY, copyW, copyH);
+			free(bits);
+			ImgSwapRedBlue(crop, copyW, copyH);
+			ClipCopyBitmapEx(crop, copyW, copyH, 0, NULL, 0);
+			free(crop);
+		}
+
 	}
 
 	CloseClipboard();
@@ -636,46 +702,9 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					{
 						LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 						if (!location) break;
-						int width, height;
+						
+						ScrViewerSaveBitmap(data, location);
 
-						HWND hWndMain = getMainWindow(hWnd);
-						NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-						HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
-						HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
-
-						NSCR *nscr = &data->nscr;
-						NCGR *ncgr = NULL;
-						NCLR *nclr = NULL;
-						if (hWndNclrViewer != NULL) nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
-						if (hWndNcgrViewer != NULL) ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
-
-						//check: should we output indexed? If palette size > 256, we can't
-						if (nclr->nColors <= 256) {
-							//write 8bpp indexed
-							COLOR32 palette[256] = { 0 };
-							int transparentOutput = 1;
-							int paletteSize = 1 << ncgr->nBits;
-							if (nclr != NULL) {
-								for (int i = 0; i < min(nclr->nColors, 256); i++) {
-									int makeTransparent = transparentOutput && ((i % paletteSize) == 0);
-
-									palette[i] = ColorConvertFromDS(nclr->colors[i]);
-									if (!makeTransparent) palette[i] |= 0xFF000000;
-								}
-							}
-							unsigned char *bits = ScrViewerRenderIndexed(nscr, ncgr, data->tileBase, &width, &height, TRUE);
-							ImgWriteIndexed(bits, width, height, palette, 256, location);
-							free(bits);
-						} else {
-							//write direct
-							COLOR32 *bits = ScrViewerRenderBits(nscr, ncgr, nclr, data->tileBase, &width, &height, TRUE);
-							for (int i = 0; i < width * height; i++) {
-								COLOR32 c = bits[i];
-								bits[i] = REVERSE(c);
-							}
-							ImgWrite(bits, width, height, location);
-							free(bits);
-						}
 						free(location);
 						break;
 					}
