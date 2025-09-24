@@ -1511,7 +1511,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	//	2 - map similarities
 	//	3 - palette merging
 
-	//------------STAGE 1
+	// ----- STAGE 1: create tile  data
 
 	unsigned int nTiles = tilesX * tilesY;
 	RxiTile *tiles = (RxiTile *) calloc(nTiles, sizeof(RxiTile));
@@ -1548,7 +1548,11 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		}
 	}
 
-	//-------------STAGE 2
+	// ----- STAGE 2: create difference map
+	// We'll determine candidacy for palette merges using an nxn matrix of differences. Each entry
+	// in the diagonal is necessarily 0 since any palette is merged with itself without cost. The
+	// matrix is not symmetric, however, representing the different directions in which this relation
+	// is calculated.
 	double *diffBuff = (double *) calloc(nTiles * nTiles, sizeof(double));
 	for (unsigned int i = 0; i < nTiles; i++) {
 		RxiTile *tile1 = &tiles[i];
@@ -1565,14 +1569,23 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		(*progress)++;
 	}
 
-	//-----------STAGE 3
+	// ----- STAGE 3: merge palettes
+	// We'll select the most highly mergeable two palettes and merge them by creating a new palette
+	// using the combined histograms of represented tiles.
 	int nCurrentPalettes = nTiles;
-	while (nCurrentPalettes > nPalettes) {
-
+	while (nCurrentPalettes > 1) {
+		//find two best palettes to merge
 		unsigned int index1, index2;
-		RxiTileFindSimilarTiles(tiles, diffBuff, nTiles, &index1, &index2);
+		double cost = RxiTileFindSimilarTiles(tiles, diffBuff, nTiles, &index1, &index2);
 
-		//find all  instances of index2, replace with index1
+		//we will continue to merge palettes even when we have are at or below the target count when
+		//we may merge more palettes at 0 cost, or when there exist palettes which may be merged losslessly
+		//to avoid palette waste.
+		if (cost > 0.0 && (tiles[index1].nUsedColors + tiles[index2].nUsedColors) > (unsigned int) reduction->nPaletteColors) {
+			if (nCurrentPalettes <= nPalettes) break;
+		}
+
+		//find all instances of index2, replace with index1
 		int nSwitched = 0;
 		for (unsigned int i = 0; i < nTiles; i++) {
 			if (tiles[i].palIndex == index2) {
@@ -1594,8 +1607,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		//write over the palette of the tile
 		RxiTile *palTile = &tiles[index1];
 		for (int i = 0; i < RX_TILE_PALETTE_MAX - 1; i++) {
-			RxYiqColor *yiqDest = &palTile->palette[i];
-			RxConvertRgbToYiq(reduction->paletteRgb[i], yiqDest);
+			RxConvertRgbToYiq(reduction->paletteRgb[i], &palTile->palette[i]);
 		}
 		palTile->nUsedColors = reduction->nUsedColors;
 		palTile->nSwallowed += nSwitched;
@@ -1604,7 +1616,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		RxiTile *rep = &tiles[index1];
 		memset(rep->useCounts, 0, sizeof(rep->useCounts));
 		for (unsigned int i = 0; i < nTiles; i++) {
-			RxiTile *tile = tiles + i;
+			RxiTile *tile = &tiles[i];
 			if (tile->palIndex != index1) continue;
 
 			for (int j = 0; j < 64; j++) {
@@ -1657,7 +1669,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	}
 
 	//palette refinement
-	int nRefinements = 4;
+	int nRefinements = 8;
 	int *bestPalettes = (int *) calloc(nTiles, sizeof(int));
 	RxYiqColor *yiqPalette = (RxYiqColor *) calloc(nPalettes, RX_TILE_PALETTE_MAX * sizeof(RxYiqColor));
 	for (int k = 0; k < nRefinements; k++) {
@@ -1729,7 +1741,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			qsort(thisPalDest, nFinalColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
 		} else {
 			//already the correct size; simply sort and copy
-			qsort(palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette, 4, RxColorLightnessComparator);
+			qsort(palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
 			memcpy(dest + paletteSize * (i + paletteBase) + outputOffs, palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette * sizeof(COLOR32));
 		}
 
