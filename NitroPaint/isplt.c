@@ -34,12 +34,13 @@
 #define TRUE 1
 #define FALSE 0
 
-#define RX_LARGE_NUMBER          1e32 // constant to represent large color difference
-#define RX_SLAB_SIZE         0x100000 // slab size of allocator
-#define INV_512 0.0019531250000000000 // 1.0/512.0
-#define INV_511 0.0019569471624266144 // 1.0/511.0
-#define INV_255 0.0039215686274509800 // 1.0/255.0
-#define INV_3   0.3333333333333333333 // 1.0/  3.0
+#define RX_LARGE_NUMBER             1e32 // constant to represent large color difference
+#define RX_SLAB_SIZE            0x100000 // slab size of allocator
+#define INV_512    0.0019531250000000000 // 1.0/512.0
+#define INV_511    0.0019569471624266144 // 1.0/511.0
+#define INV_255    0.0039215686274509800 // 1.0/255.0
+#define INV_3      0.3333333333333333333 // 1.0/  3.0
+#define TWO_THIRDS 0.6666666666666666667 // 2.0/  3.0
 
 //struct for internal processing of color leaves
 typedef struct {
@@ -196,41 +197,31 @@ static void RxHistAddColor(RxReduction *reduction, int y, int i, int q, int a, d
 }
 
 void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
-	double doubleR = (double) ((rgb >>  0) & 0xFF);
-	double doubleG = (double) ((rgb >>  8) & 0xFF);
-	double doubleB = (double) ((rgb >> 16) & 0xFF);
+	double r = (double) ((rgb >>  0) & 0xFF);
+	double g = (double) ((rgb >>  8) & 0xFF);
+	double b = (double) ((rgb >> 16) & 0xFF);
 
-	double y = 2.0 * (doubleR * 0.29900 + doubleG * 0.58700 + doubleB * 0.11400);
-	double i = 2.0 * (doubleR * 0.59604 - doubleG * 0.27402 - doubleB * 0.32203);
-	double q = 2.0 * (doubleR * 0.21102 - doubleG * 0.52204 + doubleB * 0.31103);
-	double iCopy = i;
+	//twice the standard RGB->YIQ matrix (doubles output components)
+	double y = r * 0.58900 + g * 1.17400 + b * 0.22800;
+	double i = r * 1.19208 - g * 0.54804 - b * 0.64406;
+	double q = r * 0.42204 - g * 1.04408 + b * 0.62206;
 
-	if (iCopy > 245.0) {
-		iCopy = 2 * (iCopy - 245.0) * INV_3 + 245.0;
-	}
+	if (i >  245.0) i = (i - 245.0) * TWO_THIRDS + 245.0;
+	if (q < -215.0) q = (q + 215.0) * TWO_THIRDS - 215.0;
 
-	if (q < -215.0) {
-		q = 2 * (q + 215.0) * INV_3 - 215.0;
-	}
-
-	double iqDiff = q - iCopy;
+	double iqDiff = q - i;
 	if (iqDiff > 265.0) {
-		double iqDiffShifted = (iqDiff - 265.0) * 0.25;
-		iCopy += iqDiffShifted;
-		q -= iqDiffShifted;
+		double diq = (iqDiff - 265.0) * 0.25;
+		i += diq;
+		q -= diq;
 	}
 
-	if (iCopy < 0.0 && q > 0.0) y -= (q * iCopy) * INV_512;
+	if (i < 0.0 && q > 0.0) y -= (q * i) * INV_512;
 
-	//round to integers
-	int yInt = (int) (y + 0.5);
-	int iInt = (int) (i + (i < 0.0 ? -0.5 : 0.5));
-	int qInt = (int) (q + (q < 0.0 ? -0.5 : 0.5));
-
-	//write clamped color
-	yiq->y = min(max(yInt,    0), 511);
-	yiq->i = min(max(iInt, -320), 319);
-	yiq->q = min(max(qInt, -270), 269);
+	//write rounded color
+	yiq->y = (int) (y + 0.5);                    //    0 - 511
+	yiq->i = (int) (i + (i < 0.0 ? -0.5 : 0.5)); // -320 - 319
+	yiq->q = (int) (q + (q < 0.0 ? -0.5 : 0.5)); // -270 - 269
 	yiq->a = (rgb >> 24) & 0xFF;
 }
 
@@ -245,14 +236,13 @@ void RxConvertYiqToRgb(RxRgbColor *rgb, const RxYiqColor *yiq) {
 
 	double iqDiff = q - i;
 	if (iqDiff > 265.0) {
-		iqDiff = (iqDiff - 265.0) * 0.5;
-		i -= iqDiff;
-		q += iqDiff;
+		double diq = (iqDiff - 265.0) * 0.5;
+		i -= diq;
+		q += diq;
 	}
 
-	if (q < -215.0) {
-		q = (q + 215.0) * 3.0 * 0.5 - 215.0;
-	}
+	if (q < -215.0) q = (q + 215.0) * 1.5 - 215.0;
+	if (i >  245.0) i = (i - 245.0) * 1.5 + 245.0;
 
 	int r = (int) (y * 0.5 + i * 0.477791 + q * 0.311426 + 0.5);
 	int g = (int) (y * 0.5 - i * 0.136066 - q * 0.324141 + 0.5);
