@@ -38,13 +38,29 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "version.lib")
 
-int _fltused;
 
-extern long _ftol(double d);
+//implementation of _ftol2_sse and _fltused
+#ifdef _MSC_VER
 
-long _ftol2_sse(float f) { //ugly hack
-	return _ftol(f);
+int _fltused; // for LINK
+
+long __declspec(naked) _ftol2_sse(double d) {
+	//pentium 4+ implementation
+	_asm {
+		push ebp
+		mov ebp, esp
+		sub esp, 8
+		and esp, ~7
+		fstp qword ptr [esp]
+		cvttsd2si eax, [esp]
+		leave
+		ret
+	}
+	__assume(0);
 }
+
+#endif
+
 
 size_t my_strnlen(const char *_Str, size_t _MaxCount);
 size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
