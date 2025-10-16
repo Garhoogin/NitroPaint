@@ -202,7 +202,7 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	double b = (double) ((rgb >> 16) & 0xFF);
 
 	//twice the standard RGB->YIQ matrix (doubles output components)
-	double y = r * 0.58900 + g * 1.17400 + b * 0.22800;
+	double y = r * 0.59800 + g * 1.17400 + b * 0.22800;
 	double i = r * 1.19208 - g * 0.54804 - b * 0.64406;
 	double q = r * 0.42204 - g * 1.04408 + b * 0.62206;
 
