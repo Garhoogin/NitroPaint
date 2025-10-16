@@ -326,31 +326,57 @@ void RxHistFinalize(RxReduction *reduction) {
 	}
 }
 
+static inline double RxiCalcWeightPixelOneSide(const RxYiqColor *center, const RxYiqColor *side) {
+	if (center->a == 0) return 0.0;
+
+	//when the side pixel has alpha=0, treat it as an opaque pixel of same alpha.
+	int dy = 0;
+	if (side->a != 0) {
+		dy = center->y - side->y;
+	}
+
+	int weight = 16 - abs(16 - abs(dy)) / 8;
+	if (weight < 1) weight = 1;
+	return (double) weight;
+}
+
 void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, unsigned int height) {
 	if (reduction->histogram == NULL) {
 		reduction->histogram = (RxHistogram *) calloc(1, sizeof(RxHistogram));
 		reduction->histogram->firstSlot = 0x20000;
 	}
+	
+	if (width == 0 || height == 0) return;
 
 	for (unsigned int y = 0; y < height; y++) {
-		RxYiqColor yiqLeft;
-		RxConvertRgbToYiq(img[y * width], &yiqLeft);
-		int yLeft = yiqLeft.y, aLeft = yiqLeft.a;
+		//track block of 3 pixels
+		RxYiqColor rowBlock[3];
+		RxConvertRgbToYiq(img[y * width + 0], &rowBlock[0]);     // left
+		memcpy(&rowBlock[1], &rowBlock[0], sizeof(RxYiqColor));  // center
+		memcpy(&rowBlock[2], &rowBlock[1], sizeof(RxYiqColor));  // right
 
 		for (unsigned int x = 0; x < width; x++) {
-			RxYiqColor yiq;
-			RxConvertRgbToYiq(img[x + y * width], &yiq);
+			//fill right pixel
+			if ((x + 1) < width) {
+				RxConvertRgbToYiq(img[y * width + x + 1], &rowBlock[2]);
+			}
 
-			//when the left pixel is transparent, treat it as same Y value.
-			if (aLeft == 0) yLeft = yiq.y;
+			//top and bottom pixel
+			RxYiqColor top, bottom;
+			if (y > 0) RxConvertRgbToYiq(img[(y - 1) * width + x], &top);
+			else memcpy(&top, &rowBlock[1], sizeof(RxYiqColor));
+			if ((y + 1) < height) RxConvertRgbToYiq(img[(y + 1) * width + x], &bottom);
+			else memcpy(&bottom, &rowBlock[1], sizeof(RxYiqColor));
 
-			int dy = yiq.y - yLeft;
-			double weight = (double) (16 - abs(16 - abs(dy)) / 8);
-			if (weight < 1.0) weight = 1.0;
+			//compute weight
+			double weightL = RxiCalcWeightPixelOneSide(&rowBlock[1], &rowBlock[0]);
+			double weightR = RxiCalcWeightPixelOneSide(&rowBlock[1], &rowBlock[2]);
+			double weightU = RxiCalcWeightPixelOneSide(&rowBlock[1], &top);
+			double weightD = RxiCalcWeightPixelOneSide(&rowBlock[1], &bottom);
+			RxHistAddColor(reduction, rowBlock[1].y, rowBlock[1].i, rowBlock[1].q, rowBlock[1].a, 0.25 * (weightL + weightR + weightU + weightD));
 
-			RxHistAddColor(reduction, yiq.y, yiq.i, yiq.q, yiq.a, weight);
-			yLeft = yiq.y;
-			aLeft = yiq.a;
+			//slide row
+			memmove(&rowBlock[0], &rowBlock[1], 2 * sizeof(RxYiqColor));
 		}
 	}
 }
