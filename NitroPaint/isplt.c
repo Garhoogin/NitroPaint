@@ -324,20 +324,6 @@ void RxHistFinalize(RxReduction *reduction) {
 	}
 }
 
-static inline double RxiCalcWeightPixelOneSide(const RxYiqColor *center, const RxYiqColor *side) {
-	if (center->a == 0) return 0.0;
-
-	//when the side pixel has alpha=0, treat it as an opaque pixel of same alpha.
-	int dy = 0;
-	if (side->a != 0) {
-		dy = center->y - side->y;
-	}
-
-	int weight = 16 - abs(16 - abs(dy)) / 8;
-	if (weight < 1) weight = 1;
-	return (double) weight;
-}
-
 void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, unsigned int height) {
 	if (reduction->histogram == NULL) {
 		reduction->histogram = (RxHistogram *) calloc(1, sizeof(RxHistogram));
@@ -367,11 +353,13 @@ void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, u
 			else memcpy(&bottom, &rowBlock[1], sizeof(RxYiqColor));
 
 			//compute weight
-			double weightL = RxiCalcWeightPixelOneSide(&rowBlock[1], &rowBlock[0]);
-			double weightR = RxiCalcWeightPixelOneSide(&rowBlock[1], &rowBlock[2]);
-			double weightU = RxiCalcWeightPixelOneSide(&rowBlock[1], &top);
-			double weightD = RxiCalcWeightPixelOneSide(&rowBlock[1], &bottom);
-			RxHistAddColor(reduction, rowBlock[1].y, rowBlock[1].i, rowBlock[1].q, rowBlock[1].a, 0.25 * (weightL + weightR + weightU + weightD));
+			double yInter = 0.25 * (reduction->lumaTable[rowBlock[0].y] + reduction->lumaTable[rowBlock[1].y] 
+				+ reduction->lumaTable[top.y] + reduction->lumaTable[bottom.y]);
+			double yCenter = reduction->lumaTable[rowBlock[1].y];
+			double yDiff = fabs(yCenter - yInter);
+			double weight = 16.0 - fabs(16.0 - yDiff) / 8.0;
+			if (weight < 1.0) weight = 1.0;
+			RxHistAddColor(reduction, rowBlock[1].y, rowBlock[1].i, rowBlock[1].q, rowBlock[1].a, weight);
 
 			//slide row
 			memmove(&rowBlock[0], &rowBlock[1], 2 * sizeof(RxYiqColor));
