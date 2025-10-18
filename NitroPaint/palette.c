@@ -16,11 +16,6 @@ int RxColorLightnessComparator(const void *d1, const void *d2) {
 	return dy;
 }
 
-void RxCreatePaletteTransparentReserve(const COLOR32 *px, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors) {
-	RxCreatePalette(px, width, height, pal + 1, nColors - 1);
-	*pal = 0xFF00FF;
-}
-
 int RxPaletteFindClosestColorSimple(COLOR32 rgb, const COLOR32 *palette, unsigned int paletteSize) {
 	unsigned int smallestDistance = UINT_MAX;
 	int index = 0;
@@ -88,10 +83,4 @@ void RxConvertRgbToYuv(int r, int g, int b, int *y, int *u, int *v) {
 	*y = (int) ( 0.2990 * r + 0.5870 * g + 0.1140 * b);
 	*u = (int) (-0.1684 * r - 0.3316 * g + 0.5000 * b);
 	*v = (int) ( 0.5000 * r - 0.4187 * g - 0.0813 * b);
-}
-
-void RxConvertYuvToRgb(int y, int u, int v, int *r, int *g, int *b) {
-	*r = (int) (y - 0.00004f * u + 1.40199f * v);
-	*g = (int) (y - 0.34408f * u - 0.71389f * v);
-	*b = (int) (y + 1.77180f * u - 0.00126f * v);
 }

@@ -136,27 +136,6 @@ int RxCreatePaletteEx(
 );
 
 // -----------------------------------------------------------------------------------------------
-// Name: RxCreatePaletteTransparentReserve
-//
-// Creates a color palette for an image, reserving the first color slot for transparency, whether
-// or not it contains any transparent pixels.
-//
-// Parameters:
-//   px            The image pixels.
-//   width         The image width.
-//   height        The image height.
-//   pal           The output palette buffer.
-//   nColors       The size of the color palette to create.
-// -----------------------------------------------------------------------------------------------
-void RxCreatePaletteTransparentReserve(
-	const COLOR32 *px,      // the image pixels
-	unsigned int   width,   // the image width
-	unsigned int   height,  // the image height
-	COLOR32       *pal,     // the output palette
-	unsigned int   nColors  // the number of palette colors to create
-);
-
-// -----------------------------------------------------------------------------------------------
 // Name: RxPaletteFindClosestColorSimple
 //
 // Finds the closest color in a palette to the specified color. If the specified color appears
@@ -337,24 +316,6 @@ void RxConvertRgbToYuv(
 	int *v   // output color V
 );
 
-// -----------------------------------------------------------------------------------------------
-// Name: RxConvertYuvToRgb
-//
-// Convert a YUV color to RGB space.
-//
-// Parameters:
-//   y,u,v         The input YUV color.
-//   r,g,b         The output RGB color.
-// -----------------------------------------------------------------------------------------------
-void RxConvertYuvToRgb(
-	int  y,  // input color Y
-	int  u,  // input color U
-	int  v,  // input color V
-	int *r,  // output color R
-	int *g,  // output color G
-	int *b   // output color B
-);
-
 
 //----------structures used by palette generator
 
@@ -476,11 +437,12 @@ void RxConvertRgbToYiq(
 // Decode a YIQ color to RGB.
 //
 // Parameters:
-//   rgb           The output RGB color.
 //   yiq           The input YIQ color.
+//
+// Returns:
+//   The input YIQ color converted to RGB.
 // -----------------------------------------------------------------------------------------------
-void RxConvertYiqToRgb(
-	RxRgbColor *rgb,       // the output RGB color
+COLOR32 RxConvertYiqToRgb(
 	const RxYiqColor *yiq  // the input YIQ color
 );
 
@@ -607,12 +569,10 @@ int RxPaletteFindCloestColorYiq(
 // Parameters:
 //   reduction      The color reduction context.
 //   px             The image pixels.
-//   nPx            The number of image pixels.
+//   width          The input width
+//   height         The input height
 //   palette        The color palette, as RGB colors.
 //   nColors        The number of palette colors.
-//   alphaThreshold The threshold with which translucent pixels are translated into binary levels.
-//                  A source alpha less than the threshold is converted to an alpha value of 0,
-//                  and an alpha greater than or equal to the threshold is converted to 1.
 //   maxError       The maximum error. When the error would be above maxError, it is truncated to
 //                  maxError.
 //
@@ -623,10 +583,10 @@ int RxPaletteFindCloestColorYiq(
 double RxComputePaletteError(
 	RxReduction   *reduction,       // the color reduction context
 	const COLOR32 *px,              // the input pixels
-	unsigned int   nPx,             // the number of pixels
+	unsigned int   width,           // the input width
+	unsigned int   height,          // the input height
 	const COLOR32 *palette,         // the color palette
 	unsigned int   nColors,         // the number of colors in the palette
-	int            alphaThreshold,  // the minimum alpha value to be converted to opaque
 	double         maxError         // the maximum error value to return
 );
 
