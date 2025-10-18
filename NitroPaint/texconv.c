@@ -1010,10 +1010,23 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 		useMap[i + nMovedColors + 0] = 0;
 		useMap[i + nMovedColors + 1] = 0;
 
+		//adjust palette indices for all 4x4 blocks that have had their palette colors moved.
 		for (int j = 0; j < nTiles; j++) {
 			uint16_t idx = pidx[j];
+
+			//we decrement the palette index of this block if it has any opaque pixels and is using colors after
+			//the remove point. We must check for palette index greater than *or equal* because a 4x4 block may
+			//only be using the second half of its assigned palette, and these indices should be adjusted as well.
+			//there is an exceptional case for a 4x4 block using only the second half of palette index 0, these
+			//must not be decremented (and instead its texel data should be adjusted only).
 			if (COMP_INDEX(idx) >= i && tiles[j].transparentPixels < 16) {
-				pidx[j]--; //must check equal if second half of palette used
+				if (COMP_INDEX(idx) > 0) {
+					//decrement palette index
+					pidx[j]--;
+				} else {
+					//adjust texel data (switch pixel values of 2,3 to 0,1)
+					txel[j] ^= 0xAAAAAAAA;
+				}
 			}
 		}
 
