@@ -491,7 +491,7 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 		//now, match colors to indices.
 		COLOR32 *pal = palette + (bestPalette << nBits);
 		RxReduceImageWithContext(reduction, tile->px, NULL, 8, 8, pal + paletteOffset + !paletteOffset,
-			paletteSize - !paletteSize, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, 0.0f);
+			paletteSize - !paletteOffset, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, 0.0f);
 		for (int j = 0; j < 64; j++) {
 			COLOR32 col = tile->px[j];
 			int index = 0;
