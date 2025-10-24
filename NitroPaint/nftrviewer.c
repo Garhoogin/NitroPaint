@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <CommCtrl.h>
+#include <math.h>
 
 #include "resource.h"
 #include "nftrviewer.h"
@@ -1524,6 +1525,19 @@ static void NftrViewerNewGlyphRange(NFTRVIEWERDATA *data) {
 	MessageBox(hWndMain, buf, L"Success", MB_ICONINFORMATION);
 }
 
+static void NftrViewerExport(NFTRVIEWERDATA *data) {
+	HWND hWndMain = getMainWindow(data->hWnd);
+	LPWSTR path = saveFileDialog(hWndMain, L"Export Font", L"PNG Files (*.png)\0*.png\0All Files\0*.*", L"png");
+	if (path == NULL) return;
+
+	//create export dialog
+	HWND hWndModal = CreateWindow(L"NftrExportClass", L"Export Font", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
+	SendMessage(hWndModal, NV_INITIALIZE, (WPARAM) path, (LPARAM) data);
+	DoModal(hWndModal);
+	free(path);
+}
+
 static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 	switch (idMenu) {
 		case ID_VIEW_GRIDLINES:
@@ -1541,6 +1555,9 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 			break;
 		case ID_FILE_SAVEAS:
 			EditorSaveAs(data->hWnd);
+			break;
+		case ID_FILE_EXPORT:
+			NftrViewerExport(data);
 			break;
 		case ID_VIEW_RENDERTRANSPARENCY:
 		{
@@ -2099,6 +2116,270 @@ static LRESULT CALLBACK NftrViewerCellEditorWndProc(HWND hWnd, UINT msg, WPARAM 
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct NftrExportData_ {
+	NFTRVIEWERDATA *data;
+	HWND hWndExportMarkers;
+	HWND hWndExportCodeMap;
+	HWND hWndExportUnmapped;
+	HWND hWndExport;
+	LPWSTR path;
+} NftrExportData;
+
+static void NftrViewerGetGlyphExportPadding(NFTR_GLYPH *glyph, unsigned int *pSpaceL, unsigned int *pSpaceR) {
+	unsigned int w = glyph->width;
+	unsigned int lSpace = 0, rSpace = 0;
+
+	if (glyph->spaceLeft >= 0) {
+		lSpace = (unsigned int) glyph->spaceLeft;
+	} else if (((unsigned int) -glyph->spaceLeft) > w) {
+		rSpace = ((unsigned int) -glyph->spaceLeft) - w;
+	}
+
+	if (glyph->spaceRight >= 0) {
+		if ((unsigned int) glyph->spaceRight > rSpace) rSpace = (unsigned int) glyph->spaceRight;
+	} else if (((unsigned int) -glyph->spaceRight) > w) {
+		if (((unsigned int) -glyph->spaceRight) - w > lSpace) lSpace = ((unsigned int) -glyph->spaceRight) - w;
+	}
+
+	//add left and right space
+	lSpace++;
+	rSpace++;
+	*pSpaceL = lSpace;
+	*pSpaceR = rSpace;
+}
+
+static COLOR32 *NftrViewerExportImage(NFTR *nftr, int markers, int map, int unmapped, int *pWidth, int *pHeight) {
+	//check parameters
+	if (map && !nftr->hasCodeMap) map = 0; // for a font with no code map, do not export using a code map
+	if (!map) unmapped = 0;                // when not exporting with a code map, cannot export unmapped
+
+	//cell arrangement
+	unsigned int nGlyph = 65536;
+	unsigned int nCellX = 256, nCellY = 256;
+	if (!map) {
+		//list only glyphs (no code points): arrange by nCellX=sqrt(nGlyph)
+		nGlyph = nftr->nGlyph;
+		nCellX = (int) sqrt((double) nGlyph);
+		nCellY = (nGlyph + nCellX - 1) / nCellX;
+	}
+
+	//compute cell bounding box
+	unsigned int cellW = nftr->cellWidth, cellH = nftr->cellHeight;
+
+	//compute required width of cell to represent cell spacing
+	if (markers) {
+		//find min and max of left and right spacing (starting from zeros)
+		unsigned int maxWidth = 2;
+		for (int i = 0; i < nftr->nGlyph; i++) {
+			NFTR_GLYPH *glyph = &nftr->glyphs[i];
+			
+			unsigned int w = glyph->width;
+			unsigned int lSpace = 0, rSpace = 0;
+			NftrViewerGetGlyphExportPadding(glyph, &lSpace, &rSpace);
+
+			//add left and right space
+			w += lSpace + rSpace;
+			if (w > maxWidth) maxWidth = w;
+		}
+
+		cellW = maxWidth;
+	}
+
+	unsigned int fullCellW = cellW + 1;
+	unsigned int fullCellH = cellH + 3; // 2-pixel border + 1-pixel marker
+	if (!markers) {
+		//do not include extra pixels for markers
+		fullCellW = cellW;
+		fullCellH = cellH;
+	}
+
+	//compute sheet size
+	unsigned int imgWidth = fullCellW * nCellX;
+	unsigned int imgHeight = fullCellH * nCellY;
+	if (markers) {
+		//right and bottom border
+		imgWidth++;
+		imgHeight++;
+	}
+
+	//pixel buffer
+	COLOR32 *px = (COLOR32 *) calloc(imgWidth * imgHeight, sizeof(COLOR32));
+	memset(px, 0xFF, imgWidth * imgHeight * sizeof(COLOR32));
+
+	//put markers
+	if (markers) {
+		//horizontal grid marks
+		for (unsigned int y = 0; y <= nCellY; y++) {
+			for (unsigned int x = 0; x < imgWidth; x++) {
+				px[(y * fullCellH) * imgWidth + x] = 0xFFFF0000; // blue
+			}
+		}
+
+		//vertical grid marks
+		for (unsigned int x = 0; x <= nCellX; x++) {
+			for (unsigned int y = 0; y < imgHeight; y++) {
+				px[y * imgWidth + (x * fullCellW)] = 0xFFFF0000; // blue
+			}
+		}
+	}
+
+	//invalid glyph index
+	int iInvalid = NftrGetInvalidGlyphIndex(nftr);
+
+	//put glyph images
+	for (unsigned int i = 0; i < nGlyph; i++) {
+		unsigned int cellX = i % nCellX;
+		unsigned int cellY = i / nCellX;
+
+		unsigned int cellPx = cellX * fullCellW;
+		unsigned int cellPy = cellY * fullCellH;
+		if (markers) {
+			//left+top border
+			cellPx++;
+			cellPy++;
+		}
+
+		//draw cell bottom and baseline marker
+		if (markers) {
+			//width marker
+			for (unsigned int x = 0; x < cellW; x++) {
+				px[(cellPy + cellH + 0) * imgWidth + (cellPx + x)] = 0xFFFF0000; // blue
+				px[(cellPy + cellH + 1) * imgWidth + (cellPx + x)] = 0xFF000000; // black
+			}
+
+			//baseline
+			if (nftr->pxAscent < nftr->cellHeight) {
+				px[(cellPy + nftr->pxAscent) * imgWidth + (cellPx - 1)] = 0xFF0000FF; // red
+				px[(cellPy + nftr->pxAscent) * imgWidth + (cellPx + cellW)] = 0xFF0000FF; // red
+			}
+		}
+
+		//get glyph index
+		int glyphno = i;
+		if (map) {
+			glyphno = NftrGetGlyphIndexByCP(nftr, i);
+			if (glyphno == -1) {
+				if (unmapped) glyphno = iInvalid;
+			}
+		}
+		if (glyphno < 0 || glyphno >= nftr->nGlyph) continue;
+
+		//draw glyph
+		NFTR_GLYPH *glyph = &nftr->glyphs[glyphno];
+		unsigned int lSpaceMin, rSpaceMin;
+		NftrViewerGetGlyphExportPadding(glyph, &lSpaceMin, &rSpaceMin);
+
+		//adjust spacing to center glyph in cell
+		unsigned int lSpace = 0, rSpace = 0;
+		if (markers) {
+			lSpace = (cellW - glyph->width) / 2;
+			if (lSpace < lSpaceMin) lSpace = lSpaceMin;
+			if ((lSpace + glyph->width + rSpaceMin) > cellW) lSpace = cellW - (glyph->width + rSpaceMin);
+
+			rSpace = cellW - lSpace - glyph->width;
+		}
+
+		//render
+		for (int y = 0; y < nftr->cellHeight; y++) {
+			for (int x = 0; x < glyph->width; x++) {
+				unsigned int pxval = glyph->px[x + y * nftr->cellWidth];
+				pxval = 255 - (pxval * 255) / ((1 << nftr->bpp) - 1);
+
+				COLOR32 col = pxval | (pxval << 8) | (pxval << 16) | 0xFF000000;
+				px[(cellPy + y) * imgWidth + (cellPx + lSpace + x)] = col;
+			}
+		}
+
+		//draw markers
+		if (markers) {
+			COLOR32 *markRow = &px[(cellPy + cellH + 1) * imgWidth + cellPx];
+
+			//A space
+			for (int x = 0; x < (int) (lSpace - glyph->spaceLeft); x++) markRow[x] |= 0x000000FF; // red
+
+			//B space
+			for (int x = 0; x < glyph->width; x++) markRow[lSpace + x] |= 0x0000FF00; // green
+
+			//C space
+			for (int x = lSpace + glyph->width + glyph->spaceRight; x < (int) cellW; x++) markRow[x] |= 0x00FF0000; // blue
+		}
+	}
+
+	//return
+	*pWidth = imgWidth;
+	*pHeight = imgHeight;
+	return px;
+}
+
+static LRESULT CALLBACK NftrViewerExportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NftrExportData *data = (NftrExportData *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			data = (NftrExportData *) calloc(1, sizeof(NftrExportData));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			//UI controls
+			data->hWndExportMarkers = CreateCheckbox(hWnd, L"Export Markers", 10, 10, 200, 22, TRUE);
+			data->hWndExportCodeMap = CreateCheckbox(hWnd, L"Use Code Map", 10, 37, 200, 22, TRUE);
+			data->hWndExportUnmapped = CreateCheckbox(hWnd, L"Export Unmapped", 10, 64, 200, 22, TRUE);
+			data->hWndExport = CreateButton(hWnd, L"Export", 110, 91, 100, 22, TRUE);
+
+			SetWindowSize(hWnd, 220, 123);
+			SetGUIFont(hWnd);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			data->data = (NFTRVIEWERDATA *) lParam;
+			data->path = (LPWSTR) wParam;
+
+			//for a font without a code map, cannot export a code map.
+			int hasCodeMap = data->data->nftr.hasCodeMap;
+			SendMessage(data->hWndExportCodeMap, BM_SETCHECK, hasCodeMap ? BST_CHECKED : BST_UNCHECKED, 0);
+			
+			if (!hasCodeMap) {
+				EnableWindow(data->hWndExportUnmapped, FALSE);
+			}
+
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndCtl = (HWND) lParam;
+			int notif = HIWORD(wParam), idCtl = LOWORD(wParam);
+			if ((hWndCtl == data->hWndExport || idCtl == IDOK) && notif == BN_CLICKED) {
+				int markers = GetCheckboxChecked(data->hWndExportMarkers);
+				int map = GetCheckboxChecked(data->hWndExportCodeMap);
+				int unmapped = GetCheckboxChecked(data->hWndExportUnmapped);
+
+				int width, height;
+				COLOR32 *px = NftrViewerExportImage(&data->data->nftr, markers, map, unmapped, &width, &height);
+
+				//write export image
+				ImgWrite(px, width, height, data->path);
+
+				free(px);
+
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			} else if (hWndCtl == data->hWndExportCodeMap && notif == BN_CLICKED) {
+				EnableWindow(data->hWndExportUnmapped, GetCheckboxChecked(hWndCtl));
+			} else if (idCtl == IDCANCEL && notif == BN_CLICKED) {
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+		case WM_DESTROY:
+		{
+			free(data);
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 void RegisterNftrViewerClass(void) {
 	int features = EDITOR_FEATURE_GRIDLINES | EDITOR_FEATURE_ZOOM;
 	EDITOR_CLASS *cls = EditorRegister(NFTR_VIEWER_CLASS_NAME, NftrViewerWndProc, L"Font Editor", sizeof(NFTRVIEWERDATA), features);
@@ -2114,6 +2395,7 @@ void RegisterNftrViewerClass(void) {
 
 	RegisterGenericClass(NFTR_VIEWER_MARGIN_CLASS, NftrViewerMarginWndProc, sizeof(void *));
 	RegisterGenericClass(NFTR_VIEWER_PREVIEW_CLASS, NftrViewerCellEditorWndProc, sizeof(void *));
+	RegisterGenericClass(L"NftrExportClass", NftrViewerExportWndProc, sizeof(void *));
 }
 
 HWND CreateNftrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
