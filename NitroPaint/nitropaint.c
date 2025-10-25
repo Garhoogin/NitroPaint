@@ -3556,19 +3556,6 @@ typedef struct IndexImageData_ {
 	FrameBuffer fbReduced;
 } RedGuiData;
 
-static int RedGuiSortPaletteComparator(const void *v1, const void *v2) {
-	COLOR32 c1 = *(const COLOR32 *) v1;
-	COLOR32 c2 = *(const COLOR32 *) v2;
-
-	//same alpha -> compare by alpha (increasing)
-	unsigned int a1 = c1 >> 24, a2 = c2 >> 24;
-	if (a1 < a2) return -1;
-	if (a1 > a2) return 1;
-
-	//same alpha -> compare by Y
-	return RxColorLightnessComparator(v1, v2);
-}
-
 static void RedGuiProcessReduction(RedGuiData *data) {
 	unsigned int nColors = GetEditNumber(data->hWndColors);
 	int balance = GetTrackbarPosition(data->hWndBalance);
@@ -3600,10 +3587,6 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 		data->pltt[0] = 0; // transparent
 	}
 	data->nUsedPltt = plttOffs + nColUse;
-
-	//apply a special sorting rule: transparent/translucent colors are arranged by alpha, and
-	//opaque colors are arranged by lightness as normal.
-	qsort(data->pltt + plttOffs, nColUse, sizeof(COLOR32), RedGuiSortPaletteComparator);
 
 	//copy bits
 	if (data->reduced != NULL) free(data->reduced);
