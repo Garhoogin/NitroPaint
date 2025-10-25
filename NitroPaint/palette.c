@@ -16,37 +16,6 @@ int RxColorLightnessComparator(const void *d1, const void *d2) {
 	return dy;
 }
 
-int RxPaletteFindClosestColorSimple(COLOR32 rgb, const COLOR32 *palette, unsigned int paletteSize) {
-	unsigned int smallestDistance = UINT_MAX;
-	int index = 0;
-
-	//test exact matches
-	for (unsigned int i = 0; i < paletteSize; i++) {
-		if ((rgb & 0xFFFFFF) == (palette[i] & 0xFFFFFF)) {
-			return i;
-		}
-	}
-
-	//else
-	for (unsigned int i = 0; i < paletteSize; i++) {
-		COLOR32 entry = palette[i];
-		int dr = ((entry >>  0) & 0xFF) - ((rgb >>  0) & 0xFF);
-		int dg = ((entry >>  8) & 0xFF) - ((rgb >>  8) & 0xFF);
-		int db = ((entry >> 16) & 0xFF) - ((rgb >> 16) & 0xFF);
-
-		int ey, eu, ev;
-		RxConvertRgbToYuv(dr, dg, db, &ey, &eu, &ev);
-
-		unsigned int dst = 4 * ey * ey + eu * eu + ev * ev;
-		if (dst < smallestDistance) {
-			index = i;
-			smallestDistance = dst;
-		}
-	}
-
-	return index;
-}
-
 static int m(int a) {
 	return a < 0? 0: (a > 255? 255: a);
 }

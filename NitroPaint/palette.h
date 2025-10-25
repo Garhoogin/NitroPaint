@@ -136,27 +136,6 @@ int RxCreatePaletteEx(
 );
 
 // -----------------------------------------------------------------------------------------------
-// Name: RxPaletteFindClosestColorSimple
-//
-// Finds the closest color in a palette to the specified color. If the specified color appears
-// in the color palette, its index is returned. Otherwise, the nearest color in terms of a
-// weighted YUV difference is used to estimate the nearest color.
-//
-// Parameters:
-//   rgb           The color to match.
-//   palette       The color palette to search.
-//   nColors       The size of the color palette to search.
-//
-// Returns:
-//   The index of the nearest color to rgb in the color palette.
-// -----------------------------------------------------------------------------------------------
-int RxPaletteFindClosestColorSimple(
-	COLOR32        rgb,     // the color to match
-	const COLOR32 *palette, // the input color palette
-	unsigned int   nColors  // the input color palette size
-);
-
-// -----------------------------------------------------------------------------------------------
 // Name: doDiffuse
 //
 // Apply Floyd-Steinberg dithering to a pixel's surroundings. Deprecated.

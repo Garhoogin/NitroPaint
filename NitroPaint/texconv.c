@@ -126,17 +126,17 @@ int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	unsigned int nBytes = width * height * bitsPerPixel / 8;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
-	RxReduceImageEx(params->px, NULL, width, height, palette, nColors,
+
+	int *idxs = (int *) calloc(width * height, sizeof(int));
+	RxReduceImageEx(params->px, idxs, width, height, palette, nColors,
 		(hasTransparent ? RX_FLAG_ALPHA_MODE_RESERVE : RX_FLAG_ALPHA_MODE_NONE) | RX_FLAG_NO_PRESERVE_ALPHA,
 		diffuse, params->balance, params->colorBalance, params->enhanceColors);
 
 	//write texel data.
 	for (unsigned int i = 0; i < width * height; i++) {
-		COLOR32 p = params->px[i];
-		int index = 0;
-		if ((p >> 24) >= 0x80) index = RxPaletteFindClosestColorSimple(p, palette + hasTransparent, nColors - hasTransparent) + hasTransparent;
-		txel[i / pixelsPerByte] |= index << (bitsPerPixel * (i & (pixelsPerByte - 1)));
+		txel[i / pixelsPerByte] |= idxs[i] << (bitsPerPixel * (i & (pixelsPerByte - 1)));
 	}
+	free(idxs);
 
 	//update texture info
 	unsigned int param = (params->fmt << 26) | (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
@@ -189,22 +189,25 @@ int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 	int nBytes = width * height;
 	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
-	RxReduceImageEx(params->px, NULL, width, height, palette, nColors, RX_FLAG_ALPHA_MODE_PIXEL | RX_FLAG_PRESERVE_ALPHA,
+
+	int *idxs = (int *) calloc(width * height, sizeof(int));
+	RxReduceImageEx(params->px, idxs, width, height, palette, nColors, RX_FLAG_ALPHA_MODE_PIXEL | RX_FLAG_PRESERVE_ALPHA,
 		diffuse, params->balance, params->colorBalance, params->enhanceColors);
 
 	//write texel data.
 	for (unsigned int i = 0; i < width * height; i++) {
 		COLOR32 p = params->px[i];
-		unsigned int index = RxPaletteFindClosestColorSimple(p, palette, nColors);
-		unsigned int alpha = (((p >> 24) & 0xFF) * alphaMax * 2 + 255) / 510;
-		txel[i] = index | (alpha << alphaShift);
+		unsigned int alpha8 = (p >> 24) & 0xFF;
+		unsigned int alpha = (alpha8 * alphaMax * 2 + 255) / 510;
+		txel[i] = idxs[i] | (alpha << alphaShift);
 
 		if (params->ditherAlpha) {				
 			unsigned int backAlpha = (alpha * 510 + alphaMax) / (alphaMax * 2);
-			int errorAlpha = ((p >> 24) & 0xFF) - (int) backAlpha;
+			int errorAlpha = ((int) alpha8) - (int) backAlpha;
 			doDiffuse(i, width, height, params->px, 0, 0, 0, errorAlpha, params->diffuseAmount);
 		}
 	}
+	free(idxs);
 
 	//update texture info
 	if (params->dest->palette.pal) free(params->dest->palette.pal);
@@ -439,20 +442,15 @@ static double TxiComputeColorDifferenceSimple(COLOR32 c1, COLOR32 c2) {
 	return 4.0 * dy * dy + du * du + dv * dv;
 }
 
-//compute LMS squared
-static double TxiComputeMSE(const COLOR32 *tile, const COLOR32 *palette, int transparent) {
-	double total = 0, nCount = 0;
-	for (int i = 0; i < 16; i++) {
-		COLOR32 c = tile[i];
-		if (!transparent || (c >> 24) >= 0x80) {
-			int closest = RxPaletteFindClosestColorSimple(c, palette, 4 - transparent);
-			COLOR32 chosen = palette[closest];
-			total += TxiComputeColorDifferenceSimple(c, chosen);
-			nCount++;
-		}
-	}
-	if (nCount == 0) return 0;
-	return total / nCount;
+//compute mean square error
+static double TxiComputeMSE(RxReduction *reduction, const COLOR32 *tile, const COLOR32 *palette, unsigned int transparent) {
+	unsigned int nPlttColors = 4 - (transparent > 0);
+	unsigned int nOpaquePixel = 16 - transparent;
+	if (nOpaquePixel == 0) return 0;
+
+	//take the sum of square errors and normalize by the channel weighting norm
+	double sse = RxComputePaletteError(reduction, tile, 4, 4, palette, nPlttColors, 1e32);
+	return (sse / (reduction->yWeight2 + reduction->iWeight2 + reduction->qWeight2)) / (int) nOpaquePixel;
 }
 
 static void TxiChoosePaletteAndMode(RxReduction *reduction, TxTileData *tile) {
@@ -464,12 +462,12 @@ static void TxiChoosePaletteAndMode(RxReduction *reduction, TxTileData *tile) {
 		COLOR32 palette[] = { colorMax, mid, colorMin, 0 };
 		COLOR32 paletteFull[4];
 
-		double error = TxiComputeMSE(tile->rgb, palette, 1);
+		double error = TxiComputeMSE(reduction, tile->rgb, palette, tile->transparentPixels);
 		RxHistClear(reduction);
 		RxHistAdd(reduction, tile->rgb, 4, 4);
 		int nFull = TxiCreatePaletteFromHistogram(reduction, 3, paletteFull);
-		//if error <= 64, then these colors are good enough
-		if (error <= 64 || nFull <= 2) {
+		//if error <= 71, then these colors are good enough
+		if (error <= 71.0 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
@@ -489,11 +487,11 @@ static void TxiChoosePaletteAndMode(RxReduction *reduction, TxTileData *tile) {
 		COLOR32 palette[] = { colorMax, mid2, mid1, colorMin };
 		COLOR32 paletteFull[4];
 
-		double error = TxiComputeMSE(tile->rgb, palette, 0);
+		double error = TxiComputeMSE(reduction, tile->rgb, palette, 0);
 		RxHistClear(reduction);
 		RxHistAdd(reduction, tile->rgb, 4, 4);
 		int nFull = TxiCreatePaletteFromHistogram(reduction, 4, paletteFull);
-		if (error <= 64 || nFull <= 2) {
+		if (error <= 71.0 || nFull <= 2) {
 			tile->palette[0] = ColorConvertToDS(colorMax);
 			tile->palette[1] = ColorConvertToDS(colorMin);
 			tile->palette[2] = 0;
@@ -600,14 +598,14 @@ static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, cons
 	g_texCompressionProgress++;
 }
 
-static TxTileData *TxiCreateTileData(RxReduction *reduction, COLOR32 *px, int tilesX, int tilesY, int createPalette) {
+static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, int tilesX, int tilesY, int createPalette) {
 	TxTileData *data = (TxTileData *) calloc(tilesX * tilesY, sizeof(TxTileData));
 	int paletteIndex = 0;
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			COLOR32 tile[16];
 			int offs = x * 4 + y * 4 * tilesX * 4;
-			memcpy(tile +  0, px + offs, 4 * sizeof(COLOR32));
+			memcpy(tile +  0, px + offs + tilesX *  0, 4 * sizeof(COLOR32));
 			memcpy(tile +  4, px + offs + tilesX *  4, 4 * sizeof(COLOR32));
 			memcpy(tile +  8, px + offs + tilesX *  8, 4 * sizeof(COLOR32));
 			memcpy(tile + 12, px + offs + tilesX * 12, 4 * sizeof(COLOR32));

@@ -2356,13 +2356,13 @@ static void charImport(
 	}
 
 	int firstColorIndex = (paletteNumber << ncgr->nBits) + paletteBase;
-	if(paletteSize > maxPaletteSize) paletteSize = maxPaletteSize;
+	if (paletteSize > maxPaletteSize) paletteSize = maxPaletteSize;
 	if (firstColorIndex + paletteSize >= nclr->nColors) {
 		paletteSize = nclr->nColors - firstColorIndex;
 	}
 
 	COLOR *nitroPalette = nclr->colors + firstColorIndex;
-	COLOR32 *palette = (COLOR32 *) calloc(paletteSize, 4);
+	COLOR32 *palette = (COLOR32 *) calloc(paletteSize + 1, sizeof(COLOR32));
 
 	//if we use an existing palette, decode the palette values.
 	//if we do not use an existing palette, generate one.
@@ -2370,22 +2370,21 @@ static void charImport(
 		//decode the palette
 		for (int i = 0; i < paletteSize; i++) {
 			COLOR32 col = ColorConvertFromDS(nitroPalette[i]) | 0xFF000000;
-			palette[i] = col;
+			palette[i + 1] = col;
 		}
 	} else {
-		//create a palette, then encode them to the nclr
-		RxCreatePaletteEx(pixels, width, height, palette, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE);
+		//create a palette, then encode them to the color palette
+		RxCreatePaletteEx(pixels, width, height, palette + 1, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE);
 		for (int i = 0; i < paletteSize; i++) {
-			COLOR32 d = palette[i];
-			COLOR ds = ColorConvertToDS(d);
-			nitroPalette[i] = ds;
-			palette[i] = ColorConvertFromDS(ds) | 0xFF000000;
+			nitroPalette[i] = ColorConvertToDS(palette[i + 1]);
 		}
 	}
 
 	//index image with given parameters.
+	int *idxs = (int *) calloc(width * height, sizeof(int));
 	if (!dither) diffuse = 0.0f;
-	RxReduceImageEx(pixels, NULL, width, height, palette, paletteSize, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse, balance, colorBalance, enhanceColors);
+	RxReduceImageEx(pixels, idxs, width, height, palette, paletteSize + 1, RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA,
+		diffuse, balance, colorBalance, enhanceColors);
 
 	//now, write out indices. 
 	int originOffset = originX + originY * ncgr->tilesX;
@@ -2403,32 +2402,31 @@ static void charImport(
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 				int offset = (y + originY) * ncgr->tilesX + x + originX;
-				BYTE *tile = ncgr->tiles[offset];
+				unsigned char *tile = ncgr->tiles[offset];
 
 				//write out this tile using the palette. Diffuse any error accordingly.
-				for (int i = 0; i < 64; i++) {
-					int offsetX = i & 0x7;
-					int offsetY = i >> 3;
-					int poffset = x * 8 + offsetX + (y * 8 + offsetY) * width;
-					COLOR32 pixel = pixels[poffset];
-
-					int closest = RxPaletteFindClosestColorSimple(pixel, palette, paletteSize) + paletteBase;
-					if ((pixel >> 24) < 127) closest = 0;
-					tile[i] = closest;
+				for (unsigned int i = 0; i < 64; i++) {
+					unsigned int offsetX = i % 8;
+					unsigned int offsetY = i / 8;
+					unsigned int poffset = (x * 8 + offsetX) + (y * 8 + offsetY) * width;
+					
+					unsigned int idx = idxs[poffset];
+					if (idx > 0) idx += paletteBase - !!paletteBase;
+					tile[i] = idx;
 				}
 			}
 		}
 	} else {
 		//1D import, start at index and continue linearly.
-		COLOR32 *tiles = (COLOR32 *) calloc(tilesX * tilesY, 64 * sizeof(COLOR32));
+		int *tiles = (int *) calloc(tilesX * tilesY, 64 * sizeof(int));
 		for (int y = 0; y < tilesY; y++) {
 			for (int x = 0; x < tilesX; x++) {
 				int imgX = x * 8, imgY = y * 8;
 				int tileIndex = x + y * tilesX;
 				int srcIndex = imgX + imgY * width;
-				COLOR32 *src = pixels + srcIndex;
+				int *src = idxs + srcIndex;
 				for (int i = 0; i < 8; i++) {
-					memcpy(tiles + 64 * tileIndex + 8 * i, src + i * width, 32);
+					memcpy(tiles + 64 * tileIndex + 8 * i, src + i * width, 8 * sizeof(int));
 				}
 			}
 		}
@@ -2438,26 +2436,26 @@ static void charImport(
 		if (charCompression) {
 			//create dummy whole palette that the character compression functions expect
 			COLOR32 dummyFull[256] = { 0 };
-			memcpy(dummyFull + paletteBase, palette, paletteSize * 4);
+			memcpy(dummyFull + paletteBase, palette + 1, paletteSize * sizeof(COLOR32));
 
 			BgTile *bgTiles = (BgTile *) calloc(nChars, sizeof(BgTile));
 
 			//split image into 8x8 tiles.
 			for (int y = 0; y < tilesY; y++) {
 				for (int x = 0; x < tilesX; x++) {
-					int srcOffset = x * 8 + y * 8 * (width);
-					COLOR32 *block = bgTiles[x + y * tilesX].px;
+					int srcOffset = (x * 8) + (y * 8) * width;
+					BgTile *t = &bgTiles[x + y * tilesX];
 
 					int index = x + y * tilesX;
-					memcpy(block, tiles + index * 64, 64 * 4);
-
+					int *srcBlock = tiles + index * 64;
 					for (int i = 0; i < 8 * 8; i++) {
-						int a = (block[i] >> 24) & 0xFF;
-						if (a < 128) block[i] = 0; //make transparent pixels transparent black
-						else block[i] |= 0xFF000000; //opaque
+						int idx = srcBlock[i];
+						if (idx == 0) t->px[i] = 0;   // index=0 -> transparent
+						else t->px[i] = palette[idx]; // lookup in color palette
 					}
 				}
 			}
+
 			int nTiles = nChars;
 			BgSetupTiles(bgTiles, nChars, ncgr->nBits, dummyFull, paletteSize, 1, 0, paletteBase, 0, 0.0f, balance, colorBalance, enhanceColors);
 			nChars = BgPerformCharacterCompression(bgTiles, nChars, ncgr->nBits, nMaxChars, dummyFull, paletteSize, 1, 0, paletteBase, 
@@ -2466,15 +2464,14 @@ static void charImport(
 			//read back result
 			int outIndex = 0;
 			for (int i = 0; i < nTiles; i++) {
-				if (bgTiles[i].masterTile != i) continue;
-				BgTile *t = bgTiles + i;
+				BgTile *t = &bgTiles[i];
+				if (t->masterTile != i) continue;
 
-				COLOR32 *dest = tiles + outIndex * 64;
+				int *dest = tiles + outIndex * 64;
 				for (int j = 0; j < 64; j++) {
-					int index = t->indices[j];
-					if (index) dest[j] = dummyFull[index] | 0xFF000000;
-					else dest[j] = 0;
+					dest[j] = t->indices[j];
 				}
+
 				outIndex++;
 			}
 			free(bgTiles);
@@ -2484,19 +2481,18 @@ static void charImport(
 		int destBaseIndex = originX + originY * ncgr->tilesX;
 		int nWriteChars = min(nChars, ncgr->nTiles - destBaseIndex);
 		for (int i = 0; i < nWriteChars; i++) {
-			BYTE *tile = ncgr->tiles[i + destBaseIndex];
-			COLOR32 *srcTile = tiles + i * 64;
+			unsigned char *tile = ncgr->tiles[i + destBaseIndex];
+			int *srcTile = tiles + i * 64;
 
 			for (int j = 0; j < 64; j++) {
-				COLOR32 pixel = srcTile[j];
-
-				int closest = RxPaletteFindClosestColorSimple(pixel, palette, paletteSize) + paletteBase;
-				if ((pixel >> 24) < 127) closest = 0;
-				tile[j] = closest;
+				unsigned int idx = srcTile[j];
+				if (idx > 0) idx += paletteBase - !!paletteBase;
+				tile[j] = idx;
 			}
 		}
 		free(tiles);
 	}
+	free(idxs);
 
 	free(palette);
 

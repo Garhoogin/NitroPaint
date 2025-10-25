@@ -439,15 +439,14 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 	for (int i = 0; i < nTiles; i++) {
 		if (tiles[i].masterTile != i) continue;
 		if (tiles[i].nRepresents <= 1) continue; //no averaging required for just one tile
-		BgTile *tile = tiles + i;
+		BgTile *tile = &tiles[i];
 
 		//average all tiles that use this master tile.
 		int pxBlock[64 * 4] = { 0 };
 		int nRep = tile->nRepresents;
 		for (int j = 0; j < nTiles; j++) {
-			if (tiles[j].masterTile != i) continue;
-			BgTile *tile2 = tiles + j;
-			BgiAddTileToTotal(reduction, pxBlock, tile2);
+			BgTile *tile2 = &tiles[j];
+			if (tile2->masterTile == i) BgiAddTileToTotal(reduction, pxBlock, tile2);
 		}
 
 		//divide by count, convert to 32-bit RGB
@@ -490,18 +489,12 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 
 		//now, match colors to indices.
 		COLOR32 *pal = palette + (bestPalette << nBits);
-		RxReduceImageWithContext(reduction, tile->px, NULL, 8, 8, pal + paletteOffset + !paletteOffset,
-			paletteSize - !paletteOffset, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, 0.0f);
+		int idxs[64];
+		RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset,
+			RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA, 0.0f);
 		for (int j = 0; j < 64; j++) {
-			COLOR32 col = tile->px[j];
-			int index = 0;
-			if (((col >> 24) & 0xFF) > 127) {
-				index = RxPaletteFindClosestColorSimple(col, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset)
-					+ !paletteOffset + paletteOffset;
-			}
-
-			tile->indices[j] = index;
-			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
+			tile->indices[j] = idxs[j] == 0 ? 0 : (idxs[j] + paletteOffset - !!paletteOffset);
+			tile->px[j] = tile->indices[j] ? (pal[tile->indices[j]] | 0xFF000000) : 0;
 		}
 		tile->palette = bestPalette;
 
@@ -509,7 +502,7 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 		for (int j = 0; j < nTiles; j++) {
 			if (tiles[j].masterTile != i) continue;
 			if (j == i) continue;
-			BgTile *tile2 = tiles + j;
+			BgTile *tile2 = &tiles[j];
 
 			memcpy(tile2->indices, tile->indices, 64);
 			tile2->palette = tile->palette;
@@ -527,7 +520,7 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 
 	if (!dither) diffuse = 0.0f;
 	for (int i = 0; i < nTiles; i++) {
-		BgTile *tile = tiles + i;
+		BgTile *tile = &tiles[i];
 
 		//create histogram for tile
 		RxHistClear(reduction);
@@ -550,17 +543,13 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 		COLOR32 *pal = palette + (bestPalette << nBits);
 
 		//do optional dithering (also matches colors at the same time)
-		RxReduceImageWithContext(reduction, tile->px, NULL, 8, 8, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse);
+		int idxs[64];
+		RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset,
+			RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA, diffuse);
 		for (int j = 0; j < 64; j++) {
 			COLOR32 col = tile->px[j];
-			int index = 0;
-			if (((col >> 24) & 0xFF) > 127) {
-				index = RxPaletteFindClosestColorSimple(col, pal + paletteOffset + !paletteOffset, paletteSize - !paletteOffset)
-					+ !paletteOffset + paletteOffset;
-			}
-
-			tile->indices[j] = index;
-			tile->px[j] = index ? (pal[index] | 0xFF000000) : 0;
+			tile->indices[j] = idxs[j] == 0 ? 0 : (idxs[j] + paletteOffset - !!paletteOffset);
+			tile->px[j] = tile->indices[j] ? (pal[tile->indices[j]] | 0xFF000000) : 0;
 
 			//YIQ color
 			RxConvertRgbToYiq(col, &tile->pxYiq[j]);
@@ -1090,14 +1079,14 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 		for (int x = 0; x < tilesX; x++) {
 			int srcOffset = x * 8 + y * 8 * (width);
 			COLOR32 *block = blocks[x + y * tilesX].px;
-			memcpy(block, px + srcOffset, 32);
-			memcpy(block + 8, px + srcOffset + width, 32);
-			memcpy(block + 16, px + srcOffset + width * 2, 32);
-			memcpy(block + 24, px + srcOffset + width * 3, 32);
-			memcpy(block + 32, px + srcOffset + width * 4, 32);
-			memcpy(block + 40, px + srcOffset + width * 5, 32);
-			memcpy(block + 48, px + srcOffset + width * 6, 32);
-			memcpy(block + 56, px + srcOffset + width * 7, 32);
+			memcpy(block +  0, px + srcOffset + width * 0, 8 * sizeof(COLOR32));
+			memcpy(block +  8, px + srcOffset + width * 1, 8 * sizeof(COLOR32));
+			memcpy(block + 16, px + srcOffset + width * 2, 8 * sizeof(COLOR32));
+			memcpy(block + 24, px + srcOffset + width * 3, 8 * sizeof(COLOR32));
+			memcpy(block + 32, px + srcOffset + width * 4, 8 * sizeof(COLOR32));
+			memcpy(block + 40, px + srcOffset + width * 5, 8 * sizeof(COLOR32));
+			memcpy(block + 48, px + srcOffset + width * 6, 8 * sizeof(COLOR32));
+			memcpy(block + 56, px + srcOffset + width * 7, 8 * sizeof(COLOR32));
 
 			for (int i = 0; i < 8 * 8; i++) {
 				int a = (block[i] >> 24) & 0xFF;
@@ -1185,7 +1174,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	//pre-convert palette to YIQ
 	RxYiqColor *palsYiq = (RxYiqColor *) calloc(nPalettes * paletteSize, sizeof(RxYiqColor));
 	for (int i = 0; i < nPalettes * paletteSize; i++) {
-		RxConvertRgbToYiq(pals[i], palsYiq + i);
+		RxConvertRgbToYiq(pals[i], &palsYiq[i]);
 	}
 
 	if (!writeScreen) {
@@ -1194,7 +1183,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			//just write each tile
 			for (int y = 0; y < tilesY; y++) {
 				for (int x = 0; x < tilesX; x++) {
-					BgTile *tile = blocks + x + y * tilesX;
+					BgTile *tile = &blocks[x + y * tilesX];
 
 					uint16_t d = nscrData[x + nscrTileX + (y + nscrTileY) * nscrTilesX];
 					int charIndex = (d & 0x3FF) - charBase;
@@ -1202,19 +1191,22 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					int flip = (d & 0x0C00) >> 10;
 					if (charIndex < 0) continue;
 
+					int idxs[64];
 					unsigned char *chr = ncgr->tiles[charIndex];
-					COLOR32 *thisPalette = pals + palIndex * maxPaletteSize + paletteOffset + !paletteOffset;
-					RxReduceImageWithContext(reduction, tile->px, NULL, 8, 8, thisPalette, paletteSize - !paletteOffset, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, dither ? diffuse : 0.0f);
-					for (int i = 0; i < 64; i++) {
-						COLOR32 c = tile->px[i];
-						int srcX = i % 8;
-						int srcY = i / 8;
-						int dstX = srcX ^ (flip & TILE_FLIPX ? 7 : 0);
-						int dstY = srcY ^ (flip & TILE_FLIPY ? 7 : 0);
+					COLOR32 *thisPalette = pals + palIndex * maxPaletteSize + paletteOffset - !!paletteOffset;
+					RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8, thisPalette, paletteSize + !!paletteOffset,
+						RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA, dither ? diffuse : 0.0f);
 
-						int cidx = 0;
-						if ((c >> 24) >= 0x80) cidx = RxPaletteFindClosestColorSimple(c, thisPalette, paletteSize - !paletteOffset) + paletteOffset + !paletteOffset;
-						chr[dstX + dstY * 8] = cidx;
+					//mask to map source to destination pixels
+					unsigned int xorMask = 0;
+					if (flip & TILE_FLIPX) xorMask ^= 007;
+					if (flip & TILE_FLIPY) xorMask ^= 070;
+
+					for (int i = 0; i < 64; i++) {
+						int cidx = idxs[i];
+						if (cidx > 0) cidx += paletteOffset - !!paletteOffset;
+
+						chr[i ^ xorMask] = cidx;
 					}
 				}
 			}
@@ -1332,15 +1324,15 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						if (charOrigin - charBase < 0) continue;
 						unsigned char *ncgrTile = ncgr->tiles[charOrigin - charBase];
 
-						COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset + !paletteOffset;
-						RxReduceImageWithContext(reduction, block, NULL, 8, 8, thisPal, paletteSize - !paletteOffset,
-							RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, dither ? diffuse : 0.0f);
+						int idxs[64];
+						COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset - !!paletteOffset;
+						RxReduceImageWithContext(reduction, block, idxs, 8, 8, thisPal, paletteSize + !!paletteOffset,
+							RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA, dither ? diffuse : 0.0f);
+
 						for (int i = 0; i < 64; i++) {
-							if ((block[i] & 0xFF000000) < 0x80) ncgrTile[i] = 0;
-							else {
-								int index = paletteOffset + !paletteOffset + RxPaletteFindClosestColorSimple(block[i], thisPal, paletteSize - !paletteOffset);
-								ncgrTile[i] = index;
-							}
+							unsigned int index = idxs[i];
+							if (index > 0) index += paletteOffset - !!paletteOffset;
+							ncgrTile[i] = index;
 						}
 					}
 				}
@@ -1371,9 +1363,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						}
 
 						uint16_t d = 0;
-						d = d & 0xFFF;
 						d |= (chosenPalette + paletteNumber) << 12;
-						d &= 0xFC00;
 						d |= (charId + charBase);
 						d |= chosenFlip << 10;
 						nscrData[nscrX + nscrY * nscrTilesX] = d;
