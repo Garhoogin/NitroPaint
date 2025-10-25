@@ -47,9 +47,3 @@ void doDiffuse(int i, int width, int height, unsigned int * pixels, int errorRed
 		}
 	}
 }
-
-void RxConvertRgbToYuv(int r, int g, int b, int *y, int *u, int *v) {
-	*y = (int) ( 0.2990 * r + 0.5870 * g + 0.1140 * b);
-	*u = (int) (-0.1684 * r - 0.3316 * g + 0.5000 * b);
-	*v = (int) ( 0.5000 * r - 0.4187 * g - 0.0813 * b);
-}

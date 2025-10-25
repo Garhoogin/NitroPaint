@@ -1166,22 +1166,29 @@ static void PalViewerSwapColors(COLOR *palette, int i1, int i2) {
 	palette[i2] = c1;
 }
 
-static int PalViewerSortNeuroPermute(COLOR *palette, int nColors, unsigned long long bestDiff) {
-	int totalDiff = 0;
+static void PalViewerConvertRgbToYuv(int r, int g, int b, double *y, double *u, double *v) {
+	*y =  0.2990 * r + 0.5870 * g + 0.1140 * b;
+	*u = -0.1684 * r - 0.3316 * g + 0.5000 * b;
+	*v =  0.5000 * r - 0.4187 * g - 0.0813 * b;
+}
+
+static double PalViewerSortNeuroPermute(COLOR *palette, int nColors, double bestDiff) {
+	double totalDiff = 0;
 	for (int i = 1; i < nColors; i++) {
 		COLOR32 last = ColorConvertFromDS(palette[i - 1]);
 		int nextIndex = i;
 
-		int minDiff = 0x7FFFFFFF;
+		double minDiff = 1e32;
 		for (int j = i; j < nColors; j++) {
 			COLOR32 test = ColorConvertFromDS(palette[j]);
 			
-			int dr, dg, db, dy, du, dv;
-			dr = ((last >> 0) & 0xFF) - ((test >> 0) & 0xFF);
-			dg = ((last >> 8) & 0xFF) - ((test >> 8) & 0xFF);
-			db = ((last >> 16) & 0xFF) - ((test >> 16) & 0xFF);
-			RxConvertRgbToYuv(dr, dg, db, &dy, &du, &dv);
-			int diff = 4 * dy * dy + du * du + dv * dv;
+			double dy, du, dv;
+			int dr = ((last >>  0) & 0xFF) - ((test >>  0) & 0xFF);
+			int dg = ((last >>  8) & 0xFF) - ((test >>  8) & 0xFF);
+			int db = ((last >> 16) & 0xFF) - ((test >> 16) & 0xFF);
+			PalViewerConvertRgbToYuv(dr, dg, db, &dy, &du, &dv);
+
+			double diff = 4.0 * dy * dy + du * du + dv * dv;
 			if (diff < minDiff) {
 				nextIndex = j;
 				minDiff = diff;
@@ -1203,7 +1210,7 @@ static DWORD CALLBACK PalViewerSortNeuro(LPVOID param) {
 	COLOR *palette = (COLOR *) calloc(nColors, sizeof(COLOR));
 	PalViewerUnwrapSelection(data, palette);
 
-	int best = 0x7FFFFFFF;
+	double best = 1e32;
 	COLOR *tempBuf = (COLOR *) calloc(nColors, sizeof(COLOR));
 
 	//iterate permutations
@@ -1211,7 +1218,7 @@ static DWORD CALLBACK PalViewerSortNeuro(LPVOID param) {
 		memcpy(tempBuf, palette, nColors * sizeof(COLOR));
 		PalViewerSwapColors(tempBuf, 0, i);
 
-		int permutationError = PalViewerSortNeuroPermute(tempBuf, nColors, best);
+		double permutationError = PalViewerSortNeuroPermute(tempBuf, nColors, best);
 		if (permutationError < best) {
 			memcpy(palette, tempBuf, nColors * sizeof(COLOR));
 			best = permutationError;

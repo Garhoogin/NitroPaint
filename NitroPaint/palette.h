@@ -277,24 +277,6 @@ void RxCreateMultiplePalettesEx(
 	int           *progress          // pointer to current progress
 );
 
-// -----------------------------------------------------------------------------------------------
-// Name: RxConvertRgbToYuv
-//
-// Convert an RGB color to YUV space.
-//
-// Parameters:
-//   r,g,b         The input RGB color, with components from 0-255.
-//   y,u,v         The output YUV color.
-// -----------------------------------------------------------------------------------------------
-void RxConvertRgbToYuv(
-	int  r,  // input color R
-	int  g,  // input color G
-	int  b,  // input color B
-	int *y,  // output color Y
-	int *u,  // output color U
-	int *v   // output color V
-);
-
 
 //----------structures used by palette generator
 
