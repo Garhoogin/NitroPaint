@@ -904,10 +904,8 @@ static TxiTileErrorMapEntry *TxiGetGreatestErrorTile(TxiTileErrorMapEntry *map, 
 }
 
 static void TxiIndexTile(RxReduction *reduction, TxTileData *tile, uint32_t *txel, const COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
-	COLOR32 tilebuf[16];
 	int idxbuf[16];
-	memcpy(tilebuf, tile->rgb, sizeof(tilebuf));
-	RxReduceImageWithContext(reduction, tile->rgb, idxbuf, 4, 4, tilepal, nOpaque, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse);
+	RxReduceImageWithContext(reduction, tile->rgb, idxbuf, 4, 4, tilepal, nOpaque, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_WRITEBACK, diffuse);
 
 	uint32_t texel = 0;
 	for (int j = 0; j < 16; j++) {
@@ -921,7 +919,6 @@ static void TxiIndexTile(RxReduction *reduction, TxTileData *tile, uint32_t *txe
 		texel |= index << (j * 2);
 	}
 	*txel = texel;
-	memcpy(tile->rgb, tilebuf, sizeof(tilebuf));
 }
 
 static void TxiAccountColor(unsigned char *useMap, uint16_t pidx, int cindex) {

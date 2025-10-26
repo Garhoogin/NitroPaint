@@ -40,6 +40,7 @@
 // Color reduction flags:
 //   RX_FLAG_PRESERVE_ALPHA      During color reduction, the alpha channel is not modified.
 //   RX_FLAG_NO_PRESERVE_ALPHA   During color reduction, the alpha channel is modified.
+//   RX_FLAG_NO_WRITEBACK        Color reduction will not write back the RGB pixel data.
 // -----------------------------------------------------------------------------------------------
 typedef enum RxFlag_ {
 	RX_FLAG_SORT_ALL            = (0x00<< 0), // sort the entire output palette
@@ -56,6 +57,7 @@ typedef enum RxFlag_ {
 
 	RX_FLAG_PRESERVE_ALPHA      = (0x00<< 4), // leaves the alpha channel unaffected in a color reduction operation.
 	RX_FLAG_NO_PRESERVE_ALPHA   = (0x01<< 4), // modifies the alpha channel in a color reduction operation.
+	RX_FLAG_NO_WRITEBACK        = (0x01<< 5), // suppresses writeback of RGB pixel data in color reduction
 } RxFlag;
 
 typedef struct RxBalanceSetting_ {
