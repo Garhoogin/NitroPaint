@@ -64,6 +64,28 @@ static COLOR32 RxMaskColorDummy(COLOR32 c) {
 	return c;
 }
 
+int RxColorLightnessComparator(const void *d1, const void *d2) {
+	COLOR32 c1 = *(COLOR32 *) d1;
+	COLOR32 c2 = *(COLOR32 *) d2;
+	if (c1 == c2) return 0;
+
+	//sort by ascending alpha value first, pushing fully opaque colors to the end of the palette.
+	//this allows more efficient palette alpha representation in formats like PNG.
+	int a1 = c1 >> 24, a2 = c2 >> 24;
+	if (a1 != a2) return a1 - a2;
+	/*
+	//otherwise, compare by lightness, putting lighter colors towards the end of the palette.
+	int dr = ((c1 >>  0) & 0xFF) - ((c2 >>  0) & 0xFF);
+	int dg = ((c1 >>  8) & 0xFF) - ((c2 >>  8) & 0xFF);
+	int db = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
+	int dy = dr * 299 + dg * 587 + db * 114;
+	return dy;*/
+	RxYiqColor yiq1, yiq2;
+	RxConvertRgbToYiq(c1, &yiq1);
+	RxConvertRgbToYiq(c2, &yiq2);
+	return yiq1.y - yiq2.y;
+}
+
 void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors, unsigned int nColors) {
 	memset(reduction, 0, sizeof(RxReduction));
 	reduction->yWeight = 60 - balance;

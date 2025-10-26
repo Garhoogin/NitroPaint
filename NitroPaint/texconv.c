@@ -239,16 +239,11 @@ static COLOR32 TxiBlend18(COLOR32 col1, unsigned int weight1, COLOR32 col2, unsi
 	return ColorRoundToDS18(r3 | (g3 << 8) | (b3 << 16)) | 0xFF000000;
 }
 
-//RGB to YUV, for only Y channel
-static double TxiYFromRGB(int r, int g, int b) {
-	return 0.2990 * r + 0.5870 * g + 0.1140 * b;
-}
-
-//RGB to YUV
-static void TxiYuvFromRGB(int r, int g, int b, double *y, double *u, double *v) {
-	*y =  0.2990 * r + 0.5870 * g + 0.1140 * b;
-	*u = -0.1684 * r - 0.3316 * g + 0.5000 * b;
-	*v =  0.5000 * r - 0.4187 * g - 0.0813 * b;
+//RGB to YIQ, for only Y channel
+static int TxiYFromRGB(COLOR32 rgb) {
+	RxYiqColor yiq;
+	RxConvertRgbToYiq(rgb, &yiq);
+	return yiq.y;
 }
 
 volatile int g_texCompressionProgress = 0;
@@ -374,9 +369,7 @@ void TxiComputeEndpoints(RxReduction *reduction, const COLOR32 *px, int nPx, COL
 			//two colors: sort the two colors such that the lighter one is first.
 			colors[0] = ColorRoundToDS15(colors[0]);
 			colors[1] = ColorRoundToDS15(colors[1]);
-			double y1 = TxiYFromRGB(colors[0] & 0xFF, (colors[0] >> 8) & 0xFF, (colors[0] >> 16) & 0xFF);
-			double y2 = TxiYFromRGB(colors[1] & 0xFF, (colors[1] >> 8) & 0xFF, (colors[1] >> 16) & 0xFF);
-			if (y1 > y2) {
+			if (TxiYFromRGB(colors[0]) > TxiYFromRGB(colors[1])) {
 				*colorMin = colors[1];
 				*colorMax = colors[0];
 			} else {
@@ -419,9 +412,7 @@ void TxiComputeEndpoints(RxReduction *reduction, const COLOR32 *px, int nPx, COL
 	//sanity check: impose color ordering (high Y must come first)
 	full1 = ColorConvertFromDS(c1);
 	full2 = ColorConvertFromDS(c2);
-	double y1 = TxiYFromRGB(full1 & 0xFF, (full1 >> 8) & 0xFF, (full1 >> 16) & 0xFF);
-	double y2 = TxiYFromRGB(full2 & 0xFF, (full2 >> 8) & 0xFF, (full2 >> 16) & 0xFF);
-	if (y2 > y1) {
+	if (TxiYFromRGB(full2) > TxiYFromRGB(full1)) {
 		//swap order to keep me sane
 		COLOR32 temp = full2;
 		full2 = full1;
@@ -429,17 +420,6 @@ void TxiComputeEndpoints(RxReduction *reduction, const COLOR32 *px, int nPx, COL
 	}
 	*colorMin = full2 | 0xFF000000;
 	*colorMax = full1 | 0xFF000000;
-}
-
-static double TxiComputeColorDifferenceSimple(COLOR32 c1, COLOR32 c2) {
-	int r1 = c1 & 0xFF, g1 = (c1 >> 8) & 0xFF, b1 = (c1 >> 16) & 0xFF;
-	int r2 = c2 & 0xFF, g2 = (c2 >> 8) & 0xFF, b2 = (c2 >> 16) & 0xFF;
-
-	double dy, du, dv;
-	//property of linear transformations :)
-	TxiYuvFromRGB(r2 - r1, g2 - g1, b2 - b1, &dy, &du, &dv);
-
-	return 4.0 * dy * dy + du * du + dv * dv;
 }
 
 //compute mean square error
@@ -615,65 +595,64 @@ static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, 
 	return data;
 }
 
-static int TxiTableToPaletteSize(uint8_t type) {
-	if (type == 0) return 0;
-	if (type == 2 || type == 8) return 2;
+static int TxiTableToPaletteSize(int type) {
+	if (type & COMP_INTERPOLATE) return 2;
 	return 4;
 }
 
-static uint16_t TxiTableToMode(uint8_t type) {
-	if (type == 1) return COMP_TRANSPARENT | COMP_FULL;
-	if (type == 2) return COMP_TRANSPARENT | COMP_INTERPOLATE;
-	if (type == 4) return COMP_OPAQUE | COMP_FULL;
-	if (type == 8) return COMP_OPAQUE | COMP_INTERPOLATE;
-	return COMP_TRANSPARENT | COMP_FULL;
-}
-
-static double TxiComputePaletteDifference(const COLOR *pal1, const COLOR *pal2, int nColors, double nMaxError) {
-	double total = 0;
+static double TxiComputePaletteDifference(RxReduction *reduction, const COLOR *pal1, const COLOR *pal2, int nColors, double nMaxError) {
+	double total = 0.0, errScale = 1.0, errInvScale = 1.0;
+	if (nColors == 2) {
+		//2-color palettes have doubled error (to be comparable to 4-color errors)
+		errScale = 2.0;
+		errInvScale = 0.5;
+		nMaxError *= errInvScale;
+	}
 	
 	for (int i = 0; i < nColors; i++) {
 		if (pal1[i] != pal2[i]) {
+			RxYiqColor yiq1, yiq2;
 			COLOR32 c1 = ColorConvertFromDS(pal1[i]);
 			COLOR32 c2 = ColorConvertFromDS(pal2[i]);
-			total += TxiComputeColorDifferenceSimple(c1, c2);
+
+			RxConvertRgbToYiq(c1, &yiq1);
+			RxConvertRgbToYiq(c2, &yiq2);
+			double dy = reduction->lumaTable[yiq1.y] - reduction->lumaTable[yiq2.y];
+			double di = yiq1.i - yiq2.i;
+			double dq = yiq1.q - yiq2.q;
+			total += reduction->yWeight2 * (dy * dy) + reduction->iWeight2 * (di * di) + reduction->qWeight2 * (dq * dq);
 		}
 
-		if (total >= nMaxError) return nMaxError;
-		if (nColors == 2 && total * 2 >= nMaxError) return nMaxError;
+		if (total >= nMaxError) return nMaxError * errScale;
 	}
 
 	//for 2-color (interpolated) palettes, we'll double the difference to scale to 4 colors.
-	if (nColors == 2) total *= 2;
-	return total;
+	return total * errScale;
 }
 
-static double TxiFindClosestPalettes(COLOR *palette, uint8_t *colorTable, int nColors, int *colorIndex1, int *colorIndex2) {
+static double TxiFindClosestPalettes(RxReduction *reduction, const COLOR *palette, const int *colorTable, int nColors, int *colorIndex1, int *colorIndex2) {
 	//determine which two palettes are the most similar. For 2-color palettes, multiply difference by 2.
 	double leastDistance = 1e32;
 	int idx1 = 0;
 
 	while (idx1 < nColors) {
-		uint8_t type1 = colorTable[idx1];
-		if (type1 == 0) break;
-		int nColorsInThisPalette = 2;
-		if (type1 == 4 || type1 == 1) {
-			nColorsInThisPalette = 4;
-		}
+		int type1 = colorTable[idx1];
+		int nColorsInThisPalette = 4;
+		if (type1 & COMP_INTERPOLATE) nColorsInThisPalette = 2;
 
 		//start searching forward.
 		int idx2 = idx1 + nColorsInThisPalette;
 		while (idx2 + nColorsInThisPalette <= nColors) {
-			uint8_t type2 = colorTable[idx2];
-			if (!type2) break;
+			int type2 = colorTable[idx2];
 			int nColorsInSecondPalette = TxiTableToPaletteSize(type2);
+
 			if (type2 != type1) {
 				idx2 += nColorsInSecondPalette;
 				continue;
 			}
 
 			//same type, let's compare.
-			double dst = TxiComputePaletteDifference(&palette[idx1], &palette[idx2], nColorsInThisPalette, leastDistance);
+			double dst = TxiComputePaletteDifference(reduction, &palette[idx1], &palette[idx2], nColorsInThisPalette, leastDistance);
 			if (dst < leastDistance) {
 				leastDistance = dst;
 				*colorIndex1 = idx1;
@@ -752,14 +731,13 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette, int nPalettes, TxTileData *tileData, int tilesX, int tilesY, int threshold) {
 	//iterate over all non-duplicate tiles, adding the palettes.
 	//colorTable keeps track of how each color is intended to be used.
-	//00 - unused. 01 - mode 0x0000. 02 - mode 0x4000. 04 - mode 0x8000. 08 - mode 0xC000.
-	uint8_t *colorTable = (uint8_t *) calloc(nPalettes * 2, 1);
+	int *colorTable = (int *) calloc(nPalettes * 2, sizeof(int));
 	int diffThreshold = threshold * threshold * 52; //threshold 0-100, square normalized to 0-1040400/2
 	int firstSlot = 0;
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			int index = x + y * tilesX;
-			TxTileData *tile = tileData + index;
+			TxTileData *tile = &tileData[index];
 			if (tile->duplicate || !tile->used) {
 				//the paletteIndex field of a duplicate tile is first set to the tile index it is a duplicate of.
 				//set it to an actual palette index here.
@@ -777,22 +755,21 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette, int
 				//yes, just add it to the list.
 				fits = 1;
 				memcpy(palette + firstSlot, tile->palette, nConsumed * sizeof(COLOR));
-				uint8_t fill = 1 << (tile->mode >> 14);
-				memset(colorTable + firstSlot, fill, nConsumed);
+				for (int i = 0; i < nConsumed; i++) colorTable[firstSlot + i] = tile->mode;
 				tile->paletteIndex = firstSlot / 2;
 				firstSlot += nConsumed;
 			}
-			if(!fits || (threshold && firstSlot >= 8)) {
+			if (!fits || (threshold && firstSlot >= 8)) {
 				//does NOT fit, we need to rearrange some things.
 
 				while ((firstSlot + nConsumed > nPalettes * 2) || (threshold && fits)) {
 					//determine which two palettes are the most similar.
 					int colorIndex1 = -1, colorIndex2 = -1;
-					int distance = (int) TxiFindClosestPalettes(palette, colorTable, firstSlot, &colorIndex1, &colorIndex2);
+					int distance = (int) TxiFindClosestPalettes(reduction, palette, colorTable, firstSlot, &colorIndex1, &colorIndex2);
 					if (colorIndex1 == -1) break;
 					if (fits && (distance > diffThreshold || firstSlot < 8)) break;
 					int nColorsInPalettes = TxiTableToPaletteSize(colorTable[colorIndex1]);
-					uint16_t palettesMode = TxiTableToMode(colorTable[colorIndex1]);
+					uint16_t palettesMode = colorTable[colorIndex1];
 
 					//find tiles that use colorIndex2. Set them to use colorIndex1. 
 					//then subtract from all palette indices > colorIndex2. Then we can
@@ -808,7 +785,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette, int
 					//move entries in palette and colorTable.
 					int nToShift = nPalettes * 2 - colorIndex2 - nColorsInPalettes;
 					memmove(palette + colorIndex2, palette + colorIndex2 + nColorsInPalettes, nToShift * sizeof(COLOR));
-					memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColorsInPalettes, nToShift);
+					memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColorsInPalettes, nToShift * sizeof(int));
 
 					//merge those palettes that we've just combined.
 					TxiMergePalettes(reduction, tileData, tilesX * tilesY, palette, colorIndex1 / 2, palettesMode);
@@ -820,8 +797,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette, int
 				//now add this tile's colors
 				if (!fits) {
 					memcpy(palette + firstSlot, tile->palette, nConsumed * sizeof(COLOR));
-					uint8_t fill = 1 << (tile->mode >> 14);
-					memset(colorTable + firstSlot, fill, nConsumed);
+					for (int i = 0; i < nConsumed; i++) colorTable[firstSlot + i] = tile->mode;
 					tile->paletteIndex = firstSlot / 2;
 					firstSlot += nConsumed;
 				}
