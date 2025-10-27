@@ -7,16 +7,6 @@
 #include "color.h"
 #include "palette.h"
 
-//use of intrinsics under x86
-#if defined(_M_IX86) || defined(_M_X64)
-#define RX_SIMD
-#ifdef _MSC_VER
-#include <intrin.h>
-#else // _MSC_VER
-#include <x86intrin.h>
-#endif
-#endif
-
 //optimize for speed rather than size
 #ifndef _DEBUG
 #ifdef _MSC_VER
@@ -83,17 +73,14 @@ int RxColorLightnessComparator(const void *d1, const void *d2) {
 	//this allows more efficient palette alpha representation in formats like PNG.
 	int a1 = c1 >> 24, a2 = c2 >> 24;
 	if (a1 != a2) return a1 - a2;
-	/*
-	//otherwise, compare by lightness, putting lighter colors towards the end of the palette.
-	int dr = ((c1 >>  0) & 0xFF) - ((c2 >>  0) & 0xFF);
-	int dg = ((c1 >>  8) & 0xFF) - ((c2 >>  8) & 0xFF);
-	int db = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
-	int dy = dr * 299 + dg * 587 + db * 114;
-	return dy;*/
+	
 	RxYiqColor yiq1, yiq2;
 	RxConvertRgbToYiq(c1, &yiq1);
 	RxConvertRgbToYiq(c2, &yiq2);
-	return yiq1.y - yiq2.y;
+
+	if (yiq1.y < yiq2.y) return -1;
+	if (yiq1.y > yiq2.y) return 1;
+	return 0;
 }
 
 void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors, unsigned int nColors) {
@@ -118,6 +105,13 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 	for (int i = 0; i < 512; i++) {
 		reduction->lumaTable[i] = pow((double) i * INV_511, 1.27) * 511.0;
 	}
+
+#ifdef RX_SIMD
+	__m128 weightAQ = _mm_cvtpd_ps(reduction->qaWeight2);
+	__m128 weightIY = _mm_cvtpd_ps(reduction->yiWeight2);
+	__m128 weight2 = _mm_shuffle_ps(_mm_shuffle_ps(weightIY, weightIY, _MM_SHUFFLE(1, 0, 1, 0)), weightAQ, _MM_SHUFFLE(1, 0, 3, 2));
+	reduction->yiqaWeight2 = weight2;
+#endif
 }
 
 static void RxiApplyFlags(RxReduction *reduction, RxFlag flag) {
@@ -170,7 +164,12 @@ static void RxiSlabFree(RxSlab *allocator) {
 	}
 }
 
-static void RxHistAddColor(RxReduction *reduction, int y, int i, int q, int a, double weight) {
+static inline unsigned int RxiHistHashColor(float y, float i, float q, float a) {
+	int yi = (int) y, ii = (int) i, qi = (int) q, ai = (int) a;
+	return (qi + (yi * 64 + ii) * 4 + ai) & 0x1FFFF;
+}
+
+static void RxHistAddColor(RxReduction *reduction, float y, float i, float q, float a, double weight) {
 	RxHistogram *histogram = reduction->histogram;
 
 	//process the alpha value.
@@ -198,7 +197,7 @@ static void RxHistAddColor(RxReduction *reduction, int y, int i, int q, int a, d
 			break;
 	}
 
-	int slotIndex = (q + (y * 64 + i) * 4 + a) & 0x1FFFF;
+	int slotIndex = RxiHistHashColor(y, i, q, a);
 	if (slotIndex < histogram->firstSlot) histogram->firstSlot = slotIndex;
 
 	//find a slot with the same YIQA, or create a new one if none exists.
@@ -253,10 +252,10 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	if (i < 0.0 && q > 0.0) y -= (q * i) * INV_512;
 
 	//write rounded color
-	yiq->y = (int) (y + 0.5);                    //    0 - 511
-	yiq->i = (int) (i + (i < 0.0 ? -0.5 : 0.5)); // -320 - 319
-	yiq->q = (int) (q + (q < 0.0 ? -0.5 : 0.5)); // -270 - 269
-	yiq->a = (rgb >> 24) & 0xFF;
+	yiq->y = y; //    0 - 511
+	yiq->i = i; // -320 - 319
+	yiq->q = q; // -270 - 269
+	yiq->a = (float) ((rgb >> 24) & 0xFF);
 #else
 	//vectorized implementation
 	__m128i rgbVeci = _mm_and_si128(_mm_set_epi32(0, rgb >> 16, rgb >> 8, rgb >> 0), _mm_set_epi32(0, 0xFF, 0xFF, 0xFF));
@@ -317,8 +316,8 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	}
 
 	//round
-	_mm_storeu_si128((__m128i *) yiq, _mm_cvtps_epi32(yiqVec));
-	yiq->a = (rgb >> 24);
+	yiq->yiq = yiqVec;
+	yiq->a = (float) (rgb >> 24);
 #endif
 }
 
@@ -344,16 +343,27 @@ COLOR32 RxConvertYiqToRgb(const RxYiqColor *yiq) {
 	int r = (int) (y * 0.5 + i * 0.477791 + q * 0.311426 + 0.5);
 	int g = (int) (y * 0.5 - i * 0.136066 - q * 0.324141 + 0.5);
 	int b = (int) (y * 0.5 - i * 0.552535 + q * 0.852230 + 0.5);
+	int a = (int) (yiq->a + 0.5);
 
 	//pack clamped color
 	r = min(max(r, 0), 255);
 	g = min(max(g, 0), 255);
 	b = min(max(b, 0), 255);
-	return r | (g << 8) | (b << 16) | (yiq->a << 24);
+	a = min(max(a, 0), 255);
+	return r | (g << 8) | (b << 16) | (a << 24);
 }
 
 static inline double RxiDelinearizeLuma(RxReduction *reduction, double luma) {
 	return 511.0 * pow(luma * INV_511, 1.0 / reduction->gamma);
+}
+
+static inline double RxiLinearizeLuma(RxReduction *reduction, double luma) {
+	RX_ASSUME(luma >= 0 && luma < 512);
+#ifndef RX_SIMD
+	return reduction->lumaTable[(int) (luma + 0.5)];
+#else
+	return reduction->lumaTable[_mm_cvtsd_si32(_mm_set_sd(luma))];
+#endif
 }
 
 static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *yiq) {
@@ -361,31 +371,61 @@ static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *
 }
 
 static inline double RxiComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
-	double yw2 = reduction->yWeight2;
-	double iw2 = reduction->iWeight2;
-	double qw2 = reduction->qWeight2;
-	double aw2 = reduction->aWeight2;
-
 	if (yiq1->a == yiq2->a) {
 		//equal alpha comparison. Because each color is scaled by the same alpha, we can pull it out by
 		//multiplying YIQ squared difference by squared alpha.
-		double dy = (double) (reduction->lumaTable[yiq1->y] - reduction->lumaTable[yiq2->y]);
-		double di = (double) (yiq1->i - yiq2->i);
-		double dq = (double) (yiq1->q - yiq2->q);
+#ifndef RX_SIMD
+		double yw2 = reduction->yWeight2;
+		double iw2 = reduction->iWeight2;
+		double qw2 = reduction->qWeight2;
+		double aw2 = reduction->aWeight2;
+
+		double dy = RxiLinearizeLuma(reduction, yiq1->y) - RxiLinearizeLuma(reduction, yiq2->y);
+		double di = yiq1->i - yiq2->i;
+		double dq = yiq1->q - yiq2->q;
 		double d2 = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
 
-		if (yiq1->a != 255) {
+		if (yiq1->a != 255.0f) {
 			//translucent scale factor
 			double a = yiq1->a * INV_255;
 			d2 *= a * a;
 		}
 		return d2;
+#else // RX_SIMD
+		__m128 v1 = yiq1->yiq, v2 = yiq2->yiq;
+		
+		__m128 yMask = _mm_castsi128_ps(_mm_set_epi32(-1, -1, -1, 0));
+		__m128d y1 = _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v1)]); // delinearlize luma
+		__m128d y2 = _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v2)]);
+		__m128 dy = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_sub_sd(y1, y2));
+
+		__m128 diff = _mm_sub_ps(v1, v2);
+		diff = _mm_or_ps(_mm_and_ps(diff, yMask), dy);
+
+		__m128 diff2 = _mm_mul_ps(_mm_mul_ps(diff, diff), reduction->yiqaWeight2);
+
+		__m128 d2Temp = _mm_shuffle_ps(diff2, diff2, _MM_SHUFFLE(2, 3, 0, 1));
+		diff2 = _mm_add_ps(diff2, d2Temp);
+		d2Temp = _mm_shuffle_ps(diff2, diff2, _MM_SHUFFLE(0, 1, 2, 3));
+		diff2 = _mm_add_ps(diff2, d2Temp);
+
+		__m128 a2 = _mm_set_ss((float) yiq1->a);
+		a2 = _mm_mul_ss(a2, _mm_set_ss((float) INV_255));
+		a2 = _mm_mul_ss(a2, a2);
+		diff2 = _mm_mul_ss(diff2, a2);
+		return (double) diff2.m128_f32[0];
+#endif
 	} else {
+		double yw2 = reduction->yWeight2;
+		double iw2 = reduction->iWeight2;
+		double qw2 = reduction->qWeight2;
+		double aw2 = reduction->aWeight2;
+
 		//color difference with alpha.
 		double a1 = yiq1->a * INV_255, a2 = yiq2->a * INV_255;
 
 		//scale color by alpha for comparison
-		double y1 = a1 * reduction->lumaTable[yiq1->y], y2 = a2 * reduction->lumaTable[yiq2->y];
+		double y1 = a1 * RxiLinearizeLuma(reduction, yiq1->y), y2 = a2 * RxiLinearizeLuma(reduction, yiq2->y);
 		double i1 = a1 * yiq1->i, i2 = a2 * yiq2->i;
 		double q1 = a1 * yiq1->q, q2 = a2 * yiq2->q;
 		double dy = y1 - y2, di = i1 - i2, dq = q1 - q2;
@@ -398,6 +438,10 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 				+ reduction->qWeight * (q1 - q2)
 			) + aw2 * da * da;
 	}
+}
+
+double RxComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
+	return RxiComputeColorDifference(reduction, yiq1, yiq2);
 }
 
 void RxHistFinalize(RxReduction *reduction) {
@@ -450,9 +494,9 @@ void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, u
 			else memcpy(&bottom, &rowBlock[1], sizeof(RxYiqColor));
 
 			//compute weight
-			double yInter = 0.25 * (reduction->lumaTable[rowBlock[0].y] + reduction->lumaTable[rowBlock[1].y] 
-				+ reduction->lumaTable[top.y] + reduction->lumaTable[bottom.y]);
-			double yCenter = reduction->lumaTable[rowBlock[1].y];
+			double yInter = 0.25 * (RxiLinearizeLuma(reduction, rowBlock[0].y) + RxiLinearizeLuma(reduction, rowBlock[1].y)
+				+ RxiLinearizeLuma(reduction, top.y) + RxiLinearizeLuma(reduction, bottom.y));
+			double yCenter = RxiLinearizeLuma(reduction, rowBlock[1].y);
 			double yDiff = fabs(yCenter - yInter);
 			double weight = 16.0 - fabs(16.0 - yDiff) / 8.0;
 			if (weight < 1.0) weight = 1.0;
@@ -539,7 +583,7 @@ static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int 
 	for (int i = startIndex; i < endIndex; i++) {
 		RxHistEntry *entry = reduction->histogramFlat[i];
 
-		double x0 = reduction->yWeight * reduction->lumaTable[entry->color.y];
+		double x0 = reduction->yWeight * RxiLinearizeLuma(reduction, entry->color.y);
 		double x1 = reduction->iWeight * entry->color.i;
 		double x2 = reduction->qWeight * entry->color.q;
 		double x3 = reduction->aWeight * entry->color.a;
@@ -725,7 +769,7 @@ void RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
 
 	for (int i = startIndex; i < endIndex; i++) {
 		RxHistEntry *histEntry = reduction->histogramFlat[i];
-		double value = reduction->lumaTable[histEntry->color.y] * yWeight
+		double value = RxiLinearizeLuma(reduction, histEntry->color.y) * yWeight
 			+ histEntry->color.i * iWeight
 			+ histEntry->color.q * qWeight
 			+ histEntry->color.a * aWeight;
@@ -762,7 +806,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 
 	for (int i = colorBlock->startIndex; i < colorBlock->endIndex; i++) {
 		RxHistEntry *histEntry = reduction->histogramFlat[i];
-		double proj = reduction->lumaTable[histEntry->color.y] * yWeight
+		double proj = RxiLinearizeLuma(reduction, histEntry->color.y) * yWeight
 			+ histEntry->color.i * iWeight
 			+ histEntry->color.q * qWeight
 			+ histEntry->color.a * aWeight;
@@ -788,7 +832,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 	for (int i = 0; i < nColors; i++) {
 		RxHistEntry *entry = thisHistogram[i];
 		double weight = entry->weight;
-		double cy = reduction->yWeight * reduction->lumaTable[entry->color.y];
+		double cy = reduction->yWeight * RxiLinearizeLuma(reduction, entry->color.y);
 		double ci = reduction->iWeight * entry->color.i;
 		double cq = reduction->qWeight * entry->color.q;
 		double ca = reduction->aWeight * entry->color.a;
@@ -827,7 +871,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 			RxHistEntry *ent = thisHistogram[i];
 
 			double weightA = ent->color.a * INV_255;
-			initY += reduction->lumaTable[ent->color.y] * ent->weight * weightA;
+			initY += RxiLinearizeLuma(reduction, ent->color.y) * ent->weight * weightA;
 			initI += ent->color.i * ent->weight * weightA;
 			initQ += ent->color.q * ent->weight * weightA;
 			initA += ent->color.a * ent->weight;
@@ -846,10 +890,10 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 		initA = (totalA / totalWeight) / reduction->aWeight;
 	}
 
-	colorBlock->color.y = (int) (initY + 0.5);
-	colorBlock->color.i = (int) (initI + (initI < 0.0 ? -0.5 : 0.5));
-	colorBlock->color.q = (int) (initQ + (initQ < 0.0 ? -0.5 : 0.5));
-	colorBlock->color.a = (int) (initA + 0.5);
+	colorBlock->color.y = (float) initY;
+	colorBlock->color.i = (float) initI;
+	colorBlock->color.q = (float) initQ;
+	colorBlock->color.a = (float) initA;
 	colorBlock->weight = totalWeight;
 
 	//determine pivot index
@@ -875,10 +919,10 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *colorBlock) {
 					double qMeanL = entry->q / (entry->partialSumWeights * reduction->qWeight), qMeanR = (totalQ - entry->q) / (weightR * reduction->qWeight);
 					double aMeanL = entry->a / (entry->partialSumWeights * reduction->aWeight), aMeanR = (totalA - entry->a) / (weightR * reduction->aWeight);
 
-					int yL = (int) (RxiDelinearizeLuma(reduction, yMeanL) + 0.5), aL = (int) (aMeanL + 0.5);
-					int yR = (int) (RxiDelinearizeLuma(reduction, yMeanR) + 0.5), aR = (int) (aMeanR + 0.5);
-					int iL = (int) (iMeanL + (iMeanL < 0.0 ? -0.5 : 0.5)), qL = (int) (qMeanL + (qMeanL < 0.0 ? -0.5 : 0.5));
-					int iR = (int) (iMeanR + (iMeanR < 0.0 ? -0.5 : 0.5)), qR = (int) (qMeanR + (qMeanR < 0.0 ? -0.5 : 0.5));
+					float yL = (float) RxiDelinearizeLuma(reduction, yMeanL), aL = (float) aMeanL;
+					float yR = (float) RxiDelinearizeLuma(reduction, yMeanR), aR = (float) aMeanR;
+					float iL = (float) iMeanL, qL = (float) qMeanL;
+					float iR = (float) iMeanR, qR = (float) qMeanR;
 
 					RxYiqColor yiqL = { yL, iL, qL, aL }, yiqR = { yR, iR, qR, aR };
 					COLOR32 maskL = RxiMaskYiqToRgb(reduction, &yiqL);
@@ -1038,7 +1082,7 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 		for (int i = 0; i < nHistEntries; i++) {
 			RxHistEntry *entry = reduction->histogramFlat[i];
 			double weight = entry->weight;
-			int hy = entry->color.y, hi = entry->color.i, hq = entry->color.q, ha = entry->color.a;
+			float hy = entry->color.y, hi = entry->color.i, hq = entry->color.q, ha = entry->color.a;
 			double a1 = ha * INV_255;
 
 			double bestDistance = RX_LARGE_NUMBER;
@@ -1055,7 +1099,7 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 
 			//add to total. YIQ colors scaled by alpha to be unscaled later.
 			totalsBuffer[bestIndex].weight += weight;
-			totalsBuffer[bestIndex].y += a1 * reduction->lumaTable[hy] * weight;
+			totalsBuffer[bestIndex].y += a1 * RxiLinearizeLuma(reduction, hy) * weight;
 			totalsBuffer[bestIndex].i += a1 * hi * weight;
 			totalsBuffer[bestIndex].q += a1 * hq * weight;
 			totalsBuffer[bestIndex].a += ha * weight;
@@ -1137,23 +1181,14 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 
 		//average out the colors in the new partitions
 		for (int i = 0; i < reduction->nUsedColors; i++) {
-			double weight = totalsBuffer[i].weight;
-			double avgA = totalsBuffer[i].a / weight;
-			double avgY = totalsBuffer[i].y / (totalsBuffer[i].a * INV_255);
-			double avgI = totalsBuffer[i].i / (totalsBuffer[i].a * INV_255);
-			double avgQ = totalsBuffer[i].q / (totalsBuffer[i].a * INV_255);
-
-			//delinearize Y
-			avgY = RxiDelinearizeLuma(reduction, avgY);
-
-			//convert to integer YIQ
-			int iy = (int) (avgY + 0.5);
-			int ii = (int) (avgI + (avgI < 0 ? -0.5 : 0.5));
-			int iq = (int) (avgQ + (avgQ < 0 ? -0.5 : 0.5));
-			int ia = (int) (avgA + 0.5);
+			RxYiqColor yiq;
+			double weight = totalsBuffer[i].weight, invAWeight = 255.0 / totalsBuffer[i].a;
+			yiq.y = (float) RxiDelinearizeLuma(reduction, totalsBuffer[i].a / weight);
+			yiq.i = (float) (totalsBuffer[i].y * invAWeight);
+			yiq.q = (float) (totalsBuffer[i].i * invAWeight);
+			yiq.a = (float) (totalsBuffer[i].q * invAWeight);
 
 			//to RGB
-			RxYiqColor yiq = { iy, ii, iq, ia };
 			COLOR32 as32 = RxiMaskYiqToRgb(reduction, &yiq);
 
 			reduction->paletteRgbCopy[i] = as32;
@@ -1855,22 +1890,22 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	free(diffBuff);
 }
 
-static int RxiDiffuseCurveY(double x) {
+static double RxiDiffuseCurveY(double x) {
 	if (x < 0.0) return -RxiDiffuseCurveY(-x);
-	if (x <= 8.0) return (int) (x + 0.5);
-	return (int) (8.0 + pow(x - 8.0, 0.9) * 0.94140625 + 0.5);
+	if (x <= 8.0) return x;
+	return 8.0 + pow(x - 8.0, 0.9) * 0.94140625;
 }
 
-static int RxiDiffuseCurveI(double x) {
+static double RxiDiffuseCurveI(double x) {
 	if (x < 0.0) return -RxiDiffuseCurveI(-x);
-	if (x <= 8.0) return (int) (x + 0.5);
-	return (int) (8.0 + pow(x - 8.0, 0.85) * 0.98828125 + 0.5);
+	if (x <= 8.0) return x;
+	return 8.0 + pow(x - 8.0, 0.85) * 0.98828125;
 }
 
-static int RxiDiffuseCurveQ(double x) {
+static double RxiDiffuseCurveQ(double x) {
 	if (x < 0.0) return -RxiDiffuseCurveQ(-x);
-	if (x <= 8.0) return (int) (x + 0.5);
-	return (int) (8.0 + pow(x - 8.0, 0.85) * 0.89453125 + 0.5);
+	if (x <= 8.0) return x;
+	return 8.0 + pow(x - 8.0, 0.85) * 0.89453125;
 }
 
 void RxReduceImage(COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, float diffuse) {
@@ -1934,35 +1969,35 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 			//take a sample of pixels nearby. This will be a gauge of variance around this pixel, and help
 			//determine if dithering should happen. Weight the sampled pixels with respect to distance from center.
 
-			int colorY = (thisRow[x + 1].y * 3 + thisRow[x + 2].y * 3 + thisRow[x].y * 3 + lastRow[x + 1].y * 3
-						  + lastRow[x].y * 2 + lastRow[x + 2].y * 2) / 16;
-			int colorI = (thisRow[x + 1].i * 3 + thisRow[x + 2].i * 3 + thisRow[x].i * 3 + lastRow[x + 1].i * 3
-						  + lastRow[x].i * 2 + lastRow[x + 2].i * 2) / 16;
-			int colorQ = (thisRow[x + 1].q * 3 + thisRow[x + 2].q * 3 + thisRow[x].q * 3 + lastRow[x + 1].q * 3
-						  + lastRow[x].q * 2 + lastRow[x + 2].q * 2) / 16;
-			int colorA = thisRow[x + 1].a;
+			float colorY = (thisRow[x + 1].y * 3 + thisRow[x + 2].y * 3 + thisRow[x].y * 3 + lastRow[x + 1].y * 3
+						  + lastRow[x].y * 2 + lastRow[x + 2].y * 2) * 0.0625f;
+			float colorI = (thisRow[x + 1].i * 3 + thisRow[x + 2].i * 3 + thisRow[x].i * 3 + lastRow[x + 1].i * 3
+						  + lastRow[x].i * 2 + lastRow[x + 2].i * 2) * 0.0625f;
+			float colorQ = (thisRow[x + 1].q * 3 + thisRow[x + 2].q * 3 + thisRow[x].q * 3 + lastRow[x + 1].q * 3
+						  + lastRow[x].q * 2 + lastRow[x + 2].q * 2) * 0.0625f;
+			float colorA = thisRow[x + 1].a;
 
 			if (binaryAlpha) {
-				if (colorA < 128) {
-					colorY = 0;
-					colorI = 0;
-					colorQ = 0;
-					colorA = 0;
+				if (colorA < 128.0f) {
+					colorY = 0.0f;
+					colorI = 0.0f;
+					colorQ = 0.0f;
+					colorA = 0.0f;
 				} else {
-					colorA = 255;
+					colorA = 255.0f;
 				}
 			}
 
 			if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
 				//pixel-mode reduction, set alpha=255 to fit the palette.
-				colorA = 255;
+				colorA = 255.0f;
 			}
 
 			//match it to a palette color. We'll measure distance to it as well.
 			RxYiqColor colorYiq = { colorY, colorI, colorQ, colorA };
 			double paletteDistance = 0.0;
 			int matched = 0;
-			if (colorA == 0 && c0xp) {
+			if (colorA == 0.0f && c0xp) {
 				//we're using color-0 transparency
 				matched = 0;
 			} else {
@@ -1980,48 +2015,48 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 			if (centerDistance < 110.0 * yw2 && paletteDistance >  2.0 * yw2 && diffuse > 0.0f) {
 				//Yes, we should dither :)
 
-				//correct for Floyd-Steinberg coefficients by dividing by 16 (and scale by diffusion amount)
-				double diffuseY = thisDiffuse[x + 1].y * diffuse * 0.0625;
-				double diffuseI = thisDiffuse[x + 1].i * diffuse * 0.0625;
-				double diffuseQ = thisDiffuse[x + 1].q * diffuse * 0.0625;
-				double diffuseA = thisDiffuse[x + 1].a * diffuse * 0.0625;
+				//correct for Floyd-Steinberg coefficients (scale by diffusion amount)
+				double diffuseY = thisDiffuse[x + 1].y * diffuse;
+				double diffuseI = thisDiffuse[x + 1].i * diffuse;
+				double diffuseQ = thisDiffuse[x + 1].q * diffuse;
+				double diffuseA = thisDiffuse[x + 1].a * diffuse;
 
 				if (binaryAlpha) diffuseA = 0.0; //don't diffuse alpha if no alpha channel, or we're told not to
 
-				colorY += RxiDiffuseCurveY(diffuseY);
-				colorI += RxiDiffuseCurveI(diffuseI);
-				colorQ += RxiDiffuseCurveQ(diffuseQ);
-				colorA += (int) (diffuseA + (diffuseA < 0.0 ? -0.5 : 0.5));
-				if (colorY < 0) { //clamp just in case
-					colorY = 0;
-					colorI = 0;
-					colorQ = 0;
-				} else if (colorY > 511) {
-					colorY = 511;
-					colorI = 0;
-					colorQ = 0;
+				colorY += (float) RxiDiffuseCurveY(diffuseY);
+				colorI += (float) RxiDiffuseCurveI(diffuseI);
+				colorQ += (float) RxiDiffuseCurveQ(diffuseQ);
+				colorA += (float) diffuseA;
+				if (colorY < 0.0f) { //clamp just in case
+					colorY = 0.0f;
+					colorI = 0.0f;
+					colorQ = 0.0f;
+				} else if (colorY > 511.0f) {
+					colorY = 511.0f;
+					colorI = 0.0f;
+					colorQ = 0.0f;
 				}
 
-				if (colorA < 0) colorA = 0;
-				else if (colorA > 255) colorA = 255;
+				if (colorA < 0.0f) colorA = 0.0f;
+				else if (colorA > 255.0f) colorA = 255.0f;
 
 				if (binaryAlpha) {
-					if (colorA < 128) {
-						colorA = 0;
+					if (colorA < 128.0f) {
+						colorA = 0.0f;
 					} else {
-						colorA = 255;
+						colorA = 255.0f;
 					}
 				}
 
 				if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
 					//pixel-mode reduction, set alpha=255 to fit the palette.
-					colorA = 255;
+					colorA = 255.0f;
 				}
 
 				//match to palette color
 				RxYiqColor diffusedYiq = { colorY, colorI, colorQ, colorA };
 				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &diffusedYiq, NULL);
-				if (diffusedYiq.a < 128 && c0xp) matched = 0;
+				if (diffusedYiq.a < 128.0f && c0xp) matched = 0;
 
 				if (!(flag & RX_FLAG_NO_WRITEBACK)) {
 					COLOR32 chosen = palette[matched];
@@ -2031,10 +2066,10 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 				if (indices != NULL) indices[x + y * width] = matched;
 
 				RxYiqColor *chosenYiq = &yiqPalette[matched];
-				int offY = colorY - chosenYiq->y;
-				int offI = colorI - chosenYiq->i;
-				int offQ = colorQ - chosenYiq->q;
-				int offA = colorA - chosenYiq->a;
+				float offY = colorY - chosenYiq->y;
+				float offI = colorI - chosenYiq->i;
+				float offQ = colorQ - chosenYiq->q;
+				float offA = colorA - chosenYiq->a;
 
 				//now diffuse to neighbors
 				RxYiqColor *diffNextPixel = &thisDiffuse[x + 1 + hDirection];
@@ -2043,45 +2078,45 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 				RxYiqColor *diffBackDownPixel = &nextDiffuse[x + 1 - hDirection];
 
 				if (colorA >= 128 || !binaryAlpha) { //don't dither if there's no alpha channel and this is transparent!
-					diffNextPixel->y += offY * 7;
-					diffNextPixel->i += offI * 7;
-					diffNextPixel->q += offQ * 7;
-					diffNextPixel->a += offA * 7;
-					diffDownPixel->y += offY * 5;
-					diffDownPixel->i += offI * 5;
-					diffDownPixel->q += offQ * 5;
-					diffDownPixel->a += offA * 5;
-					diffBackDownPixel->y += offY * 3;
-					diffBackDownPixel->i += offI * 3;
-					diffBackDownPixel->q += offQ * 3;
-					diffBackDownPixel->a += offA * 3;
-					diffNextDownPixel->y += offY * 1;
-					diffNextDownPixel->i += offI * 1;
-					diffNextDownPixel->q += offQ * 1;
-					diffNextDownPixel->a += offA * 1;
+					diffNextPixel->y += offY * 0.4375f; // 4/16
+					diffNextPixel->i += offI * 0.4375f;
+					diffNextPixel->q += offQ * 0.4375f;
+					diffNextPixel->a += offA * 0.4375f;
+					diffDownPixel->y += offY * 0.3125f; // 5/16
+					diffDownPixel->i += offI * 0.3125f;
+					diffDownPixel->q += offQ * 0.3125f;
+					diffDownPixel->a += offA * 0.3125f;
+					diffBackDownPixel->y += offY * 0.1875f; // 3/16
+					diffBackDownPixel->i += offI * 0.1875f;
+					diffBackDownPixel->q += offQ * 0.1875f;
+					diffBackDownPixel->a += offA * 0.1875f;
+					diffNextDownPixel->y += offY * 0.0625f; // 1/16
+					diffNextDownPixel->i += offI * 0.0625f;
+					diffNextDownPixel->q += offQ * 0.0625f;
+					diffNextDownPixel->a += offA * 0.0625f;
 				}
 
 			} else {
 				//anomaly in the picture, just match the original color. Don't diffuse, it'll cause issues.
 				//That or the color is pretty homogeneous here, so dithering is bad anyway.
 				if (binaryAlpha) {
-					if (centerYiq.a < 128) {
-						centerYiq.y = 0;
-						centerYiq.i = 0;
-						centerYiq.q = 0;
-						centerYiq.a = 0;
+					if (centerYiq.a < 128.0f) {
+						centerYiq.y = 0.0f;
+						centerYiq.i = 0.0f;
+						centerYiq.q = 0.0f;
+						centerYiq.a = 0.0f;
 					} else {
-						centerYiq.a = 255;
+						centerYiq.a = 255.0f;
 					}
 				}
 
 				if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
 					//pixel-mode reduction, set alpha=255 to fit the palette.
-					centerYiq.a = 255;
+					centerYiq.a = 255.0f;
 				}
 
 				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &centerYiq, NULL);
-				if (c0xp && centerYiq.a < 128) matched = 0;
+				if (c0xp && centerYiq.a < 128.0f) matched = 0;
 				if (!(flag & RX_FLAG_NO_WRITEBACK)) {
 					COLOR32 chosen = palette[matched];
 					if (touchAlpha) img[x + y * width] = chosen;

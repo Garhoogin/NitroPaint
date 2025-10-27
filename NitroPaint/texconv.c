@@ -240,7 +240,7 @@ static COLOR32 TxiBlend18(COLOR32 col1, unsigned int weight1, COLOR32 col2, unsi
 }
 
 //RGB to YIQ, for only Y channel
-static int TxiYFromRGB(COLOR32 rgb) {
+static double TxiYFromRGB(COLOR32 rgb) {
 	RxYiqColor yiq;
 	RxConvertRgbToYiq(rgb, &yiq);
 	return yiq.y;
@@ -367,8 +367,8 @@ void TxiComputeEndpoints(RxReduction *reduction, const COLOR32 *px, int nPx, COL
 			*colorMax = colors[0];
 		} else {
 			//two colors: sort the two colors such that the lighter one is first.
-			colors[0] = ColorRoundToDS15(colors[0]);
-			colors[1] = ColorRoundToDS15(colors[1]);
+			colors[0] = ColorRoundToDS15(colors[0]) | 0xFF000000;
+			colors[1] = ColorRoundToDS15(colors[1]) | 0xFF000000;
 			if (TxiYFromRGB(colors[0]) > TxiYFromRGB(colors[1])) {
 				*colorMin = colors[1];
 				*colorMax = colors[0];
@@ -617,7 +617,7 @@ static double TxiComputePaletteDifference(RxReduction *reduction, const COLOR *p
 
 			RxConvertRgbToYiq(c1, &yiq1);
 			RxConvertRgbToYiq(c2, &yiq2);
-			double dy = reduction->lumaTable[yiq1.y] - reduction->lumaTable[yiq2.y];
+			double dy = reduction->lumaTable[(int) (yiq1.y + 0.5)] - reduction->lumaTable[(int) (yiq2.y + 0.5)];
 			double di = yiq1.i - yiq2.i;
 			double dq = yiq1.q - yiq2.q;
 			total += reduction->yWeight2 * (dy * dy) + reduction->iWeight2 * (di * di) + reduction->qWeight2 * (dq * dq);

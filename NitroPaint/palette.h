@@ -2,8 +2,14 @@
 
 #include "color.h"
 
+//use of intrinsics under x86
+#if defined(_M_IX86) || defined(_M_X64)
+#define RX_SIMD
 #ifdef _MSC_VER
 #include <intrin.h>
+#else // _MSC_VER
+#include <x86intrin.h>
+#endif
 #endif
 
 #define BALANCE_DEFAULT      20 // Balance/Color Balance default setting
@@ -300,11 +306,16 @@ typedef struct RxRgbColor_ {
 	int a;
 } RxRgbColor;
 
-typedef struct RxYiqColor_ {
-	int y;
-	int i;
-	int q;
-	int a;
+typedef union RxYiqColor_ {
+	struct {
+		float y;
+		float i;
+		float q;
+		float a;
+	};
+#ifdef RX_SIMD
+	__m128 yiq;
+#endif
 } RxYiqColor;
 
 //histogram linked list entry as secondary sorting
@@ -360,10 +371,21 @@ typedef struct RxReduction_ {
 	double iWeight;
 	double qWeight;
 	double aWeight;
-	double yWeight2;
-	double iWeight2;
-	double qWeight2;
-	double aWeight2;
+	union {
+		struct {
+			double yWeight2;
+			double iWeight2;
+			double qWeight2;
+			double aWeight2;
+		};
+#ifdef RX_SIMD
+		struct {
+			__m128d yiWeight2;
+			__m128d qaWeight2;
+			__m128 yiqaWeight2; // YIQA weights packed into singles
+		};
+#endif
+	};
 	int nPaletteColors;
 	int nUsedColors;
 	int enhanceColors;
@@ -505,6 +527,29 @@ void RxHistFinalize(
 // -----------------------------------------------------------------------------------------------
 void RxComputePalette(
 	RxReduction *reduction  // the color reduction context
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxComputeColorDifference
+//
+// Compute a color palette using the histogram held by the color reduction context. Before calling
+// this function, the histogram must be finalized by a call to RxHistFinalize. 
+//
+// Parameters:
+//   reduction     The color reduction context.
+//   yiq1          The first color.
+//   yiq2          The second color.
+//
+// Returns:
+//   A measure of squared difference between the two colors. Difference measures from different
+//   reduction contexts should not be compared directly. When two colors are identical, this
+//   function will return 0.0. A pair of colors with a greater distance should appear more
+//   dissimilar than a pair with a lower distance.
+// -----------------------------------------------------------------------------------------------
+double RxComputeColorDifference(
+	RxReduction *reduction,
+	const RxYiqColor *yiq1,
+	const RxYiqColor *yiq2
 );
 
 // -----------------------------------------------------------------------------------------------

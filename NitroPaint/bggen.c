@@ -66,7 +66,7 @@ static void BgiComputeDct(RxReduction *reduction, BgTile *tile) {
 	float blockY[64], blockI[64], blockQ[64], blockA[64];
 
 	for (int i = 0; i < 64; i++) {
-		double y = reduction->lumaTable[tile->pxYiq[i].y];
+		double y = reduction->lumaTable[(int) (tile->pxYiq[i].y + 0.5)];
 		if (tile->pxYiq[i].a < 128) {
 			//A < 128: turn black transparent
 			y = 0.0;
@@ -143,7 +143,7 @@ static float BgiTileDifferenceFlip(RxReduction *reduction, BgTile *t1, BgTile *t
 
 				RxYiqColor *yiq1 = &t1->pxYiq[x + y * 8];
 				RxYiqColor *yiq2 = &t2->pxYiq[x2 + y2 * 8];
-				double dy = reduction->lumaTable[yiq1->y] - reduction->lumaTable[yiq2->y];
+				double dy = reduction->lumaTable[(int) (yiq1->y + 0.5)] - reduction->lumaTable[(int) (yiq2->y + 0.5)];
 				double di = yiq1->i - yiq2->i;
 				double dq = yiq1->q - yiq2->q;
 				double da = yiq1->a - yiq2->a;
@@ -199,21 +199,21 @@ static float BgiTileDifference(RxReduction *reduction, BgTile *t1, BgTile *t2, u
 	return err;
 }
 
-static void BgiAddTileToTotal(RxReduction *reduction, int *pxBlock, BgTile *tile) {
+static void BgiAddTileToTotal(RxReduction *reduction, RxYiqColor *pxBlock, BgTile *tile) {
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
 			COLOR32 col = tile->px[x + y * 8];
 
 			int x2 = (tile->flipMode & TILE_FLIPX) ? (7 - x) : x;
 			int y2 = (tile->flipMode & TILE_FLIPY) ? (7 - y) : y;
-			int *dest = pxBlock + 4 * (x2 + y2 * 8);
+			RxYiqColor *dest = &pxBlock[x2 + y2 * 8];
 
 			RxYiqColor yiq;
 			RxConvertRgbToYiq(col, &yiq);
-			dest[0] += (int) (16.0 * reduction->lumaTable[yiq.y] + 0.5f);
-			dest[1] += yiq.i;
-			dest[2] += yiq.q;
-			dest[3] += yiq.a;
+			dest->y += (float) reduction->lumaTable[(int) (yiq.y + 0.5)];
+			dest->i += yiq.i;
+			dest->q += yiq.q;
+			dest->a += yiq.a;
 		}
 	}
 }
@@ -442,7 +442,7 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 		BgTile *tile = &tiles[i];
 
 		//average all tiles that use this master tile.
-		int pxBlock[64 * 4] = { 0 };
+		RxYiqColor pxBlock[64] = { 0 };
 		int nRep = tile->nRepresents;
 		for (int j = 0; j < nTiles; j++) {
 			BgTile *tile2 = &tiles[j];
@@ -450,28 +450,15 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 		}
 
 		//divide by count, convert to 32-bit RGB
-		for (int j = 0; j < 64 * 4; j++) {
-			int ch = pxBlock[j];
-
-			//proper round to nearest
-			if (ch >= 0) {
-				ch = (ch * 2 + nRep) / (nRep * 2);
-			} else {
-				ch = (ch * 2 - nRep) / (nRep * 2);
-			}
-			pxBlock[j] = ch;
+		for (int j = 0; j < 64; j++) {
+			pxBlock[j].y /= nRep;
+			pxBlock[j].i /= nRep;
+			pxBlock[j].q /= nRep;
+			pxBlock[j].a /= nRep;
 		}
 		for (int j = 0; j < 64; j++) {
-			int cy = pxBlock[j * 4 + 0]; //times 16
-			int ci = pxBlock[j * 4 + 1];
-			int cq = pxBlock[j * 4 + 2];
-			int ca = pxBlock[j * 4 + 3];
-
-			double dcy = ((double) cy) / 16.0;
-			cy = (int) (pow(dcy * 0.00195695, 1.0 / reduction->gamma) * 511.0);
-
-			RxYiqColor yiq = { cy, ci, cq, ca };
-			tile->px[j] = RxConvertYiqToRgb(&yiq);
+			pxBlock[j].y = (float) (pow(pxBlock[j].y * 0.00195695, 1.0 / reduction->gamma) * 511.0);
+			tile->px[j] = RxConvertYiqToRgb(&pxBlock[j]);
 		}
 
 		//try to determine the most optimal palette. Child tiles can be different palettes.
@@ -981,7 +968,7 @@ double BgiPaletteCharError(RxReduction *reduction, COLOR32 *block, RxYiqColor *p
 		}
 
 		//diff
-		double dy = reduction->yWeight * (reduction->lumaTable[yiq.y] - reduction->lumaTable[matchedYiq->y]);
+		double dy = reduction->yWeight * (reduction->lumaTable[(int) (yiq.y + 0.5)] - reduction->lumaTable[(int) (matchedYiq->y + 0.5)]);
 		double di = reduction->iWeight * (yiq.i - matchedYiq->i);
 		double dq = reduction->qWeight * (yiq.q - matchedYiq->q);
 		double da = 40 * (yiq.a - matchedA);
