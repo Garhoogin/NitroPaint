@@ -225,6 +225,7 @@ static void RxHistAddColor(RxReduction *reduction, float y, float i, float q, fl
 	slot->next = NULL;
 	slot->value = 0.0;
 	histogram->nEntries++;
+	histogram->totalWeight += weight;
 }
 
 void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {

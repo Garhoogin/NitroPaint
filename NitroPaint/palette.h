@@ -351,6 +351,7 @@ typedef struct RxSlab_ {
 typedef struct RxHistogram_ {
 	RxSlab allocator;
 	RxHistEntry *entries[0x20000];
+	double totalWeight;
 	int nEntries;
 	int firstSlot;
 } RxHistogram;
