@@ -2066,10 +2066,11 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 				if (indices != NULL) indices[x + y * width] = matched;
 
 				RxYiqColor *chosenYiq = &yiqPalette[matched];
-				float offY = colorY - chosenYiq->y;
-				float offI = colorI - chosenYiq->i;
-				float offQ = colorQ - chosenYiq->q;
-				float offA = colorA - chosenYiq->a;
+				float chosenA = chosenYiq->a * INV_255;
+				float offY = (colorY - chosenYiq->y) * chosenA;
+				float offI = (colorI - chosenYiq->i) * chosenA;
+				float offQ = (colorQ - chosenYiq->q) * chosenA;
+				float offA = (colorA - chosenYiq->a);
 
 				//now diffuse to neighbors
 				RxYiqColor *diffNextPixel = &thisDiffuse[x + 1 + hDirection];
@@ -2077,8 +2078,8 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 				RxYiqColor *diffNextDownPixel = &nextDiffuse[x + 1 + hDirection];
 				RxYiqColor *diffBackDownPixel = &nextDiffuse[x + 1 - hDirection];
 
-				if (colorA >= 128 || !binaryAlpha) { //don't dither if there's no alpha channel and this is transparent!
-					diffNextPixel->y += offY * 0.4375f; // 4/16
+				if (colorA >= 128.0f || !binaryAlpha) { //don't dither if there's no alpha channel and this is transparent!
+					diffNextPixel->y += offY * 0.4375f; // 7/16
 					diffNextPixel->i += offI * 0.4375f;
 					diffNextPixel->q += offQ * 0.4375f;
 					diffNextPixel->a += offA * 0.4375f;
