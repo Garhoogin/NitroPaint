@@ -7,6 +7,16 @@
 #include "color.h"
 #include "palette.h"
 
+//use of intrinsics under x86
+#if defined(_M_IX86) || defined(_M_X64)
+#define RX_SIMD
+#ifdef _MSC_VER
+#include <intrin.h>
+#else // _MSC_VER
+#include <x86intrin.h>
+#endif
+#endif
+
 //optimize for speed rather than size
 #ifndef _DEBUG
 #ifdef _MSC_VER
@@ -219,6 +229,8 @@ static void RxHistAddColor(RxReduction *reduction, int y, int i, int q, int a, d
 }
 
 void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
+	//implementations using scalar and vector arithmetic
+#ifndef RX_SIMD
 	double r = (double) ((rgb >>  0) & 0xFF);
 	double g = (double) ((rgb >>  8) & 0xFF);
 	double b = (double) ((rgb >> 16) & 0xFF);
@@ -245,6 +257,69 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	yiq->i = (int) (i + (i < 0.0 ? -0.5 : 0.5)); // -320 - 319
 	yiq->q = (int) (q + (q < 0.0 ? -0.5 : 0.5)); // -270 - 269
 	yiq->a = (rgb >> 24) & 0xFF;
+#else
+	//vectorized implementation
+	__m128i rgbVeci = _mm_and_si128(_mm_set_epi32(0, rgb >> 16, rgb >> 8, rgb >> 0), _mm_set_epi32(0, 0xFF, 0xFF, 0xFF));
+	__m128 rgbVec = _mm_cvtepi32_ps(rgbVeci);
+	
+	__m128 yVec = _mm_mul_ps(rgbVec, _mm_set_ps(0.0f,  0.22800f,  1.17400f, 0.59800f));
+	__m128 iVec = _mm_mul_ps(rgbVec, _mm_set_ps(0.0f, -0.64406f, -0.54804f, 1.19208f));
+	__m128 qVec = _mm_mul_ps(rgbVec, _mm_set_ps(0.0f,  0.62206f, -1.04408f, 0.42204f));
+
+	//do three horizontal sums
+	__m128 yTemp = _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(2, 3, 0, 1)); // OK
+	yVec = _mm_add_ps(yVec, yTemp);
+	yTemp = _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(0, 1, 2, 3));
+	yVec = _mm_add_ps(yVec, yTemp);
+
+	__m128 iTemp = _mm_shuffle_ps(iVec, iVec, _MM_SHUFFLE(2, 3, 0, 1));
+	iVec = _mm_add_ps(iVec, iTemp);
+	iTemp = _mm_shuffle_ps(iVec, iVec, _MM_SHUFFLE(0, 1, 2, 3));
+	iVec = _mm_add_ps(iVec, iTemp);
+
+	__m128 qTemp = _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(2, 3, 0, 1));
+	qVec = _mm_add_ps(qVec, qTemp);
+	qTemp = _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(0, 1, 2, 3));
+	qVec = _mm_add_ps(qVec, qTemp);
+
+	//sums distributed horizontally, so we mask them out
+	__m128 yMask = _mm_castsi128_ps(_mm_set_epi32(0, 0, 0, -1));
+	__m128 iMask = _mm_castsi128_ps(_mm_set_epi32(0, 0, -1, 0));
+	__m128 qMask = _mm_castsi128_ps(_mm_set_epi32(0, -1, 0, 0));
+	__m128 yiqVec = _mm_or_ps(_mm_or_ps(_mm_and_ps(yVec, yMask), _mm_and_ps(iVec, iMask)), _mm_and_ps(qVec, qMask));
+	
+	//apply soft clamping by I>245, Q<-215 by 2/3
+	__m128 comp = _mm_cmpgt_ps(yiqVec, _mm_set_ps(0.0f, -215.0f, 245.0f, 0.0f));
+	__m128 mult = _mm_set_ps(0.0f, (float) INV_3, -(float) INV_3, 0.0);
+	mult = _mm_and_ps(mult, comp);
+	mult = _mm_add_ps(mult, _mm_set_ps(0.0f, (float) TWO_THIRDS, 1.0f, 1.0f));
+	__m128 add = _mm_set_ps(0.0f, 71.666667f, 81.666667f, 0.0f);
+	add = _mm_and_ps(add, comp);
+	add = _mm_add_ps(add, _mm_set_ps(0.0f, -71.666667f, 0.0f, 0.0f));
+	yiqVec = _mm_add_ps(_mm_mul_ps(yiqVec, mult), add);
+
+	//soft clamp on Q-I difference
+	__m128 iqDiff = _mm_sub_ss(_mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(2, 2, 2, 2)), _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1)));
+	__m128 diq = _mm_sub_ss(iqDiff, _mm_set_ss(265.0f));
+
+	// if (diq >= 0.0)
+	if (!(_mm_extract_ps(diq, 0) & 0x80000000u)) {
+		diq = _mm_shuffle_ps(diq, diq, _MM_SHUFFLE(0, 0, 0, 0));      // distribute across vector register
+		diq = _mm_mul_ps(diq, _mm_set_ps(0.0f, -0.25f, 0.25f, 0.0f)); // scale by 0.25 and make Q difference negative
+		yiqVec = _mm_add_ps(yiqVec, diq);
+	}
+
+	// if (i < 0.0 && q > 0.0)
+	if ((_mm_extract_ps(yiqVec, 1) & 0x80000000) && !(_mm_extract_ps(yiqVec, 2) & 0x80000000)) {
+		__m128 iq = _mm_mul_ss(_mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1)), _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(2, 2, 2, 2)));
+		__m128 sub = _mm_mul_ss(iq, _mm_set_ss((float) INV_512));
+		yiqVec = _mm_sub_ss(yiqVec, sub);
+	}
+
+	//round
+	_mm_storeu_si128((__m128i *) yiq, _mm_cvtps_epi32(yiqVec));
+	yiq->a = (rgb >> 24);
+#endif
 }
 
 COLOR32 RxConvertYiqToRgb(const RxYiqColor *yiq) {

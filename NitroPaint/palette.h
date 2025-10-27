@@ -2,6 +2,10 @@
 
 #include "color.h"
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 #define BALANCE_DEFAULT      20 // Balance/Color Balance default setting
 #define BALANCE_MIN           1 // Balance/Color Balance minimum setting
 #define BALANCE_MAX          39 // Balance/Color Balance maximum setting
