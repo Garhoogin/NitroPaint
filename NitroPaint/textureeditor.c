@@ -1506,7 +1506,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					BOOL dither = GetCheckboxChecked(data->hWndDither);
 					BOOL ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
 					int balance = GetTrackbarPosition(data->hWndColorBalance);
-					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
+					int colorBalance = GetTrackbarPosition(data->hWndBalance);
 					BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
 					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
 					BOOL c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
