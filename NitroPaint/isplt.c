@@ -2072,7 +2072,7 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 				if (indices != NULL) indices[x + y * width] = matched;
 
 				RxYiqColor *chosenYiq = &yiqPalette[matched];
-				float chosenA = chosenYiq->a * INV_255;
+				float chosenA = (float) (chosenYiq->a * INV_255);
 				float offY = (colorY - chosenYiq->y) * chosenA;
 				float offI = (colorI - chosenYiq->i) * chosenA;
 				float offQ = (colorQ - chosenYiq->q) * chosenA;
