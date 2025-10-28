@@ -172,40 +172,50 @@ static void RxiSlabFree(RxSlab *allocator) {
 	}
 }
 
-static inline unsigned int RxiHistHashColor(float y, float i, float q, float a) {
-	int yi = (int) y, ii = (int) i, qi = (int) q, ai = (int) a;
+static inline unsigned int RxiHistHashColor(const RxYiqColor *yiq) {
+#ifndef RX_SIMD
+	int yi = (int) yiq->y, ii = (int) yiq->i, qi = (int) yiq->q, ai = (int) yiq->a;
 	return (qi + (yi * 64 + ii) * 4 + ai) & 0x1FFFF;
+#else
+	__m128i yiqI = _mm_cvtps_epi32(_mm_mul_ps(yiq->yiq, _mm_set_ps(1.0f, 1.0f, 4.0f, 256.0f)));
+	__m128i sum = _mm_add_epi32(yiqI, _mm_shuffle_epi32(yiqI, _MM_SHUFFLE(2, 3, 0, 1)));
+	sum = _mm_add_epi32(sum, _mm_shuffle_epi32(sum, _MM_SHUFFLE(0, 1, 2, 3)));
+	return _mm_cvtsi128_si32(sum) & 0x1FFFF;
+#endif
 }
 
-static void RxHistAddColor(RxReduction *reduction, float y, float i, float q, float a, double weight) {
+static void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight) {
 	RxHistogram *histogram = reduction->histogram;
+
+	RxYiqColor yiq;
+	memcpy(&yiq, col, sizeof(RxYiqColor));
 
 	//process the alpha value.
 	switch (reduction->alphaMode) {
 		case RX_ALPHA_NONE:
 		case RX_ALPHA_RESERVE:
 			//we use tha alpha threshold here since these alpha modes imply binary alpha.
-			if (a < (int) reduction->alphaThreshold) return;
-			a = 255;
+			if (yiq.a < (float) reduction->alphaThreshold) return;
+			yiq.a = 255.0f;
 			break;
 
 		case RX_ALPHA_PIXEL:
 			//we'll discard alpha=0 since it doesn't need to appear in the palette.
-			if (a == 0) return;
-			weight *= ((double) a) * INV_255;
-			a = 255;
+			if (yiq.a == 0.0f) return;
+			weight *= yiq.a * INV_255;
+			yiq.a = 255.0f;
 			break;
 
 		case RX_ALPHA_PALETTE:
 			//we explicitly must pass all alpha values.
-			if (a == 0) {
+			if (yiq.a == 0.0f) {
 				//for alpha=0, we'll set YIQ to 0 so we only have one transparent value.
-				y = i = q = 0;
+				yiq.y = yiq.i = yiq.q = 0.0f;
 			}
 			break;
 	}
 
-	int slotIndex = RxiHistHashColor(y, i, q, a);
+	int slotIndex = RxiHistHashColor(&yiq);
 	if (slotIndex < histogram->firstSlot) histogram->firstSlot = slotIndex;
 
 	//find a slot with the same YIQA, or create a new one if none exists.
@@ -214,7 +224,7 @@ static void RxHistAddColor(RxReduction *reduction, float y, float i, float q, fl
 		RxHistEntry *slot = *ppslot;
 
 		//matching slot? add weight
-		if (slot->color.y == y && slot->color.i == i && slot->color.q == q && slot->color.a == a) {
+		if (memcmp(&slot->color, &yiq, sizeof(RxYiqColor)) == 0) {
 			slot->weight += weight;
 			return;
 		}
@@ -225,10 +235,7 @@ static void RxHistAddColor(RxReduction *reduction, float y, float i, float q, fl
 	*ppslot = slot;
 
 	//put new color
-	slot->color.y = y;
-	slot->color.i = i;
-	slot->color.q = q;
-	slot->color.a = a;
+	memcpy(&slot->color, &yiq, sizeof(yiq));
 	slot->weight = weight;
 	slot->next = NULL;
 	slot->value = 0.0;
@@ -507,7 +514,7 @@ void RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, u
 			double yDiff = fabs(yCenter - yInter);
 			double weight = 16.0 - fabs(16.0 - yDiff) / 8.0;
 			if (weight < 1.0) weight = 1.0;
-			RxHistAddColor(reduction, rowBlock[1].y, rowBlock[1].i, rowBlock[1].q, rowBlock[1].a, weight);
+			RxHistAddColor(reduction, &rowBlock[1], weight);
 
 			//slide row
 			memmove(&rowBlock[0], &rowBlock[1], 2 * sizeof(RxYiqColor));
