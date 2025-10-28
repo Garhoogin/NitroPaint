@@ -1184,8 +1184,7 @@ int TxConvert4x4(TxConversionParameters *params) {
 	g_texCompressionProgress = 0;
 
 	//create tile data
-	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, params->balance, params->colorBalance, params->enhanceColors, 4);
+	RxReduction *reduction = RxNew(params->balance, params->colorBalance, params->enhanceColors, 4);
 	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY, !params->useFixedPalette);
 
 	//build the palettes.
@@ -1255,8 +1254,7 @@ int TxConvert4x4(TxConversionParameters *params) {
 		free(useMap);
 	}
 
-	RxDestroy(reduction);
-	free(reduction);
+	RxFree(reduction);
 
 	//set fields in the texture
 	params->dest->palette.nColors = nUsedColors;

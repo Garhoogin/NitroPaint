@@ -439,7 +439,8 @@ COLOR32 RxConvertYiqToRgb(
 // -----------------------------------------------------------------------------------------------
 // Name: RxInit
 //
-// Initialize a RxReduction structure with palette parameters.
+// Initialize a RxReduction structure with palette parameters. Release the resources held by this
+// context using the RxDestroy function.
 //
 // Parameters:
 //   reduction     The color reduction context.
@@ -450,6 +451,28 @@ COLOR32 RxConvertYiqToRgb(
 // -----------------------------------------------------------------------------------------------
 void RxInit(
 	RxReduction *reduction,      // the color reduction context
+	int          balance,        // the balance setting
+	int          colorBalance,   // the color balance setting
+	int          enhanceColors,  // assign more weight to frequently occurring colors
+	unsigned int nColors         // the number of colors to set the reduction up to calculate
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxNew
+//
+// Allocates and initializes a RxReduction structure with palette parameters. Free the returned
+// context using the RxFree function.
+//
+// Parameters:
+//   balance       The balance setting.
+//   colorBalance  The color balance setting.
+//   enhanceColors Enhance largely used colors.
+//   nColors       The number of colors to generate in a palette.
+//
+// Returns:
+//   A pointer to the allocated color reduction context, if successful, or NULL on failure.
+// -----------------------------------------------------------------------------------------------
+RxReduction *RxNew(
 	int          balance,        // the balance setting
 	int          colorBalance,   // the color balance setting
 	int          enhanceColors,  // assign more weight to frequently occurring colors
@@ -687,5 +710,18 @@ void RxReduceImageWithContext(
 //   reduction     The color reduction context to be freed
 // -----------------------------------------------------------------------------------------------
 void RxDestroy(
+	RxReduction *reduction // the color reduction context
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxFree
+//
+// Frees all resources held by a color reduction context. Only call this function on the return
+// value of RxNew.
+//
+// Parameters:
+//   reduction     The color reduction context to be freed
+// -----------------------------------------------------------------------------------------------
+void RxFree(
 	RxReduction *reduction // the color reduction context
 );

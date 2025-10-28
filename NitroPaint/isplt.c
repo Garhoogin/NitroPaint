@@ -114,6 +114,14 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 #endif
 }
 
+RxReduction *RxNew(int balance, int colorBalance, int enhanceColors, unsigned int nColors) {
+	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
+	if (reduction == NULL) return NULL;
+
+	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
+	return reduction;
+}
+
 static void RxiApplyFlags(RxReduction *reduction, RxFlag flag) {
 	//set alpha mode
 	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
@@ -1412,14 +1420,18 @@ void RxDestroy(RxReduction *reduction) {
 	free(reduction->colorTreeHead);
 }
 
+void RxFree(RxReduction *reduction) {
+	RxDestroy(reduction);
+	free(reduction);
+}
+
 int RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors) {
 	return RxCreatePaletteEx(img, width, height, pal, nColors, BALANCE_DEFAULT, BALANCE_DEFAULT, 0, 
 		RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_SORT_ALL | RX_FLAG_MASK_BITS);
 }
 
 int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag) {
-	RxReduction *reduction = (RxReduction *) calloc(sizeof(RxReduction), 1);
-	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColors);
 	RxiApplyFlags(reduction, flag);
 
 	RxHistAdd(reduction, img, width, height);
@@ -1428,10 +1440,9 @@ int RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int heigh
 
 	//copy palette out
 	memcpy(pal, reduction->paletteRgb, nColors * sizeof(COLOR32));
-	RxDestroy(reduction);
 
 	int nProduced = reduction->nUsedColors;
-	free(reduction);
+	RxFree(reduction);
 
 	if (flag & RX_FLAG_SORT_ONLY_USED) {
 		qsort(pal, nProduced, sizeof(COLOR32), RxColorLightnessComparator);
@@ -1650,8 +1661,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 	unsigned int nTiles = tilesX * tilesY;
 	RxiTile *tiles = (RxiTile *) calloc(nTiles, sizeof(RxiTile));
-	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, balance, colorBalance, enhanceColors, nColsPerPalette);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColsPerPalette);
 
 	for (unsigned int y = 0; y < tilesY; y++) {
 		for (unsigned int x = 0; x < tilesX; x++) {
@@ -1885,8 +1895,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 	free(palettes);
 	free(bestPalettes);
-	RxDestroy(reduction);
-	free(reduction);
+	RxFree(reduction);
 	free(tiles);
 	free(diffBuff);
 }
@@ -1914,14 +1923,12 @@ void RxReduceImage(COLOR32 *px, unsigned int width, unsigned int height, const C
 }
 
 void RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse, int balance, int colorBalance, int enhanceColors) {
-	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColors);
 	RxiApplyFlags(reduction, flag);
 
 	RxReduceImageWithContext(reduction, img, indices, width, height, palette, nColors, flag, diffuse);
 
-	RxDestroy(reduction);
-	free(reduction);
+	RxFree(reduction);
 }
 
 void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse) {

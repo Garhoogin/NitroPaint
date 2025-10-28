@@ -321,8 +321,7 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 	float *diffBuff = (float *) calloc(nTiles * nTiles, sizeof(float));
 	unsigned char *flips = (unsigned char *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
 
-	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, balance, colorBalance, 0, 255);
+	RxReduction *reduction = RxNew(balance, colorBalance, 0, 255);
 	for (int i = 0; i < nTiles; i++) {
 		BgTile *t1 = tiles + i;
 		for (int j = 0; j < i; j++) {
@@ -496,14 +495,12 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 		}
 	}
 
-	RxDestroy(reduction);
-	free(reduction);
+	RxFree(reduction);
 	return nChars;
 }
 
 void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
-	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, balance, colorBalance, enhanceColors, paletteSize);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, paletteSize);
 
 	if (!dither) diffuse = 0.0f;
 	for (int i = 0; i < nTiles; i++) {
@@ -549,8 +546,7 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 		tile->nRepresents = 1;
 		tile->palette = bestPalette;
 	}
-	RxDestroy(reduction);
-	free(reduction);
+	RxFree(reduction);
 }
 
 static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, int mode) {
@@ -1089,8 +1085,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	uint16_t *nscrData = nscr->data;
 
 	//create dummy reduction to setup parameters for color matching
-	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
-	RxInit(reduction, balance, colorBalance, enhanceColors, paletteSize - !paletteOffset);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, paletteSize - !paletteOffset);
 
 	//generate an nPalettes color palette
 	if (newPalettes) {
@@ -1361,8 +1356,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	}
 
 	free(palsYiq);
-	RxDestroy(reduction);
-	free(reduction);
+	RxFree(reduction);
 
 	free(blocks);
 	free(pals);
