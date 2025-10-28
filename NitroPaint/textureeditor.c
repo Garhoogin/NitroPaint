@@ -1181,13 +1181,15 @@ static int TexViewerJudgeFormat(COLOR32 *px, int nWidth, int nHeight) {
 			fmt = CT_4COLOR;
 		} else {
 			//weigh 16-color, 256-color, and 4x4. 
-			//take the number of pixels per color. 
-			unsigned int pixelsPerColor = 2 * nWidth * nHeight / nColors;
-			if (pixelsPerColor >= 3 && !(nWidth * nHeight >= 1024 * 512)) {
+			if ((nWidth * nHeight) <= 1024 * 512) {
+				//unfrt 1024x512/512x1024: use 4x4
 				fmt = CT_4x4;
 			} else if (nColors < 32) {
-				//otherwise, 4x4 probably isn't a good option.
+				//not more than 32 colors: use palette16
 				fmt = CT_16COLOR;
+			} else {
+				//otherwise, use palette256
+				fmt = CT_256COLOR;
 			}
 		}
 	}
@@ -1235,7 +1237,7 @@ static int TexViewerJudgeColorCount(int bWidth, int bHeight) {
 	int area = bWidth * bHeight;
 
 	//for textures smaller than 256x256, use 8*sqrt(area)
-	if (area < 256 * 256) {
+	if (area <= 128 * 128) {
 		int nColors = (int) (8 * sqrt((float) area));
 		nColors = (nColors + 15) & ~15;
 		return nColors;
