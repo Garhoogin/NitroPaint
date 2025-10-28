@@ -297,36 +297,34 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	__m128 yiqVec = _mm_or_ps(_mm_or_ps(_mm_and_ps(yVec, yMask), _mm_and_ps(iVec, iMask)), _mm_and_ps(qVec, qMask));
 	
 	//apply soft clamping by I>245, Q<-215 by 2/3
-	__m128 comp = _mm_cmpgt_ps(yiqVec, _mm_set_ps(0.0f, -215.0f, 245.0f, 0.0f));
-	__m128 mult = _mm_set_ps(0.0f, (float) INV_3, -(float) INV_3, 0.0);
-	mult = _mm_and_ps(mult, comp);
-	mult = _mm_add_ps(mult, _mm_set_ps(0.0f, (float) TWO_THIRDS, 1.0f, 1.0f));
-	__m128 add = _mm_set_ps(0.0f, 71.666667f, 81.666667f, 0.0f);
-	add = _mm_and_ps(add, comp);
-	add = _mm_add_ps(add, _mm_set_ps(0.0f, -71.666667f, 0.0f, 0.0f));
-	yiqVec = _mm_add_ps(_mm_mul_ps(yiqVec, mult), add);
+	__m128 excess = _mm_sub_ps(yiqVec, _mm_set_ps(0.0f, -215.0f, 245.0f, 0.0f));     // I excess of 245, Q excess of -215
+	excess = _mm_mul_ps(excess, _mm_set_ps(0.0f, 0.33333333f, -0.33333333f, 0.0f));  // Correction factor of 1/3
+	excess = _mm_min_ps(excess, _mm_setzero_ps());                                   // Clamp to non-positives
+	excess = _mm_mul_ps(excess, _mm_set_ps(0.0f, -1.0f, 1.0f, 0.0f));                // Correct sign of Q bias
+	yiqVec = _mm_add_ps(yiqVec, excess);
 
 	//soft clamp on Q-I difference
 	__m128 iqDiff = _mm_sub_ss(_mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(2, 2, 2, 2)), _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1)));
 	__m128 diq = _mm_sub_ss(iqDiff, _mm_set_ss(265.0f));
 
 	// if (diq >= 0.0)
-	if (!(_mm_extract_ps(diq, 0) & 0x80000000u)) {
+	{
+		diq = _mm_max_ps(diq, _mm_setzero_ps());                      // if (diq < 0.0) diq = 0.0
 		diq = _mm_shuffle_ps(diq, diq, _MM_SHUFFLE(0, 0, 0, 0));      // distribute across vector register
 		diq = _mm_mul_ps(diq, _mm_set_ps(0.0f, -0.25f, 0.25f, 0.0f)); // scale by 0.25 and make Q difference negative
 		yiqVec = _mm_add_ps(yiqVec, diq);
 	}
 
+	iVec = _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1));
+	qVec = _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(2, 2, 2, 2));
 	// if (i < 0.0 && q > 0.0)
-	if ((_mm_extract_ps(yiqVec, 1) & 0x80000000) && !(_mm_extract_ps(yiqVec, 2) & 0x80000000)) {
-		__m128 iq = _mm_mul_ss(_mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1)), _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(2, 2, 2, 2)));
-		__m128 sub = _mm_mul_ss(iq, _mm_set_ss((float) INV_512));
+	{
+		__m128 sub = _mm_mul_ss(_mm_mul_ss(_mm_min_ps(iVec, _mm_setzero_ps()), _mm_max_ps(qVec, _mm_setzero_ps())), _mm_set_ss((float) INV_512));
 		yiqVec = _mm_sub_ss(yiqVec, sub);
 	}
 
-	//round
-	yiq->yiq = yiqVec;
-	yiq->a = (float) (rgb >> 24);
+	//insert alpha channel to the output vector
+	yiq->yiq = _mm_add_ps(yiqVec, _mm_and_ps(_mm_cvtepi32_ps(_mm_set1_epi32(rgb >> 24)), _mm_castsi128_ps(_mm_set_epi32(-1, 0, 0, 0))));
 #endif
 }
 
