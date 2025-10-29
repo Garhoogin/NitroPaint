@@ -682,7 +682,7 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 		//transparent, full color
 		TxiCreatePaletteFromHistogram(reduction, 3, expandPal + 1);
 
-		RxConvertRgbToYiq(expandPal[0], &palette[paletteIndex * 2 + 0]); // don't waste this slot
+		RxConvertRgbToYiq(expandPal[2], &palette[paletteIndex * 2 + 0]); // don't waste this slot
 		RxConvertRgbToYiq(expandPal[1], &palette[paletteIndex * 2 + 1]);
 		RxConvertRgbToYiq(expandPal[2], &palette[paletteIndex * 2 + 2]);
 		RxConvertRgbToYiq(expandPal[0], &palette[paletteIndex * 2 + 3]);
