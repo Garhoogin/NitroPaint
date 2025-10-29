@@ -957,6 +957,31 @@ static void TxiAccountColors(unsigned char *useMap, int paletteSize, uint32_t *t
 }
 
 static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t *txel, uint16_t *pidx, int nTiles, COLOR *nnsPal, int paletteSize, TxiTileErrorMapEntry *errorMap, unsigned char *useMap, float diffuse) {
+	//search for tiles using interpolation mode and a palette with both identical colors.
+	for (int i = 0; i < nTiles; i++) {
+		uint16_t idx = pidx[i];
+		if (!(idx & COMP_INTERPOLATE)) continue;
+
+		int pno = COMP_INDEX(idx);
+		COLOR *pltt = nnsPal + pno;
+		if (pltt[0] == pltt[1]) {
+			COLOR findCol = pltt[0];
+
+			//search for an instance of the color somewhere else
+			for (int j = 0; j < paletteSize; j += 2) {
+				if (nnsPal[j] != findCol && nnsPal[j + 1] != findCol) continue; // must contain the search color
+				if (nnsPal[j] == nnsPal[j + 1]) continue;                       // must not be doubled color
+
+				//found
+				int iCol = (nnsPal[j + 1] == findCol);    // 0 or 1 color index
+				txel[i] = (uint32_t) (0x55555555 * iCol); // 0101 pattern times color index
+				pidx[i] = (idx & COMP_MODE_MASK) | (j >> 1);
+
+				break;
+			}
+		}
+	}
+
 	//account colors
 	TxiAccountColors(useMap, paletteSize, txel, pidx, nTiles);
 

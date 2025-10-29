@@ -1797,7 +1797,6 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	int nPalettesWritten = 0;
 	int outputOffs = max(paletteOffset, 1);
 	COLOR32 *palettes = (COLOR32 *) calloc(RX_TILE_PALETTE_COUNT_MAX * RX_TILE_PALETTE_MAX, sizeof(COLOR32));
-	int paletteIndices[RX_TILE_PALETTE_COUNT_MAX] = { 0 };
 
 	for (unsigned int i = 0; i < nTiles; i++) {
 		RxiTile *t = &tiles[i];
@@ -1814,7 +1813,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		RxComputePalette(reduction);
 		
 		memcpy(palettes + nPalettesWritten * RX_TILE_PALETTE_MAX, reduction->paletteRgb, (RX_TILE_PALETTE_MAX - 1) * sizeof(COLOR32));
-		paletteIndices[nPalettesWritten++] = i;
+		nPalettesWritten++;
 		(*progress)++;
 	}
 
