@@ -973,10 +973,18 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 				if (nnsPal[j] == nnsPal[j + 1]) continue;                       // must not be doubled color
 
 				//found
-				int iCol = (nnsPal[j + 1] == findCol);    // 0 or 1 color index
-				txel[i] = (uint32_t) (0x55555555 * iCol); // 0101 pattern times color index
-				pidx[i] = (idx & COMP_MODE_MASK) | (j >> 1);
+				int iCol = (nnsPal[j + 1] == findCol);            // 0 or 1 color index
+				uint32_t texPtn = (uint32_t) (0x55555555 * iCol); // 0101 pattern times color index
+				if (!(idx & COMP_OPAQUE)) {
+					//transparent blocks may end up here too, those pixels that were transparent will be
+					//corrected.
+					for (int k = 0; k < 16; k++) {
+						if (((txel[i] >> (2 * k)) & 3) == 3) texPtn |= 3 << (2 * k);
+					}
+				}
 
+				txel[i] = texPtn; 
+				pidx[i] = (idx & COMP_MODE_MASK) | (j >> 1);
 				break;
 			}
 		}
