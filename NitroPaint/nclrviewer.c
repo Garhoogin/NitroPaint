@@ -1103,10 +1103,10 @@ static void NclrViewerPalOpUpdateCallback(PAL_OP *palOp) {
 }
 
 static int PalViewerLightness(COLOR col) {
-	int r = GetR(col);
-	int g = GetG(col);
-	int b = GetB(col);
-	return 1063 * r + 3576 * g + 361 * b;
+	RxYiqColor yiq;
+	RxConvertRgbToYiq(ColorConvertFromDS(col) | 0xFF000000, &yiq);
+	
+	return (int) (yiq.y + 0.5f);
 }
 
 typedef struct PalViewerSortEntry_ {
@@ -1845,13 +1845,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						COLOR *pal = data->nclr.colors;
 						for (int i = 0; i < data->nclr.nColors; i++) {
 							if (!PalViewerIndexInSelection(data, i)) continue;
-							COLOR col = pal[i];
-							int r = GetR(col);
-							int g = GetG(col);
-							int b = GetB(col);
 
-							//0.2126r + 0.7152g + 0.0722b
-							int l = (PalViewerLightness(col) + 2500) / 5000;
+							int l = (PalViewerLightness(pal[i]) * 31 + 255) / 511;
 							pal[i] = ColorCreate(l, l, l);
 						}
 						PalViewerUpdatePreview(hWnd);
