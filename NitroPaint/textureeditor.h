@@ -44,9 +44,7 @@ typedef struct {
 	HWND hWndFixedPalette;
 	HWND hWndPaletteInput;
 	HWND hWndPaletteBrowse;
-	HWND hWndBalance;
-	HWND hWndColorBalance;
-	HWND hWndEnhanceColors;
+	NpBalanceControl balance;
 	HWND hWndPaletteSize;
 	HWND hWndLimitPalette;
 	HWND hWndColor0Transparent;

@@ -2691,9 +2691,7 @@ typedef struct CELLGENDATA_ {
 	HWND hWndOptimize;
 
 	//color
-	HWND hWndBalance;
-	HWND hWndColorBalance;
-	HWND hWndEnhanceColors;
+	NpBalanceControl balance;
 } CELLGENDATA;
 
 static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2929,22 +2927,13 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 
 			//color
 			int bottomY = groupY + groupHeight + group2Height + 6 + 17;
-			CreateStatic(hWnd, L"Balance:", groupX + 11, bottomY, 100, 22);
-			CreateStatic(hWnd, L"Color Balance:", groupX + 11, bottomY + 27, 100, 22);
-			CreateStaticAligned(hWnd, L"Lightness", groupX + 11 + 110, bottomY, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Color", groupX + 11 + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
-			CreateStaticAligned(hWnd, L"Green", groupX + 11 + 110, bottomY + 27, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Red", groupX + 11 + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
-			data->hWndBalance = CreateTrackbar(hWnd, groupX + 11 + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndColorBalance = CreateTrackbar(hWnd, groupX + 11 + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", groupX + 11, bottomY + 27 * 2, 200, 22, FALSE);
+			NpCreateBalanceInput(&data->balance, hWnd, groupX, groupY + groupHeight + group2Height + 6, groupWidth * 2 + 10);
 
 			//groupboxes
 			CreateGroupbox(hWnd, L"Cell", groupX, groupY, groupWidth, groupHeight);
 			CreateGroupbox(hWnd, L"Palette", groupX + groupWidth + 10, groupY, groupWidth, groupHeight);
 			CreateGroupbox(hWnd, L"Position", groupX, groupY + groupHeight + 3, groupWidth, group2Height);
 			CreateGroupbox(hWnd, L"Graphics", groupX + groupWidth + 10, groupY + groupHeight + 3, groupWidth, group2Height);
-			CreateGroupbox(hWnd, L"Color", groupX, groupY + groupHeight + group2Height + 6, groupWidth * 2 + 10, 103);
 
 			//populate palette dropdown
 			for (int i = 0; i < 16; i++) {
@@ -3018,9 +3007,8 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				if (!dither) diffuse = 0.0f;
 
 				//balance
-				int balance = GetTrackbarPosition(data->hWndBalance);
-				int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
-				int enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+				RxBalanceSetting balance;
+				NpGetBalanceSetting(&data->balance, &balance);
 
 				//generate
 				int nObj;
@@ -3162,7 +3150,8 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 					int nChars = slice->bounds.width * slice->bounds.height / 8 / 8;
 
 					RxReduceImageEx(slice->px, indicesBuffer, width, height, palette + paletteOffset, paletteLength, 
-						RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_NO_PRESERVE_ALPHA, diffuse, balance, colorBalance, enhanceColors);
+						RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_NO_PRESERVE_ALPHA, diffuse, balance.balance,
+						balance.colorBalance, balance.enhanceColors);
 
 					//convert to character array in indicesBuffer8
 					for (int j = 0; j < nChars; j++) {

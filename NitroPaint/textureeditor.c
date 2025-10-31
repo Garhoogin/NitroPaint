@@ -1268,9 +1268,9 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	EnableWindow(data->hWndPaletteBrowse, fixedPalette);
 	EnableWindow(data->hWndPaletteSize, isPltt && !is4x4 && !fixedPalette);
 	EnableWindow(data->hWndLimitPalette, is4x4 && !fixedPalette);
-	EnableWindow(data->hWndBalance, isPltt);
-	EnableWindow(data->hWndColorBalance, isPltt);
-	EnableWindow(data->hWndEnhanceColors, isPltt);
+	EnableWindow(data->balance.hWndBalance, isPltt);
+	EnableWindow(data->balance.hWndColorBalance, isPltt);
+	EnableWindow(data->balance.hWndEnhanceColors, isPltt);
 
 	EnableWindow(data->hWndDiffuseAmount, dither || ditherAlpha);
 
@@ -1335,20 +1335,11 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->hWndOptimizationSlider = CreateTrackbar(hWnd, leftX + 110, middleY + 27 * 2, 210, 22, 0, 100, 0);
 			data->hWndOptimizationLabel = CreateStatic(hWnd, L"0", leftX + 330, middleY + 27 * 2, 50, 22);
 
-			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
-			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
-			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
-			CreateStatic(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22);
-			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
-			CreateStatic(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22);
-			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
+			NpCreateBalanceInput(&data->balance, hWnd, leftX - 10, bottomY - 18, rightX + boxWidth - leftX);
 
 			CreateGroupbox(hWnd, L"Texture", leftX - 10, topY - 18, boxWidth, boxHeight);
 			CreateGroupbox(hWnd, L"Palette", rightX - 10, topY - 18, boxWidth, boxHeight);
 			CreateGroupbox(hWnd, L"4x4 Compression", leftX - 10, middleY - 18, rightX + boxWidth - leftX, boxHeight2);
-			CreateGroupbox(hWnd, L"Color", leftX - 10, bottomY - 18, rightX + boxWidth - leftX, boxHeight2);
 
 			data->hWndDoConvertButton = CreateButton(hWnd, L"Convert", width / 2 - 100, height - 32, 200, 22, TRUE);
 
@@ -1505,14 +1496,13 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					int optimization = GetTrackbarPosition(data->hWndOptimizationSlider);
 					SendMessage(data->hWndPaletteName, WM_GETTEXT, 63, (LPARAM) bf);
 
+					RxBalanceSetting balance;
 					BOOL dither = GetCheckboxChecked(data->hWndDither);
 					BOOL ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
-					int balance = GetTrackbarPosition(data->hWndColorBalance);
-					int colorBalance = GetTrackbarPosition(data->hWndBalance);
-					BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
 					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
 					BOOL c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
 					BOOL useAlphaKey = GetCheckboxChecked(data->hWndCheckboxAlphaKey);
+					NpGetBalanceSetting(&data->balance, &balance);
 
 					//if we set to not limit palette, set the max size to the max allowed
 					if (!limitPalette || colorEntries > 32768) {
@@ -1539,8 +1529,8 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					SetActiveWindow(data->hWndProgress);
 					textureConvertThreaded(data->px, data->width, data->height, fmt, dither, diffuse, ditherAlpha, c0xp,
 									fixedPalette ? paletteFile.nColors : (fmt == CT_4x4 ? colorEntries : paletteSize), 
-									fixedPalette, paletteFile.colors, optimization, balance, colorBalance, enhanceColors,
-									mbpnam, &data->texture.texture, conversionCallback, (void *) data);
+									fixedPalette, paletteFile.colors, optimization, balance.balance, balance.colorBalance,
+									balance.enhanceColors, mbpnam, &data->texture.texture, conversionCallback, (void *) data);
 
 					//wait progress end
 					DoModal(data->hWndProgress);

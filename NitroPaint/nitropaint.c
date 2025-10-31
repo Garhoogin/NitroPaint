@@ -2152,13 +2152,11 @@ typedef struct {
 	HWND hWndRowLimit;
 	HWND hWndMaxChars;
 	HWND hWndDiffuse;
-	HWND hWndBalance;
-	HWND hWndColorBalance;
-	HWND hWndEnhanceColors;
 	HWND hWndColor0Setting;
 	HWND hWndAlignmentCheckbox;
 	HWND hWndAlignment;
 	HWND hWndAffine;
+	NpBalanceControl balance;
 } CREATEDIALOGDATA;
 
 BOOL WINAPI SetGUIFontProc(HWND hWnd, LPARAM lParam) {
@@ -2260,6 +2258,27 @@ void threadedNscrCreate(PROGRESSDATA *data, CREATENSCRDATA *createData, COLOR32 
 	CreateThread(NULL, 0, threadedNscrCreateInternal, (LPVOID) params, 0, NULL);
 }
 
+void NpCreateBalanceInput(NpBalanceControl *ctl, HWND hWnd, int x, int y, int width) {
+	int bottomY = y + 18;
+
+	CreateStatic(hWnd, L"Balance:", x + 10, bottomY, 100, 22);
+	CreateStatic(hWnd, L"Color Balance:", x + 10, bottomY + 27, 100, 22);
+	CreateStaticAligned(hWnd, L"Lightness", x + 10 + 110, bottomY, 50, 22, SCA_RIGHT);
+	CreateStaticAligned(hWnd, L"Color", x + 10 + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
+	CreateStaticAligned(hWnd, L"Green", x + 10 + 110, bottomY + 27, 50, 22, SCA_RIGHT);
+	CreateStaticAligned(hWnd, L"Red", x + 10 + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
+	ctl->hWndBalance = CreateTrackbar(hWnd, x + 10 + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+	ctl->hWndColorBalance = CreateTrackbar(hWnd, x + 10 + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+	ctl->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", x + 10, bottomY + 27 * 2, 200, 22, FALSE);
+	CreateGroupbox(hWnd, L"Color", x, y, width, 3 * 27 - 5 + 10 + 10 + 10);
+}
+
+void NpGetBalanceSetting(NpBalanceControl *ctl, RxBalanceSetting *balance) {
+	balance->balance = GetTrackbarPosition(ctl->hWndBalance);
+	balance->colorBalance = GetTrackbarPosition(ctl->hWndColorBalance);
+	balance->enhanceColors = GetCheckboxChecked(ctl->hWndEnhanceColors);
+}
+
 LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	CREATEDIALOGDATA *data = (CREATEDIALOGDATA *) GetWindowLongPtr(hWnd, 0);
 	if (!data) {
@@ -2323,23 +2342,13 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			CreateStatic(hWnd, L"Format:", rightX, middleY, 50, 22);
 			data->hWndFormatDropdown = CreateCombobox(hWnd, formatNames, sizeof(formatNames) / sizeof(*formatNames), rightX + 55, middleY, 150, 22, 0);
 
-			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
-			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
-
-			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
-			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
-			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
+			NpCreateBalanceInput(&data->balance, hWnd, 10, bottomY - 18, 10 + 2 * boxWidth);
 
 			//not actually buttons ;)
 			CreateGroupbox(hWnd, L"Palette", 10, 42, boxWidth, boxHeight);
 			CreateGroupbox(hWnd, L"Graphics", 10 + boxWidth + 10, 42, boxWidth, boxHeight);
 			CreateGroupbox(hWnd, L"Char compression", 10, 42 + boxHeight + 10, boxWidth, boxHeight2);
 			CreateGroupbox(hWnd, L"Output", 10 + boxWidth + 10, 42 + boxHeight + 10, boxWidth, boxHeight2);
-			CreateGroupbox(hWnd, L"Color", 10, 42 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3);
 			data->nscrCreateButton = CreateButton(hWnd, L"Generate", width / 2 - 200 / 2, height - 32, 200, 22, TRUE);
 
 			SetWindowSize(hWnd, width, height);
@@ -2387,9 +2396,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					//global setting
 					BgGenerateParameters params;
 					params.fmt = SendMessage(data->hWndFormatDropdown, CB_GETCURSEL, 0, 0);
-					params.balance.balance = GetTrackbarPosition(data->hWndBalance);
-					params.balance.colorBalance = GetTrackbarPosition(data->hWndColorBalance);
-					params.balance.enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+					NpGetBalanceSetting(&data->balance, &params.balance);
 
 					//dither setting
 					params.dither.dither = GetCheckboxChecked(data->nscrCreateDither);
@@ -3532,9 +3539,7 @@ typedef struct IndexImageData_ {
 	HWND hWndColors;
 	HWND hWndAlphaMode;
 
-	HWND hWndBalance;
-	HWND hWndColorBalance;
-	HWND hWndEnhanceColors;
+	NpBalanceControl balance;
 
 	HWND hWndPreview1;
 	HWND hWndPreview2;
@@ -3557,10 +3562,9 @@ typedef struct IndexImageData_ {
 } RedGuiData;
 
 static void RedGuiProcessReduction(RedGuiData *data) {
+	RxBalanceSetting balance;
 	unsigned int nColors = GetEditNumber(data->hWndColors);
-	int balance = GetTrackbarPosition(data->hWndBalance);
-	int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
-	int enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+	NpGetBalanceSetting(&data->balance, &balance);
 
 	RxFlag flag = RX_FLAG_NO_PRESERVE_ALPHA | RX_FLAG_SORT_ONLY_USED;
 	if (!GetCheckboxChecked(data->hWnd15bit)) flag |= RX_FLAG_NO_MASK_BITS;
@@ -3582,7 +3586,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	}
 
 	unsigned int nColUse = RxCreatePaletteEx(data->px, data->width, data->height,
-		data->pltt + plttOffs, nColors - plttOffs, balance, colorBalance, enhanceColors, flag);
+		data->pltt + plttOffs, nColors - plttOffs, balance.balance, balance.colorBalance, balance.enhanceColors, flag);
 	if ((flag & RX_FLAG_ALPHA_MODE_MASK) == RX_FLAG_ALPHA_MODE_RESERVE) {
 		data->pltt[0] = 0; // transparent
 	}
@@ -3599,7 +3603,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
 	if (!GetCheckboxChecked(data->hWndDither)) diffuse = 0.0f;
 	RxReduceImageEx(data->reduced, data->indices, data->width, data->height, data->pltt, nColUse + plttOffs,
-		flag, diffuse, balance, colorBalance, enhanceColors);
+		flag, diffuse, balance.balance, balance.colorBalance, balance.enhanceColors);
 	InvalidateRect(data->hWndPreview2, NULL, FALSE);
 }
 
@@ -3656,8 +3660,6 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			int leftX = 10 + 10;
 			int rightX = leftX + boxWidth + 10;
 			int bottomY = 10 + 18;
-			//int boxHeight2 = 0;
-			//int boxHeight3 = 100;
 
 			LPCWSTR modes[] = { L"None", L"Color 0", L"Palette" };
 
@@ -3673,15 +3675,7 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			data->hWndAlphaMode = CreateCombobox(hWnd, modes, sizeof(modes) / sizeof(modes[0]), leftX + 210, bottomY + 27, 75, 22, 0);
 
 			//Balance
-			CreateStatic(hWnd, L"Balance:", rightX, bottomY, 100, 22);
-			CreateStatic(hWnd, L"Color Balance:", rightX, bottomY + 27, 100, 22);
-			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", rightX, bottomY + 27 * 2, 200, 22, FALSE);
-			CreateStaticAligned(hWnd, L"Lightness", rightX + 110, bottomY, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Color", rightX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
-			CreateStaticAligned(hWnd, L"Green", rightX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Red", rightX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
-			data->hWndBalance = CreateTrackbar(hWnd, rightX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndColorBalance = CreateTrackbar(hWnd, rightX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			NpCreateBalanceInput(&data->balance, hWnd, 10 + boxWidth + 10, 10, boxWidth);
 
 			//command
 			data->hWndSaveClip = CreateButton(hWnd, L"Save Clipboard", (30 + 2 * boxWidth) / 2 - 100 - 210, bottomY + boxHeight1 + 10, 200, 22, FALSE);
@@ -3689,7 +3683,6 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			data->hWndSaveFile = CreateButton(hWnd, L"Save File", (30 + 2 * boxWidth) / 2 + 110, bottomY + boxHeight1 + 10, 200, 22, FALSE);
 
 			CreateGroupbox(hWnd, L"Image", 10, 10, boxWidth, boxHeight1);
-			CreateGroupbox(hWnd, L"Color", 10 + boxWidth + 10, 10, boxWidth, boxHeight1);
 
 			data->hWndPreview1 = CreateWindowEx(WS_EX_CLIENTEDGE, L"IndexImagePreview", L"Source",
 				WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_CENTER | WS_HSCROLL | WS_VSCROLL,

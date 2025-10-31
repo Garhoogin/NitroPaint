@@ -4,6 +4,7 @@
 #include "ui.h"
 #include "color.h"
 #include "filecommon.h"
+#include "palette.h"
 
 #define g_useDarkTheme 0
 
@@ -53,6 +54,12 @@ typedef struct {
 	HWND hWndProgress1;
 	HWND hWndProgress2;
 } PROGRESSDATA;
+
+typedef struct {
+	HWND hWndBalance;
+	HWND hWndColorBalance;
+	HWND hWndEnhanceColors;
+} NpBalanceControl;
 
 //WM_COPYDATA types
 #define NPMSG_OPENFILE       1
@@ -254,6 +261,10 @@ int GetAllEditors(HWND hWndMain, int type, HWND *editors, int bufferSize);
 // Gets the editor associated with an object by its pointer. 
 //
 HWND GetEditorFromObject(HWND hWndMain, OBJECT_HEADER *obj);
+
+void NpCreateBalanceInput(NpBalanceControl *ctl, HWND hWnd, int x, int y, int width);
+
+void NpGetBalanceSetting(NpBalanceControl *ctl, RxBalanceSetting *balance);
 
 
 //common viewer window messages

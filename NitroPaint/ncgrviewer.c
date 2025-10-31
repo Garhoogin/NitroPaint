@@ -1169,9 +1169,7 @@ typedef struct CHARIMPORTDATA_ {
 	HWND hWndObjSize;
 	HWND hWndMappingGranularity;
 	HWND hWndImport;
-	HWND hWndBalance;
-	HWND hWndColorBalance;
-	HWND hWndEnhanceColors;
+	NpBalanceControl balance;
 } CHARIMPORTDATA;
 
 
@@ -2591,22 +2589,13 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndMappingGranularity = CreateCombobox(hWnd, mappings, 4, leftX + 355, middleY + 27, 75, 22, 0);
 
 			//Balance
-			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
-			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
-			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
-			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
-			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
-			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			NpCreateBalanceInput(&data->balance, hWnd, 10, 10 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth);
 
 			data->hWndImport = CreateButton(hWnd, L"Import", width / 2 - 100, height - 32, 200, 22, TRUE);
 
 			CreateGroupbox(hWnd, L"Palette", 10, 10, boxWidth, boxHeight);
 			CreateGroupbox(hWnd, L"Graphics", 10 + boxWidth + 10, 10, boxWidth, boxHeight);
 			CreateGroupbox(hWnd, L"Dimension", 10, 10 + boxHeight + 10, boxWidth * 2 + 10, boxHeight2);
-			CreateGroupbox(hWnd, L"Color", 10, 10 + boxHeight + 10 + boxHeight2 + 10, 10 + 2 * boxWidth, boxHeight3);
 
 			SetGUIFont(hWnd);
 			EnableWindow(data->hWndDiffuse, FALSE);
@@ -2654,6 +2643,7 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						EnableWindow(data->hWndObjSize, FALSE);
 					}
 				} else if (hWndControl == data->hWndImport) {
+					RxBalanceSetting balance;
 					BOOL createPalette = GetCheckboxChecked(data->hWndOverwritePalette);
 					BOOL dither = GetCheckboxChecked(data->hWndDither);
 					BOOL objMode = GetCheckboxChecked(data->hWndObjMode);
@@ -2664,9 +2654,7 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int paletteBase = GetEditNumber(data->hWndPaletteBase);
 					int paletteSize = GetEditNumber(data->hWndPaletteSize);
 					int nMaxChars = GetEditNumber(data->hWndMaxChars);
-					int balance = GetTrackbarPosition(data->hWndBalance);
-					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
-					BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+					NpGetBalanceSetting(&data->balance, &balance);
 
 					//get OBJ size
 					const int objWidths[] = { 8, 8, 8, 16, 16, 16, 32, 32, 32, 32, 64, 64 };
@@ -2702,9 +2690,9 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					cimport->originX = data->contextHoverX;
 					cimport->originY = data->contextHoverY;
 					cimport->paletteNumber = data->selectedPalette;
-					cimport->balance = balance;
-					cimport->colorBalance = colorBalance;
-					cimport->enhanceColors = enhanceColors;
+					cimport->balance = balance.balance;
+					cimport->colorBalance = balance.colorBalance;
+					cimport->enhanceColors = balance.enhanceColors;
 					cimport->ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(GetEditorFromObject(hWndMain, &ncgr->header));
 					cimport->px = data->px;
 					cimport->width = data->width;

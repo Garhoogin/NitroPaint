@@ -914,9 +914,7 @@ typedef struct {
 	HWND hWndPaletteOffset;
 	HWND hWndCharacterBase;
 	HWND hWndCharacterCount;
-	HWND hWndBalance;
-	HWND hWndColorBalance;
-	HWND hWndEnhanceColors;
+	NpBalanceControl balance;
 
 
 	int nscrTileX;
@@ -1073,22 +1071,13 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			CreateStatic(hWnd, L"Count:", rightX, middleY + 27 * 4, 75, 22);
 			data->hWndCharacterCount = CreateEdit(hWnd, L"1024", rightX + 85, middleY + 27 * 4, 100, 22, TRUE);
 
-			CreateStatic(hWnd, L"Balance:", leftX, bottomY, 100, 22);
-			CreateStatic(hWnd, L"Color Balance:", leftX, bottomY + 27, 100, 22);
-			CreateCheckbox(hWnd, L"Enhance Colors", leftX, bottomY + 27 * 2, 200, 22, FALSE);
-			CreateStaticAligned(hWnd, L"Lightness", leftX + 110, bottomY, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Color", leftX + 110 + 50 + 200, bottomY, 50, 22, SCA_LEFT);
-			CreateStaticAligned(hWnd, L"Green", leftX + 110, bottomY + 27, 50, 22, SCA_RIGHT);
-			CreateStaticAligned(hWnd, L"Red", leftX + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
-			data->hWndBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-			data->hWndColorBalance = CreateTrackbar(hWnd, leftX + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			NpCreateBalanceInput(&data->balance, hWnd, leftX - 10, bottomY - 18, rightX + boxWidth - leftX);
 
 			data->hWndImportButton = CreateButton(hWnd, L"Import", width / 2 - 100, height - 32, 200, 22, TRUE);
 
 			CreateGroupbox(hWnd, L"Screen", leftX - 10, topY - 18, rightX + boxWidth - leftX, boxHeight);
 			CreateGroupbox(hWnd, L"Palette", leftX - 10, middleY - 18, boxWidth, boxHeight2);
 			CreateGroupbox(hWnd, L"Graphics", rightX - 10, middleY - 18, boxWidth, boxHeight2);
-			CreateGroupbox(hWnd, L"Color", leftX - 10, bottomY - 18, rightX + boxWidth - leftX, boxHeight3);
 
 			for (int i = 0; i < 16; i++) {
 				WCHAR textBuffer[4];
@@ -1175,15 +1164,14 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					int paletteOffset = GetEditNumber(data->hWndPaletteOffset);
 					if (nPalettes > 16) nPalettes = 16;
 
+					RxBalanceSetting balance;
 					int paletteNumber = SendMessage(data->hWndPaletteInput, CB_GETCURSEL, 0, 0);
 					int dither = GetCheckboxChecked(data->hWndDitherCheckbox);
 					int newPalettes = GetCheckboxChecked(data->hWndNewPaletteCheckbox);
 					int newCharacters = GetCheckboxChecked(data->hWndNewCharactersCheckbox);
-					int balance = GetTrackbarPosition(data->hWndBalance);
-					int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
-					int enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
 					int writeCharacterIndices = GetCheckboxChecked(data->hWndWriteCharIndicesCheckbox);
 					int writeScreen = GetCheckboxChecked(data->hWndWriteScreenCheckbox);
+					NpGetBalanceSetting(&data->balance, &balance);
 
 					if (!writeScreen) writeCharacterIndices = 0;
 
@@ -1217,8 +1205,9 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					nscrImportData->nMaxChars = characterCount;
 					nscrImportData->dither = dither;
 					nscrImportData->diffuse = diffuse;
-					nscrImportData->balance = balance;
-					nscrImportData->colorBalance = colorBalance;
+					nscrImportData->balance = balance.balance;
+					nscrImportData->colorBalance = balance.colorBalance;
+					nscrImportData->enhanceColors = balance.enhanceColors;
 					nscrImportData->maxTilesX = maxTilesX;
 					nscrImportData->maxTilesY = maxTilesY;
 					nscrImportData->writeCharacterIndices = writeCharacterIndices;
