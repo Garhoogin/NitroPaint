@@ -268,9 +268,9 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	if (i < 0.0 && q > 0.0) y -= (q * i) * INV_512;
 
 	//write rounded color
-	yiq->y = y; //    0 - 511
-	yiq->i = i; // -320 - 319
-	yiq->q = q; // -270 - 269
+	yiq->y = (float) y; //    0 - 511
+	yiq->i = (float) i; // -320 - 319
+	yiq->q = (float) q; // -270 - 269
 	yiq->a = (float) ((rgb >> 24) & 0xFF);
 #else
 	//vectorized implementation
@@ -332,6 +332,7 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 
 	//insert alpha channel to the output vector
 	yiq->yiq = _mm_add_ps(yiqVec, _mm_and_ps(_mm_cvtepi32_ps(_mm_set1_epi32(rgb >> 24)), _mm_castsi128_ps(_mm_set_epi32(-1, 0, 0, 0))));
+	(void) _aligned_malloc(4, 4);
 #endif
 }
 
