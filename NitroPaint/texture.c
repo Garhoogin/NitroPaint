@@ -258,7 +258,7 @@ void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE 
 	}
 }
 
-LPCWSTR textureFormatNames[] = { L"Invalid", L"NNS TGA", L"5TX", L"SPT", L"TDS", L"NTGA", L"To Love-Ru", NULL };
+LPCWSTR textureFormatNames[] = { L"Invalid", L"NNS TGA", L"5TX", L"SPT", L"TDS", L"NTGA", L"To Love-Ru", L"GRF", NULL };
 
 
 void TxFree(OBJECT_HEADER *obj) {
@@ -501,7 +501,38 @@ static int TxIsValidSpt(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+static int TxIsValidGrf(const unsigned char *buffer, unsigned int size) {
+	int grfType = GrfIsValid(buffer, size);
+	if (grfType == GRF_TYPE_INVALID) return 0;
+
+	unsigned int hdrSize;
+	unsigned char *hdr = GrfGetHeader(buffer, size, &hdrSize);
+	if (hdr == NULL) return 0;
+
+	int texFmt = *(const uint16_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x02 : 0x00));
+	int scrFmt = *(const uint16_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x04 : 0x02));
+
+	unsigned int palSize, gfxSize, pidxSize;
+	unsigned char *gfx = GrfReadBlockUncompressed(buffer, size, "GFX ", &gfxSize);
+	unsigned char *pal = GrfReadBlockUncompressed(buffer, size, "PAL ", &palSize);
+	unsigned char *idx = GrfReadBlockUncompressed(buffer, size, "PIDX", &pidxSize);
+
+	int gfxExist = gfx != NULL;
+	int palExist = pal != NULL;
+	int idxExist = idx != NULL;
+	if (gfxExist) free(gfx);
+	if (palExist) free(pal);
+	if (idxExist) free(idx);
+
+	if (!gfxExist) return 0;
+	if (texFmt != 0x10 && !palExist) return 0; // non-direct mode texture requires palette
+	if (texFmt == 0x82 && !idxExist) return 0; // 4x4 texture requires palette index
+	if (scrFmt != 0) return 0;                 // should have no BG screen data
+	return 1;
+}
+
 int TxIdentify(const unsigned char *buffer, unsigned int size) {
+	if (TxIsValidGrf(buffer, size)) return TEXTURE_TYPE_GRF;
 	if (TxIsValidNnsTga(buffer, size)) return TEXTURE_TYPE_NNSTGA;
 	if (TxIsValidIStudio(buffer, size)) return TEXTURE_TYPE_ISTUDIO;
 	if (TxIsValidSpt(buffer, size)) return TEXTURE_TYPE_SPT;
@@ -801,6 +832,54 @@ static int TxReadSpt(TextureObject *texture, const unsigned char *buffer, unsign
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
+	TxInit(texture, TEXTURE_TYPE_GRF);
+
+	unsigned int headerSize;
+	unsigned char *hdr = GrfGetHeader(buffer, size, &headerSize);
+
+	int grfType = GrfIsValid(buffer, size);
+	int gfxFmt = *(const uint16_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x02 : 0x00));
+
+	//graphics format to texture format
+	int texFmt = 0;
+	switch (gfxFmt) {
+		case 0x02: texFmt = CT_4COLOR; break;
+		case 0x04: texFmt = CT_16COLOR; break;
+		case 0x08: texFmt = CT_256COLOR; break;
+		case 0x10: texFmt = CT_DIRECT; break;
+		case 0x80: texFmt = CT_A3I5;  break;
+		case 0x81: texFmt = CT_A5I3;  break;
+		case 0x82: texFmt = CT_4x4; break;
+	}
+
+	unsigned int palSize, gfxSize, pidxSize;
+	unsigned char *gfx = GrfReadBlockUncompressed(buffer, size, "GFX ", &gfxSize);
+	unsigned char *pal = GrfReadBlockUncompressed(buffer, size, "PAL ", &palSize);
+	unsigned char *idx = GrfReadBlockUncompressed(buffer, size, "PIDX", &pidxSize);
+
+	int plt0 = 0;
+	int texW = (*(const uint32_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x10 : 0x0C)));
+	int texH = (*(const uint32_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x14 : 0x10)));
+	if (grfType != GRF_TYPE_GRF_10) plt0 = (*(const uint16_t *) (hdr + 0x0E)) & 1; // CHECKME: tentative
+
+	int s = ilog2(texW) - 3;
+	int t = ilog2(texH) - 3;
+
+	texture->texture.texels.height = texH;
+	texture->texture.texels.texImageParam = (s << 20) | (t << 23) | (texFmt << 26) | (plt0 << 29);
+
+	texture->texture.texels.texel = gfx;
+	texture->texture.texels.cmp = (uint16_t *) idx;
+
+	if (pal != NULL) {
+		texture->texture.palette.pal = (COLOR *) pal;
+		texture->texture.palette.nColors = palSize / 2;
+	}
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
 	int type = TxIdentify(buffer, size);
 	switch (type) {
@@ -816,6 +895,8 @@ int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int siz
 			return TxReadNtga(texture, buffer, size);
 		case TEXTURE_TYPE_TOLOVERU:
 			return TxReadToLoveRu(texture, buffer, size);
+		case TEXTURE_TYPE_GRF:
+			return TxReadGrf(texture, buffer, size);
 	}
 	return 1;
 }

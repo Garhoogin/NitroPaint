@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "nns.h"
+#include "compression.h"
 
 // ----- NNS generic
 
@@ -830,3 +831,124 @@ void IscadWriteBlock(IscadStream *stream, const char *signature, const void *dat
 void IscadStreamFlushOut(IscadStream *stream, BSTREAM *out) {
 	bstreamWrite(out, stream->stream.buffer, stream->stream.size);
 }
+
+
+// ----- Homebrew file format
+
+static int GrfIsValidCommon(const unsigned char *buffer, unsigned int size) {
+	//header
+	if (size < 0xC) return 0;
+	if (memcmp(buffer + 0x0, "RIFF", 4) != 0) return 0;
+	if (memcmp(buffer + 0x8, "GRF ", 4) != 0) return 0;
+
+	uint32_t fileSize = *(const uint32_t *) (buffer + 0x4);
+	if (fileSize > size) return 0; // reported size must not exceed the buffer size
+	if (fileSize < 4) return 0;    // reported file size must be big enough for 'GRF' header
+
+	//check blocks
+	unsigned int offset = 0xC;
+	while ((offset + 8) <= fileSize) {
+		const unsigned char *hdr = buffer + offset;
+		uint32_t blockSize = *(const uint32_t *) (hdr + 0x4);
+
+		offset += 8;
+		if (blockSize & 3) return 0;                       // block size not aligned
+		if (blockSize > (fileSize + 8 - offset)) return 0; // block too big
+
+		//next block
+		offset += blockSize;
+	}
+	return 1;
+}
+
+unsigned char *GrfFindBlockBySignature(const unsigned char *buffer, unsigned int size, const char *signature, unsigned int *pSize) {
+	uint32_t fileSize = *(const uint32_t *) (buffer + 0x4);
+
+	//check blocks
+	unsigned int offset = 0xC;
+	while ((offset + 8) <= fileSize) {
+		const unsigned char *hdr = buffer + offset;
+		uint32_t blockSize = *(const uint32_t *) (hdr + 0x4);
+
+		offset += 8;
+		if (memcmp(hdr, signature, 4) == 0) {
+			*pSize = blockSize;
+			return (unsigned char *) buffer + offset;
+		}
+
+		//next block
+		offset += blockSize;
+	}
+	return NULL;
+}
+
+unsigned char *GrfReadBlockUncompressed(const unsigned char *buffer, unsigned int size, const char *signature, unsigned int *pSize) {
+	unsigned int blockSize;
+	const unsigned char *block = GrfFindBlockBySignature(buffer, size, signature, &blockSize);
+	if (block == NULL) return NULL;
+
+	//uncompress
+	if (blockSize < 4) return NULL;
+
+	uint32_t header = *(const uint32_t *) block;
+	if (header == ((blockSize - 4) << 8)) {
+		//dummy compression block
+		unsigned char *out = (unsigned char *) calloc(blockSize - 4, 1);
+		memcpy(out, block + 4, blockSize - 4);
+		*pSize = blockSize - 4;
+		return out;
+	}
+
+	unsigned char compType = block[0];
+	switch (compType >> 4) {
+		case 0x0:
+		case 0x1:
+		case 0x2:
+		case 0x3:
+			//decompress only the valid compression formats supported by the loader
+			return CxDecompress(block, blockSize, pSize);
+	}
+	return NULL;
+}
+
+static int GrfIsValid10(const unsigned char *buffer, unsigned int size) {
+	if (!GrfIsValidCommon(buffer, size)) return 0;
+
+	unsigned int hdrSize;
+	const unsigned char *hdr = GrfFindBlockBySignature(buffer, size, "HDR ", &hdrSize);
+	if (hdr == NULL) return 0;    // no HDR block
+	if (hdrSize < 0x10) return 0; // HDR block too small
+
+	return 1;
+}
+
+static int GrfIsValid20(const unsigned char *buffer, unsigned int size) {
+	if (!GrfIsValidCommon(buffer, size)) return 0;
+
+	unsigned int hdrSize;
+	const unsigned char *hdr = GrfFindBlockBySignature(buffer, size, "HDRX", &hdrSize);
+	if (hdr == NULL) return 0;
+	if (hdrSize < 0x18) return 0;
+
+	//check header
+	if (*(const uint16_t *) (hdr + 0x00) != 2) return 0;
+
+	return 1;
+}
+
+int GrfIsValid(const unsigned char *buffer, unsigned int size) {
+	if (GrfIsValid10(buffer, size)) return GRF_TYPE_GRF_10;
+	if (GrfIsValid20(buffer, size)) return GRF_TYPE_GRF_20;
+	return GRF_TYPE_INVALID;
+}
+
+unsigned char *GrfGetHeader(const unsigned char *buffer, unsigned int size, unsigned int *pSize) {
+	switch (GrfIsValid(buffer, size)) {
+		case GRF_TYPE_GRF_10:
+			return GrfFindBlockBySignature(buffer, size, "HDR ", pSize);
+		case GRF_TYPE_GRF_20:
+			return GrfFindBlockBySignature(buffer, size, "HDRX", pSize);
+	}
+	return NULL;
+}
+

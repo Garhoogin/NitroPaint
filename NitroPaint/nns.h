@@ -94,3 +94,16 @@ void IscadStreamWrite(IscadStream *stream, const void *data, unsigned int len);
 void IscadStreamWriteCountedString(IscadStream *stream, const char *str);
 void IscadWriteBlock(IscadStream *stream, const char *signature, const void *data, unsigned int len);
 void IscadStreamFlushOut(IscadStream *stream, BSTREAM *out);
+
+
+// ----- Homebrew file format
+
+#define GRF_TYPE_INVALID 0   // invalid
+#define GRF_TYPE_GRF_10  1   // GRF 1.0 (devkiPro variant)
+#define GRF_TYPE_GRF_20  2   // GRF 2.0 (BlocksDS variant)
+
+int GrfIsValid(const unsigned char *buffer, unsigned int size);
+unsigned char *GrfFindBlockBySignature(const unsigned char *buffer, unsigned int size, const char *signature, unsigned int *pSize);
+unsigned char *GrfReadBlockUncompressed(const unsigned char *buffer, unsigned int size, const char *signature, unsigned int *pSize);
+unsigned char *GrfGetHeader(const unsigned char *buffer, unsigned int size, unsigned int *pSize);
+
