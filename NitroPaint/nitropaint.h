@@ -118,6 +118,11 @@ float GetDpiScale(void);
 void HandleNonClientDpiScale(HWND hWnd);
 
 //
+// Get the suggested DPI scale for an editor window based on the current DPI.
+//
+int NpGetSuggestedViewerScale(void);
+
+//
 // Apply a DPI scaling factor to a window.
 //
 void DpiScaleChildren(HWND hWnd, float scale);

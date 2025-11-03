@@ -183,6 +183,16 @@ HFONT GetGUIFont(void) {
 	return hFont;
 }
 
+int NpGetSuggestedViewerScale(void) {
+	float dpiScale = GetDpiScale();
+	if (dpiScale <= 1.0f) return 1; // 1x
+
+	//round up to a power of 2 scale
+	float log2Scale = 1.0f;
+	while (log2Scale < dpiScale && log2Scale < 8.0f) log2Scale *= 2.0f;
+	return (int) log2Scale;
+}
+
 void HandleNonClientDpiScale(HWND hWnd) {
 	if (!g_configuration.dpiAware) return;
 
