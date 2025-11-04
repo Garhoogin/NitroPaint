@@ -51,7 +51,37 @@ typedef struct {
 	double partialSumWeights;
 	double weightedSquares;
 	double weight;
-} COLOR_INFO; 
+} COLOR_INFO;
+
+
+// ----- memory allocation wrappers for SIMD use
+
+#ifdef RX_SIMD
+
+#define ALLOC_ALIGN sizeof(__m128)
+
+void *RxMemAlloc(size_t size) {
+	unsigned char *req = malloc((size + sizeof(void *) + ALLOC_ALIGN - 1) & ~(ALLOC_ALIGN - 1));
+	unsigned char *aligned = (unsigned char *) ((((uintptr_t) req) + sizeof(void *) + ALLOC_ALIGN - 1) & ~(uintptr_t) (ALLOC_ALIGN - 1));
+	if (aligned != NULL) ((void **) aligned)[-1] = req;
+
+	return aligned;
+}
+
+void *RxMemCalloc(size_t nMemb, size_t size) {
+	unsigned char *req = calloc((size * nMemb + sizeof(void *) + ALLOC_ALIGN - 1) & ~(ALLOC_ALIGN - 1), 1);
+	unsigned char *aligned = (unsigned char *) ((((uintptr_t) req) + sizeof(void *) + ALLOC_ALIGN - 1) & ~(uintptr_t) (ALLOC_ALIGN - 1));
+	if (aligned != NULL) ((void **) aligned)[-1] = req;
+
+	return aligned;
+}
+
+void RxMemFree(void *p) {
+	if (p != NULL) free(((void **) p)[-1]);
+}
+
+#endif
+
 
 static COLOR32 RxMaskColorToDS15(COLOR32 c) {
 	//DS mode masking: round color channels to 5-bit values, and force alpha=0xff
@@ -115,7 +145,7 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 }
 
 RxReduction *RxNew(int balance, int colorBalance, int enhanceColors, unsigned int nColors) {
-	RxReduction *reduction = (RxReduction *) calloc(1, sizeof(RxReduction));
+	RxReduction *reduction = (RxReduction *) RxMemCalloc(1, sizeof(RxReduction));
 	if (reduction == NULL) return NULL;
 
 	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
@@ -142,7 +172,7 @@ static void *RxiSlabAlloc(RxSlab *allocator, unsigned int size) {
 
 	//if no slab is allocated, allocate one.
 	if (allocator->allocation == NULL) {
-		allocator->allocation = calloc(RX_SLAB_SIZE, 1);
+		allocator->allocation = RxMemCalloc(RX_SLAB_SIZE, 1);
 		allocator->pos = 0;
 	}
 
@@ -150,7 +180,7 @@ static void *RxiSlabAlloc(RxSlab *allocator, unsigned int size) {
 	while ((allocator->pos + size) > RX_SLAB_SIZE) {
 		if (allocator->next == NULL) {
 			RxSlab *next = calloc(1, sizeof(RxSlab));
-			next->allocation = calloc(RX_SLAB_SIZE, 1);
+			next->allocation = RxMemCalloc(RX_SLAB_SIZE, 1);
 			next->pos = 0;
 			allocator->next = next;
 		}
@@ -163,7 +193,7 @@ static void *RxiSlabAlloc(RxSlab *allocator, unsigned int size) {
 }
 
 static void RxiSlabFree(RxSlab *allocator) {
-	if (allocator->allocation != NULL) free(allocator->allocation);
+	if (allocator->allocation != NULL) RxMemFree(allocator->allocation);
 	allocator->allocation = NULL;
 
 	if (allocator->next != NULL) {
@@ -274,7 +304,7 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	yiq->a = (float) ((rgb >> 24) & 0xFF);
 #else
 	//vectorized implementation
-	__m128i rgbVeci = _mm_and_si128(_mm_set_epi32(0, rgb >> 16, rgb >> 8, rgb >> 0), _mm_set_epi32(0, 0xFF, 0xFF, 0xFF));
+	__m128i rgbVeci = _mm_unpacklo_epi16(_mm_unpacklo_epi8(_mm_cvtsi32_si128(rgb), _mm_setzero_si128()), _mm_setzero_si128());
 	__m128 rgbVec = _mm_cvtepi32_ps(rgbVeci);
 	
 	__m128 yVec = _mm_mul_ps(rgbVec, _mm_set_ps(0.0f,  0.22800f,  1.17400f, 0.59800f));
@@ -282,26 +312,18 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	__m128 qVec = _mm_mul_ps(rgbVec, _mm_set_ps(0.0f,  0.62206f, -1.04408f, 0.42204f));
 
 	//do three horizontal sums
-	__m128 yTemp = _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(2, 3, 0, 1)); // OK
-	yVec = _mm_add_ps(yVec, yTemp);
-	yTemp = _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(0, 1, 2, 3));
-	yVec = _mm_add_ps(yVec, yTemp);
+	yVec = _mm_add_ps(yVec, _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(2, 3, 0, 1)));
+	iVec = _mm_add_ps(iVec, _mm_shuffle_ps(iVec, iVec, _MM_SHUFFLE(0, 1, 2, 3)));
+	qVec = _mm_add_ps(qVec, _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(0, 1, 2, 3)));
 
-	__m128 iTemp = _mm_shuffle_ps(iVec, iVec, _MM_SHUFFLE(2, 3, 0, 1));
-	iVec = _mm_add_ps(iVec, iTemp);
-	iTemp = _mm_shuffle_ps(iVec, iVec, _MM_SHUFFLE(0, 1, 2, 3));
-	iVec = _mm_add_ps(iVec, iTemp);
-
-	__m128 qTemp = _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(2, 3, 0, 1));
-	qVec = _mm_add_ps(qVec, qTemp);
-	qTemp = _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(0, 1, 2, 3));
-	qVec = _mm_add_ps(qVec, qTemp);
+	__m128 iqVec = _mm_shuffle_ps(iVec, qVec, _MM_SHUFFLE(0, 1, 0, 1)); // lo: half I sum, hi: half Q sum, halves reversed
+	yVec = _mm_add_ss(yVec, _mm_movehl_ps(yVec, yVec));
+	iqVec = _mm_add_ps(iqVec, _mm_shuffle_ps(iqVec, iqVec, _MM_SHUFFLE(2, 3, 0, 1)));
 
 	//sums distributed horizontally, so we mask them out
-	__m128 yMask = _mm_castsi128_ps(_mm_set_epi32(0, 0, 0, -1));
-	__m128 iMask = _mm_castsi128_ps(_mm_set_epi32(0, 0, -1, 0));
-	__m128 qMask = _mm_castsi128_ps(_mm_set_epi32(0, -1, 0, 0));
-	__m128 yiqVec = _mm_or_ps(_mm_or_ps(_mm_and_ps(yVec, yMask), _mm_and_ps(iVec, iMask)), _mm_and_ps(qVec, qMask));
+	__m128 iqMask = _mm_castsi128_ps(_mm_set_epi32(0, -1, -1, 0));
+	__m128 aMask = _mm_castsi128_ps(_mm_set_epi32(-1, 0, 0, 0));
+	__m128 yiqVec = _mm_move_ss(_mm_and_ps(iqVec, iqMask), yVec);
 	
 	//apply soft clamping by I>245, Q<-215 by 2/3
 	__m128 excess = _mm_sub_ps(yiqVec, _mm_set_ps(0.0f, -215.0f, 245.0f, 0.0f));     // I excess of 245, Q excess of -215
@@ -311,28 +333,27 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	yiqVec = _mm_add_ps(yiqVec, excess);
 
 	//soft clamp on Q-I difference
-	__m128 iqDiff = _mm_sub_ss(_mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(2, 2, 2, 2)), _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1)));
+	__m128 iqDiff = _mm_sub_ss(_mm_movehl_ps(yiqVec, yiqVec), _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1)));
 	__m128 diq = _mm_sub_ss(iqDiff, _mm_set_ss(265.0f));
 
 	// if (diq >= 0.0)
 	{
-		diq = _mm_max_ps(diq, _mm_setzero_ps());                      // if (diq < 0.0) diq = 0.0
+		diq = _mm_max_ss(diq, _mm_setzero_ps());                      // if (diq < 0.0) diq = 0.0
 		diq = _mm_shuffle_ps(diq, diq, _MM_SHUFFLE(0, 0, 0, 0));      // distribute across vector register
 		diq = _mm_mul_ps(diq, _mm_set_ps(0.0f, -0.25f, 0.25f, 0.0f)); // scale by 0.25 and make Q difference negative
 		yiqVec = _mm_add_ps(yiqVec, diq);
 	}
 
 	iVec = _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1));
-	qVec = _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(2, 2, 2, 2));
+	qVec = _mm_movehl_ps(yiqVec, yiqVec);
 	// if (i < 0.0 && q > 0.0)
 	{
-		__m128 sub = _mm_mul_ss(_mm_mul_ss(_mm_min_ps(iVec, _mm_setzero_ps()), _mm_max_ps(qVec, _mm_setzero_ps())), _mm_set_ss((float) INV_512));
+		__m128 sub = _mm_mul_ss(_mm_mul_ss(_mm_min_ss(iVec, _mm_setzero_ps()), _mm_max_ss(qVec, _mm_setzero_ps())), _mm_set_ss((float) INV_512));
 		yiqVec = _mm_sub_ss(yiqVec, sub);
 	}
 
 	//insert alpha channel to the output vector
-	yiq->yiq = _mm_add_ps(yiqVec, _mm_and_ps(_mm_cvtepi32_ps(_mm_set1_epi32(rgb >> 24)), _mm_castsi128_ps(_mm_set_epi32(-1, 0, 0, 0))));
-	(void) _aligned_malloc(4, 4);
+	yiq->yiq = _mm_add_ps(yiqVec, _mm_and_ps(rgbVec, aMask));
 #endif
 }
 
@@ -533,7 +554,7 @@ void RxiTreeFree(RxColorNode *colorBlock, int freeThis) {
 		colorBlock->right = NULL;
 	}
 	if (freeThis) {
-		free(colorBlock);
+		RxMemFree(colorBlock);
 	}
 }
 
@@ -552,13 +573,13 @@ static int RxiTreeSplitNode(RxColorNode *node) {
 
 	if (node->left == NULL && node->right == NULL) {
 		if (node->pivotIndex > node->startIndex && node->pivotIndex < node->endIndex) {
-			RxColorNode *newNode = (RxColorNode *) calloc(1, sizeof(RxColorNode));
+			RxColorNode *newNode = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode));
 			newNode->canSplit = TRUE;
 			newNode->startIndex = node->startIndex;
 			newNode->endIndex = node->pivotIndex;
 			node->left = newNode;
 
-			newNode = (RxColorNode *) calloc(1, sizeof(RxColorNode));
+			newNode = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode));
 			newNode->canSplit = TRUE;
 			newNode->startIndex = node->pivotIndex;
 			newNode->endIndex = node->endIndex;
@@ -1036,7 +1057,7 @@ static void RxiTreeAdjustOneChildNodes(RxColorNode *tree) {
 	if (pTake != NULL) {
 		//copy info from taken node
 		memcpy(tree, pTake, sizeof(RxColorNode));
-		free(pTake); // do NOT RxiTreeFree. We still want its children!
+		RxMemFree(pTake); // do NOT RxiTreeFree. We still want its children!
 	}
 }
 
@@ -1352,7 +1373,7 @@ void RxComputePalette(RxReduction *reduction) {
 	}
 
 	//do it
-	RxColorNode *treeHead = (RxColorNode *) calloc(1, sizeof(RxColorNode));
+	RxColorNode *treeHead = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode));
 	treeHead->canSplit = TRUE;
 	treeHead->startIndex = 0;
 	treeHead->endIndex = reduction->histogram->nEntries;
@@ -1409,7 +1430,7 @@ void RxHistClear(RxReduction *reduction) {
 	}
 
 	if (reduction->colorTreeHead != NULL) RxiTreeFree(reduction->colorTreeHead, FALSE);
-	free(reduction->colorTreeHead);
+	RxMemFree(reduction->colorTreeHead);
 
 	reduction->colorTreeHead = NULL;
 	reduction->nUsedColors = 0;
@@ -1423,12 +1444,12 @@ void RxDestroy(RxReduction *reduction) {
 		free(reduction->histogram);
 	}
 	if (reduction->colorTreeHead != NULL) RxiTreeFree(reduction->colorTreeHead, FALSE);
-	free(reduction->colorTreeHead);
+	RxMemFree(reduction->colorTreeHead);
 }
 
 void RxFree(RxReduction *reduction) {
 	RxDestroy(reduction);
-	free(reduction);
+	RxMemFree(reduction);
 }
 
 int RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors) {
@@ -1526,7 +1547,7 @@ double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette,
 	RxYiqColor yiqPaletteStack[16];
 	RxYiqColor *yiqPalette = yiqPaletteStack;
 	if (nColors > 16) {
-		yiqPalette = (RxYiqColor *) calloc(nColors, sizeof(RxYiqColor));
+		yiqPalette = (RxYiqColor *) RxMemCalloc(nColors, sizeof(RxYiqColor));
 	}
 
 	//convert palette colors
@@ -1536,7 +1557,7 @@ double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette,
 
 	double error = RxHistComputePaletteErrorYiq(reduction, yiqPalette, nColors, maxError);
 
-	if (yiqPalette != yiqPaletteStack) free(yiqPalette);
+	if (yiqPalette != yiqPaletteStack) RxMemFree(yiqPalette);
 	return error;
 }
 
@@ -1666,7 +1687,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	// ----- STAGE 1: create tile  data
 
 	unsigned int nTiles = tilesX * tilesY;
-	RxiTile *tiles = (RxiTile *) calloc(nTiles, sizeof(RxiTile));
+	RxiTile *tiles = (RxiTile *) RxMemCalloc(nTiles, sizeof(RxiTile));
 	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColsPerPalette);
 
 	for (unsigned int y = 0; y < tilesY; y++) {
@@ -1821,7 +1842,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	//palette refinement
 	int nRefinements = 8;
 	int *bestPalettes = (int *) calloc(nTiles, sizeof(int));
-	RxYiqColor *yiqPalette = (RxYiqColor *) calloc(nPalettes, RX_TILE_PALETTE_MAX * sizeof(RxYiqColor));
+	RxYiqColor *yiqPalette = (RxYiqColor *) RxMemCalloc(nPalettes, RX_TILE_PALETTE_MAX * sizeof(RxYiqColor));
 	for (int k = 0; k < nRefinements; k++) {
 		//palette to YIQ
 		for (int i = 0; i < nPalettes; i++) {
@@ -1868,7 +1889,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			memcpy(palettes + i * RX_TILE_PALETTE_MAX, reduction->paletteRgb, nColsPerPalette * sizeof(COLOR32));
 		}
 	}
-	free(yiqPalette);
+	RxMemFree(yiqPalette);
 
 	//write palettes in the correct size
 	reduction->nPaletteColors = nFinalColsPerPalette;
@@ -1901,7 +1922,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	free(palettes);
 	free(bestPalettes);
 	RxFree(reduction);
-	free(tiles);
+	RxMemFree(tiles);
 	free(diffBuff);
 }
 
@@ -1944,13 +1965,13 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
 
 	//convert palette to YIQ
-	RxYiqColor *yiqPalette = (RxYiqColor *) calloc(nColors, sizeof(RxYiqColor));
+	RxYiqColor *yiqPalette = (RxYiqColor *) RxMemCalloc(nColors, sizeof(RxYiqColor));
 	for (unsigned int i = 0; i < nColors; i++) {
 		RxConvertRgbToYiq(palette[i], &yiqPalette[i]);
 	}
 
 	//allocate row buffers for color and diffuse.
-	RxYiqColor *rowbuf = (RxYiqColor *) calloc(4 * (width + 2), sizeof(RxYiqColor));
+	RxYiqColor *rowbuf = (RxYiqColor *) RxMemCalloc(4 * (width + 2), sizeof(RxYiqColor));
 	RxYiqColor *thisRow = rowbuf;
 	RxYiqColor *lastRow = thisRow + (width + 2);
 	RxYiqColor *thisDiffuse = lastRow + (width + 2);
@@ -2152,8 +2173,8 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 		memset(nextDiffuse, 0, (width + 2) * sizeof(RxYiqColor));
 	}
 
-	free(yiqPalette);
-	free(rowbuf);
+	RxMemFree(yiqPalette);
+	RxMemFree(rowbuf);
 }
 
 double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *pal, unsigned int nColors, double nMaxError) {
@@ -2163,7 +2184,7 @@ double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned
 	RxYiqColor paletteYiqStack[16]; //small palettes
 	RxYiqColor *paletteYiq = paletteYiqStack;
 	if (nColors > 16) {
-		paletteYiq = (RxYiqColor *) calloc(nColors, sizeof(RxYiqColor));
+		paletteYiq = (RxYiqColor *) RxMemCalloc(nColors, sizeof(RxYiqColor));
 	}
 
 	//palette to YIQ
@@ -2184,11 +2205,11 @@ double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned
 
 		error += bestDiff;
 		if (error >= nMaxError) {
-			if (paletteYiq != paletteYiqStack) free(paletteYiq);
+			if (paletteYiq != paletteYiqStack) RxMemFree(paletteYiq);
 			return nMaxError;
 		}
 	}
 
-	if (paletteYiq != paletteYiqStack) free(paletteYiq);
+	if (paletteYiq != paletteYiqStack) RxMemFree(paletteYiq);
 	return error;
 }

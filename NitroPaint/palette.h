@@ -81,6 +81,16 @@ typedef struct RxDitherSetting_ {
 	float diffuse;        // dithering amount (0-1)
 } RxDitherSetting;
 
+#ifndef RX_SIMD
+#define RxMemAlloc  malloc
+#define RxMemCalloc calloc
+#define RxMemFree   free
+#else // RX_SIMD
+void *RxMemAlloc(size_t size);
+void *RxMemCalloc(size_t nMemb, size_t size);
+void RxMemFree(void *p);
+#endif
+
 //
 // Comparator for use with qsort, sortrs an array of colors by lightness.
 //
