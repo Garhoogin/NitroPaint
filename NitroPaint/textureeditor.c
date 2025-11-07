@@ -1509,6 +1509,19 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						colorEntries = 32768;
 					}
 
+					//check texture format 
+					unsigned int nPx = data->width * data->height;
+					if (fmt == CT_4x4 && nPx > (512 * 1024)) {
+						//ordinary texture VRAM allocation prohibits this
+						int cfm = MessageBox(hWnd, L"Converting tex4x4 texture larger than 1024x512. Proceed?", L"Texture Size Warning", MB_ICONWARNING | MB_YESNO);
+						if (cfm == IDNO) break;
+					}
+					if ((fmt == CT_256COLOR || fmt == CT_A5I3 || fmt == CT_A3I5) && nPx > (512 * 1024)) {
+						//texture cannot fit in VRAM
+						int cfm = MessageBox(hWnd, L"Texture data size exceeds VRAM capacity. Proceed?", L"Texture Size Warning", MB_ICONWARNING | MB_YESNO);
+						if (cfm == IDNO) break;
+					}
+
 					char *mbpnam = TexNarrowResourceNameFromWideChar(bf);
 
 					//alpha key preprocessing of input image
