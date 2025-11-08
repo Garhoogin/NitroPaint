@@ -2229,6 +2229,9 @@ static void AnmViewerInsertFrame(NANRVIEWERDATA *data, int i) {
 	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
 	if (seq == NULL) return;
 
+	if (i < 0) i = 0;
+	if (i > seq->nFrames) i = seq->nFrames;
+
 	seq->nFrames++;
 	seq->frames = (FRAME_DATA *) realloc(seq->frames, seq->nFrames * sizeof(FRAME_DATA));
 	memmove(&seq->frames[i + 1], &seq->frames[i], (seq->nFrames - i - 1) * sizeof(FRAME_DATA));
