@@ -61,7 +61,7 @@ static HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	return hBitmap;
 }
 
-int levenshtein(const char *str1, int l1, const char *str2, int l2, int dst, int maxDst) {
+static int levenshtein(const char *str1, int l1, const char *str2, int l2, int dst, int maxDst) {
 	if (dst >= maxDst) return maxDst;
 	while (1) {
 		if (l1 == 0) return l2;
@@ -85,7 +85,7 @@ int levenshtein(const char *str1, int l1, const char *str2, int l2, int dst, int
 	}
 }
 
-int calculateHighestPaletteIndex(TEXELS *texture) {
+static int calculateHighestPaletteIndex(TEXELS *texture) {
 	int format = FORMAT(texture->texImageParam);
 	if (format == CT_DIRECT) return -1;
 
@@ -384,6 +384,42 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 	return succeeded;
 }
 
+static int NsbtxViewerCheckSave(NSBTXVIEWERDATA *data) {
+	//NSBTX files: check lengths under 16 characters
+
+	if (data->nsbtx.header.format == NSBTX_TYPE_NNS) {
+		int warnNames = 0;
+		WCHAR *warnbuf = _wcsdup(L"Resource names truncated on save:");
+		WCHAR warntemp[96];
+
+		for (int i = 0; i < data->nsbtx.nTextures; i++) {
+			if (strlen(data->nsbtx.textures[i].name) <= 16) continue;
+
+			wsprintfW(warntemp, L"\n  %.64S -> %.16S", data->nsbtx.textures[i].name, data->nsbtx.textures[i].name);
+
+			warnbuf = (WCHAR *) realloc(warnbuf, (wcslen(warnbuf) + wcslen(warntemp) + 1) * sizeof(WCHAR));
+			memcpy(warnbuf + wcslen(warnbuf), warntemp, (wcslen(warntemp) + 1) * sizeof(WCHAR));
+			warnNames++;
+		}
+		for (int i = 0; i < data->nsbtx.nPalettes; i++) {
+			if (strlen(data->nsbtx.palettes[i].name) <= 16) continue;
+
+			wsprintfW(warntemp, L"\n  %.64S -> %.16S", data->nsbtx.palettes[i].name, data->nsbtx.palettes[i].name);
+
+			warnbuf = (WCHAR *) realloc(warnbuf, (wcslen(warnbuf) + wcslen(warntemp) + 1) * sizeof(WCHAR));
+			memcpy(warnbuf + wcslen(warnbuf), warntemp, (wcslen(warntemp) + 1) * sizeof(WCHAR));
+			warnNames++;
+		}
+
+		if (warnNames) {
+			MessageBox(data->hWnd, warnbuf, L"Name Truncation", MB_ICONWARNING);
+		}
+		free(warnbuf);
+	}
+
+	return 1;
+}
+
 LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NSBTXVIEWERDATA *data = (NSBTXVIEWERDATA *) EditorGetData(hWnd);
 	switch (msg) {
@@ -537,7 +573,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 								free(path);
 							} else break;
 						}
-						TexarcWriteFile(&data->nsbtx, data->szOpenFile);
+						if (NsbtxViewerCheckSave(data)) {
+							TexarcWriteFile(&data->nsbtx, data->szOpenFile);
+						}
 						break;
 					}
 					case ID_ZOOM_100:
