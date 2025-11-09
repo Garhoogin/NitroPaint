@@ -3720,13 +3720,18 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
 
+			float dpiScale = GetDpiScale();
 			int bottomY = 10 + 18;
 			int boxHeight1 = 105;
-			int boxY = bottomY + boxHeight1 + 10;
-			int prevHeight = rcClient.bottom - boxY - 10 - 27;
+			int boxY = bottomY + boxHeight1 + 10 + 27;
+			int prevHeight = rcClient.bottom - UI_SCALE_COORD(boxY + 10, dpiScale);
+			int prevWidth = (rcClient.right - UI_SCALE_COORD(20, dpiScale)) / 2;
 
-			MoveWindow(data->hWndPreview1, 10, boxY + 27, (rcClient.right - 20) / 2, prevHeight, TRUE);
-			MoveWindow(data->hWndPreview2, 10 + (rcClient.right - 20) / 2, boxY + 27, rcClient.right - 20 - (rcClient.right - 20) / 2, prevHeight, TRUE);
+
+			MoveWindow(data->hWndPreview1, UI_SCALE_COORD(10, dpiScale), UI_SCALE_COORD(boxY, dpiScale),
+				prevWidth, prevHeight, TRUE);
+			MoveWindow(data->hWndPreview2, UI_SCALE_COORD(10, dpiScale) + prevWidth, UI_SCALE_COORD(boxY, dpiScale),
+				rcClient.right - UI_SCALE_COORD(20, dpiScale) - prevWidth, prevHeight, TRUE);
 
 			RedGuiUpdateScrollbars(data);
 			break;
