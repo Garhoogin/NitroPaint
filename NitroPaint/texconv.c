@@ -710,7 +710,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, in
 	//iterate over all non-duplicate tiles, adding the palettes.
 	//colorTable keeps track of how each color is intended to be used.
 	int *colorTable = (int *) calloc(nPalettes * 2, sizeof(int));
-	int diffThreshold = threshold * threshold * 52; //threshold 0-100, square normalized to 0-1040400/2
+	double diffThreshold = (threshold * threshold) * reduction->yWeight2 * (255.0 * 4.0 / 10000.0);
 	int firstSlot = 0;
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
@@ -743,7 +743,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, in
 				while ((firstSlot + nConsumed > nPalettes * 2) || (threshold && fits)) {
 					//determine which two palettes are the most similar.
 					int colorIndex1 = -1, colorIndex2 = -1;
-					int distance = (int) TxiFindClosestPalettes(reduction, plttYiq, colorTable, firstSlot, &colorIndex1, &colorIndex2);
+					double distance = TxiFindClosestPalettes(reduction, plttYiq, colorTable, firstSlot, &colorIndex1, &colorIndex2);
 					if (colorIndex1 == -1) break;
 					if (fits && (distance > diffThreshold || firstSlot < 8)) break;
 					int nColorsInPalettes = TxiTableToPaletteSize(colorTable[colorIndex1]);
