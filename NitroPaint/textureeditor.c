@@ -171,52 +171,22 @@ static DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
 	return TxConvert(params);
 }
 
-static HANDLE textureConvertThreaded(
-	COLOR32 *px,                 // pixel data of the input image.
-	int      width,              // width of the input image.
-	int      height,             // height of the input image.
-	int      fmt,                // texture format to generate.
-	int      dither,             // enables dithering.
-	float    diffuse,            // level of diffusion to use for dithering.
-	int      ditherAlpha,        // controls dithering of the alpha channel.
-	int      c0xp,               // indicates color-0 transparency (valid for palette4, palette16, palette256).
-	int      colorEntries,       // size of palette to be created.
-	int      useFixedPalette,    // indicates use of fixed palette
-	COLOR   *fixedPalette,       // fixed palette (should hold colorEntries colors, or be NULL for no fixed palette)
-	int      threshold,          // 4x4 compression threshold setting
-	int      balance,            // balance setting
-	int      colorBalance,       // color balance setting
-	int      enhanceColors,      // enhance colors setting
-	char    *pnam,               // the palette name
-	TEXTURE *dest,               // the destination texture object (make sure this object is valid while texture conversion is in process!)
-	void   (*callback) (void *), // callback function to be called when texture conversion completes
-	void    *callbackParam       // parameter to pass to the callback function when texture convresion completes
-){
-	TxConversionParameters *params = (TxConversionParameters *) calloc(1, sizeof(TxConversionParameters));
-	g_texCompressionFinished = 0;
-	params->px = px;
-	params->width = width;
-	params->height = height;
-	params->fmt = fmt;
-	params->dither = dither;
-	params->diffuseAmount = diffuse;
-	params->c0xp = c0xp;
-	params->ditherAlpha = ditherAlpha;
-	params->colorEntries = colorEntries;
-	params->threshold = threshold;
-	params->balance = balance;
-	params->colorBalance = colorBalance;
-	params->enhanceColors = enhanceColors;
-	params->dest = dest;
-	params->callback = callback;
-	params->callbackParam = callbackParam;
-	params->useFixedPalette = useFixedPalette;
-	params->fixedPalette = useFixedPalette ? fixedPalette : NULL;
-
-	unsigned int pnamLen = strlen(pnam);
-	params->pnam = (char *) calloc(pnamLen + 1, 1);
-	memcpy(params->pnam, pnam, pnamLen + 1);
+static HANDLE textureConvertThreaded(TxConversionParameters *params){
 	return CreateThread(NULL, 0, textureStartConvertThreadEntry, (LPVOID) params, 0, NULL);
+}
+
+static void TexViewerModalConvert(TxConversionParameters *params, HWND hWndMain) {
+	//modal window
+	HWND hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing",
+		WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
+		CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, hWndMain, NULL, NULL, NULL);
+
+	//set progress window to conversion operation
+	SendMessage(hWndProgress, NV_INITIALIZE, 0, (LPARAM) params);
+
+	//start conversion thread and modal wait
+	HANDLE hThread = textureConvertThreaded(params);
+	DoModalWait(hWndProgress, hThread);
 }
 
 static HCURSOR TexViewerGetCursorProc(HWND hWnd, int hit) {
@@ -1283,11 +1253,6 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	SetFocus(data->hWndConvertDialog);
 }
 
-static void conversionCallback(void *p) {
-	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) p;
-	SendMessage(data->hWndProgress, WM_CLOSE, 0, 0);
-}
-
 static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 	switch (msg) {
@@ -1471,13 +1436,15 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						free(path);
 					}
 				} else if ((hWndControl == data->hWndDoConvertButton && controlCode == BN_CLICKED) || idc == IDOK) {
+					TxConversionParameters params = { 0 };
+
 					int fmt = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
-					BOOL fixedPalette = GetCheckboxChecked(data->hWndFixedPalette);
 
 					WCHAR path[MAX_PATH];
 					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH, (LPARAM) path);
 
 					NCLR paletteFile = { 0 };
+					BOOL fixedPalette = GetCheckboxChecked(data->hWndFixedPalette);
 					if (fixedPalette) {
 						int status = 1;
 						if (path[0]) {
@@ -1491,20 +1458,19 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 					WCHAR bf[64];
 					int colorEntries = GetEditNumber(data->hWndColorEntries); //for 4x4
-					float diffuse = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
 					int paletteSize = GetEditNumber(data->hWndPaletteSize); //for non-4x4
-					int optimization = GetTrackbarPosition(data->hWndOptimizationSlider);
+					params.diffuseAmount = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
+					params.threshold = GetTrackbarPosition(data->hWndOptimizationSlider);
 					SendMessage(data->hWndPaletteName, WM_GETTEXT, 63, (LPARAM) bf);
 
 					RxBalanceSetting balance;
-					BOOL dither = GetCheckboxChecked(data->hWndDither);
-					BOOL ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
-					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
-					BOOL c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
-					BOOL useAlphaKey = GetCheckboxChecked(data->hWndCheckboxAlphaKey);
+					params.dither = GetCheckboxChecked(data->hWndDither);
+					params.ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
+					params.c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
 					NpGetBalanceSetting(&data->balance, &balance);
 
 					//if we set to not limit palette, set the max size to the max allowed
+					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
 					if (!limitPalette || colorEntries > 32768) {
 						colorEntries = 32768;
 					}
@@ -1522,9 +1488,8 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						if (cfm == IDNO) break;
 					}
 
-					char *mbpnam = TexNarrowResourceNameFromWideChar(bf);
-
 					//alpha key preprocessing of input image
+					BOOL useAlphaKey = GetCheckboxChecked(data->hWndCheckboxAlphaKey);
 					if (useAlphaKey) {
 						for (int i = 0; i < data->width * data->height; i++) {
 							COLOR32 c = data->px[i];
@@ -1534,31 +1499,36 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						}
 					}
 
-					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-					data->hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), 
-													  CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, hWndMain, NULL, NULL, NULL);
-					ShowWindow(data->hWndProgress, SW_SHOW);
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
-					SetActiveWindow(data->hWndProgress);
-					textureConvertThreaded(data->px, data->width, data->height, fmt, dither, diffuse, ditherAlpha, c0xp,
-									fixedPalette ? paletteFile.nColors : (fmt == CT_4x4 ? colorEntries : paletteSize), 
-									fixedPalette, paletteFile.colors, optimization, balance.balance, balance.colorBalance,
-									balance.enhanceColors, mbpnam, &data->texture.texture, conversionCallback, (void *) data);
+					params.px = data->px;
+					params.width = data->width;
+					params.height = data->height;
+					params.fmt = fmt;
+					params.useFixedPalette = fixedPalette;
+					params.colorEntries = fixedPalette ? paletteFile.nColors : (fmt == CT_4x4 ? colorEntries : paletteSize);
+					params.balance = balance.balance;
+					params.colorBalance = balance.colorBalance;
+					params.enhanceColors = balance.enhanceColors;
+					params.dest = &data->texture.texture;
+					params.fixedPalette = fixedPalette ? paletteFile.colors : NULL;
+					params.pnam = TexNarrowResourceNameFromWideChar(bf);
+					params.callback = NULL;
+					params.callbackParam = NULL;
 
-					//wait progress end
-					DoModal(data->hWndProgress);
+					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					TexViewerModalConvert(&params, hWndMain);
 
 					//if the format is paletteN, we have not used fixed palette, color 0 was transparent and we used alpha keying, put 
 					//the alpha key into color index 0.
-					if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && c0xp && useAlphaKey && !fixedPalette) {
+					if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && params.c0xp && useAlphaKey && !fixedPalette) {
 						if (data->texture.texture.palette.nColors > 0) {
 							data->texture.texture.palette.pal[0] = ColorConvertToDS(data->alphaKey);
 						}
 					}
+					free(params.pnam);
 
 					InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 					data->isNitro = TRUE;
-					data->hWndProgress = NULL;
 
 					TexViewerUpdatePaletteLabel(data->hWnd);
 					data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
@@ -1584,6 +1554,8 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 }
 
 LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	TxConversionParameters *params = (TxConversionParameters *) GetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR));
+
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -1593,22 +1565,26 @@ LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			SetWindowLong(hWnd, 0, (LONG) hWndProgress);
 			SetWindowSize(hWnd, 420, 74);
 			SetGUIFont(hWnd);
-
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			SetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR), (LONG_PTR) (TxConversionParameters *) lParam);
 			SetTimer(hWnd, 1, 16, NULL);
 			break;
 		}
 		case WM_TIMER:
 		{
-			if (g_texCompressionProgressMax) {
+			if (params != NULL && params->progressMax) {
 				HWND hWndProgress = (HWND) GetWindowLongPtr(hWnd, 0);
-				SendMessage(hWndProgress, PBM_SETRANGE, 0, g_texCompressionProgressMax << 16);
-				SendMessage(hWndProgress, PBM_SETPOS, g_texCompressionProgress, 0);
+				SendMessage(hWndProgress, PBM_SETRANGE, 0, params->progressMax << 16);
+				SendMessage(hWndProgress, PBM_SETPOS, params->progress, 0);
 			}
 			break;
 		}
 		case WM_CLOSE:
 		{
-			if (g_texCompressionFinished) {
+			if (params != NULL && params->complete) {
 				KillTimer(hWnd, 1);
 				break;
 			} else {
@@ -2264,16 +2240,29 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 		BatchTexWriteOptions(configPath, fmt, dither, ditherAlpha, diffuse, colorEntries, c0xp, pnam, balance, colorBalance, enhanceColors);
 	}
 
-	HWND hWndMain = g_hWndBatchTexWindow;
-	HWND hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
-		CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, hWndMain, NULL, NULL, NULL);
-	ShowWindow(hWndProgress, SW_SHOW);
-
 	TEXTURE texture = { 0 };
-	HANDLE hThread = textureConvertThreaded(px, width, height, fmt, dither, diffuse, ditherAlpha, c0xp, colorEntries,
-		useFixedPalette, fixedPalette, threshold4x4, balance, colorBalance, enhanceColors, pnam, &texture,
-		NULL, NULL);
-	DoModalWait(hWndProgress, hThread); //modal wait progress window
+	TxConversionParameters params = { 0 };
+	params.complete = 0;
+	params.px = px;
+	params.width = width;
+	params.height = height;
+	params.fmt = fmt;
+	params.dither = dither;
+	params.diffuseAmount = diffuse;
+	params.c0xp = c0xp;
+	params.ditherAlpha = ditherAlpha;
+	params.colorEntries = colorEntries;
+	params.threshold = threshold4x4;
+	params.balance = balance;
+	params.colorBalance = colorBalance;
+	params.enhanceColors = enhanceColors;
+	params.dest = &texture;
+	params.callback = NULL;
+	params.callbackParam = NULL;
+	params.useFixedPalette = useFixedPalette;
+	params.fixedPalette = useFixedPalette ? fixedPalette : NULL;
+	params.pnam = pnam;
+	TexViewerModalConvert(&params, g_hWndBatchTexWindow);
 	
 	//contain texture
 	TextureObject textureObj;
@@ -2461,7 +2450,7 @@ static void RegisterConvertDialogClass(void) {
 }
 
 static void RegisterCompressionProgressClass(void) {
-	RegisterGenericClass(L"CompressionProgress", CompressionProgressProc, sizeof(LPVOID));
+	RegisterGenericClass(L"CompressionProgress", CompressionProgressProc, 2 * sizeof(LPVOID));
 }
 
 static void RegisterTexturePaletteEditorClass(void) {

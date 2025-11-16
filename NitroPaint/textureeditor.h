@@ -52,8 +52,6 @@ typedef struct {
 	HWND hWndSelectAlphaKey;
 	COLOR32 alphaKey;
 
-	HWND hWndProgress;
-
 	HWND hWndPaletteEditor;
 	DWORD tmpCust[16];
 

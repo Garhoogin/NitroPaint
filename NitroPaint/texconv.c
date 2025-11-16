@@ -256,10 +256,6 @@ static double TxiYFromRGB(COLOR32 rgb) {
 	return yiq.y;
 }
 
-volatile int g_texCompressionProgress = 0;
-volatile int g_texCompressionProgressMax = 0;
-volatile int g_texCompressionFinished = 0;
-
 typedef struct TxTileData_ {
 	COLOR32 rgb[16];           // the tile's initial RGBA color data
 	uint16_t used;             // marks a used tile
@@ -493,7 +489,7 @@ static void TxiChoosePaletteAndMode(RxReduction *reduction, TxTileData *tile) {
 	}
 }
 
-static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, const COLOR32 *px, int createPalette, int *totalIndex) {
+static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, const COLOR32 *px, int createPalette, int *totalIndex, volatile int *pProgress) {
 	memcpy(data[index].rgb, px, 64);
 	data[index].duplicate = 0;
 	data[index].used = 1;
@@ -580,10 +576,10 @@ static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, cons
 		}
 		*totalIndex += nPalettes;
 	}
-	g_texCompressionProgress++;
+	(*pProgress)++;
 }
 
-static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, int tilesX, int tilesY, int createPalette) {
+static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, int tilesX, int tilesY, int createPalette, volatile int *pProgress) {
 	TxTileData *data = (TxTileData *) calloc(tilesX * tilesY, sizeof(TxTileData));
 	int paletteIndex = 0;
 	for (int y = 0; y < tilesY; y++) {
@@ -594,7 +590,7 @@ static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, 
 			memcpy(tile +  4, px + offs + tilesX *  4, 4 * sizeof(COLOR32));
 			memcpy(tile +  8, px + offs + tilesX *  8, 4 * sizeof(COLOR32));
 			memcpy(tile + 12, px + offs + tilesX * 12, 4 * sizeof(COLOR32));
-			TxiAddTile(reduction, data, x + y * tilesX, tile, createPalette, &paletteIndex);
+			TxiAddTile(reduction, data, x + y * tilesX, tile, createPalette, &paletteIndex, pProgress);
 		}
 	}
 	return data;
@@ -704,7 +700,7 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 	}
 }
 
-static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, int nPalettes, TxTileData *tileData, int tilesX, int tilesY, int threshold) {
+static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, int nPalettes, TxTileData *tileData, int tilesX, int tilesY, int threshold, volatile int *pProgress) {
 	RxYiqColor *plttYiq = (RxYiqColor *) calloc(nPalettes * 2, sizeof(RxYiqColor));
 
 	//iterate over all non-duplicate tiles, adding the palettes.
@@ -719,7 +715,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, in
 			if (tile->duplicate || !tile->used) {
 				//the paletteIndex field of a duplicate tile is first set to the tile index it is a duplicate of.
 				//set it to an actual palette index here.
-				g_texCompressionProgress++;
+				(*pProgress)++;
 				continue;
 			}
 
@@ -780,7 +776,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, in
 					firstSlot += nConsumed;
 				}
 			}
-			g_texCompressionProgress++;
+			(*pProgress)++;
 		}
 	}
 	free(colorTable);
@@ -1213,22 +1209,22 @@ int TxConvert4x4(TxConversionParameters *params) {
 
 	unsigned int width = params->width, height = params->height;
 	unsigned int tilesX = width / 4, tilesY = height / 4;
-	g_texCompressionProgressMax = tilesX * tilesY * 3;
-	g_texCompressionProgress = 0;
+	params->progressMax = tilesX * tilesY * 3;
+	params->progress = 0;
 
 	//create tile data
 	RxReduction *reduction = RxNew(params->balance, params->colorBalance, params->enhanceColors, 4);
-	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY, !params->useFixedPalette);
+	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY, !params->useFixedPalette, &params->progress);
 
 	//build the palettes.
 	COLOR *nnsPal = (COLOR *) calloc(params->colorEntries, sizeof(COLOR));
 	int nUsedColors;
 	if (!params->useFixedPalette) {
-		nUsedColors = TxiBuildCompressedPalette(reduction, nnsPal, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold);
+		nUsedColors = TxiBuildCompressedPalette(reduction, nnsPal, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold, &params->progress);
 	} else {
 		nUsedColors = params->colorEntries;
 		memcpy(nnsPal, params->fixedPalette, params->colorEntries * 2);
-		g_texCompressionProgress += tilesX * tilesY;
+		params->progress += tilesX * tilesY;
 	}
 	if (nUsedColors & 7) nUsedColors += 8 - (nUsedColors & 7);
 	if (nUsedColors < 16) nUsedColors = 16;
@@ -1267,7 +1263,7 @@ int TxConvert4x4(TxConversionParameters *params) {
 
 		//index this tile
 		TxiIndexTile(reduction, &tileData[i], txel + i, palette, paletteSize, 0, diffuse);
-		g_texCompressionProgress++;
+		params->progress++;
 	}
 
 	if (params->fixedPalette == NULL) {
@@ -1302,6 +1298,10 @@ int TxConvert4x4(TxConversionParameters *params) {
 }
 
 int TxConvert(TxConversionParameters *params) {
+	params->complete = 0;     // not complete
+	params->progressMax = 1;  // dummy progress max
+	params->progress = 0;     // progress=0
+
 	//pad texture if needed
 	unsigned int padWidth, padHeight, sourceWidth = params->width, sourceHeight = params->height;
 	COLOR32 *srcPx = params->px;
@@ -1344,9 +1344,11 @@ int TxConvert(TxConversionParameters *params) {
 
 	TxRender(params->px, sourceWidth, sourceHeight, &params->dest->texels, &params->dest->palette, 0);
 	
-	g_texCompressionFinished = 1;
+	//mark progress complete
+	params->complete = 1;
+	params->progress = params->progressMax;
+
 	if (params->callback) params->callback(params->callbackParam);
 	if (params->useFixedPalette) free(params->fixedPalette);
-	if (params->pnam != NULL) free(params->pnam);
 	return 0;
 }
