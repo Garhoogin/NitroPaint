@@ -54,7 +54,7 @@ static COLOR32 *TxiPadTextureImage(COLOR32 *px, unsigned int width, unsigned int
 	return out;
 }
 
-int TxConvertDirect(TxConversionParameters *params) {
+static int TxConvertDirect(TxConversionParameters *params) {
 	//convert to direct color.
 	unsigned int width = params->width, height = params->height;
 	COLOR32 *px = params->px;
@@ -84,7 +84,7 @@ int TxConvertDirect(TxConversionParameters *params) {
 	return 0;
 }
 
-int TxConvertIndexedOpaque(TxConversionParameters *params) {
+static int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	//generate a palette ofcolors.
 	unsigned int nColors = 0, bitsPerPixel = 0;
 	unsigned int width = params->width, height = params->height;
@@ -154,7 +154,7 @@ int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	return 0;
 }
 
-int TxConvertIndexedTranslucent(TxConversionParameters *params) {
+static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 	//convert to translucent. First, generate a palette of colors.
 	unsigned int nColors = 0, alphaShift = 0, alphaMax = 0;
 	unsigned int width = params->width, height = params->height;
@@ -1202,7 +1202,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 	return nUsedColors;
 }
 
-int TxConvert4x4(TxConversionParameters *params) {
+static int TxConvert4x4(TxConversionParameters *params) {
 	//3-stage compression. First stage builds tile data, second stage builds palettes, third stage builds the final texture.
 	if (params->colorEntries < 16) params->colorEntries = 16; // color reduction does not support max colors < 16
 	params->colorEntries = (params->colorEntries + 7) & ~7;   // multiple of 8
