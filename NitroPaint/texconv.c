@@ -11,6 +11,10 @@
 #endif
 #endif
 
+#define TEXCONV_THROW_STATUS(status) do { result = status; goto Cleanup; } while (0)
+#define TEXCONV_CHECK_ABORT(flag) do { if (flag) { TEXCONV_THROW_STATUS(TEXCONV_ABORT); } } while (0)
+
+
 int ilog2(int x);
 
 static unsigned int TxiRoundUpDimension(unsigned int x) {
@@ -33,6 +37,7 @@ static COLOR32 *TxiPadTextureImage(COLOR32 *px, unsigned int width, unsigned int
 	if (padHeight < 8) padHeight = 8;
 
 	COLOR32 *out = (COLOR32 *) calloc(padWidth * padHeight, sizeof(COLOR32));
+	if (out == NULL) return NULL;
 
 	//fill rows
 	for (unsigned int y = 0; y < padHeight; y++) {
@@ -56,16 +61,15 @@ static COLOR32 *TxiPadTextureImage(COLOR32 *px, unsigned int width, unsigned int
 
 static int TxConvertDirect(TxConversionParameters *params) {
 	//convert to direct color.
+	TxConversionResult result = TEXCONV_SUCCESS;
 	unsigned int width = params->width, height = params->height;
 	COLOR32 *px = params->px;
 
-	//set texture parameters
-	COLOR *txel = (COLOR *) calloc(width * height, 2);
-	params->dest->texels.texImageParam = (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23) | (params->fmt << 26);
-	params->dest->texels.cmp = NULL;
-	params->dest->palette.pal = NULL;
-	params->dest->palette.nColors = 0;
-	params->dest->texels.texel = (unsigned char *) txel;
+	//progress
+	params->progressMax = (int) (width * height);
+
+	COLOR *txel = (COLOR *) calloc(width * height, sizeof(COLOR));
+	if (txel == NULL) { result = TEXCONV_NOMEM; goto Cleanup; }
 
 	for (unsigned int i = 0; i < width * height; i++) {
 		COLOR32 p = px[i];
@@ -80,12 +84,29 @@ static int TxConvertDirect(TxConversionParameters *params) {
 			doDiffuse(i, width, height, px, errorR, errorG, errorB, 0, params->diffuseAmount);
 		}
 		txel[i] = c;
+
+		//progress update
+		params->progress = i;
+		TEXCONV_CHECK_ABORT(params->terminate);
 	}
-	return 0;
+
+	//set texture parameters
+	params->dest->texels.texImageParam = (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23) | (params->fmt << 26);
+	params->dest->texels.cmp = NULL;
+	params->dest->palette.pal = NULL;
+	params->dest->palette.nColors = 0;
+	params->dest->texels.texel = (unsigned char *) txel;
+
+Cleanup:
+	if (result != TEXCONV_SUCCESS) {
+		if (txel != NULL) free(txel);
+	}
+	return result;
 }
 
 static int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	//generate a palette ofcolors.
+	TxConversionResult result = TEXCONV_SUCCESS;
 	unsigned int nColors = 0, bitsPerPixel = 0;
 	unsigned int width = params->width, height = params->height;
 	switch (params->fmt) {
@@ -107,10 +128,19 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	if (params->useFixedPalette) nColors = min(nColors, params->colorEntries);
 	else if (params->colorEntries < nColors) nColors = params->colorEntries;
 
-	COLOR32 *palette = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
+	COLOR32 palette[256] = { 0 };
 
 	//should we reserve a color for transparent?
 	int hasTransparent = !!params->c0xp;
+	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
+
+	//allocate texel space.
+	unsigned int nBytes = width * height * bitsPerPixel / 8;
+	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
+	COLOR *pal = (COLOR *) calloc(nColors, sizeof(COLOR));
+	int *idxs = (int *) calloc(width * height, sizeof(int));
+
+	if (txel == NULL || pal == NULL || idxs == NULL) TEXCONV_THROW_STATUS(TEXCONV_NOMEM);
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
@@ -122,27 +152,23 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params) {
 		}
 	}
 
-	//allocate texel space.
-	unsigned int nBytes = width * height * bitsPerPixel / 8;
-	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
-	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
+	TEXCONV_CHECK_ABORT(params->terminate);
 
-	int *idxs = (int *) calloc(width * height, sizeof(int));
 	RxReduceImageEx(params->px, idxs, width, height, palette, nColors,
 		(hasTransparent ? RX_FLAG_ALPHA_MODE_RESERVE : RX_FLAG_ALPHA_MODE_NONE) | RX_FLAG_NO_PRESERVE_ALPHA,
 		diffuse, params->balance, params->colorBalance, params->enhanceColors);
+
+	TEXCONV_CHECK_ABORT(params->terminate);
 
 	//write texel data.
 	for (unsigned int i = 0; i < width * height; i++) {
 		txel[i / pixelsPerByte] |= idxs[i] << (bitsPerPixel * (i & (pixelsPerByte - 1)));
 	}
-	free(idxs);
 
 	//update texture info
-	unsigned int param = (params->fmt << 26) | (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
-	if (hasTransparent) param |= (1 << 29);
+	unsigned int param = (params->fmt << 26) | (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23) | (hasTransparent << 29);
 	params->dest->palette.nColors = nColors;
-	params->dest->palette.pal = (COLOR *) calloc(nColors, 2);
+	params->dest->palette.pal = pal;
 	params->dest->texels.cmp = NULL;
 	params->dest->texels.texel = txel;
 	params->dest->texels.texImageParam = param;
@@ -150,12 +176,20 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	for (unsigned int i = 0; i < nColors; i++) {
 		params->dest->palette.pal[i] = ColorConvertToDS(palette[i]);
 	}
-	free(palette);
-	return 0;
+
+Cleanup:
+	//cleanup memory
+	if (result != TEXCONV_SUCCESS) {
+		free(pal);
+		free(txel);
+	}
+	free(idxs);
+	return result;
 }
 
 static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 	//convert to translucent. First, generate a palette of colors.
+	TxConversionResult result = TEXCONV_SUCCESS;
 	unsigned int nColors = 0, alphaShift = 0, alphaMax = 0;
 	unsigned int width = params->width, height = params->height;
 	switch (params->fmt) {
@@ -173,7 +207,17 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 
 	if (params->useFixedPalette) nColors = min(nColors, params->colorEntries);
 	else if (params->colorEntries < nColors) nColors = params->colorEntries;
-	COLOR32 *palette = (COLOR32 *) calloc(nColors, 4);
+	COLOR32 palette[32] = { 0 };
+
+	//allocate texel space.
+	unsigned int nBytes = width * height;
+	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
+	int *idxs = (int *) calloc(width * height, sizeof(int));
+	COLOR *pal = (COLOR *) calloc(nColors, sizeof(COLOR));
+
+	if (txel == NULL || pal == NULL || idxs == NULL) TEXCONV_THROW_STATUS(TEXCONV_NOMEM);
+
+	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
 
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
@@ -185,14 +229,12 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 		}
 	}
 
-	//allocate texel space.
-	int nBytes = width * height;
-	uint8_t *txel = (uint8_t *) calloc(nBytes, 1);
-	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
+	TEXCONV_CHECK_ABORT(params->terminate);
 
-	int *idxs = (int *) calloc(width * height, sizeof(int));
 	RxReduceImageEx(params->px, idxs, width, height, palette, nColors, RX_FLAG_ALPHA_MODE_PIXEL | RX_FLAG_PRESERVE_ALPHA,
 		diffuse, params->balance, params->colorBalance, params->enhanceColors);
+
+	TEXCONV_CHECK_ABORT(params->terminate);
 
 	//write texel data.
 	for (unsigned int i = 0; i < width * height; i++) {
@@ -207,25 +249,28 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 			doDiffuse(i, width, height, params->px, 0, 0, 0, errorAlpha, params->diffuseAmount);
 		}
 	}
-	free(idxs);
+
+	TEXCONV_CHECK_ABORT(params->terminate);
 
 	//update texture info
-	if (params->dest->palette.pal) free(params->dest->palette.pal);
-	if (params->dest->texels.cmp) free(params->dest->texels.cmp);
-	if (params->dest->texels.texel) free(params->dest->texels.texel);
-	params->dest->palette.nColors = nColors;
-	params->dest->palette.pal = (COLOR *) calloc(nColors, sizeof(COLOR));
-	params->dest->texels.cmp = NULL;
-	params->dest->texels.texel = txel;
-
 	unsigned int param = (params->fmt << 26) | (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23);
 	params->dest->texels.texImageParam = param;
+	params->dest->palette.nColors = nColors;
+	params->dest->palette.pal = pal;
+	params->dest->texels.cmp = NULL;
+	params->dest->texels.texel = txel;
 
 	for (unsigned int i = 0; i < nColors; i++) {
 		params->dest->palette.pal[i] = ColorConvertToDS(palette[i]);
 	}
-	free(palette);
-	return 0;
+
+Cleanup:
+	if (result != TEXCONV_SUCCESS) {
+		free(pal);
+		free(txel);
+	}
+	free(idxs);
+	return result;
 }
 
 
@@ -1203,6 +1248,8 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 }
 
 static int TxConvert4x4(TxConversionParameters *params) {
+	TxConversionResult result = TEXCONV_SUCCESS;
+
 	//3-stage compression. First stage builds tile data, second stage builds palettes, third stage builds the final texture.
 	if (params->colorEntries < 16) params->colorEntries = 16; // color reduction does not support max colors < 16
 	params->colorEntries = (params->colorEntries + 7) & ~7;   // multiple of 8
@@ -1212,42 +1259,41 @@ static int TxConvert4x4(TxConversionParameters *params) {
 	params->progressMax = tilesX * tilesY * 3;
 	params->progress = 0;
 
+	//allocate texel, index, and palette data.
+	uint16_t *pidx = (uint16_t *) calloc(tilesX * tilesY, 2);
+	uint32_t *txel = (uint32_t *) calloc(tilesX * tilesY, 4);
+	COLOR *pltt = (COLOR *) calloc(params->colorEntries, sizeof(COLOR));
+
 	//create tile data
 	RxReduction *reduction = RxNew(params->balance, params->colorBalance, params->enhanceColors, 4);
 	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY, !params->useFixedPalette, &params->progress);
+	TxiTileErrorMapEntry *errorMap = (TxiTileErrorMapEntry *) calloc(tilesX * tilesY, sizeof(TxiTileErrorMapEntry));
+
+	TEXCONV_CHECK_ABORT(params->terminate);
 
 	//build the palettes.
-	COLOR *nnsPal = (COLOR *) calloc(params->colorEntries, sizeof(COLOR));
 	int nUsedColors;
 	if (!params->useFixedPalette) {
-		nUsedColors = TxiBuildCompressedPalette(reduction, nnsPal, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold, &params->progress);
+		nUsedColors = TxiBuildCompressedPalette(reduction, pltt, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold, &params->progress);
 	} else {
 		nUsedColors = params->colorEntries;
-		memcpy(nnsPal, params->fixedPalette, params->colorEntries * 2);
+		memcpy(pltt, params->fixedPalette, params->colorEntries * 2);
 		params->progress += tilesX * tilesY;
 	}
 	if (nUsedColors & 7) nUsedColors += 8 - (nUsedColors & 7);
 	if (nUsedColors < 16) nUsedColors = 16;
 
-	//for end indexing, a map of which palette colors were used
-	//(interpolated tiles: non-endpoints use both endpoints)
-	TxiTileErrorMapEntry *errorMap = (TxiTileErrorMapEntry *) calloc(tilesX * tilesY, sizeof(TxiTileErrorMapEntry));
-
-	//allocate index data.
-	uint16_t *pidx = (uint16_t *) calloc(tilesX * tilesY, 2);
+	TEXCONV_CHECK_ABORT(params->terminate);
 
 	//generate texel data.
-	uint32_t *txel = (uint32_t *) calloc(tilesX * tilesY, 4);
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
 	for (unsigned int i = 0; i < tilesX * tilesY; i++) {
-		uint32_t texel = 0;
-
 		//double check that these settings are the most optimal for this tile.
 		double err = 0.0;
-		uint16_t idx = TxiFindOptimalPidx(reduction, tileData + i, nnsPal, nUsedColors, 0, &err);
-		uint16_t mode = idx & 0xC000;
-		uint16_t index = idx & 0x3FFF;
-		COLOR *thisPalette = nnsPal + (index * 2);
+		uint16_t idx = TxiFindOptimalPidx(reduction, &tileData[i], pltt, nUsedColors, 0, &err);
+		uint16_t mode = idx & COMP_MODE_MASK;
+		uint16_t index = idx & COMP_INDEX_MASK; 
+		COLOR *thisPalette = pltt + COMP_INDEX(idx);
 		pidx[i] = idx;
 
 		COLOR32 palette[4];
@@ -1263,7 +1309,9 @@ static int TxConvert4x4(TxConversionParameters *params) {
 
 		//index this tile
 		TxiIndexTile(reduction, &tileData[i], txel + i, palette, paletteSize, 0, diffuse);
+
 		params->progress++;
+		TEXCONV_CHECK_ABORT(params->terminate);
 	}
 
 	if (params->fixedPalette == NULL) {
@@ -1271,33 +1319,41 @@ static int TxConvert4x4(TxConversionParameters *params) {
 		int nNewUsed = nUsedColors;
 
 		for (int i = 0; i < 4; i++) {
-			int nAfterRefinement = TxiRefinePalette(reduction, tileData, txel, pidx, tilesX * tilesY, nnsPal, nUsedColors, errorMap, useMap, diffuse);
+			int nAfterRefinement = TxiRefinePalette(reduction, tileData, txel, pidx, tilesX * tilesY, pltt, nUsedColors, errorMap, useMap, diffuse);
 			nAfterRefinement = (nAfterRefinement + 7) & ~7;
 			nNewUsed = nAfterRefinement;
+
+			TEXCONV_CHECK_ABORT(params->terminate);
 		}
 		
 		//shrink palette
 		nUsedColors = nNewUsed;
-		nnsPal = realloc(nnsPal, nUsedColors * sizeof(COLOR));
+		pltt = realloc(pltt, nUsedColors * sizeof(COLOR));
 
 		free(useMap);
 	}
 
-	RxFree(reduction);
-
 	//set fields in the texture
 	params->dest->palette.nColors = nUsedColors;
-	params->dest->palette.pal = nnsPal;
+	params->dest->palette.pal = pltt;
 	params->dest->texels.cmp = pidx;
 	params->dest->texels.texel = (unsigned char *) txel;
 	params->dest->texels.texImageParam = (ilog2(width >> 3) << 20) | (ilog2(height >> 3) << 23) | (params->fmt << 26);
 	
+Cleanup:
+	if (result != TEXCONV_SUCCESS) {
+		free(pltt);
+		free(txel);
+		free(pidx);
+	}
+	if (reduction != NULL) RxFree(reduction);
 	free(tileData);
 	free(errorMap);
-	return 0;
+	return result;
 }
 
-int TxConvert(TxConversionParameters *params) {
+TxConversionResult TxConvert(TxConversionParameters *params) {
+	TxConversionResult result = TEXCONV_INVALID;
 	params->complete = 0;     // not complete
 	params->progressMax = 1;  // dummy progress max
 	params->progress = 0;     // progress=0
@@ -1307,6 +1363,12 @@ int TxConvert(TxConversionParameters *params) {
 	COLOR32 *srcPx = params->px;
 	COLOR32 *padded = TxiPadTextureImage(srcPx, sourceWidth, sourceHeight, &padWidth, &padHeight);
 
+	if (padded == NULL) {
+		//no memory
+		result = TEXCONV_NOMEM;
+		goto Error;
+	}
+
 	params->width = padWidth;
 	params->height = padHeight;
 	params->px = padded;
@@ -1314,38 +1376,39 @@ int TxConvert(TxConversionParameters *params) {
 	//begin conversion.
 	switch (params->fmt) {
 		case CT_DIRECT:
-			TxConvertDirect(params);
+			result = TxConvertDirect(params);
 			break;
 		case CT_4COLOR:
 		case CT_16COLOR:
 		case CT_256COLOR:
-			TxConvertIndexedOpaque(params);
+			result = TxConvertIndexedOpaque(params);
 			break;
 		case CT_A3I5:
 		case CT_A5I3:
-			TxConvertIndexedTranslucent(params);
+			result = TxConvertIndexedTranslucent(params);
 			break;
 		case CT_4x4:
-			TxConvert4x4(params);
+			result = TxConvert4x4(params);
 			break;
 	}
 
+	//replace unpadded image
 	params->width = sourceWidth;
 	params->height = sourceHeight;
 	params->px = srcPx;
 	params->dest->texels.height = sourceHeight;
 	free(padded);
 
-	//copy name (null-terminated unless 16-char long)
+	//copy name (null-terminated)
 	if (params->fmt != CT_DIRECT) {
-		params->dest->palette.name = calloc(strlen(params->pnam) + 1, 1);
-		memcpy(params->dest->palette.name, params->pnam, strlen(params->pnam));
+		params->dest->palette.name = _strdup(params->pnam);
 	}
 
-	TxRender(params->px, sourceWidth, sourceHeight, &params->dest->texels, &params->dest->palette, 0);
+	if (result == TEXCONV_SUCCESS) TxRender(params->px, sourceWidth, sourceHeight, &params->dest->texels, &params->dest->palette, 0);
 	
+Error:
 	//mark progress complete
 	params->complete = 1;
 	params->progress = params->progressMax;
-	return 0;
+	return result;
 }

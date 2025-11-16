@@ -385,9 +385,6 @@ void DoModalWait(HWND hWnd, HANDLE hWait) {
 	SetForegroundWindow(hWnd);
 	if (hWndParent != NULL) EnableWindow(hWndParent, FALSE);
 
-	//override the WndProc. 
-	SetWindowSubclass(hWnd, ModalCloseHookProc, 1, 0);
-
 	//enter our own message loop
 	MSG msg;
 	DWORD waitResult;

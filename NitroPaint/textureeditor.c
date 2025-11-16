@@ -175,7 +175,7 @@ static HANDLE textureConvertThreaded(TxConversionParameters *params){
 	return CreateThread(NULL, 0, textureStartConvertThreadEntry, (LPVOID) params, 0, NULL);
 }
 
-static void TexViewerModalConvert(TxConversionParameters *params, HWND hWndMain) {
+static TxConversionResult TexViewerModalConvert(TxConversionParameters *params, HWND hWndMain) {
 	//modal window
 	HWND hWndProgress = CreateWindow(L"CompressionProgress", L"Compressing",
 		WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
@@ -187,6 +187,12 @@ static void TexViewerModalConvert(TxConversionParameters *params, HWND hWndMain)
 	//start conversion thread and modal wait
 	HANDLE hThread = textureConvertThreaded(params);
 	DoModalWait(hWndProgress, hThread);
+
+	DWORD exitCode;
+	GetExitCodeThread(hThread, &exitCode);
+	CloseHandle(hThread);
+
+	return (TxConversionResult) exitCode;
 }
 
 static HCURSOR TexViewerGetCursorProc(HWND hWnd, int hit) {
@@ -1514,7 +1520,17 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
-					TexViewerModalConvert(&params, hWndMain);
+
+					TxConversionResult result = TexViewerModalConvert(&params, hWndMain);
+					free(params.pnam);
+
+					if (result != TEXCONV_SUCCESS) {
+						if (result != TEXCONV_ABORT) {
+							//explicit error
+							MessageBox(hWndMain, L"Texture conversion failed.", L"Error", MB_ICONERROR);
+						}
+						break;
+					}
 
 					//if the format is paletteN, we have not used fixed palette, color 0 was transparent and we used alpha keying, put 
 					//the alpha key into color index 0.
@@ -1523,7 +1539,6 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 							data->texture.texture.palette.pal[0] = ColorConvertToDS(data->alphaKey);
 						}
 					}
-					free(params.pnam);
 
 					InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 					data->isNitro = TRUE;
@@ -1586,12 +1601,13 @@ LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 				KillTimer(hWnd, 1);
 				break;
 			} else {
-				return 0;
+				if (params != NULL) params->terminate = 1; // send terminate request
+				return 0;                                  // don't end the modal until the thread naturally exits
 			}
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 typedef struct {

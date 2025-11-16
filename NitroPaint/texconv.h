@@ -34,7 +34,14 @@ typedef struct TxConversionParameters_ {
 	volatile int complete;          // conversion completion flag
 } TxConversionParameters;
 
+typedef enum TxConversionResult_ {
+	TEXCONV_SUCCESS,                // texture conversion is successful
+	TEXCONV_INVALID,                // texture conversion could not proceed because of invalid parameters
+	TEXCONV_NOMEM,                  // texture conversion has aborted because of no memory
+	TEXCONV_ABORT                   // texture conversion has aborted because of an external signal
+} TxConversionResult;
+
 //
 // Convert a texture given some input parameters.
 //
-int TxConvert(TxConversionParameters *params);
+TxConversionResult TxConvert(TxConversionParameters *params);
