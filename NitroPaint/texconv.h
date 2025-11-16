@@ -23,8 +23,6 @@ typedef struct TxConversionParameters_ {
 	int colorBalance;               // color balance setting (1-39)
 	int enhanceColors;              // enhance largely used colors (0=no, nonzero=yes)
 	TEXTURE *dest;                  // pointer to destination texture object
-	void (*callback) (void *);      // completion callback (called after conversion completed)
-	void *callbackParam;            // callback parameter
 	char *pnam;                     // palette name for output texture
 
 	// IPC -> conversion

@@ -1347,8 +1347,5 @@ int TxConvert(TxConversionParameters *params) {
 	//mark progress complete
 	params->complete = 1;
 	params->progress = params->progressMax;
-
-	if (params->callback) params->callback(params->callbackParam);
-	if (params->useFixedPalette) free(params->fixedPalette);
 	return 0;
 }

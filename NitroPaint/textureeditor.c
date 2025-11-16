@@ -1511,8 +1511,6 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					params.dest = &data->texture.texture;
 					params.fixedPalette = fixedPalette ? paletteFile.colors : NULL;
 					params.pnam = TexNarrowResourceNameFromWideChar(bf);
-					params.callback = NULL;
-					params.callbackParam = NULL;
 
 					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
@@ -2242,7 +2240,6 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 
 	TEXTURE texture = { 0 };
 	TxConversionParameters params = { 0 };
-	params.complete = 0;
 	params.px = px;
 	params.width = width;
 	params.height = height;
@@ -2257,8 +2254,6 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	params.colorBalance = colorBalance;
 	params.enhanceColors = enhanceColors;
 	params.dest = &texture;
-	params.callback = NULL;
-	params.callbackParam = NULL;
 	params.useFixedPalette = useFixedPalette;
 	params.fixedPalette = useFixedPalette ? fixedPalette : NULL;
 	params.pnam = pnam;
