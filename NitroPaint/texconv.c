@@ -624,8 +624,10 @@ static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, cons
 	(*pProgress)++;
 }
 
-static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, int tilesX, int tilesY, int createPalette, volatile int *pProgress) {
+static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, int tilesX, int tilesY, int createPalette, volatile int *pProgress, volatile int *pTerminate) {
 	TxTileData *data = (TxTileData *) calloc(tilesX * tilesY, sizeof(TxTileData));
+	if (data == NULL) return NULL;
+
 	int paletteIndex = 0;
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
@@ -636,6 +638,8 @@ static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, 
 			memcpy(tile +  8, px + offs + tilesX *  8, 4 * sizeof(COLOR32));
 			memcpy(tile + 12, px + offs + tilesX * 12, 4 * sizeof(COLOR32));
 			TxiAddTile(reduction, data, x + y * tilesX, tile, createPalette, &paletteIndex, pProgress);
+
+			if (*pTerminate) return data; // terminate check
 		}
 	}
 	return data;
@@ -745,12 +749,12 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 	}
 }
 
-static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, int nPalettes, TxTileData *tileData, int tilesX, int tilesY, int threshold, volatile int *pProgress) {
-	RxYiqColor *plttYiq = (RxYiqColor *) calloc(nPalettes * 2, sizeof(RxYiqColor));
+static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, int nPalettes, TxTileData *tileData, int tilesX, int tilesY, int threshold, volatile int *pProgress, volatile int *pTerminate) {
+	RxYiqColor *plttYiq = (RxYiqColor *) calloc(nPalettes, sizeof(RxYiqColor));
 
 	//iterate over all non-duplicate tiles, adding the palettes.
 	//colorTable keeps track of how each color is intended to be used.
-	int *colorTable = (int *) calloc(nPalettes * 2, sizeof(int));
+	int *colorTable = (int *) calloc(nPalettes, sizeof(int));
 	double diffThreshold = (threshold * threshold) * reduction->yWeight2 * (255.0 * 4.0 / 10000.0);
 	int firstSlot = 0;
 	for (int y = 0; y < tilesY; y++) {
@@ -770,7 +774,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, in
 
 			//does it fit?
 			int fits = 0;
-			if (firstSlot + nConsumed <= nPalettes * 2) {
+			if (firstSlot + nConsumed <= nPalettes) {
 				//yes, just add it to the list.
 				fits = 1;
 				for (int i = 0; i < nConsumed; i++) RxConvertRgbToYiq(tile->palette32[i], &plttYiq[firstSlot + i]);
@@ -781,7 +785,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, in
 			if (!fits || (threshold && firstSlot >= 8)) {
 				//does NOT fit, we need to rearrange some things.
 
-				while ((firstSlot + nConsumed > nPalettes * 2) || (threshold && fits)) {
+				while ((firstSlot + nConsumed > nPalettes) || (threshold && fits)) {
 					//determine which two palettes are the most similar.
 					int colorIndex1 = -1, colorIndex2 = -1;
 					double distance = TxiFindClosestPalettes(reduction, plttYiq, colorTable, firstSlot, &colorIndex1, &colorIndex2);
@@ -802,7 +806,7 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, in
 					}
 
 					//move entries in palette and colorTable.
-					int nToShift = nPalettes * 2 - colorIndex2 - nColorsInPalettes;
+					int nToShift = nPalettes - colorIndex2 - nColorsInPalettes;
 					memmove(plttYiq + colorIndex2, plttYiq + colorIndex2 + nColorsInPalettes, nToShift * sizeof(RxYiqColor));
 					memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColorsInPalettes, nToShift * sizeof(int));
 
@@ -822,16 +826,19 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, in
 				}
 			}
 			(*pProgress)++;
+			if (*pTerminate) goto Done;
 		}
 	}
+Done:
 	free(colorTable);
 
 	//copy palette out
-	for (int i = 0; i < nPalettes * 2; i++) {
-		palette_[i] = ColorConvertToDS(RxConvertYiqToRgb(&plttYiq[i]));
+	if (plttYiq != NULL) {
+		for (int i = 0; i < nPalettes; i++) {
+			palette_[i] = ColorConvertToDS(RxConvertYiqToRgb(&plttYiq[i]));
+		}
+		free(plttYiq);
 	}
-
-	free(plttYiq);
 	return firstSlot;
 }
 
@@ -1266,15 +1273,16 @@ static int TxConvert4x4(TxConversionParameters *params) {
 
 	//create tile data
 	RxReduction *reduction = RxNew(params->balance, params->colorBalance, params->enhanceColors, 4);
-	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY, !params->useFixedPalette, &params->progress);
+	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY, !params->useFixedPalette, &params->progress, &params->terminate);
 	TxiTileErrorMapEntry *errorMap = (TxiTileErrorMapEntry *) calloc(tilesX * tilesY, sizeof(TxiTileErrorMapEntry));
+	if (reduction == NULL || tileData == NULL || errorMap == NULL) TEXCONV_THROW_STATUS(TEXCONV_NOMEM);
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
 	//build the palettes.
 	int nUsedColors;
 	if (!params->useFixedPalette) {
-		nUsedColors = TxiBuildCompressedPalette(reduction, pltt, params->colorEntries / 2, tileData, tilesX, tilesY, params->threshold, &params->progress);
+		nUsedColors = TxiBuildCompressedPalette(reduction, pltt, params->colorEntries, tileData, tilesX, tilesY, params->threshold, &params->progress, &params->terminate);
 	} else {
 		nUsedColors = params->colorEntries;
 		memcpy(pltt, params->fixedPalette, params->colorEntries * 2);

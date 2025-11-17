@@ -2625,7 +2625,10 @@ static LRESULT CALLBACK BatchTexProgressProc(HWND hWnd, UINT msg, WPARAM wParam,
 				}
 
 				//if all complete, we may end the dialog.
-				if (allComplete) SendMessage(hWnd, WM_CLOSE, 0, 0);
+				if (allComplete) {
+					EnableWindow((HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT), TRUE);
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
+				}
 			}
 			break;
 		}
