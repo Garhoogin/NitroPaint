@@ -55,10 +55,11 @@ static LPCWSTR sCommonPaletteEndings[] = {
 	L"plt.bin",
 	L"pal.bin",
 	L".pltt",
-	L".nbfp",
-	L".icl",
-	L".acl",
-	L".plb",
+	L".nbfp",    // ntexconv use
+	L".icl",     // IS-IRIS-CHARACTER use
+	L".acl",     // IS-AGB-CHARACTER use
+	L".plb",     // iMageStudio use
+	L".pal",     // Homebrew use
 	NULL
 };
 
@@ -67,9 +68,11 @@ static LPCWSTR sCommonCharacterEndings[] = {
 	L"icg.bin",
 	L"chr.bin",
 	L".char",
-	L".nbfc",
-	L".icg",
-	L".imb",
+	L".nbfc",    // ntexconv use
+	L".icg",     // IS-IRIS-CHARACTER use
+	L".imb",     // iMageStudio use
+	L".img",     // Homebrew use
+	L".img.bin", // Homebrew use
 	NULL
 };
 
@@ -77,8 +80,10 @@ static LPCWSTR sCommonScreenEndings[] = {
 	L"nsc.bin",
 	L"isc.bin",
 	L"scr.bin",
-	L".nbfs",
-	L".isc",
+	L".nbfs",    // ntexconv use
+	L".isc",     // IS-IRIS-CHARACTER use
+	L".map",     // Homebrew use
+	L".map.bin", // Homebrew use
 	NULL
 };
 
