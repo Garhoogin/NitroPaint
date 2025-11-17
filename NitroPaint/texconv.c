@@ -1005,6 +1005,39 @@ static void TxiAccountColors(unsigned char *useMap, int paletteSize, uint32_t *t
 }
 
 static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t *txel, uint16_t *pidx, int nTiles, COLOR *nnsPal, int paletteSize, TxiTileErrorMapEntry *errorMap, unsigned char *useMap, float diffuse) {
+	//we'll enter a pass where we try to coalesce palette indices down. This helps to
+	//free up redundant sections of the palette, making higher-index colors unused.
+	for (int i = 0; i < nTiles; i++) {
+		uint32_t texPtn = txel[i];
+		uint16_t idx = pidx[i];
+		COLOR *currCols = nnsPal + COMP_INDEX(idx);
+
+		//map the used colors
+		unsigned char usedCols[4] = { 0 };
+		for (int j = 0; j < 16; j++) {
+			TxiAccountColor(usedCols, idx & COMP_MODE_MASK, (texPtn >> (j * 2)) & 3);
+		}
+
+		//search for an appearance of the colors used by this block.
+		for (int j = 0; j < COMP_INDEX(idx); j += 2) {
+			//we may compare 4 colors without checking the bounds, since our index is below a valid one.
+			int diff = 0;
+			for (int k = 0; k < 4; k++) {
+				//compare only those colors that are used
+				if (usedCols[k] && (currCols[k] != nnsPal[j + k])) {
+					diff = 1;
+					break;
+				}
+			}
+
+			if (!diff) {
+				//matching colors found, repoint the palette index
+				pidx[i] = (idx & COMP_MODE_MASK) | (j >> 1);
+				break;
+			}
+		}
+	}
+
 	//search for tiles using interpolation mode and a palette with both identical colors.
 	for (int i = 0; i < nTiles; i++) {
 		uint16_t idx = pidx[i];
@@ -1035,6 +1068,43 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 				pidx[i] = (idx & COMP_MODE_MASK) | (j >> 1);
 				break;
 			}
+		}
+	}
+
+	//next, we'll search for adjacent identical color pairs. These can always be reduced.
+	int pairScanLength = paletteSize;
+	for (int i = 0; i < (pairScanLength - 2); i += 2) {
+		COLOR *pair1 = nnsPal + i;
+		COLOR *pair2 = nnsPal + i + 2;
+		if (pair1[0] == pair2[0] && pair1[1] == pair2[1]) {
+
+			//pair match. Cut the second appearance and make adjustments.
+			for (int j = 0; j < nTiles; j++) {
+				int idx = COMP_INDEX(pidx[j]);
+				int isTransparent = !(pidx[j] & COMP_OPAQUE);
+
+				//when the index is equal to the index of the first appearance, its index is kept but the texels may
+				//need to be adjusted.
+				if (idx == i && !(pidx[j] & COMP_INTERPOLATE)) {
+					//force pixel values of 2,3 to 0,1. If this tile is in transparent mode, do not change index 3.
+					uint32_t texPtn = 0;
+					for (int k = 0; k < 16; k++) {
+						unsigned int cno = (txel[j] >> (2 * k)) & 3;
+						if (cno >= 2 && !(isTransparent && cno == 3)) cno &= 1;
+						texPtn |= cno << (2 * k);
+					}
+					txel[j] = texPtn;
+				}
+
+				if (idx > i) pidx[j]--; // decrement palette index of entries we cut, no texel adjustments.
+			}
+
+			//move colors
+			memmove(pair1, pair2, (paletteSize - i - 2) * sizeof(COLOR));
+
+			//decrement the search pointer and search size.
+			i -= 2;
+			pairScanLength -= 2;
 		}
 	}
 
