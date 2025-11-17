@@ -4030,7 +4030,7 @@ VOID ReadConfiguration(LPWSTR lpszPath) {
 
 VOID SetConfigPath() {
 	LPWSTR name = L"nitropaint.ini";
-	g_configPath = calloc(MAX_PATH + 1, 1);
+	g_configPath = calloc(MAX_PATH + 1, sizeof(WCHAR));
 	DWORD nLength = GetModuleFileNameW(GetModuleHandleW(NULL), g_configPath, MAX_PATH);
 	int endOffset = 0;
 	for (unsigned int i = 0; i < nLength; i++) {
