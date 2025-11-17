@@ -274,6 +274,7 @@ void TxFree(OBJECT_HEADER *obj) {
 void TxInit(TextureObject *texture, int format) {
 	texture->header.size = sizeof(*texture);
 	ObjInit(&texture->header, FILE_TYPE_TEXTURE, format);
+
 	texture->header.dispose = TxFree;
 	texture->header.writer = (OBJECT_WRITER) TxWrite;
 }
@@ -1274,7 +1275,7 @@ int TxWrite(TextureObject *texture, BSTREAM *stream) {
 }
 
 int TxWriteFile(TextureObject *texture, LPCWSTR path) {
-	return ObjWriteFile(path, &texture->header, (OBJECT_WRITER) TxWrite);
+	return ObjWriteFile(&texture->header, path);
 }
 
 int TxWriteFileDirect(TEXELS *texels, PALETTE *palette, int format, LPCWSTR path) {

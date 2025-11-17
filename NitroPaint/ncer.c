@@ -864,7 +864,7 @@ int CellWrite(NCER *ncer, BSTREAM *stream) {
 }
 
 int CellWriteFile(NCER *ncer, LPWSTR name) {
-	return ObjWriteFile(name, (OBJECT_HEADER *) ncer, (OBJECT_WRITER) CellWrite);
+	return ObjWriteFile(&ncer->header, name);
 }
 
 // ----- cell rendering

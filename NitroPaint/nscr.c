@@ -275,9 +275,9 @@ void ScrFree(OBJECT_HEADER *header) {
 void ScrInit(NSCR *nscr, int format) {
 	nscr->header.size = sizeof(NSCR);
 	ObjInit((OBJECT_HEADER *) nscr, FILE_TYPE_SCREEN, format);
+
 	nscr->header.dispose = ScrFree;
 	nscr->header.writer = (OBJECT_WRITER) ScrWrite;
-	nscr->header.combo = NULL;
 }
 
 static int ScrReadHudson(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
@@ -815,5 +815,5 @@ int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 }
 
 int ScrWriteFile(NSCR *nscr, LPCWSTR name) {
-	return ObjWriteFile(name, (OBJECT_HEADER *) nscr, (OBJECT_WRITER) ScrWrite);
+	return ObjWriteFile(&nscr->header, name);
 }

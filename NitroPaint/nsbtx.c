@@ -79,7 +79,9 @@ void TexarcFree(OBJECT_HEADER *header) {
 void TexarcInit(TexArc *nsbtx, int format) {
 	nsbtx->header.size = sizeof(TexArc);
 	ObjInit((OBJECT_HEADER *) nsbtx, FILE_TYPE_NSBTX, format);
+
 	nsbtx->header.dispose = TexarcFree;
+	nsbtx->header.writer = (OBJECT_WRITER) TexarcWrite;
 }
 
 //TexArc code adapted from Gericom's code in Fvery File Explorer.
@@ -726,7 +728,7 @@ int TexarcWrite(TexArc *nsbtx, BSTREAM *stream) {
 }
 
 int TexarcWriteFile(TexArc *nsbtx, LPWSTR name) {
-	return ObjWriteFile(name, (OBJECT_HEADER *) nsbtx, (OBJECT_WRITER) TexarcWrite);
+	return ObjWriteFile(&nsbtx->header, name);
 }
 
 int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name) {

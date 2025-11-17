@@ -466,10 +466,7 @@ static int EditorSaveInternal(HWND hWnd) {
 	//else save
 	ObjUpdateLinks(&data->file, ObjGetFileNameFromPath(data->szOpenFile));
 	data->dirty = 0;
-	if (data->file.writer != NULL) return ObjWriteFile(data->szOpenFile, &data->file, data->file.writer);
-
-	//needs to be written
-	return OBJ_STATUS_UNSUPPORTED;
+	return ObjWriteFile(&data->file, data->szOpenFile);
 }
 
 static void EditorSaveStatus(HWND hWnd, int status) {

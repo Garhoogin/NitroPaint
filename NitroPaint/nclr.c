@@ -21,9 +21,9 @@ void PalFree(OBJECT_HEADER *header) {
 void PalInit(NCLR *nclr, int format) {
 	nclr->header.size = sizeof(NCLR);
 	ObjInit((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
+
 	nclr->header.dispose = PalFree;
 	nclr->header.writer = (OBJECT_WRITER) PalWrite;
-	nclr->header.combo = NULL;
 }
 
 int PalIsValidHudson(const unsigned char *lpFile, unsigned int size) {
@@ -514,5 +514,5 @@ int PalWrite(NCLR *nclr, BSTREAM *stream) {
 }
 
 int PalWriteFile(NCLR *nclr, LPCWSTR name) {
-	return ObjWriteFile(name, (OBJECT_HEADER *) nclr, (OBJECT_WRITER) PalWrite);
+	return ObjWriteFile(&nclr->header, name);
 }

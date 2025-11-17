@@ -187,12 +187,9 @@ static TxConversionResult TexViewerModalConvert(TxConversionParameters *params, 
 	//start conversion thread and modal wait
 	HANDLE hThread = textureConvertThreaded(params);
 	DoModalWait(hWndProgress, hThread);
-
-	DWORD exitCode;
-	GetExitCodeThread(hThread, &exitCode);
 	CloseHandle(hThread);
 
-	return (TxConversionResult) exitCode;
+	return params->result;
 }
 
 static HCURSOR TexViewerGetCursorProc(HWND hWnd, int hit) {
@@ -2391,13 +2388,9 @@ BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
 
 	//add to TexArc
 	int fmt = FORMAT(texture->texels.texImageParam);
-	nsbtx->nTextures++;
-	nsbtx->textures = (TEXELS *) realloc(nsbtx->textures, nsbtx->nTextures * sizeof(TEXELS));
-	memcpy(nsbtx->textures + nsbtx->nTextures - 1, &texture->texels, sizeof(TEXELS));
+	TexarcAddTexture(nsbtx, &texture->texels);
 	if (fmt != CT_DIRECT) {
-		nsbtx->nPalettes++;
-		nsbtx->palettes = (PALETTE *) realloc(nsbtx->palettes, nsbtx->nPalettes * sizeof(PALETTE));
-		memcpy(nsbtx->palettes + nsbtx->nPalettes - 1, &texture->palette, sizeof(PALETTE));
+		TexarcAddPalette(nsbtx, &texture->palette);
 	}
 	return TRUE;
 }

@@ -36,6 +36,9 @@ typedef struct BANNER_INFO_ {
 void combo2dInit(COMBO2D *combo, int format) {
 	ObjInit(&combo->header, FILE_TYPE_COMBO2D, format);
 	StListCreateInline(&combo->links, OBJECT_HEADER *, NULL);
+
+	combo->header.writer = combo2dWrite;
+	combo->header.dispose = combo2dFree;
 }
 
 int combo2dCount(COMBO2D *combo, int type) {
@@ -1115,5 +1118,5 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 }
 
 int combo2dWriteFile(COMBO2D *combo, LPWSTR path) {
-	return ObjWriteFile(path, (OBJECT_HEADER *) combo, (OBJECT_WRITER) combo2dWrite);
+	return ObjWriteFile(&combo->header, path);
 }

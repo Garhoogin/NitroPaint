@@ -185,9 +185,9 @@ void ChrFree(OBJECT_HEADER *header) {
 void ChrInit(NCGR *ncgr, int format) {
 	ncgr->header.size = sizeof(NCGR);
 	ObjInit((OBJECT_HEADER *) ncgr, FILE_TYPE_CHARACTER, format);
+
 	ncgr->header.dispose = ChrFree;
 	ncgr->header.writer = (OBJECT_WRITER) ChrWrite;
-	ncgr->header.combo = NULL;
 }
 
 void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
@@ -1047,7 +1047,7 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 }
 
 int ChrWriteFile(NCGR *ncgr, LPCWSTR name) {
-	return ObjWriteFile(name, (OBJECT_HEADER *) ncgr, (OBJECT_WRITER) ChrWrite);
+	return ObjWriteFile(&ncgr->header, name);
 }
 
 void ChrSetDepth(NCGR *ncgr, int depth) {

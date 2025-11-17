@@ -514,7 +514,7 @@ void ObjFree(OBJECT_HEADER *header) {
 	memset(header, 0, header->size);
 }
 
-void *ObjReadWholeFile(LPCWSTR name, int *size) {
+void *ObjReadWholeFile(const wchar_t *name, unsigned int *size) {
 	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwRead, dwSizeLow, dwSizeHigh = 0;
 
@@ -563,10 +563,10 @@ int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
 	return status;
 }
 
-int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer) {
+int ObjWriteFile(OBJECT_HEADER *object, const wchar_t *name) {
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
-	int status = writer(object, &stream);
+	int status = object->writer(object, &stream);
 
 	//to byte array (releases buffer from stream)
 	unsigned int outSize;

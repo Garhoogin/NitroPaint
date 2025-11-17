@@ -26,6 +26,7 @@ void NftrFree(OBJECT_HEADER *obj) {
 void NftrInit(NFTR *nftr, int format) {
 	nftr->header.size = sizeof(NFTR);
 	ObjInit(&nftr->header, FILE_TYPE_FONT, format);
+
 	nftr->header.dispose = NftrFree;
 	nftr->header.writer = (OBJECT_WRITER) NftrWrite;
 }
@@ -2234,7 +2235,7 @@ int NftrWrite(NFTR *nftr, BSTREAM *stream) {
 }
 
 int NftrWriteFile(NFTR *nftr, LPWSTR name) {
-	return ObjWriteFile(name, &nftr->header, (OBJECT_WRITER) NftrWrite);
+	return ObjWriteFile(&nftr->header, name);
 }
 
 

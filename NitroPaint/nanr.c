@@ -509,7 +509,7 @@ int AnmWrite(NANR *nanr, BSTREAM *stream) {
 }
 
 int AnmWriteFile(NANR *nanr, LPWSTR name) {
-	return ObjWriteFile(name, (OBJECT_HEADER *) nanr, (OBJECT_WRITER) AnmWrite);
+	return ObjWriteFile(&nanr->header, name);
 }
 
 void AnmFree(OBJECT_HEADER *obj) {

@@ -108,7 +108,7 @@ int ObjIsValid(OBJECT_HEADER *header);
 //
 // Read an entire file into memory from path. No decompression is performed.
 //
-void *ObjReadWholeFile(LPCWSTR name, int *size);
+void *ObjReadWholeFile(const wchar_t *name, unsigned int *size);
 
 //
 // Reads a file into the specified object with the given reader function.
@@ -118,7 +118,7 @@ int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);
 //
 // Writes a file to the disk using a provided writer function.
 //
-int ObjWriteFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_WRITER writer);
+int ObjWriteFile(OBJECT_HEADER *object, const wchar_t *name);
 
 //
 // Link an object to another in a directed way.
