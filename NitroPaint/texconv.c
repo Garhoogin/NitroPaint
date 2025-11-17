@@ -1408,6 +1408,7 @@ TxConversionResult TxConvert(TxConversionParameters *params) {
 	
 Error:
 	//mark progress complete
+	params->result = result;
 	params->complete = 1;
 	params->progress = params->progressMax;
 	return result;

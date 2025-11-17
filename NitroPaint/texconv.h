@@ -1,10 +1,36 @@
 #pragma once
 #include <Windows.h>
-#include "texture.h"
 
+#include "texture.h"
+#include "palette.h"
+
+// -----------------------------------------------------------------------------------------------
+// Name: enum TxConversionResult
 //
-// Structure used by texture conversion functions.
+// Result code from texture conversion. This flag is returned by the TxConvert function, and
+// stored in the TxConversionParams struct. This result code is only valid after TxConvert has
+// returned.
 //
+// Values:
+//   TEXCONV_SUCCESS             The texture convresion completed successfully. The converted
+//                               texture data is written to params->dest.
+//   TEXCONV_INVALID             One or more parameters passed are incorrect.
+//   TEXCONV_NOMEM               Texture convresion ran out of memory and was aborted.
+//   TEXCONV_ABORT               Texture conversion was aborted by another thread.
+// -----------------------------------------------------------------------------------------------
+typedef enum TxConversionResult_ {
+	TEXCONV_SUCCESS,                // texture conversion is successful
+	TEXCONV_INVALID,                // texture conversion could not proceed because of invalid parameters
+	TEXCONV_NOMEM,                  // texture conversion has aborted because of no memory
+	TEXCONV_ABORT                   // texture conversion has aborted because of an external signal
+} TxConversionResult;
+
+// -----------------------------------------------------------------------------------------------
+// Name: struct TxConversionParameters
+//
+// The structure passed to TxConvert. This holds the input image data, conversion settings, and
+// fields for IPC. 
+// -----------------------------------------------------------------------------------------------
 typedef struct TxConversionParameters_ {
 	COLOR32 *px;                    // input image pixels
 	unsigned int width;             // input image width
@@ -32,16 +58,24 @@ typedef struct TxConversionParameters_ {
 	volatile int progress;          // current conversion progress
 	volatile int progressMax;       // max conversion progress
 	volatile int complete;          // conversion completion flag
+	volatile TxConversionResult result;
 } TxConversionParameters;
 
-typedef enum TxConversionResult_ {
-	TEXCONV_SUCCESS,                // texture conversion is successful
-	TEXCONV_INVALID,                // texture conversion could not proceed because of invalid parameters
-	TEXCONV_NOMEM,                  // texture conversion has aborted because of no memory
-	TEXCONV_ABORT                   // texture conversion has aborted because of an external signal
-} TxConversionResult;
 
+// -----------------------------------------------------------------------------------------------
+// Name: TxConvert
 //
-// Convert a texture given some input parameters.
+// Begins a texture conversion operation. Parameters are passed through the params parameter.
 //
+// When running this function from a separate thread, the operation can be aborted by writing
+// a nonzero value to params->terminate. Wait until TxConvert returns to observe that the 
+// termination is complete. A termination request must not be canceled.
+//
+// Parameters:
+//   params                      The texture convresion parameters.
+//
+// Returns:
+//   The status of the completed conversion operation. This status is also written to
+//   params->result.
+// -----------------------------------------------------------------------------------------------
 TxConversionResult TxConvert(TxConversionParameters *params);

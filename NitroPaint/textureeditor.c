@@ -1913,6 +1913,22 @@ typedef struct BATCHTEXCONVDATA_ {
 	HWND hWndClean;
 } BATCHTEXCONVDATA;
 
+typedef struct BATCHTEXENTRY_ {
+	TxConversionParameters params;
+	WCHAR *path;
+	WCHAR *outPath;
+	HWND hWndProgress;
+	HANDLE hThread;
+	HWND hWndStatus;
+	int started;
+	int lastComplete;
+} BATCHTEXENTRY;
+
+typedef struct BATCHTEXPROGRESSDATA_ {
+	StList texList;          // BATCHTEXENTRY*
+	unsigned int nThreads;   // number of conversion threads to spawn
+} BATCHTEXPROGRESSDATA;
+
 int EnumAllFiles(LPCWSTR path, BOOL(CALLBACK *fileCallback) (LPCWSTR, void *), BOOL(CALLBACK *dirCallback) (LPCWSTR, void *),
 	BOOL(CALLBACK *preprocessDirCallback) (LPCWSTR, void *), void *param) {
 	//copy string to add \*
@@ -2254,36 +2270,29 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 		BatchTexWriteOptions(configPath, fmt, dither, ditherAlpha, diffuse, colorEntries, c0xp, pnam, balance, colorBalance, enhanceColors);
 	}
 
-	TEXTURE texture = { 0 };
-	TxConversionParameters params = { 0 };
-	params.px = px;
-	params.width = width;
-	params.height = height;
-	params.fmt = fmt;
-	params.dither = dither;
-	params.diffuseAmount = diffuse;
-	params.c0xp = c0xp;
-	params.ditherAlpha = ditherAlpha;
-	params.colorEntries = colorEntries;
-	params.threshold = threshold4x4;
-	params.balance = balance;
-	params.colorBalance = colorBalance;
-	params.enhanceColors = enhanceColors;
-	params.dest = &texture;
-	params.useFixedPalette = useFixedPalette;
-	params.fixedPalette = useFixedPalette ? fixedPalette : NULL;
-	params.pnam = pnam;
-	TexViewerModalConvert(&params, g_hWndBatchTexWindow);
-	
-	//contain texture
-	TextureObject textureObj;
-	TxContain(&textureObj, TEXTURE_TYPE_NNSTGA, &texture);
+	TEXTURE *texture = (TEXTURE *) calloc(1, sizeof(TEXTURE));
+	BATCHTEXENTRY texEntry = { 0 };
+	texEntry.params.px = px;
+	texEntry.params.width = width;
+	texEntry.params.height = height;
+	texEntry.params.fmt = fmt;
+	texEntry.params.dither = dither;
+	texEntry.params.diffuseAmount = diffuse;
+	texEntry.params.c0xp = c0xp;
+	texEntry.params.ditherAlpha = ditherAlpha;
+	texEntry.params.colorEntries = colorEntries;
+	texEntry.params.threshold = threshold4x4;
+	texEntry.params.balance = balance;
+	texEntry.params.colorBalance = colorBalance;
+	texEntry.params.enhanceColors = enhanceColors;
+	texEntry.params.dest = texture;
+	texEntry.params.useFixedPalette = useFixedPalette;
+	texEntry.params.fixedPalette = useFixedPalette ? fixedPalette : NULL;
+	texEntry.params.pnam = _strdup(pnam);
+	texEntry.path = _wcsdup(path);
+	texEntry.outPath = _wcsdup(outPath);
+	StListAdd((StList *) param, &texEntry);
 
-	//write file out
-	TxWriteFile(&textureObj, outPath);
-
-	//free texture memory
-	ObjFree(&textureObj.header);
 	return TRUE;
 }
 
@@ -2307,10 +2316,59 @@ int BatchTexConvert(LPCWSTR path, LPCWSTR convertedDir) {
 	BOOL b = CreateDirectory(convertedDir, NULL);
 	if (!b && GetLastError() != ERROR_ALREADY_EXISTS) return 0; //failure
 
+	BATCHTEXPROGRESSDATA batchData = { 0 };
+	StListCreateInline(&batchData.texList, BATCHTEXENTRY, NULL);
+
+	SYSTEM_INFO info;
+	GetSystemInfo(&info);
+	batchData.nThreads = info.dwNumberOfProcessors;
+	if (batchData.nThreads > 8) batchData.nThreads = 8; // use at most 8 threads
+
 	//recursively process all the textures in this directory. Ugh ummm
 	g_batchTexOut = convertedDir;
-	int status = EnumAllFiles(path, BatchTexConvertFileCallback, BatchTexConvertDirectoryCallback, BatchTexConvertDirectoryExclusion, NULL);
+	int status = EnumAllFiles(path, BatchTexConvertFileCallback, BatchTexConvertDirectoryCallback, BatchTexConvertDirectoryExclusion, &batchData.texList);
 	g_batchTexOut = NULL;
+
+	WCHAR buf[48];
+	wsprintfW(buf, L"%d texture%s outstanding. OK?", batchData.texList.length, batchData.texList.length == 1 ? L"" : L"s");
+
+	int proceed = 1;
+	if (batchData.texList.length == 0) {
+		MessageBox(g_hWndBatchTexWindow, L"No textures outstanding.", L"No Textures", MB_ICONINFORMATION);
+		proceed = 0;
+	} else {
+		int id = MessageBox(g_hWndBatchTexWindow, buf, L"Proceed?", MB_ICONQUESTION | MB_OKCANCEL);
+		if (id != IDOK) proceed = 0;
+	}
+
+	//if the user selects to proceed, show the modal conversion window and create threads.
+	if (proceed) {
+		HWND hWndProgress = CreateWindow(L"BatchProgressClass", L"Batch Operation",
+			WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
+			CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, g_hWndBatchTexWindow, NULL, NULL, NULL);
+		SendMessage(hWndProgress, NV_INITIALIZE, 0, (LPARAM) &batchData);
+		DoModalEx(hWndProgress, FALSE);
+	}
+
+	//free texture resources
+	for (unsigned int i = 0; i < batchData.texList.length; i++) {
+		BATCHTEXENTRY *ent = StListGetPtr(&batchData.texList, i);
+
+		//free texture allocation
+		free(ent->params.dest->palette.pal);
+		free(ent->params.dest->palette.name);
+		free(ent->params.dest->texels.texel);
+		free(ent->params.dest->texels.cmp);
+		free(ent->params.dest->texels.name);
+		free(ent->params.dest);
+
+		free(ent->params.pnam);
+		free(ent->path);
+		free(ent->outPath);
+	}
+	
+	StListFree(&batchData.texList);
+
 	return status;
 }
 
@@ -2440,6 +2498,148 @@ LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+static LRESULT CALLBACK BatchTexProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	BATCHTEXPROGRESSDATA *data = (BATCHTEXPROGRESSDATA *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case NV_INITIALIZE:
+		{
+			data = (BATCHTEXPROGRESSDATA *) lParam;
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			int labelWidth = 75;
+			int progressWidth = 400;
+			int statusWidth = 50;
+
+			//labels and progressbars
+			for (unsigned int i = 0; i < data->texList.length; i++) {
+				BATCHTEXENTRY *ent = StListGetPtr(&data->texList, i);
+				
+				CreateStatic(hWnd, GetFileName(ent->path), 10, 10 + i * 27, labelWidth, 22);
+				ent->hWndProgress = CreateWindow(PROGRESS_CLASSW, L"", WS_VISIBLE | WS_CHILD,
+					10 + labelWidth + 5, 10 + i * 27, progressWidth, 22, hWnd, NULL, NULL, NULL);
+				ent->hWndStatus = CreateStatic(hWnd, L"Working...", 10 + labelWidth + 5 + progressWidth + 5, 10 + i * 27, statusWidth, 22);
+
+				//start conversion
+				//ent->hThread = textureConvertThreaded(&ent->params);
+				ent->started = 0;
+				ent->hThread = NULL;
+			}
+
+			SetWindowSize(hWnd, 10 + labelWidth + 5 + progressWidth + 5 + statusWidth + 10, data->texList.length * 27 - 5 + 20);
+			SetGUIFont(hWnd);
+			SetTimer(hWnd, 1, 16, NULL);
+			break;
+		}
+		case WM_CLOSE:
+		{
+			//send terminate request to all conversions
+			if (data != NULL) {
+				//if all batch operations are complete, we may exit.
+				int allComplete = 1;
+				for (unsigned int i = 0; i < data->texList.length; i++) {
+					BATCHTEXENTRY *ent = StListGetPtr(&data->texList, i);
+					if (!ent->params.complete) allComplete = 0;
+				}
+
+				if (allComplete) {
+					//all complete: write texture to file
+
+					for (unsigned int i = 0; i < data->texList.length; i++) {
+						BATCHTEXENTRY *ent = StListGetPtr(&data->texList, i);
+
+						//free thread
+						CloseHandle(ent->hThread);
+
+						if (ent->params.result != TEXCONV_SUCCESS) continue; // skip an incomplete texture
+
+						//contain texture
+						TextureObject textureObj;
+						TxContain(&textureObj, TEXTURE_TYPE_NNSTGA, ent->params.dest);
+
+						//write file out
+						TxWriteFile(&textureObj, ent->outPath);
+
+						//free texture memory
+						ObjFree(&textureObj.header);
+						memset(ent->params.dest, 0, sizeof(TEXTURE));
+					}
+
+					break;
+				}
+
+				for (unsigned int i = 0; i < data->texList.length; i++) {
+					BATCHTEXENTRY *ent = StListGetPtr(&data->texList, i);
+					ent->params.terminate = 1;
+				}
+			}
+			return 0;
+		}
+		case WM_TIMER:
+		{
+			if (data != NULL) {
+				//check if any conversions should be started
+				unsigned int nInProcess = 0, nStarted = 0;
+				for (unsigned int i = 0; i < data->texList.length; i++) {
+					BATCHTEXENTRY *ent = StListGetPtr(&data->texList, i);
+					if (ent->started) {
+						//the start flag is updated by this thread, so there is no concurrency concern there.
+						//the completed flag is updated on the conversion thread, however. In the worst case,
+						//this means that we may overestimate the number of in-process threads if a conversion
+						//completes after we check its completion status. In this case, we will observe the
+						//completed status on the next timer tick, so this isn't really a problem.
+						nStarted++;
+						if (!ent->params.complete) nInProcess++;
+					}
+				}
+
+				//if the number of in-process conversions is less than the number of allowed threads, spawn another.
+				if (nInProcess < data->nThreads && nStarted < data->texList.length) {
+					//for every thread not utilized, we spawn a conversion thread, up to the number of textures total.
+					unsigned int nSpawn = data->nThreads - nInProcess, nSpawned = 0;
+
+					for (unsigned int i = 0; i < data->texList.length && nSpawned < nSpawn; i++) {
+						BATCHTEXENTRY *ent = StListGetPtr(&data->texList, i);
+						if (!ent->started) {
+							ent->started = 1;
+							ent->hThread = textureConvertThreaded(&ent->params);
+							nSpawned++;
+						}
+					}
+				}
+
+				int allComplete = 1;
+				for (unsigned int i = 0; i < data->texList.length; i++) {
+					BATCHTEXENTRY *ent = StListGetPtr(&data->texList, i);
+					SendMessage(ent->hWndProgress, PBM_SETRANGE, 0, ent->params.progressMax << 16);
+					SendMessage(ent->hWndProgress, PBM_SETPOS, ent->params.progress, 0);
+
+					if (!ent->params.complete) allComplete = 0;
+
+					//update status label
+					if (!ent->lastComplete && ent->params.complete) {
+						ent->lastComplete = 1;
+
+						LPCWSTR status = L"Complete";
+						switch (ent->params.result) {
+							case TEXCONV_SUCCESS : status = L"Complete"; break;
+							case TEXCONV_INVALID : status = L"Invalid";  break;
+							case TEXCONV_NOMEM   : status = L"Error";    break;
+							case TEXCONV_ABORT   : status = L"Aborted";  break;
+						}
+						SendMessage(ent->hWndStatus, WM_SETTEXT, wcslen(status), (LPARAM) status);
+					}
+				}
+
+				//if all complete, we may end the dialog.
+				if (allComplete) SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+	}
+	return DefModalProc(hWnd, msg, wParam, lParam);
+}
+
 int BatchTextureDialog(HWND hWndParent) {
 	HWND hWnd = CreateWindow(L"BatchTextureClass", L"Batch Texture Conversion", WS_CAPTION | WS_SYSMENU,
 		CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWndParent, NULL, NULL, NULL);
@@ -2486,6 +2686,7 @@ void RegisterTextureEditorClass(void) {
 	RegisterTexturePaletteEditorClass();
 	RegisterTextureTileEditorClass();
 	RegisterBatchTextureDialogClass();
+	RegisterGenericClass(L"BatchProgressClass", BatchTexProgressProc, sizeof(void *));
 }
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data) {
