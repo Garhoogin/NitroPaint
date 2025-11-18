@@ -533,7 +533,7 @@ void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height,
 	bmi5->bV5BlueMask  = 0x000000FF;
 	bmi5->bV5AlphaMask = 0xFF000000;
 	bmi5->bV5CSType = LCS_sRGB;
-	bmi5->bV5Intent = LCS_GM_ABS_COLORIMETRIC;
+	bmi5->bV5Intent = LCS_GM_IMAGES;
 
 	BITMAPINFOHEADER *bmi = (BITMAPINFOHEADER *) GlobalLock(hBmi);
 	bmi->biSize = sizeof(*bmi);
