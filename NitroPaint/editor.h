@@ -5,25 +5,29 @@
 #include "filecommon.h"
 #include "struct.h"
 
+typedef struct EditorFilter_ {
+	LPCWSTR filter;           // file filter
+	LPCWSTR extension;        // file extension
+} EditorFilter;
+
 typedef struct EDITOR_CLASS_ {
-	ATOM aclass;
-	int nFilters;
-	LPCWSTR *filters;
-	LPCWSTR *extensions;
+	ATOM aclass;              // the ATOM associated with this editor class
+	size_t dataSize;          // size of window data per editor
+	int features;             // editor features
+	StMap filters;            // int -> EditorFilter
+
+	const wchar_t *title;     // editor title
+	WNDPROC lpfnWndProc;      // window procedure
+
+	HPEN hLightPen;
+	HBRUSH hLightBrush;
 } EDITOR_CLASS;
 
 // ----- Class data slots
 #define EDITOR_CD_SLOT(n)     ((n)*sizeof(void*))
-#define EDITOR_CD_SIZE        (8*sizeof(void*))
+#define EDITOR_CD_SIZE        (1*sizeof(void*))
 
-#define EDITOR_CD_TITLE       EDITOR_CD_SLOT(0)
-#define EDITOR_CD_WNDPROC     EDITOR_CD_SLOT(1)
-#define EDITOR_CD_INITIALIZED EDITOR_CD_SLOT(2)
-#define EDITOR_CD_DATA_SIZE   EDITOR_CD_SLOT(3)
-#define EDITOR_CD_LIGHTBRUSH  EDITOR_CD_SLOT(4)
-#define EDITOR_CD_LIGHTPEN    EDITOR_CD_SLOT(5)
-#define EDITOR_CD_FEATURES    EDITOR_CD_SLOT(6)
-#define EDITOR_CD_CLASSINFO   EDITOR_CD_SLOT(7)
+#define EDITOR_CD_CLASSINFO   EDITOR_CD_SLOT(0)
 
 
 // ----- Window data slots
@@ -50,6 +54,9 @@ typedef struct EDITOR_CLASS_ {
 	int showBorders;             \
 	int dirty;                   \
 	StList destroyCallbacks;     \
+	void *prev;                  \
+	void *next;                  \
+	EDITOR_CLASS *cls;           \
 	WCHAR szOpenFile[MAX_PATH]
 
 

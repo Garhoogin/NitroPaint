@@ -29,6 +29,10 @@ static BOOL CALLBACK EditorSetThemeProc(HWND hWnd, LPARAM lParam) {
 	return TRUE;
 }
 
+static EDITOR_CLASS *EditorGetClass(HWND hWnd) {
+	return (EDITOR_CLASS *) GetClassLongPtr(hWnd, EDITOR_CD_CLASSINFO);
+}
+
 static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 	//get editor data
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
@@ -97,7 +101,7 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 	HWND hWndMain = getMainWindow(hWnd);
 	HMENU hMenu = GetMenu(hWndMain);
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
-	int features = GetClassLong(hWnd, EDITOR_CD_FEATURES);
+	int features = data->cls->features;
 
 	//enable/disable menus depending on supported features
 	if (features & EDITOR_FEATURE_GRIDLINES) {
@@ -224,18 +228,17 @@ static void EditorTerminateCombo(EDITOR_DATA *data) {
 
 static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	//check class long for initialized. If so, pass to window proc
-	int inited = GetClassLongPtr(hWnd, EDITOR_CD_INITIALIZED);
-	if (inited) {
-		WNDPROC proc = (WNDPROC) GetClassLongPtr(hWnd, EDITOR_CD_WNDPROC);
-
+	EDITOR_CLASS *cls = EditorGetClass(hWnd);
+	if (cls != NULL && cls->lpfnWndProc != NULL) {
 		//check data exists. If not, create it here.
 		int wndInited = GetWindowLongPtr(hWnd, EDITOR_WD_INITIALIZED);
 		if (!wndInited) {
-			size_t dataSize = GetClassLongPtr(hWnd, EDITOR_CD_DATA_SIZE);
+			size_t dataSize = cls->dataSize;
 			EDITOR_DATA *data = (EDITOR_DATA *) calloc(1, dataSize);
 			SetWindowLongPtr(hWnd, EDITOR_WD_DATA, (LONG_PTR) data);
 			SetWindowLongPtr(hWnd, EDITOR_WD_INITIALIZED, 1);
 			data->hWnd = hWnd;
+			data->cls = cls;
 
 			//initialize destroy callback
 			StListCreate(&data->destroyCallbacks, sizeof(EditorDestroyCallbackEntry), NULL);
@@ -264,7 +267,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				//if marked dirty, give alert
 				if (data->dirty) {
 					WCHAR buf[128];
-					wsprintfW(buf, L"Unsaved Changes - %s", GetClassLongPtr(hWnd, EDITOR_CD_TITLE));
+					wsprintfW(buf, L"Unsaved Changes - %s", cls->title);
 					int status = MessageBox(hWnd, L"You have unsaved changes. Close anyway?", buf, MB_ICONWARNING | MB_YESNO);
 
 					if (status == IDNO) {
@@ -280,8 +283,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			case WM_MOUSEWHEEL:
 				//handle zoom via ctrl+scroll
 				if (LOWORD(wParam) & MK_CONTROL) {
-					int feature = GetClassLong(hWnd, EDITOR_CD_FEATURES);
-					if (feature & EDITOR_FEATURE_ZOOM) {
+					if (cls->features & EDITOR_FEATURE_ZOOM) {
 						int delta = GET_WHEEL_DELTA_WPARAM(wParam);
 
 						HWND hWndMain = getMainWindow(hWnd);
@@ -313,11 +315,10 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		}
 
 		//call proc
-		LRESULT res = proc(hWnd, msg, wParam, lParam);
+		LRESULT res = cls->lpfnWndProc(hWnd, msg, wParam, lParam);
 
 		//WM_DESTROY should free data
 		if (msg == WM_DESTROY) {
-			EDITOR_DATA *data = (EDITOR_DATA *) GetWindowLongPtr(hWnd, EDITOR_WD_DATA);
 			if (data != NULL) {
 				//call all destroy callback subscribers.
 				for (size_t i = 0; i < data->destroyCallbacks.length; i++) {
@@ -344,17 +345,14 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		return res;
 	}
 
-	//else, this is a dummy window.
-	//on the first WM_DESTORY, mark class as initialized.
-	if (msg == WM_DESTROY) {
-		SetClassLong(hWnd, EDITOR_CD_INITIALIZED, 1);
-	}
-
-	//pass through
+	//else, this is a dummy window. pass through.
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
 EDITOR_CLASS *EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize, int features) {
+	EDITOR_CLASS *ec = (EDITOR_CLASS *) calloc(1, sizeof(EDITOR_CLASS));
+	if (ec == NULL) return NULL;
+
 	//register editor-common window class.
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
@@ -368,41 +366,35 @@ EDITOR_CLASS *EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR
 	wcex.hIconSm = g_appIcon;
 	ATOM aClass = RegisterClassEx(&wcex);
 
-	//if success, set class data
-	if (aClass) {
-		EDITOR_CLASS *ec = (EDITOR_CLASS *) calloc(1, sizeof(EDITOR_CLASS));
-		HWND hWndDummy = CreateWindow(lpszClassName, L"", 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL);
-		SetClassLongPtr(hWndDummy, EDITOR_CD_TITLE, (LONG_PTR) title);
-		SetClassLongPtr(hWndDummy, EDITOR_CD_WNDPROC, (LONG_PTR) lpfnWndProc);
-		SetClassLongPtr(hWndDummy, EDITOR_CD_DATA_SIZE, dataSize);
-		SetClassLongPtr(hWndDummy, EDITOR_CD_LIGHTBRUSH, (LONG_PTR) CreateSolidBrush(RGB(51, 51, 51)));
-		SetClassLongPtr(hWndDummy, EDITOR_CD_LIGHTPEN, (LONG_PTR) CreatePen(PS_SOLID, 1, RGB(51, 51, 51)));
-		SetClassLongPtr(hWndDummy, EDITOR_CD_FEATURES, features);
-		SetClassLongPtr(hWndDummy, EDITOR_CD_CLASSINFO, (LONG_PTR) ec);
-		DestroyWindow(hWndDummy);
-
-		ec->aclass = aClass;
-		ec->nFilters = 0;
-		ec->filters = ec->extensions = NULL;
-		return ec;
+	if (!aClass) {
+		//class registration failure
+		free(ec);
+		return NULL;
 	}
 
-	return NULL;
+	//if success, set class data
+	HWND hWndDummy = CreateWindow(lpszClassName, L"", 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL);
+	ec->hLightBrush = CreateSolidBrush(RGB(51, 51, 51));
+	ec->hLightPen = CreatePen(PS_SOLID, 1, RGB(51, 51, 51));
+	ec->title = title;
+	ec->dataSize = dataSize;
+	ec->features = features;
+	SetClassLongPtr(hWndDummy, EDITOR_CD_CLASSINFO, (LONG_PTR) ec); // mark initialized
+	DestroyWindow(hWndDummy);
+
+	ec->aclass = aClass;
+	StMapCreate(&ec->filters, sizeof(int), sizeof(EditorFilter));
+
+	ec->lpfnWndProc = lpfnWndProc; // mark ready
+	return ec;
 }
 
 void EditorAddFilter(EDITOR_CLASS *cls, int format, LPCWSTR extension, LPCWSTR filter) {
-	//if format not within the bounds, add it.
-	if (format >= cls->nFilters) {
-		cls->extensions = (LPCWSTR *) realloc((LPWSTR *) cls->extensions, (format + 1) * sizeof(LPCWSTR *));
-		cls->filters = (LPCWSTR *) realloc((LPWSTR *) cls->filters, (format + 1) * sizeof(LPCWSTR *));
-		for (int i = cls->nFilters; i < format; i++) {
-			cls->extensions[i] = NULL;
-			cls->filters[i] = NULL;
-		}
-		cls->nFilters = format + 1;
-	}
-	cls->extensions[format] = extension;
-	cls->filters[format] = filter;
+	//add filter
+	EditorFilter filterExt;
+	filterExt.extension = extension;
+	filterExt.filter = filter;
+	StMapPut(&cls->filters, &format, &filterExt);
 }
 
 static int EditorGetFilterLength(LPCWSTR filter) {
@@ -425,27 +417,28 @@ static int EditorSaveAsInternal(HWND hWnd);
 
 static int EditorSaveAsInternal(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
-	EDITOR_CLASS *cls = (EDITOR_CLASS *) GetClassLong(hWnd, EDITOR_CD_CLASSINFO);
 
 	int format = data->file.format;
-	LPCWSTR filter = format < cls->nFilters ? cls->filters[format] : NULL;
-	LPCWSTR extension = format < cls->nFilters ? cls->extensions[format] : NULL;
-	if (filter == NULL && cls->nFilters > 0) filter = cls->filters[0];
-	if (extension == NULL && cls->nFilters > 0) extension = cls->extensions[0];
+	EditorFilter filterExt = { 0 };
+	StStatus status = StMapGet(&data->cls->filters, &format, &filterExt);
+	if (!ST_SUCCEEDED(status)) {
+		int format0 = 0;
+		StMapGet(&data->cls->filters, &format0, &filterExt);
+	}
 
 	//append generic All Files filter
 	LPWSTR dlgFilter = NULL;
-	if (filter != NULL) {
+	if (filterExt.filter != NULL) {
 		LPCWSTR suffix = L"All Files\0*.*\0";
-		int baselen = EditorGetFilterLength(filter);
+		int baselen = EditorGetFilterLength(filterExt.filter);
 		int suffixlen = EditorGetFilterLength(suffix);
 
 		dlgFilter = (WCHAR *) calloc(baselen - 1 + suffixlen, sizeof(WCHAR));
-		memcpy(dlgFilter, filter, (baselen - 1) * sizeof(WCHAR));
+		memcpy(dlgFilter, filterExt.filter, (baselen - 1) * sizeof(WCHAR));
 		memcpy(dlgFilter + baselen - 1, suffix, suffixlen * sizeof(WCHAR));
 	}
 
-	LPWSTR path = saveFileDialog(hWnd, L"Save As...", dlgFilter, extension);
+	LPWSTR path = saveFileDialog(hWnd, L"Save As...", dlgFilter, filterExt.extension);
 	if (dlgFilter != NULL) free(dlgFilter);
 	if (path == NULL) return EDITOR_STATUS_CANCELLED;
 
@@ -456,7 +449,7 @@ static int EditorSaveAsInternal(HWND hWnd) {
 
 static int EditorSaveInternal(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
-	EDITOR_CLASS *cls = (EDITOR_CLASS *) GetClassLong(hWnd, EDITOR_CD_CLASSINFO);
+	EDITOR_CLASS *cls = EditorGetClass(hWnd);
 
 	//do we need to open a Save As dialog?
 	if (data->szOpenFile[0] == L'\0') {
@@ -504,8 +497,9 @@ int EditorSave(HWND hWnd) {
 }
 
 void EditorSetFile(HWND hWnd, LPCWSTR filename) {
-	LPCWSTR title = (LPCWSTR) GetClassLongPtr(hWnd, EDITOR_CD_TITLE);
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	EDITOR_CLASS *cls = EditorGetClass(hWnd);
+	LPCWSTR title = cls->title;
 
 	//if global config dictates, use only file name
 	LPCWSTR fullname = filename;
@@ -558,7 +552,8 @@ HWND EditorCreate(LPCWSTR lpszClassName, int x, int y, int width, int height, HW
 	HWND hWnd = CreateWindowEx(dwExStyle, lpszClassName, L"", dwStyle, x, y, width, height, hWndParent, NULL, NULL, NULL);
 	ShowWindow(hWnd, SW_HIDE);
 
-	LPCWSTR title = (LPCWSTR) GetClassLongPtr(hWnd, EDITOR_CD_TITLE);
+	EDITOR_CLASS *cls = EditorGetClass(hWnd);
+	LPCWSTR title = cls->title;
 	SendMessage(hWnd, WM_SETTEXT, wcslen(title), (LPARAM) title);
 
 	//show (only if size is specified, else remain hidden)
