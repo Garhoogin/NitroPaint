@@ -3988,39 +3988,50 @@ static void RegisterIndexImageClass(void) {
 	RegisterGenericClass(L"IndexImagePreview", RedGuiIndexImagePreviewProc, sizeof(LPVOID));
 }
 
-VOID ReadConfiguration(LPWSTR lpszPath) {
-	DWORD dwAttributes = GetFileAttributes(lpszPath);
-	if (dwAttributes == INVALID_FILE_ATTRIBUTES) {
-		
-		/*HANDLE hFile = CreateFile(lpszPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+static BOOL NpCfgWriteInt(LPCWSTR section, LPCWSTR prop, int val) {
+	WCHAR buf[32];
+	wsprintfW(buf, L"%d", val);
+	return WritePrivateProfileString(section, prop, buf, g_configPath);
+}
 
-		CloseHandle(hFile);*/
-		BOOL result = TRUE;
-		result = result && WritePrivateProfileStringW(L"NclrViewer", L"UseDSColorPicker", L"0", lpszPath);
-		result = result && WritePrivateProfileStringW(L"NcgrViewer", L"Gridlines", L"1", lpszPath);
-		result = result && WritePrivateProfileStringW(L"NscrViewer", L"Gridlines", L"0", lpszPath);
-		result = result && WritePrivateProfileStringW(L"NitroPaint", L"FullPaths", L"1", lpszPath);
-		result = result && WritePrivateProfileStringW(L"NitroPaint", L"PaletteAlgorithm", L"0", lpszPath);
-		result = result && WritePrivateProfileString(L"NitroPaint", L"RenderTransparent", L"1", lpszPath);
-		result = result && WritePrivateProfileStringW(L"NitroPaint", L"DPIAware", L"1", lpszPath);
-		result = result && WritePrivateProfileStringW(L"NitroPaint", L"AllowMultiple", L"0", lpszPath);
-	}
-	g_configuration.nclrViewerConfiguration.useDSColorPicker = GetPrivateProfileInt(L"NclrViewer", L"UseDSColorPicker", 0, lpszPath);
-	g_configuration.ncgrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NcgrViewer", L"Gridlines", 1, lpszPath);
-	g_configuration.nscrViewerConfiguration.gridlines = GetPrivateProfileInt(L"NscrViewer", L"Gridlines", 0, lpszPath);
-	g_configuration.fullPaths = GetPrivateProfileInt(L"NitroPaint", L"FullPaths", 1, lpszPath);
-	g_configuration.renderTransparent = GetPrivateProfileInt(L"NitroPaint", L"RenderTransparent", 1, lpszPath);
-	g_configuration.backgroundPath = (LPWSTR) calloc(MAX_PATH, sizeof(WCHAR));
-	g_configuration.dpiAware = GetPrivateProfileInt(L"NitroPaint", L"DPIAware", 1, lpszPath);
-	g_configuration.allowMultipleInstances = GetPrivateProfileInt(L"NitroPaint", L"AllowMultiple", 0, lpszPath);
-	GetPrivateProfileString(L"NitroPaint", L"Background", L"", g_configuration.backgroundPath, MAX_PATH, lpszPath);
+static int NpCfgReadInt(LPCWSTR section, LPCWSTR prop, int def) {
+	//read value from profile, if not the default then return
+	int val0 = GetPrivateProfileInt(section, prop, def, g_configPath);
+	if (val0 != def) return def;
+
+	//try reading with a different default to catch a default setting
+	int val1 = GetPrivateProfileInt(section, prop, def ^ 1, g_configPath);
+	if (val1 == val0) return val1;
+
+	//put the default value
+	NpCfgWriteInt(section, prop, def);
+	return def;
+}
+
+static LPWSTR NpCfgReadStr(LPCWSTR section, LPCWSTR prop, LPCWSTR def) {
+	WCHAR *buf = (WCHAR *) calloc(MAX_PATH + 1, sizeof(WCHAR));
+	if (buf == NULL) return NULL;
+
+	GetPrivateProfileStringW(section, prop, def, buf, MAX_PATH + 1, g_configPath);
+	return buf;
+}
+
+static void ReadConfiguration(void) {
+	g_configuration.fullPaths              = NpCfgReadInt(L"NitroPaint", L"FullPaths",         0);
+	g_configuration.renderTransparent      = NpCfgReadInt(L"NitroPaint", L"RenderTransparent", 0);
+	g_configuration.dpiAware               = NpCfgReadInt(L"NitroPaint", L"DPIAware",          1);
+	g_configuration.allowMultipleInstances = NpCfgReadInt(L"NitroPaint", L"AllowMultiple",     0);
+	g_configuration.backgroundPath         = NpCfgReadStr(L"NitroPaint", L"Background",        L"");
+	g_configuration.nclrViewerConfiguration.useDSColorPicker = NpCfgReadInt(L"NclrViewer", L"UseDSColorPicker", 1);
+	g_configuration.ncgrViewerConfiguration.gridlines        = NpCfgReadInt(L"NcgrViewer", L"Gridlines",        1);
+	g_configuration.nscrViewerConfiguration.gridlines        = NpCfgReadInt(L"NscrViewer", L"Gridlines",        0);
 
 	//load background image
 	if (g_configuration.backgroundPath[0] != L'\0') {
-		int width = 0, height = 0;
+		unsigned int width = 0, height = 0;
 		COLOR32 *bits = ImgRead(g_configuration.backgroundPath, &width, &height);
 		if (bits != NULL) {
-			for (int i = 0; i < width * height; i++) bits[i] = REVERSE(bits[i]);
+			ImgSwapRedBlue(bits, width, height);
 			HBITMAP hbm = CreateBitmap(width, height, 1, 32, bits);
 			g_configuration.hbrBackground = CreatePatternBrush(hbm);
 			free(bits);
@@ -4115,7 +4126,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	CoInitialize(NULL);
 
 	SetConfigPath();
-	ReadConfiguration(g_configPath);
+	ReadConfiguration();
 	CheckExistingAppWindow();
 	InitializeDpiAwareness();
 
