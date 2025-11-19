@@ -15,6 +15,29 @@ typedef struct EditorDestroyCallbackEntry_ {
 } EditorDestroyCallbackEntry;
 
 
+
+void EditorMgrInit(HWND hWndMgr) {
+	EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMgr, 0);
+	StListCreateInline(&mgr->classList, EDITOR_CLASS *, NULL);
+	StListCreateInline(&mgr->editorList, EDITOR_DATA *, NULL);
+}
+
+StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list) {
+	EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMgr, 0);
+	StStatus status = ST_STATUS_OK;
+
+	//count editors of the specified type
+	for (size_t i = 0; i < mgr->editorList.length; i++) {
+		EDITOR_DATA *data = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
+		if (type == FILE_TYPE_INVALID || type == data->file.type) {
+			status = StListAdd(list, &data);
+			if (!ST_SUCCEEDED(status)) break;
+		}
+	}
+	return status;
+}
+
+
 static LPCWSTR EditorStatusToString(int status) {
 	switch (status) {
 		case EDITOR_STATUS_CANCELLED:
@@ -242,6 +265,11 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 			//initialize destroy callback
 			StListCreate(&data->destroyCallbacks, sizeof(EditorDestroyCallbackEntry), NULL);
+
+			//add window to the editor list
+			HWND hWndMain = getMainWindow(hWnd);
+			EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMain, 0);
+			StListAdd(&mgr->editorList, &data);
 		}
 
 		//handle common editor messages
@@ -331,6 +359,15 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 				if (ObjIsValid(&data->file)) ObjFree(&data->file);
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
+
+				HWND hWndMain = getMainWindow(hWnd);
+				EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMain, 0);
+
+				//remove editor from the editor list
+				size_t idx = StListIndexOf(&mgr->editorList, &data);
+				if (idx <= ST_INDEX_MAX) {
+					StListRemove(&mgr->editorList, idx);
+				}
 				free(data);
 			}
 		}

@@ -285,10 +285,10 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 }
 
 static void ScrViewerCopy(NSCRVIEWERDATA *data) {
-	HWND hWndNclrEditor = NULL, hWndNcgrEditor = NULL;
 	HWND hWndMain = getMainWindow(data->hWnd);
-	GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrEditor, 1);
-	GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	HWND hWndNclrEditor = nitroPaintStruct->hWndNclrViewer;
+	HWND hWndNcgrEditor = nitroPaintStruct->hWndNcgrViewer;
 
 	OpenClipboard(data->hWnd);
 	EmptyClipboard();
@@ -313,8 +313,8 @@ static void ScrViewerCopy(NSCRVIEWERDATA *data) {
 	if (hWndNclrEditor != NULL && hWndNcgrEditor != NULL) {
 		//to bitmap
 		NSCR *nscr = &data->nscr;
-		NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor))->ncgr;
-		NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(hWndNclrEditor))->nclr;
+		NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrEditor);
+		NCLR *nclr = (NCLR *) EditorGetObject(hWndNclrEditor);
 
 		//check: should we output indexed? If palette size > 256, we can't
 		int width, height, copyX = tileX * 8, copyY = tileY * 8, copyW = tilesX * 8, copyH = tilesY * 8;
@@ -1095,18 +1095,14 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 		{
 			HWND hWndEditor = (HWND) lParam;
 			HWND hWndMain = getMainWindow(hWndEditor);
-			HWND hWndNcgrEditor = NULL, hWndNclrEditor = NULL;
-			GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
-			GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrEditor, 1);
-			NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrEditor);
-			NCGR *ncgr = &ncgrViewerData->ncgr;
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			HWND hWndNcgrEditor = nitroPaintStruct->hWndNcgrViewer;
+			HWND hWndNclrEditor = nitroPaintStruct->hWndNclrViewer;
 
-			NCLRVIEWERDATA *nclrViewerData = NULL;
 			NCLR *nclr = NULL;
-			if (hWndNclrEditor != NULL) {
-				nclrViewerData = (NCLRVIEWERDATA *) EditorGetData(hWndNclrEditor);
-				nclr = &nclrViewerData->nclr;
-			}
+			NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrEditor);
+
+			if (hWndNclrEditor != NULL) nclr = (NCLR *) EditorGetObject(hWndNclrEditor);
 
 			//set appropriate fields using data from NCGR
 			int nMaxColors = 1 << ncgr->nBits;

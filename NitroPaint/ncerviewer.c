@@ -1667,17 +1667,16 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 
 	int changed = 0;
 	if (notification == BN_CLICKED && hWndControl == data->hWndCreateCell) {
+		HWND hWndNclrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_PALETTE);
+		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
+
 		//check for palette and character open as well
-		int nPalettes = GetAllEditors(hWndMain, FILE_TYPE_PALETTE, NULL, 0);
-		int nChars = GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, NULL, 0);
-		if (nPalettes == 0 || nChars == 0) {
+		if (hWndNclrViewer == NULL || hWndNcgrViewer == NULL) {
 			MessageBox(hWnd, L"Requires open palette and character.", L"Error", MB_ICONERROR);
 			return;
 		}
 
-		HWND hWndNclrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_PALETTE);
-		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
-		NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
+		NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
 		if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
 			MessageBox(hWnd, L"Cannot be used with 2D mapping.", L"Error", MB_ICONERROR);
 			return;
@@ -2592,13 +2591,14 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			nitroPaintStruct->hWndNcerViewer = hWnd;
 
 			//ensure that when the cell editor is opened later than the animation editors receive the correct bounding information.
-			int nAnmEditor = GetAllEditors(hWndMain, FILE_TYPE_NANR, NULL, 0);
-			HWND *hWndAnmEditors = (HWND *) calloc(nAnmEditor, sizeof(HWND));
-			GetAllEditors(hWndMain, FILE_TYPE_NANR, hWndAnmEditors, nAnmEditor);
-			for (int i = 0; i < nAnmEditor; i++) {
-				AnmViewerUpdateCellBounds(hWndAnmEditors[i]);
+			StList anmEditors;
+			StListCreateInline(&anmEditors, NANRVIEWERDATA *, NULL);
+			EditorGetAllByType(hWndMain, FILE_TYPE_NANR, &anmEditors);
+
+			for (size_t i = 0; i < anmEditors.length; i++) {
+				AnmViewerUpdateCellBounds((*(NANRVIEWERDATA **) StListGetPtr(&anmEditors, i))->hWnd);
 			}
-			free(hWndAnmEditors);
+			StListFree(&anmEditors);
 
 			break;
 		}
@@ -3057,9 +3057,9 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				GetAllEditors(hWndMain, FILE_TYPE_CELL, &hWndNcerViewer, 1);
 
 				//get editor datas
-				NCLR *nclr = &((NCLRVIEWERDATA *) EditorGetData(hWndNclrViewer))->nclr;
-				NCGR *ncgr = &((NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer))->ncgr;
-				NCER *ncer = &((NCERVIEWERDATA *) EditorGetData(hWndNcerViewer))->ncer;
+				NCLR *nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
+				NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
+				NCER *ncer = (NCER *) EditorGetObject(hWndNcerViewer);
 
 				//get current cell
 				NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(hWndNcerViewer);

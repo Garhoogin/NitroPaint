@@ -695,42 +695,32 @@ static void PalViewerUpdateViewers(HWND hWnd, int updateMask) {
 }
 
 static int CountPaletteUsages(HWND hWndMain, NCLR *nclr, int *counts) {
-	//if no screen editor open, get use counts from character
-	int nScreen = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
-	if (nScreen == 0) {
-		//use character editor, if it exists.
-		HWND hWndCharacterEditor;
-		int nChar = GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndCharacterEditor, 1);
-		if (nChar == 0) return 0;
+	HWND hWndCharacterEditor = ((NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0))->hWndNcgrViewer;
+	if (hWndCharacterEditor == 0) return 0;
 
-		//exists. get graphics
-		NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
-		int palBase = data->selectedPalette;
-		int palSize = 1 << data->ncgr.nBits;
-		for (int i = 0; i < data->ncgr.nTiles; i++) {
-			unsigned char *tile = data->ncgr.tiles[i];
+	//if no screen editor open, get use counts from character
+	StList scrEditors;
+	StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
+	EditorGetAllByType(hWndMain, FILE_TYPE_SCREEN, &scrEditors);
+
+	//character editor data
+	NCGRVIEWERDATA *ncgrData = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
+	int palSize = 1 << ncgrData->ncgr.nBits;
+
+	if (scrEditors.length == 0) {
+		//character exists. get graphics
+		int palBase = ncgrData->selectedPalette;
+		for (int i = 0; i < ncgrData->ncgr.nTiles; i++) {
+			unsigned char *tile = ncgrData->ncgr.tiles[i];
 			for (int j = 0; j < 64; j++) {
 				int index = tile[j] + palBase * palSize;
 				if (index < nclr->nColors) counts[index]++;
 			}
 		}
-		return 1;
 	} else {
-		//get character
-		HWND hWndCharacterEditor;
-		int nChar = GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndCharacterEditor, 1);
-		if (nChar == 0) return 0;
-
-		NCGRVIEWERDATA *ncgrData = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
-		int palSize = 1 << ncgrData->ncgr.nBits;
-
-		//use screen.
-		HWND *hWndScreens = (HWND *) calloc(nScreen, sizeof(HWND));
-		GetAllEditors(hWndMain, FILE_TYPE_SCREEN, hWndScreens, nScreen);
-
 		//measure every screen
-		for (int i = 0; i < nScreen; i++) {
-			NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWndScreens[i]);
+		for (size_t i = 0; i < scrEditors.length; i++) {
+			NSCRVIEWERDATA *data = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i);
 			for (unsigned int j = 0; j < data->nscr.dataSize / 2; j++) {
 				uint16_t tile = data->nscr.data[j];
 				int charIndex = (tile & 0x3FF) - data->tileBase;
@@ -748,10 +738,9 @@ static int CountPaletteUsages(HWND hWndMain, NCLR *nclr, int *counts) {
 
 			}
 		}
-
-		free(hWndScreens);
-		return 1;
 	}
+	StListFree(&scrEditors);
+	return 1;
 }
 
 static COLOR32 MakeContrastingColor(COLOR32 c) {
@@ -1309,7 +1298,10 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 		//if enabled: modify graphics data to preserve the picture
 		HWND hWndMain = getMainWindow(hWnd);
 		{
-			int nScreenEditors = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
+			StList scrEditors;
+			StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
+			EditorGetAllByType(hWndMain, FILE_TYPE_SCREEN, &scrEditors);
+
 			HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CHARACTER);
 
 			if (hWndNcgrViewer != NULL) {
@@ -1318,14 +1310,12 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 				uint8_t *tilePalettes = (uint8_t *) calloc(ncgr->nTiles, sizeof(int));
 				memset(tilePalettes, 0, ncgr->nTiles);
 
-				if (nScreenEditors > 0) {
+				if (scrEditors.length > 0) {
 					//do graphics transform with respect to screen data.
-					HWND *hScreenEditors = (HWND *) calloc(nScreenEditors, sizeof(HWND));
-					GetAllEditors(hWndMain, FILE_TYPE_SCREEN, hScreenEditors, nScreenEditors);
-					for (int i = 0; i < nScreenEditors; i++) {
+					for (size_t i = 0; i < scrEditors.length; i++) {
 						//determine which palette each tile is using.
-						NSCR *nscr = (NSCR *) EditorGetObject(hScreenEditors[i]);
-						NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hScreenEditors[i]);
+						NSCRVIEWERDATA *nscrViewerData = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i);
+						NSCR *nscr = &nscrViewerData->nscr;
 
 						for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 							uint16_t scrd = nscr->data[i];
@@ -1333,7 +1323,6 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 							if (chrno >= 0 && chrno < ncgr->nTiles) tilePalettes[chrno] = scrd >> 12;
 						}
 					}
-					free(hScreenEditors);
 				} else {
 					//do graphics transform with respect to only character data. Assume all characters 
 					//use the selected palette.
@@ -1366,6 +1355,7 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 				free(tilePalettes);
 
 			}
+			StListFree(&scrEditors);
 		}
 		free(tmp);
 
@@ -1648,22 +1638,21 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				//now: if we use a preserve drag, update accordingly.
 				if (data->preserveDragging) {
 					NCGR *ncgr = NULL;
-					NSCR **nscrs = NULL;
 					HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CHAR);
 					if (hWndNcgrViewer != NULL) ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
-					
-					//get all screen editors
-					HWND hWndMain = getMainWindow(hWnd);
-					int nScreens = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
-					HWND *hWndScreenEditors = (HWND *) calloc(nScreens, sizeof(HWND));
-					nscrs = (NSCR **) calloc(nScreens, sizeof(NSCR *));
-					GetAllEditors(hWndMain, FILE_TYPE_SCREEN, hWndScreenEditors, nScreens);
-					for (int i = 0; i < nScreens; i++) {
-						nscrs[i] = (NSCR *) EditorGetObject(hWndScreenEditors[i]);
-					}
-					free(hWndScreenEditors);
 
-					PalViewerDoPreserveTransform(data, ncgr, nscrs, nScreens);
+					//get all screen editors
+					StList scrEditors;
+					StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
+					EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_SCREEN, &scrEditors);
+
+					NSCR **nscrs = (NSCR **) calloc(scrEditors.length, sizeof(NSCR *));
+					for (size_t i = 0; i < scrEditors.length; i++) {
+						nscrs[i] = &(*(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i))->nscr;
+					}
+
+					PalViewerDoPreserveTransform(data, ncgr, nscrs, scrEditors.length);
+					StListFree(&scrEditors);
 					free(nscrs);
 				}
 

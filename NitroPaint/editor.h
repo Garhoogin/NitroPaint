@@ -1,8 +1,9 @@
 #pragma once
-#include "nitropaint.h"
-#include "childwindow.h"
+#include <Windows.h>
+
 #include "ui.h"
 #include "filecommon.h"
+#include "childwindow.h"
 #include "struct.h"
 
 typedef struct EditorFilter_ {
@@ -22,6 +23,11 @@ typedef struct EDITOR_CLASS_ {
 	HPEN hLightPen;
 	HBRUSH hLightBrush;
 } EDITOR_CLASS;
+
+typedef struct EditorManager_ {
+	StList classList;   // list of classes
+	StList editorList;  // list of editors
+} EditorManager;
 
 // ----- Class data slots
 #define EDITOR_CD_SLOT(n)     ((n)*sizeof(void*))
@@ -74,6 +80,12 @@ typedef struct EDITOR_DATA_ {
 typedef void (*EditorDestroyCallback) (EDITOR_DATA *data, void *param);
 
 
+void EditorMgrInit(HWND hWndMgr);
+
+StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list);
+
+
+
 EDITOR_CLASS *EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize, int features);
 
 void EditorAddFilter(EDITOR_CLASS *cls, int format, LPCWSTR extension, LPCWSTR filter);
@@ -95,3 +107,5 @@ HWND EditorCreate(LPCWSTR lpszClassName, int x, int y, int width, int height, HW
 void EditorRegisterDestroyCallback(EDITOR_DATA *data, EditorDestroyCallback callback, void *param);
 
 void EditorRemoveDestroyCallback(EDITOR_DATA *data, EditorDestroyCallback callback, void *param);
+
+#include "nitropaint.h"

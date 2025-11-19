@@ -1265,24 +1265,22 @@ static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immed
 	if (data->ncgr.nBits == 8) SendMessage(data->hWnd8bpp, BM_SETCHECK, 1, 0);
 
 	//guess a tile base for open NSCR (if any)
-	HWND hWndMain = getMainWindow(hWnd);
-	int nNscrEditors = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
-	if (nNscrEditors > 0) {
-		//for each editor
-		HWND *nscrEditors = (HWND *) calloc(nNscrEditors, sizeof(HWND));
-		GetAllEditors(hWndMain, FILE_TYPE_SCREEN, nscrEditors, nNscrEditors);
-		for (int i = 0; i < nNscrEditors; i++) {
-			HWND hWndNscrViewer = nscrEditors[i];
-			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
-			NSCR *nscr = &nscrViewerData->nscr;
-			if (nscr->nHighestIndex >= data->ncgr.nTiles) {
-				NscrViewerSetTileBase(hWndNscrViewer, nscr->nHighestIndex + 1 - data->ncgr.nTiles);
-			} else {
-				NscrViewerSetTileBase(hWndNscrViewer, 0);
-			}
+	StList nscrEditorList;
+	StListCreateInline(&nscrEditorList, EDITOR_DATA *, NULL);
+	EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_SCREEN, &nscrEditorList);
+
+	//for each editor
+	for (size_t i = 0; i < nscrEditorList.length; i++) {
+		NSCRVIEWERDATA *nscrViewerData = *(NSCRVIEWERDATA **) StListGetPtr(&nscrEditorList, i);
+		NSCR *nscr = &nscrViewerData->nscr;
+		if (nscr->nHighestIndex >= data->ncgr.nTiles) {
+			NscrViewerSetTileBase(nscrViewerData->hWnd, nscr->nHighestIndex + 1 - data->ncgr.nTiles);
+		} else {
+			NscrViewerSetTileBase(nscrViewerData->hWnd, 0);
 		}
-		free(nscrEditors);
 	}
+	StListFree(&nscrEditorList);
+
 	ShowWindow(hWnd, SW_SHOW);
 	ChrViewerInvalidateAllDependents(hWnd);
 }
@@ -1490,27 +1488,27 @@ static void ChrViewerImportAttributes(NCGRVIEWERDATA *data) {
 	}
 
 	HWND hWndMain = getMainWindow(data->hWnd);
-	int nScrEditors = GetAllEditors(hWndMain, FILE_TYPE_SCREEN, NULL, 0);
-	int nCellEditors = GetAllEditors(hWndMain, FILE_TYPE_CELL, NULL, 0);
+	
+	//get all BG screen, cell data editors
+	StList editors;
+	StListCreateInline(&editors, EDITOR_DATA *, NULL);
+	EditorGetAllByType(hWndMain, FILE_TYPE_SCREEN, &editors);
+	EditorGetAllByType(hWndMain, FILE_TYPE_CELL, &editors);
 
-	if (nScrEditors > 0) {
-		HWND *scrEditors = (HWND *) calloc(nScrEditors, sizeof(HWND));
-		GetAllEditors(hWndMain, FILE_TYPE_SCREEN, scrEditors, nScrEditors);
-		for (int i = 0; i < nScrEditors; i++) {
-			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(scrEditors[i]);
-			ChrViewerImportAttributesFromScreen(data, nscrViewerData);
+	for (size_t i = 0; i < editors.length; i++) {
+		EDITOR_DATA *editor = *(EDITOR_DATA **) StListGetPtr(&editors, i);
+
+		switch (editor->file.type) {
+			case FILE_TYPE_SCREEN:
+				ChrViewerImportAttributesFromScreen(data, (NSCRVIEWERDATA *) editor);
+				break;
+			case FILE_TYPE_CELL:
+				ChrViewerImportAttributesFromCell(data, (NCERVIEWERDATA *) editor);
+				break;
 		}
-		free(scrEditors);
 	}
-	if (nCellEditors > 0) {
-		HWND *cellEditors = (HWND *) calloc(nCellEditors, sizeof(HWND));
-		GetAllEditors(hWndMain, FILE_TYPE_CELL, cellEditors, nCellEditors);
-		for (int i = 0; i < nCellEditors; i++) {
-			NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(cellEditors[i]);
-			ChrViewerImportAttributesFromCell(data, ncerViewerData);
-		}
-		free(cellEditors);
-	}
+
+	StListFree(&editors);
 	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 }
 
@@ -1717,20 +1715,17 @@ static void ChrViewerOnHoverChange(HWND hWnd, int tileX, int tileY) {
 
 	ChrViewerUpdateCharacterLabel(hWnd);
 
+	StList scrEditors;
+	StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
+	EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_SCREEN, &scrEditors);
+
 	//update screen viewers
-	int nScrViewers = GetAllEditors(getMainWindow(hWnd), FILE_TYPE_SCREEN, NULL, 0);
-	if (nScrViewers > 0) {
-		HWND *hWnds = (HWND *) calloc(nScrViewers, sizeof(HWND));
-		GetAllEditors(getMainWindow(hWnd), FILE_TYPE_SCREEN, hWnds, nScrViewers);
-
-		//invalidate viewer region of each BG screen editor
-		for (int i = 0; i < nScrViewers; i++) {
-			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWnds[i]);
-			InvalidateRect(nscrViewerData->ted.hWndViewer, NULL, FALSE);
-		}
-
-		free(hWnds);
+	for (size_t i = 0; i < scrEditors.length; i++) {
+		//invalidate viewer portion
+		NSCRVIEWERDATA *nscrViewerData = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i);
+		InvalidateRect(nscrViewerData->ted.hWndViewer, NULL, FALSE);
 	}
+	StListFree(&scrEditors);
 }
 
 static BOOL ChrViewerSetCursor(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {

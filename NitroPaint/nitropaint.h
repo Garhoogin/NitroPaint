@@ -2,9 +2,9 @@
 #include <Windows.h>
 
 #include "ui.h"
-#include "color.h"
 #include "filecommon.h"
 #include "palette.h"
+#include "editor.h"
 
 #define g_useDarkTheme 0
 
@@ -33,6 +33,7 @@ extern CONFIGURATIONSTRUCT g_configuration;
 extern LPWSTR g_configPath;
 
 typedef struct {
+	EditorManager edMgr;
 	HWND hWndMdi;
 	HWND hWndNclrViewer;
 	HWND hWndNcgrViewer;

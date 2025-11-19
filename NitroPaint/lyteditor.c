@@ -1614,13 +1614,14 @@ static LRESULT CALLBACK BnllEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		case WM_CREATE:
 		{
 			//TEST: register a font editor open
-			HWND hWndMain = getMainWindow(hWnd);
-			HWND hWndFontEditor = NULL;
-			int nFont = GetAllEditors(hWndMain, FILE_TYPE_FONT, &hWndFontEditor, 1);
-			if (nFont > 0) {
-				NFTRVIEWERDATA *fontEditorData = (NFTRVIEWERDATA *) EditorGetData(hWndFontEditor);
+			StList fontEditorList;
+			StListCreateInline(&fontEditorList, EDITOR_DATA *, NULL);
+			EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_FONT, &fontEditorList);
+			if (fontEditorList.length > 0) {
+				NFTRVIEWERDATA *fontEditorData = *(NFTRVIEWERDATA **) StListGetPtr(&fontEditorList, 0);
 				for (int i = 0; i < LYT_EDITOR_MAX_FONTS; i++) LytEditorRegisterFont(ed, fontEditorData, i);
 			}
+			StListFree(&fontEditorList);
 
 			data->showBorders = 1;
 			data->scale = 2;
@@ -1752,8 +1753,7 @@ typedef struct RefTargetData_ {
 	HWND hWndOK;
 	HWND hWndCancel;
 	LYTEDITOR *editor;
-	NFTRVIEWERDATA **datas;
-	int nData;
+	StList dataList;
 } RefTargetData;
 
 static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1787,21 +1787,13 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 
 			//get fonts
 			HWND hWndMain = getMainWindow(data->editor->hWnd);
-			int nFont = GetAllEditors(hWndMain, FILE_TYPE_FONT, NULL, 0);
-
-			HWND *hWnds = (HWND *) calloc(nFont, sizeof(hWnd));
-			GetAllEditors(hWndMain, FILE_TYPE_FONT, hWnds, nFont);
-
-			data->nData = nFont;
-			data->datas = (NFTRVIEWERDATA **) calloc(nFont, sizeof(NFTRVIEWERDATA *));
-			for (int i = 0; i < nFont; i++) {
-				data->datas[i] = (NFTRVIEWERDATA *) EditorGetData(hWnds[i]);
-			}
-			free(hWnds);
+			StListCreateInline(&data->dataList, EDITOR_DATA *, NULL);
+			EditorGetAllByType(hWndMain, FILE_TYPE_FONT, &data->dataList);
+			int nFont = data->dataList.length;
 
 			//get title text
 			for (int i = 0; i < nFont; i++) {
-				NFTRVIEWERDATA *fd = data->datas[i];
+				NFTRVIEWERDATA *fd = *(NFTRVIEWERDATA **) StListGetPtr(&data->dataList, i);
 				
 				WCHAR *path = fd->szOpenFile, *tmp;
 				tmp = wcsrchr(path, L'\\');
@@ -1820,13 +1812,7 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 				if (curr == NULL) continue; // not set (leave default selection of none)
 
 				//search
-				int findJ = -1;
-				for (int j = 0; j < nFont; j++) {
-					if (data->datas[j] == curr) {
-						findJ = j;
-						break;
-					}
-				}
+				size_t findJ = StListIndexOf(&data->dataList, &curr);
 				SendMessage(data->hWndDropdowns[i], CB_SETCURSEL, findJ + 1, 0);
 			}
 
@@ -1848,7 +1834,8 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 						LytEditorUnregisterFontByIndex((LYTEDITOR *) data->editor, i);
 					} else {
 						//1: 1-based index
-						LytEditorRegisterFont((LYTEDITOR *) data->editor, data->datas[selI - 1], i);
+						NFTRVIEWERDATA *dataI = *(NFTRVIEWERDATA **) StListGetPtr(&data->dataList, selI - 1);
+						LytEditorRegisterFont((LYTEDITOR *) data->editor, dataI, i);
 					}
 				}
 
@@ -1864,8 +1851,7 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 		}
 		case WM_DESTROY:
 		{
-			if (data->datas != NULL) free(data->datas);
-			free(data);
+			StListFree(&data->dataList);
 			SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
 			break;
 		}

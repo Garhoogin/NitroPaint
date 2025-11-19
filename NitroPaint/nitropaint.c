@@ -1649,6 +1649,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	if (!data) {
 		data = (NITROPAINTSTRUCT *) calloc(1, sizeof(NITROPAINTSTRUCT));
 		SetWindowLongPtr(hWnd, 0, (LONG) data);
+		EditorMgrInit(hWnd);
 	}
 	switch (msg) {
 		case WM_CREATE:
