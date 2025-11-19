@@ -70,8 +70,7 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			NCGR *ncgr = NULL;
 			NCER *ncer = NULL;
 			NANR *nanr = NULL;
-			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nps = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nps = (NITROPAINTSTRUCT *) data->editorMgr;
 			if (nps->hWndNclrViewer != NULL) nclr = (NCLR *) EditorGetObject(nps->hWndNclrViewer);
 			if (nps->hWndNcgrViewer != NULL) ncgr = (NCGR *) EditorGetObject(nps->hWndNcgrViewer);
 			if (nps->hWndNcerViewer != NULL) ncer = (NCER *) EditorGetObject(nps->hWndNcerViewer);

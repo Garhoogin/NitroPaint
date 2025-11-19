@@ -103,12 +103,12 @@ static EDITOR_CLASS *EditorGetClass(HWND hWnd) {
 static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 	//get editor data
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 
 	//process editor menu common messages
 	switch (LOWORD(wParam)) {
 		case ID_VIEW_GRIDLINES:
 		{
-			HWND hWndMain = getMainWindow(hWnd);
 			int state = GetMenuState(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_BYCOMMAND);
 			state = !state;
 
@@ -132,13 +132,12 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 
 			int checkBox = MainGetZoomCommand(scale);
 			int other = MainGetZoomCommand(data->scalePrev);
-			CheckMenuItem(GetMenu(getMainWindow(hWnd)), other, MF_UNCHECKED);
-			CheckMenuItem(GetMenu(getMainWindow(hWnd)), checkBox, MF_CHECKED);
+			CheckMenuItem(GetMenu(hWndMain), other, MF_UNCHECKED);
+			CheckMenuItem(GetMenu(hWndMain), checkBox, MF_CHECKED);
 			break;
 		}
 		case ID_EDIT_COMMENT:
 		{
-			HWND hWndMain = getMainWindow(hWnd);
 			OBJECT_HEADER *obj = EditorGetObject(hWnd);
 			WCHAR textBuffer[256] = { 0 };
 			if (obj != NULL && obj->comment != NULL) {
@@ -165,9 +164,9 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 static void EditorHandleActivate(HWND hWnd, HWND to) {
 	if (hWnd != to) return; //focusing away from this window
 
-	HWND hWndMain = getMainWindow(hWnd);
-	HMENU hMenu = GetMenu(hWndMain);
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
+	HMENU hMenu = GetMenu(hWndMain);
 	int features = data->cls->features;
 
 	//enable/disable menus depending on supported features
@@ -281,8 +280,8 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			StListCreate(&data->destroyCallbacks, sizeof(EditorDestroyCallbackEntry), NULL);
 
 			//add window to the editor list
-			HWND hWndMain = getMainWindow(hWnd);
-			EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMain, 0);
+			HWND hWndMain = (HWND) GetWindowLongPtr((HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
+			EditorManager *mgr = EditorGetManager(hWndMain);
 			StListAdd(&mgr->editorList, &data);
 			data->editorMgr = mgr;
 		}
@@ -329,7 +328,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					if (cls->features & EDITOR_FEATURE_ZOOM) {
 						int delta = GET_WHEEL_DELTA_WPARAM(wParam);
 
-						HWND hWndMain = getMainWindow(hWnd);
+						HWND hWndMain = data->editorMgr->hWnd;
 						if (delta > 0) {
 							//scroll down
 							MainZoomIn(hWndMain);
@@ -375,10 +374,8 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				if (ObjIsValid(&data->file)) ObjFree(&data->file);
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
 
-				HWND hWndMain = getMainWindow(hWnd);
-				EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMain, 0);
-
 				//remove editor from the editor list
+				EditorManager *mgr = data->editorMgr;
 				size_t idx = StListIndexOf(&mgr->editorList, &data);
 				if (idx <= ST_INDEX_MAX) {
 					StListRemove(&mgr->editorList, idx);

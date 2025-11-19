@@ -310,21 +310,20 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 			}
 		}
 	} else if (hWndControl == data->hWndConvert) {
-		HWND hWndMain = getMainWindow(hWnd);
 		data->hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
 			WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
-			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
+			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->editorMgr->hWnd, NULL, NULL, NULL);
 		SetWindowLongPtr(data->hWndConvertDialog, 0, (LONG_PTR) data);
 		SendMessage(data->hWndConvertDialog, NV_INITIALIZE, 0, 0);
 		DoModal(data->hWndConvertDialog);
 	} else if (hWndControl == data->hWndExportNTF) {
-		HWND hWndMain = getMainWindow(hWnd);
 		//if not in any format, it cannot be exported.
 		if (!data->isNitro) {
 			MessageBox(hWnd, L"Texture must be converted.", L"Not converted", MB_ICONERROR);
 			return;
 		}
 
+		HWND hWndMain = data->editorMgr->hWnd;
 		LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0\0", L"ntft");
 		if (ntftPath == NULL) return;
 
@@ -357,7 +356,6 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 			COLOR *colors = data->texture.texture.palette.pal;
 			int nColors = data->texture.texture.palette.nColors;
 
-			HWND hWndMain = getMainWindow(hWnd);
 			LPWSTR ntfpPath = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
 			if (ntfpPath == NULL) return;
 
@@ -473,8 +471,7 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 		case ID_FILE_EXPORT:
 		{
 			//PNG export
-			HWND hWndMain = getMainWindow(hWnd);
-			LPWSTR path = saveFileDialog(hWndMain, L"Export Texture", L"PNG files (*.png)\0*.png\0All Files\0*.*\0", L".png");
+			LPWSTR path = saveFileDialog(data->editorMgr->hWnd, L"Export Texture", L"PNG files (*.png)\0*.png\0All Files\0*.*\0", L".png");
 			if (path == NULL) break;
 
 			//if texture is in DS format, export from texture data
@@ -952,7 +949,7 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 						*pTexel = ((*pTexel) & ~(mask << (pxAdvance * depth))) | (data->selectedColor << (pxAdvance * depth));
 					} else {
 						if (msg == WM_LBUTTONDOWN) { //we don't really want click+drag for this one
-							HWND hWndMain = getMainWindow(hWnd);
+							HWND hWndMain = data->editorMgr->hWnd;
 							COLOR *color = (COLOR *) (pTile + y * width * 2 + x * 2);
 							CHOOSECOLOR cc = { 0 };
 							cc.lStructSize = sizeof(cc);
@@ -1421,7 +1418,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					updateConvertDialog(data);
 				} else if (hWndControl == data->hWndSelectAlphaKey && controlCode == BN_CLICKED) {
 					//choose a color for the alpha key
-					HWND hWndMain = getMainWindow(hWnd);
+					HWND hWndMain = data->editorMgr->hWnd;
 					CHOOSECOLOR cc = { 0 };
 					cc.lStructSize = sizeof(cc);
 					cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition
@@ -1787,7 +1784,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						COLOR c = data->data->texture.texture.palette.pal[index];
 						DWORD ex = ColorConvertFromDS(c);
 
-						HWND hWndMain = getMainWindow(hWnd);
+						HWND hWndMain = data->data->editorMgr->hWnd;
 						CHOOSECOLOR cc = { 0 };
 						cc.lStructSize = sizeof(cc);
 						cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition
@@ -1866,7 +1863,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						COLOR *colors = data->data->texture.texture.palette.pal;
 						int nColors = data->data->texture.texture.palette.nColors;
 
-						HWND hWndMain = getMainWindow(data->data->hWnd);
+						HWND hWndMain = data->data->editorMgr->hWnd;
 						LPWSTR path = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
 						if (path == NULL) break;
 
@@ -2441,7 +2438,7 @@ LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			int notif = HIWORD(wParam);
 			if (notif == BN_CLICKED && hWndControl == data->hWndBrowse) { //browse button
 				//we will overwrite this with the *real* path
-				WCHAR *path = UiDlgBrowseForFolder(getMainWindow(hWnd), L"Select output folder...");
+				WCHAR *path = UiDlgBrowseForFolder(hWnd, L"Select output folder...");
 				if (path == NULL) break;
 
 				SendMessage(data->hWndDirectory, WM_SETTEXT, wcslen(path), (LPARAM) path);

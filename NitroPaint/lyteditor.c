@@ -89,9 +89,7 @@ static void LytEditorRegisterFont(LYTEDITOR *ed, NFTRVIEWERDATA *fontViewerData,
 }
 
 static NCLR *LytEditorGetAssociatedPalette(LYTEDITOR *data) {
-	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) ((EDITOR_DATA *) data->data)->editorMgr;
 	HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 	if (hWndNclrViewer == NULL) return NULL;
 
@@ -99,9 +97,7 @@ static NCLR *LytEditorGetAssociatedPalette(LYTEDITOR *data) {
 }
 
 static NCGR *LytEditorGetAssociatedCharacter(LYTEDITOR *data) {
-	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) ((EDITOR_DATA *) data->data)->editorMgr;
 	HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 	if (hWndNcgrViewer == NULL) return NULL;
 
@@ -109,9 +105,7 @@ static NCGR *LytEditorGetAssociatedCharacter(LYTEDITOR *data) {
 }
 
 static NCER *LytEditorGetAssociatedCellBank(LYTEDITOR *data) {
-	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) ((EDITOR_DATA *) data->data)->editorMgr;
 	HWND hWndNcerViewer = nitroPaintStruct->hWndNcerViewer;
 	if (hWndNcerViewer == NULL) return NULL;
 
@@ -855,7 +849,7 @@ static void LLytEditorOnClickedEditFonts(HWND hWnd, HWND hWndCtl, int notif, voi
 	BNLLEDITORDATA *data = (BNLLEDITORDATA *) ed->data;
 
 	//create modal
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 	HWND hWndModal = CreateWindow(L"ReferenceTargetClass", L"Register Reference Target",
 		WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
@@ -1616,7 +1610,7 @@ static LRESULT CALLBACK BnllEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			//TEST: register a font editor open
 			StList fontEditorList;
 			StListCreateInline(&fontEditorList, EDITOR_DATA *, NULL);
-			EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_FONT, &fontEditorList);
+			EditorGetAllByType(data->editorMgr->hWnd, FILE_TYPE_FONT, &fontEditorList);
 			if (fontEditorList.length > 0) {
 				NFTRVIEWERDATA *fontEditorData = *(NFTRVIEWERDATA **) StListGetPtr(&fontEditorList, 0);
 				for (int i = 0; i < LYT_EDITOR_MAX_FONTS; i++) LytEditorRegisterFont(ed, fontEditorData, i);
@@ -1786,7 +1780,7 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 			data->editor = (LYTEDITOR *) lParam;
 
 			//get fonts
-			HWND hWndMain = getMainWindow(data->editor->hWnd);
+			HWND hWndMain = ((EDITOR_DATA *) data->editor->data)->editorMgr->hWnd;
 			StListCreateInline(&data->dataList, EDITOR_DATA *, NULL);
 			EditorGetAllByType(hWndMain, FILE_TYPE_FONT, &data->dataList);
 			int nFont = data->dataList.length;

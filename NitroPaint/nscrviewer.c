@@ -777,7 +777,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						HWND h = CreateWindow(L"NscrBitmapImportClass", L"Import Bitmap",
 							WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
 							CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
-						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) hWnd);
+						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
 						WORD d = data->nscr.data[data->ted.contextHoverX + data->ted.contextHoverY * (data->nscr.tilesX * 8 >> 3)];
 						SendMessage(h, NV_INITIMPORTDIALOG, d, data->ted.contextHoverX | (data->ted.contextHoverY << 16));
 						DoModal(h);
@@ -1091,9 +1091,8 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 		}
 		case NV_INITIALIZE:
 		{
-			HWND hWndEditor = (HWND) lParam;
-			HWND hWndMain = getMainWindow(hWndEditor);
-			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) lParam;
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) nscrViewerData->editorMgr;
 			HWND hWndNcgrEditor = nitroPaintStruct->hWndNcgrViewer;
 			HWND hWndNclrEditor = nitroPaintStruct->hWndNclrViewer;
 
@@ -1113,7 +1112,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			SetEditNumber(data->hWndPaletteSize, nMaxColors);
 			SetEditNumber(data->hWndCharacterCount, ncgr->nTiles);
 
-			data->hWndEditor = hWndEditor;
+			data->hWndEditor = nscrViewerData->hWnd;
 			break;
 		}
 		case NV_INITIMPORTDIALOG:

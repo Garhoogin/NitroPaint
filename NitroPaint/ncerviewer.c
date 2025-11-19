@@ -71,16 +71,14 @@ static HMENU CellViewerGetCellListContextMenu(NCERVIEWERDATA *data, int i);
 #define SEXT9(n)   (((n)<0x100)?(n):((n)-0x200))
 
 static NCLR *CellViewerGetAssociatedPalette(NCERVIEWERDATA *data) {
-	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	if (nitroPaintStruct->hWndNclrViewer == NULL) return NULL;
 
 	return (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 }
 
 static NCGR *CellViewerGetAssociatedCharacter(NCERVIEWERDATA *data) {
-	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	if (nitroPaintStruct->hWndNcgrViewer == NULL) return NULL;
 
 	return (NCGR *) EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
@@ -1075,14 +1073,13 @@ static void CellViewerPaste(NCERVIEWERDATA *data) {
 			}
 
 			//create generator dialog
-			HWND hWndMain = getMainWindow(data->hWnd);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 			HWND h = CreateWindow(L"NcerCreateCellClass", L"Generate Cell", WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
-				CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
+				CW_USEDEFAULT, CW_USEDEFAULT, nitroPaintStruct->edMgr.hWnd, NULL, NULL, NULL);
 			SendMessage(h, NV_INITIALIZE, width | (height << 16), (LPARAM) px);
 			DoModal(h);
 
 			//update palette and character window
-			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			SendMessage(nitroPaintStruct->hWndNcgrViewer, NV_UPDATEPREVIEW, 0, 0);
 			SendMessage(nitroPaintStruct->hWndNclrViewer, NV_UPDATEPREVIEW, 0, 0);
 
@@ -1206,15 +1203,12 @@ static HBITMAP CellViewerRenderImageListBitmap(NCER *ncer, int cellno, NCGR *ncg
 	return hBmColor;
 }
 
-static void CellViewerUpdatePreview(HWND hWnd, int cellno) {
-	NCERVIEWERDATA *data = (NCERVIEWERDATA *) EditorGetData(hWnd);
-	NCER *ncer = &data->ncer;
-	PreviewLoadObjCell(ncer, NULL, cellno);
+static void CellViewerUpdatePreview(NCERVIEWERDATA *data, int cellno) {
+	PreviewLoadObjCell(&data->ncer, NULL, cellno);
 }
 
-static HWND CellEditorGetAssociatedEditor(HWND hWnd, int type) {
-	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+static HWND CellEditorGetAssociatedEditor(NCERVIEWERDATA *data, int type) {
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 
 	switch (type) {
 		case FILE_TYPE_PALETTE:
@@ -1662,13 +1656,11 @@ static LRESULT CellViewerOnNotify(NCERVIEWERDATA *data, HWND hWnd, WPARAM wParam
 
 static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int notification) {
 	HWND hWnd = data->hWnd;
-	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 	int changed = 0;
 	if (notification == BN_CLICKED && hWndControl == data->hWndCreateCell) {
-		HWND hWndNclrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_PALETTE);
-		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
+		HWND hWndNclrViewer = CellEditorGetAssociatedEditor(data, FILE_TYPE_PALETTE);
+		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(data, FILE_TYPE_CHARACTER);
 
 		//check for palette and character open as well
 		if (hWndNclrViewer == NULL || hWndNcgrViewer == NULL) {
@@ -1698,6 +1690,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		}
 
 		//create generator dialog
+		HWND hWndMain = data->editorMgr->hWnd;
 		HWND h = CreateWindow(L"NcerCreateCellClass", L"Generate Cell", WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
 			CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE, width | (height << 16), (LPARAM) px);
@@ -1760,8 +1753,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		CellViewerAppendCellToCellList(data, name, cell);
 		CellViewerSetCurrentCell(data, data->ncer.nCells - 1, TRUE);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndShowObjButton) {
-		HWND hWndMain = getMainWindow(data->hWnd);
-		NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+		NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 		HWND hWndMdi = nitroPaintStruct->hWndMdi;
 		HWND hWndWindow = data->hWndObjWindow;
 
@@ -1804,7 +1796,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		}
 
 		//update character editor
-		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(hWnd, FILE_TYPE_CHARACTER);
+		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(data, FILE_TYPE_CHARACTER);
 		CellViewerGraphicsUpdated(data->hWnd);
 		ChrViewerGraphicsSizeUpdated(hWndNcgrViewer);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndExportAll) {
@@ -1817,7 +1809,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			return;
 		}
 
-		WCHAR *path = UiDlgBrowseForFolder(hWndMain, L"Select a Destination");
+		WCHAR *path = UiDlgBrowseForFolder(data->editorMgr->hWnd, L"Select a Destination");
 		if (path == NULL) return;
 
 		int pathlen = wcslen(path);
@@ -2199,7 +2191,6 @@ static void CellViewerToggleSwappableCurrentCell(NCERVIEWERDATA *data) {
 
 static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 	HWND hWnd = data->hWnd;
-	HWND hWndMain = getMainWindow(hWnd);
 
 	switch (idMenu) {
 		case ID_FILE_SAVEAS:
@@ -2394,7 +2385,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			if (commonCharIndex != -1) wsprintfW(textbuf, L"%d", commonCharIndex);
 			else textbuf[0] = L'\0';
 
-			if (PromptUserText(hWndMain, L"Character Index", L"Character Index:", textbuf, 9)) {
+			if (PromptUserText(data->editorMgr->hWnd, L"Character Index", L"Character Index:", textbuf, 9)) {
 				CellViewerSetSelectionCharacterIndex(data, _wtol(textbuf));
 				CellViewerGraphicsUpdated(data->hWnd);
 			}
@@ -2586,14 +2577,13 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			SetFocus(data->hWndCellList);
 			CellViewerPreviewCenter(data);
 
-			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 			nitroPaintStruct->hWndNcerViewer = hWnd;
 
 			//ensure that when the cell editor is opened later than the animation editors receive the correct bounding information.
 			StList anmEditors;
 			StListCreateInline(&anmEditors, NANRVIEWERDATA *, NULL);
-			EditorGetAllByType(hWndMain, FILE_TYPE_NANR, &anmEditors);
+			EditorGetAllByType(nitroPaintStruct->edMgr.hWnd, FILE_TYPE_NANR, &anmEditors);
 
 			for (size_t i = 0; i < anmEditors.length; i++) {
 				AnmViewerUpdateCellBounds((*(NANRVIEWERDATA **) StListGetPtr(&anmEditors, i))->hWnd);
@@ -2627,7 +2617,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			InvalidateRect(data->hWndViewer, NULL, FALSE);
 			break;
 		case NV_UPDATEPREVIEW:
-			CellViewerUpdatePreview(hWnd, data->cell);
+			CellViewerUpdatePreview(data, data->cell);
 			break;
 		case WM_NOTIFY:
 			return CellViewerOnNotify(data, hWnd, wParam, lParam);
@@ -2636,8 +2626,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			break;
 		case WM_DESTROY:
 		{
-			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 			nitroPaintStruct->hWndNcerViewer = NULL;
 			if (nitroPaintStruct->hWndNclrViewer) InvalidateRect(nitroPaintStruct->hWndNclrViewer, NULL, FALSE);
 			FbDestroy(&data->fb);

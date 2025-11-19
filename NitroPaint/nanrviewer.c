@@ -152,9 +152,8 @@ static void FormatAngleToString(WCHAR *buf, int fx) {
 
 // ----- linkage routines
 
-static HWND AnmViewerGetAssociatedEditor(HWND hWnd, int type) {
-	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+static HWND AnmViewerGetAssociatedEditor(NANRVIEWERDATA *data, int type) {
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	switch (type) {
 		case FILE_TYPE_PALETTE:
 			return nitroPaintStruct->hWndNclrViewer;
@@ -166,14 +165,14 @@ static HWND AnmViewerGetAssociatedEditor(HWND hWnd, int type) {
 	return NULL;
 }
 
-static OBJECT_HEADER *AnmViewerGetAssociatedObject(HWND hWnd, int type) {
-	HWND hWndEditor = AnmViewerGetAssociatedEditor(hWnd, type);
+static OBJECT_HEADER *AnmViewerGetAssociatedObject(NANRVIEWERDATA *data, int type) {
+	HWND hWndEditor = AnmViewerGetAssociatedEditor(data, type);
 	if (hWndEditor == NULL) return NULL;
 
-	EDITOR_DATA *data = EditorGetData(hWndEditor);
-	if (data == NULL) return NULL;
+	EDITOR_DATA *ed = EditorGetData(hWndEditor);
+	if (ed == NULL) return NULL;
 
-	return &data->file;
+	return &ed->file;
 }
 
 // ----- transformation calculation routines
@@ -271,7 +270,7 @@ static void AnmViewerGetCurrentFrameTransform(NANRVIEWERDATA *data, double *pMtx
 	pTrans[0] = 0.0f;
 	pTrans[1] = 0.0f;
 
-	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CELL);
 	if (ncer == NULL) return;
 
 	ANIM_DATA_SRT frm;
@@ -403,7 +402,7 @@ static int AnmViewerHitTest(NANRVIEWERDATA *data, int clientX, int clientY) {
 	if (x >= rotX && y >= rotY && x < (rotX + ANCHOR_SIZE) && y < (rotY + ANCHOR_SIZE)) return ANM_HIT_ROT_POINT;
 
 	//get cell data
-	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CELL);
 	if (ncer == NULL) return ANM_HIT_NOWHERE;
 
 	ANIM_DATA_SRT frm;
@@ -658,9 +657,9 @@ static void AnmViewerRenderGlyphListImage(NANRVIEWERDATA *data, int i) {
 	HIMAGELIST himl = ListView_GetImageList(data->hWndAnimList, LVSIL_NORMAL);
 
 	//get data
-	NCLR *nclr = (NCLR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_PALETTE);
-	NCGR *ncgr = (NCGR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CHARACTER);
-	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+	NCLR *nclr = (NCLR *) AnmViewerGetAssociatedObject(data, FILE_TYPE_PALETTE);
+	NCGR *ncgr = (NCGR *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CHARACTER);
+	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CELL);
 
 	//get frame data
 	ANIM_DATA_SRT frm;
@@ -711,7 +710,7 @@ static void AnmViewerRenderGlyphListImage(NANRVIEWERDATA *data, int i) {
 }
 
 static void AnmViewerSetRotationPoint(NANRVIEWERDATA *data) {
-	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CELL);
 	if (ncer == NULL) return;
 
 	ANIM_DATA_SRT frame;
@@ -764,7 +763,7 @@ static void AnmViewerSetAnchor(NANRVIEWERDATA *data, int x, int y) {
 }
 
 static void AnmViewerSetDefaultAnchor(NANRVIEWERDATA *data) {
-	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CELL);
 	if (ncer == NULL) return;
 
 	ANIM_DATA_SRT frame;
@@ -1101,8 +1100,7 @@ static void AnmViewerCmdOnStop(HWND hWnd, HWND hWndCtl, int notif, void *param) 
 
 static void AnmViewerCmdOnShowFrames(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) param;
-	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 	if (data->hWndFrames != NULL) {
@@ -1505,9 +1503,9 @@ static void AvgPoint(int *ptOut, const int *pt1, const int *pt2) {
 
 static void AnmViewerRenderFrameFromCurrentSequence(NANRVIEWERDATA *data, COLOR32 *dest, int iFrm, BOOL fillBG) {
 	//get data
-	NCLR *nclr = (NCLR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_PALETTE);
-	NCGR *ncgr = (NCGR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CHARACTER);
-	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+	NCLR *nclr = (NCLR *) AnmViewerGetAssociatedObject(data, FILE_TYPE_PALETTE);
+	NCGR *ncgr = (NCGR *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CHARACTER);
+	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CELL);
 
 	//fill BG
 	if (fillBG) {
@@ -1548,8 +1546,8 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	HDC hDC = BeginPaint(hWnd, &ps);
 
 	//get data
-	NCLR *nclr = (NCLR *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_PALETTE);
-	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+	NCLR *nclr = (NCLR *) AnmViewerGetAssociatedObject(data, FILE_TYPE_PALETTE);
+	NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CELL);
 
 	//get frame data
 	ANIM_DATA_SRT frm;
@@ -1867,7 +1865,7 @@ static void AnmViewerPreviewOnMouseMove(NANRVIEWERDATA *data) {
 					};
 
 					ANIM_DATA_SRT frm;
-					NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data->hWnd, FILE_TYPE_CELL);
+					NCER *ncer = (NCER *) AnmViewerGetAssociatedObject(data, FILE_TYPE_CELL);
 					NCER_CELL *cell = NULL;
 
 					if (AnmViewerGetCurrentAnimFrame(data, &frm, NULL) && ncer != NULL && frm.index >= 0 && frm.index < ncer->nCells) {
@@ -2654,7 +2652,7 @@ static LRESULT CALLBACK AnmViweerInterpProc(HWND hWnd, UINT msg, WPARAM wParam, 
 }
 
 static int AnmViewerPromptInterpolation(NANRVIEWERDATA *data, AnmViewerInterpolateSetting *setting) {
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 	HWND h = CreateWindow(L"NanrInterpClass", L"Create Interpolation", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		hWndMain, NULL, NULL, NULL);

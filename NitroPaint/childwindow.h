@@ -16,8 +16,6 @@ VOID ScaleInterface(HWND hWnd, float scale);
 
 VOID DestroyChild(HWND hWnd);
 
-HWND getMainWindow(HWND hWnd);
-
 LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 VOID SetWindowSize(HWND hWnd, int width, int height);

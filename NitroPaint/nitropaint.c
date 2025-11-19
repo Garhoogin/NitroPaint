@@ -2042,7 +2042,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_TOOLS_TEXTUREVRAMSUMMARY:
 					{
 						//select directory
-						WCHAR *path = UiDlgBrowseForFolder(getMainWindow(hWnd), L"Select texture folder...");
+						WCHAR *path = UiDlgBrowseForFolder(hWnd, L"Select texture folder...");
 						if (path == NULL) break;
 
 						BatchTexShowVramStatistics(hWnd, path);

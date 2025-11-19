@@ -81,12 +81,6 @@ void ScaleInterface(HWND hWnd, float scale) {
 	SetWindowPos(hWnd, hWnd, 0, 0, width, height, SWP_NOZORDER | SWP_NOMOVE);
 }
 
-HWND getMainWindow(HWND hWnd) {
-	HWND hWndMdi = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-	HWND hWndMain = (HWND) GetWindowLongPtr(hWndMdi, GWL_HWNDPARENT);
-	return hWndMain;
-}
-
 LRESULT WINAPI DefChildProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	FRAMEDATA *frameData = (FRAMEDATA *) GetWindowLongPtr(hWnd, 0);
 

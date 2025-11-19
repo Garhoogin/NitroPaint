@@ -318,8 +318,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 		free(px);
 	} else {
 		//must be converted.
-		HWND hWndMain = getMainWindow(data->hWnd);
-		NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+		NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 		HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 		free(px); //for validation
@@ -334,7 +333,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 		//open conversion dialog
 		HWND hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
 			WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
-			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
+			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, nitroPaintStruct->edMgr.hWnd, NULL, NULL, NULL);
 		teData->hWndConvertDialog = hWndConvertDialog; //prevent from redrawing the whole screen
 		SendMessage(hWndMdi, WM_SETREDRAW, TRUE, 0);
 		SetWindowLongPtr(hWndConvertDialog, 0, (LONG_PTR) teData);
@@ -567,7 +566,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 					{
 						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
 							LPCWSTR filter = L"TexArc Files (*.nsbtx)\0*.nsbtx\0All Files\0*.*\0";
-							LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Save As...", filter, L"nsbtx");
+							LPWSTR path = saveFileDialog(data->editorMgr->hWnd, L"Save As...", filter, L"nsbtx");
 							if (path != NULL) {
 								EditorSetFile(hWnd, path);
 								free(path);
@@ -635,7 +634,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						}
 					} else if (hWndControl == data->hWndExportAll) {
 						//we will overwrite this with the *real* path
-						WCHAR *dirpath = UiDlgBrowseForFolder(getMainWindow(hWnd), L"Select output folder...");
+						WCHAR *dirpath = UiDlgBrowseForFolder(data->editorMgr->hWnd, L"Select output folder...");
 						if (dirpath == NULL) break;
 
 						int pathLen = wcslen(dirpath);
@@ -672,8 +671,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						//free palette name array
 						free(palNames);
 					} else if (hWndControl == data->hWndResourceButton) {
-						HWND hWndMain = getMainWindow(hWnd);
-						CreateVramUseWindow(hWndMain, &data->nsbtx);
+						CreateVramUseWindow(data->editorMgr->hWnd, &data->nsbtx);
 					} else if (hWndControl == data->hWndAddButton) {
 						//read texture
 						TEXELS texels;
@@ -744,7 +742,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						SendMessage(hWndControl, LB_GETTEXT, sel, (LPARAM) textBuffer);
 						
 						//make prompt
-						HWND hWndMain = getMainWindow(hWnd);
+						HWND hWndMain = data->editorMgr->hWnd;
 						int n = PromptUserText(hWndMain, L"Name Entry", L"Enter a name:", textBuffer, 256);
 						if (n) {
 							//replace selected text
