@@ -1263,6 +1263,7 @@ static void LLytEditorDrawMessage(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER 
 		} else {
 			NFTR_GLYPH *glyph = NftrGetGlyphByCP(nftr, cc);
 			if (glyph == NULL) glyph = NftrGetInvalidGlyph(nftr);
+			if (glyph == NULL) continue;
 
 			//subtract offset horizontal
 			curX += glyph->spaceLeft;
