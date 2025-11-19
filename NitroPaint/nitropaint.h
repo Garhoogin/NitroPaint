@@ -40,7 +40,6 @@ typedef struct {
 	HWND hWndNcerViewer;
 	HWND hWndNanrViewer;
 	HWND hWndNmcrViewer;
-	HWND hWndNsbtxViewer;
 } NITROPAINTSTRUCT;
 
 typedef struct {
