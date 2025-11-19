@@ -1818,7 +1818,7 @@ static LRESULT WINAPI ChrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ChrViewerOnDestroy(data);
 			break;
 		case WM_SIZE:
-			return ChrViewerOnSize(hWnd, wParam, lParam);
+			return ChrViewerOnSize(data, wParam, lParam);
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
