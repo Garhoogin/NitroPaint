@@ -15,15 +15,18 @@ typedef struct EditorDestroyCallbackEntry_ {
 } EditorDestroyCallbackEntry;
 
 
+static EditorManager *EditorGetManager(HWND hWndMgr) {
+	return (EditorManager *) GetWindowLongPtr(hWndMgr, 0);
+}
 
 void EditorMgrInit(HWND hWndMgr) {
-	EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMgr, 0);
+	EditorManager *mgr = EditorGetManager(hWndMgr);
 	StListCreateInline(&mgr->classList, EDITOR_CLASS *, NULL);
 	StListCreateInline(&mgr->editorList, EDITOR_DATA *, NULL);
 }
 
 StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list) {
-	EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMgr, 0);
+	EditorManager *mgr = EditorGetManager(hWndMgr);
 	StStatus status = ST_STATUS_OK;
 
 	//count editors of the specified type
@@ -35,6 +38,46 @@ StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list) {
 		}
 	}
 	return status;
+}
+
+void EditorInvalidateAllByType(HWND hWndMgr, int type) {
+	EditorManager *mgr = EditorGetManager(hWndMgr);
+
+	for (size_t i = 0; i < mgr->editorList.length; i++) {
+		EDITOR_DATA *data = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
+
+		if (type == FILE_TYPE_INVALID || data->file.type == type) {
+			InvalidateRect(data->hWnd, NULL, FALSE);
+		}
+	}
+}
+
+HWND EditorFindByObject(HWND hWndParent, OBJECT_HEADER *obj) {
+	//find edtor
+	EditorManager *mgr = EditorGetManager(hWndParent);
+	for (size_t i = 0; i < mgr->editorList.length; i++) {
+		EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
+		if (&ed->file == obj) return ed->hWnd;
+	}
+
+	return NULL;
+}
+
+int EditorIsValid(HWND hWndMgr, HWND hWnd) {
+	EditorManager *mgr = EditorGetManager(hWndMgr);
+
+	for (size_t i = 0; i < mgr->editorList.length; i++) {
+		EDITOR_DATA *data = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
+		if (data->hWnd == hWnd) return 1;
+	}
+
+	// not found
+	return 0;
+}
+
+int EditorGetType(HWND hWnd) {
+	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	return data->file.type;
 }
 
 
@@ -184,36 +227,6 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 		}
 		InvalidateRect(hWnd, NULL, FALSE);
 	}
-}
-
-// ----- editor find
-
-typedef struct EditorFindStruct_ {
-	OBJECT_HEADER *obj;
-	HWND hWnd;
-} EditorFindStruct;
-
-static BOOL CALLBACK EditorFindByObjectEnumProc(HWND hWnd, LPARAM lParam) {
-	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
-	if (data == NULL) return TRUE;
-
-	EditorFindStruct *find = (EditorFindStruct *) lParam;
-	if (&data->file == find->obj) {
-		//found
-		find->hWnd = hWnd;
-		return FALSE;
-	}
-	return TRUE;
-}
-
-static HWND EditorFindByObject(HWND hWndParent, OBJECT_HEADER *obj) {
-	//enumerate child windows to find
-	EditorFindStruct findStruct;
-	findStruct.obj = obj;
-	findStruct.hWnd = NULL;
-
-	EnumChildWindows(hWndParent, EditorFindByObjectEnumProc, (LPARAM) &findStruct);
-	return findStruct.hWnd;
 }
 
 static void EditorTerminateCombo(EDITOR_DATA *data) {

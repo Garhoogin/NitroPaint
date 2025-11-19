@@ -1457,37 +1457,6 @@ VOID MainZoomOut(HWND hWnd) {
 
 //general editor utilities for main window
 
-int GetEditorType(HWND hWndEditor) {
-	return SendMessage(hWndEditor, NV_GETTYPE, 0, 0);
-}
-
-BOOL CALLBACK InvalidateAllEditorsProc(HWND hWnd, LPARAM lParam) {
-	int editorType = GetEditorType(hWnd);
-	if (editorType == lParam || (editorType != FILE_TYPE_INVALID && lParam == FILE_TYPE_INVALID)) {
-		InvalidateRect(hWnd, NULL, FALSE);
-	}
-	return TRUE;
-}
-
-void InvalidateAllEditors(HWND hWndMain, int type) {
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-	HWND hWndMdi = nitroPaintStruct->hWndMdi;
-	EnumChildWindows(hWndMdi, InvalidateAllEditorsProc, type);
-}
-
-HWND GetEditorFromObject(HWND hWndMain, OBJECT_HEADER *obj) {
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-
-	//scan editor list
-	for (size_t i = 0; i < nitroPaintStruct->edMgr.editorList.length; i++) {
-		EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&nitroPaintStruct->edMgr.editorList, i);
-		if (&ed->file == obj) return ed->hWnd;
-	}
-
-	//not found
-	return NULL;
-}
-
 static BOOL CALLBACK CountWindowsProc(HWND hWnd, LPARAM lParam) {
 	(*(int *) lParam)++;
 	return TRUE;
@@ -1531,8 +1500,8 @@ static int SortWindowsComputeOrder(int type) {
 static int SortWindowsProc(const void *p1, const void *p2) {
 	HWND h1 = *(HWND *) p1;
 	HWND h2 = *(HWND *) p2;
-	int type1 = GetEditorType(h1);
-	int type2 = GetEditorType(h2);
+	int type1 = EditorGetType(h1);
+	int type2 = EditorGetType(h2);
 	
 	if (type1 == type2) return 0;
 	return SortWindowsComputeOrder(type1) - SortWindowsComputeOrder(type2);
@@ -1562,7 +1531,7 @@ void EnumChildWindowsInHierarchy(HWND hWnd, WNDENUMPROC lpEnumFunc, LPARAM lPara
 }
 
 BOOL SetNscrEditorTransparentProc(HWND hWnd, void *param) {
-	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWnd);
 	int state = (int) param;
 	nscrViewerData->transparent = state;
 	return TRUE;
@@ -1916,7 +1885,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						HWND hWndFocused = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
 						if (hWndFocused == NULL) break;
 						
-						int editorType = GetEditorType(hWndFocused);
+						int editorType = EditorGetType(hWndFocused);
 						if (editorType == FILE_TYPE_INVALID) break;
 
 						EDITOR_DATA *editorData = (EDITOR_DATA *) EditorGetData(hWndFocused);
@@ -1993,9 +1962,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(data->hWndNcgrViewer);
 							ncgrViewerData->transparent = state;
 						}
-						InvalidateAllEditors(hWnd, FILE_TYPE_CHAR);
-						InvalidateAllEditors(hWnd, FILE_TYPE_SCREEN);
-						InvalidateAllEditors(hWnd, FILE_TYPE_CELL);
+						EditorInvalidateAllByType(hWnd, FILE_TYPE_CHAR);
+						EditorInvalidateAllByType(hWnd, FILE_TYPE_SCREEN);
+						EditorInvalidateAllByType(hWnd, FILE_TYPE_CELL);
 
 						//update all screen editors
 						for (size_t i = 0; i < data->edMgr.editorList.length; i++) {
@@ -2057,7 +2026,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						HWND hWndFocus = (HWND) SendMessage(data->hWndMdi, WM_MDIGETACTIVE, 0, 0);
 						
 						//if not screen, warn user
-						if (hWndFocus == NULL || GetEditorType(hWndFocus) != FILE_TYPE_SCREEN) {
+						if (hWndFocus == NULL || EditorGetType(hWndFocus) != FILE_TYPE_SCREEN) {
 							MessageBox(hWnd, L"NO screen active.", L"Error", MB_ICONERROR);
 							break;
 						}
@@ -2782,7 +2751,7 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			if (hWndControl && HIWORD(wParam) == BN_CLICKED) {
 				int fmt = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID)), CB_GETCURSEL, 0, 0) + 1;
 				int comp = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID) * 2), CB_GETCURSEL, 0, 0);
-				EDITOR_DATA *editorData = (EDITOR_DATA *) GetWindowLongPtr(hWnd, 0);
+				EDITOR_DATA *editorData = (EDITOR_DATA *) EditorGetData(hWnd);
 				editorData->file.format = fmt;
 				editorData->file.compression = comp;
 

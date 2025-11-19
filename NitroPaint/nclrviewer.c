@@ -682,11 +682,11 @@ static void PalViewerUpdateViewers(HWND hWnd, int updateMask) {
 	//update viewers
 	if (updateMask & PALVIEWER_UPDATE_CHAR) {
 		//all character viewers
-		InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
+		EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
 	}
 	if (updateMask & PALVIEWER_UPDATE_SCREEN) {
 		//all screen viewers
-		InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+		EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
 	}
 	if (updateMask & PALVIEWER_UPDATE_CELL) {
 		//all cell viewers
@@ -1360,8 +1360,8 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 		free(tmp);
 
 		//update all editors dependent
-		InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
-		InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+		EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
+		EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
 		PalViewerUpdateNcerViewer(hWndMain);
 	} else {
 		PalViewerSortNeuroThreadProc(data);
@@ -1441,8 +1441,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			PalViewerUpdatePreview(hWnd);
 
 			HWND hWndMain = getMainWindow(hWnd);
-			InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
-			InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+			EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
+			EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
 			PalViewerUpdateNcerViewer(hWndMain);
 
 			if (data->nclr.header.format == NCLR_TYPE_HUDSON) {
@@ -1620,8 +1620,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							DWORD result = cc.rgbResult;
 							data->nclr.colors[index] = ColorConvertToDS(result);
 							
-							InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
-							InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+							EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
+							EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
 							PalViewerUpdateNcerViewer(hWndMain);
 							PalViewerUpdatePreview(hWnd);
 						}

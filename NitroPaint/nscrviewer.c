@@ -406,7 +406,7 @@ static void ScrViewerErase(NSCRVIEWERDATA *data) {
 }
 
 void NscrViewerSetTileBase(HWND hWnd, int tileBase) {
-	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NSCRVIEWERDATA *data = EditorGetData(hWnd);
 	data->tileBase = tileBase;
 	SetEditNumber(data->hWndTileBase, tileBase);
 }

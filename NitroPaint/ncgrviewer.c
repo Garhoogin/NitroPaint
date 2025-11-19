@@ -123,9 +123,9 @@ static void SwapPoints(int *x1, int *y1, int *x2, int *y2) {
 
 static void ChrViewerInvalidateAllDependents(HWND hWnd) {
 	HWND hWndMain = getMainWindow(hWnd);
-	InvalidateAllEditors(hWndMain, FILE_TYPE_NANR);
-	InvalidateAllEditors(hWndMain, FILE_TYPE_NMCR);
-	InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
+	EditorInvalidateAllByType(hWndMain, FILE_TYPE_NANR);
+	EditorInvalidateAllByType(hWndMain, FILE_TYPE_NMCR);
+	EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
 
 	//update cell editor
 	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
@@ -2222,10 +2222,10 @@ static int ChrImportCallback(void *cbdata) {
 	HWND hWndMain = getMainWindow(data->hWnd);
 	BOOL import1D = cim->import1D;
 
-	InvalidateAllEditors(hWndMain, FILE_TYPE_PALETTE);
-	InvalidateAllEditors(hWndMain, FILE_TYPE_CHAR);
-	InvalidateAllEditors(hWndMain, FILE_TYPE_SCREEN);
-	InvalidateAllEditors(hWndMain, FILE_TYPE_CELL);
+	EditorInvalidateAllByType(hWndMain, FILE_TYPE_PALETTE);
+	EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
+	EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
+	EditorInvalidateAllByType(hWndMain, FILE_TYPE_CELL);
 
 	EnableWindow(hWndMain, TRUE);
 	SetForegroundWindow(hWndMain);
@@ -2688,7 +2688,7 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					cimport->balance = balance.balance;
 					cimport->colorBalance = balance.colorBalance;
 					cimport->enhanceColors = balance.enhanceColors;
-					cimport->ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(GetEditorFromObject(hWndMain, &ncgr->header));
+					cimport->ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(EditorFindByObject(hWndMain, &ncgr->header));
 					cimport->px = data->px;
 					cimport->width = data->width;
 					cimport->height = data->height;

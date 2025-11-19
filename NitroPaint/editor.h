@@ -84,6 +84,14 @@ void EditorMgrInit(HWND hWndMgr);
 
 StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list);
 
+HWND EditorFindByObject(HWND hWndMgr, OBJECT_HEADER *obj);
+
+void EditorInvalidateAllByType(HWND hWndMgr, int type);
+
+int EditorIsValid(HWND hWndMgr, HWND hWnd);
+
+int EditorGetType(HWND hWnd);
+
 
 
 EDITOR_CLASS *EditorRegister(LPCWSTR lpszClassName, WNDPROC lpfnWndProc, LPCWSTR title, size_t dataSize, int features);

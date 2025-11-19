@@ -238,22 +238,11 @@ VOID MainZoomOut(HWND hWnd);
 LPCWSTR GetFileName(LPCWSTR lpszPath);
 
 //
-// Get the type of editor by its window handle. It may return one of the macros
-// starting with FILE_TYPE.
-//
-int GetEditorType(HWND hWndEditor);
-
-//
 // Invalidate all editor windows of a specified type. Alternatively, specify
 // FILE_TYPE_UNKNOWN for type to invalidate all editor windows that are editing
 // a valid file.
 //
-void InvalidateAllEditors(HWND hWndMain, int type);
-
-//
-// Gets the editor associated with an object by its pointer. 
-//
-HWND GetEditorFromObject(HWND hWndMain, OBJECT_HEADER *obj);
+void EditorInvalidateAllByType(HWND hWndMain, int type);
 
 void NpCreateBalanceInput(NpBalanceControl *ctl, HWND hWnd, int x, int y, int width);
 

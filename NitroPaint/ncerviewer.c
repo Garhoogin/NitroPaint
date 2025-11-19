@@ -3277,8 +3277,8 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				CellViewerSelectRange(ncerViewerData, attrBase, nObj);
 
 				//import complete, update UIs
-				InvalidateAllEditors(hWndMain, FILE_TYPE_PALETTE);
-				InvalidateAllEditors(hWndMain, FILE_TYPE_CHARACTER);
+				EditorInvalidateAllByType(hWndMain, FILE_TYPE_PALETTE);
+				EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHARACTER);
 				CellViewerGraphicsUpdated(ncerViewerData->hWnd);
 				CellViewerUpdateCellSubItemText(ncerViewerData);
 				InvalidateRect(ncerViewerData->hWndViewer, NULL, FALSE);
