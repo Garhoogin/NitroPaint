@@ -1475,51 +1475,17 @@ void InvalidateAllEditors(HWND hWndMain, int type) {
 	EnumChildWindows(hWndMdi, InvalidateAllEditorsProc, type);
 }
 
-BOOL CALLBACK EnumAllEditorsProc(HWND hWnd, LPARAM lParam) {
-	struct { BOOL (*pfn) (HWND, void *); void *param; int type; } *data = (void *) lParam;
-	int type = GetEditorType(hWnd);
-	if ((type == data->type && type != FILE_TYPE_INVALID) || (type != FILE_TYPE_INVALID && data->type == FILE_TYPE_INVALID)) {
-		return data->pfn(hWnd, data->param);
-	}
-	return TRUE;
-}
-
-void EnumAllEditors(HWND hWndMain, int type, BOOL (*pfn) (HWND, void *), void *param) {
-	struct { BOOL (*pfn) (HWND, void *); void *param; int type; } data = { pfn, param, type };
-	EnumChildWindows(hWndMain, EnumAllEditorsProc, (LPARAM) &data);
-}
-
-BOOL GetAllEditorsProc(HWND hWnd, void *param) {
-	struct { int nCounted; HWND *buffer; int bufferSize; } *work = param;
-	if (work->nCounted < work->bufferSize) {
-		work->buffer[work->nCounted] = hWnd;
-	}
-	work->nCounted++;
-	return TRUE;
-}
-
-int GetAllEditors(HWND hWndMain, int type, HWND *editors, int bufferSize) {
-	struct { int nCounted; HWND *buffer; int bufferSize; } param = { 0, editors, bufferSize };
-	EnumAllEditors(hWndMain, type, GetAllEditorsProc, (void *) &param);
-	return param.nCounted;
-}
-
-static BOOL GetEditorFromObjectProc(HWND hWnd, void *param) {
-	struct { OBJECT_HEADER *obj; HWND hWnd; } *data = param;
-	EDITOR_DATA *ed = (EDITOR_DATA *) EditorGetData(hWnd);
-
-	if (&ed->file == data->obj) {
-		//found
-		data->hWnd = hWnd;
-		return FALSE;
-	}
-	return TRUE;
-}
-
 HWND GetEditorFromObject(HWND hWndMain, OBJECT_HEADER *obj) {
-	struct { OBJECT_HEADER *obj; HWND hWnd; } data = { obj, NULL };
-	EnumAllEditors(hWndMain, FILE_TYPE_INVALID, GetEditorFromObjectProc, &data);
-	return data.hWnd;
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+
+	//scan editor list
+	for (size_t i = 0; i < nitroPaintStruct->edMgr.editorList.length; i++) {
+		EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&nitroPaintStruct->edMgr.editorList, i);
+		if (&ed->file == obj) return ed->hWnd;
+	}
+
+	//not found
+	return NULL;
 }
 
 static BOOL CALLBACK CountWindowsProc(HWND hWnd, LPARAM lParam) {
@@ -1836,9 +1802,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						ncer.cells[0].cellAttr = 0;
 
 						//if a character editor is open, use its mapping mode
-						HWND hWndCharacterEditor;
-						int nCharEditors = GetAllEditors(hWnd, FILE_TYPE_CHARACTER, &hWndCharacterEditor, 1);
-						if (nCharEditors) {
+						HWND hWndCharacterEditor = data->hWndNcgrViewer;
+						if (hWndCharacterEditor != NULL) {
 							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
 							ncer.mappingMode = ncgrViewerData->ncgr.mappingMode;
 						}
@@ -2025,13 +1990,20 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 						//update viewers
 						if (data->hWndNcgrViewer != NULL) {
-							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) GetWindowLongPtr(data->hWndNcgrViewer, 0);
+							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(data->hWndNcgrViewer);
 							ncgrViewerData->transparent = state;
 						}
 						InvalidateAllEditors(hWnd, FILE_TYPE_CHAR);
-						EnumAllEditors(hWnd, FILE_TYPE_SCREEN, SetNscrEditorTransparentProc, (void *) state);
 						InvalidateAllEditors(hWnd, FILE_TYPE_SCREEN);
 						InvalidateAllEditors(hWnd, FILE_TYPE_CELL);
+
+						//update all screen editors
+						for (size_t i = 0; i < data->edMgr.editorList.length; i++) {
+							EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&data->edMgr.editorList, i);
+							if (ed->file.type == FILE_TYPE_SCREEN) {
+								SetNscrEditorTransparentProc(ed->hWnd, (void *) state);
+							}
+						}
 						break;
 					}
 					case ID_FILE_PREVIEWTARGET:
@@ -3024,10 +2996,17 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			int defFmt = 0;
 
 			//determine which default format to use. If we have an open BG screen, copy its settings.
-			HWND hWndNscrViewer = NULL;
-			if (GetAllEditors(hWndMain, FILE_TYPE_SCREEN, &hWndNscrViewer, 1)) {
+			StList scrEditors;
+			StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
+			EditorGetAllByType(hWndMain, FILE_TYPE_SCREEN, &scrEditors);
+
+			NSCRVIEWERDATA *nscrViewerData = NULL;
+			if (scrEditors.length > 0) nscrViewerData = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, 0);
+			StListFree(&scrEditors);
+
+			if (nscrViewerData != NULL) {
 				//has open screen editor, duplicate its setting
-				NSCR *nscr = (NSCR *) EditorGetData(hWndNscrViewer);
+				NSCR *nscr = &nscrViewerData->nscr;
 
 				if (nscr->fmt == SCREENFORMAT_AFFINE) defFmt = 2;
 				else if (nscr->colorMode == SCREENCOLORMODE_16x16) defFmt = 0;
@@ -3035,8 +3014,8 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				else if (nscr->colorMode == SCREENCOLORMODE_256x16) defFmt = 3;
 			} else {
 				//no open screen editor, search for open character editor
-				HWND hWndNcgrViewer = NULL;
-				if (GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrViewer, 1)) {
+				HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
+				if (hWndNcgrViewer != NULL) {
 					NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
 
 					if (ncgr->nBits == 4) defFmt = 0;
@@ -3340,8 +3319,7 @@ typedef struct LINKEDITDATA_ {
 	HWND hWndObjects;
 
 	COMBO2D *combo;
-	HWND *hWndEditors;
-	int nEditors;
+	StList editors;
 } LINKEDITDATA;
 
 LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -3349,10 +3327,8 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 	switch (msg) {
 		case WM_CREATE:
 		{
-			if (data == NULL) {
-				data = (LINKEDITDATA *) calloc(1, sizeof(LINKEDITDATA));
-				SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-			}
+			data = (LINKEDITDATA *) calloc(1, sizeof(LINKEDITDATA));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
 
 			CreateStatic(hWnd, L"Format:", 10, 10, 50, 22);
 			data->hWndFormat = CreateCombobox(hWnd, gComboFormats + 1, COMBO2D_TYPE_MAX - 1, 70, 10, 300, 100, COMBO2D_TYPE_5BG - 1);
@@ -3362,9 +3338,8 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->combo = NULL;
 
 			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-			data->nEditors = GetAllEditors(hWndMain, FILE_TYPE_INVALID, NULL, 0);
-			data->hWndEditors = (HWND *) calloc(data->nEditors, sizeof(HWND));
-			GetAllEditors(hWndMain, FILE_TYPE_INVALID, data->hWndEditors, data->nEditors);
+			StListCreateInline(&data->editors, EDITOR_DATA *, NULL);
+			EditorGetAllByType(hWndMain, FILE_TYPE_INVALID, &data->editors);
 
 			SetWindowSize(hWnd, 380, 284);
 			SetGUIFont(hWnd);
@@ -3382,10 +3357,10 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			//filter the window list based on applicability. If we're not in a combo, filter out all those
 			//that are. If we are in one, filter out all those not in the same one.
-			for (int i = 0; i < data->nEditors; i++) {
+			for (size_t i = 0; i < data->editors.length; i++) {
 				int remove = 0;
 
-				OBJECT_HEADER *obj2 = (OBJECT_HEADER *) EditorGetObject(data->hWndEditors[i]);
+				OBJECT_HEADER *obj2 = &(*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
 				if (obj2 == NULL) {
 					remove = 1;
 				} else if (combo != NULL) {
@@ -3396,19 +3371,17 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 				//remove
 				if (remove) {
-					memmove(data->hWndEditors + i, data->hWndEditors + i + 1, (data->nEditors - i - 1) * sizeof(HWND));
+					StListRemove(&data->editors, i);
 					i--;
-					data->nEditors--;
 				}
 			}
 			
-			for (int i = 0; i < data->nEditors; i++) {
+			for (size_t i = 0; i < data->editors.length; i++) {
 				WCHAR buf[MAX_PATH];
-				HWND hWndThisEditor = data->hWndEditors[i];
-				OBJECT_HEADER *obj = (OBJECT_HEADER *) EditorGetObject(hWndThisEditor);
+				EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&data->editors, i);
 
-				SendMessage(hWndThisEditor, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) buf);
-				AddCheckedListViewItem(data->hWndObjects, buf, i, (hWndEditor == hWndThisEditor) || (combo != NULL && obj->combo == combo));
+				SendMessage(ed->hWnd, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) buf);
+				AddCheckedListViewItem(data->hWndObjects, buf, i, (hWndEditor == ed->hWnd) || (combo != NULL && ed->file.combo == combo));
 			}
 
 			//populate type field
@@ -3431,28 +3404,25 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						combo2dInit(combo, fmt);
 						
 						//for each window selected, link
-						for (int i = 0; i < data->nEditors; i++) {
-							HWND hWndThisEditor = data->hWndEditors[i];
+						for (size_t i = 0; i < data->editors.length; i++) {
 							if (CheckedListViewIsChecked(data->hWndObjects, i)) {
-								combo2dLink(combo, EditorGetObject(hWndThisEditor));
+								combo2dLink(combo, &(*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file);
 							}
 						}
 					} else {
 						data->combo->header.format = fmt;
 
 						//first, add any links we don't have, then remove the removed ones.
-						for (int i = 0; i < data->nEditors; i++) {
-							HWND hWndThisEditor = data->hWndEditors[i];
-							OBJECT_HEADER *obj = EditorGetObject(hWndThisEditor);
+						for (size_t i = 0; i < data->editors.length; i++) {
+							OBJECT_HEADER *obj = &(*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
 
 							if (CheckedListViewIsChecked(data->hWndObjects, i) && obj->combo == NULL) {
 								combo2dLink(data->combo, obj);
 							}
 						}
 
-						for (int i = 0; i < data->nEditors; i++) {
-							HWND hWndThisEditor = data->hWndEditors[i];
-							OBJECT_HEADER *obj = EditorGetObject(hWndThisEditor);
+						for (size_t i = 0; i < data->editors.length; i++) {
+							OBJECT_HEADER *obj = &(*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
 
 							if (!CheckedListViewIsChecked(data->hWndObjects, i) && obj->combo == data->combo) {
 								combo2dUnlink(data->combo, obj);
@@ -3467,7 +3437,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		case WM_DESTROY:
 			if (data != NULL) {
-				if (data->hWndEditors != NULL) free(data->hWndEditors);
+				StListFree(&data->editors);
 				free(data);
 				SetWindowLongPtr(hWnd, 0, 0);
 			}

@@ -2587,7 +2587,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			CellViewerPreviewCenter(data);
 
 			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			nitroPaintStruct->hWndNcerViewer = hWnd;
 
 			//ensure that when the cell editor is opened later than the animation editors receive the correct bounding information.
@@ -2949,12 +2949,16 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			SetGUIFont(hWnd);
 
 			//lastly, try populate character base
-			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT), hWndNcgrEditor;
-			HWND hWndNcerViewer;
-			GetAllEditors(hWndMain, FILE_TYPE_CELL, &hWndNcerViewer, 1);
-			GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrEditor, 1);
-			NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrEditor);
-			NCERVIEWERDATA *ncerViewerData = (NCERVIEWERDATA *) EditorGetData(hWndNcerViewer);
+			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+
+			StList cellEditors;
+			StListCreateInline(&cellEditors, NCERVIEWERDATA *, NULL);
+			EditorGetAllByType(hWndMain, FILE_TYPE_CELL, &cellEditors);
+
+			NCERVIEWERDATA *ncerViewerData = NULL;
+			if (cellEditors.length > 0) ncerViewerData = *(NCERVIEWERDATA **) StListGetPtr(&cellEditors, 0);
+
+			StListFree(&cellEditors);
 
 			unsigned int lastIndex = CellViewerGetFirstUnusedCharacter(ncerViewerData, -1);
 			SetEditNumber(data->hWndCharacter, lastIndex);
@@ -3051,10 +3055,16 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *npStruct = NpGetData(hWndMain);
 
-				HWND hWndNclrViewer =  NULL, hWndNcgrViewer = NULL, hWndNcerViewer = NULL;
-				GetAllEditors(hWndMain, FILE_TYPE_PALETTE, &hWndNclrViewer, 1);
-				GetAllEditors(hWndMain, FILE_TYPE_CHARACTER, &hWndNcgrViewer, 1);
-				GetAllEditors(hWndMain, FILE_TYPE_CELL, &hWndNcerViewer, 1);
+				HWND hWndNcerViewer = NULL;
+				HWND hWndNclrViewer = npStruct->hWndNclrViewer;
+				HWND hWndNcgrViewer = npStruct->hWndNcgrViewer;
+
+				StList cellEditors;
+				StListCreateInline(&cellEditors, NCERVIEWERDATA *, NULL);
+				EditorGetAllByType(hWndMain, FILE_TYPE_CELL, &cellEditors);
+
+				if (cellEditors.length > 0) hWndNcerViewer = (*(NCERVIEWERDATA **) StListGetPtr(&cellEditors, 0))->hWnd;
+				StListFree(&cellEditors);
 
 				//get editor datas
 				NCLR *nclr = (NCLR *) EditorGetObject(hWndNclrViewer);

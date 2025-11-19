@@ -90,7 +90,7 @@ static void LytEditorRegisterFont(LYTEDITOR *ed, NFTRVIEWERDATA *fontViewerData,
 
 static NCLR *LytEditorGetAssociatedPalette(LYTEDITOR *data) {
 	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 	HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 	if (hWndNclrViewer == NULL) return NULL;
@@ -100,7 +100,7 @@ static NCLR *LytEditorGetAssociatedPalette(LYTEDITOR *data) {
 
 static NCGR *LytEditorGetAssociatedCharacter(LYTEDITOR *data) {
 	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 	HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 	if (hWndNcgrViewer == NULL) return NULL;
@@ -110,7 +110,7 @@ static NCGR *LytEditorGetAssociatedCharacter(LYTEDITOR *data) {
 
 static NCER *LytEditorGetAssociatedCellBank(LYTEDITOR *data) {
 	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 	HWND hWndNcerViewer = nitroPaintStruct->hWndNcerViewer;
 	if (hWndNcerViewer == NULL) return NULL;

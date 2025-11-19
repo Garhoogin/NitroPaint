@@ -154,7 +154,7 @@ static void FormatAngleToString(WCHAR *buf, int fx) {
 
 static HWND AnmViewerGetAssociatedEditor(HWND hWnd, int type) {
 	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	switch (type) {
 		case FILE_TYPE_PALETTE:
 			return nitroPaintStruct->hWndNclrViewer;
@@ -1102,7 +1102,7 @@ static void AnmViewerCmdOnStop(HWND hWnd, HWND hWndCtl, int notif, void *param) 
 static void AnmViewerCmdOnShowFrames(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) param;
 	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 	if (data->hWndFrames != NULL) {

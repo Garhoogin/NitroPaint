@@ -286,7 +286,7 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 
 static void ScrViewerCopy(NSCRVIEWERDATA *data) {
 	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	HWND hWndNclrEditor = nitroPaintStruct->hWndNclrViewer;
 	HWND hWndNcgrEditor = nitroPaintStruct->hWndNcgrViewer;
 
@@ -1095,7 +1095,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 		{
 			HWND hWndEditor = (HWND) lParam;
 			HWND hWndMain = getMainWindow(hWndEditor);
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			HWND hWndNcgrEditor = nitroPaintStruct->hWndNcgrViewer;
 			HWND hWndNclrEditor = nitroPaintStruct->hWndNclrViewer;
 

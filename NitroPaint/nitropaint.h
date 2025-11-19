@@ -252,18 +252,6 @@ int GetEditorType(HWND hWndEditor);
 void InvalidateAllEditors(HWND hWndMain, int type);
 
 //
-// Enumerate all editor windows of a specified type.
-//
-void EnumAllEditors(HWND hWndMain, int type, BOOL (*pfn) (HWND, void *), void *param);
-
-//
-// Get a list of editors of a certain type into an array. Returns the total
-// number of open editor windows of the specified type. Can pass in a length of
-// of 0 to retrieve only the editor count.
-//
-int GetAllEditors(HWND hWndMain, int type, HWND *editors, int bufferSize);
-
-//
 // Gets the editor associated with an object by its pointer. 
 //
 HWND GetEditorFromObject(HWND hWndMain, OBJECT_HEADER *obj);

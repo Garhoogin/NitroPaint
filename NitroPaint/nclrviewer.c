@@ -695,7 +695,7 @@ static void PalViewerUpdateViewers(HWND hWnd, int updateMask) {
 }
 
 static int CountPaletteUsages(HWND hWndMain, NCLR *nclr, int *counts) {
-	HWND hWndCharacterEditor = ((NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0))->hWndNcgrViewer;
+	HWND hWndCharacterEditor = NpGetData(hWndMain)->hWndNcgrViewer;
 	if (hWndCharacterEditor == 0) return 0;
 
 	//if no screen editor open, get use counts from character
@@ -1996,7 +1996,18 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						verif.start = selStart;
 						verif.end = selEnd;
 						verif.mode = data->selMode;
-						EnumAllEditors(getMainWindow(hWnd), FILE_TYPE_SCREEN, ValidateColorsNscrProc, &verif);
+
+						//update all screen editors
+						StList scrEditors;
+						StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
+						EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_SCREEN, &scrEditors);
+
+						for (size_t i = 0; i < scrEditors.length; i++) {
+							EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&scrEditors, i);
+							ValidateColorsNscrProc(ed->hWnd, &verif);
+						}
+						StListFree(&scrEditors);
+
 						break;
 					}
 					case ID_MENU_FREQUENCYHIGHLIGHT:
