@@ -131,8 +131,7 @@ unsigned char *ScrViewerRenderIndexed(NSCR *nscr, NCGR *ncgr, int tileBase, int 
 static void ScrViewerSaveBitmap(NSCRVIEWERDATA *data, LPCWSTR path) {
 	int width, height;
 
-	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 	HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 
@@ -175,8 +174,7 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 	int chrHover = -1;
 
 	//get NCLR and NCGR pointers
-	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	if (nitroPaintStruct->hWndNclrViewer != NULL) {
 		nclr = (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 	}
@@ -285,8 +283,7 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 }
 
 static void ScrViewerCopy(NSCRVIEWERDATA *data) {
-	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	HWND hWndNclrEditor = nitroPaintStruct->hWndNclrViewer;
 	HWND hWndNcgrEditor = nitroPaintStruct->hWndNcgrViewer;
 
@@ -558,7 +555,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			//read config data
 			if (g_configuration.nscrViewerConfiguration.gridlines) {
 				data->showBorders = 1;
-				CheckMenuItem(GetMenu(getMainWindow(hWnd)), ID_VIEW_GRIDLINES, MF_CHECKED);
+				CheckMenuItem(GetMenu(data->editorMgr->hWnd), ID_VIEW_GRIDLINES, MF_CHECKED);
 			}
 			break;
 		}
@@ -626,8 +623,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ScrViewerSetPreferredSize(data);
 
 			//guess a tile base based on an open NCGR (if any)
-			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 			if (hWndNcgrViewer != NULL) {
 				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
@@ -777,8 +773,10 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						break;
 					case ID_NSCRMENU_IMPORTBITMAPHERE:
 					{
-						HWND hWndMain = getMainWindow(hWnd);
-						HWND h = CreateWindow(L"NscrBitmapImportClass", L"Import Bitmap", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME), CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
+						HWND hWndMain = data->editorMgr->hWnd;
+						HWND h = CreateWindow(L"NscrBitmapImportClass", L"Import Bitmap",
+							WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
+							CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
 						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) hWnd);
 						WORD d = data->nscr.data[data->ted.contextHoverX + data->ted.contextHoverY * (data->nscr.tilesX * 8 >> 3)];
 						SendMessage(h, NV_INITIMPORTDIALOG, d, data->ted.contextHoverX | (data->ted.contextHoverY << 16));
@@ -821,7 +819,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 					int character = GetEditNumber(data->hWndCharacterNumber);
 					int palette = SendMessage(data->hWndPaletteNumber, CB_GETCURSEL, 0, 0);
-					HWND hWndMain = getMainWindow(hWnd);
+					
 					SendMessage(hWnd, NV_SETDATA, (WPARAM) character, (LPARAM) palette);
 					int tilesX = data->nscr.tilesX, tilesY = data->nscr.tilesY;
 					int nTiles = tilesX * tilesY;

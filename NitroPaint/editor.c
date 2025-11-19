@@ -21,6 +21,7 @@ static EditorManager *EditorGetManager(HWND hWndMgr) {
 
 void EditorMgrInit(HWND hWndMgr) {
 	EditorManager *mgr = EditorGetManager(hWndMgr);
+	mgr->hWnd = hWndMgr;
 	StListCreateInline(&mgr->classList, EDITOR_CLASS *, NULL);
 	StListCreateInline(&mgr->editorList, EDITOR_DATA *, NULL);
 }
@@ -283,6 +284,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 			HWND hWndMain = getMainWindow(hWnd);
 			EditorManager *mgr = (EditorManager *) GetWindowLongPtr(hWndMain, 0);
 			StListAdd(&mgr->editorList, &data);
+			data->editorMgr = mgr;
 		}
 
 		//handle common editor messages

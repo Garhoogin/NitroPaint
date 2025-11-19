@@ -73,9 +73,7 @@ static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int 
 // ----- routines for operations with other editors
 
 HWND ChrViewerGetAssociatedPaletteViewer(NCGRVIEWERDATA *data) {
-	HWND hWnd = data->hWnd;
-	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	return nitroPaintStruct->hWndNclrViewer;
 }
 
@@ -121,14 +119,14 @@ static void SwapPoints(int *x1, int *y1, int *x2, int *y2) {
 
 // ----- data manipulation functions
 
-static void ChrViewerInvalidateAllDependents(HWND hWnd) {
-	HWND hWndMain = getMainWindow(hWnd);
+static void ChrViewerInvalidateAllDependents(NCGRVIEWERDATA *data) {
+	HWND hWndMain = data->editorMgr->hWnd;
 	EditorInvalidateAllByType(hWndMain, FILE_TYPE_NANR);
 	EditorInvalidateAllByType(hWndMain, FILE_TYPE_NMCR);
 	EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
 
 	//update cell editor
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	if (nitroPaintStruct->hWndNcerViewer != NULL) {
 		CellViewerGraphicsUpdated(nitroPaintStruct->hWndNcerViewer);
 	}
@@ -139,7 +137,7 @@ static void ChrViewerGraphicsUpdated(NCGRVIEWERDATA *data) {
 	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 
 	//invalidate every open cell and screen viewer.
-	ChrViewerInvalidateAllDependents(data->hWnd);
+	ChrViewerInvalidateAllDependents(data);
 
 	//update preview
 	SendMessage(data->hWnd, NV_UPDATEPREVIEW, 0, 0);
@@ -1084,9 +1082,7 @@ static void ChrViewerExportBitmap(NCGRVIEWERDATA *data, NCGR *ncgr, NCLR *nclr, 
 	}
 }
 
-static void ChrViewerPopulateWidthField(HWND hWnd) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
-
+static void ChrViewerPopulateWidthField(NCGRVIEWERDATA *data) {
 	SendMessage(data->hWndWidthDropdown, CB_RESETCONTENT, 0, 0);
 	int nTiles = data->ncgr.nTiles;
 	int nStrings = 0;
@@ -1103,9 +1099,7 @@ static void ChrViewerPopulateWidthField(HWND hWnd) {
 	}
 }
 
-static void ChrViewerUpdateCharacterLabel(HWND hWnd) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
-
+static void ChrViewerUpdateCharacterLabel(NCGRVIEWERDATA *data) {
 	WCHAR buffer[64];
 	if (!TedHasSelection(&data->ted)) {
 		wsprintf(buffer, L" Character %d", data->ted.hoverIndex);
@@ -1117,27 +1111,23 @@ static void ChrViewerUpdateCharacterLabel(HWND hWnd) {
 	SendMessage(data->hWndCharacterLabel, WM_SETTEXT, wcslen(buffer), (LPARAM) buffer);
 }
 
-static void ChrViewerSetWidth(HWND hWnd, int width) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
-
+static void ChrViewerSetWidth(NCGRVIEWERDATA *data, int width) {
 	//update width
 	ChrSetWidth(&data->ncgr, width);
 	TedUpdateSize((EDITOR_DATA *) data, &data->ted, data->ncgr.tilesX, data->ncgr.tilesY);
 
 	//update
-	ChrViewerPopulateWidthField(hWnd);
+	ChrViewerPopulateWidthField(data);
 	SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
 	ChrViewerGraphicsUpdated(data);
 }
 
-static void ChrViewerSetDepth(HWND hWnd, int depth) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
-
+static void ChrViewerSetDepth(NCGRVIEWERDATA *data, int depth) {
 	//set depth and update UI
 	ChrSetDepth(&data->ncgr, depth);
 	TedUpdateSize((EDITOR_DATA *) data, &data->ted, data->ncgr.tilesX, data->ncgr.tilesY);
 	
-	ChrViewerPopulateWidthField(hWnd);
+	ChrViewerPopulateWidthField(data);
 	SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
 	ChrViewerGraphicsUpdated(data);
 
@@ -1173,8 +1163,8 @@ typedef struct CHARIMPORTDATA_ {
 } CHARIMPORTDATA;
 
 
-static void ChrViewerOnCreate(HWND hWnd) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+static void ChrViewerOnCreate(NCGRVIEWERDATA *data) {
+	HWND hWnd = data->hWnd;
 	float dpiScale = GetDpiScale();
 
 	data->frameData.contentWidth = 256;
@@ -1215,9 +1205,8 @@ static void ChrViewerOnCreate(HWND hWnd) {
 
 	//read config data
 	if (!g_configuration.ncgrViewerConfiguration.gridlines) {
-		HWND hWndMain = getMainWindow(hWnd);
 		data->showBorders = 0;
-		CheckMenuItem(GetMenu(hWndMain), ID_VIEW_GRIDLINES, MF_UNCHECKED);
+		CheckMenuItem(GetMenu(data->editorMgr->hWnd), ID_VIEW_GRIDLINES, MF_UNCHECKED);
 	}
 	SetGUIFont(hWnd);
 }
@@ -1245,8 +1234,8 @@ static void ChrViewerSetPreferredSize(NCGRVIEWERDATA *data) {
 	SetWindowSize(data->hWnd, width, height);
 }
 
-static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immediate) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+static void ChrViewerOnInitialize(NCGRVIEWERDATA *data, LPCWSTR path, NCGR *ncgr, int immediate) {
+	HWND hWnd = data->hWnd;
 	float dpiScale = GetDpiScale();
 
 	if (!immediate) {
@@ -1261,13 +1250,13 @@ static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immed
 
 	ChrViewerSetPreferredSize(data);
 	
-	ChrViewerPopulateWidthField(hWnd);
+	ChrViewerPopulateWidthField(data);
 	if (data->ncgr.nBits == 8) SendMessage(data->hWnd8bpp, BM_SETCHECK, 1, 0);
 
 	//guess a tile base for open NSCR (if any)
 	StList nscrEditorList;
 	StListCreateInline(&nscrEditorList, EDITOR_DATA *, NULL);
-	EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_SCREEN, &nscrEditorList);
+	EditorGetAllByType(data->editorMgr->hWnd, FILE_TYPE_SCREEN, &nscrEditorList);
 
 	//for each editor
 	for (size_t i = 0; i < nscrEditorList.length; i++) {
@@ -1282,11 +1271,11 @@ static void ChrViewerOnInitialize(HWND hWnd, LPCWSTR path, NCGR *ncgr, int immed
 	StListFree(&nscrEditorList);
 
 	ShowWindow(hWnd, SW_SHOW);
-	ChrViewerInvalidateAllDependents(hWnd);
+	ChrViewerInvalidateAllDependents(data);
 }
 
-static LRESULT ChrViewerOnSize(HWND hWnd, WPARAM wParam, LPARAM lParam) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
+static LRESULT ChrViewerOnSize(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
+	HWND hWnd = data->hWnd;
 	float dpiScale = GetDpiScale();
 
 	RECT rcClient;
@@ -1310,26 +1299,21 @@ static LRESULT ChrViewerOnSize(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 	return DefMDIChildProc(hWnd, WM_SIZE, wParam, lParam);
 }
 
-static void ChrViewerOnDestroy(HWND hWnd) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
-
-	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+static void ChrViewerOnDestroy(NCGRVIEWERDATA *data) {
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	nitroPaintStruct->hWndNcgrViewer = NULL;
 
 	HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
 	if (hWndNclrViewer != NULL) InvalidateRect(hWndNclrViewer, NULL, FALSE);
-	ChrViewerInvalidateAllDependents(hWnd);
+	ChrViewerInvalidateAllDependents(data);
 	TedDestroy(&data->ted);
 }
 
-static int ChrViewerOnTimer(HWND hWnd, int idTimer) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
-
+static int ChrViewerOnTimer(NCGRVIEWERDATA *data, int idTimer) {
 	if (idTimer == 1) {
 		data->verifyFrames--;
 		if (!data->verifyFrames) {
-			KillTimer(hWnd, idTimer);
+			KillTimer(data->hWnd, idTimer);
 		}
 		InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 	}
@@ -1337,13 +1321,11 @@ static int ChrViewerOnTimer(HWND hWnd, int idTimer) {
 }
 
 
-static void ChrViewerOnCtlCommand(HWND hWnd, HWND hWndControl, int notification) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
-
+static void ChrViewerOnCtlCommand(NCGRVIEWERDATA *data, HWND hWndControl, int notification) {
 	if (notification == CBN_SELCHANGE && hWndControl == data->hWndPaletteDropdown) {
 		int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 		data->selectedPalette = sel;
-		InvalidateRect(hWnd, NULL, FALSE);
+		InvalidateRect(data->hWnd, NULL, FALSE);
 
 		HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
 		if (hWndNclrViewer != NULL) InvalidateRect(hWndNclrViewer, NULL, FALSE);
@@ -1351,19 +1333,19 @@ static void ChrViewerOnCtlCommand(HWND hWnd, HWND hWndControl, int notification)
 		WCHAR text[16];
 		int selected = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
 		SendMessage(hWndControl, CB_GETLBTEXT, (WPARAM) selected, (LPARAM) text);
-		int width = _wtol(text);
-		ChrViewerSetWidth(hWnd, width);
+		
+		ChrViewerSetWidth(data, _wtol(text));
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndExpand) {
-		HWND hWndMain = getMainWindow(hWnd);
+		HWND hWndMain = data->editorMgr->hWnd;
 		HWND h = CreateWindow(L"ExpandNcgrClass", L"Resize Graphics", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
 			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
 		SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
 		DoModal(h);
-		SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
+		SendMessage(data->hWnd, NV_UPDATEPREVIEW, 0, 0);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWnd8bpp) {
 		int state = GetCheckboxChecked(hWndControl);
 		int depth = (state) ? 8 : 4;
-		ChrViewerSetDepth(hWnd, depth);
+		ChrViewerSetDepth(data, depth);
 		SetFocus(data->hWnd);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndUseAttribute) {
 		data->useAttribute = GetCheckboxChecked(hWndControl);
@@ -1373,7 +1355,7 @@ static void ChrViewerOnCtlCommand(HWND hWnd, HWND hWndControl, int notification)
 }
 
 static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int pasteX, int pasteY, COLOR32 *px, int width, int height) {
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 	HWND h = CreateWindow(L"CharImportDialog", L"Import Bitmap", WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX,
 		CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
 	CHARIMPORTDATA *cidata = (CHARIMPORTDATA *) GetWindowLongPtr(h, 0);
@@ -1487,7 +1469,7 @@ static void ChrViewerImportAttributes(NCGRVIEWERDATA *data) {
 		data->ncgr.attr = (unsigned char *) calloc(data->ncgr.tilesX * data->ncgr.tilesY, 1);
 	}
 
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 	
 	//get all BG screen, cell data editors
 	StList editors;
@@ -1512,9 +1494,7 @@ static void ChrViewerImportAttributes(NCGRVIEWERDATA *data) {
 	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 }
 
-static void ChrViewerOnMenuCommand(HWND hWnd, int idMenu) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
-
+static void ChrViewerOnMenuCommand(NCGRVIEWERDATA *data, int idMenu) {
 	switch (idMenu) {
 		case ID_VIEW_GRIDLINES:
 		case ID_ZOOM_100:
@@ -1528,7 +1508,7 @@ static void ChrViewerOnMenuCommand(HWND hWnd, int idMenu) {
 			break;
 		case ID_NCGRMENU_IMPORTBITMAPHERE:
 		{
-			LPWSTR path = openFileDialog(hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
+			LPWSTR path = openFileDialog(data->hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
 			if (!path) break;
 
 			int width, height;
@@ -1554,18 +1534,17 @@ static void ChrViewerOnMenuCommand(HWND hWnd, int idMenu) {
 			ChrViewerImportAttributes(data);
 			break;
 		case ID_FILE_SAVEAS:
-			EditorSaveAs(hWnd);
+			EditorSaveAs(data->hWnd);
 			break;
 		case ID_FILE_SAVE:
-			EditorSave(hWnd);
+			EditorSave(data->hWnd);
 			break;
 		case ID_FILE_EXPORT:
 		{
-			LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
+			LPWSTR location = saveFileDialog(data->hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 			if (!location) break;
 
 			HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
-			HWND hWndNcgrViewer = hWnd;
 
 			NCGR *ncgr = &data->ncgr;
 			NCLR *nclr = NULL;
@@ -1604,9 +1583,7 @@ static void ChrViewerOnMenuCommand(HWND hWnd, int idMenu) {
 	}
 }
 
-static void ChrViewerOnAccelerator(HWND hWnd, int idAccel) {
-	NCGRVIEWERDATA *data = EditorGetData(hWnd);
-
+static void ChrViewerOnAccelerator(NCGRVIEWERDATA *data, int idAccel) {
 	switch (idAccel) {
 		case ID_ACCELERATOR_COPY:
 			ChrViewerCopy(data);
@@ -1628,16 +1605,16 @@ static void ChrViewerOnAccelerator(HWND hWnd, int idAccel) {
 	}
 	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 	TedUpdateMargins(&data->ted);
-	ChrViewerUpdateCharacterLabel(data->hWnd);
+	ChrViewerUpdateCharacterLabel(data);
 }
 
-static void ChrViewerOnCommand(HWND hWnd, WPARAM wParam, LPARAM lParam) {
+static void ChrViewerOnCommand(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
 	if (lParam) {
-		ChrViewerOnCtlCommand(hWnd, (HWND) lParam, HIWORD(wParam));
+		ChrViewerOnCtlCommand(data, (HWND) lParam, HIWORD(wParam));
 	} else if (HIWORD(wParam) == 0) {
-		ChrViewerOnMenuCommand(hWnd, LOWORD(wParam));
+		ChrViewerOnMenuCommand(data, LOWORD(wParam));
 	} else if (HIWORD(wParam) == 1) {
-		ChrViewerOnAccelerator(hWnd, LOWORD(wParam));
+		ChrViewerOnAccelerator(data, LOWORD(wParam));
 	}
 }
 
@@ -1671,7 +1648,7 @@ static void ChrViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
 					//draw single pixel
 					ChrViewerPutPixel(data, pxX, pxY, pcol);
 				}
-				ChrViewerInvalidateAllDependents(data->hWnd);
+				ChrViewerInvalidateAllDependents(data);
 			}
 			break;
 		}
@@ -1713,11 +1690,11 @@ static HCURSOR ChrViewerGetCursor(HWND hWnd, int hit) {
 static void ChrViewerOnHoverChange(HWND hWnd, int tileX, int tileY) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
 
-	ChrViewerUpdateCharacterLabel(hWnd);
+	ChrViewerUpdateCharacterLabel(data);
 
 	StList scrEditors;
 	StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
-	EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_SCREEN, &scrEditors);
+	EditorGetAllByType(data->editorMgr->hWnd, FILE_TYPE_SCREEN, &scrEditors);
 
 	//update screen viewers
 	for (size_t i = 0; i < scrEditors.length; i++) {
@@ -1754,7 +1731,7 @@ static void ChrViewerOnKeyDown(NCGRVIEWERDATA *data, WPARAM wParam, LPARAM lPara
 			TedDeselect(&data->ted);
 			TedUpdateMargins(&data->ted);
 			ChrViewerGraphicsUpdated(data);
-			ChrViewerUpdateCharacterLabel(data->hWnd);
+			ChrViewerUpdateCharacterLabel(data);
 			break;
 		}
 		case ' ':
@@ -1801,18 +1778,18 @@ static LRESULT WINAPI ChrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 	switch (msg) {
 		case WM_CREATE:
-			ChrViewerOnCreate(hWnd);
+			ChrViewerOnCreate(data);
 			break;
 		case NV_INITIALIZE:
 		case NV_INITIALIZE_IMMEDIATE:
-			ChrViewerOnInitialize(hWnd, (LPCWSTR) wParam, (NCGR *) lParam, msg == NV_INITIALIZE_IMMEDIATE);
+			ChrViewerOnInitialize(data, (LPCWSTR) wParam, (NCGR *) lParam, msg == NV_INITIALIZE_IMMEDIATE);
 			break;
 		case NV_UPDATEPREVIEW:
 			PreviewLoadBgCharacter(&data->ncgr);
 			PreviewLoadObjCharacter(&data->ncgr);
 			break;
 		case WM_COMMAND:
-			ChrViewerOnCommand(hWnd, wParam, lParam);
+			ChrViewerOnCommand(data, wParam, lParam);
 			break;
 		case WM_KEYDOWN:
 			ChrViewerOnKeyDown(data, wParam, lParam);
@@ -1836,9 +1813,9 @@ static LRESULT WINAPI ChrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_ERASEBKGND:
 			return TedMainOnEraseBkgnd((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case WM_TIMER:
-			return ChrViewerOnTimer(hWnd, wParam);
+			return ChrViewerOnTimer(data, wParam);
 		case WM_DESTROY:
-			ChrViewerOnDestroy(hWnd);
+			ChrViewerOnDestroy(data);
 			break;
 		case WM_SIZE:
 			return ChrViewerOnSize(hWnd, wParam, lParam);
@@ -1865,8 +1842,7 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 	NCGR *ncgr = &data->ncgr;
 	NCLR *nclr = NULL;
 
-	HWND hWndMain = getMainWindow(data->hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	if (nitroPaintStruct->hWndNclrViewer != NULL) {
 		nclr = (NCLR *) EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 	}
@@ -2141,7 +2117,7 @@ static LRESULT WINAPI ChrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 void ChrViewerGraphicsSizeUpdated(HWND hWnd) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
 
-	ChrViewerPopulateWidthField(data->hWnd);
+	ChrViewerPopulateWidthField(data);
 	data->ted.tilesX = data->ncgr.tilesX;
 	data->ted.tilesY = data->ncgr.tilesY;
 	SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
@@ -2219,7 +2195,7 @@ typedef struct ChrImportData_ {
 static int ChrImportCallback(void *cbdata) {
 	ChrImportData *cim = (ChrImportData *) cbdata;
 	NCGRVIEWERDATA *data = cim->ncgrViewerData;
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 	BOOL import1D = cim->import1D;
 
 	EditorInvalidateAllByType(hWndMain, FILE_TYPE_PALETTE);

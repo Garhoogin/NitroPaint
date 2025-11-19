@@ -498,7 +498,7 @@ static int NftrViewerParseCharacter(const wchar_t *buf, int outSjis) {
 }
 
 static int NftrViewerPromptCharacter(NFTRVIEWERDATA *data, LPCWSTR title, LPCWSTR prompt, uint16_t defCP) {
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 	WCHAR textbuf[16];
 	wsprintf(textbuf, L"%c+%04X", data->nftr.charset == FONT_CHARSET_SJIS ? 'J' : 'U', defCP);
 
@@ -779,12 +779,11 @@ static LRESULT CALLBACK NftrViewerGlyphListSubclassProc(HWND hWnd, UINT msg, WPA
 
 static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 	HWND hWnd = data->hWnd;
-	HWND hWndMain = getMainWindow(hWnd);
 
 	data->scale = 16;
 	data->showBorders = 1;
 	data->curGlyph = 0;
-	data->renderTransparent = GetMenuState(GetMenu(hWndMain), ID_VIEW_RENDERTRANSPARENCY, MF_BYCOMMAND);
+	data->renderTransparent = GetMenuState(GetMenu(data->editorMgr->hWnd), ID_VIEW_RENDERTRANSPARENCY, MF_BYCOMMAND);
 	data->spaceX = 1;
 	data->spaceY = 1;
 
@@ -1152,7 +1151,6 @@ static void NftrViewerReassignCurrentGlyph(NFTRVIEWERDATA *data) {
 	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
 	if (glyph == NULL) return;
 
-	HWND hWndMain = getMainWindow(data->hWnd);
 	while (1) {
 		int inputCP = NftrViewerPromptCharacter(data, L"Reassign Glyph", L"Enter a new character or code point:", glyph->cp);
 		if (inputCP == -1) return; // exit
@@ -1166,7 +1164,7 @@ static void NftrViewerReassignCurrentGlyph(NFTRVIEWERDATA *data) {
 		}
 		
 		//try again
-		MessageBox(hWndMain, L"Character already assigned.", L"Error", MB_ICONERROR);
+		MessageBox(data->editorMgr->hWnd, L"Character already assigned.", L"Error", MB_ICONERROR);
 	}
 }
 
@@ -1188,7 +1186,6 @@ static void NftrViewerMakeCurrentGlyphInvalid(NFTRVIEWERDATA *data) {
 
 static void NftrViewerGoTo(NFTRVIEWERDATA *data) {
 	uint16_t defCP = 0;
-	HWND hWndMain = getMainWindow(data->hWnd);
 	while (1) {
 		int inputCP = NftrViewerPromptCharacter(data, L"Enter Character", L"Enter a character or code point:", defCP);
 		if (inputCP == -1) return; // exit
@@ -1203,14 +1200,13 @@ static void NftrViewerGoTo(NFTRVIEWERDATA *data) {
 		}
 
 		//error, no try again
-		MessageBox(hWndMain, L"Character not assigned.", L"Error", MB_ICONERROR);
+		MessageBox(data->editorMgr->hWnd, L"Character not assigned.", L"Error", MB_ICONERROR);
 		break;
 	}
 }
 
 static void NftrViewerNewGlyph(NFTRVIEWERDATA *data) {
 	uint16_t defCP = 0;
-	HWND hWndMain = getMainWindow(data->hWnd);
 	while (1) {
 		int inputCP = NftrViewerPromptCharacter(data, L"Enter Character", L"Enter a new character or code point:", defCP);
 		if (inputCP == -1) return; // exit
@@ -1226,7 +1222,7 @@ static void NftrViewerNewGlyph(NFTRVIEWERDATA *data) {
 		}
 
 		//try again
-		MessageBox(hWndMain, L"Character already assigned.", L"Error", MB_ICONERROR);
+		MessageBox(data->editorMgr->hWnd, L"Character already assigned.", L"Error", MB_ICONERROR);
 	}
 }
 
@@ -1234,7 +1230,7 @@ static int NftrViewerSelectFontDialog(NFTRVIEWERDATA *data) {
 	//select font, using last selected font as default
 	CHOOSEFONT cf = { 0 };
 	cf.lStructSize = sizeof(cf);
-	cf.hwndOwner = getMainWindow(data->hWnd);
+	cf.hwndOwner = data->editorMgr->hWnd;
 	cf.lpLogFont = &data->lastFont;
 	cf.Flags = CF_FORCEFONTEXIST | CF_INACTIVEFONTS;
 	if (data->lastFontSet) cf.Flags |= CF_INITTOLOGFONTSTRUCT;
@@ -1480,7 +1476,6 @@ static void NftrViewerGenerateGlyphRange(NFTRVIEWERDATA *data) {
 
 static void NftrViewerNewGlyphRange(NFTRVIEWERDATA *data) {
 	uint16_t defCP = 0;
-	HWND hWndMain = getMainWindow(data->hWnd);
 	
 	int inputCP1 = NftrViewerPromptCharacter(data, L"Enter First Character", L"Enter a character or code point:", defCP);
 	if (inputCP1 == -1) return; // exit
@@ -1522,11 +1517,11 @@ static void NftrViewerNewGlyphRange(NFTRVIEWERDATA *data) {
 	//confirm add
 	WCHAR buf[32];
 	wsprintfW(buf, L"Added %d glyph(s).", nAdd);
-	MessageBox(hWndMain, buf, L"Success", MB_ICONINFORMATION);
+	MessageBox(data->editorMgr->hWnd, buf, L"Success", MB_ICONINFORMATION);
 }
 
 static void NftrViewerExport(NFTRVIEWERDATA *data) {
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 	LPWSTR path = saveFileDialog(hWndMain, L"Export Font", L"PNG Files (*.png)\0*.png\0All Files\0*.*", L"png");
 	if (path == NULL) return;
 
@@ -1561,8 +1556,7 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 			break;
 		case ID_VIEW_RENDERTRANSPARENCY:
 		{
-			HWND hWndMain = getMainWindow(data->hWnd);
-			int state = GetMenuState(GetMenu(hWndMain), ID_VIEW_RENDERTRANSPARENCY, MF_BYCOMMAND);
+			int state = GetMenuState(GetMenu(data->editorMgr->hWnd), ID_VIEW_RENDERTRANSPARENCY, MF_BYCOMMAND);
 			data->renderTransparent = state;
 			InvalidateRect(data->hWndPreview, NULL, FALSE);
 			break;
@@ -1645,7 +1639,7 @@ static void NftrViewerCmdPrevSpaceYChanged(HWND hWnd, HWND hWndCtl, int notif, v
 static void NftrViewerCmdImportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	//import code map
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 
 	if (data->nftr.hasCodeMap) {
 		MessageBox(hWndMain, L"Font already has a code map.", L"Error", MB_ICONERROR);
@@ -1681,7 +1675,7 @@ static void NftrViewerCmdImportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	//export code map
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
-	HWND hWndMain = getMainWindow(data->hWnd);
+	HWND hWndMain = data->editorMgr->hWnd;
 	if (!data->nftr.hasCodeMap) {
 		MessageBox(hWndMain, L"Font has no code map.", L"Error", MB_ICONERROR);
 		return;
@@ -1766,10 +1760,10 @@ static void NftrViewerCmdSetGlyphTrailing(HWND hWnd, HWND hWndCtl, int notif, vo
 static void NftrViewerCmdSetCellWidth(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	//change cell width
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
-	HWND hWndMain = getMainWindow(data->hWnd);
+	
 	WCHAR textbuf[16];
 	wsprintfW(textbuf, L"%d", data->nftr.cellWidth);
-	int s = PromptUserText(hWndMain, L"Input", L"Cell Width:", textbuf, sizeof(textbuf));
+	int s = PromptUserText(data->editorMgr->hWnd, L"Input", L"Cell Width:", textbuf, sizeof(textbuf));
 	if (s) {
 		NftrViewerSetCellSize(data, _wtol(textbuf), data->nftr.cellHeight);
 	}
@@ -1778,10 +1772,10 @@ static void NftrViewerCmdSetCellWidth(HWND hWnd, HWND hWndCtl, int notif, void *
 static void NftrViewerCmdSetCellHeight(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	//change cell height
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
-	HWND hWndMain = getMainWindow(data->hWnd);
+	
 	WCHAR textbuf[16];
 	wsprintfW(textbuf, L"%d", data->nftr.cellHeight);
-	int s = PromptUserText(hWndMain, L"Input", L"Cell Height:", textbuf, sizeof(textbuf));
+	int s = PromptUserText(data->editorMgr->hWnd, L"Input", L"Cell Height:", textbuf, sizeof(textbuf));
 	if (s) {
 		NftrViewerSetCellSize(data, data->nftr.cellWidth, _wtol(textbuf));
 	}
@@ -1839,7 +1833,7 @@ static void NftrViewerOnLButtonDown(NFTRVIEWERDATA *data) {
 			SetTimer(data->hWnd, TIMER_DBLCLICK, TIMER_DBLCLICK_DURATION, NULL);
 		} else {
 			//double-click: choose color
-			HWND hWndMain = getMainWindow(data->hWnd);
+			HWND hWndMain = data->editorMgr->hWnd;
 			COLOR orig = data->palette[pltColor];
 
 			CHOOSECOLOR cc = { 0 };

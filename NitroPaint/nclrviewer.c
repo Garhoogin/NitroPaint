@@ -82,9 +82,8 @@ static int PalViewerHasClipboard(HWND hWnd) {
 	return 1;
 }
 
-static HWND PalViewerGetAssociatedWindow(HWND hWnd, int type) {
-	HWND hWndMain = getMainWindow(hWnd);
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+static HWND PalViewerGetAssociatedWindow(NCLRVIEWERDATA *data, int type) {
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	switch (type) {
 		case FILE_TYPE_CHARACTER:
 			return nitroPaintStruct->hWndNcgrViewer;
@@ -214,8 +213,8 @@ static int PalViewerGetDragDelta(NCLRVIEWERDATA *data, int *pdx, int *pdy) {
 
 	//next: if we're in preserve drag mode, we'll need to restrict some motions.
 	if (data->preserveDragging) {
-		HWND hWndCharEditor = PalViewerGetAssociatedWindow(data->hWnd, FILE_TYPE_CHAR);
-		HWND hWndScreenEditor = PalViewerGetAssociatedWindow(data->hWnd, FILE_TYPE_SCREEN);
+		HWND hWndCharEditor = PalViewerGetAssociatedWindow(data, FILE_TYPE_CHAR);
+		HWND hWndScreenEditor = PalViewerGetAssociatedWindow(data, FILE_TYPE_SCREEN);
 		
 		//get graphics depth
 		int depth = data->nclr.nBits;
@@ -668,16 +667,16 @@ static void PalViewerPastePalette(NCLRVIEWERDATA *data) {
 #define PALVIEWER_UPDATE_CELL    4
 #define PALVIEWER_UPDATE_ALL     (PALVIEWER_UPDATE_CHAR|PALVIEWER_UPDATE_SCREEN|PALVIEWER_UPDATE_CELL)
 
-static void PalViewerUpdateNcerViewer(HWND hWndMain) {
-	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+static void PalViewerUpdateNcerViewer(NCLRVIEWERDATA *data) {
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 	HWND hWndNcerViewer = nitroPaintStruct->hWndNcerViewer;
 	if (hWndNcerViewer != NULL) {
 		CellViewerGraphicsUpdated(hWndNcerViewer);
 	}
 }
 
-static void PalViewerUpdateViewers(HWND hWnd, int updateMask) {
-	HWND hWndMain = getMainWindow(hWnd);
+static void PalViewerUpdateViewers(NCLRVIEWERDATA *data, int updateMask) {
+	HWND hWndMain = data->editorMgr->hWnd;
 
 	//update viewers
 	if (updateMask & PALVIEWER_UPDATE_CHAR) {
@@ -690,18 +689,19 @@ static void PalViewerUpdateViewers(HWND hWnd, int updateMask) {
 	}
 	if (updateMask & PALVIEWER_UPDATE_CELL) {
 		//all cell viewers
-		PalViewerUpdateNcerViewer(hWndMain);
+		PalViewerUpdateNcerViewer(data);
 	}
 }
 
-static int CountPaletteUsages(HWND hWndMain, NCLR *nclr, int *counts) {
-	HWND hWndCharacterEditor = NpGetData(hWndMain)->hWndNcgrViewer;
+static int CountPaletteUsages(NCLRVIEWERDATA *data, int *counts) {
+	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
+	HWND hWndCharacterEditor = nitroPaintStruct->hWndNcgrViewer;
 	if (hWndCharacterEditor == 0) return 0;
 
 	//if no screen editor open, get use counts from character
 	StList scrEditors;
 	StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
-	EditorGetAllByType(hWndMain, FILE_TYPE_SCREEN, &scrEditors);
+	EditorGetAllByType(data->editorMgr->hWnd, FILE_TYPE_SCREEN, &scrEditors);
 
 	//character editor data
 	NCGRVIEWERDATA *ncgrData = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
@@ -714,16 +714,16 @@ static int CountPaletteUsages(HWND hWndMain, NCLR *nclr, int *counts) {
 			unsigned char *tile = ncgrData->ncgr.tiles[i];
 			for (int j = 0; j < 64; j++) {
 				int index = tile[j] + palBase * palSize;
-				if (index < nclr->nColors) counts[index]++;
+				if (index < data->nclr.nColors) counts[index]++;
 			}
 		}
 	} else {
 		//measure every screen
 		for (size_t i = 0; i < scrEditors.length; i++) {
-			NSCRVIEWERDATA *data = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i);
-			for (unsigned int j = 0; j < data->nscr.dataSize / 2; j++) {
-				uint16_t tile = data->nscr.data[j];
-				int charIndex = (tile & 0x3FF) - data->tileBase;
+			NSCRVIEWERDATA *nscrData = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i);
+			for (unsigned int j = 0; j < nscrData->nscr.dataSize / 2; j++) {
+				uint16_t tile = nscrData->nscr.data[j];
+				int charIndex = (tile & 0x3FF) - nscrData->tileBase;
 				int palBase = (tile >> 12) & 0xF;
 				if (charIndex < 0) continue;
 
@@ -732,7 +732,7 @@ static int CountPaletteUsages(HWND hWndMain, NCLR *nclr, int *counts) {
 					for (int k = 0; k < 64; k++) {
 						int index = ncgrData->ncgr.tiles[charIndex][k];
 						index += palBase * palSize;
-						if (index < nclr->nColors) counts[index]++;
+						if (index < data->nclr.nColors) counts[index]++;
 					}
 				}
 
@@ -752,11 +752,10 @@ static COLOR32 MakeContrastingColor(COLOR32 c) {
 	return (luma > 1275) ? 0 : 0xFFFFFF;
 }
 
-static void PalViewerUpdatePreview(HWND hWnd) {
-	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) EditorGetData(hWnd);
+static void PalViewerUpdatePreview(NCLRVIEWERDATA *data) {
 	PreviewLoadBgPalette(&data->nclr); //send to preview target
 	PreviewLoadObjPalette(&data->nclr);
-	InvalidateRect(hWnd, NULL, FALSE); //redraw
+	InvalidateRect(data->hWnd, NULL, FALSE); //redraw
 }
 
 static COLOR *PalViewerComputeViewPalette(NCLRVIEWERDATA *data) {
@@ -857,7 +856,7 @@ static void PalViewerDoPreserveTransform(NCLRVIEWERDATA *data, NCGR *ncgr, NSCR 
 				nscr->data[j] = d;
 			}
 		}
-		PalViewerUpdateViewers(data->hWnd, PALVIEWER_UPDATE_SCREEN);
+		PalViewerUpdateViewers(data, PALVIEWER_UPDATE_SCREEN);
 	} else {
 		//update graphics data
 		if (ncgr == NULL) return;
@@ -880,7 +879,7 @@ static void PalViewerDoPreserveTransform(NCLRVIEWERDATA *data, NCGR *ncgr, NSCR 
 			}
 		}
 
-		PalViewerUpdateViewers(data->hWnd, PALVIEWER_UPDATE_ALL);
+		PalViewerUpdateViewers(data, PALVIEWER_UPDATE_ALL);
 	}
 	free(invmap);
 	free(map);
@@ -935,7 +934,7 @@ static void PalViewerOutlineSelection(NCLRVIEWERDATA *data, HDC hDC, int selStar
 	SelectObject(hDC, hOldBrush);
 }
 
-static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
+static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
 	COLOR *cols = data->nclr.colors;
 	int nRows = (data->nclr.nColors + 15) / 16;
 
@@ -947,8 +946,8 @@ static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, i
 	int previewPalette = -1;
 	int nRowsPerPalette = (1 << data->nclr.nBits) / 16;
 
-	HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CHARACTER);
-	HWND hWndNscrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_SCREEN);
+	HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_CHARACTER);
+	HWND hWndNscrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_SCREEN);
 	if (hWndNcgrViewer != NULL) {
 		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 		previewPalette = ncgrViewerData->selectedPalette;
@@ -973,7 +972,7 @@ static void PalViewerPaint(HWND hWnd, NCLRVIEWERDATA *data, HDC hDC, int xMin, i
 	if (data->showFrequency || data->showUnused) {
 		freqs = (unsigned int *) calloc(data->nclr.nColors, sizeof(unsigned int));
 
-		int hasCount = CountPaletteUsages(getMainWindow(hWnd), &data->nclr, freqs);
+		int hasCount = CountPaletteUsages(data, freqs);
 		if (!hasCount) {
 			free(freqs);
 			freqs = NULL;
@@ -1088,7 +1087,7 @@ static void NclrViewerPalOpUpdateCallback(PAL_OP *palOp) {
 	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) EditorGetData(hWnd);
 
 	PalopRunOperation(data->tempPalette, data->nclr.colors, data->nclr.nColors, palOp);
-	PalViewerUpdatePreview(hWnd);
+	PalViewerUpdatePreview(data);
 }
 
 static int PalViewerLightness(COLOR col) {
@@ -1257,7 +1256,7 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 
 		//compute frequency list
 		int *freqList = (int *) calloc(data->nclr.nColors, sizeof(int));
-		int n = CountPaletteUsages(getMainWindow(hWnd), &data->nclr, freqList);
+		int n = CountPaletteUsages(data, freqList);
 
 		//unwrap the selection into an array to sort.
 		int destIndex = 0;
@@ -1296,13 +1295,13 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 		}
 
 		//if enabled: modify graphics data to preserve the picture
-		HWND hWndMain = getMainWindow(hWnd);
+		HWND hWndMain = data->editorMgr->hWnd;
 		{
 			StList scrEditors;
 			StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
 			EditorGetAllByType(hWndMain, FILE_TYPE_SCREEN, &scrEditors);
 
-			HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CHARACTER);
+			HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_CHARACTER);
 
 			if (hWndNcgrViewer != NULL) {
 				NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
@@ -1362,12 +1361,12 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 		//update all editors dependent
 		EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
 		EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
-		PalViewerUpdateNcerViewer(hWndMain);
+		PalViewerUpdateNcerViewer(data);
 	} else {
 		PalViewerSortNeuroThreadProc(data);
 	}
 
-	PalViewerUpdatePreview(hWnd);
+	PalViewerUpdatePreview(data);
 }
 
 static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1391,7 +1390,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hoverIndex = -1;
 
 			PAL_OP *palOp = &data->palOp;
-			palOp->hWndParent = getMainWindow(hWnd);
+			palOp->hWndParent = data->editorMgr->hWnd;
 			palOp->param = (void *) hWnd;
 			palOp->dstOffset = 1;
 			palOp->ignoreFirst = 0;
@@ -1438,12 +1437,12 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				NCLR *nclr = (NCLR *) wParam;
 				memcpy(&data->nclr, nclr, sizeof(NCLR));
 			}
-			PalViewerUpdatePreview(hWnd);
+			PalViewerUpdatePreview(data);
 
-			HWND hWndMain = getMainWindow(hWnd);
+			HWND hWndMain = data->editorMgr->hWnd;
 			EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
 			EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
-			PalViewerUpdateNcerViewer(hWndMain);
+			PalViewerUpdateNcerViewer(data);
 
 			if (data->nclr.header.format == NCLR_TYPE_HUDSON) {
 				SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
@@ -1468,7 +1467,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			return 1;
 		}
 		case NV_UPDATEPREVIEW:
-			PalViewerUpdatePreview(hWnd);
+			PalViewerUpdatePreview(data);
 			break;
 		case WM_MOUSEMOVE:
 		case WM_NCMOUSEMOVE:
@@ -1534,8 +1533,6 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hoverX = hoverX;
 			data->hoverY = hoverY;
 			data->hoverIndex = hoverIndex;
-
-			HWND hWndMain = getMainWindow(hWnd);
 			InvalidateRect(hWnd, NULL, FALSE);
 			break;
 		}
@@ -1605,7 +1602,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					if (index < data->nclr.nColors && index >= 0) {
 						data->selStart = data->selEnd = index;
 
-						HWND hWndMain = getMainWindow(hWnd);
+						HWND hWndMain = data->editorMgr->hWnd;
 						CHOOSECOLOR cc = { 0 };
 						cc.lStructSize = sizeof(cc);
 						cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition?
@@ -1622,8 +1619,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							
 							EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
 							EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
-							PalViewerUpdateNcerViewer(hWndMain);
-							PalViewerUpdatePreview(hWnd);
+							PalViewerUpdateNcerViewer(data);
+							PalViewerUpdatePreview(data);
 						}
 					}
 				}
@@ -1638,13 +1635,13 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				//now: if we use a preserve drag, update accordingly.
 				if (data->preserveDragging) {
 					NCGR *ncgr = NULL;
-					HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CHAR);
+					HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_CHAR);
 					if (hWndNcgrViewer != NULL) ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
 
 					//get all screen editors
 					StList scrEditors;
 					StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
-					EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_SCREEN, &scrEditors);
+					EditorGetAllByType(data->editorMgr->hWnd, FILE_TYPE_SCREEN, &scrEditors);
 
 					NSCR **nscrs = (NSCR **) calloc(scrEditors.length, sizeof(NSCR *));
 					for (size_t i = 0; i < scrEditors.length; i++) {
@@ -1662,8 +1659,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				data->selStart += delta;
 				data->selEnd += delta;
 
-				PalViewerUpdatePreview(hWnd);
-				PalViewerUpdateViewers(hWnd, PALVIEWER_UPDATE_CHAR | PALVIEWER_UPDATE_CELL | PALVIEWER_UPDATE_SCREEN);
+				PalViewerUpdatePreview(data);
+				PalViewerUpdateViewers(data, PALVIEWER_UPDATE_CHAR | PALVIEWER_UPDATE_CELL | PALVIEWER_UPDATE_SCREEN);
 			}
 
 			data->mouseDown = 0;
@@ -1745,7 +1742,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SelectObject(hDC, defaultPen);
 			SelectObject(hDC, defaultBrush);
 
-			PalViewerPaint(hWnd, data, hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
+			PalViewerPaint(data, hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
 
 			BitBlt(hWindowDC, 0, 0, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, hDC, horiz.nPos, vert.nPos, SRCCOPY);
 			EndPaint(hWnd, &ps);
@@ -1790,9 +1787,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						PalViewerPastePalette(data);
 						CloseClipboard();
 
-						HWND hWndMain = getMainWindow(hWnd);
-						PalViewerUpdateViewers(hWnd, PALVIEWER_UPDATE_ALL);
-						PalViewerUpdatePreview(hWnd);
+						PalViewerUpdateViewers(data, PALVIEWER_UPDATE_ALL);
+						PalViewerUpdatePreview(data);
 						break;
 					}
 					case ID_MENU_COPY:
@@ -1815,8 +1811,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							if (!PalViewerIndexInSelection(data, i)) continue;
 							data->nclr.colors[i] = 0;
 						}
-						PalViewerUpdateViewers(hWnd, PALVIEWER_UPDATE_ALL);
-						PalViewerUpdatePreview(hWnd);
+						PalViewerUpdateViewers(data, PALVIEWER_UPDATE_ALL);
+						PalViewerUpdatePreview(data);
 						break;
 					}
 					case ID_MENU_INVERTCOLOR:
@@ -1826,7 +1822,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							if (!PalViewerIndexInSelection(data, i)) continue;
 							pal[i] ^= 0x7FFF;
 						}
-						PalViewerUpdatePreview(hWnd);
+						PalViewerUpdatePreview(data);
 						break;
 					}
 					case ID_MENU_MAKEGRAYSCALE:
@@ -1838,7 +1834,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							int l = (PalViewerLightness(pal[i]) * 31 + 255) / 511;
 							pal[i] = ColorCreate(l, l, l);
 						}
-						PalViewerUpdatePreview(hWnd);
+						PalViewerUpdatePreview(data);
 						break;
 					}
 					case ID_ARRANGEPALETTE_BYFREQUENCY:
@@ -1849,7 +1845,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						break;
 					case ID_MENU_EDITCOMPRESSEDPALETTE:
 					{
-						HWND hWndMdi = getMainWindow(hWnd);
+						HWND hWndMdi = data->editorMgr->hWnd;
 						HWND h = CreateWindow(L"EditCompressedClass", L"Edit Compressed Palette",
 							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
 							CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, NULL, NULL, NULL);
@@ -1865,7 +1861,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						break;
 					case ID_FILE_EXPORT:
 					{
-						LPWSTR path = saveFileDialog(getMainWindow(hWnd), L"Export Palette",
+						LPWSTR path = saveFileDialog(data->editorMgr->hWnd, L"Export Palette",
 							L"PNG Files (*.png)\0*.png\0ACT Files (*.act)\0*.act\0All Files\0*.*\0",
 							L"png");
 						if (path == NULL) break;
@@ -1920,7 +1916,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							L"Palette Files\0*.nclr;*.rlcn;*.5pl;*.5tx;*.ncl;*.icl;*.acl;*ncl.bin;*icl.bin;*ntfp;*.nbfp\0"
 							L"Texture Files\0*.tga;*.5tx;*.tds;\0"
 							L"All Files\0*.*\0";
-						LPWSTR path = openFileDialog(getMainWindow(hWnd), L"Import Palette", filter, L"");
+						LPWSTR path = openFileDialog(data->editorMgr->hWnd, L"Import Palette", filter, L"");
 						if (path == NULL) break;
 
 						COLOR *colors = NULL;
@@ -1965,7 +1961,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 						if (colors != NULL) {
 							PalViewerWrapSelection(data, colors, nColors);
-							PalViewerUpdatePreview(hWnd);
+							PalViewerUpdatePreview(data);
 							free(colors);
 						}
 						break;
@@ -1982,7 +1978,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							selEnd = max(data->selStart, data->selEnd);
 						}
 						
-						HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWnd, FILE_TYPE_CHARACTER);
+						HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_CHARACTER);
 						if (hWndNcgrViewer) {
 							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 							ncgrViewerData->verifyStart = selStart;
@@ -2000,7 +1996,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						//update all screen editors
 						StList scrEditors;
 						StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
-						EditorGetAllByType(getMainWindow(hWnd), FILE_TYPE_SCREEN, &scrEditors);
+						EditorGetAllByType(data->editorMgr->hWnd, FILE_TYPE_SCREEN, &scrEditors);
 
 						for (size_t i = 0; i < scrEditors.length; i++) {
 							EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&scrEditors, i);
@@ -2028,7 +2024,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 					case ID_MENU_CREATE:
 					{
-						HWND hWndMain = getMainWindow(hWnd);
+						HWND hWndMain = data->editorMgr->hWnd;
 						HWND hWndPaletteDialog = CreateWindow(L"PaletteGeneratorClass", L"Generate Palette",
 							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT,
 							200, 200, hWndMain, NULL, NULL, NULL);
@@ -2038,7 +2034,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 					case ID_MENU_GENERATE:
 					{
-						HWND hWndMain = getMainWindow(hWnd);
+						HWND hWndMain = data->editorMgr->hWnd;
 						HWND hWndGenerateDialog = CreateWindow(L"GeneratePaletteClass", L"Generate Palette",
 							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
 							CW_USEDEFAULT, CW_USEDEFAULT, 200, 200, hWndMain, NULL, NULL, NULL);
@@ -2071,7 +2067,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							memcpy(data->nclr.colors, cpy, data->nclr.nColors * sizeof(COLOR));
 							free(cpy);
 						}
-						PalViewerUpdateViewers(hWnd, PALVIEWER_UPDATE_CHAR | PALVIEWER_UPDATE_CELL | PALVIEWER_UPDATE_SCREEN);
+						PalViewerUpdateViewers(data, PALVIEWER_UPDATE_CHAR | PALVIEWER_UPDATE_CELL | PALVIEWER_UPDATE_SCREEN);
 						break;
 					}
 					case ID_SELECTIONMODE_1D:
@@ -2105,7 +2101,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						data->nclr.colors[i] = 0;
 					}
 					InvalidateRect(hWnd, NULL, FALSE);
-					PalViewerUpdateViewers(hWnd, PALVIEWER_UPDATE_CHAR | PALVIEWER_UPDATE_CELL | PALVIEWER_UPDATE_SCREEN);
+					PalViewerUpdateViewers(data, PALVIEWER_UPDATE_CHAR | PALVIEWER_UPDATE_CELL | PALVIEWER_UPDATE_SCREEN);
 					break;
 				}
 				case VK_ESCAPE:
@@ -2125,10 +2121,9 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		case WM_DESTROY:
 		{
-			HWND hWndMain = getMainWindow(hWnd);
-			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 			nitroPaintStruct->hWndNclrViewer = NULL;
-			PalViewerUpdateViewers(hWnd, PALVIEWER_UPDATE_ALL);
+			PalViewerUpdateViewers(data, PALVIEWER_UPDATE_ALL);
 			break;
 		}
 	}
@@ -2150,8 +2145,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 			int depth = data->nclr.nBits, baseIndex = data->selStart;
 			int selSize = PalViewerGetSelectionSize(data);
 
-			HWND hWndViewer = data->hWnd;
-			HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(hWndViewer, FILE_TYPE_CHARACTER);
+			HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_CHARACTER);
 			if (hWndNcgrViewer != NULL) {
 				NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
 				depth = ncgr->nBits;
@@ -2311,7 +2305,7 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 				EnableWindow(data->hWndChoose2, sel != 0);
 				InvalidateRect(data->hWndChoose2, NULL, TRUE);
 			} else if ((hWndControl == data->hWndChoose1 || hWndControl == data->hWndChoose2) && cmd == BN_CLICKED) {
-				HWND hWndMain = getMainWindow(data->nclrViewerData->hWnd);
+				HWND hWndMain = data->nclrViewerData->editorMgr->hWnd;
 
 				int idx = (hWndControl == data->hWndChoose1) ? 0 : 1;
 
@@ -2360,7 +2354,7 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 					}
 				}
 
-				PalViewerUpdatePreview(nclrViewerData->hWnd);
+				PalViewerUpdatePreview(nclrViewerData);
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
 			break;
@@ -2507,7 +2501,7 @@ static LRESULT CALLBACK EditCompressedPaletteWndProc(HWND hWnd, UINT msg, WPARAM
 
 				//update
 				PalViewerSetCompressedPaletteSettings(data, enabled, newSelection);
-				PalViewerUpdatePreview(data->hWnd);
+				PalViewerUpdatePreview(data);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			} else if (idCtl == IDCANCEL && notif == BN_CLICKED) {

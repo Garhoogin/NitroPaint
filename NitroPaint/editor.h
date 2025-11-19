@@ -25,6 +25,7 @@ typedef struct EDITOR_CLASS_ {
 } EDITOR_CLASS;
 
 typedef struct EditorManager_ {
+	HWND hWnd;          // handle of window owning the manager
 	StList classList;   // list of classes
 	StList editorList;  // list of editors
 } EditorManager;
@@ -60,9 +61,8 @@ typedef struct EditorManager_ {
 	int showBorders;             \
 	int dirty;                   \
 	StList destroyCallbacks;     \
-	void *prev;                  \
-	void *next;                  \
 	EDITOR_CLASS *cls;           \
+	EditorManager *editorMgr;    \
 	WCHAR szOpenFile[MAX_PATH]
 
 
