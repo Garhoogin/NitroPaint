@@ -745,7 +745,7 @@ static COLOR32 *ClipGetClipboardDIB(int *pWidth, int *pHeight, unsigned char **i
 
 			int nAlpha = alphaW * alphaH;
 			if (nAlpha >= *pPaletteSize) nAlpha = *pPaletteSize;
-			for (int i = 0; i < alphaW * alphaH; i++) {
+			for (int i = 0; i < alphaW * alphaH && i < *pPaletteSize; i++) {
 				COLOR32 c = alphabm[i];
 				unsigned int a = (c & 0xFF);
 				(*pplt)[i] = ((*pplt)[i] & 0x00FFFFFF) | (a << 24);
