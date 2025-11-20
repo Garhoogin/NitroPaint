@@ -922,6 +922,37 @@ COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, 
 }
 
 
+COLOR32 *ActRead(const unsigned char *buffer, unsigned int size, unsigned int *pnColors) {
+	//two valid file sizes (first: no count+transparent index)
+	if (size != 0x300 && size != 0x304) return NULL;
+
+	unsigned int nColors = 0x100;
+	unsigned int transparentColor = 0;
+	if (size == 0x304) {
+		nColors = *(const uint16_t *) (buffer + 0x300);
+		transparentColor = *(const uint16_t *) (buffer + 0x302);
+
+		if (nColors > 0x100) return NULL;
+	}
+
+	COLOR32 *cols = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
+	if (cols == NULL) return NULL; // error
+
+	//read color palette colors
+	for (unsigned int i = 0; i < nColors; i++) {
+		const unsigned char *srcCol = &buffer[3 * i];
+		cols[i] = srcCol[0] | (srcCol[1] << 8) | (srcCol[2] << 16) | 0xFF000000;
+	}
+
+	//process transparent color
+	if (size == 0x304 && transparentColor < nColors) {
+		cols[transparentColor] &= 0x00FFFFFF; // alpha=0
+	}
+
+	*pnColors = 0x100;
+	return cols;
+}
+
 
 
 LPCWSTR GetFileName(LPCWSTR lpszPath) {
@@ -3489,6 +3520,10 @@ typedef struct IndexImageData_ {
 	HWND hWndColors;
 	HWND hWndAlphaMode;
 
+	HWND hWndUseFixedPalette;
+	HWND hWndFixedPalettePath;
+	HWND hWndBrowseFixedPalette;
+
 	NpBalanceControl balance;
 
 	HWND hWndPreview1;
@@ -3512,6 +3547,26 @@ typedef struct IndexImageData_ {
 } RedGuiData;
 
 static void RedGuiProcessReduction(RedGuiData *data) {
+	//get fixed palette
+	COLOR32 *fixedPalette = NULL;
+	unsigned int fixedPaletteSize = 0;
+	if (GetCheckboxChecked(data->hWndUseFixedPalette)) {
+		WCHAR buf[MAX_PATH + 1];
+		SendMessage(data->hWndFixedPalettePath, WM_GETTEXT, MAX_PATH, (LPARAM) buf);
+
+		unsigned int fileSize = 0;
+		unsigned char *filebuf = ObjReadWholeFile(buf, &fileSize);
+
+		if (filebuf != NULL) {
+			fixedPalette = ActRead(filebuf, fileSize, &fixedPaletteSize);
+			free(filebuf);
+		}
+		
+		if (fixedPalette == NULL) {
+			MessageBox(data->hWnd, L"The fixed palette file is invalid or could not be read.", L"Error", MB_ICONERROR);
+		}
+	}
+
 	RxBalanceSetting balance;
 	unsigned int nColors = GetEditNumber(data->hWndColors);
 	NpGetBalanceSetting(&data->balance, &balance);
@@ -3535,10 +3590,18 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 			break;
 	}
 
-	unsigned int nColUse = RxCreatePaletteEx(data->px, data->width, data->height,
-		data->pltt + plttOffs, nColors - plttOffs, balance.balance, balance.colorBalance, balance.enhanceColors, flag);
-	if ((flag & RX_FLAG_ALPHA_MODE_MASK) == RX_FLAG_ALPHA_MODE_RESERVE) {
-		data->pltt[0] = 0; // transparent
+	unsigned int nColUse;
+	if (fixedPalette == NULL) {
+		//create a color palette
+		nColUse = RxCreatePaletteEx(data->px, data->width, data->height,
+			data->pltt + plttOffs, nColors - plttOffs, balance.balance, balance.colorBalance, balance.enhanceColors, flag);
+		if ((flag & RX_FLAG_ALPHA_MODE_MASK) == RX_FLAG_ALPHA_MODE_RESERVE) {
+			data->pltt[0] = 0; // transparent
+		}
+	} else {
+		//use the fixed palette
+		nColUse = fixedPaletteSize;
+		memcpy(data->pltt, fixedPalette, fixedPaletteSize * sizeof(COLOR32));
 	}
 	data->nUsedPltt = plttOffs + nColUse;
 
@@ -3554,6 +3617,8 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	if (!GetCheckboxChecked(data->hWndDither)) diffuse = 0.0f;
 	RxReduceImageEx(data->reduced, data->indices, data->width, data->height, data->pltt, nColUse + plttOffs,
 		flag, diffuse, balance.balance, balance.colorBalance, balance.enhanceColors);
+
+	if (fixedPalette != NULL) free(fixedPalette);
 	InvalidateRect(data->hWndPreview2, NULL, FALSE);
 }
 
@@ -3623,6 +3688,12 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			data->hWndColors = CreateEdit(hWnd, L"256", leftX + 75, bottomY + 54, 50, 22, TRUE);
 			CreateStatic(hWnd, L"Transparency:", leftX + 135, bottomY + 27, 75, 22);
 			data->hWndAlphaMode = CreateCombobox(hWnd, modes, sizeof(modes) / sizeof(modes[0]), leftX + 210, bottomY + 27, 75, 22, 0);
+
+			data->hWndUseFixedPalette = CreateCheckbox(hWnd, L"Fixed Palette", leftX + 135, bottomY + 54, 80, 22, FALSE);
+			data->hWndFixedPalettePath = CreateEdit(hWnd, L"", leftX + 135 + 85, bottomY + 54, 100, 22, FALSE);
+			data->hWndBrowseFixedPalette = CreateButton(hWnd, L"...", leftX + 135 + 85 + 100, bottomY + 54, 25, 22, FALSE);
+			EnableWindow(data->hWndFixedPalettePath, FALSE);
+			EnableWindow(data->hWndBrowseFixedPalette, FALSE);
 
 			//Balance
 			NpCreateBalanceInput(&data->balance, hWnd, 10 + boxWidth + 10, 10, boxWidth);
@@ -3735,6 +3806,16 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 
 					CloseClipboard();
 				}
+			} else if (hWndCtl == data->hWndUseFixedPalette && notif == BN_CLICKED) {
+				int enabled = GetCheckboxChecked(data->hWndUseFixedPalette);
+				EnableWindow(data->hWndFixedPalettePath, enabled);
+				EnableWindow(data->hWndBrowseFixedPalette, enabled);
+			} else if (hWndCtl == data->hWndBrowseFixedPalette && notif == BN_CLICKED) {
+				LPWSTR path = openFileDialog(hWnd, L"Select a Color Palette", L"ACT Files (*.act)\0*.act\0All Files\0*.*\0", L"act");
+				if (path == NULL) break;
+
+				SendMessage(data->hWndFixedPalettePath, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				free(path);
 			} else if (idCtl == IDCANCEL && notif == BN_CLICKED) {
 				//exit
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
