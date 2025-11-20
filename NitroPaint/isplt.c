@@ -118,10 +118,14 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 	reduction->yWeight = 60 - balance;
 	reduction->iWeight = colorBalance;
 	reduction->qWeight = 40 - colorBalance;
-	reduction->aWeight = 40.0;
 	reduction->yWeight2 = reduction->yWeight * reduction->yWeight; // Y weight squared
 	reduction->iWeight2 = reduction->iWeight * reduction->iWeight; // I weight squared
 	reduction->qWeight2 = reduction->qWeight * reduction->qWeight; // Q weight squared
+
+	//coefficients taken from the second raw moment of YIQ colors given a uniform distribution of RGB colors
+	reduction->aWeight2 = 58097.591702 * reduction->yWeight2 + 11648.013740 * reduction->iWeight2 + 9024.717461 * reduction->qWeight2;
+	reduction->aWeight = sqrt(reduction->aWeight2);
+
 	reduction->aWeight2 = reduction->aWeight * reduction->aWeight; // A weight squared
 
 	reduction->enhanceColors = enhanceColors;
@@ -465,14 +469,11 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 		double i1 = a1 * yiq1->i, i2 = a2 * yiq2->i;
 		double q1 = a1 * yiq1->q, q2 = a2 * yiq2->q;
 		double dy = y1 - y2, di = i1 - i2, dq = q1 - q2;
-		double da = yiq1->a - yiq2->a;
+		double da = a1 - a2;
 
-		return yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq
-			- (da * INV_255) * (
-				reduction->yWeight * (y1 - y2)
-				+ reduction->iWeight * (i1 - i2)
-				+ reduction->qWeight * (q1 - q2)
-			) + aw2 * da * da;
+		//coefficients below taken from first moment of YIQ space given uniform RGB distribution
+		return yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + aw2 * da * da
+			- 2.0 * da * (218.570327 * yw2 * dy - 0.012650 * iw2 * di + 0.009427 * qw2 * dq);
 	}
 }
 
@@ -2105,6 +2106,7 @@ void RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices
 				float offI = (colorI - chosenYiq->i) * chosenA;
 				float offQ = (colorQ - chosenYiq->q) * chosenA;
 				float offA = (colorA - chosenYiq->a);
+				if (flag & RX_FLAG_NO_ALPHA_DITHER) offA = 0.0f;
 
 				//now diffuse to neighbors
 				RxYiqColor *diffNextPixel = &thisDiffuse[x + 1 + hDirection];

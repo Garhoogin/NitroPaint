@@ -81,7 +81,7 @@ static int TxConvertDirect(TxConversionParameters *params) {
 			int errorR = ((p >>  0) & 0xFF) - ((back >>  0) & 0xFF);
 			int errorG = ((p >>  8) & 0xFF) - ((back >>  8) & 0xFF);
 			int errorB = ((p >> 16) & 0xFF) - ((back >> 16) & 0xFF);
-			doDiffuse(i, width, height, px, errorR, errorG, errorB, 0, params->diffuseAmount);
+			doDiffuse(i, width, height, px, errorR, errorG, errorB, params->diffuseAmount);
 		}
 		txel[i] = c;
 
@@ -207,7 +207,7 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 
 	if (params->useFixedPalette) nColors = min(nColors, params->colorEntries);
 	else if (params->colorEntries < nColors) nColors = params->colorEntries;
-	COLOR32 palette[32] = { 0 };
+	COLOR32 palette[256] = { 0 };
 
 	//allocate texel space.
 	unsigned int nBytes = width * height;
@@ -229,26 +229,26 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 		}
 	}
 
+	// duplicate palette data
+	for (unsigned int i = 0; i <= alphaMax; i++) {
+		unsigned int a = (i * 510 + alphaMax) / (2 * alphaMax);
+		for (unsigned int j = 0; j < nColors; j++) {
+			palette[j + (i << alphaShift)] = ((palette[j]) & 0x00FFFFFF) | (a << 24);
+		}
+	}
+
 	TEXCONV_CHECK_ABORT(params->terminate);
 
-	RxReduceImageEx(params->px, idxs, width, height, palette, nColors, RX_FLAG_ALPHA_MODE_PIXEL | RX_FLAG_PRESERVE_ALPHA,
+	RxFlag flag = RX_FLAG_ALPHA_MODE_PALETTE | RX_FLAG_PRESERVE_ALPHA;
+	if (!params->ditherAlpha) flag |= RX_FLAG_NO_ALPHA_DITHER;
+
+	RxReduceImageEx(params->px, idxs, width, height, palette, 256, flag,
 		diffuse, params->balance, params->colorBalance, params->enhanceColors);
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
 	//write texel data.
-	for (unsigned int i = 0; i < width * height; i++) {
-		COLOR32 p = params->px[i];
-		unsigned int alpha8 = (p >> 24) & 0xFF;
-		unsigned int alpha = (alpha8 * alphaMax * 2 + 255) / 510;
-		txel[i] = idxs[i] | (alpha << alphaShift);
-
-		if (params->ditherAlpha) {				
-			unsigned int backAlpha = (alpha * 510 + alphaMax) / (alphaMax * 2);
-			int errorAlpha = ((int) alpha8) - (int) backAlpha;
-			doDiffuse(i, width, height, params->px, 0, 0, 0, errorAlpha, params->diffuseAmount);
-		}
-	}
+	for (unsigned int i = 0; i < width * height; i++) txel[i] = (uint8_t) idxs[i];
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
