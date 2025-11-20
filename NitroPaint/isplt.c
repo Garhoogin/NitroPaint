@@ -123,10 +123,8 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 	reduction->qWeight2 = reduction->qWeight * reduction->qWeight; // Q weight squared
 
 	//coefficients taken from the second raw moment of YIQ colors given a uniform distribution of RGB colors
-	reduction->aWeight2 = 58097.591702 * reduction->yWeight2 + 11648.013740 * reduction->iWeight2 + 9024.717461 * reduction->qWeight2;
+	reduction->aWeight2 = 0.893465463 * reduction->yWeight2 + 0.179131315 * reduction->iWeight2 + 0.138788427 * reduction->qWeight2;
 	reduction->aWeight = sqrt(reduction->aWeight2);
-
-	reduction->aWeight2 = reduction->aWeight * reduction->aWeight; // A weight squared
 
 	reduction->enhanceColors = enhanceColors;
 	reduction->nReclusters = RECLUSTER_DEFAULT;// nColors <= 32 ? RECLUSTER_DEFAULT : 0;
@@ -469,11 +467,11 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 		double i1 = a1 * yiq1->i, i2 = a2 * yiq2->i;
 		double q1 = a1 * yiq1->q, q2 = a2 * yiq2->q;
 		double dy = y1 - y2, di = i1 - i2, dq = q1 - q2;
-		double da = a1 - a2;
+		double da = yiq1->a - yiq2->a;
 
 		//coefficients below taken from first moment of YIQ space given uniform RGB distribution
 		return yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + aw2 * da * da
-			- 2.0 * da * (218.570327 * yw2 * dy - 0.012650 * iw2 * di + 0.009427 * qw2 * dq);
+			- 2.0 * da * (0.857138537 * yw2 * dy - 0.0000496078431 * iw2 * di + 0.0000369686275 * qw2 * dq);
 	}
 }
 
