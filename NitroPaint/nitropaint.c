@@ -3593,8 +3593,8 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	unsigned int nColUse;
 	if (fixedPalette == NULL) {
 		//create a color palette
-		nColUse = RxCreatePaletteEx(data->px, data->width, data->height,
-			data->pltt + plttOffs, nColors - plttOffs, balance.balance, balance.colorBalance, balance.enhanceColors, flag);
+		RxCreatePaletteEx(data->px, data->width, data->height,
+			data->pltt + plttOffs, nColors - plttOffs, balance.balance, balance.colorBalance, balance.enhanceColors, flag, &nColUse);
 		if ((flag & RX_FLAG_ALPHA_MODE_MASK) == RX_FLAG_ALPHA_MODE_RESERVE) {
 			data->pltt[0] = 0; // transparent
 		}

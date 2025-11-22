@@ -710,9 +710,9 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	else nBits = 8;
 	if (nPalettes == 1) {
 		if (paletteOffset) {
-			RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE);
+			RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
 		} else {
-			RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset + 1, paletteSize - 1, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE);
+			RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset + 1, paletteSize - 1, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
 			palette[(paletteBase << nBits) + paletteOffset] = color0; //transparent fill color
 		}
 	} else {

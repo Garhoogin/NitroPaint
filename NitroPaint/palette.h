@@ -20,6 +20,11 @@
 
 #define RX_PALETTE_MAX_SIZE 256 // Maximum created color palette size
 
+typedef enum RxStatus_ {
+	RX_STATUS_OK,                             // The operation was successful
+	RX_STATUS_NOMEM                           // The operation failed due to insufficient memory
+} RxStatus;
+
 // -----------------------------------------------------------------------------------------------
 // Name: enum RxFlag
 //
@@ -115,10 +120,9 @@ int RxColorLightnessComparator(
 //   nColors       The size of the color palette to create.
 //
 // Returns:
-//   The number of colors that were created by palette generation. This number does not include
-//   the black-filled placeholder colors, if they are created.
+//   The completed operation status.
 // -----------------------------------------------------------------------------------------------
-int RxCreatePalette(
+RxStatus RxCreatePalette(
 	const COLOR32 *px,      // the image pixels
 	unsigned int   width,   // the image width
 	unsigned int   height,  // the image height
@@ -142,13 +146,12 @@ int RxCreatePalette(
 //   colorBalance  Color balance setting.
 //   enhanceColors Enhance largely used colors.
 //   flag          Color reduction flags (see enum RxFlag).
+//   pOutCols      Pointer to output number of colors (may be NULL).
 //
 // Returns:
-//   The number of colors that were created by palette generation. This number does not include
-//   the black-filled placeholder colors, if they are created, and is not affected by the setting
-//   of the RX_FLAG_SORT_ONLY_USED flag.
+//   The completed operation status.
 // -----------------------------------------------------------------------------------------------
-int RxCreatePaletteEx(
+RxStatus RxCreatePaletteEx(
 	const COLOR32 *px,             // the image pixels
 	unsigned int   width,          // the image width
 	unsigned int   height,         // the image height
@@ -157,7 +160,8 @@ int RxCreatePaletteEx(
 	int            balance,        // the balance setting
 	int            colorBalance,   // the color balance setting
 	int            enhanceColors,  // enhance largely used colors
-	RxFlag         flag            // color reduction flags
+	RxFlag         flag,           // color reduction flags
+	unsigned int  *pOutCols        // number of output colors
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -191,7 +195,7 @@ void doDiffuse(
 //   c0xp          Set to 1 to indicate that color index 0 is reserved for transparency.
 //   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
 // -----------------------------------------------------------------------------------------------
-void RxReduceImage(
+RxStatus RxReduceImage(
 	COLOR32       *px,           // the image pixels
 	unsigned int   width,        // the image width
 	unsigned int   height,       // the image height
@@ -219,7 +223,7 @@ void RxReduceImage(
 //   colorBalance  The color balance setting.
 //   enhanceColors Enhance largely used colors.
 // -----------------------------------------------------------------------------------------------
-void RxReduceImageEx(
+RxStatus RxReduceImageEx(
 	COLOR32       *px,            // the image pixels
 	int           *indices,       // the output palette index data (optional)
 	unsigned int   width,         // the image width
@@ -399,6 +403,7 @@ typedef struct RxReduction_ {
 		};
 #endif
 	};
+	RxStatus status;
 	int nPaletteColors;
 	int nUsedColors;
 	int enhanceColors;
@@ -492,6 +497,25 @@ RxReduction *RxNew(
 );
 
 // -----------------------------------------------------------------------------------------------
+// Name: RxNew
+//
+// Allocates and initializes a RxReduction structure with palette parameters. Free the returned
+// context using the RxFree function.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   balance       The balance setting.
+//   colorBalance  The color balance setting.
+//   enhanceColors Enhance largely used colors.
+// -----------------------------------------------------------------------------------------------
+void RxSetBalance(
+	RxReduction *reduction,     // the color reduction context
+	int          balance,       // the balance setting
+	int          colorBalance,  // the colr balance setting
+	int          enhanceColors  // assign more weight to frequently occurring colors
+);
+
+// -----------------------------------------------------------------------------------------------
 // Name: RxHistAdd
 //
 // Add an image's color data to the histogram of a color reduction context.
@@ -502,7 +526,7 @@ RxReduction *RxNew(
 //   width         The image width.
 //   height        The image height.
 // -----------------------------------------------------------------------------------------------
-void RxHistAdd(
+RxStatus RxHistAdd(
 	RxReduction   *reduction,  // the color reduction context
 	const COLOR32 *px,         // the image pixels
 	unsigned int   width,      // the image width
@@ -534,7 +558,7 @@ void RxHistSort(
 // Parameters:
 //   reduction     The color reduction context.
 // -----------------------------------------------------------------------------------------------
-void RxHistClear(
+RxStatus RxHistClear(
 	RxReduction *reduction  // the color reduction context
 );
 
@@ -548,7 +572,7 @@ void RxHistClear(
 // Parameters:
 //   reduction     The color reduction context.
 // -----------------------------------------------------------------------------------------------
-void RxHistFinalize(
+RxStatus RxHistFinalize(
 	RxReduction *reduction  // the color reduction context
 );
 
@@ -561,7 +585,7 @@ void RxHistFinalize(
 // Parameters:
 //   reduction     The color reduction context.
 // -----------------------------------------------------------------------------------------------
-void RxComputePalette(
+RxStatus RxComputePalette(
 	RxReduction *reduction  // the color reduction context
 );
 
@@ -701,7 +725,7 @@ double RxHistComputePaletteErrorYiq(
 //   flag          Color reduction flag.
 //   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
 // -----------------------------------------------------------------------------------------------
-void RxReduceImageWithContext(
+RxStatus RxReduceImageWithContext(
 	RxReduction   *reduction,     // the color reduction context
 	COLOR32       *px,            // the image pixels
 	int           *indices,       // the output palette index data (optional)

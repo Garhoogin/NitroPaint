@@ -145,7 +145,7 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params) {
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
 		RxCreatePaletteEx(params->px, width, height, palette + hasTransparent, nColors - hasTransparent,
-			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_NONE);
+			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_NONE, NULL);
 	} else {
 		for (unsigned int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]) | 0xFF000000;
@@ -222,7 +222,7 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
 		RxCreatePaletteEx(params->px, width, height, palette, nColors,
-			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_PIXEL);
+			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_PIXEL, NULL);
 	} else {
 		for (unsigned int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]) | 0xFF000000;

@@ -2343,7 +2343,7 @@ static void charImport(
 		}
 	} else {
 		//create a palette, then encode them to the color palette
-		RxCreatePaletteEx(pixels, width, height, palette + 1, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE);
+		RxCreatePaletteEx(pixels, width, height, palette + 1, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
 		for (int i = 0; i < paletteSize; i++) {
 			nitroPalette[i] = ColorConvertToDS(palette[i + 1]);
 		}
