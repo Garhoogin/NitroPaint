@@ -20,6 +20,20 @@
 
 #define RX_PALETTE_MAX_SIZE 256 // Maximum created color palette size
 
+// -----------------------------------------------------------------------------------------------
+// Name: enum RxFlag
+//
+// Represents the current operational status of a color reduction context or operation. The status
+// values are returned from functions operating on a color reduction context, and stored in the
+// context until cleared. When a status other than RX_STATUS_OK is set in a context, it is in an
+// error state, and all subsequent operations except for those resetting the context or releasing
+// resources become no-operations. No-op'ed function calls return the last set status.
+//
+// Status values:
+//   RX_STATUS_OK                The operation was completed successfully.
+//   RX_STATUS_NOMEM             The operation could not be completed because of insufficient
+//                               memory.
+// -----------------------------------------------------------------------------------------------
 typedef enum RxStatus_ {
 	RX_STATUS_OK,                             // The operation was successful
 	RX_STATUS_NOMEM                           // The operation failed due to insufficient memory
