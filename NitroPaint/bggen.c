@@ -157,9 +157,9 @@ static float BgiTileDifferenceFlip(RxReduction *reduction, BgTile *t1, BgTile *t
 	}
 }
 
-static float BgiTileDifference(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char *flipMode) {
+static float BgiTileDifference(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char *flipMode, int allowFlip) {
 	float err = BgiTileDifferenceFlip(reduction, t1, t2, 0);
-	if (err == 0) {
+	if (err == 0 || !allowFlip) {
 		*flipMode = 0;
 		return err;
 	}
@@ -315,7 +315,7 @@ static void BgiTdlReset(BgTileDiffList *list) {
 	list->minDiff = 1e32;
 }
 
-int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
+int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMaxChars, int allowFlip, COLOR32 *palette, int paletteSize, int nPalettes,
 	int paletteBase, int paletteOffset, int balance, int colorBalance, int *progress) {
 	int nChars = nTiles;
 	float *diffBuff = (float *) calloc(nTiles * nTiles, sizeof(float));
@@ -327,7 +327,7 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 		for (int j = 0; j < i; j++) {
 			BgTile *t2 = tiles + j;
 
-			diffBuff[i + j * nTiles] = BgiTileDifference(reduction, t1, t2, &flips[i + j * nTiles]);
+			diffBuff[i + j * nTiles] = BgiTileDifference(reduction, t1, t2, &flips[i + j * nTiles], allowFlip);
 			diffBuff[j + i * nTiles] = diffBuff[i + j * nTiles];
 			flips[j + i * nTiles] = flips[i + j * nTiles];
 		}
@@ -672,25 +672,64 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	int nMaxChars = params->characterSetting.nMax;
 	int alignment = params->characterSetting.alignment;
 
-	//cursory sanity checks
-	if (nPalettes > 16) nPalettes = 16;
-	else if (nPalettes < 1) nPalettes = 1;
-	if (params->nBits == 4) {
-		if (paletteBase >= 16) paletteBase = 15;
-		else if (paletteBase < 0) paletteBase = 0;
-		if (paletteBase + nPalettes > 16) nPalettes = 16 - paletteBase;
-
-		if (paletteOffset < 0) paletteOffset = 0;
-		else if (paletteOffset >= 16) paletteOffset = 15;
-		if (paletteOffset + paletteSize > 16) paletteSize = 16 - paletteOffset;
-	} else {
-		if (paletteOffset < 0) paletteOffset = 0;
-		if (paletteSize < 1) paletteSize = 1;
-		if (paletteOffset >= 256) paletteOffset = 255;
-		if (paletteSize > 256) paletteSize = 256;
-		if (paletteOffset + paletteSize > 256) paletteSize = 256 - paletteOffset;
+	//get parameters for BG type
+	int nBits = 4, nMaxPltt = 16, nMaxCharLimit = 1024, nMaxColsPalette = 16, isExtPltt = 0, allowFlip = 1;
+	switch (params->bgType) {
+		case BGGEN_BGTYPE_TEXT_16x16:
+			nBits = 4;
+			nMaxPltt = 16;
+			nMaxColsPalette = 16;
+			nMaxCharLimit = 1024;
+			allowFlip = 1;
+			isExtPltt = 0;
+			break;
+		case BGGEN_BGTYPE_TEXT_256x1:
+			nBits = 8;
+			nMaxPltt = 1;
+			nMaxColsPalette = 256;
+			nMaxCharLimit = 1024;
+			allowFlip = 1;
+			isExtPltt = 0;
+			break;
+		case BGGEN_BGTYPE_AFFINE_256x1:
+			nBits = 8;
+			nMaxPltt = 1;
+			nMaxColsPalette = 256;
+			nMaxCharLimit = 256;
+			allowFlip = 0;
+			isExtPltt = 0;
+			break;
+		case BGGEN_BGTYPE_AFFINEEXT_256x16:
+			nBits = 8;
+			nMaxPltt = 16;
+			nMaxColsPalette = 256;
+			nMaxCharLimit = 1024;
+			allowFlip = 1;
+			isExtPltt = 1;
+			break;
+		case BGGEN_BGTYPE_BITMAP:
+			nBits = 8;
+			nMaxPltt = 1;
+			nMaxColsPalette = 256;
+			characterCompression = 0;
+			allowFlip = 0;
+			isExtPltt = 0;
+			break;
 	}
+
+	//check parameters for BG type
+	if (paletteBase < 0) paletteBase = 0;
+	if (paletteBase >= nMaxPltt) paletteBase = nMaxPltt - 1;
+	if (nPalettes < 1) nPalettes = 1;
+	if ((paletteBase + nPalettes) > nMaxPltt) nPalettes = nMaxPltt - paletteBase;
+	if (paletteOffset < 0) paletteOffset = 0;
+	if (paletteOffset > nMaxColsPalette) paletteOffset = nMaxColsPalette - 1;
 	if (paletteSize < 1) paletteSize = 1;
+	if ((paletteOffset + paletteSize) > nMaxColsPalette) paletteSize = nMaxColsPalette - paletteOffset;
+	if (nMaxChars < 1) nMaxChars = 1;
+	if (nMaxChars > nMaxCharLimit) nMaxChars = nMaxCharLimit;
+
+	//balance checks
 	if (balance <= 0) balance = BALANCE_DEFAULT;
 	if (colorBalance <= 0) colorBalance = BALANCE_DEFAULT;
 
@@ -703,32 +742,20 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	*progress1Max = nTiles * 2; //2 passes
 	*progress2Max = 1000;
 
-	int nBits = params->nBits;
-	COLOR32 *palette = (COLOR32 *) calloc(256 * 16, 4);
+	COLOR32 *palette = (COLOR32 *) calloc(256 * 16, sizeof(COLOR32));
 	COLOR32 color0 = BgiSelectColor0(imgBits, width, height, params->color0Mode);
-	if (nBits < 5) nBits = 4;
-	else nBits = 8;
+	
 	if (nPalettes == 1) {
-		if (paletteOffset) {
-			RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
-		} else {
-			RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset + 1, paletteSize - 1, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
-			palette[(paletteBase << nBits) + paletteOffset] = color0; //transparent fill color
-		}
+		RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset + (paletteOffset == 0),
+			paletteSize - (paletteOffset == 0), balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
 	} else {
-		RxCreateMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits, paletteSize, paletteOffset, balance, colorBalance, enhanceColors, progress1);
-		if (paletteOffset == 0) {
-			for (int i = paletteBase; i < paletteBase + nPalettes; i++) palette[i << nBits] = color0;
-		}
+		RxCreateMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits,
+			paletteSize, paletteOffset, balance, colorBalance, enhanceColors, progress1);
+	}
+	if (paletteOffset == 0) {
+		for (int i = paletteBase; i < paletteBase + nPalettes; i++) palette[i << nBits] = color0;
 	}
 	*progress1 = nTiles * 2; //make sure it's done
-
-	//by default the palette generator only enforces palette density, but not
-	//the actual truncating of RGB values. Do that here. This will also be
-	//important when fixed palettes are allowed.
-	//for (int i = 0; i < 256 * 16; i++) {
-	//	palette[i] = ColorRoundToDS15(palette[i]) | 0xFF000000;
-	//}
 
 	//split image into 8x8 tiles.
 	for (int y = 0; y < tilesY; y++) {
@@ -736,14 +763,14 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 			int srcOffset = x * 8 + y * 8 * (width);
 			COLOR32 *block = tiles[x + y * tilesX].px;
 
-			memcpy(block, imgBits + srcOffset, 32);
-			memcpy(block + 8, imgBits + srcOffset + width, 32);
-			memcpy(block + 16, imgBits + srcOffset + width * 2, 32);
-			memcpy(block + 24, imgBits + srcOffset + width * 3, 32);
-			memcpy(block + 32, imgBits + srcOffset + width * 4, 32);
-			memcpy(block + 40, imgBits + srcOffset + width * 5, 32);
-			memcpy(block + 48, imgBits + srcOffset + width * 6, 32);
-			memcpy(block + 56, imgBits + srcOffset + width * 7, 32);
+			memcpy(block +  0, imgBits + srcOffset + width * 0, 8 * sizeof(COLOR32));
+			memcpy(block +  8, imgBits + srcOffset + width * 1, 8 * sizeof(COLOR32));
+			memcpy(block + 16, imgBits + srcOffset + width * 2, 8 * sizeof(COLOR32));
+			memcpy(block + 24, imgBits + srcOffset + width * 3, 8 * sizeof(COLOR32));
+			memcpy(block + 32, imgBits + srcOffset + width * 4, 8 * sizeof(COLOR32));
+			memcpy(block + 40, imgBits + srcOffset + width * 5, 8 * sizeof(COLOR32));
+			memcpy(block + 48, imgBits + srcOffset + width * 6, 8 * sizeof(COLOR32));
+			memcpy(block + 56, imgBits + srcOffset + width * 7, 8 * sizeof(COLOR32));
 			for (int i = 0; i < 8 * 8; i++) {
 				int a = (block[i] >> 24) & 0xFF;
 				if (a < 128) block[i] = 0; //make transparent pixels transparent black
@@ -759,15 +786,15 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	//match tiles to each other
 	int nChars = nTiles;
 	if (characterCompression) {
-		nChars = BgPerformCharacterCompression(tiles, nTiles, nBits, nMaxChars, palette, paletteSize, nPalettes, paletteBase,
+		nChars = BgPerformCharacterCompression(tiles, nTiles, nBits, nMaxChars, allowFlip, palette, paletteSize, nPalettes, paletteBase,
 			paletteOffset, balance, colorBalance, progress2);
 	}
 
-	COLOR32 *blocks = (COLOR32 *) calloc(64 * nChars, sizeof(COLOR32));
+	COLOR32 *blocks = (COLOR32 *) calloc(nChars, 64 * sizeof(COLOR32));
 	int writeIndex = 0;
 	for (int i = 0; i < nTiles; i++) {
 		if (tiles[i].masterTile != i) continue;
-		BgTile *t = tiles + i;
+		BgTile *t = &tiles[i];
 		COLOR32 *dest = blocks + 64 * writeIndex;
 
 		for (int j = 0; j < 64; j++) {
@@ -858,29 +885,27 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 			break;
 	}
 
-	PalInit(nclr, paletteFormat);
-	ChrInit(ncgr, characterFormat);
-	ScrInit(nscr, screenFormat);
-	nclr->header.compression = compressPalette;
-	ncgr->header.compression = compressCharacter;
-	nscr->header.compression = compressScreen;
-
 	int nColorsOutput = (nBits == 4) ? 256 : (256 * (paletteBase + nPalettes));
+	if (paletteFormat == NCLR_TYPE_NC && params->bgType == BGGEN_BGTYPE_AFFINEEXT_256x16) nColorsOutput = 256 * 16; // NC expects this
+
+	int nCharsFile = ((nChars + alignment - 1) / alignment) * alignment;
+
+	PalInit(nclr, paletteFormat);
+	nclr->header.compression = compressPalette;
 	nclr->nBits = nBits;
 	nclr->nColors = nColorsOutput;
 	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
 	nclr->compressedPalette = params->compressPalette;
-	nclr->extPalette = nBits == 8 && (nPalettes > 1 || paletteBase > 0);
+	nclr->extPalette = isExtPltt;
 	for (int i = 0; i < nclr->nColors; i++) {
 		nclr->colors[i] = ColorConvertToDS(palette[i]);
 	}
 
-	//TODO: revise compresed palettes
-	// 2. for raw files, revise the file I/O code to omit unused palettes
-
-	int nCharsFile = ((nChars + alignment - 1) / alignment) * alignment;
+	ChrInit(ncgr, characterFormat);
+	ncgr->header.compression = compressCharacter;
 	ncgr->nBits = nBits;
 	ncgr->extPalette = nclr->extPalette;
+	ncgr->bitmap = (params->bgType == BGGEN_BGTYPE_BITMAP);
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nTiles = nCharsFile;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
@@ -909,32 +934,47 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		ncgr->attr[i] = attr;
 	}
 
+	//determine BG screen format and color mode
 	int bgScreenFormat = SCREENFORMAT_TEXT, screenColorMode = SCREENCOLORMODE_16x16;
-	if (nBits == 4) {
-		//4-bit: use text BG
-		bgScreenFormat = SCREENFORMAT_TEXT;
-		screenColorMode = SCREENCOLORMODE_16x16;
-	} else {
-		//8-bit: use affine if we have a nonzero palette base, more than 1 palette, or we say so
-		if (nPalettes > 1 || paletteBase > 0 || params->affine) {
-			bgScreenFormat = SCREENFORMAT_AFFINEEXT;
-			screenColorMode = SCREENCOLORMODE_256x16;
-		} else {
+	switch (params->bgType) {
+		case BGGEN_BGTYPE_TEXT_16x16:
+			bgScreenFormat = SCREENFORMAT_TEXT;
+			screenColorMode = SCREENCOLORMODE_16x16;
+			break;
+		case BGGEN_BGTYPE_TEXT_256x1:
 			bgScreenFormat = SCREENFORMAT_TEXT;
 			screenColorMode = SCREENCOLORMODE_256x1;
-		}
+			break;
+		case BGGEN_BGTYPE_AFFINE_256x1:
+			bgScreenFormat = SCREENFORMAT_AFFINE;
+			screenColorMode = SCREENCOLORMODE_256x1;
+			break;
+		case BGGEN_BGTYPE_AFFINEEXT_256x16:
+			bgScreenFormat = SCREENFORMAT_AFFINEEXT;
+			screenColorMode = SCREENCOLORMODE_256x16;
+			break;
+		case BGGEN_BGTYPE_BITMAP:
+			screenColorMode = SCREENCOLORMODE_256x1;
+			break;
 	}
 
-	nscr->tilesX = tilesX;
-	nscr->tilesY = tilesY;
-	nscr->fmt = bgScreenFormat;
-	nscr->colorMode = screenColorMode;
-	nscr->dataSize = nTiles * 2;
-	nscr->data = (uint16_t *) malloc(nscr->dataSize);
-	for (int i = 0; i < nTiles; i++) {
-		nscr->data[i] = indices[i] | (modes[i] << 10) | (paletteIndices[i] << 12);
+	if (params->bgType != BGGEN_BGTYPE_BITMAP) {
+		ScrInit(nscr, screenFormat);
+		nscr->header.compression = compressScreen;
+		nscr->tilesX = tilesX;
+		nscr->tilesY = tilesY;
+		nscr->fmt = bgScreenFormat;
+		nscr->colorMode = screenColorMode;
+		nscr->dataSize = nTiles * 2;
+		nscr->data = (uint16_t *) malloc(nscr->dataSize);
+		for (int i = 0; i < nTiles; i++) {
+			nscr->data[i] = indices[i] | (modes[i] << 10) | (paletteIndices[i] << 12);
+		}
+		ScrComputeHighestCharacter(nscr);
+	} else {
+		//no BG screen
+		memset(nscr, 0, sizeof(NSCR));
 	}
-	ScrComputeHighestCharacter(nscr);
 
 	free(modes);
 	free(blocks);
@@ -1082,6 +1122,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	int charBase = tileBase;
 	int nscrTilesX = nscr->tilesX;
 	int nscrTilesY = nscr->tilesY;
+	int allowFlip = nscr->fmt != SCREENFORMAT_AFFINE;
 	uint16_t *nscrData = nscr->data;
 
 	//create dummy reduction to setup parameters for color matching
@@ -1200,8 +1241,8 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			//do normal character compression.
 			BgSetupTiles(blocks, tilesX * tilesY, ncgr->nBits, pals, paletteSize, nPalettes, 0, paletteOffset,
 				dither, diffuse, balance, colorBalance, enhanceColors);
-			int nOutChars = BgPerformCharacterCompression(blocks, tilesX * tilesY, ncgr->nBits, nMaxChars, pals, paletteSize,
-				nPalettes, 0, paletteOffset, balance, colorBalance, progress2);
+			int nOutChars = BgPerformCharacterCompression(blocks, tilesX * tilesY, ncgr->nBits, nMaxChars, allowFlip,
+				pals, paletteSize, nPalettes, 0, paletteOffset, balance, colorBalance, progress2);
 
 			//keep track of master tiles and how they map to real character indices
 			int *masterMap = (int *) calloc(tilesX * tilesY, sizeof(int));

@@ -1226,10 +1226,10 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 
 	BOOL fixedPalette = GetCheckboxChecked(data->hWndFixedPalette) && isPltt;
 	BOOL dither = GetCheckboxChecked(data->hWndDither);
-	BOOL ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha) && isTranslucent;
 	BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette) && is4x4 && !fixedPalette;
 
-	EnableWindow(data->hWndDitherAlpha, isTranslucent);
+	EnableWindow(data->hWndDitherAlpha, isTranslucent && dither);
+	EnableWindow(data->hWndDiffuseAmount, dither);
 	EnableWindow(data->hWndColorEntries, limitPalette);
 	EnableWindow(data->hWndOptimizationSlider, is4x4 && !fixedPalette);
 	EnableWindow(data->hWndPaletteName, isPltt);
@@ -1242,7 +1242,6 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	EnableWindow(data->balance.hWndColorBalance, isPltt);
 	EnableWindow(data->balance.hWndEnhanceColors, isPltt);
 
-	EnableWindow(data->hWndDiffuseAmount, dither || ditherAlpha);
 
 	//paletteN formats: enable color 0 mode
 	EnableWindow(data->hWndColor0Transparent, isPlttN);
@@ -1595,8 +1594,15 @@ LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 				KillTimer(hWnd, 1);
 				break;
 			} else {
-				if (params != NULL) params->terminate = 1; // send terminate request
-				return 0;                                  // don't end the modal until the thread naturally exits
+				if (params != NULL) {
+					int ctl = MessageBox(hWnd, L"Abort texture conversion?", L"Texture Conversion", MB_ICONQUESTION | MB_YESNO);
+					if (ctl == IDYES) {
+						//send terminate request
+						params->terminate = 1;
+					}
+				}
+				//don't end the modal until the thread naturally exits
+				return 0;
 			}
 			break;
 		}

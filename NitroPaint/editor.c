@@ -78,6 +78,8 @@ int EditorIsValid(HWND hWndMgr, HWND hWnd) {
 
 int EditorGetType(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+	if (data == NULL) return FILE_TYPE_INVALID; // not an editor
+
 	return data->file.type;
 }
 

@@ -2426,8 +2426,9 @@ static void charImport(
 			}
 
 			int nTiles = nChars;
+			int allowFlip = 1;
 			BgSetupTiles(bgTiles, nChars, ncgr->nBits, dummyFull, paletteSize, 1, 0, paletteBase, 0, 0.0f, balance, colorBalance, enhanceColors);
-			nChars = BgPerformCharacterCompression(bgTiles, nChars, ncgr->nBits, nMaxChars, dummyFull, paletteSize, 1, 0, paletteBase, 
+			nChars = BgPerformCharacterCompression(bgTiles, nChars, ncgr->nBits, nMaxChars, allowFlip, dummyFull, paletteSize, 1, 0, paletteBase, 
 				balance, colorBalance, progress);
 
 			//read back result

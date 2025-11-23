@@ -2138,7 +2138,6 @@ typedef struct {
 	HWND hWndColor0Setting;
 	HWND hWndAlignmentCheckbox;
 	HWND hWndAlignment;
-	HWND hWndAffine;
 	NpBalanceControl balance;
 } CREATEDIALOGDATA;
 
@@ -2188,24 +2187,28 @@ void nscrCreateCallback(void *data) {
 	if (nitroPaintStruct->hWndNclrViewer) DestroyChild(nitroPaintStruct->hWndNclrViewer);
 	nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, &createData->nclr);
 	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->ncgr);
-	HWND hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
 
 	OBJECT_HEADER *palobj = EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 	OBJECT_HEADER *chrobj = EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
-	OBJECT_HEADER *scrobj = EditorGetObject(hWndNscrViewer);
+	OBJECT_HEADER *scrobj = NULL;
+
+	HWND hWndNscrViewer = NULL;
+	if (createData->genParams.bgType != BGGEN_BGTYPE_BITMAP) {
+		hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, &createData->nscr);
+		scrobj = EditorGetObject(hWndNscrViewer);
+	}
 
 	//link data
 	ObjLinkObjects(palobj, chrobj);
-	ObjLinkObjects(chrobj, scrobj);
+	if (scrobj != NULL) ObjLinkObjects(chrobj, scrobj);
 
 	//if a character base was used, the BG screen viewer might guess the character base incorrectly. 
 	//in these cases, we need to set the correct character base here.
-	if (createData->genParams.characterSetting.base > 0) {
+	if (hWndNscrViewer != NULL && createData->genParams.characterSetting.base > 0) {
 		NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
 		nscrViewerData->tileBase = createData->genParams.characterSetting.base;
 		SetEditNumber(nscrViewerData->hWndTileBase, nscrViewerData->tileBase);
 	}
-
 
 	free(createData->bbits);
 	free(data);
@@ -2308,9 +2311,15 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			CreateStatic(hWnd, L"Max Characters:", leftX, middleY + 27, 100, 22);
 			data->hWndMaxChars = CreateEdit(hWnd, L"1024", leftX + 105, middleY + 27, 100, 22, TRUE);
 
-			LPCWSTR bitDepths[] = { L"4 bit", L"8 bit" };
-			CreateStatic(hWnd, L"Depth:", rightX, topY, 50, 22);
-			data->nscrCreateDropdown = CreateCombobox(hWnd, bitDepths, sizeof(bitDepths) / sizeof(*bitDepths), rightX + 55, topY, 100, 22, 1);
+			LPCWSTR bitDepths[] = {
+				L"(4bpp) Text 16x16",
+				L"(8bpp) Text 256x1",
+				L"(8bpp) Affine 256x1",
+				L"(8bpp) Affine EXT 256x16",
+				L"(8bpp) Bitmap"
+			};
+			CreateStatic(hWnd, L"Format:", rightX, topY, 50, 22);
+			data->nscrCreateDropdown = CreateCombobox(hWnd, bitDepths, sizeof(bitDepths) / sizeof(*bitDepths), rightX + 55, topY, 150, 22, 3);
 			data->nscrCreateDither = CreateCheckbox(hWnd, L"Dither", rightX, topY + 27, 100, 22, FALSE);
 			CreateStatic(hWnd, L"Diffuse:", rightX, topY + 27 * 2, 50, 22);
 			data->hWndDiffuse = CreateEdit(hWnd, L"100", rightX + 55, topY + 27 * 2, 100, 22, TRUE);
@@ -2318,10 +2327,18 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->hWndTileBase = CreateEdit(hWnd, L"0", rightX + 55, topY + 27 * 3, 100, 22, TRUE);
 			data->hWndAlignmentCheckbox = CreateCheckbox(hWnd, L"Align Size:", rightX, topY + 27 * 4, 75, 22, TRUE);
 			data->hWndAlignment = CreateEdit(hWnd, L"32", rightX + 75, topY + 27 * 4, 80, 22, TRUE);
-			data->hWndAffine = CreateCheckbox(hWnd, L"Affine Mode", rightX, topY + 27 * 5, 100, 22, TRUE);
 			EnableWindow(data->hWndDiffuse, FALSE);
 
-			LPCWSTR formatNames[] = { L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed" };
+			LPCWSTR formatNames[] = {
+				L"NITRO-System",     // NCLR, NCGR, NSCR
+				L"NITRO-CHARACTER",  // NCL , NCG , NSC
+				L"IRIS-CHARACTER",   // ICL , ICG , ISC
+				L"AGB-CHARACTER",    // ACL , ACG , ASC
+				L"Hudson",
+				L"Hudson 2",
+				L"Raw",
+				L"Raw Compressed"
+			};
 			CreateStatic(hWnd, L"Format:", rightX, middleY, 50, 22);
 			data->hWndFormatDropdown = CreateCombobox(hWnd, formatNames, sizeof(formatNames) / sizeof(*formatNames), rightX + 55, middleY, 150, 22, 0);
 
@@ -2350,7 +2367,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				} else if (hWndControl == data->nscrCreateButton) {
 					WCHAR location[MAX_PATH + 1];
 					int doAlign = GetCheckboxChecked(data->hWndAlignmentCheckbox);
-					const int bitsOptions[] = { 4, 8 };
+
 					SendMessage(data->nscrCreateInput, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) location);
 
 					if (*location == L'\0') {
@@ -2383,7 +2400,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 					//dither setting
 					params.dither.dither = GetCheckboxChecked(data->nscrCreateDither);
-					params.dither.diffuse = ((float) GetEditNumber(data->hWndDiffuse)) * 0.01f;
+					params.dither.diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
 
 					//palette region
 					params.compressPalette = GetCheckboxChecked(data->hWndRowLimit);
@@ -2394,12 +2411,11 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					params.paletteRegion.length = GetEditNumber(data->hWndPaletteSize);
 
 					//character setting
-					params.nBits = bitsOptions[SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0)];
+					params.bgType = SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0);
 					params.characterSetting.base = GetEditNumber(data->hWndTileBase);
 					params.characterSetting.alignment = doAlign ? GetEditNumber(data->hWndAlignment) : 1;
 					params.characterSetting.compress = GetCheckboxChecked(data->hWndMergeTiles);
 					params.characterSetting.nMax = GetEditNumber(data->hWndMaxChars);
-					params.affine = GetCheckboxChecked(data->hWndAffine);
 
 					memcpy(&createData->genParams, &params, sizeof(params));
 					threadedNscrCreate(progressData, createData, bbits, width, height, &params);
@@ -2410,39 +2426,83 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					//enable/disable max chars field
 					int state = GetCheckboxChecked(hWndControl);
 					EnableWindow(data->hWndMaxChars, state);
-					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->hWndAlignmentCheckbox) {
 					//enable/disable alignment amount field
 					int state = GetCheckboxChecked(hWndControl);
 					EnableWindow(data->hWndAlignment, state);
-					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (hWndControl == data->nscrCreateDither) {
 					//enable/disable diffusion amount field
 					int state = GetCheckboxChecked(hWndControl);
 					EnableWindow(data->hWndDiffuse, state);
-					InvalidateRect(hWnd, NULL, FALSE);
-				} else if (hWndControl == data->hWndAffine) {
-					//limit palette size if applicable
-					int state = GetCheckboxChecked(hWndControl);
-					if (!state) {
-						SetEditNumber(data->hWndPalettesInput, 1);
-						SetEditNumber(data->hWndPaletteInput, 0);
-					}
 				}
 			} else if (HIWORD(wParam) == CBN_SELCHANGE) {
 				HWND hWndControl = (HWND) lParam;
 				if (hWndControl == data->nscrCreateDropdown) {
 					int index = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
-					LPCWSTR sizes[] = { L"16", L"256" };
-					SendMessage(data->hWndPaletteSize, WM_SETTEXT, wcslen(sizes[index]), (LPARAM) sizes[index]);
 
-					//if setting to 4-bit depth, then affine mode can't be selected.
-					int disableAffine = (index == 0);
-					EnableWindow(data->hWndAffine, !disableAffine);
-					InvalidateRect(data->hWndAffine, NULL, FALSE);
+					//bitmap mode: character compression is unavailable
+					EnableWindow(data->hWndMaxChars, index != BGGEN_BGTYPE_BITMAP && GetCheckboxChecked(data->hWndMergeTiles));
+					EnableWindow(data->hWndMergeTiles, index != BGGEN_BGTYPE_BITMAP);
 
-					//uncheck affine mode if 4 bit selected
-					if (index == 0) SendMessage(data->hWndAffine, BM_SETCHECK, BST_UNCHECKED, 0);
+					//certain formats may only use one palette.
+					switch (index) {
+						case BGGEN_BGTYPE_TEXT_16x16:
+						case BGGEN_BGTYPE_AFFINEEXT_256x16:
+							EnableWindow(data->hWndPalettesInput, TRUE);
+							EnableWindow(data->hWndPaletteInput, TRUE);
+							break;
+						case BGGEN_BGTYPE_TEXT_256x1:
+						case BGGEN_BGTYPE_AFFINE_256x1:
+						case BGGEN_BGTYPE_BITMAP:
+							//only one palette permitted, disable input
+							EnableWindow(data->hWndPalettesInput, FALSE);
+							EnableWindow(data->hWndPaletteInput, FALSE);
+							SetEditNumber(data->hWndPalettesInput, 1);
+							SetEditNumber(data->hWndPaletteInput, 0);
+							break;
+					}
+
+					//max palette size per BG type
+					switch (index) {
+						case BGGEN_BGTYPE_TEXT_16x16:
+							SetEditNumber(data->hWndPaletteSize, 16);
+							break;
+						case BGGEN_BGTYPE_TEXT_256x1:
+						case BGGEN_BGTYPE_AFFINE_256x1:
+						case BGGEN_BGTYPE_AFFINEEXT_256x16:
+						case BGGEN_BGTYPE_BITMAP:
+							SetEditNumber(data->hWndPaletteSize, 256);
+							break;
+					}
+
+					//max character count per format
+					switch (index) {
+						case BGGEN_BGTYPE_TEXT_16x16:
+						case BGGEN_BGTYPE_TEXT_256x1:
+						case BGGEN_BGTYPE_AFFINEEXT_256x16:
+							SetEditNumber(data->hWndMaxChars, 1024);
+							break;
+						case BGGEN_BGTYPE_AFFINE_256x1:
+							SetEditNumber(data->hWndMaxChars, 256);
+							break;
+					}
+
+					//tile base and alignment setting validity
+					switch (index) {
+						case BGGEN_BGTYPE_BITMAP:
+							EnableWindow(data->hWndTileBase, FALSE);
+							EnableWindow(data->hWndAlignmentCheckbox, FALSE);
+							EnableWindow(data->hWndAlignment, FALSE);
+							break;
+						case BGGEN_BGTYPE_TEXT_16x16:
+						case BGGEN_BGTYPE_TEXT_256x1:
+						case BGGEN_BGTYPE_AFFINE_256x1:
+						case BGGEN_BGTYPE_AFFINEEXT_256x16:
+							EnableWindow(data->hWndTileBase, TRUE);
+							EnableWindow(data->hWndAlignmentCheckbox, TRUE);
+							EnableWindow(data->hWndAlignment, TRUE);
+							break;
+					}
 				}
 			}
 			break;

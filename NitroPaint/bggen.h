@@ -4,6 +4,12 @@
 #include "nscr.h"
 #include "palette.h"
 
+#define BGGEN_BGTYPE_TEXT_16x16       0
+#define BGGEN_BGTYPE_TEXT_256x1       1
+#define BGGEN_BGTYPE_AFFINE_256x1     2
+#define BGGEN_BGTYPE_AFFINEEXT_256x16 3
+#define BGGEN_BGTYPE_BITMAP           4
+
 
 #define BGGEN_FORMAT_NITROSYSTEM     0          //NCLR, NCGR, NSCR
 #define BGGEN_FORMAT_NITROCHARACTER  1          //NCL,  NCG,  NSC
@@ -47,33 +53,32 @@ typedef struct BgTile_ {
 *
 \****************************************************************************/
 typedef struct BgPaletteRegion_ {
-	int base;                          //Index of first palette to use
-	int count;                         //Number of palettes to use
-	int length;                        //Number of colors per palette
-	int offset;                        //Index of first color to use in each palette
+	int base;                          // Index of first palette to use
+	int count;                         // Number of palettes to use
+	int length;                        // Number of colors per palette
+	int offset;                        // Index of first color to use in each palette
 } BgPaletteRegion;
 
 typedef struct BgCharacterSetting_ {
-	int base;                         //character VRAM base offset
-	int compress;                     //enables character compression
-	int nMax;                         //max characters if compression enabled
-	int alignment;                    //rounds up character count to a multiple of this
+	int base;                         // character VRAM base offset
+	int compress;                     // enables character compression
+	int nMax;                         // max characters if compression enabled
+	int alignment;                    // rounds up character count to a multiple of this
 } BgCharacterSetting;
 
 typedef struct BgGenerateParameters_ {
 	//global
-	int fmt;                          //Format of output data
-	int affine;                       //BG format affine
-	RxBalanceSetting balance;         //Balance settings to use during conversion
+	int bgType;                       // Type of BG (e.g. text, affine...)
+	int fmt;                          // Format of output data
+	RxBalanceSetting balance;         // Balance settings to use during conversion
 
 	//palette
-	int compressPalette;              //Use palette compression
-	int color0Mode;                   //Specifies how color 0 is chosen
-	BgPaletteRegion paletteRegion;    //Palette region to use for conversion
+	int compressPalette;              // Use palette compression
+	int color0Mode;                   // Specifies how color 0 is chosen
+	BgPaletteRegion paletteRegion;    // Palette region to use for conversion
 
 	//character
-	int nBits;                       //Bit depth of graphics data output
-	RxDitherSetting dither;          //Dither configuration
+	RxDitherSetting dither;          // Dither configuration
 	BgCharacterSetting characterSetting;
 } BgGenerateParameters;
 
@@ -91,7 +96,7 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 // combined, the bit depth and palette settings are used to finalize the
 // result in the tile array. progress must not be NULL, and ranges from 0-1000.
 //
-int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMaxChars, COLOR32 *palette, int paletteSize, int nPalettes,
+int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMaxChars, int allowFlip, COLOR32 *palette, int paletteSize, int nPalettes,
 	int paletteBase, int paletteOffset, int balance, int colorBalance, int *progress);
 
 /****************************************************************************\
