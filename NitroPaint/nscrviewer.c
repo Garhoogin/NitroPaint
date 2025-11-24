@@ -246,6 +246,8 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 					//alpha = 255
 					c |= 0xFF000000;
 				}
+			} else if (nclr != NULL && nclr->nColors > 0) {
+				c = ColorConvertFromDS(nclr->colors[0]);
 			}
 
 			//handle alpha
