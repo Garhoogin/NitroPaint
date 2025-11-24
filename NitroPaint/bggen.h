@@ -4,6 +4,8 @@
 #include "nscr.h"
 #include "palette.h"
 
+//#define BGGEN_USE_DCT
+
 #define BGGEN_BGTYPE_TEXT_16x16       0
 #define BGGEN_BGTYPE_TEXT_256x1       1
 #define BGGEN_BGTYPE_AFFINE_256x1     2
@@ -34,7 +36,9 @@ typedef struct BgDctBlock_ {
 typedef struct BgTile_ {
 	COLOR32 px[64];               //RGBA colors: redundant, speed
 	RxYiqColor pxYiq[64];         //YIQA colors
+#ifdef BGGEN_USE_DCT
 	BgDctBlock dct;               //DCT coefficients
+#endif
 	unsigned char indices[64];    //color indices per pixel
 	int masterTile;               //index of master tile for this tile 
 	int nRepresents;              //number of tiles this tile represents
@@ -96,8 +100,21 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 // combined, the bit depth and palette settings are used to finalize the
 // result in the tile array. progress must not be NULL, and ranges from 0-1000.
 //
-int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMaxChars, int allowFlip, COLOR32 *palette, int paletteSize, int nPalettes,
-	int paletteBase, int paletteOffset, int balance, int colorBalance, int *progress);
+int BgPerformCharacterCompression(
+	BgTile        *tiles,
+	unsigned int   nTiles,
+	unsigned int   nBits,
+	unsigned int   nMaxChars,
+	int            allowFlip,
+	const COLOR32 *palette,
+	unsigned int   paletteSize,
+	unsigned int   nPalettes,
+	unsigned int   paletteBase,
+	unsigned int   paletteOffset,
+	int            balance,
+	int            colorBalance,
+	volatile int  *progress
+);
 
 /****************************************************************************\
 *
@@ -117,14 +134,50 @@ int BgPerformCharacterCompression(BgTile *tiles, int nTiles, int nBits, int nMax
 *   progress2Max            Progress 2 max
 *
 \****************************************************************************/
-void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width, int height,
-	BgGenerateParameters *params, int *progress1, int *progress1Max, int *progress2, int *progress2Max);
+void BgGenerate(
+	NCLR *nclr,
+	NCGR *ncgr,
+	NSCR *nscr,
+	COLOR32 *px,
+	int width,
+	int height,
+	BgGenerateParameters *params,
+	int *progress1,
+	int *progress1Max,
+	int *progress2,
+	int *progress2Max
+);
 
-void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width, int height,
-	int writeScreen, int writeCharacterIndices,
-	int tileBase, int nPalettes, int paletteNumber, int paletteOffset,
-	int paletteSize, BOOL newPalettes, int writeCharBase, int nMaxChars,
-	BOOL newCharacters, BOOL dither, float diffuse, int maxTilesX, int maxTilesY,
-	int nscrTileX, int nscrTileY, int balance, int colorBalance, int enhanceColors,
-	int *progress, int *progressMax, int *progress2, int *progress2Max);
+void BgReplaceSection(
+	NCLR *nclr, 
+	NCGR *ncgr,
+	NSCR *nscr,
+	COLOR32 *px,
+	int width,
+	int height,
+	int writeScreen,
+	int writeCharacterIndices,
+	int tileBase,
+	int nPalettes,
+	int paletteNumber,
+	int paletteOffset,
+	int paletteSize,
+	BOOL newPalettes,
+	int writeCharBase,
+	int nMaxChars,
+	BOOL newCharacters,
+	BOOL dither,
+	float diffuse,
+	int maxTilesX,
+	int maxTilesY,
+	int nscrTileX,
+	int nscrTileY,
+	int balance,
+	int colorBalance,
+	int enhanceColors,
+	int *progress,
+	int *progressMax,
+	int *progress2,
+	int *progress2Max
+);
 
