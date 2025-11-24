@@ -1,5 +1,5 @@
 #include "nscr.h"
-#include "palette.h"
+#include "color.h"
 #include "ncgr.h"
 #include "nns.h"
 

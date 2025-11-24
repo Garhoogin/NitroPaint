@@ -15,7 +15,7 @@ typedef enum ChrViewerMode_ {
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
-	NCGR ncgr;
+	NCGR *ncgr;
 	ChrViewerMode mode; // current edit mode
 	ChrViewerMode lastMode;
 

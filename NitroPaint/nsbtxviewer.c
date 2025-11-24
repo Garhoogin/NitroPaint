@@ -345,8 +345,8 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 			succeeded = 1;
 
 			//copy data
-			TEXELS *srcTexel = &teData->texture.texture.texels;
-			PALETTE *srcPal = &teData->texture.texture.palette;
+			TEXELS *srcTexel = &teData->texture->texture.texels;
+			PALETTE *srcPal = &teData->texture->texture.palette;
 
 			int texImageParam = srcTexel->texImageParam;
 			int texelSize = TxGetTexelSize(TEXW(texImageParam), srcTexel->height, texImageParam);
@@ -386,24 +386,24 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 static int NsbtxViewerCheckSave(NSBTXVIEWERDATA *data) {
 	//NSBTX files: check lengths under 16 characters
 
-	if (data->nsbtx.header.format == NSBTX_TYPE_NNS) {
+	if (data->nsbtx->header.format == NSBTX_TYPE_NNS) {
 		int warnNames = 0;
 		WCHAR *warnbuf = _wcsdup(L"Resource names truncated on save:");
 		WCHAR warntemp[96];
 
-		for (int i = 0; i < data->nsbtx.nTextures; i++) {
-			if (strlen(data->nsbtx.textures[i].name) <= 16) continue;
+		for (int i = 0; i < data->nsbtx->nTextures; i++) {
+			if (strlen(data->nsbtx->textures[i].name) <= 16) continue;
 
-			wsprintfW(warntemp, L"\n  %.64S -> %.16S", data->nsbtx.textures[i].name, data->nsbtx.textures[i].name);
+			wsprintfW(warntemp, L"\n  %.64S -> %.16S", data->nsbtx->textures[i].name, data->nsbtx->textures[i].name);
 
 			warnbuf = (WCHAR *) realloc(warnbuf, (wcslen(warnbuf) + wcslen(warntemp) + 1) * sizeof(WCHAR));
 			memcpy(warnbuf + wcslen(warnbuf), warntemp, (wcslen(warntemp) + 1) * sizeof(WCHAR));
 			warnNames++;
 		}
-		for (int i = 0; i < data->nsbtx.nPalettes; i++) {
-			if (strlen(data->nsbtx.palettes[i].name) <= 16) continue;
+		for (int i = 0; i < data->nsbtx->nPalettes; i++) {
+			if (strlen(data->nsbtx->palettes[i].name) <= 16) continue;
 
-			wsprintfW(warntemp, L"\n  %.64S -> %.16S", data->nsbtx.palettes[i].name, data->nsbtx.palettes[i].name);
+			wsprintfW(warntemp, L"\n  %.64S -> %.16S", data->nsbtx->palettes[i].name, data->nsbtx->palettes[i].name);
 
 			warnbuf = (WCHAR *) realloc(warnbuf, (wcslen(warnbuf) + wcslen(warntemp) + 1) * sizeof(WCHAR));
 			memcpy(warnbuf + wcslen(warnbuf), warntemp, (wcslen(warntemp) + 1) * sizeof(WCHAR));
@@ -439,19 +439,17 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 		case NV_INITIALIZE:
 		{
 			LPWSTR path = (LPWSTR) wParam;
-			if (path != NULL) {
-				EditorSetFile(hWnd, path);
-			}
-			memcpy(&data->nsbtx, (TexArc *) lParam, sizeof(TexArc));
+			if (path != NULL) EditorSetFile(hWnd, path);
+			data->nsbtx = (TexArc *) lParam;
 
-			for (int i = 0; i < data->nsbtx.nTextures; i++) {
-				WCHAR *buffer = TexNarrowResourceNameToWideChar(data->nsbtx.textures[i].name);
+			for (int i = 0; i < data->nsbtx->nTextures; i++) {
+				WCHAR *buffer = TexNarrowResourceNameToWideChar(data->nsbtx->textures[i].name);
 				AddListBoxItem(data->hWndTextureSelect, buffer);
 				free(buffer);
 			}
 
-			for (int i = 0; i < data->nsbtx.nPalettes; i++) {
-				WCHAR *buffer = TexNarrowResourceNameToWideChar(data->nsbtx.palettes[i].name);
+			for (int i = 0; i < data->nsbtx->nPalettes; i++) {
+				WCHAR *buffer = TexNarrowResourceNameToWideChar(data->nsbtx->palettes[i].name);
 				AddListBoxItem(data->hWndPaletteSelect, buffer);
 				free(buffer);
 			}
@@ -469,10 +467,10 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 			int t = GetListBoxSelection(data->hWndTextureSelect);
 			int p = GetListBoxSelection(data->hWndPaletteSelect);
-			TEXELS *texture = data->nsbtx.textures + t;
-			PALETTE *palette = data->nsbtx.palettes + p;
-			if (t >= data->nsbtx.nTextures || t < 0) texture = NULL; //catch out-of-bounds cases
-			if (p >= data->nsbtx.nPalettes || p < 0) palette = NULL;
+			TEXELS *texture = data->nsbtx->textures + t;
+			PALETTE *palette = data->nsbtx->palettes + p;
+			if (t >= data->nsbtx->nTextures || t < 0) texture = NULL; //catch out-of-bounds cases
+			if (p >= data->nsbtx->nPalettes || p < 0) palette = NULL;
 
 			//if no texture, we can't really render anything
 			if (texture == NULL) {
@@ -520,26 +518,26 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			int sel = wParam;
 			if (hWndControl == data->hWndTextureSelect) {
 				//delete the sel-th texture
-				TEXELS *textures = data->nsbtx.textures;
+				TEXELS *textures = data->nsbtx->textures;
 				void *texel = textures[sel].texel, *index = textures[sel].cmp;
-				memmove(textures + sel, textures + sel + 1, (data->nsbtx.nTextures - sel - 1) * sizeof(TEXELS));
-				data->nsbtx.nTextures--;
-				data->nsbtx.textures = (TEXELS *) realloc(data->nsbtx.textures, data->nsbtx.nTextures * sizeof(TEXELS));
+				memmove(textures + sel, textures + sel + 1, (data->nsbtx->nTextures - sel - 1) * sizeof(TEXELS));
+				data->nsbtx->nTextures--;
+				data->nsbtx->textures = (TEXELS *) realloc(data->nsbtx->textures, data->nsbtx->nTextures * sizeof(TEXELS));
 				//don't forget to free!
 				free(texel);
 				if (index) free(index);
 
 				//update index if it would be out of bounds
-				if (sel >= data->nsbtx.nTextures) sel = data->nsbtx.nTextures - 1;
+				if (sel >= data->nsbtx->nTextures) sel = data->nsbtx->nTextures - 1;
 			} else if (hWndControl == data->hWndPaletteSelect) {
 				//delete the sel-th palette
-				PALETTE *palettes = data->nsbtx.palettes;
+				PALETTE *palettes = data->nsbtx->palettes;
 				void *cols = palettes[sel].pal;
-				memmove(palettes + sel, palettes + sel + 1, (data->nsbtx.nPalettes - sel - 1) * sizeof(PALETTE));
-				data->nsbtx.nPalettes--;
-				data->nsbtx.palettes = (PALETTE *) realloc(data->nsbtx.palettes, data->nsbtx.nPalettes * sizeof(PALETTE));
+				memmove(palettes + sel, palettes + sel + 1, (data->nsbtx->nPalettes - sel - 1) * sizeof(PALETTE));
+				data->nsbtx->nPalettes--;
+				data->nsbtx->palettes = (PALETTE *) realloc(data->nsbtx->palettes, data->nsbtx->nPalettes * sizeof(PALETTE));
 				free(cols);
-				if (sel >= data->nsbtx.nPalettes) sel = data->nsbtx.nPalettes - 1;
+				if (sel >= data->nsbtx->nPalettes) sel = data->nsbtx->nPalettes - 1;
 			}
 			SetListBoxSelection(hWndControl, sel);
 			InvalidateRect(hWnd, NULL, TRUE);
@@ -555,8 +553,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						LPWSTR location = saveFileDialog(hWnd, L"Save Texture", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
 						if (!location) break;
 
-						TxWriteFileDirect(data->nsbtx.textures + GetListBoxSelection(data->hWndTextureSelect),
-									  data->nsbtx.palettes + GetListBoxSelection(data->hWndPaletteSelect), TEXTURE_TYPE_NNSTGA, location);
+						TxWriteFileDirect(data->nsbtx->textures + GetListBoxSelection(data->hWndTextureSelect),
+									  data->nsbtx->palettes + GetListBoxSelection(data->hWndPaletteSelect), TEXTURE_TYPE_NNSTGA, location);
 
 						free(location);
 						break;
@@ -573,7 +571,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							} else break;
 						}
 						if (NsbtxViewerCheckSave(data)) {
-							TexarcWriteFile(&data->nsbtx, data->szOpenFile);
+							TexarcWriteFile(data->nsbtx, data->szOpenFile);
 						}
 						break;
 					}
@@ -602,8 +600,8 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							int selectedPalette = GetListBoxSelection(data->hWndPaletteSelect);
 							int selectedTexture = GetListBoxSelection(data->hWndTextureSelect);
 
-							TEXELS *destTex = data->nsbtx.textures + selectedTexture;
-							PALETTE *destPal = data->nsbtx.palettes + selectedPalette;
+							TEXELS *destTex = data->nsbtx->textures + selectedTexture;
+							PALETTE *destPal = data->nsbtx->palettes + selectedPalette;
 
 							if (FORMAT(texels.texImageParam) != 0) {
 								//only replace texture if there's one to replace it with
@@ -648,15 +646,15 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						}
 
 						//iterate over textures. First, create an array of palette names.
-						char **palNames = (char **) calloc(data->nsbtx.nPalettes, sizeof(char *));
-						for (int i = 0; i < data->nsbtx.nPalettes; i++) {
-							palNames[i] = data->nsbtx.palettes[i].name;
+						char **palNames = (char **) calloc(data->nsbtx->nPalettes, sizeof(char *));
+						for (int i = 0; i < data->nsbtx->nPalettes; i++) {
+							palNames[i] = data->nsbtx->palettes[i].name;
 						}
 
 						//next, associate each texture with a palette. Write out Nitro TGA files.
-						for (int i = 0; i < data->nsbtx.nTextures; i++) {
-							char *name = data->nsbtx.textures[i].name;
-							int pltt = guessTexPlttByName(name, palNames, data->nsbtx.nPalettes, &data->nsbtx.textures[i], data->nsbtx.palettes);
+						for (int i = 0; i < data->nsbtx->nTextures; i++) {
+							char *name = data->nsbtx->textures[i].name;
+							int pltt = guessTexPlttByName(name, palNames, data->nsbtx->nPalettes, &data->nsbtx->textures[i], data->nsbtx->palettes);
 
 							//copy texture name to the end of `path`
 							for (unsigned int j = 0; j < strlen(name) + 1; j++) {
@@ -665,13 +663,13 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//suffix ".tga"
 							memcpy(path + pathLen + strlen(name), L".tga", 10);
 
-							TxWriteFileDirect(&data->nsbtx.textures[i], &data->nsbtx.palettes[pltt], TEXTURE_TYPE_NNSTGA, path);
+							TxWriteFileDirect(&data->nsbtx->textures[i], &data->nsbtx->palettes[pltt], TEXTURE_TYPE_NNSTGA, path);
 						}
 
 						//free palette name array
 						free(palNames);
 					} else if (hWndControl == data->hWndResourceButton) {
-						CreateVramUseWindow(data->editorMgr->hWnd, &data->nsbtx);
+						CreateVramUseWindow(data->editorMgr->hWnd, data->nsbtx);
 					} else if (hWndControl == data->hWndAddButton) {
 						//read texture
 						TEXELS texels;
@@ -687,15 +685,15 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//add texel
 							if (hasTexel) {
 								//update TexArc
-								int texIndex = TexarcAddTexture(&data->nsbtx, &texels);
+								int texIndex = TexarcAddTexture(data->nsbtx, &texels);
 								if (texIndex != -1) {
 									//update UI
 									WCHAR *strbuf = TexNarrowResourceNameToWideChar(texels.name);
 									AddListBoxItem(data->hWndTextureSelect, strbuf);
-									SetListBoxSelection(data->hWndTextureSelect, data->nsbtx.nTextures - 1);
+									SetListBoxSelection(data->hWndTextureSelect, data->nsbtx->nTextures - 1);
 									free(strbuf);
 								} else {
-									int existingIndex = TexarcGetTextureIndexByName(&data->nsbtx, texels.name);
+									int existingIndex = TexarcGetTextureIndexByName(data->nsbtx, texels.name);
 									SetListBoxSelection(data->hWndTextureSelect, existingIndex);
 									MessageBox(hWnd, L"Texture name conflict.", L"Texture name conflict", MB_ICONERROR);
 								}
@@ -711,14 +709,14 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 									palette.name[0] = '\0';
 								}
 
-								int nOriginalPalettes = data->nsbtx.nPalettes;
-								int palIndex = TexarcAddPalette(&data->nsbtx, &palette);
+								int nOriginalPalettes = data->nsbtx->nPalettes;
+								int palIndex = TexarcAddPalette(data->nsbtx, &palette);
 								if (palIndex == -1) {
 									MessageBox(hWnd, L"Palette name conflict.", L"Palette name conflict", MB_ICONERROR);
 									free(palette.pal);
 									break;
 								} else {
-									int nPalettesAfter = data->nsbtx.nPalettes;
+									int nPalettesAfter = data->nsbtx->nPalettes;
 									if (nPalettesAfter > nOriginalPalettes) {
 										//add to UI
 										WCHAR *strbuf = TexNarrowResourceNameToWideChar(palette.name);
@@ -752,9 +750,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//update TexArc
 							char **destName = NULL;
 							if (hWndControl == data->hWndTextureSelect) {
-								destName = &data->nsbtx.textures[sel].name;
+								destName = &data->nsbtx->textures[sel].name;
 							} else {
-								destName = &data->nsbtx.palettes[sel].name;
+								destName = &data->nsbtx->palettes[sel].name;
 							}
 							if (*destName != NULL) free(*destName);
 							
@@ -959,21 +957,23 @@ VOID RegisterNsbtxViewerClass(VOID) {
 	RegisterGenericClass(L"VramUseClass", VramUseWndProc, 8 * sizeof(void *));
 }
 
+static HWND CreateNsbtxViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, TexArc *nsbtx) {
+	HWND h = EditorCreate(L"NsbtxViewerClass", x, y, width, height, hWndParent);
+	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) nsbtx);
+	return h;
+}
+
 HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	TexArc nsbtx;
-	int n = TexarcReadFile(&nsbtx, path);
-	if (n) {
+	TexArc *nsbtx = (TexArc *) calloc(1, sizeof(TexArc));
+	if (TexarcReadFile(nsbtx, path)) {
+		free(nsbtx);
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}
 
-	HWND h = EditorCreate(L"NsbtxViewerClass", x, y, width, height, hWndParent);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nsbtx);
-	return h;
+	return CreateNsbtxViewerInternal(x, y, width, height, hWndParent, path, nsbtx);
 }
 
 HWND CreateNsbtxViewerImmediate(int x, int y, int width, int height, HWND hWndParent, TexArc *nsbtx) {
-	HWND h = EditorCreate(L"NsbtxViewerClass", x, y, width, height, hWndParent);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) nsbtx);
-	return h;
+	return CreateNsbtxViewerInternal(x, y, width, height, hWndParent, NULL, nsbtx);
 }

@@ -182,16 +182,16 @@ static int PalViewerGetDragDelta(NCLRVIEWERDATA *data, int *pdx, int *pdy) {
 			delta -= selDestIndex;
 			selDestIndex = 0;
 		}
-		if (selDestIndex + selSize > data->nclr.nColors) {
-			delta -= ((selDestIndex + selSize) - data->nclr.nColors);
-			selDestIndex -= ((selDestIndex + selSize) - data->nclr.nColors);
+		if (selDestIndex + selSize > data->nclr->nColors) {
+			delta -= ((selDestIndex + selSize) - data->nclr->nColors);
+			selDestIndex -= ((selDestIndex + selSize) - data->nclr->nColors);
 		}
 
 		dx = delta;
 		dy = 0; //TODO
 	} else {
 		//clamp 2D selection bounds
-		int nRows = (data->nclr.nColors + 15) / 16;
+		int nRows = (data->nclr->nColors + 15) / 16;
 		int destStartX = selStartX + dx, destStartY = selStartY + dy;
 
 		if (destStartX < 0) {
@@ -217,7 +217,7 @@ static int PalViewerGetDragDelta(NCLRVIEWERDATA *data, int *pdx, int *pdy) {
 		HWND hWndScreenEditor = PalViewerGetAssociatedWindow(data, FILE_TYPE_SCREEN);
 		
 		//get graphics depth
-		int depth = data->nclr.nBits;
+		int depth = data->nclr->nBits;
 		if (hWndCharEditor != NULL) {
 			NCGR *ncgr = (NCGR *) EditorGetObject(hWndCharEditor);
 			depth = ncgr->nBits;
@@ -293,18 +293,18 @@ static int PalViewerIndexInSelection(NCLRVIEWERDATA *data, int index) {
 static void PalViewerUnwrapSelection(NCLRVIEWERDATA *data, COLOR *dest) {
 	//fill out linearly
 	int destIndex = 0;
-	for (int i = 0; i < data->nclr.nColors; i++) {
+	for (int i = 0; i < data->nclr->nColors; i++) {
 		if (!PalViewerIndexInSelection(data, i)) continue;
-		dest[destIndex++] = data->nclr.colors[i];
+		dest[destIndex++] = data->nclr->colors[i];
 	}
 }
 
 static void PalViewerWrapSelection(NCLRVIEWERDATA *data, COLOR *src, int nSrc) {
 	//read out linearly
 	int srcIndex = 0;
-	for (int i = 0; i < data->nclr.nColors && srcIndex < nSrc; i++) {
+	for (int i = 0; i < data->nclr->nColors && srcIndex < nSrc; i++) {
 		if (!PalViewerIndexInSelection(data, i)) continue;
-		data->nclr.colors[i] = src[srcIndex++];
+		data->nclr->colors[i] = src[srcIndex++];
 	}
 }
 
@@ -450,7 +450,7 @@ static void PalViewerMovePalette1D(COLOR *pal, COLOR *out, int size, int start, 
 static void PalViewerGetDragTransform(NCLRVIEWERDATA *data, int *map) {
 	//the current palette, but taking the current select operation into account
 	if (!data->movingSelection) {
-		PalViewerMapFillIdentity(map, data->nclr.nColors, 0);
+		PalViewerMapFillIdentity(map, data->nclr->nColors, 0);
 		return;
 	}
 
@@ -469,9 +469,9 @@ static void PalViewerGetDragTransform(NCLRVIEWERDATA *data, int *map) {
 	PalViewerGetSelectionDimensions(data, &selMinX, &selMinY, &selWidth, &selHeight);
 
 	if (data->selMode == PALVIEWER_SELMODE_1D) {
-		PalViewerMapCreateMove1D(map, data->nclr.nColors, selStart, selSize, selStart + dragDisp);
+		PalViewerMapCreateMove1D(map, data->nclr->nColors, selStart, selSize, selStart + dragDisp);
 	} else {
-		PalViewerMapCreateMove2D(map, data->nclr.nColors, selMinX, selMinY, selWidth, selHeight, selMinX + dx, selMinY + dy);
+		PalViewerMapCreateMove2D(map, data->nclr->nColors, selMinX, selMinY, selWidth, selHeight, selMinX + dx, selMinY + dy);
 	}
 }
 
@@ -579,7 +579,7 @@ VOID PastePalette(COLOR *dest, int nMax) {
 }
 
 static void PalViewerCopyPalette(NCLRVIEWERDATA *data) {
-	PalViewerBaseCopyPalette(data->nclr.colors, data->nclr.nColors, data->selStart, data->selEnd, data->selMode == PALVIEWER_SELMODE_2D);
+	PalViewerBaseCopyPalette(data->nclr->colors, data->nclr->nColors, data->selStart, data->selEnd, data->selMode == PALVIEWER_SELMODE_2D);
 }
 
 static void PalViewerPastePalette(NCLRVIEWERDATA *data) {
@@ -630,12 +630,12 @@ static void PalViewerPastePalette(NCLRVIEWERDATA *data) {
 				int destX = x + selStartX;
 				int destY = y + selStartY;
 				int destIndex = destX + destY * 16;
-				if (destX >= 16 || destIndex >= data->nclr.nColors) continue;
-				data->nclr.colors[destIndex] = ColorConvertToDS(src[x + y * width]);
+				if (destX >= 16 || destIndex >= data->nclr->nColors) continue;
+				data->nclr->colors[destIndex] = ColorConvertToDS(src[x + y * width]);
 			}
 		}
 
-		int nRows = (data->nclr.nColors + 15) / 16;
+		int nRows = (data->nclr->nColors + 15) / 16;
 		int maxWidth = width, maxHeight = height;
 		if (selStartX + maxWidth > 16) maxWidth = 16 - selStartX;
 		if (selStartY + maxHeight > nRows) maxHeight = nRows - selStartY;
@@ -647,14 +647,14 @@ static void PalViewerPastePalette(NCLRVIEWERDATA *data) {
 	} else {
 		for (int i = 0; i < nCols; i++) {
 			int destIndex = i + selStart;
-			if (destIndex >= data->nclr.nColors) break;
-			data->nclr.colors[destIndex] = ColorConvertToDS(src[i]);
+			if (destIndex >= data->nclr->nColors) break;
+			data->nclr->colors[destIndex] = ColorConvertToDS(src[i]);
 		}
 
 		//select destination
 		data->selMode = PALVIEWER_SELMODE_1D;
 		data->selStart = selStart;
-		data->selEnd = min(data->selStart + nCols - 1, data->nclr.nColors);
+		data->selEnd = min(data->selStart + nCols - 1, data->nclr->nColors);
 	}
 
 	if (hAc != NULL) GlobalUnlock(hAc);
@@ -705,34 +705,34 @@ static int CountPaletteUsages(NCLRVIEWERDATA *data, int *counts) {
 
 	//character editor data
 	NCGRVIEWERDATA *ncgrData = (NCGRVIEWERDATA *) EditorGetData(hWndCharacterEditor);
-	int palSize = 1 << ncgrData->ncgr.nBits;
+	int palSize = 1 << ncgrData->ncgr->nBits;
 
 	if (scrEditors.length == 0) {
 		//character exists. get graphics
 		int palBase = ncgrData->selectedPalette;
-		for (int i = 0; i < ncgrData->ncgr.nTiles; i++) {
-			unsigned char *tile = ncgrData->ncgr.tiles[i];
+		for (int i = 0; i < ncgrData->ncgr->nTiles; i++) {
+			unsigned char *tile = ncgrData->ncgr->tiles[i];
 			for (int j = 0; j < 64; j++) {
 				int index = tile[j] + palBase * palSize;
-				if (index < data->nclr.nColors) counts[index]++;
+				if (index < data->nclr->nColors) counts[index]++;
 			}
 		}
 	} else {
 		//measure every screen
 		for (size_t i = 0; i < scrEditors.length; i++) {
 			NSCRVIEWERDATA *nscrData = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i);
-			for (unsigned int j = 0; j < nscrData->nscr.dataSize / 2; j++) {
-				uint16_t tile = nscrData->nscr.data[j];
+			for (unsigned int j = 0; j < nscrData->nscr->dataSize / 2; j++) {
+				uint16_t tile = nscrData->nscr->data[j];
 				int charIndex = (tile & 0x3FF) - nscrData->tileBase;
 				int palBase = (tile >> 12) & 0xF;
 				if (charIndex < 0) continue;
 
 				//tally up palette indices
-				if (charIndex < ncgrData->ncgr.nTiles) {
+				if (charIndex < ncgrData->ncgr->nTiles) {
 					for (int k = 0; k < 64; k++) {
-						int index = ncgrData->ncgr.tiles[charIndex][k];
+						int index = ncgrData->ncgr->tiles[charIndex][k];
 						index += palBase * palSize;
-						if (index < data->nclr.nColors) counts[index]++;
+						if (index < data->nclr->nColors) counts[index]++;
 					}
 				}
 
@@ -753,19 +753,19 @@ static COLOR32 MakeContrastingColor(COLOR32 c) {
 }
 
 static void PalViewerUpdatePreview(NCLRVIEWERDATA *data) {
-	PreviewLoadBgPalette(&data->nclr); //send to preview target
-	PreviewLoadObjPalette(&data->nclr);
+	PreviewLoadBgPalette(data->nclr); //send to preview target
+	PreviewLoadObjPalette(data->nclr);
 	InvalidateRect(data->hWnd, NULL, FALSE); //redraw
 }
 
 static COLOR *PalViewerComputeViewPalette(NCLRVIEWERDATA *data) {
 	//the current palette, but taking the current select operation into account
-	COLOR *cols = (COLOR *) calloc(data->nclr.nColors, sizeof(COLOR));
-	int *map = (int *) calloc(data->nclr.nColors, sizeof(int));
+	COLOR *cols = (COLOR *) calloc(data->nclr->nColors, sizeof(COLOR));
+	int *map = (int *) calloc(data->nclr->nColors, sizeof(int));
 
 	//get transform
 	PalViewerGetDragTransform(data, map);
-	PalViewerMapTransform(data->nclr.colors, cols, map, data->nclr.nColors);
+	PalViewerMapTransform(data->nclr->colors, cols, map, data->nclr->nColors);
 
 	free(map);
 	return cols;
@@ -803,17 +803,17 @@ static void PalViewerDoPreserveTransform(NCLRVIEWERDATA *data, NCGR *ncgr, NSCR 
 	selSize = PalViewerGetSelectionSize(data);
 
 	//get bit depth
-	int depth = data->nclr.nBits;
+	int depth = data->nclr->nBits;
 	if (ncgr != NULL) {
 		depth = ncgr->nBits;
 	}
 	int mask = (1 << depth) - 1;
 
 	//compute index map.
-	int *invmap = (int *) calloc(data->nclr.nColors, sizeof(int));
-	int *map = (int *) calloc(data->nclr.nColors, sizeof(int));
+	int *invmap = (int *) calloc(data->nclr->nColors, sizeof(int));
+	int *map = (int *) calloc(data->nclr->nColors, sizeof(int));
 	PalViewerGetDragTransform(data, invmap);
-	PalViewerMapInvert(invmap, map, data->nclr.nColors);
+	PalViewerMapInvert(invmap, map, data->nclr->nColors);
 
 	//if delta >= palette size, update screen and not character.
 	if (deltaMag >= (1 << depth)) {
@@ -935,8 +935,8 @@ static void PalViewerOutlineSelection(NCLRVIEWERDATA *data, HDC hDC, int selStar
 }
 
 static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
-	COLOR *cols = data->nclr.colors;
-	int nRows = (data->nclr.nColors + 15) / 16;
+	COLOR *cols = data->nclr->colors;
+	int nRows = (data->nclr->nColors + 15) / 16;
 
 	//if we're dragging a selection, preview that here.
 	if (data->movingSelection) {
@@ -944,14 +944,14 @@ static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, in
 	}
 
 	int previewPalette = -1;
-	int nRowsPerPalette = (1 << data->nclr.nBits) / 16;
+	int nRowsPerPalette = (1 << data->nclr->nBits) / 16;
 
 	HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_CHARACTER);
 	HWND hWndNscrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_SCREEN);
 	if (hWndNcgrViewer != NULL) {
 		NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
 		previewPalette = ncgrViewerData->selectedPalette;
-		nRowsPerPalette = (1 << ncgrViewerData->ncgr.nBits) / 16;
+		nRowsPerPalette = (1 << ncgrViewerData->ncgr->nBits) / 16;
 	}
 	
 	int highlightRowStart = previewPalette * nRowsPerPalette;
@@ -970,7 +970,7 @@ static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, in
 	unsigned int *freqs = NULL;
 	int maxLevel = 0;
 	if (data->showFrequency || data->showUnused) {
-		freqs = (unsigned int *) calloc(data->nclr.nColors, sizeof(unsigned int));
+		freqs = (unsigned int *) calloc(data->nclr->nColors, sizeof(unsigned int));
 
 		int hasCount = CountPaletteUsages(data, freqs);
 		if (!hasCount) {
@@ -981,7 +981,7 @@ static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, in
 
 	//get max level
 	if (freqs != NULL) {
-		for (int i = 0; i < data->nclr.nColors; i++) {
+		for (int i = 0; i < data->nclr->nColors; i++) {
 			int count = freqs[i];
 			if (count > maxLevel) maxLevel = count;
 		}
@@ -992,7 +992,7 @@ static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, in
 		for (int x = 0; x < 16; x++) {
 			int index = x + y * 16;
 			int colorIndex = index;
-			if (index >= data->nclr.nColors) break;
+			if (index >= data->nclr->nColors) break;
 
 			COLOR col = cols[colorIndex];
 			COLOR32 rgb = ColorConvertFromDS(col);
@@ -1077,7 +1077,7 @@ static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, in
 	if (freqs != NULL) {
 		free(freqs);
 	}
-	if (cols != data->nclr.colors) {
+	if (cols != data->nclr->colors) {
 		free(cols); //needs to free
 	}
 }
@@ -1086,7 +1086,7 @@ static void NclrViewerPalOpUpdateCallback(PAL_OP *palOp) {
 	HWND hWnd = (HWND) palOp->param;
 	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) EditorGetData(hWnd);
 
-	PalopRunOperation(data->tempPalette, data->nclr.colors, data->nclr.nColors, palOp);
+	PalopRunOperation(data->tempPalette, data->nclr->colors, data->nclr->nColors, palOp);
 	PalViewerUpdatePreview(data);
 }
 
@@ -1255,14 +1255,14 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 		PalViewerSortEntry *tmp = (PalViewerSortEntry *) calloc(selSize, sizeof(PalViewerSortEntry));
 
 		//compute frequency list
-		int *freqList = (int *) calloc(data->nclr.nColors, sizeof(int));
+		int *freqList = (int *) calloc(data->nclr->nColors, sizeof(int));
 		int n = CountPaletteUsages(data, freqList);
 
 		//unwrap the selection into an array to sort.
 		int destIndex = 0;
-		for (int i = 0; i < data->nclr.nColors; i++) {
+		for (int i = 0; i < data->nclr->nColors; i++) {
 			if (!PalViewerIndexInSelection(data, i)) continue;
-			tmp[destIndex].col = data->nclr.colors[i];
+			tmp[destIndex].col = data->nclr->colors[i];
 			tmp[destIndex].srcIndex = i;
 			tmp[destIndex].dstIndex = i;
 			tmp[destIndex].frequency = freqList[i];
@@ -1288,10 +1288,10 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 
 		//re-wrap the selection back into the palette.
 		int srcIndex = 0;
-		for (int i = 0; i < data->nclr.nColors && srcIndex < selSize; i++) {
+		for (int i = 0; i < data->nclr->nColors && srcIndex < selSize; i++) {
 			if (!PalViewerIndexInSelection(data, i)) continue;
 			tmp[srcIndex].dstIndex = i;
-			data->nclr.colors[i] = tmp[srcIndex++].col;
+			data->nclr->colors[i] = tmp[srcIndex++].col;
 		}
 
 		//if enabled: modify graphics data to preserve the picture
@@ -1314,7 +1314,7 @@ static void PalViewerSortSelection(HWND hWnd, NCLRVIEWERDATA *data, int command)
 					for (size_t i = 0; i < scrEditors.length; i++) {
 						//determine which palette each tile is using.
 						NSCRVIEWERDATA *nscrViewerData = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i);
-						NSCR *nscr = &nscrViewerData->nscr;
+						NSCR *nscr = nscrViewerData->nscr;
 
 						for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 							uint16_t scrd = nscr->data[i];
@@ -1399,13 +1399,6 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			palOp->srcLength = 16;
 			palOp->updateCallback = NclrViewerPalOpUpdateCallback;
 
-			if (data->nclr.nColors <= 256) {
-				SetWindowSize(hWnd, 16 * COLOR_SIZE + 4, 16 * COLOR_SIZE + 4);
-			} else {
-				//account for scrollbar
-				SetWindowSize(hWnd, 16 * COLOR_SIZE + 4 + GetSystemMetrics(SM_CXVSCROLL), 16 * COLOR_SIZE + 4);
-			}
-
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
 
@@ -1424,19 +1417,13 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
 			break;
 		}
-		case NV_INITIALIZE_IMMEDIATE:
 		case NV_INITIALIZE:
 		{
-			if (msg == NV_INITIALIZE) {
-				LPWSTR path = (LPWSTR) wParam;
-				int n = PalReadFile(&data->nclr, path);
-				if (n) return 0;
-				
-				EditorSetFile(hWnd, path);
-			} else {
-				NCLR *nclr = (NCLR *) wParam;
-				memcpy(&data->nclr, nclr, sizeof(NCLR));
-			}
+			data->nclr = (NCLR *) lParam;
+
+			LPCWSTR path = (LPCWSTR) wParam;
+			if (path != NULL) EditorSetFile(hWnd, path);
+
 			PalViewerUpdatePreview(data);
 
 			HWND hWndMain = data->editorMgr->hWnd;
@@ -1444,13 +1431,13 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
 			PalViewerUpdateNcerViewer(data);
 
-			if (data->nclr.header.format == NCLR_TYPE_HUDSON) {
+			if (data->nclr->header.format == NCLR_TYPE_HUDSON) {
 				SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
 			}
 
 			//set appropriate height
-			data->frameData.contentHeight = ((data->nclr.nColors + 15) / 16) * COLOR_SIZE;
-			if (data->nclr.nColors > 256) {
+			data->frameData.contentHeight = ((data->nclr->nColors + 15) / 16) * COLOR_SIZE;
+			if (data->nclr->nColors > 256) {
 				SetWindowSize(hWnd, 16 * COLOR_SIZE + 4 + GetSystemMetrics(SM_CXVSCROLL), 16 * COLOR_SIZE + 4);
 			} else {
 				SetWindowSize(hWnd, 16 * COLOR_SIZE + 4, 16 * COLOR_SIZE + 4);
@@ -1477,7 +1464,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			//if we're dragging, clamp position
 			if (data->mouseDown) {
-				int nRows = ((data->nclr.nColors + 15) / 16);
+				int nRows = ((data->nclr->nColors + 15) / 16);
 				if (mousePos.x < 0) mousePos.x = 0;
 				else if (mousePos.x >= (16 * COLOR_SIZE)) mousePos.x = 16 * COLOR_SIZE - 1;
 				if (mousePos.y < 0) mousePos.y = 0;
@@ -1516,7 +1503,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			POINT mousePos;
 			PalViewerGetClientCursorPosition(hWnd, &mousePos.x, &mousePos.y);
 
-			int nRows = data->nclr.nColors / 16;
+			int nRows = data->nclr->nColors / 16;
 
 			int hoverX = -1, hoverY = -1, hoverIndex = -1;
 			if (mousePos.x >= 0 && mousePos.x < (16 * COLOR_SIZE) && mousePos.y >= 0) {
@@ -1551,7 +1538,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int x = mousePos.x / COLOR_SIZE;
 				int y = mousePos.y / COLOR_SIZE;
 				int index = y * 16 + x;
-				if (index < data->nclr.nColors) {
+				if (index < data->nclr->nColors) {
 					data->mouseDown = 1;
 					data->dragging = 0;
 					data->preserveDragging = !!shiftPressed;
@@ -1599,7 +1586,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int x = mousePos.x / COLOR_SIZE;
 					int y = mousePos.y / COLOR_SIZE;
 					int index = y * 16 + x;
-					if (index < data->nclr.nColors && index >= 0) {
+					if (index < data->nclr->nColors && index >= 0) {
 						data->selStart = data->selEnd = index;
 
 						HWND hWndMain = data->editorMgr->hWnd;
@@ -1607,7 +1594,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						cc.lStructSize = sizeof(cc);
 						cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition?
 						cc.hwndOwner = hWndMain;
-						cc.rgbResult = ColorConvertFromDS(data->nclr.colors[index]);
+						cc.rgbResult = ColorConvertFromDS(data->nclr->colors[index]);
 						cc.lpCustColors = data->tmpCust;
 						cc.Flags = 0x103;
 						BOOL (__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
@@ -1615,7 +1602,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 						if (ChooseColorFunction(&cc)) {
 							DWORD result = cc.rgbResult;
-							data->nclr.colors[index] = ColorConvertToDS(result);
+							data->nclr->colors[index] = ColorConvertToDS(result);
 							
 							EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
 							EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
@@ -1629,7 +1616,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			if (data->dragging && data->movingSelection) {
 				//complete drag operation
 				COLOR *result = PalViewerComputeViewPalette(data);
-				memcpy(data->nclr.colors, result, data->nclr.nColors * sizeof(COLOR));
+				memcpy(data->nclr->colors, result, data->nclr->nColors * sizeof(COLOR));
 				free(result);
 
 				//now: if we use a preserve drag, update accordingly.
@@ -1645,7 +1632,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 					NSCR **nscrs = (NSCR **) calloc(scrEditors.length, sizeof(NSCR *));
 					for (size_t i = 0; i < scrEditors.length; i++) {
-						nscrs[i] = &(*(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i))->nscr;
+						nscrs[i] = (*(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, i))->nscr;
 					}
 
 					PalViewerDoPreserveTransform(data, ncgr, nscrs, scrEditors.length);
@@ -1683,7 +1670,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int x = mousePos.x / 16;
 				int y = mousePos.y / 16;
 				int index = y * 16 + x;
-				if (index < data->nclr.nColors) {
+				if (index < data->nclr->nColors) {
 					HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 0);
 
 					//set menu state
@@ -1772,8 +1759,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						break;
 					case ID_ACCELERATOR_SELECT_ALL:
 						data->selStart = 0;
-						data->selEnd = data->nclr.nColors - 1;
-						if (data->nclr.nColors & 15) data->selMode = PALVIEWER_SELMODE_1D; //necessary
+						data->selEnd = data->nclr->nColors - 1;
+						if (data->nclr->nColors & 15) data->selMode = PALVIEWER_SELMODE_1D; //necessary
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 				}
@@ -1807,9 +1794,9 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						CloseClipboard();
 
 						//erase all colors in selected region
-						for (int i = 0; i < data->nclr.nColors; i++) {
+						for (int i = 0; i < data->nclr->nColors; i++) {
 							if (!PalViewerIndexInSelection(data, i)) continue;
-							data->nclr.colors[i] = 0;
+							data->nclr->colors[i] = 0;
 						}
 						PalViewerUpdateViewers(data, PALVIEWER_UPDATE_ALL);
 						PalViewerUpdatePreview(data);
@@ -1817,8 +1804,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 					case ID_MENU_INVERTCOLOR:
 					{
-						COLOR *pal = data->nclr.colors;
-						for (int i = 0; i < data->nclr.nColors; i++) {
+						COLOR *pal = data->nclr->colors;
+						for (int i = 0; i < data->nclr->nColors; i++) {
 							if (!PalViewerIndexInSelection(data, i)) continue;
 							pal[i] ^= 0x7FFF;
 						}
@@ -1827,8 +1814,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 					case ID_MENU_MAKEGRAYSCALE:
 					{
-						COLOR *pal = data->nclr.colors;
-						for (int i = 0; i < data->nclr.nColors; i++) {
+						COLOR *pal = data->nclr->colors;
+						for (int i = 0; i < data->nclr->nColors; i++) {
 							if (!PalViewerIndexInSelection(data, i)) continue;
 
 							int l = (PalViewerLightness(pal[i]) * 31 + 255) / 511;
@@ -1870,17 +1857,17 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 						if (ext != NULL && _wcsicmp(ext, L".act") == 0) {
 							//ACT file
-							if (data->nclr.nColors > 256) {
+							if (data->nclr->nColors > 256) {
 								MessageBox(hWnd, L"ACT file does not support more than 256 color palettes.", L"Warning", MB_ICONWARNING);
 							}
 
 							unsigned int bufSize = 256 * 3 + 4;
 							unsigned char *buf = (unsigned char *) calloc(bufSize, 1);
 
-							int nColorsWrite = data->nclr.nColors;
+							int nColorsWrite = data->nclr->nColors;
 							if (nColorsWrite > 256) nColorsWrite = 256;
 							for (int i = 0; i < nColorsWrite; i++) {
-								COLOR32 c = ColorConvertFromDS(data->nclr.colors[i]);
+								COLOR32 c = ColorConvertFromDS(data->nclr->colors[i]);
 								buf[3 * i + 0] = (c >>  0) & 0xFF;
 								buf[3 * i + 1] = (c >>  8) & 0xFF;
 								buf[3 * i + 2] = (c >> 16) & 0xFF;
@@ -1898,10 +1885,10 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						} else {
 							//construct bitmap
 							int width = 16;
-							int height = (data->nclr.nColors + 15) / 16;
+							int height = (data->nclr->nColors + 15) / 16;
 							COLOR32 *bits = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-							for (int i = 0; i < data->nclr.nColors; i++) {
-								COLOR32 as32 = ColorConvertFromDS(data->nclr.colors[i]) | 0xFF000000;
+							for (int i = 0; i < data->nclr->nColors; i++) {
+								COLOR32 as32 = ColorConvertFromDS(data->nclr->colors[i]) | 0xFF000000;
 								bits[i] = as32;
 							}
 							ImgWrite(bits, width, height, path);
@@ -1947,14 +1934,15 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 								free(src);
 							} else {
 								//try palette file
-								NCLR nclr = { 0 };
-								PalReadFile(&nclr, path);
+								NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
+								PalReadFile(nclr, path);
 
-								nColors = nclr.nColors;
+								nColors = nclr->nColors;
 								colors = (COLOR *) calloc(nColors, sizeof(COLOR));
-								memcpy(colors, nclr.colors, nColors * sizeof(COLOR));
+								memcpy(colors, nclr->colors, nColors * sizeof(COLOR));
 
-								ObjFree(&nclr.header);
+								ObjFree(&nclr->header);
+								free(nclr);
 							}
 						}
 						free(path);
@@ -2044,8 +2032,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 					case ID_MENU_ANIMATEPALETTE:
 					{
-						data->tempPalette = (COLOR *) calloc(data->nclr.nColors, sizeof(COLOR));
-						memcpy(data->tempPalette, data->nclr.colors, data->nclr.nColors * sizeof(COLOR));
+						data->tempPalette = (COLOR *) calloc(data->nclr->nColors, sizeof(COLOR));
+						memcpy(data->tempPalette, data->nclr->colors, data->nclr->nColors * sizeof(COLOR));
 
 						int selStart = min(data->selStart, data->selEnd);
 						int selEnd = max(data->selStart, data->selEnd);
@@ -2056,15 +2044,15 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						int n = SelectPaletteOperation(palOp);
 						data->palOpDialog = 0;
 
-						memcpy(data->nclr.colors, data->tempPalette, data->nclr.nColors * sizeof(COLOR));
+						memcpy(data->nclr->colors, data->tempPalette, data->nclr->nColors * sizeof(COLOR));
 						free(data->tempPalette);
 						data->tempPalette = NULL;
 
 						//apply modifier
 						if (n) {
-							COLOR *cpy = (COLOR *) calloc(data->nclr.nColors, sizeof(COLOR));
-							PalopRunOperation(data->nclr.colors, cpy, data->nclr.nColors, palOp);
-							memcpy(data->nclr.colors, cpy, data->nclr.nColors * sizeof(COLOR));
+							COLOR *cpy = (COLOR *) calloc(data->nclr->nColors, sizeof(COLOR));
+							PalopRunOperation(data->nclr->colors, cpy, data->nclr->nColors, palOp);
+							memcpy(data->nclr->colors, cpy, data->nclr->nColors * sizeof(COLOR));
 							free(cpy);
 						}
 						PalViewerUpdateViewers(data, PALVIEWER_UPDATE_CHAR | PALVIEWER_UPDATE_CELL | PALVIEWER_UPDATE_SCREEN);
@@ -2096,9 +2084,9 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			switch (cc) {
 				case VK_DELETE:
 				{
-					for (int i = 0; i < data->nclr.nColors; i++) {
+					for (int i = 0; i < data->nclr->nColors; i++) {
 						if (!PalViewerIndexInSelection(data, i)) continue;
-						data->nclr.colors[i] = 0;
+						data->nclr->colors[i] = 0;
 					}
 					InvalidateRect(hWnd, NULL, FALSE);
 					PalViewerUpdateViewers(data, PALVIEWER_UPDATE_CHAR | PALVIEWER_UPDATE_CELL | PALVIEWER_UPDATE_SCREEN);
@@ -2142,7 +2130,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
 
 			//compute defaults
-			int depth = data->nclr.nBits, baseIndex = data->selStart;
+			int depth = data->nclr->nBits, baseIndex = data->selStart;
 			int selSize = PalViewerGetSelectionSize(data);
 
 			HWND hWndNcgrViewer = PalViewerGetAssociatedWindow(data, FILE_TYPE_CHARACTER);
@@ -2205,7 +2193,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 				BOOL reserveFirst = GetCheckboxChecked(data->hWndReserve);
 
 				//create palette copy
-				int nTotalColors = data->nclr.nColors;
+				int nTotalColors = data->nclr->nColors;
 				int index = data->contextHoverX + data->contextHoverY * 16;
 				COLOR32 *paletteCopy = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
 
@@ -2333,22 +2321,22 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 				int size = PalViewerGetSelectionSize(nclrViewerData);
 				if (mode == 0) {
 					//single color
-					for (int i = 0; i < nclrViewerData->nclr.nColors; i++) {
+					for (int i = 0; i < nclrViewerData->nclr->nColors; i++) {
 						if (PalViewerIndexInSelection(nclrViewerData, i)) {
-							nclrViewerData->nclr.colors[i] = ColorConvertToDS(col1);
+							nclrViewerData->nclr->colors[i] = ColorConvertToDS(col1);
 						}
 					}
 				} else if (mode == 1) {
 					//gradient
 					unsigned int j = 0;
-					for (int i = 0; i < nclrViewerData->nclr.nColors; i++) {
+					for (int i = 0; i < nclrViewerData->nclr->nColors; i++) {
 						if (PalViewerIndexInSelection(nclrViewerData, i)) {
 							//interpolate
 							unsigned int r = ((((col1 >>  0) & 0xFF) * (size - 1 - j) + ((col2 >>  0) & 0xFF) * j) * 2 + size - 1) / (2 * (size - 1));
 							unsigned int g = ((((col1 >>  8) & 0xFF) * (size - 1 - j) + ((col2 >>  8) & 0xFF) * j) * 2 + size - 1) / (2 * (size - 1));
 							unsigned int b = ((((col1 >> 16) & 0xFF) * (size - 1 - j) + ((col2 >> 16) & 0xFF) * j) * 2 + size - 1) / (2 * (size - 1));
 
-							nclrViewerData->nclr.colors[i] = ColorConvertToDS(r | (g << 8) | (b << 16));
+							nclrViewerData->nclr->colors[i] = ColorConvertToDS(r | (g << 8) | (b << 16));
 							j++;
 						}
 					}
@@ -2371,13 +2359,13 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 
 
 static int PalViewerIsPaletteEmpty(NCLRVIEWERDATA *data, unsigned int n) {
-	unsigned int nColsPalette = 1 << data->nclr.nBits;
+	unsigned int nColsPalette = 1 << data->nclr->nBits;
 
 	for (unsigned int j = 0; j < nColsPalette; j++) {
 		unsigned int colI = (n * nColsPalette) + j;
-		if (colI >= (unsigned int) data->nclr.nColors) break;
+		if (colI >= (unsigned int) data->nclr->nColors) break;
 
-		COLOR c = data->nclr.colors[colI];
+		COLOR c = data->nclr->colors[colI];
 		if (c) {
 			//nonzero color
 			return 0;
@@ -2399,10 +2387,10 @@ static uint16_t PalViewerGetPaletteEmptyBitmap(NCLRVIEWERDATA *data) {
 }
 
 static void PalViewerSetCompressedPaletteSettings(NCLRVIEWERDATA *data, BOOL enabled, uint16_t newSelection) {
-	unsigned int nColsPalette = 1 << data->nclr.nBits;
+	unsigned int nColsPalette = 1 << data->nclr->nBits;
 
 	//get old setting
-	int wasEnabled = data->nclr.compressedPalette;
+	int wasEnabled = data->nclr->compressedPalette;
 
 	uint16_t oldSelection = PalViewerGetPaletteEmptyBitmap(data);
 
@@ -2411,7 +2399,7 @@ static void PalViewerSetCompressedPaletteSettings(NCLRVIEWERDATA *data, BOOL ena
 
 	//if the compressed palette was enabled and is no longer, we will just disable the compresed palette flag.
 	if (wasEnabled && !enabled) {
-		data->nclr.compressedPalette = 0;
+		data->nclr->compressedPalette = 0;
 		return;
 	}
 
@@ -2429,8 +2417,8 @@ static void PalViewerSetCompressedPaletteSettings(NCLRVIEWERDATA *data, BOOL ena
 
 		//copy to i from iSrc
 		for (unsigned int j = 0; j < nColsPalette; j++) {
-			if ((iSrc * nColsPalette + j) >= (unsigned int) data->nclr.nColors) break;
-			newbuf[i * nColsPalette + j] = data->nclr.colors[iSrc * nColsPalette + j];
+			if ((iSrc * nColsPalette + j) >= (unsigned int) data->nclr->nColors) break;
+			newbuf[i * nColsPalette + j] = data->nclr->colors[iSrc * nColsPalette + j];
 		}
 
 		//increment source index
@@ -2438,10 +2426,10 @@ static void PalViewerSetCompressedPaletteSettings(NCLRVIEWERDATA *data, BOOL ena
 	}
 
 	//update palette
-	free(data->nclr.colors);
-	data->nclr.colors = newbuf;
-	data->nclr.nColors = 16 * nColsPalette;
-	data->nclr.compressedPalette = 1;
+	free(data->nclr->colors);
+	data->nclr->colors = newbuf;
+	data->nclr->nColors = 16 * nColsPalette;
+	data->nclr->compressedPalette = 1;
 }
 
 static LRESULT CALLBACK EditCompressedPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2453,7 +2441,7 @@ static LRESULT CALLBACK EditCompressedPaletteWndProc(HWND hWnd, UINT msg, WPARAM
 			data = (NCLRVIEWERDATA *) lParam;
 			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
 
-			data->hWndEditCompressionCheckbox = CreateCheckbox(hWnd, L"Use Compressed Palette", 10, 10, 150, 22, data->nclr.compressedPalette);
+			data->hWndEditCompressionCheckbox = CreateCheckbox(hWnd, L"Use Compressed Palette", 10, 10, 150, 22, data->nclr->compressedPalette);
 			data->hWndEditCompressionList = CreateCheckedListView(hWnd, 10, 37, 200, 200);
 			data->hWndEditCompressionOK = CreateButton(hWnd, L"OK", 110, 242, 100, 22, TRUE);
 
@@ -2465,7 +2453,7 @@ static LRESULT CALLBACK EditCompressedPaletteWndProc(HWND hWnd, UINT msg, WPARAM
 			}
 
 			//if compressed palette is not used, then disable the palette list.
-			if (!data->nclr.compressedPalette) {
+			if (!data->nclr->compressedPalette) {
 				EnableWindow(data->hWndEditCompressionList, FALSE);
 				UpdateWindow(data->hWndEditCompressionList);
 			}
@@ -2542,7 +2530,7 @@ void RegisterNclrViewerClass(void) {
 	PalViewerRegisterEditCompressedPaletteClass();
 }
 
-HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
+static HWND CreateNclrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NCLR *nclr) {
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
 		RECT rc = { 0 };
 		rc.right = width;
@@ -2553,25 +2541,21 @@ HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 	}
 
 	HWND hWnd = EditorCreate(L"NclrViewerClass", x, y, width, height, hWndParent);
-	if (!SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, 0)) {
-		DestroyWindow(hWnd);
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) nclr);
 	return hWnd;
 }
 
-HWND CreateNclrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCLR *nclr) {
-	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
-		RECT rc = { 0 };
-		rc.right = width;
-		rc.bottom = height;
-		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4;
+HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
+	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
+	if (PalReadFile(nclr, path)) {
+		free(nclr);
+		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
+		return NULL;
 	}
 
-	HWND hWnd = EditorCreate(L"NclrViewerClass", x, y, width, height, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, (WPARAM) nclr, 0);
-	return hWnd;
+	return CreateNclrViewerInternal(x, y, width, height, hWndParent, path, nclr);
+}
+
+HWND CreateNclrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCLR *nclr) {
+	return CreateNclrViewerInternal(x, y, width, height, hWndParent, NULL, nclr);
 }

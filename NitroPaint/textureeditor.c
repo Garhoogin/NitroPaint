@@ -134,12 +134,13 @@ static void TexViewerExportTextureImage(LPCWSTR path, TEXTURE *texture) {
 }
 
 static void TexViewerUpdatePaletteLabel(HWND hWnd) {
-	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
+	if (data->texture == NULL) return;
 
 	WCHAR bf[32];
 	int len;
-	if (data->texture.texture.palette.nColors) {
-		len = wsprintfW(bf, L"Palette: %d colors", data->texture.texture.palette.nColors);
+	if (data->texture->texture.palette.nColors) {
+		len = wsprintfW(bf, L"Palette: %d colors", data->texture->texture.palette.nColors);
 		data->hasPalette = TRUE;
 	} else {
 		len = wsprintfW(bf, L"No palette");
@@ -147,15 +148,15 @@ static void TexViewerUpdatePaletteLabel(HWND hWnd) {
 	}
 	SendMessage(data->hWndPaletteLabel, WM_SETTEXT, len, (LPARAM) bf);
 
-	len = wsprintfW(bf, L"Format: %S", TxNameFromTexFormat(FORMAT(data->texture.texture.texels.texImageParam)));
+	len = wsprintfW(bf, L"Format: %S", TxNameFromTexFormat(FORMAT(data->texture->texture.texels.texImageParam)));
 	SendMessage(data->hWndFormatLabel, WM_SETTEXT, len, (LPARAM) bf);
 
 	int nColors = ImgCountColors(data->px, data->width * data->height);
 	len = wsprintfW(bf, L"Colors: %d", nColors);
 	SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) bf);
 
-	int texelVram = TxGetTextureVramSize(&data->texture.texture.texels);
-	int paletteVram = TxGetTexPlttVramSize(&data->texture.texture.palette);
+	int texelVram = TxGetTextureVramSize(&data->texture->texture.texels);
+	int paletteVram = TxGetTexPlttVramSize(&data->texture->texture.palette);
 	
 	//this code is ugly due to being unable to just use %.2f
 	len = wsprintfW(bf, L"Texel: %d.%d%dKB", texelVram / 1024, (texelVram * 10 / 1024) % 10,
@@ -298,7 +299,7 @@ static LRESULT TexViewerOnSize(TEXTUREEDITORDATA *data, WPARAM wParam, LPARAM lP
 static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int notification) {
 	HWND hWnd = data->hWnd;
 	if (hWndControl == data->hWndEditPalette) {
-		int format = FORMAT(data->texture.texture.texels.texImageParam);
+		int format = FORMAT(data->texture->texture.texels.texImageParam);
 		if (format == CT_DIRECT || format == 0) {
 			MessageBox(hWnd, L"No palette for this texture.", L"No palette", MB_ICONERROR);
 		} else {
@@ -328,7 +329,7 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 		if (ntftPath == NULL) return;
 
 		LPWSTR ntfiPath = NULL;
-		if (FORMAT(data->texture.texture.texels.texImageParam) == CT_4x4) {
+		if (FORMAT(data->texture->texture.texels.texImageParam) == CT_4x4) {
 			ntfiPath = saveFileDialog(hWndMain, L"Save NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0\0", L"ntfi");
 			if (ntfiPath == NULL) {
 				free(ntftPath);
@@ -337,24 +338,24 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 		}
 
 		DWORD dwWritten;
-		int texImageParam = data->texture.texture.texels.texImageParam;
-		int texelSize = TxGetTexelSize(TEXW(texImageParam), data->texture.texture.texels.height, texImageParam);
+		int texImageParam = data->texture->texture.texels.texImageParam;
+		int texelSize = TxGetTexelSize(TEXW(texImageParam), data->texture->texture.texels.height, texImageParam);
 		HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, data->texture.texture.texels.texel, texelSize, &dwWritten, NULL);
+		WriteFile(hFile, data->texture->texture.texels.texel, texelSize, &dwWritten, NULL);
 		CloseHandle(hFile);
 		free(ntftPath);
 
 		if (ntfiPath != NULL) {
 			hFile = CreateFile(ntfiPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-			WriteFile(hFile, data->texture.texture.texels.cmp, texelSize / 2, &dwWritten, NULL);
+			WriteFile(hFile, data->texture->texture.texels.cmp, texelSize / 2, &dwWritten, NULL);
 			CloseHandle(hFile);
 			free(ntfiPath);
 		}
 
 		//palette export
-		if (data->texture.texture.palette.pal != NULL) {
-			COLOR *colors = data->texture.texture.palette.pal;
-			int nColors = data->texture.texture.palette.nColors;
+		if (data->texture->texture.palette.pal != NULL) {
+			COLOR *colors = data->texture->texture.palette.pal;
+			int nColors = data->texture->texture.palette.nColors;
 
 			LPWSTR ntfpPath = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
 			if (ntfpPath == NULL) return;
@@ -372,11 +373,11 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
 	//texture format
 	int fmt = 0;
-	if (data->isNitro) fmt = FORMAT(data->texture.texture.texels.texImageParam);
+	if (data->isNitro) fmt = FORMAT(data->texture->texture.texels.texImageParam);
 
 	//color-0 transparency
 	int c0xp = 0;
-	if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && COL0TRANS(data->texture.texture.texels.texImageParam)) c0xp = 1;
+	if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && COL0TRANS(data->texture->texture.texels.texImageParam)) c0xp = 1;
 
 	//if the texture is not converted or is direct/4x4, we will copy a direct color bitmap.
 	if (!data->isNitro || fmt == CT_DIRECT || fmt == CT_4x4) {
@@ -386,8 +387,8 @@ static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
 
 	//we will write an indexed color bitmap. 
 	COLOR32 pltbuf[256] = { 0 };
-	for (int i = 0; i < data->texture.texture.palette.nColors && i < 0x100; i++) {
-		COLOR32 c = ColorConvertFromDS(data->texture.texture.palette.pal[i]);
+	for (int i = 0; i < data->texture->texture.palette.nColors && i < 0x100; i++) {
+		COLOR32 c = ColorConvertFromDS(data->texture->texture.palette.pal[i]);
 
 		//set alpha bits (except color 0 of a c0xp-marked palette)
 		if (i > 0 || !c0xp) c |= 0xFF000000;
@@ -417,20 +418,20 @@ static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
 	if (fmt == CT_4COLOR) nBpp = 2;
 	if (fmt == CT_16COLOR) nBpp = 4;
 
-	unsigned int width = TEXW(data->texture.texture.texels.texImageParam);
-	unsigned int height = TEXH(data->texture.texture.texels.texImageParam);
+	unsigned int width = TEXW(data->texture->texture.texels.texImageParam);
+	unsigned int height = TEXH(data->texture->texture.texels.texImageParam);
 	unsigned char *bmp = (unsigned char *) calloc(width * height, sizeof(char));
 
 	unsigned int nPltt = 256;
 	if (nBpp == 8) {
 		//copy direct
-		memcpy(bmp, data->texture.texture.texels.texel, width * height);
+		memcpy(bmp, data->texture->texture.texels.texel, width * height);
 	} else {
 		//copy with bit conversion
 		unsigned int pxPerByte = 8 / nBpp;
 		unsigned int pxMask = (1 << nBpp) - 1;
 		for (unsigned int i = 0; i < width * height; i++) {
-			bmp[i] = (data->texture.texture.texels.texel[i / pxPerByte] >> ((i % pxPerByte) * nBpp)) & pxMask;
+			bmp[i] = (data->texture->texture.texels.texel[i / pxPerByte] >> ((i % pxPerByte) * nBpp)) & pxMask;
 		}
 
 		if (nPltt >= (1u << nBpp)) nPltt = 1u << nBpp;
@@ -476,7 +477,7 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 
 			//if texture is in DS format, export from texture data
 			if (data->isNitro) {
-				TexViewerExportTextureImage(path, &data->texture.texture);
+				TexViewerExportTextureImage(path, &data->texture->texture);
 			} else {
 				ImgWrite(data->px, data->width, data->height, path);
 			}
@@ -522,7 +523,9 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			break;
 		case NV_INITIALIZE:
 		{
-			TxInit(&data->texture, TEXTURE_TYPE_NNSTGA);
+			data->texture = (TextureObject *) calloc(1, sizeof(TextureObject));
+
+			TxInit(data->texture, TEXTURE_TYPE_NNSTGA);
 			data->width = wParam & 0xFFFF;
 			data->height = (wParam >> 16) & 0xFFFF;
 			data->px = (COLOR32 *) lParam;
@@ -533,12 +536,12 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->ted.tilesY = data->height / 4;
 
 			//check: is it a Nitro TGA?
-			if (!TxReadFile(&data->texture, data->szInitialFile)) {
-				int format = FORMAT(data->texture.texture.texels.texImageParam);
+			if (!TxReadFile(data->texture, data->szInitialFile)) {
+				int format = FORMAT(data->texture->texture.texels.texImageParam);
 				EditorSetFile(hWnd, data->szInitialFile);
 				data->hasPalette = (format != CT_DIRECT && format != 0);
 				data->isNitro = 1;
-				TxRender(data->px, data->width, data->height, &data->texture.texture.texels, &data->texture.texture.palette, 0);
+				TxRender(data->px, data->width, data->height, &data->texture->texture.texels, &data->texture->texture.palette, 0);
 				TexViewerUpdatePaletteLabel(hWnd);
 			}
 
@@ -555,7 +558,7 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		{
 			//set texture data directly
 			TextureObject *texture = (TextureObject *) lParam;
-			memcpy(&data->texture, texture, sizeof(TextureObject));
+			data->texture = texture;
 			data->isNitro = 1;
 			data->hasPalette = FORMAT(texture->texture.texels.texImageParam) != CT_DIRECT;
 			data->width = TEXW(texture->texture.texels.texImageParam);
@@ -835,7 +838,7 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 			HDC hDC = BeginPaint(hWnd, &ps);
 			
 			if(hWndTextureEditor != NULL)
-				PaintTextureTileEditor(hDC, &data->texture.texture, tileX, tileY, data->selectedColor, data->selectedAlpha);
+				PaintTextureTileEditor(hDC, &data->texture->texture, tileX, tileY, data->selectedColor, data->selectedAlpha);
 
 			EndPaint(hWnd, &ps);
 			break;
@@ -844,7 +847,7 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 		{
 			SetWindowSize(hWnd, 398, 260);
 
-			TEXELS *texels = &data->texture.texture.texels;
+			TEXELS *texels = &data->texture->texture.texels;
 			int format = FORMAT(texels->texImageParam);
 			if (format == CT_4x4) {
 				data->hWndInterpolate = CreateCheckbox(hWnd, L"Interpolate", 5, 133, 100, 22, FALSE);
@@ -868,7 +871,7 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 		{
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl != NULL) {
-				TEXELS *texels = &data->texture.texture.texels;
+				TEXELS *texels = &data->texture->texture.texels;
 				int width = TEXW(texels->texImageParam);
 				int tilesX = width / 4;
 				uint16_t *pIdx = &texels->cmp[tileX + tileY * tilesX];
@@ -877,18 +880,18 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 				if (notification == BN_CLICKED && hWndControl == data->hWndTransparent) {
 					int state = GetCheckboxChecked(hWndControl);
 					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
-					TxRender(data->px, data->width, data->height, texels, &data->texture.texture.palette, 0);
+					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette, 0);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
 					int state = GetCheckboxChecked(hWndControl);
 					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
-					TxRender(data->px, data->width, data->height, texels, &data->texture.texture.palette, 0);
+					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette, 0);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndPaletteBase) {
 					*pIdx = ((*pIdx) & 0xC000) | (GetEditNumber(hWndControl) & 0x3FFF);
-					TxRender(data->px, data->width, data->height, texels, &data->texture.texture.palette, 0);
+					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette, 0);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
@@ -913,8 +916,8 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 		{
 			if (!data->tileMouseDown) break;
 
-			TEXELS *texels = &data->texture.texture.texels;
-			PALETTE *palette = &data->texture.texture.palette;
+			TEXELS *texels = &data->texture->texture.texels;
+			PALETTE *palette = &data->texture->texture.palette;
 			int format = FORMAT(texels->texImageParam);
 			int width = TEXW(texels->texImageParam);
 
@@ -967,7 +970,7 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 						}
 					}
 				}
-				TxRender(data->px, data->width, data->height, texels, &data->texture.texture.palette, 0);
+				TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette, 0);
 				InvalidateRect(data->hWnd, NULL, FALSE);
 				InvalidateRect(hWnd, NULL, FALSE);
 			} else if (pt.x >= 138 && pt.y >= 0) { //select palette/alpha
@@ -1037,7 +1040,7 @@ static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 
 			int x = data->ted.hoverX;
 			int y = data->ted.hoverY;
-			int texImageParam = data->texture.texture.texels.texImageParam;
+			int texImageParam = data->texture->texture.texels.texImageParam;
 			if (x >= 0 && y >= 0 && x < data->ted.tilesX && y < data->ted.tilesY) {
 				HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 				
@@ -1372,7 +1375,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			WCHAR *pname = NULL;
 			if (data->isNitro) {
 				//fill existing palette name
-				pname = TexNarrowResourceNameToWideChar(data->texture.texture.palette.name);
+				pname = TexNarrowResourceNameToWideChar(data->texture->texture.palette.name);
 			} else {
 				//generate a palette name
 				pname = (WCHAR *) calloc(16, sizeof(WCHAR));
@@ -1507,7 +1510,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					params.balance = balance.balance;
 					params.colorBalance = balance.colorBalance;
 					params.enhanceColors = balance.enhanceColors;
-					params.dest = &data->texture.texture;
+					params.dest = &data->texture->texture;
 					params.fixedPalette = fixedPalette ? paletteFile.colors : NULL;
 					params.pnam = TexNarrowResourceNameFromWideChar(bf);
 
@@ -1528,8 +1531,8 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					//if the format is paletteN, we have not used fixed palette, color 0 was transparent and we used alpha keying, put 
 					//the alpha key into color index 0.
 					if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && params.c0xp && useAlphaKey && !fixedPalette) {
-						if (data->texture.texture.palette.nColors > 0) {
-							data->texture.texture.palette.pal[0] = ColorConvertToDS(data->alphaKey);
+						if (data->texture->texture.palette.nColors > 0) {
+							data->texture->texture.palette.pal[0] = ColorConvertToDS(data->alphaKey);
 						}
 					}
 
@@ -1630,7 +1633,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		{
 			data->data = (TEXTUREEDITORDATA *) lParam;
 			data->frameData.contentWidth = 256;
-			data->frameData.contentHeight = ((data->data->texture.texture.palette.nColors + 15) / 16) * 16;
+			data->frameData.contentHeight = ((data->data->texture->texture.palette.nColors + 15) / 16) * 16;
 			data->hoverX = -1;
 			data->hoverY = -1;
 			data->hoverIndex = -1;
@@ -1679,8 +1682,8 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			HPEN hRowPen = CreatePen(PS_SOLID, 1, RGB(127, 127, 127));
 			HPEN hWhitePen = GetStockObject(WHITE_PEN);
 
-			COLOR *palette = data->data->texture.texture.palette.pal;
-			int nColors = data->data->texture.texture.palette.nColors;
+			COLOR *palette = data->data->texture->texture.palette.pal;
+			int nColors = data->data->texture->texture.palette.nColors;
 			for (int i = 0; i < nColors; i++) {
 				int x = i & 0xF, y = i >> 4;
 
@@ -1747,7 +1750,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			mousePos.x += horiz.nPos;
 			mousePos.y += vert.nPos;
 
-			int nRows = (data->data->texture.texture.palette.nColors + 15) / 16;
+			int nRows = (data->data->texture->texture.palette.nColors + 15) / 16;
 
 			int hoverX = -1, hoverY = -1, hoverIndex = -1;
 			if (mousePos.x >= 0 && mousePos.x < 256 && mousePos.y >= 0) {
@@ -1784,10 +1787,10 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			int x = pos.x / 16, y = pos.y / 16;
 			if (x < 16) {
 				int index = y * 16 + x;
-				if (index < data->data->texture.texture.palette.nColors) {
+				if (index < data->data->texture->texture.palette.nColors) {
 					//if left click, open color editor dialogue.
 					if (msg == WM_LBUTTONDOWN) {
-						COLOR c = data->data->texture.texture.palette.pal[index];
+						COLOR c = data->data->texture->texture.palette.pal[index];
 						DWORD ex = ColorConvertFromDS(c);
 
 						HWND hWndMain = data->data->editorMgr->hWnd;
@@ -1802,12 +1805,12 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
 						if (ChooseColorFunction(&cc)) {
 							DWORD result = cc.rgbResult;
-							data->data->texture.texture.palette.pal[index] = ColorConvertToDS(result);
+							data->data->texture->texture.palette.pal[index] = ColorConvertToDS(result);
 							InvalidateRect(hWnd, NULL, FALSE);
 
 							TxRender(data->data->px, data->data->width, data->data->height, 
-								&data->data->texture.texture.texels, &data->data->texture.texture.palette, 0);
-							int param = data->data->texture.texture.texels.texImageParam;
+								&data->data->texture->texture.texels, &data->data->texture->texture.palette, 0);
+							int param = data->data->texture->texture.texels.texImageParam;
 							int width = TEXW(param);
 							int height = 8 << ((param >> 23) & 7);
 							
@@ -1834,13 +1837,13 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					case ID_PALETTEMENU_PASTE:
 					{
 						int offset = data->contextHoverIndex & (~15);
-						int maxOffset = data->data->texture.texture.palette.nColors;
+						int maxOffset = data->data->texture->texture.palette.nColors;
 
 						OpenClipboard(hWnd);
-						PastePalette(data->data->texture.texture.palette.pal + offset, maxOffset - offset);
+						PastePalette(data->data->texture->texture.palette.pal + offset, maxOffset - offset);
 						CloseClipboard();
 
-						TEXTURE *texture = &data->data->texture.texture;
+						TEXTURE *texture = &data->data->texture->texture;
 						TxRender(data->data->px, data->data->width, data->data->height, &texture->texels, &texture->palette, 0);
 						
 						InvalidateRect(hWnd, NULL, FALSE);
@@ -1851,7 +1854,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					{
 						int offset = data->contextHoverIndex & (~15);
 						int length = 16;
-						int maxOffset = data->data->texture.texture.palette.nColors;
+						int maxOffset = data->data->texture->texture.palette.nColors;
 						if (offset + length >= maxOffset) {
 							length = maxOffset - offset;
 							if (length < 0) length = 0;
@@ -1859,15 +1862,15 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 						OpenClipboard(hWnd);
 						EmptyClipboard();
-						CopyPalette(data->data->texture.texture.palette.pal + offset, length);
+						CopyPalette(data->data->texture->texture.palette.pal + offset, length);
 						CloseClipboard();
 						break;
 					}
 					case ID_FILE_EXPORT:
 					{
 						//export as NTFP
-						COLOR *colors = data->data->texture.texture.palette.pal;
-						int nColors = data->data->texture.texture.palette.nColors;
+						COLOR *colors = data->data->texture->texture.palette.pal;
+						int nColors = data->data->texture->texture.palette.nColors;
 
 						HWND hWndMain = data->data->editorMgr->hWnd;
 						LPWSTR path = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
@@ -2727,10 +2730,10 @@ HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, L
 		SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
 		SendMessage(h, NV_INITIALIZE, bWidth | (bHeight << 16), (LPARAM) bits);
 	} else {
-		TextureObject texture = { 0 };
-		TxReadFile(&texture, path);
+		TextureObject *texture = (TextureObject *) calloc(1, sizeof(TextureObject));
+		TxReadFile(texture, path);
 		SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
-		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) &texture);
+		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) texture);
 		EditorSetFile(h, path);
 	}
 	return h;

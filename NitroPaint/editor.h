@@ -71,7 +71,7 @@ typedef struct EDITOR_DATA_ {
 	EDITOR_BASIC_MEMBERS;
 
 	//first part of file object info
-	OBJECT_HEADER file;
+	OBJECT_HEADER *file;
 
 	//after here may vary...
 } EDITOR_DATA;

@@ -8,7 +8,7 @@
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
-	NMCR nmcr;
+	NMCR *nmcr;
 	int multiCell;
 	int frame;
 	int *frameTimes;   //time currently spent on the current frame of each sequence

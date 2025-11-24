@@ -9,7 +9,7 @@
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
-	TextureObject texture;
+	TextureObject *texture;
 
 	TedData ted;
 

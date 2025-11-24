@@ -7,7 +7,7 @@
 
 typedef struct NFTRVIEWERDATA_ {
 	EDITOR_BASIC_MEMBERS;
-	NFTR nftr;
+	NFTR *nftr;
 	TedData ted;
 	UiCtlManager mgr;            // UI manager
 

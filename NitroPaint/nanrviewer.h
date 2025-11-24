@@ -21,7 +21,7 @@ typedef struct AnmTransSrt_ {
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
-	NANR nanr;
+	NANR *nanr;
 
 	UiCtlManager mgr;            // UI control manager
 	FrameBuffer fb;              // rendering frame buffer

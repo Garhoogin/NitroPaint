@@ -172,7 +172,7 @@ static OBJECT_HEADER *AnmViewerGetAssociatedObject(NANRVIEWERDATA *data, int typ
 	EDITOR_DATA *ed = EditorGetData(hWndEditor);
 	if (ed == NULL) return NULL;
 
-	return &ed->file;
+	return ed->file;
 }
 
 // ----- transformation calculation routines
@@ -806,7 +806,7 @@ static void AnmViewerSetCurrentFrame(NANRVIEWERDATA *data, int frm, BOOL updateL
 }
 
 static void AnmViewerSetCurrentSequence(NANRVIEWERDATA *data, int seq, BOOL updateList) {
-	if (seq < 0 || seq >= data->nanr.nSequences || seq == data->currentAnim) return;
+	if (seq < 0 || seq >= data->nanr->nSequences || seq == data->currentAnim) return;
 
 	//update list
 	if (updateList) {
@@ -816,12 +816,12 @@ static void AnmViewerSetCurrentSequence(NANRVIEWERDATA *data, int seq, BOOL upda
 
 	//set item count of frame list
 	if (data->hWndFrameList != NULL) {
-		ListView_SetItemCount(data->hWndFrameList, data->nanr.sequences[seq].nFrames);
+		ListView_SetItemCount(data->hWndFrameList, data->nanr->sequences[seq].nFrames);
 		InvalidateRect(data->hWndFrameList, NULL, FALSE);
 	}
 
 	//set frame type
-	SendMessage(data->hWndPlayMode, CB_SETCURSEL, data->nanr.sequences[seq].mode - NANR_SEQ_MODE_FORWARD, 0);
+	SendMessage(data->hWndPlayMode, CB_SETCURSEL, data->nanr->sequences[seq].mode - NANR_SEQ_MODE_FORWARD, 0);
 
 	//set state
 	data->currentAnim = seq;
@@ -834,12 +834,12 @@ static void AnmViewerSetCurrentSequence(NANRVIEWERDATA *data, int seq, BOOL upda
 // ----- core routines
 
 static NANR_SEQUENCE *AnmViewerGetCurrentSequence(NANRVIEWERDATA *data) {
-	if (data->currentAnim < 0 || data->currentAnim >= data->nanr.nSequences) return NULL;
-	return &data->nanr.sequences[data->currentAnim];
+	if (data->currentAnim < 0 || data->currentAnim >= data->nanr->nSequences) return NULL;
+	return &data->nanr->sequences[data->currentAnim];
 }
 
 static int AnmViewerGetAnimFrame(NANRVIEWERDATA *data, int iSeq, int iFrm, ANIM_DATA_SRT *pFrame, int *pDuration) {
-	return AnmGetAnimFrame(&data->nanr, iSeq, iFrm, pFrame, pDuration);
+	return AnmGetAnimFrame(data->nanr, iSeq, iFrm, pFrame, pDuration);
 }
 
 static int AnmViewerGetCurrentAnimFrame(NANRVIEWERDATA *data, ANIM_DATA_SRT *pFrame, int *pDuration) {
@@ -1042,13 +1042,13 @@ static void AnmViewerDeleteCurrentSequence(NANRVIEWERDATA *data) {
 
 	//remove
 	int i = data->currentAnim;
-	memmove(&data->nanr.sequences[i], &data->nanr.sequences[i + 1], (data->nanr.nSequences - 1 - i) * sizeof(NANR_SEQUENCE));
-	data->nanr.nSequences--;
-	data->nanr.sequences = (NANR_SEQUENCE *) realloc(data->nanr.sequences, data->nanr.nSequences * sizeof(NANR_SEQUENCE));
-	ListView_SetItemCount(data->hWndAnimList, data->nanr.nSequences);
+	memmove(&data->nanr->sequences[i], &data->nanr->sequences[i + 1], (data->nanr->nSequences - 1 - i) * sizeof(NANR_SEQUENCE));
+	data->nanr->nSequences--;
+	data->nanr->sequences = (NANR_SEQUENCE *) realloc(data->nanr->sequences, data->nanr->nSequences * sizeof(NANR_SEQUENCE));
+	ListView_SetItemCount(data->hWndAnimList, data->nanr->nSequences);
 
 	//update current
-	if (i >= data->nanr.nSequences) i--;
+	if (i >= data->nanr->nSequences) i--;
 	if (i < 0) i++;
 	AnmViewerSetCurrentSequence(data, i, TRUE);
 	AnmViewerSetDefaultAnchor(data);
@@ -1126,11 +1126,11 @@ static void AnmViewerCmdOnNewSequence(HWND hWnd, HWND hWndCtl, int notif, void *
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) param;
 
 	//create a new sequence.
-	data->nanr.nSequences++;
-	data->nanr.sequences = (NANR_SEQUENCE *) realloc(data->nanr.sequences, data->nanr.nSequences * sizeof(NANR_SEQUENCE));
+	data->nanr->nSequences++;
+	data->nanr->sequences = (NANR_SEQUENCE *) realloc(data->nanr->sequences, data->nanr->nSequences * sizeof(NANR_SEQUENCE));
 
 	//defaults
-	NANR_SEQUENCE *dest = &data->nanr.sequences[data->nanr.nSequences - 1];
+	NANR_SEQUENCE *dest = &data->nanr->sequences[data->nanr->nSequences - 1];
 	dest->mode = NANR_SEQ_MODE_FORWARD_LOOP;
 	dest->type = NANR_SEQ_TYPE_INDEX_SRT | (NANR_SEQ_TYPE_CELL << 16);
 	dest->nFrames = 1;
@@ -1144,8 +1144,8 @@ static void AnmViewerCmdOnNewSequence(HWND hWnd, HWND hWndCtl, int notif, void *
 	srt->sx = FX32_ONE;
 	srt->sy = FX32_ONE;
 
-	ListView_SetItemCount(data->hWndAnimList, data->nanr.nSequences);
-	AnmViewerSetCurrentSequence(data, data->nanr.nSequences - 1, TRUE);
+	ListView_SetItemCount(data->hWndAnimList, data->nanr->nSequences);
+	AnmViewerSetCurrentSequence(data, data->nanr->nSequences - 1, TRUE);
 }
 
 static void AnmViewerCmdOnToggleForceAffine(HWND hWnd, HWND hWndCtl, int notif, void *param) {
@@ -1322,7 +1322,7 @@ static void AnmViewerOnInitialize(NANRVIEWERDATA *data, NANR *nanr, LPCWSTR path
 	}
 
 	//own data
-	memcpy(&data->nanr, nanr, sizeof(NANR));
+	data->nanr = nanr;
 
 	data->frameData.contentWidth = 512 * data->scale;
 	data->frameData.contentHeight = 256 * data->scale;
@@ -1333,7 +1333,7 @@ static void AnmViewerOnInitialize(NANRVIEWERDATA *data, NANR *nanr, LPCWSTR path
 	SendMessage(data->hWndAnimList, WM_SETREDRAW, 0, 0);
 
 	//set item count
-	ListView_SetItemCount(data->hWndAnimList, data->nanr.nSequences);
+	ListView_SetItemCount(data->hWndAnimList, data->nanr->nSequences);
 
 	//init imagelist count
 	HIMAGELIST himl = ListView_GetImageList(data->hWndAnimList, LVSIL_NORMAL);
@@ -1441,7 +1441,7 @@ static LRESULT AnmViewerOnNotify(NANRVIEWERDATA *data, WPARAM wParam, LPNMHDR hd
 						wsprintfW(data->listviewItemBuffers[0], L"[%d] Sequence %d", di->item.iItem, di->item.iItem);
 						di->item.pszText = data->listviewItemBuffers[0];
 					} else {
-						wsprintfW(data->listviewItemBuffers[1], L"%d frames", data->nanr.sequences[di->item.iItem]);
+						wsprintfW(data->listviewItemBuffers[1], L"%d frames", data->nanr->sequences[di->item.iItem]);
 						di->item.pszText = data->listviewItemBuffers[1];
 					}
 				}
@@ -2683,20 +2683,21 @@ void RegisterNanrViewerClass(void) {
 	RegisterGenericClass(L"NanrInterpClass", AnmViweerInterpProc, sizeof(void *));
 }
 
-HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NANR nanr;
-	int n = AnmReadFile(&nanr, path);
-	if (n) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
+static HWND CreateNanrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NANR *nanr) {
 	HWND h = EditorCreate(L"NanrViewerClass", x, y, width, height, hWndParent);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nanr);
+	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) nanr);
 	return h;
 }
 
+HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
+	NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
+	if (AnmReadFile(nanr, path)) {
+		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
+		return NULL;
+	}
+	return CreateNanrViewerInternal(x, y, width, height, hWndParent, path, nanr);
+}
+
 HWND CreateNanrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NANR *nanr) {
-	HWND h = EditorCreate(L"NanrViewerClass", x, y, width, height, hWndParent);
-	SendMessage(h, NV_INITIALIZE, 0, (LPARAM) nanr);
-	return h;
+	return CreateNanrViewerInternal(x, y, width, height, hWndParent, NULL, nanr);
 }

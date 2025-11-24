@@ -16,7 +16,7 @@ int PalViewerIndexInRange(int index, int start, int end, int is2d);
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
-	NCLR nclr;
+	NCLR *nclr;
 	int editMode;
 	int hoverX;
 	int hoverY;

@@ -98,10 +98,10 @@ static unsigned char *CellViewerMapGraphicsUsage(NCERVIEWERDATA *data, int exclu
 	unsigned char *map = (unsigned char *) calloc(1, mapSize);
 
 	//check for VRAM transfer data
-	CHAR_VRAM_TRANSFER *vramTransfer = data->ncer.vramTransfer;
+	CHAR_VRAM_TRANSFER *vramTransfer = data->ncer->vramTransfer;
 	if (vramTransfer != NULL) {
 		//VRAM transfer data present: carve blocks out of the available space
-		for (int i = 0; i < data->ncer.nCells; i++) {
+		for (int i = 0; i < data->ncer->nCells; i++) {
 			CHAR_VRAM_TRANSFER *xfer = &vramTransfer[i];
 
 			//get overlapping character index region
@@ -120,8 +120,8 @@ static unsigned char *CellViewerMapGraphicsUsage(NCERVIEWERDATA *data, int exclu
 		}
 	} else {
 		//no VRAM transfer data present: iterate each cell and its constituent OBJ
-		for (int i = 0; i < data->ncer.nCells; i++) {
-			NCER_CELL *cell = &data->ncer.cells[i];
+		for (int i = 0; i < data->ncer->nCells; i++) {
+			NCER_CELL *cell = &data->ncer->cells[i];
 
 			for (int j = 0; j < cell->nAttribs; j++) {
 				NCER_CELL_INFO info;
@@ -129,7 +129,7 @@ static unsigned char *CellViewerMapGraphicsUsage(NCERVIEWERDATA *data, int exclu
 
 				//compute VRAM destination address
 				unsigned int sizeChars = (info.width * info.height) / 64;
-				unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer.mappingMode, info.characterBits);
+				unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer->mappingMode, info.characterBits);
 
 				//fill use map
 				unsigned int reqSize = vramAddr + sizeChars;
@@ -169,11 +169,11 @@ static unsigned int CellViewerAllocCharSpace(NCERVIEWERDATA *data, int ignoreFil
 	unsigned char *map = CellViewerMapGraphicsUsage(data, ignoreFilledCharacters, &mapSize);
 	
 	unsigned int granularity = 1;
-	if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) granularity = 1;
-	else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_1D_32K) granularity = 1;
-	else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_1D_64K) granularity = 2;
-	else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_1D_128K) granularity = 4;
-	else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_1D_256K) granularity = 8;
+	if (data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_2D) granularity = 1;
+	else if (data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_1D_32K) granularity = 1;
+	else if (data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_1D_64K) granularity = 2;
+	else if (data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_1D_128K) granularity = 4;
+	else if (data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_1D_256K) granularity = 8;
 
 	//adjust for 8-bit graphics
 	if (ncgr->nBits == 8) granularity /= 2;
@@ -215,13 +215,13 @@ static unsigned int CellViewerGetFirstUnusedCharacter(NCERVIEWERDATA *data, int 
 		chrSize = (ncgr->nBits == 8) ? 64 : 32;
 	}
 
-	for (int i = 0; i < data->ncer.nCells; i++) {
-		NCER_CELL *cell = &data->ncer.cells[i];
+	for (int i = 0; i < data->ncer->nCells; i++) {
+		NCER_CELL *cell = &data->ncer->cells[i];
 		if (i == excludeCell) continue;
 		
 		//process VRAM transfer animation
-		if (data->ncer.vramTransfer != NULL) {
-			CHAR_VRAM_TRANSFER *xfer = &data->ncer.vramTransfer[i];
+		if (data->ncer->vramTransfer != NULL) {
+			CHAR_VRAM_TRANSFER *xfer = &data->ncer->vramTransfer[i];
 			unsigned int vramAddr = xfer->srcAddr / chrSize;
 			unsigned int sizeChars = xfer->size / chrSize;
 			unsigned int thisEnd = vramAddr + sizeChars;
@@ -236,7 +236,7 @@ static unsigned int CellViewerGetFirstUnusedCharacter(NCERVIEWERDATA *data, int 
 
 				//compute VRAM destination address
 				unsigned int sizeChars = (info.width * info.height) / 64;
-				unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer.mappingMode, info.characterBits);
+				unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer->mappingMode, info.characterBits);
 
 				unsigned int thisEnd = vramAddr + sizeChars;
 				if (thisEnd > end) end = thisEnd;
@@ -249,8 +249,8 @@ static unsigned int CellViewerGetFirstUnusedCharacter(NCERVIEWERDATA *data, int 
 }
 
 static NCER_CELL *CellViewerGetCurrentCell(NCERVIEWERDATA *data) {
-	if (data->cell < 0 || data->cell >= data->ncer.nCells) return NULL;
-	return &data->ncer.cells[data->cell];
+	if (data->cell < 0 || data->cell >= data->ncer->nCells) return NULL;
+	return &data->ncer->cells[data->cell];
 }
 
 static int CellViewerIsDragging(NCERVIEWERDATA *data) {
@@ -404,8 +404,8 @@ static int CellViewerHitTest(NCERVIEWERDATA *data, int x, int y) {
 
 	//test hit
 	int hit = CV_HIT_BACKGROUND;
-	if (data->cell >= 0 && data->cell < data->ncer.nCells) {
-		NCER_CELL *cell = &data->ncer.cells[data->cell];
+	if (data->cell >= 0 && data->cell < data->ncer->nCells) {
+		NCER_CELL *cell = &data->ncer->cells[data->cell];
 		int objHit = CellViewerGetOamObjFromPoint(cell, (x + scrollX) / data->scale - 256, (y + scrollY) / data->scale - 128);
 		if (objHit != -1) hit = CV_HIT_OBJ + objHit;
 
@@ -448,7 +448,7 @@ static void CellViewerUpdateObjList(NCERVIEWERDATA *data) {
 	GetScrollInfo(data->hWndObjList, SB_HORZ, &scrollH);
 	GetScrollInfo(data->hWndObjList, SB_VERT, &scrollV);
 
-	int mappingShift = (data->ncer.mappingMode >> 20) & 0x7;
+	int mappingShift = (data->ncer->mappingMode >> 20) & 0x7;
 
 	// #, X, Y, Size, Char, Palette, 8bit, Affine, Double Size, HV, Priority, Mosaic, Type
 
@@ -647,7 +647,7 @@ static void CellViewerDeleteEmptySelection(NCERVIEWERDATA *data) {
 	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
 	if (ncgr == NULL) return; // not enough information to deduce
 
-	int mappingShift = (data->ncer.mappingMode >> 20) & 3;
+	int mappingShift = (data->ncer->mappingMode >> 20) & 3;
 
 	//delete any selected OBJ if it is fully transparent
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
@@ -666,7 +666,7 @@ static void CellViewerDeleteEmptySelection(NCERVIEWERDATA *data) {
 
 				int thisChrIdx = chrIdx;
 				thisChrIdx += chrX;
-				if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+				if (data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
 					thisChrIdx += chrY * ncgr->tilesX;
 				} else {
 					thisChrIdx += chrY * (info.width / 8);
@@ -901,8 +901,8 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
 	NCLR *nclr = CellViewerGetAssociatedPalette(data);
 	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
-	if (data->ncer.vramTransfer != NULL) {
-		vramTransfer = data->ncer.vramTransfer + data->cell;
+	if (data->ncer->vramTransfer != NULL) {
+		vramTransfer = data->ncer->vramTransfer + data->cell;
 	}
 	
 	//construct temporary cell
@@ -912,7 +912,7 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	tmpCell->useEx2d = cell->useEx2d;
 	tmpCell->ex2dCharNames = exAttr;
 
-	CellRender(buf, NULL, &data->ncer, ncgr, nclr, data->cell, tmpCell, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
+	CellRender(buf, NULL, data->ncer, ncgr, nclr, data->cell, tmpCell, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
 	free(tmpCell);
 	free(selAttr);
 	if (exAttr != NULL) free(exAttr);
@@ -944,7 +944,7 @@ static void CellViewerCopy(NCERVIEWERDATA *data) {
 
 	int nSel = 0;
 	int *sel = CellViewerGetSelectedOamObjects(data, &nSel);
-	int mappingID = CellViewerObjVramMappingToID(data->ncer.mappingMode);
+	int mappingID = CellViewerObjVramMappingToID(data->ncer->mappingMode);
 	
 	NP_OBJ *cpy = (NP_OBJ *) calloc(sizeof(NP_OBJ) + nSel * 8, 1);
 	for (int i = 0; i < nSel; i++) {
@@ -996,8 +996,8 @@ static void CellViewerPaste(NCERVIEWERDATA *data) {
 
 	NP_OBJ *attr = CellViewerGetCopiedObjData();
 	if (attr != NULL) {
-		if (CellViewerClipboardHasMapping(attr, data->ncer.mappingMode)) {
-			int mappingId = CellViewerObjVramMappingToID(data->ncer.mappingMode);
+		if (CellViewerClipboardHasMapping(attr, data->ncer->mappingMode)) {
+			int mappingId = CellViewerObjVramMappingToID(data->ncer->mappingMode);
 
 			//mouse in-bounds?
 			POINT pt;
@@ -1106,7 +1106,7 @@ static void CellViewerUpdateCellRender(NCERVIEWERDATA *data) {
 	memset(data->frameBuffer, 0, sizeof(data->frameBuffer));
 	memset(data->covBuffer, 0, sizeof(data->covBuffer));
 	if (data->cell != -1) {
-		CellViewerRenderCellByIndex(data->frameBuffer, data->covBuffer, &data->ncer, ncgr, nclr, data->cell);
+		CellViewerRenderCellByIndex(data->frameBuffer, data->covBuffer, data->ncer, ncgr, nclr, data->cell);
 	}
 }
 
@@ -1204,7 +1204,7 @@ static HBITMAP CellViewerRenderImageListBitmap(NCER *ncer, int cellno, NCGR *ncg
 }
 
 static void CellViewerUpdatePreview(NCERVIEWERDATA *data, int cellno) {
-	PreviewLoadObjCell(&data->ncer, NULL, cellno);
+	PreviewLoadObjCell(data->ncer, NULL, cellno);
 }
 
 static HWND CellEditorGetAssociatedEditor(NCERVIEWERDATA *data, int type) {
@@ -1371,7 +1371,7 @@ static void CellViewerUpdateCellListPreview(NCERVIEWERDATA *data, int i) {
 	NCLR *nclr = CellViewerGetAssociatedPalette(data);
 	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
 	HBITMAP hMaskbm;
-	HBITMAP hColorbm = CellViewerRenderImageListBitmap(&data->ncer, i, ncgr, nclr, &hMaskbm);
+	HBITMAP hColorbm = CellViewerRenderImageListBitmap(data->ncer, i, ncgr, nclr, &hMaskbm);
 
 	//
 	HIMAGELIST himl = ListView_GetImageList(data->hWndCellList, LVSIL_NORMAL);
@@ -1455,15 +1455,15 @@ static void CellViewerPopulateCellList(NCERVIEWERDATA *data) {
 	CellViewerSuppressRedraw(data);
 
 	//add each cell
-	for (int i = 0; i < data->ncer.nCells; i++) {
+	for (int i = 0; i < data->ncer->nCells; i++) {
 		WCHAR name[32];
 		wsprintfW(name, L"Cell %d", i);
-		NCER_CELL *celli = data->ncer.cells + i;
+		NCER_CELL *celli = data->ncer->cells + i;
 		CellViewerAppendCellToCellList(data, name, celli);
 	}
 
 	//set default selection
-	if (data->ncer.nCells > 0) {
+	if (data->ncer->nCells > 0) {
 		data->cell = 0;
 		CellViewerSetCurrentCell(data, 0, TRUE);
 	}
@@ -1474,7 +1474,7 @@ static void CellViewerPopulateCellList(NCERVIEWERDATA *data) {
 static void CellViewerUpdateCellPreviews(NCERVIEWERDATA *data) {
 	CellViewerSuppressRedraw(data);
 
-	for (int i = 0; i < data->ncer.nCells; i++) {
+	for (int i = 0; i < data->ncer->nCells; i++) {
 		CellViewerUpdateCellListPreview(data, i);
 	}
 
@@ -1492,7 +1492,7 @@ static void CellViewerMoveCell(NCERVIEWERDATA *data, int iSrc, int iDst) {
 	if (sel != -1 && sel == iSrc) srcSel = TRUE;
 
 	//rearrange
-	CellMoveCellIndex(&data->ncer, iSrc, iDst);
+	CellMoveCellIndex(data->ncer, iSrc, iDst);
 
 	//move cell listing (TODO: a better way?)
 	HIMAGELIST himl = ListView_GetImageList(data->hWndCellList, LVSIL_NORMAL);
@@ -1512,7 +1512,7 @@ static void CellViewerDeleteCell(NCERVIEWERDATA *data, int i) {
 
 	//update cell bank structure
 	int newsel = data->cell;
-	CellDeleteCell(&data->ncer, i);
+	CellDeleteCell(data->ncer, i);
 
 	//move cell listing (TODO: a better way?)
 	HIMAGELIST himl = ListView_GetImageList(data->hWndCellList, LVSIL_NORMAL);
@@ -1521,7 +1521,7 @@ static void CellViewerDeleteCell(NCERVIEWERDATA *data, int i) {
 	CellViewerPopulateCellList(data);
 
 	//set new selection
-	if (newsel >= data->ncer.nCells) newsel = data->ncer.nCells - 1;
+	if (newsel >= data->ncer->nCells) newsel = data->ncer->nCells - 1;
 	CellViewerSetCurrentCell(data, newsel, TRUE);
 	
 	CellViewerRestoreRedraw(data);
@@ -1532,7 +1532,7 @@ static void CellViewerSetMappingMode(NCERVIEWERDATA *data, int mapping) {
 
 	//update mapping mode
 	int sel = data->cell;
-	data->ncer.mappingMode = mapping;
+	data->ncer->mappingMode = mapping;
 
 	//recalculate previews
 	CellViewerUpdateCellPreviews(data);
@@ -1615,7 +1615,7 @@ static LRESULT CellViewerOnCellListNotify(NCERVIEWERDATA *data, HWND hWnd, WPARA
 			
 			//get edit
 			HWND hWndEdit = ListView_GetEditControl(data->hWndCellList);
-			NCER_CELL *cell = data->ncer.cells + iItem;
+			NCER_CELL *cell = data->ncer->cells + iItem;
 			
 			(void) cell;
 			(void) hWndEdit;
@@ -1669,7 +1669,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		}
 
 		NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrViewer);
-		if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+		if (data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
 			MessageBox(hWnd, L"Cannot be used with 2D mapping.", L"Error", MB_ICONERROR);
 			return;
 		}
@@ -1718,7 +1718,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		changed = 1;
 
 		if (sel == GX_OBJVRAMMODE_CHAR_2D) {
-			if (data->ncer.isEx2d) {
+			if (data->ncer->isEx2d) {
 				//when in extended 2D mode, show the "Make 1D" text.
 				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
 			} else {
@@ -1729,7 +1729,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
 
 			//enable/disable
-			int disable = data->ncer.isEx2d;
+			int disable = data->ncer->isEx2d;
 			EnableWindow(data->hWndMake2D, !disable);
 		}
 		InvalidateRect(data->hWndMake2D, NULL, FALSE);
@@ -1742,16 +1742,16 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		data->autoCalcBounds = GetCheckboxChecked(hWndControl);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndCellAdd) {
 		WCHAR name[64];
-		wsprintfW(name, L"Cell %d", data->ncer.nCells);
+		wsprintfW(name, L"Cell %d", data->ncer->nCells);
 
-		data->ncer.nCells++;
-		data->ncer.cells = (NCER_CELL *) realloc(data->ncer.cells, data->ncer.nCells * sizeof(NCER_CELL));
+		data->ncer->nCells++;
+		data->ncer->cells = (NCER_CELL *) realloc(data->ncer->cells, data->ncer->nCells * sizeof(NCER_CELL));
 
-		NCER_CELL *cell = data->ncer.cells + data->ncer.nCells - 1;
+		NCER_CELL *cell = data->ncer->cells + data->ncer->nCells - 1;
 		memset(cell, 0, sizeof(NCER_CELL));
 
 		CellViewerAppendCellToCellList(data, name, cell);
-		CellViewerSetCurrentCell(data, data->ncer.nCells - 1, TRUE);
+		CellViewerSetCurrentCell(data, data->ncer->nCells - 1, TRUE);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndShowObjButton) {
 		NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 		HWND hWndMdi = nitroPaintStruct->hWndMdi;
@@ -1769,13 +1769,13 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		}
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndMake2D) {
 		NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
-		NCER *ncer = &data->ncer;
+		NCER *ncer = data->ncer;
 		if (ncgr == NULL) {
 			MessageBox(hWnd, L"Requires open character graphics file.", L"Error", MB_ICONERROR);
 			return;
 		}
 
-		if (!data->ncer.isEx2d) {
+		if (!data->ncer->isEx2d) {
 			//convert to extended 2D
 			if (CellSetBankExt2D(ncer, ncgr, 1)) {
 				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
@@ -1788,7 +1788,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			//convert from extended 2D
 			if (CellSetBankExt2D(ncer, ncgr, 0)) {
 				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
-				CellViewerSetMappingModeSelection(data, data->ncer.mappingMode);
+				CellViewerSetMappingModeSelection(data, data->ncer->mappingMode);
 				ncgr->isIntermediate = 0; // clear intermediate flag
 			} else {
 				MessageBox(hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
@@ -1800,7 +1800,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		CellViewerGraphicsUpdated(data->hWnd);
 		ChrViewerGraphicsSizeUpdated(hWndNcgrViewer);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndExportAll) {
-		NCER *ncer = &data->ncer;
+		NCER *ncer = data->ncer;
 		NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
 		NCLR *nclr = CellViewerGetAssociatedPalette(data);
 
@@ -1820,7 +1820,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 
 		//write cells
 		COLOR32 *pxbuf = (COLOR32 *) calloc(256 * 512, sizeof(COLOR32));
-		for (int i = 0; i < data->ncer.nCells; i++) {
+		for (int i = 0; i < data->ncer->nCells; i++) {
 			memset(pxbuf, 0, 256 * 512 * sizeof(COLOR32));
 			CellViewerRenderCellByIndex(pxbuf, NULL, ncer, ncgr, nclr, i);
 			ImgSwapRedBlue(pxbuf, 512, 256);
@@ -1970,7 +1970,7 @@ static void CellViewerSetSelectionBits(NCERVIEWERDATA *data, int nBits) {
 }
 
 static void CellViewerSetSelectionCharacterIndex(NCERVIEWERDATA *data, int chno) {
-	int mappingShift = (data->ncer.mappingMode >> 20) & 0x7;
+	int mappingShift = (data->ncer->mappingMode >> 20) & 0x7;
 
 	NCER_CELL *cell = CellViewerGetCurrentCell(data);
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
@@ -2085,7 +2085,7 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 	int splitWidth, splitHeight;
 	CellGetObjDimensions(shape, size, &splitWidth, &splitHeight);
 
-	int mappingMode = data->ncer.mappingMode;
+	int mappingMode = data->ncer->mappingMode;
 	int mappingShift = (mappingMode >> 20) & 3;
 
 	//iterate all selected OBJ
@@ -2196,7 +2196,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		case ID_FILE_SAVEAS:
 		case ID_FILE_SAVE:
 		{
-			if (data->ncer.isEx2d && data->ncer.header.format != NCER_TYPE_SETOSA) {
+			if (data->ncer->isEx2d && data->ncer->header.format != NCER_TYPE_SETOSA) {
 				MessageBox(hWnd, L"Cannot save cell bank while in extended 2D mode.", L"Error", MB_ICONERROR);
 				break;
 			}
@@ -2216,7 +2216,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			LPWSTR location = saveFileDialog(hWnd, L"Save Bitmap", L"PNG Files (*.png)\0*.png\0All Files\0*.*\0", L"png");
 			if (location == NULL) break;
 
-			NCER *ncer = &data->ncer;
+			NCER *ncer = data->ncer;
 			NCLR *nclr = CellViewerGetAssociatedPalette(data);
 			NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
 
@@ -2366,7 +2366,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		{
 			WCHAR textbuf[10];
 
-			int mappingShift = (data->ncer.mappingMode >> 20) & 0x7;
+			int mappingShift = (data->ncer->mappingMode >> 20) & 0x7;
 
 			//find common character index
 			int commonCharIndex = -1;
@@ -2530,17 +2530,12 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
 			break;
 		}
-		case NV_INITIALIZE_IMMEDIATE:
 		case NV_INITIALIZE:
 		{
-			if (msg == NV_INITIALIZE) {
-				LPWSTR path = (LPWSTR) wParam;
-				memcpy(&data->ncer, (NCER *) lParam, sizeof(NCER));
-				EditorSetFile(hWnd, path);
-			} else {
-				NCER *ncer = (NCER *) lParam;
-				memcpy(&data->ncer, ncer, sizeof(NCER));
-			}
+			data->ncer = (NCER *) lParam;
+
+			LPCWSTR path = (LPCWSTR) wParam;
+			if (path != NULL) EditorSetFile(hWnd, path);
 			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 			data->frameData.contentWidth = 512 * data->scale;
@@ -2548,7 +2543,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
 			//set mapping mode selection
 			int mappingIndex = 0;
-			switch (data->ncer.mappingMode) {
+			switch (data->ncer->mappingMode) {
 				case GX_OBJVRAMMODE_CHAR_2D:
 					mappingIndex = 0; break;
 				case GX_OBJVRAMMODE_CHAR_1D_32K:
@@ -2562,10 +2557,10 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			}
 			SendMessage(data->hWndMappingMode, CB_SETCURSEL, mappingIndex, 0);
 
-			if (data->ncer.isEx2d) {
+			if (data->ncer->isEx2d) {
 				//make 1D
 				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
-			} else if (data->ncer.mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+			} else if (data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
 				//make 1D -> Make Extended
 				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make Extd.");
 			}
@@ -3383,8 +3378,8 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 	NCLR *nclr = CellViewerGetAssociatedPalette(data);
 
 	NCER_CELL *cell = NULL;
-	if (data->cell >= 0 && data->cell < data->ncer.nCells) {
-		cell = &data->ncer.cells[data->cell];
+	if (data->cell >= 0 && data->cell < data->ncer->nCells) {
+		cell = &data->ncer->cells[data->cell];
 	}
 
 	//ensure framebuffer size
@@ -3407,7 +3402,7 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 	}
 
 	//render graphics
-	if (data->cell < data->ncer.nCells) {
+	if (data->cell < data->ncer->nCells) {
 		for (int y = 0; y < rcClient.bottom; y++) {
 			for (int x = 0; x < rcClient.right; x++) {
 				int srcX = (x + scrollX) / data->scale, srcY = (y + scrollY) / data->scale;
@@ -3479,7 +3474,7 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 		//highlight OBJ in selection
 		for (int i = 0; i < nSelectedOBJ; i++) {
 			NCER_CELL_INFO info;
-			CellDecodeOamAttributes(&info, &data->ncer.cells[data->cell], selectedOBJ[i]);
+			CellDecodeOamAttributes(&info, &data->ncer->cells[data->cell], selectedOBJ[i]);
 
 			int objX = SEXT9(info.x) + 256, objY = SEXT8(info.y) + 128;
 			int objW = info.width, objH = info.height;
@@ -3823,7 +3818,7 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 
 			//in 2D mapping mode, all splits are valid.
 			int mappingPermitted = 1;
-			if (data->ncer.mappingMode != GX_OBJVRAMMODE_CHAR_2D) {
+			if (data->ncer->mappingMode != GX_OBJVRAMMODE_CHAR_2D) {
 				//when 1D mapping is used, we cannot reduce the OBJ width for a height above 8.
 				if ((height > 8) && (commonWidth == -1 || width < commonWidth)) {
 					//at least one OBJ has a height above 8, and cannot be split
@@ -3832,7 +3827,7 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 
 				//when 1D mapping above 32K is used, OBJ granularity is reduced. If the size of OBJ data at the
 				//requested size is smaller than the granularity, do not allow.
-				int mappingShift = (data->ncer.mappingMode >> 20) & 7;
+				int mappingShift = (data->ncer->mappingMode >> 20) & 7;
 				int granularityBytes = 0x20 << mappingShift;
 				int curSizeBytes = (width * height) >> (commonBits != 8);
 				if (curSizeBytes < granularityBytes && !(width == commonWidth && height == commonHeight)) {
@@ -3856,8 +3851,8 @@ static HMENU CellViewerGetCellListContextMenu(NCERVIEWERDATA *data, int i) {
 	HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 9);
 
 	//set properties for requested cell
-	if (i >= 0 || i < data->ncer.nCells) {
-		NCER_CELL *cell = &data->ncer.cells[i];
+	if (i >= 0 || i < data->ncer->nCells) {
+		NCER_CELL *cell = &data->ncer->cells[i];
 
 		CheckMenuItem(hPopup, ID_CELLMENU2_SWAPPABLE, (cell->forbidCompression) ? MF_CHECKED : MF_UNCHECKED);
 	}
@@ -4178,13 +4173,7 @@ NP_OBJ *CellViewerGetCopiedObjData(void) {
 }
 
 
-HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NCER ncer;
-	if (CellReadFile(&ncer, path)) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
+static HWND CreateNcerViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NCER *ncer) {
 	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
 		RECT rc = { 0 };
 		if (width < 150) width = 150;
@@ -4196,28 +4185,23 @@ HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCW
 	}
 
 	HWND hWnd = EditorCreate(L"NcerViewerClass", x, y, width, height, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncer);
-	if (ncer.header.format == NCER_TYPE_HUDSON) {
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) ncer);
+	if (ncer->header.format == NCER_TYPE_HUDSON) {
 		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
 	}
 	return hWnd;
 }
 
-HWND CreateNcerViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCER *ncer) {
-	if (width != CW_USEDEFAULT && height != CW_USEDEFAULT) {
-		RECT rc = { 0 };
-		if (width < 150) width = 150;
-		rc.right = width;
-		rc.bottom = height;
-		AdjustWindowRect(&rc, WS_CAPTION | WS_THICKFRAME | WS_SYSMENU, FALSE);
-		width = rc.right - rc.left + 4; //+4 to account for WS_EX_CLIENTEDGE
-		height = rc.bottom - rc.top + 4;
+HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
+	NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
+	if (CellReadFile(ncer, path)) {
+		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
+		return NULL;
 	}
 
-	HWND hWnd = EditorCreate(L"NcerViewerClass", x, y, width, height, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncer);
-	if (ncer->header.format == NCER_TYPE_HUDSON) {
-		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
-	}
-	return hWnd;
+	return CreateNcerViewerInternal(x, y, width, height, hWndParent, path, ncer);
+}
+
+HWND CreateNcerViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCER *ncer) {
+	return CreateNcerViewerInternal(x, y, width, height, hWndParent, NULL, ncer);
 }

@@ -89,16 +89,16 @@ NCLRVIEWERDATA *ChrViewerGetAssociatedPaletteViewerData(NCGRVIEWERDATA *data) {
 
 static int ChrViewerGetCharPalette(NCGRVIEWERDATA *data, int x, int y) {
 	if (!data->useAttribute) return data->selectedPalette;
-	if (data->ncgr.attr == NULL) return 0;
+	if (data->ncgr->attr == NULL) return 0;
 
-	return data->ncgr.attr[x + y * data->ncgr.tilesX] & 0xF;
+	return data->ncgr->attr[x + y * data->ncgr->tilesX] & 0xF;
 }
 
 static void ChrViewerSetAttribute(NCGRVIEWERDATA *data, int x, int y, int attr) {
-	if (data->ncgr.attr == NULL) return; //cannot
-	if (x < 0 || y < 0 || x >= data->ncgr.tilesX || y >= data->ncgr.tilesY) return; //cannot
+	if (data->ncgr->attr == NULL) return; //cannot
+	if (x < 0 || y < 0 || x >= data->ncgr->tilesX || y >= data->ncgr->tilesY) return; //cannot
 
-	data->ncgr.attr[x + y * data->ncgr.tilesX] = attr & 0xF;
+	data->ncgr->attr[x + y * data->ncgr->tilesX] = attr & 0xF;
 }
 
 
@@ -146,7 +146,7 @@ static void ChrViewerGraphicsUpdated(NCGRVIEWERDATA *data) {
 static void ChrViewerFill(NCGRVIEWERDATA *data, int x, int y, int w, int h, const unsigned char *pat) {
 	for (int i = 0; i < h; i++) {
 		for (int j = 0; j < w; j++) {
-			memcpy(data->ncgr.tiles[(j + x) + (i + y) * data->ncgr.tilesX], pat, 8 * 8);
+			memcpy(data->ncgr->tiles[(j + x) + (i + y) * data->ncgr->tilesX], pat, 8 * 8);
 		}
 	}
 }
@@ -164,7 +164,7 @@ static void ChrViewerFillAttr(NCGRVIEWERDATA *data, int selX, int selY, int selW
 
 static void ChrViewerCopyDIB(NCGRVIEWERDATA *data) {
 	//get objects
-	NCGR *ncgr = &data->ncgr;
+	NCGR *ncgr = data->ncgr;
 	NCLR *nclr = NULL;
 
 	HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
@@ -297,7 +297,7 @@ static void ChrViewerCopyOPX(NCGRVIEWERDATA *data) {
 	OPX_CHARMAP *opx = (OPX_CHARMAP *) GlobalLock(hGlobal);
 
 	memset(opx, 0, sizeof(*opx));
-	opx->format = (data->ncgr.nBits == 4) ? 0x29 : 0x2A;
+	opx->format = (data->ncgr->nBits == 4) ? 0x29 : 0x2A;
 	opx->mode = 1;    // BG
 	opx->objSize = 0; // 8x8
 	opx->selStartX = selX;
@@ -318,7 +318,7 @@ static void ChrViewerCopyNP_CHARS(NCGRVIEWERDATA *data) {
 	NCLRVIEWERDATA *nclrViewerData = ChrViewerGetAssociatedPaletteViewerData(data);
 	NCLR *nclr = NULL;
 	if (nclrViewerData != NULL) {
-		nclr = &nclrViewerData->nclr;
+		nclr = nclrViewerData->nclr;
 	}
 
 	//get size to copy
@@ -333,7 +333,7 @@ static void ChrViewerCopyNP_CHARS(NCGRVIEWERDATA *data) {
 	npc->size = size;
 	npc->width = selW;
 	npc->height = selH;
-	npc->depth = data->ncgr.nBits;
+	npc->depth = data->ncgr->nBits;
 	npc->useAttr = data->useAttribute;
 	npc->paletteSize = clipPaletteSize / sizeof(COLOR);
 
@@ -344,18 +344,18 @@ static void ChrViewerCopyNP_CHARS(NCGRVIEWERDATA *data) {
 	unsigned char *chrDest = npc->data + clipPaletteSize;
 	for (int y = 0; y < selH; y++) {
 		for (int x = 0; x < selW; x++) {
-			memcpy(chrDest + 64 * (x + y * selW), data->ncgr.tiles[(selX + x) + (selY + y) * data->ncgr.tilesX], 64);
+			memcpy(chrDest + 64 * (x + y * selW), data->ncgr->tiles[(selX + x) + (selY + y) * data->ncgr->tilesX], 64);
 		}
 	}
 
 	//copy attr
 	unsigned char *attrDest = chrDest + charSize;
-	if (data->ncgr.attr != NULL) {
+	if (data->ncgr->attr != NULL) {
 		npc->pltMin = 0xF;
 		npc->pltMax = 0x0;
 		for (int y = 0; y < selH; y++) {
 			for (int x = 0; x < selW; x++) {
-				int attr = data->ncgr.attr[(selX + x) + (selY + y) * data->ncgr.tilesX];
+				int attr = data->ncgr->attr[(selX + x) + (selY + y) * data->ncgr->tilesX];
 				attrDest[x + y * selW] = attr;
 
 				if (attr > npc->pltMax) npc->pltMax = attr;
@@ -377,7 +377,7 @@ static void ChrViewerCopyNP_SCRN(NCGRVIEWERDATA *data) {
 	for (int y = 0; y < selH; y++) {
 		for (int x = 0; x < selW; x++) {
 			int attr = ChrViewerGetCharPalette(data, x + selX, y + selY);
-			int chrno = (x + selX) + (y + selY) * data->ncgr.tilesX;
+			int chrno = (x + selX) + (y + selY) * data->ncgr->tilesX;
 			bgdat[x + y * selW] = (attr << 12) | (chrno & 0x3FF);
 		}
 	}
@@ -488,7 +488,7 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 	int selX, selY, selW, selH;
 	TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
 
-	NCGR *ncgr = &data->ncgr;
+	NCGR *ncgr = data->ncgr;
 
 	//OBJ origin
 	int startX = -(selW * 8 / 2);
@@ -538,9 +538,9 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 			int x = (bound->x - startX) / 8;
 			int y = (bound->y - startY) / 8;
 
-			int chno = (selX + x) + (selY + y) * data->ncgr.tilesX;
+			int chno = (selX + x) + (selY + y) * data->ncgr->tilesX;
 			int pltt = ChrViewerGetCharPalette(data, selX + x, selY + y);
-			if (data->ncgr.nBits == 8) chno <<= 1;
+			if (data->ncgr->nBits == 8) chno <<= 1;
 
 			if (chno % granularity) {
 				//cannot reproduce cell
@@ -553,7 +553,7 @@ static void ChrViewerCopyNP_OBJ(NCGRVIEWERDATA *data) {
 			int size = ChrViewerObjDimensionToSize(bound->width, bound->height);
 
 			uint16_t *attr = obj + i * 4;
-			attr[0] = 0x0000 | (bound->y & 0x00FF) | (shape << 14) | ((data->ncgr.nBits == 8) << 13);
+			attr[0] = 0x0000 | (bound->y & 0x00FF) | (shape << 14) | ((data->ncgr->nBits == 8) << 13);
 			attr[1] = 0x0000 | (bound->x & 0x01FF) | (size << 14);
 			attr[2] = 0x0000 | (chno & 0x03FF) | (pltt << 12);
 			attr[3] = chno >> 10; // fake OAM attribute but used in intermediate representation
@@ -622,10 +622,10 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 	}
 
 	NCLR *nclr = NULL;
-	NCGR *ncgr = &data->ncgr;
+	NCGR *ncgr = data->ncgr;
 	NCLRVIEWERDATA *nclrViewerData = ChrViewerGetAssociatedPaletteViewerData(data);
 	if (nclrViewerData != NULL) {
-		nclr = &nclrViewerData->nclr;
+		nclr = nclrViewerData->nclr;
 	}
 	if (nclr == NULL) return;
 
@@ -647,7 +647,7 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 				if ((pasteY + y) >= ncgr->tilesY) continue;
 
 				int i = x + y * npc->width;
-				memcpy(ncgr->tiles[(pasteX + x) + (pasteY + y) * data->ncgr.tilesX], chars + i * 64, 64);
+				memcpy(ncgr->tiles[(pasteX + x) + (pasteY + y) * data->ncgr->tilesX], chars + i * 64, 64);
 				ChrViewerSetAttribute(data, pasteX + x, pasteY + y, attrs[i]);
 			}
 		}
@@ -769,7 +769,7 @@ static int ChrViewerGetSelectedColor(NCGRVIEWERDATA *data) {
 	if (nclrViewerData->selStart == -1 || nclrViewerData->selEnd == -1) return -1;
 
 	int colidx = min(nclrViewerData->selStart, nclrViewerData->selEnd);
-	colidx &= (1 << (data->ncgr.nBits + 4)) - 1;
+	colidx &= (1 << (data->ncgr->nBits + 4)) - 1;
 	return colidx;
 }
 
@@ -796,17 +796,17 @@ static int ChrViewerGetPixelInternal(NCGR *ncgr, int x, int y) {
 
 static void ChrViewerPutPixel(NCGRVIEWERDATA *data, int x, int y, int col) {
 	if (x < 0 || y < 0) return;
-	if (x >= (data->ncgr.tilesX * 8) || y >= (data->ncgr.tilesY * 8)) return;
+	if (x >= (data->ncgr->tilesX * 8) || y >= (data->ncgr->tilesY * 8)) return;
 
-	ChrViewerPutPixelInternal(&data->ncgr, x, y, col & ((1 << data->ncgr.nBits) - 1));
-	ChrViewerSetAttribute(data, x / 8, y / 8, col >> data->ncgr.nBits);
+	ChrViewerPutPixelInternal(data->ncgr, x, y, col & ((1 << data->ncgr->nBits) - 1));
+	ChrViewerSetAttribute(data, x / 8, y / 8, col >> data->ncgr->nBits);
 }
 
 static int ChrViewerGetPixel(NCGRVIEWERDATA *data, int x, int y) {
 	if (x < 0 || y < 0) return -1;
-	if (x >= (data->ncgr.tilesX * 8) || y >= (data->ncgr.tilesY * 8)) return -1;
+	if (x >= (data->ncgr->tilesX * 8) || y >= (data->ncgr->tilesY * 8)) return -1;
 
-	return ChrViewerGetPixelInternal(&data->ncgr, x, y) | (ChrViewerGetCharPalette(data, x / 8, y / 8) << data->ncgr.nBits);
+	return ChrViewerGetPixelInternal(data->ncgr, x, y) | (ChrViewerGetCharPalette(data, x / 8, y / 8) << data->ncgr->nBits);
 }
 
 static void ChrViewerConnectLine(NCGRVIEWERDATA *data, int lastX, int lastY, int pxX, int pxY, int pcol) {
@@ -845,14 +845,14 @@ static void ChrViewerConnectLine(NCGRVIEWERDATA *data, int lastX, int lastY, int
 }
 
 static void ChrViewerFloodFill(NCGRVIEWERDATA *data, int x, int y, int pcol) {
-	int gfxW = data->ncgr.tilesX * 8, gfxH = data->ncgr.tilesY * 8;
+	int gfxW = data->ncgr->tilesX * 8, gfxH = data->ncgr->tilesY * 8;
 
 	//bounds check coordinate
 	if (x < 0 || y < 0 || x >= gfxW || y >= gfxH) return;
-	pcol &= ((1 << data->ncgr.nBits) - 1);
+	pcol &= ((1 << data->ncgr->nBits) - 1);
 
 	//get color of interest
-	NCGR *ncgr = &data->ncgr;
+	NCGR *ncgr = data->ncgr;
 	int bkcol = ChrViewerGetPixel(data, x, y);
 	if (pcol == bkcol) return; //no-op (stop a huge memory spiral)
 
@@ -909,14 +909,14 @@ static void ChrViewerFlipSelection(NCGRVIEWERDATA *data, BOOL flipH, BOOL flipV)
 		for (int y = 0; y < selH; y++) {
 			for (int x = 0; x < selW / 2; x++) {
 				//flip graphics positions
-				unsigned char **p1 = &data->ncgr.tiles[(selX + x) + (selY + y) * data->ncgr.tilesX];
-				unsigned char **p2 = &data->ncgr.tiles[(selX + selW - 1 - x) + (selY + y) * data->ncgr.tilesX];
+				unsigned char **p1 = &data->ncgr->tiles[(selX + x) + (selY + y) * data->ncgr->tilesX];
+				unsigned char **p2 = &data->ncgr->tiles[(selX + selW - 1 - x) + (selY + y) * data->ncgr->tilesX];
 				unsigned char *tmp = *p1;
 				*p1 = *p2;
 				*p2 = tmp;
 
 				//flip attributes
-				if (data->ncgr.attr != NULL) {
+				if (data->ncgr->attr != NULL) {
 					unsigned char tmp2 = ChrViewerGetCharPalette(data, selX + x, selY + y);
 					ChrViewerSetAttribute(data, selX + x, selY + y, ChrViewerGetCharPalette(data, selX + selW - 1 - x, selY + y));
 					ChrViewerSetAttribute(data, selX + selW - 1 - x, selY + y, tmp2);
@@ -928,14 +928,14 @@ static void ChrViewerFlipSelection(NCGRVIEWERDATA *data, BOOL flipH, BOOL flipV)
 		for (int y = 0; y < selH / 2; y++) {
 			for (int x = 0; x < selW; x++) {
 				//flip graphics positions
-				unsigned char **p1 = &data->ncgr.tiles[(selX + x) + (selY + y) * data->ncgr.tilesX];
-				unsigned char **p2 = &data->ncgr.tiles[(selX + x) + (selY + selH - 1 - y) * data->ncgr.tilesX];
+				unsigned char **p1 = &data->ncgr->tiles[(selX + x) + (selY + y) * data->ncgr->tilesX];
+				unsigned char **p2 = &data->ncgr->tiles[(selX + x) + (selY + selH - 1 - y) * data->ncgr->tilesX];
 				unsigned char *tmp = *p1;
 				*p1 = *p2;
 				*p2 = tmp;
 
 				//flip attributes
-				if (data->ncgr.attr != NULL) {
+				if (data->ncgr->attr != NULL) {
 					unsigned char tmp2 = ChrViewerGetCharPalette(data, selX + x, selY + y);
 					ChrViewerSetAttribute(data, selX + x, selY + y, ChrViewerGetCharPalette(data, selX + x, selY + selH - 1 - y));
 					ChrViewerSetAttribute(data, selX + x, selY + selH - 1 - y, tmp2);
@@ -947,7 +947,7 @@ static void ChrViewerFlipSelection(NCGRVIEWERDATA *data, BOOL flipH, BOOL flipV)
 	//2: flip individual pixels
 	for (int y = 0; y < selH; y++) {
 		for (int x = 0; x < selW; x++) {
-			unsigned char *chr = data->ncgr.tiles[(x + selX) + (y + selY) * data->ncgr.tilesX];
+			unsigned char *chr = data->ncgr->tiles[(x + selX) + (y + selY) * data->ncgr->tilesX];
 			if (flipH) {
 				for (int i = 0; i < 32; i++) {
 					int idx = (i % 4) + 8 * (i / 4);
@@ -983,8 +983,8 @@ static void ChrViewerStampTile(NCGRVIEWERDATA *data, int x, int y) {
 	srcTileX += selX;
 	srcTileY += selY;
 
-	unsigned char *src = data->ncgr.tiles[srcTileX + srcTileY * data->ncgr.tilesX];
-	unsigned char *dst = data->ncgr.tiles[x + y * data->ncgr.tilesX];
+	unsigned char *src = data->ncgr->tiles[srcTileX + srcTileY * data->ncgr->tilesX];
+	unsigned char *dst = data->ncgr->tiles[x + y * data->ncgr->tilesX];
 	memcpy(dst, src, 64);
 
 	ChrViewerGraphicsUpdated(data);
@@ -997,8 +997,10 @@ static void ChrViewerStampTile(NCGRVIEWERDATA *data, int x, int y) {
 
 
 static void ChrViewerGetGraphicsSize(NCGRVIEWERDATA *data, int *width, int *height) {
-	*width = data->ncgr.tilesX * (8 * data->scale);
-	*height = data->ncgr.tilesY * (8 * data->scale);
+	if (data->ncgr != NULL) {
+		*width = data->ncgr->tilesX * (8 * data->scale);
+		*height = data->ncgr->tilesY * (8 * data->scale);
+	}
 }
 
 static void ChrViewerExportBitmap(NCGRVIEWERDATA *data, NCGR *ncgr, NCLR *nclr, int paletteIndex, LPCWSTR path) {
@@ -1084,7 +1086,7 @@ static void ChrViewerExportBitmap(NCGRVIEWERDATA *data, NCGR *ncgr, NCLR *nclr, 
 
 static void ChrViewerPopulateWidthField(NCGRVIEWERDATA *data) {
 	SendMessage(data->hWndWidthDropdown, CB_RESETCONTENT, 0, 0);
-	int nTiles = data->ncgr.nTiles;
+	int nTiles = data->ncgr->nTiles;
 	int nStrings = 0;
 	WCHAR bf[16];
 
@@ -1092,7 +1094,7 @@ static void ChrViewerPopulateWidthField(NCGRVIEWERDATA *data) {
 		if (nTiles % i) continue;
 		wsprintfW(bf, L"%d", i);
 		SendMessage(data->hWndWidthDropdown, CB_ADDSTRING, 0, (LPARAM) bf);
-		if (i == data->ncgr.tilesX) {
+		if (i == data->ncgr->tilesX) {
 			SendMessage(data->hWndWidthDropdown, CB_SETCURSEL, (WPARAM) nStrings, 0);
 		}
 		nStrings++;
@@ -1113,8 +1115,8 @@ static void ChrViewerUpdateCharacterLabel(NCGRVIEWERDATA *data) {
 
 static void ChrViewerSetWidth(NCGRVIEWERDATA *data, int width) {
 	//update width
-	ChrSetWidth(&data->ncgr, width);
-	TedUpdateSize((EDITOR_DATA *) data, &data->ted, data->ncgr.tilesX, data->ncgr.tilesY);
+	ChrSetWidth(data->ncgr, width);
+	TedUpdateSize((EDITOR_DATA *) data, &data->ted, data->ncgr->tilesX, data->ncgr->tilesY);
 
 	//update
 	ChrViewerPopulateWidthField(data);
@@ -1124,8 +1126,8 @@ static void ChrViewerSetWidth(NCGRVIEWERDATA *data, int width) {
 
 static void ChrViewerSetDepth(NCGRVIEWERDATA *data, int depth) {
 	//set depth and update UI
-	ChrSetDepth(&data->ncgr, depth);
-	TedUpdateSize((EDITOR_DATA *) data, &data->ted, data->ncgr.tilesX, data->ncgr.tilesY);
+	ChrSetDepth(data->ncgr, depth);
+	TedUpdateSize((EDITOR_DATA *) data, &data->ted, data->ncgr->tilesX, data->ncgr->tilesY);
 	
 	ChrViewerPopulateWidthField(data);
 	SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
@@ -1234,24 +1236,20 @@ static void ChrViewerSetPreferredSize(NCGRVIEWERDATA *data) {
 	SetWindowSize(data->hWnd, width, height);
 }
 
-static void ChrViewerOnInitialize(NCGRVIEWERDATA *data, LPCWSTR path, NCGR *ncgr, int immediate) {
+static void ChrViewerOnInitialize(NCGRVIEWERDATA *data, LPCWSTR path, NCGR *ncgr) {
 	HWND hWnd = data->hWnd;
 	float dpiScale = GetDpiScale();
 
-	if (!immediate) {
-		memcpy(&data->ncgr, ncgr, sizeof(NCGR));
-		EditorSetFile(hWnd, path);
-	} else {
-		memcpy(&data->ncgr, ncgr, sizeof(NCGR));
-	}
-	data->ted.tilesX = data->ncgr.tilesX;
-	data->ted.tilesY = data->ncgr.tilesY;
+	data->ncgr = ncgr;
+	if (path != NULL) EditorSetFile(hWnd, path);
+	data->ted.tilesX = data->ncgr->tilesX;
+	data->ted.tilesY = data->ncgr->tilesY;
 	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
 	ChrViewerSetPreferredSize(data);
 	
 	ChrViewerPopulateWidthField(data);
-	if (data->ncgr.nBits == 8) SendMessage(data->hWnd8bpp, BM_SETCHECK, 1, 0);
+	if (data->ncgr->nBits == 8) SendMessage(data->hWnd8bpp, BM_SETCHECK, 1, 0);
 
 	//guess a tile base for open NSCR (if any)
 	StList nscrEditorList;
@@ -1261,9 +1259,9 @@ static void ChrViewerOnInitialize(NCGRVIEWERDATA *data, LPCWSTR path, NCGR *ncgr
 	//for each editor
 	for (size_t i = 0; i < nscrEditorList.length; i++) {
 		NSCRVIEWERDATA *nscrViewerData = *(NSCRVIEWERDATA **) StListGetPtr(&nscrEditorList, i);
-		NSCR *nscr = &nscrViewerData->nscr;
-		if (nscr->nHighestIndex >= data->ncgr.nTiles) {
-			NscrViewerSetTileBase(nscrViewerData->hWnd, nscr->nHighestIndex + 1 - data->ncgr.nTiles);
+		NSCR *nscr = nscrViewerData->nscr;
+		if (nscr->nHighestIndex >= data->ncgr->nTiles) {
+			NscrViewerSetTileBase(nscrViewerData->hWnd, nscr->nHighestIndex + 1 - data->ncgr->nTiles);
 		} else {
 			NscrViewerSetTileBase(nscrViewerData->hWnd, 0);
 		}
@@ -1365,12 +1363,12 @@ static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int 
 	cidata->width = width;
 	cidata->height = height;
 	if (createPalette) SendMessage(cidata->hWndOverwritePalette, BM_SETCHECK, BST_CHECKED, 0);
-	if (data->ncgr.nBits == 4) SetEditNumber(cidata->hWndPaletteSize, 16);
-	SetEditNumber(cidata->hWndMaxChars, data->ncgr.nTiles - (data->ted.contextHoverX + pasteY * pasteX));
+	if (data->ncgr->nBits == 4) SetEditNumber(cidata->hWndPaletteSize, 16);
+	SetEditNumber(cidata->hWndMaxChars, data->ncgr->nTiles - (data->ted.contextHoverX + pasteY * pasteX));
 
 	HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
 	NCLR *nclr = NULL;
-	NCGR *ncgr = &data->ncgr;
+	NCGR *ncgr = data->ncgr;
 	if (hWndNclrViewer != NULL) {
 		nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
 	}
@@ -1409,8 +1407,8 @@ static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int 
 }
 
 static void ChrViewerImportAttributesFromScreen(NCGRVIEWERDATA *data, NSCRVIEWERDATA *nscrViewerData) {
-	NCGR *ncgr = &data->ncgr;
-	NSCR *nscr = &nscrViewerData->nscr;
+	NCGR *ncgr = data->ncgr;
+	NSCR *nscr = nscrViewerData->nscr;
 
 	int nTiles = nscr->tilesX * nscr->tilesY;
 	for (int i = 0; i < nTiles; i++) {
@@ -1424,8 +1422,8 @@ static void ChrViewerImportAttributesFromScreen(NCGRVIEWERDATA *data, NSCRVIEWER
 }
 
 static void ChrViewerImportAttributesFromCell(NCGRVIEWERDATA *data, NCERVIEWERDATA *ncerViewerData) {
-	NCGR *ncgr = &data->ncgr;
-	NCER *ncer = &ncerViewerData->ncer;
+	NCGR *ncgr = data->ncgr;
+	NCER *ncer = ncerViewerData->ncer;
 
 	int nCells = ncer->nCells;
 	int mapping = ncer->mappingMode;
@@ -1465,8 +1463,8 @@ static void ChrViewerImportAttributesFromCell(NCGRVIEWERDATA *data, NCERVIEWERDA
 
 static void ChrViewerImportAttributes(NCGRVIEWERDATA *data) {
 	//if no attribute data, create it.
-	if (data->ncgr.attr == NULL) {
-		data->ncgr.attr = (unsigned char *) calloc(data->ncgr.tilesX * data->ncgr.tilesY, 1);
+	if (data->ncgr->attr == NULL) {
+		data->ncgr->attr = (unsigned char *) calloc(data->ncgr->tilesX * data->ncgr->tilesY, 1);
 	}
 
 	HWND hWndMain = data->editorMgr->hWnd;
@@ -1480,7 +1478,7 @@ static void ChrViewerImportAttributes(NCGRVIEWERDATA *data) {
 	for (size_t i = 0; i < editors.length; i++) {
 		EDITOR_DATA *editor = *(EDITOR_DATA **) StListGetPtr(&editors, i);
 
-		switch (editor->file.type) {
+		switch (editor->file->type) {
 			case FILE_TYPE_SCREEN:
 				ChrViewerImportAttributesFromScreen(data, (NSCRVIEWERDATA *) editor);
 				break;
@@ -1546,7 +1544,7 @@ static void ChrViewerOnMenuCommand(NCGRVIEWERDATA *data, int idMenu) {
 
 			HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
 
-			NCGR *ncgr = &data->ncgr;
+			NCGR *ncgr = data->ncgr;
 			NCLR *nclr = NULL;
 			if (hWndNclrViewer != NULL) nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
 
@@ -1781,12 +1779,11 @@ static LRESULT WINAPI ChrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ChrViewerOnCreate(data);
 			break;
 		case NV_INITIALIZE:
-		case NV_INITIALIZE_IMMEDIATE:
-			ChrViewerOnInitialize(data, (LPCWSTR) wParam, (NCGR *) lParam, msg == NV_INITIALIZE_IMMEDIATE);
+			ChrViewerOnInitialize(data, (LPCWSTR) wParam, (NCGR *) lParam);
 			break;
 		case NV_UPDATEPREVIEW:
-			PreviewLoadBgCharacter(&data->ncgr);
-			PreviewLoadObjCharacter(&data->ncgr);
+			PreviewLoadBgCharacter(data->ncgr);
+			PreviewLoadObjCharacter(data->ncgr);
 			break;
 		case WM_COMMAND:
 			ChrViewerOnCommand(data, wParam, lParam);
@@ -1839,7 +1836,7 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 	int hlMode = data->verifySelMode;
 	if ((data->verifyFrames & 1) == 0) hlStart = hlEnd = -1;
 
-	NCGR *ncgr = &data->ncgr;
+	NCGR *ncgr = data->ncgr;
 	NCLR *nclr = NULL;
 
 	NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
@@ -2090,7 +2087,7 @@ static LRESULT WINAPI ChrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			break;
 		case WM_SIZE:
 		{
-			if (ObjIsValid(&data->ncgr.header)) {
+			if (data->ncgr != NULL && ObjIsValid(&data->ncgr->header)) {
 				UpdateScrollbarVisibility(hWnd);
 
 				SCROLLINFO info;
@@ -2118,8 +2115,8 @@ void ChrViewerGraphicsSizeUpdated(HWND hWnd) {
 	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) EditorGetData(hWnd);
 
 	ChrViewerPopulateWidthField(data);
-	data->ted.tilesX = data->ncgr.tilesX;
-	data->ted.tilesY = data->ncgr.tilesY;
+	data->ted.tilesX = data->ncgr->tilesX;
+	data->ted.tilesY = data->ncgr->tilesY;
 	SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
 
 	//invalidate viewers
@@ -2140,8 +2137,8 @@ static LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndExpandColsInput = CreateEdit(hWnd, L"", 90, 10, 75, 22, TRUE);
 			data->hWndExpandRowsInput = CreateEdit(hWnd, L"", 90, 37, 75, 22, TRUE);
 			data->hWndExpandButton = CreateButton(hWnd, L"Set", 90, 64, 75, 22, TRUE);
-			SetEditNumber(data->hWndExpandRowsInput, data->ncgr.tilesY);
-			SetEditNumber(data->hWndExpandColsInput, data->ncgr.tilesX);
+			SetEditNumber(data->hWndExpandRowsInput, data->ncgr->tilesY);
+			SetEditNumber(data->hWndExpandColsInput, data->ncgr->tilesX);
 			SetGUIFont(hWnd);
 			SetWindowSize(hWnd, 175, 96);
 			SetFocus(data->hWndExpandRowsInput);
@@ -2154,7 +2151,7 @@ static LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			if (notification == BN_CLICKED && hWndControl == data->hWndExpandButton) {
 				int nRows = GetEditNumber(data->hWndExpandRowsInput);
 				int nCols = GetEditNumber(data->hWndExpandColsInput);
-				ChrResize(&data->ncgr, nCols, nRows);
+				ChrResize(data->ncgr, nCols, nRows);
 				ChrViewerGraphicsSizeUpdated(data->hWnd);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
@@ -2221,11 +2218,11 @@ static int ChrImportCallback(void *cbdata) {
 			}
 		}
 	} else {
-		int origin = cim->originX + cim->originY * data->ncgr.tilesX;
+		int origin = cim->originX + cim->originY * data->ncgr->tilesX;
 		int nChars = (cim->width / 8) * (cim->height / 8);
 		if (cim->charCompression) nChars = cim->nMaxChars;
 		for (int i = 0; i < nChars; i++) {
-			ChrViewerSetAttribute(data, (i + origin) % data->ncgr.tilesX, (i + origin) / data->ncgr.tilesX, data->selectedPalette);
+			ChrViewerSetAttribute(data, (i + origin) % data->ncgr->tilesX, (i + origin) / data->ncgr->tilesX, data->selectedPalette);
 		}
 	}
 
@@ -2719,27 +2716,25 @@ void RegisterNcgrViewerClass(void) {
 	RegisterCharImportClass();
 }
 
-HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NCGR ncgr;
-	int n = ChrReadFile(&ncgr, path);
-	if (n) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
+static HWND CreateNcgrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NCGR *ncgr) {
 	HWND hWnd = EditorCreate(L"NcgrViewerClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &ncgr);
-	if (ncgr.header.format == NCGR_TYPE_HUDSON || ncgr.header.format == NCGR_TYPE_HUDSON2) {
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) ncgr);
+	if (ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
 		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
 	}
 	return hWnd;
 }
 
-HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCGR *ncgr) {
-	HWND hWnd = EditorCreate(L"NcgrViewerClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) ncgr);
-	if (ncgr->header.format == NCGR_TYPE_HUDSON || ncgr->header.format == NCGR_TYPE_HUDSON2) {
-		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
+	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+	if (ChrReadFile(ncgr, path)) {
+		free(ncgr);
+		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
+		return NULL;
 	}
-	return hWnd;
+	return CreateNcgrViewerInternal(x, y, width, height, hWndParent, path, ncgr);
+}
+
+HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCGR *ncgr) {
+	return CreateNcgrViewerInternal(x, y, width, height, hWndParent, NULL, ncgr);
 }

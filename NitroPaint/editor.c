@@ -33,7 +33,7 @@ StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list) {
 	//count editors of the specified type
 	for (size_t i = 0; i < mgr->editorList.length; i++) {
 		EDITOR_DATA *data = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
-		if (type == FILE_TYPE_INVALID || type == data->file.type) {
+		if (type == FILE_TYPE_INVALID || type == data->file->type) {
 			status = StListAdd(list, &data);
 			if (!ST_SUCCEEDED(status)) break;
 		}
@@ -47,7 +47,7 @@ void EditorInvalidateAllByType(HWND hWndMgr, int type) {
 	for (size_t i = 0; i < mgr->editorList.length; i++) {
 		EDITOR_DATA *data = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
 
-		if (type == FILE_TYPE_INVALID || data->file.type == type) {
+		if (type == FILE_TYPE_INVALID || data->file->type == type) {
 			InvalidateRect(data->hWnd, NULL, FALSE);
 		}
 	}
@@ -58,7 +58,7 @@ HWND EditorFindByObject(HWND hWndParent, OBJECT_HEADER *obj) {
 	EditorManager *mgr = EditorGetManager(hWndParent);
 	for (size_t i = 0; i < mgr->editorList.length; i++) {
 		EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
-		if (&ed->file == obj) return ed->hWnd;
+		if (ed->file == obj) return ed->hWnd;
 	}
 
 	return NULL;
@@ -80,7 +80,7 @@ int EditorGetType(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 	if (data == NULL) return FILE_TYPE_INVALID; // not an editor
 
-	return data->file.type;
+	return data->file->type;
 }
 
 
@@ -233,7 +233,7 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 
 static void EditorTerminateCombo(EDITOR_DATA *data) {
 	HWND hWndParent = (HWND) GetWindowLongPtr(data->hWnd, GWL_HWNDPARENT);
-	COMBO2D *combo = (COMBO2D *) data->file.combo;
+	COMBO2D *combo = (COMBO2D *) data->file->combo;
 
 	//first unlink all child objects. This will prevent us from accidentally infinitely
 	//recursing as each editor tries to close each other.
@@ -246,7 +246,7 @@ static void EditorTerminateCombo(EDITOR_DATA *data) {
 		nLinks--;
 
 		//skip own object (already closing)
-		if (obj == &data->file) continue;
+		if (obj == data->file) continue;
 
 		//find the window associated with the object and close it
 		HWND hWndEditor = EditorFindByObject(hWndParent, obj);
@@ -293,7 +293,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		switch (msg) {
 			case NV_GETTYPE:
 				if (data != NULL) {
-					return data->file.type;
+					return data->file->type;
 				} else {
 					return FILE_TYPE_INVALID;
 				}
@@ -320,7 +320,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				}
 
 				//if editor is editing a combination object, close out editors for the other objects.
-				if (data->file.combo != NULL) {
+				if (data->file->combo != NULL) {
 					EditorTerminateCombo(data);
 				}
 				break;
@@ -373,7 +373,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				//free callback list
 				StListFree(&data->destroyCallbacks);
 
-				if (ObjIsValid(&data->file)) ObjFree(&data->file);
+				if (ObjIsValid(data->file)) ObjFree(data->file);
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
 
 				//remove editor from the editor list
@@ -382,6 +382,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				if (idx <= ST_INDEX_MAX) {
 					StListRemove(&mgr->editorList, idx);
 				}
+				free(data->file); // ownership assumed
 				free(data);
 			}
 		}
@@ -469,7 +470,7 @@ static int EditorSaveAsInternal(HWND hWnd);
 static int EditorSaveAsInternal(HWND hWnd) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 
-	int format = data->file.format;
+	int format = data->file->format;
 	EditorFilter filterExt = { 0 };
 	StStatus status = StMapGet(&data->cls->filters, &format, &filterExt);
 	if (!ST_SUCCEEDED(status)) {
@@ -508,9 +509,9 @@ static int EditorSaveInternal(HWND hWnd) {
 	}
 
 	//else save
-	ObjUpdateLinks(&data->file, ObjGetFileNameFromPath(data->szOpenFile));
+	ObjUpdateLinks(data->file, ObjGetFileNameFromPath(data->szOpenFile));
 	data->dirty = 0;
-	return ObjWriteFile(&data->file, data->szOpenFile);
+	return ObjWriteFile(data->file, data->szOpenFile);
 }
 
 static void EditorSaveStatus(HWND hWnd, int status) {
@@ -591,7 +592,7 @@ OBJECT_HEADER *EditorGetObject(HWND hWnd) {
 	EDITOR_DATA *data = EditorGetData(hWnd);
 	if (data == NULL) return NULL;
 
-	OBJECT_HEADER *obj = &data->file;
+	OBJECT_HEADER *obj = data->file;
 	if (!ObjIsValid(obj)) return NULL;
 	return obj;
 }

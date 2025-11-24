@@ -22,7 +22,7 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 
 static void ScrViewerGraphicsChanged(NSCRVIEWERDATA *data) {
 	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
-	PreviewLoadBgScreen(&data->nscr);
+	PreviewLoadBgScreen(data->nscr);
 }
 
 static int ScrViewerGetFormat_NP_SCRN(void) {
@@ -135,7 +135,7 @@ static void ScrViewerSaveBitmap(NSCRVIEWERDATA *data, LPCWSTR path) {
 	HWND hWndNclrViewer = nitroPaintStruct->hWndNclrViewer;
 	HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 
-	NSCR *nscr = &data->nscr;
+	NSCR *nscr = data->nscr;
 	NCGR *ncgr = NULL;
 	NCLR *nclr = NULL;
 	if (hWndNclrViewer != NULL) nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
@@ -167,7 +167,7 @@ static void ScrViewerSaveBitmap(NSCRVIEWERDATA *data, LPCWSTR path) {
 static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight) {
 	//get data pointer
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWnd);
-	NSCR *nscr = &data->nscr;
+	NSCR *nscr = data->nscr;
 	NCGR *ncgr = NULL;
 	NCLR *nclr = NULL;
 
@@ -303,7 +303,7 @@ static void ScrViewerCopy(NSCRVIEWERDATA *data) {
 	uint16_t *bgdat = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
-			bgdat[x + y * tilesX] = data->nscr.data[(x + tileX) + (y + tileY) * (data->nscr.tilesX)];
+			bgdat[x + y * tilesX] = data->nscr->data[(x + tileX) + (y + tileY) * (data->nscr->tilesX)];
 		}
 	}
 	ScrViewerCopyNP_SCRN(tilesX, tilesY, bgdat);
@@ -311,7 +311,7 @@ static void ScrViewerCopy(NSCRVIEWERDATA *data) {
 
 	if (hWndNclrEditor != NULL && hWndNcgrEditor != NULL) {
 		//to bitmap
-		NSCR *nscr = &data->nscr;
+		NSCR *nscr = data->nscr;
 		NCGR *ncgr = (NCGR *) EditorGetObject(hWndNcgrEditor);
 		NCLR *nclr = (NCLR *) EditorGetObject(hWndNclrEditor);
 
@@ -371,15 +371,15 @@ static void ScrViewerPaste(NSCRVIEWERDATA *data, BOOL contextMenu) {
 
 		GlobalUnlock(hGlobal);
 
-		int maxX = data->nscr.tilesX, maxY = data->nscr.tilesY;
+		int maxX = data->nscr->tilesX, maxY = data->nscr->tilesY;
 
 		int tilesX = scrn->tilesX;
 		int tilesY = scrn->tilesY;
 		for (int y = tileY; y < tileY + tilesY; y++) {
 			for (int x = tileX; x < tileX + tilesX; x++) {
 				uint16_t d = scrn->bgdat[(x - tileX) + (y - tileY) * tilesX];
-				if (x < (int) data->nscr.tilesX && y < (int) data->nscr.tilesY) {
-					if (x >= 0 && x <= maxX && y >= 0 && y <= maxY) data->nscr.data[x + y * (data->nscr.tilesX)] = d;
+				if (x < (int) data->nscr->tilesX && y < (int) data->nscr->tilesY) {
+					if (x >= 0 && x <= maxX && y >= 0 && y <= maxY) data->nscr->data[x + y * (data->nscr->tilesX)] = d;
 				}
 			}
 		}
@@ -399,7 +399,7 @@ static void ScrViewerErase(NSCRVIEWERDATA *data) {
 
 	for (int y = 0; y < selH; y++) {
 		for (int x = 0; x < selW; x++) {
-			data->nscr.data[(x + selX) + (y + selY) * (data->nscr.tilesX)] = data->nscr.clearValue;
+			data->nscr->data[(x + selX) + (y + selY) * (data->nscr->tilesX)] = data->nscr->clearValue;
 		}
 	}
 }
@@ -469,8 +469,8 @@ static HMENU ScrViewerGetPopupMenu(HWND hWnd) {
 }
 
 static void ScrViewerUpdateContentSize(NSCRVIEWERDATA *data) {
-	int contentWidth = data->nscr.tilesX * 8 * data->scale;
-	int contentHeight = data->nscr.tilesY * 8 * data->scale;
+	int contentWidth = data->nscr->tilesX * 8 * data->scale;
+	int contentHeight = data->nscr->tilesY * 8 * data->scale;
 
 	SCROLLINFO info;
 	info.cbSize = sizeof(info);
@@ -606,22 +606,18 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_ERASEBKGND:
 			return TedMainOnEraseBkgnd((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case NV_INITIALIZE:
-		case NV_INITIALIZE_IMMEDIATE:
 		{
 			if (msg == NV_INITIALIZE) {
 				LPWSTR path = (LPWSTR) wParam;
-				memcpy(&data->nscr, (NSCR *) lParam, sizeof(NSCR));
-				EditorSetFile(hWnd, path);
-			} else {
-				NSCR *nscr = (NSCR *) wParam;
-				memcpy(&data->nscr, nscr, sizeof(NSCR));
+				data->nscr = (NSCR *) lParam;
+				if (path != NULL) EditorSetFile(hWnd, path);
 			}
-			data->ted.tilesX = data->nscr.tilesX;
-			data->ted.tilesY = data->nscr.tilesY;
-			PreviewLoadBgScreen(&data->nscr);
+			data->ted.tilesX = data->nscr->tilesX;
+			data->ted.tilesY = data->nscr->tilesY;
+			PreviewLoadBgScreen(data->nscr);
 
-			data->frameData.contentWidth = data->nscr.tilesX * 8 * data->scale;
-			data->frameData.contentHeight = data->nscr.tilesY * 8 * data->scale;
+			data->frameData.contentWidth = data->nscr->tilesX * 8 * data->scale;
+			data->frameData.contentHeight = data->nscr->tilesY * 8 * data->scale;
 			ScrViewerSetPreferredSize(data);
 
 			//guess a tile base based on an open NCGR (if any)
@@ -629,21 +625,21 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			HWND hWndNcgrViewer = nitroPaintStruct->hWndNcgrViewer;
 			if (hWndNcgrViewer != NULL) {
 				NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(hWndNcgrViewer);
-				int nTiles = ncgrViewerData->ncgr.nTiles;
-				if (data->nscr.nHighestIndex >= nTiles) {
-					NscrViewerSetTileBase(hWnd, data->nscr.nHighestIndex + 1 - nTiles);
+				int nTiles = ncgrViewerData->ncgr->nTiles;
+				if (data->nscr->nHighestIndex >= nTiles) {
+					NscrViewerSetTileBase(hWnd, data->nscr->nHighestIndex + 1 - nTiles);
 				}
 			}
 
 			//set size label
 			WCHAR buffer[32];
-			int len = wsprintfW(buffer, L"Size: %dx%d", data->nscr.tilesX * 8, data->nscr.tilesY * 8);
+			int len = wsprintfW(buffer, L"Size: %dx%d", data->nscr->tilesX * 8, data->nscr->tilesY * 8);
 			SendMessage(data->hWndSize, WM_SETTEXT, len, (LPARAM) buffer);
 			ShowWindow(hWnd, SW_SHOW);
 			return 1;
 		}
 		case NV_UPDATEPREVIEW:
-			PreviewLoadBgScreen(&data->nscr);
+			PreviewLoadBgScreen(data->nscr);
 			break;
 		case WM_KEYDOWN:
 		{
@@ -718,10 +714,10 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 								for (int x = 0; x < (selWidth + 1) / 2; x++) {
 									//swap x with selWidth-1-x
 									int t1 = x + selStartX, t2 = selWidth - 1 - x + selStartX;
-									uint16_t d1 = data->nscr.data[t1 + y * (data->nscr.tilesX * 8 >> 3)] ^ (TILE_FLIPX << 10);
-									uint16_t d2 = data->nscr.data[t2 + y * (data->nscr.tilesX * 8 >> 3)] ^ (TILE_FLIPX << 10);
-									data->nscr.data[t1 + y * (data->nscr.tilesX * 8 >> 3)] = d2;
-									if(x != selWidth) data->nscr.data[t2 + y * (data->nscr.tilesX * 8 >> 3)] = d1;
+									uint16_t d1 = data->nscr->data[t1 + y * (data->nscr->tilesX * 8 >> 3)] ^ (TILE_FLIPX << 10);
+									uint16_t d2 = data->nscr->data[t2 + y * (data->nscr->tilesX * 8 >> 3)] ^ (TILE_FLIPX << 10);
+									data->nscr->data[t1 + y * (data->nscr->tilesX * 8 >> 3)] = d2;
+									if(x != selWidth) data->nscr->data[t2 + y * (data->nscr->tilesX * 8 >> 3)] = d1;
 								}
 							}
 						}
@@ -739,10 +735,10 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 								//for every row/2
 								for (int y = 0; y < (selHeight + 1) / 2; y++) {
 									int t1 = y + selStartY, t2 = selHeight - 1 - y + selStartY;
-									uint16_t d1 = data->nscr.data[x + t1 * (data->nscr.tilesX * 8 >> 3)] ^ (TILE_FLIPY << 10);
-									uint16_t d2 = data->nscr.data[x + t2 * (data->nscr.tilesX * 8 >> 3)] ^ (TILE_FLIPY << 10);
-									data->nscr.data[x + t1 * (data->nscr.tilesX * 8 >> 3)] = d2;
-									if(y != selHeight) data->nscr.data[x + t2 * (data->nscr.tilesX * 8 >> 3)] = d1;
+									uint16_t d1 = data->nscr->data[x + t1 * (data->nscr->tilesX * 8 >> 3)] ^ (TILE_FLIPY << 10);
+									uint16_t d2 = data->nscr->data[x + t2 * (data->nscr->tilesX * 8 >> 3)] ^ (TILE_FLIPY << 10);
+									data->nscr->data[x + t1 * (data->nscr->tilesX * 8 >> 3)] = d2;
+									if(y != selHeight) data->nscr->data[x + t2 * (data->nscr->tilesX * 8 >> 3)] = d1;
 								}
 							}
 						}
@@ -760,7 +756,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						for (int y = 0; y < selHeight; y++) {
 							//for every column
 							for (int x = selStartX; x < selStartX + selWidth; x++) {
-								data->nscr.data[x + (y + selStartY) * (data->nscr.tilesX * 8 >> 3)] = index & 0x3FF;
+								data->nscr->data[x + (y + selStartY) * (data->nscr->tilesX * 8 >> 3)] = index & 0x3FF;
 								index++;
 							}
 						}
@@ -780,7 +776,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
 							CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
 						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
-						WORD d = data->nscr.data[data->ted.contextHoverX + data->ted.contextHoverY * (data->nscr.tilesX * 8 >> 3)];
+						WORD d = data->nscr->data[data->ted.contextHoverX + data->ted.contextHoverY * (data->nscr->tilesX * 8 >> 3)];
 						SendMessage(h, NV_INITIMPORTDIALOG, d, data->ted.contextHoverX | (data->ted.contextHoverY << 16));
 						DoModal(h);
 						break;
@@ -823,7 +819,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int palette = SendMessage(data->hWndPaletteNumber, CB_GETCURSEL, 0, 0);
 					
 					SendMessage(hWnd, NV_SETDATA, (WPARAM) character, (LPARAM) palette);
-					int tilesX = data->nscr.tilesX, tilesY = data->nscr.tilesY;
+					int tilesX = data->nscr->tilesX, tilesY = data->nscr->tilesY;
 					int nTiles = tilesX * tilesY;
 
 					int selX, selY, selW, selH;
@@ -832,7 +828,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					for (int i = 0; i < nTiles; i++) {
 						int x = i % tilesX, y = i / tilesX;
 						if (x >= selX && y >= selY && x < (selX + selW) && y < (selY + selH)) {
-							uint16_t value = data->nscr.data[i];
+							uint16_t value = data->nscr->data[i];
 							int newPalette = (value >> 12) & 0xF;
 							int newCharacter = value & 0x3FF;
 
@@ -855,7 +851,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 								value = (value & 0xFC00) | newCharacter;
 							}
 
-							data->nscr.data[i] = value;
+							data->nscr->data[i] = value;
 						}
 					}
 					ScrViewerGraphicsChanged(data);
@@ -1245,9 +1241,9 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	HWND hWndNscrViewer = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 	NSCRVIEWERDATA *data = (NSCRVIEWERDATA *) EditorGetData(hWndNscrViewer);
 	int contentWidth = 0, contentHeight = 0;
-	if (data != NULL) {
-		contentWidth = data->nscr.tilesX * 8 * data->scale;
-		contentHeight = data->nscr.tilesY * 8 * data->scale;
+	if (data != NULL && data->nscr != NULL) {
+		contentWidth = data->nscr->tilesX * 8 * data->scale;
+		contentHeight = data->nscr->tilesY * 8 * data->scale;
 	}
 
 	//little hack for code reuse >:)
@@ -1282,7 +1278,7 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			return DefChildProc(hWnd, msg, wParam, lParam);
 		case WM_SIZE:
 		{
-			if (ObjIsValid(&data->nscr.header)) {
+			if (data->nscr != NULL && ObjIsValid(&data->nscr->header)) {
 				UpdateScrollbarVisibility(hWnd);
 
 				SCROLLINFO info;
@@ -1317,8 +1313,8 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				int selX, selY, selW, selH;
 				TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
 
-				int tile = selX + selY * (data->nscr.tilesX);
-				uint16_t d = data->nscr.data[tile];
+				int tile = selX + selY * (data->nscr->tilesX);
+				uint16_t d = data->nscr->data[tile];
 				int character = d & 0x3FF;
 				int palette = d >> 12;
 
@@ -1342,7 +1338,7 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			mousePos.x += scrollX;
 			mousePos.y += scrollY;
 			
-			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < (int) (data->nscr.tilesX * 8 * data->scale) && mousePos.y < (int) (data->nscr.tilesY * 8 * data->scale)) {
+			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < (int) (data->nscr->tilesX * 8 * data->scale) && mousePos.y < (int) (data->nscr->tilesY * 8 * data->scale)) {
 				TedOnRButtonDown(&data->ted);
 				//if it is within the colors area, open a color chooser
 				TedTrackPopup((EDITOR_DATA *) data, &data->ted);
@@ -1377,27 +1373,25 @@ void RegisterNscrViewerClass(void) {
 	ScrViewerRegisterPreviewClass();
 }
 
-HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NSCR nscr;
-	int n = ScrReadFile(&nscr, path);
-	if (n) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
+static HWND CreateNscrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NSCR *nscr) {
 	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nscr);
-	if (nscr.header.format == NSCR_TYPE_HUDSON || nscr.header.format == NSCR_TYPE_HUDSON2) {
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) nscr);
+	if (nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
 		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
 	}
 	return hWnd;
 }
 
-HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr) {
-	HWND hWnd = EditorCreate(L"NscrViewerClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE_IMMEDIATE, (WPARAM) nscr, 0);
-	if (nscr->header.format == NSCR_TYPE_HUDSON || nscr->header.format == NSCR_TYPE_HUDSON2) {
-		SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON2)));
+HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
+	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
+	if (ScrReadFile(nscr, path)) {
+		free(nscr);
+		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
+		return NULL;
 	}
-	return hWnd;
+	return CreateNscrViewerInternal(x, y, width, height, hWndParent, path, nscr);
+}
+
+HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr) {
+	return CreateNscrViewerInternal(x, y, width, height, hWndParent, NULL, nscr);
 }

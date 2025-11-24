@@ -6,7 +6,7 @@
 
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
-	TexArc nsbtx;
+	TexArc *nsbtx;
 
 	HWND hWndTextureSelect;
 	HWND hWndPaletteSelect;

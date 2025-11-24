@@ -45,9 +45,9 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 		case NV_INITIALIZE:
 		{
 			LPCWSTR path = (LPCWSTR) wParam;
-			memcpy(data->szOpenFile, path, 2 * (wcslen(path) + 1));
-			memcpy(&data->nmcr, (NMCR *) lParam, sizeof(NMCR));
+			data->nmcr = (NMCR *) lParam;
 			data->multiCell = 0;
+			EditorSetFile(hWnd, path);
 
 			InvalidateRect(hWnd, NULL, FALSE);
 			SetTimer(hWnd, 1, 17, NULL);
@@ -76,7 +76,7 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			if (nps->hWndNcerViewer != NULL) ncer = (NCER *) EditorGetObject(nps->hWndNcerViewer);
 			if (nps->hWndNanrViewer != NULL) nanr = (NANR *) EditorGetObject(nps->hWndNanrViewer);
 
-			HBITMAP hBitmap = RenderNmcrFrame(&data->nmcr, nclr, ncgr, ncer, nanr, data->multiCell, data->frame);
+			HBITMAP hBitmap = RenderNmcrFrame(data->nmcr, nclr, ncgr, ncer, nanr, data->multiCell, data->frame);
 			HDC hOffDC = CreateCompatibleDC(hDC);
 			SelectObject(hOffDC, hBitmap);
 			BitBlt(hDC, 0, 0, 512, 256, hOffDC, 0, 0, SRCCOPY);
@@ -95,13 +95,13 @@ void RegisterNmcrViewerClass(void) {
 }
 
 HWND CreateNmcrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NMCR nmcr;
-	int n = nmcrReadFile(&nmcr, path);
-	if (n) {
+	NMCR *nmcr = (NMCR *) calloc(1, sizeof(NMCR));
+	if (nmcrReadFile(nmcr, path)) {
+		free(nmcr);
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}
-	HWND h = CreateWindowEx(WS_EX_CLIENTEDGE | WS_EX_MDICHILD, L"NmcrViewerClass", L"NMCR Viewer", WS_VISIBLE | WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL | WS_CAPTION | WS_CLIPCHILDREN, x, y, width, height, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nmcr);
+	HWND h = EditorCreate(L"NmcrViewerClass", x, y, width, height, hWndParent);
+	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) nmcr);
 	return h;
 }

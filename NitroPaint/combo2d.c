@@ -37,7 +37,7 @@ void combo2dInit(COMBO2D *combo, int format) {
 	ObjInit(&combo->header, FILE_TYPE_COMBO2D, format);
 	StListCreateInline(&combo->links, OBJECT_HEADER *, NULL);
 
-	combo->header.writer = combo2dWrite;
+	combo->header.writer = (OBJECT_WRITER) combo2dWrite;
 	combo->header.dispose = combo2dFree;
 }
 

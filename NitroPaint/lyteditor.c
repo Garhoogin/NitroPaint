@@ -151,7 +151,7 @@ static int LLytEditorMeasureTextLineWidth(LYTEDITOR *ed, NFTRVIEWERDATA *nftrVie
 				//else: normal character
 				int chrWidth = defCharWidth;
 				if (nftrViewerData != NULL) {
-					NFTR_GLYPH *glyph = GetGlyph(&nftrViewerData->nftr, chr);
+					NFTR_GLYPH *glyph = GetGlyph(nftrViewerData->nftr, chr);
 					if (glyph != NULL) {
 						chrWidth = glyph->width + glyph->spaceLeft + glyph->spaceRight;
 					}
@@ -180,7 +180,7 @@ static void LLytEditorMeasureText(LYTEDITOR *ed, int fontID, int spaceX, int spa
 	int lineHeight = 12;  // line height of NITRO_LC_Font_s
 	int defCharWidth = 6; // latin average width
 	if (nftrViewerData != NULL) {
-		lineHeight = nftrViewerData->nftr.lineHeight;
+		lineHeight = nftrViewerData->nftr->lineHeight;
 	}
 
 	//if the string is NULL, use a placeholder invalid glyph.
@@ -1242,7 +1242,7 @@ static void LLytEditorDrawMessage(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER 
 	if (fontEditorData == NULL) return; // TODO
 
 	//check font code map
-	NFTR *nftr = &fontEditorData->nftr;
+	NFTR *nftr = fontEditorData->nftr;
 	if (!nftr->hasCodeMap) return;
 
 	//start position. Initialize (X,Y) with top-left, but adjust the X for alignment.
@@ -1445,7 +1445,7 @@ static LRESULT CALLBACK LytPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 
 	LYTEDITOR *data = NULL;
 	if (editorData != NULL) {
-		switch (editorData->file.type) {
+		switch (editorData->file->type) {
 			case FILE_TYPE_BNLL: data = &((BNLLEDITORDATA *) editorData)->editor; break;
 			case FILE_TYPE_BNCL: data = &((BNCLEDITORDATA *) editorData)->editor; break;
 			case FILE_TYPE_BNBL: data = &((BNBLEDITORDATA *) editorData)->editor; break;

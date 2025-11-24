@@ -7,7 +7,7 @@
 
 typedef struct NCERVIEWERDATA_ {
 	EDITOR_BASIC_MEMBERS;
-	NCER ncer;
+	NCER *ncer;
 	int cell;
 	int showCellBounds;
 	int showGuidelines;

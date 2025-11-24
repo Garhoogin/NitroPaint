@@ -45,11 +45,11 @@ static void NftrViewerCmdSetCellHeight(HWND hWnd, HWND hWndControl, int notif, v
 static COLOR32 NftrViewerSampleGlyph(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, int x, int y, int renderTransparent) {
 	unsigned int cidx = 0;
 	if (glyph != NULL) {
-		cidx = glyph->px[x + y * data->nftr.cellWidth];
+		cidx = glyph->px[x + y * data->nftr->cellWidth];
 	}
 
 	COLOR32 col = 0;
-	unsigned int cmax = (1 << data->nftr.bpp) - 1;
+	unsigned int cmax = (1 << data->nftr->bpp) - 1;
 	if (renderTransparent) {
 		//render transparent: use last palette color and alpha blend
 		COLOR32 drawCol = ColorConvertFromDS(data->palette[cmax]);
@@ -68,10 +68,10 @@ static COLOR32 NftrViewerSampleGlyph(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, in
 }
 
 static COLOR32 *NftrViewerRenderSingleGlyphListPreview(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, COLOR32 col, COLOR32 *temp) {
-	int cellWidth = data->nftr.cellWidth;
-	int cellHeight = data->nftr.cellHeight;
+	int cellWidth = data->nftr->cellWidth;
+	int cellHeight = data->nftr->cellHeight;
 
-	unsigned int alphaMax = (1 << data->nftr.bpp) - 1;
+	unsigned int alphaMax = (1 << data->nftr->bpp) - 1;
 	for (int y = 0; y < cellHeight; y++) {
 		for (int x = 0; x < cellWidth; x++) {
 			COLOR32 drawColor = NftrViewerSampleGlyph(data, glyph, x, y, 0);
@@ -86,7 +86,7 @@ static COLOR32 *NftrViewerRenderSingleGlyphListPreview(NFTRVIEWERDATA *data, NFT
 }
 
 static void NftrViewerRenderGlyphMasks(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, COLOR32 col, HBITMAP *pColorbm, HBITMAP *pMaskbm) {
-	int cellWidth = data->nftr.cellWidth, cellHeight = data->nftr.cellHeight;
+	int cellWidth = data->nftr->cellWidth, cellHeight = data->nftr->cellHeight;
 
 	//render each glyph to the imagelist
 	COLOR32 *px = (COLOR32 *) calloc(cellWidth * cellHeight, sizeof(COLOR32));
@@ -216,13 +216,13 @@ static int NftrViewerCacheGetByCP(NFTRVIEWERDATA *data, uint16_t cp) {
 
 
 static void NftrViewerRenderGlyph(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int width, int height, int x, int y, NFTR_GLYPH *glyph) {
-	for (int cellY = 0; cellY < data->nftr.cellHeight; cellY++) {
-		for (int cellX = 0; cellX < data->nftr.cellWidth; cellX++) {
+	for (int cellY = 0; cellY < data->nftr->cellHeight; cellY++) {
+		for (int cellX = 0; cellX < data->nftr->cellWidth; cellX++) {
 			int destX = x + cellX;
 			int destY = y + cellY;
 			if (destX < 0 || destX >= width || destY < 0 || destY >= height) continue;
 
-			int col = glyph->px[cellX + cellY * data->nftr.cellWidth];
+			int col = glyph->px[cellX + cellY * data->nftr->cellWidth];
 			if (!col) continue;
 
 			//put pixel
@@ -233,7 +233,7 @@ static void NftrViewerRenderGlyph(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int widt
 }
 
 static void NftrViewerRenderString(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int width, int height, const wchar_t *str) {
-	if (str == NULL || !data->nftr.hasCodeMap) return;
+	if (str == NULL || data->nftr == NULL || !data->nftr->hasCodeMap) return;
 
 	//render glyph string
 	int x = 0, y = 0;
@@ -245,7 +245,7 @@ static void NftrViewerRenderString(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int wid
 		if (c == L'\n') {
 			//new line (TODO: text orientation)
 			x = 0;
-			y += data->nftr.lineHeight + data->spaceY;
+			y += data->nftr->lineHeight + data->spaceY;
 			nCharsLine = 0;
 			continue;
 		}
@@ -269,8 +269,8 @@ static void NftrViewerRenderString(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int wid
 // ----- data manipulation routines
 
 static NFTR_GLYPH *NftrViewerGetGlyph(NFTRVIEWERDATA *data, int i) {
-	if (i < 0 || i >= data->nftr.nGlyph) return NULL;
-	return &data->nftr.glyphs[i];
+	if (i < 0 || i >= data->nftr->nGlyph) return NULL;
+	return &data->nftr->glyphs[i];
 }
 
 static NFTR_GLYPH *NftrViewerGetCurrentGlyph(NFTRVIEWERDATA *data) {
@@ -278,16 +278,16 @@ static NFTR_GLYPH *NftrViewerGetCurrentGlyph(NFTRVIEWERDATA *data) {
 }
 
 static int NftrViewerGetGlyphIndexByCP(NFTRVIEWERDATA *data, uint16_t cp) {
-	return NftrGetGlyphIndexByCP(&data->nftr, cp);
+	return NftrGetGlyphIndexByCP(data->nftr, cp);
 }
 
 static NFTR_GLYPH *NftrViewerGetGlyphByCP(NFTRVIEWERDATA *data, uint16_t cp) {
-	return NftrGetGlyphByCP(&data->nftr, cp);
+	return NftrGetGlyphByCP(data->nftr, cp);
 }
 
 static NFTR_GLYPH *NftrViewerGetDefaultGlyph(NFTRVIEWERDATA *data) {
-	for (int i = 0; i < data->nftr.nGlyph; i++) {
-		if (data->nftr.glyphs[i].isInvalid) return &data->nftr.glyphs[i];
+	for (int i = 0; i < data->nftr->nGlyph; i++) {
+		if (data->nftr->glyphs[i].isInvalid) return &data->nftr->glyphs[i];
 	}
 	return NULL;
 }
@@ -296,13 +296,13 @@ static void NftrViewerPutPixel(NFTRVIEWERDATA *data, int x, int y) {
 	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
 	if (glyph == NULL) return;
 
-	if (x >= 0 && y >= 0 && x < data->nftr.cellWidth && y < data->nftr.cellHeight) {
-		glyph->px[x + y * data->nftr.cellWidth] = data->selectedColor;
+	if (x >= 0 && y >= 0 && x < data->nftr->cellWidth && y < data->nftr->cellHeight) {
+		glyph->px[x + y * data->nftr->cellWidth] = data->selectedColor;
 	}
 }
 
 static void NftrViewerSetCurrentColor(NFTRVIEWERDATA *data, unsigned int col) {
-	unsigned int maxCol = (1 << data->nftr.bpp) - 1;
+	unsigned int maxCol = (1 << data->nftr->bpp) - 1;
 	if (col > maxCol) col = maxCol;
 
 	data->selectedColor = col;
@@ -335,7 +335,7 @@ static void NftrViewerSetCurrentGlyphByIndex(NFTRVIEWERDATA *data, int i, BOOL u
 
 static void NftrViewerSetCurrentGlyphByCodePoint(NFTRVIEWERDATA *data, int cc, BOOL updateList) {
 	//if no code points, cannot perform
-	if (!data->nftr.hasCodeMap) return;
+	if (!data->nftr->hasCodeMap) return;
 
 	int gidx = NftrViewerGetGlyphIndexByCP(data, cc);
 	if (gidx == -1) return;
@@ -500,13 +500,13 @@ static int NftrViewerParseCharacter(const wchar_t *buf, int outSjis) {
 static int NftrViewerPromptCharacter(NFTRVIEWERDATA *data, LPCWSTR title, LPCWSTR prompt, uint16_t defCP) {
 	HWND hWndMain = data->editorMgr->hWnd;
 	WCHAR textbuf[16];
-	wsprintf(textbuf, L"%c+%04X", data->nftr.charset == FONT_CHARSET_SJIS ? 'J' : 'U', defCP);
+	wsprintf(textbuf, L"%c+%04X", data->nftr->charset == FONT_CHARSET_SJIS ? 'J' : 'U', defCP);
 
 	while (1) {
 		int s = PromptUserText(hWndMain, title, prompt, textbuf, sizeof(textbuf));
 		if (!s) return -1;
 
-		int inputCP = NftrViewerParseCharacter(textbuf, data->nftr.charset == FONT_CHARSET_SJIS);
+		int inputCP = NftrViewerParseCharacter(textbuf, data->nftr->charset == FONT_CHARSET_SJIS);
 		if (inputCP != -1) return inputCP;
 
 		MessageBox(hWndMain, L"Invalid format. Enter a character or code point.", L"Error", MB_ICONERROR);
@@ -524,8 +524,8 @@ static void NftrViewerGetGlyphListText(NFTRVIEWERDATA *data, int i, WCHAR *textb
 		return;
 	}
 
-	if (data->nftr.hasCodeMap) {
-		if (data->nftr.charset == FONT_CHARSET_SJIS) {
+	if (data->nftr->hasCodeMap) {
+		if (data->nftr->charset == FONT_CHARSET_SJIS) {
 			//decode as Shift-JIS (J+0000)
 			wsprintfW(textbuf, L"%c (J+%04X)", NftrViewerDecodeSjisCharacter(glyph->cp), glyph->cp);
 		} else {
@@ -538,13 +538,13 @@ static void NftrViewerGetGlyphListText(NFTRVIEWERDATA *data, int i, WCHAR *textb
 		wsprintfW(textbuf, L"Glyph %d", i);
 	}
 
-	if (data->nftr.glyphs[i].isInvalid) {
+	if (data->nftr->glyphs[i].isInvalid) {
 		wsprintfW(textbuf + wcslen(textbuf), L"\n**Invalid**");
 	}
 }
 
 static void NftrViewerUpdateGlyphListImage(NFTRVIEWERDATA *data, int i) {
-	if (i < 0 || i >= data->nftr.nGlyph) return;
+	if (i < 0 || i >= data->nftr->nGlyph) return;
 
 	//refresh list view
 	NftrViewerCacheInvalidateGlyphByIndex(data, i);
@@ -553,12 +553,12 @@ static void NftrViewerUpdateGlyphListImage(NFTRVIEWERDATA *data, int i) {
 
 static void NftrViewerReassignGlyph(NFTRVIEWERDATA *data, int i, uint16_t inputCP) {
 	//first, set the code point on the glyph and sort the glyph list.
-	data->nftr.glyphs[i].cp = inputCP;
-	NftrEnsureSorted(&data->nftr);
+	data->nftr->glyphs[i].cp = inputCP;
+	NftrEnsureSorted(data->nftr);
 
 	//next, get the new index of glyph.
 	int newI = NftrViewerGetGlyphIndexByCP(data, inputCP);
-	NFTR_GLYPH *glyph = &data->nftr.glyphs[newI];
+	NFTR_GLYPH *glyph = &data->nftr->glyphs[newI];
 
 	//next, update the list view.
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
@@ -599,56 +599,56 @@ static void NftrViewerFullRefreshGlyphList(NFTRVIEWERDATA *data, int iFirst, int
 
 static void NftrViewerDeleteGlyph(NFTRVIEWERDATA *data, int i) {
 	//delete glyph i from glyph list
-	memmove(&data->nftr.glyphs[i], &data->nftr.glyphs[i + 1], (data->nftr.nGlyph - i - 1) * sizeof(NFTR_GLYPH));
-	data->nftr.nGlyph--;
-	data->nftr.glyphs = (NFTR_GLYPH *) realloc(data->nftr.glyphs, data->nftr.nGlyph * sizeof(NFTR_GLYPH));
+	memmove(&data->nftr->glyphs[i], &data->nftr->glyphs[i + 1], (data->nftr->nGlyph - i - 1) * sizeof(NFTR_GLYPH));
+	data->nftr->nGlyph--;
+	data->nftr->glyphs = (NFTR_GLYPH *) realloc(data->nftr->glyphs, data->nftr->nGlyph * sizeof(NFTR_GLYPH));
 
 	//reassign glyph list items
-	NftrViewerFullRefreshGlyphList(data, i, data->nftr.nGlyph - 1);
+	NftrViewerFullRefreshGlyphList(data, i, data->nftr->nGlyph - 1);
 
 	//delete last from list view
-	ListView_SetItemCount(data->hWndGlyphList, data->nftr.nGlyph);
+	ListView_SetItemCount(data->hWndGlyphList, data->nftr->nGlyph);
 
 	//set selection
 	int iNewSel = i;
-	if (iNewSel >= data->nftr.nGlyph) iNewSel = data->nftr.nGlyph - 1;
+	if (iNewSel >= data->nftr->nGlyph) iNewSel = data->nftr->nGlyph - 1;
 	NftrViewerSetCurrentGlyphByIndex(data, i, TRUE);
 }
 
 static void NftrViewerCreateGlyph(NFTRVIEWERDATA *data, int cc) {
 	//allocate new glyph
-	data->nftr.nGlyph++;
-	data->nftr.glyphs = (NFTR_GLYPH *) realloc(data->nftr.glyphs, data->nftr.nGlyph * sizeof(NFTR_GLYPH));
+	data->nftr->nGlyph++;
+	data->nftr->glyphs = (NFTR_GLYPH *) realloc(data->nftr->glyphs, data->nftr->nGlyph * sizeof(NFTR_GLYPH));
 
-	NFTR_GLYPH *last = &data->nftr.glyphs[data->nftr.nGlyph - 1];
+	NFTR_GLYPH *last = &data->nftr->glyphs[data->nftr->nGlyph - 1];
 	memset(last, 0, sizeof(NFTR_GLYPH));
 	last->cp = cc;
-	last->px = (unsigned char *) calloc(data->nftr.cellWidth * data->nftr.cellHeight, 1);
-	last->width = data->nftr.cellWidth;
+	last->px = (unsigned char *) calloc(data->nftr->cellWidth * data->nftr->cellHeight, 1);
+	last->width = data->nftr->cellWidth;
 
 	//sort
-	NftrEnsureSorted(&data->nftr);
+	NftrEnsureSorted(data->nftr);
 
 	//refresh all but the last glyph
 	NFTR_GLYPH *ins = NftrViewerGetGlyphByCP(data, cc);
-	NftrViewerFullRefreshGlyphList(data, ins - data->nftr.glyphs, data->nftr.nGlyph - 2);
+	NftrViewerFullRefreshGlyphList(data, ins - data->nftr->glyphs, data->nftr->nGlyph - 2);
 
 	//add and update last item
-	ListView_SetItemCount(data->hWndGlyphList, data->nftr.nGlyph);
-	NftrViewerFullRefreshGlyphList(data, data->nftr.nGlyph - 1, data->nftr.nGlyph - 1);
+	ListView_SetItemCount(data->hWndGlyphList, data->nftr->nGlyph);
+	NftrViewerFullRefreshGlyphList(data, data->nftr->nGlyph - 1, data->nftr->nGlyph - 1);
 	NftrViewerFontUpdated(data);
 }
 
 static void NftrViewerSetBitDepth(NFTRVIEWERDATA *data, int depth, BOOL setDropdown) {
-	int depthOld = data->nftr.bpp;
+	int depthOld = data->nftr->bpp;
 
 	//update bit depth
 	if (depth != depthOld) {
-		NftrSetBitDepth(&data->nftr, depth);
+		NftrSetBitDepth(data->nftr, depth);
 	}
 
 	//update color palette
-	int nShade = 1 << data->nftr.bpp;
+	int nShade = 1 << data->nftr->bpp;
 	for (int i = 0; i < nShade; i++) {
 		int l = 31 - (i * 62 + nShade - 1) / (2 * (nShade - 1));
 		COLOR c = l | (l << 5) | (l << 10);
@@ -673,17 +673,17 @@ static void NftrViewerSetBitDepth(NFTRVIEWERDATA *data, int depth, BOOL setDropd
 		InvalidateRect(data->hWnd, &rcPalette, TRUE);
 
 		//update glyph images
-		NftrViewerFullRefreshGlyphList(data, 0, data->nftr.nGlyph - 1);
+		NftrViewerFullRefreshGlyphList(data, 0, data->nftr->nGlyph - 1);
 		NftrViewerFontUpdated(data);
 	}
 }
 
 static void NftrViewerSetCellSize(NFTRVIEWERDATA *data, int width, int height) {
 	//if size is the same, do nothing
-	if (width == data->nftr.cellWidth && height == data->nftr.cellHeight) return;
+	if (width == data->nftr->cellWidth && height == data->nftr->cellHeight) return;
 
 	//update params
-	NftrSetCellSize(&data->nftr, width, height);
+	NftrSetCellSize(data->nftr, width, height);
 
 	//update UI
 	TedUpdateSize((EDITOR_DATA *) data, &data->ted, width, height);
@@ -692,9 +692,9 @@ static void NftrViewerSetCellSize(NFTRVIEWERDATA *data, int width, int height) {
 
 	//update inputs
 	WCHAR textbuf[16];
-	wsprintfW(textbuf, L"%d", data->nftr.cellWidth);
+	wsprintfW(textbuf, L"%d", data->nftr->cellWidth);
 	SendMessage(data->hWndInputCellWidth, WM_SETTEXT, -1, (LPARAM) textbuf);
-	wsprintfW(textbuf, L"%d", data->nftr.cellHeight);
+	wsprintfW(textbuf, L"%d", data->nftr->cellHeight);
 	SendMessage(data->hWndInputCellHeight, WM_SETTEXT, -1, (LPARAM) textbuf);
 }
 
@@ -943,6 +943,8 @@ static LRESULT NftrViewerOnSize(NFTRVIEWERDATA *data, WPARAM wParam, LPARAM lPar
 }
 
 static void NftrViewerOnPaint(NFTRVIEWERDATA *data) {
+	if (data->nftr == NULL) return;
+
 	float scale = GetDpiScale();
 	PAINTSTRUCT ps;
 	HDC hDC = BeginPaint(data->hWnd, &ps);
@@ -994,7 +996,7 @@ static void NftrViewerOnPaint(NFTRVIEWERDATA *data) {
 	DrawText(hDC, L" Palette:", -1, &rcPltLabel, DT_VCENTER | DT_NOPREFIX | DT_SINGLELINE);
 
 	//draw selections for alpha
-	unsigned int nAlpha = 1 << data->nftr.bpp;
+	unsigned int nAlpha = 1 << data->nftr->bpp;
 	for (unsigned int i = 0; i < nAlpha; i++) {
 		COLOR32 c = ColorConvertFromDS(data->palette[i]);
 		HBRUSH hbr = CreateSolidBrush(c);
@@ -1043,7 +1045,7 @@ static void NftrViewerOnNotify(NFTRVIEWERDATA *data, HWND hWnd, WPARAM wParam, L
 				di->item.cColumns = 0;
 			}
 			if (di->item.mask & LVIF_IMAGE) {
-				int iImage = NftrViewerCacheGetByCP(data, data->nftr.glyphs[di->item.iItem].cp);
+				int iImage = NftrViewerCacheGetByCP(data, data->nftr->glyphs[di->item.iItem].cp);
 				di->item.iImage = iImage; // re-use imagelist images
 			}
 			if (di->item.mask & LVIF_TEXT) {
@@ -1127,18 +1129,18 @@ static void NftrViewerCopyCurrentGlyph(NFTRVIEWERDATA *data) {
 	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
 	if (glyph == NULL) return;
 
-	COLOR32 *pxbuf = (COLOR32 *) calloc(data->nftr.cellWidth * data->nftr.cellHeight, sizeof(COLOR32));
-	for (int i = 0; i < data->nftr.cellWidth * data->nftr.cellHeight; i++) {
+	COLOR32 *pxbuf = (COLOR32 *) calloc(data->nftr->cellWidth * data->nftr->cellHeight, sizeof(COLOR32));
+	for (int i = 0; i < data->nftr->cellWidth * data->nftr->cellHeight; i++) {
 		//fill with background color
 		pxbuf[i] = ColorConvertFromDS(data->palette[0]);
 	}
 
-	NftrViewerRenderGlyph(data, pxbuf, data->nftr.cellWidth, data->nftr.cellHeight, 0, 0, glyph);
-	ImgSwapRedBlue(pxbuf, data->nftr.cellWidth, data->nftr.cellHeight);
+	NftrViewerRenderGlyph(data, pxbuf, data->nftr->cellWidth, data->nftr->cellHeight, 0, 0, glyph);
+	ImgSwapRedBlue(pxbuf, data->nftr->cellWidth, data->nftr->cellHeight);
 
 	OpenClipboard(data->hWnd);
 	EmptyClipboard();
-	copyBitmap(pxbuf, data->nftr.cellWidth, data->nftr.cellHeight);
+	copyBitmap(pxbuf, data->nftr->cellWidth, data->nftr->cellHeight);
 	CloseClipboard();
 	free(pxbuf);
 }
@@ -1172,10 +1174,10 @@ static void NftrViewerMakeCurrentGlyphInvalid(NFTRVIEWERDATA *data) {
 	//mark all glyphs valid, except the current glyph
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
 
-	for (int i = 0; i < data->nftr.nGlyph; i++) {
+	for (int i = 0; i < data->nftr->nGlyph; i++) {
 		int isInvalid = (i == data->curGlyph);
-		if (isInvalid != data->nftr.glyphs[i].isInvalid) {
-			data->nftr.glyphs[i].isInvalid = isInvalid;
+		if (isInvalid != data->nftr->glyphs[i].isInvalid) {
+			data->nftr->glyphs[i].isInvalid = isInvalid;
 		}
 	}
 
@@ -1299,7 +1301,7 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 		DrawText(fb.hDC, str, 1, &rcText, DT_SINGLELINE | DT_NOPREFIX);
 
 		//clear glyph
-		memset(glyph->px, 0, data->nftr.cellWidth * data->nftr.cellHeight);
+		memset(glyph->px, 0, data->nftr->cellWidth * data->nftr->cellHeight);
 
 		//calculate glyph bounding horizontal
 		int offsX = 0, maxX = fb.width;
@@ -1316,11 +1318,11 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 		if (maxX < offsX) maxX = offsX;
 
 		//render
-		unsigned int cMax = (1 << data->nftr.bpp) - 1;
-		for (int y = 0; y < data->nftr.cellHeight; y++) {
-			for (int x = 0; x < data->nftr.cellWidth; x++) {
+		unsigned int cMax = (1 << data->nftr->bpp) - 1;
+		for (int y = 0; y < data->nftr->cellHeight; y++) {
+			for (int x = 0; x < data->nftr->cellWidth; x++) {
 				int srcX = x + offsX;
-				int srcY = y - data->nftr.pxAscent + ascent - 1;
+				int srcY = y - data->nftr->pxAscent + ascent - 1;
 
 				//sample
 				if (srcX >= 0 && srcX < fb.width && srcY >= 0 && srcY < fb.height) {
@@ -1331,7 +1333,7 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 					unsigned int l = 255 - (r + b + 2 * g + 2) / 4;
 
 					unsigned int q = (l * cMax * 2 + 255) / 510;
-					glyph->px[x + y * data->nftr.cellWidth] = q;
+					glyph->px[x + y * data->nftr->cellWidth] = q;
 				}
 			}
 		}
@@ -1374,10 +1376,10 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 			//push all the spacing to the A space for maximum compatibility.
 			spaceA += spaceC;
 			spaceC = 0;
-		} else if (width > data->nftr.cellWidth) {
+		} else if (width > data->nftr->cellWidth) {
 			//clamp width to cell size, adding excess to C space to preserve total width
-			spaceC += (width - data->nftr.cellWidth);
-			width = data->nftr.cellWidth;
+			spaceC += (width - data->nftr->cellWidth);
+			width = data->nftr->cellWidth;
 		}
 
 		glyph->spaceLeft = spaceA;
@@ -1402,7 +1404,7 @@ static void NftrViewerGenerateGlyph(NFTRVIEWERDATA *data) {
 	if (!NftrViewerSelectFontDialog(data)) return;
 
 	//font fix-up
-	if (data->nftr.bpp == 1) {
+	if (data->nftr->bpp == 1) {
 		data->lastFont.lfQuality = NONANTIALIASED_QUALITY;
 	}
 
@@ -1415,11 +1417,11 @@ static void NftrViewerGenerateGlyphsForWholeFont(NFTRVIEWERDATA *data) {
 	if (!NftrViewerSelectFontDialog(data)) return;
 
 	//font fix-up
-	if (data->nftr.bpp == 1) {
+	if (data->nftr->bpp == 1) {
 		data->lastFont.lfQuality = NONANTIALIASED_QUALITY;
 	}
 
-	NftrViewerGenerateGlyphsFromFont(data, data->nftr.glyphs, data->nftr.nGlyph);
+	NftrViewerGenerateGlyphsFromFont(data, data->nftr->glyphs, data->nftr->nGlyph);
 	NftrViewerCacheInvalidateAll(data);
 	InvalidateRect(data->hWndGlyphList, NULL, TRUE);
 	
@@ -1449,21 +1451,21 @@ static void NftrViewerGenerateGlyphRange(NFTRVIEWERDATA *data) {
 
 	//find first glyph with CP >= inputCP1
 	int glyphStart = -1, nGlyph = 0;
-	for (int i = 0; i < data->nftr.nGlyph; i++) {
+	for (int i = 0; i < data->nftr->nGlyph; i++) {
 
 		//starting glyph
-		if (glyphStart == -1 && data->nftr.glyphs[i].cp >= (uint16_t) inputCP1) {
+		if (glyphStart == -1 && data->nftr->glyphs[i].cp >= (uint16_t) inputCP1) {
 			glyphStart = i;
 		}
 
 		//increase count
-		if (glyphStart != -1 && data->nftr.glyphs[i].cp <= (uint16_t) inputCP2) {
+		if (glyphStart != -1 && data->nftr->glyphs[i].cp <= (uint16_t) inputCP2) {
 			nGlyph++;
 		}
 	}
 
 	if (glyphStart != -1) {
-		NftrViewerGenerateGlyphsFromFont(data, &data->nftr.glyphs[glyphStart], nGlyph);
+		NftrViewerGenerateGlyphsFromFont(data, &data->nftr->glyphs[glyphStart], nGlyph);
 		NftrViewerCacheInvalidateAll(data);
 		InvalidateRect(data->hWndGlyphList, NULL, TRUE);
 
@@ -1641,7 +1643,7 @@ static void NftrViewerCmdImportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
 	HWND hWndMain = data->editorMgr->hWnd;
 
-	if (data->nftr.hasCodeMap) {
+	if (data->nftr->hasCodeMap) {
 		MessageBox(hWndMain, L"Font already has a code map.", L"Error", MB_ICONERROR);
 		return;
 	}
@@ -1658,7 +1660,7 @@ static void NftrViewerCmdImportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 		return;
 	}
 
-	int status = BncmpRead(&data->nftr, buf, size);
+	int status = BncmpRead(data->nftr, buf, size);
 	if (status != OBJ_STATUS_SUCCESS) {
 		free(buf);
 		MessageBox(hWndMain, L"Code map size mismatch.", L"Error", MB_ICONERROR);
@@ -1676,13 +1678,13 @@ static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 	//export code map
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
 	HWND hWndMain = data->editorMgr->hWnd;
-	if (!data->nftr.hasCodeMap) {
+	if (!data->nftr->hasCodeMap) {
 		MessageBox(hWndMain, L"Font has no code map.", L"Error", MB_ICONERROR);
 		return;
 	}
 
 	int cmapFormat = BNCMP_TYPE_INVALID;
-	switch (data->nftr.header.format) {
+	switch (data->nftr->header.format) {
 		case NFTR_TYPE_BNFR_11:
 			cmapFormat = BNCMP_TYPE_BNCMP_11; break;
 		case NFTR_TYPE_BNFR_12:
@@ -1691,7 +1693,7 @@ static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 
 	if (cmapFormat == BNCMP_TYPE_INVALID) {
 		WCHAR textbuf[64];
-		wsprintfW(textbuf, L"%s format does not use a separate code map.", fontFormatNames[data->nftr.header.format]);
+		wsprintfW(textbuf, L"%s format does not use a separate code map.", fontFormatNames[data->nftr->header.format]);
 		MessageBox(hWndMain, textbuf, L"Error", MB_ICONERROR);
 		return;
 	}
@@ -1701,7 +1703,7 @@ static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 
 	BSTREAM stm;
 	bstreamCreate(&stm, NULL, 0);
-	BncmpWrite(&data->nftr, &stm);
+	BncmpWrite(data->nftr, &stm);
 
 	DWORD dwWritten;
 	HANDLE hFile = CreateFile(filename, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1723,7 +1725,7 @@ static void NftrViewerCmdSetBitDepth(HWND hWnd, HWND hWndCtl, int notif, void *p
 static void NftrViewerCmdSetAscent(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	//change ascent
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
-	data->nftr.pxAscent = GetEditNumber(hWndCtl);
+	data->nftr->pxAscent = GetEditNumber(hWndCtl);
 	NftrViewerFontUpdated(data);
 }
 
@@ -1762,10 +1764,10 @@ static void NftrViewerCmdSetCellWidth(HWND hWnd, HWND hWndCtl, int notif, void *
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
 	
 	WCHAR textbuf[16];
-	wsprintfW(textbuf, L"%d", data->nftr.cellWidth);
+	wsprintfW(textbuf, L"%d", data->nftr->cellWidth);
 	int s = PromptUserText(data->editorMgr->hWnd, L"Input", L"Cell Width:", textbuf, sizeof(textbuf));
 	if (s) {
-		NftrViewerSetCellSize(data, _wtol(textbuf), data->nftr.cellHeight);
+		NftrViewerSetCellSize(data, _wtol(textbuf), data->nftr->cellHeight);
 	}
 }
 
@@ -1774,10 +1776,10 @@ static void NftrViewerCmdSetCellHeight(HWND hWnd, HWND hWndCtl, int notif, void 
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
 	
 	WCHAR textbuf[16];
-	wsprintfW(textbuf, L"%d", data->nftr.cellHeight);
+	wsprintfW(textbuf, L"%d", data->nftr->cellHeight);
 	int s = PromptUserText(data->editorMgr->hWnd, L"Input", L"Cell Height:", textbuf, sizeof(textbuf));
 	if (s) {
-		NftrViewerSetCellSize(data, data->nftr.cellWidth, _wtol(textbuf));
+		NftrViewerSetCellSize(data, data->nftr->cellWidth, _wtol(textbuf));
 	}
 }
 
@@ -1809,7 +1811,7 @@ static int NftrViewerGetPltColorByPoint(NFTRVIEWERDATA *data, int x, int y) {
 		if (iCol >= 0) {
 			iCol /= btnSize;
 
-			int nPaletteColors = 1 << data->nftr.bpp;
+			int nPaletteColors = 1 << data->nftr->bpp;
 			if (iCol < nPaletteColors) {
 				return iCol;
 			}
@@ -1906,24 +1908,24 @@ static LRESULT CALLBACK NftrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			NFTR *nftr = (NFTR *) lParam;
 
 			if (path != NULL) EditorSetFile(hWnd, path);
-			memcpy(&data->nftr, nftr, sizeof(NFTR));
+			data->nftr = nftr;
 
-			NftrViewerSetGlyphListSize(data, data->nftr.nGlyph);
+			NftrViewerSetGlyphListSize(data, data->nftr->nGlyph);
 
 			data->frameData.contentWidth = nftr->cellWidth * data->scale;
 			data->frameData.contentHeight = nftr->cellHeight * data->scale;
 
-			NftrViewerSetBitDepth(data, data->nftr.bpp, TRUE);
+			NftrViewerSetBitDepth(data, data->nftr->bpp, TRUE);
 			data->selectedColor = (1 << nftr->bpp) - 1;
 			NftrViewerSetCurrentGlyphByIndex(data, 0, TRUE);
 
 			//populate font info
 			WCHAR textbuf[16];
-			wsprintfW(textbuf, L"%d", data->nftr.cellWidth);
+			wsprintfW(textbuf, L"%d", data->nftr->cellWidth);
 			SendMessage(data->hWndInputCellWidth, WM_SETTEXT, -1, (LPARAM) textbuf);
-			wsprintfW(textbuf, L"%d", data->nftr.cellHeight);
+			wsprintfW(textbuf, L"%d", data->nftr->cellHeight);
 			SendMessage(data->hWndInputCellHeight, WM_SETTEXT, -1, (LPARAM) textbuf);
-			wsprintfW(textbuf, L"%d", data->nftr.pxAscent);
+			wsprintfW(textbuf, L"%d", data->nftr->pxAscent);
 			SendMessage(data->hWndInputAscent, WM_SETTEXT, -1, (LPARAM) textbuf);
 
 			TedUpdateSize((EDITOR_DATA *) data, &data->ted, nftr->cellWidth, nftr->cellHeight);
@@ -2055,9 +2057,9 @@ static LRESULT CALLBACK NftrViewerCellEditorWndProc(HWND hWnd, UINT msg, WPARAM 
 		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
 	}
 
-	if (data != NULL) {
-		data->frameData.contentWidth = data->nftr.cellWidth * data->scale;
-		data->frameData.contentHeight = data->nftr.cellHeight * data->scale;
+	if (data != NULL && data->nftr != NULL) {
+		data->frameData.contentWidth = data->nftr->cellWidth * data->scale;
+		data->frameData.contentHeight = data->nftr->cellHeight * data->scale;
 	}
 
 	switch (msg) {
@@ -2090,7 +2092,7 @@ static LRESULT CALLBACK NftrViewerCellEditorWndProc(HWND hWnd, UINT msg, WPARAM 
 			return TedSetCursor((EDITOR_DATA *) data, &data->ted, wParam, lParam);
 		case WM_SIZE:
 		{
-			if (ObjIsValid(&data->nftr.header)) {
+			if (data->nftr != NULL && ObjIsValid(&data->nftr->header)) {
 				UpdateScrollbarVisibility(hWnd);
 
 				SCROLLINFO info;
@@ -2330,7 +2332,7 @@ static LRESULT CALLBACK NftrViewerExportWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			data->path = (LPWSTR) wParam;
 
 			//for a font without a code map, cannot export a code map.
-			int hasCodeMap = data->data->nftr.hasCodeMap;
+			int hasCodeMap = data->data->nftr->hasCodeMap;
 			SendMessage(data->hWndExportCodeMap, BM_SETCHECK, hasCodeMap ? BST_CHECKED : BST_UNCHECKED, 0);
 			
 			if (!hasCodeMap) {
@@ -2349,7 +2351,7 @@ static LRESULT CALLBACK NftrViewerExportWndProc(HWND hWnd, UINT msg, WPARAM wPar
 				int unmapped = GetCheckboxChecked(data->hWndExportUnmapped);
 
 				int width, height;
-				COLOR32 *px = NftrViewerExportImage(&data->data->nftr, markers, map, unmapped, &width, &height);
+				COLOR32 *px = NftrViewerExportImage(data->data->nftr, markers, map, unmapped, &width, &height);
 
 				//write export image
 				ImgWrite(px, width, height, data->path);
@@ -2392,20 +2394,22 @@ void RegisterNftrViewerClass(void) {
 	RegisterGenericClass(L"NftrExportClass", NftrViewerExportWndProc, sizeof(void *));
 }
 
+static HWND CreateNftrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NFTR *nftr) {
+	HWND hWndEditor = EditorCreate(NFTR_VIEWER_CLASS_NAME, x, y, width, height, hWndParent);
+	SendMessage(hWndEditor, NV_INITIALIZE, (WPARAM) path, (LPARAM) nftr);
+	return hWndEditor;
+}
+
 HWND CreateNftrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NFTR nftr;
-	if (NftrReadFile(&nftr, path)) {
+	NFTR *nftr = (NFTR *) calloc(1, sizeof(NFTR));
+	if (NftrReadFile(nftr, path)) {
 		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
 		return NULL;
 	}
 
-	HWND hWndEditor = EditorCreate(NFTR_VIEWER_CLASS_NAME, x, y, width, height, hWndParent);
-	SendMessage(hWndEditor, NV_INITIALIZE, (WPARAM) path, (LPARAM) &nftr);
-	return hWndEditor;
+	return CreateNftrViewerInternal(x, y, width, height, hWndParent, path, nftr);
 }
 
 HWND CreateNftrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NFTR *nftr) {
-	HWND hWndEditor = EditorCreate(NFTR_VIEWER_CLASS_NAME, x, y, width, height, hWndParent);
-	SendMessage(hWndEditor, NV_INITIALIZE, 0, (LPARAM) nftr);
-	return hWndEditor;
+	return CreateNftrViewerInternal(x, y, width, height, hWndParent, NULL, nftr);
 }
