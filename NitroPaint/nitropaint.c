@@ -2210,6 +2210,20 @@ void nscrCreateCallback(void *data) {
 		SetEditNumber(nscrViewerData->hWndTileBase, nscrViewerData->tileBase);
 	}
 
+	//fixup for moved objects
+	if (palobj->combo != NULL) {
+		COMBO2D *combo = (COMBO2D *) palobj->combo;
+		combo2dUnlink(combo, &createData->nclr.header);
+		combo2dLink(combo, palobj);
+		combo2dUnlink(combo, &createData->ncgr.header);
+		combo2dLink(combo, chrobj);
+
+		if (scrobj != NULL) {
+			combo2dUnlink(combo, &createData->nscr.header);
+			combo2dLink(combo, scrobj);
+		}
+	}
+
 	free(createData->bbits);
 	free(data);
 }
@@ -2334,6 +2348,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				L"NITRO-CHARACTER",  // NCL , NCG , NSC
 				L"IRIS-CHARACTER",   // ICL , ICG , ISC
 				L"AGB-CHARACTER",    // ACL , ACG , ASC
+				L"iMageStudio 5",    // 5BG (combo)
 				L"Hudson",
 				L"Hudson 2",
 				L"Raw",

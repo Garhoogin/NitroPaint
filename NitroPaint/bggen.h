@@ -13,14 +13,15 @@
 #define BGGEN_BGTYPE_BITMAP           4
 
 
-#define BGGEN_FORMAT_NITROSYSTEM     0          //NCLR, NCGR, NSCR
-#define BGGEN_FORMAT_NITROCHARACTER  1          //NCL,  NCG,  NSC
-#define BGGEN_FORMAT_IRISCHARACTER   2          //ICL,  ICG,  ISC
-#define BGGEN_FORMAT_AGBCHARACTER    3          //ACL,  ACG,  ASC
-#define BGGEN_FORMAT_HUDSON          4          //Hudson bin
-#define BGGEN_FORMAT_HUDSON2         5          //Hudson bin
-#define BGGEN_FORMAT_BIN             6          //raw
-#define BGGEN_FORMAT_BIN_COMPRESSED  7          //raw compresed
+#define BGGEN_FORMAT_NITROSYSTEM     0          // NCLR, NCGR, NSCR
+#define BGGEN_FORMAT_NITROCHARACTER  1          // NCL,  NCG,  NSC
+#define BGGEN_FORMAT_IRISCHARACTER   2          // ICL,  ICG,  ISC
+#define BGGEN_FORMAT_AGBCHARACTER    3          // ACL,  ACG,  ASC
+#define BGGEN_FORMAT_IMAGESTUDIO     4          // 5BG
+#define BGGEN_FORMAT_HUDSON          5          // Hudson bin
+#define BGGEN_FORMAT_HUDSON2         6          // Hudson bin
+#define BGGEN_FORMAT_BIN             7          // raw
+#define BGGEN_FORMAT_BIN_COMPRESSED  8          // raw compresed
 
 typedef struct BgDctBlock_ {
 	float blockY[64];
