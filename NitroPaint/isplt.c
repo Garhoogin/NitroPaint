@@ -1119,7 +1119,6 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 			RxHistEntry *entry = reduction->histogramFlat[i];
 			double weight = entry->weight;
 			float hy = entry->color.y, hi = entry->color.i, hq = entry->color.q, ha = entry->color.a;
-			double a1 = ha * INV_255;
 
 			double bestDistance = RX_LARGE_NUMBER;
 			int bestIndex = 0;
@@ -1134,11 +1133,12 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 			}
 
 			//add to total. YIQ colors scaled by alpha to be unscaled later.
+			double a1 = ha * weight;
 			totalsBuffer[bestIndex].weight += weight;
-			totalsBuffer[bestIndex].y += a1 * RxiLinearizeLuma(reduction, hy) * weight;
-			totalsBuffer[bestIndex].i += a1 * hi * weight;
-			totalsBuffer[bestIndex].q += a1 * hq * weight;
-			totalsBuffer[bestIndex].a += ha * weight;
+			totalsBuffer[bestIndex].y += RxiLinearizeLuma(reduction, hy) * a1;
+			totalsBuffer[bestIndex].i += hi * a1;
+			totalsBuffer[bestIndex].q += hq * a1;
+			totalsBuffer[bestIndex].a += a1;
 			totalsBuffer[bestIndex].error += bestDistance * weight;
 			entry->entry = bestIndex;
 
@@ -1199,14 +1199,9 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 		}
 
 		//also check palette error; if we've started rising, we passed our locally optimal palette
-		if (error > lastError) {
+		if (error >= lastError) {
 			goto finalize;
 		}
-
-		//check: is the palette the same after this iteration as lst?
-		if (error == lastError)
-			if (memcmp(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgb)) == 0)
-				goto finalize;
 
 		//weight check succeeded, copy this palette to the main palette.
 		memcpy(reduction->paletteYiq, reduction->paletteYiqCopy, sizeof(reduction->paletteYiqCopy));
@@ -1218,11 +1213,11 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 		//average out the colors in the new partitions
 		for (int i = 0; i < reduction->nUsedColors; i++) {
 			RxYiqColor yiq;
-			double weight = totalsBuffer[i].weight, invAWeight = 255.0 / totalsBuffer[i].a;
-			yiq.y = (float) RxiDelinearizeLuma(reduction, totalsBuffer[i].a / weight);
-			yiq.i = (float) (totalsBuffer[i].y * invAWeight);
-			yiq.q = (float) (totalsBuffer[i].i * invAWeight);
-			yiq.a = (float) (totalsBuffer[i].q * invAWeight);
+			double invAWeight = 1.0 / totalsBuffer[i].a;
+			yiq.y = (float) RxiDelinearizeLuma(reduction, totalsBuffer[i].y * invAWeight);
+			yiq.i = (float) (totalsBuffer[i].i * invAWeight);
+			yiq.q = (float) (totalsBuffer[i].q * invAWeight);
+			yiq.a = (float) (totalsBuffer[i].a / totalsBuffer[i].weight);
 
 			//to RGB
 			COLOR32 as32 = RxiMaskYiqToRgb(reduction, &yiq);
