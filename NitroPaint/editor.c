@@ -33,6 +33,8 @@ StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list) {
 	//count editors of the specified type
 	for (size_t i = 0; i < mgr->editorList.length; i++) {
 		EDITOR_DATA *data = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
+		if (data->file == NULL) continue;
+
 		if (type == FILE_TYPE_INVALID || type == data->file->type) {
 			status = StListAdd(list, &data);
 			if (!ST_SUCCEEDED(status)) break;
@@ -46,6 +48,7 @@ void EditorInvalidateAllByType(HWND hWndMgr, int type) {
 
 	for (size_t i = 0; i < mgr->editorList.length; i++) {
 		EDITOR_DATA *data = *(EDITOR_DATA **) StListGetPtr(&mgr->editorList, i);
+		if (data->file == NULL) continue;
 
 		if (type == FILE_TYPE_INVALID || data->file->type == type) {
 			InvalidateRect(data->hWnd, NULL, FALSE);

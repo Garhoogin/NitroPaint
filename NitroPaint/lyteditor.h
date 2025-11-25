@@ -54,7 +54,7 @@ typedef struct LYTEDITOR_ {
 
 typedef struct BNLLEDITORDATA_ {
 	EDITOR_BASIC_MEMBERS;
-	BNLL bnll;
+	BNLL *bnll;
 	LYTEDITOR editor;
 
 	HWND hWndAlignmentLabel;
@@ -76,7 +76,7 @@ typedef struct BNLLEDITORDATA_ {
 
 typedef struct BNCLEDITORDATA_ {
 	EDITOR_BASIC_MEMBERS;
-	BNCL bncl;
+	BNCL *bncl;
 	LYTEDITOR editor;
 
 	HWND hWndCellLabel;
@@ -85,7 +85,7 @@ typedef struct BNCLEDITORDATA_ {
 
 typedef struct BNBLEDITORDATA_ {
 	EDITOR_BASIC_MEMBERS;
-	BNBL bnbl;
+	BNBL *bnbl;
 	LYTEDITOR editor;
 
 	HWND hWndWidthLabel;

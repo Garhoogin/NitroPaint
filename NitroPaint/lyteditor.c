@@ -229,9 +229,9 @@ static int LLytEditorCalcOffsetForAlignment(LYTEDITOR *ed, NFTRVIEWERDATA *nftrV
 static int LytEditorGetElementCount(LYTEDITOR *ed) {
 	//get the relevant count
 	switch (ed->type) {
-		case FILE_TYPE_BNLL: return ((BNLLEDITORDATA *) ed->data)->bnll.nMsg;
-		case FILE_TYPE_BNCL: return ((BNCLEDITORDATA *) ed->data)->bncl.nCell;
-		case FILE_TYPE_BNBL: return ((BNBLEDITORDATA *) ed->data)->bnbl.nRegion;
+		case FILE_TYPE_BNLL: return ((BNLLEDITORDATA *) ed->data)->bnll->nMsg;
+		case FILE_TYPE_BNCL: return ((BNCLEDITORDATA *) ed->data)->bncl->nCell;
+		case FILE_TYPE_BNBL: return ((BNBLEDITORDATA *) ed->data)->bnbl->nRegion;
 	}
 	return 0;
 }
@@ -245,9 +245,9 @@ static void *LytEditorGetElement(LYTEDITOR *ed, int i) {
 
 	//get the relevant element
 	switch (ed->type) {
-		case FILE_TYPE_BNLL: return &((BNLLEDITORDATA *) ed->data)->bnll.messages[i];
-		case FILE_TYPE_BNCL: return &((BNCLEDITORDATA *) ed->data)->bncl.cells[i];
-		case FILE_TYPE_BNBL: return &((BNBLEDITORDATA *) ed->data)->bnbl.regions[i];
+		case FILE_TYPE_BNLL: return &((BNLLEDITORDATA *) ed->data)->bnll->messages[i];
+		case FILE_TYPE_BNCL: return &((BNCLEDITORDATA *) ed->data)->bncl->cells[i];
+		case FILE_TYPE_BNBL: return &((BNBLEDITORDATA *) ed->data)->bnbl->regions[i];
 	}
 	return NULL;
 }
@@ -575,15 +575,15 @@ static void LytEditorOnAddElement(HWND hWnd, HWND hWndCtl, int notif, void *para
 	int elemSize = 0, nElem = LytEditorGetElementCount(ed);
 	switch (ed->type) {
 		case FILE_TYPE_BNLL:
-			pbuf = ((BNLLEDITORDATA *) ed->data)->bnll.messages;
+			pbuf = ((BNLLEDITORDATA *) ed->data)->bnll->messages;
 			elemSize = sizeof(BnllMessage);
 			break;
 		case FILE_TYPE_BNCL:
-			pbuf = ((BNCLEDITORDATA *) ed->data)->bncl.cells;
+			pbuf = ((BNCLEDITORDATA *) ed->data)->bncl->cells;
 			elemSize = sizeof(BnclCell);
 			break;
 		case FILE_TYPE_BNBL:
-			pbuf = ((BNBLEDITORDATA *) ed->data)->bnbl.regions;
+			pbuf = ((BNBLEDITORDATA *) ed->data)->bnbl->regions;
 			elemSize = sizeof(BnblRegion);
 			break;
 	}
@@ -604,16 +604,16 @@ static void LytEditorOnAddElement(HWND hWnd, HWND hWndCtl, int notif, void *para
 	//put back
 	switch (ed->type) {
 		case FILE_TYPE_BNLL:
-			((BNLLEDITORDATA *) ed->data)->bnll.messages = (BnllMessage *) pbuf;
-			((BNLLEDITORDATA *) ed->data)->bnll.nMsg = nElem;
+			((BNLLEDITORDATA *) ed->data)->bnll->messages = (BnllMessage *) pbuf;
+			((BNLLEDITORDATA *) ed->data)->bnll->nMsg = nElem;
 			break;
 		case FILE_TYPE_BNCL:
-			((BNCLEDITORDATA *) ed->data)->bncl.cells = (BnclCell *) pbuf;
-			((BNCLEDITORDATA *) ed->data)->bncl.nCell = nElem;
+			((BNCLEDITORDATA *) ed->data)->bncl->cells = (BnclCell *) pbuf;
+			((BNCLEDITORDATA *) ed->data)->bncl->nCell = nElem;
 			break;
 		case FILE_TYPE_BNBL:
-			((BNBLEDITORDATA *) ed->data)->bnbl.regions = (BnblRegion *) pbuf;
-			((BNBLEDITORDATA *) ed->data)->bnbl.nRegion = nElem;
+			((BNBLEDITORDATA *) ed->data)->bnbl->regions = (BnblRegion *) pbuf;
+			((BNBLEDITORDATA *) ed->data)->bnbl->nRegion = nElem;
 			break;
 	}
 	
@@ -635,15 +635,15 @@ static void LytEditorOnRemoveElement(HWND hWnd, HWND hWndCtl, int notif, void *p
 	int elemSize = 0, nElem = LytEditorGetElementCount(ed);
 	switch (ed->type) {
 		case FILE_TYPE_BNLL:
-			pbuf = ((BNLLEDITORDATA *) ed->data)->bnll.messages;
+			pbuf = ((BNLLEDITORDATA *) ed->data)->bnll->messages;
 			elemSize = sizeof(BnllMessage);
 			break;
 		case FILE_TYPE_BNCL:
-			pbuf = ((BNCLEDITORDATA *) ed->data)->bncl.cells;
+			pbuf = ((BNCLEDITORDATA *) ed->data)->bncl->cells;
 			elemSize = sizeof(BnclCell);
 			break;
 		case FILE_TYPE_BNBL:
-			pbuf = ((BNBLEDITORDATA *) ed->data)->bnbl.regions;
+			pbuf = ((BNBLEDITORDATA *) ed->data)->bnbl->regions;
 			elemSize = sizeof(BnblRegion);
 			break;
 	}
@@ -668,16 +668,16 @@ static void LytEditorOnRemoveElement(HWND hWnd, HWND hWndCtl, int notif, void *p
 	//put back
 	switch (ed->type) {
 		case FILE_TYPE_BNLL:
-			((BNLLEDITORDATA *) ed->data)->bnll.messages = (BnllMessage *) pbuf;
-			((BNLLEDITORDATA *) ed->data)->bnll.nMsg = nElem;
+			((BNLLEDITORDATA *) ed->data)->bnll->messages = (BnllMessage *) pbuf;
+			((BNLLEDITORDATA *) ed->data)->bnll->nMsg = nElem;
 			break;
 		case FILE_TYPE_BNCL:
-			((BNCLEDITORDATA *) ed->data)->bncl.cells = (BnclCell *) pbuf;
-			((BNCLEDITORDATA *) ed->data)->bncl.nCell = nElem;
+			((BNCLEDITORDATA *) ed->data)->bncl->cells = (BnclCell *) pbuf;
+			((BNCLEDITORDATA *) ed->data)->bncl->nCell = nElem;
 			break;
 		case FILE_TYPE_BNBL:
-			((BNBLEDITORDATA *) ed->data)->bnbl.regions = (BnblRegion *) pbuf;
-			((BNBLEDITORDATA *) ed->data)->bnbl.nRegion = nElem;
+			((BNBLEDITORDATA *) ed->data)->bnbl->regions = (BnblRegion *) pbuf;
+			((BNBLEDITORDATA *) ed->data)->bnbl->nRegion = nElem;
 			break;
 	}
 
@@ -1002,9 +1002,7 @@ static void LytEditorOnInitialize(HWND hWnd, LYTEDITOR *ed, WPARAM wParam, LPARA
 
 	//set object
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
-	if (obj != NULL) {
-		memcpy(&data->file, obj, obj->size);
-	}
+	data->file = obj;
 
 	//set scale and initialize scroll parameters
 	data->scale = 2;
@@ -1623,27 +1621,19 @@ static LRESULT CALLBACK BnllEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			break;
 		}
 		case WM_PAINT:
-		{
 			InvalidateRect(ed->hWndPreview, NULL, FALSE);
 			break;
-		}
 		case NV_INITIALIZE:
-		{
 			LytEditorOnInitialize(hWnd, ed, wParam, lParam);
 			LytEditorOnSize(ed);
 			SetGUIFont(hWnd);
 			break;
-		}
 		case WM_COMMAND:
-		{
 			LytEditorOnCommand(ed, wParam, lParam);
 			break;
-		}
 		case WM_SIZE:
-		{
 			LytEditorOnSize(ed);
 			break;
-		}
 		case WM_DESTROY:
 		{
 			//unregister all font destroy callbacks
@@ -1663,39 +1653,27 @@ static LRESULT CALLBACK BnclEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 	LYTEDITOR *ed = &data->editor;
 	switch (msg) {
 		case WM_CREATE:
-		{
 			data->showBorders = 1;
 			data->scale = 2;
 			break;
-		}
 		case WM_PAINT:
-		{
 			InvalidateRect(ed->hWndPreview, NULL, FALSE);
 			break;
-		}
 		case NV_INITIALIZE:
-		{
 			LytEditorOnInitialize(hWnd, ed, wParam, lParam);
 			LytEditorOnSize(ed);
 			SetGUIFont(hWnd);
 			break;
-		}
 		case WM_COMMAND:
-		{
 			LytEditorOnCommand(ed, wParam, lParam);
 			break;
-		}
 		case WM_SIZE:
-		{
 			LytEditorOnSize(ed);
 			break;
-		}
 		case WM_DESTROY:
-		{
 			LytEditorFree(&data->editor);
 			UiCtlMgrFree(&ed->mgr);
 			break;
-		}
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
@@ -1705,39 +1683,27 @@ static LRESULT CALLBACK BnblEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 	LYTEDITOR *ed = &data->editor;
 	switch (msg) {
 		case WM_CREATE:
-		{
 			data->showBorders = 1;
 			data->scale = 2;
 			break;
-		}
 		case WM_PAINT:
-		{
 			InvalidateRect(ed->hWndPreview, NULL, FALSE);
 			break;
-		}
 		case NV_INITIALIZE:
-		{
 			LytEditorOnInitialize(hWnd, ed, wParam, lParam);
 			LytEditorOnSize(ed);
 			SetGUIFont(hWnd);
 			break;
-		}
 		case WM_COMMAND:
-		{
 			LytEditorOnCommand(ed, wParam, lParam);
 			break;
-		}
 		case WM_SIZE:
-		{
 			LytEditorOnSize(ed);
 			break;
-		}
 		case WM_DESTROY:
-		{
 			LytEditorFree(&data->editor);
 			UiCtlMgrFree(&ed->mgr);
 			break;
-		}
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
@@ -1854,70 +1820,59 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-HWND CreateBnllViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	BNLL bnll;
-	if (BnllReadFile(&bnll, path)) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
-	HWND hWnd = EditorCreate(L"BnllEditorClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &bnll);
+static HWND LytEditorCreateInternal(LPCWSTR className, int x, int y, HWND hWndParent, LPCWSTR path, OBJECT_HEADER *obj) {
+	HWND hWnd = EditorCreate(className, x, y, 0, 0, hWndParent);
+	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) obj);
 	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
 	ShowWindow(hWnd, SW_SHOW);
 	return hWnd;
+}
+
+static void LytEditorReleaseInvalidFile(OBJECT_HEADER *hdr, HWND hWndParent) {
+	free(hdr);
+	MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
+}
+
+HWND CreateBnllViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
+	BNLL *bnll = (BNLL *) calloc(1, sizeof(BNLL));
+	if (BnllReadFile(bnll, path) == OBJ_STATUS_SUCCESS) {
+		return LytEditorCreateInternal(L"BnllEditorClass", x, y, hWndParent, path, &bnll->header);
+	}
+
+	LytEditorReleaseInvalidFile(&bnll->header, hWndParent);
+	return NULL;
 }
 
 HWND CreateBnclViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	BNCL bncl;
-	if (BnclReadFile(&bncl, path)) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
+	BNCL *bncl = (BNCL *) calloc(1, sizeof(BNCL));
+	if (BnclReadFile(bncl, path) == OBJ_STATUS_SUCCESS) {
+		return LytEditorCreateInternal(L"BnclEditorClass", x, y, hWndParent, path, &bncl->header);
 	}
 
-	HWND hWnd = EditorCreate(L"BnclEditorClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &bncl);
-	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
-	ShowWindow(hWnd, SW_SHOW);
-	return hWnd;
+	LytEditorReleaseInvalidFile(&bncl->header, hWndParent);
+	return NULL;
 }
 
 HWND CreateBnblViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	BNBL bnbl;
-	if (BnblReadFile(&bnbl, path)) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
+	BNBL *bnbl = (BNBL *) calloc(1, sizeof(BNBL));
+	if (BnblReadFile(bnbl, path) == OBJ_STATUS_SUCCESS) {
+		return LytEditorCreateInternal(L"BnblEditorClass", x, y, hWndParent, path, &bnbl->header);
 	}
 
-	HWND hWnd = EditorCreate(L"BnblEditorClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) &bnbl);
-	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
-	ShowWindow(hWnd, SW_SHOW);
-	return hWnd;
+	LytEditorReleaseInvalidFile(&bnbl->header, hWndParent);
+	return NULL;
 }
 
 HWND CreateBnllViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNLL *bnll) {
-	HWND hWnd = EditorCreate(L"BnllEditorClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) bnll);
-	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
-	ShowWindow(hWnd, SW_SHOW);
-	return hWnd;
+	return LytEditorCreateInternal(L"BnllEditorClass", x, y, hWndParent, NULL, &bnll->header);
 }
 
 HWND CreateBnclViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNCL *bncl) {
-	HWND hWnd = EditorCreate(L"BnclEditorClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) bncl);
-	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
-	ShowWindow(hWnd, SW_SHOW);
-	return hWnd;
+	return LytEditorCreateInternal(L"BnclEditorClass", x, y, hWndParent, NULL, &bncl->header);
 }
 
 HWND CreateBnblViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNBL *bnbl) {
-	HWND hWnd = EditorCreate(L"BnblEditorClass", x, y, 0, 0, hWndParent);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) bnbl);
-	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
-	ShowWindow(hWnd, SW_SHOW);
-	return hWnd;
+	return LytEditorCreateInternal(L"BnblEditorClass", x, y, hWndParent, NULL, &bnbl->header);
 }
 
 void RegisterLytEditor(void) {
