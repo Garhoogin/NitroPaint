@@ -2262,7 +2262,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 
 	//balance settings
 	int balance = BALANCE_DEFAULT, colorBalance = BALANCE_DEFAULT;
-	int enhanceColors = 0;
+	int enhanceColors = 1;
 
 	//read overrides from file.
 	BOOL hasMissing = BatchTexReadOptions(configPath, &fmt, &dither, &ditherAlpha, &diffuse, &colorEntries, &c0xp, pnam,

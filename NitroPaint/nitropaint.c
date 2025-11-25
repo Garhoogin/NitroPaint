@@ -2241,7 +2241,7 @@ void NpCreateBalanceInput(NpBalanceControl *ctl, HWND hWnd, int x, int y, int wi
 	CreateStaticAligned(hWnd, L"Red", x + 10 + 110 + 50 + 200, bottomY + 27, 50, 22, SCA_LEFT);
 	ctl->hWndBalance = CreateTrackbar(hWnd, x + 10 + 110 + 50, bottomY, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
 	ctl->hWndColorBalance = CreateTrackbar(hWnd, x + 10 + 110 + 50, bottomY + 27, 200, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
-	ctl->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", x + 10, bottomY + 27 * 2, 200, 22, FALSE);
+	ctl->hWndEnhanceColors = CreateCheckbox(hWnd, L"Enhance Colors", x + 10, bottomY + 27 * 2, 200, 22, TRUE);
 	CreateGroupbox(hWnd, L"Color", x, y, width, 3 * 27 - 5 + 10 + 10 + 10);
 }
 
