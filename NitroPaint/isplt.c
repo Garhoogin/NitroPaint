@@ -49,7 +49,6 @@ typedef struct {
 	double q;
 	double a;
 	double weightL;
-	double sumSquares;
 } RxiClusterSum;
 
 
@@ -883,7 +882,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		double ci = reduction->iWeight * entry->color.i;
 		double cq = reduction->qWeight * entry->color.q;
 		double ca = reduction->aWeight * entry->color.a;
-		double ss = weight * RxiVec4Mag(cy, ci, cq, ca);
+		sumSq += weight * RxiVec4Mag(cy, ci, cq, ca);
 
 		RxiClusterSum *split = &splits[i];
 		split->y = (totalY += weight * cy);       // accumulate color
@@ -891,7 +890,6 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		split->q = (totalQ += weight * cq);       // accumulate
 		split->a = (totalA += weight * ca);       // accumulate
 		split->weightL = (totalWeight += weight); // accumulate total weight
-		split->sumSquares = (sumSq += ss);        // accumulate L2
 	}
 	node->weight = totalWeight;
 
@@ -941,22 +939,19 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		if (wss < wssBest) {
 
 			//we'll check the mean left and mean right. They should be different with masking.
-			if (reduction->maskColors != RxMaskColorDummy) {
-				//left and right centroids
-				RxYiqColor yiqL, yiqR;
-				yiqL.y = (float) RxiDelinearizeLuma(reduction, entry->y / (entry->weightL * reduction->yWeight));
-				yiqR.y = (float) RxiDelinearizeLuma(reduction, (totalY - entry->y) / (weightR * reduction->yWeight));
-				yiqL.i = (float) (entry->i / (entry->weightL * reduction->iWeight));
-				yiqR.i = (float) ((totalI - entry->i) / (weightR * reduction->iWeight));
-				yiqL.q = (float) (entry->q / (entry->weightL * reduction->qWeight));
-				yiqR.q = (float) ((totalQ - entry->q) / (weightR * reduction->qWeight));
-				yiqL.a = (float) (entry->a / (entry->weightL * reduction->aWeight));
-				yiqR.a = (float) ((totalA - entry->a) / (weightR * reduction->aWeight));
+			RxYiqColor yiqL, yiqR;
+			yiqL.y = (float) RxiDelinearizeLuma(reduction, entry->y / (entry->weightL * reduction->yWeight));
+			yiqR.y = (float) RxiDelinearizeLuma(reduction, (totalY - entry->y) / (weightR * reduction->yWeight));
+			yiqL.i = (float) (entry->i / (entry->weightL * reduction->iWeight));
+			yiqR.i = (float) ((totalI - entry->i) / (weightR * reduction->iWeight));
+			yiqL.q = (float) (entry->q / (entry->weightL * reduction->qWeight));
+			yiqR.q = (float) ((totalQ - entry->q) / (weightR * reduction->qWeight));
+			yiqL.a = (float) (entry->a / (entry->weightL * reduction->aWeight));
+			yiqR.a = (float) ((totalA - entry->a) / (weightR * reduction->aWeight));
 
-				COLOR32 maskL = RxiMaskYiqToRgb(reduction, &yiqL);
-				COLOR32 maskR = RxiMaskYiqToRgb(reduction, &yiqR);
-				if (maskL == maskR) continue; // discard this split (centroids mask to the same color)
-			}
+			COLOR32 maskL = RxiMaskYiqToRgb(reduction, &yiqL);
+			COLOR32 maskR = RxiMaskYiqToRgb(reduction, &yiqR);
+			if (maskL == maskR) continue; // discard this split (centroids mask to the same color)
 
 			wssBest = wss;
 			pivotIndex = i + 1;
