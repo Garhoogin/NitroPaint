@@ -1385,6 +1385,7 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 		glyph->spaceLeft = spaceA;
 		glyph->spaceRight = spaceC;
 		glyph->width = width;
+		NftrViewerCacheInvalidateGlyphByCP(data, glyph->cp);
 		glyph++;
 	}
 
@@ -1392,7 +1393,6 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 	FbDestroy(&fb);
 	DeleteObject(hFont);
 
-	NftrViewerCacheInvalidateGlyphByCP(data, glyph->cp);
 	NftrViewerFontUpdated(data);
 	InvalidateRect(data->hWndGlyphList, NULL, TRUE);
 }
