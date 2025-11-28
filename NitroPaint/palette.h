@@ -394,6 +394,7 @@ typedef struct {
 	double a;
 	double weight;
 	double error;
+	unsigned int count;
 } RxTotalBuffer;
 
 //reduction workspace structure
@@ -422,6 +423,8 @@ typedef struct RxReduction_ {
 	int nUsedColors;
 	int enhanceColors;
 	int nReclusters;
+	int reclusterIteration;
+	double lastSSE;
 	COLOR32 (*maskColors) (COLOR32 col);
 	RxAlphaMode alphaMode;
 	unsigned int alphaThreshold;

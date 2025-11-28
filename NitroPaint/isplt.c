@@ -51,6 +51,8 @@ typedef struct {
 	double weightL;
 } RxiClusterSum;
 
+static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff);
+
 
 // ----- memory allocation wrappers for SIMD use
 
@@ -1088,163 +1090,223 @@ static void RxiPaletteWrite(RxReduction *reduction) {
 	}
 }
 
+static void RxiVoronoiAccumulateClusters(RxReduction *reduction) {
+	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
+	memset(totalsBuffer, 0, sizeof(reduction->blockTotals));
+
+	//remap histogram points to palette colors, and accumulate the error
+	for (int i = 0; i < reduction->histogram->nEntries; i++) {
+		RxHistEntry *entry = reduction->histogramFlat[i];
+
+		double bestDistance;
+		int bestIndex = RxiPaletteFindClosestColor(reduction, reduction->paletteYiqCopy, reduction->nUsedColors, &entry->color, &bestDistance);
+
+		//add to total. YIQ colors scaled by alpha to be unscaled later.
+		double weight = entry->weight;
+		double a1 = weight * entry->color.a;
+		totalsBuffer[bestIndex].weight += weight;
+		totalsBuffer[bestIndex].error += weight * bestDistance;
+		totalsBuffer[bestIndex].y += a1 * RxiLinearizeLuma(reduction, entry->color.y);
+		totalsBuffer[bestIndex].i += a1 * entry->color.i;
+		totalsBuffer[bestIndex].q += a1 * entry->color.q;
+		totalsBuffer[bestIndex].a += a1;
+		totalsBuffer[bestIndex].count++;
+		entry->entry = bestIndex;
+	}
+}
+
+static void RxiVoronoiMoveToCluster(RxReduction *reduction, RxHistEntry *entry, int idxTo, double newDifference, double oldDifference) {
+	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
+	int idxFrom = entry->entry;
+
+	double aWeight = entry->weight * entry->color.a;
+	double y = aWeight * RxiLinearizeLuma(reduction, entry->color.y);
+	double i = aWeight * entry->color.i;
+	double q = aWeight * entry->color.q;
+	double a = aWeight;
+
+	//add weight to "to" cluster
+	totalsBuffer[idxTo].y += y;
+	totalsBuffer[idxTo].i += i;
+	totalsBuffer[idxTo].q += q;
+	totalsBuffer[idxTo].a += a;
+	totalsBuffer[idxTo].weight += entry->weight;
+	totalsBuffer[idxTo].error += newDifference;
+	totalsBuffer[idxTo].count++;
+
+	//remove weight from "from" cluster
+	totalsBuffer[idxFrom].y -= y;
+	totalsBuffer[idxFrom].i -= i;
+	totalsBuffer[idxFrom].q -= q;
+	totalsBuffer[idxFrom].a -= a;
+	totalsBuffer[idxFrom].weight -= entry->weight;
+	totalsBuffer[idxFrom].error -= oldDifference;
+	totalsBuffer[idxFrom].count--;
+
+	entry->entry = idxTo;
+}
+
+static int RxiVoronoiIterate(RxReduction *reduction) {
+	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
+
+	//map histogram colors to existing clusters and accumulate error.
+	RxiVoronoiAccumulateClusters(reduction);
+
+	//new centroid indexes, when created
+	int newCentroidIdxs[RX_PALETTE_MAX_SIZE];
+	int nNewCentroids = 0;
+
+	//check that every palette entry has some weight assigned to it from the previous step.
+	//if any palette color would have zero weight, we assign it a color with the highest
+	//squared deviation from its palette color (scaled by weight).
+	//when we do this, we recompute the cluster bounds.
+	int nHistEntries = reduction->histogram->nEntries;
+	for (int i = 0; i < reduction->nUsedColors; i++) {
+		if (totalsBuffer[i].weight > 0.0) continue;
+
+		//find the color farthest from this center
+		double largestDifference = 0.0;
+		int farthestIndex = 0;
+		for (int j = 0; j < nHistEntries; j++) {
+			RxHistEntry *entry = reduction->histogramFlat[j];            // histogram color
+			RxYiqColor *yiq1 = &reduction->paletteYiqCopy[entry->entry]; // ceontroid of the cluster the color belongs to
+
+			//do not move a cluster with only one member
+			if (totalsBuffer[entry->entry].count <= 1) continue;
+
+			//if we mask colors, check this entry against the palette with clamping. If they compare equal,
+			//then we say that this color is as close as it will be to a palette color and we won't include
+			//this in our search candidates.
+			COLOR32 histMasked = RxiMaskYiqToRgb(reduction, &entry->color);
+			COLOR32 palMasked = RxiMaskYiqToRgb(reduction, yiq1);
+			if (histMasked == palMasked) continue; // this difference can't be reconciled
+
+			double diff = RxiComputeColorDifference(reduction, yiq1, &entry->color) * entry->weight;
+			if (diff > largestDifference) {
+
+				//we additionally want to check that the new cluster may accurately represent the color.
+				//with masking, we may end up with a color further away than the current centroid!
+				RxYiqColor yiqNewCentroid;
+				RxConvertRgbToYiq(histMasked, &yiqNewCentroid);
+
+				double newDifference = RxiComputeColorDifference(reduction, &entry->color, &yiqNewCentroid) * entry->weight;
+				if (diff >= newDifference) {
+
+					//lastly, since an earlier cluster reassignment may have produced a cluster matching
+					//what would be this entry's new centroid, we'll check the existing centroids and assign
+					//to an existing one if it exists.
+					int found = 0;
+					for (int k = 0; k < nNewCentroids; k++) {
+						int idx = newCentroidIdxs[k];
+						if (reduction->paletteRgbCopy[idx] == histMasked) {
+							//remap
+							RxiVoronoiMoveToCluster(reduction, entry, idx, newDifference, diff);
+							found = 1;
+							break;
+						}
+					}
+
+					if (!found) {
+						largestDifference = diff;
+						farthestIndex = j;
+					}
+				}
+			}
+		}
+
+		//get RGB of new point (will be used when checking identical remapped colors)
+		RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
+		reduction->paletteRgbCopy[i] = RxiMaskYiqToRgb(reduction, &entry->color);
+		RxConvertRgbToYiq(reduction->paletteRgbCopy[i], &reduction->paletteYiqCopy[i]);
+
+		//move centroid
+		double newDifference = RxiComputeColorDifference(reduction, &entry->color, &reduction->paletteYiqCopy[i]) * entry->weight;
+		RxiVoronoiMoveToCluster(reduction, entry, i, newDifference, largestDifference);
+		newCentroidIdxs[nNewCentroids++] = i;
+	}
+
+	//after recomputing bounds, now let's see if we're wasting any slots.
+	for (int i = 0; i < reduction->nUsedColors; i++) {
+		if (totalsBuffer[i].weight <= 0.0) return 0; // stop
+	}
+
+	//average out the colors in the new partitions
+	for (int i = 0; i < reduction->nUsedColors; i++) {
+		RxYiqColor yiq;
+		double invAWeight = 1.0 / totalsBuffer[i].a;
+		yiq.y = (float) RxiDelinearizeLuma(reduction, totalsBuffer[i].y * invAWeight);
+		yiq.i = (float) (totalsBuffer[i].i * invAWeight);
+		yiq.q = (float) (totalsBuffer[i].q * invAWeight);
+		yiq.a = (float) (totalsBuffer[i].a / totalsBuffer[i].weight);
+
+		//mask color
+		COLOR32 as32 = RxiMaskYiqToRgb(reduction, &yiq);
+		RxConvertRgbToYiq(as32, &yiq);
+
+		//when color masking is used, it is possible that the new computed centroid may drift
+		//from optimal placement. We will select either the new centroid or the old one, based
+		//on which achieves the least error. If the old centroid achieves a better error, then
+		//we do not update the centroid.
+		//this ensures that the total error is at least monotonically decreasing.
+		double errNewCluster = 0.0;
+		for (int j = 0; j < reduction->histogram->nEntries; j++) {
+			if (reduction->histogramFlat[j]->entry != i) continue;
+
+			RxHistEntry *hist = reduction->histogramFlat[j];
+			errNewCluster += hist->weight * RxiComputeColorDifference(reduction, &hist->color, &yiq);
+		}
+
+		//if the new cluster is an improvement over the old cluster
+		if (errNewCluster < totalsBuffer[i].error) {
+			reduction->paletteRgbCopy[i] = as32;
+			memcpy(&reduction->paletteYiqCopy[i], &yiq, sizeof(yiq));
+		}
+	}
+
+	//compute new error
+	double error = 0.0;
+	for (int i = 0; i < reduction->histogram->nEntries; i++) {
+		RxHistEntry *hist = reduction->histogramFlat[i];
+		
+		double err;
+		hist->entry = RxiPaletteFindClosestColor(reduction, reduction->paletteYiqCopy, reduction->nUsedColors, &hist->color, &err);
+		error += err * hist->weight;
+	}
+
+	//if the error is no longer decreasing, stop iteration
+	if (error >= reduction->lastSSE) return 0; // stop
+
+	//error check succeeded, copy this palette to the main palette.
+	memcpy(reduction->paletteYiq, reduction->paletteYiqCopy, sizeof(reduction->paletteYiqCopy));
+	memcpy(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgbCopy));
+	reduction->lastSSE = error;
+
+	//if this is the last iteration, stop iterating
+	if (++reduction->reclusterIteration >= reduction->nReclusters) return 0;
+	return 1; // continue
+}
+
 static void RxiPaletteRecluster(RxReduction *reduction) {
 	//simple termination conditions
-	int nIterations = reduction->nReclusters;
-	if (nIterations <= 0) return;
-
-	int nHistEntries = reduction->histogram->nEntries;
-
-	//keep track of error. Used to abort if we mess up the palette
-	double error = 0.0, lastError = RX_LARGE_NUMBER;
+	if (reduction->nReclusters <= 0) return;
 
 	//copy main palette to palette copy
 	memcpy(reduction->paletteYiqCopy, reduction->paletteYiq, sizeof(reduction->paletteYiq));
 	memcpy(reduction->paletteRgbCopy, reduction->paletteRgb, sizeof(reduction->paletteRgb));
 
-	//iterate up to n times
-	int nRecomputes = 0;
-	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
-	for (int k = 0; k < nIterations; k++) {
-		//reset block totals
-		memset(totalsBuffer, 0, sizeof(reduction->blockTotals));
+	//voronoi iteration
+	reduction->reclusterIteration = 0;
+	reduction->lastSSE = RX_LARGE_NUMBER;
+	while (RxiVoronoiIterate(reduction));
 
-		//voronoi iteration
-		for (int i = 0; i < nHistEntries; i++) {
-			RxHistEntry *entry = reduction->histogramFlat[i];
-			double weight = entry->weight;
-			float hy = entry->color.y, hi = entry->color.i, hq = entry->color.q, ha = entry->color.a;
-
-			double bestDistance = RX_LARGE_NUMBER;
-			int bestIndex = 0;
-			for (int j = 0; j < reduction->nUsedColors; j++) {
-				const RxYiqColor *pyiq = &reduction->paletteYiqCopy[j];
-
-				double diff = RxiComputeColorDifference(reduction, &entry->color, pyiq);
-				if (diff < bestDistance) {
-					bestDistance = diff;
-					bestIndex = j;
-				}
-			}
-
-			//add to total. YIQ colors scaled by alpha to be unscaled later.
-			double a1 = ha * weight;
-			totalsBuffer[bestIndex].weight += weight;
-			totalsBuffer[bestIndex].y += RxiLinearizeLuma(reduction, hy) * a1;
-			totalsBuffer[bestIndex].i += hi * a1;
-			totalsBuffer[bestIndex].q += hq * a1;
-			totalsBuffer[bestIndex].a += a1;
-			totalsBuffer[bestIndex].error += bestDistance * weight;
-			entry->entry = bestIndex;
-
-			error += bestDistance * weight;
-		}
-
-		//quick sanity check of bucket weights (if any are 0, find another color for it.)
-		int doRecompute = 0;
-		for (int i = 0; i < reduction->nUsedColors; i++) {
-			if (totalsBuffer[i].weight <= 0.0) {
-				//find the color farthest from this center
-				double largestDifference = 0.0;
-				int farthestIndex = 0;
-				for (int j = 0; j < nHistEntries; j++) {
-					RxHistEntry *entry = reduction->histogramFlat[j];
-					RxYiqColor *yiq1 = &reduction->paletteYiqCopy[entry->entry];
-
-					//if we mask colors, check this entry against the palette with clamping.
-					if (reduction->maskColors != RxMaskColorDummy) {
-						COLOR32 histMasked = RxiMaskYiqToRgb(reduction, &entry->color);
-						COLOR32 palMasked = RxiMaskYiqToRgb(reduction, yiq1);
-						if (histMasked == palMasked) continue; //this difference can't be reconciled
-					}
-
-					double diff = RxiComputeColorDifference(reduction, yiq1, &entry->color) * entry->weight;
-					if (diff > largestDifference) {
-						largestDifference = diff;
-						farthestIndex = j;
-					}
-				}
-
-				//get RGB of new point
-				RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
-				COLOR32 as32 = RxiMaskYiqToRgb(reduction, &entry->color);
-				
-				//set this node's center to the point
-				reduction->paletteRgbCopy[i] = as32;
-				RxConvertRgbToYiq(as32, &reduction->paletteYiqCopy[i]);
-				
-				//now that we've changed the palette copy, we need to recompute boundaries.
-				doRecompute = 1;
-				break;
-			}
-		}
-
-		//if we need to recompute boundaries, do so now. Be careful!! Doing this dumbly has a
-		//risk of looping forever! For now just limit the number of recomputations
-		if (doRecompute && nRecomputes < 2) {
-			nRecomputes++;
-			k--;
-			continue;
-		}
-		nRecomputes = 0;
-
-		//after recomputing bounds, now let's see if we're wasting any slots.
-		for (int i = 0; i < reduction->nUsedColors; i++) {
-			if (totalsBuffer[i].weight <= 0.0) goto finalize;
-		}
-
-		//also check palette error; if we've started rising, we passed our locally optimal palette
-		if (error >= lastError) {
-			goto finalize;
-		}
-
-		//weight check succeeded, copy this palette to the main palette.
-		memcpy(reduction->paletteYiq, reduction->paletteYiqCopy, sizeof(reduction->paletteYiqCopy));
-		memcpy(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgbCopy));
-
-		//if this is the last iteration, skip the new block totals since they won't affect anything
-		if (k == nIterations - 1) break;
-
-		//average out the colors in the new partitions
-		for (int i = 0; i < reduction->nUsedColors; i++) {
-			RxYiqColor yiq;
-			double invAWeight = 1.0 / totalsBuffer[i].a;
-			yiq.y = (float) RxiDelinearizeLuma(reduction, totalsBuffer[i].y * invAWeight);
-			yiq.i = (float) (totalsBuffer[i].i * invAWeight);
-			yiq.q = (float) (totalsBuffer[i].q * invAWeight);
-			yiq.a = (float) (totalsBuffer[i].a / totalsBuffer[i].weight);
-
-			//to RGB
-			COLOR32 as32 = RxiMaskYiqToRgb(reduction, &yiq);
-
-			reduction->paletteRgbCopy[i] = as32;
-			RxConvertRgbToYiq(as32, &reduction->paletteYiqCopy[i]);
-		}
-
-		lastError = error;
-		error = 0.0;
-	}
-
-finalize:
 	//delete any entries we couldn't use and shrink the palette size.
+	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
 	memset(totalsBuffer, 0, sizeof(reduction->blockTotals));
 	for (int i = 0; i < reduction->histogram->nEntries; i++) {
 		RxYiqColor *histColor = &reduction->histogramFlat[i]->color;
 
-		//find nearest
-		double bestDistance = RX_LARGE_NUMBER;
-		int bestIndex = 0;
-		for (int j = 0; j < reduction->nUsedColors; j++) {
-			const RxYiqColor *pyiq = &reduction->paletteYiq[j];
-
-			double diff = RxiComputeColorDifference(reduction, histColor, pyiq);
-			if (diff < bestDistance) {
-				bestDistance = diff;
-				bestIndex = j;
-			}
-		}
-
-		//add to total
+		//find nearest, add to total
+		int bestIndex = RxiPaletteFindClosestColor(reduction, reduction->paletteYiq, reduction->nUsedColors, histColor, NULL);
 		totalsBuffer[bestIndex].weight += reduction->histogramFlat[i]->weight;
 	}
 
