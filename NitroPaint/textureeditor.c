@@ -1424,7 +1424,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					CHOOSECOLOR cc = { 0 };
 					cc.lStructSize = sizeof(cc);
 					cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition
-					cc.hwndOwner = hWndMain;
+					cc.hwndOwner = hWnd;
 					cc.rgbResult = data->alphaKey;
 					cc.lpCustColors = data->tmpCust;
 					cc.Flags = 0x103;
