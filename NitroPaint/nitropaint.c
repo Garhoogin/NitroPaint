@@ -553,6 +553,8 @@ void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height,
 		unsigned char *bDest = (unsigned char *) (cDest + nPltt);
 		unsigned char *bDest5 = (unsigned char *) (cDest5 + nPltt);
 
+		int transparentPalette = 0;
+
 		//put palette
 		for (unsigned int i = 0; i < nPltt; i++) {
 			COLOR32 c = pltt[i];
@@ -560,6 +562,8 @@ void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height,
 
 			cDest[i] = c;
 			cDest5[i] = c;
+
+			if ((c >> 24) != 0xFF) transparentPalette = 1;
 		}
 		
 		//put colors
@@ -568,30 +572,32 @@ void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height,
 			memcpy(bDest5 + (height - 1 - y) * stride, px + y * width, width);
 		}
 
-		//OPX palette alpha info
-		HGLOBAL hAlpha = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(BITMAPINFOHEADER) + 0x10 * 0x10 + 0x100 * sizeof(COLOR32));
-		BITMAPINFOHEADER *pAlphaBmi = (BITMAPINFOHEADER *) GlobalLock(hAlpha);
-		pAlphaBmi->biSize = sizeof(BITMAPINFOHEADER);
-		pAlphaBmi->biWidth = 0x10;
-		pAlphaBmi->biHeight = 0x10;
-		pAlphaBmi->biClrUsed = 0x100;
-		pAlphaBmi->biClrImportant = 0x100;
-		pAlphaBmi->biPlanes = 1;
-		pAlphaBmi->biBitCount = 8;
+		if (transparentPalette) {
+			//OPX palette alpha info
+			HGLOBAL hAlpha = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(BITMAPINFOHEADER) + 0x10 * 0x10 + 0x100 * sizeof(COLOR32));
+			BITMAPINFOHEADER *pAlphaBmi = (BITMAPINFOHEADER *) GlobalLock(hAlpha);
+			pAlphaBmi->biSize = sizeof(BITMAPINFOHEADER);
+			pAlphaBmi->biWidth = 0x10;
+			pAlphaBmi->biHeight = 0x10;
+			pAlphaBmi->biClrUsed = 0x100;
+			pAlphaBmi->biClrImportant = 0x100;
+			pAlphaBmi->biPlanes = 1;
+			pAlphaBmi->biBitCount = 8;
 
-		COLOR32 *alphaPltt = (COLOR32 *) (pAlphaBmi + 1);
-		for (unsigned int i = 0; i < nPltt; i++) {
-			unsigned int a = pltt[i] >> 24;
-			alphaPltt[i] = a | (a << 8) | (a << 16);
+			COLOR32 *alphaPltt = (COLOR32 *) (pAlphaBmi + 1);
+			for (unsigned int i = 0; i < nPltt; i++) {
+				unsigned int a = pltt[i] >> 24;
+				alphaPltt[i] = a | (a << 8) | (a << 16);
+			}
+
+			unsigned char *alphaMap = (unsigned char *) (alphaPltt + 0x100);
+			for (unsigned int i = 0; i < 0x100; i++) {
+				alphaMap[i] = i ^ 0xF0; // increasing bits, upside down
+			}
+
+			GlobalUnlock(hAlpha);
+			SetClipboardData(EnsureOpxDibAlphaPalClipboardFormat(), hAlpha);
 		}
-
-		unsigned char *alphaMap = (unsigned char *) (alphaPltt + 0x100);
-		for (unsigned int i = 0; i < 0x100; i++) {
-			alphaMap[i] = i ^ 0xF0; // increasing bits, upside down
-		}
-
-		GlobalUnlock(hAlpha);
-		SetClipboardData(EnsureOpxDibAlphaPalClipboardFormat(), hAlpha);
 
 		//PNG info
 		ImgWriteMemIndexed(bits, width, height, pltt, nPltt, &png, &pngSize);
@@ -601,6 +607,7 @@ void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height,
 		COLOR32 *cDest5 = (COLOR32 *) (bmi5 + 1);
 		COLOR32 *cDest = (COLOR32 *) (bmi + 1);
 
+		int isTransparent = 0;
 		for (unsigned int y = 0; y < height; y++) {
 			for (unsigned int x = 0; x < width; x++) {
 				COLOR32 c = px[x + y * width];
@@ -615,34 +622,38 @@ void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height,
 
 				cDest[x + (height - 1 - y) * width] = c;   // non-premultiplied
 				cDest5[x + (height - 1 - y) * width] = c2; // premultiplied
+
+				if ((c >> 24) != 0xFF) isTransparent = 1;
 			}
 		}
 
 		//copy alpha bitmap
-		unsigned int alphaStride = (width + 3) & ~3;
-		HGLOBAL hBmiAlpha = GlobalAlloc(GMEM_ZEROINIT | GMEM_MOVEABLE, sizeof(BITMAPINFO) + 0x400 + height * alphaStride);
-		BITMAPINFOHEADER *bmi = (BITMAPINFOHEADER *) GlobalLock(hBmiAlpha);
-		bmi->biSize = sizeof(*bmi);
-		bmi->biWidth = width;
-		bmi->biHeight = height;
-		bmi->biPlanes = 1;
-		bmi->biBitCount = 8;
-		bmi->biCompression = BI_RGB;
-		bmi->biClrUsed = 256;
-		bmi->biClrImportant = 256;
-		
-		COLOR32 *pGray = (COLOR32 *) (bmi + 1);
-		unsigned char *pAlpha = (unsigned char *) (pGray + 0x100);
-		for (unsigned int i = 0; i < 0x100; i++) pGray[i] = i | (i << 8) | (i << 16);
+		if (isTransparent) {
+			unsigned int alphaStride = (width + 3) & ~3;
+			HGLOBAL hBmiAlpha = GlobalAlloc(GMEM_ZEROINIT | GMEM_MOVEABLE, sizeof(BITMAPINFO) + 0x400 + height * alphaStride);
+			BITMAPINFOHEADER *bmi = (BITMAPINFOHEADER *) GlobalLock(hBmiAlpha);
+			bmi->biSize = sizeof(*bmi);
+			bmi->biWidth = width;
+			bmi->biHeight = height;
+			bmi->biPlanes = 1;
+			bmi->biBitCount = 8;
+			bmi->biCompression = BI_RGB;
+			bmi->biClrUsed = 256;
+			bmi->biClrImportant = 256;
 
-		for (unsigned int y = 0; y < height; y++) {
-			for (unsigned int x = 0; x < width; x++) {
-				pAlpha[(height - 1 - y) * alphaStride + x] = px[y * width + x] >> 24;
+			COLOR32 *pGray = (COLOR32 *) (bmi + 1);
+			unsigned char *pAlpha = (unsigned char *) (pGray + 0x100);
+			for (unsigned int i = 0; i < 0x100; i++) pGray[i] = i | (i << 8) | (i << 16);
+
+			for (unsigned int y = 0; y < height; y++) {
+				for (unsigned int x = 0; x < width; x++) {
+					pAlpha[(height - 1 - y) * alphaStride + x] = px[y * width + x] >> 24;
+				}
 			}
-		}
 
-		GlobalUnlock(hBmiAlpha);
-		SetClipboardData(EnsureOpxDibAlphaImgClipboardFormat(), hBmiAlpha);
+			GlobalUnlock(hBmiAlpha);
+			SetClipboardData(EnsureOpxDibAlphaImgClipboardFormat(), hBmiAlpha);
+		}
 	}
 
 	GlobalUnlock(hBmi5);
