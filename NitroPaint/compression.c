@@ -1705,8 +1705,9 @@ void CxiInitBitReader(BIT_READER_8 *reader, const unsigned char *pos, const unsi
 	reader->beBits = beBits;
 	reader->nBitsBuffered = 8;
 	reader->nBitsRead = 0;
-	reader->current = *pos;
+	reader->current = 0;
 	reader->error = 0;
+	if (pos < end) reader->current = *pos;
 	if (reader->beBits) reader->current = CxiReverseByte(reader->current);
 }
 
