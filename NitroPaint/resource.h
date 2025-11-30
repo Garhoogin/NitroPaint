@@ -258,13 +258,15 @@
 #define ID_CELLMENU2_DELETE             40269
 #define ID_MENU_EDITCOMPRESSEDPALETTE   40270
 #define ID_TOOLS_INDEXIMAGE             40271
+#define ID_FONTMENU_IMPORTLCFONT        40272
+#define ID_FONTMENU2_IMPORTLCFONT       40273
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        112
-#define _APS_NEXT_COMMAND_VALUE         40272
+#define _APS_NEXT_COMMAND_VALUE         40274
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
