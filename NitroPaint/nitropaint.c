@@ -1420,65 +1420,22 @@ NITROPAINTSTRUCT *NpGetData(HWND hWndMain) {
 	return (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 }
 
-static const int sZoomMenuCommands[] = {
-	ID_ZOOM_100,
-	ID_ZOOM_200,
-	ID_ZOOM_400,
-	ID_ZOOM_800,
-	ID_ZOOM_1600
-};
+static void MainZoomIn(HWND hWnd) {
+	NITROPAINTSTRUCT *np = NpGetData(hWnd);
+	HWND hWndChild = (HWND) SendMessage(np->hWndMdi, WM_MDIGETACTIVE, 0, 0);
 
-static const int sZoomLevels[] = {
-	1, 2, 4, 8, 16
-};
-
-int MainGetZoomByCommand(int cmd) {
-	for (int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
-		if (cmd == sZoomMenuCommands[i]) return sZoomLevels[i];
+	if (hWndChild != NULL) {
+		SendMessage(hWndChild, NV_ZOOMIN, 0, 0);
 	}
-	return 1;
 }
 
-int MainGetZoomCommand(int zoom) {
-	for (int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
-		if (zoom == sZoomLevels[i]) return sZoomMenuCommands[i];
+static void MainZoomOut(HWND hWnd) {
+	NITROPAINTSTRUCT *np = NpGetData(hWnd);
+	HWND hWndChild = (HWND) SendMessage(np->hWndMdi, WM_MDIGETACTIVE, 0, 0);
+
+	if (hWndChild != NULL) {
+		SendMessage(hWndChild, NV_ZOOMOUT, 0, 0);
 	}
-	return -1;
-}
-
-int MainGetZoom(HWND hWnd) {
-	HMENU hMenu = GetMenu(hWnd);
-	for (int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
-		if (GetMenuState(hMenu, sZoomMenuCommands[i], MF_BYCOMMAND)) return sZoomLevels[i];
-	}
-	return 1;
-}
-
-void MainSetZoom(HWND hWnd, int zoom) {
-	int cmd = -1;
-	for (int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
-		if (sZoomLevels[i] == zoom) {
-			cmd = sZoomMenuCommands[i];
-			break;
-		}
-	}
-	if (cmd == -1) return;
-
-	SendMessage(hWnd, WM_COMMAND, cmd, 0);
-}
-
-VOID MainZoomIn(HWND hWnd) {
-	int zoom = MainGetZoom(hWnd);
-	zoom *= 2;
-	if (zoom > 16) zoom = 16;
-	MainSetZoom(hWnd, zoom);
-}
-
-VOID MainZoomOut(HWND hWnd) {
-	int zoom = MainGetZoom(hWnd);
-	zoom /= 2;
-	if (zoom < 1) zoom = 1;
-	MainSetZoom(hWnd, zoom);
 }
 
 //general editor utilities for main window

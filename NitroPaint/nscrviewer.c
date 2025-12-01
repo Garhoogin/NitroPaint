@@ -641,6 +641,11 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case NV_UPDATEPREVIEW:
 			PreviewLoadBgScreen(data->nscr);
 			break;
+		case NV_ZOOMUPDATED:
+			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			TedUpdateMargins(&data->ted);
+			break;
 		case WM_KEYDOWN:
 		{
 			TedViewerOnKeyDown((EDITOR_DATA *) data, &data->ted, wParam, lParam);
@@ -798,14 +803,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						ScrViewerGraphicsChanged(data);
 						break;
 					case ID_VIEW_GRIDLINES:
-					case ID_ZOOM_100:
-					case ID_ZOOM_200:
-					case ID_ZOOM_400:
-					case ID_ZOOM_800:
-					case ID_ZOOM_1600:
-						SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
-						RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
-						TedUpdateMargins(&data->ted);
+						InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 						break;
 				}
 			} else if (lParam) {

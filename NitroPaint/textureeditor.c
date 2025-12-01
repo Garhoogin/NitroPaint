@@ -446,14 +446,7 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 	HWND hWnd = data->hWnd;
 	switch (idMenu) {
 		case ID_VIEW_GRIDLINES:
-		case ID_ZOOM_100:
-		case ID_ZOOM_200:
-		case ID_ZOOM_400:
-		case ID_ZOOM_800:
-		case ID_ZOOM_1600:
-			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
-			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
-			TedUpdateMargins(&data->ted);
+			InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 			break;
 		case ID_FILE_SAVE:
 			if (!data->isNitro) {
@@ -520,6 +513,11 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		case WM_MOUSELEAVE:
 		case WM_NCMOUSELEAVE:
 			TedMainOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
+			break;
+		case NV_ZOOMUPDATED:
+			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			TedUpdateMargins(&data->ted);
 			break;
 		case NV_INITIALIZE:
 		{

@@ -1103,14 +1103,7 @@ static void LytEditorOnSize(LYTEDITOR *data) {
 static void LytEditorOnMenuCommand(LYTEDITOR *data, int idMenu) {
 	switch (idMenu) {
 		case ID_VIEW_GRIDLINES:
-		case ID_ZOOM_100:
-		case ID_ZOOM_200:
-		case ID_ZOOM_400:
-		case ID_ZOOM_800:
-		case ID_ZOOM_1600:
-			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
-			//TedUpdateMargins(&data->ted);
+			InvalidateRect(data->hWndPreview, NULL, FALSE);
 			break;
 		case ID_FILE_SAVE:
 			EditorSave(data->hWnd);
@@ -1628,6 +1621,10 @@ static LRESULT CALLBACK BnllEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			LytEditorOnSize(ed);
 			SetGUIFont(hWnd);
 			break;
+		case NV_ZOOMUPDATED:
+			SendMessage(ed->hWndPreview, NV_RECALCULATE, 0, 0);
+			RedrawWindow(ed->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			break;
 		case WM_COMMAND:
 			LytEditorOnCommand(ed, wParam, lParam);
 			break;
@@ -1664,6 +1661,10 @@ static LRESULT CALLBACK BnclEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			LytEditorOnSize(ed);
 			SetGUIFont(hWnd);
 			break;
+		case NV_ZOOMUPDATED:
+			SendMessage(ed->hWndPreview, NV_RECALCULATE, 0, 0);
+			RedrawWindow(ed->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			break;
 		case WM_COMMAND:
 			LytEditorOnCommand(ed, wParam, lParam);
 			break;
@@ -1693,6 +1694,10 @@ static LRESULT CALLBACK BnblEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			LytEditorOnInitialize(hWnd, ed, wParam, lParam);
 			LytEditorOnSize(ed);
 			SetGUIFont(hWnd);
+			break;
+		case NV_ZOOMUPDATED:
+			SendMessage(ed->hWndPreview, NV_RECALCULATE, 0, 0);
+			RedrawWindow(ed->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 			break;
 		case WM_COMMAND:
 			LytEditorOnCommand(ed, wParam, lParam);

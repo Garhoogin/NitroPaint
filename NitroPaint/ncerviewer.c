@@ -2229,14 +2229,8 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			free(location);
 			break;
 		}
-		case ID_ZOOM_100:
-		case ID_ZOOM_200:
-		case ID_ZOOM_400:
-		case ID_ZOOM_800:
-		case ID_ZOOM_1600:
 		case ID_VIEW_GRIDLINES:
-			SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
-			RedrawWindow(data->hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			InvalidateRect(data->hWndViewer, NULL, FALSE);
 			break;
 
 		case ID_CELLMENU_CUT:
@@ -2613,6 +2607,10 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			break;
 		case NV_UPDATEPREVIEW:
 			CellViewerUpdatePreview(data, data->cell);
+			break;
+		case NV_ZOOMUPDATED:
+			SendMessage(data->hWndViewer, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 			break;
 		case WM_NOTIFY:
 			return CellViewerOnNotify(data, hWnd, wParam, lParam);

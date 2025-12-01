@@ -1355,15 +1355,9 @@ static void AnmViewerOnDestroy(NANRVIEWERDATA *data) {
 
 static void AnmViewerOnMenuCommand(NANRVIEWERDATA *data, int idMenu) {
 	switch (idMenu) {
-		case ID_ZOOM_100:
-		case ID_ZOOM_200:
-		case ID_ZOOM_400:
-		case ID_ZOOM_800:
-		case ID_ZOOM_1600:
 		case ID_VIEW_GRIDLINES:
 		case ID_VIEW_RENDERTRANSPARENCY:
-			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
-			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			InvalidateRect(data->hWndPreview, NULL, FALSE);
 			break;
 		case ID_FILE_SAVE:
 			EditorSave(data->hWnd);
@@ -1462,6 +1456,10 @@ static LRESULT CALLBACK AnmViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			break;
 		case NV_INITIALIZE:
 			AnmViewerOnInitialize(data, (NANR *) lParam, (LPCWSTR) wParam);
+			break;
+		case NV_ZOOMUPDATED:
+			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 			break;
 		case WM_PAINT:
 			InvalidateRect(data->hWndPreview, NULL, FALSE);

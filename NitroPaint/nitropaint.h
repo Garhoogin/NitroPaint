@@ -205,36 +205,6 @@ void getPathFromPaths(LPCWSTR paths, int index, WCHAR *path);
 NITROPAINTSTRUCT *NpGetData(HWND hWndMain);
 
 //
-// Get zoom level by menu command.
-//
-int MainGetZoomByCommand(int cmd);
-
-//
-// Get menu command for zoom.
-//
-int MainGetZoomCommand(int zoom);
-
-//
-// Get the current zoom level
-//
-int MainGetZoom(HWND hWnd);
-
-//
-// Set the current zoom level
-//
-void MainSetZoom(HWND hWnd, int zoom);
-
-//
-// Zoom in the main window
-//
-VOID MainZoomIn(HWND hWnd);
-
-//
-// Zoom out the main window
-//
-VOID MainZoomOut(HWND hWnd);
-
-//
 // Get a file name from a file path (does not edit the source string)
 //
 LPCWSTR GetFileName(LPCWSTR lpszPath);
@@ -266,3 +236,6 @@ void NpGetBalanceSetting(NpBalanceControl *ctl, RxBalanceSetting *balance);
 #define NV_XTINVALIDATE (WM_USER+10)
 #define NV_CHILDNOTIF (WM_USER+11)
 #define NV_UPDATEPREVIEW (WM_USER+12)
+#define NV_ZOOMIN (WM_USER+13)
+#define NV_ZOOMOUT (WM_USER+14)
+#define NV_ZOOMUPDATED (WM_USER+15)

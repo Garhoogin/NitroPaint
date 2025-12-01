@@ -8,11 +8,68 @@
 
 //zoom menu IDs
 static const unsigned short sZoomMenuIds[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
+static const unsigned char sZoomLevels[] = { 1, 2, 4, 8, 16 };
 
 typedef struct EditorDestroyCallbackEntry_ {
 	EditorDestroyCallback callback;
 	void *param;
 } EditorDestroyCallbackEntry;
+
+
+static int EditorGetMenuCommandByZoom(int zoom) {
+	for (unsigned int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
+		if (zoom == (int) sZoomLevels[i]) return sZoomMenuIds[i];
+	}
+	return ID_ZOOM_100;
+}
+
+static int EditorGetZoomByMenuCommand(int command) {
+	for (unsigned int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
+		if (command == (int) sZoomMenuIds[i]) return sZoomLevels[i];
+	}
+	return 1;
+}
+
+static void EditorUpdateZoomMenu(EDITOR_DATA *data) {
+	HWND hWndMain = data->editorMgr->hWnd;
+	for (unsigned int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
+		CheckMenuItem(GetMenu(hWndMain), sZoomMenuIds[i], (data->scale == (int) sZoomLevels[i]) ? MF_CHECKED : MF_UNCHECKED);
+	}
+}
+
+static void EditorSetZoom(EDITOR_DATA *data, int scale) {
+	//set menu
+	int cmd = EditorGetMenuCommandByZoom(scale);
+	SendMessage(data->hWnd, WM_COMMAND, cmd, 0);
+}
+
+static void EditorZoomIn(EDITOR_DATA *data) {
+	//get next size up from current scale
+	int nextZoom = sZoomLevels[sizeof(sZoomLevels) / sizeof(sZoomLevels[0]) - 1];
+	for (unsigned int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]) - 1; i++) {
+		if (data->scale == (int) sZoomLevels[i]) {
+			nextZoom = sZoomLevels[i + 1]; // next up
+			break;
+		}
+	}
+
+	//set zoom
+	EditorSetZoom(data, nextZoom);
+}
+
+static void EditorZoomOut(EDITOR_DATA *data) {
+	//get next size down from current scale
+	int nextZoom = sZoomLevels[0];
+	for (unsigned int i = 1; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
+		if (data->scale == (int) sZoomLevels[i]) {
+			nextZoom = sZoomLevels[i - 1]; // next down
+			break;
+		}
+	}
+
+	//set zoom
+	EditorSetZoom(data, nextZoom);
+}
 
 
 static EditorManager *EditorGetManager(HWND hWndMgr) {
@@ -131,14 +188,12 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 		case ID_ZOOM_800:
 		case ID_ZOOM_1600:
 		{
-			int scale = MainGetZoomByCommand(LOWORD(wParam));
+			int scale = EditorGetZoomByMenuCommand(LOWORD(wParam));
 			data->scalePrev = data->scale;
 			data->scale = scale;
 
-			int checkBox = MainGetZoomCommand(scale);
-			int other = MainGetZoomCommand(data->scalePrev);
-			CheckMenuItem(GetMenu(hWndMain), other, MF_UNCHECKED);
-			CheckMenuItem(GetMenu(hWndMain), checkBox, MF_CHECKED);
+			EditorUpdateZoomMenu(data);
+			SendMessage(hWnd, NV_ZOOMUPDATED, data->scale, 0);
 			break;
 		}
 		case ID_EDIT_COMMENT:
@@ -215,21 +270,7 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 
 	//if we support zoom, handle zoom checkboxes
 	if (features & EDITOR_FEATURE_ZOOM) {
-		int checkBox = ID_ZOOM_100;
-		if (data->scale == 2) {
-			checkBox = ID_ZOOM_200;
-		} else if (data->scale == 4) {
-			checkBox = ID_ZOOM_400;
-		} else if (data->scale == 8) {
-			checkBox = ID_ZOOM_800;
-		} else if (data->scale == 16) {
-			checkBox = ID_ZOOM_1600;
-		}
-		
-		for (int i = 0; i < sizeof(sZoomMenuIds) / sizeof(sZoomMenuIds[0]); i++) {
-			int id = sZoomMenuIds[i];
-			CheckMenuItem(GetMenu(hWndMain), id, (id == checkBox) ? MF_CHECKED : MF_UNCHECKED);
-		}
+		EditorUpdateZoomMenu(data);
 		InvalidateRect(hWnd, NULL, FALSE);
 	}
 }
@@ -327,6 +368,12 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 					EditorTerminateCombo(data);
 				}
 				break;
+			case NV_ZOOMIN:
+				EditorZoomIn(data);
+				break;
+			case NV_ZOOMOUT:
+				EditorZoomOut(data);
+				break;
 			case WM_MOUSEWHEEL:
 				//handle zoom via ctrl+scroll
 				if (LOWORD(wParam) & MK_CONTROL) {
@@ -336,10 +383,10 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 						HWND hWndMain = data->editorMgr->hWnd;
 						if (delta > 0) {
 							//scroll down
-							MainZoomIn(hWndMain);
+							EditorZoomIn(data);
 						} else if (delta < 0) {
 							//scroll up
-							MainZoomOut(hWndMain);
+							EditorZoomOut(data);
 						}
 					}
 				}
