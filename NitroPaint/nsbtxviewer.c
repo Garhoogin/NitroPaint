@@ -543,6 +543,9 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			InvalidateRect(hWnd, NULL, TRUE);
 			break;
 		}
+		case NV_ZOOMUPDATED:
+			InvalidateRect(hWnd, NULL, TRUE);
+			break;
 		case WM_COMMAND:
 		{
 			if (lParam == 0 && HIWORD(wParam) == 0) {
@@ -575,12 +578,6 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						}
 						break;
 					}
-					case ID_ZOOM_100:
-					case ID_ZOOM_200:
-					case ID_ZOOM_400:
-					case ID_ZOOM_800:
-						InvalidateRect(hWnd, NULL, TRUE);
-						break;
 				}
 			}
 			if (lParam) {

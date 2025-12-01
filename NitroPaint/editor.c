@@ -7,8 +7,8 @@
 #include "combo2d.h"
 
 //zoom menu IDs
-static const unsigned short sZoomMenuIds[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600 };
-static const unsigned char sZoomLevels[] = { 1, 2, 4, 8, 16 };
+static const unsigned short sZoomMenuIds[] = { ID_ZOOM_100, ID_ZOOM_200, ID_ZOOM_400, ID_ZOOM_800, ID_ZOOM_1600, ID_ZOOM_3200, ID_ZOOM_6400 };
+static const unsigned char sZoomLevels[] = { 1, 2, 4, 8, 16, 32, 64 };
 
 typedef struct EditorDestroyCallbackEntry_ {
 	EditorDestroyCallback callback;
@@ -187,6 +187,8 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 		case ID_ZOOM_400:
 		case ID_ZOOM_800:
 		case ID_ZOOM_1600:
+		case ID_ZOOM_3200:
+		case ID_ZOOM_6400:
 		{
 			int scale = EditorGetZoomByMenuCommand(LOWORD(wParam));
 			data->scalePrev = data->scale;
