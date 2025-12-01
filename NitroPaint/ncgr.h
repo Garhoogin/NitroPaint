@@ -154,6 +154,11 @@ int ChrReadFile(NCGR *ncgr, LPCWSTR path);
 void ChrWriteChars(NCGR *ncgr, BSTREAM *stream);
 
 //
+// Write graphics data to stream.
+//
+void ChrWriteGraphics(NCGR *ncgr, BSTREAM *stream);
+
+//
 // Write character graphics to a stream.
 //
 int ChrWrite(NCGR *ncgr, BSTREAM *stream);

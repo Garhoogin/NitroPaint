@@ -102,7 +102,7 @@ int combo2dGetObjMinCount(int comboType, int objType) {
 			//requires exactly one palette + one character + one screen (OBJ type not supported)
 			if (objType == FILE_TYPE_PALETTE) return 1;
 			if (objType == FILE_TYPE_CHARACTER) return 1;
-			if (objType == FILE_TYPE_SCREEN) return 1;
+			if (objType == FILE_TYPE_SCREEN) return 0;
 			return 0;
 		case COMBO2D_TYPE_5BG_OBJ:
 			//requires exactly one palette + one character + one cell
@@ -534,6 +534,7 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	int scrSize = *(uint32_t *) (bgdt + 0x04);
 	int mapping = *(uint32_t *) (bgdt + 0x00);
 	int charSize = *(uint32_t *) (bgdt + 0x10);
+	int isBitmap = scrSize == 0; // screen size=0 => bitmap mode BG
 	int charOffset = 0x14 + scrSize;
 	int nBits = dfpl == NULL ? 8 : 4; //8-bit if no DFPL present
 
@@ -558,20 +559,23 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	ncgr->tilesX = chrWidth;
 	ncgr->tilesY = chrHeight;
 	ncgr->nBits = nBits;
+	ncgr->bitmap = isBitmap;
 	ncgr->mappingMode = mapping;
-	ChrReadChars(ncgr, bgdt + charOffset);
+	ChrReadGraphics(ncgr, bgdt + charOffset);
 	combo2dLink(combo, &ncgr->header);
 
-	//add screen
-	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-	ScrInit(nscr, NSCR_TYPE_COMBO);
-	nscr->tilesX = scrX;
-	nscr->tilesY = scrY;
-	nscr->dataSize = scrDataSize;
-	nscr->data = (uint16_t *) calloc(scrDataSize, 1);
-	memcpy(nscr->data, bgdt + 0x14, scrDataSize);
-	ScrComputeHighestCharacter(nscr);
-	combo2dLink(combo, &nscr->header);
+	if (!isBitmap) {
+		//add screen (only if not bitmap mode BG)
+		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
+		ScrInit(nscr, NSCR_TYPE_COMBO);
+		nscr->tilesX = scrX;
+		nscr->tilesY = scrY;
+		nscr->dataSize = scrDataSize;
+		nscr->data = (uint16_t *) calloc(scrDataSize, 1);
+		memcpy(nscr->data, bgdt + 0x14, scrDataSize);
+		ScrComputeHighestCharacter(nscr);
+		combo2dLink(combo, &nscr->header);
+	}
 
 	return 0;
 }
@@ -1134,72 +1138,63 @@ static int combo2dWriteDataFile(COMBO2D *combo, BSTREAM *stream) {
 }
 
 static int combo2dWrite5bg(COMBO2D *combo, BSTREAM *stream) {
-	unsigned char header[] = { 'N', 'T', 'B', 'G', 0xFF, 0xFE, 0, 1, 0, 0, 0, 0, 0x10, 0, 0, 0 };
-
 	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
 	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
 	NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
 
-	//how many characters do we write?
-	int nCharsWrite = ScrComputeHighestCharacter(nscr) + 1;
+	//screen size
+	int scrWidth = ncgr->tilesX, scrHeight = ncgr->tilesY;
+	if (!ncgr->bitmap) {
+		//not bitmap, use BG screen dimensions
+		scrWidth = nscr->tilesX;
+		scrHeight = nscr->tilesY;
+	}
 
-	int nSections = ncgr->nBits == 4 ? 3 : 2; //no flags for 8-bit images
-	int paltSize = 0xC + nclr->nColors * 2;
-	int bgdtSize = 0x1C + nCharsWrite * (8 * ncgr->nBits) + nscr->tilesX * nscr->tilesY * 2;
-	int dfplSize = nSections == 2 ? 0 : (0xC + ncgr->nTiles);
-	*(uint32_t *) (header + 0x08) = sizeof(header) + paltSize + bgdtSize + dfplSize;
-	*(uint16_t *) (header + 0x0E) = nSections;
-
-	//write header
-	bstreamWrite(stream, header, sizeof(header));
+	NnsStream nns;
+	NnsStreamCreate(&nns, "NTBG", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
 
 	//write PALT
-	unsigned char paltHeader[] = { 'P', 'A', 'L', 'T', 0, 0, 0, 0, 0, 0, 0, 0 };
-	*(uint32_t *) (paltHeader + 0x04) = paltSize;
-	*(uint32_t *) (paltHeader + 0x08) = nclr->nColors;
-	bstreamWrite(stream, paltHeader, sizeof(paltHeader));
-	bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
+	uint32_t paltHeader = nclr->nColors;
+	NnsStreamStartBlock(&nns, "PALT");
+	NnsStreamWrite(&nns, &paltHeader, sizeof(paltHeader));
+	NnsStreamWrite(&nns, nclr->colors, nclr->nColors * sizeof(COLOR));
+	NnsStreamEndBlock(&nns);
 
 	//write BGDT
-	unsigned char bgdtHeader[0x1C] = { 'B', 'G', 'D', 'T' };
-	*(uint32_t *) (bgdtHeader + 0x04) = bgdtSize;
-	*(uint32_t *) (bgdtHeader + 0x08) = ncgr->mappingMode;
-	*(uint32_t *) (bgdtHeader + 0x0C) = nscr->dataSize;
-	*(uint16_t *) (bgdtHeader + 0x10) = nscr->tilesX;
-	*(uint16_t *) (bgdtHeader + 0x12) = nscr->tilesY;
-	*(uint16_t *) (bgdtHeader + 0x14) = ncgr->tilesX;
-	*(uint16_t *) (bgdtHeader + 0x16) = ncgr->tilesY;
-	*(uint32_t *) (bgdtHeader + 0x18) = nCharsWrite * (8 * ncgr->nBits);
-	bstreamWrite(stream, bgdtHeader, sizeof(bgdtHeader));
-	bstreamWrite(stream, nscr->data, nscr->dataSize);
+	unsigned char bgdtHeader[0x14] = { 0 };
+	*(uint32_t *) (bgdtHeader + 0x00) = ncgr->mappingMode;
+	*(uint32_t *) (bgdtHeader + 0x04) = ncgr->bitmap ? 0 : nscr->dataSize;
+	*(uint16_t *) (bgdtHeader + 0x08) = scrWidth;
+	*(uint16_t *) (bgdtHeader + 0x0A) = scrHeight;
+	*(uint16_t *) (bgdtHeader + 0x0C) = ncgr->tilesX;
+	*(uint16_t *) (bgdtHeader + 0x0E) = ncgr->tilesY;
+	*(uint32_t *) (bgdtHeader + 0x10) = ncgr->nTiles * (8 * ncgr->nBits);
+	NnsStreamStartBlock(&nns, "BGDT");
+	NnsStreamWrite(&nns, bgdtHeader, sizeof(bgdtHeader));
+	if (!ncgr->bitmap) NnsStreamWrite(&nns, nscr->data, nscr->dataSize);
 
-	//quick n' dirty write graphics data
-	int nTilesOld = ncgr->nTiles;
-	ncgr->nTiles = nCharsWrite;
-	ncgr->header.format = NCGR_TYPE_BIN;
-	ChrWrite(ncgr, stream);
-	ncgr->header.type = NCGR_TYPE_COMBO;
-	ncgr->nTiles = nTilesOld;
+	//write graphics
+	ChrWriteGraphics(ncgr, NnsStreamGetBlockStream(&nns));
+	NnsStreamEndBlock(&nns);
 
 	//write DFPL
-	if (nSections > 2) {
-		unsigned char dfplHeader[] = { 'D', 'F', 'P', 'L', 0, 0, 0, 0, 0, 0, 0, 0 };
-		*(uint32_t *) (dfplHeader + 0x04) = dfplSize;
-		*(uint32_t *) (dfplHeader + 0x08) = ncgr->nTiles;
+	if (ncgr->nBits == 4) {
+		uint32_t dfplHeader = ncgr->nTiles;
 
 		//iterate the screen and set attributes
 		uint8_t *attr = (uint8_t *) calloc(ncgr->nTiles, 1);
-		for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
-			uint16_t tile = nscr->data[i];
-			int charNum = tile & 0x3FF;
-			int palNum = tile >> 12;
-			attr[charNum] = palNum;
-		}
-		bstreamWrite(stream, dfplHeader, sizeof(dfplHeader));
-		bstreamWrite(stream, attr, ncgr->nTiles);
+		if (ncgr->attr != NULL) memcpy(attr, ncgr->attr, ncgr->nTiles);
+		NnsStreamStartBlock(&nns, "DFPL");
+		NnsStreamWrite(&nns, &dfplHeader, sizeof(dfplHeader));
+		NnsStreamWrite(&nns, attr, ncgr->nTiles);
+		NnsStreamEndBlock(&nns);
 		free(attr);
 	}
-	return 0;
+
+	NnsStreamFinalize(&nns);
+	NnsStreamFlushOut(&nns, stream);
+	NnsStreamFree(&nns);
+	return OBJ_STATUS_SUCCESS;
 }
 
 static int combo2dWriteMbb(COMBO2D *combo, BSTREAM *stream) {
