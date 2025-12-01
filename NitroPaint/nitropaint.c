@@ -2262,6 +2262,27 @@ void NpGetBalanceSetting(NpBalanceControl *ctl, RxBalanceSetting *balance) {
 	balance->enhanceColors = GetCheckboxChecked(ctl->hWndEnhanceColors);
 }
 
+BOOL NpChooseColor15(HWND hWndMain, HWND hWndParent, COLOR *pColor) {
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+
+	CHOOSECOLORW cc = { 0 };
+	cc.lStructSize = sizeof(cc);
+	cc.hInstance = NULL;
+	cc.hwndOwner = hWndParent;
+	cc.rgbResult = ColorConvertFromDS(*pColor);
+	cc.lpCustColors = nitroPaintStruct->tmpCust;
+	cc.Flags = 0x103;
+
+	BOOL (__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
+	if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
+	if (ChooseColorFunction(&cc)) {
+		*pColor = ColorConvertToDS(cc.rgbResult);
+		return TRUE;
+	} else {
+		return FALSE;
+	}
+}
+
 LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	CREATEDIALOGDATA *data = (CREATEDIALOGDATA *) GetWindowLongPtr(hWnd, 0);
 	if (!data) {

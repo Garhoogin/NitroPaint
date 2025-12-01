@@ -40,6 +40,8 @@ typedef struct {
 	HWND hWndNcerViewer;
 	HWND hWndNanrViewer;
 	HWND hWndNmcrViewer;
+
+	COLORREF tmpCust[16]; // Windows color chooser temporary colors
 } NITROPAINTSTRUCT;
 
 typedef struct {
@@ -243,6 +245,8 @@ LPCWSTR GetFileName(LPCWSTR lpszPath);
 // a valid file.
 //
 void EditorInvalidateAllByType(HWND hWndMain, int type);
+
+BOOL NpChooseColor15(HWND hWndMain, HWND hWndParent, COLOR *pColor);
 
 void NpCreateBalanceInput(NpBalanceControl *ctl, HWND hWnd, int x, int y, int width);
 

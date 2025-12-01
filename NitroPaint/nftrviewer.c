@@ -2013,23 +2013,8 @@ static void NftrViewerOnLButtonDown(NFTRVIEWERDATA *data) {
 		} else {
 			//double-click: choose color
 			HWND hWndMain = data->editorMgr->hWnd;
-			COLOR orig = data->palette[pltColor];
 
-			CHOOSECOLOR cc = { 0 };
-			cc.lStructSize = sizeof(cc);
-			cc.hInstance = NULL;
-			cc.hwndOwner = hWndMain;
-			cc.rgbResult = ColorConvertFromDS(orig);
-			cc.lpCustColors = data->dlgCustomColors;
-			cc.Flags = 0x103;
-			BOOL (WINAPI *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
-			if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
-
-			BOOL b = ChooseColorFunction(&cc);
-			if (b) {
-				//set color
-				data->palette[pltColor] = ColorConvertToDS(cc.rgbResult);
-
+			if (NpChooseColor15(hWndMain, hWndMain, &data->palette[pltColor])) {
 				//update
 				RECT rcPalette, rcPreview;
 				NftrViewerCalcPosPalette(data, &rcPalette);

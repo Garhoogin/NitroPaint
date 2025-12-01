@@ -1590,20 +1590,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						data->selStart = data->selEnd = index;
 
 						HWND hWndMain = data->editorMgr->hWnd;
-						CHOOSECOLOR cc = { 0 };
-						cc.lStructSize = sizeof(cc);
-						cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition?
-						cc.hwndOwner = hWndMain;
-						cc.rgbResult = ColorConvertFromDS(data->nclr->colors[index]);
-						cc.lpCustColors = data->tmpCust;
-						cc.Flags = 0x103;
-						BOOL (__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
-						if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
-
-						if (ChooseColorFunction(&cc)) {
-							DWORD result = cc.rgbResult;
-							data->nclr->colors[index] = ColorConvertToDS(result);
-							
+						if (NpChooseColor15(hWndMain, hWndMain, &data->nclr->colors[index])) {
 							EditorInvalidateAllByType(hWndMain, FILE_TYPE_CHAR);
 							EditorInvalidateAllByType(hWndMain, FILE_TYPE_SCREEN);
 							PalViewerUpdateNcerViewer(data);
@@ -2296,21 +2283,9 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 				HWND hWndMain = data->nclrViewerData->editorMgr->hWnd;
 
 				int idx = (hWndControl == data->hWndChoose1) ? 0 : 1;
-
-				CHOOSECOLOR cc = { 0 };
-				cc.lStructSize = sizeof(cc);
-				cc.hInstance = NULL;
-				cc.hwndOwner = hWnd;
-				cc.rgbResult = ColorConvertFromDS(idx == 0 ? data->col1 : data->col2);
-				cc.lpCustColors = data->nclrViewerData->tmpCust;
-				cc.Flags = 0x103;
-				BOOL (__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
-				if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
-
-				if (ChooseColorFunction(&cc)) {
-					if (idx == 0) data->col1 = ColorConvertToDS(cc.rgbResult);
-					else data->col2 = ColorConvertToDS(cc.rgbResult);
-				}
+				
+				COLOR *result = idx == 0 ? &data->col1 : &data->col2;
+				NpChooseColor15(hWndMain, hWnd, result);
 			} else if ((hWndControl == data->hWndOK || idc == IDOK) && cmd == BN_CLICKED) {
 				//OK button selected. get mode and colors
 				int mode = SendMessage(data->hWndType, CB_GETCURSEL, 0, 0);

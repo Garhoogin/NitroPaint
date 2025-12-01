@@ -954,18 +954,9 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 						if (msg == WM_LBUTTONDOWN) { //we don't really want click+drag for this one
 							HWND hWndMain = data->editorMgr->hWnd;
 							COLOR *color = (COLOR *) (pTile + y * width * 2 + x * 2);
-							CHOOSECOLOR cc = { 0 };
-							cc.lStructSize = sizeof(cc);
-							cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition?
-							cc.hwndOwner = hWndMain;
-							cc.rgbResult = ColorConvertFromDS(*color);
-							cc.lpCustColors = data->tmpCust;
-							cc.Flags = 0x103;
-							BOOL(__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
-							if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
-							if (ChooseColorFunction(&cc)) {
-								COLOR32 result = cc.rgbResult;
-								*color = 0x8000 | ColorConvertToDS(result);
+							
+							if (NpChooseColor15(hWndMain, hWndMain, color)) {
+								*color |= 0x8000;
 							}
 						}
 					}
@@ -1790,22 +1781,9 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 				if (index < data->data->texture->texture.palette.nColors) {
 					//if left click, open color editor dialogue.
 					if (msg == WM_LBUTTONDOWN) {
-						COLOR c = data->data->texture->texture.palette.pal[index];
-						DWORD ex = ColorConvertFromDS(c);
-
 						HWND hWndMain = data->data->editorMgr->hWnd;
-						CHOOSECOLOR cc = { 0 };
-						cc.lStructSize = sizeof(cc);
-						cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition
-						cc.hwndOwner = hWndMain;
-						cc.rgbResult = ex;
-						cc.lpCustColors = data->data->tmpCust;
-						cc.Flags = 0x103;
-						BOOL(__stdcall *ChooseColorFunction) (CHOOSECOLORW *) = ChooseColorW;
-						if (GetMenuState(GetMenu(hWndMain), ID_VIEW_USE15BPPCOLORCHOOSER, MF_BYCOMMAND)) ChooseColorFunction = CustomChooseColor;
-						if (ChooseColorFunction(&cc)) {
-							DWORD result = cc.rgbResult;
-							data->data->texture->texture.palette.pal[index] = ColorConvertToDS(result);
+						
+						if (NpChooseColor15(hWndMain, hWndMain, &data->data->texture->texture.palette.pal[index])) {
 							InvalidateRect(hWnd, NULL, FALSE);
 
 							TxRender(data->data->px, data->data->width, data->data->height, 
