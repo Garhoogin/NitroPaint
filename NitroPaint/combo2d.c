@@ -15,6 +15,7 @@ extern const wchar_t *gComboFormats[] = {
 	L"Banner",
 	L"Data File",
 	L"5BG",
+	L"5BG OBJ",
 	L"MBB",
 	L"BNCD",
 	L"AOB",
@@ -103,6 +104,12 @@ int combo2dGetObjMinCount(int comboType, int objType) {
 			if (objType == FILE_TYPE_CHARACTER) return 1;
 			if (objType == FILE_TYPE_SCREEN) return 1;
 			return 0;
+		case COMBO2D_TYPE_5BG_OBJ:
+			//requires exactly one palette + one character + one cell
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_CELL) return 1;
+			return 0;
 		case COMBO2D_TYPE_MBB:
 			//requires exactly one palette, one character, and 0-4 screens
 			if (objType == FILE_TYPE_PALETTE) return 1;
@@ -143,6 +150,12 @@ int combo2dGetObjMaxCount(int comboType, int objType) {
 			if (objType == FILE_TYPE_PALETTE) return 1;
 			if (objType == FILE_TYPE_CHARACTER) return 1;
 			if (objType == FILE_TYPE_SCREEN) return 1;
+			return 0;
+		case COMBO2D_TYPE_5BG_OBJ:
+			//requires exactly one palette + one character + one cell
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_CELL) return 1;
 			return 0;
 		case COMBO2D_TYPE_MBB:
 			//requires exactly one palette, one character, and 0-4 screens
@@ -302,6 +315,22 @@ int combo2dIsValid5bg(const unsigned char *file, unsigned int size) {
 	return 1;
 }
 
+int combo2dIsValid5bgObj(const unsigned char *file, unsigned int size) {
+	//must be a valid G2D structured file
+	if (!NnsG2dIsValid(file, size)) return 0;
+	if (memcmp(file, "NTBG", 4) != 0) return 0;
+
+	//must have PALT section
+	const unsigned char *palt = NnsG2dFindBlockBySignature(file, size, "PALT", NNS_SIG_BE, NULL);
+	if (palt == NULL) return 0;
+
+	//must have BGDT section
+	const unsigned char *objd = NnsG2dFindBlockBySignature(file, size, "OBJD", NNS_SIG_BE, NULL);
+	if (objd == NULL) return 0;
+
+	return 1;
+}
+
 static int combo2dBncdGetBitDepth(const unsigned char *file) {
 	//count OBJ bit depths
 	int depth = 4;
@@ -387,6 +416,7 @@ static int combo2dIsValidAob(const unsigned char *file, unsigned int size) {
 
 int combo2dIsValid(const unsigned char *file, unsigned int size) {
 	if (combo2dIsValid5bg(file, size)) return COMBO2D_TYPE_5BG;
+	if (combo2dIsValid5bgObj(file, size)) return COMBO2D_TYPE_5BG_OBJ;
 	if (combo2dIsValidAob(file, size)) return COMBO2D_TYPE_AOB;
 	if (combo2dIsValidBncd(file, size)) return COMBO2D_TYPE_BNCD;
 	if (combo2dIsValidTimeAce(file, size)) return COMBO2D_TYPE_TIMEACE;
@@ -544,6 +574,122 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	combo2dLink(combo, &nscr->header);
 
 	return 0;
+}
+
+int combo2dRead5bgObj(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
+	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, NULL);
+	const unsigned char *objd = NnsG2dFindBlockBySignature(buffer, size, "OBJD", NNS_SIG_BE, NULL);
+	const unsigned char *dfpl = NnsG2dFindBlockBySignature(buffer, size, "DFPL", NNS_SIG_BE, NULL);
+
+	int nBits = dfpl == NULL ? 8 : 4; //8-bit if no DFPL present
+	int nColors = *(uint32_t *) (palt + 0x00);
+
+	uint32_t objParam = *(const uint32_t *) (objd + 0x00);
+	uint32_t charSize = *(const uint32_t *) (objd + 0x14);
+	int nObjX = *(const uint16_t *) (objd + 0x10);
+	int nObjY = *(const uint16_t *) (objd + 0x12);
+
+	int objShape = (objParam >> 10) & 0x3;
+	int objSize = (objParam >> 8) & 0x3;
+	int objWidth, objHeight;
+	CellGetObjDimensions(objShape, objSize, &objWidth, &objHeight);
+	objWidth /= 8;
+	objHeight /= 8;
+
+	int chrWidth = nObjX * objWidth;
+	int chrHeight = nObjY * objHeight;
+	int nObj = nObjX * nObjY;
+	int charOffset = 0x18 + 4 * nObj;
+
+	//get size of character data
+	int nCharsX, nCharsY;
+	if (charSize != 0) {
+		//guess size
+		int nChars = charSize / (nBits * 8);
+		nCharsX = ChrGuessWidth(nChars);
+		nCharsY = nChars / nCharsX;
+	} else {
+		//size is same as indicated by the image dimension
+		nCharsX = chrWidth;
+		nCharsY = chrHeight;
+	}
+	int nChars = nCharsX * nCharsY;
+
+	const uint32_t *extAttr = (const uint32_t *) (objd + 0x18);
+
+	//create attribute and character data. The format stores character data 1D mapped.
+	uint16_t *cellAttr = (uint16_t *) calloc(nObj, 3 * sizeof(uint16_t));
+	unsigned char *charAttr = (unsigned char *) calloc(nChars, 1);
+	if (dfpl != NULL) {
+		//write attribute data (stored per-OBJ)
+		for (int i = 0; i < nChars / (objWidth * objHeight); i++) {
+			int pltt = (dfpl + 4)[i];
+			for (int j = 0; j < objWidth * objHeight; j++) {
+				charAttr[i * objWidth * objHeight + j] = pltt;
+			}
+		}
+	}
+
+	for (int y = 0; y < nObjY; y++) {
+		for (int x = 0; x < nObjX; x++) {
+			uint32_t thisAttr = extAttr[x + y * nObjX];
+			unsigned int charName = thisAttr & 0x0000FFFF;
+			int mtxno  = (thisAttr >> 16) & 0x1F;
+			int hFlip  = (thisAttr >> 21) & 0x01;
+			int vFlip  = (thisAttr >> 22) & 0x01;
+			int affine = (thisAttr >> 23) & 0x01;
+			int dsize  = (thisAttr >> 24) & 0x01;
+			int prio   = (thisAttr >> 25) & 0x03;
+			int mosaic = (thisAttr >> 27) & 0x01;
+			int plttno = (thisAttr >> 28) & 0x0F;
+
+			int objX = x * objWidth * 8 - 256;
+			int objY = y * objHeight * 8 - 128;
+			if (affine && dsize) {
+				//adjust position to fit into grid when double size affine is enabled
+				objX -= objWidth * 8 / 2;
+				objY -= objHeight * 8 / 2;
+			}
+
+			uint16_t *obj = cellAttr + 3 * (x + y * nObjX);
+			obj[0] = (objY & 0x00FF) | (objShape << 14) | ((nBits == 8) << 13) | (affine << 8) | (dsize << 9) | (mosaic << 12);
+			obj[1] = (objX & 0x01FF) | (objSize << 14) | (hFlip << 12) | (vFlip << 13) | (mtxno << 9);
+			obj[2] = (charName & 0x03FF) | (prio << 10) | (plttno << 12);
+		}
+	}
+
+	//addpalette
+	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
+	PalInit(nclr, NCLR_TYPE_COMBO);
+	nclr->nColors = nColors;
+	nclr->extPalette = 0;
+	nclr->nBits = 4;
+	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+	memcpy(nclr->colors, palt + 0x4, nColors * sizeof(COLOR));
+	combo2dLink(combo, &nclr->header);
+
+	//add character
+	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+	ChrInit(ncgr, NCGR_TYPE_COMBO);
+	ncgr->nTiles = nChars;
+	ncgr->tilesX = nCharsX;
+	ncgr->tilesY = nCharsY;
+	ncgr->nBits = nBits;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	ncgr->attr = charAttr;
+	ChrReadChars(ncgr, objd + charOffset);
+	combo2dLink(combo, &ncgr->header);
+
+	NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
+	CellInit(ncer, NCER_TYPE_COMBO);
+	ncer->cells = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
+	ncer->nCells = 1;
+	ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	ncer->cells[0].nAttribs = nObj;
+	ncer->cells[0].attr = cellAttr;
+	combo2dLink(combo, &ncer->header);
+
+	return OBJ_STATUS_SUCCESS;
 }
 
 int combo2dReadBanner(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
@@ -786,6 +932,8 @@ int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size) 
 			return combo2dReadTimeAce(combo, buffer, size);
 		case COMBO2D_TYPE_5BG:
 			return combo2dRead5bg(combo, buffer, size);
+		case COMBO2D_TYPE_5BG_OBJ:
+			return combo2dRead5bgObj(combo, buffer, size);
 		case COMBO2D_TYPE_BANNER:
 			return combo2dReadBanner(combo, buffer, size);
 		case COMBO2D_TYPE_MBB:

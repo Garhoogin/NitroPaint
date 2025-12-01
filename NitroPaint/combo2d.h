@@ -6,10 +6,11 @@
 #define COMBO2D_TYPE_BANNER      2
 #define COMBO2D_TYPE_DATAFILE    3
 #define COMBO2D_TYPE_5BG         4
-#define COMBO2D_TYPE_MBB         5
-#define COMBO2D_TYPE_BNCD        6
-#define COMBO2D_TYPE_AOB         7
-#define COMBO2D_TYPE_MAX         8 // max +1
+#define COMBO2D_TYPE_5BG_OBJ     5
+#define COMBO2D_TYPE_MBB         6
+#define COMBO2D_TYPE_BNCD        7
+#define COMBO2D_TYPE_AOB         8
+#define COMBO2D_TYPE_MAX         9 // max +1
 
 extern const wchar_t *gComboFormats[];
 
