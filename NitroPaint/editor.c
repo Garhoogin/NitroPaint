@@ -235,7 +235,7 @@ static void EditorHandleActivate(HWND hWnd, HWND to) {
 }
 
 static void EditorTerminateCombo(EDITOR_DATA *data) {
-	HWND hWndParent = (HWND) GetWindowLongPtr(data->hWnd, GWL_HWNDPARENT);
+	HWND hWndParent = (HWND) GetWindowLongPtr((HWND) GetWindowLongPtr(data->hWnd, GWL_HWNDPARENT), GWL_HWNDPARENT);
 	COMBO2D *combo = (COMBO2D *) data->file->combo;
 
 	//first unlink all child objects. This will prevent us from accidentally infinitely
