@@ -15,6 +15,12 @@ typedef struct EditorDestroyCallbackEntry_ {
 	void *param;
 } EditorDestroyCallbackEntry;
 
+typedef struct EditorCreateCallbackEntry_ {
+	EditorCreatedCallback callback;
+	void *param;
+	int type;
+} EditorCreateCallbackEntry;
+
 
 static int EditorGetMenuCommandByZoom(int zoom) {
 	for (unsigned int i = 0; i < sizeof(sZoomLevels) / sizeof(sZoomLevels[0]); i++) {
@@ -81,6 +87,27 @@ void EditorMgrInit(HWND hWndMgr) {
 	mgr->hWnd = hWndMgr;
 	StListCreateInline(&mgr->classList, EDITOR_CLASS *, NULL);
 	StListCreateInline(&mgr->editorList, EDITOR_DATA *, NULL);
+	StListCreateInline(&mgr->createCallbacks, EditorCreateCallbackEntry, NULL);
+}
+
+StStatus EditorRegisterCreateCallback(EditorManager *mgr, int type, EditorCreatedCallback callback, void *param) {
+	EditorCreateCallbackEntry entry = { 0 };
+	entry.callback = callback;
+	entry.param = param;
+	entry.type = type;
+	return StListAdd(&mgr->createCallbacks, &entry);
+}
+
+void EditorRemoveCreateCallback(EditorManager *mgr, int type, EditorCreatedCallback callback, void *param) {
+	EditorCreateCallbackEntry entry = { 0 };
+	entry.callback = callback;
+	entry.param = param;
+	entry.type = type;
+
+	size_t index = StListIndexOf(&mgr->createCallbacks, &entry);
+	if (index != ST_INDEX_NOT_FOUND) {
+		StListRemove(&mgr->createCallbacks, index);
+	}
 }
 
 StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list) {
@@ -336,9 +363,10 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 
 		//handle common editor messages
 		EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
+		EditorManager *mgr = data == NULL ? NULL : data->editorMgr;
 		switch (msg) {
 			case NV_GETTYPE:
-				if (data != NULL) {
+				if (data != NULL && data->file != NULL) {
 					return data->file->type;
 				} else {
 					return FILE_TYPE_INVALID;
@@ -436,6 +464,17 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				}
 				free(data->file); // ownership assumed
 				free(data);
+			}
+		}
+
+		//call registered creation callbacks
+		if (msg == NV_INITIALIZE && data != NULL && data->file != NULL) {
+			//run through the list of callbacks
+			for (size_t i = 0; i < mgr->createCallbacks.length; i++) {
+				EditorCreateCallbackEntry *ent = StListGetPtr(&mgr->createCallbacks, i);
+				if (ent->type == data->file->type) {
+					ent->callback(data, ent->param);
+				}
 			}
 		}
 

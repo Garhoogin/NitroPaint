@@ -215,25 +215,25 @@ static int NftrViewerCacheGetByCP(NFTRVIEWERDATA *data, uint16_t cp) {
 }
 
 
-static void NftrViewerRenderGlyph(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int width, int height, int x, int y, NFTR_GLYPH *glyph) {
-	for (int cellY = 0; cellY < data->nftr->cellHeight; cellY++) {
-		for (int cellX = 0; cellX < data->nftr->cellWidth; cellX++) {
+static void NftrViewerRenderGlyph(NFTR *nftr, COLOR32 *pxbuf, int width, int height, int x, int y, NFTR_GLYPH *glyph, const COLOR *pltt) {
+	for (int cellY = 0; cellY < nftr->cellHeight; cellY++) {
+		for (int cellX = 0; cellX < nftr->cellWidth; cellX++) {
 			int destX = x + cellX;
 			int destY = y + cellY;
 			if (destX < 0 || destX >= width || destY < 0 || destY >= height) continue;
 
-			int col = glyph->px[cellX + cellY * data->nftr->cellWidth];
+			int col = glyph->px[cellX + cellY * nftr->cellWidth];
 			if (!col) continue;
 
 			//put pixel
-			COLOR32 c = ColorConvertFromDS(data->palette[col]);
+			COLOR32 c = ColorConvertFromDS(pltt[col]);
 			pxbuf[destX + destY * width] = REVERSE(c) | 0xFF000000;
 		}
 	}
 }
 
-static void NftrViewerRenderString(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int width, int height, const wchar_t *str) {
-	if (str == NULL || data->nftr == NULL || !data->nftr->hasCodeMap) return;
+void NftrRenderString(NFTR *nftr, COLOR32 *pxbuf, int width, int height, const wchar_t *str, int spaceX, int spaceY, const COLOR *pltt) {
+	if (str == NULL) return;
 
 	//render glyph string
 	int x = 0, y = 0;
@@ -245,24 +245,30 @@ static void NftrViewerRenderString(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int wid
 		if (c == L'\n') {
 			//new line (TODO: text orientation)
 			x = 0;
-			y += data->nftr->lineHeight + data->spaceY;
+			y += nftr->lineHeight + spaceY;
 			nCharsLine = 0;
 			continue;
 		}
 
-		NFTR_GLYPH *glyph = NftrViewerGetGlyphByCP(data, (uint16_t) c);
-		if (glyph == NULL) glyph = NftrViewerGetDefaultGlyph(data);
+		NFTR_GLYPH *glyph = NftrGetGlyphByCP(nftr, (uint16_t) c);
+		if (glyph == NULL) glyph = NftrGetInvalidGlyph(nftr);
 
 		if (glyph != NULL) {
 			//draw
 			if (nCharsLine > 0) x += glyph->spaceLeft;
-			NftrViewerRenderGlyph(data, pxbuf, width, height, x, y, glyph);
+			NftrViewerRenderGlyph(nftr, pxbuf, width, height, x, y, glyph, pltt);
 
 			//advance position (TODO: consider text orientation)
-			x += glyph->width + glyph->spaceRight + data->spaceX;
+			x += glyph->width + glyph->spaceRight + spaceX;
 			nCharsLine++;
 		}
 	}
+}
+
+static void NftrViewerRenderString(NFTRVIEWERDATA *data, COLOR32 *pxbuf, int width, int height, const wchar_t *str) {
+	if (data->nftr == NULL || !data->nftr->hasCodeMap) return;
+
+	NftrRenderString(data->nftr, pxbuf, width, height, str, data->spaceX, data->spaceY, data->palette);
 }
 
 
@@ -1135,7 +1141,7 @@ static void NftrViewerCopyCurrentGlyph(NFTRVIEWERDATA *data) {
 		pxbuf[i] = ColorConvertFromDS(data->palette[0]);
 	}
 
-	NftrViewerRenderGlyph(data, pxbuf, data->nftr->cellWidth, data->nftr->cellHeight, 0, 0, glyph);
+	NftrViewerRenderGlyph(data->nftr, pxbuf, data->nftr->cellWidth, data->nftr->cellHeight, 0, 0, glyph, data->palette);
 	ImgSwapRedBlue(pxbuf, data->nftr->cellWidth, data->nftr->cellHeight);
 
 	OpenClipboard(data->hWnd);

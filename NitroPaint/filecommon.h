@@ -21,7 +21,8 @@
 #define FILE_TYPE_BNLL       15
 #define FILE_TYPE_BNCL       16
 #define FILE_TYPE_BNBL       17
-#define FILE_TYPE_MAX        18  //highest file type +1
+#define FILE_TYPE_MESG       18
+#define FILE_TYPE_MAX        19  //highest file type +1
 
 extern const wchar_t *gFileTypeNames[];
 

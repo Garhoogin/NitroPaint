@@ -64,6 +64,17 @@ typedef struct NFTRVIEWERDATA_ {
 
 } NFTRVIEWERDATA;
 
+void NftrRenderString(
+	NFTR          *nftr,
+	COLOR32       *pxbuf,
+	int            width,
+	int            height,
+	const wchar_t *str,
+	int            spaceX,
+	int            spaceY,
+	const COLOR   *pltt
+);
+
 void RegisterNftrViewerClass(void);
 
 HWND CreateNftrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);

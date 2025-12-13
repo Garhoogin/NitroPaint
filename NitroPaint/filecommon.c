@@ -10,6 +10,7 @@
 #include "gdip.h"
 #include "nns.h"
 #include "jlyt.h"
+#include "mesg.h"
 
 const wchar_t *gFileTypeNames[] = {
 	L"Invalid",
@@ -151,6 +152,8 @@ LPCWSTR *ObjGetFormatNamesByType(int type) {
 			return textureFormatNames;
 		case FILE_TYPE_FONT:
 			return fontFormatNames;
+		case FILE_TYPE_MESG:
+			return gMesgFormatNames;
 		default:
 			return NULL;
 	}
@@ -401,7 +404,8 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 			} else {
 
 				//test other formats
-				if (NftrIdentify(buffer, bufferSize)) type = FILE_TYPE_FONT;
+				if (MesgIsValid(buffer, size)) type = FILE_TYPE_MESG;
+				else if (NftrIdentify(buffer, bufferSize)) type = FILE_TYPE_FONT;
 				else if (BncmpIdentify(buffer, bufferSize)) type = FILE_TYPE_CMAP;
 				else if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
 				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;

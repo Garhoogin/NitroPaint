@@ -28,6 +28,7 @@ typedef struct EditorManager_ {
 	HWND hWnd;          // handle of window owning the manager
 	StList classList;   // list of classes
 	StList editorList;  // list of editors
+	StList createCallbacks; // list of callbacks
 } EditorManager;
 
 // ----- Class data slots
@@ -76,11 +77,18 @@ typedef struct EDITOR_DATA_ {
 	//after here may vary...
 } EDITOR_DATA;
 
+// ----- editor created callback function
+typedef void (*EditorCreatedCallback) (EDITOR_DATA *data, void *param);
+
 // ----- editor destroyed callback function
 typedef void (*EditorDestroyCallback) (EDITOR_DATA *data, void *param);
 
 
 void EditorMgrInit(HWND hWndMgr);
+
+StStatus EditorRegisterCreateCallback(EditorManager *mgr, int type, EditorCreatedCallback callback, void *param);
+
+void EditorRemoveCreateCallback(EditorManager *mgr, int type, EditorCreatedCallback callback, void *param);
 
 StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list);
 

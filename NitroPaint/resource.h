@@ -262,13 +262,16 @@
 #define ID_FONTMENU2_IMPORTLCFONT       40273
 #define ID_ZOOM_3200                    40274
 #define ID_ZOOM_6400                    40275
+#define ID_MESGMENU_NEWMESSAGE          40276
+#define ID_MESGMENU_DELETE              40277
+#define ID_MESGPREVMENU_COPY            40278
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        112
-#define _APS_NEXT_COMMAND_VALUE         40276
+#define _APS_NEXT_COMMAND_VALUE         40279
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

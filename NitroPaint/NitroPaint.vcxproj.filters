@@ -150,6 +150,12 @@
     <ClCompile Include="lyteditor.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="mesg.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mesgeditor.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ncgrviewer.h">
@@ -287,6 +293,12 @@
     <ClInclude Include="lyteditor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="mesg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mesgeditor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="NitroPaint.rc">
@@ -298,6 +310,9 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="hudson.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="jlayout.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

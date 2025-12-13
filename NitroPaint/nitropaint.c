@@ -28,6 +28,7 @@
 #include "preview.h"
 #include "nftrviewer.h"
 #include "lyteditor.h"
+#include "mesgeditor.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
@@ -1332,6 +1333,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		case FILE_TYPE_BNBL:
 			CreateBnblViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
 			break;
+		case FILE_TYPE_MESG:
+			CreateMesgEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
 		case FILE_TYPE_IMAGE:
 			CreateImageDialog(hWnd, path);
 			break;
@@ -1476,6 +1480,11 @@ static int SortWindowsComputeOrder(int type) {
 			return 9;
 		case FILE_TYPE_NSBTX:
 			return 10;
+		case FILE_TYPE_BNBL:
+		case FILE_TYPE_BNCL:
+		case FILE_TYPE_BNLL:
+		case FILE_TYPE_MESG:
+			return 11; // don't care
 	}
 	return 0;
 }
@@ -4145,6 +4154,7 @@ static void RegisterClasses(void) {
 	RegisterNewPaletteClass();
 	RegisterIndexImageClass();
 	RegisterLytEditor();
+	MesgEditorRegisterClass();
 }
 
 void InitializeDpiAwareness(void) {
