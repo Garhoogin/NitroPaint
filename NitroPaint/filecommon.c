@@ -412,6 +412,8 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 				else if (BnllIdentify(buffer, bufferSize)) type = FILE_TYPE_BNLL;
 				else if (BnclIdentify(buffer, bufferSize)) type = FILE_TYPE_BNCL;
 				else if (BnblIdentify(buffer, bufferSize)) type = FILE_TYPE_BNBL;
+				else if (ChrIsValidTose(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+				else if (ScrIsValidTose(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
 				else if (PalIsValidSetosa(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 				else if (ChrIsValidSetosa(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
 				else if (ChrIsValidIcg(buffer, bufferSize)) type = FILE_TYPE_CHAR;

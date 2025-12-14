@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <math.h>
 
-LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"NSC", L"ISC", L"ASC", L"Hudson", L"Hudson 2", L"Binary", NULL };
+LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"NSC", L"ISC", L"ASC", L"Tose", L"Hudson", L"Hudson 2", L"Binary", NULL };
 
 #define NSCR_FLIPNONE 0
 #define NSCR_FLIPX 1
@@ -166,6 +166,8 @@ int ScrComputeHighestCharacter(NSCR *nscr) {
 	int highest = 0;
 	for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
 		uint16_t tile = nscr->data[i];
+		if (tile == nscr->clearValue) continue; // do not count the clear character
+
 		int charNum = tile & 0x3FF;
 		if (charNum > highest) highest = charNum;
 	}
@@ -251,9 +253,25 @@ int ScrIsValidNscr(const unsigned char *file, unsigned int size) {
 	return 1;
 }
 
+int ScrIsValidTose(const unsigned char *buffer, unsigned int size) {
+	if (size < 0xC) return 0;                            // header size
+	if (memcmp(buffer + 0x0, "NSC\0", 4) != 0) return 0; // file signature
+
+	unsigned int scrSize = size - 0xC;
+	unsigned int nScrTile = *(const uint16_t *) (buffer + 0x4);
+	if (scrSize != nScrTile * 2) return 0;
+
+	unsigned int nTileX = *(const uint8_t *) (buffer + 0x8);
+	unsigned int nTileY = *(const uint8_t *) (buffer + 0x9);
+	if (nTileX * nTileY != nScrTile) return 0;
+
+	return 1;
+}
+
 int ScrIdentify(const unsigned char *file, unsigned int size) {
 	if (ScrIsValidNscr(file, size)) return NSCR_TYPE_NSCR;
 	if (ScrIsValidNsc(file, size)) return NSCR_TYPE_NC;
+	if (ScrIsValidTose(file, size)) return NSCR_TYPE_TOSE;
 	if (ScrIsValidIsc(file, size)) return NSCR_TYPE_IC;
 	if (ScrIsValidAsc(file, size)) return NSCR_TYPE_AC;
 	if (ScrIsValidHudson(file, size)) return NSCR_TYPE_HUDSON;
@@ -488,6 +506,26 @@ static int ScrReadNscr(NSCR *nscr, const unsigned char *file, unsigned int size)
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int ScrReadTose(NSCR *nscr, const unsigned char *buffer, unsigned int size) {
+	ScrInit(nscr, NSCR_TYPE_TOSE);
+
+	unsigned int tileX = *(const uint8_t *) (buffer + 0x8);
+	unsigned int tileY = *(const uint8_t *) (buffer + 0x9);
+	uint16_t clrc = *(const uint16_t *) (buffer + 0xA);
+
+	nscr->tilesX = tileX;
+	nscr->tilesY = tileY;
+	nscr->dataSize = 2 * tileX * tileY;
+	nscr->clearValue = clrc;
+	nscr->data = (uint16_t  *) calloc(tileX * tileY, sizeof(uint16_t));
+	nscr->colorMode = SCREENCOLORMODE_256x16;
+	nscr->fmt = SCREENFORMAT_AFFINEEXT;
+	ScriReadScreenData(nscr, buffer + 0xC, tileX * tileY * 2);
+	ScrComputeHighestCharacter(nscr);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 	int type = ScrIdentify(file, dwFileSize);
 	switch (type) {
@@ -499,6 +537,8 @@ int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
 			return ScrReadIsc(nscr, file, dwFileSize);
 		case NSCR_TYPE_AC:
 			return ScrReadAsc(nscr, file, dwFileSize);
+		case NSCR_TYPE_TOSE:
+			return ScrReadTose(nscr, file, dwFileSize);
 		case NSCR_TYPE_HUDSON:
 			return ScrReadHudson(nscr, file, dwFileSize);
 		case NSCR_TYPE_BIN:
@@ -783,6 +823,20 @@ int ScrWriteHudson(NSCR *nscr, BSTREAM *stream) {
 	return 0;
 }
 
+static int ScrWriteTose(NSCR *nscr, BSTREAM *stream) {
+	unsigned char header[] = { 'N', 'S', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	*(uint16_t *) (header + 0x4) = nscr->tilesX * nscr->tilesY;
+	*(uint16_t *) (header + 0x6) = 0x200; // TODO?
+	*(uint8_t *) (header + 0x8) = nscr->tilesX;
+	*(uint8_t *) (header + 0x9) = nscr->tilesY;
+	*(uint16_t *) (header + 0xA) = nscr->clearValue;
+	bstreamWrite(stream, header, sizeof(header));
+
+	bstreamWrite(stream, nscr->data, nscr->dataSize);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int ScrWriteBin(NSCR *nscr, BSTREAM *stream) {
 	bstreamWrite(stream, nscr->data, nscr->dataSize);
 	return 0;
@@ -802,6 +856,8 @@ int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 			return ScrWriteAsc(nscr, stream);
 		case NSCR_TYPE_IC:
 			return ScrWriteIsc(nscr, stream);
+		case NSCR_TYPE_TOSE:
+			return ScrWriteTose(nscr, stream);
 		case NSCR_TYPE_HUDSON:
 		case NSCR_TYPE_HUDSON2:
 			return ScrWriteHudson(nscr, stream);

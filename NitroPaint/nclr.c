@@ -5,7 +5,7 @@
 #include "nns.h"
 #include "setosa.h"
 
-LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"NCL", L"5PL", L"5PC", L"Hudson", L"Setosa", L"Binary", L"NTFP", NULL };
+LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"NCL", L"5PL", L"5PC", L"Tose", L"Hudson", L"Setosa", L"Binary", L"NTFP", NULL };
 
 void PalFree(OBJECT_HEADER *header) {
 	NCLR *nclr = (NCLR *) header;
@@ -125,12 +125,23 @@ int PalIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+int PalIsValidTose(const unsigned char *buffer, unsigned int size) {
+	if (size < 8) return 0;                        // size of file header
+	if (memcmp(buffer, "NCL\0", 4) != 0) return 0; // file signature
+
+	unsigned int nCol = *(const uint32_t *) (buffer + 0x4);
+	if (nCol != (size - 8) / 2) return 0;
+
+	return 1;
+}
+
 int PalIdentify(const unsigned char *lpFile, unsigned int size) {
 	if (PalIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
 	if (PalIsValidNcl(lpFile, size)) return NCLR_TYPE_NC;
 	if (PalIsValidIStudio(lpFile, size)) return NCLR_TYPE_ISTUDIO;
 	if (PalIsValidIStudioCompressed(lpFile, size)) return NCLR_TYPE_ISTUDIOC;
 	if (PalIsValidSetosa(lpFile, size)) return NCLR_TYPE_SETOSA;
+	if (PalIsValidTose(lpFile, size)) return NCLR_TYPE_TOSE;
 	if (PalIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
 	if (PalIsValidBin(lpFile, size)) return NCLR_TYPE_BIN;
 	if (PalIsValidNtfp(lpFile, size)) return NCLR_TYPE_NTFP;
@@ -269,6 +280,18 @@ static int PalReadSetosa(NCLR *nclr, const unsigned char *buffer, unsigned int s
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int PalReadTose(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+	PalInit(nclr, NCLR_TYPE_TOSE);
+
+	unsigned int nCol = *(const uint32_t *) (buffer + 0x4);
+	nclr->nColors = nCol;
+	nclr->nBits = nCol <= 0x100 ? 4 : 8; // heuristic
+	nclr->colors = (COLOR *) calloc(nCol, sizeof(COLOR));
+	memcpy(nclr->colors, buffer + 8, nCol * sizeof(COLOR));
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	int type = PalIdentify(buffer, size);
 	switch (type) {
@@ -280,6 +303,8 @@ int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 			return PalReadIStudio(nclr, buffer, size);
 		case NCLR_TYPE_ISTUDIOC:
 			return PalReadIStudioCompressed(nclr, buffer, size);
+		case NCLR_TYPE_TOSE:
+			return PalReadTose(nclr, buffer, size);
 		case NCLR_TYPE_HUDSON:
 			return PalReadHudson(nclr, buffer, size);
 		case NCLR_TYPE_SETOSA:
@@ -491,6 +516,15 @@ static int PalWriteSetosa(NCLR *nclr, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int PalWriteTose(NCLR *nclr, BSTREAM *stream) {
+	uint32_t nCol = nclr->nColors;
+	bstreamWrite(stream, "NCL\0", 4);
+	bstreamWrite(stream, &nCol, sizeof(nCol));
+	bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int PalWrite(NCLR *nclr, BSTREAM *stream) {
 	switch (nclr->header.format) {
 		case NCLR_TYPE_NCLR:
@@ -500,6 +534,8 @@ int PalWrite(NCLR *nclr, BSTREAM *stream) {
 		case NCLR_TYPE_ISTUDIO:
 		case NCLR_TYPE_ISTUDIOC:
 			return PalWriteIStudio(nclr, stream);
+		case NCLR_TYPE_TOSE:
+			return PalWriteTose(nclr, stream);
 		case NCLR_TYPE_HUDSON:
 			return PalWriteHudson(nclr, stream);
 		case NCLR_TYPE_BIN:

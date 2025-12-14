@@ -7,7 +7,7 @@
 
 #include <stdio.h>
 
-LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ICG", L"ACG", L"Hudson", L"Hudson 2", L"Ghost Trick", L"Setosa", L"Binary", NULL };
+LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ICG", L"ACG", L"Tose", L"Hudson", L"Hudson 2", L"Ghost Trick", L"Setosa", L"Binary", NULL };
 
 //Setosa file flags
 #define RES_CHAR_FLAG_1D        (1<<0)  // 1D mapping flag
@@ -149,10 +149,23 @@ int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+int ChrIsValidTose(const unsigned char *buffer, unsigned int size) {
+	if (size < 8) return 0;                              // size of file header
+	if (memcmp(buffer + 0x0, "NCG\0", 4) != 0) return 0; // file signature
+
+	unsigned int nChr = *(const uint16_t *) (buffer + 0x4);
+	unsigned int gfxSize = size - 8;
+
+	if (gfxSize != nChr * 0x20 && gfxSize != nChr * 0x40) return 0;
+
+	return 1;
+}
+
 int ChrIdentify(const unsigned char *buffer, unsigned int size) {
 	if (ChrIsValidNcgr(buffer, size)) return NCGR_TYPE_NCGR;
 	if (ChrIsValidSetosa(buffer, size)) return NCGR_TYPE_SETOSA;
 	if (ChrIsValidNcg(buffer, size)) return NCGR_TYPE_NC;
+	if (ChrIsValidTose(buffer, size)) return NCGR_TYPE_TOSE;
 	if (ChrIsValidIcg(buffer, size)) return NCGR_TYPE_IC;
 	if (ChrIsValidAcg(buffer, size)) return NCGR_TYPE_AC;
 	if (ChrIsValidHudson(buffer, size)) return NCGR_TYPE_HUDSON;
@@ -572,6 +585,25 @@ static int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int ChrReadTose(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	ChrInit(ncgr, NCGR_TYPE_TOSE);
+
+	//bit depth
+	unsigned int nChr = *(const uint16_t *) (buffer + 0x4);
+	unsigned int gfxSize = size - 8;
+	if (gfxSize == nChr * 0x20) ncgr->nBits = 4;
+	else ncgr->nBits = 8;
+
+	ncgr->bitmap = 0;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	ncgr->nTiles = nChr;
+	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
+	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ChrReadChars(ncgr, buffer + 8);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 	int type = ChrIdentify(buffer, size);
 	switch (type) {
@@ -583,6 +615,8 @@ int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 			return ChrReadIcg(ncgr, buffer, size);
 		case NCGR_TYPE_AC:
 			return ChrReadAcg(ncgr, buffer, size);
+		case NCGR_TYPE_TOSE:
+			return ChrReadTose(ncgr, buffer, size);
 		case NCGR_TYPE_HUDSON:
 			return ChrReadHudson(ncgr, buffer, size);
 		case NCGR_TYPE_GHOSTTRICK:
@@ -1017,6 +1051,19 @@ static int ChrWriteSetosa(NCGR *ncgr, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int ChrWriteTose(NCGR *ncgr, BSTREAM *stream) {
+	int isExPltt = ncgr->nBits == 8; // TODO?
+
+	uint16_t hdr[2];
+	hdr[0] = ncgr->nTiles;
+	hdr[1] = (ncgr->nBits == 8) | (isExPltt << 1);
+	bstreamWrite(stream, "NCG\0", 4);
+	bstreamWrite(stream, hdr, sizeof(hdr));
+	ChrWriteChars(ncgr, stream);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int ChrWriteCombo(NCGR *ncgr, BSTREAM *stream) {
 	return combo2dWrite((COMBO2D *) ncgr->header.combo, stream);
 }
@@ -1031,6 +1078,8 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 			return ChrWriteAcg(ncgr, stream);
 		case NCGR_TYPE_IC:
 			return ChrWriteIcg(ncgr, stream);
+		case NCGR_TYPE_TOSE:
+			return ChrWriteTose(ncgr, stream);
 		case NCGR_TYPE_HUDSON:
 		case NCGR_TYPE_HUDSON2:
 			return ChrWriteHudson(ncgr, stream);

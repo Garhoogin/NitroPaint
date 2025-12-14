@@ -2,17 +2,18 @@
 
 #include "nclr.h"
 
-#define NCGR_TYPE_INVALID	 0
-#define NCGR_TYPE_NCGR		 1
-#define NCGR_TYPE_NC         2
-#define NCGR_TYPE_IC         3
-#define NCGR_TYPE_AC         4
-#define NCGR_TYPE_HUDSON	 5
-#define NCGR_TYPE_HUDSON2	 6
-#define NCGR_TYPE_GHOSTTRICK 7
-#define NCGR_TYPE_SETOSA     8
-#define NCGR_TYPE_BIN        9
-#define NCGR_TYPE_COMBO      10
+#define NCGR_TYPE_INVALID	  0
+#define NCGR_TYPE_NCGR		  1
+#define NCGR_TYPE_NC          2
+#define NCGR_TYPE_IC          3
+#define NCGR_TYPE_AC          4
+#define NCGR_TYPE_TOSE        5
+#define NCGR_TYPE_HUDSON	  6
+#define NCGR_TYPE_HUDSON2	  7
+#define NCGR_TYPE_GHOSTTRICK  8
+#define NCGR_TYPE_SETOSA      9
+#define NCGR_TYPE_BIN        10
+#define NCGR_TYPE_COMBO      11
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010
@@ -69,39 +70,16 @@ int ChrGuessWidth(int nTiles);
 void ChrInit(NCGR *ncgr, int format);
 
 //
-// Determines if a byte array represents a valid Hudson character graphics file
+// Determines if a byte array represents a valid character graphics file
 //
 int ChrIsValidHudson(const unsigned char *buffer, unsigned int size);
-
-//
-// Determines if a byte array represents a valid raw character graphics file.
-//
-int ChrIsValidBin(const unsigned char *buffer, unsigned int size);
-
-//
-// Determines if a byte array represents a valid Ghost Trick graphics file.
-//
 int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
-
-//
-// Determines if a byte array represents a valid IS-AGB-CHARACTER graphics file
-//
 int ChrIsValidAcg(const unsigned char *buffer, unsigned int size);
-
-//
-// Determines if a byte array represents a valid IS-IRIS-CHARACTER graphics file
-//
 int ChrIsValidIcg(const unsigned char *buffer, unsigned int size);
-
-//
-// Determines if a byte array represents a valid NNS G2D character graphics file for runtime.
-//
 int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size);
-
-//
-// Determines if a byte array represents a valid Setosa format character graphics file.
-//
 int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size);
+int ChrIsValidTose(const unsigned char *buffer, unsigned int size);
+int ChrIsValidBin(const unsigned char *buffer, unsigned int size);
 
 //
 // Get a 32-bit color render of graphics data
