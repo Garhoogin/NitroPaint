@@ -2444,7 +2444,7 @@ RxStatus RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int
 	//the K-D tree is incompatible with the palette witth alpha.
 	for (unsigned int i = 0; i < nColors; i++) {
 		unsigned int a = pltt[i] >> 24;
-		if (a < 0xFF) return reduction->status;
+		if (a < 0xFF) return RX_STATUS_INVALID;
 	}
 
 	accel->pltt = (RxPaletteMapEntry *) RxMemCalloc(nColors, sizeof(RxPaletteMapEntry));
@@ -2475,7 +2475,7 @@ RxStatus RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int
 void RxPaletteFree(RxReduction *reduction) {
 	if (!reduction->accel.initialized) return;
 
-	free(reduction->accel.pltt);
+	RxMemFree(reduction->accel.pltt);
 	free(reduction->accel.nodebuf);
 	reduction->accel.pltt = NULL;
 	reduction->accel.nodebuf = NULL;
