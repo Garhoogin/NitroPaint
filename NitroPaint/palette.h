@@ -33,10 +33,14 @@
 //   RX_STATUS_OK                The operation was completed successfully.
 //   RX_STATUS_NOMEM             The operation could not be completed because of insufficient
 //                               memory.
+//   RX_STATUS_INVALID           One or more of the parameters were invalid. This status code is
+//                               not retained and only returned by the API that generated the
+//                               error.
 // -----------------------------------------------------------------------------------------------
 typedef enum RxStatus_ {
 	RX_STATUS_OK,                             // The operation was successful
-	RX_STATUS_NOMEM                           // The operation failed due to insufficient memory
+	RX_STATUS_NOMEM,                          // The operation failed due to insufficient memory
+	RX_STATUS_INVALID                         // The parameters were invalid
 } RxStatus;
 
 // -----------------------------------------------------------------------------------------------
@@ -397,6 +401,30 @@ typedef struct {
 	unsigned int count;
 } RxTotalBuffer;
 
+typedef struct RxPaletteMapEntry_ {
+	RxYiqColor color;
+	unsigned int index;
+	double sortVal;
+} RxPaletteMapEntry;
+
+typedef struct RxPaletteAccelNode_ {
+	struct RxPaletteAccelNode_ *pLeft;    // left pointer
+	struct RxPaletteAccelNode_ *pRight;   // right pointer
+	struct RxPaletteAccelNode_ *parent;   // parent node
+	RxPaletteMapEntry *mid;               // mid color
+	double splitVal;                      // value of split
+	unsigned int nCol;                    // number of colors this node
+	unsigned int start;                   // start index of color
+	unsigned int splitDir;                // split direction (Y,I,Q,A)
+} RxPaletteAccelNode;
+
+typedef struct RxPaletteAccelerator_ {
+	RxPaletteAccelNode root;
+	RxPaletteMapEntry *pltt;
+	RxPaletteAccelNode *nodebuf;
+	int initialized;
+} RxPaletteAccelerator;
+
 //reduction workspace structure
 typedef struct RxReduction_ {
 	double yWeight;
@@ -430,6 +458,7 @@ typedef struct RxReduction_ {
 	unsigned int alphaThreshold;
 	RxHistogram *histogram;
 	RxHistEntry **histogramFlat;
+	RxPaletteAccelerator accel;
 	RxTotalBuffer blockTotals[RX_PALETTE_MAX_SIZE];
 	RxColorNode *colorTreeHead;
 	RxColorNode *colorBlocks[RX_PALETTE_MAX_SIZE];
@@ -752,6 +781,56 @@ RxStatus RxReduceImageWithContext(
 	unsigned int   nColors,       // the color palette size
 	RxFlag         flag,          // color reduction flags
 	float          diffuse       // the error diffusion amount (from 0 to 1)
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxPaletteLoad
+//
+// Loads a color palette into the color reduction context. The loaded palette is used by
+// functions like RxPaletteFindClosestColor. When the palette is no longer used, free it using
+// the RxPaletteFree function.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   pltt          The color palette to load, as RGBA colors.
+//   nColors       The number of colors in the color palette to load.
+// -----------------------------------------------------------------------------------------------
+RxStatus RxPaletteLoad(
+	RxReduction          *reduction,
+	const COLOR32        *pltt,
+	unsigned int          nColors
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxPaletteFindClosestColor
+//
+// Finds the closest color in the loaded palette to the specified color.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   color         The color to search for
+//   outDiff       A pointer that receives the distance to the most similar color. This may be
+//                 NULL.
+//
+// Returns:
+//   The index of the most similar color in the color palette.
+// -----------------------------------------------------------------------------------------------
+unsigned int RxPaletteFindClosestColor(
+	RxReduction      *reduction,
+	const RxYiqColor *color,
+	double           *outDiff
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxPaletteFree
+//
+// Frees the palette loaded in the current reduction context.
+//
+// Parameters:
+//   reduction     The color reduction context.
+// -----------------------------------------------------------------------------------------------
+void RxPaletteFree(
+	RxReduction *reduction
 );
 
 // -----------------------------------------------------------------------------------------------

@@ -1480,6 +1480,7 @@ RxStatus RxHistClear(RxReduction *reduction) {
 }
 
 void RxDestroy(RxReduction *reduction) {
+	RxPaletteFree(reduction);
 	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 	if (reduction->histogram != NULL) {
 		RxiSlabFree(&reduction->histogram->allocator);
@@ -2235,6 +2236,250 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 	RxMemFree(yiqPalette);
 	RxMemFree(rowbuf);
 	return RX_STATUS_OK;
+}
+
+static double RxiAccelGetChannelN(RxReduction *reduction, const RxYiqColor *color, unsigned int n) {
+	switch (n) {
+		case 0: return reduction->yWeight * RxiLinearizeLuma(reduction, color->y);
+		case 1: return reduction->iWeight * color->i;
+		case 2: return reduction->qWeight * color->q;
+		case 3: return reduction->aWeight * color->a;
+	}
+	return 0.0;
+}
+
+static int RxiAccelSortPalette(const void *p1, const void *p2) {
+	const RxPaletteMapEntry *e1 = (const RxPaletteMapEntry *) p1;
+	const RxPaletteMapEntry *e2 = (const RxPaletteMapEntry *) p2;
+	if (e1->sortVal < e2->sortVal) return -1;
+	if (e1->sortVal > e2->sortVal) return 1;
+	return 0;
+}
+
+static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelNode *accel, RxPaletteAccelNode *nodebuf, RxPaletteMapEntry *plttFull, unsigned int nextSplit) {
+	RX_ASSUME(accel->nCol > 0);
+
+	RxPaletteMapEntry *pltt = plttFull + accel->start;
+
+	//we split the node if it has more than one node.
+	accel->mid = &pltt[0]; // set to first color in the trvial/degenerate case
+	if (accel->nCol <= 1) {
+		//put split values for the node
+		accel->splitDir = nextSplit;
+		accel->splitVal = RxiAccelGetChannelN(reduction, &accel->mid->color, nextSplit);
+		return nodebuf;
+	}
+
+	//sort by
+	for (unsigned int i = 0; i < 4; i++) {
+		//test sort
+		for (unsigned int i = 0; i < accel->nCol; i++) {
+			pltt[i].sortVal = RxiAccelGetChannelN(reduction, &pltt[i].color, nextSplit);
+		}
+		qsort(pltt, accel->nCol, sizeof(RxPaletteMapEntry), RxiAccelSortPalette);
+
+		//split test
+		double f1 = pltt[0].sortVal;
+		double f2 = pltt[accel->nCol - 1].sortVal;
+		if (f1 != f2) break;
+
+		//else
+		nextSplit = (nextSplit + 1) % 4;
+		if (i == 3) return nodebuf; // not split (all axes degenerate)
+	}
+
+	//find split (subtract 1 for the median color)
+	unsigned int iSplit = (accel->nCol - 1) / 2;
+
+	//given the chance of identical sorting values at the median point, we bucket those values
+	//equal to the median in the greater bucket. This allows exact matches to be searched
+	//more quickly.
+	double medVal = pltt[iSplit].sortVal;
+	for (unsigned int i = 0; i < accel->nCol; i++) {
+		if (pltt[i].sortVal == medVal) {
+			iSplit = i;
+			break;
+		}
+	}
+
+	unsigned int nLeft = iSplit;
+	unsigned int nRight = accel->nCol - nLeft - 1;
+	accel->mid = pltt + iSplit;
+
+	if (nLeft > 0) {
+		RxPaletteAccelNode *childL = nodebuf++;
+		childL->start = accel->start;
+		childL->nCol = nLeft;
+		childL->parent = accel;
+		accel->pLeft = childL;
+		nodebuf = RxiAccelSplit(reduction, childL, nodebuf, plttFull, (nextSplit + 1) % 4);
+	}
+
+	if (nRight > 0) {
+		RxPaletteAccelNode *childR = nodebuf++;
+		childR->start = accel->start + iSplit + 1;
+		childR->nCol = nRight;
+		childR->parent = accel;
+		accel->pRight = childR;
+		nodebuf = RxiAccelSplit(reduction, childR, nodebuf, plttFull, (nextSplit + 1) % 4);
+	}
+
+	//put split
+	accel->splitDir = nextSplit;
+	accel->splitVal = medVal;
+	return nodebuf;
+}
+
+static void RxiAccelRecurseTreeInternal(RxReduction *reduction, RxPaletteAccelNode *accel, const RxYiqColor *color, double *pBestDiff, unsigned int *piBest) {
+	//distance of color to the root node
+	int intersectPlane = 0;
+	double projColor = RxiAccelGetChannelN(reduction, color, accel->splitDir);
+	double diffFromSplit = accel->splitVal - projColor;
+	diffFromSplit *= diffFromSplit;
+
+	if (diffFromSplit < *pBestDiff) {
+		intersectPlane = 1;
+
+		double diff = RxiComputeColorDifference(reduction, color, &accel->mid->color);
+		if (diff < *pBestDiff) {
+			*pBestDiff = diff;
+			*piBest = accel->mid->index;
+		}
+	}
+
+	//based on the difference from the split, we may only need to search one child.
+	//left/right nodes, if they exist, and are within the search space
+	RxPaletteAccelNode *nodeL = accel->pLeft;
+	if (nodeL != NULL) {
+		//left node: lesser values (search only if the splitting plane is greater)
+		if (intersectPlane || projColor <= accel->splitVal) {
+			RxiAccelRecurseTreeInternal(reduction, nodeL, color, pBestDiff, piBest);
+		}
+	}
+
+	RxPaletteAccelNode *nodeR = accel->pRight;
+	if (nodeR != NULL) {
+		//right node: greater values (seeach only if the splitting plane is lesser)
+		if (intersectPlane || projColor >= accel->splitVal) {
+			RxiAccelRecurseTreeInternal(reduction, nodeR, color, pBestDiff, piBest);
+		}
+	}
+}
+
+static void RxiAccelRecurseTree(RxReduction *reduction, RxPaletteAccelNode *accel, const RxYiqColor *color, double *pBestDiff, unsigned int *piBest, int lrbit) {
+	//test the root and then recurse down (only the half not explored)
+	double diffFromSplit = accel->splitVal - RxiAccelGetChannelN(reduction, color, accel->splitDir);
+	diffFromSplit *= diffFromSplit;
+
+	//the axis-aligned difference to split (i.e. difference to cutting plane) is within the search
+	//radius, thus we must search the other sub-tree.
+	if (diffFromSplit < *pBestDiff) {
+		//because the plane is within the search radius, its point must be checked too.
+		double diff = RxiComputeColorDifference(reduction, color, &accel->mid->color);
+		if (diff < *pBestDiff) {
+			*pBestDiff = diff;
+			*piBest = accel->mid->index;
+		}
+
+		//choose the sub tree opposite the way we came, search down
+		RxPaletteAccelNode *sub = lrbit ? accel->pLeft : accel->pRight;
+		if (sub != NULL) RxiAccelRecurseTreeInternal(reduction, sub, color, pBestDiff, piBest);
+	}
+}
+
+unsigned int RxPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *color, double *outDiff) {
+	RxPaletteAccelerator *accel = &reduction->accel;
+	if (!accel->initialized) {
+		//not initialized
+		if (outDiff != NULL) *outDiff = RX_LARGE_NUMBER;
+		return 0;
+	}
+
+	//traverse down
+	RxPaletteAccelNode *nodep = &accel->root;
+	while (1) {
+		double split = nodep->splitVal;
+		double val = RxiAccelGetChannelN(reduction, color, nodep->splitDir);
+		RxYiqColor *nodeCol = &nodep->mid->color;
+
+		//if this is a leaf node or the split value matches, check for a matching color
+		if ((nodep->pLeft == NULL && nodep->pRight == NULL) || (split == val)) {
+			//compare color
+			if (memcmp(nodeCol, color, sizeof(RxYiqColor)) == 0) {
+				if (outDiff != NULL) *outDiff = 0.0; // identical match
+				return nodep->mid->index;
+			}
+		}
+
+		//no child nodes, no check split
+		if (nodep->pLeft == NULL && nodep->pRight == NULL) break;
+
+		//choose left/right. We choose the only available path if only one (to ensure we reach the tree's bottom)
+		if (nodep->pLeft == NULL) nodep = nodep->pRight;
+		else if (nodep->pRight == NULL) nodep = nodep->pLeft;
+		else if (val < split) nodep = nodep->pLeft;
+		else nodep = nodep->pRight;
+	}
+
+	//we're at the bottom of the tree, and there were no exact matches. We recurse the tree
+	//to find closer candidate points.
+	unsigned int iBest = nodep->mid->index;
+	double bestDiff = RxiComputeColorDifference(reduction, color, &nodep->mid->color);
+
+	//traverse up
+	while (nodep->parent != NULL) {
+		int lrbit = (nodep == nodep->parent->pRight); // index of child, to avoid recursing the tree we've already checked
+		nodep = nodep->parent;
+		RxiAccelRecurseTree(reduction, nodep, color, &bestDiff, &iBest, lrbit);
+	}
+
+	//best index
+	if (outDiff != NULL) *outDiff = bestDiff;
+	return iBest;
+}
+
+RxStatus RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
+	RxPaletteAccelerator *accel = &reduction->accel;
+
+	//the K-D tree is incompatible with the palette witth alpha.
+	for (unsigned int i = 0; i < nColors; i++) {
+		unsigned int a = pltt[i] >> 24;
+		if (a < 0xFF) return reduction->status;
+	}
+
+	accel->pltt = (RxPaletteMapEntry *) RxMemCalloc(nColors, sizeof(RxPaletteMapEntry));
+	accel->nodebuf = (RxPaletteAccelNode *) calloc(nColors, sizeof(RxPaletteAccelNode));
+	if (accel->pltt == NULL || accel->nodebuf == NULL) {
+		free(accel->pltt);
+		free(accel->nodebuf);
+		return reduction->status = RX_STATUS_NOMEM;
+	}
+
+	for (unsigned int i = 0; i < nColors; i++) {
+		RxConvertRgbToYiq(pltt[i], &accel->pltt[i].color);
+		accel->pltt[i].index = i;
+	}
+
+	accel->root.parent = NULL;
+	accel->root.start = 0;
+	accel->root.nCol = nColors;
+	accel->root.pLeft = NULL;
+	accel->root.pRight = NULL;
+
+	RxiAccelSplit(reduction, &accel->root, accel->nodebuf, accel->pltt, 0);
+	accel->initialized = 1;
+
+	return reduction->status;
+}
+
+void RxPaletteFree(RxReduction *reduction) {
+	if (!reduction->accel.initialized) return;
+
+	free(reduction->accel.pltt);
+	free(reduction->accel.nodebuf);
+	reduction->accel.pltt = NULL;
+	reduction->accel.nodebuf = NULL;
+	reduction->accel.initialized = 0;
 }
 
 double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *pal, unsigned int nColors, double nMaxError) {
