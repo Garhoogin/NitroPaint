@@ -419,10 +419,15 @@ typedef struct RxPaletteAccelNode_ {
 } RxPaletteAccelNode;
 
 typedef struct RxPaletteAccelerator_ {
-	RxPaletteAccelNode root;
-	RxPaletteMapEntry *pltt;
-	RxPaletteAccelNode *nodebuf;
-	int initialized;
+	int initialized;                      // marks that a palette has been loaded
+	int useAccelerator;                   // marks that the loaded palette is using the accelerator
+	RxPaletteAccelNode root;              // the root node of the accelerator
+	RxPaletteMapEntry *pltt;              // palette mapping entries used by the accelerator
+	RxPaletteAccelNode *nodebuf;          // accelerator working memory
+
+	RxYiqColor plttSmall[16];             // palette buffer used for small palettes
+	RxYiqColor *plttLarge;                // pointer to palette buffer (heap allocated or pointer to small)
+	unsigned int nPltt;                   // number of palette colors loaded
 } RxPaletteAccelerator;
 
 //reduction workspace structure
@@ -816,6 +821,26 @@ RxStatus RxPaletteLoad(
 //   The index of the most similar color in the color palette.
 // -----------------------------------------------------------------------------------------------
 unsigned int RxPaletteFindClosestColor(
+	RxReduction *reduction,
+	COLOR32      color,
+	double      *outDiff
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxPaletteFindClosestColorYiq
+//
+// Finds the closest color in the loaded palette to the specified color.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   color         The color to search for
+//   outDiff       A pointer that receives the distance to the most similar color. This may be
+//                 NULL.
+//
+// Returns:
+//   The index of the most similar color in the color palette.
+// -----------------------------------------------------------------------------------------------
+unsigned int RxPaletteFindClosestColorYiq(
 	RxReduction      *reduction,
 	const RxYiqColor *color,
 	double           *outDiff
