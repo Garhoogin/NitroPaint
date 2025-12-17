@@ -183,22 +183,6 @@ RxStatus RxCreatePaletteEx(
 );
 
 // -----------------------------------------------------------------------------------------------
-// Name: doDiffuse
-//
-// Apply Floyd-Steinberg dithering to a pixel's surroundings. Deprecated.
-// -----------------------------------------------------------------------------------------------
-void doDiffuse(
-	int           i,
-	int           width,
-	int           height,
-	unsigned int *pixels,
-	int           errorRed,
-	int           errorGreen,
-	int           errorBlue,
-	float         amt
-);
-
-// -----------------------------------------------------------------------------------------------
 // Name: RxReduceImage
 //
 // Reduce the colors of image according to a given color palette.
@@ -548,10 +532,9 @@ RxReduction *RxNew(
 );
 
 // -----------------------------------------------------------------------------------------------
-// Name: RxNew
+// Name: RxSetBalance
 //
-// Allocates and initializes a RxReduction structure with palette parameters. Free the returned
-// context using the RxFree function.
+// Sets the color balance parameters for a color reduction context.
 //
 // Parameters:
 //   reduction     The color reduction context
@@ -564,6 +547,20 @@ void RxSetBalance(
 	int          balance,       // the balance setting
 	int          colorBalance,  // the colr balance setting
 	int          enhanceColors  // assign more weight to frequently occurring colors
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxApplyFlags
+//
+// Sets the flags for a color reduction context's operations.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   flag          The new flags
+// -----------------------------------------------------------------------------------------------
+void RxApplyFlags(
+	RxReduction *reduction,
+	RxFlag       flag
 );
 
 // -----------------------------------------------------------------------------------------------

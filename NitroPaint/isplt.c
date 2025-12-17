@@ -164,7 +164,7 @@ RxReduction *RxNew(int balance, int colorBalance, int enhanceColors, unsigned in
 	return reduction;
 }
 
-static void RxiApplyFlags(RxReduction *reduction, RxFlag flag) {
+void RxApplyFlags(RxReduction *reduction, RxFlag flag) {
 	//set alpha mode
 	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
 		case RX_FLAG_ALPHA_MODE_NONE: reduction->alphaMode = RX_ALPHA_NONE; break;
@@ -176,6 +176,9 @@ static void RxiApplyFlags(RxReduction *reduction, RxFlag flag) {
 	if (flag & RX_FLAG_NO_MASK_BITS) {
 		//no color masking -> use dummy color mask callback
 		reduction->maskColors = RxMaskColorDummy;
+	} else {
+		//with color masking
+		reduction->maskColors = RxMaskColorToDS15;
 	}
 }
 
@@ -1504,7 +1507,7 @@ RxStatus RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int 
 	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColors);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 
-	RxiApplyFlags(reduction, flag);
+	RxApplyFlags(reduction, flag);
 
 	RxHistAdd(reduction, img, width, height);
 	RxHistFinalize(reduction);
@@ -2001,7 +2004,7 @@ RxStatus RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigne
 	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColors);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 	
-	RxiApplyFlags(reduction, flag);
+	RxApplyFlags(reduction, flag);
 
 	RxStatus status = RxReduceImageWithContext(reduction, img, indices, width, height, palette, nColors, flag, diffuse);
 	RxFree(reduction);

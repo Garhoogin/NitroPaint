@@ -1230,10 +1230,7 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	EnableWindow(data->hWndPaletteBrowse, fixedPalette);
 	EnableWindow(data->hWndPaletteSize, isPltt && !is4x4 && !fixedPalette);
 	EnableWindow(data->hWndLimitPalette, is4x4 && !fixedPalette);
-	EnableWindow(data->balance.hWndBalance, isPltt);
-	EnableWindow(data->balance.hWndColorBalance, isPltt);
 	EnableWindow(data->balance.hWndEnhanceColors, isPltt);
-
 
 	//paletteN formats: enable color 0 mode
 	EnableWindow(data->hWndColor0Transparent, isPlttN);
