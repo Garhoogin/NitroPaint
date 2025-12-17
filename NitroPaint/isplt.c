@@ -2477,7 +2477,7 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 		//the alpha from the palette and must check it for validity.
 		for (unsigned int i = 0; i < nColors; i++) {
 			float a = pltt[i].a;
-			if (a < 1.0f) return RX_STATUS_INVALID;
+			if (a < 255.0f) return RX_STATUS_INVALID;
 		}
 	}
 
