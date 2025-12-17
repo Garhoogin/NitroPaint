@@ -1574,10 +1574,6 @@ static int RxiPaletteFindClosestRgbColor(RxReduction *reduction, const RxYiqColo
 	return RxiPaletteFindClosestColor(reduction, palette, nColors, &yiq, outDiff);
 }
 
-int RxPaletteFindCloestColorYiq(RxReduction *reduction, const RxYiqColor *color, const RxYiqColor *palette, unsigned int nColors) {
-	return RxiPaletteFindClosestColor(reduction, palette, nColors, color, NULL);
-}
-
 double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, double maxError) {
 	double error = 0.0;
 
@@ -1691,35 +1687,20 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 	//in the case of one palette, call to the faster single-palette routines.
 	if (nPalettes == 1) {
-		if (paletteOffset > 0) {
-			RxCreatePaletteEx(
-				imgBits,
-				tilesX * 8,
-				tilesY * 8,
-				dest + (paletteBase * paletteSize) + paletteOffset,
-				nColsPerPalette,
-				balance,
-				colorBalance,
-				enhanceColors,
-				RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE,
-				NULL
-			);
-		} else {
-			//reserve the first color entry
-			RxCreatePaletteEx(
-				imgBits,
-				tilesX * 8,
-				tilesY * 8,
-				dest + (paletteBase * paletteSize) + paletteOffset + 1,
-				nColsPerPalette - 1,
-				balance,
-				colorBalance,
-				enhanceColors,
-				RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE,
-				NULL
-			);
-			dest[(paletteBase * paletteSize) + paletteOffset] = 0xFF00FF; //transparent fill
-		}
+		//create just one palette
+		RxCreatePaletteEx(
+			imgBits,
+			tilesX * 8,
+			tilesY * 8,
+			dest + (paletteBase * paletteSize) + paletteOffset + (paletteOffset == 0),
+			nColsPerPalette - (paletteOffset == 0),
+			balance,
+			colorBalance,
+			enhanceColors,
+			RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE,
+			NULL
+		);
+		if (paletteOffset == 0) dest[(paletteBase * paletteSize) + paletteOffset] = 0xFF00FF; // transparent fill
 		return;
 	}
 
@@ -1977,19 +1958,19 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	free(diffBuff);
 }
 
-static double RxiDiffuseCurveY(double x) {
+static inline double RxiDiffuseCurveY(double x) {
 	if (x < 0.0) return -RxiDiffuseCurveY(-x);
 	if (x <= 8.0) return x;
 	return 8.0 + pow(x - 8.0, 0.9) * 0.94140625;
 }
 
-static double RxiDiffuseCurveI(double x) {
+static inline double RxiDiffuseCurveI(double x) {
 	if (x < 0.0) return -RxiDiffuseCurveI(-x);
 	if (x <= 8.0) return x;
 	return 8.0 + pow(x - 8.0, 0.85) * 0.98828125;
 }
 
-static double RxiDiffuseCurveQ(double x) {
+static inline double RxiDiffuseCurveQ(double x) {
 	if (x < 0.0) return -RxiDiffuseCurveQ(-x);
 	if (x <= 8.0) return x;
 	return 8.0 + pow(x - 8.0, 0.85) * 0.89453125;
@@ -2062,12 +2043,9 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 			//take a sample of pixels nearby. This will be a gauge of variance around this pixel, and help
 			//determine if dithering should happen. Weight the sampled pixels with respect to distance from center.
 
-			float colorY = (thisRow[x + 1].y * 3 + thisRow[x + 2].y * 3 + thisRow[x].y * 3 + lastRow[x + 1].y * 3
-						  + lastRow[x].y * 2 + lastRow[x + 2].y * 2) * 0.0625f;
-			float colorI = (thisRow[x + 1].i * 3 + thisRow[x + 2].i * 3 + thisRow[x].i * 3 + lastRow[x + 1].i * 3
-						  + lastRow[x].i * 2 + lastRow[x + 2].i * 2) * 0.0625f;
-			float colorQ = (thisRow[x + 1].q * 3 + thisRow[x + 2].q * 3 + thisRow[x].q * 3 + lastRow[x + 1].q * 3
-						  + lastRow[x].q * 2 + lastRow[x + 2].q * 2) * 0.0625f;
+			float colorY = (thisRow[x + 1].y + thisRow[x + 2].y + thisRow[x].y + lastRow[x + 1].y) * 0.1875f + (lastRow[x].y + lastRow[x + 2].y) * 0.125f;
+			float colorI = (thisRow[x + 1].i + thisRow[x + 2].i + thisRow[x].i + lastRow[x + 1].i) * 0.1875f + (lastRow[x].i + lastRow[x + 2].i) * 0.125f;
+			float colorQ = (thisRow[x + 1].q + thisRow[x + 2].q + thisRow[x].q + lastRow[x + 1].q) * 0.1875f + (lastRow[x].q + lastRow[x + 2].q) * 0.125f;
 			float colorA = thisRow[x + 1].a;
 
 			//match it to a palette color. We'll measure distance to it as well.

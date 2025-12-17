@@ -661,27 +661,6 @@ double RxComputeColorDifference(
 );
 
 // -----------------------------------------------------------------------------------------------
-// Name: RxPaletteFindCloestColorYiq
-//
-// Find the closest YIQA color to a specified YIQA color with a provided reduction context.
-//
-// Parameters:
-//   reduction     The color reduction context.
-//   yiqColor      The color to search the palette for.
-//   palette       The color palette to search.
-//   nColors       The size of the color palette.
-//
-// Returns:
-//   The index of the closest color to the input color in the supplied color palette.
-// -----------------------------------------------------------------------------------------------
-int RxPaletteFindCloestColorYiq(
-	RxReduction      *reduction,  // the color reduction context
-	const RxYiqColor *yiqColor,   // the color to match
-	const RxYiqColor *palette,    // the color palette
-	unsigned int      nColors     // the color palette size
-);
-
-// -----------------------------------------------------------------------------------------------
 // Name: RxComputePaletteError
 //
 // Compute palette error on a bitmap given a specified reduction context.
