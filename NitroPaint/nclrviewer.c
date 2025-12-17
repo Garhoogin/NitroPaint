@@ -2185,7 +2185,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 				COLOR32 *paletteCopy = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
 
 				//compute histogram
-				RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColors - reserveFirst);
+				RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
 				for (int i = 0; i < nPaths; i++) {
 					getPathFromPaths(paths, i, bf);
 					COLOR32 *bits = ImgRead(bf, &width, &height);
@@ -2196,7 +2196,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 				free(paths);
 
 				//create and write palette
-				RxComputePalette(reduction);
+				RxComputePalette(reduction, nColors - reserveFirst);
 				for (int i = 0; i < nColors - reserveFirst; i++) {
 					(paletteCopy + reserveFirst)[i] = reduction->paletteRgb[i];
 				}

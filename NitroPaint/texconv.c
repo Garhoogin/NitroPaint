@@ -312,8 +312,7 @@ typedef struct TxTileData_ {
 } TxTileData;
 
 static int TxiCreatePaletteFromHistogram(RxReduction *reduction, int nColors, COLOR32 *out) {
-	reduction->nPaletteColors = nColors;
-	RxComputePalette(reduction);
+	RxComputePalette(reduction, nColors);
 
 	//extract created palette
 	int nUsed = reduction->nUsedColors;
@@ -1439,7 +1438,7 @@ TxConversionResult TxConvert(TxConversionParameters *params) {
 	COLOR32 *srcPx = params->px;
 	COLOR32 *padded = TxiPadTextureImage(srcPx, sourceWidth, sourceHeight, &padWidth, &padHeight);
 
-	RxReduction *reduction = RxNew(params->balance, params->colorBalance, params->enhanceColors, 4);
+	RxReduction *reduction = RxNew(params->balance, params->colorBalance, params->enhanceColors);
 	if (padded == NULL || reduction == NULL) TEXCONV_THROW_STATUS(TEXCONV_NOMEM); // no memory
 
 	params->width = padWidth;

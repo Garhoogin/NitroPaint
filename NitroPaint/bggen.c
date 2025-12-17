@@ -364,7 +364,7 @@ int BgPerformCharacterCompression(
 	float *diffBuff = (float *) calloc(nTiles * (nTiles - 1) / 2, sizeof(float));
 	unsigned char *flips = (unsigned char *) calloc(nTiles * nTiles, 1); //how must each tile be manipulated to best match its partner
 
-	RxReduction *reduction = RxNew(balance, colorBalance, 0, 255);
+	RxReduction *reduction = RxNew(balance, colorBalance, 0);
 	for (unsigned int i = 0; i < nTiles; i++) {
 		BgTile *t1 = &tiles[i];
 		for (unsigned int j = 0; j < i; j++) {
@@ -544,7 +544,7 @@ int BgPerformCharacterCompression(
 }
 
 void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
-	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, paletteSize);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
 
 	if (!dither) diffuse = 0.0f;
 	for (int i = 0; i < nTiles; i++) {
@@ -952,7 +952,6 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		nclr->colors[i] = ColorConvertToDS(palette[i]);
 	}
 
-	__debugbreak();
 	ChrInit(ncgr, characterFormat);
 	ncgr->header.compression = compressCharacter;
 	ncgr->nBits = nBits;
@@ -1186,7 +1185,8 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	uint16_t *nscrData = nscr->data;
 
 	//create dummy reduction to setup parameters for color matching
-	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, paletteSize - !paletteOffset);
+	unsigned int nColsPalette = paletteSize - !paletteOffset;
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
 
 	//generate an nPalettes color palette
 	if (newPalettes) {
@@ -1220,7 +1220,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 				//if we counted tiles, create palette
 				if (nTilesHistogram > 0) {
 					RxHistFinalize(reduction);
-					RxComputePalette(reduction);
+					RxComputePalette(reduction, nColsPalette);
 
 					COLOR32 *outPal = pals + palNo * maxPaletteSize + paletteOffset + !paletteOffset;
 					for (int i = 0; i < paletteSize - !paletteOffset; i++) {

@@ -505,8 +505,7 @@ void RxInit(
 	RxReduction *reduction,      // the color reduction context
 	int          balance,        // the balance setting
 	int          colorBalance,   // the color balance setting
-	int          enhanceColors,  // assign more weight to frequently occurring colors
-	unsigned int nColors         // the number of colors to set the reduction up to calculate
+	int          enhanceColors   // assign more weight to frequently occurring colors
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -527,8 +526,7 @@ void RxInit(
 RxReduction *RxNew(
 	int          balance,        // the balance setting
 	int          colorBalance,   // the color balance setting
-	int          enhanceColors,  // assign more weight to frequently occurring colors
-	unsigned int nColors         // the number of colors to set the reduction up to calculate
+	int          enhanceColors   // assign more weight to frequently occurring colors
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -632,9 +630,11 @@ RxStatus RxHistFinalize(
 //
 // Parameters:
 //   reduction     The color reduction context.
+//   nColors       The number of palette colors.
 // -----------------------------------------------------------------------------------------------
 RxStatus RxComputePalette(
-	RxReduction *reduction  // the color reduction context
+	RxReduction *reduction,  // the color reduction context
+	unsigned int nColors     // the number of palette colors
 );
 
 // -----------------------------------------------------------------------------------------------

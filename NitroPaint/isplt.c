@@ -139,12 +139,12 @@ void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enh
 #endif
 }
 
-void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors, unsigned int nColors) {
+void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
 	memset(reduction, 0, sizeof(RxReduction));
 	RxSetBalance(reduction, balance, colorBalance, enhanceColors);
 
 	reduction->nReclusters = RECLUSTER_DEFAULT;
-	reduction->nPaletteColors = nColors;
+	reduction->nPaletteColors = RX_PALETTE_MAX_SIZE;
 	reduction->gamma = 1.27;
 	reduction->maskColors = RxMaskColorToDS15;
 	reduction->alphaMode = RX_ALPHA_NONE; // default: no alpha processing
@@ -156,11 +156,11 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 	reduction->status = RX_STATUS_OK;
 }
 
-RxReduction *RxNew(int balance, int colorBalance, int enhanceColors, unsigned int nColors) {
+RxReduction *RxNew(int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = (RxReduction *) RxMemCalloc(1, sizeof(RxReduction));
 	if (reduction == NULL) return NULL;
 
-	RxInit(reduction, balance, colorBalance, enhanceColors, nColors);
+	RxInit(reduction, balance, colorBalance, enhanceColors);
 	return reduction;
 }
 
@@ -1420,7 +1420,8 @@ static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
 	return 0;
 }
 
-RxStatus RxComputePalette(RxReduction *reduction) {
+RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
+	reduction->nPaletteColors = nColors;
 	if (reduction->histogramFlat == NULL || reduction->histogram->nEntries == 0) {
 		reduction->nUsedColors = 0;
 		return reduction->status;
@@ -1504,14 +1505,14 @@ RxStatus RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int he
 }
 
 RxStatus RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag, unsigned int *pOutCols) {
-	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColors);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 
 	RxApplyFlags(reduction, flag);
 
 	RxHistAdd(reduction, img, width, height);
 	RxHistFinalize(reduction);
-	RxComputePalette(reduction);
+	RxComputePalette(reduction, nColors);
 
 	//copy palette out
 	memcpy(pal, reduction->paletteRgb, nColors * sizeof(COLOR32));
@@ -1740,7 +1741,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 	unsigned int nTiles = tilesX * tilesY;
 	RxiTile *tiles = (RxiTile *) RxMemCalloc(nTiles, sizeof(RxiTile));
-	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColsPerPalette);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
 
 	for (unsigned int y = 0; y < tilesY; y++) {
 		for (unsigned int x = 0; x < tilesX; x++) {
@@ -1751,7 +1752,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			RxHistClear(reduction);
 			RxHistAdd(reduction, tile->rgb, 8, 8);
 			RxHistFinalize(reduction);
-			RxComputePalette(reduction);
+			RxComputePalette(reduction, nColsPerPalette);
 			for (int i = 0; i < RX_TILE_PALETTE_MAX; i++) {
 				COLOR32 col = reduction->paletteRgb[i];
 				RxConvertRgbToYiq(col, &tile->palette[i]);
@@ -1804,7 +1805,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		//we will continue to merge palettes even when we have are at or below the target count when
 		//we may merge more palettes at 0 cost, or when there exist palettes which may be merged losslessly
 		//to avoid palette waste.
-		if (cost > 0.0 && (tiles[index1].nUsedColors + tiles[index2].nUsedColors) > (unsigned int) reduction->nPaletteColors) {
+		if (cost > 0.0 && (tiles[index1].nUsedColors + tiles[index2].nUsedColors) > (unsigned int) nColsPerPalette) {
 			if (nCurrentPalettes <= nPalettes) break;
 		}
 
@@ -1825,7 +1826,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			}
 		}
 		RxHistFinalize(reduction);
-		RxComputePalette(reduction);
+		RxComputePalette(reduction, nColsPerPalette);
 
 		//write over the palette of the tile
 		RxiTile *palTile = &tiles[index1];
@@ -1883,7 +1884,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			}
 		}
 		RxHistFinalize(reduction);
-		RxComputePalette(reduction);
+		RxComputePalette(reduction, nColsPerPalette);
 		
 		memcpy(palettes + nPalettesWritten * RX_TILE_PALETTE_MAX, reduction->paletteRgb, (RX_TILE_PALETTE_MAX - 1) * sizeof(COLOR32));
 		nPalettesWritten++;
@@ -1934,7 +1935,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 				RxHistAdd(reduction, tiles[j].rgb, 8, 8);
 			}
 			RxHistFinalize(reduction);
-			RxComputePalette(reduction);
+			RxComputePalette(reduction, nColsPerPalette);
 
 			//write back
 			memcpy(palettes + i * RX_TILE_PALETTE_MAX, reduction->paletteRgb, nColsPerPalette * sizeof(COLOR32));
@@ -1943,7 +1944,6 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	RxMemFree(yiqPalette);
 
 	//write palettes in the correct size
-	reduction->nPaletteColors = nFinalColsPerPalette;
 	for (int i = 0; i < nPalettes; i++) {
 		//recreate palette so that it can be output in its correct size
 		if (nFinalColsPerPalette != nColsPerPalette) {
@@ -1955,7 +1955,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 				RxHistAdd(reduction, tiles[j].rgb, 8, 8);
 			}
 			RxHistFinalize(reduction);
-			RxComputePalette(reduction);
+			RxComputePalette(reduction, nFinalColsPerPalette);
 
 			//write and sort
 			COLOR32 *thisPalDest = dest + paletteSize * (i + paletteBase) + outputOffs;
@@ -2001,7 +2001,7 @@ RxStatus RxReduceImage(COLOR32 *px, unsigned int width, unsigned int height, con
 }
 
 RxStatus RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse, int balance, int colorBalance, int enhanceColors) {
-	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors, nColors);
+	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 	
 	RxApplyFlags(reduction, flag);
