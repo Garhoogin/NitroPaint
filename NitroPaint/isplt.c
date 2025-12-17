@@ -2013,21 +2013,18 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 	//decode flags
 	RxFlag alphaMode = flag & RX_FLAG_ALPHA_MODE_MASK;
 	int binaryAlpha = (alphaMode == RX_FLAG_ALPHA_MODE_NONE) || (alphaMode == RX_FLAG_ALPHA_MODE_RESERVE);
-	int c0xp = (alphaMode == RX_FLAG_ALPHA_MODE_RESERVE); // color 0 transparency
 	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
 
-	RxYiqColor *yiqPalette = (RxYiqColor *) RxMemCalloc(nColors, sizeof(RxYiqColor));
+	//load palette into context
+	RxStatus status = RxPaletteLoad(reduction, palette, nColors);
+	if (status != RX_STATUS_OK) return status;
+
 	RxYiqColor *rowbuf = (RxYiqColor *) RxMemCalloc(4 * (width + 2), sizeof(RxYiqColor));
-	if (yiqPalette == NULL || yiqPalette == NULL) {
+	if (rowbuf == NULL) {
 		//no memory
-		free(yiqPalette);
+		RxPaletteFree(reduction);
 		free(rowbuf);
 		return RX_STATUS_NOMEM;
-	}
-
-	//convert palette to YIQ
-	for (unsigned int i = 0; i < nColors; i++) {
-		RxConvertRgbToYiq(palette[i], &yiqPalette[i]);
 	}
 
 	//allocate row buffers for color and diffuse.
@@ -2070,33 +2067,10 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 						  + lastRow[x].q * 2 + lastRow[x + 2].q * 2) * 0.0625f;
 			float colorA = thisRow[x + 1].a;
 
-			if (binaryAlpha) {
-				if (colorA < 128.0f) {
-					colorY = 0.0f;
-					colorI = 0.0f;
-					colorQ = 0.0f;
-					colorA = 0.0f;
-				} else {
-					colorA = 255.0f;
-				}
-			}
-
-			if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
-				//pixel-mode reduction, set alpha=255 to fit the palette.
-				colorA = 255.0f;
-			}
-
 			//match it to a palette color. We'll measure distance to it as well.
 			RxYiqColor colorYiq = { colorY, colorI, colorQ, colorA };
 			double paletteDistance = 0.0;
-			int matched = 0;
-			if (colorA == 0.0f && c0xp) {
-				//we're using color-0 transparency
-				matched = 0;
-			} else {
-				//if we're not using the reserved 0-color for transparency
-				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &colorYiq, &paletteDistance);
-			}
+			int matched = RxPaletteFindClosestColorYiq(reduction, &colorYiq, &paletteDistance);
 
 			//now measure distance from the actual color to its average surroundings
 			RxYiqColor centerYiq;
@@ -2133,23 +2107,9 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 				if (colorA < 0.0f) colorA = 0.0f;
 				else if (colorA > 255.0f) colorA = 255.0f;
 
-				if (binaryAlpha) {
-					if (colorA < 128.0f) {
-						colorA = 0.0f;
-					} else {
-						colorA = 255.0f;
-					}
-				}
-
-				if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
-					//pixel-mode reduction, set alpha=255 to fit the palette.
-					colorA = 255.0f;
-				}
-
 				//match to palette color
 				RxYiqColor diffusedYiq = { colorY, colorI, colorQ, colorA };
-				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &diffusedYiq, NULL);
-				if (diffusedYiq.a < 128.0f && c0xp) matched = 0;
+				matched = RxPaletteFindClosestColorYiq(reduction, &diffusedYiq, NULL);
 
 				if (!(flag & RX_FLAG_NO_WRITEBACK)) {
 					COLOR32 chosen = palette[matched];
@@ -2158,7 +2118,8 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 				}
 				if (indices != NULL) indices[x + y * width] = matched;
 
-				RxYiqColor *chosenYiq = &yiqPalette[matched];
+				//RxYiqColor *chosenYiq = &yiqPalette[matched];
+				RxYiqColor *chosenYiq = &reduction->accel.plttLarge[matched];
 				float chosenA = (float) (chosenYiq->a * INV_255);
 				float offY = (colorY - chosenYiq->y) * chosenA;
 				float offI = (colorI - chosenYiq->i) * chosenA;
@@ -2205,13 +2166,7 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 					}
 				}
 
-				if (alphaMode == RX_FLAG_ALPHA_MODE_PIXEL) {
-					//pixel-mode reduction, set alpha=255 to fit the palette.
-					centerYiq.a = 255.0f;
-				}
-
-				matched = c0xp + RxiPaletteFindClosestColor(reduction, yiqPalette + c0xp, nColors - c0xp, &centerYiq, NULL);
-				if (c0xp && centerYiq.a < 128.0f) matched = 0;
+				matched = RxPaletteFindClosestColorYiq(reduction, &centerYiq, NULL);
 				if (!(flag & RX_FLAG_NO_WRITEBACK)) {
 					COLOR32 chosen = palette[matched];
 					if (touchAlpha) img[x + y * width] = chosen;
@@ -2233,7 +2188,7 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 		memset(nextDiffuse, 0, (width + 2) * sizeof(RxYiqColor));
 	}
 
-	RxMemFree(yiqPalette);
+	RxPaletteFree(reduction);
 	RxMemFree(rowbuf);
 	return RX_STATUS_OK;
 }
@@ -2499,13 +2454,17 @@ static RxStatus RxiPaletteAlloc(RxReduction *reduction, unsigned int nCol) {
 	return reduction->status;
 }
 
-static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
+static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 	//the K-D tree is incompatible with the palette with palette alpha.
 	RxAlphaMode alphaMode = reduction->alphaMode;
 	if (alphaMode == RX_ALPHA_PALETTE) return RX_STATUS_INVALID;
 
 	unsigned int iStart = 0;
 	if (alphaMode == RX_ALPHA_RESERVE) iStart = 1; // skip 1st color in reserve mode
+
+	RxPaletteAccelerator *accel = &reduction->accel;
+	RxYiqColor *pltt = accel->plttLarge;
+	unsigned int nColors = accel->nPltt;
 	if (nColors > 0) {
 		nColors -= iStart;
 		pltt += iStart;
@@ -2517,13 +2476,12 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction, const COLOR32 
 		//in the per-pixel alpha mode, we'll force all palette alpha values to full. Otherwise, we use
 		//the alpha from the palette and must check it for validity.
 		for (unsigned int i = 0; i < nColors; i++) {
-			unsigned int a = pltt[i] >> 24;
-			if (a < 0xFF) return RX_STATUS_INVALID;
+			float a = pltt[i].a;
+			if (a < 1.0f) return RX_STATUS_INVALID;
 		}
 	}
 
 	//working memory for accelerator
-	RxPaletteAccelerator *accel = &reduction->accel;
 	accel->pltt = (RxPaletteMapEntry *) RxMemCalloc(nColors, sizeof(RxPaletteMapEntry));
 	accel->nodebuf = (RxPaletteAccelNode *) calloc(nColors, sizeof(RxPaletteAccelNode));
 
@@ -2535,11 +2493,12 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction, const COLOR32 
 	}
 
 	for (unsigned int i = 0; i < nColors; i++) {
-		COLOR32 c = pltt[i];
-		if (alphaMode == RX_ALPHA_PIXEL) c |= 0xFF000000;
-
-		RxConvertRgbToYiq(c, &accel->pltt[i].color);
+		memcpy(&accel->pltt[i].color, &pltt[i], sizeof(RxYiqColor));
 		accel->pltt[i].index = i;
+
+		if (alphaMode == RX_ALPHA_PIXEL) {
+			accel->pltt[i].color.a = 255.0f;
+		}
 	}
 
 	accel->useAccelerator = 1;
@@ -2570,18 +2529,17 @@ RxStatus RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int
 	//if an accelerator is loaded already, unload it.
 	RxPaletteFree(reduction);
 
-	RxStatus status = RX_STATUS_INVALID;
+	//in all cases, we load without the accelerator first
+	RxStatus status = RxiPaletteLoadUnaccelerated(reduction, pltt, nColors);
+	if (status != RX_STATUS_OK) return reduction->status = status;
+
 	if (nColors > 16) {
 		//number of colors is high enough to benefit from acceleration
-		status = RxiPaletteLoadAccelerated(reduction, pltt, nColors);
-	}
-	if (status == RX_STATUS_INVALID) {
-		//invalid status --> load without accelerator
-		status = RxiPaletteLoadUnaccelerated(reduction, pltt, nColors);
+		RxiPaletteLoadAccelerated(reduction);
 	}
 
-	if (status == RX_STATUS_OK) accel->initialized = 1;
-	return reduction->status = status;
+	accel->initialized = 1;
+	return reduction->status;
 }
 
 void RxPaletteFree(RxReduction *reduction) {
