@@ -2114,13 +2114,6 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 				RxYiqColor diffusedYiq = { colorY, colorI, colorQ, colorA };
 				matched = RxPaletteFindClosestColorYiq(reduction, &diffusedYiq, NULL);
 
-				if (!(flag & RX_FLAG_NO_WRITEBACK)) {
-					COLOR32 chosen = palette[matched];
-					if (touchAlpha) img[x + y * width] = chosen;
-					else img[x + y * width] = (chosen & 0x00FFFFFF) | (img[x + y * width] & 0xFF000000);
-				}
-				if (indices != NULL) indices[x + y * width] = matched;
-
 				//RxYiqColor *chosenYiq = &yiqPalette[matched];
 				RxYiqColor *chosenYiq = &reduction->accel.plttLarge[matched];
 				float chosenA = (float) (chosenYiq->a * INV_255);
@@ -2128,7 +2121,7 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 				float offI = (colorI - chosenYiq->i) * chosenA;
 				float offQ = (colorQ - chosenYiq->q) * chosenA;
 				float offA = (colorA - chosenYiq->a);
-				if (flag & RX_FLAG_NO_ALPHA_DITHER) offA = 0.0f;
+				if (binaryAlpha || (flag & RX_FLAG_NO_ALPHA_DITHER)) offA = 0.0f;
 
 				//now diffuse to neighbors
 				RxYiqColor *diffNextPixel = &thisDiffuse[x + 1 + hDirection];
@@ -2136,47 +2129,36 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 				RxYiqColor *diffNextDownPixel = &nextDiffuse[x + 1 + hDirection];
 				RxYiqColor *diffBackDownPixel = &nextDiffuse[x + 1 - hDirection];
 
-				if (colorA >= 128.0f || !binaryAlpha) { //don't dither if there's no alpha channel and this is transparent!
-					diffNextPixel->y += offY * 0.4375f; // 7/16
-					diffNextPixel->i += offI * 0.4375f;
-					diffNextPixel->q += offQ * 0.4375f;
-					diffNextPixel->a += offA * 0.4375f;
-					diffDownPixel->y += offY * 0.3125f; // 5/16
-					diffDownPixel->i += offI * 0.3125f;
-					diffDownPixel->q += offQ * 0.3125f;
-					diffDownPixel->a += offA * 0.3125f;
-					diffBackDownPixel->y += offY * 0.1875f; // 3/16
-					diffBackDownPixel->i += offI * 0.1875f;
-					diffBackDownPixel->q += offQ * 0.1875f;
-					diffBackDownPixel->a += offA * 0.1875f;
-					diffNextDownPixel->y += offY * 0.0625f; // 1/16
-					diffNextDownPixel->i += offI * 0.0625f;
-					diffNextDownPixel->q += offQ * 0.0625f;
-					diffNextDownPixel->a += offA * 0.0625f;
-				}
-
+				//diffuse the error to neighboring pixels
+				diffNextPixel->y += offY * 0.4375f; // 7/16
+				diffNextPixel->i += offI * 0.4375f;
+				diffNextPixel->q += offQ * 0.4375f;
+				diffNextPixel->a += offA * 0.4375f;
+				diffDownPixel->y += offY * 0.3125f; // 5/16
+				diffDownPixel->i += offI * 0.3125f;
+				diffDownPixel->q += offQ * 0.3125f;
+				diffDownPixel->a += offA * 0.3125f;
+				diffBackDownPixel->y += offY * 0.1875f; // 3/16
+				diffBackDownPixel->i += offI * 0.1875f;
+				diffBackDownPixel->q += offQ * 0.1875f;
+				diffBackDownPixel->a += offA * 0.1875f;
+				diffNextDownPixel->y += offY * 0.0625f; // 1/16
+				diffNextDownPixel->i += offI * 0.0625f;
+				diffNextDownPixel->q += offQ * 0.0625f;
+				diffNextDownPixel->a += offA * 0.0625f;
 			} else {
 				//anomaly in the picture, just match the original color. Don't diffuse, it'll cause issues.
 				//That or the color is pretty homogeneous here, so dithering is bad anyway.
-				if (binaryAlpha) {
-					if (centerYiq.a < 128.0f) {
-						centerYiq.y = 0.0f;
-						centerYiq.i = 0.0f;
-						centerYiq.q = 0.0f;
-						centerYiq.a = 0.0f;
-					} else {
-						centerYiq.a = 255.0f;
-					}
-				}
-
 				matched = RxPaletteFindClosestColorYiq(reduction, &centerYiq, NULL);
-				if (!(flag & RX_FLAG_NO_WRITEBACK)) {
-					COLOR32 chosen = palette[matched];
-					if (touchAlpha) img[x + y * width] = chosen;
-					else img[x + y * width] = (chosen & 0x00FFFFFF) | (img[x + y * width] & 0xFF000000);
-				}
-				if (indices != NULL) indices[x + y * width] = matched;
 			}
+
+			//put pixel
+			if (!(flag & RX_FLAG_NO_WRITEBACK)) {
+				COLOR32 chosen = palette[matched];
+				if (touchAlpha) img[x + y * width] = chosen;
+				else img[x + y * width] = (chosen & 0x00FFFFFF) | (img[x + y * width] & 0xFF000000);
+			}
+			if (indices != NULL) indices[x + y * width] = matched;
 
 			x += hDirection;
 		}
