@@ -45,9 +45,6 @@
     <ClCompile Include="gdip.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="palette.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="ncer.c">
       <Filter>Source Files</Filter>
     </ClCompile>

@@ -197,7 +197,6 @@
     <ClCompile Include="nsbtxviewer.c" />
     <ClCompile Include="nscr.c" />
     <ClCompile Include="nscrviewer.c" />
-    <ClCompile Include="palette.c" />
     <ClCompile Include="palops.c" />
     <ClCompile Include="preview.c" />
     <ClCompile Include="setosa.c" />
