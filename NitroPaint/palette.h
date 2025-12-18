@@ -3,14 +3,14 @@
 #include "color.h"
 
 //use of intrinsics under x86
-/*#if defined(_M_IX86) || defined(_M_X64)
+#if defined(_M_IX86) || defined(_M_X64)
 #define RX_SIMD
 #ifdef _MSC_VER
 #include <intrin.h>
 #else // _MSC_VER
 #include <x86intrin.h>
 #endif
-#endif*/
+#endif
 
 #define BALANCE_DEFAULT      20 // Balance/Color Balance default setting
 #define BALANCE_MIN           1 // Balance/Color Balance minimum setting

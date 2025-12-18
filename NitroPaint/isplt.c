@@ -2044,19 +2044,27 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 			//determine if dithering should happen. Weight the sampled pixels with respect to distance from center.
 
 			RxYiqColor colorYiq;
+#ifndef RX_SIMD
 			colorYiq.y = (thisRow[x + 1].y + thisRow[x + 2].y + thisRow[x].y + lastRow[x + 1].y) * 0.1875f + (lastRow[x].y + lastRow[x + 2].y) * 0.125f;
 			colorYiq.i = (thisRow[x + 1].i + thisRow[x + 2].i + thisRow[x].i + lastRow[x + 1].i) * 0.1875f + (lastRow[x].i + lastRow[x + 2].i) * 0.125f;
 			colorYiq.q = (thisRow[x + 1].q + thisRow[x + 2].q + thisRow[x].q + lastRow[x + 1].q) * 0.1875f + (lastRow[x].q + lastRow[x + 2].q) * 0.125f;
 			colorYiq.a = thisRow[x + 1].a;
+#else
+			__m128 aMask = _mm_castsi128_ps(_mm_setr_epi32(0, 0, 0, -1));
+			__m128 vec1 = _mm_add_ps(_mm_add_ps(thisRow[x + 1].yiq, thisRow[x + 2].yiq), _mm_add_ps(thisRow[x].yiq, lastRow[x + 1].yiq));
+			__m128 vec2 = _mm_add_ps(lastRow[x].yiq, lastRow[x + 2].yiq);
+			__m128 vec3 = _mm_add_ps(_mm_mul_ps(vec1, _mm_set1_ps(0.1875f)), _mm_mul_ps(vec2, _mm_set1_ps(0.125f)));
+			
+			colorYiq.yiq = _mm_or_ps(_mm_andnot_ps(aMask, vec3), _mm_and_ps(aMask, thisRow[x + 1].yiq));
+#endif
 
 			//match it to a palette color. We'll measure distance to it as well.
 			double paletteDistance = 0.0;
 			int matched = RxPaletteFindClosestColorYiq(reduction, &colorYiq, &paletteDistance);
 
 			//now measure distance from the actual color to its average surroundings
-			RxYiqColor centerYiq;
-			memcpy(&centerYiq, &thisRow[x + 1], sizeof(RxYiqColor));
-			double centerDistance = RxiComputeColorDifference(reduction, &centerYiq, &colorYiq);
+			RxYiqColor *centerYiq = &thisRow[x + 1];
+			double centerDistance = RxiComputeColorDifference(reduction, centerYiq, &colorYiq);
 
 			//now test: Should we dither?
 			double yw2 = reduction->yWeight2;
@@ -2086,13 +2094,6 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 				matched = RxPaletteFindClosestColorYiq(reduction, &colorYiq, NULL);
 				RxYiqColor *chosenYiq = &reduction->accel.plttLarge[matched];
 
-				float chosenA = (float) (chosenYiq->a * INV_255);
-				float offY = (colorYiq.y - chosenYiq->y) * chosenA;
-				float offI = (colorYiq.i - chosenYiq->i) * chosenA;
-				float offQ = (colorYiq.q - chosenYiq->q) * chosenA;
-				float offA = (colorYiq.a - chosenYiq->a);
-				if (binaryAlpha || (flag & RX_FLAG_NO_ALPHA_DITHER)) offA = 0.0f;
-
 				//now diffuse to neighbors (mirrored with the scan direction):
 				//        X  7/16
 				// 3/16 5/16 1/16
@@ -2101,27 +2102,41 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 				RxYiqColor *diffuse22 = &nextDiffuse[x + 1 + hDirection];
 				RxYiqColor *diffuse02 = &nextDiffuse[x + 1 - hDirection];
 
-				//diffuse the error to neighboring pixels
-				diffuse21->y += offY * 0.4375f; // 7/16
-				diffuse21->i += offI * 0.4375f;
-				diffuse21->q += offQ * 0.4375f;
-				diffuse21->a += offA * 0.4375f;
-				diffuse12->y += offY * 0.3125f; // 5/16
-				diffuse12->i += offI * 0.3125f;
-				diffuse12->q += offQ * 0.3125f;
-				diffuse12->a += offA * 0.3125f;
-				diffuse02->y += offY * 0.1875f; // 3/16
-				diffuse02->i += offI * 0.1875f;
-				diffuse02->q += offQ * 0.1875f;
-				diffuse02->a += offA * 0.1875f;
-				diffuse22->y += offY * 0.0625f; // 1/16
-				diffuse22->i += offI * 0.0625f;
-				diffuse22->q += offQ * 0.0625f;
-				diffuse22->a += offA * 0.0625f;
+				RxYiqColor off;
+				float chosenA = (float) (chosenYiq->a * INV_255);
+				off.y = (colorYiq.y - chosenYiq->y) * chosenA;
+				off.i = (colorYiq.i - chosenYiq->i) * chosenA;
+				off.q = (colorYiq.q - chosenYiq->q) * chosenA;
+				off.a = (colorYiq.a - chosenYiq->a);
+				if (binaryAlpha || (flag & RX_FLAG_NO_ALPHA_DITHER)) off.a = 0.0f;
+
+#ifndef RX_SIMD
+				diffuse21->y += off.y * 0.4375f; // 7/16
+				diffuse21->i += off.i * 0.4375f;
+				diffuse21->q += off.q * 0.4375f;
+				diffuse21->a += off.a * 0.4375f;
+				diffuse12->y += off.y * 0.3125f; // 5/16
+				diffuse12->i += off.i * 0.3125f;
+				diffuse12->q += off.q * 0.3125f;
+				diffuse12->a += off.a * 0.3125f;
+				diffuse02->y += off.y * 0.1875f; // 3/16
+				diffuse02->i += off.i * 0.1875f;
+				diffuse02->q += off.q * 0.1875f;
+				diffuse02->a += off.a * 0.1875f;
+				diffuse22->y += off.y * 0.0625f; // 1/16
+				diffuse22->i += off.i * 0.0625f;
+				diffuse22->q += off.q * 0.0625f;
+				diffuse22->a += off.a * 0.0625f;
+#else
+				diffuse21->yiq = _mm_add_ps(diffuse21->yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.4375f))); // 7/16
+				diffuse12->yiq = _mm_add_ps(diffuse12->yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.3125f))); // 5/16
+				diffuse02->yiq = _mm_add_ps(diffuse02->yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.1875f))); // 3/16
+				diffuse22->yiq = _mm_add_ps(diffuse22->yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.0625f))); // 1/16
+#endif
 			} else {
 				//anomaly in the picture, just match the original color. Don't diffuse, it'll cause issues.
 				//That or the color is pretty homogeneous here, so dithering is bad anyway.
-				matched = RxPaletteFindClosestColorYiq(reduction, &centerYiq, NULL);
+				matched = RxPaletteFindClosestColorYiq(reduction, centerYiq, NULL);
 			}
 
 			//put pixel

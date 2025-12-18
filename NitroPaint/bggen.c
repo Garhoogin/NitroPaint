@@ -782,7 +782,7 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	int tilesX = width / 8;
 	int tilesY = height / 8;
 	int nTiles = tilesX * tilesY;
-	BgTile *tiles = (BgTile *) calloc(nTiles, sizeof(BgTile));
+	BgTile *tiles = (BgTile *) RxMemCalloc(nTiles, sizeof(BgTile));
 
 	//initialize progress
 	*progress1Max = nTiles * 2; //2 passes
@@ -1153,7 +1153,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	*progressMax = tilesX * tilesY * 2;
 	*progress2Max = 1000;
 
-	BgTile *blocks = (BgTile *) calloc(tilesX * tilesY, sizeof(BgTile));
+	BgTile *blocks = (BgTile *) RxMemCalloc(tilesX * tilesY, sizeof(BgTile));
 	COLOR32 *pals = (COLOR32 *) calloc(16 * maxPaletteSize, 4);
 
 	//split image into 8x8 chunks
