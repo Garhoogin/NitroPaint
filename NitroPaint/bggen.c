@@ -1255,7 +1255,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	}
 
 	//pre-convert palette to YIQ
-	RxYiqColor *palsYiq = (RxYiqColor *) calloc(nPalettes * paletteSize, sizeof(RxYiqColor));
+	RxYiqColor *palsYiq = (RxYiqColor *) RxMemCalloc(nPalettes * paletteSize, sizeof(RxYiqColor));
 	for (int i = 0; i < nPalettes * paletteSize; i++) {
 		RxConvertRgbToYiq(pals[i], &palsYiq[i]);
 	}
@@ -1456,7 +1456,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 		}
 	}
 
-	free(palsYiq);
+	RxMemFree(palsYiq);
 	RxFree(reduction);
 
 	free(blocks);

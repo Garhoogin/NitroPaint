@@ -749,7 +749,7 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 }
 
 static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, int nPalettes, TxTileData *tileData, int tilesX, int tilesY, int threshold, volatile int *pProgress, volatile int *pTerminate) {
-	RxYiqColor *plttYiq = (RxYiqColor *) calloc(nPalettes, sizeof(RxYiqColor));
+	RxYiqColor *plttYiq = (RxYiqColor *) RxMemCalloc(nPalettes, sizeof(RxYiqColor));
 
 	//iterate over all non-duplicate tiles, adding the palettes.
 	//colorTable keeps track of how each color is intended to be used.
@@ -836,7 +836,7 @@ Done:
 		for (int i = 0; i < nPalettes; i++) {
 			palette_[i] = ColorConvertToDS(RxConvertYiqToRgb(&plttYiq[i]));
 		}
-		free(plttYiq);
+		RxMemFree(plttYiq);
 	}
 	return firstSlot;
 }
