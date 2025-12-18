@@ -2043,13 +2043,13 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 			//take a sample of pixels nearby. This will be a gauge of variance around this pixel, and help
 			//determine if dithering should happen. Weight the sampled pixels with respect to distance from center.
 
-			float colorY = (thisRow[x + 1].y + thisRow[x + 2].y + thisRow[x].y + lastRow[x + 1].y) * 0.1875f + (lastRow[x].y + lastRow[x + 2].y) * 0.125f;
-			float colorI = (thisRow[x + 1].i + thisRow[x + 2].i + thisRow[x].i + lastRow[x + 1].i) * 0.1875f + (lastRow[x].i + lastRow[x + 2].i) * 0.125f;
-			float colorQ = (thisRow[x + 1].q + thisRow[x + 2].q + thisRow[x].q + lastRow[x + 1].q) * 0.1875f + (lastRow[x].q + lastRow[x + 2].q) * 0.125f;
-			float colorA = thisRow[x + 1].a;
+			RxYiqColor colorYiq;
+			colorYiq.y = (thisRow[x + 1].y + thisRow[x + 2].y + thisRow[x].y + lastRow[x + 1].y) * 0.1875f + (lastRow[x].y + lastRow[x + 2].y) * 0.125f;
+			colorYiq.i = (thisRow[x + 1].i + thisRow[x + 2].i + thisRow[x].i + lastRow[x + 1].i) * 0.1875f + (lastRow[x].i + lastRow[x + 2].i) * 0.125f;
+			colorYiq.q = (thisRow[x + 1].q + thisRow[x + 2].q + thisRow[x].q + lastRow[x + 1].q) * 0.1875f + (lastRow[x].q + lastRow[x + 2].q) * 0.125f;
+			colorYiq.a = thisRow[x + 1].a;
 
 			//match it to a palette color. We'll measure distance to it as well.
-			RxYiqColor colorYiq = { colorY, colorI, colorQ, colorA };
 			double paletteDistance = 0.0;
 			int matched = RxPaletteFindClosestColorYiq(reduction, &colorYiq, &paletteDistance);
 
@@ -2063,67 +2063,61 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 			if (centerDistance < 110.0 * yw2 && paletteDistance >  2.0 * yw2 && diffuse > 0.0f) {
 				//Yes, we should dither :)
 
-				//correct for Floyd-Steinberg coefficients (scale by diffusion amount)
-				double diffuseY = thisDiffuse[x + 1].y * diffuse;
-				double diffuseI = thisDiffuse[x + 1].i * diffuse;
-				double diffuseQ = thisDiffuse[x + 1].q * diffuse;
-				double diffuseA = thisDiffuse[x + 1].a * diffuse;
+				//diffuse into the current color
+				colorYiq.y += (float) RxiDiffuseCurveY(thisDiffuse[x + 1].y * diffuse);
+				colorYiq.i += (float) RxiDiffuseCurveI(thisDiffuse[x + 1].i * diffuse);
+				colorYiq.q += (float) RxiDiffuseCurveQ(thisDiffuse[x + 1].q * diffuse);
+				colorYiq.a += (float) (thisDiffuse[x + 1].a * diffuse);
 
-				if (binaryAlpha) diffuseA = 0.0; //don't diffuse alpha if no alpha channel, or we're told not to
-
-				colorY += (float) RxiDiffuseCurveY(diffuseY);
-				colorI += (float) RxiDiffuseCurveI(diffuseI);
-				colorQ += (float) RxiDiffuseCurveQ(diffuseQ);
-				colorA += (float) diffuseA;
-				if (colorY < 0.0f) { //clamp just in case
-					colorY = 0.0f;
-					colorI = 0.0f;
-					colorQ = 0.0f;
-				} else if (colorY > 511.0f) {
-					colorY = 511.0f;
-					colorI = 0.0f;
-					colorQ = 0.0f;
+				if (colorYiq.y < 0.0f) { // clamp the Y channel
+					colorYiq.y = 0.0f;
+					colorYiq.i = 0.0f;
+					colorYiq.q = 0.0f;
+				} else if (colorYiq.y > 511.0f) {
+					colorYiq.y = 511.0f;
+					colorYiq.i = 0.0f;
+					colorYiq.q = 0.0f;
 				}
 
-				if (colorA < 0.0f) colorA = 0.0f;
-				else if (colorA > 255.0f) colorA = 255.0f;
+				if (colorYiq.a < 0.0f) colorYiq.a = 0.0f;
+				else if (colorYiq.a > 255.0f) colorYiq.a = 255.0f;
 
 				//match to palette color
-				RxYiqColor diffusedYiq = { colorY, colorI, colorQ, colorA };
-				matched = RxPaletteFindClosestColorYiq(reduction, &diffusedYiq, NULL);
-
-				//RxYiqColor *chosenYiq = &yiqPalette[matched];
+				matched = RxPaletteFindClosestColorYiq(reduction, &colorYiq, NULL);
 				RxYiqColor *chosenYiq = &reduction->accel.plttLarge[matched];
+
 				float chosenA = (float) (chosenYiq->a * INV_255);
-				float offY = (colorY - chosenYiq->y) * chosenA;
-				float offI = (colorI - chosenYiq->i) * chosenA;
-				float offQ = (colorQ - chosenYiq->q) * chosenA;
-				float offA = (colorA - chosenYiq->a);
+				float offY = (colorYiq.y - chosenYiq->y) * chosenA;
+				float offI = (colorYiq.i - chosenYiq->i) * chosenA;
+				float offQ = (colorYiq.q - chosenYiq->q) * chosenA;
+				float offA = (colorYiq.a - chosenYiq->a);
 				if (binaryAlpha || (flag & RX_FLAG_NO_ALPHA_DITHER)) offA = 0.0f;
 
-				//now diffuse to neighbors
-				RxYiqColor *diffNextPixel = &thisDiffuse[x + 1 + hDirection];
-				RxYiqColor *diffDownPixel = &nextDiffuse[x + 1];
-				RxYiqColor *diffNextDownPixel = &nextDiffuse[x + 1 + hDirection];
-				RxYiqColor *diffBackDownPixel = &nextDiffuse[x + 1 - hDirection];
+				//now diffuse to neighbors (mirrored with the scan direction):
+				//        X  7/16
+				// 3/16 5/16 1/16
+				RxYiqColor *diffuse21 = &thisDiffuse[x + 1 + hDirection];
+				RxYiqColor *diffuse12 = &nextDiffuse[x + 1];
+				RxYiqColor *diffuse22 = &nextDiffuse[x + 1 + hDirection];
+				RxYiqColor *diffuse02 = &nextDiffuse[x + 1 - hDirection];
 
 				//diffuse the error to neighboring pixels
-				diffNextPixel->y += offY * 0.4375f; // 7/16
-				diffNextPixel->i += offI * 0.4375f;
-				diffNextPixel->q += offQ * 0.4375f;
-				diffNextPixel->a += offA * 0.4375f;
-				diffDownPixel->y += offY * 0.3125f; // 5/16
-				diffDownPixel->i += offI * 0.3125f;
-				diffDownPixel->q += offQ * 0.3125f;
-				diffDownPixel->a += offA * 0.3125f;
-				diffBackDownPixel->y += offY * 0.1875f; // 3/16
-				diffBackDownPixel->i += offI * 0.1875f;
-				diffBackDownPixel->q += offQ * 0.1875f;
-				diffBackDownPixel->a += offA * 0.1875f;
-				diffNextDownPixel->y += offY * 0.0625f; // 1/16
-				diffNextDownPixel->i += offI * 0.0625f;
-				diffNextDownPixel->q += offQ * 0.0625f;
-				diffNextDownPixel->a += offA * 0.0625f;
+				diffuse21->y += offY * 0.4375f; // 7/16
+				diffuse21->i += offI * 0.4375f;
+				diffuse21->q += offQ * 0.4375f;
+				diffuse21->a += offA * 0.4375f;
+				diffuse12->y += offY * 0.3125f; // 5/16
+				diffuse12->i += offI * 0.3125f;
+				diffuse12->q += offQ * 0.3125f;
+				diffuse12->a += offA * 0.3125f;
+				diffuse02->y += offY * 0.1875f; // 3/16
+				diffuse02->i += offI * 0.1875f;
+				diffuse02->q += offQ * 0.1875f;
+				diffuse02->a += offA * 0.1875f;
+				diffuse22->y += offY * 0.0625f; // 1/16
+				diffuse22->i += offI * 0.0625f;
+				diffuse22->q += offQ * 0.0625f;
+				diffuse22->a += offA * 0.0625f;
 			} else {
 				//anomaly in the picture, just match the original color. Don't diffuse, it'll cause issues.
 				//That or the color is pretty homogeneous here, so dithering is bad anyway.
