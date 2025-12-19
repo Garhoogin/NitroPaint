@@ -441,28 +441,24 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 		}
 		return d2;
 #else // RX_SIMD
+		// delinearlize luma
 		__m128 v1 = yiq1->yiq, v2 = yiq2->yiq;
-		
-		__m128 yMask = _mm_castsi128_ps(_mm_set_epi32(-1, -1, -1, 0));
-		__m128d y1 = _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v1)]); // delinearlize luma
-		__m128d y2 = _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v2)]);
-		__m128 dy = _mm_cvtsd_ss(_mm_setzero_ps(), _mm_sub_sd(y1, y2));
+		v1 = _mm_cvtsd_ss(v1, _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v1)]));
+		v2 = _mm_cvtsd_ss(v2, _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v2)]));
 
 		__m128 diff = _mm_sub_ps(v1, v2);
-		diff = _mm_or_ps(_mm_and_ps(diff, yMask), dy);
-
 		__m128 diff2 = _mm_mul_ps(_mm_mul_ps(diff, diff), reduction->yiqaWeight2);
 
 		__m128 d2Temp = _mm_shuffle_ps(diff2, diff2, _MM_SHUFFLE(2, 3, 0, 1));
 		diff2 = _mm_add_ps(diff2, d2Temp);
 		d2Temp = _mm_shuffle_ps(diff2, diff2, _MM_SHUFFLE(0, 1, 2, 3));
 		diff2 = _mm_add_ps(diff2, d2Temp);
-
+		
 		__m128 a2 = _mm_set_ss((float) yiq1->a);
 		a2 = _mm_mul_ss(a2, _mm_set_ss((float) INV_255));
 		a2 = _mm_mul_ss(a2, a2);
 		diff2 = _mm_mul_ss(diff2, a2);
-		return (double) diff2.m128_f32[0];
+		return (double) _mm_cvtss_f32(diff2);
 #endif
 	} else {
 		double yw2 = reduction->yWeight2;
