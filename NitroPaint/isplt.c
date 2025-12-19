@@ -331,10 +331,10 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	//vectorized implementation
 	__m128i rgbVeci = _mm_unpacklo_epi16(_mm_unpacklo_epi8(_mm_cvtsi32_si128(rgb), _mm_setzero_si128()), _mm_setzero_si128());
 	__m128 rgbVec = _mm_cvtepi32_ps(rgbVeci);
-	
-	__m128 yVec = _mm_mul_ps(rgbVec, _mm_set_ps(0.0f,  0.22800f,  1.17400f, 0.59800f));
-	__m128 iVec = _mm_mul_ps(rgbVec, _mm_set_ps(0.0f, -0.64406f, -0.54804f, 1.19208f));
-	__m128 qVec = _mm_mul_ps(rgbVec, _mm_set_ps(0.0f,  0.62206f, -1.04408f, 0.42204f));
+
+	__m128 yVec = _mm_mul_ps(rgbVec, _mm_setr_ps(0.59800f,  1.17400f,  0.22800f, 0.0f));
+	__m128 iVec = _mm_mul_ps(rgbVec, _mm_setr_ps(1.19208f, -0.54804f, -0.64406f, 0.0f));
+	__m128 qVec = _mm_mul_ps(rgbVec, _mm_setr_ps(0.42204f, -1.04408f,  0.62206f, 0.0f));
 
 	//do three horizontal sums
 	yVec = _mm_add_ps(yVec, _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(2, 3, 0, 1)));
@@ -342,43 +342,31 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	qVec = _mm_add_ps(qVec, _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(0, 1, 2, 3)));
 
 	__m128 iqVec = _mm_shuffle_ps(iVec, qVec, _MM_SHUFFLE(0, 1, 0, 1)); // lo: half I sum, hi: half Q sum, halves reversed
-	yVec = _mm_add_ss(yVec, _mm_movehl_ps(yVec, yVec));
 	iqVec = _mm_add_ps(iqVec, _mm_shuffle_ps(iqVec, iqVec, _MM_SHUFFLE(2, 3, 0, 1)));
 
-	//sums distributed horizontally, so we mask them out
-	__m128 iqMask = _mm_castsi128_ps(_mm_set_epi32(0, -1, -1, 0));
-	__m128 aMask = _mm_castsi128_ps(_mm_set_epi32(-1, 0, 0, 0));
-	__m128 yiqVec = _mm_move_ss(_mm_and_ps(iqVec, iqMask), yVec);
-	
+	//place components into low parts of vector registers
+	__m128 y = _mm_add_ss(yVec, _mm_movehl_ps(yVec, yVec));
+	__m128 i = iqVec;
+	__m128 q = _mm_movehl_ps(iqVec, iqVec);
+
 	//apply soft clamping by I>245, Q<-215 by 2/3
-	__m128 excess = _mm_sub_ps(yiqVec, _mm_set_ps(0.0f, -215.0f, 245.0f, 0.0f));     // I excess of 245, Q excess of -215
-	excess = _mm_mul_ps(excess, _mm_set_ps(0.0f, 0.33333333f, -0.33333333f, 0.0f));  // Correction factor of 1/3
-	excess = _mm_min_ps(excess, _mm_setzero_ps());                                   // Clamp to non-positives
-	excess = _mm_mul_ps(excess, _mm_set_ps(0.0f, -1.0f, 1.0f, 0.0f));                // Correct sign of Q bias
-	yiqVec = _mm_add_ps(yiqVec, excess);
+	__m128 twoThirds = _mm_set_ss((float) TWO_THIRDS);
+	if (_mm_ucomigt_ss(i, _mm_set_ss( 245.0f))) i = _mm_add_ss(_mm_mul_ss(i, twoThirds), _mm_set_ss(245.0 - 245.0 * TWO_THIRDS));
+	if (_mm_ucomilt_ss(q, _mm_set_ss(-215.0f))) q = _mm_add_ss(_mm_mul_ss(q, twoThirds), _mm_set_ss(215.0 * TWO_THIRDS - 215.0));
 
-	//soft clamp on Q-I difference
-	__m128 iqDiff = _mm_sub_ss(_mm_movehl_ps(yiqVec, yiqVec), _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1)));
-	__m128 diq = _mm_sub_ss(iqDiff, _mm_set_ss(265.0f));
-
-	// if (diq >= 0.0)
-	{
-		diq = _mm_max_ss(diq, _mm_setzero_ps());                      // if (diq < 0.0) diq = 0.0
-		diq = _mm_shuffle_ps(diq, diq, _MM_SHUFFLE(0, 0, 0, 0));      // distribute across vector register
-		diq = _mm_mul_ps(diq, _mm_set_ps(0.0f, -0.25f, 0.25f, 0.0f)); // scale by 0.25 and make Q difference negative
-		yiqVec = _mm_add_ps(yiqVec, diq);
+	__m128 iqDiff = _mm_sub_ss(q, i);
+	if (_mm_ucomigt_ss(iqDiff, _mm_set_ss(265.0f))) {
+		__m128 diq = _mm_mul_ss(_mm_sub_ss(iqDiff, _mm_set_ss(265.0f)), _mm_set_ss(0.25f));
+		i = _mm_add_ss(i, diq);
+		q = _mm_sub_ss(q, diq);
 	}
 
-	iVec = _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(1, 1, 1, 1));
-	qVec = _mm_movehl_ps(yiqVec, yiqVec);
-	// if (i < 0.0 && q > 0.0)
-	{
-		__m128 sub = _mm_mul_ss(_mm_mul_ss(_mm_min_ss(iVec, _mm_setzero_ps()), _mm_max_ss(qVec, _mm_setzero_ps())), _mm_set_ss((float) INV_512));
-		yiqVec = _mm_sub_ss(yiqVec, sub);
-	}
+	__m128 zero = _mm_setzero_ps();
+	if (_mm_ucomilt_ss(i, zero) && _mm_ucomigt_ss(q, zero)) y = _mm_sub_ss(y, _mm_mul_ss(_mm_mul_ss(q, i), _mm_set_ss((float) INV_512)));
 
 	//insert alpha channel to the output vector
-	yiq->yiq = _mm_add_ps(yiqVec, _mm_and_ps(rgbVec, aMask));
+	__m128 yiqa = _mm_movelh_ps(_mm_unpacklo_ps(y, i), _mm_unpacklo_ps(q, zero));
+	yiq->yiq = _mm_or_ps(yiqa, _mm_and_ps(_mm_castsi128_ps(_mm_setr_epi32(0, 0, 0, -1)), rgbVec));
 #endif
 }
 
