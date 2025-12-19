@@ -748,97 +748,82 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 	}
 }
 
-static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *palette_, int nPalettes, TxTileData *tileData, int tilesX, int tilesY, int threshold, volatile int *pProgress, volatile int *pTerminate) {
-	RxYiqColor *plttYiq = (RxYiqColor *) RxMemCalloc(nPalettes, sizeof(RxYiqColor));
+static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *outPltt, int plttSize, TxTileData *tileData, int tilesX, int tilesY, int threshold, volatile int *pProgress, volatile int *pTerminate) {
+	RxYiqColor *plttYiq = (RxYiqColor *) RxMemCalloc(plttSize, sizeof(RxYiqColor));
+	int *colorTable = (int *) calloc(plttSize, sizeof(int));
+	
+	//user-specified threshold, normalized to correspond to a half (squared) difference in Y value.
+	double diffThreshold = (threshold * threshold) * reduction->yWeight2 * (255.0 * 4.0 / 10000.0);
 
 	//iterate over all non-duplicate tiles, adding the palettes.
-	//colorTable keeps track of how each color is intended to be used.
-	int *colorTable = (int *) calloc(nPalettes, sizeof(int));
-	double diffThreshold = (threshold * threshold) * reduction->yWeight2 * (255.0 * 4.0 / 10000.0);
-	int firstSlot = 0;
-	for (int y = 0; y < tilesY; y++) {
-		for (int x = 0; x < tilesX; x++) {
-			int index = x + y * tilesX;
-			TxTileData *tile = &tileData[index];
-			if (tile->duplicate || !tile->used) {
-				//the paletteIndex field of a duplicate tile is first set to the tile index it is a duplicate of.
-				//set it to an actual palette index here.
-				(*pProgress)++;
-				continue;
-			}
-
-			//how many color entries does this consume?
-			int nConsumed = 4;
-			if (tile->mode & COMP_INTERPOLATE) nConsumed = 2;
-
-			//does it fit?
-			int fits = 0;
-			if (firstSlot + nConsumed <= nPalettes) {
-				//yes, just add it to the list.
-				fits = 1;
-				for (int i = 0; i < nConsumed; i++) RxConvertRgbToYiq(tile->palette32[i], &plttYiq[firstSlot + i]);
-				for (int i = 0; i < nConsumed; i++) colorTable[firstSlot + i] = tile->mode;
-				tile->paletteIndex = firstSlot / 2;
-				firstSlot += nConsumed;
-			}
-			if (!fits || (threshold && firstSlot >= 8)) {
-				//does NOT fit, we need to rearrange some things.
-
-				while ((firstSlot + nConsumed > nPalettes) || (threshold && fits)) {
-					//determine which two palettes are the most similar.
-					int colorIndex1 = -1, colorIndex2 = -1;
-					double distance = TxiFindClosestPalettes(reduction, plttYiq, colorTable, firstSlot, &colorIndex1, &colorIndex2);
-					if (colorIndex1 == -1) break;
-					if (fits && (distance > diffThreshold || firstSlot < 8)) break;
-					int nColorsInPalettes = TxiTableToPaletteSize(colorTable[colorIndex1]);
-					uint16_t palettesMode = colorTable[colorIndex1];
-
-					//find tiles that use colorIndex2. Set them to use colorIndex1. 
-					//then subtract from all palette indices > colorIndex2. Then we can
-					//shift over all the palette colors. Then regenerate the palette.
-					for (int i = 0; i < tilesX * tilesY; i++) {
-						if (tileData[i].paletteIndex == colorIndex2 / 2) {
-							tileData[i].paletteIndex = colorIndex1 / 2;
-						} else if (tileData[i].paletteIndex > colorIndex2 / 2) {
-							tileData[i].paletteIndex -= nColorsInPalettes / 2;
-						}
-					}
-
-					//move entries in palette and colorTable.
-					int nToShift = nPalettes - colorIndex2 - nColorsInPalettes;
-					memmove(plttYiq + colorIndex2, plttYiq + colorIndex2 + nColorsInPalettes, nToShift * sizeof(RxYiqColor));
-					memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColorsInPalettes, nToShift * sizeof(int));
-
-					//merge those palettes that we've just combined.
-					TxiMergePalettes(reduction, tileData, tilesX * tilesY, plttYiq, colorIndex1 / 2, palettesMode);
-
-					//update end pointer to reflect the change.
-					firstSlot -= nColorsInPalettes;
-				}
-
-				//now add this tile's colors
-				if (!fits) {
-					for (int i = 0; i < nConsumed; i++) RxConvertRgbToYiq(tile->palette32[i], &plttYiq[firstSlot + i]);
-					for (int i = 0; i < nConsumed; i++) colorTable[firstSlot + i] = tile->mode;
-					tile->paletteIndex = firstSlot / 2;
-					firstSlot += nConsumed;
-				}
-			}
+	int availableSlot = 0;
+	int nTiles = tilesX * tilesY;
+	for (int i = 0; i < nTiles; i++) {
+		TxTileData *tile = &tileData[i];
+		if (tile->duplicate || !tile->used) {
+			//the paletteIndex field of a duplicate tile is first set to the tile index it is a duplicate of.
 			(*pProgress)++;
-			if (*pTerminate) goto Done;
+			continue;
 		}
+
+		//how many color entries does this consume?
+		int nConsumed = TxiTableToPaletteSize(tile->mode);   // number of colors required by the added palette
+
+		//palette merge loop: merge palettes while either the colors to be added do not fit, or palettes
+		//are within merge threshold.
+		while ((availableSlot + nConsumed) > plttSize || (threshold > 0 && availableSlot >= 8)) {
+			//determine which two palettes are the most similar.
+			int colorIndex1 = -1, colorIndex2 = -1;
+			double distance = TxiFindClosestPalettes(reduction, plttYiq, colorTable, availableSlot, &colorIndex1, &colorIndex2);
+			if (colorIndex1 == -1) break;
+			if ((availableSlot + nConsumed) <= plttSize && (distance > diffThreshold || availableSlot < 8)) break;
+
+			uint16_t palettesMode = colorTable[colorIndex1];
+			int nColsRemove = TxiTableToPaletteSize(palettesMode);
+
+			//find tiles that use colorIndex2. Set them to use colorIndex1. 
+			//then subtract from all palette indices > colorIndex2. Then we can
+			//shift over all the palette colors. Then regenerate the palette.
+			for (int j = 0; j < nTiles; j++) {
+				if (tileData[j].paletteIndex == colorIndex2 / 2) {
+					tileData[j].paletteIndex = colorIndex1 / 2;
+				} else if (tileData[j].paletteIndex > colorIndex2 / 2) {
+					tileData[j].paletteIndex -= nColsRemove / 2;
+				}
+			}
+
+			//move entries in palette and colorTable.
+			int nToShift = plttSize - colorIndex2 - nColsRemove;
+			memmove(plttYiq + colorIndex2, plttYiq + colorIndex2 + nColsRemove, nToShift * sizeof(RxYiqColor));
+			memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColsRemove, nToShift * sizeof(int));
+
+			//merge those palettes that we've just combined.
+			TxiMergePalettes(reduction, tileData, tilesX * tilesY, plttYiq, colorIndex1 / 2, palettesMode);
+			availableSlot -= nColsRemove;
+		}
+
+		//now add this tile's colors
+		for (int j = 0; j < nConsumed; j++) {
+			RxConvertRgbToYiq(tile->palette32[j], &plttYiq[availableSlot + j]);
+			colorTable[availableSlot + j] = tile->mode;
+		}
+		tile->paletteIndex = availableSlot / 2;
+		availableSlot += nConsumed;
+
+		(*pProgress)++;
+		if (*pTerminate) goto Done;
 	}
 Done:
 	free(colorTable);
 
 	//copy palette out
 	if (plttYiq != NULL) {
-		for (int i = 0; i < nPalettes; i++) {
-			palette_[i] = ColorConvertToDS(RxConvertYiqToRgb(&plttYiq[i]));
+		for (int i = 0; i < plttSize; i++) {
+			outPltt[i] = ColorConvertToDS(RxConvertYiqToRgb(&plttYiq[i]));
 		}
 		RxMemFree(plttYiq);
 	}
-	return firstSlot;
+	return availableSlot;
 }
 
 static void TxiExpandPalette32(const COLOR32 *nnsPal, uint16_t mode, COLOR32 *dest, int *nOpaque) {
