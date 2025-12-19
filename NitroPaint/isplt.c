@@ -42,6 +42,13 @@
 #define INV_3      0.3333333333333333333 // 1.0/  3.0
 #define TWO_THIRDS 0.6666666666666666667 // 2.0/  3.0
 
+#define MEAN_Y  0.857138536051548770000  // mean of Y
+#define MEAN_I -0.000049607572710434945  // mean of I
+#define MEAN_Q  0.000036970419872558840  // mean of Q
+#define MEAN_Y2 0.89346546254726145      // mean of Y^2
+#define MEAN_I2 0.17913131472450233      // mean of I^2
+#define MEAN_Q2 0.13878842692845322      // mean of Q^2
+
 //struct for internal processing of color leaves
 typedef struct {
 	double y;
@@ -125,7 +132,7 @@ void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enh
 	//color difference is computed by taking the average squared difference between colors composited onto
 	//a background color. This calculation requires the first and second moments of the color space, and we
 	//assume uniformly distributed RGB colors to compute this.
-	reduction->aWeight2 = 0.893465463 * reduction->yWeight2 + 0.179131315 * reduction->iWeight2 + 0.138788427 * reduction->qWeight2;
+	reduction->aWeight2 = MEAN_Y2 * reduction->yWeight2 + MEAN_I2 * reduction->iWeight2 + MEAN_Q2 * reduction->qWeight2;
 	reduction->aWeight = sqrt(reduction->aWeight2);
 
 	reduction->enhanceColors = enhanceColors;
@@ -420,15 +427,15 @@ static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *
 }
 
 static inline double RxiComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
+#ifndef RX_SIMD
+	double yw2 = reduction->yWeight2;
+	double iw2 = reduction->iWeight2;
+	double qw2 = reduction->qWeight2;
+	double aw2 = reduction->aWeight2;
+
 	if (yiq1->a == yiq2->a) {
 		//equal alpha comparison. Because each color is scaled by the same alpha, we can pull it out by
 		//multiplying YIQ squared difference by squared alpha.
-#ifndef RX_SIMD
-		double yw2 = reduction->yWeight2;
-		double iw2 = reduction->iWeight2;
-		double qw2 = reduction->qWeight2;
-		double aw2 = reduction->aWeight2;
-
 		double dy = RxiLinearizeLuma(reduction, yiq1->y) - RxiLinearizeLuma(reduction, yiq2->y);
 		double di = yiq1->i - yiq2->i;
 		double dq = yiq1->q - yiq2->q;
@@ -440,32 +447,7 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 			d2 *= a * a;
 		}
 		return d2;
-#else // RX_SIMD
-		// delinearlize luma
-		__m128 v1 = yiq1->yiq, v2 = yiq2->yiq;
-		v1 = _mm_cvtsd_ss(v1, _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v1)]));
-		v2 = _mm_cvtsd_ss(v2, _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v2)]));
-
-		__m128 diff = _mm_sub_ps(v1, v2);
-		__m128 diff2 = _mm_mul_ps(_mm_mul_ps(diff, diff), reduction->yiqaWeight2);
-
-		__m128 d2Temp = _mm_shuffle_ps(diff2, diff2, _MM_SHUFFLE(2, 3, 0, 1));
-		diff2 = _mm_add_ps(diff2, d2Temp);
-		d2Temp = _mm_shuffle_ps(diff2, diff2, _MM_SHUFFLE(0, 1, 2, 3));
-		diff2 = _mm_add_ps(diff2, d2Temp);
-		
-		__m128 a2 = _mm_set_ss((float) yiq1->a);
-		a2 = _mm_mul_ss(a2, _mm_set_ss((float) INV_255));
-		a2 = _mm_mul_ss(a2, a2);
-		diff2 = _mm_mul_ss(diff2, a2);
-		return (double) _mm_cvtss_f32(diff2);
-#endif
 	} else {
-		double yw2 = reduction->yWeight2;
-		double iw2 = reduction->iWeight2;
-		double qw2 = reduction->qWeight2;
-		double aw2 = reduction->aWeight2;
-
 		//color difference with alpha.
 		double a1 = yiq1->a * INV_255, a2 = yiq2->a * INV_255;
 
@@ -478,8 +460,45 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 
 		//coefficients below taken from first moment of YIQ space given uniform RGB distribution
 		return yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + aw2 * da * da
-			- 2.0 * da * (0.857138537 * yw2 * dy - 0.0000496078431 * iw2 * di + 0.0000369686275 * qw2 * dq);
+			- 2.0 * da * (MEAN_Y * yw2 * dy + MEAN_I * iw2 * di + MEAN_Q * qw2 * dq);
 	}
+#else // RX_SIMD
+	// linearlize luma
+	__m128 v1 = yiq1->yiq, v2 = yiq2->yiq;
+	v1 = _mm_cvtsd_ss(v1, _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v1)]));
+	v2 = _mm_cvtsd_ss(v2, _mm_load_sd(&reduction->lumaTable[_mm_cvt_ss2si(v2)]));
+
+	__m128 a1 = _mm_shuffle_ps(v1, v1, _MM_SHUFFLE(3, 3, 3, 3)); // alpha 1, broadcast
+	__m128 a2 = _mm_shuffle_ps(v2, v2, _MM_SHUFFLE(3, 3, 3, 3)); // alpha 2, broadcast
+
+	__m128 d2;
+	if (_mm_ucomieq_ss(a1, a2)) {
+		//equal alpha: scale difference by square of alpha
+		__m128 d = _mm_mul_ps(_mm_sub_ps(v1, v2), _mm_mul_ps(a1, _mm_set1_ps((float) INV_255)));
+		d2 = _mm_mul_ps(d, d);
+	} else {
+		//scale by alpha (YIQ*a, alpha unchanged)
+		__m128 aMask = _mm_castsi128_ps(_mm_setr_epi32(-1, -1, -1, 0));
+		v1 = _mm_mul_ps(v1, a1);
+		v2 = _mm_mul_ps(v2, a2);
+
+		//difference
+		__m128 da = _mm_sub_ps(a1, a2);
+		__m128 d = _mm_sub_ps(v1, v2);
+		d = _mm_mul_ps(d, _mm_set1_ps((float) INV_255));
+		d = _mm_or_ps(_mm_and_ps(aMask, d), _mm_andnot_ps(aMask, da)); // set alpha difference (not alpha-scaled)
+
+		d2 = _mm_mul_ps(d, _mm_sub_ps(d, _mm_mul_ps(da, _mm_setr_ps(2.0 * MEAN_Y, 2.0 * MEAN_I, 2.0 * MEAN_Q, 0.0f))));
+	}
+
+	//scale components by weights
+	d2 = _mm_mul_ps(d2, reduction->yiqaWeight2);
+
+	//final horizontal sum
+	d2 = _mm_add_ps(d2, _mm_shuffle_ps(d2, d2, _MM_SHUFFLE(2, 3, 0, 1)));
+	d2 = _mm_add_ss(d2, _mm_movehl_ps(d2, d2));
+	return (double) _mm_cvtss_f32(d2);
+#endif
 }
 
 double RxComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
