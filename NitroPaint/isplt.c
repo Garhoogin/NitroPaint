@@ -791,6 +791,16 @@ static int RxiHistEntryComparator(const void *p1, const void *p2) {
 	return 0;
 }
 
+static int RxiHistEntryWeightComparator(const void *p1, const void *p2) {
+	const RxHistEntry *e1 = *(const RxHistEntry **) p1;
+	const RxHistEntry *e2 = *(const RxHistEntry **) p2;
+
+	double d = e2->weight - e1->weight; // descending
+	if (d < 0.0) return -1;
+	if (d > 0.0) return 1;
+	return 0;
+}
+
 static inline double RxiVec4Mag(double x, double y, double z, double w) {
 	return x * x + y * y + z * z + w * w;
 }
@@ -826,6 +836,23 @@ void RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
 
 	//sort colors by dot product with the vector
 	qsort(thisHistogram, nColors, sizeof(RxHistEntry *), RxiHistEntryComparator);
+}
+
+unsigned int RxHistGetTopN(RxReduction *reduction, unsigned int n, RxYiqColor *cols, double *weights) {
+	if (reduction->histogram == NULL) return 0; // no histogram
+
+	//sort histogram
+	qsort(reduction->histogramFlat, reduction->histogram->nEntries, sizeof(RxHistEntry *), RxiHistEntryWeightComparator);
+
+	//get top N items
+	unsigned int nGet = n;
+	if (nGet > (unsigned int) reduction->histogram->nEntries) nGet = reduction->histogram->nEntries;
+
+	for (unsigned int i = 0; i < nGet; i++) {
+		if (weights != NULL) weights[i] = reduction->histogramFlat[i]->weight;
+		memcpy(&cols[i], &reduction->histogramFlat[i]->color, sizeof(RxYiqColor));
+	}
+	return nGet;
 }
 
 static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int startIndex, int endIndex) {

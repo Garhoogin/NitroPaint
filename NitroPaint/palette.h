@@ -597,6 +597,32 @@ void RxHistSort(
 );
 
 // -----------------------------------------------------------------------------------------------
+// Name: RxHistGetTopN
+//
+// Gets the n most highly-weighted colors in the histogram. This internally sorts the histogram,
+// so do not rely on the sorted order of the histogram after calling this function. If there are
+// less than n colors in the histogram, only the number of entries in the histogram will be
+// written.
+//
+// Parameters:
+//   reduction     The color reduction context.
+//   n             The maximum number of entries to return from the histogram
+//   cols          Buffer to receive the top n colors, in descending weight
+//   weights       Corresponding weights for each color, optional.
+//
+// Returns:
+//   The number of colors returned. This will be equal to n if the histogram has n or more
+//   entries. If the number of entries in the histogram is less than n, the return value is the
+//   number of entries in the histogram.
+// -----------------------------------------------------------------------------------------------
+unsigned int RxHistGetTopN(
+	RxReduction *reduction,  // the color reduction context
+	unsigned int n,          // number of colors to return
+	RxYiqColor  *cols,       // buffer for returned colors
+	double      *weights     // buffer for returned weights
+);
+
+// -----------------------------------------------------------------------------------------------
 // Name: RxHistClear
 //
 // Clears out a color reduction context's histogram. Can be used to create multiple palettes.
