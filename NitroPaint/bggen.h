@@ -43,16 +43,17 @@ typedef struct BgDctBlock_ {
 // BgPerformCharacterCompression.
 //
 typedef struct BgTile_ {
-	COLOR32 px[64];               //RGBA colors: redundant, speed
-	RxYiqColor pxYiq[64];         //YIQA colors
+	COLOR32 px[64];               // RGBA colors: redundant, speed
+	RxYiqColor pxYiq[64];         // YIQA colors
 #ifdef BGGEN_USE_DCT
-	BgDctBlock dct;               //DCT coefficients
+	BgDctBlock dct;               // DCT coefficients
 #endif
-	unsigned char indices[64];    //color indices per pixel
-	int masterTile;               //index of master tile for this tile 
-	int nRepresents;              //number of tiles this tile represents
-	int flipMode;                 //flip orientation of this tile
-	int palette;                  //palette index of this tile
+	unsigned char indices[64];    // color indices per pixel
+	int masterTile;               // index of master tile for this tile 
+	int nRepresents;              // number of tiles this tile represents
+	int flipMode;                 // flip orientation of this tile
+	int palette;                  // palette index of this tile
+	int charNo;                   // this character's output index, if this is a master tile.
 } BgTile;
 
 /****************************************************************************\

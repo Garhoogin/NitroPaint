@@ -2278,7 +2278,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->nscrCreateInput = CreateEdit(hWnd, L"", 70, 10, width - 10 - 50 - 70, 22, FALSE);
 			data->nscrCreateInputButton = CreateButton(hWnd, L"...", width - 10 - 50, 10, 50, 22, FALSE);
 
-			LPCWSTR color0Settings[] = { L"Fixed", L"Average", L"Edge", L"Contrasting" };
+			LPCWSTR color0Settings[] = { L"Fixed", L"Average", L"Edge", L"Contrasting", L"Used" };
 			CreateStatic(hWnd, L"Palettes:", leftX, topY, 50, 22);
 			data->hWndPalettesInput = CreateEdit(hWnd, L"1", leftX + 55, topY, 100, 22, TRUE);
 			CreateStatic(hWnd, L"Base:", leftX, topY + 27, 50, 22);
