@@ -135,13 +135,8 @@ static double BgiCompareTilesDct(RxReduction *reduction, BgTile *tile1, BgTile *
 #endif // BGGEN_USE_DCT
 
 
-static float BgiTileDifferenceFlip(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char mode) {
+static double BgiTileDifferenceFlip(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char mode) {
 #ifndef BGGEN_USE_DCT
-	COLOR32 *px1 = t1->px;
-	double yw2 = reduction->yWeight2;
-	double iw2 = reduction->iWeight2;
-	double qw2 = reduction->qWeight2;
-
 	//xor mask for translating pixel addresses
 	unsigned int iXor = 0;
 	if (mode & TILE_FLIPX) iXor ^= 007;
@@ -149,39 +144,35 @@ static float BgiTileDifferenceFlip(RxReduction *reduction, BgTile *t1, BgTile *t
 
 	double err = 0.0;
 	for (unsigned int i = 0; i < 64; i++) {
-		RxYiqColor *yiq1 = &t1->pxYiq[i];
-		RxYiqColor *yiq2 = &t2->pxYiq[i ^ iXor];
-		double dy = reduction->lumaTable[(int) (yiq1->y + 0.5)] - reduction->lumaTable[(int) (yiq2->y + 0.5)];
-		double di = yiq1->i - yiq2->i;
-		double dq = yiq1->q - yiq2->q;
-		double da = yiq1->a - yiq2->a;
-		err += yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + 1600 * da * da;
+		const RxYiqColor *yiq1 = &t1->pxYiq[i];
+		const RxYiqColor *yiq2 = &t2->pxYiq[i ^ iXor];
+		err += RxComputeColorDifference(reduction, yiq1, yiq2);
 	}
 
-	return (float) err;
+	return err;
 #else // BGGEN_USE_DCT
-	return (float) BgiCompareTilesDct(reduction, t1, t2, mode);
+	return BgiCompareTilesDct(reduction, t1, t2, mode);
 #endif
 }
 
-static float BgiTileDifference(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char *flipMode, int allowFlip) {
-	float err = BgiTileDifferenceFlip(reduction, t1, t2, 0);
-	if (err == 0 || !allowFlip) {
+static double BgiTileDifference(RxReduction *reduction, BgTile *t1, BgTile *t2, unsigned char *flipMode, int allowFlip) {
+	double err = BgiTileDifferenceFlip(reduction, t1, t2, 0);
+	if (err == 0.0 || !allowFlip) {
 		*flipMode = 0;
 		return err;
 	}
-	float err2 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPX);
-	if (err2 == 0) {
+	double err2 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPX);
+	if (err2 == 0.0) {
 		*flipMode = TILE_FLIPX;
 		return err2;
 	}
-	float err3 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPY);
-	if (err3 == 0) {
+	double err3 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPY);
+	if (err3 == 0.0) {
 		*flipMode = TILE_FLIPY;
 		return err3;
 	}
-	float err4 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPXY);
-	if (err4 == 0) {
+	double err4 = BgiTileDifferenceFlip(reduction, t1, t2, TILE_FLIPXY);
+	if (err4 == 0.0) {
 		*flipMode = TILE_FLIPXY;
 		return err4;
 	}
@@ -370,7 +361,7 @@ int BgPerformCharacterCompression(
 		for (unsigned int j = 0; j < i; j++) {
 			BgTile *t2 = &tiles[j];
 
-			float diff = BgiTileDifference(reduction, t1, t2, &flips[i + j * nTiles], allowFlip);
+			float diff = (float) BgiTileDifference(reduction, t1, t2, &flips[i + j * nTiles], allowFlip);
 			BgiPutDiff(diffBuff, nTiles, j, i, diff);
 			flips[j + i * nTiles] = flips[i + j * nTiles];
 		}
@@ -595,11 +586,11 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 	RxFree(reduction);
 }
 
-static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, int mode) {
+static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, BggenColor0Mode mode) {
 	//based on mode, determine color 0 mode
-	if (mode == BG_COLOR0_FIXED) return 0xFF00FF;
+	if (mode == BGGEN_COLOR0_FIXED) return 0xFF00FF;
 
-	if (mode == BG_COLOR0_AVERAGE || mode == BG_COLOR0_EDGE) {
+	if (mode == BGGEN_COLOR0_AVERAGE || mode == BGGEN_COLOR0_EDGE) {
 		int totalR = 0, totalG = 0, totalB = 0, nColors = 0;
 		for (int i = 0; i < height; i++) {
 			for (int j = 0; j < width; j++) {
@@ -607,9 +598,9 @@ static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, int mode) {
 				COLOR32 c = px[index];
 
 				int add = 0;
-				if (mode == BG_COLOR0_AVERAGE) {
+				if (mode == BGGEN_COLOR0_AVERAGE) {
 					add = 1;
-				} else if (mode == BG_COLOR0_EDGE) {
+				} else if (mode == BGGEN_COLOR0_EDGE) {
 
 					//must be opaque and on the edge of opaque pixels
 					if ((c >> 24) >= 0x80) {
@@ -789,7 +780,6 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	*progress2Max = 1000;
 
 	COLOR32 *palette = (COLOR32 *) calloc(256 * 16, sizeof(COLOR32));
-	COLOR32 color0 = BgiSelectColor0(imgBits, width, height, params->color0Mode);
 	
 	if (nPalettes == 1) {
 		RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + paletteOffset + (paletteOffset == 0),
@@ -798,7 +788,8 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		RxCreateMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits,
 			paletteSize, paletteOffset, balance, colorBalance, enhanceColors, progress1);
 	}
-	if (paletteOffset == 0) {
+	if (paletteOffset == 0 && params->color0Mode != BGGEN_COLOR0_USE) {
+		COLOR32 color0 = BgiSelectColor0(imgBits, width, height, params->color0Mode);
 		for (int i = paletteBase; i < paletteBase + nPalettes; i++) palette[i << nBits] = color0;
 	}
 	*progress1 = nTiles * 2; //make sure it's done
@@ -809,14 +800,11 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 			int srcOffset = x * 8 + y * 8 * (width);
 			COLOR32 *block = tiles[x + y * tilesX].px;
 
-			memcpy(block +  0, imgBits + srcOffset + width * 0, 8 * sizeof(COLOR32));
-			memcpy(block +  8, imgBits + srcOffset + width * 1, 8 * sizeof(COLOR32));
-			memcpy(block + 16, imgBits + srcOffset + width * 2, 8 * sizeof(COLOR32));
-			memcpy(block + 24, imgBits + srcOffset + width * 3, 8 * sizeof(COLOR32));
-			memcpy(block + 32, imgBits + srcOffset + width * 4, 8 * sizeof(COLOR32));
-			memcpy(block + 40, imgBits + srcOffset + width * 5, 8 * sizeof(COLOR32));
-			memcpy(block + 48, imgBits + srcOffset + width * 6, 8 * sizeof(COLOR32));
-			memcpy(block + 56, imgBits + srcOffset + width * 7, 8 * sizeof(COLOR32));
+			//copy block of pixels
+			for (int i = 0; i < 8; i++) {
+				memcpy(block + i * 8, imgBits + srcOffset + width * i, 8 * sizeof(COLOR32));
+			}
+			
 			for (int i = 0; i < 8 * 8; i++) {
 				int a = (block[i] >> 24) & 0xFF;
 				if (a < 128) block[i] = 0; //make transparent pixels transparent black
@@ -1064,15 +1052,7 @@ static double BgiPaletteCharError(RxReduction *reduction, COLOR32 *block, RxYiqC
 		}
 
 		//diff
-		double dy = reduction->yWeight * (reduction->lumaTable[(int) (yiq.y + 0.5)] - reduction->lumaTable[(int) (matchedYiq->y + 0.5)]);
-		double di = reduction->iWeight * (yiq.i - matchedYiq->i);
-		double dq = reduction->qWeight * (yiq.q - matchedYiq->q);
-		double da = 40 * (yiq.a - matchedA);
-
-		error += dy * dy;
-		if (da != 0.0) error += da * da;
-		if (error >= maxError) return maxError;
-		error += di * di + dq * dq;
+		error += RxComputeColorDifference(reduction, &yiq, matchedYiq);
 		if (error >= maxError) return maxError;
 	}
 	return error;
@@ -1161,15 +1141,11 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 		for (int x = 0; x < tilesX; x++) {
 			int srcOffset = x * 8 + y * 8 * (width);
 			COLOR32 *block = blocks[x + y * tilesX].px;
-			memcpy(block +  0, px + srcOffset + width * 0, 8 * sizeof(COLOR32));
-			memcpy(block +  8, px + srcOffset + width * 1, 8 * sizeof(COLOR32));
-			memcpy(block + 16, px + srcOffset + width * 2, 8 * sizeof(COLOR32));
-			memcpy(block + 24, px + srcOffset + width * 3, 8 * sizeof(COLOR32));
-			memcpy(block + 32, px + srcOffset + width * 4, 8 * sizeof(COLOR32));
-			memcpy(block + 40, px + srcOffset + width * 5, 8 * sizeof(COLOR32));
-			memcpy(block + 48, px + srcOffset + width * 6, 8 * sizeof(COLOR32));
-			memcpy(block + 56, px + srcOffset + width * 7, 8 * sizeof(COLOR32));
 
+			for (int i = 0; i < 8; i++) {
+				memcpy(block + 8 * i, px + srcOffset + width * i, 8 * sizeof(COLOR32));
+			}
+			
 			for (int i = 0; i < 8 * 8; i++) {
 				int a = (block[i] >> 24) & 0xFF;
 				if (a < 128) block[i] = 0; //make transparent pixels transparent black
@@ -1364,9 +1340,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 
 					if (nscrX < nscrTilesX && nscrY < nscrTilesY) {
 						uint16_t d = 0;
-						d = d & 0xFFF;
 						d |= (chosenPalette + paletteNumber) << 12;
-						d &= 0xFC00;
 						d |= (chosenCharacter + charBase);
 						d |= chosenFlip << 10;
 						nscrData[nscrX + nscrY * nscrTilesX] = d;

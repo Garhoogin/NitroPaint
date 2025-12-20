@@ -6,6 +6,14 @@
 
 //#define BGGEN_USE_DCT
 
+typedef enum BggenColor0Mode_ {
+	BGGEN_COLOR0_FIXED,     // Color 0 is fixed
+	BGGEN_COLOR0_AVERAGE,   // Color 0 is taken to be the average color
+	BGGEN_COLOR0_EDGE,      // Color 0 is taken to be the average edge color
+	BGGEN_COLOR0_CONTRAST,  // Color 0 is taken to be contrasting with other colors
+	BGGEN_COLOR0_USE        // Color 0 is used for reduction (not supporting transparency)
+} BggenColor0Mode;
+
 #define BGGEN_BGTYPE_TEXT_16x16       0
 #define BGGEN_BGTYPE_TEXT_256x1       1
 #define BGGEN_BGTYPE_AFFINE_256x1     2
@@ -79,7 +87,7 @@ typedef struct BgGenerateParameters_ {
 
 	//palette
 	int compressPalette;              // Use palette compression
-	int color0Mode;                   // Specifies how color 0 is chosen
+	BggenColor0Mode color0Mode;       // Specifies how color 0 is chosen
 	BgPaletteRegion paletteRegion;    // Palette region to use for conversion
 
 	//character

@@ -29,11 +29,6 @@
 #define NSCR_TYPE_BIN       8
 #define NSCR_TYPE_COMBO     9
 
-#define BG_COLOR0_FIXED     0
-#define BG_COLOR0_AVERAGE   1
-#define BG_COLOR0_EDGE      2
-#define BG_COLOR0_CONTRAST  3
-
 extern LPCWSTR screenFormatNames[];
 
 typedef struct NSCR_ {
