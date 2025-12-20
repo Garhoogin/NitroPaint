@@ -1112,6 +1112,7 @@ void ChrSetDepth(NCGR *ncgr, int depth) {
 		nTiles2 *= 2;
 	}
 	unsigned char **tiles2 = (unsigned char **) calloc(nTiles2, sizeof(unsigned char **));
+	unsigned char *attr2 = (unsigned char *) calloc(nTiles2, 1);
 
 	if (depth == 8) {
 		//convert 4bpp graphic to 8bpp
@@ -1134,21 +1135,30 @@ void ChrSetDepth(NCGR *ncgr, int depth) {
 			}
 		}
 
+		//attribute data: take every other attribute
+		for (int i = 0; i < nTiles2; i++) {
+			if (ncgr->attr != NULL) attr2[i] = ncgr->attr[i * 2];
+		}
 	} else {
 		//covert 8bpp graphic to 4bpp
 		for (int i = 0; i < ncgr->nTiles; i++) {
 			unsigned char *tile1 = calloc(64, 1);
 			unsigned char *tile2 = calloc(64, 1);
 			unsigned char *src = ncgr->tiles[i];
-			tiles2[i * 2] = tile1;
+			tiles2[i * 2 + 0] = tile1;
 			tiles2[i * 2 + 1] = tile2;
 
 			for (int j = 0; j < 32; j++) {
-				tile1[j * 2 + 0] = (src[j + 0] >> 0) & 0xF;
-				tile1[j * 2 + 1] = (src[j + 0] >> 4) & 0xF;
+				tile1[j * 2 + 0] = (src[j +  0] >> 0) & 0xF;
+				tile1[j * 2 + 1] = (src[j +  0] >> 4) & 0xF;
 				tile2[j * 2 + 0] = (src[j + 32] >> 0) & 0xF;
 				tile2[j * 2 + 1] = (src[j + 32] >> 4) & 0xF;
 			}
+		}
+
+		//attribute data: double up each attribute byte
+		for (int i = 0; i < nTiles2; i++) {
+			if (ncgr->attr != NULL) attr2[i] = ncgr->attr[i / 2];
 		}
 	}
 
@@ -1158,6 +1168,10 @@ void ChrSetDepth(NCGR *ncgr, int depth) {
 	}
 	free(ncgr->tiles);
 	ncgr->tiles = tiles2;
+
+	//replace attributes
+	if (ncgr->attr != NULL) free(ncgr->attr);
+	ncgr->attr = attr2;
 
 	//adjust dimensions and size
 	ncgr->nTiles = nTiles2;
