@@ -569,10 +569,19 @@ int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
 	return status;
 }
 
+int ObjWrite(OBJECT_HEADER *object, BSTREAM *stream) {
+	if (object->combo != NULL) {
+		COMBO2D *combo = (COMBO2D *) object->combo;
+		return ObjWrite(&combo->header, stream);
+	} else {
+		return object->writer(object, stream);
+	}
+}
+
 int ObjWriteFile(OBJECT_HEADER *object, const wchar_t *name) {
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
-	int status = object->writer(object, &stream);
+	int status = ObjWrite(object, &stream);
 
 	//to byte array (releases buffer from stream)
 	unsigned int outSize;

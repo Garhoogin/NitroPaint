@@ -1064,10 +1064,6 @@ static int ChrWriteTose(NCGR *ncgr, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
-int ChrWriteCombo(NCGR *ncgr, BSTREAM *stream) {
-	return combo2dWrite((COMBO2D *) ncgr->header.combo, stream);
-}
-
 int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 	switch (ncgr->header.format) {
 		case NCGR_TYPE_NCGR:
@@ -1089,8 +1085,6 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 			return ChrWriteSetosa(ncgr, stream);
 		case NCGR_TYPE_BIN:
 			return ChrWriteBin(ncgr, stream);
-		case NCGR_TYPE_COMBO:
-			return ChrWriteCombo(ncgr, stream);
 	}
 	return 1;
 }

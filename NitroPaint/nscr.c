@@ -842,10 +842,6 @@ int ScrWriteBin(NSCR *nscr, BSTREAM *stream) {
 	return 0;
 }
 
-int ScrWriteCombo(NSCR *nscr, BSTREAM *stream) {
-	return combo2dWrite((COMBO2D *) nscr->header.combo, stream);
-}
-
 int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 	switch (nscr->header.format) {
 		case NSCR_TYPE_NSCR:
@@ -863,8 +859,6 @@ int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 			return ScrWriteHudson(nscr, stream);
 		case NSCR_TYPE_BIN:
 			return ScrWriteBin(nscr, stream);
-		case NSCR_TYPE_COMBO:
-			return ScrWriteCombo(nscr, stream);
 	}
 
 	return 1;

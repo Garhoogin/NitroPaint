@@ -479,10 +479,6 @@ int PalWriteBin(NCLR *nclr, BSTREAM *stream) {
 	return 0;
 }
 
-int PalWriteCombo(NCLR *nclr, BSTREAM *stream) {
-	return combo2dWrite((COMBO2D *) nclr->header.combo, stream);
-}
-
 int PalWriteIStudio(NCLR *nclr, BSTREAM *stream) {
 	uint8_t paltHeader[] = { 0, 0, 0, 0 };
 	*(uint32_t *) (paltHeader + 0x0) = nclr->nColors;
@@ -543,8 +539,6 @@ int PalWrite(NCLR *nclr, BSTREAM *stream) {
 			return PalWriteBin(nclr, stream);
 		case NCLR_TYPE_SETOSA:
 			return PalWriteSetosa(nclr, stream);
-		case NCLR_TYPE_COMBO:
-			return PalWriteCombo(nclr, stream);
 	}
 	return OBJ_STATUS_INVALID;
 }
