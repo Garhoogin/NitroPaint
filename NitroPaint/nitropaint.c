@@ -1179,8 +1179,66 @@ static int specIsSpec(char *buffer, int size) {
 
 VOID CreateImageDialog(HWND hWnd, LPCWSTR path);
 
+NITROPAINTSTRUCT *NpGetData(HWND hWndMain) {
+	return (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
+}
+
+static HWND NpOpenObject(HWND hWnd, OBJECT_HEADER *object) {
+	NITROPAINTSTRUCT *data = NpGetData(hWnd);
+	HWND h = NULL;
+
+	switch (object->type) {
+		case FILE_TYPE_PALETTE:
+			//if there is already an NCLR open, close it.
+			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
+			h = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, (NCLR *) object);
+			data->hWndNclrViewer = h;
+			break;
+		case FILE_TYPE_CHARACTER:
+			//if there is already an NCGR open, close it.
+			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
+			h = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, (NCGR *) object);
+			data->hWndNcgrViewer = h;
+			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
+			break;
+		case FILE_TYPE_SCREEN:
+			h = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, (NSCR *) object);
+			break;
+		case FILE_TYPE_CELL:
+			h = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NCER *) object);
+			data->hWndNcerViewer = h;
+			break;
+		case FILE_TYPE_NANR:
+			h = CreateNanrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NANR *) object);
+			break;
+		case FILE_TYPE_NSBTX:
+			h = CreateNsbtxViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (TexArc *) object);
+			break;
+		case FILE_TYPE_FONT:
+			h = CreateNftrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NFTR *) object);
+			break;
+		case FILE_TYPE_BNLL:
+			h = CreateBnllViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (BNLL *) object);
+			break;
+		case FILE_TYPE_BNCL:
+			h = CreateBnclViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (BNCL *) object);
+			break;
+		case FILE_TYPE_BNBL:
+			h = CreateBnblViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (BNBL *) object);
+			break;
+	}
+	return h;
+}
+
+static HWND NpOpenObjectAtPath(HWND hWndMain, OBJECT_HEADER *object, const wchar_t *path) {
+	HWND h = NpOpenObject(hWndMain, object);
+	if (h != NULL) EditorSetFile(h, path);
+
+	return h;
+}
+
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
-	NITROPAINTSTRUCT *data = (NITROPAINTSTRUCT *) GetWindowLongPtr(hWnd, 0);
+	NITROPAINTSTRUCT *data = NpGetData(hWnd);
 	DWORD dwSize = 0;
 	char *buffer = (char *) ObjReadWholeFile(path, &dwSize);
 
@@ -1253,29 +1311,10 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			combo2dLink(combo, &nscr->header);
 		}
 
-		//if there is already an NCLR open, close it.
-		if (pltRef != NULL) {
-			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
-			data->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, nclr);
+		if (pltRef != NULL) NpOpenObjectAtPath(hWnd, &nclr->header, pathBuffer); // open the color palette
+		if (chrRef != NULL) NpOpenObjectAtPath(hWnd, &ncgr->header, pathBuffer); // open the graphics
+		if (scrRef != NULL) NpOpenObjectAtPath(hWnd, &nscr->header, pathBuffer); // open BG screen data
 
-			EditorSetFile(data->hWndNclrViewer, pathBuffer);
-		}
-
-		//if there is already an NCGR open, close it.
-		if (chrRef != NULL) {
-			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
-			data->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, ncgr);
-			InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-
-			EditorSetFile(data->hWndNcgrViewer, pathBuffer);
-		}
-
-		//create NSCR editor and make it active
-		if (scrRef != NULL) {
-			HWND hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, nscr);
-
-			EditorSetFile(hWndNscrViewer, pathBuffer);
-		}
 		free(pathBuffer);
 
 		free(refName);
@@ -1359,45 +1398,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 				StListGet(&combo->links, i, &object);
 				int type = object->type;
 
-				HWND h = NULL;
-				switch (type) {
-
-					case FILE_TYPE_PALETTE:
-						object->combo = (void *) combo;
-
-						//if there is already an NCLR open, close it.
-						if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
-						h = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, (NCLR *) object);
-						data->hWndNclrViewer = h;
-						break;
-
-					case FILE_TYPE_CHARACTER:
-						object->combo = (void *) combo;
-
-						//if there is already an NCGR open, close it.
-						if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
-						h = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, (NCGR *) object);
-						data->hWndNcgrViewer = h;
-						InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-						break;
-
-					case FILE_TYPE_SCREEN:
-						//create NSCR and make it active
-						object->combo = (void *) combo;
-						h = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, (NSCR *) object);
-						break;
-
-					case FILE_TYPE_CELL:
-						//create NCER and make it active
-						object->combo = (void *) combo;
-						h = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NCER *) object);
-						break;
-
-					case FILE_TYPE_NANR:
-						object->combo = (void *) combo;
-						h = CreateNanrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NANR *) object);
-						break;
-				}
+				HWND h = NpOpenObject(hWnd, object);
 
 				//set compression type for all links
 				(*(OBJECT_HEADER **) StListGetPtr(&combo->links, i))->compression = compressionType;
@@ -1418,10 +1419,6 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 cleanup:
 	free(buffer);
-}
-
-NITROPAINTSTRUCT *NpGetData(HWND hWndMain) {
-	return (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 }
 
 static void MainZoomIn(HWND hWnd) {
@@ -1769,7 +1766,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							ncer->mappingMode = ncgrViewerData->ncgr->mappingMode;
 						}
 
-						data->hWndNcerViewer = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, ncer);
+						NpOpenObject(hWnd, &ncer->header);
 						break;
 					}
 					case ID_NEW_NEWPALETTE:
@@ -1808,7 +1805,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						srt->sx = 4096; // 1.0
 						srt->sy = 4096; // 1.0
 
-						HWND h = CreateNanrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, nanr);
+						HWND h = NpOpenObject(hWnd, &nanr->header);
 						ShowWindow(h, SW_SHOW);
 						break;
 					}
@@ -1816,9 +1813,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					{
 						TexArc *nsbtx = (TexArc *) calloc(1, sizeof(TexArc));
 						TexarcInit(nsbtx, NSBTX_TYPE_NNS);
-						
-						//no need to init further
-						CreateNsbtxViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, nsbtx);
+						NpOpenObject(hWnd, &nsbtx->header);
 						break;
 					}
 					case ID_NEW_NEWFONT:
@@ -1834,7 +1829,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						nftr->lineHeight = 11;
 						nftr->charset = FONT_CHARSET_UTF16;
 
-						CreateNftrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, nftr);
+						NpOpenObject(hWnd, &nftr->header);
 						break;
 					}
 					case ID_NEWLAYOUT_LETTERLAYOUT:
@@ -1845,7 +1840,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						bnll->messages = (BnllMessage *) calloc(1, sizeof(BnllMessage));
 						bnll->messages[0].pos.x.pos = 128;
 						bnll->messages[0].pos.y.pos = 96;
-						CreateBnllViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, bnll);
+						NpOpenObject(hWnd, &bnll->header);
 						break;
 					}
 					case ID_NEWLAYOUT_CELLLAYOUT:
@@ -1856,7 +1851,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						bncl->cells = (BnclCell *) calloc(1, sizeof(BnclCell));
 						bncl->cells[0].pos.x.pos = 128;
 						bncl->cells[0].pos.y.pos = 96;
-						CreateBnclViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, bncl);
+						NpOpenObject(hWnd, &bncl->header);
 						break;
 					}
 					case ID_NEWLAYOUT_BUTTONLAYOUT:
@@ -1869,7 +1864,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						bnbl->regions[0].pos.y.pos = 96;
 						bnbl->regions[0].width = 64;
 						bnbl->regions[0].height = 64;
-						CreateBnblViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, bnbl);
+						NpOpenObject(hWnd, &bnbl->header);
 						break;
 					}
 					case ID_FILE_CONVERTTO:
@@ -2144,18 +2139,16 @@ void nscrCreateCallback(void *data) {
 	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 	HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
-	if (nitroPaintStruct->hWndNcgrViewer) DestroyChild(nitroPaintStruct->hWndNcgrViewer);
-	if (nitroPaintStruct->hWndNclrViewer) DestroyChild(nitroPaintStruct->hWndNclrViewer);
-	nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, createData->nclr);
-	nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, createData->ncgr);
+	HWND hWndNclrViewer = NpOpenObject(hWndMain, &createData->nclr->header);
+	HWND hWndNcgrViewer = NpOpenObject(hWndMain, &createData->ncgr->header);
+	HWND hWndNscrViewer = NULL;
 
 	OBJECT_HEADER *palobj = EditorGetObject(nitroPaintStruct->hWndNclrViewer);
 	OBJECT_HEADER *chrobj = EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
 	OBJECT_HEADER *scrobj = NULL;
 
-	HWND hWndNscrViewer = NULL;
 	if (createData->genParams.bgType != BGGEN_BGTYPE_BITMAP) {
-		hWndNscrViewer = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, createData->nscr);
+		hWndNscrViewer = NpOpenObject(hWndMain, &createData->nscr->header);
 		scrobj = EditorGetObject(hWndNscrViewer);
 	} else {
 		free(createData->nscr);
@@ -2990,12 +2983,8 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					//link objects
 					ObjLinkObjects(&nclr->header, &ncgr->header);
 
-					if (nitroPaintStruct->hWndNclrViewer != NULL) DestroyChild(nitroPaintStruct->hWndNclrViewer);
-					if (nitroPaintStruct->hWndNcgrViewer != NULL) DestroyChild(nitroPaintStruct->hWndNcgrViewer);
-					nitroPaintStruct->hWndNclrViewer = NULL;
-					nitroPaintStruct->hWndNcgrViewer = NULL;
-					nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, hWndMdi, nclr);
-					nitroPaintStruct->hWndNcgrViewer = CreateNcgrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, hWndMdi, ncgr);
+					NpOpenObject(hWndMain, &nclr->header);
+					NpOpenObject(hWndMain, &ncgr->header);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}
@@ -3120,7 +3109,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				nscr->tilesY = tilesY;
 				nscr->dataSize = tilesX * tilesY * sizeof(uint16_t);
 				nscr->data = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
-				CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, nitroPaintStruct->hWndMdi, nscr);
+				NpOpenObject(hWndMain, &nscr->header);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
@@ -3202,7 +3191,7 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							}
 						}
 
-						HWND h2 = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 50, nitroPaintStruct->hWndMdi, newNscr);
+						HWND h2 = NpOpenObject(hWndMain, &newNscr->header);
 						NscrViewerSetTileBase(h2, nscrViewerData->tileBase);
 					}
 				}
@@ -3539,7 +3528,7 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				nclr->nColors = countSel << nclr->nBits;
 				nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
 				nclr->extPalette = (depthSel && countSel > 1);
-				nitroPaintStruct->hWndNclrViewer = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, nitroPaintStruct->hWndMdi, nclr);
+				NpOpenObject(hWndMain, &nclr->header);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			} else if (LOWORD(wParam) == IDCANCEL) {
