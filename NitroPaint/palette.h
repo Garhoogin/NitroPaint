@@ -286,6 +286,7 @@ void RxCreateMultiplePalettes(
 //   paletteSize     The size of a color palette in the output.
 //   nColsPerPalette The number of colors to generate for each palette.
 //   paletteOffset   The index into a color palette of the first usable color.
+//   useColor0       Enables using color 0 of the palette as an opaque color.
 //   balance         The balance setting.
 //   colorBalance    The color balance setting.
 //   enhanceColors   Enhance largely used colors.
@@ -301,6 +302,7 @@ void RxCreateMultiplePalettesEx(
 	int            paletteSize,      // the full size of one palette entry
 	int            nColsPerPalette,  // the number of colors to create per palette
 	int            paletteOffset,    // the offset into the palette to write colors
+	int            useColor0,        // use color 0 of the palette for reduction
 	int            balance,          // the balance setting
 	int            colorBalance,     // the color balance setting
 	int            enhanceColors,    // enhance largely used colors

@@ -532,12 +532,20 @@ RxStatus RxHistFinalize(RxReduction *reduction) {
 	return RX_STATUS_OK;
 }
 
+RxStatus RxHistInit(RxReduction *reduction) {
+	if (reduction->histogram != NULL) RxHistClear(reduction);
+
+	reduction->histogram = (RxHistogram *) calloc(1, sizeof(RxHistogram));
+	if (reduction->histogram == NULL) return RX_STATUS_NOMEM;
+
+	reduction->histogram->firstSlot = 0x20000;
+	return RX_STATUS_OK;
+}
+
 RxStatus RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, unsigned int height) {
 	if (reduction->histogram == NULL) {
-		reduction->histogram = (RxHistogram *) calloc(1, sizeof(RxHistogram));
-		if (reduction->histogram == NULL) return RX_STATUS_NOMEM;
-
-		reduction->histogram->firstSlot = 0x20000;
+		RxStatus status = RxHistInit(reduction);
+		if (status != RX_STATUS_OK) return reduction->status = status;
 	}
 	
 	if (width == 0 || height == 0) return reduction->status;
@@ -1704,33 +1712,67 @@ Done:
 	return leastDiff;
 }
 
+static COLOR32 RxiChooseMultiPaletteColor0(RxReduction *reduction, const COLOR32 *px, unsigned int tilesX, unsigned int tilesY) {
+	RxHistFinalize(reduction);
+
+	//get histogram colors
+	RxYiqColor *histCols = (RxYiqColor *) RxMemCalloc(reduction->histogram->nEntries, sizeof(RxYiqColor));
+	double *weights = (double *) calloc(reduction->histogram->nEntries, sizeof(double));
+	unsigned int nCol = RxHistGetTopN(reduction, reduction->histogram->nEntries, histCols, weights);
+
+	//weighted masked colors (bin by masking and accumulate weights)
+	RxHistClear(reduction);
+	RxHistInit(reduction);
+	for (unsigned int i = 0; i < nCol; i++) {
+		RxYiqColor maskYiq;
+		RxConvertRgbToYiq(RxiMaskYiqToRgb(reduction, &histCols[i]), &maskYiq);
+		RxHistAddColor(reduction, &maskYiq, weights[i]);
+	}
+	RxHistFinalize(reduction);
+
+	free(weights);
+	RxMemFree(histCols);
+
+	//get binned weights
+	RxYiqColor worst;
+	nCol = RxHistGetTopN(reduction, 1, &worst, NULL);
+
+	return RxiMaskYiqToRgb(reduction, &worst) | 0xFF000000;
+}
+
 void RxCreateMultiplePalettes(const COLOR32 *px, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
 							int paletteSize, int nColsPerPalette, int paletteOffset, int *progress) {
 	RxCreateMultiplePalettesEx(px, tilesX, tilesY, dest, paletteBase, nPalettes, paletteSize, nColsPerPalette, 
-							 paletteOffset, BALANCE_DEFAULT, BALANCE_DEFAULT, 0, progress);
+							 paletteOffset, 0, BALANCE_DEFAULT, BALANCE_DEFAULT, 0, progress);
 }
 
 void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
-							  int paletteSize, int nColsPerPalette, int paletteOffset, int balance, 
-							  int colorBalance, int enhanceColors, int *progress) {
+							  int paletteSize, int nColsPerPalette, int paletteOffset, int useColor0,
+							  int balance, int colorBalance, int enhanceColors, int *progress) {
 	if (nPalettes == 0) return;
 
 	//in the case of one palette, call to the faster single-palette routines.
 	if (nPalettes == 1) {
 		//create just one palette
+		unsigned int effectivePaletteOffset = paletteOffset, effectivePaletteSize = nColsPerPalette;
+		if (paletteOffset == 0 && !useColor0) {
+			effectivePaletteOffset++;
+			effectivePaletteSize--;
+		}
+
 		RxCreatePaletteEx(
 			imgBits,
 			tilesX * 8,
 			tilesY * 8,
-			dest + (paletteBase * paletteSize) + paletteOffset + (paletteOffset == 0),
-			nColsPerPalette - (paletteOffset == 0),
+			dest + (paletteBase * paletteSize) + effectivePaletteOffset,
+			effectivePaletteSize,
 			balance,
 			colorBalance,
 			enhanceColors,
 			RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE,
 			NULL
 		);
-		if (paletteOffset == 0) dest[(paletteBase * paletteSize) + paletteOffset] = 0xFF00FF; // transparent fill
+		if (paletteOffset == 0 && !useColor0) dest[(paletteBase * paletteSize)] = 0xFF00FF; // transparent fill
 		return;
 	}
 
@@ -1954,9 +1996,14 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	}
 	RxMemFree(yiqPalette);
 
+	//a second histogram for accumulating per-color error
+	RxReduction *errHist = RxNew(balance, colorBalance, enhanceColors);
+	RxHistInit(errHist);
+
 	//write palettes in the correct size
 	for (int i = 0; i < nPalettes; i++) {
 		//recreate palette so that it can be output in its correct size
+		COLOR32 *thisPalDest = dest + paletteSize * (i + paletteBase) + outputOffs;
 		if (nFinalColsPerPalette != nColsPerPalette) {
 
 			//palette does need to be created again
@@ -1969,20 +2016,52 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			RxComputePalette(reduction, nFinalColsPerPalette);
 
 			//write and sort
-			COLOR32 *thisPalDest = dest + paletteSize * (i + paletteBase) + outputOffs;
 			memcpy(thisPalDest, reduction->paletteRgb, nFinalColsPerPalette * sizeof(COLOR32));
 			qsort(thisPalDest, nFinalColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
 		} else {
 			//already the correct size; simply sort and copy
 			qsort(palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
-			memcpy(dest + paletteSize * (i + paletteBase) + outputOffs, palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette * sizeof(COLOR32));
+			memcpy(thisPalDest, palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette * sizeof(COLOR32));
+		}
+
+		//accumulate error statistics
+		if (useColor0) {
+			//load the current palette for fast lookup
+			RxPaletteLoad(errHist, thisPalDest, nColsPerPalette);
+			for (unsigned int j = 0; j < nTiles; j++) {
+				if (bestPalettes[j] != i) continue;
+
+				//error for each color in the block
+				for (unsigned int k = 0; k < 64; k++) {
+					double diff = 0.0;
+					RxPaletteFindClosestColor(errHist, tiles[j].rgb[k], &diff);
+
+					//want only the error in excess of what may be achieved by masking
+					RxYiqColor yiqCol, yiqMask;
+					RxConvertRgbToYiq(tiles[j].rgb[k], &yiqCol);
+					RxConvertRgbToYiq(RxiMaskYiqToRgb(reduction, &yiqCol), &yiqMask);
+					diff -= RxiComputeColorDifference(reduction, &yiqCol, &yiqMask);
+					if (diff < 0.0) diff = 0.0;
+
+					//accumulate error
+					RxHistAddColor(errHist, &yiqCol, diff);
+				}
+			}
+			RxPaletteFree(errHist);
 		}
 
 		if (paletteOffset == 0) dest[(i + paletteBase) * paletteSize] = 0xFF00FF;
 	}
 
+	//if color 0 is used, select a color to be used.
+	if (paletteOffset == 0 && useColor0) {
+		COLOR32 col0 = RxiChooseMultiPaletteColor0(errHist, imgBits, tilesX, tilesY);
+		for (int i = 0; i < nPalettes; i++) dest[(i + paletteBase) * paletteSize] = col0;
+	}
+
 	free(palettes);
 	free(bestPalettes);
+	RxFree(errHist);
 	RxFree(reduction);
 	RxMemFree(tiles);
 	free(diffBuff);

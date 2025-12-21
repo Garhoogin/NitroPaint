@@ -537,7 +537,7 @@ int BgPerformCharacterCompression(
 	}
 
 	//last, set the character index for the non-master tiles.
-	for (int i = 0; i < nTiles; i++) {
+	for (unsigned int i = 0; i < nTiles; i++) {
 		tiles[i].charNo = tiles[tiles[i].masterTile].charNo;
 	}
 
@@ -829,7 +829,7 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 			usedPaletteSize, balance, colorBalance, enhanceColors, flag, NULL);
 	} else {
 		RxCreateMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits,
-			paletteSize, paletteOffset, balance, colorBalance, enhanceColors, progress1);
+			paletteSize, paletteOffset, !color0Transparent, balance, colorBalance, enhanceColors, progress1);
 	}
 
 	//insert the reserved transparent color, if not marked as used for color.
@@ -1136,7 +1136,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 		if (writeScreen) {
 			//if we're writing the screen, we can write the palette as normal.
 			RxCreateMultiplePalettesEx(px, tilesX, tilesY, pals, 0, nPalettes, maxPaletteSize, paletteSize,
-				paletteOffset, balance, colorBalance, enhanceColors, progress);
+				paletteOffset, 0, balance, colorBalance, enhanceColors, progress);
 		} else {
 			//else, we need to be a bit more methodical. Lucky for us, though, the palettes are already partitioned.
 			//due to this, we can't respect user-set palette base and count. We're at the whim of the screen's
