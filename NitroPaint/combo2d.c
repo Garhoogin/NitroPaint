@@ -19,6 +19,7 @@ extern const wchar_t *gComboFormats[] = {
 	L"MBB",
 	L"BNCD",
 	L"AOB",
+	L"GRF",
 	NULL
 };
 
@@ -131,6 +132,10 @@ int combo2dGetObjMinCount(int comboType, int objType) {
 			if (objType == FILE_TYPE_CELL) return 1;
 			if (objType == FILE_TYPE_NANR) return 1;
 			return 0;
+		case COMBO2D_TYPE_GRF_BG:
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			return 0;
 		case COMBO2D_TYPE_DATAFILE:
 			//no particular requirements
 			return 0;
@@ -176,6 +181,11 @@ int combo2dGetObjMaxCount(int comboType, int objType) {
 		case COMBO2D_TYPE_AOB:
 			if (objType == FILE_TYPE_CELL) return 1;
 			if (objType == FILE_TYPE_NANR) return 1;
+			return 0;
+		case COMBO2D_TYPE_GRF_BG:
+			if (objType == FILE_TYPE_PALETTE) return 1;
+			if (objType == FILE_TYPE_CHARACTER) return 1;
+			if (objType == FILE_TYPE_SCREEN) return 1;
 			return 0;
 		case COMBO2D_TYPE_DATAFILE:
 			//no particular requirements
@@ -414,9 +424,36 @@ static int combo2dIsValidAob(const unsigned char *file, unsigned int size) {
 	return 1;
 }
 
+static int combo2dIsValidGrf(const unsigned char *buffer, unsigned int size) {
+	int type = GrfIsValid(buffer, size);
+	if (type == GRF_TYPE_INVALID) return 0;
+
+	unsigned int palSize, gfxSize, scrSize, headerSize;
+	unsigned char *gfx = GrfReadBlockUncompressed(buffer, size, "GFX ", &gfxSize);
+	unsigned char *pal = GrfReadBlockUncompressed(buffer, size, "PAL ", &palSize);
+	unsigned char *scr = GrfReadBlockUncompressed(buffer, size, "MAP ", &scrSize);
+	unsigned char *hdr = GrfGetHeader(buffer, size, &headerSize);
+
+	int valid = 0;
+	if (hdr == NULL || gfx == NULL || pal == NULL) goto Invalid;
+
+	int gfxAttr = *(const uint16_t *) (hdr + 0x2);
+	int scrType = *(const uint16_t *) (hdr + 0x4);
+	if (gfxAttr != 4 && gfxAttr != 8) goto Invalid;
+	if (scrType > 4 || (scrType != 0 && scr == NULL)) goto Invalid;
+
+	valid = 1;
+Invalid:
+	if (gfx != NULL) free(gfx);
+	if (pal != NULL) free(pal);
+	if (scr != NULL) free(scr);
+	return valid;
+}
+
 int combo2dIsValid(const unsigned char *file, unsigned int size) {
 	if (combo2dIsValid5bg(file, size)) return COMBO2D_TYPE_5BG;
 	if (combo2dIsValid5bgObj(file, size)) return COMBO2D_TYPE_5BG_OBJ;
+	if (combo2dIsValidGrf(file, size)) return COMBO2D_TYPE_GRF_BG;
 	if (combo2dIsValidAob(file, size)) return COMBO2D_TYPE_AOB;
 	if (combo2dIsValidBncd(file, size)) return COMBO2D_TYPE_BNCD;
 	if (combo2dIsValidTimeAce(file, size)) return COMBO2D_TYPE_TIMEACE;
@@ -926,6 +963,75 @@ static int combo2dReadAob(COMBO2D *combo, const unsigned char *buffer, unsigned 
 	return 0;
 }
 
+static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
+	//int type = GrfIsValid(buffer, size);
+
+	unsigned int palSize, gfxSize, scrSize, headerSize;
+	unsigned char *gfx = GrfReadBlockUncompressed(buffer, size, "GFX ", &gfxSize);
+	unsigned char *pal = GrfReadBlockUncompressed(buffer, size, "PAL ", &palSize);
+	unsigned char *scr = GrfReadBlockUncompressed(buffer, size, "MAP ", &scrSize);
+	unsigned char *hdr = GrfGetHeader(buffer, size, &headerSize);
+
+	int gfxAttr = *(const uint16_t *) (hdr + 0x2);
+	int scrType = *(const uint16_t *) (hdr + 0x4);
+	unsigned int width = *(const uint32_t *) (hdr + 0x10);
+	unsigned int height = *(const uint32_t *) (hdr + 0x14);
+
+	unsigned int sizeChar = 8 * gfxAttr;
+
+	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
+	PalInit(nclr, NCLR_TYPE_COMBO);
+	nclr->nBits = gfxAttr;
+	nclr->nColors = palSize / sizeof(COLOR);
+	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+	memcpy(nclr->colors, pal, nclr->nColors * sizeof(COLOR));
+
+	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+	ChrInit(ncgr, NCGR_TYPE_COMBO);
+	ncgr->nBits = gfxAttr;
+	ncgr->nTiles = gfxSize / sizeChar;
+	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
+	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ChrReadGraphics(ncgr, gfx);
+
+	if (scrType != 0) {
+		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
+		ScrInit(nscr, NSCR_TYPE_COMBO);
+		nscr->tilesX = width / 8;
+		nscr->tilesY = height / 8;
+		nscr->dataSize = nscr->tilesX * nscr->tilesY * sizeof(uint16_t);
+		nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
+
+		switch (scrType) {
+			case 1: nscr->colorMode = SCREENCOLORMODE_16x16;  nscr->fmt = SCREENFORMAT_TEXT;      break; // text
+			case 2: nscr->colorMode = SCREENCOLORMODE_256x1;  nscr->fmt = SCREENFORMAT_TEXT;      break; // text
+			case 3: nscr->colorMode = SCREENCOLORMODE_256x1;  nscr->fmt = SCREENFORMAT_AFFINE;    break; // affine
+			case 4: nscr->colorMode = SCREENCOLORMODE_256x16; nscr->fmt = SCREENFORMAT_AFFINEEXT; break; // affine extended
+		}
+
+		if (nscr->fmt == SCREENFORMAT_AFFINE) {
+			//copy bytes
+			for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+				nscr->data[i] = (uint16_t) scr[i];
+			}
+		} else {
+			//copy direct
+			memcpy(nscr->data, scr, nscr->dataSize);
+		}
+		ScrComputeHighestCharacter(nscr);
+
+		combo2dLink(combo, &nscr->header);
+	}
+
+	combo2dLink(combo, &nclr->header);
+	combo2dLink(combo, &ncgr->header);
+
+	if (gfx != NULL) free(gfx);
+	if (pal != NULL) free(pal);
+	if (scr != NULL) free(scr);
+	return OBJ_STATUS_SUCCESS;
+}
+
 int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	int format = combo2dIsValid(buffer, size);
 	if (format == COMBO2D_TYPE_INVALID) return 1;
@@ -946,6 +1052,8 @@ int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size) 
 			return combo2dReadBncd(combo, buffer, size);
 		case COMBO2D_TYPE_AOB:
 			return combo2dReadAob(combo, buffer, size);
+		case COMBO2D_TYPE_GRF_BG:
+			return combo2dReadGrf(combo, buffer, size);
 	}
 	return 1;
 }
@@ -1238,6 +1346,72 @@ static int combo2dWriteMbb(COMBO2D *combo, BSTREAM *stream) {
 	return 0;
 }
 
+static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
+	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
+	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
+	NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
+
+	//image dimension
+	int width = ncgr->tilesX * 8, height = ncgr->tilesY * 8, screenType = 0;
+	if (nscr != NULL) {
+		width = nscr->tilesX * 8;
+		height = nscr->tilesY * 8;
+
+		switch (nscr->fmt) {
+			case SCREENFORMAT_TEXT:
+				if (nscr->colorMode == SCREENCOLORMODE_16x16) screenType = 1;
+				else screenType = 2;
+				break;
+			case SCREENFORMAT_AFFINE:
+				screenType = 3;
+				break;
+			case SCREENFORMAT_AFFINEEXT:
+				screenType = 4;
+				break;
+		}
+	}
+
+	unsigned int gfxSize;
+	BSTREAM stmChars;
+	bstreamCreate(&stmChars, NULL, 0);
+	ChrWriteGraphics(ncgr, &stmChars);
+	unsigned char *gfxData = bstreamToByteArray(&stmChars, &gfxSize);
+
+	BSTREAM grf;
+	GrfStreamCreate(&grf);
+
+	unsigned char hdr[0x18] = { 0 };
+	*(uint16_t *) (hdr + 0x00) = 2; // version 2
+	*(uint16_t *) (hdr + 0x02) = ncgr->nBits;
+	*(uint16_t *) (hdr + 0x04) = screenType;
+	*(uint16_t *) (hdr + 0x08) = nclr->nColors;
+	*(uint8_t *) (hdr + 0x0A) = 8; // character width
+	*(uint8_t *) (hdr + 0x0B) = 8; // character height
+	*(uint32_t *) (hdr + 0x10) = width;
+	*(uint32_t *) (hdr + 0x14) = height;
+	GrfStreamWriteBlock(&grf, "HDRX", hdr, sizeof(hdr));
+
+	GrfStreamWriteBlockCompressed(&grf, "PAL ", nclr->colors, nclr->nColors * sizeof(COLOR), COMPRESSION_NONE);
+	GrfStreamWriteBlockCompressed(&grf, "GFX ", gfxData, gfxSize, COMPRESSION_LZ77);
+	if (nscr != NULL) {
+		if (screenType == 3) {
+			unsigned char *scr = (unsigned char *) calloc(1, nscr->dataSize / 2);
+			for (unsigned int i = 0; i < nscr->dataSize / 2; i++) scr[i] = (unsigned char) nscr->data[i];
+			GrfStreamWriteBlockCompressed(&grf, "MAP ", scr, nscr->dataSize / 2, COMPRESSION_LZ77);
+			free(scr);
+		} else {
+			GrfStreamWriteBlockCompressed(&grf, "MAP ", nscr->data, nscr->dataSize, COMPRESSION_LZ77);
+		}
+	}
+
+	GrfStreamFinalize(&grf);
+	GrfStreamFlushOut(&grf, stream);
+	GrfStreamFree(&grf);
+
+	free(gfxData);
+	return OBJ_STATUS_SUCCESS;
+}
+
 int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 	if (!combo2dCanSave(combo)) return 1;
 
@@ -1255,9 +1429,11 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 			return combo2dWriteDataFile(combo, stream);
 		case COMBO2D_TYPE_MBB:
 			return combo2dWriteMbb(combo, stream);
+		case COMBO2D_TYPE_GRF_BG:
+			return combo2dWriteGrf(combo, stream);
 	}
 
-	return 0;
+	return OBJ_STATUS_INVALID;
 }
 
 int combo2dWriteFile(COMBO2D *combo, LPWSTR path) {

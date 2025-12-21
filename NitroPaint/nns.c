@@ -952,3 +952,51 @@ unsigned char *GrfGetHeader(const unsigned char *buffer, unsigned int size, unsi
 	return NULL;
 }
 
+
+
+void GrfStreamCreate(BSTREAM *stream) {
+	bstreamCreate(stream, NULL, 0);
+
+	uint32_t dummy = 4;
+	bstreamWrite(stream, "RIFF", 4);
+	bstreamWrite(stream, &dummy, sizeof(dummy));
+	bstreamWrite(stream, "GRF ", 4);
+}
+
+void GrfStreamWriteBlock(BSTREAM *stream, const char *signature, const void *data, unsigned int size) {
+	uint32_t sizeField = (size + 3) & ~3;
+	bstreamWrite(stream, signature, 4);
+	bstreamWrite(stream, &sizeField, sizeof(sizeField));
+	bstreamWrite(stream, data, size);
+	bstreamAlign(stream, 4);
+}
+
+void GrfStreamWriteBlockCompressed(BSTREAM *stream, const char *signature, const void *data, unsigned int size, int compression) {
+	unsigned int compSize;
+	void *comp;
+	if (compression != COMPRESSION_NONE) {
+		//compress
+		comp = CxCompress(data, size, compression, &compSize);
+	} else {
+		//create dummy header
+		compSize = size + 4;
+		comp = calloc(compSize, 1);
+		*(uint32_t *) comp = size << 8;
+		memcpy((unsigned char *) comp + 4, data, size);
+	}
+	GrfStreamWriteBlock(stream, signature, comp, compSize);
+	free(comp);
+}
+
+void GrfStreamFinalize(BSTREAM *stream) {
+	//put data size field
+	*(uint32_t *) (stream->buffer + 4) = stream->size - 8;
+}
+
+void GrfStreamFlushOut(BSTREAM *stream, BSTREAM *out) {
+	bstreamWrite(out, stream->buffer, stream->size);
+}
+
+void GrfStreamFree(BSTREAM *stream) {
+	bstreamFree(stream);
+}
