@@ -240,7 +240,7 @@ static inline unsigned int RxiHistHashColor(const RxYiqColor *yiq) {
 #endif
 }
 
-static void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight) {
+void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight) {
 	RxHistogram *histogram = reduction->histogram;
 	if (reduction->status != RX_STATUS_OK) return;
 

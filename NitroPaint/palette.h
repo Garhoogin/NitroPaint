@@ -562,6 +562,23 @@ void RxApplyFlags(
 );
 
 // -----------------------------------------------------------------------------------------------
+// Name: RxHistAddColor
+//
+// Adds a single color to the histogram with the specified weight. If the color already exists in
+// the histogram, then its weight will be increased by the specified weight.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   col           The color to add to the histogram
+//   weight        The weight given to the color
+// -----------------------------------------------------------------------------------------------
+void RxHistAddColor(
+	RxReduction      *reduction,  // the color reduction context
+	const RxYiqColor *col,        // the color to add
+	double            weight      // the color's weight
+);
+
+// -----------------------------------------------------------------------------------------------
 // Name: RxHistAdd
 //
 // Add an image's color data to the histogram of a color reduction context.
