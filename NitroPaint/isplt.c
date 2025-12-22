@@ -49,6 +49,7 @@
 #define MEAN_I2 0.17913131472450233      // mean of I^2
 #define MEAN_Q2 0.13878842692845322      // mean of Q^2
 
+
 //struct for internal processing of color leaves
 typedef struct {
 	double y;
@@ -1140,7 +1141,7 @@ static void RxiVoronoiAccumulateClusters(RxReduction *reduction) {
 		RxHistEntry *entry = reduction->histogramFlat[i];
 
 		double bestDistance;
-		int bestIndex = RxiPaletteFindClosestColor(reduction, reduction->paletteYiqCopy, reduction->nUsedColors, &entry->color, &bestDistance);
+		int bestIndex = RxPaletteFindClosestColorYiq(reduction, &entry->color, &bestDistance);
 
 		//add to total. YIQ colors scaled by alpha to be unscaled later.
 		double weight = entry->weight;
@@ -1189,6 +1190,9 @@ static void RxiVoronoiMoveToCluster(RxReduction *reduction, RxHistEntry *entry, 
 
 static int RxiVoronoiIterate(RxReduction *reduction) {
 	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
+
+	//load the palette into the acceleration structure
+	RxPaletteLoad(reduction, reduction->paletteRgbCopy, reduction->nUsedColors);
 
 	//map histogram colors to existing clusters and accumulate error.
 	RxiVoronoiAccumulateClusters(reduction);
@@ -1304,13 +1308,16 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		}
 	}
 
+	//load the new palette data into the accelerator
+	RxPaletteLoad(reduction, reduction->paletteRgbCopy, reduction->nUsedColors);
+
 	//compute new error
 	double error = 0.0;
 	for (int i = 0; i < reduction->histogram->nEntries; i++) {
 		RxHistEntry *hist = reduction->histogramFlat[i];
 		
 		double err;
-		hist->entry = RxiPaletteFindClosestColor(reduction, reduction->paletteYiqCopy, reduction->nUsedColors, &hist->color, &err);
+		hist->entry = RxPaletteFindClosestColorYiq(reduction, &hist->color, &err);
 		error += err * hist->weight;
 	}
 
