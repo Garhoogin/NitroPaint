@@ -565,7 +565,7 @@ static void MesgEditorUpdateText(MesgEditorData *data) {
 
 	void *mesg = data->mesg->messages[data->curMsg].message;
 	wchar_t *unicode = MesgEditorMessageToText(mesg, data->mesg->encoding, 0, data->decodeSystemTags, 1);
-	SendMessage(data->hWndEdit, WM_SETTEXT, wcslen(unicode), (LPARAM) unicode);
+	UiEditSetText(data->hWndEdit, unicode);
 	free(unicode);
 
 	MesgEditorUpdatePreview(data);
@@ -619,7 +619,7 @@ static void MesgEditorOnDestroyFontEditor(EDITOR_DATA *ed, void *param) {
 		if (idx < curFontIdx) curFontIdx--;
 
 		data->fontEditor = *(NFTRVIEWERDATA **) StListGetPtr(&data->fontEditors, curFontIdx);
-		SendMessage(data->hWndFontList, CB_SETCURSEL, curFontIdx, 0);
+		UiCbSetCurSel(data->hWndFontList, curFontIdx);
 	}
 
 	MesgEditorUpdatePreview(data);
@@ -649,7 +649,7 @@ static void MesgEditorSetAssociatedFontEditor(MesgEditorData *data, NFTRVIEWERDA
 	size_t idx = StListIndexOf(&data->fontEditors, &nftrViewerData);
 
 	data->fontEditor = nftrViewerData;
-	if (idx <= ST_INDEX_MAX) SendMessage(data->hWndFontList, CB_SETCURSEL, idx, 0);
+	if (idx <= ST_INDEX_MAX) UiCbSetCurSel(data->hWndFontList, idx);
 	MesgEditorUpdatePreview(data);
 }
 
@@ -659,7 +659,7 @@ static void MesgEditorAddFontEditor(MesgEditorData *data, NFTRVIEWERDATA *nftrVi
 	//add to dropdown
 	LPCWSTR name = ObjGetFileNameFromPath(nftrViewerData->szOpenFile);
 	if (name[0] == L'\0') name = L"Untitled";
-	SendMessage(data->hWndFontList, CB_ADDSTRING, wcslen(name), (LPARAM) name);
+	UiCbAddString(data->hWndFontList, name);
 
 	//add destroy callback
 	EditorRegisterDestroyCallback((EDITOR_DATA *) nftrViewerData, MesgEditorOnDestroyFontEditor, data);
@@ -681,9 +681,7 @@ static void MesgEditorOnChangeText(HWND hWnd, HWND hWndCtl, int notif, void *par
 	MesgEditorData *data = (MesgEditorData *) param;
 	if (data->updatingEdit || data->curMsg >= data->mesg->nMsg) return;
 
-	unsigned int len = SendMessage(data->hWndEdit, WM_GETTEXTLENGTH, 0, 0);
-	wchar_t *src = (wchar_t *) calloc(len + 1, sizeof(wchar_t));
-	SendMessage(data->hWndEdit, WM_GETTEXT, len + 1, (LPARAM) src);
+	wchar_t *src = UiEditGetText(data->hWndEdit);
 
 	// update
 	void *msg = MesgEditorCompileMessage(src, data->mesg->encoding);
@@ -703,7 +701,7 @@ static void MesgEditorOnChangeText(HWND hWnd, HWND hWndCtl, int notif, void *par
 static void MesgEditorOnChangeFont(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	MesgEditorData *data = (MesgEditorData *) param;
 
-	size_t sel = SendMessage(data->hWndFontList, CB_GETCURSEL, 0, 0);
+	size_t sel = UiCbGetCurSel(data->hWndFontList);
 	if (sel < data->fontEditors.length) {
 		MesgEditorSetAssociatedFontEditor(data, *(NFTRVIEWERDATA **) StListGetPtr(&data->fontEditors, sel));
 	}
@@ -781,7 +779,7 @@ static void MesgEditorOnSetEncoding(HWND hWnd, HWND hWndCtl, int notif, void *pa
 	MesgEditorData *data = (MesgEditorData *) param;
 
 	int curval = data->mesg->encoding;
-	int newval = SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+	int newval = UiCbGetCurSel(hWndCtl);
 	if (newval == curval) return;
 	
 	//if we would lose information... ASCII, SJIS and undefined coding do not encode the full Unicode space
@@ -790,7 +788,7 @@ static void MesgEditorOnSetEncoding(HWND hWnd, HWND hWndCtl, int notif, void *pa
 		if (curval == MESG_ENCODING_SJIS || curval == MESG_ENCODING_UTF16 || curval == MESG_ENCODING_UTF8) {
 			int id = MessageBox(hWnd, L"Changing the encoding may cause a loss of information. Continue?", L"Warning", MB_ICONWARNING | MB_YESNO);
 			if (id == IDNO) {
-				SendMessage(hWndCtl, CB_SETCURSEL, curval, 0);
+				UiCbSetCurSel(hWndCtl, curval);
 				return; // do not proceed
 			}
 		}
@@ -924,7 +922,7 @@ static void MesgEditorOnInitialize(MesgEditorData *data, MesgFile *mesg, LPCWSTR
 	EnableWindow(data->hWndEditData, data->mesg->msgExtra > 0);
 
 	//set encoding
-	SendMessage(data->hWndEncoding, CB_SETCURSEL, mesg->encoding, 0);
+	UiCbSetCurSel(data->hWndEncoding, mesg->encoding);
 
 	//set selection to string 0
 	MesgEditorSetSelection(data, 0);
@@ -975,7 +973,7 @@ static void MesgEditorDeleteMessage(MesgEditorData *data) {
 		}
 	} else {
 		//empty the edit
-		SendMessage(data->hWndEdit, WM_SETTEXT, 0, (LPARAM) L"");
+		UiEditSetText(data->hWndEdit, L"");
 	}
 }
 

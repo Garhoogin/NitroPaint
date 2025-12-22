@@ -1554,7 +1554,7 @@ static void CellViewerSetMappingModeSelection(NCERVIEWERDATA *data, int mapping)
 	}
 	if (idx != -1) {
 		CellViewerSetMappingMode(data, mapping);
-		SendMessage(data->hWndMappingMode, CB_SETCURSEL, idx, 0);
+		UiCbSetCurSel(data->hWndMappingMode, idx);
 	}
 }
 
@@ -1713,7 +1713,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			GX_OBJVRAMMODE_CHAR_1D_128K,
 			GX_OBJVRAMMODE_CHAR_1D_256K
 		};
-		int sel = mappings[SendMessage(data->hWndMappingMode, CB_GETCURSEL, 0, 0)];
+		int sel = mappings[UiCbGetCurSel(data->hWndMappingMode)];
 		CellViewerSetMappingMode(data, sel);
 		changed = 1;
 
@@ -2549,7 +2549,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				case GX_OBJVRAMMODE_CHAR_1D_256K:
 					mappingIndex = 4; break;
 			}
-			SendMessage(data->hWndMappingMode, CB_SETCURSEL, mappingIndex, 0);
+			UiCbSetCurSel(data->hWndMappingMode, mappingIndex);
 
 			if (data->ncer->isEx2d) {
 				//make 1D
@@ -2703,7 +2703,7 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 		case WM_TIMER:
 		{
 			int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
-			int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
+			int boundType = UiCbGetCurSel(data->hWndBoundType);
 			int affine = GetCheckboxChecked(data->hWndAffine);
 
 			//invalidate update part
@@ -2726,8 +2726,8 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 		{
 			int posX = GetEditNumber(data->hWndPosX);
 			int posY = GetEditNumber(data->hWndPosY);
-			int anchorX = SendMessage(data->hWndAnchorX, CB_GETCURSEL, 0, 0);
-			int anchorY = SendMessage(data->hWndAnchorY, CB_GETCURSEL, 0, 0);
+			int anchorX = UiCbGetCurSel(data->hWndAnchorX);
+			int anchorY = UiCbGetCurSel(data->hWndAnchorY);
 			int affine = GetCheckboxChecked(data->hWndAffine);
 
 			PAINTSTRUCT ps;
@@ -2787,7 +2787,7 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			if (px != NULL) {
 				int nObj, nChars = 0;
 				int aggressiveness = GetTrackbarPosition(data->hWndAggressiveness);
-				int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
+				int boundType = UiCbGetCurSel(data->hWndBoundType);
 				OBJ_BOUNDS *bounds = CellgenMakeCell(px, width, height, aggressiveness, boundType, affine, &nObj);
 
 				for (int i = 0; i < nObj; i++) {
@@ -2921,9 +2921,9 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 			for (int i = 0; i < 16; i++) {
 				WCHAR bf[16];
 				wsprintfW(bf, L"Palette %d", i);
-				SendMessage(data->hWndPalette, CB_ADDSTRING, 0, (LPARAM) bf);
+				UiCbAddString(data->hWndPalette, bf);
 			}
-			SendMessage(data->hWndPalette, CB_SETCURSEL, 0, 0);
+			UiCbSetCurSel(data->hWndPalette, 0);
 
 			//set timer
 			SetTimer(hWnd, 1, 50, NULL);
@@ -2965,14 +2965,14 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				//cell params
 				int affine = GetCheckboxChecked(data->hWndAffine);
 				int affineIdx = GetEditNumber(data->hWndMatrixSlot);
-				int prio = SendMessage(data->hWndPriority, CB_GETCURSEL, 0, 0);
-				int insertMode = SendMessage(data->hWndWriteMode, CB_GETCURSEL, 0, 0);
-				int boundType = SendMessage(data->hWndBoundType, CB_GETCURSEL, 0, 0);
+				int prio = UiCbGetCurSel(data->hWndPriority);
+				int insertMode = UiCbGetCurSel(data->hWndWriteMode);
+				int boundType = UiCbGetCurSel(data->hWndBoundType);
 				if (!affine) affineIdx = 0;
 
 				//palette params
 				int writePalette = GetCheckboxChecked(data->hWndWritePalette);
-				int paletteIndex = SendMessage(data->hWndPalette, CB_GETCURSEL, 0, 0);
+				int paletteIndex = UiCbGetCurSel(data->hWndPalette);
 				int paletteOffset = GetEditNumber(data->hWndPaletteOffset);
 				int paletteLength = GetEditNumber(data->hWndPaletteLength);
 				if (paletteOffset == 0) {
@@ -2983,8 +2983,8 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				//position params
 				int ofsX = GetEditNumber(data->hWndPosX);
 				int ofsY = GetEditNumber(data->hWndPosY);
-				int anchorX = SendMessage(data->hWndAnchorX, CB_GETCURSEL, 0, 0);
-				int anchorY = SendMessage(data->hWndAnchorY, CB_GETCURSEL, 0, 0);
+				int anchorX = UiCbGetCurSel(data->hWndAnchorX);
+				int anchorY = UiCbGetCurSel(data->hWndAnchorY);
 
 				//graphics
 				int optimize = GetCheckboxChecked(data->hWndOptimize);

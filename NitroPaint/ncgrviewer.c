@@ -1093,9 +1093,9 @@ static void ChrViewerPopulateWidthField(NCGRVIEWERDATA *data) {
 	for (int i = 1; i <= nTiles; i++) {
 		if (nTiles % i) continue;
 		wsprintfW(bf, L"%d", i);
-		SendMessage(data->hWndWidthDropdown, CB_ADDSTRING, 0, (LPARAM) bf);
+		UiCbAddString(data->hWndWidthDropdown, bf);
 		if (i == data->ncgr->tilesX) {
-			SendMessage(data->hWndWidthDropdown, CB_SETCURSEL, (WPARAM) nStrings, 0);
+			UiCbSetCurSel(data->hWndWidthDropdown, (WPARAM) nStrings);
 		}
 		nStrings++;
 	}
@@ -1201,9 +1201,9 @@ static void ChrViewerOnCreate(NCGRVIEWERDATA *data) {
 	WCHAR bf[] = L"Palette 00";
 	for (int i = 0; i < 16; i++) {
 		wsprintfW(bf, L"Palette %02d", i);
-		SendMessage(data->hWndPaletteDropdown, CB_ADDSTRING, 0, (LPARAM) bf);
+		UiCbAddString(data->hWndPaletteDropdown, bf);
 	}
-	SendMessage(data->hWndPaletteDropdown, CB_SETCURSEL, 0, 0);
+	UiCbSetCurSel(data->hWndPaletteDropdown, 0);
 
 	//read config data
 	if (!g_configuration.ncgrViewerConfiguration.gridlines) {
@@ -1321,7 +1321,7 @@ static int ChrViewerOnTimer(NCGRVIEWERDATA *data, int idTimer) {
 
 static void ChrViewerOnCtlCommand(NCGRVIEWERDATA *data, HWND hWndControl, int notification) {
 	if (notification == CBN_SELCHANGE && hWndControl == data->hWndPaletteDropdown) {
-		int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+		int sel = UiCbGetCurSel(hWndControl);
 		data->selectedPalette = sel;
 		InvalidateRect(data->hWnd, NULL, FALSE);
 
@@ -1329,7 +1329,7 @@ static void ChrViewerOnCtlCommand(NCGRVIEWERDATA *data, HWND hWndControl, int no
 		if (hWndNclrViewer != NULL) InvalidateRect(hWndNclrViewer, NULL, FALSE);
 	} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndWidthDropdown) {
 		WCHAR text[16];
-		int selected = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+		int selected = UiCbGetCurSel(hWndControl);
 		SendMessage(hWndControl, CB_GETLBTEXT, (WPARAM) selected, (LPARAM) text);
 		
 		ChrViewerSetWidth(data, _wtol(text));
@@ -2626,11 +2626,11 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					//get OBJ size
 					const int objWidths[] = { 8, 8, 8, 16, 16, 16, 32, 32, 32, 32, 64, 64 };
 					const int objHeights[] = { 8, 16, 32, 8, 16, 32, 8, 16, 32, 64, 32, 64 };
-					int objSizeSelection = SendMessage(data->hWndObjSize, CB_GETCURSEL, 0, 0);
+					int objSizeSelection = UiCbGetCurSel(data->hWndObjSize);
 
 					//get mapping setting
 					const int mapGranularities[] = { 32, 64, 128, 256 };
-					int mappingGranularity = mapGranularities[SendMessage(data->hWndMappingGranularity, CB_GETCURSEL, 0, 0)];
+					int mappingGranularity = mapGranularities[UiCbGetCurSel(data->hWndMappingGranularity)];
 					mappingGranularity /= (8 * data->ncgr->nBits);
 					if (mappingGranularity == 0) mappingGranularity = 1;
 

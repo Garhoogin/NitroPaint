@@ -2340,7 +2340,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				if (hWndControl == data->nscrCreateInputButton) {
 					LPWSTR location = openFileDialog(hWnd, L"Select Image", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0", L"");
 					if (!location) break;
-					SendMessage(data->nscrCreateInput, WM_SETTEXT, (WPARAM) wcslen(location), (LPARAM) location);
+					UiEditSetText(data->nscrCreateInput, location);
 					free(location);
 				} else if (hWndControl == data->nscrCreateButton) {
 					WCHAR location[MAX_PATH + 1];
@@ -2377,7 +2377,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 					//global setting
 					BgGenerateParameters params;
-					params.fmt = SendMessage(data->hWndFormatDropdown, CB_GETCURSEL, 0, 0);
+					params.fmt = UiCbGetCurSel(data->hWndFormatDropdown);
 					NpGetBalanceSetting(&data->balance, &params.balance);
 
 					//dither setting
@@ -2386,14 +2386,14 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 					//palette region
 					params.compressPalette = GetCheckboxChecked(data->hWndRowLimit);
-					params.color0Mode = SendMessage(data->hWndColor0Setting, CB_GETCURSEL, 0, 0);
+					params.color0Mode = UiCbGetCurSel(data->hWndColor0Setting);
 					params.paletteRegion.base = GetEditNumber(data->hWndPaletteInput);
 					params.paletteRegion.count = GetEditNumber(data->hWndPalettesInput);
 					params.paletteRegion.offset = GetEditNumber(data->hWndPaletteOffset);
 					params.paletteRegion.length = GetEditNumber(data->hWndPaletteSize);
 
 					//character setting
-					params.bgType = SendMessage(data->nscrCreateDropdown, CB_GETCURSEL, 0, 0);
+					params.bgType = UiCbGetCurSel(data->nscrCreateDropdown);
 					params.characterSetting.base = GetEditNumber(data->hWndTileBase);
 					params.characterSetting.alignment = doAlign ? GetEditNumber(data->hWndAlignment) : 1;
 					params.characterSetting.compress = GetCheckboxChecked(data->hWndMergeTiles);
@@ -2420,7 +2420,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			} else if (HIWORD(wParam) == CBN_SELCHANGE) {
 				HWND hWndControl = (HWND) lParam;
 				if (hWndControl == data->nscrCreateDropdown) {
-					int index = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+					int index = UiCbGetCurSel(hWndControl);
 
 					//bitmap mode: character compression is unavailable
 					EnableWindow(data->hWndMaxChars, index != BGGEN_BGTYPE_BITMAP && GetCheckboxChecked(data->hWndMergeTiles));
@@ -2621,9 +2621,9 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					len++;
 				}
 				bf[len] = L'\0';
-				SendMessage(data->hWndFormat, CB_ADDSTRING, len, (LPARAM) bf);
+				UiCbAddString(data->hWndFormat, bf);
 			}
-			SendMessage(data->hWndFormat, CB_SETCURSEL, CT_4x4 - 1, 0);
+			UiCbSetCurSel(data->hWndFormat, CT_4x4 - 1);
 			
 			HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 			EnableWindow(hWndParent, FALSE);
@@ -2636,22 +2636,22 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			if (hWndControl == data->hWndNtftBrowseButton) {
 				LPWSTR path = openFileDialog(hWnd, L"Open NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
 				if (!path) break;
-				SendMessage(data->hWndNtftInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				UiEditSetText(data->hWndNtftInput, path);
 				free(path);
 			} else if (hWndControl == data->hWndNtfpBrowseButton) {
 				LPWSTR path = openFileDialog(hWnd, L"Open NTFP", L"NTFP Files (*.ntfp)\0*.ntfp\0All Files\0*.*\0", L"ntfp");
 				if (!path) break;
-				SendMessage(data->hWndNtfpInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				UiEditSetText(data->hWndNtfpInput, path);
 				free(path);
 			} else if (hWndControl == data->hWndNtfiBrowseButton) {
 				LPWSTR path = openFileDialog(hWnd, L"Open NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0", L"ntfi");
 				if (!path) break;
-				SendMessage(data->hWndNtfiInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				UiEditSetText(data->hWndNtfiInput, path);
 				free(path);
 			} else if (hWndControl == data->hWndFormat && notif == CBN_SELCHANGE) {
 				//every format needs NTFT. But not all NTFI or NTFP
-				int fmt = SendMessage(hWndControl, CB_GETCURSEL, 0, 0) + 1; //1-based since entry 0 corresponds to format 1
-					
+				int fmt = UiCbGetCurSel(hWndControl) + 1; //1-based since entry 0 corresponds to format 1
+				
 				//only 4x4 needs NTFI.
 				int needsNtfi = fmt == CT_4x4;
 				EnableWindow(data->hWndNtfiInput, needsNtfi);
@@ -2667,14 +2667,14 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			} else if (hWndControl == data->hWndConvertButton) {
 				WCHAR src[MAX_PATH + 1];
 				int width = GetEditNumber(data->hWndWidthInput);
-				int format = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+				int format = UiCbGetCurSel(data->hWndFormat) + 1;
 
 				int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
 				int bpp = bppArray[format];
 
 				int ntftSize = 0, ntfpSize = 0, ntfiSize = 0;
 				BYTE *ntft = NULL, *ntfp = NULL, *ntfi = NULL;
-					
+				
 				//read files
 				DWORD dwSizeHigh, dwRead;
 				char palName[17] = { 0 };
@@ -2802,16 +2802,16 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			LPCWSTR *formats = ObjGetFormatNamesByType(editorData->file->type);
 			formats++; //skip invalid
 			while (*formats != NULL) {
-				SendMessage(hWndFormatCombobox, CB_ADDSTRING, wcslen(*formats), (LPARAM) *formats);
+				UiCbAddString(hWndFormatCombobox, *formats);
 				formats++;
 			}
-			SendMessage(hWndFormatCombobox, CB_SETCURSEL, editorData->file->format - 1, 0);
+			UiCbSetCurSel(hWndFormatCombobox, editorData->file->format - 1);
 			LPCWSTR *compressions = g_ObjCompressionNames;
 			while (*compressions != NULL) {
-				SendMessage(hWndCompressionCombobox, CB_ADDSTRING, wcslen(*compressions), (LPARAM) *compressions);
+				UiCbAddString(hWndCompressionCombobox, *compressions);
 				compressions++;
 			}
-			SendMessage(hWndCompressionCombobox, CB_SETCURSEL, editorData->file->compression, 0);
+			UiCbSetCurSel(hWndCompressionCombobox, editorData->file->compression);
 
 			SetWindowLong(hWnd, sizeof(LPVOID), (LONG) hWndFormatCombobox);
 			SetWindowLong(hWnd, sizeof(LPVOID) * 2, (LONG) hWndCompressionCombobox);
@@ -2822,8 +2822,8 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 		{
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl && HIWORD(wParam) == BN_CLICKED) {
-				int fmt = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID)), CB_GETCURSEL, 0, 0) + 1;
-				int comp = SendMessage((HWND) GetWindowLong(hWnd, sizeof(LPVOID) * 2), CB_GETCURSEL, 0, 0);
+				int fmt = UiCbGetCurSel((HWND) GetWindowLong(hWnd, sizeof(LPVOID))) + 1;
+				int comp = UiCbGetCurSel((HWND) GetWindowLong(hWnd, sizeof(LPVOID) * 2));
 				EDITOR_DATA *editorData = (EDITOR_DATA *) EditorGetData(hWnd);
 				editorData->file->format = fmt;
 				editorData->file->compression = comp;
@@ -2880,7 +2880,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					//pre-populate path
 					CREATEDIALOGDATA *cdData = (CREATEDIALOGDATA *) GetWindowLongPtr(h, 0);
-					SendMessage(cdData->nscrCreateInput, WM_SETTEXT, wcslen(data->szPath), (LPARAM) data->szPath);
+					UiEditSetText(cdData->nscrCreateInput, data->szPath);
 
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					DoModal(h);
@@ -2946,13 +2946,13 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				if (hWndControl == data->hWndCreate) {
 					int is8bpp = GetCheckboxChecked(data->hWndBitDepth);
 					int nBits = is8bpp ? 8 : 4;
-					int mapping = SendMessage(data->hWndMapping, CB_GETCURSEL, 0, 0);
+					int mapping = UiCbGetCurSel(data->hWndMapping);
 					int mappings[] = { GX_OBJVRAMMODE_CHAR_2D, GX_OBJVRAMMODE_CHAR_1D_32K, GX_OBJVRAMMODE_CHAR_1D_64K,
 						GX_OBJVRAMMODE_CHAR_1D_128K, GX_OBJVRAMMODE_CHAR_1D_256K };
 					int heights[] = { 16, 32, 64, 128, 256 };
 					int height = heights[mapping];
 					mapping = mappings[mapping];
-					int format = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0);
+					int format = UiCbGetCurSel(data->hWndFormat);
 
 					int charFormats[] = { NCGR_TYPE_NCGR, NCGR_TYPE_NC, NCGR_TYPE_IC, NCGR_TYPE_AC, NCGR_TYPE_HUDSON, NCGR_TYPE_HUDSON2, NCGR_TYPE_BIN, NCGR_TYPE_BIN };
 					int palFormats[] = { NCLR_TYPE_NCLR, NCLR_TYPE_NC, NCLR_TYPE_BIN, NCLR_TYPE_BIN, NCLR_TYPE_HUDSON, NCLR_TYPE_HUDSON, NCLR_TYPE_BIN, NCLR_TYPE_BIN };
@@ -3078,7 +3078,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				int tilesX = width / 8;
 				int height = GetEditNumber(data->hWndHeight);
 				int tilesY = height / 8;
-				int fmtSel = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0);
+				int fmtSel = UiCbGetCurSel(data->hWndFormat);
 
 				//translate format selection to format and color mode
 				int colorMode = SCREENCOLORMODE_16x16, format = SCREENFORMAT_TEXT;
@@ -3253,7 +3253,7 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
 				if (path == NULL) break;
 
-				SendMessage(hWndForegroundPath, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				UiEditSetText(hWndForegroundPath, path);
 				free(path);
 			} else if (hWndControl == hWndBackgroundBrowse && notif == BN_CLICKED) {
 				//set background path
@@ -3261,7 +3261,7 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
 				if (path == NULL) break;
 
-				SendMessage(hWndBackgroundPath, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				UiEditSetText(hWndBackgroundPath, path);
 				free(path);
 			} else if (hWndControl == hWndSave && notif == BN_CLICKED) {
 				//get paths
@@ -3423,7 +3423,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 			//populate type field
 			if (combo != NULL) {
-				SendMessage(data->hWndFormat, CB_SETCURSEL, combo->header.format - 1, TRUE);
+				UiCbSetCurSel(data->hWndFormat, combo->header.format - 1);
 			}
 
 			break;
@@ -3433,7 +3433,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl != NULL) {
 				if (hWndControl == data->hWndOK) {
-					int fmt = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+					int fmt = UiCbGetCurSel(data->hWndFormat) + 1;
 
 					//if no combo in data, create a new one.
 					if (data->combo == NULL) {
@@ -3516,8 +3516,8 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			HWND hWndControl = (HWND) lParam;
 			int notif = HIWORD(wParam);
 			if ((hWndControl == data->hWndOK || LOWORD(wParam) == IDOK) && notif == BN_CLICKED) {
-				int depthSel = SendMessage(data->hWndPaletteDepth, CB_GETCURSEL, 0, 0);
-				int countSel = SendMessage(data->hWndPaletteCount, CB_GETCURSEL, 0, 0) + 1;
+				int depthSel = UiCbGetCurSel(data->hWndPaletteDepth);
+				int countSel = UiCbGetCurSel(data->hWndPaletteCount) + 1;
 
 				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
@@ -3612,7 +3612,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	if (!GetCheckboxChecked(data->hWnd15bit)) flag |= RX_FLAG_NO_MASK_BITS;
 
 	unsigned int plttOffs = 0;
-	switch (SendMessage(data->hWndAlphaMode, CB_GETCURSEL, 0, 0)) {
+	switch (UiCbGetCurSel(data->hWndAlphaMode)) {
 		case 0: // Mode=None
 			flag |= RX_FLAG_ALPHA_MODE_NONE;
 			plttOffs = 0; // no offset
@@ -3851,7 +3851,7 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 				LPWSTR path = openFileDialog(hWnd, L"Select a Color Palette", L"ACT Files (*.act)\0*.act\0All Files\0*.*\0", L"act");
 				if (path == NULL) break;
 
-				SendMessage(data->hWndFixedPalettePath, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				UiEditSetText(data->hWndFixedPalettePath, path);
 				free(path);
 			} else if (idCtl == IDCANCEL && notif == BN_CLICKED) {
 				//exit

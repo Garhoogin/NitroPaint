@@ -821,7 +821,7 @@ static void AnmViewerSetCurrentSequence(NANRVIEWERDATA *data, int seq, BOOL upda
 	}
 
 	//set frame type
-	SendMessage(data->hWndPlayMode, CB_SETCURSEL, data->nanr->sequences[seq].mode - NANR_SEQ_MODE_FORWARD, 0);
+	UiCbSetCurSel(data->hWndPlayMode, data->nanr->sequences[seq].mode - NANR_SEQ_MODE_FORWARD);
 
 	//set state
 	data->currentAnim = seq;
@@ -1119,7 +1119,7 @@ static void AnmViewerCmdOnSetPlayMode(HWND hWnd, HWND hWndCtl, int notif, void *
 	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
 	if (seq == NULL) return;
 
-	seq->mode = SendMessage(hWndCtl, CB_GETCURSEL, 0, 0) + NANR_SEQ_MODE_FORWARD;
+	seq->mode = UiCbGetCurSel(hWndCtl) + NANR_SEQ_MODE_FORWARD;
 }
 
 static void AnmViewerCmdOnNewSequence(HWND hWnd, HWND hWndCtl, int notif, void *param) {

@@ -2161,7 +2161,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 			if (notif == BN_CLICKED && hWndControl == data->hWndBrowse) {
 				LPWSTR path = openFilesDialog(hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
 				if (path != NULL) {
-					SendMessage(data->hWndFileInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+					UiEditSetText(data->hWndFileInput, path);
 					free(path);
 				}
 			} else if (notif == BN_CLICKED && (hWndControl == data->hWndGenerate || idc == IDOK)) {
@@ -2276,7 +2276,7 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 			int cmd = HIWORD(wParam);
 				
 			if (hWndControl == data->hWndType && cmd == CBN_SELCHANGE) {
-				int sel = SendMessage(hWndControl, CB_GETCURSEL, 0, 0);
+				int sel = UiCbGetCurSel(hWndControl);
 				EnableWindow(data->hWndChoose2, sel != 0);
 				InvalidateRect(data->hWndChoose2, NULL, TRUE);
 			} else if ((hWndControl == data->hWndChoose1 || hWndControl == data->hWndChoose2) && cmd == BN_CLICKED) {
@@ -2288,7 +2288,7 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 				NpChooseColor15(hWndMain, hWnd, result);
 			} else if ((hWndControl == data->hWndOK || idc == IDOK) && cmd == BN_CLICKED) {
 				//OK button selected. get mode and colors
-				int mode = SendMessage(data->hWndType, CB_GETCURSEL, 0, 0);
+				int mode = UiCbGetCurSel(data->hWndType);
 				COLOR32 col1 = ColorConvertFromDS(data->col1);
 				COLOR32 col2 = ColorConvertFromDS(data->col2);
 

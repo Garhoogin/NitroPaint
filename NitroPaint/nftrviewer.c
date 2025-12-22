@@ -665,7 +665,7 @@ static void NftrViewerSetBitDepth(NFTRVIEWERDATA *data, int depth, BOOL setDropd
 	if (setDropdown) {
 		//set font parameters
 		int bppsel = depth - 1;
-		SendMessage(data->hWndDepthList, CB_SETCURSEL, bppsel, 0);
+		UiCbSetCurSel(data->hWndDepthList, bppsel);
 	}
 
 	//update palette view
@@ -855,7 +855,7 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 
 	FbCreate(&data->fbPreview, hWnd, 1, 1);
 	data->previewText = _wcsdup(L"Preview text...");
-	SendMessage(data->hWndPreviewInput, WM_SETTEXT, 0, (LPARAM) data->previewText);
+	UiEditSetText(data->hWndPreviewInput, data->previewText);
 
 	//create command list
 	UiCtlMgrInit(&data->mgr, data);
@@ -1786,9 +1786,7 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 static void NftrViewerCmdPreviewTextChanged(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	//preview text updated
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
-	int length = SendMessage(data->hWndPreviewInput, WM_GETTEXTLENGTH, 0, 0);
-	wchar_t *buf = (wchar_t *) calloc(length + 1, sizeof(wchar_t));
-	SendMessage(data->hWndPreviewInput, WM_GETTEXT, length + 1, (LPARAM) buf);
+	wchar_t *buf = UiEditGetText(data->hWndPreviewInput);
 
 	if (data->previewText != NULL) {
 		free(data->previewText);
@@ -1893,7 +1891,7 @@ static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 static void NftrViewerCmdSetBitDepth(HWND hWnd, HWND hWndCtl, int notif, void *param) {
 	//set bit depth
 	NFTRVIEWERDATA *data = (NFTRVIEWERDATA *) param;
-	int sel = SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+	int sel = UiCbGetCurSel(hWndCtl);
 	int depth = sel + 1;
 	NftrViewerSetBitDepth(data, depth, FALSE);
 }
@@ -2086,8 +2084,7 @@ static LRESULT CALLBACK NftrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			SendMessage(data->hWndInputCellWidth, WM_SETTEXT, -1, (LPARAM) textbuf);
 			wsprintfW(textbuf, L"%d", data->nftr->cellHeight);
 			SendMessage(data->hWndInputCellHeight, WM_SETTEXT, -1, (LPARAM) textbuf);
-			wsprintfW(textbuf, L"%d", data->nftr->pxAscent);
-			SendMessage(data->hWndInputAscent, WM_SETTEXT, -1, (LPARAM) textbuf);
+			SetEditNumber(data->hWndInputAscent, data->nftr->pxAscent);
 
 			TedUpdateSize((EDITOR_DATA *) data, &data->ted, nftr->cellWidth, nftr->cellHeight);
 			InvalidateRect(data->hWnd, NULL, FALSE);

@@ -550,9 +550,9 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			WCHAR bf[16];
 			for (int i = 0; i < 16; i++) {
 				wsprintf(bf, L"Palette %02d", i);
-				SendMessage(data->hWndPaletteNumber, CB_ADDSTRING, (WPARAM) wcslen(bf), (LPARAM) bf);
+				UiCbAddString(data->hWndPaletteNumber, bf);
 			}
-			SendMessage(data->hWndPaletteNumber, CB_SETCURSEL, 0, 0);
+			UiCbSetCurSel(data->hWndPaletteNumber, 0);
 
 			//read config data
 			if (g_configuration.nscrViewerConfiguration.gridlines) {
@@ -814,7 +814,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int writeCharacter = GetCheckboxChecked(data->hWndCharacterLabel);
 
 					int character = GetEditNumber(data->hWndCharacterNumber);
-					int palette = SendMessage(data->hWndPaletteNumber, CB_GETCURSEL, 0, 0);
+					int palette = UiCbGetCurSel(data->hWndPaletteNumber);
 					
 					SendMessage(hWnd, NV_SETDATA, (WPARAM) character, (LPARAM) palette);
 					int tilesX = data->nscr->tilesX, tilesY = data->nscr->tilesY;
@@ -1076,7 +1076,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			for (int i = 0; i < 16; i++) {
 				WCHAR textBuffer[4];
 				wsprintf(textBuffer, L"%d", i);
-				SendMessage(data->hWndPaletteInput, CB_ADDSTRING, wcslen(textBuffer), (LPARAM) textBuffer);
+				UiCbAddString(data->hWndPaletteInput, textBuffer);
 			}
 			
 			EnableWindow(data->hWndDiffuseAmount, FALSE);
@@ -1123,7 +1123,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			data->nscrTileY = nscrTileY;
 			data->characterOrigin = charOrigin;
 
-			SendMessage(data->hWndPaletteInput, CB_SETCURSEL, palette, 0);
+			UiCbSetCurSel(data->hWndPaletteInput, palette);
 			break;
 		}
 		case WM_COMMAND:
@@ -1134,7 +1134,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					LPWSTR location = openFileDialog(hWnd, L"Select Bitmap", L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg\0All Files\0*.*\0", L"");
 					if (!location) break;
 
-					SendMessage(data->hWndBitmapName, WM_SETTEXT, wcslen(location), (LPARAM) location);
+					UiEditSetText(data->hWndBitmapName, location);
 
 					free(location);
 				} else if (hWndControl == data->hWndImportButton) {
@@ -1154,7 +1154,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					if (nPalettes > 16) nPalettes = 16;
 
 					RxBalanceSetting balance;
-					int paletteNumber = SendMessage(data->hWndPaletteInput, CB_GETCURSEL, 0, 0);
+					int paletteNumber = UiCbGetCurSel(data->hWndPaletteInput);
 					int dither = GetCheckboxChecked(data->hWndDitherCheckbox);
 					int newPalettes = GetCheckboxChecked(data->hWndNewPaletteCheckbox);
 					int newCharacters = GetCheckboxChecked(data->hWndNewCharactersCheckbox);
@@ -1316,7 +1316,7 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				int character = d & 0x3FF;
 				int palette = d >> 12;
 
-				SendMessage(data->hWndPaletteNumber, CB_SETCURSEL, palette, 0);
+				UiCbSetCurSel(data->hWndPaletteNumber, palette);
 				SetEditNumber(data->hWndCharacterNumber, character);
 			}
 			break;

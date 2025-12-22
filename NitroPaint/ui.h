@@ -79,6 +79,17 @@ HWND CreateListBox(HWND hWnd, int x, int y, int width, int height);
 HWND CreateTrackbar(HWND hWnd, int x, int y, int width, int height, int vMin, int vMax, int vDef);
 
 
+
+//
+// Get an edit control text.
+//
+wchar_t *UiEditGetText(HWND hWnd);
+
+//
+// Set an edit control text.
+//
+void UiEditSetText(HWND hWnd, const wchar_t *text);
+
 //
 // Get if a checkbox is checked.
 //
@@ -98,6 +109,23 @@ void SetEditNumber(HWND hWnd, int n);
 // Get trackbar position
 //
 int GetTrackbarPosition(HWND hWnd);
+
+
+//
+// Get combobox selection
+//
+int UiCbGetCurSel(HWND hWnd);
+
+//
+// Set combobox selection
+//
+void UiCbSetCurSel(HWND hWnd, int sel);
+
+//
+// Add a string to a combo box
+//
+void UiCbAddString(HWND hWnd, const wchar_t *str);
+
 
 //
 // Gets the selected listbox item.

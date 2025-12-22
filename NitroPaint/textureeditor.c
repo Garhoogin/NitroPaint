@@ -1210,7 +1210,7 @@ static int TexViewerJudgeColorCount(int bWidth, int bHeight) {
 }
 
 static void updateConvertDialog(TEXTUREEDITORDATA *data) {
-	int fmt = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+	int fmt = UiCbGetCurSel(data->hWndFormat) + 1;
 	BOOL isTranslucent = fmt == CT_A3I5 || fmt == CT_A5I3;
 	BOOL isPlttN = fmt == CT_4COLOR || fmt == CT_16COLOR || fmt == CT_256COLOR;
 	BOOL isPltt = fmt != CT_DIRECT;
@@ -1308,11 +1308,11 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					len++;
 				}
 				bf[len] = L'\0';
-				SendMessage(data->hWndFormat, CB_ADDSTRING, len, (LPARAM) bf);
+				UiCbAddString(data->hWndFormat, bf);
 			}
 
 			int format = TexViewerJudgeFormat(data->px, data->width, data->height);
-			SendMessage(data->hWndFormat, CB_SETCURSEL, format - 1, 0);
+			UiCbSetCurSel(data->hWndFormat, format - 1);
 
 			//based on the texture format and presence of transparent pixels, select default color 0 mode. This option
 			//only applies to paletteN texture formats, but we'll decide as though we were using one of those formats,
@@ -1369,7 +1369,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			}
 
 			if (pname != NULL) {
-				SendMessage(data->hWndPaletteName, WM_SETTEXT, wcslen(pname), (LPARAM) pname);
+				UiEditSetText(data->hWndPaletteName, pname);
 				free(pname);
 			}
 
@@ -1387,7 +1387,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					updateConvertDialog(data);
 					
 					//color count - update for paletted textures
-					int format = SendMessage(hWndControl, CB_GETCURSEL, 0, 0) + 1;
+					int format = UiCbGetCurSel(hWndControl) + 1;
 					if (format != CT_DIRECT && format != CT_4x4) {
 						int colorCounts[] = { 0, 32, 4, 16, 256, 0, 8, 0 };
 						SetEditNumber(data->hWndPaletteSize, colorCounts[format]);
@@ -1420,13 +1420,13 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 				} else if (hWndControl == data->hWndPaletteBrowse && controlCode == BN_CLICKED) {
 					LPWSTR path = openFileDialog(hWnd, L"Select palette", L"Palette Files\0*.nclr;*ncl.bin;*.ntfp\0All Files\0*.*\0\0", L"");
 					if (path != NULL) {
-						SendMessage(data->hWndPaletteInput, WM_SETTEXT, wcslen(path), (LPARAM) path);
+						UiEditSetText(data->hWndPaletteInput, path);
 						free(path);
 					}
 				} else if ((hWndControl == data->hWndDoConvertButton && controlCode == BN_CLICKED) || idc == IDOK) {
 					TxConversionParameters params = { 0 };
 
-					int fmt = SendMessage(data->hWndFormat, CB_GETCURSEL, 0, 0) + 1;
+					int fmt = UiCbGetCurSel(data->hWndFormat) + 1;
 
 					WCHAR path[MAX_PATH];
 					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH, (LPARAM) path);
@@ -2423,7 +2423,7 @@ LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				WCHAR *path = UiDlgBrowseForFolder(hWnd, L"Select output folder...");
 				if (path == NULL) break;
 
-				SendMessage(data->hWndDirectory, WM_SETTEXT, wcslen(path), (LPARAM) path);
+				UiEditSetText(data->hWndDirectory, path);
 				free(path);
 			} else if (notif == BN_CLICKED && (hWndControl == data->hWndClean || hWndControl == data->hWndConvert)) { //clean and convert buttons
 				//delete directory\converted, if it exists

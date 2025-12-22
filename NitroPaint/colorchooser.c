@@ -166,7 +166,7 @@ static VOID UpdateValues(HWND hWnd, COLORREF rgb) {
 	if (hWndFocus != data->inputs[5]) SetEditNumber(data->inputs[5], v);
 
 	wsprintf(text, L"%04X", ds);
-	if (hWndFocus != data->inputs[6]) SendMessage(data->inputs[6], WM_SETTEXT, 0, (LPARAM) text);
+	if (hWndFocus != data->inputs[6]) UiEditSetText(data->inputs[6], text);
 
 	InvalidateRect(hWnd, NULL, FALSE);
 	data->noUpdateTextBoxes = FALSE;

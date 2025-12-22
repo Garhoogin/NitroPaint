@@ -423,10 +423,10 @@ static void LytEditorFree(LYTEDITOR *ed) {
 
 static void LLytEditorSetCurrentElement(BNLLEDITORDATA *data, const BnllMessage *msg) {
 	//set UI controls
-	SendMessage(data->hWndAlignX, CB_SETCURSEL, msg->alignment.x, 0);
-	SendMessage(data->hWndAlignY, CB_SETCURSEL, msg->alignment.y, 0);
-	SendMessage(data->hWndFontInput, CB_SETCURSEL, msg->font, 0);
-	SendMessage(data->hWndPaletteInput, CB_SETCURSEL, msg->palette, 0);
+	UiCbSetCurSel(data->hWndAlignX, msg->alignment.x);
+	UiCbSetCurSel(data->hWndAlignY, msg->alignment.y);
+	UiCbSetCurSel(data->hWndFontInput, msg->font);
+	UiCbSetCurSel(data->hWndPaletteInput, msg->palette);
 	SetEditNumber(data->hWndColorInput, msg->color);
 	SetEditNumber(data->hWndSpacingX, msg->spaceX);
 	SetEditNumber(data->hWndSpacingY, msg->spaceY);
@@ -435,12 +435,12 @@ static void LLytEditorSetCurrentElement(BNLLEDITORDATA *data, const BnllMessage 
 	if (msg->msg == NULL) {
 		//uncheck message and disable input
 		SendMessage(data->hWndMessageLabel, BM_SETCHECK, BST_UNCHECKED, 0);
-		SendMessage(data->hWndMessageInput, WM_SETTEXT, 0, (LPARAM) L"");
+		UiEditSetText(data->hWndMessageInput, L"");
 		EnableWindow(data->hWndMessageInput, FALSE);
 	} else {
 		//check message and enable input
 		SendMessage(data->hWndMessageLabel, BM_SETCHECK, BST_CHECKED, 0);
-		SendMessage(data->hWndMessageInput, WM_SETTEXT, 0, (LPARAM) msg->msg);
+		UiEditSetText(data->hWndMessageInput, msg->msg);
 		EnableWindow(data->hWndMessageInput, TRUE);
 	}
 	RedrawWindow(data->hWndMessageInput, NULL, NULL, RDW_INVALIDATE | RDW_FRAME);
@@ -474,8 +474,8 @@ static void LytEditorUiUpdateOriginInputs(LYTEDITOR *data) {
 
 	int updating = data->updating;
 	data->updating = 1;
-	SendMessage(data->hWndOriginXDropdown, CB_SETCURSEL, pos->x.origin, 0);
-	SendMessage(data->hWndOriginYDropdown, CB_SETCURSEL, pos->y.origin, 0);
+	UiCbSetCurSel(data->hWndOriginXDropdown, pos->x.origin);
+	UiCbSetCurSel(data->hWndOriginYDropdown, pos->y.origin);
 	data->updating = updating;
 }
 
@@ -486,7 +486,7 @@ static void LytEditorSetCurrentElement(LYTEDITOR *data, int i) {
 	//set
 	data->curElem = i;
 	InvalidateRect(data->hWndPreview, NULL, FALSE);
-	/*if (i != -1) */SendMessage(data->hWndElementDropdown, CB_SETCURSEL, i, 0);
+	/*if (i != -1) */UiCbSetCurSel(data->hWndElementDropdown, i);
 
 	//populate controls
 	if (i != -1) {
@@ -516,7 +516,7 @@ static void LytEditorOnSelectElement(HWND hWnd, HWND hWndCtl, int notif, void *p
 	if (ed->updating) return;
 
 	//set current element
-	LytEditorSetCurrentElement(ed, SendMessage(hWndCtl, CB_GETCURSEL, 0, 0));
+	LytEditorSetCurrentElement(ed, UiCbGetCurSel(hWndCtl));
 }
 
 static void LytEditorOnSetPositionX(HWND hWnd, HWND hWndCtl, int notif, void *param) {
@@ -550,7 +550,7 @@ static void LytEditorOnSetOriginX(HWND hWnd, HWND hWndCtl, int notif, void *para
 	//set origin
 	JLytPosition *ppos = LytEditorGetElement(ed, ed->curElem);
 	if (ppos != NULL) {
-		ppos->x.origin = (JLytOrigin) SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+		ppos->x.origin = (JLytOrigin) UiCbGetCurSel(hWndCtl);
 		InvalidateRect(ed->hWndPreview, NULL, FALSE);
 	}
 }
@@ -562,7 +562,7 @@ static void LytEditorOnSetOriginY(HWND hWnd, HWND hWndCtl, int notif, void *para
 	//set origin
 	JLytPosition *ppos = LytEditorGetElement(ed, ed->curElem);
 	if (ppos != NULL) {
-		ppos->y.origin = (JLytOrigin) SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+		ppos->y.origin = (JLytOrigin) UiCbGetCurSel(hWndCtl);
 		InvalidateRect(ed->hWndPreview, NULL, FALSE);
 	}
 }
@@ -620,7 +620,7 @@ static void LytEditorOnAddElement(HWND hWnd, HWND hWndCtl, int notif, void *para
 	//add new string
 	WCHAR textbuf[32];
 	LytEditorGetElementName(ed, nElem - 1, textbuf);
-	SendMessage(ed->hWndElementDropdown, CB_ADDSTRING, 0, (LPARAM) textbuf);
+	UiCbAddString(ed->hWndElementDropdown, textbuf);
 
 	//select new element
 	LytEditorSetCurrentElement(ed, ed->curElem + 1);
@@ -706,7 +706,7 @@ static void LLytEditorOnSetAlignX(HWND hWnd, HWND hWndCtl, int notif, void *para
 	//set origin
 	BnllMessage *pmsg = (BnllMessage *) LytEditorGetElement(ed, ed->curElem);
 	if (pmsg != NULL) {
-		pmsg->alignment.x = (JLytOrigin) SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+		pmsg->alignment.x = (JLytOrigin) UiCbGetCurSel(hWndCtl);
 		InvalidateRect(ed->hWndPreview, NULL, FALSE);
 	}
 }
@@ -719,7 +719,7 @@ static void LLytEditorOnSetAlignY(HWND hWnd, HWND hWndCtl, int notif, void *para
 	//set origin
 	BnllMessage *pmsg = (BnllMessage *) LytEditorGetElement(ed, ed->curElem);
 	if (pmsg != NULL) {
-		pmsg->alignment.y = (JLytOrigin) SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+		pmsg->alignment.y = (JLytOrigin) UiCbGetCurSel(hWndCtl);
 		InvalidateRect(ed->hWndPreview, NULL, FALSE);
 	}
 }
@@ -758,7 +758,7 @@ static void LLytEditorOnSetFont(HWND hWnd, HWND hWndCtl, int notif, void *param)
 	//set font
 	BnllMessage *pmsg = (BnllMessage *) LytEditorGetElement(ed, ed->curElem);
 	if (pmsg != NULL) {
-		pmsg->font = SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+		pmsg->font = UiCbGetCurSel(hWndCtl);
 		InvalidateRect(ed->hWndPreview, NULL, FALSE);
 	}
 }
@@ -771,7 +771,7 @@ static void LLytEditorOnSetPalette(HWND hWnd, HWND hWndCtl, int notif, void *par
 	//set palette
 	BnllMessage *pmsg = (BnllMessage *) LytEditorGetElement(ed, ed->curElem);
 	if (pmsg != NULL) {
-		pmsg->palette = SendMessage(hWndCtl, CB_GETCURSEL, 0, 0);
+		pmsg->palette = UiCbGetCurSel(hWndCtl);
 		InvalidateRect(ed->hWndPreview, NULL, FALSE);
 	}
 }
@@ -797,9 +797,7 @@ static void LLytEditorOnSetMessage(HWND hWnd, HWND hWndCtl, int notif, void *par
 	//set message
 	BnllMessage *pmsg = (BnllMessage *) LytEditorGetElement(ed, ed->curElem);
 	if (pmsg != NULL) {
-		int len = SendMessage(data->hWndMessageInput, WM_GETTEXTLENGTH, 0, 0);
-		WCHAR *buf = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
-		SendMessage(data->hWndMessageInput, WM_GETTEXT, len + 1, (LPARAM) buf);
+		wchar_t *buf = UiEditGetText(data->hWndMessageInput);
 
 		//put buffer
 		if (pmsg->msg != NULL) free(pmsg->msg);
@@ -824,9 +822,7 @@ static void LLytEditorOnClickedMessageCheckbox(HWND hWnd, HWND hWndCtl, int noti
 			EnableWindow(data->hWndMessageInput, TRUE);
 
 			//get message
-			int len = SendMessage(data->hWndMessageInput, WM_GETTEXTLENGTH, 0, 0);
-			WCHAR *buf = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
-			SendMessage(data->hWndMessageInput, WM_GETTEXT, len + 1, (LPARAM) buf);
+			wchar_t *buf = UiEditGetText(data->hWndMessageInput);
 
 			//set message
 			if (pmsg->msg != NULL) free(pmsg->msg);
@@ -1052,7 +1048,7 @@ static void LytEditorOnInitialize(HWND hWnd, LYTEDITOR *ed, WPARAM wParam, LPARA
 	for (int i = 0; i < nElem; i++) {
 		WCHAR textbuf[32];
 		LytEditorGetElementName(ed, i, textbuf);
-		SendMessage(ed->hWndElementDropdown, CB_ADDSTRING, 0, (LPARAM) textbuf);
+		UiCbAddString(ed->hWndElementDropdown, textbuf);
 	}
 	LytEditorSetCurrentElement(ed, 0);
 
@@ -1768,7 +1764,7 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 				if (tmp != NULL) path = tmp + 1;
 
 				for (int j = 0; j < LYT_EDITOR_MAX_FONTS; j++) {
-					SendMessage(data->hWndDropdowns[j], CB_ADDSTRING, wcslen(path), (LPARAM) path);
+					UiCbAddString(data->hWndDropdowns[j], path);
 				}
 			}
 
@@ -1779,7 +1775,7 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 
 				//search
 				size_t findJ = StListIndexOf(&data->dataList, &curr);
-				SendMessage(data->hWndDropdowns[i], CB_SETCURSEL, findJ + 1, 0);
+				UiCbSetCurSel(data->hWndDropdowns[i], findJ + 1);
 			}
 
 			break;
@@ -1793,7 +1789,7 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 				//set linkage from selection.
 
 				for (int i = 0; i < LYT_EDITOR_MAX_FONTS; i++) {
-					int selI = SendMessage(data->hWndDropdowns[i], CB_GETCURSEL, 0, 0);
+					int selI = UiCbGetCurSel(data->hWndDropdowns[i]);
 
 					if (selI == 0) {
 						//0: none -> unregister

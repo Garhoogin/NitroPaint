@@ -44,11 +44,10 @@ HWND CreateCombobox(HWND hWnd, LPCWSTR *items, int nItems, int x, int y, int wid
 	HWND h = CreateWindow(L"COMBOBOX", L"", dwStyle, x, y, width, 100, hWnd, NULL, NULL, NULL);
 	if (items != NULL && nItems > 0) {
 		for (int i = 0; i < nItems; i++) {
-			LPCWSTR item = items[i];
-			SendMessage(h, CB_ADDSTRING, wcslen(item), (LPARAM) item);
+			UiCbAddString(h, items[i]);
 		}
 	}
-	SendMessage(h, CB_SETCURSEL, def, 0);
+	UiCbSetCurSel(h, def);
 	return h;
 }
 
@@ -70,6 +69,19 @@ int GetCheckboxChecked(HWND hWnd) {
 	return SendMessage(hWnd, BM_GETCHECK, 0, 0) == BST_CHECKED;
 }
 
+wchar_t *UiEditGetText(HWND hWnd) {
+	unsigned int length = SendMessage(hWnd, WM_GETTEXTLENGTH, 0, 0);
+	wchar_t *buf = (wchar_t *) calloc(length + 1, sizeof(wchar_t));
+	if (buf == NULL) return NULL;
+
+	SendMessage(hWnd, WM_GETTEXT, length + 1, (LPARAM) buf);
+	return buf;
+}
+
+void UiEditSetText(HWND hWnd, const wchar_t *text) {
+	SendMessage(hWnd, WM_SETTEXT, 0, (LPARAM) text);
+}
+
 int GetEditNumber(HWND hWnd) {
 	WCHAR buffer[32];
 	SendMessage(hWnd, WM_GETTEXT, sizeof(buffer) / sizeof(*buffer), (LPARAM) buffer);
@@ -79,11 +91,24 @@ int GetEditNumber(HWND hWnd) {
 void SetEditNumber(HWND hWnd, int n) {
 	WCHAR buffer[32];
 	int len = wsprintfW(buffer, L"%d", n);
-	SendMessage(hWnd, WM_SETTEXT, len, (LPARAM) buffer);
+	UiEditSetText(hWnd, buffer);
 }
 
 int GetTrackbarPosition(HWND hWnd) {
 	return SendMessage(hWnd, TBM_GETPOS, 0, 0);
+}
+
+
+int UiCbGetCurSel(HWND hWnd) {
+	return SendMessage(hWnd, CB_GETCURSEL, 0, 0);
+}
+
+void UiCbSetCurSel(HWND hWnd, int sel) {
+	SendMessage(hWnd, CB_SETCURSEL, sel, 0);
+}
+
+void UiCbAddString(HWND hWnd, const wchar_t *str) {
+	SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM) str);
 }
 
 
