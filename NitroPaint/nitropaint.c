@@ -2569,6 +2569,18 @@ void RegisterProgressWindowClass() {
 	RegisterGenericClass(L"ProgressWindowClass", ProgressWindowWndProc, sizeof(LPVOID));
 }
 
+static void *ReadWholeFile(const wchar_t *path, unsigned int *pSize) {
+	DWORD dwRead, dwSizeHigh;
+	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	unsigned int size = GetFileSize(hFile, &dwSizeHigh);
+	void *buffer = malloc(size);
+	ReadFile(hFile, buffer, size, &dwRead, NULL);
+	CloseHandle(hFile);
+
+	*pSize = size;
+	return buffer;
+}
+
 typedef struct {
 	HWND hWndNtftInput;
 	HWND hWndNtftBrowseButton;
@@ -2610,17 +2622,9 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			SetGUIFont(hWnd);
 
 			//populate the dropdown list
-			WCHAR bf[16];
-			int len;
 			for (int i = 1; i <= CT_DIRECT; i++) {
-				const char *str = TxNameFromTexFormat(i);
-				len = 0;
-				while (*str) {
-					bf[len] = *str;
-					str++;
-					len++;
-				}
-				bf[len] = L'\0';
+				WCHAR bf[16];
+				mbstowcs(bf, TxNameFromTexFormat(i), sizeof(bf) / sizeof(bf[0]));
 				UiCbAddString(data->hWndFormat, bf);
 			}
 			UiCbSetCurSel(data->hWndFormat, CT_4x4 - 1);
@@ -2669,31 +2673,22 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int width = GetEditNumber(data->hWndWidthInput);
 				int format = UiCbGetCurSel(data->hWndFormat) + 1;
 
-				int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
-				int bpp = bppArray[format];
+				unsigned int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+				unsigned int bpp = bppArray[format];
 
-				int ntftSize = 0, ntfpSize = 0, ntfiSize = 0;
+				unsigned int ntftSize = 0, ntfpSize = 0, ntfiSize = 0;
 				BYTE *ntft = NULL, *ntfp = NULL, *ntfi = NULL;
 				
 				//read files
-				DWORD dwSizeHigh, dwRead;
 				char palName[17] = { 0 };
 				SendMessage(data->hWndNtftInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
-				if (wcslen(src)) {
-					HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-					ntftSize = GetFileSize(hFile, &dwSizeHigh);
-					ntft = malloc(ntftSize);
-					ReadFile(hFile, ntft, ntftSize, &dwRead, NULL);
-					CloseHandle(hFile);
+				if (src[0]) {
+					ntft = ReadWholeFile(src, &ntftSize);
 				}
 
 				SendMessage(data->hWndNtfpInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
-				if (wcslen(src)) {
-					HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-					ntfpSize = GetFileSize(hFile, &dwSizeHigh);
-					ntfp = malloc(ntfpSize);
-					ReadFile(hFile, ntfp, ntfpSize, &dwRead, NULL);
-					CloseHandle(hFile);
+				if (src[0]) {
+					ntfi = ReadWholeFile(src, &ntfiSize);
 
 					//populate palette name. Scan for last \ or /
 					int lastIndex = -1;
@@ -2713,12 +2708,8 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 
 				SendMessage(data->hWndNtfiInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
-				if (wcslen(src)) {
-					HANDLE hFile = CreateFile(src, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-					ntfiSize = GetFileSize(hFile, &dwSizeHigh);
-					ntfi = malloc(ntfiSize);
-					ReadFile(hFile, ntfi, ntfiSize, &dwRead, NULL);
-					CloseHandle(hFile);
+				if (src[0]) {
+					ntfi = ReadWholeFile(src, &ntfiSize);
 				}
 
 				//sort out texture format requirements
@@ -2746,14 +2737,31 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					break;
 				}
 
-				//ok now actually convert
+				//texture height (round up)
 				int height = ntftSize * 8 / bpp / width;
+				int l2width = ilog2(width) - 3, l2height = ilog2(height) - 3;
+				if ((8 << l2height) < height) l2height++;
+
+				int padWidth = 8 << l2width, padHeight = 8 << l2height;
+
+				//pad data with zeros
+				if (padHeight > height) {
+					unsigned int ntftPadSize = padWidth * padHeight * bppArray[format] / 8;
+					ntft = realloc(ntft, ntftPadSize);
+					memset(ntft + ntftSize, 0, ntftPadSize - ntftSize);
+					if (ntfi != NULL) {
+						ntfi = realloc(ntfi, ntftPadSize / 2);
+						memset(ntfi + ntfiSize, 0, ntftPadSize / 2 - ntfiSize);
+					}
+				}
+
+				//ok now actually convert
 				TEXTURE texture = { 0 };
 				texture.palette.pal = (COLOR *) ntfp;
 				texture.palette.nColors = ntfpSize / 2;
 				texture.texels.texel = ntft;
 				texture.texels.cmp = (uint16_t *) ntfi;
-				texture.texels.texImageParam = (format << 26) | ((ilog2(width) - 3) << 20) | ((ilog2(height) - 3) << 23);
+				texture.texels.texImageParam = (format << 26) | (l2width << 20) | (l2height << 23);
 				texture.texels.height = height;
 				texture.palette.name = calloc(strlen(palName) + 1, 1);
 				memcpy(texture.palette.name, palName, strlen(palName));

@@ -2713,11 +2713,11 @@ HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, L
 }
 
 HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TEXTURE *texture) {
-	TextureObject texObj;
-	TxInit(&texObj, TEXTURE_TYPE_NNSTGA);
-	memcpy(&texObj.texture, texture, sizeof(TEXTURE));
+	TextureObject *texObj = (TextureObject *) calloc(1, sizeof(TextureObject));
+	TxInit(texObj, TEXTURE_TYPE_NNSTGA);
+	memcpy(&texObj->texture, texture, sizeof(TEXTURE));
 
 	HWND h = EditorCreate(L"TextureEditorClass", x, y, width, height, hWndParent);
-	SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) &texObj);
+	SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) texObj);
 	return h;
 }
