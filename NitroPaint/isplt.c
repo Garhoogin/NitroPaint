@@ -190,6 +190,17 @@ void RxApplyFlags(RxReduction *reduction, RxFlag flag) {
 	}
 }
 
+void RxSetProgressCallback(RxReduction *reduction, RxProgressCallback callback, void *userData) {
+	reduction->progressCallback = callback;
+	reduction->progressCallbackData = userData;
+}
+
+static void RxiUpdateProgress(RxReduction *reduction, unsigned int progress, unsigned int progressMax) {
+	if (reduction->progressCallback != NULL) {
+		reduction->progressCallback(reduction, progress, progressMax, reduction->progressCallbackData);
+	}
+}
+
 static void *RxiSlabAlloc(RxSlab *allocator, unsigned int size) {
 	RX_ASSUME(size <= RX_SLAB_SIZE);
 
@@ -1114,6 +1125,14 @@ static RxColorNode **RxiAddTreeToList(const RxColorNode *node, RxColorNode **lis
 	return list;
 }
 
+static void RxiCreatePaletteUpdateProgress(RxReduction *reduction) {
+	//weight # reclusters 64x to one palette color
+	unsigned int progressMax = reduction->nPaletteColors + 64 * reduction->nReclusters;
+	unsigned int progress = reduction->nUsedColors + 64 * reduction->reclusterIteration;
+
+	RxiUpdateProgress(reduction, progress, progressMax);
+}
+
 static void RxiPaletteWrite(RxReduction *reduction) {
 	if (reduction->colorTreeHead == NULL) return;
 
@@ -1329,6 +1348,8 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	memcpy(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgbCopy));
 	reduction->lastSSE = error;
 
+	RxiCreatePaletteUpdateProgress(reduction);
+
 	//if this is the last iteration, stop iterating
 	if (++reduction->reclusterIteration >= reduction->nReclusters) return 0;
 	return 1; // continue
@@ -1374,6 +1395,7 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 
 	memset(reduction->paletteRgb + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteRgb[0]));
 	memset(reduction->paletteYiq + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteYiq[0]));
+	RxiCreatePaletteUpdateProgress(reduction);
 }
 
 static void RxiAdjustHistogramIndices(RxColorNode *tree, int cutStart, int nCut) {
@@ -1467,6 +1489,9 @@ static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
 
 RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	reduction->nPaletteColors = nColors;
+	reduction->reclusterIteration = 0;
+	RxiCreatePaletteUpdateProgress(reduction);
+
 	if (reduction->histogramFlat == NULL || reduction->histogram->nEntries == 0) {
 		reduction->nUsedColors = 0;
 		return reduction->status;
@@ -1491,10 +1516,12 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 			//merge loop
 			while (RxiMergeTreeNodes(reduction, treeHead));
 		}
+		RxiCreatePaletteUpdateProgress(reduction);
 
 		//no more nodes to split?
 		if (node == NULL || reduction->status != RX_STATUS_OK) break;
 	}
+	RxiCreatePaletteUpdateProgress(reduction);
 
 	//flatten
 	RxColorNode **nodep = reduction->colorBlocks;
@@ -1555,7 +1582,13 @@ RxStatus RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int 
 
 	RxApplyFlags(reduction, flag);
 
-	RxHistAdd(reduction, img, width, height);
+	RxStatus status = RxCreatePaletteWithContext(reduction, img, width, height, pal, nColors, flag, pOutCols);
+	RxFree(reduction);
+	return status;
+}
+
+RxStatus RxCreatePaletteWithContext(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, RxFlag flag, unsigned int *pOutCols) {
+	RxHistAdd(reduction, px, width, height);
 	RxHistFinalize(reduction);
 	RxComputePalette(reduction, nColors);
 
@@ -1564,7 +1597,6 @@ RxStatus RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int 
 
 	RxStatus status = reduction->status;
 	int nProduced = reduction->nUsedColors;
-	RxFree(reduction);
 
 	if (flag & RX_FLAG_SORT_ONLY_USED) {
 		qsort(pal, nProduced, sizeof(COLOR32), RxColorLightnessComparator);
@@ -2115,6 +2147,9 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 	int binaryAlpha = (alphaMode == RX_FLAG_ALPHA_MODE_NONE) || (alphaMode == RX_FLAG_ALPHA_MODE_RESERVE);
 	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
 
+	//initial progress
+	RxiUpdateProgress(reduction, 0, height);
+
 	//load palette into context
 	RxStatus status = RxPaletteLoad(reduction, palette, nColors);
 	if (status != RX_STATUS_OK) return status;
@@ -2274,6 +2309,7 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 		nextDiffuse = thisDiffuse;
 		thisDiffuse = temp;
 		memset(nextDiffuse, 0, (width + 2) * sizeof(RxYiqColor));
+		RxiUpdateProgress(reduction, y + 1, height);
 	}
 
 	RxPaletteFree(reduction);
@@ -2636,11 +2672,8 @@ void RxPaletteFree(RxReduction *reduction) {
 	RxMemFree(reduction->accel.pltt);
 	if (reduction->accel.plttLarge != reduction->accel.plttSmall) RxMemFree(reduction->accel.plttLarge);
 	free(reduction->accel.nodebuf);
-	reduction->accel.pltt = NULL;
-	reduction->accel.nodebuf = NULL;
-	reduction->accel.plttLarge = NULL;
+	memset(&reduction->accel, 0, sizeof(reduction->accel));
 	reduction->accel.initialized = 0;
-	reduction->accel.nPltt = 0;
 }
 
 double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *pal, unsigned int nColors, double nMaxError) {

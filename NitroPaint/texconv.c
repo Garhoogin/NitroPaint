@@ -59,6 +59,37 @@ static COLOR32 *TxiPadTextureImage(COLOR32 *px, unsigned int width, unsigned int
 	return out;
 }
 
+
+
+static void TxiConvertProgressUpdate1(RxReduction *reduction, unsigned int progress, unsigned int progressMax, void *data) {
+	//first half of progress update
+	(void) reduction;
+
+	TxConversionParameters *params = (TxConversionParameters *) data;
+	params->progress = progress * 500 / progressMax;
+	params->progressMax = 1000;
+}
+
+static void TxiConvertProgressUpdate2(RxReduction *reduction, unsigned int progress, unsigned int progressMax, void *data) {
+	//second half of progress update
+	(void) reduction;
+
+	TxConversionParameters *params = (TxConversionParameters *) data;
+	params->progress = 500 + progress * 500 / progressMax;
+	params->progressMax = 1000;
+}
+
+static void TxiConvertProgressUpdate(RxReduction *reduction, unsigned int progress, unsigned int progressMax, void *data) {
+	//full progress update
+	(void) reduction;
+
+	TxConversionParameters *params = (TxConversionParameters *) data;
+	params->progress = progress * 1000 / progressMax;
+	params->progressMax = 1000;
+}
+
+
+
 static int TxConvertDirect(TxConversionParameters *params, RxReduction *reduction) {
 	//convert to direct color.
 	TxConversionResult result = TEXCONV_SUCCESS;
@@ -80,6 +111,7 @@ static int TxConvertDirect(TxConversionParameters *params, RxReduction *reductio
 	for (unsigned int i = 0; i < 32768; i++) pltt[i + 1] = ColorConvertFromDS((COLOR) i) | 0xFF000000;
 
 	RxApplyFlags(reduction, RX_FLAG_ALPHA_MODE_RESERVE);
+	RxSetProgressCallback(reduction, TxiConvertProgressUpdate, params);
 	RxReduceImageWithContext(reduction, params->px, idxs, params->width, params->height, pltt, 32769,
 		RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_NO_WRITEBACK, diffuse);
 
@@ -104,7 +136,7 @@ Cleanup:
 	return result;
 }
 
-static int TxConvertIndexedOpaque(TxConversionParameters *params) {
+static int TxConvertIndexedOpaque(TxConversionParameters *params, RxReduction *reduction) {
 	//generate a palette ofcolors.
 	TxConversionResult result = TEXCONV_SUCCESS;
 	unsigned int nColors = 0, bitsPerPixel = 0;
@@ -142,10 +174,14 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params) {
 
 	if (txel == NULL || pal == NULL || idxs == NULL) TEXCONV_THROW_STATUS(TEXCONV_NOMEM);
 
+	RxFlag flag = (hasTransparent ? RX_FLAG_ALPHA_MODE_RESERVE : RX_FLAG_ALPHA_MODE_NONE);
+	RxApplyFlags(reduction, flag);
+
+	RxSetProgressCallback(reduction, TxiConvertProgressUpdate1, params);
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		RxCreatePaletteEx(params->px, width, height, palette + hasTransparent, nColors - hasTransparent,
-			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_NONE, NULL);
+		RxCreatePaletteWithContext(reduction, params->px, width, height, palette + hasTransparent, nColors - hasTransparent,
+			flag | RX_FLAG_SORT_ONLY_USED, NULL);
 	} else {
 		for (unsigned int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]) | 0xFF000000;
@@ -154,9 +190,8 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params) {
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
-	RxReduceImageEx(params->px, idxs, width, height, palette, nColors,
-		(hasTransparent ? RX_FLAG_ALPHA_MODE_RESERVE : RX_FLAG_ALPHA_MODE_NONE) | RX_FLAG_NO_PRESERVE_ALPHA,
-		diffuse, params->balance, params->colorBalance, params->enhanceColors);
+	RxSetProgressCallback(reduction, TxiConvertProgressUpdate2, params);
+	RxReduceImageWithContext(reduction, params->px, idxs, width, height, palette, nColors, flag | RX_FLAG_NO_PRESERVE_ALPHA, diffuse);
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
@@ -187,7 +222,7 @@ Cleanup:
 	return result;
 }
 
-static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
+static int TxConvertIndexedTranslucent(TxConversionParameters *params, RxReduction *reduction) {
 	//convert to translucent. First, generate a palette of colors.
 	TxConversionResult result = TEXCONV_SUCCESS;
 	unsigned int nColors = 0, alphaShift = 0, alphaMax = 0;
@@ -219,10 +254,11 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 
 	float diffuse = params->dither ? params->diffuseAmount : 0.0f;
 
+	RxSetProgressCallback(reduction, TxiConvertProgressUpdate1, params);
 	if (!params->useFixedPalette) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		RxCreatePaletteEx(params->px, width, height, palette, nColors,
-			params->balance, params->colorBalance, params->enhanceColors, RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_PIXEL, NULL);
+		RxCreatePaletteWithContext(reduction, params->px, width, height, palette, nColors,
+			RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_PIXEL, NULL);
 	} else {
 		for (unsigned int i = 0; i < nColors; i++) {
 			palette[i] = ColorConvertFromDS(params->fixedPalette[i]) | 0xFF000000;
@@ -241,9 +277,10 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params) {
 
 	RxFlag flag = RX_FLAG_ALPHA_MODE_PALETTE | RX_FLAG_PRESERVE_ALPHA;
 	if (!params->ditherAlpha) flag |= RX_FLAG_NO_ALPHA_DITHER;
+	RxApplyFlags(reduction, flag);
 
-	RxReduceImageEx(params->px, idxs, width, height, palette, 256, flag,
-		diffuse, params->balance, params->colorBalance, params->enhanceColors);
+	RxSetProgressCallback(reduction, TxiConvertProgressUpdate2, params);
+	RxReduceImageWithContext(reduction, params->px, idxs, width, height, palette, 256, flag, diffuse);
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
@@ -1438,11 +1475,11 @@ TxConversionResult TxConvert(TxConversionParameters *params) {
 		case CT_4COLOR:
 		case CT_16COLOR:
 		case CT_256COLOR:
-			result = TxConvertIndexedOpaque(params);
+			result = TxConvertIndexedOpaque(params, reduction);
 			break;
 		case CT_A3I5:
 		case CT_A5I3:
-			result = TxConvertIndexedTranslucent(params);
+			result = TxConvertIndexedTranslucent(params, reduction);
 			break;
 		case CT_4x4:
 			result = TxConvert4x4(params, reduction);

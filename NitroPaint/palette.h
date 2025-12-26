@@ -416,6 +416,9 @@ typedef struct RxPaletteAccelerator_ {
 	unsigned int nPltt;                   // number of palette colors loaded
 } RxPaletteAccelerator;
 
+//progress update callback function
+typedef void (*RxProgressCallback) (struct RxReduction_ *reduction, unsigned int progress, unsigned int progressMax, void *data);
+
 //reduction workspace structure
 typedef struct RxReduction_ {
 	double yWeight;
@@ -459,6 +462,8 @@ typedef struct RxReduction_ {
 	RxYiqColor paletteYiqCopy[RX_PALETTE_MAX_SIZE];
 	double lumaTable[512];
 	double gamma;
+	RxProgressCallback progressCallback;
+	void *progressCallbackData;
 } RxReduction;
 
 // -----------------------------------------------------------------------------------------------
@@ -561,6 +566,25 @@ void RxSetBalance(
 void RxApplyFlags(
 	RxReduction *reduction,
 	RxFlag       flag
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxSetProgressCallback
+//
+// Sets the progress update callback for the color reduction context. This callback is called
+// periodically during a color reduction operation for a callee wanting progress updates. You
+// may specify a pointer to user data to use for progress update logic. You may clear the
+// callback by passing NULL for the callback parameter.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   callback      The new progress update callback
+//   userData      A user pointer passed to the callback function
+// -----------------------------------------------------------------------------------------------
+void RxSetProgressCallback(
+	RxReduction       *reduction,  // the color reduction context
+	RxProgressCallback callback,   // the progress callback
+	void              *userData    // user data passed to the callback function
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -680,6 +704,36 @@ RxStatus RxHistFinalize(
 RxStatus RxComputePalette(
 	RxReduction *reduction,  // the color reduction context
 	unsigned int nColors     // the number of palette colors
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxCreatePaletteEx
+//
+// Creates a color palette for an image without reserving any color slots for transparency on a
+// given color reduction context.
+//
+// Parameters:
+//   reduction     The color reduction context.
+//   px            The image pixels.
+//   width         The image width.
+//   height        The image height.
+//   pal           The output palette buffer.
+//   nColors       The size of the color palette to create.
+//   flag          Color reduction flags for palette sorting (see enum RxFlag).
+//   pOutCols      Pointer to output number of colors (may be NULL).
+//
+// Returns:
+//   The completed operation status.
+// -----------------------------------------------------------------------------------------------
+RxStatus RxCreatePaletteWithContext(
+	RxReduction   *reduction,  // the color reduction context
+	const COLOR32 *px,         // the input image
+	unsigned int   width,      // the image width
+	unsigned int   height,     // the image height
+	COLOR32       *pal,        // a buffer receiving the created palette
+	unsigned int   nColors,    // the maximum number of colors to generate
+	RxFlag         flag,       // the flags for palette sorting
+	unsigned int  *pOutCols    // a pointer receiving the number of generated colors (optional)
 );
 
 // -----------------------------------------------------------------------------------------------
