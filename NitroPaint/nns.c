@@ -835,6 +835,8 @@ void IscadStreamFlushOut(IscadStream *stream, BSTREAM *out) {
 
 // ----- Homebrew file format
 
+#include "texture.h"
+
 static int GrfIsValidCommon(const unsigned char *buffer, unsigned int size) {
 	//header
 	if (size < 0xC) return 0;
@@ -891,7 +893,7 @@ unsigned char *GrfReadBlockUncompressed(const unsigned char *buffer, unsigned in
 	if (blockSize < 4) return NULL;
 
 	uint32_t header = *(const uint32_t *) block;
-	if (header == ((blockSize - 4) << 8)) {
+	if ((header & 0xFF) == 0) {
 		//dummy compression block
 		unsigned char *out = (unsigned char *) calloc(blockSize - 4, 1);
 		memcpy(out, block + 4, blockSize - 4);

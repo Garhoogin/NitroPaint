@@ -186,6 +186,7 @@ int combo2dGetObjMaxCount(int comboType, int objType) {
 			if (objType == FILE_TYPE_PALETTE) return 1;
 			if (objType == FILE_TYPE_CHARACTER) return 1;
 			if (objType == FILE_TYPE_SCREEN) return 1;
+			if (objType == FILE_TYPE_CELL) return 1;
 			return 0;
 		case COMBO2D_TYPE_DATAFILE:
 			//no particular requirements
@@ -966,14 +967,16 @@ static int combo2dReadAob(COMBO2D *combo, const unsigned char *buffer, unsigned 
 static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	//int type = GrfIsValid(buffer, size);
 
-	unsigned int palSize, gfxSize, scrSize, headerSize;
+	unsigned int palSize, gfxSize, scrSize, objSize, headerSize;
 	unsigned char *gfx = GrfReadBlockUncompressed(buffer, size, "GFX ", &gfxSize);
 	unsigned char *pal = GrfReadBlockUncompressed(buffer, size, "PAL ", &palSize);
 	unsigned char *scr = GrfReadBlockUncompressed(buffer, size, "MAP ", &scrSize);
+	unsigned char *obj = GrfReadBlockUncompressed(buffer, size, "CELL", &objSize);
 	unsigned char *hdr = GrfGetHeader(buffer, size, &headerSize);
 
 	int gfxAttr = *(const uint16_t *) (hdr + 0x2);
 	int scrType = *(const uint16_t *) (hdr + 0x4);
+	uint16_t flags = *(const uint16_t *) (hdr + 0xE);
 	unsigned int width = *(const uint32_t *) (hdr + 0x10);
 	unsigned int height = *(const uint32_t *) (hdr + 0x14);
 
@@ -1023,12 +1026,48 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 		combo2dLink(combo, &nscr->header);
 	}
 
+	//cell data?
+	if ((flags >> 14) == 2) {
+		NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
+		CellInit(ncer, NCER_TYPE_COMBO);
+
+		int nCell = *(const uint16_t *) (obj + 0x2);
+		int mapping = *(const uint16_t *) (obj + 0x0);
+		const uint32_t *ofsTbl = (const uint32_t *) (obj + 0x4);
+
+		switch (mapping) {
+			case 0: ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;  break;
+			case 1: ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_64K;  break;
+			case 2: ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_128K; break;
+			case 3: ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_256K; break;
+			case 4: ncer->mappingMode = GX_OBJVRAMMODE_CHAR_2D;      break;
+		}
+		ncer->nCells = nCell;
+
+		ncer->cells = (NCER_CELL *) calloc(nCell, sizeof(NCER_CELL));
+		for (int i = 0; i < nCell; i++) {
+			NCER_CELL *cell = &ncer->cells[i];
+			const unsigned char *cellData = obj + ofsTbl[i];
+
+			cell->nAttribs = *(const uint16_t *) (cellData + 0x0);
+			cell->minX = *(const int16_t *) (cellData + 0x2);
+			cell->minY = *(const int16_t *) (cellData + 0x4);
+			cell->maxX = (*(const uint16_t *) (cellData + 0x6)) + cell->minX;
+			cell->maxY = (*(const uint16_t *) (cellData + 0x8)) + cell->minY;
+			cell->attr = (uint16_t *) calloc(cell->nAttribs, 3 * sizeof(uint16_t));
+			memcpy(cell->attr, cellData + 0xA, cell->nAttribs * 6);
+		}
+
+		combo2dLink(combo, &ncer->header);
+	}
+
 	combo2dLink(combo, &nclr->header);
 	combo2dLink(combo, &ncgr->header);
 
 	if (gfx != NULL) free(gfx);
 	if (pal != NULL) free(pal);
 	if (scr != NULL) free(scr);
+	if (obj != NULL) free(obj);
 	return OBJ_STATUS_SUCCESS;
 }
 
@@ -1350,6 +1389,12 @@ static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
 	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
 	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
 	NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
+	NCER *ncer = (NCER *) combo2dGet(combo, FILE_TYPE_CELL, 0);
+
+	int type = 2; // OBJ graphics
+	if (nscr != NULL) {
+		type = 1;
+	}
 
 	//image dimension
 	int width = ncgr->tilesX * 8, height = ncgr->tilesY * 8, screenType = 0;
@@ -1387,12 +1432,14 @@ static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
 	*(uint16_t *) (hdr + 0x08) = nclr->nColors;
 	*(uint8_t *) (hdr + 0x0A) = 8; // character width
 	*(uint8_t *) (hdr + 0x0B) = 8; // character height
+	*(uint16_t *) (hdr + 0x0E) = type << 14;
 	*(uint32_t *) (hdr + 0x10) = width;
 	*(uint32_t *) (hdr + 0x14) = height;
 	GrfStreamWriteBlock(&grf, "HDRX", hdr, sizeof(hdr));
 
 	GrfStreamWriteBlockCompressed(&grf, "PAL ", nclr->colors, nclr->nColors * sizeof(COLOR), COMPRESSION_NONE);
 	GrfStreamWriteBlockCompressed(&grf, "GFX ", gfxData, gfxSize, COMPRESSION_LZ77);
+
 	if (nscr != NULL) {
 		if (screenType == 3) {
 			unsigned char *scr = (unsigned char *) calloc(1, nscr->dataSize / 2);
@@ -1402,6 +1449,51 @@ static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
 		} else {
 			GrfStreamWriteBlockCompressed(&grf, "MAP ", nscr->data, nscr->dataSize, COMPRESSION_LZ77);
 		}
+	}
+
+	if (ncer != NULL) {
+		BSTREAM stmCell;
+		bstreamCreate(&stmCell, NULL, 0);
+
+		int mapping = 0;
+		switch (ncer->mappingMode) {
+			case GX_OBJVRAMMODE_CHAR_1D_32K:  mapping = 0; break;
+			case GX_OBJVRAMMODE_CHAR_1D_64K:  mapping = 1; break;
+			case GX_OBJVRAMMODE_CHAR_1D_128K: mapping = 2; break;
+			case GX_OBJVRAMMODE_CHAR_1D_256K: mapping = 3; break;
+			case GX_OBJVRAMMODE_CHAR_2D:      mapping = 4; break;
+		}
+
+		//header
+		unsigned char cellHdr[4] = { 0 };
+		*(uint16_t *) (cellHdr + 0x0) = mapping;
+		*(uint16_t *) (cellHdr + 0x2) = ncer->nCells;
+		bstreamWrite(&stmCell, cellHdr, sizeof(cellHdr));
+
+		//cell data
+		uint32_t dummy = 0;
+		for (int i = 0; i < ncer->nCells; i++) bstreamWrite(&stmCell, &dummy, sizeof(dummy));
+
+		for (int i = 0; i < ncer->nCells; i++) {
+			NCER_CELL *cell = &ncer->cells[i];
+
+			//put cell data offset
+			uint32_t offs = stmCell.size;
+			*(uint32_t *) (stmCell.buffer + 4 + 4 * i) = offs;
+
+			//put cell data
+			unsigned char cellInfo[0xA] = { 0 };
+			*(uint16_t *) (cellInfo + 0x0) = cell->nAttribs;
+			*(int16_t  *) (cellInfo + 0x2) = cell->minX;
+			*(int16_t  *) (cellInfo + 0x4) = cell->minY;
+			*(uint16_t *) (cellInfo + 0x6) = cell->maxX - cell->minX;
+			*(uint16_t *) (cellInfo + 0x8) = cell->maxY - cell->minY;
+			bstreamWrite(&stmCell, cellInfo, sizeof(cellInfo));
+			bstreamWrite(&stmCell, cell->attr, cell->nAttribs * 6);
+		}
+
+		GrfStreamWriteBlockCompressed(&grf, "CELL", stmCell.buffer, stmCell.size, COMPRESSION_NONE);
+		bstreamFree(&stmCell);
 	}
 
 	GrfStreamFinalize(&grf);

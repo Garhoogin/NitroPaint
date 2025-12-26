@@ -513,19 +513,23 @@ static int TxIsValidGrf(const unsigned char *buffer, unsigned int size) {
 	int texFmt = *(const uint16_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x02 : 0x00));
 	int scrFmt = *(const uint16_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x04 : 0x02));
 
-	unsigned int palSize, gfxSize, pidxSize;
+	unsigned int palSize, gfxSize, pidxSize, cellSize;
 	unsigned char *gfx = GrfReadBlockUncompressed(buffer, size, "GFX ", &gfxSize);
 	unsigned char *pal = GrfReadBlockUncompressed(buffer, size, "PAL ", &palSize);
 	unsigned char *idx = GrfReadBlockUncompressed(buffer, size, "PIDX", &pidxSize);
+	unsigned char *obj = GrfReadBlockUncompressed(buffer, size, "CELL", &cellSize);
 
 	int gfxExist = gfx != NULL;
 	int palExist = pal != NULL;
 	int idxExist = idx != NULL;
+	int objExist = obj != NULL;
 	if (gfxExist) free(gfx);
 	if (palExist) free(pal);
 	if (idxExist) free(idx);
+	if (objExist) free(obj);
 
 	if (!gfxExist) return 0;
+	if (objExist)                    return 0; // OBJ mode graphics
 	if (texFmt != 0x10 && !palExist) return 0; // non-direct mode texture requires palette
 	if (texFmt == 0x82 && !idxExist) return 0; // 4x4 texture requires palette index
 	if (scrFmt != 0) return 0;                 // should have no BG screen data
