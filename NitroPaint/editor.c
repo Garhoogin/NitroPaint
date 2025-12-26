@@ -563,10 +563,36 @@ static int EditorSaveAsInternal(HWND hWnd) {
 
 	int format = data->file->format;
 	EditorFilter filterExt = { 0 };
-	StStatus status = StMapGet(&data->cls->filters, &format, &filterExt);
-	if (!ST_SUCCEEDED(status)) {
-		int format0 = 0;
-		StMapGet(&data->cls->filters, &format0, &filterExt);
+
+	if (data->file->combo == NULL) {
+		//get file filter for the format
+		StStatus status = StMapGet(&data->cls->filters, &format, &filterExt);
+		if (!ST_SUCCEEDED(status)) {
+			int format0 = 0;
+			StMapGet(&data->cls->filters, &format0, &filterExt);
+		}
+	} else {
+		//get the file filter for the combo format
+		COMBO2D *combo = (COMBO2D *) data->file->combo;
+		switch (combo->header.format) {
+			case COMBO2D_TYPE_AOB:
+				filterExt.filter = L"AOB Files (*.aob)\0*.aob\0";
+				filterExt.extension = L"aob";
+				break;
+			case COMBO2D_TYPE_BNCD:
+				filterExt.filter = L"BNCD Files (*.bncd)\0*.bncd\0";
+				filterExt.extension = L"bncd";
+				break;
+			case COMBO2D_TYPE_5BG:
+			case COMBO2D_TYPE_5BG_OBJ:
+				filterExt.filter = L"5BG Files (*.5bg)\0*.5bg\0";
+				filterExt.extension = L"5bg";
+				break;
+			case COMBO2D_TYPE_GRF_BG:
+				filterExt.filter = L"GRF Files (*.grf)\0*.grf\0";
+				filterExt.extension = L"grf";
+				break;
+		}
 	}
 
 	//append generic All Files filter
