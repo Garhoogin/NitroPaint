@@ -599,6 +599,19 @@ static int EditorSaveInternal(HWND hWnd) {
 		return EditorSaveAsInternal(hWnd);
 	}
 
+	//if the saved object is combo type, set file for all objects.
+	if (data->file->combo != NULL) {
+		COMBO2D *combo = (COMBO2D *) data->file->combo;
+
+		for (size_t i = 0; i < combo->links.length; i++) {
+			OBJECT_HEADER *obj = *(OBJECT_HEADER **) StListGetPtr(&combo->links, i);
+			if (obj == data->file) continue; // skip current file
+
+			HWND hWndEditor = EditorFindByObject(data->editorMgr->hWnd, obj);
+			EditorSetFile(hWndEditor, data->szOpenFile);
+		}
+	}
+
 	//else save
 	ObjUpdateLinks(data->file, ObjGetFileNameFromPath(data->szOpenFile));
 	data->dirty = 0;
