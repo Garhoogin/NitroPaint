@@ -1973,102 +1973,80 @@ int g_batchTexConvertedTex = 0; //number of textures converted
 LPCWSTR g_batchTexOut = NULL;
 HWND g_hWndBatchTexWindow;
 
-BOOL BatchTexReadOptions(LPCWSTR path, int *fmt, int *dither, int *ditherAlpha, float *diffuse, int *paletteSize, int *c0xp, char *pnam,
-	int *balance, int *colorBalance, int *enhanceColors) {
+static void BatchTexPutPropInt(LPCWSTR path, LPCWSTR prop, int n) {
+	WCHAR buf[32];
+	wsprintfW(buf, L"%d", n);
+	WritePrivateProfileString(L"Texture", prop, buf, path);
+}
 
+static void BatchTexPutPropStrA(LPCWSTR path, LPCWSTR prop, const char *s) {
+	WCHAR buf[MAX_PATH + 1];
+	wsprintfW(buf, L"%S", s);
+	WritePrivateProfileString(path, prop, buf, path);
+}
+
+static int BatchTexGetPropInt(LPCWSTR path, LPCWSTR prop, int defval) {
+	int missing = 0;
+	int n1 = GetPrivateProfileInt(L"Texture", prop, -1, path);
+	if (n1 == -1) {
+		int n2 = GetPrivateProfileInt(L"Texture", prop, 0, path);
+		if (n2 == 0) missing = 1;
+	}
+
+	if (missing) {
+		n1 = defval;
+		BatchTexPutPropInt(path, prop, n1); // put default value
+	}
+	return n1;
+}
+
+static void BatchTexGetPropStrA(LPCWSTR path, LPCWSTR prop, char *s, unsigned int nMax) {
+	WCHAR buf[MAX_PATH + 1];
+	GetPrivateProfileString(L"Teture", prop, L"", buf, sizeof(buf) / sizeof(buf[0]), path);
+	wcstombs(s, buf, nMax);
+}
+
+void BatchTexReadOptions(LPCWSTR path, TxConversionParameters *params, char *pnam) {
 	char narrow[MAX_PATH] = { 0 };
-	WCHAR buffer[MAX_PATH] = { 0 };
-	BOOL hasMissing = FALSE; //any missing entries?
 
 	//format
-	GetPrivateProfileString(L"Texture", L"Format", L"", buffer, MAX_PATH, path);
-	for (unsigned int i = 0; i <= wcslen(buffer); i++) {
-		narrow[i] = (char) buffer[i];
-	}
+	BatchTexGetPropStrA(path, L"Format", narrow, sizeof(narrow));
+	
 	int foundFormat = 0;
 	for (int i = CT_A3I5; i <= CT_DIRECT; i++) {
 		const char *fname = TxNameFromTexFormat(i);
 		if (strcmp(fname, narrow) == 0) {
-			*fmt = i;
+			params->fmt = i;
 			foundFormat = 1;
 			break;
 		}
 	}
-	if (!foundFormat) hasMissing = TRUE;
-
-	//dithering
-	int rawInt = GetPrivateProfileInt(L"Texture", L"Dither", -1, path);
-	if (rawInt == -1) hasMissing = TRUE;
-	else *dither = rawInt;
-	rawInt = GetPrivateProfileInt(L"Texture", L"DitherAlpha", -1, path);
-	if (rawInt == -1) hasMissing = TRUE;
-	else *ditherAlpha = rawInt;
-	rawInt = GetPrivateProfileInt(L"Texture", L"Diffuse", -1, path);
-	if (rawInt == -1) hasMissing = TRUE;
-	else *diffuse = ((float) rawInt) / 100.0f;
-
-	//palette
-	rawInt = GetPrivateProfileInt(L"Texture", L"PaletteSize", -1, path);
-	if (rawInt == -1) hasMissing = TRUE;
-	else *paletteSize = rawInt;
-	GetPrivateProfileString(L"Texture", L"PaletteName", L"", buffer, MAX_PATH, path);
-	if (*buffer == L'\0') hasMissing = TRUE;
-	else {
-		memset(pnam, 0, 17);
-		for (unsigned int i = 0; i < 16; i++) {
-			pnam[i] = (char) buffer[i];
-			if (buffer[i] == L'\0') break;
-		}
+	if (!foundFormat) {
+		BatchTexPutPropStrA(path, L"Format", TxNameFromTexFormat(params->fmt));
 	}
-	rawInt = GetPrivateProfileInt(L"Texture", L"C0xp", -1, path);
-	if (rawInt == -1) hasMissing = TRUE;
-	else *c0xp = rawInt;
-
-	//balance
-	rawInt = GetPrivateProfileInt(L"Texture", L"Balance", -1, path);
-	if (rawInt == -1) hasMissing = TRUE;
-	else *balance = rawInt;
-	rawInt = GetPrivateProfileInt(L"Texture", L"ColorBalance", -1, path);
-	if (rawInt == -1) hasMissing = TRUE;
-	else *colorBalance = rawInt;
-	rawInt = GetPrivateProfileInt(L"Texture", L"EnhanceColors", -1, path);
-	if (rawInt == -1) hasMissing = TRUE;
-	else *enhanceColors = rawInt;
-
-	return hasMissing;
-}
-
-void BatchTexWriteOptions(LPCWSTR path, int fmt, int dither, int ditherAlpha, float diffuse, int paletteSize, int c0xp, char *pnam, 
-	int balance, int colorBalance, int enhanceColors) {
-
-	//format
-	WCHAR buffer[MAX_PATH] = { 0 };
-	wsprintfW(buffer, L"%S", TxNameFromTexFormat(fmt));
-	WritePrivateProfileString(L"Texture", L"Format", buffer, path);
 
 	//dithering
-	wsprintfW(buffer, L"%d", dither);
-	WritePrivateProfileString(L"Texture", L"Dither", buffer, path);
-	wsprintfW(buffer, L"%d", ditherAlpha);
-	WritePrivateProfileString(L"Texture", L"DitherAlpha", buffer, path);
-	wsprintfW(buffer, L"%d", (int) (diffuse * 100.0f + 0.5f));
-	WritePrivateProfileString(L"Texture", L"Diffuse", buffer, path);
-
+	int diffuseI = (int) (params->diffuseAmount * 100.0f + 0.5f);
+	params->dither = BatchTexGetPropInt(path, L"Dither", params->dither);
+	params->ditherAlpha = BatchTexGetPropInt(path, L"DitherAlpha", params->ditherAlpha);
+	diffuseI = BatchTexGetPropInt(path, L"Diffuse", diffuseI);
+	params->diffuseAmount = ((float) diffuseI) / 100.0f;
+	
 	//palette
-	wsprintfW(buffer, L"%d", paletteSize);
-	WritePrivateProfileString(L"Texture", L"PaletteSize", buffer, path);
-	wsprintfW(buffer, L"%S", pnam);
-	WritePrivateProfileString(L"Texture", L"PaletteName", buffer, path);
-	wsprintfW(buffer, L"%d", c0xp);
-	WritePrivateProfileString(L"Texture", L"C0xp", buffer, path);
+	params->colorEntries = BatchTexGetPropInt(path, L"PaletteSize", params->colorEntries);
+	BatchTexGetPropStrA(path, L"PaletteName", narrow, sizeof(narrow));
+	if (narrow[0] == '\0') {
+		//missing palette name
+		BatchTexPutPropStrA(path, L"PaletteName", pnam);
+	} else {
+		strcpy(pnam, narrow);
+	}
+	params->c0xp = BatchTexGetPropInt(path, L"C0xp", params->c0xp);
 
 	//balance
-	wsprintfW(buffer, L"%d", balance);
-	WritePrivateProfileString(L"Texture", L"Balance", buffer, path);
-	wsprintfW(buffer, L"%d", colorBalance);
-	WritePrivateProfileString(L"Texture", L"ColorBalance", buffer, path);
-	wsprintfW(buffer, L"%d", enhanceColors);
-	WritePrivateProfileString(L"Texture", L"EnhanceColors", buffer, path);
+	params->balance = BatchTexGetPropInt(path, L"Balance", params->balance);
+	params->colorBalance = BatchTexGetPropInt(path, L"ColorBalance", params->colorBalance);
+	params->enhanceColors = BatchTexGetPropInt(path, L"EnhanceColors", params->enhanceColors);
 }
 
 BOOL BatchTexShouldConvert(LPCWSTR path, LPCWSTR configPath, LPCWSTR outPath) {
@@ -2161,6 +2139,11 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 		return FALSE; //report actual error
 	}
 
+	BATCHTEXENTRY texEntry = { 0 };
+	texEntry.params.px = px;
+	texEntry.params.width = width;
+	texEntry.params.height = height;
+
 	//construct output path (ensure .TGA extension)
 	WCHAR outPath[MAX_PATH] = { 0 };
 	LPCWSTR filename = GetFileName(path);
@@ -2198,72 +2181,44 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	}
 	memcpy(pnam + i, "_pl", 4);
 
-	//setup texture params
-	int dither = 0, ditherAlpha = 0;
-	float diffuse = 0.0f;
+	//dither params
+	texEntry.params.dither = 0;
+	texEntry.params.ditherAlpha = 0;
+	texEntry.params.diffuseAmount = 0.0f;
 
 	//palette settings
-	int c0xp = TexViewerJudgeColor0Mode(px, width, height);
+	texEntry.params.c0xp = TexViewerJudgeColor0Mode(px, width, height);
 	int useFixedPalette = 0;
 	COLOR *fixedPalette = NULL;
 
 	//4x4 settings
-	int fmt = TexViewerJudgeFormat(px, width, height);
-	int colorEntries = TexViewerJudgeColorCount(width, height);
+	texEntry.params.fmt = TexViewerJudgeFormat(px, width, height);
+	texEntry.params.colorEntries = TexViewerJudgeColorCount(width, height);
 	int threshold4x4 = 0;
 
 	//check the directory. Last directory name after base should be the name
 	//of a format.
-	BatchTexCheckFormatDir(path, &fmt);
+	BatchTexCheckFormatDir(path, &texEntry.params.fmt);
 
 	//max color entries for the selected format
-	switch (fmt) {
-		case CT_4COLOR:
-			colorEntries = 4;
-			break;
-		case CT_16COLOR:
-			colorEntries = 16;
-			break;
-		case CT_256COLOR:
-			colorEntries = 256;
-			break;
-		case CT_A3I5:
-			colorEntries = 32;
-			break;
-		case CT_A5I3:
-			colorEntries = 8;
-			break;
+	switch (texEntry.params.fmt) {
+		case CT_4COLOR  : texEntry.params.colorEntries =   4; break;
+		case CT_16COLOR : texEntry.params.colorEntries =  16; break;
+		case CT_256COLOR: texEntry.params.colorEntries = 256; break;
+		case CT_A3I5    : texEntry.params.colorEntries =  32; break;
+		case CT_A5I3    : texEntry.params.colorEntries =   8; break;
 	}
 
 	//balance settings
-	int balance = BALANCE_DEFAULT, colorBalance = BALANCE_DEFAULT;
-	int enhanceColors = 1;
+	texEntry.params.balance = BALANCE_DEFAULT;
+	texEntry.params.colorBalance = BALANCE_DEFAULT;
+	texEntry.params.enhanceColors = 1;
 
-	//read overrides from file.
-	BOOL hasMissing = BatchTexReadOptions(configPath, &fmt, &dither, &ditherAlpha, &diffuse, &colorEntries, &c0xp, pnam,
-		&balance, &colorBalance, &enhanceColors);
+	//read overrides from file. Missing fields have default values written back.
+	BatchTexReadOptions(configPath, &texEntry.params, pnam);
 
-	//write back options to file (if there were any missing entries)
-	if (hasMissing) {
-		BatchTexWriteOptions(configPath, fmt, dither, ditherAlpha, diffuse, colorEntries, c0xp, pnam, balance, colorBalance, enhanceColors);
-	}
-
-	TEXTURE *texture = (TEXTURE *) calloc(1, sizeof(TEXTURE));
-	BATCHTEXENTRY texEntry = { 0 };
-	texEntry.params.px = px;
-	texEntry.params.width = width;
-	texEntry.params.height = height;
-	texEntry.params.fmt = fmt;
-	texEntry.params.dither = dither;
-	texEntry.params.diffuseAmount = diffuse;
-	texEntry.params.c0xp = c0xp;
-	texEntry.params.ditherAlpha = ditherAlpha;
-	texEntry.params.colorEntries = colorEntries;
+	texEntry.params.dest = (TEXTURE *) calloc(1, sizeof(TEXTURE));
 	texEntry.params.threshold = threshold4x4;
-	texEntry.params.balance = balance;
-	texEntry.params.colorBalance = colorBalance;
-	texEntry.params.enhanceColors = enhanceColors;
-	texEntry.params.dest = texture;
 	texEntry.params.useFixedPalette = useFixedPalette;
 	texEntry.params.fixedPalette = useFixedPalette ? fixedPalette : NULL;
 	texEntry.params.pnam = _strdup(pnam);
