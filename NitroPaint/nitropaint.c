@@ -2929,7 +2929,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				L"Char 2D", L"Char 1D 32K", L"Char 1D 64K", L"Char 1D 128K", L"Char 1D 256K"
 			};
 			LPCWSTR formats[] = {
-				L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"Raw", L"Raw Compressed"
+				L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"GRF", L"Raw", L"Raw Compressed"
 			};
 
 			CreateStatic(hWnd, L"8 bit:", 10, 10, 50, 22);
@@ -2962,9 +2962,29 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					mapping = mappings[mapping];
 					int format = UiCbGetCurSel(data->hWndFormat);
 
-					int charFormats[] = { NCGR_TYPE_NCGR, NCGR_TYPE_NC, NCGR_TYPE_IC, NCGR_TYPE_AC, NCGR_TYPE_HUDSON, NCGR_TYPE_HUDSON2, NCGR_TYPE_BIN, NCGR_TYPE_BIN };
-					int palFormats[] = { NCLR_TYPE_NCLR, NCLR_TYPE_NC, NCLR_TYPE_BIN, NCLR_TYPE_BIN, NCLR_TYPE_HUDSON, NCLR_TYPE_HUDSON, NCLR_TYPE_BIN, NCLR_TYPE_BIN };
-					int compression = format == 7 ? COMPRESSION_LZ77 : COMPRESSION_NONE;
+					int charFormats[] = {
+						NCGR_TYPE_NCGR,
+						NCGR_TYPE_NC,
+						NCGR_TYPE_IC,
+						NCGR_TYPE_AC,
+						NCGR_TYPE_HUDSON,
+						NCGR_TYPE_HUDSON2,
+						NCGR_TYPE_COMBO,   // GRF
+						NCGR_TYPE_BIN,     // raw (uncompressed)
+						NCGR_TYPE_BIN      // raw (compressed)
+					};
+					int palFormats[] = {
+						NCLR_TYPE_NCLR,
+						NCLR_TYPE_NC,
+						NCLR_TYPE_BIN,
+						NCLR_TYPE_BIN,
+						NCLR_TYPE_HUDSON, 
+						NCLR_TYPE_HUDSON,
+						NCLR_TYPE_COMBO,   // GRF
+						NCLR_TYPE_BIN,     // raw (uncompressed)
+						NCLR_TYPE_BIN      // raw (compressed)
+					};
+					int compression = format == 8 ? COMPRESSION_LZ77 : COMPRESSION_NONE;
 					int charFormat = charFormats[format];
 					int palFormat = palFormats[format];
 
@@ -2990,6 +3010,15 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 					//link objects
 					ObjLinkObjects(&nclr->header, &ncgr->header);
+
+					//link by combo
+					if (format == 6) {
+						COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
+						combo2dInit(combo, COMBO2D_TYPE_GRF_BG);
+
+						combo2dLink(combo, &nclr->header);
+						combo2dLink(combo, &ncgr->header);
+					}
 
 					NpOpenObject(hWndMain, &nclr->header);
 					NpOpenObject(hWndMain, &ncgr->header);
