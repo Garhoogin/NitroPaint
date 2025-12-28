@@ -1973,6 +1973,44 @@ int g_batchTexConvertedTex = 0; //number of textures converted
 LPCWSTR g_batchTexOut = NULL;
 HWND g_hWndBatchTexWindow;
 
+static wchar_t *BatchTexPathCat(const wchar_t *str1, const wchar_t *str2) {
+	unsigned int len1 = wcslen(str1), len2 = wcslen(str2);
+	
+	//add slash?
+	unsigned int addSlash = 1;
+	if (len1 > 0 && (str1[len1 - 1] == L'/' || str1[len1 - 1] == L'\\')) addSlash = 0;
+
+	unsigned int len3 = len1 + addSlash + len2 + 1;
+	wchar_t *str3 = (wchar_t *) calloc(len3, sizeof(wchar_t));
+	memcpy(str3, str1, len1 * sizeof(wchar_t));
+	if (addSlash) str3[len1] = L'\\';
+	memcpy(str3 + len1 + addSlash, str2, (len2 + 1) * sizeof(wchar_t));
+
+	return str3;
+}
+
+static wchar_t *BatchTexPathChangeExtension(const wchar_t *str, const wchar_t *ext) {
+	unsigned int len1 = wcslen(str);
+	const wchar_t *dotpos = wcsrchr(str, L'.');
+	if (dotpos == NULL) dotpos = str + len1;
+
+	unsigned int lenNoExt = dotpos - str;
+	unsigned int lenExt = 1 + wcslen(ext);
+
+	wchar_t *str2 = (wchar_t *) calloc(lenNoExt + lenExt + 1, sizeof(wchar_t));
+	memcpy(str2, str, lenNoExt * sizeof(wchar_t));
+	str2[lenNoExt] = L'.';
+	memcpy(str2 + lenNoExt + 1, ext, lenExt * sizeof(wchar_t));
+	return str2;
+}
+
+static int BatchTexPathEndsWith(const wchar_t *str, const wchar_t *substr) {
+	unsigned int len1 = wcslen(str), len2 = wcslen(substr);
+	if (len2 > len1) return 0;
+
+	return _wcsicmp(str + len1 - len2, substr) == 0;
+}
+
 static void BatchTexPutPropInt(LPCWSTR path, LPCWSTR prop, int n) {
 	WCHAR buf[32];
 	wsprintfW(buf, L"%d", n);
@@ -1982,7 +2020,7 @@ static void BatchTexPutPropInt(LPCWSTR path, LPCWSTR prop, int n) {
 static void BatchTexPutPropStrA(LPCWSTR path, LPCWSTR prop, const char *s) {
 	WCHAR buf[MAX_PATH + 1];
 	wsprintfW(buf, L"%S", s);
-	WritePrivateProfileString(path, prop, buf, path);
+	WritePrivateProfileString(L"Texture", prop, buf, path);
 }
 
 static int BatchTexGetPropInt(LPCWSTR path, LPCWSTR prop, int defval) {
@@ -2002,7 +2040,7 @@ static int BatchTexGetPropInt(LPCWSTR path, LPCWSTR prop, int defval) {
 
 static void BatchTexGetPropStrA(LPCWSTR path, LPCWSTR prop, char *s, unsigned int nMax) {
 	WCHAR buf[MAX_PATH + 1];
-	GetPrivateProfileString(L"Teture", prop, L"", buf, sizeof(buf) / sizeof(buf[0]), path);
+	GetPrivateProfileString(L"Texture", prop, L"", buf, sizeof(buf) / sizeof(buf[0]), path);
 	wcstombs(s, buf, nMax);
 }
 
@@ -2129,14 +2167,12 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	COLOR32 *px = ImgRead(path, &width, &height);
 
 	//invalid image?
-	if (px == NULL) {
-		return TRUE; //just skip the file by reporting a success
-	}
+	if (px == NULL) return TRUE; // just skip the file by reporting a success
 
 	//invalid texture size?
 	if (!TxDimensionIsValid(width) || !TxDimensionIsValid(height)) {
-		if (px) free(px);
-		return FALSE; //report actual error
+		free(px);
+		return FALSE; // report actual error
 	}
 
 	BATCHTEXENTRY texEntry = { 0 };
@@ -2144,29 +2180,12 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	texEntry.params.width = width;
 	texEntry.params.height = height;
 
-	//construct output path (ensure .TGA extension)
-	WCHAR outPath[MAX_PATH] = { 0 };
-	LPCWSTR filename = GetFileName(path);
-	int outPathLen = wcslen(g_batchTexOut);
-	memcpy(outPath, g_batchTexOut, 2 * (outPathLen + 1));
-	outPath[outPathLen++] = L'\\';
-	memcpy(outPath + outPathLen, filename, 2 * wcslen(filename) + 2);
-
-	//ensure extension
-	int extensionIndex = 0;
-	for (unsigned int i = 0; i < wcslen(outPath); i++) {
-		if (outPath[i] == L'.') extensionIndex = i;
-	}
-	memcpy(outPath + extensionIndex, L".TGA", 5 * sizeof(WCHAR));
-
-	//construct congfiguration path; used to read/write for this texture
-	WCHAR configPath[MAX_PATH] = { 0 };
-	memcpy(configPath, path, 2 * (wcslen(path) + 1));
-	extensionIndex = 0;
-	for (unsigned int i = 0; i < wcslen(configPath); i++) {
-		if (configPath[i] == L'.') extensionIndex = i;
-	}
-	memcpy(configPath + extensionIndex, L".INI", 5 * sizeof(WCHAR));
+	//construct output path: change path for output texture and config file extensions
+	const wchar_t *filename = GetFileName(path);
+	wchar_t *outPath1 = BatchTexPathCat(g_batchTexOut, filename);
+	wchar_t *outPath = BatchTexPathChangeExtension(outPath1, L"TGA");
+	wchar_t *configPath = BatchTexPathChangeExtension(filename, L"INI");
+	free(outPath1);
 
 	//check: should we re-convert?
 	BOOL doConvert = BatchTexShouldConvert(path, configPath, outPath);
@@ -2216,6 +2235,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 
 	//read overrides from file. Missing fields have default values written back.
 	BatchTexReadOptions(configPath, &texEntry.params, pnam);
+	free(configPath);
 
 	texEntry.params.dest = (TEXTURE *) calloc(1, sizeof(TEXTURE));
 	texEntry.params.threshold = threshold4x4;
@@ -2223,7 +2243,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	texEntry.params.fixedPalette = useFixedPalette ? fixedPalette : NULL;
 	texEntry.params.pnam = _strdup(pnam);
 	texEntry.path = _wcsdup(path);
-	texEntry.outPath = _wcsdup(outPath);
+	texEntry.outPath = outPath;
 	StListAdd((StList *) param, &texEntry);
 
 	return TRUE;
@@ -2235,12 +2255,8 @@ BOOL CALLBACK BatchTexConvertDirectoryCallback(LPCWSTR path, void *param) {
 
 BOOL CALLBACK BatchTexConvertDirectoryExclusion(LPCWSTR path, void *param) {
 	//if name ends in converted or converted\, reject (return FALSE)
-	int len = wcslen(path);
-
-	//check both endings
-	LPCWSTR end = path + len;
-	if (len >= 11 && _wcsicmp(end - 11, L"\\converted\\") == 0) return FALSE;
-	if (len >= 10 && _wcsicmp(end - 10, L"\\converted") == 0) return FALSE;
+	if (BatchTexPathEndsWith(path, L"\\converted\\")) return FALSE;
+	if (BatchTexPathEndsWith(path, L"\\converted")) return FALSE;
 	return TRUE;
 }
 
