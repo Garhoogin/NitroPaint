@@ -1183,6 +1183,53 @@ NITROPAINTSTRUCT *NpGetData(HWND hWndMain) {
 	return (NITROPAINTSTRUCT *) GetWindowLongPtr(hWndMain, 0);
 }
 
+static int NpGetPaletteFormatForPreset(void) {
+	switch (g_configuration.preset) {
+		default:
+		case NP_PRESET_NITROSYSTEM: return NCLR_TYPE_NCLR;
+		case NP_PRESET_NITROCHARACTER: return NCLR_TYPE_NC;
+		case NP_PRESET_GRIT: return NCLR_TYPE_COMBO;
+		case NP_PRESET_RAW: return NCLR_TYPE_BIN;
+	}
+}
+
+static int NpGetCharacterFormatForPreset(void) {
+	switch (g_configuration.preset) {
+		default:
+		case NP_PRESET_NITROSYSTEM: return NCGR_TYPE_NCGR;
+		case NP_PRESET_NITROCHARACTER: return NCGR_TYPE_NC;
+		case NP_PRESET_GRIT: return NCGR_TYPE_COMBO;
+		case NP_PRESET_RAW: return NCGR_TYPE_BIN;
+	}
+}
+
+static int NpGetScreenFormatForPreset(void) {
+	switch (g_configuration.preset) {
+		default:
+		case NP_PRESET_NITROSYSTEM: return NSCR_TYPE_NSCR;
+		case NP_PRESET_NITROCHARACTER: return NSCR_TYPE_NC;
+		case NP_PRESET_GRIT: return NSCR_TYPE_COMBO;
+		case NP_PRESET_RAW: return NSCR_TYPE_BIN;
+	}
+}
+
+static int NpGetCellFormatForPreset(void) {
+	switch (g_configuration.preset) {
+		default:
+		case NP_PRESET_NITROSYSTEM: return NCER_TYPE_NCER;
+		//case NP_PRESET_NITROCHARACTER: // TODO
+		case NP_PRESET_GRIT: return NCER_TYPE_COMBO;
+		case NP_PRESET_RAW: return NCER_TYPE_HUDSON;
+	}
+}
+
+static int NpGetComboFormatForPreset(void) {
+	switch (g_configuration.preset) {
+		default: return COMBO2D_TYPE_INVALID;
+		case NP_PRESET_GRIT: return COMBO2D_TYPE_GRF_BG;
+	}
+}
+
 static HWND NpOpenObject(HWND hWnd, OBJECT_HEADER *object) {
 	NITROPAINTSTRUCT *data = NpGetData(hWnd);
 	HWND h = NULL;
@@ -1235,6 +1282,55 @@ static HWND NpOpenObjectAtPath(HWND hWndMain, OBJECT_HEADER *object, const wchar
 	if (h != NULL) EditorSetFile(h, path);
 
 	return h;
+}
+
+static void NpEnsureComboObject(HWND hWndMain, OBJECT_HEADER *obj, int combofmt) {
+	if (combofmt == COMBO2D_TYPE_INVALID) return;
+
+	//first, search for another editor owning a combo file in the same format.
+	StList editors;
+	StListCreateInline(&editors, EDITOR_DATA *, NULL);
+	EditorGetAllByType(hWndMain, FILE_TYPE_INVALID, &editors);
+
+	COMBO2D *combo = NULL;
+	for (size_t i = 0; i < editors.length; i++) {
+		EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&editors, i);
+		if (ed->file->combo == NULL) continue;
+
+		COMBO2D *found = (COMBO2D *) ed->file->combo;
+		if (obj->combo == found) continue; // skip objects linked to this one already
+
+		if (found->header.format == combofmt) {
+			combo = found;
+			break;
+		}
+	}
+
+	//if the object is not linked to a combo, then we add it to one.
+	if (obj->combo == NULL) {
+		//if the combo was not found, create and initialize a new one.
+		if (combo == NULL) {
+			//create a combo and link it
+			combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
+			combo2dInit(combo, combofmt);
+		}
+
+		combo2dLink(combo, obj);
+	} else {
+		if (combo != NULL) {
+			//otherwise, this object is already in a combo. Add it to the found one.
+			COMBO2D *curr = (COMBO2D *) obj->combo;
+			unsigned int nObj = curr->links.length;
+			for (unsigned int i = 0; i < nObj; i++) {
+				//move links (beware: combo is deallocated when all links are deleted!)
+				OBJECT_HEADER *obj2 = *(OBJECT_HEADER **) StListGetPtr(&curr->links, 0);
+				combo2dUnlink(curr, obj2);
+				combo2dLink(combo, obj2);
+			}
+		}
+	}
+
+	StListFree(&editors);
 }
 
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
@@ -1419,6 +1515,25 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 cleanup:
 	free(buffer);
+}
+
+static void NpCheckCurrentPreset(HWND hWndMain) {
+	const unsigned short ids[] = { ID_PRESETS_NITROSYSTEM, ID_PRESETS_NITROCHARACTER, ID_PRESETS_GRF, ID_PRESETS_RAW };
+
+	for (int i = 0; i <= NP_PRESET_MAX; i++) {
+		int state = i == g_configuration.preset;
+		CheckMenuItem(GetMenu(hWndMain), ids[i], state ? MF_CHECKED : MF_UNCHECKED);
+	}
+}
+
+static void NpSetPreset(HWND hWndMain, int preset) {
+	g_configuration.preset = preset;
+
+	WCHAR buf[16];
+	wsprintfW(buf, L"%d", preset);
+	WritePrivateProfileStringW(L"NitroPaint", L"Preset", buf, g_configPath);
+
+	NpCheckCurrentPreset(hWndMain);
 }
 
 static void MainZoomIn(HWND hWnd) {
@@ -1606,6 +1721,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (!g_configuration.allowMultipleInstances) {
 				CheckMenuItem(GetMenu(hWnd), ID_VIEW_SINGLE, MF_CHECKED);
 			}
+			NpCheckCurrentPreset(hWnd);
 			return 1;
 		}
 		case WM_NCCREATE:
@@ -1751,13 +1867,18 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						data->hWndNcerViewer = NULL;
 
 						NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
-						CellInit(ncer, NCER_TYPE_NCER);
+						CellInit(ncer, NpGetCellFormatForPreset());
 						ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 						ncer->nCells = 1;
 						ncer->cells = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
 						ncer->cells[0].attr = NULL;
 						ncer->cells[0].nAttribs = 0;
 						ncer->cells[0].cellAttr = 0;
+
+						//create combo for object if necessary
+						if (ncer->header.format == NCER_TYPE_COMBO) {
+							NpEnsureComboObject(hWnd, &ncer->header, NpGetComboFormatForPreset());
+						}
 
 						//if a character editor is open, use its mapping mode
 						HWND hWndCharacterEditor = data->hWndNcgrViewer;
@@ -1931,6 +2052,18 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						}
 						break;
 					}
+					case ID_PRESETS_NITROSYSTEM:
+						NpSetPreset(hWnd, NP_PRESET_NITROSYSTEM);
+						break;
+					case ID_PRESETS_NITROCHARACTER:
+						NpSetPreset(hWnd, NP_PRESET_NITROCHARACTER);
+						break;
+					case ID_PRESETS_GRF:
+						NpSetPreset(hWnd, NP_PRESET_GRIT);
+						break;
+					case ID_PRESETS_RAW:
+						NpSetPreset(hWnd, NP_PRESET_RAW);
+						break;
 					case ID_VIEW_RENDERTRANSPARENCY:
 					{
 						int state = GetMenuState(GetMenu(hWnd), ID_VIEW_RENDERTRANSPARENCY, MF_BYCOMMAND);
@@ -2314,11 +2447,21 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 				L"iMageStudio 5",    // 5BG (combo)
 				L"Hudson",
 				L"Hudson 2",
+				L"GRF",
 				L"Raw",
 				L"Raw Compressed"
 			};
+
+			int deffmt = 0;
+			switch (g_configuration.preset) {
+				case NP_PRESET_NITROSYSTEM: deffmt = 0; break;
+				case NP_PRESET_NITROCHARACTER: deffmt = 1; break;
+				case NP_PRESET_GRIT: deffmt = 7; break;
+				case NP_PRESET_RAW: deffmt = 9; break;
+			}
+
 			CreateStatic(hWnd, L"Format:", rightX, middleY, 50, 22);
-			data->hWndFormatDropdown = CreateCombobox(hWnd, formatNames, sizeof(formatNames) / sizeof(*formatNames), rightX + 55, middleY, 150, 22, 0);
+			data->hWndFormatDropdown = CreateCombobox(hWnd, formatNames, sizeof(formatNames) / sizeof(*formatNames), rightX + 55, middleY, 150, 22, deffmt);
 
 			NpCreateBalanceInput(&data->balance, hWnd, 10, bottomY - 18, 10 + 2 * boxWidth);
 
@@ -2932,12 +3075,21 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"GRF", L"Raw", L"Raw Compressed"
 			};
 
+			//get default format for preset
+			int def = 0;
+			switch (g_configuration.preset) {
+				case NP_PRESET_NITROSYSTEM: def = 0; break;
+				case NP_PRESET_NITROCHARACTER: def = 1; break;
+				case NP_PRESET_GRIT: def = 6; break;
+				case NP_PRESET_RAW: def = 8; break;
+			}
+
 			CreateStatic(hWnd, L"8 bit:", 10, 10, 50, 22);
 			data->hWndBitDepth = CreateCheckbox(hWnd, L"", 70, 10, 22, 22, FALSE);
 			CreateStatic(hWnd, L"Mapping:", 10, 42, 50, 22);
 			data->hWndMapping = CreateCombobox(hWnd, mappings, sizeof(mappings) / sizeof(*mappings), 70, 42, 200, 100, 1);
 			CreateStatic(hWnd, L"Format:", 10, 74, 50, 22);
-			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(*formats), 70, 74, 150, 100, 0);
+			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(*formats), 70, 74, 150, 100, def);
 			data->hWndCreate = CreateButton(hWnd, L"Create", 70, 106, 150, 22, TRUE);
 			SetWindowSize(hWnd, 280, 138);
 			SetGUIFont(hWnd);
@@ -3018,6 +3170,8 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 						combo2dLink(combo, &nclr->header);
 						combo2dLink(combo, &ncgr->header);
+
+						NpEnsureComboObject(hWndMain, &nclr->header, COMBO2D_TYPE_GRF_BG);
 					}
 
 					NpOpenObject(hWndMain, &nclr->header);
@@ -3139,13 +3293,19 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				}
 
 				NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-				ScrInit(nscr, NSCR_TYPE_NSCR);
+				ScrInit(nscr, NpGetScreenFormatForPreset());
 				nscr->fmt = format;
 				nscr->colorMode = colorMode;
 				nscr->tilesX = tilesX;
 				nscr->tilesY = tilesY;
 				nscr->dataSize = tilesX * tilesY * sizeof(uint16_t);
 				nscr->data = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
+
+				//create combo for object if necessary
+				if (nscr->header.format == NSCR_TYPE_COMBO) {
+					NpEnsureComboObject(hWndMain, &nscr->header, NpGetComboFormatForPreset());
+				}
+
 				NpOpenObject(hWndMain, &nscr->header);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
@@ -3560,11 +3720,17 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 				NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-				PalInit(nclr, NCLR_TYPE_NCLR);
+				PalInit(nclr, NpGetPaletteFormatForPreset());
 				nclr->nBits = depthSel ? 8 : 4;
 				nclr->nColors = countSel << nclr->nBits;
 				nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
 				nclr->extPalette = (depthSel && countSel > 1);
+
+				//create combo for object if necessary
+				if (nclr->header.format == NCLR_TYPE_COMBO) {
+					NpEnsureComboObject(hWndMain, &nclr->header, NpGetComboFormatForPreset());
+				}
+
 				NpOpenObject(hWndMain, &nclr->header);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
@@ -4092,7 +4258,7 @@ static BOOL NpCfgWriteInt(LPCWSTR section, LPCWSTR prop, int val) {
 static int NpCfgReadInt(LPCWSTR section, LPCWSTR prop, int def) {
 	//read value from profile, if not the default then return
 	int val0 = GetPrivateProfileInt(section, prop, def, g_configPath);
-	if (val0 != def) return def;
+	if (val0 != def) return val0;
 
 	//try reading with a different default to catch a default setting
 	int val1 = GetPrivateProfileInt(section, prop, def ^ 1, g_configPath);
@@ -4117,6 +4283,7 @@ static void ReadConfiguration(void) {
 	g_configuration.dpiAware               = NpCfgReadInt(L"NitroPaint", L"DPIAware",          1);
 	g_configuration.allowMultipleInstances = NpCfgReadInt(L"NitroPaint", L"AllowMultiple",     0);
 	g_configuration.backgroundPath         = NpCfgReadStr(L"NitroPaint", L"Background",        L"");
+	g_configuration.preset                 = NpCfgReadInt(L"NitroPaint", L"Preset",            0);
 	g_configuration.nclrViewerConfiguration.useDSColorPicker = NpCfgReadInt(L"NclrViewer", L"UseDSColorPicker", 1);
 	g_configuration.ncgrViewerConfiguration.gridlines        = NpCfgReadInt(L"NcgrViewer", L"Gridlines",        1);
 	g_configuration.nscrViewerConfiguration.gridlines        = NpCfgReadInt(L"NscrViewer", L"Gridlines",        0);

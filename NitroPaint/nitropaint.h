@@ -16,6 +16,7 @@ typedef struct {
 	BOOL renderTransparent;
 	BOOL dpiAware;
 	BOOL allowMultipleInstances;
+	int preset;
 	HBRUSH hbrBackground;
 	LPWSTR backgroundPath;
 	struct {
@@ -107,6 +108,14 @@ typedef struct {
 #define FILTER_IMAGE      FILTER_NAME_IMAGE     L"\0" FILTER_EXTS_IMAGE     L"\0"
 #define FILTER_ALL        FILTER_NAME_ALL       L"\0" FILTER_EXTS_ALL       L"\0"
 #define FILTER_ALLFILES   L"All Files\0*.*\0"
+
+
+#define NP_PRESET_NITROSYSTEM       0
+#define NP_PRESET_NITROCHARACTER    1
+#define NP_PRESET_GRIT              2
+#define NP_PRESET_RAW               3
+#define NP_PRESET_MAX               3
+
 
 //
 // Get the DPI scaling for the current monitor.

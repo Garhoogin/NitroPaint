@@ -929,6 +929,7 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 			screenFormat = NSCR_TYPE_AC;
 			break;
 		case BGGEN_FORMAT_IMAGESTUDIO:
+		case BGGEN_FORMAT_GRF:
 			paletteFormat = NCLR_TYPE_COMBO;
 			characterFormat = NCGR_TYPE_COMBO;
 			screenFormat = NSCR_TYPE_COMBO;
@@ -986,10 +987,16 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		memset(nscr, 0, sizeof(NSCR));
 	}
 
-	if (params->fmt == BGGEN_FORMAT_IMAGESTUDIO) {
+	if (params->fmt == BGGEN_FORMAT_IMAGESTUDIO || params->fmt == BGGEN_FORMAT_GRF) {
 		//link as combo
+		int combofmt = COMBO2D_TYPE_5BG;
+		switch (params->fmt) {
+			case BGGEN_FORMAT_IMAGESTUDIO: combofmt = COMBO2D_TYPE_5BG;    break;
+			case BGGEN_FORMAT_GRF:         combofmt = COMBO2D_TYPE_GRF_BG; break;
+		}
+
 		COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-		combo2dInit(combo, COMBO2D_TYPE_5BG);
+		combo2dInit(combo, combofmt);
 		combo2dLink(combo, &nclr->header);
 		combo2dLink(combo, &ncgr->header);
 		if (ObjIsValid(&nscr->header)) combo2dLink(combo, &nscr->header);

@@ -265,13 +265,20 @@
 #define ID_MESGMENU_NEWMESSAGE          40276
 #define ID_MESGMENU_DELETE              40277
 #define ID_MESGPREVMENU_COPY            40278
+#define ID_VIEW_PRESETS                 40279
+#define ID_PRESETS_NITRO                40280
+#define ID_PRESETS_GRF                  40281
+#define ID_PRESETS_RAW                  40282
+#define ID_PRESETS_NITRO40283           40283
+#define ID_PRESETS_NITROSYSTEM          40284
+#define ID_PRESETS_NITROCHARACTER       40285
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        112
-#define _APS_NEXT_COMMAND_VALUE         40279
+#define _APS_NEXT_COMMAND_VALUE         40286
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

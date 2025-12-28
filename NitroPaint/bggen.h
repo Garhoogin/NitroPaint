@@ -28,8 +28,9 @@ typedef enum BggenColor0Mode_ {
 #define BGGEN_FORMAT_IMAGESTUDIO     4          // 5BG
 #define BGGEN_FORMAT_HUDSON          5          // Hudson bin
 #define BGGEN_FORMAT_HUDSON2         6          // Hudson bin
-#define BGGEN_FORMAT_BIN             7          // raw
-#define BGGEN_FORMAT_BIN_COMPRESSED  8          // raw compresed
+#define BGGEN_FORMAT_GRF             7          // GRF
+#define BGGEN_FORMAT_BIN             8          // raw
+#define BGGEN_FORMAT_BIN_COMPRESSED  9          // raw compresed
 
 typedef struct BgDctBlock_ {
 	float blockY[64];
