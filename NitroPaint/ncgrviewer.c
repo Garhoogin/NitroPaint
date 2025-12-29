@@ -674,9 +674,14 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 		int matchesPalette = (indexed == NULL) ? FALSE : TRUE; //cannot have a matching palette if there's no palette!
 		if (matchesPalette && nclr != NULL) {
 			//check matching from the start of the currently selected palette in the viewer
-			for (int i = 0; i < nColsDest; i++) {
-				if ((palFirst + i) >= nclr->nColors) break;
-				if (i >= pltSize) break;
+			for (int iPx = 0; iPx < width * height; iPx++) {
+				int i = indexed[iPx];
+				if (i > nColsDest || i >= pltSize || (palFirst + i) >= nclr->nColors) {
+					//if the indexed value is out of bounds of either the source or destination
+					//palette, mark it as unmatching.
+					matchesPalette = FALSE;
+					break;
+				}
 
 				COLOR32 c = imgPalette[i];
 				if (ColorConvertToDS(c) != nclr->colors[palFirst + i]) {
