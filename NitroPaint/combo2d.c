@@ -1027,7 +1027,7 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 	}
 
 	//cell data?
-	if ((flags >> 14) == 2) {
+	if ((flags >> 14) == 2 && obj != NULL) {
 		NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
 		CellInit(ncer, NCER_TYPE_COMBO);
 

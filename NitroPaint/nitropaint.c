@@ -1188,6 +1188,9 @@ static int NpGetPaletteFormatForPreset(void) {
 		default:
 		case NP_PRESET_NITROSYSTEM: return NCLR_TYPE_NCLR;
 		case NP_PRESET_NITROCHARACTER: return NCLR_TYPE_NC;
+		case NP_PRESET_IRIS_CHARACTER: return NCLR_TYPE_BIN;
+		case NP_PRESET_AGB_CHARACTER: return NCLR_TYPE_BIN;
+		case NP_PRESET_IMAGESTUDIO: return NCLR_TYPE_COMBO;
 		case NP_PRESET_GRIT: return NCLR_TYPE_COMBO;
 		case NP_PRESET_RAW: return NCLR_TYPE_BIN;
 	}
@@ -1198,6 +1201,9 @@ static int NpGetCharacterFormatForPreset(void) {
 		default:
 		case NP_PRESET_NITROSYSTEM: return NCGR_TYPE_NCGR;
 		case NP_PRESET_NITROCHARACTER: return NCGR_TYPE_NC;
+		case NP_PRESET_IRIS_CHARACTER: return NCGR_TYPE_IC;
+		case NP_PRESET_AGB_CHARACTER: return NCGR_TYPE_AC;
+		case NP_PRESET_IMAGESTUDIO: return NCGR_TYPE_COMBO;
 		case NP_PRESET_GRIT: return NCGR_TYPE_COMBO;
 		case NP_PRESET_RAW: return NCGR_TYPE_BIN;
 	}
@@ -1208,6 +1214,9 @@ static int NpGetScreenFormatForPreset(void) {
 		default:
 		case NP_PRESET_NITROSYSTEM: return NSCR_TYPE_NSCR;
 		case NP_PRESET_NITROCHARACTER: return NSCR_TYPE_NC;
+		case NP_PRESET_IRIS_CHARACTER: return NSCR_TYPE_IC;
+		case NP_PRESET_AGB_CHARACTER: return NSCR_TYPE_AC;
+		case NP_PRESET_IMAGESTUDIO: return NSCR_TYPE_COMBO;
 		case NP_PRESET_GRIT: return NSCR_TYPE_COMBO;
 		case NP_PRESET_RAW: return NSCR_TYPE_BIN;
 	}
@@ -1218,6 +1227,8 @@ static int NpGetCellFormatForPreset(void) {
 		default:
 		case NP_PRESET_NITROSYSTEM: return NCER_TYPE_NCER;
 		//case NP_PRESET_NITROCHARACTER: // TODO
+		//case NP_PRESET_IRIS_CHARACTER: // TODO
+		//case NP_PRESET_AGB_CHARACTER: // TODO
 		case NP_PRESET_GRIT: return NCER_TYPE_COMBO;
 		case NP_PRESET_RAW: return NCER_TYPE_HUDSON;
 	}
@@ -1226,6 +1237,7 @@ static int NpGetCellFormatForPreset(void) {
 static int NpGetComboFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default: return COMBO2D_TYPE_INVALID;
+		case NP_PRESET_IMAGESTUDIO: return COMBO2D_TYPE_5BG;
 		case NP_PRESET_GRIT: return COMBO2D_TYPE_GRF_BG;
 	}
 }
@@ -1518,7 +1530,10 @@ cleanup:
 }
 
 static void NpCheckCurrentPreset(HWND hWndMain) {
-	const unsigned short ids[] = { ID_PRESETS_NITROSYSTEM, ID_PRESETS_NITROCHARACTER, ID_PRESETS_GRF, ID_PRESETS_RAW };
+	const unsigned short ids[] = {
+		ID_PRESETS_NITROSYSTEM, ID_PRESETS_NITROCHARACTER, ID_PRESETS_GRF, ID_PRESETS_RAW,
+		ID_PRESETS_ISIRISCHARACTER, ID_PRESETS_ISAGBCHARACTER, ID_PRESETS_IMAGESTUDIO
+	};
 
 	for (int i = 0; i <= NP_PRESET_MAX; i++) {
 		int state = i == g_configuration.preset;
@@ -2057,6 +2072,15 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						break;
 					case ID_PRESETS_NITROCHARACTER:
 						NpSetPreset(hWnd, NP_PRESET_NITROCHARACTER);
+						break;
+					case ID_PRESETS_ISIRISCHARACTER:
+						NpSetPreset(hWnd, NP_PRESET_IRIS_CHARACTER);
+						break;
+					case ID_PRESETS_ISAGBCHARACTER:
+						NpSetPreset(hWnd, NP_PRESET_AGB_CHARACTER);
+						break;
+					case ID_PRESETS_IMAGESTUDIO:
+						NpSetPreset(hWnd, NP_PRESET_IMAGESTUDIO);
 						break;
 					case ID_PRESETS_GRF:
 						NpSetPreset(hWnd, NP_PRESET_GRIT);
@@ -3072,7 +3096,8 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				L"Char 2D", L"Char 1D 32K", L"Char 1D 64K", L"Char 1D 128K", L"Char 1D 256K"
 			};
 			LPCWSTR formats[] = {
-				L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"Hudson", L"Hudson 2", L"GRF", L"Raw", L"Raw Compressed"
+				L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"iMageStudio",
+				L"Hudson", L"Hudson 2", L"GRF", L"Raw", L"Raw Compressed"
 			};
 
 			//get default format for preset
@@ -3080,8 +3105,11 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			switch (g_configuration.preset) {
 				case NP_PRESET_NITROSYSTEM: def = 0; break;
 				case NP_PRESET_NITROCHARACTER: def = 1; break;
-				case NP_PRESET_GRIT: def = 6; break;
-				case NP_PRESET_RAW: def = 8; break;
+				case NP_PRESET_IRIS_CHARACTER: def = 2; break;
+				case NP_PRESET_AGB_CHARACTER: def = 3; break;
+				case NP_PRESET_IMAGESTUDIO: def = 4; break;
+				case NP_PRESET_GRIT: def = 7; break;
+				case NP_PRESET_RAW: def = 9; break;
 			}
 
 			CreateStatic(hWnd, L"8 bit:", 10, 10, 50, 22);
@@ -3119,6 +3147,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						NCGR_TYPE_NC,
 						NCGR_TYPE_IC,
 						NCGR_TYPE_AC,
+						NCGR_TYPE_COMBO,   // iMageStudio
 						NCGR_TYPE_HUDSON,
 						NCGR_TYPE_HUDSON2,
 						NCGR_TYPE_COMBO,   // GRF
@@ -3130,13 +3159,14 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						NCLR_TYPE_NC,
 						NCLR_TYPE_BIN,
 						NCLR_TYPE_BIN,
+						NCLR_TYPE_COMBO,   // iMageStudio 
 						NCLR_TYPE_HUDSON, 
 						NCLR_TYPE_HUDSON,
 						NCLR_TYPE_COMBO,   // GRF
 						NCLR_TYPE_BIN,     // raw (uncompressed)
 						NCLR_TYPE_BIN      // raw (compressed)
 					};
-					int compression = format == 8 ? COMPRESSION_LZ77 : COMPRESSION_NONE;
+					int compression = format == 9 ? COMPRESSION_LZ77 : COMPRESSION_NONE;
 					int charFormat = charFormats[format];
 					int palFormat = palFormats[format];
 
@@ -3164,14 +3194,19 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					ObjLinkObjects(&nclr->header, &ncgr->header);
 
 					//link by combo
-					if (format == 6) {
-						COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-						combo2dInit(combo, COMBO2D_TYPE_GRF_BG);
+					if (nclr->header.format == NCLR_TYPE_COMBO) {
+						int combofmt = COMBO2D_TYPE_GRF_BG;
+						switch (format) {
+							case 4: combofmt = COMBO2D_TYPE_5BG; break;
+							case 7: combofmt = COMBO2D_TYPE_GRF_BG; break;
+						}
 
+						COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
+						combo2dInit(combo, combofmt);
 						combo2dLink(combo, &nclr->header);
 						combo2dLink(combo, &ncgr->header);
 
-						NpEnsureComboObject(hWndMain, &nclr->header, COMBO2D_TYPE_GRF_BG);
+						NpEnsureComboObject(hWndMain, &nclr->header, combofmt);
 					}
 
 					NpOpenObject(hWndMain, &nclr->header);

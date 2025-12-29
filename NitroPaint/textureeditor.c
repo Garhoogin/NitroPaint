@@ -19,6 +19,15 @@ extern HICON g_appIcon;
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
 
+static int TexViewerGetFormatForPreset(void) {
+	switch (g_configuration.preset) {
+		default:
+		case NP_PRESET_NITROSYSTEM: return TEXTURE_TYPE_NNSTGA;
+		case NP_PRESET_IMAGESTUDIO: return TEXTURE_TYPE_ISTUDIO;
+		case NP_PRESET_GRIT: return TEXTURE_TYPE_GRF;
+	}
+}
+
 // convert a narrow resource name to a wide character string
 WCHAR *TexNarrowResourceNameToWideChar(const char *name) {
 	//NULL resource name
@@ -523,7 +532,7 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		{
 			data->texture = (TextureObject *) calloc(1, sizeof(TextureObject));
 
-			TxInit(data->texture, TEXTURE_TYPE_NNSTGA);
+			TxInit(data->texture, TexViewerGetFormatForPreset());
 			data->width = wParam & 0xFFFF;
 			data->height = (wParam >> 16) & 0xFFFF;
 			data->px = (COLOR32 *) lParam;

@@ -114,7 +114,10 @@ typedef struct {
 #define NP_PRESET_NITROCHARACTER    1
 #define NP_PRESET_GRIT              2
 #define NP_PRESET_RAW               3
-#define NP_PRESET_MAX               3
+#define NP_PRESET_IRIS_CHARACTER    4
+#define NP_PRESET_AGB_CHARACTER     5
+#define NP_PRESET_IMAGESTUDIO       6
+#define NP_PRESET_MAX               6
 
 
 //

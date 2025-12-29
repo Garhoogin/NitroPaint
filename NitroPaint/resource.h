@@ -272,13 +272,18 @@
 #define ID_PRESETS_NITRO40283           40283
 #define ID_PRESETS_NITROSYSTEM          40284
 #define ID_PRESETS_NITROCHARACTER       40285
+#define ID_PRESETS_IS                   40286
+#define ID_PRESETS_IS40287              40287
+#define ID_PRESETS_IMAGESTUDIO          40288
+#define ID_PRESETS_ISIRISCHARACTER      40289
+#define ID_PRESETS_ISAGBCHARACTER       40290
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        112
-#define _APS_NEXT_COMMAND_VALUE         40286
+#define _APS_NEXT_COMMAND_VALUE         40291
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
