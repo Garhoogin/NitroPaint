@@ -107,6 +107,60 @@ static void NftrViewerRenderGlyphMasks(NFTRVIEWERDATA *data, NFTR_GLYPH *glyph, 
 }
 
 
+// ----- encoding/decoding routines
+
+static wchar_t NftrViewerDecodeSjisCharacter(uint16_t cpSjis) {
+	unsigned char byte1 = (cpSjis >> 0) & 0xFF;
+	unsigned char byte2 = (cpSjis >> 8) & 0xFF;
+
+	//ASCII plane
+	if (byte2 == 0 && byte1 < 0xA1 && (byte1 != 0x5C && byte1 != 0x7E)) {
+		return (wchar_t) byte1;
+	}
+
+	char buf[3] = { 0 };
+	wchar_t bufU[2] = { 0 };
+
+	if (byte2 == 0) {
+		buf[0] = byte1;
+	} else {
+		buf[0] = byte2;
+		buf[1] = byte1;
+	}
+	MultiByteToWideChar(932, MB_ERR_INVALID_CHARS | MB_PRECOMPOSED, buf, sizeof(buf), bufU, 2);
+
+	return bufU[0];
+}
+
+static int NftrViewerEncodeSjisCharacter(wchar_t chr) {
+	wchar_t bufU[2] = { 0 };
+	char bufJ[3] = { 0 };
+	bufU[0] = chr;
+
+	int n = WideCharToMultiByte(932, 0, bufU, 2, bufJ, 3, NULL, NULL);
+	if (n < 1) return -1; // error
+
+	//for SJIS characters with 1 byte
+	if (bufJ[1] == '\0') return (unsigned char) bufJ[0];
+
+	//for SJIS characters with 2 byte
+	uint16_t jis = 0;
+	jis |= ((unsigned char) bufJ[0]) << 8;
+	jis |= ((unsigned char) bufJ[1]) << 0;
+	return jis;
+}
+
+static wchar_t NftrDecodeCharacter(NFTR *nftr, uint16_t cp) {
+	if (nftr->charset == FONT_CHARSET_SJIS) return NftrViewerDecodeSjisCharacter(cp);
+	return (wchar_t) cp;
+}
+
+static uint16_t NftrEncodeCharacter(NFTR *nftr, wchar_t chr) {
+	if (nftr->charset == FONT_CHARSET_SJIS) return NftrViewerEncodeSjisCharacter(chr);
+	return (uint16_t) chr;
+}
+
+
 // ----- glyph cache routines
 
 #define GLYPH_CACHE_SIZE 64
@@ -249,8 +303,8 @@ void NftrRenderString(NFTR *nftr, COLOR32 *pxbuf, int width, int height, const w
 			nCharsLine = 0;
 			continue;
 		}
-
-		NFTR_GLYPH *glyph = NftrGetGlyphByCP(nftr, (uint16_t) c);
+		
+		NFTR_GLYPH *glyph = NftrGetGlyphByCP(nftr, NftrEncodeCharacter(nftr, c));
 		if (glyph == NULL) glyph = NftrGetInvalidGlyph(nftr);
 
 		if (glyph != NULL) {
@@ -416,48 +470,6 @@ static void NftrViewerFontUpdated(NFTRVIEWERDATA *data) {
 }
 
 
-// ----- encoding/decoding routines
-
-static wchar_t NftrViewerDecodeSjisCharacter(uint16_t cpSjis) {
-	unsigned char byte1 = (cpSjis >> 0) & 0xFF;
-	unsigned char byte2 = (cpSjis >> 8) & 0xFF;
-
-	//ASCII plane
-	if (byte2 == 0 && byte1 < 0xA1 && (byte1 != 0x5C && byte1 != 0x7E)) {
-		return (wchar_t) byte1;
-	}
-
-	char buf[3] = { 0 };
-	wchar_t bufU[2] = { 0 };
-
-	if (byte2 == 0) {
-		buf[0] = byte1;
-	} else {
-		buf[0] = byte2;
-		buf[1] = byte1;
-	}
-	MultiByteToWideChar(932, MB_ERR_INVALID_CHARS | MB_PRECOMPOSED, buf, sizeof(buf), bufU, 2);
-
-	return bufU[0];
-}
-
-static int NftrViewerEncodeSjisCharacter(wchar_t chr) {
-	wchar_t bufU[2] = { 0 };
-	char bufJ[3] = { 0 };
-	bufU[0] = chr;
-
-	int n = WideCharToMultiByte(932, WC_ERR_INVALID_CHARS, bufU, -1, bufJ, 3, NULL, NULL);
-	if (n < 1) return -1; // error
-
-	//for SJIS characters with 1 byte
-	if (bufJ[1] == '\0') return (unsigned char) bufJ[0];
-
-	//for SJIS characters with 2 byte
-	uint16_t jis = 0;
-	jis |= ((unsigned char) bufJ[0]) << 8;
-	jis |= ((unsigned char) bufJ[1]) << 0;
-	return jis;
-}
 
 static int NftrViewerParseCharacter(const wchar_t *buf, int outSjis) {
 	//get character code
@@ -511,7 +523,7 @@ static int NftrViewerPromptCharacter(NFTRVIEWERDATA *data, LPCWSTR title, LPCWST
 	while (1) {
 		int s = PromptUserText(hWndMain, title, prompt, textbuf, sizeof(textbuf));
 		if (!s) return -1;
-
+		
 		int inputCP = NftrViewerParseCharacter(textbuf, data->nftr->charset == FONT_CHARSET_SJIS);
 		if (inputCP != -1) return inputCP;
 
@@ -1121,7 +1133,7 @@ static void NftrViewerCopyCurrentCharacter(NFTRVIEWERDATA *data) {
 
 	HANDLE hString = GlobalAlloc(GMEM_MOVEABLE, 2 * sizeof(WCHAR));
 	WCHAR *textbuf = (WCHAR *) GlobalLock(hString);
-	textbuf[0] = (WCHAR) glyph->cp;
+	textbuf[0] = NftrDecodeCharacter(data->nftr, glyph->cp);
 	textbuf[1] = L'\0';
 	GlobalUnlock(hString);
 
