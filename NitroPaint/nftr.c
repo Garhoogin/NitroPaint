@@ -7,7 +7,7 @@
 #define NFTR_MAP_SCAN       2
 
 extern LPCWSTR fontFormatNames[] = {
-	L"Invalid", L"NFTR 0.1", L"NFTR 1.0", L"NFTR 1.1", L"NFTR 1.2", L"BNFR 1.1", L"BNFR 1.2", L"BNFR 2.0", L"GameFreak NFTR 1.1", NULL
+	L"Invalid", L"NFTR 0.1", L"NFTR 1.0", L"NFTR 1.1", L"NFTR 1.2", L"BNFR 1.1", L"BNFR 1.2", L"BNFR 2.0", L"GameFreak NFTR 1.1", L"Starfy", NULL
 };
 
 
@@ -250,6 +250,35 @@ static int NftrIsValidNftr(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+static int NftrIsValidStarfy(const unsigned char *buffer, unsigned int size) {
+	if (size < 4) return 0; // file header
+
+	unsigned int nCP = *(const uint16_t *) (buffer + 0x2);
+	if ((size - 4) < (nCP * 4)) return 0; // not space for glyph table
+	if (nCP != 0x100 && nCP != 0x3000) return 0; // not a correct code point count
+
+	unsigned int height = buffer[0];
+	unsigned int depth = buffer[1];
+	if (depth == 0 || depth > 8) return 0;
+
+	for (unsigned int i = 0; i < nCP; i++) {
+		unsigned int offs = ((const uint32_t *) (buffer + 0x4))[i];
+		if (offs == 0) continue;
+
+		if (offs < 4 || offs >= size) return 0;
+		if ((size - offs) < 2) return 0;
+
+		//check glyph data (stride should match width)
+		const unsigned char *glyph = buffer + offs;
+		unsigned int width = glyph[0];
+		unsigned int stride = glyph[1];
+
+		if (stride != (width * depth + 7) / 8) return 0;
+	}
+
+	return 1;
+}
+
 static int NftrIsValidNftr01(const unsigned char *buffer, unsigned int size) {
 	if (!NftrIsValidNftr(buffer, size)) return 0;
 	return (*(const uint16_t *) (buffer + 0x06)) == 0x0001;
@@ -313,6 +342,7 @@ int NftrIdentify(const unsigned char *buffer, unsigned int size) {
 	if (NftrIsValidBnfr12(buffer, size)) return NFTR_TYPE_BNFR_12;
 	if (NftrIsValidBnfr11(buffer, size)) return NFTR_TYPE_BNFR_11;
 	if (NftrIsValidGfNftr11(buffer, size)) return NFTR_TYPE_GF_NFTR_11;
+	if (NftrIsValidStarfy(buffer, size)) return NFTR_TYPE_STARFY;
 	return NFTR_TYPE_INVALID;
 }
 
@@ -720,6 +750,92 @@ static int NftrReadGfNftr11(NFTR *nftr, const unsigned char *buffer, unsigned in
 	return NftrReadNftrCommon(nftr, buffer, size);
 }
 
+static int NftrReadStarfy(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
+	NftrInit(nftr, NFTR_TYPE_STARFY);
+
+	unsigned int nTable = *(const uint16_t *) (buffer + 0x2);
+	const uint32_t *ofsTable = (const uint32_t *) (buffer + 0x4);
+	unsigned int ofsPlaceholder = nTable * 4 + 4;
+
+	unsigned int nCP = 0;
+	int writtenInvalid = 0;
+	for (unsigned int i = 0; i < nTable; i++) {
+		if (ofsTable[i] == 0) continue;
+		if (ofsTable[i] == ofsPlaceholder && writtenInvalid) continue;
+
+		nCP++;
+		if (ofsTable[i] == ofsPlaceholder) writtenInvalid = 1; // don't double-count the invalid glyph
+	}
+
+	//get cell bounding info
+	unsigned int cellWidth = 1;
+	unsigned int cellHeight = *(const unsigned char *) (buffer + 0x0);
+	for (unsigned int i = 0; i < nTable; i++) {
+		if (ofsTable[i] == 0) continue;
+
+		const unsigned char *glyph = buffer + ofsTable[i];
+		unsigned int width = *(const unsigned char *) (glyph + 0x0);
+		if (width > cellWidth) cellWidth = width;
+	}
+
+	unsigned int depth = *(const unsigned char *) (buffer + 0x1);
+	unsigned int depthMask = (1 << depth) - 1;
+
+	nftr->bpp = depth;
+	nftr->nGlyph = nCP;
+	nftr->glyphs = (NFTR_GLYPH *) calloc(nCP, sizeof(NFTR_GLYPH));
+	nftr->cellWidth = cellWidth;
+	nftr->cellHeight = cellHeight;
+	nftr->lineHeight = cellHeight + 1;
+	nftr->hasCodeMap = 1;
+	nftr->pxAscent = cellHeight;
+	nftr->pxDescent = nftr->cellHeight - nftr->pxAscent;
+	nftr->charset = nTable == 0x100 ? FONT_CHARSET_ASCII : FONT_CHARSET_SJIS;
+
+	unsigned int iGlyph = 0;
+	writtenInvalid = 0;
+	for (unsigned int i = 0; i < nTable; i++) {
+		uint32_t offs = ofsTable[i];
+		if (offs == 0) continue;
+		if (offs == ofsPlaceholder && writtenInvalid) continue; // placeholder glyph slot
+
+		//decode the character index into a code point.
+		unsigned int cp = i;
+		if (nftr->charset == FONT_CHARSET_SJIS) {
+			unsigned int hi = (i / 0xC0);
+			unsigned int lo = (i % 0xC0) + 0x40;
+			cp = 0x8000 + (lo | (hi << 8));
+		}
+
+		const unsigned char *glyphData = buffer + offs;
+		unsigned int width = *(const unsigned char *) (glyphData + 0x0);
+		unsigned int stride = *(const unsigned char *) (glyphData + 0x1);
+
+		NFTR_GLYPH *glyph = &nftr->glyphs[iGlyph++];
+		glyph->cp = cp;
+		glyph->isInvalid = offs == ofsPlaceholder;
+		glyph->width = width;
+		glyph->px = (unsigned char *) calloc(cellWidth * cellHeight, 1);
+
+		//read pixels
+		for (unsigned int y = 0; y < cellHeight; y++) {
+			const unsigned char *row = glyphData + 0x2 + stride * y;
+			for (unsigned int x = 0; x < width; x++) {
+				
+				unsigned int bitaddr = x * depth;
+				unsigned int pxval = (row[bitaddr / 8] >> (bitaddr % 8)) & depthMask;
+				glyph->px[y * cellWidth + x] = pxval;
+			}
+		}
+
+		//if this was the invalid glyph, mark it written so we don't keep writing it
+		if (offs == ofsPlaceholder) writtenInvalid = 1;
+	}
+	NftrEnsureSorted(nftr);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
 	switch (NftrIdentify(buffer, size)) {
 		case NFTR_TYPE_NFTR_01:
@@ -738,6 +854,8 @@ int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
 			return NftrReadBnfr11(nftr, buffer, size);
 		case NFTR_TYPE_GF_NFTR_11:
 			return NftrReadGfNftr11(nftr, buffer, size);
+		case NFTR_TYPE_STARFY:
+			return NftrReadStarfy(nftr, buffer, size);
 	}
 	return OBJ_STATUS_INVALID;
 }
@@ -2216,6 +2334,99 @@ static int NftrWriteBnfr12(NFTR *nftr, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
+static void NftrWriteGlyphStarfy(NFTR *nftr, int i, BSTREAM *stream) {
+	NFTR_GLYPH *glyph = &nftr->glyphs[i];
+	unsigned int stride = (glyph->width * nftr->bpp + 7) / 8;
+
+	unsigned int cp = glyph->cp;
+	unsigned int index = cp;
+	if (nftr->charset == FONT_CHARSET_SJIS) {
+		index = ((cp & 0xFF) + ((cp >> 8) & 0x3F) * 0xC0 - 0x40) & 0x3FFF;
+		if (index > 0x3000) return; // invalid index
+	}
+
+	//put table
+	*(uint32_t *) (stream->buffer + 4 + index * 4) = stream->size;
+
+	//put glyph
+	unsigned char hdr[2];
+	hdr[0] = glyph->width;
+	hdr[1] = stride;
+	bstreamWrite(stream, hdr, sizeof(hdr));
+
+	//put pixels
+	unsigned char *bmp = (unsigned char *) calloc(nftr->cellHeight * stride, 1);
+
+	for (int y = 0; y < nftr->cellHeight; y++) {
+		unsigned char *row = bmp + y * stride;
+		for (int x = 0; x < glyph->width; x++) {
+			int bitno = x * nftr->bpp;
+			unsigned int pxval = glyph->px[y * nftr->cellWidth + x];
+			row[bitno / 8] |= pxval << (bitno % 8);
+		}
+	}
+
+	bstreamWrite(stream, bmp, nftr->cellHeight * stride);
+	free(bmp);
+}
+
+static int NftrWriteStarfy(NFTR *nftr, BSTREAM *stream) {
+	//glyph offset table
+	unsigned int nTbl = 0x100;
+	if (nftr->charset == FONT_CHARSET_SJIS) nTbl = 0x3000;
+
+	unsigned char hdr[4] = { 0 };
+	hdr[0] = nftr->cellHeight;
+	hdr[1] = nftr->bpp;
+	*(uint16_t *) (hdr + 0x2) = nTbl;
+	bstreamWrite(stream, hdr, sizeof(hdr));
+
+	//placeholder table
+	uint32_t *tbl = (uint32_t *) calloc(nTbl, sizeof(uint32_t));
+	bstreamWrite(stream, tbl, nTbl * sizeof(uint32_t));
+	free(tbl);
+
+	//the convention we adopt is that the first glyph is the invalid glyph index. So we first write
+	//the invalid glyph.
+	int iInvalid = 0;
+	for (int i = 0; i < nftr->nGlyph; i++) {
+		if (nftr->glyphs[i].isInvalid) {
+			iInvalid = i;
+			break;
+		}
+	}
+
+	//put glyphs
+	if (iInvalid != -1) {
+		//fill the table with invalid glyph offset
+		uint32_t ofsInvalid = stream->size;
+		uint32_t *ofsTbl = (uint32_t *) (stream->buffer + 4);
+		for (unsigned int i = 0; i < nTbl; i++) ofsTbl[i] = ofsInvalid;
+
+		if (nftr->charset == FONT_CHARSET_SJIS) {
+			//for SJIS, mark first 0xC0 code points and certain others invalid.
+			for (unsigned int i = 0; i < 0xC0; i++) ofsTbl[i] = 0;
+			for (unsigned int i = 0x203D; i < 0x3000; i++) ofsTbl[i] = 0;
+			ofsTbl[0xFF] = 0;
+			
+			for (unsigned int i = 0x0140; i < 0x3000; i += 0xC0) {
+				ofsTbl[i + 0x3D] = 0;
+				ofsTbl[i + 0x3E] = 0;
+				ofsTbl[i + 0x3F] = 0;
+				ofsTbl[i + 0x7F] = 0;
+			}
+		}
+
+		NftrWriteGlyphStarfy(nftr, iInvalid, stream);
+	}
+
+	for (int i = 0; i < nftr->nGlyph; i++) {
+		if (i != iInvalid) NftrWriteGlyphStarfy(nftr, i, stream);
+	}
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int NftrWrite(NFTR *nftr, BSTREAM *stream) {
 	switch (nftr->header.format) {
 		case NFTR_TYPE_BNFR_11:
@@ -2230,6 +2441,8 @@ int NftrWrite(NFTR *nftr, BSTREAM *stream) {
 		case NFTR_TYPE_NFTR_12:
 		case NFTR_TYPE_GF_NFTR_11:
 			return NftrWriteNftrCommon(nftr, stream);
+		case NFTR_TYPE_STARFY:
+			return NftrWriteStarfy(nftr, stream);
 	}
 	return OBJ_STATUS_UNSUPPORTED;
 }

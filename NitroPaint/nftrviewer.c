@@ -2551,6 +2551,7 @@ void RegisterNftrViewerClass(void) {
 	EditorAddFilter(cls, NFTR_TYPE_NFTR_11, L"nftr", L"NFTR Files (*.nftr)\0*.nftr\0");
 	EditorAddFilter(cls, NFTR_TYPE_NFTR_12, L"nftr", L"NFTR Files (*.nftr)\0*.nftr\0");
 	EditorAddFilter(cls, NFTR_TYPE_GF_NFTR_11, L"nftr", L"NFTR Files (*.nftr)\0*.nftr\0");
+	EditorAddFilter(cls, NFTR_TYPE_STARFY, L"bin", L"bin Files (*.bin)\0*.bin\0");
 
 	RegisterGenericClass(NFTR_VIEWER_MARGIN_CLASS, NftrViewerMarginWndProc, sizeof(void *));
 	RegisterGenericClass(NFTR_VIEWER_PREVIEW_CLASS, NftrViewerCellEditorWndProc, sizeof(void *));
