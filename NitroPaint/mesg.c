@@ -2,6 +2,10 @@
 
 LPCWSTR gMesgFormatNames[] = { L"Invalid", L"BMG", NULL };
 
+#define JMSG_INVALID 0  // invalid message file
+#define JMSG_LE      1  // message file little endian
+#define JMSG_BE      2  // message file big endidan
+
 static void MesgFree(OBJECT_HEADER *header) {
 	MesgFile *mesg = (MesgFile *) header;
 
@@ -65,6 +69,28 @@ unsigned int MesgDoubleByteLength(const unsigned char *buf) {
 }
 
 
+static uint32_t JFileReadEndian32(const unsigned char *p, int endian) {
+	switch (endian) {
+		case JMSG_LE:
+			return (p[0] << 0) | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
+		case JMSG_BE:
+			return (p[3] << 0) | (p[2] << 8) | (p[1] << 16) | (p[0] << 24);
+		default:
+			return 0;
+	}
+}
+
+static uint16_t JFileReadEndian16(const unsigned char *p, int endian) {
+	switch (endian) {
+		case JMSG_LE:
+			return (p[0] << 0) | (p[1] << 8);
+		case JMSG_BE:
+			return (p[1] << 0) | (p[0] << 8);
+		default:
+			return 0;
+	}
+}
+
 static int JFileCheckSignature(const unsigned char *p, const char *signature, int revEndian) {
 	//xor source address with 3 for reverse endian check
 	unsigned int iXor = revEndian ? 0x3 : 0x0;
@@ -72,10 +98,10 @@ static int JFileCheckSignature(const unsigned char *p, const char *signature, in
 		&& p[2] == (unsigned char) signature[2 ^ iXor] && p[3] == (unsigned char) signature[3 ^ iXor];
 }
 
-static int JFileIsValid(const unsigned char *buffer, unsigned int size) {
+static int JFileIsValidEndian(const unsigned char *buffer, unsigned int size, int endian) {
 	if (size < 0x20) return 0; // header size
-	unsigned int jSize = *(const uint32_t *) (buffer + 0x08);
-	unsigned int nBlock = *(const uint32_t *) (buffer + 0x0C);
+	unsigned int jSize = JFileReadEndian32(buffer + 0x08, endian);
+	unsigned int nBlock = JFileReadEndian32(buffer + 0x0C, endian);
 
 	if (jSize < 0x20) return 0; // not big enough for header
 	if (jSize > size) return 0; // exceeds file size
@@ -86,7 +112,7 @@ static int JFileIsValid(const unsigned char *buffer, unsigned int size) {
 		if ((jSize - offs) < 8) return 0; // not enough space for block header
 
 		const unsigned char *block = buffer + offs;
-		unsigned int blockSize = *(const uint32_t *) (block + 4);
+		unsigned int blockSize = JFileReadEndian32(block + 4, endian);
 
 		if (blockSize < 8) return 0;              // block too small
 		if ((jSize - offs) < blockSize) return 0; // block too large
@@ -96,15 +122,21 @@ static int JFileIsValid(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-static unsigned char *JFileGetBlockBySignature(const unsigned char *buffer, unsigned int size, const char *signature, int revEndian, unsigned int *pBlockSize) {
-	unsigned int nBlock = *(const uint32_t *) (buffer + 0x0C);
+static int JFileIsValid(const unsigned char *buffer, unsigned int size) {
+	if (JFileIsValidEndian(buffer, size, JMSG_LE)) return JMSG_LE;
+	if (JFileIsValidEndian(buffer, size, JMSG_BE)) return JMSG_BE;
+	return JMSG_INVALID;
+}
+
+static unsigned char *JFileGetBlockBySignature(const unsigned char *buffer, unsigned int size, const char *signature, int revEndianBlocks, int endian, unsigned int *pBlockSize) {
+	unsigned int nBlock = JFileReadEndian32(buffer + 0x0C, endian);
 
 	unsigned int offs = 0x20;
 	for (unsigned int i = 0; i < nBlock; i++) {
 		const unsigned char *block = buffer + offs;
-		unsigned int blockSize = *(const uint32_t *) (block + 4);
+		unsigned int blockSize = JFileReadEndian32(block + 4, endian);
 
-		if (JFileCheckSignature(block, signature, revEndian)) {
+		if (JFileCheckSignature(block, signature, revEndianBlocks)) {
 			*pBlockSize = blockSize - 8;
 			return (unsigned char *) (buffer + offs + 8);
 		}
@@ -115,23 +147,24 @@ static unsigned char *JFileGetBlockBySignature(const unsigned char *buffer, unsi
 }
 
 static int MesgIsValidBMG(const unsigned char *buffer, unsigned int size) {
-	if (!JFileIsValid(buffer, size)) return 0;
+	int type = JFileIsValid(buffer, size);
+	if (type == JMSG_INVALID) return 0;
 	
 	//get endianness of the file signatures
-	int revEndian = 0;
+	int revEndianSignatures = 0;
 	if (!JFileCheckSignature(buffer + 0x00, "MESG", 0)) {
-		revEndian = 1;
+		revEndianSignatures = 1;
 		if (!JFileCheckSignature(buffer + 0x00, "MESG", 1)) return 0; // invalid signature
 	}
 
-	if (!JFileCheckSignature(buffer + 0x04, "bmg1", revEndian)) return 0; // file type
+	if (!JFileCheckSignature(buffer + 0x04, "bmg1", revEndianSignatures)) return 0; // file type
 
 	unsigned int encoding = *(const uint8_t *) (buffer + 0x10);
 	if (encoding > MESG_ENCODING_UTF8) return 0; // invalid encoding
 
 	unsigned int inf1Size, dat1Size;
-	const unsigned char *inf1 = JFileGetBlockBySignature(buffer, size, "INF1", revEndian, &inf1Size);
-	const unsigned char *dat1 = JFileGetBlockBySignature(buffer, size, "DAT1", revEndian, &dat1Size);
+	const unsigned char *inf1 = JFileGetBlockBySignature(buffer, size, "INF1", revEndianSignatures, type, &inf1Size);
+	const unsigned char *dat1 = JFileGetBlockBySignature(buffer, size, "DAT1", revEndianSignatures, type, &dat1Size);
 	if (inf1 == NULL || dat1 == NULL) return 0;
 
 	return 1;
@@ -159,19 +192,20 @@ static int MesgReadBMG(MesgFile *mesg, const unsigned char *buffer, unsigned int
 	MesgInit(mesg, MESG_TYPE_BMG);
 
 	//check endianness
-	int revEndian = 0;
-	if (JFileCheckSignature(buffer, "MESG", 1)) revEndian = 1;
+	int endian = JFileIsValid(buffer, size);
+	int revEndianSignatures = 0;
+	if (JFileCheckSignature(buffer, "MESG", 1)) revEndianSignatures = 1;
 
 	mesg->encoding = *(const uint8_t *) (buffer + 0x10);
 
 	unsigned int inf1Size, dat1Size, mid1Size;
-	const unsigned char *inf1 = JFileGetBlockBySignature(buffer, size, "INF1", revEndian, &inf1Size);
-	const unsigned char *dat1 = JFileGetBlockBySignature(buffer, size, "DAT1", revEndian, &dat1Size);
-	const unsigned char *mid1 = JFileGetBlockBySignature(buffer, size, "MID1", revEndian, &mid1Size);
+	const unsigned char *inf1 = JFileGetBlockBySignature(buffer, size, "INF1", revEndianSignatures, endian, &inf1Size);
+	const unsigned char *dat1 = JFileGetBlockBySignature(buffer, size, "DAT1", revEndianSignatures, endian, &dat1Size);
+	const unsigned char *mid1 = JFileGetBlockBySignature(buffer, size, "MID1", revEndianSignatures, endian, &mid1Size);
 
-	unsigned int nString = *(const uint16_t *) (inf1 + 0x00);
-	unsigned int entrySize = *(const uint16_t *) (inf1 + 0x02);
-	unsigned int groupID = *(const uint16_t *) (inf1 + 0x04);
+	unsigned int nString = JFileReadEndian16(inf1 + 0x00, endian);
+	unsigned int entrySize = JFileReadEndian16(inf1 + 0x02, endian);
+	unsigned int groupID = JFileReadEndian16(inf1 + 0x04, endian);
 	unsigned int colorID = *(const uint8_t *) (inf1 + 0x06);
 
 	//data fields supported:
@@ -191,6 +225,7 @@ static int MesgReadBMG(MesgFile *mesg, const unsigned char *buffer, unsigned int
 	//JMSMesgEntry starts with 4byte mesgOffset, extra data follows
 	unsigned int nExtra = entrySize - 4;
 	mesg->msgExtra = nExtra;
+	mesg->endian = endian;
 
 	mesg->groupID = groupID;
 	mesg->colorID = colorID;
@@ -199,7 +234,7 @@ static int MesgReadBMG(MesgFile *mesg, const unsigned char *buffer, unsigned int
 	mesg->messages = (MesgEntry *) calloc(nString, sizeof(MesgEntry));
 	for (unsigned int i = 0; i < nString; i++) {
 		const unsigned char *entry = (inf1 + 0x08 + i * entrySize);
-		uint32_t offs = *(const uint32_t *) (entry + 0x0);
+		uint32_t offs = JFileReadEndian32(entry + 0x0, endian);
 		unsigned int len = MesgGetStringLength(dat1 + offs, mesg->encoding);
 
 		MesgEntry *mesgEntry = &mesg->messages[i];
@@ -208,12 +243,21 @@ static int MesgReadBMG(MesgFile *mesg, const unsigned char *buffer, unsigned int
 		mesgEntry->extra = (void *) calloc(nExtra, 1);
 		memcpy(mesgEntry->message, dat1 + offs, len);
 
+		//if the file is in big endian, ensure the message is read in the correct byte order.
+		if (endian == JMSG_BE && mesg->encoding == MESG_ENCODING_UTF16) {
+			uint16_t *pmsg = mesgEntry->message;
+			for (unsigned int i = 0; i < len; i += 2) {
+				//TODO: process tags
+				pmsg[i] = JFileReadEndian16((const unsigned char *) &pmsg[i], endian);
+			}
+		}
+
 		//extra
 		memcpy(mesgEntry->extra, entry + 4, nExtra);
 
 		//if MID1 exists, we assign IDs to messages.
 		if (mid1 != NULL) {
-			mesgEntry->id = *(const uint32_t *) (mid1 + 8 + i * 4);
+			mesgEntry->id = JFileReadEndian32(mid1 + 8 + i * 4, endian);
 		}
 	}
 
@@ -237,6 +281,46 @@ int MesgReadFile(MesgFile *mesg, LPCWSTR path) {
 
 
 
+static void JFileWriteEndian32(unsigned char *p, uint32_t x, int endian) {
+	switch (endian) {
+		case JMSG_LE:
+			p[0] = (x >>  0) & 0xFF;
+			p[1] = (x >>  8) & 0xFF;
+			p[2] = (x >> 16) & 0xFF;
+			p[3] = (x >> 24) & 0xFF;
+			break;
+		case JMSG_BE:
+			p[3] = (x >>  0) & 0xFF;
+			p[2] = (x >>  8) & 0xFF;
+			p[1] = (x >> 16) & 0xFF;
+			p[0] = (x >> 24) & 0xFF;
+			break;
+	}
+}
+
+static void JFileWriteEndian16(unsigned char *p, uint16_t x, int endian) {
+	switch (endian) {
+		case JMSG_LE:
+			p[0] = (x >> 0) & 0xFF;
+			p[1] = (x >> 8) & 0xFF;
+			break;
+		case JMSG_BE:
+			p[1] = (x >> 0) & 0xFF;
+			p[0] = (x >> 8) & 0xFF;
+			break;
+	}
+}
+
+static void JFileWriteEndianStream(BSTREAM *stream, uint32_t x, int nBit, int endian) {
+	unsigned char buf[4];
+	switch (nBit) {
+		case 32: JFileWriteEndian32(buf, x, endian); break;
+		case 16: JFileWriteEndian16(buf, x, endian); break;
+		case 8: buf[0] = (unsigned char) x; break;
+	}
+	bstreamWrite(stream, buf, nBit / 8);
+}
+
 static void JFileWriteSignature(BSTREAM *stream, const char *signature, const char *kind, const unsigned char *data, unsigned int len) {
 	uint32_t placeholder = 0;
 	bstreamWrite(stream, signature, 4);
@@ -247,11 +331,11 @@ static void JFileWriteSignature(BSTREAM *stream, const char *signature, const ch
 	bstreamAlign(stream, 32);
 }
 
-static void JFileWriteBlock(BSTREAM *stream, const char *kind, const void *data, unsigned int size) {
+static void JFileWriteBlock(BSTREAM *stream, const char *kind, const void *data, unsigned int size, int endian) {
 	//header
 	uint32_t sizeField = (size + 8 + 0x1F) & ~0x1F;
 	bstreamWrite(stream, kind, 4);
-	bstreamWrite(stream, &sizeField, sizeof(sizeField));
+	JFileWriteEndianStream(stream, sizeField, 32, endian);
 	bstreamWrite(stream, data, size);
 
 	//if the size was aligned, pad to alignment
@@ -260,6 +344,7 @@ static void JFileWriteBlock(BSTREAM *stream, const char *kind, const void *data,
 
 
 static int MesgWriteBMG(MesgFile *mesg, BSTREAM *stream) {
+	int endian = mesg->endian;
 	unsigned char headerData = (unsigned char) mesg->encoding;
 	JFileWriteSignature(stream, "MESG", "bmg1", &headerData, sizeof(headerData));
 
@@ -276,16 +361,16 @@ static int MesgWriteBMG(MesgFile *mesg, BSTREAM *stream) {
 	unsigned int entrySize = (sizeof(uint32_t) + mesg->msgExtra + 0x3) & ~0x3;
 	unsigned int inf1Size = 0x8 + mesg->nMsg * entrySize;
 	unsigned char *inf1 = (unsigned char *) calloc(inf1Size, 1);
-	*(uint16_t *) (inf1 + 0x00) = mesg->nMsg;
-	*(uint16_t *) (inf1 + 0x02) = 4 + mesg->msgExtra;
-	*(uint16_t *) (inf1 + 0x04) = mesg->groupID;
+	JFileWriteEndian16(inf1 + 0x00, mesg->nMsg, endian);
+	JFileWriteEndian16(inf1 + 0x02, 4 + mesg->msgExtra, endian);
+	JFileWriteEndian16(inf1 + 0x04, mesg->groupID, endian);
 	*(uint8_t *) (inf1 + 0x06) = mesg->colorID;
 	*(uint8_t *) (inf1 + 0x07) = 0;
 
 	//create ID buffer
 	unsigned int mid1Size = 0x8 + 4 * mesg->nMsg;
 	unsigned char *mid1 = (unsigned char *) calloc(mid1Size, 1);
-	*(uint16_t *) (mid1 + 0x00) = mesg->nMsg;
+	JFileWriteEndian16(mid1 + 0x00, mesg->nMsg, endian);
 	*(uint8_t *) (mid1 + 0x02) = inOrder ? 0x10 : 0x00;
 	*(uint8_t *) (mid1 + 0x03) = idFormat;
 	*(uint32_t *) (mid1 + 0x04) = 0;
@@ -304,29 +389,29 @@ static int MesgWriteBMG(MesgFile *mesg, BSTREAM *stream) {
 
 		//put INF1
 		uint32_t strOffset = stmDat1.size;
-		*(uint32_t *) (inf1Ent + 0x0) = strOffset;
+		JFileWriteEndian32(inf1Ent + 0x0, strOffset, endian);
 		memcpy(inf1Ent + 4, ent->extra, mesg->msgExtra);
 
 		//put MID1
-		*(uint32_t *) (mid1 + 0x8 + i * 4) = ent->id;
+		JFileWriteEndian32(mid1 + 0x8 + i * 4, ent->id, endian);
 
 		unsigned int len = MesgGetStringLength(ent->message, mesg->encoding);
 		bstreamWrite(&stmDat1, ent->message, len);
 	}
 
-	JFileWriteBlock(stream, "INF1", inf1, inf1Size);
-	JFileWriteBlock(stream, "DAT1", stmDat1.buffer, stmDat1.size);
+	JFileWriteBlock(stream, "INF1", inf1, inf1Size, endian);
+	JFileWriteBlock(stream, "DAT1", stmDat1.buffer, stmDat1.size, endian);
 
 	unsigned int nBlock = 2;
 	if (mesg->includeIdMap) {
-		JFileWriteBlock(stream, "MID1", mid1, mid1Size);
+		JFileWriteBlock(stream, "MID1", mid1, mid1Size, endian);
 		nBlock++;
 	}
 
 	uint32_t size32 = stream->size, nBlock32 = nBlock;
 	bstreamSeek(stream, 0x8, 0);
-	bstreamWrite(stream, &size32, sizeof(size32));
-	bstreamWrite(stream, &nBlock32, sizeof(nBlock32));
+	JFileWriteEndianStream(stream, size32, 32, endian);
+	JFileWriteEndianStream(stream, nBlock32, 32, endian);
 
 	free(mid1);
 	free(inf1);

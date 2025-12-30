@@ -29,7 +29,8 @@ typedef struct MesgFile_ {
 	int groupID;
 	int colorID;
 
-	int revEndian;
+	int revEndian; // endianness of signatures
+	int endian;    // endianness of data
 
 	int includeIdMap;
 } MesgFile;
