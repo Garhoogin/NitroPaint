@@ -2459,9 +2459,21 @@ static LRESULT CALLBACK AnmViewerFrameListProc(HWND hWnd, UINT msg, WPARAM wPara
 					case ID_ANMMENU_INTERPOLATEBELOW:
 						AnmViewerCmdInterpolateBelow(data);
 						break;
+					case ID_FILE_SAVE:
+					case ID_FILE_SAVEAS:
+						//bubble up
+						PostMessage(data->hWnd, msg, wParam, lParam);
+						break;
 				}
 				AnmViewerFrameListUpdate(data);
 				InvalidateRect(data->hWndPreview, NULL, FALSE);
+			} else if (lParam == 0 && HIWORD(wParam) == 1) {
+				switch (LOWORD(wParam)) {
+					case ID_ACCELERATOR_SAVE:
+						//bubble up accelerator command
+						PostMessage(data->hWnd, msg, wParam, lParam);
+						break;
+				}
 			}
 			break;
 		}
