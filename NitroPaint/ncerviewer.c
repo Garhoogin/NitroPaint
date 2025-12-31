@@ -2496,7 +2496,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->showBorders = 1;
 			data->showCellBounds = 1;
 			data->cellListRedrawCount = 0;
-			data->autoCalcBounds = 0;
+			data->autoCalcBounds = 1;
 			FbCreate(&data->fb, hWnd, 0, 0);
 			data->hWndViewer = CreateWindow(L"CellPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL | WS_CLIPSIBLINGS, 200, 0, 200, 20, hWnd, NULL, NULL, NULL);
 
