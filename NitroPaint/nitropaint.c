@@ -1923,7 +1923,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_NEW_NEWANIMATION:
 					{
 						NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
-						ObjInit(&nanr->header, FILE_TYPE_NANR, NANR_TYPE_NANR);
+						AnmInit(nanr, NANR_TYPE_NANR);
 
 						nanr->nSequences = 1;
 						nanr->sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
