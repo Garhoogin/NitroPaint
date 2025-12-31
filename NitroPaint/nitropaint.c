@@ -1234,6 +1234,14 @@ static int NpGetCellFormatForPreset(void) {
 	}
 }
 
+static int NpGetAnimFormatForPreset(void) {
+	switch (g_configuration.preset) {
+		default:
+		case NP_PRESET_NITROSYSTEM: return NANR_TYPE_NANR;
+		case NP_PRESET_GRIT: return NANR_TYPE_COMBO;
+	}
+}
+
 static int NpGetComboFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default: return COMBO2D_TYPE_INVALID;
@@ -1923,7 +1931,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_NEW_NEWANIMATION:
 					{
 						NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
-						AnmInit(nanr, NANR_TYPE_NANR);
+						AnmInit(nanr, NpGetAnimFormatForPreset());
 
 						nanr->nSequences = 1;
 						nanr->sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
@@ -1940,6 +1948,10 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						ANIM_DATA_SRT *srt = (ANIM_DATA_SRT *) nanr->sequences[0].frames[0].animationData;
 						srt->sx = 4096; // 1.0
 						srt->sy = 4096; // 1.0
+
+						if (nanr->header.format == NANR_TYPE_COMBO) {
+							NpEnsureComboObject(hWnd, &nanr->header, NpGetComboFormatForPreset());
+						}
 
 						HWND h = NpOpenObject(hWnd, &nanr->header);
 						ShowWindow(h, SW_SHOW);
