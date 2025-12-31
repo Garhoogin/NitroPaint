@@ -2334,7 +2334,7 @@ static int NftrWriteBnfr12(NFTR *nftr, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
-static void NftrWriteGlyphStarfy(NFTR *nftr, int i, BSTREAM *stream) {
+static void NftrWriteGlyphStarfy(NFTR *nftr, int i, BSTREAM *stream, unsigned int searchStart) {
 	NFTR_GLYPH *glyph = &nftr->glyphs[i];
 	unsigned int stride = (glyph->width * nftr->bpp + 7) / 8;
 
@@ -2343,20 +2343,18 @@ static void NftrWriteGlyphStarfy(NFTR *nftr, int i, BSTREAM *stream) {
 	if (nftr->charset == FONT_CHARSET_SJIS) {
 		index = ((cp & 0xFF) + ((cp >> 8) & 0x3F) * 0xC0 - 0x40) & 0x3FFF;
 		if (index > 0x3000) return; // invalid index
+	} else {
+		if (cp > 0x100) return; // invalid index
 	}
 
-	//put table
-	*(uint32_t *) (stream->buffer + 4 + index * 4) = stream->size;
-
 	//put glyph
-	unsigned char hdr[2];
-	hdr[0] = glyph->width;
-	hdr[1] = stride;
-	bstreamWrite(stream, hdr, sizeof(hdr));
+	unsigned int glyphSize = 2 + nftr->cellHeight * stride;
+	unsigned char *glyphData = (unsigned char *) calloc(glyphSize, 1);
+	unsigned char *bmp = glyphData + 2;
+	glyphData[0] = glyph->width;
+	glyphData[1] = stride;
 
 	//put pixels
-	unsigned char *bmp = (unsigned char *) calloc(nftr->cellHeight * stride, 1);
-
 	for (int y = 0; y < nftr->cellHeight; y++) {
 		unsigned char *row = bmp + y * stride;
 		for (int x = 0; x < glyph->width; x++) {
@@ -2366,8 +2364,24 @@ static void NftrWriteGlyphStarfy(NFTR *nftr, int i, BSTREAM *stream) {
 		}
 	}
 
-	bstreamWrite(stream, bmp, nftr->cellHeight * stride);
-	free(bmp);
+	//search for glyph in the stream
+	unsigned int foundAt = 0;
+	for (unsigned int i = searchStart; i < stream->size && (i + glyphSize) <= stream->size; i++) {
+		if (memcmp(stream->buffer + i, glyphData, glyphSize) == 0) {
+			foundAt = i;
+			break;
+		}
+	}
+
+	if (!foundAt) {
+		//not found
+		foundAt = stream->size;
+		bstreamWrite(stream, glyphData, glyphSize);
+	}
+	free(glyphData);
+
+	//put table
+	*(uint32_t *) (stream->buffer + 4 + index * 4) = foundAt;
 }
 
 static int NftrWriteStarfy(NFTR *nftr, BSTREAM *stream) {
@@ -2417,11 +2431,12 @@ static int NftrWriteStarfy(NFTR *nftr, BSTREAM *stream) {
 			}
 		}
 
-		NftrWriteGlyphStarfy(nftr, iInvalid, stream);
+		NftrWriteGlyphStarfy(nftr, iInvalid, stream, stream->size);
 	}
 
+	uint32_t searchStart = stream->size;
 	for (int i = 0; i < nftr->nGlyph; i++) {
-		if (i != iInvalid) NftrWriteGlyphStarfy(nftr, i, stream);
+		if (i != iInvalid) NftrWriteGlyphStarfy(nftr, i, stream, searchStart);
 	}
 
 	return OBJ_STATUS_SUCCESS;
