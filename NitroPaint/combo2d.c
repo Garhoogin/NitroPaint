@@ -187,6 +187,7 @@ int combo2dGetObjMaxCount(int comboType, int objType) {
 			if (objType == FILE_TYPE_CHARACTER) return 1;
 			if (objType == FILE_TYPE_SCREEN) return 1;
 			if (objType == FILE_TYPE_CELL) return 1;
+			if (objType == FILE_TYPE_NANR) return 1;
 			return 0;
 		case COMBO2D_TYPE_DATAFILE:
 			//no particular requirements
@@ -967,11 +968,12 @@ static int combo2dReadAob(COMBO2D *combo, const unsigned char *buffer, unsigned 
 static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	//int type = GrfIsValid(buffer, size);
 
-	unsigned int palSize, gfxSize, scrSize, objSize, headerSize;
+	unsigned int palSize, gfxSize, scrSize, objSize, anmSize, headerSize;
 	unsigned char *gfx = GrfReadBlockUncompressed(buffer, size, "GFX ", &gfxSize);
 	unsigned char *pal = GrfReadBlockUncompressed(buffer, size, "PAL ", &palSize);
 	unsigned char *scr = GrfReadBlockUncompressed(buffer, size, "MAP ", &scrSize);
 	unsigned char *obj = GrfReadBlockUncompressed(buffer, size, "CELL", &objSize);
+	unsigned char *anm = GrfReadBlockUncompressed(buffer, size, "ANIM", &anmSize);
 	unsigned char *hdr = GrfGetHeader(buffer, size, &headerSize);
 
 	int gfxAttr = *(const uint16_t *) (hdr + 0x2);
@@ -1061,6 +1063,68 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 		combo2dLink(combo, &ncer->header);
 	}
 
+	if (anm != NULL) {
+		NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
+		AnmInit(nanr, NANR_TYPE_COMBO);
+
+		unsigned int nSeq = *(const uint32_t *) (anm + 0x0);
+		nanr->nSequences = nSeq;
+		nanr->sequences = (NANR_SEQUENCE *) calloc(nanr->nSequences, sizeof(NANR_SEQUENCE));
+
+		const uint32_t *tbl = (const uint32_t *) (anm + 0x4);
+		for (int i = 0; i < nanr->nSequences; i++) {
+			const unsigned char *seqData = anm + tbl[i];
+			NANR_SEQUENCE *seq = &nanr->sequences[i];
+			
+			unsigned int nFrame = *(const uint16_t *) (seqData + 0x0);
+			uint16_t flags = *(const uint16_t *) (seqData + 0x2);
+
+			seq->type = NANR_SEQ_TYPE_INDEX_SRT | (NANR_SEQ_TYPE_CELL << 16);
+			seq->nFrames = nFrame;
+			seq->mode = 0;
+			if (flags & (1 << 1)) {
+				//backward
+				if (flags & (1 << 0)) seq->mode = NANR_SEQ_MODE_BACKWARD_LOOP;
+				else seq->mode = NANR_SEQ_MODE_FORWARD;
+			} else {
+				//forward
+				if (flags & (1 << 0)) seq->mode = NANR_SEQ_MODE_FORWARD_LOOP;
+				else seq->mode = NANR_SEQ_MODE_FORWARD;
+			}
+
+			int hasSrt = !(flags & (1 << 2));
+			unsigned int frameSize = hasSrt ? 0xE : 0x4;
+			
+			seq->frames = (FRAME_DATA *) calloc(nFrame, sizeof(FRAME_DATA));
+			for (unsigned int j = 0; j < nFrame; j++) {
+				FRAME_DATA *frameInfo = &seq->frames[j];
+				const unsigned char *frameData = seqData + 4 + (j * frameSize);
+
+				frameInfo->pad_ = 0xBEEF;
+				frameInfo->nFrames = *(const uint16_t *) (frameData + 0x0);
+				frameInfo->animationData = calloc(1, sizeof(ANIM_DATA_SRT));
+
+				ANIM_DATA_SRT *srt = (ANIM_DATA_SRT *) frameInfo->animationData;
+				srt->index = *(const uint16_t *) (frameData + 0x2);
+				srt->px = 0;
+				srt->py = 0;
+				srt->sx = 4096;
+				srt->sy = 4096;
+				srt->rotZ = 0;
+
+				if (hasSrt) {
+					srt->px = *(const int16_t *) (frameData + 0x4);
+					srt->py = *(const int16_t *) (frameData + 0x6);
+					srt->sx = *(const int16_t *) (frameData + 0x8);
+					srt->sy = *(const int16_t *) (frameData + 0xA);
+					srt->rotZ = *(const uint16_t *) (frameData + 0xC);
+				}
+			}
+		}
+
+		combo2dLink(combo, &nanr->header);
+	}
+
 	combo2dLink(combo, &nclr->header);
 	combo2dLink(combo, &ncgr->header);
 
@@ -1068,6 +1132,7 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 	if (pal != NULL) free(pal);
 	if (scr != NULL) free(scr);
 	if (obj != NULL) free(obj);
+	if (anm != NULL) free(anm);
 	return OBJ_STATUS_SUCCESS;
 }
 
@@ -1390,6 +1455,7 @@ static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
 	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
 	NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
 	NCER *ncer = (NCER *) combo2dGet(combo, FILE_TYPE_CELL, 0);
+	NANR *nanr = (NANR *) combo2dGet(combo, FILE_TYPE_NANR, 0);
 
 	int type = 2; // OBJ graphics
 	if (nscr != NULL) {
@@ -1494,6 +1560,72 @@ static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
 
 		GrfStreamWriteBlockCompressed(&grf, "CELL", stmCell.buffer, stmCell.size, COMPRESSION_NONE);
 		bstreamFree(&stmCell);
+	}
+
+	if (nanr != NULL) {
+		BSTREAM stmAnim;
+		bstreamCreate(&stmAnim, NULL, 0);
+
+		//header
+		uint32_t nAnim32 = nanr->nSequences;
+		bstreamWrite(&stmAnim, &nAnim32, sizeof(nAnim32));
+
+		//dummy offsets
+		uint32_t dummy = 0;
+		for (int i = 0; i < nanr->nSequences; i++) bstreamWrite(&stmAnim, &dummy, sizeof(dummy));
+
+		for (int i = 0; i < nanr->nSequences; i++) {
+			NANR_SEQUENCE *seq = &nanr->sequences[i];
+			int element = seq->type & 0xFFFF;
+
+			//put animation data offset
+			uint32_t offs = stmAnim.size;
+			*(uint32_t *) (stmAnim.buffer + 4 + 4 * i) = offs;
+
+			//put animation data
+			uint16_t nFrames = seq->nFrames;
+			uint16_t flags = 0;
+
+			if (seq->mode == NANR_SEQ_MODE_FORWARD_LOOP || seq->mode == NANR_SEQ_MODE_BACKWARD_LOOP) flags |= 1 << 0;
+			if (seq->mode == NANR_SEQ_MODE_BACKWARD || seq->mode == NANR_SEQ_MODE_BACKWARD_LOOP) flags |= 1 << 1;
+
+			//check if any frame includes SRT
+			int hasSrt = 0;
+			for (int j = 0; j < seq->nFrames; j++) {
+				ANIM_DATA_SRT frm;
+				AnmGetAnimFrame(nanr, i, j, &frm, NULL);
+
+				if (frm.px != 0 || frm.py != 0 || frm.rotZ != 0 || frm.sx != 4096 || frm.sy != 4096) {
+					hasSrt = 1;
+					break;
+				}
+			}
+			if (!hasSrt) flags |= 1 << 2;
+			
+			bstreamWrite(&stmAnim, &nFrames, sizeof(nFrames));
+			bstreamWrite(&stmAnim, &flags, sizeof(flags));
+
+			//animation frames
+			for (int j = 0; j < seq->nFrames; j++) {
+				int dur;
+				ANIM_DATA_SRT frm;
+				AnmGetAnimFrame(nanr, i, j, &frm, &dur);
+				
+				//base fields
+				unsigned char frameData[0xE] = { 0 };
+				*(uint16_t *) (frameData + 0x0) = (uint16_t) dur;
+				*(uint16_t *) (frameData + 0x2) = frm.index;
+				*(uint16_t *) (frameData + 0x4) = frm.px;
+				*(uint16_t *) (frameData + 0x6) = frm.py;
+				*(uint16_t *) (frameData + 0x8) = frm.sx;
+				*(uint16_t *) (frameData + 0xA) = frm.sy;
+				*(uint16_t *) (frameData + 0xC) = frm.rotZ;
+				bstreamWrite(&stmAnim, frameData, hasSrt ? 0xE : 0x4);
+			}
+		}
+		
+		GrfStreamWriteBlockCompressed(&grf, "ANIM", stmAnim.buffer, stmAnim.size, COMPRESSION_NONE);
+		bstreamFree(&stmAnim);
 	}
 
 	GrfStreamFinalize(&grf);
