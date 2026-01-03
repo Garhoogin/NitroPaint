@@ -2867,7 +2867,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				SendMessage(data->hWndNtfpInput, WM_GETTEXT, MAX_PATH, (LPARAM) src);
 				if (src[0]) {
-					ntfi = ReadWholeFile(src, &ntfiSize);
+					ntfp = ReadWholeFile(src, &ntfpSize);
 
 					//populate palette name. Scan for last \ or /
 					int lastIndex = -1;
