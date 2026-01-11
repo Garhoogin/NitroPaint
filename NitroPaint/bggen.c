@@ -1406,7 +1406,6 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 
 	RxMemFree(palsYiq);
 	RxFree(reduction);
-
-	free(blocks);
+	RxMemFree(blocks);
 	free(pals);
 }
