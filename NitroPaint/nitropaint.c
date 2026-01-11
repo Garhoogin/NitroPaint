@@ -4427,7 +4427,39 @@ void InitializeDpiAwareness(void) {
 	}
 }
 
+static void CheckAvailableProcessorFeatures(void) {
+#if defined(_M_IX86) or defined(_M_AMD64)
+#if defined(_M_IX86_FP)
+
+	int feature[4];
+	__cpuidex(feature, 1, 0);
+
+	//get feature level
+	int featureLevel = 0;
+	if ((feature[3] >> 25) & 1) featureLevel++;  // SSE
+	if ((feature[3] >> 26) & 1) featureLevel++;  // SSE2
+	if ((feature[2] >>  9) & 1) featureLevel++;  // SSE3
+	if ((feature[2] >> 19) & 1) featureLevel++;  // SSE4.1
+	if ((feature[2] >> 20) & 1) featureLevel++;  // SSE4.2
+	if ((feature[2] >> 28) & 1) featureLevel++;  // AVX
+
+	int neededFeatureLevel = _M_IX86_FP;
+
+	if (featureLevel < neededFeatureLevel) {
+		char msgbuf[128];
+		sprintf(msgbuf, "%s is not present on your processor and required to run this app.", "SSE2");
+
+		MessageBoxA(NULL, msgbuf, "Error", MB_ICONERROR);
+		ExitProcess(1);
+	}
+
+#endif
+#endif // _M_IX86
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+	CheckAvailableProcessorFeatures();
+
 	//fetch version
 	(void) NpGetVersion();
 
