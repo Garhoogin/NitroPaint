@@ -94,7 +94,6 @@ static int TxConvertDirect(TxConversionParameters *params, RxReduction *reductio
 	//convert to direct color.
 	TxConversionResult result = TEXCONV_SUCCESS;
 	unsigned int width = params->width, height = params->height;
-	COLOR32 *px = params->px;
 
 	//progress
 	params->progressMax = (int) (width * height);
@@ -409,7 +408,7 @@ static double TxiTestAddEndpoints(RxReduction *reduction, int transparent, COLOR
 	return error;
 }
 
-double TxiTestStepEndpoints(RxReduction *reduction, int transparent, COLOR *c1, COLOR *c2, int channel, double error) {
+static double TxiTestStepEndpoints(RxReduction *reduction, int transparent, COLOR *c1, COLOR *c2, int channel, double error) {
 	double newErr = TxiTestAddEndpoints(reduction, transparent, c1, c2, 1, 5 * channel, error); //add
 	if (newErr < error) {
 		error = newErr;
@@ -419,7 +418,7 @@ double TxiTestStepEndpoints(RxReduction *reduction, int transparent, COLOR *c1, 
 	return error;
 }
 
-void TxiComputeEndpointsFromHistogram(RxReduction *reduction, int transparent, COLOR32 *colorMin, COLOR32 *colorMax) {
+static void TxiComputeEndpointsFromHistogram(RxReduction *reduction, int transparent, COLOR32 *colorMin, COLOR32 *colorMax) {
 	//if only 1 or 2 colors, fill the palette with those.
 	COLOR32 colors[2];
 	int nColors = 0;
@@ -572,92 +571,89 @@ static void TxiChoosePaletteAndMode(RxReduction *reduction, TxTileData *tile) {
 }
 
 static void TxiAddTile(RxReduction *reduction, TxTileData *data, int index, const COLOR32 *px, int createPalette, int *totalIndex, volatile int *pProgress) {
-	memcpy(data[index].rgb, px, 64);
-	data[index].duplicate = 0;
-	data[index].used = 1;
-	data[index].transparentPixels = 0;
-	data[index].mode = 0;
-	data[index].paletteIndex = 0;
+	TxTileData *tile = &data[index];
+	tile->duplicate = 0;
+	tile->used = 1;
+	tile->transparentPixels = 0;
+	tile->mode = 0;
+	tile->paletteIndex = 0;
 
-	//count transparent pixels
+	//fill and count transparent pixels
 	int nTransparentPixels = 0;
 	for (int i = 0; i < 16; i++) {
 		COLOR32 c = px[i];
 		unsigned int a = (c >> 24);
 		if (a < 0x80) {
 			nTransparentPixels++;
-			data[index].rgb[i] = 0; // set alpha=0 (under threshold)
+			tile->rgb[i] = 0; // set alpha=0 (under threshold)
 		} else {
-			data[index].rgb[i] |= 0xFF000000; // set alpha=1 (over threshold)
+			tile->rgb[i] = c | 0xFF000000; // set alpha=1 (over threshold)
 		}
 	}
-	data[index].transparentPixels = nTransparentPixels;
+	tile->transparentPixels = nTransparentPixels;
 
 	//is fully transparent?
 	if (nTransparentPixels == 16) {
-		data[index].used = 0;
-		data[index].paletteIndex = 0;
-		data[index].mode = COMP_TRANSPARENT | COMP_FULL;
-		data[index].palette32[0] = 0xFF000000;
-		data[index].palette32[1] = 0xFF000000;
+		tile->used = 0;
+		tile->paletteIndex = 0;
+		tile->mode = COMP_TRANSPARENT | COMP_FULL;
+		tile->palette32[0] = 0xFF000000;
+		tile->palette32[1] = 0xFF000000;
+		(*pProgress)++;
 		return;
 	}
 	
 	//is it a duplicate?
-	int isDuplicate = 0;
-	int duplicateIndex = 0;
 	for (int i = index - 1; i >= 0; i--) {
-		TxTileData *tile = data + i;
-		COLOR32 *px1 = tile->rgb;
-		COLOR32 *px2 = data[index].rgb;
+		COLOR32 *px1 = data[i].rgb;
+		COLOR32 *px2 = tile->rgb;
 
 		if (!memcmp(px1, px2, 16 * sizeof(COLOR32))) {
-			isDuplicate = 1;
-			duplicateIndex = i;
+			memcpy(tile, &data[i], sizeof(TxTileData));
+			tile->paletteIndex = data[i].paletteIndex;
+			tile->duplicate = 1;
 			break;
 		}
 	}
 
-	if (isDuplicate) {
-		memcpy(data + index, data + duplicateIndex, sizeof(TxTileData));
-		data[index].duplicate = 1;
-		data[index].paletteIndex = data[duplicateIndex].paletteIndex;
-	} else if (createPalette) {
-		//generate a palette and determine the mode.
-		TxiChoosePaletteAndMode(reduction, data + index);
-		data[index].paletteIndex = *totalIndex;
+	if (!tile->duplicate) {
+		if (createPalette) {
+			//generate a palette and determine the mode.
+			TxiChoosePaletteAndMode(reduction, tile);
+			tile->paletteIndex = *totalIndex;
 
-		//is the palette and mode identical to a non-duplicate tile?
-		for (int i = index - 1; i >= 0; i--) {
-			TxTileData *tile1 = &data[i];
-			TxTileData *tile2 = &data[index];
-			if (tile1->duplicate) continue;
-			if (tile1->mode != tile2->mode) continue;
+			//is the palette and mode identical to a non-duplicate tile?
+			for (int i = index - 1; i >= 0; i--) {
+				TxTileData *tile1 = &data[i];
+				if (tile1->duplicate) continue;
+				if (tile1->mode != tile->mode) continue;
 
-			if (tile1->palette32[0] != tile2->palette32[0] || tile1->palette32[1] != tile2->palette32[1]) continue;
-			if (!(tile1->mode & COMP_INTERPOLATE)) {
-				if (tile1->palette32[2] != tile2->palette32[2] || tile1->palette32[3] != tile2->palette32[3]) continue;
+				if (tile1->palette32[0] != tile->palette32[0] || tile1->palette32[1] != tile->palette32[1]) continue;
+				if (!(tile1->mode & COMP_INTERPOLATE)) {
+					if (tile1->palette32[2] != tile->palette32[2] || tile1->palette32[3] != tile->palette32[3]) continue;
+				}
+
+				//palettes and modes are the same, mark as duplicate.
+				tile->duplicate = 1;
+				tile->paletteIndex = tile1->paletteIndex;
+				break;
 			}
-
-			//palettes and modes are the same, mark as duplicate.
-			tile2->duplicate = 1;
-			tile2->paletteIndex = tile1->paletteIndex;
-			break;
+		} else {
+			//do not create a palette.
+			tile->paletteIndex = 0;
+			tile->mode = COMP_FULL | COMP_TRANSPARENT;
 		}
-	} else {
-		//do not create a palette.
-		data[index].duplicate = 0;
-		data[index].paletteIndex = 0;
-		data[index].mode = COMP_FULL | COMP_TRANSPARENT;
+
+		//secondary search may deem the palette data duplicate, so we check again.
+		if (!tile->duplicate) {
+			int nPalettes = 1;
+			if (!(tile->mode & COMP_INTERPOLATE)) {
+				nPalettes = 2;
+			}
+			*totalIndex += nPalettes;
+		}
 	}
 
-	if (!data[index].duplicate) {
-		int nPalettes = 1;
-		if (!(data[index].mode & COMP_INTERPOLATE)) {
-			nPalettes = 2;
-		}
-		*totalIndex += nPalettes;
-	}
 	(*pProgress)++;
 }
 
@@ -665,7 +661,7 @@ static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, 
 	TxTileData *data = (TxTileData *) calloc(tilesX * tilesY, sizeof(TxTileData));
 	if (data == NULL) return NULL;
 
-	int paletteIndex = 0;
+	int paletteIndex = 0, i = 0;
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
 			COLOR32 tile[16];
@@ -674,7 +670,7 @@ static TxTileData *TxiCreateTileData(RxReduction *reduction, const COLOR32 *px, 
 			memcpy(tile +  4, px + offs + tilesX *  4, 4 * sizeof(COLOR32));
 			memcpy(tile +  8, px + offs + tilesX *  8, 4 * sizeof(COLOR32));
 			memcpy(tile + 12, px + offs + tilesX * 12, 4 * sizeof(COLOR32));
-			TxiAddTile(reduction, data, x + y * tilesX, tile, createPalette, &paletteIndex, pProgress);
+			TxiAddTile(reduction, data, i++, tile, createPalette, &paletteIndex, pProgress);
 
 			if (*pTerminate) return data; // terminate check
 		}
@@ -1447,7 +1443,8 @@ static int TxConvert4x4(TxConversionParameters *params, RxReduction *reduction) 
 	//build the palettes.
 	int nUsedColors;
 	if (!params->useFixedPalette) {
-		nUsedColors = TxiBuildCompressedPalette(reduction, pltt, params->colorEntries, tileData, tilesX, tilesY, params->threshold, &params->progress, &params->terminate);
+		nUsedColors = TxiBuildCompressedPalette(reduction, pltt, params->colorEntries, tileData, tilesX, tilesY, params->threshold,
+			&params->progress, &params->terminate);
 	} else {
 		nUsedColors = params->colorEntries;
 		memcpy(pltt, params->fixedPalette, params->colorEntries * 2);
