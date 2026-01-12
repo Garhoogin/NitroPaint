@@ -448,6 +448,7 @@ struct RxReduction_ {
 	int enhanceColors;
 	int nReclusters;
 	int reclusterIteration;
+	int nPinnedClusters;
 	double lastSSE;
 	COLOR32 (*maskColors) (COLOR32 col);
 	RxAlphaMode alphaMode;

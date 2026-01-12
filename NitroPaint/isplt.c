@@ -1225,7 +1225,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	//squared deviation from its palette color (scaled by weight).
 	//when we do this, we recompute the cluster bounds.
 	int nHistEntries = reduction->histogram->nEntries;
-	for (int i = 0; i < reduction->nUsedColors; i++) {
+	for (int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
 		if (totalsBuffer[i].weight > 0.0) continue;
 
 		//find the color farthest from this center
@@ -1290,12 +1290,12 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	}
 
 	//after recomputing bounds, now let's see if we're wasting any slots.
-	for (int i = 0; i < reduction->nUsedColors; i++) {
+	for (int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
 		if (totalsBuffer[i].weight <= 0.0) return 0; // stop
 	}
 
 	//average out the colors in the new partitions
-	for (int i = 0; i < reduction->nUsedColors; i++) {
+	for (int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
 		RxYiqColor yiq;
 		double invAWeight = 1.0 / totalsBuffer[i].a;
 		yiq.y = (float) RxiDelinearizeLuma(reduction, totalsBuffer[i].y * invAWeight);
@@ -1357,7 +1357,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 
 static void RxiPaletteRecluster(RxReduction *reduction) {
 	//simple termination conditions
-	if (reduction->nReclusters <= 0) return;
+	if (reduction->nReclusters <= 0 || reduction->nPinnedClusters >= reduction->nUsedColors) return;
 
 	//copy main palette to palette copy
 	memcpy(reduction->paletteYiqCopy, reduction->paletteYiq, sizeof(reduction->paletteYiq));
@@ -1381,7 +1381,7 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 
 	//weight==0 => delete
 	int nRemoved = 0;
-	for (int i = 0; i < reduction->nUsedColors; i++) {
+	for (int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
 		if (totalsBuffer[i].weight > 0) continue;
 
 		//delete
@@ -1396,6 +1396,24 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 	memset(reduction->paletteRgb + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteRgb[0]));
 	memset(reduction->paletteYiq + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteYiq[0]));
 	RxiCreatePaletteUpdateProgress(reduction);
+}
+
+static void RxiVoronoiPinRange(RxReduction *reduction, unsigned int nCols) {
+	reduction->nPinnedClusters = nCols;
+}
+
+static void RxiVoronoiUnpin(RxReduction *reduction) {
+	reduction->nPinnedClusters = 0;
+}
+
+static void RxiVoronoiLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
+	RX_ASSUME(nColors <= RX_PALETTE_MAX_SIZE);
+
+	reduction->nPaletteColors = nColors;
+	reduction->nUsedColors = nColors;
+
+	memcpy(reduction->paletteRgb, pltt, nColors * sizeof(COLOR32));
+	for (unsigned int i = 0; i < nColors; i++) RxConvertRgbToYiq(pltt[i], &reduction->paletteYiq[i]);
 }
 
 static void RxiAdjustHistogramIndices(RxColorNode *tree, int cutStart, int nCut) {
@@ -1490,6 +1508,7 @@ static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
 RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	reduction->nPaletteColors = nColors;
 	reduction->reclusterIteration = 0;
+	reduction->nPinnedClusters = 0;
 	RxiCreatePaletteUpdateProgress(reduction);
 
 	if (reduction->histogramFlat == NULL || reduction->histogram->nEntries == 0) {
@@ -2096,6 +2115,27 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	if (paletteOffset == 0 && useColor0) {
 		COLOR32 col0 = RxiChooseMultiPaletteColor0(errHist);
 		for (int i = 0; i < nPalettes; i++) dest[(i + paletteBase) * paletteSize] = col0;
+
+		//with the color 0 calculated, run one last round of Voronoi reclustering on the palettes.
+		for (int i = 0; i < nPalettes; i++) {
+			COLOR32 *pltI = dest + (i + paletteBase) * paletteSize;
+			
+			//build histogram
+			RxHistClear(reduction);
+			for (unsigned int j = 0; j < nTiles; j++) {
+				if (bestPalettes[j] == i) RxHistAdd(reduction, tiles[j].rgb, 8, 8);
+			}
+			RxHistFinalize(reduction);
+
+			//run reclustering on the current palette, with color 0 pinned
+			RxiVoronoiLoad(reduction, pltI, nFinalColsPerPalette + 1);  // load palette
+			RxiVoronoiPinRange(reduction, 1);                           // pin first color
+			RxiPaletteRecluster(reduction);
+			RxiVoronoiUnpin(reduction);
+
+			memcpy(pltI, reduction->paletteRgb, (nFinalColsPerPalette + 1) * sizeof(COLOR32));
+			qsort(pltI + 1, nFinalColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
+		}
 	}
 
 	free(palettes);
