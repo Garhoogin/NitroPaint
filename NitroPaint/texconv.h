@@ -1,5 +1,4 @@
 #pragma once
-#include <Windows.h>
 
 #include "texture.h"
 #include "palette.h"

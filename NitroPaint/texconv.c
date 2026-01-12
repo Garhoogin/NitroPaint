@@ -342,7 +342,7 @@ typedef struct TxTileData_ {
 	COLOR32 rgb[16];           // the tile's initial RGBA color data
 	uint16_t used;             // marks a used tile
 	uint16_t mode;             // the tile's working palette mode
-	COLOR32 palette32[4];          // the tile's initial color palette
+	COLOR32 palette32[4];      // the tile's initial color palette
 	uint16_t paletteIndex;     // the tile's working palette index
 	uint8_t transparentPixels; // number of transparent pixels
 	uint8_t duplicate;         // is duplicate?
@@ -1250,7 +1250,7 @@ static int TxiRefinePalette(RxReduction *reduction, TxTileData *tiles, uint32_t 
 
 			//for 1-color palettes, there is no restriction on where it can go
 			//for 2-color palettes and above, the base must be even (required for interpolation)
-			int slottedIndex = 0, nColorsAvailable = nPaletteColors;
+			int slottedIndex = 0;
 			if (nPaletteColors == 1 && nSingleAvailable > 0) {
 				//if we have singles available, slot the color into one of them
 				for (int j = 0; j < paletteSize; j++) {

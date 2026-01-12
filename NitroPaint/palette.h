@@ -312,6 +312,8 @@ void RxCreateMultiplePalettesEx(
 
 //----------structures used by palette generator
 
+typedef struct RxReduction_ RxReduction;
+
 typedef enum RxAlphaMode_ {
 	RX_ALPHA_NONE,        // alpha processing is not done.
 	RX_ALPHA_RESERVE,     // alpha values are binary, and represented by a reserved color.
@@ -417,10 +419,10 @@ typedef struct RxPaletteAccelerator_ {
 } RxPaletteAccelerator;
 
 //progress update callback function
-typedef void (*RxProgressCallback) (struct RxReduction_ *reduction, unsigned int progress, unsigned int progressMax, void *data);
+typedef void (*RxProgressCallback) (RxReduction *reduction, unsigned int progress, unsigned int progressMax, void *data);
 
 //reduction workspace structure
-typedef struct RxReduction_ {
+struct RxReduction_ {
 	double yWeight;
 	double iWeight;
 	double qWeight;
@@ -464,7 +466,7 @@ typedef struct RxReduction_ {
 	double gamma;
 	RxProgressCallback progressCallback;
 	void *progressCallbackData;
-} RxReduction;
+};
 
 // -----------------------------------------------------------------------------------------------
 // Name: RxConvertRgbToYiq

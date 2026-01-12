@@ -1751,7 +1751,7 @@ Done:
 	return leastDiff;
 }
 
-static COLOR32 RxiChooseMultiPaletteColor0(RxReduction *reduction, const COLOR32 *px, unsigned int tilesX, unsigned int tilesY) {
+static COLOR32 RxiChooseMultiPaletteColor0(RxReduction *reduction) {
 	RxHistFinalize(reduction);
 
 	//get histogram colors
@@ -2094,7 +2094,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 
 	//if color 0 is used, select a color to be used.
 	if (paletteOffset == 0 && useColor0) {
-		COLOR32 col0 = RxiChooseMultiPaletteColor0(errHist, imgBits, tilesX, tilesY);
+		COLOR32 col0 = RxiChooseMultiPaletteColor0(errHist);
 		for (int i = 0; i < nPalettes; i++) dest[(i + paletteBase) * paletteSize] = col0;
 	}
 

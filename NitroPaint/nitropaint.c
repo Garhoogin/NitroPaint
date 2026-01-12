@@ -4428,7 +4428,7 @@ void InitializeDpiAwareness(void) {
 }
 
 static void CheckAvailableProcessorFeatures(void) {
-#if defined(_M_IX86) or defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_M_AMD64)
 #if defined(_M_IX86_FP)
 
 	int feature[4];
