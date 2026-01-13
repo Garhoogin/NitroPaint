@@ -872,7 +872,9 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	*progress2 = 1000;
 
 	//create the output character data
+	if (params->bgType == BGGEN_BGTYPE_BITMAP) alignment = 1;
 	int nCharsFile = ((nChars + alignment - 1) / alignment) * alignment;
+
 	unsigned char *chrAttr = (unsigned char *) calloc(nCharsFile, 1);
 	uint16_t *scrdat = (uint16_t *) calloc(nTiles, sizeof(uint16_t));
 	unsigned char **blocks = (unsigned char **) calloc(nCharsFile, sizeof(unsigned char *));
@@ -949,6 +951,15 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	int nColorsOutput = (nBits == 4) ? 256 : (256 * (paletteBase + nPalettes));
 	if (paletteFormat == NCLR_TYPE_NC && params->bgType == BGGEN_BGTYPE_AFFINEEXT_256x16) nColorsOutput = 256 * 16; // NC expects this
 
+	unsigned int outWidth = ChrGuessWidth(nCharsFile);
+	unsigned int outHeight = nCharsFile / outWidth;
+	if (params->bgType == BGGEN_BGTYPE_BITMAP || (tilesX * tilesY == nCharsFile)) {
+		//if either in bitmap mode, or we are not using character compression or alignment, preserve the
+		//original image dimensions
+		outWidth = tilesX;
+		outHeight = tilesY;
+	}
+
 	PalInit(nclr, paletteFormat);
 	nclr->header.compression = compressPalette;
 	nclr->nBits = nBits;
@@ -967,8 +978,8 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	ncgr->bitmap = (params->bgType == BGGEN_BGTYPE_BITMAP);
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nTiles = nCharsFile;
-	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
-	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
+	ncgr->tilesX = outWidth;
+	ncgr->tilesY = outHeight;
 	ncgr->tiles = blocks;
 	ncgr->attr = chrAttr;
 
