@@ -343,6 +343,77 @@ static void JFileWriteBlock(BSTREAM *stream, const char *kind, const void *data,
 }
 
 
+
+typedef struct MesgSortEntry_ {
+	MesgEntry *entry;
+	int encoding;
+	int i;
+} MesgSortEntry;
+
+static unsigned int MesgWriteString(BSTREAM *stmMesg, const void *mesg, int encoding) {
+	unsigned int length = MesgGetStringLength(mesg, encoding);
+
+	//search for string in the stream already
+	unsigned int pitch = 1;
+	if (encoding == MESG_ENCODING_UTF16) pitch = 2;
+
+	for (unsigned int i = 0; i < stmMesg->size && (stmMesg->size - i) >= length; i += pitch) {
+		//find
+		if (memcmp(stmMesg->buffer + i, mesg, length) == 0) return i;
+	}
+	
+	//put
+	unsigned int pos = stmMesg->size;
+	bstreamWrite(stmMesg, mesg, length);
+	return pos;
+}
+
+static int MesgLengthComparator(const void *e1, const void *e2) {
+	const MesgSortEntry *m1 = (const MesgSortEntry *) e1;
+	const MesgSortEntry *m2 = (const MesgSortEntry *) e2;
+	unsigned int l1 = MesgGetStringLength(m1->entry->message, m1->encoding);
+	unsigned int l2 = MesgGetStringLength(m2->entry->message, m2->encoding);
+
+	//sort descending by length
+	if (l1 < l2) return  1;
+	if (l1 > l2) return -1;
+
+	//sort ascending by index
+	if (m1->i < m2->i) return -1;
+	if (m1->i > m2->i) return  1;
+	return 0;
+}
+
+static void MesgWriteStrings(MesgFile *mesg, unsigned int entrySize, unsigned char *inf1, unsigned char *mid1, BSTREAM *stmDat1, int endian) {
+	//sort strings by length
+	MesgSortEntry *sorted = (MesgSortEntry *) calloc(mesg->nMsg, sizeof(MesgSortEntry));
+	for (unsigned int i = 0; i < mesg->nMsg; i++) {
+		sorted[i].i = i;
+		sorted[i].encoding = mesg->encoding;
+		sorted[i].entry = &mesg->messages[i];
+	}
+	qsort(sorted, mesg->nMsg, sizeof(MesgSortEntry), MesgLengthComparator);
+
+	for (unsigned int i_ = 0; i_ < mesg->nMsg; i_++) {
+		MesgEntry *ent = sorted[i_].entry;
+		unsigned int i = sorted[i_].i;
+		unsigned char *inf1Ent = inf1 + 0x8 + (i * entrySize);
+
+		//put DAT1
+		uint32_t strOffset = MesgWriteString(stmDat1, ent->message, mesg->encoding);
+
+		//put INF1
+		JFileWriteEndian32(inf1Ent + 0x0, strOffset, endian);
+		memcpy(inf1Ent + 4, ent->extra, mesg->msgExtra);
+
+		//put MID1
+		JFileWriteEndian32(mid1 + 0x8 + i * 4, ent->id, endian);
+	}
+
+	free(sorted);
+}
+
+
 static int MesgWriteBMG(MesgFile *mesg, BSTREAM *stream) {
 	int endian = mesg->endian;
 	unsigned char headerData = (unsigned char) mesg->encoding;
@@ -379,25 +450,11 @@ static int MesgWriteBMG(MesgFile *mesg, BSTREAM *stream) {
 	bstreamCreate(&stmDat1, NULL, 0);
 
 	//put an empty string (MessageEditor does this)
-	unsigned char empty[2] = { 0 };
-	bstreamWrite(&stmDat1, empty, MesgGetStringLength(empty, mesg->encoding));
+	//unsigned char empty[2] = { 0 };
+	//bstreamWrite(&stmDat1, empty, MesgGetStringLength(empty, mesg->encoding));
 
 	//append strings in order (TODO: consider combining common suffixes?)
-	for (unsigned int i = 0; i < mesg->nMsg; i++) {
-		MesgEntry *ent = &mesg->messages[i];
-		unsigned char *inf1Ent = inf1 + 0x8 + (i * entrySize);
-
-		//put INF1
-		uint32_t strOffset = stmDat1.size;
-		JFileWriteEndian32(inf1Ent + 0x0, strOffset, endian);
-		memcpy(inf1Ent + 4, ent->extra, mesg->msgExtra);
-
-		//put MID1
-		JFileWriteEndian32(mid1 + 0x8 + i * 4, ent->id, endian);
-
-		unsigned int len = MesgGetStringLength(ent->message, mesg->encoding);
-		bstreamWrite(&stmDat1, ent->message, len);
-	}
+	MesgWriteStrings(mesg, entrySize, inf1, mid1, &stmDat1, endian);
 
 	JFileWriteBlock(stream, "INF1", inf1, inf1Size, endian);
 	JFileWriteBlock(stream, "DAT1", stmDat1.buffer, stmDat1.size, endian);
