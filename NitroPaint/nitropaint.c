@@ -2492,6 +2492,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			switch (g_configuration.preset) {
 				case NP_PRESET_NITROSYSTEM: deffmt = 0; break;
 				case NP_PRESET_NITROCHARACTER: deffmt = 1; break;
+				case NP_PRESET_IMAGESTUDIO: deffmt = 4; break;
 				case NP_PRESET_GRIT: deffmt = 7; break;
 				case NP_PRESET_RAW: deffmt = 9; break;
 			}
