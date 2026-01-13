@@ -512,6 +512,7 @@ static int TxIsValidGrf(const unsigned char *buffer, unsigned int size) {
 
 	int texFmt = *(const uint16_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x02 : 0x00));
 	int scrFmt = *(const uint16_t *) (hdr + (grfType == GRF_TYPE_GRF_20 ? 0x04 : 0x02));
+	uint16_t flag = grfType == GRF_TYPE_GRF_20 ? *(const uint16_t *) (hdr + 0x0E) : 0;
 
 	unsigned int palSize, gfxSize, pidxSize, cellSize;
 	unsigned char *gfx = GrfReadBlockUncompressed(buffer, size, "GFX ", &gfxSize);
@@ -530,6 +531,7 @@ static int TxIsValidGrf(const unsigned char *buffer, unsigned int size) {
 
 	if (!gfxExist) return 0;
 	if (objExist)                    return 0; // OBJ mode graphics
+	if ((flag >> 14) != 0)           return 0; // not texture mode flag
 	if (texFmt != 0x10 && !palExist) return 0; // non-direct mode texture requires palette
 	if (texFmt == 0x82 && !idxExist) return 0; // 4x4 texture requires palette index
 	if (scrFmt != 0) return 0;                 // should have no BG screen data
@@ -870,6 +872,7 @@ static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsign
 
 	int s = ilog2(texW) - 3;
 	int t = ilog2(texH) - 3;
+	if ((8 << t) < texH) t++;
 
 	texture->texture.texels.height = texH;
 	texture->texture.texels.texImageParam = (s << 20) | (t << 23) | (texFmt << 26) | (plt0 << 29);
@@ -880,6 +883,20 @@ static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsign
 	if (pal != NULL) {
 		texture->texture.palette.pal = (COLOR *) pal;
 		texture->texture.palette.nColors = palSize / 2;
+	}
+
+	if ((8 << t) > texH) {
+		//pad internal texture buffer
+		unsigned int texelSize = TxGetTexelSize(8 << s, 8 << t, texture->texture.texels.texImageParam);
+		unsigned int indexSize = texelSize / 2;
+
+		texture->texture.texels.texel = realloc(texture->texture.texels.texel, texelSize);
+		memset(texture->texture.texels.texel + gfxSize, 0, texelSize - gfxSize);
+
+		if (texFmt == CT_4x4) {
+			texture->texture.texels.cmp = realloc(texture->texture.texels.cmp, indexSize);
+			memset(((unsigned char *) texture->texture.texels.cmp) + pidxSize, 0, indexSize - pidxSize);
+		}
 	}
 
 	return OBJ_STATUS_SUCCESS;
