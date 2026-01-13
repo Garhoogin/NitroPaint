@@ -35,6 +35,17 @@ typedef struct BANNER_INFO_ {
 	WCHAR titleHn[128];
 } BANNER_INFO;
 
+typedef enum BgdtScreenFormat_ {
+	BGDT_SCREENFORMAT_TEXT_16x16         = 0x00,  // Text 16x16
+	BGDT_SCREENFORMAT_TEXT_256x1         = 0x01,  // Text 256x1
+	BGDT_SCREENFORMAT_02                 = 0x02,
+	BGDT_SCREENFORMAT_AFFINE_256x1       = 0x03,  // Affine 256x1
+	BGDT_SCREENFORMAT_04                 = 0x04,
+	BGDT_SCREENFORMAT_BITMAP_256x1       = 0x10,  // Bitmap 256x1
+	BGDT_SCREENFORMAT_BITMAP_LARGE_256x1 = 0x11,
+	BGDT_SCREENFORMAT_DIRECT             = 0x12   // Direct color 16bpp
+} BgdtScreenFormat;
+
 void combo2dInit(COMBO2D *combo, int format) {
 	ObjInit(&combo->header, FILE_TYPE_COMBO2D, format);
 	StListCreateInline(&combo->links, OBJECT_HEADER *, NULL);
@@ -568,25 +579,66 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 
 	int nColors = *(uint32_t *) (palt + 0x00);
 
-	int chrWidth = *(uint16_t *) (bgdt + 0xC);
-	int chrHeight = *(uint16_t *) (bgdt + 0xE);
-	int scrSize = *(uint32_t *) (bgdt + 0x04);
-	int mapping = *(uint32_t *) (bgdt + 0x00);
-	int charSize = *(uint32_t *) (bgdt + 0x10);
-	int isBitmap = scrSize == 0; // screen size=0 => bitmap mode BG
+	uint32_t bgAttr = *(const uint32_t *) (bgdt + 0x00);
+	unsigned int scrSize = *(const uint32_t *) (bgdt + 0x04);
+	unsigned int charSize = *(const uint32_t *) (bgdt + 0x10);
 	int charOffset = 0x14 + scrSize;
-	int nBits = dfpl == NULL ? 8 : 4; //8-bit if no DFPL present
 
-	int scrX = *(uint16_t *) (bgdt + 0x8);
-	int scrY = *(uint16_t *) (bgdt + 0xA);
-	int scrDataSize = scrX * scrY * 2;
+	BgdtScreenFormat fmt = (BgdtScreenFormat) (bgAttr & 0xFF);
+	int isBitmap = 0, nBits = 4;
+	int screenFormat = 0, screenColorMode = 0;
+	switch (fmt) {
+		case BGDT_SCREENFORMAT_TEXT_16x16:
+			screenFormat = SCREENFORMAT_TEXT;
+			screenColorMode = SCREENCOLORMODE_16x16;
+			break;
+		case BGDT_SCREENFORMAT_TEXT_256x1:
+			screenFormat = SCREENFORMAT_TEXT;
+			screenColorMode = SCREENCOLORMODE_256x1;
+			break;
+		case BGDT_SCREENFORMAT_AFFINE_256x1:
+			screenFormat = SCREENFORMAT_AFFINE;
+			screenColorMode = SCREENCOLORMODE_256x1;
+			break;
+		case BGDT_SCREENFORMAT_BITMAP_256x1:
+		case BGDT_SCREENFORMAT_BITMAP_LARGE_256x1:
+			isBitmap = 1;
+			screenFormat = 0;
+			screenColorMode = SCREENCOLORMODE_256x1;
+			break;
+		default:
+			break;
+	}
+
+	if (screenColorMode == SCREENCOLORMODE_16x16) nBits = 4;
+	else nBits = 8;
+
+	unsigned int scrUnit = (bgAttr >> 16) & 0xFF;
+
+	unsigned int nCharsX = *(const uint16_t *) (bgdt + 0xC);
+	unsigned int nCharsY = *(const uint16_t *) (bgdt + 0xE);
+	unsigned int sizeChar = 8 * nBits;
+	if (!isBitmap) {
+		//dimensions may overestimate real graphics space. Optpix handles this by reserving
+		//space. We'll just truncate.
+		unsigned int nChars = charSize / sizeChar;
+		if (nCharsX * nCharsY != nChars) {
+			if (nCharsX == 0 || (nChars % nCharsX) != 0) nCharsX = ChrGuessWidth(nChars);
+
+			nCharsY = nChars / nCharsX;
+		}
+	}
+
+	unsigned int scrX = *(const uint16_t *) (bgdt + 0x8);
+	unsigned int scrY = *(const uint16_t *) (bgdt + 0xA);
+	unsigned int scrDataSize = scrX * scrY * 2;
 
 	//addpalette
 	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
 	PalInit(nclr, NCLR_TYPE_COMBO);
 	nclr->nColors = nColors;
 	nclr->extPalette = 0;
-	nclr->nBits = 4;
+	nclr->nBits = nBits;
 	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
 	memcpy(nclr->colors, palt + 0x4, nColors * sizeof(COLOR));
 	combo2dLink(combo, &nclr->header);
@@ -594,12 +646,12 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	//add character
 	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
 	ChrInit(ncgr, NCGR_TYPE_COMBO);
-	ncgr->nTiles = chrWidth * chrHeight;
-	ncgr->tilesX = chrWidth;
-	ncgr->tilesY = chrHeight;
+	ncgr->nTiles = nCharsX * nCharsY;
+	ncgr->tilesX = nCharsX;
+	ncgr->tilesY = nCharsY;
 	ncgr->nBits = nBits;
 	ncgr->bitmap = isBitmap;
-	ncgr->mappingMode = mapping;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ChrReadGraphics(ncgr, bgdt + charOffset);
 	combo2dLink(combo, &ncgr->header);
 
@@ -607,11 +659,45 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 		//add screen (only if not bitmap mode BG)
 		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
 		ScrInit(nscr, NSCR_TYPE_COMBO);
+		nscr->colorMode = screenColorMode;
+		nscr->fmt = screenFormat;
 		nscr->tilesX = scrX;
 		nscr->tilesY = scrY;
 		nscr->dataSize = scrDataSize;
-		nscr->data = (uint16_t *) calloc(scrDataSize, 1);
-		memcpy(nscr->data, bgdt + 0x14, scrDataSize);
+		nscr->data = (uint16_t *) calloc(scrX * scrY, sizeof(uint16_t));
+
+		for (unsigned int i = 0; i < scrX * scrY; i++) {
+			const unsigned char *tileSrc = bgdt + 0x14 + i * scrUnit;
+			
+			//decode screen data
+			unsigned int charName = 0, flipMode = 0, pltt = 0;
+			switch (scrUnit) {
+				case 0: break;
+				case 1: charName = *(const uint8_t *) (tileSrc + 0x0); break;
+				case 2:
+				{
+					uint16_t lo = *(const uint16_t *) tileSrc;
+					charName = (lo >>  0) & 0x03FF;
+					flipMode = (lo >> 10) & 0x0003;
+					pltt     = (lo >> 12) & 0x000F;
+					break;
+				}
+				case 4:
+				case 6:
+				case 8:
+				case 10:
+				{
+					uint32_t lo = *(const uint32_t *) tileSrc;
+					charName = (lo >>  0) & 0xFFFF;
+					flipMode = (lo >> 26) & 0x0003;
+					pltt     = (lo >> 28) & 0x000F;
+					break;
+				}
+			}
+			nscr->data[i] = (charName & 0x03FF) | ((pltt & 0xF) << 12) | ((flipMode & 0x3) << 10);
+
+		}
+
 		ScrComputeHighestCharacter(nscr);
 		combo2dLink(combo, &nscr->header);
 	}
@@ -1349,6 +1435,47 @@ static int combo2dWriteDataFile(COMBO2D *combo, BSTREAM *stream) {
 	return 0;
 }
 
+static int combo2dGet5bgScreenSize(int width, int height, int fmt) {
+	const struct {
+		uint32_t size   :  2;
+		uint32_t width  : 11;
+		uint32_t height : 11;
+		uint32_t fmt    :  8;
+	} bgSizes[] = {
+		{ 0,  256,  256, BGDT_SCREENFORMAT_TEXT_16x16 },
+		{ 1,  512,  256, BGDT_SCREENFORMAT_TEXT_16x16 },
+		{ 2,  256,  512, BGDT_SCREENFORMAT_TEXT_16x16 },
+		{ 3,  512,  512, BGDT_SCREENFORMAT_TEXT_16x16 },
+
+		{ 0,  256,  256, BGDT_SCREENFORMAT_TEXT_256x1 },
+		{ 1,  512,  256, BGDT_SCREENFORMAT_TEXT_256x1 },
+		{ 2,  256,  512, BGDT_SCREENFORMAT_TEXT_256x1 },
+		{ 3,  512,  512, BGDT_SCREENFORMAT_TEXT_256x1 },
+
+		{ 0,  128,  128, BGDT_SCREENFORMAT_AFFINE_256x1 },
+		{ 1,  256,  256, BGDT_SCREENFORMAT_AFFINE_256x1 },
+		{ 2,  512,  512, BGDT_SCREENFORMAT_AFFINE_256x1 },
+		{ 3, 1024, 1024, BGDT_SCREENFORMAT_AFFINE_256x1 },
+
+		{ 0,  128,  128, BGDT_SCREENFORMAT_BITMAP_256x1 },
+		{ 1,  256,  256, BGDT_SCREENFORMAT_BITMAP_256x1 },
+		{ 2,  512,  256, BGDT_SCREENFORMAT_BITMAP_256x1 },
+		{ 3,  512,  512, BGDT_SCREENFORMAT_BITMAP_256x1 },
+
+		{ 0,  512, 1024, BGDT_SCREENFORMAT_BITMAP_LARGE_256x1 },
+		{ 1, 1024,  512, BGDT_SCREENFORMAT_BITMAP_LARGE_256x1 },
+	};
+
+	for (unsigned int i = 0; i < sizeof(bgSizes) / sizeof(bgSizes[0]); i++) {
+		if (bgSizes[i].width == width && bgSizes[i].height == height && bgSizes[i].fmt == fmt) {
+			//found
+			return bgSizes[i].size;
+		}
+	}
+
+	return 0xFF; // not found (free-size)
+}
+
 static int combo2dWrite5bg(COMBO2D *combo, BSTREAM *stream) {
 	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
 	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
@@ -1362,6 +1489,36 @@ static int combo2dWrite5bg(COMBO2D *combo, BSTREAM *stream) {
 		scrHeight = nscr->tilesY;
 	}
 
+	//get BG attributes
+	uint32_t bgAttr = 0;
+	BgdtScreenFormat screenType = BGDT_SCREENFORMAT_TEXT_16x16;
+	if (ncgr->bitmap) {
+		if (ncgr->tilesX > (512 / 8) || ncgr->tilesY > (512 / 8)) {
+			screenType = BGDT_SCREENFORMAT_BITMAP_LARGE_256x1;
+		} else {
+			screenType = BGDT_SCREENFORMAT_BITMAP_256x1;
+		}
+	} else if (nscr != NULL) {
+		switch (nscr->fmt) {
+			case SCREENFORMAT_TEXT:
+				bgAttr |= 2 << 16; // 2-byte BG screen unit
+				if (nscr->colorMode == SCREENCOLORMODE_16x16) screenType = BGDT_SCREENFORMAT_TEXT_16x16;
+				else screenType = BGDT_SCREENFORMAT_TEXT_256x1;
+				break;
+			case SCREENFORMAT_AFFINE:
+				bgAttr |= 1 << 16; // 1-byte BG screen unit
+				screenType = BGDT_SCREENFORMAT_AFFINE_256x1;
+				break;
+			case SCREENFORMAT_AFFINEEXT:
+				//not allowed?
+				bgAttr |= 2 << 16; // 2-byte BG screen unit
+				screenType = BGDT_SCREENFORMAT_TEXT_256x1;
+				break;
+		}
+	}
+	bgAttr |= (uint32_t) screenType;
+	bgAttr |= combo2dGet5bgScreenSize(scrWidth * 8, scrHeight * 8, screenType) << 8;
+
 	NnsStream nns;
 	NnsStreamCreate(&nns, "NTBG", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
 
@@ -1374,8 +1531,8 @@ static int combo2dWrite5bg(COMBO2D *combo, BSTREAM *stream) {
 
 	//write BGDT
 	unsigned char bgdtHeader[0x14] = { 0 };
-	*(uint32_t *) (bgdtHeader + 0x00) = ncgr->mappingMode;
-	*(uint32_t *) (bgdtHeader + 0x04) = ncgr->bitmap ? 0 : nscr->dataSize;
+	*(uint32_t *) (bgdtHeader + 0x00) = bgAttr;
+	*(uint32_t *) (bgdtHeader + 0x04) = ncgr->bitmap ? 0 : (nscr->fmt == SCREENFORMAT_AFFINE ? nscr->dataSize / 2 : nscr->dataSize);
 	*(uint16_t *) (bgdtHeader + 0x08) = scrWidth;
 	*(uint16_t *) (bgdtHeader + 0x0A) = scrHeight;
 	*(uint16_t *) (bgdtHeader + 0x0C) = ncgr->tilesX;
@@ -1383,7 +1540,17 @@ static int combo2dWrite5bg(COMBO2D *combo, BSTREAM *stream) {
 	*(uint32_t *) (bgdtHeader + 0x10) = ncgr->nTiles * (8 * ncgr->nBits);
 	NnsStreamStartBlock(&nns, "BGDT");
 	NnsStreamWrite(&nns, bgdtHeader, sizeof(bgdtHeader));
-	if (!ncgr->bitmap) NnsStreamWrite(&nns, nscr->data, nscr->dataSize);
+	if (!ncgr->bitmap) {
+		if (nscr->fmt == SCREENFORMAT_AFFINE) {
+			for (unsigned int i = 0; i < nscr->dataSize / 2; i++) {
+				unsigned char c = nscr->data[i] & 0xFF;
+				NnsStreamWrite(&nns, &c, 1);
+			}
+		} else {
+			NnsStreamWrite(&nns, nscr->data, nscr->dataSize);
+		}
+	}
+	NnsStreamAlign(&nns, 4);
 
 	//write graphics
 	ChrWriteGraphics(ncgr, NnsStreamGetBlockStream(&nns));
