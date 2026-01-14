@@ -1277,6 +1277,67 @@ static int TxWriteSpt(TextureObject *texture, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int TxWriteGRF(TextureObject *texture, BSTREAM *stream) {
+	int texImageParam = texture->texture.texels.texImageParam;
+	int fmt = FORMAT(texImageParam);
+
+	int gfxAttr = 0, tileWidth = 0, tileHeight = 0, flags = 0;
+	switch (fmt) {
+		case CT_4COLOR  : gfxAttr = 0x02; break;
+		case CT_16COLOR : gfxAttr = 0x04; break;
+		case CT_256COLOR: gfxAttr = 0x08; break;
+		case CT_DIRECT  : gfxAttr = 0x10; break;
+		case CT_A3I5    : gfxAttr = 0x80; break;
+		case CT_A5I3    : gfxAttr = 0x81; break;
+		case CT_4x4     : gfxAttr = 0x82; break;
+	}
+
+	int nColors = 0;
+	if (fmt != CT_DIRECT) nColors = texture->texture.palette.nColors;
+
+	if (fmt == CT_4x4) {
+		tileWidth = 4;
+		tileHeight = 4;
+	}
+
+	if (fmt == CT_4COLOR || fmt == CT_16COLOR || fmt == CT_256COLOR) {
+		if (COL0TRANS(texImageParam)) flags |= 0x0001;
+	}
+
+	unsigned int texelSize = TxGetTexelSize(TEXW(texImageParam), texture->texture.texels.height, texImageParam);
+
+	unsigned char hdr[0x14] = { 0 };
+	*(uint16_t *) (hdr + 0x00) = 2; // version 2
+	*(uint16_t *) (hdr + 0x02) = gfxAttr;
+	*(uint16_t *) (hdr + 0x08) = nColors;
+	*(uint8_t *) (hdr + 0x0A) = tileWidth;
+	*(uint8_t *) (hdr + 0x0B) = tileHeight;
+	*(uint16_t *) (hdr + 0x0E) = flags;
+	*(uint32_t *) (hdr + 0x10) = TEXW(texImageParam);
+	*(uint32_t *) (hdr + 0x14) = texture->texture.texels.height;
+
+	BSTREAM grfStream;
+	GrfStreamCreate(&grfStream);
+
+	GrfStreamWriteBlock(&grfStream, "HDRX", hdr, sizeof(hdr));
+
+	if (fmt != CT_DIRECT) {
+		GrfStreamWriteBlockCompressedOptimal(&grfStream, "PAL ", texture->texture.palette.pal, nColors * sizeof(COLOR));
+	}
+
+	GrfStreamWriteBlockCompressedOptimal(&grfStream, "GFX ", texture->texture.texels.texel, texelSize);
+
+	if (fmt == CT_4x4) {
+		GrfStreamWriteBlockCompressedOptimal(&grfStream, "PIDX", texture->texture.texels.cmp, texelSize / 2);
+	}
+
+	GrfStreamFinalize(&grfStream);
+	GrfStreamFlushOut(&grfStream, stream);
+	GrfStreamFree(&grfStream);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
 int TxWrite(TextureObject *texture, BSTREAM *stream) {
 	switch (texture->header.format) {
 		case TEXTURE_TYPE_NNSTGA:
@@ -1291,6 +1352,8 @@ int TxWrite(TextureObject *texture, BSTREAM *stream) {
 			return TxWriteNtga(texture, stream);
 		case TEXTURE_TYPE_TOLOVERU:
 			return TxWriteToLoveRu(texture, stream);
+		case TEXTURE_TYPE_GRF:
+			return TxWriteGRF(texture, stream);
 	}
 	return 1;
 }
