@@ -2637,6 +2637,7 @@ void RegisterTextureEditorClass(void) {
 	EditorAddFilter(cls, TEXTURE_TYPE_ISTUDIO, L"5tx", L"iMageStudio Textures (*.5tx)\0*.5tx\0");
 	EditorAddFilter(cls, TEXTURE_TYPE_TDS, L"tds", L"Ghost Trick Textures (*.tds)\0*.tds\0");
 	EditorAddFilter(cls, TEXTURE_TYPE_NTGA, L"nnstga", L"NTGA Files (*.nnstga)\0*.nnstga\0");
+	EditorAddFilter(cls, TEXTURE_TYPE_GRF, L"grf", L"GRF Files (*.grf)\0*.grf\0");
 
 	RegisterTexturePreviewClass();
 	RegisterConvertDialogClass();
