@@ -1162,7 +1162,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 			//write its palette data.
 			//first read in original palette, we'll write over it.
 			for (int i = 0; i < nclr->nColors; i++) {
-				pals[i] = ColorConvertFromDS(nclr->colors[i]);
+				pals[i] = ColorConvertFromDS(nclr->colors[i]) | 0xFF000000;
 			}
 			for (int palNo = 0; palNo < nPalettes; palNo++) {
 				int nTilesHistogram = 0;
@@ -1198,7 +1198,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 		int nColors = nPalettes * paletteSize;
 		for (int i = 0; i < nColors; i++) {
 			COLOR c = destPalette[i];
-			pals[i] = ColorConvertFromDS(c);
+			pals[i] = ColorConvertFromDS(c) | 0xFF000000;
 		}
 	}
 	*progress = *progressMax;
