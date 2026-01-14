@@ -1306,7 +1306,7 @@ static int TxWriteGRF(TextureObject *texture, BSTREAM *stream) {
 
 	unsigned int texelSize = TxGetTexelSize(TEXW(texImageParam), texture->texture.texels.height, texImageParam);
 
-	unsigned char hdr[0x14] = { 0 };
+	unsigned char hdr[0x18] = { 0 };
 	*(uint16_t *) (hdr + 0x00) = 2; // version 2
 	*(uint16_t *) (hdr + 0x02) = gfxAttr;
 	*(uint16_t *) (hdr + 0x08) = nColors;
