@@ -110,6 +110,7 @@ unsigned char *GrfGetHeader(const unsigned char *buffer, unsigned int size, unsi
 void GrfStreamCreate(BSTREAM *stream);
 void GrfStreamWriteBlock(BSTREAM *stream, const char *signature, const void *data, unsigned int size);
 void GrfStreamWriteBlockCompressed(BSTREAM *stream, const char *signature, const void *data, unsigned int size, int compression);
+void GrfStreamWriteBlockCompressedOptimal(BSTREAM *stream, const char *signature, const void *data, unsigned int size);
 void GrfStreamFinalize(BSTREAM *stream);
 void GrfStreamFlushOut(BSTREAM *stream, BSTREAM *out);
 void GrfStreamFree(BSTREAM *stream);

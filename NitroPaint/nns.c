@@ -973,6 +973,17 @@ void GrfStreamWriteBlock(BSTREAM *stream, const char *signature, const void *dat
 	bstreamAlign(stream, 4);
 }
 
+static unsigned char *GrfCompressDummy(const unsigned char *buffer, unsigned int size, unsigned int *pCompressedSize) {
+	unsigned int outSize = (size + 4 + 3) & ~3;
+	unsigned char *out = (unsigned char *) calloc(outSize, 1);
+
+	*(uint32_t *) out = 0x00 | (size << 8);
+	memcpy(out + 4, buffer, size);
+
+	*pCompressedSize = outSize;
+	return out;
+}
+
 void GrfStreamWriteBlockCompressed(BSTREAM *stream, const char *signature, const void *data, unsigned int size, int compression) {
 	unsigned int compSize;
 	void *comp;
@@ -981,13 +992,36 @@ void GrfStreamWriteBlockCompressed(BSTREAM *stream, const char *signature, const
 		comp = CxCompress(data, size, compression, &compSize);
 	} else {
 		//create dummy header
-		compSize = size + 4;
-		comp = calloc(compSize, 1);
-		*(uint32_t *) comp = size << 8;
-		memcpy((unsigned char *) comp + 4, data, size);
+		comp = GrfCompressDummy(data, size, &compSize);
 	}
 	GrfStreamWriteBlock(stream, signature, comp, compSize);
 	free(comp);
+}
+
+void GrfStreamWriteBlockCompressedOptimal(BSTREAM *stream, const char *signature, const void *data, unsigned int size) {
+	//select the optimal compression.
+	unsigned int sizes[5] = { 0 };
+	unsigned char *comps[5] = { 0 };
+	
+	comps[0] = CxCompress(data, size, COMPRESSION_LZ77, &sizes[0]);
+	comps[1] = CxCompress(data, size, COMPRESSION_RLE, &sizes[1]);
+	comps[2] = CxCompress(data, size, COMPRESSION_HUFFMAN_4, &sizes[2]);
+	comps[3] = CxCompress(data, size, COMPRESSION_HUFFMAN_8, &sizes[3]);
+	comps[4] = GrfCompressDummy(data, size, &sizes[4]);
+
+	//select the smallest
+	int iBest = 0;
+	unsigned int sizeBest = UINT_MAX;
+	for (int i = 0; i < 5; i++) {
+		if (sizes[i] < sizeBest) {
+			sizeBest = sizes[i];
+			iBest = i;
+		}
+	}
+
+	GrfStreamWriteBlock(stream, signature, comps[iBest], sizes[iBest]);
+
+	for (int i = 0; i < 5; i++) free(comps[i]);
 }
 
 void GrfStreamFinalize(BSTREAM *stream) {

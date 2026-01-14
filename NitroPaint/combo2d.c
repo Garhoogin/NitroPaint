@@ -1670,17 +1670,17 @@ static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
 	*(uint32_t *) (hdr + 0x14) = height;
 	GrfStreamWriteBlock(&grf, "HDRX", hdr, sizeof(hdr));
 
-	GrfStreamWriteBlockCompressed(&grf, "PAL ", nclr->colors, nclr->nColors * sizeof(COLOR), COMPRESSION_NONE);
-	GrfStreamWriteBlockCompressed(&grf, "GFX ", gfxData, gfxSize, COMPRESSION_LZ77);
+	GrfStreamWriteBlockCompressedOptimal(&grf, "PAL ", nclr->colors, nclr->nColors * sizeof(COLOR));
+	GrfStreamWriteBlockCompressedOptimal(&grf, "GFX ", gfxData, gfxSize);
 
 	if (nscr != NULL) {
 		if (screenType == 3) {
 			unsigned char *scr = (unsigned char *) calloc(1, nscr->dataSize / 2);
 			for (unsigned int i = 0; i < nscr->dataSize / 2; i++) scr[i] = (unsigned char) nscr->data[i];
-			GrfStreamWriteBlockCompressed(&grf, "MAP ", scr, nscr->dataSize / 2, COMPRESSION_LZ77);
+			GrfStreamWriteBlockCompressedOptimal(&grf, "MAP ", scr, nscr->dataSize / 2);
 			free(scr);
 		} else {
-			GrfStreamWriteBlockCompressed(&grf, "MAP ", nscr->data, nscr->dataSize, COMPRESSION_LZ77);
+			GrfStreamWriteBlockCompressedOptimal(&grf, "MAP ", nscr->data, nscr->dataSize);
 		}
 	}
 
@@ -1725,7 +1725,7 @@ static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
 			bstreamWrite(&stmCell, cell->attr, cell->nAttribs * 6);
 		}
 
-		GrfStreamWriteBlockCompressed(&grf, "CELL", stmCell.buffer, stmCell.size, COMPRESSION_NONE);
+		GrfStreamWriteBlockCompressedOptimal(&grf, "CELL", stmCell.buffer, stmCell.size);
 		bstreamFree(&stmCell);
 	}
 
@@ -1791,7 +1791,7 @@ static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream) {
 			}
 		}
 		
-		GrfStreamWriteBlockCompressed(&grf, "ANIM", stmAnim.buffer, stmAnim.size, COMPRESSION_NONE);
+		GrfStreamWriteBlockCompressedOptimal(&grf, "ANIM", stmAnim.buffer, stmAnim.size);
 		bstreamFree(&stmAnim);
 	}
 
