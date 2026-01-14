@@ -19,8 +19,9 @@ void CellInit(NCER *ncer, int format) {
 int CellIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	if (size < 4) return 0;
 
-	unsigned int nCells = *(unsigned int *) buffer;
-	if (nCells == 0) return 0;
+	unsigned int nCells = *(const uint32_t *) buffer;
+	if (nCells == 0) return 0;             // 0 cells -> reject
+	if (nCells > (size - 4) / 4) return 0; // file not big enough for offset table
 
 	unsigned int highestOffset = 4;
 	for (unsigned int i = 0; i < nCells; i++) {
