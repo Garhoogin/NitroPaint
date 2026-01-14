@@ -1494,8 +1494,6 @@ int CxIsCompressedHuffman(const unsigned char *buffer, unsigned int size) {
 	if (*buffer != 0x24 && *buffer != 0x28) return 0;
 
 	uint32_t length = (*(uint32_t *) buffer) >> 8;
-	uint32_t bitStreamOffset = ((buffer[5] + 1) << 1) + 4;
-	if (bitStreamOffset > size) return 0;
 
 	//process huffman tree
 	uint32_t dataOffset = ((buffer[4] + 1) << 1) + 4;
