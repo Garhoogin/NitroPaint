@@ -542,7 +542,7 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 		
 		//write data
 		bstreamSeek(stream, dictOfs, 0);
-		for (int i = 0; i < nsbtx->nTextures; i++) {
+		for (int i = 0; i < nsbtx->nPalettes; i++) {
 			PALETTE *palette = nsbtx->palettes + i;
 			uint16_t dictData[2];
 			dictData[0] = paletteOffsets[i] >> 3;
