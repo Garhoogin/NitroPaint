@@ -783,6 +783,12 @@ static void TxiMergePalettes(RxReduction *reduction, TxTileData *tileData, int n
 }
 
 static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *outPltt, int plttSize, TxTileData *tileData, int tilesX, int tilesY, int threshold, volatile int *pProgress, volatile int *pTerminate) {
+	//the main palette loop must be able to accommadate at least 16 colors. If the requested palette
+	//size is below this, we will still make a best effort, truncating if needed.
+	//16 colors is the sum of sizes of all 4 types (4+4+2+2) plus the largest size again (+4).
+	int outPlttSize = plttSize;
+	if (plttSize < 16) plttSize = 16;
+
 	RxYiqColor *plttYiq = (RxYiqColor *) RxMemCalloc(plttSize, sizeof(RxYiqColor));
 	int *colorTable = (int *) calloc(plttSize, sizeof(int));
 	
@@ -805,12 +811,12 @@ static int TxiBuildCompressedPalette(RxReduction *reduction, COLOR *outPltt, int
 
 		//palette merge loop: merge palettes while either the colors to be added do not fit, or palettes
 		//are within merge threshold.
-		while ((availableSlot + nConsumed) > plttSize || (threshold > 0 && availableSlot >= 8)) {
+		while ((availableSlot + nConsumed) > outPlttSize || threshold > 0) {
 			//determine which two palettes are the most similar.
 			int colorIndex1 = -1, colorIndex2 = -1;
 			double distance = TxiFindClosestPalettes(reduction, plttYiq, colorTable, availableSlot, &colorIndex1, &colorIndex2);
 			if (colorIndex1 == -1) break;
-			if ((availableSlot + nConsumed) <= plttSize && (distance > diffThreshold || availableSlot < 8)) break;
+			if ((availableSlot + nConsumed) <= outPlttSize && distance > diffThreshold) break;
 
 			uint16_t palettesMode = colorTable[colorIndex1];
 			int nColsRemove = TxiTableToPaletteSize(palettesMode);
@@ -852,7 +858,7 @@ Done:
 
 	//copy palette out
 	if (plttYiq != NULL) {
-		for (int i = 0; i < plttSize; i++) {
+		for (int i = 0; i < outPlttSize; i++) {
 			outPltt[i] = ColorConvertToDS(RxConvertYiqToRgb(&plttYiq[i]));
 		}
 		RxMemFree(plttYiq);
@@ -1420,8 +1426,6 @@ static int TxConvert4x4(TxConversionParameters *params, RxReduction *reduction) 
 	TxConversionResult result = TEXCONV_SUCCESS;
 
 	//3-stage compression. First stage builds tile data, second stage builds palettes, third stage builds the final texture.
-	if (params->colorEntries < 16) params->colorEntries = 16; // color reduction does not support max colors < 16
-	params->colorEntries = (params->colorEntries + 7) & ~7;   // multiple of 8
 
 	unsigned int width = params->width, height = params->height;
 	unsigned int tilesX = width / 4, tilesY = height / 4;
@@ -1431,7 +1435,7 @@ static int TxConvert4x4(TxConversionParameters *params, RxReduction *reduction) 
 	//allocate texel, index, and palette data.
 	uint16_t *pidx = (uint16_t *) calloc(tilesX * tilesY, 2);
 	uint32_t *txel = (uint32_t *) calloc(tilesX * tilesY, 4);
-	COLOR *pltt = (COLOR *) calloc(params->colorEntries, sizeof(COLOR));
+	COLOR *pltt = (COLOR *) calloc((params->colorEntries + 7) & ~7, sizeof(COLOR));
 
 	//create tile data
 	TxTileData *tileData = TxiCreateTileData(reduction, params->px, tilesX, tilesY, !params->useFixedPalette, &params->progress, &params->terminate);
@@ -1450,8 +1454,6 @@ static int TxConvert4x4(TxConversionParameters *params, RxReduction *reduction) 
 		memcpy(pltt, params->fixedPalette, params->colorEntries * 2);
 		params->progress += tilesX * tilesY;
 	}
-	if (nUsedColors & 7) nUsedColors += 8 - (nUsedColors & 7);
-	if (nUsedColors < 16) nUsedColors = 16;
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
@@ -1485,13 +1487,15 @@ static int TxConvert4x4(TxConversionParameters *params, RxReduction *reduction) 
 	}
 
 	if (params->fixedPalette == NULL) {
+		//the maximum palette size is nUsedColors from here on.
 		unsigned char *useMap = (unsigned char *) calloc(nUsedColors, 1);
 		int nNewUsed = nUsedColors;
 
+		//perform a series of refinement steps on the resultant palette. This will alter the texel,
+		//index, and palette data and try to remove any inefficiencies. 
 		for (int i = 0; i < 4; i++) {
 			int nAfterRefinement = TxiRefinePalette(reduction, tileData, txel, pidx, tilesX * tilesY, pltt, nUsedColors, errorMap, useMap, diffuse);
-			nAfterRefinement = (nAfterRefinement + 7) & ~7;
-			nNewUsed = nAfterRefinement;
+			nNewUsed = (nAfterRefinement + 7) & ~7;
 
 			TEXCONV_CHECK_ABORT(params->terminate);
 		}
@@ -1501,6 +1505,9 @@ static int TxConvert4x4(TxConversionParameters *params, RxReduction *reduction) 
 		pltt = realloc(pltt, nUsedColors * sizeof(COLOR));
 
 		free(useMap);
+	} else {
+		//when the fixed palette is used, we round up the palette size, but only after rendering.
+		nUsedColors = (nUsedColors + 7) & ~7;
 	}
 
 	//set fields in the texture
