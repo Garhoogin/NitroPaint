@@ -120,7 +120,7 @@ static void TexViewerExportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	} else if (format == CT_4x4 || format == CT_DIRECT) {
 		//else if 4x4 or direct, just export full-color image. Red/blue must be swapped here
 		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-		TxRender(px, width, height, &texture->texels, &texture->palette, 0);
+		TxRender(px, width, height, &texture->texels, &texture->palette);
 		
 		ImgWrite(px, width, height, path);
 		free(px);
@@ -548,7 +548,7 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 				EditorSetFile(hWnd, data->szInitialFile);
 				data->hasPalette = (format != CT_DIRECT && format != 0);
 				data->isNitro = 1;
-				TxRender(data->px, data->width, data->height, &data->texture->texture.texels, &data->texture->texture.palette, 0);
+				TxRender(data->px, data->width, data->height, &data->texture->texture.texels, &data->texture->texture.palette);
 				TexViewerUpdatePaletteLabel(hWnd);
 			}
 
@@ -578,7 +578,7 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 			//decode texture data for preview
 			int nPx = data->width * data->height;
-			TxRender(data->px, data->width, data->height, &texture->texture.texels, &texture->texture.palette, 0);
+			TxRender(data->px, data->width, data->height, &texture->texture.texels, &texture->texture.palette);
 
 			//update UI
 			WCHAR buffer[16];
@@ -720,7 +720,7 @@ static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int til
 	temp.texels.texImageParam = format << 26;
 	temp.palette.nColors = texture->palette.nColors;
 	temp.palette.pal = texture->palette.pal;
-	TxRender(rendered, 8, 8, &temp.texels, &temp.palette, 0);
+	TxRender(rendered, 8, 8, &temp.texels, &temp.palette);
 	ImgSwapRedBlue(rendered, 8, 8);
 
 	//convert back to 4x4
@@ -887,18 +887,18 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 				if (notification == BN_CLICKED && hWndControl == data->hWndTransparent) {
 					int state = GetCheckboxChecked(hWndControl);
 					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
-					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette, 0);
+					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
 					int state = GetCheckboxChecked(hWndControl);
 					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
-					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette, 0);
+					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndPaletteBase) {
 					*pIdx = ((*pIdx) & 0xC000) | (GetEditNumber(hWndControl) & 0x3FFF);
-					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette, 0);
+					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette);
 					InvalidateRect(data->hWnd, NULL, FALSE);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
@@ -968,7 +968,7 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 						}
 					}
 				}
-				TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette, 0);
+				TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette);
 				InvalidateRect(data->hWnd, NULL, FALSE);
 				InvalidateRect(hWnd, NULL, FALSE);
 			} else if (pt.x >= 138 && pt.y >= 0) { //select palette/alpha
@@ -1794,10 +1794,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 							InvalidateRect(hWnd, NULL, FALSE);
 
 							TxRender(data->data->px, data->data->width, data->data->height, 
-								&data->data->texture->texture.texels, &data->data->texture->texture.palette, 0);
-							int param = data->data->texture->texture.texels.texImageParam;
-							int width = TEXW(param);
-							int height = 8 << ((param >> 23) & 7);
+								&data->data->texture->texture.texels, &data->data->texture->texture.palette);
 							
 							InvalidateRect(data->data->hWnd, NULL, FALSE);
 						}
@@ -1829,7 +1826,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						CloseClipboard();
 
 						TEXTURE *texture = &data->data->texture->texture;
-						TxRender(data->data->px, data->data->width, data->data->height, &texture->texels, &texture->palette, 0);
+						TxRender(data->data->px, data->data->width, data->data->height, &texture->texels, &texture->palette);
 						
 						InvalidateRect(hWnd, NULL, FALSE);
 						InvalidateRect(data->data->hWnd, NULL, FALSE);
