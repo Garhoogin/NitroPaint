@@ -29,31 +29,27 @@ static int TexViewerGetFormatForPreset(void) {
 }
 
 // convert a narrow resource name to a wide character string
-WCHAR *TexNarrowResourceNameToWideChar(const char *name) {
+wchar_t *TexNarrowResourceNameToWideChar(const char *name) {
 	//NULL resource name
 	if (name == NULL) return NULL;
 
-	unsigned int len = strlen(name);
-	WCHAR *buf = (WCHAR *) calloc(len + 1, sizeof(WCHAR));
+	int len = MultiByteToWideChar(CP_UTF8, 0, name, -1, NULL, 0);
+	wchar_t *buf = (wchar_t *) calloc(len + 1, sizeof(wchar_t));
 	if (buf == NULL) return NULL;
 
-	for (unsigned int i = 0; i < len; i++) {
-		buf[i] = (WCHAR) name[i];
-	}
+	MultiByteToWideChar(CP_UTF8, 0, name, -1, buf, len + 1);
 	return buf;
 }
 
 // convert a wide character string to a narrow resource string
-char *TexNarrowResourceNameFromWideChar(const WCHAR *name) {
+char *TexNarrowResourceNameFromWideChar(const wchar_t *name) {
 	if (name == NULL) return NULL;
-
-	unsigned int len = wcslen(name);
-	char *buf = (char *) calloc(len + 1, sizeof(char));
+	
+	int len = WideCharToMultiByte(CP_UTF8, 0, name, -1, NULL, 0, NULL, NULL);
+	char *buf = calloc(len + 1, 1);
 	if (buf == NULL) return NULL;
 
-	for (unsigned int i = 0; i < len; i++) {
-		buf[i] = (char) name[i];
-	}
+	WideCharToMultiByte(CP_UTF8, 0, name, -1, buf, len + 1, NULL, NULL);
 	return buf;
 }
 
@@ -1137,17 +1133,13 @@ static int TexViewerJudgeFormat(COLOR32 *px, int nWidth, int nHeight) {
 	return fmt;
 }
 
-static void createPaletteName(WCHAR *buffer, WCHAR *file) {
+static void createPaletteName(WCHAR *buffer, const WCHAR *file) {
 	//find the last \ or /
-	int index = -1;
-	unsigned int i;
-	for (i = 0; i < wcslen(file); i++) {
-		if (file[i] == L'\\' || file[i] == L'/') index = i;
-	}
-	file += index + 1;
+	file = GetFileName(file);
 
-	WCHAR *lastDot = wcsrchr(file, L'.');
 	//copy up to 12 characters of the file name
+	int i;
+	WCHAR *lastDot = wcsrchr(file, L'.');
 	for (i = 0; i < 12; i++) {
 		WCHAR c = file[i];
 		if (c == L'\0' || file + i == lastDot) break;
@@ -1276,17 +1268,9 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->hWndDoConvertButton = CreateButton(hWnd, L"Convert", width / 2 - 100, height - 32, 200, 22, TRUE);
 
 			//populate the dropdown list
-			WCHAR bf[16];
-			int len;
 			for (int i = 1; i <= CT_DIRECT; i++) {
-				const char *str = TxNameFromTexFormat(i);
-				len = 0;
-				while (*str) {
-					bf[len] = *str;
-					str++;
-					len++;
-				}
-				bf[len] = L'\0';
+				WCHAR bf[16];
+				mbstowcs(bf, TxNameFromTexFormat(i), sizeof(bf) / sizeof(bf[0]));
 				UiCbAddString(data->hWndFormat, bf);
 			}
 
