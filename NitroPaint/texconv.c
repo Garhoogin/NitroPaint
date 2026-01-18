@@ -1588,7 +1588,7 @@ TxConversionResult TxConvert(TxConversionParameters *params) {
 		params->dest->palette.name = _strdup(params->pnam);
 	}
 
-	if (result == TEXCONV_SUCCESS) TxRender(params->px, sourceWidth, sourceHeight, &params->dest->texels, &params->dest->palette);
+	if (result == TEXCONV_SUCCESS) TxRenderRect(params->px, 0, 0, sourceWidth, sourceHeight, &params->dest->texels, &params->dest->palette);
 	
 Cleanup:
 	//free resources

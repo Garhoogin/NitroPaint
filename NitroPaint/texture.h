@@ -62,7 +62,9 @@ typedef struct TextureObject_ {
 
 const char *TxNameFromTexFormat(int fmt);
 
-void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE *palette);
+void TxRenderRect(COLOR32 *px, unsigned int srcX, unsigned int srcY, unsigned int srcW, unsigned int srcH, TEXELS *texels, PALETTE *palette);
+
+void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette);
 
 int TxGetTexelSize(int width, int height, int texImageParam);
 

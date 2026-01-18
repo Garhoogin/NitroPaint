@@ -120,7 +120,7 @@ static void TexViewerExportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	} else if (format == CT_4x4 || format == CT_DIRECT) {
 		//else if 4x4 or direct, just export full-color image. Red/blue must be swapped here
 		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-		TxRender(px, width, height, &texture->texels, &texture->palette);
+		TxRender(px, &texture->texels, &texture->palette);
 		
 		ImgWrite(px, width, height, path);
 		free(px);
@@ -239,6 +239,11 @@ static void TexViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 		}
 	}
 
+}
+
+static void TexViewerGraphicsUpdated(TEXTUREEDITORDATA *data) {
+	TxRender(data->px, &data->texture->texture.texels, &data->texture->texture.palette);
+	InvalidateRect(data->hWnd, NULL, FALSE);
 }
 
 static int TexViewerIsSelectionModeCallback(HWND hWnd) {
@@ -548,7 +553,7 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 				EditorSetFile(hWnd, data->szInitialFile);
 				data->hasPalette = (format != CT_DIRECT && format != 0);
 				data->isNitro = 1;
-				TxRender(data->px, data->width, data->height, &data->texture->texture.texels, &data->texture->texture.palette);
+				TxRender(data->px, &data->texture->texture.texels, &data->texture->texture.palette);
 				TexViewerUpdatePaletteLabel(hWnd);
 			}
 
@@ -577,8 +582,7 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->ted.tilesY = data->height / 4;
 
 			//decode texture data for preview
-			int nPx = data->width * data->height;
-			TxRender(data->px, data->width, data->height, &texture->texture.texels, &texture->texture.palette);
+			TxRender(data->px, &texture->texture.texels, &texture->texture.palette);
 
 			//update UI
 			WCHAR buffer[16];
@@ -632,23 +636,6 @@ static HWND CreateTextureTileEditor(HWND hWndParent, int tileX, int tileY) {
 	return hWnd;
 }
 
-static int getTextureOffsetByTileCoordinates(TEXELS *texel, int x, int y) {
-	int fmt = FORMAT(texel->texImageParam);
-	int width = TEXW(texel->texImageParam);
-
-	int bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
-
-	if (fmt != CT_4x4) {
-		int pxX = x * 4;
-		int pxY = y * 4;
-		return (pxX + pxY * width) * bits[fmt] / 8;
-	}
-
-	int tileNumber = x + (width / 4) * y;
-	int tileOffset = tileNumber * 4;
-	return tileOffset;
-}
-
 int ilog2(int x);
 
 static void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, float alpha, int x, int y) {
@@ -690,64 +677,51 @@ static void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, float alpha
 	SelectObject(hDC, hOldBrush);
 }
 
-static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int tileY, int colorIndex, int alphaIndex) {
-	//first paint 4x4 tile (scaled 32x)
-	unsigned char tileBuffer[128]; //big enough for an 8x8 texture of any format
-	unsigned short indexBuffer[4] = { 0 }; //big enough for an 8x8 4x4 texture
-	COLOR32 rendered[64];
-
-	int param = texture->texels.texImageParam;
-	int format = FORMAT(param), width = TEXW(param);
-	int offset = getTextureOffsetByTileCoordinates(&texture->texels, tileX, tileY);
-	unsigned char *texelSrc = texture->texels.texel + offset;
-	if (format == CT_4x4) indexBuffer[0] = texture->texels.cmp[offset / 4];
+static unsigned int getTextureOffsetByTileCoordinates(TEXELS *texel, unsigned int x, unsigned int y) {
+	int fmt = FORMAT(texel->texImageParam);
+	int width = TEXW(texel->texImageParam);
 
 	int bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
-	int nBytesPerRow = 8 * bits[format] / 8;
 
-	if (format != CT_4x4) {
-		for (int y = 0; y < 4; y++) {
-			memcpy(tileBuffer + y * nBytesPerRow, texelSrc + (y * width * bits[format] / 8), nBytesPerRow / 2);
-		}
-	} else {
-		memcpy(tileBuffer, texelSrc, 4);
+	if (fmt != CT_4x4) {
+		int pxX = x * 4;
+		int pxY = y * 4;
+		return (pxX + pxY * width) * bits[fmt] / 8;
 	}
 
-	//assemble texture struct
-	TEXTURE temp;
-	temp.texels.cmp = indexBuffer;
-	temp.texels.texel = tileBuffer;
-	temp.texels.texImageParam = format << 26;
-	temp.palette.nColors = texture->palette.nColors;
-	temp.palette.pal = texture->palette.pal;
-	TxRender(rendered, 8, 8, &temp.texels, &temp.palette);
-	ImgSwapRedBlue(rendered, 8, 8);
+	int tileNumber = x + (width / 4) * y;
+	int tileOffset = tileNumber * 4;
+	return tileOffset;
+}
 
-	//convert back to 4x4
-	memmove(rendered + 0, rendered + 0, 16);
-	memmove(rendered + 4, rendered + 8, 16);
-	memmove(rendered + 8, rendered + 16, 16);
-	memmove(rendered + 12, rendered + 24, 16);
+static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, unsigned int tileX, unsigned int tileY, int colorIndex, int alphaIndex) {
+	uint32_t param = texture->texels.texImageParam;
+	int format = FORMAT(param);
+	unsigned int width = TEXW(param);
 
-	const scale = 32;
+	uint16_t indexBuffer = 0;
+	if (format == CT_4x4) indexBuffer = texture->texels.cmp[tileX + (width / 4) * tileY];
+
+	//render section 4x4
+	COLOR32 rendered[4 * 4];
+	TxRenderRect(rendered, tileX * 4, tileY * 4, 4, 4, &texture->texels, &texture->palette);
+	ImgSwapRedBlue(rendered, 4, 4);
+
+	const unsigned int scale = 32;
 	COLOR32 *preview = (COLOR32 *) calloc(4 * 4 * scale * scale, sizeof(COLOR32));
-	for (int y = 0; y < 4 * scale; y++) {
-		for (int x = 0; x < 4 * scale; x++) {
-			int sampleX = x / scale;
-			int sampleY = y / scale;
+	for (unsigned int y = 0; y < 4 * scale; y++) {
+		for (unsigned int x = 0; x < 4 * scale; x++) {
+			unsigned int sampleX = x / scale;
+			unsigned int sampleY = y / scale;
 			COLOR32 c = rendered[sampleX + sampleY * 4];
 
-			int gray = ((x / 4) ^ (y / 4)) & 1;
+			unsigned int gray = ((x / 4) ^ (y / 4)) & 1;
 			gray = gray ? 255 : 192;
-			int alpha = (c >> 24) & 0xFF;
-			if (alpha == 0) {
-				preview[x + y * 4 * scale] = gray | (gray << 8) | (gray << 16);
-			} else if (alpha == 255) {
-				preview[x + y * 4 * scale] = c & 0xFFFFFF;
-			} else {
-				int r = c & 0xFF;
-				int g = (c >> 8) & 0xFF;
-				int b = (c >> 16) & 0xFF;
+			unsigned int alpha = (c >> 24) & 0xFF;
+			{
+				unsigned int r = (c >>  0) & 0xFF;
+				unsigned int g = (c >>  8) & 0xFF;
+				unsigned int b = (c >> 16) & 0xFF;
 				r = (r * alpha + gray * (255 - alpha) + 127) / 255;
 				g = (g * alpha + gray * (255 - alpha) + 127) / 255;
 				b = (b * alpha + gray * (255 - alpha) + 127) / 255;
@@ -769,16 +743,15 @@ static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int til
 	COLOR *pal = texture->palette.pal;
 	COLOR stackPaletteBuffer[4];
 	if (format == CT_4x4) {
-		unsigned short mode = indexBuffer[0] & COMP_MODE_MASK;
 		pal = stackPaletteBuffer;
 		nColors = 4;
-		transparentIndex = (mode == 0x0000 || mode == 0x4000) ? 3 : -1;
-		int paletteIndex = (indexBuffer[0] & COMP_INDEX_MASK) << 1;
+		transparentIndex = (indexBuffer & COMP_OPAQUE) ? -1 : 3;
+		unsigned int paletteIndex = COMP_INDEX(indexBuffer);
 		COLOR *palSrc = texture->palette.pal + paletteIndex;
 
 		pal[0] = palSrc[0];
 		pal[1] = palSrc[1];
-		switch (mode) {
+		switch (indexBuffer & COMP_MODE_MASK) {
 			case COMP_TRANSPARENT | COMP_FULL:
 				pal[2] = palSrc[2];
 				pal[3] = 0;
@@ -804,7 +777,7 @@ static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, int tileX, int til
 	HPEN hWhite = (HPEN) GetStockObject(WHITE_PEN);
 	if (format != CT_DIRECT) {
 		for (int i = 0; i < nColors; i++) {
-			if(i != selectedColor) SelectObject(hDC, hBlack);
+			if (i != selectedColor) SelectObject(hDC, hBlack);
 			else SelectObject(hDC, hWhite);
 
 			int x = 4 * scale + 10 + (i % 16) * 16;
@@ -887,19 +860,16 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 				if (notification == BN_CLICKED && hWndControl == data->hWndTransparent) {
 					int state = GetCheckboxChecked(hWndControl);
 					*pIdx = ((*pIdx) & 0x7FFF) | ((!state) << 15);
-					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette);
-					InvalidateRect(data->hWnd, NULL, FALSE);
+					TexViewerGraphicsUpdated(data);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == BN_CLICKED && hWndControl == data->hWndInterpolate) {
 					int state = GetCheckboxChecked(hWndControl);
 					*pIdx = ((*pIdx) & 0xBFFF) | (state << 14);
-					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette);
-					InvalidateRect(data->hWnd, NULL, FALSE);
+					TexViewerGraphicsUpdated(data);
 					InvalidateRect(hWnd, NULL, FALSE);
 				} else if (notification == EN_CHANGE && hWndControl == data->hWndPaletteBase) {
 					*pIdx = ((*pIdx) & 0xC000) | (GetEditNumber(hWndControl) & 0x3FFF);
-					TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette);
-					InvalidateRect(data->hWnd, NULL, FALSE);
+					TexViewerGraphicsUpdated(data);
 					InvalidateRect(hWnd, NULL, FALSE);
 				}
 			}
@@ -968,8 +938,7 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 						}
 					}
 				}
-				TxRender(data->px, data->width, data->height, texels, &data->texture->texture.palette);
-				InvalidateRect(data->hWnd, NULL, FALSE);
+				TexViewerGraphicsUpdated(data);
 				InvalidateRect(hWnd, NULL, FALSE);
 			} else if (pt.x >= 138 && pt.y >= 0) { //select palette/alpha
 				int nColors = palette->nColors;
@@ -1793,10 +1762,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						if (NpChooseColor15(hWndMain, hWndMain, &data->data->texture->texture.palette.pal[index])) {
 							InvalidateRect(hWnd, NULL, FALSE);
 
-							TxRender(data->data->px, data->data->width, data->data->height, 
-								&data->data->texture->texture.texels, &data->data->texture->texture.palette);
-							
-							InvalidateRect(data->data->hWnd, NULL, FALSE);
+							TexViewerGraphicsUpdated(data->data);
 						}
 					} else if (msg == WM_RBUTTONDOWN) {
 						//otherwise open context menu
@@ -1825,11 +1791,9 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						PastePalette(data->data->texture->texture.palette.pal + offset, maxOffset - offset);
 						CloseClipboard();
 
-						TEXTURE *texture = &data->data->texture->texture;
-						TxRender(data->data->px, data->data->width, data->data->height, &texture->texels, &texture->palette);
+						TexViewerGraphicsUpdated(data->data);
 						
 						InvalidateRect(hWnd, NULL, FALSE);
-						InvalidateRect(data->data->hWnd, NULL, FALSE);
 						break;
 					}
 					case ID_PALETTEMENU_COPY:

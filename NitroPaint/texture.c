@@ -173,35 +173,39 @@ static COLOR32 TxiSampleTex4x4(const unsigned char *txel, const uint16_t *pidx, 
 	return colors[pVal];
 }
 
-void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE *palette) {
-	int width = TEXW(texels->texImageParam);
-	int height = texels->height;
+void TxRenderRect(COLOR32 *px, unsigned int srcX, unsigned int srcY, unsigned int srcW, unsigned int srcH, TEXELS *texels, PALETTE *palette) {
+	unsigned int width = TEXW(texels->texImageParam);
+	unsigned int height = texels->height;
+
+	typedef COLOR32(*pfnSample) (const unsigned char *texel, const uint16_t *pidx, unsigned int texW, int c0xp,
+		unsigned int x, unsigned int y, const COLOR *pltt, unsigned int nPltt);
+
+	static const pfnSample pfnSamples[8] = {
+		NULL,
+		TxiSampleA3I5,
+		TxiSamplePltt4,
+		TxiSamplePltt16,
+		TxiSamplePltt256,
+		TxiSampleTex4x4,
+		TxiSampleA5I3,
+		TxiSampleDirect
+	};
+	pfnSample sample = pfnSamples[FORMAT(texels->texImageParam)];
 	
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++) {
-			if (x >= dstWidth || y >= dstHeight) continue;
-
-			typedef COLOR32 (*pfnSample) (const unsigned char *texel, const uint16_t *pidx, unsigned int texW, int c0xp,
-				unsigned int x, unsigned int y, const COLOR *pltt, unsigned int nPltt);
-
-			static const pfnSample pfnSamples[8] = {
-				NULL,
-				TxiSampleA3I5,
-				TxiSamplePltt4,
-				TxiSamplePltt16,
-				TxiSamplePltt256,
-				TxiSampleTex4x4,
-				TxiSampleA5I3,
-				TxiSampleDirect
-			};
-
+	for (unsigned int y = 0; y < srcH; y++) {
+		for (unsigned int x = 0; x < srcW; x++) {
 			COLOR32 c = 0;
-			pfnSample sample = pfnSamples[FORMAT(texels->texImageParam)];
-			if (sample != NULL) c = sample(texels->texel, texels->cmp, width, COL0TRANS(texels->texImageParam), x, y, palette->pal, palette->nColors);
+			if (sample != NULL && x < width && y < height) {
+				c = sample(texels->texel, texels->cmp, width, COL0TRANS(texels->texImageParam), srcX + x, srcY + y, palette->pal, palette->nColors);
+			}
 
-			px[x + y * dstWidth] = c;
+			px[x + y * srcW] = c;
 		}
 	}
+}
+
+void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette) {
+	TxRenderRect(px, 0, 0, TEXW(texels->texImageParam), texels->height, texels, palette);
 }
 
 LPCWSTR textureFormatNames[] = { L"Invalid", L"NNS TGA", L"5TX", L"SPT", L"TDS", L"NTGA", L"To Love-Ru", L"GRF", NULL };
@@ -960,8 +964,8 @@ int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
 	int width = TEXW(texels->texImageParam);
 	int height = TEXH(texels->texImageParam);
 
-	COLOR32 *pixels = (COLOR32 *) calloc(width * height, 4);
-	TxRender(pixels, width, height, texels, palette);
+	COLOR32 *pixels = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+	TxRender(pixels, texels, palette);
 	ImgSwapRedBlue(pixels, width, height);
 	ImgFlip(pixels, width, height, 0, 1);
 

@@ -25,7 +25,7 @@ static HBITMAP renderTexture(TEXELS *texture, PALETTE *palette, int zoom) {
 	int width = TEXW(texture->texImageParam);
 	int height = texture->height;
 	COLOR32 *px = (COLOR32 *) calloc(width * zoom * height * zoom, 4);
-	TxRender(px, width, height, texture, palette);
+	TxRender(px, texture, palette);
 	ImgSwapRedBlue(px, width, height);
 
 	//perform alpha blending
