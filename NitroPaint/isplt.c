@@ -134,7 +134,7 @@ static const float sLumaTable[] = {
 
 // ----- memory allocation wrappers for SIMD use
 
-#ifdef RX_SIMD
+#if defined(RX_SIMD) && !defined(_M_X64)
 
 #define ALLOC_ALIGN sizeof(__m128)
 
@@ -1102,8 +1102,8 @@ static void RxiTreeSplitNode(RxReduction *reduction, RxColorNode *node) {
 	RxColorNode *lNode = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode));
 	RxColorNode *rNode = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode));
 	if (lNode == NULL || rNode == NULL) {
-		free(lNode);
-		free(rNode);
+		RxMemFree(lNode);
+		RxMemFree(rNode);
 		reduction->status = RX_STATUS_NOMEM;
 		return;
 	}

@@ -109,14 +109,15 @@ typedef struct RxDitherSetting_ {
 	float diffuse;        // dithering amount (0-1)
 } RxDitherSetting;
 
-#ifndef RX_SIMD
-#define RxMemAlloc  malloc
-#define RxMemCalloc calloc
-#define RxMemFree   free
-#else // RX_SIMD
+
+#if defined(RX_SIMD) && !defined(_M_X64)
 void *RxMemAlloc(size_t size);
 void *RxMemCalloc(size_t nMemb, size_t size);
 void RxMemFree(void *p);
+#else // RX_SIMD
+#define RxMemAlloc  malloc
+#define RxMemCalloc calloc
+#define RxMemFree   free
 #endif
 
 //
