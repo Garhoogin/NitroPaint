@@ -266,7 +266,10 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params, RxReducti
 
 	// duplicate palette data
 	for (unsigned int i = 0; i <= alphaMax; i++) {
-		unsigned int a = (i * 510 + alphaMax) / (2 * alphaMax);
+		unsigned int a = i;
+		if (alphaMax == 7) a = (a << 2) | (a >> 1); // scale alpha to 5-bit
+		a = (a * 510 + 31) / 62;                    // scale 5-bit alpha to 8-bit
+
 		for (unsigned int j = 0; j < nColors; j++) {
 			palette[j + (i << alphaShift)] = ((palette[j]) & 0x00FFFFFF) | (a << 24);
 		}
@@ -694,10 +697,19 @@ static double TxiComputePaletteDifference(RxReduction *reduction, const RxYiqCol
 	
 	for (int i = 0; i < nColors; i++) {
 		const RxYiqColor *yiq1 = &pal1[i], *yiq2 = &pal2[i];
-		double dy = reduction->lumaTable[(int) (yiq1->y + 0.5)] - reduction->lumaTable[(int) (yiq2->y + 0.5)];
+#ifndef RX_SIMD
+		double dy = yiq1->y - yiq2->y;
 		double di = yiq1->i - yiq2->i;
 		double dq = yiq1->q - yiq2->q;
 		total += reduction->yWeight2 * (dy * dy) + reduction->iWeight2 * (di * di) + reduction->qWeight2 * (dq * dq);
+#else
+		__m128 diff = _mm_sub_ps(yiq1->yiq, yiq2->yiq);
+		diff = _mm_mul_ps(diff, diff);
+		diff = _mm_mul_ps(diff, reduction->yiqaWeight2);
+		diff = _mm_add_ps(diff, _mm_shuffle_ps(diff, diff, _MM_SHUFFLE(2, 3, 0, 1)));
+		diff = _mm_add_ss(diff, _mm_movehl_ps(diff, diff));
+		total += _mm_cvtss_f32(diff);
+#endif
 
 		if (total >= nMaxError) return nMaxError * errScale;
 	}

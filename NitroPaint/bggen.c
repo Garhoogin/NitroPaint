@@ -72,20 +72,20 @@ static void BgiComputeDct(RxReduction *reduction, BgTile *tile) {
 	float blockY[64], blockI[64], blockQ[64], blockA[64];
 
 	for (int i = 0; i < 64; i++) {
-		double y = reduction->lumaTable[(int) (tile->pxYiq[i].y + 0.5)];
-		if (tile->pxYiq[i].a < 128) {
+		float y = tile->pxYiq[i].y;
+		if (tile->pxYiq[i].a < 0.5f) {
 			//A < 128: turn black transparent
 			y = 0.0;
 			blockA[i] = 0;
 		} else {
 			//else turn full opaque
-			blockA[i] = 255;
+			blockA[i] = 1.0f;
 		}
 
 		if (y > 0.0) {
-			blockY[i] = (float) y;
-			blockI[i] = (float) tile->pxYiq[i].i;
-			blockQ[i] = (float) tile->pxYiq[i].q;
+			blockY[i] = y;
+			blockI[i] = tile->pxYiq[i].i;
+			blockQ[i] = tile->pxYiq[i].q;
 		} else {
 			blockY[i] = 0.0f;
 			blockI[i] = 0.0f;
@@ -208,9 +208,9 @@ static void BgiAddTileToTotal(RxReduction *reduction, RxYiqColor *pxBlock, BgTil
 
 		RxYiqColor yiq;
 		RxConvertRgbToYiq(col, &yiq);
-		dest->y += yiq.a * (float) reduction->lumaTable[(int) (yiq.y + 0.5)];
-		dest->i += yiq.a * yiq.i;
-		dest->q += yiq.a * yiq.q;
+		dest->y += yiq.y;
+		dest->i += yiq.i;
+		dest->q += yiq.q;
 		dest->a += yiq.a;
 	}
 }
@@ -489,15 +489,12 @@ int BgPerformCharacterCompression(
 		//divide by count, convert to 32-bit RGB
 		int nRep = tile->nRepresents;
 		for (unsigned int j = 0; j < 64; j++) {
-			float invA = pxBlock[j].a == 0.0f ? 1.0f : 1.0f / pxBlock[j].a;
-
-			pxBlock[j].y *= invA;
-			pxBlock[j].i *= invA;
-			pxBlock[j].q *= invA;
+			pxBlock[j].y /= nRep;
+			pxBlock[j].i /= nRep;
+			pxBlock[j].q /= nRep;
 			pxBlock[j].a /= nRep;
 		}
 		for (unsigned int j = 0; j < 64; j++) {
-			pxBlock[j].y = (float) (pow(pxBlock[j].y * 0.00195695, 1.0 / reduction->gamma) * 511.0);
 			tile->px[j] = RxConvertYiqToRgb(&pxBlock[j]);
 		}
 
@@ -1032,7 +1029,7 @@ static double BgiPaletteCharError(RxReduction *reduction, COLOR32 *block, RxYiqC
 		int index = character[i];
 		RxYiqColor *matchedYiq = pals + index;
 		int matchedA = index > 0 ? 255 : 0;
-		if (matchedA == 0 && yiq.a < 128) {
+		if (matchedA == 0 && yiq.a < 0.5f) {
 			continue; //to prevent superfluous non-alpha difference
 		}
 

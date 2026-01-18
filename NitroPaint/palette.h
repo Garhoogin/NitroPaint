@@ -20,6 +20,8 @@
 
 #define RX_PALETTE_MAX_SIZE 256 // Maximum created color palette size
 
+#define RX_GAMMA 1.27
+
 // -----------------------------------------------------------------------------------------------
 // Name: enum RxFlag
 //
@@ -452,7 +454,7 @@ struct RxReduction_ {
 	double lastSSE;
 	COLOR32 (*maskColors) (COLOR32 col);
 	RxAlphaMode alphaMode;
-	unsigned int alphaThreshold;
+	float fAlphaThreshold;
 	RxHistogram *histogram;
 	RxHistEntry **histogramFlat;
 	RxPaletteAccelerator accel;
@@ -463,8 +465,6 @@ struct RxReduction_ {
 	COLOR32 paletteRgbCopy[RX_PALETTE_MAX_SIZE];
 	RxYiqColor paletteYiq[RX_PALETTE_MAX_SIZE];
 	RxYiqColor paletteYiqCopy[RX_PALETTE_MAX_SIZE];
-	double lumaTable[512];
-	double gamma;
 	RxProgressCallback progressCallback;
 	void *progressCallbackData;
 };
