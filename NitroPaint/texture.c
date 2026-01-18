@@ -184,7 +184,7 @@ void TxRender(COLOR32 *px, int dstWidth, int dstHeight, TEXELS *texels, PALETTE 
 			typedef COLOR32 (*pfnSample) (const unsigned char *texel, const uint16_t *pidx, unsigned int texW, int c0xp,
 				unsigned int x, unsigned int y, const COLOR *pltt, unsigned int nPltt);
 
-			const pfnSample pfnSamples[8] = {
+			static const pfnSample pfnSamples[8] = {
 				NULL,
 				TxiSampleA3I5,
 				TxiSamplePltt4,
