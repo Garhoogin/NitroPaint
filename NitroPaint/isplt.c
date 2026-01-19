@@ -551,29 +551,21 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 	double qw2 = reduction->qWeight2;
 	double aw2 = reduction->aWeight2;
 
-	if (yiq1->a == yiq2->a) {
-		//equal alpha comparison. Because each color is scaled by the same alpha, we can pull it out by
-		//multiplying YIQ squared difference by squared alpha.
-		double dy = yiq1->y - yiq2->y;
-		double di = yiq1->i - yiq2->i;
-		double dq = yiq1->q - yiq2->q;
-		double d2 = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
-		return d2;
-	} else {
-		//color difference with alpha.
-		double a1 = yiq1->a, a2 = yiq2->a;
+	double dy = yiq1->y - yiq2->y;
+	double di = yiq1->i - yiq2->i;
+	double dq = yiq1->q - yiq2->q;
+	double da = yiq1->a - yiq2->a;
 
-		//scale color by alpha for comparison
-		double y1 = yiq1->y, y2 = yiq2->y;
-		double i1 = yiq1->i, i2 = yiq2->i;
-		double q1 = yiq1->q, q2 = yiq2->q;
-		double dy = y1 - y2, di = i1 - i2, dq = q1 - q2;
-		double da = a2 - a1;
+	double d2 = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
 
-		//coefficients below taken from first moment of YIQ space given uniform RGB distribution
-		return yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq + aw2 * da * da
-			- 2.0 * da * (MEAN_Y * yw2 * dy + MEAN_I * iw2 * di + MEAN_Q * qw2 * dq);
+	if (da != 0.0) {
+		//The color difference with alpha. We define the difference to be the average squared difference
+		//between the two input colors composited onto a random background color, where the background
+		//color is drawn from a uniform distribution in RGB space. The below interaction term results from
+		//evaluating this integral.
+		d2 += aw2 * da * da - da * ((2.0 * MEAN_Y) * yw2 * dy + (2.0 * MEAN_I) * iw2 * di + (2.0 * MEAN_Q) * qw2 * dq);
 	}
+	return d2;
 #else // RX_SIMD
 	//color difference vector
 	__m128 v1 = yiq1->yiq, v2 = yiq2->yiq;
