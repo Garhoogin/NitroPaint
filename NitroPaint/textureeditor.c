@@ -206,6 +206,27 @@ static void TexViewerTileHoverCallback(HWND hWnd, int tileX, int tileY) {
 
 }
 
+static COLOR32 TexViewerAlphaBlendColor(COLOR32 c, unsigned int x, unsigned int y) {
+	static const COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
+
+	unsigned int a = (c >> 24);
+	if (a < 255) {
+		COLOR32 bg = checker[((x ^ y) >> 2) & 1];
+		if (a == 0) {
+			//show background
+			c = bg;
+		} else {
+			//blend
+			unsigned int r = (((c >>  0) & 0xFF) * a + ((bg >>  0) & 0xFF) * (255 - a) + 127) / 255;
+			unsigned int g = (((c >>  8) & 0xFF) * a + ((bg >>  8) & 0xFF) * (255 - a) + 127) / 255;
+			unsigned int b = (((c >> 16) & 0xFF) * a + ((bg >> 16) & 0xFF) * (255 - a) + 127) / 255;
+			c = r | (g << 8) | (b << 16);
+		}
+	}
+
+	return c;
+}
+
 static void TexViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight) {
 	//texture image rendered 
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
@@ -218,19 +239,7 @@ static void TexViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 			COLOR32 c = px[(x + scrollX) / data->scale + ((y + scrollY) / data->scale) * width];
 
 			//alpha blend
-			unsigned int a = (c >> 24);
-			COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
-			if (a == 0) {
-				c = checker[((x ^ y) >> 2) & 1];
-			} else if (a < 255) {
-				COLOR32 bg = checker[((x ^ y) >> 2) & 1];
-
-				unsigned int r = (((c >>  0) & 0xFF) * a + ((bg >>  0) & 0xFF) * (255 - a) + 127) / 255;
-				unsigned int g = (((c >>  8) & 0xFF) * a + ((bg >>  8) & 0xFF) * (255 - a) + 127) / 255;
-				unsigned int b = (((c >> 16) & 0xFF) * a + ((bg >> 16) & 0xFF) * (255 - a) + 127) / 255;
-				c = r | (g << 8) | (b << 16);
-			}
-
+			c = TexViewerAlphaBlendColor(c, x, y);
 			fb->px[x + y * fb->width] = REVERSE(c);
 		}
 	}
@@ -634,29 +643,24 @@ static HWND CreateTextureTileEditor(HWND hWndParent, int tileX, int tileY) {
 
 int ilog2(int x);
 
-static void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, float alpha, int x, int y) {
+static void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, int alpha, int x, int y) {
 	HPEN hOldPen = (HPEN) SelectObject(hDC, hOutline);
 	HPEN hNullPen = GetStockObject(NULL_PEN);
 	HBRUSH hNullBrush = GetStockObject(NULL_BRUSH);
 	HBRUSH hOldBrush = (HBRUSH) SelectObject(hDC, hNullBrush);
 
-	if (alpha == 1.0f) {
+	if (alpha == 255) {
 		HBRUSH hBg = CreateSolidBrush((COLORREF) ColorConvertFromDS(color));
 		SelectObject(hDC, hBg);
 		Rectangle(hDC, x, y, x + 16, y + 16);
 		DeleteObject(hBg);
 	} else {
-		COLOR32 c = ColorConvertFromDS(color);
-		int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
+		COLOR32 c = ColorConvertFromDS(color) | (alpha << 24);
+		COLOR32 w = TexViewerAlphaBlendColor(c, 0, 0);
+		COLOR32 g = TexViewerAlphaBlendColor(c, 0, 4);
 
-		int wr = (int) (r * alpha + 255 * (1.0f - alpha) + 0.5f);
-		int wg = (int) (g * alpha + 255 * (1.0f - alpha) + 0.5f);
-		int wb = (int) (b * alpha + 255 * (1.0f - alpha) + 0.5f);
-		int gr = (int) (r * alpha + 192 * (1.0f - alpha) + 0.5f);
-		int gg = (int) (g * alpha + 192 * (1.0f - alpha) + 0.5f);
-		int gb = (int) (b * alpha + 192 * (1.0f - alpha) + 0.5f);
-		HBRUSH hbrWhite = CreateSolidBrush(RGB(wr, wg, wb));
-		HBRUSH hbrGray = CreateSolidBrush(RGB(gr, gg, gb));
+		HBRUSH hbrWhite = CreateSolidBrush((COLORREF) w);
+		HBRUSH hbrGray = CreateSolidBrush((COLORREF) g);
 
 		SelectObject(hDC, hbrWhite);
 		Rectangle(hDC, x, y, x + 16, y + 16);
@@ -711,18 +715,7 @@ static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, unsigned int tileX
 			unsigned int sampleY = y / scale;
 			COLOR32 c = rendered[sampleX + sampleY * 4];
 
-			unsigned int gray = ((x / 4) ^ (y / 4)) & 1;
-			gray = gray ? 255 : 192;
-			unsigned int alpha = (c >> 24) & 0xFF;
-			{
-				unsigned int r = (c >>  0) & 0xFF;
-				unsigned int g = (c >>  8) & 0xFF;
-				unsigned int b = (c >> 16) & 0xFF;
-				r = (r * alpha + gray * (255 - alpha) + 127) / 255;
-				g = (g * alpha + gray * (255 - alpha) + 127) / 255;
-				b = (b * alpha + gray * (255 - alpha) + 127) / 255;
-				preview[x + y * 4 * scale] = r | (g << 8) | (b << 16);
-			}
+			preview[x + y * 4 * scale] = TexViewerAlphaBlendColor(c, x, y);
 		}
 	}
 
@@ -778,7 +771,7 @@ static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, unsigned int tileX
 
 			int x = 4 * scale + 10 + (i % 16) * 16;
 			int y = (i / 16) * 16;
-			DrawColorEntryAlpha(hDC, (i != selectedColor) ? hBlack : hWhite, pal[i], i == transparentIndex ? 0.0f : 1.0f, x, y);
+			DrawColorEntryAlpha(hDC, (i != selectedColor) ? hBlack : hWhite, pal[i], i == transparentIndex ? 0 : 255, x, y);
 		}
 	}
 
@@ -786,11 +779,11 @@ static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, unsigned int tileX
 	int selectedAlpha = alphaIndex;
 	if (format == CT_A3I5 || format == CT_A5I3) {
 		COLOR selected = pal[selectedColor];
-		int nLevels = (format == CT_A3I5) ? 8 : 32;
-		for (int i = 0; i < nLevels; i++) {
+		unsigned int aMax = (format == CT_A3I5) ? 7 : 31;
+		for (unsigned int i = 0; i <= aMax; i++) {
 			int x = 4 * scale + 10 + (i % 16) * 16;
 			int y = 42 + (i / 16) * 16;
-			float alpha = ((float) i) / (nLevels - 1);
+			unsigned int alpha = (i * 510 + aMax) / (2 * aMax);
 			DrawColorEntryAlpha(hDC, (i != selectedAlpha) ? hBlack : hWhite, selected, alpha, x, y);
 		}
 	}
