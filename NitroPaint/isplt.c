@@ -371,7 +371,6 @@ void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight
 
 		case RX_ALPHA_PALETTE:
 			//we explicitly must pass all alpha values.
-			weight *= yiq.a;
 			break;
 
 		default:
