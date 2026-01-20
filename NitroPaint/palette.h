@@ -459,6 +459,7 @@ struct RxReduction_ {
 	RxHistogram *histogram;
 	RxHistEntry **histogramFlat;
 	RxPaletteAccelerator accel;
+	unsigned int newCentroids[RX_PALETTE_MAX_SIZE];
 	RxTotalBuffer blockTotals[RX_PALETTE_MAX_SIZE];
 	RxColorNode *colorTreeHead;
 	RxColorNode *colorBlocks[RX_PALETTE_MAX_SIZE];

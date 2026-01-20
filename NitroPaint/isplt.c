@@ -52,11 +52,14 @@
 
 //struct for internal processing of color leaves
 typedef struct {
-	double y;
-	double i;
-	double q;
-	double a;
-	double weightL;
+	double Sy;       // sum (y)
+	double Si;       // sum (i)
+	double Sq;       // sum (q)
+	double Sa;       // sum (a)
+	double Sya;      // sum (y*a)
+	double Sia;      // sum (i*a)
+	double Sqa;      // sum (q*a)
+	double weightL;  // weight of left side
 } RxiClusterSum;
 
 static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff);
@@ -368,6 +371,7 @@ void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight
 
 		case RX_ALPHA_PALETTE:
 			//we explicitly must pass all alpha values.
+			weight *= yiq.a;
 			break;
 
 		default:
@@ -712,7 +716,7 @@ static RxColorNode *RxiTreeFindSplittableNode(const RxColorNode *tree) {
 
 }
 
-static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int endIndex, double *axis) {
+static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int endIndex, double *axis, double *pVar) {
 	double mtx[4][4] = { 0 };
 	double x0bar = 0.0, x1bar = 0.0, x2bar = 0.0, x3bar = 0.0;
 	double sumWeight = 0.0;
@@ -726,6 +730,20 @@ static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int 
 		double x2 = reduction->qWeight * entry->color.q;
 		double x3 = reduction->aWeight * entry->color.a;
 		double weight = entry->weight;
+
+		if (reduction->alphaMode == RX_ALPHA_PALETTE) {
+			//in palette alpha mode, we ignore the alpha channel when running PCA, and scale the
+			//color weights by the alpha value (they did not receive this treatment during the
+			//creation of the histogram).
+			if (entry->color.a > 0.0f) {
+				double invA = 1.0 / entry->color.a;
+				x0 *= invA;
+				x1 *= invA;
+				x2 *= invA;
+			}
+			weight *= entry->color.a;
+			x3 = 0.0;
+		}
 
 		//covariances (upper diagonal)
 		mtx[0][0] += weight * x0 * x0;
@@ -870,6 +888,35 @@ static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int 
 	axis[1] = E[1][eigenNo];
 	axis[2] = E[2][eigenNo];
 	axis[3] = E[3][eigenNo];
+	*pVar = e[eigenNo];
+}
+
+static void RxiHistChooseSplitDirection(RxReduction *reduction, int startIndex, int endIndex, double *axis) {
+	double varColor;
+	RxiHistComputePrincipal(reduction, startIndex, endIndex, axis, &varColor);
+	
+	//if not in the palette alpha mode, do not separately consider alpha.
+	if (reduction->alphaMode != RX_ALPHA_PALETTE) return;
+
+	//compute variance of the alpha
+	double Sa = 0.0, Saa = 0.0, totalWeight = 0.0;
+	for (int i = startIndex; i < endIndex; i++) {
+		RxHistEntry *entry = reduction->histogramFlat[i];
+		double a = entry->color.a * reduction->aWeight;
+
+		Sa += entry->weight * a;
+		Saa += entry->weight * a * a;
+		totalWeight += entry->weight;
+	}
+	double varA = (Saa - Sa * Sa / totalWeight) / totalWeight;
+	
+	if (varA > varColor) {
+		//variance of alpha dominates, so we choose to split on alpha.
+		axis[0] = 0.0;
+		axis[1] = 0.0;
+		axis[2] = 0.0;
+		axis[3] = 1.0;
+	}
 }
 
 static int RxiHistEntryComparator(const void *p1, const void *p2) {
@@ -898,9 +945,8 @@ static inline double RxiVec4Mag(double x, double y, double z, double w) {
 
 void RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
 	double principal[4];
-	int nColors = endIndex - startIndex;
 	RxHistEntry **thisHistogram = &reduction->histogramFlat[startIndex];
-	RxiHistComputePrincipal(reduction, startIndex, endIndex, principal);
+	RxiHistChooseSplitDirection(reduction, startIndex, endIndex, principal);
 
 	//check principal component, make sure principal[0] >= 0
 	if (principal[0] < 0) {
@@ -926,6 +972,7 @@ void RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
 	}
 
 	//sort colors by dot product with the vector
+	int nColors = endIndex - startIndex;
 	qsort(thisHistogram, nColors, sizeof(RxHistEntry *), RxiHistEntryComparator);
 }
 
@@ -963,7 +1010,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	}
 
 	double principal[4];
-	RxiHistComputePrincipal(reduction, node->startIndex, node->endIndex, principal);
+	RxiHistChooseSplitDirection(reduction, node->startIndex, node->endIndex, principal);
 
 	double yWeight = principal[0] * reduction->yWeight;
 	double iWeight = principal[1] * reduction->iWeight;
@@ -1001,9 +1048,10 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 
 	//gather statistics for splitting
 	double totalWeight = 0.0, totalY = 0.0, sumSq = 0.0, totalI = 0.0, totalQ = 0.0, totalA = 0.0;
+	double totalYA = 0.0, totalIA = 0.0, totalQA = 0.0;
 	for (int i = 0; i < nColors; i++) {
 		RxHistEntry *entry = thisHistogram[i];
-		double weight = entry->weight;
+		double weight = entry->weight, aWeight = entry->weight * entry->color.a;
 		double cy = reduction->yWeight * entry->color.y;
 		double ci = reduction->iWeight * entry->color.i;
 		double cq = reduction->qWeight * entry->color.q;
@@ -1011,10 +1059,13 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		sumSq += weight * RxiVec4Mag(cy, ci, cq, ca);
 
 		RxiClusterSum *split = &splits[i];
-		split->y = (totalY += weight * cy);       // accumulate color
-		split->i = (totalI += weight * ci);       // accumulate
-		split->q = (totalQ += weight * cq);       // accumulate
-		split->a = (totalA += weight * ca);       // accumulate
+		split->Sy = (totalY += weight * cy);      // accumulate color
+		split->Si = (totalI += weight * ci);      // accumulate
+		split->Sq = (totalQ += weight * cq);      // accumulate
+		split->Sa = (totalA += weight * ca);      // accumulate
+		split->Sya = (totalYA += aWeight * entry->color.y);
+		split->Sia = (totalIA += aWeight * entry->color.i);
+		split->Sqa = (totalQA += aWeight * entry->color.q);
 		split->weightL = (totalWeight += weight); // accumulate total weight
 	}
 	node->weight = totalWeight;
@@ -1025,6 +1076,18 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	node->color.q = (float) (totalQ / (totalWeight * reduction->qWeight));
 	node->color.a = (float) (totalA / (totalWeight * reduction->aWeight));
 
+	//initial WSS value, which we use to calculate the WSS reduction from split
+	double wssInitial = sumSq - RxiVec4Mag(totalY, totalI, totalQ, totalA) / totalWeight;
+
+	//in alpha processing mode, we must apply the interaction terms to WSS.
+	if (reduction->alphaMode == RX_ALPHA_PALETTE) {
+		wssInitial -= (
+			  (2.0 * MEAN_Y) * reduction->yWeight2 * (totalYA - (totalY * totalA) / (reduction->yWeight * reduction->aWeight * totalWeight))
+			+ (2.0 * MEAN_I) * reduction->iWeight2 * (totalIA - (totalI * totalA) / (reduction->iWeight * reduction->aWeight * totalWeight))
+			+ (2.0 * MEAN_Q) * reduction->qWeight2 * (totalQA - (totalQ * totalA) / (reduction->qWeight * reduction->aWeight * totalWeight))
+		);
+	}
+	
 	//determine pivot index based on the split that yields the best total WSS. This represents total
 	//squared quantization error
 	int pivotIndex = 1;
@@ -1032,25 +1095,43 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	for (int i = 0; i < (nColors - 1); i++) {
 		RxiClusterSum *entry = &splits[i];
 		
-		double weightR = totalWeight - entry->weightL;
+		double weightL = entry->weightL;
+		double weightR = totalWeight - weightL;
 
-		double sumSqL = RxiVec4Mag(entry->y, entry->i, entry->q, entry->a) / entry->weightL;
-		double sumSqR = RxiVec4Mag(totalY - entry->y, totalI - entry->i, totalQ - entry->q, totalA - entry->a) / weightR;
+		double sumSqL = RxiVec4Mag(entry->Sy, entry->Si, entry->Sq, entry->Sa) / entry->weightL;
+		double sumSqR = RxiVec4Mag(totalY - entry->Sy, totalI - entry->Si, totalQ - entry->Sq, totalA - entry->Sa) / weightR;
 		double wss = sumSq - sumSqL - sumSqR;
+
+		//in alpha processing mode, we must apply the intercation terms to WSS.
+		if (reduction->alphaMode == RX_ALPHA_PALETTE) {
+			double SyL = entry->Sy / reduction->yWeight, SyR = (totalY - entry->Sy) / reduction->yWeight;
+			double SiL = entry->Si / reduction->iWeight, SiR = (totalI - entry->Si) / reduction->iWeight;
+			double SqL = entry->Sq / reduction->qWeight, SqR = (totalQ - entry->Sq) / reduction->qWeight;
+			double SaL = entry->Sa / reduction->aWeight, SaR = (totalA - entry->Sa) / reduction->aWeight;
+			double SyaL = entry->Sya, SyaR = totalYA - entry->Sya;
+			double SiaL = entry->Sia, SiaR = totalIA - entry->Sia;
+			double SqaL = entry->Sqa, SqaR = totalQA - entry->Sqa;
+
+			wss -= (
+				  (2.0 * MEAN_Y) * reduction->yWeight2 * ((SyaL - SyL * SaL / weightL) + (SyaR - SyR * SaR / weightR))
+				+ (2.0 * MEAN_I) * reduction->iWeight2 * ((SiaL - SiL * SaL / weightL) + (SiaR - SiR * SaR / weightR))
+				+ (2.0 * MEAN_Q) * reduction->qWeight2 * ((SqaL - SqL * SaL / weightL) + (SqaR - SqR * SaR / weightR))
+			);
+		}
 
 		//better sum of squares
 		if (wss < wssBest) {
 
 			//we'll check the mean left and mean right. They should be different with masking.
 			RxYiqColor yiqL, yiqR;
-			yiqL.y = (float) (entry->y / (entry->weightL * reduction->yWeight));
-			yiqR.y = (float) ((totalY - entry->y) / (weightR * reduction->yWeight));
-			yiqL.i = (float) (entry->i / (entry->weightL * reduction->iWeight));
-			yiqR.i = (float) ((totalI - entry->i) / (weightR * reduction->iWeight));
-			yiqL.q = (float) (entry->q / (entry->weightL * reduction->qWeight));
-			yiqR.q = (float) ((totalQ - entry->q) / (weightR * reduction->qWeight));
-			yiqL.a = (float) (entry->a / (entry->weightL * reduction->aWeight));
-			yiqR.a = (float) ((totalA - entry->a) / (weightR * reduction->aWeight));
+			yiqL.y = (float) ((         entry->Sy) / (weightL * reduction->yWeight));
+			yiqL.i = (float) ((         entry->Si) / (weightL * reduction->iWeight));
+			yiqL.q = (float) ((         entry->Sq) / (weightL * reduction->qWeight));
+			yiqL.a = (float) ((         entry->Sa) / (weightL * reduction->aWeight));
+			yiqR.y = (float) ((totalY - entry->Sy) / (weightR * reduction->yWeight));
+			yiqR.i = (float) ((totalI - entry->Si) / (weightR * reduction->iWeight));
+			yiqR.q = (float) ((totalQ - entry->Sq) / (weightR * reduction->qWeight));
+			yiqR.a = (float) ((totalA - entry->Sa) / (weightR * reduction->aWeight));
 
 			COLOR32 maskL = RxiMaskYiqToRgb(reduction, &yiqL);
 			COLOR32 maskR = RxiMaskYiqToRgb(reduction, &yiqR);
@@ -1074,7 +1155,6 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	node->pivotIndex = node->startIndex + pivotIndex;
 
 	//set node priority based on within-cluster sum squares reduction
-	double wssInitial = (sumSq - RxiVec4Mag(totalY, totalI, totalQ, totalA) / totalWeight);
 	double wssReduction = wssInitial - wssBest;
 
 	node->priority = wssReduction;
@@ -1264,8 +1344,8 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	RxiVoronoiAccumulateClusters(reduction);
 
 	//new centroid indexes, when created
-	int newCentroidIdxs[RX_PALETTE_MAX_SIZE];
-	int nNewCentroids = 0;
+	unsigned int *newCentroidIdxs = reduction->newCentroids;
+	unsigned int nNewCentroids = 0;
 
 	//check that every palette entry has some weight assigned to it from the previous step.
 	//if any palette color would have zero weight, we assign it a color with the highest
@@ -1277,7 +1357,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 
 		//find the color furthest from its center and create a centroid for it in place of this one.
 		double largestDifference = 0.0, largestDifferenceReduction = 0.0;
-		int farthestIndex = 0;
+		int farthestIndex = -1;
 		for (int j = 0; j < nHistEntries; j++) {
 			RxHistEntry *entry = reduction->histogramFlat[j];            // histogram color
 			RxYiqColor *yiq1 = &reduction->paletteYiqCopy[entry->entry]; // ceontroid of the cluster the color belongs to
@@ -1307,8 +1387,8 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 				//what would be this entry's new centroid, we'll check the existing centroids and assign
 				//to an existing one if it exists.
 				int found = 0;
-				for (int k = 0; k < nNewCentroids; k++) {
-					int idx = newCentroidIdxs[k];
+				for (unsigned int k = 0; k < nNewCentroids; k++) {
+					unsigned int idx = newCentroidIdxs[k];
 					if (reduction->paletteRgbCopy[idx] == histMasked) {
 						//remap to the existing centroid
 						RxiVoronoiMoveToCluster(reduction, entry, idx, newDifference, diff);
@@ -1327,20 +1407,20 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 			}
 		}
 
-		//get RGB of new point (will be used when checking identical remapped colors)
-		RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
-		reduction->paletteRgbCopy[i] = RxiMaskYiqToRgb(reduction, &entry->color);
-		RxConvertRgbToYiq(reduction->paletteRgbCopy[i], &reduction->paletteYiqCopy[i]);
+		if (farthestIndex != -1) {
+			//get RGB of new point (will be used when checking identical remapped colors)
+			RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
+			reduction->paletteRgbCopy[i] = RxiMaskYiqToRgb(reduction, &entry->color);
+			RxConvertRgbToYiq(reduction->paletteRgbCopy[i], &reduction->paletteYiqCopy[i]);
 
-		//move centroid
-		double newDifference = RxiComputeColorDifference(reduction, &entry->color, &reduction->paletteYiqCopy[i]) * entry->weight;
-		RxiVoronoiMoveToCluster(reduction, entry, i, newDifference, largestDifference);
-		newCentroidIdxs[nNewCentroids++] = i;
-	}
-
-	//after recomputing bounds, now let's see if we're wasting any slots.
-	for (int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
-		if (totalsBuffer[i].weight <= 0.0) return 0; // stop
+			//move centroid
+			double newDifference = RxiComputeColorDifference(reduction, &entry->color, &reduction->paletteYiqCopy[i]) * entry->weight;
+			RxiVoronoiMoveToCluster(reduction, entry, i, newDifference, largestDifference);
+			newCentroidIdxs[nNewCentroids++] = i;
+		} else {
+			//no best point was found for replacement.
+			return 0; // stop
+		}
 	}
 
 	//average out the colors in the new partitions
