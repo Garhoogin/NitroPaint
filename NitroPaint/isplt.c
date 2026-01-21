@@ -52,10 +52,10 @@
 
 //struct for internal processing of color leaves
 typedef struct {
-	double Sy;       // sum (y)
-	double Si;       // sum (i)
-	double Sq;       // sum (q)
-	double Sa;       // sum (a)
+	double SyU;       // sum (y)
+	double SiU;       // sum (i)
+	double SqU;       // sum (q)
+	double SaU;       // sum (a)
 	double weightL;  // weight of left side
 } RxiClusterSum;
 
@@ -191,27 +191,18 @@ int RxColorLightnessComparator(const void *d1, const void *d2) {
 	return 0;
 }
 
-void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
-	reduction->yWeight = 60 - balance;       // high balance -> lower Y weight
-	reduction->iWeight = colorBalance;       // high color balance -> high I weight
-	reduction->qWeight = 40 - colorBalance;  // high color balance -> low Q weight
-
-	reduction->yWeight2 = reduction->yWeight * reduction->yWeight; // Y weight squared
-	reduction->iWeight2 = reduction->iWeight * reduction->iWeight; // I weight squared
-	reduction->qWeight2 = reduction->qWeight * reduction->qWeight; // Q weight squared
-
+static void RxiComputeAlphaInteraction(RxReduction *reduction) {
 	//color difference is computed by taking the average squared difference between colors composited onto
-	//a background color. This calculation requires the first and second moments of the color space, and we
-	//assume uniformly distributed RGB colors to compute this.
-	reduction->aWeight2 = MEAN_Y2 * reduction->yWeight2 + MEAN_I2 * reduction->iWeight2 + MEAN_Q2 * reduction->qWeight2;
+	//a background color. This calculation requires the first and second moments of the color space, which
+	//are given in the reduction context prior. These may be set by the user to assume any distribution of
+	//background colors for compositing.
+	reduction->aWeight2 = reduction->meanY2 * reduction->yWeight2 + reduction->meanI2 * reduction->iWeight2 + reduction->meanQ2 * reduction->qWeight2;
 	reduction->aWeight = sqrt(reduction->aWeight2);
 
-	reduction->interactionY = (2.0 * MEAN_Y) * reduction->yWeight2;
-	reduction->interactionI = (2.0 * MEAN_I) * reduction->iWeight2;
-	reduction->interactionQ = (2.0 * MEAN_Q) * reduction->qWeight2;
+	reduction->interactionY = (2.0 * reduction->meanY) * reduction->yWeight2;
+	reduction->interactionI = (2.0 * reduction->meanI) * reduction->iWeight2;
+	reduction->interactionQ = (2.0 * reduction->meanQ) * reduction->qWeight2;
 	reduction->interactionA = 0.0;
-
-	reduction->enhanceColors = enhanceColors;
 
 	//when using SIMD, set vector weights
 #ifdef RX_SIMD
@@ -227,8 +218,32 @@ void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enh
 #endif
 }
 
+void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
+	reduction->yWeight = 60 - balance;       // high balance -> lower Y weight
+	reduction->iWeight = colorBalance;       // high color balance -> high I weight
+	reduction->qWeight = 40 - colorBalance;  // high color balance -> low Q weight
+
+	reduction->yWeight2 = reduction->yWeight * reduction->yWeight; // Y weight squared
+	reduction->iWeight2 = reduction->iWeight * reduction->iWeight; // I weight squared
+	reduction->qWeight2 = reduction->qWeight * reduction->qWeight; // Q weight squared
+
+	//compute alpha weights and interactions
+	RxiComputeAlphaInteraction(reduction);
+
+	reduction->enhanceColors = enhanceColors;
+}
+
 void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
 	memset(reduction, 0, sizeof(RxReduction));
+
+	//default color space moments, precalculated assuming a uniform distribution of RGB colors
+	reduction->meanY = MEAN_Y;
+	reduction->meanI = MEAN_I;
+	reduction->meanQ = MEAN_Q;
+	reduction->meanY2 = MEAN_Y2;
+	reduction->meanI2 = MEAN_I2;
+	reduction->meanQ2 = MEAN_Q2;
+
 	RxSetBalance(reduction, balance, colorBalance, enhanceColors);
 
 	reduction->nReclusters = RECLUSTER_DEFAULT;
@@ -237,6 +252,46 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 	reduction->alphaMode = RX_ALPHA_NONE; // default: no alpha processing
 	reduction->fAlphaThreshold = (float) (0x80 * INV_255);
 	reduction->status = RX_STATUS_OK;
+}
+
+void RxAssumeCompositingDistribution(RxReduction *reduction, const COLOR32 *cols, unsigned int nCols) {
+	if (nCols == 0) {
+		//defaults (uniform distribution)
+		reduction->meanY = MEAN_Y;
+		reduction->meanI = MEAN_I;
+		reduction->meanQ = MEAN_Q;
+		reduction->meanY2 = MEAN_Y2;
+		reduction->meanI2 = MEAN_I2;
+		reduction->meanQ2 = MEAN_Q2;
+	} else {
+		//calculate the first and second moments of colors given in the input. We take each color to have the
+		//same weight, since we are not modeling perception of colors in the input, but taking it as a probability
+		//distribution.
+		double sumY = 0.0, sumI = 0.0, sumQ = 0.0, sumY2 = 0.0, sumI2 = 0.0, sumQ2 = 0.0;
+
+		for (unsigned int i = 0; i < nCols; i++) {
+			RxYiqColor yiq;
+			RxConvertRgbToYiq(cols[i], &yiq);
+
+			sumY += yiq.y;
+			sumI += yiq.i;
+			sumQ += yiq.q;
+			sumY2 += yiq.y * yiq.y;
+			sumI2 += yiq.i * yiq.i;
+			sumQ2 += yiq.q * yiq.q;
+		}
+
+		double invCols = 1.0 / (double) nCols;
+		reduction->meanY = sumY * invCols;
+		reduction->meanI = sumI * invCols;
+		reduction->meanQ = sumQ * invCols;
+		reduction->meanY2 = sumY2 * invCols;
+		reduction->meanI2 = sumI2 * invCols;
+		reduction->meanQ2 = sumQ2 * invCols;
+	}
+
+	//recompute weights and interactions
+	RxiComputeAlphaInteraction(reduction);
 }
 
 RxReduction *RxNew(int balance, int colorBalance, int enhanceColors) {
@@ -910,14 +965,16 @@ static void RxiHistChooseSplitDirection(RxReduction *reduction, int startIndex, 
 		Saa += entry->weight * a * a;
 		totalWeight += entry->weight;
 	}
-	double varA = (Saa - Sa * Sa / totalWeight) / totalWeight;
-	
-	if (varA > varColor) {
-		//variance of alpha dominates, so we choose to split on alpha.
-		axis[0] = 0.0;
-		axis[1] = 0.0;
-		axis[2] = 0.0;
-		axis[3] = 1.0;
+
+	if (totalWeight > 0.0) {
+		double varA = (Saa - Sa * Sa / totalWeight) / totalWeight;
+		if (varA > varColor) {
+			//variance of alpha dominates, so we choose to split on alpha.
+			axis[0] = 0.0;
+			axis[1] = 0.0;
+			axis[2] = 0.0;
+			axis[3] = 1.0;
+		}
 	}
 }
 
@@ -1049,11 +1106,12 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	qsort(thisHistogram, nColors, sizeof(RxHistEntry *), RxiHistEntryComparator);
 
 	//gather statistics for splitting
-	double totalWeight = 0.0, totalY = 0.0, sumSq = 0.0, totalI = 0.0, totalQ = 0.0, totalA = 0.0;
-	double totalYA = 0.0, totalIA = 0.0, totalQA = 0.0;
+	double totalWeight = 0.0;
+	double totalYA = 0.0, totalIA = 0.0, totalQA = 0.0;                         // 
+	double totalY = 0.0, sumSq = 0.0, totalI = 0.0, totalQ = 0.0, totalA = 0.0; // sum of weighted YIQA
 	for (int i = 0; i < nColors; i++) {
 		RxHistEntry *entry = thisHistogram[i];
-		double weight = entry->weight, aWeight = entry->weight * entry->color.a;
+		double weight = entry->weight;
 		double cy = reduction->yWeight * entry->color.y;
 		double ci = reduction->iWeight * entry->color.i;
 		double cq = reduction->qWeight * entry->color.q;
@@ -1061,12 +1119,13 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		sumSq += weight * RxiVec4Mag(cy, ci, cq, ca);
 
 		RxiClusterSum *split = &splits[i];
-		split->Sy = (totalY += weight * cy);      // accumulate color
-		split->Si = (totalI += weight * ci);      // accumulate
-		split->Sq = (totalQ += weight * cq);      // accumulate
-		split->Sa = (totalA += weight * ca);      // accumulate
-		split->weightL = (totalWeight += weight); // accumulate total weight
+		split->SyU = (totalY += weight * entry->color.y);  // accumulate color
+		split->SiU = (totalI += weight * entry->color.i);  // accumulate
+		split->SqU = (totalQ += weight * entry->color.q);  // accumulate
+		split->SaU = (totalA += weight * entry->color.a);  // accumulate
+		split->weightL = (totalWeight += weight);          // accumulate total weight
 
+		double aWeight = entry->weight * entry->color.a;
 		totalYA += aWeight * entry->color.y;
 		totalIA += aWeight * entry->color.i;
 		totalQA += aWeight * entry->color.q;
@@ -1074,23 +1133,29 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	node->weight = totalWeight;
 
 	//computing representative color
-	node->color.y = (float) (totalY / (totalWeight * reduction->yWeight));
-	node->color.i = (float) (totalI / (totalWeight * reduction->iWeight));
-	node->color.q = (float) (totalQ / (totalWeight * reduction->qWeight));
-	node->color.a = (float) (totalA / (totalWeight * reduction->aWeight));
+	double invWeight = 1.0 / totalWeight;
+	node->color.y = (float) (totalY * invWeight);
+	node->color.i = (float) (totalI * invWeight);
+	node->color.q = (float) (totalQ * invWeight);
+	node->color.a = (float) (totalA * invWeight);
 
 	//initial WSS value, which we use to calculate the WSS reduction from split
-	double wssInitial = sumSq - RxiVec4Mag(totalY, totalI, totalQ, totalA) / totalWeight;
+	double wssInitial = sumSq - RxiVec4Mag(totalY * reduction->yWeight, totalI * reduction->iWeight,
+		totalQ * reduction->qWeight, totalA * reduction->aWeight) * invWeight;
 
 	//in alpha processing mode, we must apply the interaction terms to WSS.
 	if (reduction->alphaMode == RX_ALPHA_PALETTE) {
+		double meanY = node->color.y;
+		double meanI = node->color.i;
+		double meanQ = node->color.q;
+		double meanA = node->color.a;
 		wssInitial -= (
-			  reduction->interactionY * (totalYA - (totalY * totalA) / (reduction->yWeight * reduction->aWeight * totalWeight))
-			+ reduction->interactionI * (totalIA - (totalI * totalA) / (reduction->iWeight * reduction->aWeight * totalWeight))
-			+ reduction->interactionQ * (totalQA - (totalQ * totalA) / (reduction->qWeight * reduction->aWeight * totalWeight))
+			  reduction->interactionY * (totalYA - (meanY * meanA) * invWeight)
+			+ reduction->interactionI * (totalIA - (meanI * meanA) * invWeight)
+			+ reduction->interactionQ * (totalQA - (meanQ * meanA) * invWeight)
 		);
 	}
-	
+
 	//determine pivot index based on the split that yields the best total WSS. This represents total
 	//squared quantization error
 	int pivotIndex = 1;
@@ -1100,38 +1165,39 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		
 		double weightL = entry->weightL;
 		double weightR = totalWeight - weightL;
+		double invWeightL = 1.0 / weightL;
+		double invWeightR = 1.0 / weightR;
 
-		double sumSqL = RxiVec4Mag(entry->Sy, entry->Si, entry->Sq, entry->Sa) / entry->weightL;
-		double sumSqR = RxiVec4Mag(totalY - entry->Sy, totalI - entry->Si, totalQ - entry->Sq, totalA - entry->Sa) / weightR;
-		double wss = sumSq - sumSqL - sumSqR;
+		double SyL = entry->SyU, SyR = totalY - entry->SyU;
+		double SiL = entry->SiU, SiR = totalI - entry->SiU;
+		double SqL = entry->SqU, SqR = totalQ - entry->SqU;
+		double SaL = entry->SaU, SaR = totalA - entry->SaU;
+
+		double sumSqL = RxiVec4Mag(SyL * reduction->yWeight, SiL * reduction->iWeight, SqL * reduction->qWeight, SaL * reduction->aWeight);
+		double sumSqR = RxiVec4Mag(SyR * reduction->yWeight, SiR * reduction->iWeight, SqR * reduction->qWeight, SaR * reduction->aWeight);
+		double wss = sumSq - sumSqL * invWeightL - sumSqR * invWeightR;
 
 		//in alpha processing mode, we must apply the intercation terms to WSS.
 		if (reduction->alphaMode == RX_ALPHA_PALETTE) {
-			double SyL = entry->Sy / reduction->yWeight, SyR = (totalY - entry->Sy) / reduction->yWeight;
-			double SiL = entry->Si / reduction->iWeight, SiR = (totalI - entry->Si) / reduction->iWeight;
-			double SqL = entry->Sq / reduction->qWeight, SqR = (totalQ - entry->Sq) / reduction->qWeight;
-			double SaL = entry->Sa / reduction->aWeight, SaR = (totalA - entry->Sa) / reduction->aWeight;
-
 			wss -= (
-				  reduction->interactionY * (totalYA - SyL * SaL / weightL - SyR * SaR / weightR)
-				+ reduction->interactionI * (totalIA - SiL * SaL / weightL - SiR * SaR / weightR)
-				+ reduction->interactionQ * (totalQA - SqL * SaL / weightL - SqR * SaR / weightR)
+				  reduction->interactionY * (totalYA - (SyL * SaL * invWeightL + SyR * SaR * invWeightR))
+				+ reduction->interactionI * (totalIA - (SiL * SaL * invWeightL + SiR * SaR * invWeightR))
+				+ reduction->interactionQ * (totalQA - (SqL * SaL * invWeightL + SqR * SaR * invWeightR))
 			);
 		}
 
 		//better sum of squares
 		if (wss < wssBest) {
-
 			//we'll check the mean left and mean right. They should be different with masking.
 			RxYiqColor yiqL, yiqR;
-			yiqL.y = (float) ((         entry->Sy) / (weightL * reduction->yWeight));
-			yiqL.i = (float) ((         entry->Si) / (weightL * reduction->iWeight));
-			yiqL.q = (float) ((         entry->Sq) / (weightL * reduction->qWeight));
-			yiqL.a = (float) ((         entry->Sa) / (weightL * reduction->aWeight));
-			yiqR.y = (float) ((totalY - entry->Sy) / (weightR * reduction->yWeight));
-			yiqR.i = (float) ((totalI - entry->Si) / (weightR * reduction->iWeight));
-			yiqR.q = (float) ((totalQ - entry->Sq) / (weightR * reduction->qWeight));
-			yiqR.a = (float) ((totalA - entry->Sa) / (weightR * reduction->aWeight));
+			yiqL.y = (float) (SyL * invWeightL);
+			yiqL.i = (float) (SiL * invWeightL);
+			yiqL.q = (float) (SqL * invWeightL);
+			yiqL.a = (float) (SaL * invWeightL);
+			yiqR.y = (float) (SyR * invWeightR);
+			yiqR.i = (float) (SiR * invWeightR);
+			yiqR.q = (float) (SqR * invWeightR);
+			yiqR.a = (float) (SaR * invWeightR);
 
 			COLOR32 maskL = RxiMaskYiqToRgb(reduction, &yiqL);
 			COLOR32 maskR = RxiMaskYiqToRgb(reduction, &yiqR);
@@ -1160,7 +1226,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	node->priority = wssReduction;
 	if (!reduction->enhanceColors) {
 		//moderate penalty for popular cluster
-		node->priority /= sqrt(totalWeight);
+		node->priority *= sqrt(invWeight);
 	}
 }
 

@@ -484,6 +484,12 @@ struct RxReduction_ {
 	RxYiqColor paletteYiqCopy[RX_PALETTE_MAX_SIZE];
 	RxProgressCallback progressCallback;
 	void *progressCallbackData;
+	double meanY;
+	double meanI;
+	double meanQ;
+	double meanY2;
+	double meanI2;
+	double meanQ2;
 };
 
 // -----------------------------------------------------------------------------------------------
@@ -572,6 +578,30 @@ void RxSetBalance(
 	int          balance,       // the balance setting
 	int          colorBalance,  // the colr balance setting
 	int          enhanceColors  // assign more weight to frequently occurring colors
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxAssumeCompositingDistribution
+//
+// Assumes a distribution of colors for translucent pixels to be composited onto. This affects
+// the treatment of transparent and semitransparent colors when creating color palettes and color
+// reduction. By default, the context assumes a uniform distribution of background colors for
+// compositing. Use this function only when it is known that more specific assumptions should be
+// held, since otherwise it may result in incorrect palettes or color reduction. Input colors
+// should be fully opaque.
+//
+// The cols parameter may be NULL if nCols is 0. When nCols is 0, this function assumes a uniform
+// distriution of RGB colors.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   cols          The input colors
+//   nCols         The number of input colors
+// -----------------------------------------------------------------------------------------------
+void RxAssumeCompositingDistribution(
+	RxReduction   *reduction,
+	const COLOR32 *cols, 
+	unsigned int   nCols
 );
 
 // -----------------------------------------------------------------------------------------------
