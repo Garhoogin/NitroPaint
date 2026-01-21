@@ -167,8 +167,7 @@ static COLOR32 RxMaskColorToDS15(COLOR32 c) {
 }
 
 static COLOR32 RxMaskColorDummy(COLOR32 c) {
-	//no-mask dummy: pass colors, forcing RGB to 0 when alpha=0
-	if ((c >> 24) == 0) c = 0;
+	//no-mask dummy: pass colors
 	return c;
 }
 
