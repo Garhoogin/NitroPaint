@@ -445,6 +445,21 @@ struct RxReduction_ {
 		};
 #endif
 	};
+	union {
+		struct {
+			double interactionY;
+			double interactionI;
+			double interactionQ;
+			double interactionA;
+		};
+#ifdef RX_SIMD
+		struct {
+			__m128d interactionYI;
+			__m128d interactionQA;
+			__m128 interactionYIQA;
+		};
+#endif
+	};
 	RxStatus status;
 	int nPaletteColors;
 	int nUsedColors;

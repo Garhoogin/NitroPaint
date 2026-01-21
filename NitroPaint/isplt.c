@@ -56,9 +56,6 @@ typedef struct {
 	double Si;       // sum (i)
 	double Sq;       // sum (q)
 	double Sa;       // sum (a)
-	double Sya;      // sum (y*a)
-	double Sia;      // sum (i*a)
-	double Sqa;      // sum (q*a)
 	double weightL;  // weight of left side
 } RxiClusterSum;
 
@@ -209,6 +206,11 @@ void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enh
 	reduction->aWeight2 = MEAN_Y2 * reduction->yWeight2 + MEAN_I2 * reduction->iWeight2 + MEAN_Q2 * reduction->qWeight2;
 	reduction->aWeight = sqrt(reduction->aWeight2);
 
+	reduction->interactionY = (2.0 * MEAN_Y) * reduction->yWeight2;
+	reduction->interactionI = (2.0 * MEAN_I) * reduction->iWeight2;
+	reduction->interactionQ = (2.0 * MEAN_Q) * reduction->qWeight2;
+	reduction->interactionA = 0.0;
+
 	reduction->enhanceColors = enhanceColors;
 
 	//when using SIMD, set vector weights
@@ -217,6 +219,11 @@ void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enh
 	__m128 weightIY = _mm_cvtpd_ps(reduction->yiWeight2);
 	__m128 weight2 = _mm_shuffle_ps(_mm_shuffle_ps(weightIY, weightIY, _MM_SHUFFLE(1, 0, 1, 0)), weightAQ, _MM_SHUFFLE(1, 0, 3, 2));
 	reduction->yiqaWeight2 = weight2;
+
+	__m128 interactionYI = _mm_cvtpd_ps(reduction->interactionYI);
+	__m128 interactionQA = _mm_cvtpd_ps(reduction->interactionQA);
+	__m128 interaction = _mm_shuffle_ps(_mm_shuffle_ps(interactionYI, interactionYI, _MM_SHUFFLE(1, 0, 1, 0)), interactionQA, _MM_SHUFFLE(1, 0, 3, 2));
+	reduction->interactionYIQA = interaction;
 #endif
 }
 
@@ -566,20 +573,16 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 		//between the two input colors composited onto a random background color, where the background
 		//color is drawn from a uniform distribution in RGB space. The below interaction term results from
 		//evaluating this integral.
-		d2 += aw2 * da * da - da * ((2.0 * MEAN_Y) * yw2 * dy + (2.0 * MEAN_I) * iw2 * di + (2.0 * MEAN_Q) * qw2 * dq);
+		d2 += aw2 * da * da - da * (reduction->interactionY * dy + reduction->interactionI * di + reduction->interactionQ * dq);
 	}
 	return d2;
 #else // RX_SIMD
 	//color difference vector
-	__m128 v1 = yiq1->yiq, v2 = yiq2->yiq;
-	__m128 d = _mm_sub_ps(v1, v2);
+	__m128 d = _mm_sub_ps(yiq1->yiq, yiq2->yiq);
 	__m128 da = _mm_shuffle_ps(d, d, _MM_SHUFFLE(3, 3, 3, 3));
 
 	//squared components, minus alpha interaction
-	__m128 d2 = _mm_mul_ps(d, _mm_sub_ps(d, _mm_mul_ps(da, _mm_setr_ps(2.0 * MEAN_Y, 2.0 * MEAN_I, 2.0 * MEAN_Q, 0.0f))));
-
-	//scale difference components by weights
-	d2 = _mm_mul_ps(d2, reduction->yiqaWeight2);
+	__m128 d2 = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(d, reduction->yiqaWeight2), _mm_mul_ps(da, reduction->interactionYIQA)), d);
 
 	//final horizontal sum
 	d2 = _mm_add_ps(d2, _mm_shuffle_ps(d2, d2, _MM_SHUFFLE(2, 3, 0, 1)));
@@ -1062,10 +1065,11 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		split->Si = (totalI += weight * ci);      // accumulate
 		split->Sq = (totalQ += weight * cq);      // accumulate
 		split->Sa = (totalA += weight * ca);      // accumulate
-		split->Sya = (totalYA += aWeight * entry->color.y);
-		split->Sia = (totalIA += aWeight * entry->color.i);
-		split->Sqa = (totalQA += aWeight * entry->color.q);
 		split->weightL = (totalWeight += weight); // accumulate total weight
+
+		totalYA += aWeight * entry->color.y;
+		totalIA += aWeight * entry->color.i;
+		totalQA += aWeight * entry->color.q;
 	}
 	node->weight = totalWeight;
 
@@ -1081,9 +1085,9 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	//in alpha processing mode, we must apply the interaction terms to WSS.
 	if (reduction->alphaMode == RX_ALPHA_PALETTE) {
 		wssInitial -= (
-			  (2.0 * MEAN_Y) * reduction->yWeight2 * (totalYA - (totalY * totalA) / (reduction->yWeight * reduction->aWeight * totalWeight))
-			+ (2.0 * MEAN_I) * reduction->iWeight2 * (totalIA - (totalI * totalA) / (reduction->iWeight * reduction->aWeight * totalWeight))
-			+ (2.0 * MEAN_Q) * reduction->qWeight2 * (totalQA - (totalQ * totalA) / (reduction->qWeight * reduction->aWeight * totalWeight))
+			  reduction->interactionY * (totalYA - (totalY * totalA) / (reduction->yWeight * reduction->aWeight * totalWeight))
+			+ reduction->interactionI * (totalIA - (totalI * totalA) / (reduction->iWeight * reduction->aWeight * totalWeight))
+			+ reduction->interactionQ * (totalQA - (totalQ * totalA) / (reduction->qWeight * reduction->aWeight * totalWeight))
 		);
 	}
 	
@@ -1107,14 +1111,11 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 			double SiL = entry->Si / reduction->iWeight, SiR = (totalI - entry->Si) / reduction->iWeight;
 			double SqL = entry->Sq / reduction->qWeight, SqR = (totalQ - entry->Sq) / reduction->qWeight;
 			double SaL = entry->Sa / reduction->aWeight, SaR = (totalA - entry->Sa) / reduction->aWeight;
-			double SyaL = entry->Sya, SyaR = totalYA - entry->Sya;
-			double SiaL = entry->Sia, SiaR = totalIA - entry->Sia;
-			double SqaL = entry->Sqa, SqaR = totalQA - entry->Sqa;
 
 			wss -= (
-				  (2.0 * MEAN_Y) * reduction->yWeight2 * ((SyaL - SyL * SaL / weightL) + (SyaR - SyR * SaR / weightR))
-				+ (2.0 * MEAN_I) * reduction->iWeight2 * ((SiaL - SiL * SaL / weightL) + (SiaR - SiR * SaR / weightR))
-				+ (2.0 * MEAN_Q) * reduction->qWeight2 * ((SqaL - SqL * SaL / weightL) + (SqaR - SqR * SaR / weightR))
+				  reduction->interactionY * (totalYA - SyL * SaL / weightL - SyR * SaR / weightR)
+				+ reduction->interactionI * (totalIA - SiL * SaL / weightL - SiR * SaR / weightR)
+				+ reduction->interactionQ * (totalQA - SqL * SaL / weightL - SqR * SaR / weightR)
 			);
 		}
 
