@@ -366,15 +366,25 @@ static void TexViewerOnPaint(TEXTUREEDITORDATA *data) {
 }
 
 static LRESULT TexViewerOnSize(TEXTUREEDITORDATA *data, WPARAM wParam, LPARAM lParam) {
-	RECT rcClient;
+	RECT rcClient, rcStatus;
 	GetClientRect(data->hWnd, &rcClient);
 
+	SendMessage(data->hWndStatus, WM_SIZE, 0, 0);
+	GetClientRect(data->hWndStatus, &rcStatus);
+	rcClient.bottom -= rcStatus.bottom;
+
+	float dpiScale = GetDpiScale();
+
+	int panelWidth = UI_SCALE_COORD(120, dpiScale);
+	int ctlWidth = UI_SCALE_COORD(100, dpiScale);
+	int ctlHeight = UI_SCALE_COORD(22, dpiScale);
+	int panelPadding = UI_SCALE_COORD(10, dpiScale);
+
 	MoveWindow(data->ted.hWndViewer, MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE,
-		rcClient.right - 120 - MARGIN_TOTAL_SIZE, rcClient.bottom - MARGIN_TOTAL_SIZE - 23, FALSE);
-	MoveWindow(data->hWndStatus, 0, rcClient.bottom - 23, rcClient.right, 23, TRUE);
-	MoveWindow(data->hWndConvert, rcClient.right - 110, 10, 100, 22, TRUE);
-	MoveWindow(data->hWndEditPalette, rcClient.right - 110, 37, 100, 22, TRUE);
-	MoveWindow(data->hWndExportNTF, rcClient.right - 110, 64, 100, 22, TRUE);
+		rcClient.right - panelWidth - MARGIN_TOTAL_SIZE, rcClient.bottom - MARGIN_TOTAL_SIZE, FALSE);
+	MoveWindow(data->hWndConvert, rcClient.right - panelWidth + panelPadding, panelPadding + (ctlHeight + 5) * 0, ctlWidth, ctlHeight, TRUE);
+	MoveWindow(data->hWndEditPalette, rcClient.right - panelWidth + panelPadding, panelPadding + (ctlHeight + 5) * 1, ctlWidth, ctlHeight, TRUE);
+	MoveWindow(data->hWndExportNTF, rcClient.right - panelWidth + panelPadding, panelPadding + (ctlHeight + 5) * 2, ctlWidth, ctlHeight, TRUE);
 
 	if (wParam == SIZE_RESTORED) InvalidateRect(data->hWnd, NULL, TRUE); //full update
 	return DefMDIChildProc(data->hWnd, WM_SIZE, wParam, lParam);
