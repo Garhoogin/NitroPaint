@@ -109,10 +109,13 @@ static int TxConvertDirect(TxConversionParameters *params, RxReduction *reductio
 	pltt[0] = 0; // placeholder for transparent color
 	for (unsigned int i = 0; i < 32768; i++) pltt[i + 1] = ColorConvertFromDS((COLOR) i) | 0xFF000000;
 
-	RxApplyFlags(reduction, RX_FLAG_ALPHA_MODE_RESERVE);
+	RxFlag flag = RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_NO_WRITEBACK;
+	if (!params->ditherAlpha) flag |= RX_FLAG_NO_ALPHA_DITHER;      // diable alpha dither
+	else                      flag |= RX_FLAG_NO_ADAPTIVE_DIFFUSE;  // disable adaptive diffusion for alpha dither
+
+	RxApplyFlags(reduction, flag);
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate, params);
-	RxReduceImageWithContext(reduction, params->px, idxs, params->width, params->height, pltt, 32769,
-		RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_NO_WRITEBACK, diffuse);
+	RxReduceImageWithContext(reduction, params->px, idxs, params->width, params->height, pltt, 32769, flag, diffuse);
 
 	for (unsigned int i = 0; i < params->width * params->height; i++) {
 		if (idxs[i] == 0) txel[i] = 0; // transparent
@@ -174,6 +177,9 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params, RxReduction *r
 	if (txel == NULL || pal == NULL || idxs == NULL) TEXCONV_THROW_STATUS(TEXCONV_NOMEM);
 
 	RxFlag flag = (hasTransparent ? RX_FLAG_ALPHA_MODE_RESERVE : RX_FLAG_ALPHA_MODE_NONE);
+	if (!params->ditherAlpha) flag |= RX_FLAG_NO_ALPHA_DITHER;      // diable alpha dither
+	else                      flag |= RX_FLAG_NO_ADAPTIVE_DIFFUSE;  // disable adaptive diffusion for alpha dither
+
 	RxApplyFlags(reduction, flag);
 
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate1, params);

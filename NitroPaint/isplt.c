@@ -2384,6 +2384,7 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 	RxFlag alphaMode = flag & RX_FLAG_ALPHA_MODE_MASK;
 	int binaryAlpha = (alphaMode == RX_FLAG_ALPHA_MODE_NONE) || (alphaMode == RX_FLAG_ALPHA_MODE_RESERVE);
 	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
+	int adaptive = !(flag & RX_FLAG_NO_ADAPTIVE_DIFFUSE);
 
 	//initial progress
 	RxiUpdateProgress(reduction, 0, height);
@@ -2433,17 +2434,22 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 			//determine if dithering should happen. Weight the sampled pixels with respect to distance from center.
 
 			RxYiqColor colorYiq;
+			if (adaptive) {
 #ifndef RX_SIMD
-			colorYiq.y = (thisRow[x + 1].y + thisRow[x + 2].y + thisRow[x].y + lastRow[x + 1].y) * 0.1875f + (lastRow[x].y + lastRow[x + 2].y) * 0.125f;
-			colorYiq.i = (thisRow[x + 1].i + thisRow[x + 2].i + thisRow[x].i + lastRow[x + 1].i) * 0.1875f + (lastRow[x].i + lastRow[x + 2].i) * 0.125f;
-			colorYiq.q = (thisRow[x + 1].q + thisRow[x + 2].q + thisRow[x].q + lastRow[x + 1].q) * 0.1875f + (lastRow[x].q + lastRow[x + 2].q) * 0.125f;
-			colorYiq.a = (thisRow[x + 1].a + thisRow[x + 2].a + thisRow[x].a + lastRow[x + 1].a) * 0.1875f + (lastRow[x].a + lastRow[x + 2].a) * 0.125f;
+				colorYiq.y = (thisRow[x + 1].y + thisRow[x + 2].y + thisRow[x].y + lastRow[x + 1].y) * 0.1875f + (lastRow[x].y + lastRow[x + 2].y) * 0.125f;
+				colorYiq.i = (thisRow[x + 1].i + thisRow[x + 2].i + thisRow[x].i + lastRow[x + 1].i) * 0.1875f + (lastRow[x].i + lastRow[x + 2].i) * 0.125f;
+				colorYiq.q = (thisRow[x + 1].q + thisRow[x + 2].q + thisRow[x].q + lastRow[x + 1].q) * 0.1875f + (lastRow[x].q + lastRow[x + 2].q) * 0.125f;
+				colorYiq.a = (thisRow[x + 1].a + thisRow[x + 2].a + thisRow[x].a + lastRow[x + 1].a) * 0.1875f + (lastRow[x].a + lastRow[x + 2].a) * 0.125f;
 #else
-			__m128 vec1 = _mm_add_ps(_mm_add_ps(thisRow[x + 1].yiq, thisRow[x + 2].yiq), _mm_add_ps(thisRow[x].yiq, lastRow[x + 1].yiq));
-			__m128 vec2 = _mm_add_ps(lastRow[x].yiq, lastRow[x + 2].yiq);
-			
-			colorYiq.yiq = _mm_add_ps(_mm_mul_ps(vec1, _mm_set1_ps(0.1875f)), _mm_mul_ps(vec2, _mm_set1_ps(0.125f)));
+				__m128 vec1 = _mm_add_ps(_mm_add_ps(thisRow[x + 1].yiq, thisRow[x + 2].yiq), _mm_add_ps(thisRow[x].yiq, lastRow[x + 1].yiq));
+				__m128 vec2 = _mm_add_ps(lastRow[x].yiq, lastRow[x + 2].yiq);
+
+				colorYiq.yiq = _mm_add_ps(_mm_mul_ps(vec1, _mm_set1_ps(0.1875f)), _mm_mul_ps(vec2, _mm_set1_ps(0.125f)));
 #endif
+			} else {
+				//no adaptive diffuse -> no local noise checking
+				memcpy(&colorYiq, &thisRow[x + 1], sizeof(RxYiqColor));
+			}
 
 			//match it to a palette color. We'll measure distance to it as well.
 			double paletteDistance = 0.0;
@@ -2455,15 +2461,21 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 
 			//now test: Should we dither?
 			double yw2 = reduction->yWeight2;
-			if (diffuse > 0.0f && centerDistance < 110.0 * yw2 && paletteDistance >  2.0 * yw2) {
+			if (diffuse > 0.0f && (!adaptive || (centerDistance < 110.0 * yw2 && paletteDistance >  2.0 * yw2))) {
 
 				RxYiqColor diffuseVec;
-				diffuseVec.y = (float) RxiDiffuseCurveY(thisDiffuse[x + 1].y * diffuse);
-				diffuseVec.i = (float) RxiDiffuseCurveI(thisDiffuse[x + 1].i * diffuse);
-				diffuseVec.q = (float) RxiDiffuseCurveQ(thisDiffuse[x + 1].q * diffuse);
-				diffuseVec.a = (float) RxiDiffuseCurveA(thisDiffuse[x + 1].a * diffuse);
+				diffuseVec.y = thisDiffuse[x + 1].y * diffuse;
+				diffuseVec.i = thisDiffuse[x + 1].i * diffuse;
+				diffuseVec.q = thisDiffuse[x + 1].q * diffuse;
+				diffuseVec.a = thisDiffuse[x + 1].a * diffuse;
+				if (adaptive) {
+					diffuseVec.y = (float) RxiDiffuseCurveY(diffuseVec.y);
+					diffuseVec.i = (float) RxiDiffuseCurveI(diffuseVec.i);
+					diffuseVec.q = (float) RxiDiffuseCurveQ(diffuseVec.q);
+					diffuseVec.a = (float) RxiDiffuseCurveA(diffuseVec.a);
+				}
 
-				if (binaryAlpha || (flag & RX_FLAG_NO_ALPHA_DITHER)) {
+				if (flag & RX_FLAG_NO_ALPHA_DITHER) {
 					//diffuse into the current color. We must unmultiply and remultiply by alpha.
 					if (colorYiq.a != 0.0f) {
 						float aFactor = 1.0f + diffuseVec.a / colorYiq.a;
@@ -2525,7 +2537,7 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 				RxYiqColor *diffuse02 = &nextDiffuse[x + 1 - hDirection];
 
 				RxYiqColor off;
-				if (binaryAlpha || (flag & RX_FLAG_NO_ALPHA_DITHER)) {
+				if (flag & RX_FLAG_NO_ALPHA_DITHER) {
 					//alpha is not dithered, so we un-premultiply the colors and scale to palette alpha.
 					if (colorYiq.a > 0.0f) {
 						float chosenA = chosenYiq->a;

@@ -1240,7 +1240,6 @@ static int TexViewerJudgeColorCount(int bWidth, int bHeight) {
 
 static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	int fmt = UiCbGetCurSel(data->hWndFormat) + 1;
-	BOOL isTranslucent = fmt == CT_A3I5 || fmt == CT_A5I3;
 	BOOL isPlttN = fmt == CT_4COLOR || fmt == CT_16COLOR || fmt == CT_256COLOR;
 	BOOL isPltt = fmt != CT_DIRECT;
 	BOOL is4x4 = fmt == CT_4x4;
@@ -1249,7 +1248,7 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	BOOL dither = GetCheckboxChecked(data->hWndDither);
 	BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette) && is4x4 && !fixedPalette;
 
-	EnableWindow(data->hWndDitherAlpha, isTranslucent && dither);
+	EnableWindow(data->hWndDitherAlpha, dither);
 	EnableWindow(data->hWndDiffuseAmount, dither);
 	EnableWindow(data->hWndColorEntries, limitPalette);
 	EnableWindow(data->hWndOptimizationSlider, is4x4 && !fixedPalette);

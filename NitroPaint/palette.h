@@ -78,6 +78,9 @@ typedef enum RxStatus_ {
 //   RX_FLAG_NO_WRITEBACK        Color reduction will not write back the RGB pixel data.
 //   RX_FLAG_NO_ALPHA_DITHER     The alpha channel will not be dithered (when using pixel or
 //                               palette alpha mode).
+//   RX_FLAG_NO_ADAPTIVE_DIFFUSE Do not use adaptive error diffusion. The adaptive error diffusion
+//                               will reduce the amount of noise from dithering, but may at times
+//                               be undesirable.
 // -----------------------------------------------------------------------------------------------
 typedef enum RxFlag_ {
 	RX_FLAG_SORT_ALL            = (0x00<< 0), // sort the entire output palette
@@ -96,6 +99,7 @@ typedef enum RxFlag_ {
 	RX_FLAG_NO_PRESERVE_ALPHA   = (0x01<< 4), // modifies the alpha channel in a color reduction operation.
 	RX_FLAG_NO_WRITEBACK        = (0x01<< 5), // suppresses writeback of RGB pixel data in color reduction
 	RX_FLAG_NO_ALPHA_DITHER     = (0x01<< 6), // the alpha channel will not be dithered
+	RX_FLAG_NO_ADAPTIVE_DIFFUSE = (0x01<< 7), // do not use the adaptive error diffusion
 } RxFlag;
 
 typedef struct RxBalanceSetting_ {

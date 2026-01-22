@@ -3865,11 +3865,11 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	unsigned int plttOffs = 0;
 	switch (UiCbGetCurSel(data->hWndAlphaMode)) {
 		case 0: // Mode=None
-			flag |= RX_FLAG_ALPHA_MODE_NONE;
+			flag |= RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_NO_ALPHA_DITHER;
 			plttOffs = 0; // no offset
 			break;
 		case 1: // Mode=Color0
-			flag |= RX_FLAG_ALPHA_MODE_RESERVE;
+			flag |= RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_NO_ALPHA_DITHER;
 			plttOffs = 1; // offset 1st color
 			break;
 		case 2: // Mode=Palette

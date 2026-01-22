@@ -2351,7 +2351,7 @@ static void charImport(
 	//index image with given parameters.
 	int *idxs = (int *) calloc(width * height, sizeof(int));
 	if (!dither) diffuse = 0.0f;
-	RxReduceImageEx(pixels, idxs, width, height, palette, paletteSize + 1, RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA,
+	RxReduceImageEx(pixels, idxs, width, height, palette, paletteSize + 1, RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER,
 		diffuse, balance, colorBalance, enhanceColors);
 
 	//now, write out indices. 

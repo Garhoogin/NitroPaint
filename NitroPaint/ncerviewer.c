@@ -3142,7 +3142,7 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 					int nChars = slice->bounds.width * slice->bounds.height / 8 / 8;
 
 					RxReduceImageEx(slice->px, indicesBuffer, width, height, palette + paletteOffset, paletteLength, 
-						RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA, diffuse, balance.balance,
+						RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, diffuse, balance.balance,
 						balance.colorBalance, balance.enhanceColors);
 
 					//convert to character array in indicesBuffer8

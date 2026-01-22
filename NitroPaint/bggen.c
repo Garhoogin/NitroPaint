@@ -515,7 +515,7 @@ int BgPerformCharacterCompression(
 		const COLOR32 *pal = palette + (bestPalette << nBits);
 		int idxs[64];
 		RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset,
-			RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA, 0.0f);
+			RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, 0.0f);
 		for (unsigned int j = 0; j < 64; j++) {
 			tile->indices[j] = idxs[j] == 0 ? 0 : (idxs[j] + paletteOffset - !!paletteOffset);
 			tile->px[j] = tile->indices[j] ? (pal[tile->indices[j]] | 0xFF000000) : 0;
@@ -582,7 +582,7 @@ void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int pa
 		//transparent.
 		int idxs[64];
 		RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8, pal + effectivePaletteOffset - 1, effectivePaletteSize + 1,
-			RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA, diffuse);
+			RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, diffuse);
 		for (int j = 0; j < 64; j++) {
 			//YIQ color
 			RxConvertRgbToYiq(tile->px[j], &tile->pxYiq[j]);
@@ -1236,7 +1236,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					unsigned char *chr = ncgr->tiles[charIndex];
 					COLOR32 *thisPalette = pals + palIndex * maxPaletteSize + paletteOffset - !!paletteOffset;
 					RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8, thisPalette, paletteSize + !!paletteOffset,
-						RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA, dither ? diffuse : 0.0f);
+						RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, dither ? diffuse : 0.0f);
 
 					//mask to map source to destination pixels
 					unsigned int xorMask = 0;
@@ -1366,7 +1366,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						int idxs[64];
 						COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset - !!paletteOffset;
 						RxReduceImageWithContext(reduction, block, idxs, 8, 8, thisPal, paletteSize + !!paletteOffset,
-							RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA, dither ? diffuse : 0.0f);
+							RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, dither ? diffuse : 0.0f);
 
 						for (int i = 0; i < 64; i++) {
 							unsigned int index = idxs[i];
