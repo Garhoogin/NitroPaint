@@ -1867,19 +1867,15 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 			int rawIdx = chr[(srcX % 8) + (srcY % 8) * 8];
 			int idx = rawIdx + (plt << ncgr->nBits);
 
-			COLOR32 col;
-			if (!data->transparent || rawIdx > 0) {
-				//do not render transparent background
-				if (nclr != NULL && idx < nclr->nColors) {
-					//color from palette
-					col = ColorConvertFromDS(nclr->colors[idx]);
-				} else {
-					//color out of palette bounds: fill with black
-					col = 0;
-				}
-			} else {
-				//render transparent
-				col = TedAlphaBlendColor(0, x, y);
+			COLOR32 col = 0;
+			if (nclr != NULL && idx < nclr->nColors) {
+				//color from palette
+				col = ColorConvertFromDS(nclr->colors[idx]);
+			}
+			if (rawIdx) col |= 0xFF000000;
+			if (data->transparent) {
+				//alpha blend
+				col = TedAlphaBlendColor(col, x, y);
 			}
 
 			//process verify color indication

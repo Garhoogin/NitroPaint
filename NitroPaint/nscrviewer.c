@@ -185,6 +185,9 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 		ncgr = (NCGR *) EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
 	}
 
+	unsigned int chrMask = 0xF; // default: 4bpp
+	if (ncgr != NULL) chrMask = (1 << ncgr->nBits) - 1;
+
 	//get verify color params
 	int hlStart = data->hlStart;
 	int hlEnd = data->hlEnd;
@@ -196,16 +199,15 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 		chrHover += data->tileBase;
 	}
 
-	int tilesX = nscr->tilesX;
-	int tilesY = nscr->tilesY;
+	unsigned int tilesX = nscr->tilesX;
 
 
 	for (int y = 0; y < renderHeight; y++) {
 		for (int x = 0; x < renderWidth; x++) {
-			int srcX = (x + scrollX) / data->scale;
-			int srcY = (y + scrollY) / data->scale;
-			int srcTileX = srcX / 8;
-			int srcTileY = srcY / 8;
+			unsigned int srcX = (x + scrollX) / data->scale;
+			unsigned int srcY = (y + scrollY) / data->scale;
+			unsigned int srcTileX = srcX / 8;
+			unsigned int srcTileY = srcY / 8;
 
 			//get BG tile properties
 			uint16_t scrdat = nscr->data[srcTileX + srcTileY * tilesX];
@@ -220,41 +222,36 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 				chr = ncgr->tiles[chrno];
 			}
 
-			//get source pixel in tile
-			int inX = srcX % 8;
-			int inY = srcY % 8;
-			if (flip & TILE_FLIPX) inX ^= 7;
-			if (flip & TILE_FLIPY) inY ^= 7;
-
 			//sample color
 			COLOR32 c = 0;
-			int cidx = -1;
-			if (chr != NULL) {
-				cidx = chr[inX + inY * 8] + (palno << ncgr->nBits);
-				if (nclr != NULL && cidx < nclr->nColors) {
-					//sample color from palette
-					c = ColorConvertFromDS(nclr->colors[cidx]);
-				} else {
-					//black
-					c = 0;
-				}
+			unsigned int cidx = 0;  // default: backdrop color
 
-				//color 0 within palette?
-				if ((cidx & ((1 << ncgr->nBits) - 1)) == 0) {
-					//alpha = 0
-				} else {
-					//alpha = 255
-					c |= 0xFF000000;
-				}
-			} else if (nclr != NULL && nclr->nColors > 0) {
-				c = ColorConvertFromDS(nclr->colors[0]);
+			if (chr != NULL) {
+				//get source pixel in tile
+				unsigned int inChr = (srcX % 8) + (srcY % 8) * 8;
+				if (flip & TILE_FLIPX) inChr ^= 007;
+				if (flip & TILE_FLIPY) inChr ^= 070;
+
+				//sample the source pixel
+				cidx = chr[inChr];
+				if (cidx) cidx += palno << ncgr->nBits;  // add palette base only if non-backdrop
+			}
+
+			if (nclr != NULL && cidx < (unsigned int) nclr->nColors) {
+				//sample color from palette
+				c = ColorConvertFromDS(nclr->colors[cidx]);
+			}
+
+			//color 0 within palette?
+			if (cidx & chrMask) {
+				//alpha = 255
+				c |= 0xFF000000;
 			}
 
 			//handle alpha
-			if (data->transparent && (c >> 24) == 0) {
+			if (data->transparent) {
 				//render transparent
-				COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
-				c = checker[((x ^ y) >> 2) & 1];
+				c = TedAlphaBlendColor(c, x, y);
 			}
 
 			//handle verify color
@@ -268,8 +265,8 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 
 			//handle hover indication in character editor
 			if (chrHover != -1 && chrHover == chrno) {
-				unsigned int r = (c >> 0) & 0xFF;
-				unsigned int g = (c >> 8) & 0xFF;
+				unsigned int r = (c >>  0) & 0xFF;
+				unsigned int g = (c >>  8) & 0xFF;
 				unsigned int b = (c >> 16) & 0xFF;
 
 				r = (r + 0x00 + 1) / 2;
