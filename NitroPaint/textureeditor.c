@@ -291,27 +291,6 @@ static void TexViewerOnMouseMove(HWND hWnd, int pxX, int pxY) {
 	}
 }
 
-static COLOR32 TexViewerAlphaBlendColor(COLOR32 c, unsigned int x, unsigned int y) {
-	static const COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
-
-	unsigned int a = (c >> 24);
-	if (a < 255) {
-		COLOR32 bg = checker[((x ^ y) >> 2) & 1];
-		if (a == 0) {
-			//show background
-			c = bg;
-		} else {
-			//blend
-			unsigned int r = (((c >>  0) & 0xFF) * a + ((bg >>  0) & 0xFF) * (255 - a) + 127) / 255;
-			unsigned int g = (((c >>  8) & 0xFF) * a + ((bg >>  8) & 0xFF) * (255 - a) + 127) / 255;
-			unsigned int b = (((c >> 16) & 0xFF) * a + ((bg >> 16) & 0xFF) * (255 - a) + 127) / 255;
-			c = r | (g << 8) | (b << 16);
-		}
-	}
-
-	return c;
-}
-
 static void TexViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight) {
 	//texture image rendered 
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
@@ -324,7 +303,7 @@ static void TexViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 			COLOR32 c = px[(x + scrollX) / data->scale + ((y + scrollY) / data->scale) * width];
 
 			//alpha blend
-			c = TexViewerAlphaBlendColor(c, x, y);
+			c = TedAlphaBlendColor(c, x, y);
 			fb->px[x + y * fb->width] = REVERSE(c);
 		}
 	}
@@ -742,8 +721,8 @@ static void DrawColorEntryAlpha(HDC hDC, HPEN hOutline, COLOR color, int alpha, 
 		DeleteObject(hBg);
 	} else {
 		COLOR32 c = ColorConvertFromDS(color) | (alpha << 24);
-		COLOR32 w = TexViewerAlphaBlendColor(c, 0, 0);
-		COLOR32 g = TexViewerAlphaBlendColor(c, 0, 4);
+		COLOR32 w = TedAlphaBlendColor(c, 0, 0);
+		COLOR32 g = TedAlphaBlendColor(c, 0, 4);
 
 		HBRUSH hbrWhite = CreateSolidBrush((COLORREF) w);
 		HBRUSH hbrGray = CreateSolidBrush((COLORREF) g);
@@ -801,7 +780,7 @@ static void PaintTextureTileEditor(HDC hDC, TEXTURE *texture, unsigned int tileX
 			unsigned int sampleY = y / scale;
 			COLOR32 c = rendered[sampleX + sampleY * 4];
 
-			preview[x + y * 4 * scale] = TexViewerAlphaBlendColor(c, x, y);
+			preview[x + y * 4 * scale] = TedAlphaBlendColor(c, x, y);
 		}
 	}
 

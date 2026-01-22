@@ -140,3 +140,6 @@ void TedViewerOnKeyDown(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM l
 
 void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer, int tileWidth, int tileHeight);
 void TedDestroy(TedData *ted);
+
+
+COLOR32 TedAlphaBlendColor(COLOR32 c, unsigned int x, unsigned int y);

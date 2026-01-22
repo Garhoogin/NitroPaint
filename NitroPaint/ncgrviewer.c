@@ -1873,8 +1873,7 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 				}
 			} else {
 				//render transparent
-				COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
-				col = checker[((x ^ y) >> 2) & 1];
+				col = TedAlphaBlendColor(0, x, y);
 			}
 
 			//process verify color indication

@@ -1234,3 +1234,27 @@ void TedDestroy(TedData *ted) {
 	FbDestroy(&ted->fb);
 	FbDestroy(&ted->fbMargin);
 }
+
+
+
+
+COLOR32 TedAlphaBlendColor(COLOR32 c, unsigned int x, unsigned int y) {
+	static const COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
+
+	unsigned int a = (c >> 24);
+	if (a < 255) {
+		COLOR32 bg = checker[((x ^ y) >> 2) & 1];
+		if (a == 0) {
+			//show background
+			c = bg;
+		} else {
+			//blend
+			unsigned int r = (((c >> 0) & 0xFF) * a + ((bg >> 0) & 0xFF) * (255 - a) + 127) / 255;
+			unsigned int g = (((c >> 8) & 0xFF) * a + ((bg >> 8) & 0xFF) * (255 - a) + 127) / 255;
+			unsigned int b = (((c >> 16) & 0xFF) * a + ((bg >> 16) & 0xFF) * (255 - a) + 127) / 255;
+			c = r | (g << 8) | (b << 16);
+		}
+	}
+
+	return c;
+}
