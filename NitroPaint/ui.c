@@ -207,6 +207,38 @@ int CheckedListViewIsChecked(HWND hWnd, int item) {
 }
 
 
+
+HWND UiStatusbarCreate(HWND hWndParent, int nPart, const int *widths) {
+	HWND h = CreateWindow(STATUSCLASSNAME, L"", WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWndParent, NULL, NULL, NULL);
+
+	//construct parts
+	if (nPart) {
+		int x = 0;
+		int *parts = (int *) calloc(nPart, sizeof(int));
+
+		float dpiScale = GetDpiScale();
+
+		for (int i = 0; i < nPart; i++) {
+			//convert to right-edge
+			int width = widths[i];
+			if (width != -1) parts[i] = UI_SCALE_COORD(width + x, dpiScale);
+			else parts[i] = -1;
+			x += width;
+		}
+
+		SendMessage(h, SB_SETPARTS, nPart, (LPARAM) parts);
+		free(parts);
+	}
+
+	return h;
+}
+
+void UiStatusbarSetText(HWND hWndSB, int iPart, const wchar_t *text) {
+	SendMessage(hWndSB, SB_SETTEXT, iPart, (LPARAM) text);
+}
+
+
+
 // ----- dialog routines
 
 wchar_t *UiDlgBrowseForFolder(HWND hWndParent, const wchar_t *title) {

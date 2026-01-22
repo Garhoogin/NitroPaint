@@ -21,16 +21,12 @@ typedef struct {
 	int width;
 	int height;
 
-	HWND hWndFormatLabel;
-	HWND hWndPaletteLabel;
 	HWND hWndEditPalette;
 	HWND hWndConvert;
 	HWND hWndTileEditor;
 	HWND hWndConvertDialog;
-	HWND hWndUniqueColors;
-	HWND hWndTexelVram;
-	HWND hWndPaletteVram;
 	HWND hWndExportNTF;
+	HWND hWndStatus;
 
 	HWND hWndFormat;
 	HWND hWndPaletteName;

@@ -601,6 +601,9 @@ void TedUpdateCursor(EDITOR_DATA *data, TedData *ted) {
 			ted->tileHoverCallback(ted->hWnd, ted->hoverX, ted->hoverY);
 		}
 	}
+	if (ted->mouseMoveCallback != NULL) {
+		ted->mouseMoveCallback(ted->hWnd, pxX, pxY);
+	}
 
 	//repaint viewer and update margin rendering
 	InvalidateRect(ted->hWndViewer, NULL, FALSE);

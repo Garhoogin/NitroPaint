@@ -41,6 +41,7 @@ typedef void    (*TedRenderCallback)            (HWND hWnd, FrameBuffer *fb, int
 typedef int     (*TedSuppressHighlightCallback) (HWND hWnd);
 typedef int     (*TedIsSelectionModeCallback)   (HWND hWnd);
 typedef void    (*TedUpdateCursorCallback)      (HWND hWnd, int pxX, int pxY);
+typedef void    (*TedMouseMoveCallback)         (HWND hWnd, int pxX, int pxY);
 typedef HMENU   (*TedGetPopupMenuCallback)      (HWND hWnd);
 
 typedef struct TedData_ {
@@ -55,6 +56,7 @@ typedef struct TedData_ {
 	TedIsSelectionModeCallback isSelectionModeCallback;     // callback to determine selection mode
 	TedUpdateCursorCallback updateCursorCallback;           // callback to update cursor
 	TedGetPopupMenuCallback getPopupMenuCallback;           // callback to get popup menu
+	TedMouseMoveCallback mouseMoveCallback;                 // callback to update mouse coordinate
 
 	int allowSelection; // allow selection?
 

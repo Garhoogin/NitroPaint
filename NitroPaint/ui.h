@@ -191,6 +191,11 @@ int CheckedListViewIsChecked(HWND hWnd, int item);
 
 
 
+HWND UiStatusbarCreate(HWND hWndParent, int nPart, const int *widths);
+void UiStatusbarSetText(HWND hWndSB, int iPart, const wchar_t *text);
+
+
+
 typedef void (*UiMgrCommandProc) (HWND hWnd, HWND hWndCtl, int notif, void *param);
 
 typedef struct UiCtlManager_ {

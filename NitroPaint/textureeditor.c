@@ -15,6 +15,16 @@
 #include <commctrl.h>
 #include <math.h>
 
+
+#define TEXVIEWER_SB_FORMAT    0
+#define TEXVIEWER_SB_COLORS    1
+#define TEXVIEWER_SB_PLTCOLS   2
+#define TEXVIEWER_SB_TEX_VRAM  3
+#define TEXVIEWER_SB_PLT_VRAM  4
+#define TEXVIEWER_SB_CURPOS    5
+#define TEXVIEWER_SB_COLOR     6
+
+
 extern HICON g_appIcon;
 
 HWND CreateTexturePaletteEditor(int x, int y, int width, int height, HWND hWndParent, TEXTUREEDITORDATA *data);
@@ -143,33 +153,32 @@ static void TexViewerUpdatePaletteLabel(HWND hWnd) {
 	if (data->texture == NULL) return;
 
 	WCHAR bf[32];
-	int len;
 	if (data->texture->texture.palette.nColors) {
-		len = wsprintfW(bf, L"Palette: %d colors", data->texture->texture.palette.nColors);
+		wsprintfW(bf, L"Palette: %d colors", data->texture->texture.palette.nColors);
 		data->hasPalette = TRUE;
 	} else {
-		len = wsprintfW(bf, L"No palette");
+		wsprintfW(bf, L"No palette");
 		data->hasPalette = FALSE;
 	}
-	SendMessage(data->hWndPaletteLabel, WM_SETTEXT, len, (LPARAM) bf);
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_PLTCOLS, bf);
 
-	len = wsprintfW(bf, L"Format: %S", TxNameFromTexFormat(FORMAT(data->texture->texture.texels.texImageParam)));
-	SendMessage(data->hWndFormatLabel, WM_SETTEXT, len, (LPARAM) bf);
+	wsprintfW(bf, L"Format: %S", TxNameFromTexFormat(FORMAT(data->texture->texture.texels.texImageParam)));
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_FORMAT, bf);
 
 	int nColors = ImgCountColors(data->px, data->width * data->height);
-	len = wsprintfW(bf, L"Colors: %d", nColors);
-	SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) bf);
+	wsprintfW(bf, L"%d colors", nColors);
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLORS, bf);
 
 	int texelVram = TxGetTextureVramSize(&data->texture->texture.texels);
 	int paletteVram = TxGetTexPlttVramSize(&data->texture->texture.palette);
 	
 	//this code is ugly due to being unable to just use %.2f
-	len = wsprintfW(bf, L"Texel: %d.%d%dKB", texelVram / 1024, (texelVram * 10 / 1024) % 10,
+	wsprintfW(bf, L"Texel: %d.%d%dKB", texelVram / 1024, (texelVram * 10 / 1024) % 10,
 		((texelVram * 100 + 512) / 1024) % 10);
-	SendMessage(data->hWndTexelVram, WM_SETTEXT, len, (LPARAM) bf);
-	len = wsprintfW(bf, L"Palette: %d.%d%dKB", paletteVram / 1024, (paletteVram * 10 / 1024) % 10,
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_TEX_VRAM, bf);
+	wsprintfW(bf, L"Palette: %d.%d%dKB", paletteVram / 1024, (paletteVram * 10 / 1024) % 10,
 		((paletteVram * 100 + 512) / 1024) % 10);
-	SendMessage(data->hWndPaletteVram, WM_SETTEXT, len, (LPARAM) bf);
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_PLT_VRAM, bf);
 }
 
 static DWORD CALLBACK textureStartConvertThreadEntry(LPVOID lpParam) {
@@ -203,7 +212,83 @@ static HCURSOR TexViewerGetCursorProc(HWND hWnd, int hit) {
 }
 
 static void TexViewerTileHoverCallback(HWND hWnd, int tileX, int tileY) {
+	
+}
 
+static void TexViewerOnMouseMove(HWND hWnd, int pxX, int pxY) {
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
+
+	int scrollX, scrollY;
+	TedGetScroll(&data->ted, &scrollX, &scrollY);
+
+	if (data->ted.mouseX >= 0 && data->ted.mouseY >= 0 && pxX < data->width && pxY < data->height) {
+		//position
+		wchar_t buf[32];
+		wsprintfW(buf, L"(%d, %d)", pxX, pxY);
+		UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_CURPOS, buf);
+
+		//color
+		if (!data->isNitro) {
+			UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, L"");
+		} else {
+			uint32_t texImageParam = data->texture->texture.texels.texImageParam;
+			int fmt = FORMAT(texImageParam);
+			void *texel = data->texture->texture.texels.texel;
+			uint16_t *pidx = data->texture->texture.texels.cmp;
+			unsigned int texW = TEXW(texImageParam);
+
+			static const unsigned char bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+			unsigned int depth = bits[fmt];
+			unsigned int iPx = pxX + pxY * texW;
+
+			switch (fmt) {
+				case CT_DIRECT:
+				{
+					COLOR c = ((COLOR *) texel)[iPx];
+					wsprintfW(buf, L"Color: %04X", c);
+					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
+					break;
+				}
+				case CT_4COLOR:
+				case CT_16COLOR:
+				case CT_256COLOR:
+				{
+					unsigned int pxPerByte = 8 / depth;
+					unsigned char pval = (((unsigned char *) texel)[iPx / pxPerByte] >> ((iPx % pxPerByte) * depth)) & ((1 << depth) - 1);
+
+					wsprintfW(buf, L"Color: %02X", pval);
+					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
+					break;
+				}
+				case CT_A3I5:
+				case CT_A5I3:
+				{
+					unsigned int iBits = (fmt == CT_A3I5) ? 5 : 3;
+					unsigned int iMask = (1 << iBits) - 1;
+					unsigned char pval = ((unsigned char *) texel)[iPx];
+
+					wsprintfW(buf, L"Color: %02X A=%d", pval & iMask, pval >> iBits);
+					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
+					break;
+				}
+				case CT_4x4:
+				{
+					unsigned int iBlock = (pxX / 4) + (pxY / 4) * (texW / 4);
+					uint32_t block = ((uint32_t *) texel)[iBlock];
+					uint16_t idx = pidx[iBlock];
+
+					unsigned int pval = (block >> ((pxX & 3) + 4 * (pxY * 3))) & 0x3;
+
+					wsprintfW(buf, L"Color: %d (%04X)", pval, idx);
+					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
+					break;
+				}
+			}
+		}
+	} else {
+		UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_CURPOS, L"");
+		UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, L"");
+	}
 }
 
 static COLOR32 TexViewerAlphaBlendColor(COLOR32 c, unsigned int x, unsigned int y) {
@@ -256,7 +341,7 @@ static int TexViewerIsSelectionModeCallback(HWND hWnd) {
 }
 
 static void TexViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
-
+	
 }
 
 static HMENU TexViewerGetPopupMenu(HWND hWnd) {
@@ -279,16 +364,21 @@ static void TexViewerOnCreate(HWND hWnd) {
 	data->ted.isSelectionModeCallback = TexViewerIsSelectionModeCallback;
 	data->ted.updateCursorCallback = TexViewerUpdateCursorCallback;
 	data->ted.getPopupMenuCallback = TexViewerGetPopupMenu;
+	data->ted.mouseMoveCallback = TexViewerOnMouseMove;
 
-	data->hWndFormatLabel = CreateStatic(hWnd, L"Format: none", 310, 10, 100, 22);
+	static const int parts[] = { 100, 100, 120, 100, 100, 100, -1 };
+	data->hWndStatus = UiStatusbarCreate(hWnd, 7, parts);
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_FORMAT, L"Format: none");
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLORS, L"0 colors");
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_PLTCOLS, L"No palette");
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_TEX_VRAM, L"Texel: 0.00KB");
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_PLT_VRAM, L"Palette: 0.00KB");
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_CURPOS, L"");
+	UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, L"");
+
 	data->hWndConvert = CreateButton(hWnd, L"Convert To...", 310, 37, 100, 22, FALSE);
-	data->hWndPaletteLabel = CreateStatic(hWnd, L"No palette", 310, 69, 100, 22);
 	data->hWndEditPalette = CreateButton(hWnd, L"Edit Palette", 310, 123, 100, 22, FALSE);
 	data->hWndExportNTF = CreateButton(hWnd, L"Export NTF", 310, 150, 100, 22, FALSE);
-	data->hWndUniqueColors = CreateStatic(hWnd, L"Colors: 0", 310, 155, 100, 22);
-
-	data->hWndTexelVram = CreateStatic(hWnd, L"Texel: 0KB", 310, 182, 100, 22);
-	data->hWndPaletteVram = CreateStatic(hWnd, L"Palette: 0KB", 310, 209, 110, 22);
 }
 
 static void TexViewerOnPaint(TEXTUREEDITORDATA *data) {
@@ -301,15 +391,11 @@ static LRESULT TexViewerOnSize(TEXTUREEDITORDATA *data, WPARAM wParam, LPARAM lP
 	GetClientRect(data->hWnd, &rcClient);
 
 	MoveWindow(data->ted.hWndViewer, MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE,
-		rcClient.right - 120 - MARGIN_TOTAL_SIZE, rcClient.bottom - MARGIN_TOTAL_SIZE, FALSE);
-	MoveWindow(data->hWndFormatLabel, rcClient.right - 110, 10, 100, 22, TRUE);
-	MoveWindow(data->hWndConvert, rcClient.right - 110, 37, 100, 22, TRUE);
-	MoveWindow(data->hWndPaletteLabel, rcClient.right - 110, 69, 100, 22, TRUE);
-	MoveWindow(data->hWndEditPalette, rcClient.right - 110, 96, 100, 22, TRUE);
-	MoveWindow(data->hWndExportNTF, rcClient.right - 110, 123, 100, 22, TRUE);
-	MoveWindow(data->hWndUniqueColors, rcClient.right - 110, 155, 100, 22, TRUE);
-	MoveWindow(data->hWndTexelVram, rcClient.right - 110, 182, 100, 22, TRUE);
-	MoveWindow(data->hWndPaletteVram, rcClient.right - 110, 209, 110, 22, TRUE);
+		rcClient.right - 120 - MARGIN_TOTAL_SIZE, rcClient.bottom - MARGIN_TOTAL_SIZE - 23, FALSE);
+	MoveWindow(data->hWndStatus, 0, rcClient.bottom - 23, rcClient.right, 23, TRUE);
+	MoveWindow(data->hWndConvert, rcClient.right - 110, 10, 100, 22, TRUE);
+	MoveWindow(data->hWndEditPalette, rcClient.right - 110, 37, 100, 22, TRUE);
+	MoveWindow(data->hWndExportNTF, rcClient.right - 110, 64, 100, 22, TRUE);
 
 	if (wParam == SIZE_RESTORED) InvalidateRect(data->hWnd, NULL, TRUE); //full update
 	return DefMDIChildProc(data->hWnd, WM_SIZE, wParam, lParam);
@@ -564,8 +650,8 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 			WCHAR buffer[16];
 			int nColors = ImgCountColors(data->px, data->width * data->height);
-			int len = wsprintfW(buffer, L"Colors: %d", nColors);
-			SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) buffer);
+			int len = wsprintfW(buffer, L"%d colors", nColors);
+			UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLORS, buffer);
 
 			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
 			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
@@ -592,8 +678,8 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			//update UI
 			WCHAR buffer[16];
 			int nColors = ImgCountColors(data->px, data->width * data->height);
-			int len = wsprintfW(buffer, L"Colors: %d", nColors);
-			SendMessage(data->hWndUniqueColors, WM_SETTEXT, len, (LPARAM) buffer);
+			wsprintfW(buffer, L"%d Colors", nColors);
+			UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLORS, buffer);
 
 			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
 			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
