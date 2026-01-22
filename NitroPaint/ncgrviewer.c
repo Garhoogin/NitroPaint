@@ -1576,6 +1576,12 @@ static void ChrViewerOnMenuCommand(NCGRVIEWERDATA *data, int idMenu) {
 		case ID_EDITMODE_STAMP:
 			ChrViewerSetMode(data, CHRVIEWER_MODE_STAMP);
 			break;
+		case ID_NCGRMENU_FLIPHORIZONTALLY:
+			ChrViewerFlipSelection(data, TRUE, FALSE);
+			break;
+		case ID_NCGRMENU_FLIPVERTICALLY:
+			ChrViewerFlipSelection(data, FALSE, TRUE);
+			break;
 	}
 }
 
