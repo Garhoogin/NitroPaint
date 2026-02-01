@@ -9,6 +9,51 @@ static void SwapInts(int *i1, int *i2) {
 
 // ----- margin functions
 
+static void TedGetClientOffset(HWND hWndParent, HWND hWndViewer, int *pOfsX, int *pOfsY) {
+	POINT pt = { 0, 0 };
+	ClientToScreen(hWndViewer, &pt);
+	ScreenToClient(hWndParent, &pt);
+
+	*pOfsX = pt.x - MARGIN_TOTAL_SIZE;
+	*pOfsY = pt.y - MARGIN_TOTAL_SIZE;
+}
+
+static void TedGetMarginRects(HWND hWndParent, HWND hWndViewer, RECT *pRcLeft, RECT *pRcTop) {
+	//get client rect
+	RECT rcClient;
+	GetClientRect(hWndParent, &rcClient);
+
+	int ofsX = 0, ofsY = 0;
+
+	if (hWndViewer != NULL) {
+		//clip bounds of margins to the viewer's edges
+		RECT rcView;
+		GetWindowRect(hWndViewer, &rcView);
+
+		TedGetClientOffset(hWndParent, hWndViewer, &ofsX, &ofsY);
+
+		int viewWndR = rcView.right - rcView.left + MARGIN_TOTAL_SIZE + ofsX;
+		int viewWndB = rcView.bottom - rcView.top + MARGIN_TOTAL_SIZE + ofsY;
+		if (viewWndR < rcClient.right) rcClient.right = viewWndR;
+		if (viewWndB < rcClient.bottom) rcClient.bottom = viewWndB;
+	}
+
+	//get dimensions of margins
+	pRcLeft->left = ofsX;
+	pRcLeft->top = ofsY;
+	pRcLeft->right = ofsX + MARGIN_TOTAL_SIZE;
+	pRcLeft->bottom = rcClient.bottom;
+	pRcTop->left = ofsX;
+	pRcTop->top = ofsY;
+	pRcTop->right = rcClient.right;
+	pRcTop->bottom = ofsY + MARGIN_TOTAL_SIZE;
+}
+
+static void TedGetMousePosition(HWND hWndViewer, POINT *pt) {
+	GetCursorPos(pt);
+	ScreenToClient(hWndViewer, pt);
+}
+
 void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 	//margin dimensions
 	int marginSize = MARGIN_SIZE;
@@ -19,11 +64,14 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 	RECT rcClient;
 	GetClientRect(hWnd, &rcClient);
 
+	int ofsX, ofsY;
+	TedGetClientOffset(hWnd, ted->hWndViewer, &ofsX, &ofsY);
+
 	PAINTSTRUCT ps;
 	HDC hDC = BeginPaint(hWnd, &ps);
 
 	//exclude clip rect
-	ExcludeClipRect(hDC, MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, rcClient.right, rcClient.bottom);
+	//ExcludeClipRect(hDC, MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, rcClient.right, rcClient.bottom);
 
 	//get render size
 	int renderWidth = rcClient.right;
@@ -72,7 +120,7 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 					BOOL inSel = (curCol >= min(ted->selStartX, ted->selEndX)) && (curCol <= max(ted->selStartX, ted->selEndX));
 
 					if (inSel) col = 0x808000; //indicate selection
-					if (curCol == hovCol) {
+					if (curCol == hovCol && hit != HIT_NOWHERE) {
 						if (!inSel) col = 0x800000; //indicate hovered
 						else col = 0xC04000;
 					}
@@ -101,7 +149,7 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 					BOOL inSel = (curRow >= min(ted->selStartY, ted->selEndY)) && (curRow <= max(ted->selStartY, ted->selEndY));
 
 					if (inSel) col = 0x808000; //indicate selection
-					if (curRow == hovRow) {
+					if (curRow == hovRow && hit != HIT_NOWHERE) {
 						if (!inSel) col = 0x800000; //indicate hovered
 						else col = 0xC04000;
 					}
@@ -146,7 +194,7 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 		}
 
 		//draw mouse pos?
-		if (mouse.x != -1 && mouse.y != -1) {
+		if (mouse.x != -1 && mouse.y != -1 && hit != HIT_NOWHERE) {
 			FbDrawLine(&ted->fbMargin, 0xFF0000, mouse.x + MARGIN_TOTAL_SIZE, 0, mouse.x + MARGIN_TOTAL_SIZE, marginSize - 1);
 			FbDrawLine(&ted->fbMargin, 0xFF0000, 0, mouse.y + MARGIN_TOTAL_SIZE, marginSize - 1, mouse.y + MARGIN_TOTAL_SIZE);
 		}
@@ -167,24 +215,17 @@ void TedMarginPaint(HWND hWnd, EDITOR_DATA *data, TedData *ted) {
 	}
 
 	//blit
-	FbDraw(&ted->fbMargin, hDC, 0, 0, renderWidth, MARGIN_TOTAL_SIZE, 0, 0);
-	FbDraw(&ted->fbMargin, hDC, 0, MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, renderHeight - MARGIN_TOTAL_SIZE, 0, MARGIN_TOTAL_SIZE);
+	FbDraw(&ted->fbMargin, hDC, ofsX, ofsY, renderWidth, MARGIN_TOTAL_SIZE, 0, 0);
+	FbDraw(&ted->fbMargin, hDC, ofsX, ofsY + MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, renderHeight - MARGIN_TOTAL_SIZE, 0, MARGIN_TOTAL_SIZE);
 	EndPaint(hWnd, &ps);
 }
 
 void TedUpdateMargins(TedData *data) {
 	HWND hWnd = data->hWnd;
 
-	//get client rect
-	RECT rcClient;
-	GetClientRect(hWnd, &rcClient);
-
 	//trigger update only for margin painting
-	RECT rcLeft = { 0 }, rcTop = { 0 };
-	rcLeft.right = MARGIN_TOTAL_SIZE;
-	rcLeft.bottom = rcClient.bottom;
-	rcTop.right = rcClient.right;
-	rcTop.bottom = MARGIN_TOTAL_SIZE;
+	RECT rcLeft, rcTop;
+	TedGetMarginRects(hWnd, data->hWndViewer, &rcLeft, &rcTop);
 	InvalidateRect(hWnd, &rcLeft, FALSE);
 	InvalidateRect(hWnd, &rcTop, FALSE);
 }
@@ -426,6 +467,7 @@ int TedHitTest(EDITOR_DATA *data, TedData *ted, int x, int y) {
 	//check margins
 	if (x < 0 || y < 0) {
 		if (x == -1 && y == -1) return HIT_NOWHERE;
+		if (x < -MARGIN_TOTAL_SIZE || y < -MARGIN_TOTAL_SIZE) return HIT_NOWHERE;
 
 		//if both less than zero, hit corner
 		if (x < 0 && y < 0) return HIT_MARGIN | HIT_MARGIN_LEFT | HIT_MARGIN_TOP;
@@ -767,8 +809,7 @@ BOOL TedSetCursor(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM lParam)
 
 	//get mouse coordinates current: prevent outdated mouse coordinates from message order
 	POINT mouse;
-	GetCursorPos(&mouse);
-	ScreenToClient(ted->hWndViewer, &mouse);
+	TedGetMousePosition(ted->hWndViewer, &mouse);
 
 	//test hit
 	int hit = TedHitTest(data, ted, mouse.x, mouse.y);
@@ -831,12 +872,15 @@ void TedMainOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam
 			ted->tileHoverCallback(ted->hWnd, -1, -1);
 		}
 	} else {
+		int ofsX, ofsY;
+		TedGetClientOffset(ted->hWnd, ted->hWndViewer, &ofsX, &ofsY);
+
 		ted->hWndLastMouse = ted->hWnd;
 		ted->mouseOver = TRUE;
 		ted->lastMouseX = ted->mouseX;
 		ted->lastMouseY = ted->mouseY;
-		ted->mouseX = ((short) LOWORD(lParam)) - MARGIN_TOTAL_SIZE;
-		ted->mouseY = ((short) HIWORD(lParam)) - MARGIN_TOTAL_SIZE;
+		ted->mouseX = ((short) LOWORD(lParam)) - MARGIN_TOTAL_SIZE - ofsX;
+		ted->mouseY = ((short) HIWORD(lParam)) - MARGIN_TOTAL_SIZE - ofsY;
 		ted->hoverIndex = -1;
 
 		//get client rect
@@ -913,31 +957,14 @@ void TedMainOnMouseMove(EDITOR_DATA *data, TedData *ted, UINT msg, WPARAM wParam
 int TedMainOnEraseBkgnd(EDITOR_DATA *data, TedData *ted, WPARAM wParam, LPARAM lParam) {
 	HDC hDC = (HDC) wParam;
 
-	//do not erase margins
-	RECT rcClient;
-	GetClientRect(ted->hWnd, &rcClient);
-
-	//clamp size of render area to the size of graphics view
-	if (ted->hWndViewer != NULL) {
-		RECT rcView;
-		GetWindowRect(ted->hWndViewer, &rcView);
-
-		int viewWndWidth = rcView.right - rcView.left + MARGIN_TOTAL_SIZE;
-		int viewWndHeight = rcView.bottom - rcView.top + MARGIN_TOTAL_SIZE;
-		if (viewWndWidth < rcClient.right) rcClient.right = viewWndWidth;
-		if (viewWndHeight < rcClient.bottom) rcClient.bottom = viewWndHeight;
-	}
+	RECT rcLeft, rcTop;
+	TedGetMarginRects(ted->hWnd, ted->hWndViewer, &rcLeft, &rcTop);
 
 	//exclude the margins from the background erase
-	ExcludeClipRect(hDC, 0, 0, rcClient.right, MARGIN_TOTAL_SIZE);
-	ExcludeClipRect(hDC, 0, 0, MARGIN_TOTAL_SIZE, rcClient.bottom);
+	ExcludeClipRect(hDC, rcLeft.left, rcLeft.top, rcLeft.right, rcLeft.bottom);
+	ExcludeClipRect(hDC, rcTop.left, rcTop.top, rcTop.right, rcTop.bottom);
 
 	//invalidate margins
-	RECT rcLeft = { 0 }, rcTop = { 0 };
-	rcTop.right = rcClient.right;
-	rcTop.bottom = MARGIN_TOTAL_SIZE;
-	rcLeft.bottom = rcClient.bottom;
-	rcLeft.right = MARGIN_TOTAL_SIZE;
 
 	//erase all but clipped
 	DefWindowProc(ted->hWnd, WM_ERASEBKGND, wParam, lParam);
@@ -1249,8 +1276,8 @@ COLOR32 TedAlphaBlendColor(COLOR32 c, unsigned int x, unsigned int y) {
 			c = bg;
 		} else {
 			//blend
-			unsigned int r = (((c >> 0) & 0xFF) * a + ((bg >> 0) & 0xFF) * (255 - a) + 127) / 255;
-			unsigned int g = (((c >> 8) & 0xFF) * a + ((bg >> 8) & 0xFF) * (255 - a) + 127) / 255;
+			unsigned int r = (((c >>  0) & 0xFF) * a + ((bg >>  0) & 0xFF) * (255 - a) + 127) / 255;
+			unsigned int g = (((c >>  8) & 0xFF) * a + ((bg >>  8) & 0xFF) * (255 - a) + 127) / 255;
 			unsigned int b = (((c >> 16) & 0xFF) * a + ((bg >> 16) & 0xFF) * (255 - a) + 127) / 255;
 			c = r | (g << 8) | (b << 16);
 		}
