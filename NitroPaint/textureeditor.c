@@ -469,7 +469,7 @@ static int TexViewerCheckConverted(TEXTUREEDITORDATA *data) {
 static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int notification) {
 	HWND hWnd = data->hWnd;
 	if (hWndControl == data->hWndConvert) {
-		data->hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
+		data->hWndConvertDialog = CreateWindowEx(WS_EX_CONTEXTHELP, L"ConvertDialogClass", L"Convert Texture",
 			WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
 			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->editorMgr->hWnd, NULL, NULL, NULL);
 		SetWindowLongPtr(data->hWndConvertDialog, 0, (LONG_PTR) data);
@@ -1331,6 +1331,19 @@ static void updateConvertDialog(TEXTUREEDITORDATA *data) {
 	SetFocus(data->hWndConvertDialog);
 }
 
+static void TexViewerShowTooltip(HWND hWndParent, HWND hWndCtl, const wchar_t *pstr) {
+	HWND hTool = CreateWindow(TOOLTIPS_CLASS, NULL, WS_VISIBLE | WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON,
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, NULL, NULL);
+
+	TOOLINFO toolInfo = { 0 };
+	toolInfo.cbSize = sizeof(toolInfo);
+	toolInfo.hwnd = hWndParent;
+	toolInfo.lpszText = pstr;
+	toolInfo.uId = (UINT_PTR) hWndCtl;
+	toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+	SendMessage(hTool, TTM_ADDTOOL, 0, (LPARAM) &toolInfo);
+}
+
 static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 	switch (msg) {
@@ -1618,6 +1631,14 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}
 			}
+			break;
+		}
+		case WM_HELP:
+		{
+			HELPINFO *hi = (HELPINFO *) lParam;
+			if (hi->cbSize < sizeof(HELPINFO) || hi->iContextType != HELPINFO_WINDOW) break;
+
+			//to be implemented
 			break;
 		}
 		case WM_HSCROLL:
