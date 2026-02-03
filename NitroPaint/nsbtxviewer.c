@@ -341,7 +341,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 		DoModal(hWndConvertDialog);
 
 		//we can check the isNitro field of the texture editor to determine if the conversion succeeded.
-		if (teData->isNitro) {
+		if (TexViewerIsConverted(teData)) {
 			succeeded = 1;
 
 			//copy data

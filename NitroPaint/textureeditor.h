@@ -14,14 +14,11 @@ typedef struct {
 	TedData ted;
 
 	WCHAR szInitialFile[MAX_PATH]; //source image file
-	BOOL hasPalette;
-	BOOL isNitro;
 
 	COLOR32 *px;
 	int width;
 	int height;
 
-	HWND hWndEditPalette;
 	HWND hWndConvert;
 	HWND hWndTileEditor;
 	HWND hWndConvertDialog;
@@ -56,6 +53,10 @@ typedef struct {
 	int selectedAlpha;
 	int tileMouseDown;
 
+	//palette editor
+	int highlightStart;
+	int highlightLength;
+
 	HWND hWndInterpolate;
 	HWND hWndTransparent;
 	HWND hWndPaletteBase;
@@ -65,6 +66,8 @@ WCHAR *TexNarrowResourceNameToWideChar(const char *name);
 char *TexNarrowResourceNameFromWideChar(const WCHAR *name);
 
 void RegisterTextureEditorClass(void);
+
+int TexViewerIsConverted(TEXTUREEDITORDATA *data);
 
 HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 
