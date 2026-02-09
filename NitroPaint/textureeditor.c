@@ -1194,65 +1194,6 @@ static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-static int TexViewerImageHasTranslucentPixels(COLOR32 *px, int nWidth, int nHeight) {
-	for (int i = 0; i < nWidth * nHeight; i++) {
-		int a = px[i] >> 24;
-		if (a >= 5 && a <= 250) return 1;
-	}
-	return 0;
-}
-
-static int TexViewerJudgeColor0Mode(COLOR32 *px, int width, int height) {
-	for (int i = 0; i < width * height; i++) {
-		if ((px[i] >> 24) < 0x80) return 1; // transparent
-	}
-	return 0;
-}
-
-static int TexViewerJudgeFormat(COLOR32 *px, int nWidth, int nHeight) {
-	//Guess a good format for the data. Default to 4x4.
-	int fmt = CT_4x4;
-	
-	//if the texture is 1024x1024, do not choose 4x4.
-	if (nWidth * nHeight == 1024 * 1024) fmt = CT_256COLOR;
-
-	//is there translucency?
-	if (TexViewerImageHasTranslucentPixels(px, nWidth, nHeight)) {
-		//then choose a3i5 or a5i3. Do this by using color count.
-		unsigned int colorCount = ImgCountColorsEx(px, nWidth, nHeight, 
-			IMG_CCM_IGNORE_ALPHA | IMG_CCM_NO_IGNORE_TRANSPARENT_COLOR | IMG_CCM_NO_COUNT_TRANSPARENT);
-		if (colorCount < 16) {
-			//colors < 16, choose a5i3.
-			fmt = CT_A5I3;
-		} else {
-			//otherwise, choose a3i5.
-			fmt = CT_A3I5;
-		}
-	} else {
-		//weigh the other format options for optimal size.
-		unsigned int nColors = ImgCountColorsEx(px, nWidth, nHeight, 0);
-		
-		//if <= 4 colors, choose 4-color.
-		if (nColors <= 4) {
-			fmt = CT_4COLOR;
-		} else {
-			//weigh 16-color, 256-color, and 4x4. 
-			if ((nWidth * nHeight) <= 1024 * 512) {
-				//unfrt 1024x512/512x1024: use 4x4
-				fmt = CT_4x4;
-			} else if (nColors < 32) {
-				//not more than 32 colors: use palette16
-				fmt = CT_16COLOR;
-			} else {
-				//otherwise, use palette256
-				fmt = CT_256COLOR;
-			}
-		}
-	}
-
-	return fmt;
-}
-
 static void createPaletteName(WCHAR *buffer, const WCHAR *file) {
 	//find the last \ or /
 	file = GetFileName(file);
@@ -1284,6 +1225,72 @@ float mylog2(float d) { //UGLY!
 #define log2 mylog2
 
 #endif //_MSC_VER
+
+
+static int TexViewerImageHasTranslucentPixels(const COLOR32 *px, unsigned int nWidth, unsigned int nHeight) {
+	for (unsigned int i = 0; i < nWidth * nHeight; i++) {
+		unsigned int a = px[i] >> 24;
+		if (a >= 5 && a <= 250) return 1;
+	}
+	return 0;
+}
+
+static int TexViewerJudgeColor0Mode(const COLOR32 *px, unsigned int width, unsigned int height) {
+	for (unsigned int i = 0; i < width * height; i++) {
+		if ((px[i] >> 24) < 0x80) return 1; // transparent
+	}
+	return 0;
+}
+
+static int TexViewerJudgeFormat(const COLOR32 *px, unsigned int nWidth, unsigned int nHeight, const wchar_t *path) {
+	//Guess a good format for the data. Default to 4x4.
+	int fmt = CT_4x4;
+
+	//if the file's name ends in _cmp2 or _cmp4, select 4x4 compression.
+	if (path != NULL) {
+		const wchar_t *name = GetFileName(path);
+		if (wcsstr(name, L"_cmp2") != NULL || wcsstr(name, L"_cmp4") != NULL) return CT_4x4;
+	}
+
+	//if the texture is 1024x1024, do not choose 4x4.
+	if (nWidth * nHeight == 1024 * 1024) fmt = CT_256COLOR;
+
+	//is there translucency?
+	if (TexViewerImageHasTranslucentPixels(px, nWidth, nHeight)) {
+		//then choose a3i5 or a5i3. Do this by using color count.
+		unsigned int colorCount = ImgCountColorsEx(px, nWidth, nHeight,
+			IMG_CCM_IGNORE_ALPHA | IMG_CCM_NO_IGNORE_TRANSPARENT_COLOR | IMG_CCM_NO_COUNT_TRANSPARENT);
+		if (colorCount < 16) {
+			//colors < 16, choose a5i3.
+			fmt = CT_A5I3;
+		} else {
+			//otherwise, choose a3i5.
+			fmt = CT_A3I5;
+		}
+	} else {
+		//weigh the other format options for optimal size.
+		unsigned int nColors = ImgCountColorsEx(px, nWidth, nHeight, 0);
+
+		//if <= 4 colors, choose 4-color.
+		if (nColors <= 4) {
+			fmt = CT_4COLOR;
+		} else {
+			//weigh 16-color, 256-color, and 4x4. 
+			if ((nWidth * nHeight) <= 1024 * 512) {
+				//unfrt 1024x512/512x1024: use 4x4
+				fmt = CT_4x4;
+			} else if (nColors < 32) {
+				//not more than 32 colors: use palette16
+				fmt = CT_16COLOR;
+			} else {
+				//otherwise, use palette256
+				fmt = CT_256COLOR;
+			}
+		}
+	}
+
+	return fmt;
+}
 
 static int TexViewerJudgeColorCount(int bWidth, int bHeight) {
 	int area = bWidth * bHeight;
@@ -1338,7 +1345,7 @@ static void TexViewerShowTooltip(HWND hWndParent, HWND hWndCtl, const wchar_t *p
 	TOOLINFO toolInfo = { 0 };
 	toolInfo.cbSize = sizeof(toolInfo);
 	toolInfo.hwnd = hWndParent;
-	toolInfo.lpszText = pstr;
+	toolInfo.lpszText = (LPWSTR) pstr;
 	toolInfo.uId = (UINT_PTR) hWndCtl;
 	toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
 	SendMessage(hTool, TTM_ADDTOOL, 0, (LPARAM) &toolInfo);
@@ -1406,7 +1413,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 				UiCbAddString(data->hWndFormat, bf);
 			}
 
-			int format = TexViewerJudgeFormat(data->px, data->width, data->height);
+			int format = TexViewerJudgeFormat(data->px, data->width, data->height, data->szInitialFile);
 			UiCbSetCurSel(data->hWndFormat, format - 1);
 
 			//based on the texture format and presence of transparent pixels, select default color 0 mode. This option
@@ -2288,7 +2295,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	COLOR *fixedPalette = NULL;
 
 	//4x4 settings
-	texEntry.params.fmt = TexViewerJudgeFormat(px, width, height);
+	texEntry.params.fmt = TexViewerJudgeFormat(px, width, height, NULL);
 	texEntry.params.colorEntries = TexViewerJudgeColorCount(width, height);
 	int threshold4x4 = 0;
 
