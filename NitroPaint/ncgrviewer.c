@@ -1107,13 +1107,17 @@ static void ChrViewerPopulateWidthField(NCGRVIEWERDATA *data) {
 }
 
 static void ChrViewerUpdateCharacterLabel(NCGRVIEWERDATA *data) {
-	WCHAR buffer[64];
-	if (!TedHasSelection(&data->ted)) {
-		wsprintf(buffer, L" Character %d", data->ted.hoverIndex);
-	} else {
+	wchar_t buffer[64] = L" ";
+	unsigned int pos = 1;
+
+	if (data->ted.hoverIndex != -1) {
+		pos = wsprintf(buffer + pos, L"Character %d  ", data->ted.hoverIndex);
+	}
+
+	if (TedHasSelection(&data->ted)) {
 		int selX, selY, selW, selH;
 		TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
-		wsprintf(buffer, L" Character %d  Selection: (%d, %d), (%d, %d)", data->ted.hoverIndex, selX, selY, selW, selH);
+		wsprintf(buffer + pos, L"Selection: (%d, %d), (%d, %d)", selX, selY, selW, selH);
 	}
 	SendMessage(data->hWndCharacterLabel, WM_SETTEXT, wcslen(buffer), (LPARAM) buffer);
 }
