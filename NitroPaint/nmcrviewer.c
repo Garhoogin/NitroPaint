@@ -91,6 +91,8 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 }
 
 void RegisterNmcrViewerClass(void) {
+	nmcrRegisterFormats();
+
 	EditorRegister(L"NmcrViewerClass", NmcrViewerWndProc, L"NMCR Viewer", sizeof(NMCRVIEWERDATA), 0);
 }
 

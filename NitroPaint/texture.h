@@ -79,8 +79,6 @@ int TxDimensionIsValid(int x);
 
 // ----- Functions operating on the texture as an object
 
-extern LPCWSTR textureFormatNames[];
-
 void TxInit(TextureObject *texture, int format);
 
 void TxFree(OBJECT_HEADER *texture);
@@ -94,6 +92,8 @@ int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size);
 int TxIsValidIStudio(const unsigned char *buffer, unsigned int size);
 
 int TxIsValidTds(const unsigned char *buffer, unsigned int size);
+
+void TxRegisterFormats(void);
 
 int TxIdentify(const unsigned char *buffer, unsigned int size);
 

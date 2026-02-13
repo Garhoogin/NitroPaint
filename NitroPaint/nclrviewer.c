@@ -2490,6 +2490,8 @@ static void PalViewerRegisterEditCompressedPaletteClass(void) {
 }
 
 void RegisterNclrViewerClass(void) {
+	PalRegisterFormats();
+
 	int features = 0;
 	EDITOR_CLASS *cls = EditorRegister(L"NclrViewerClass", PalViewerWndProc, L"Palette Editor", sizeof(NCLRVIEWERDATA), features);
 	EditorAddFilter(cls, NCLR_TYPE_NCLR, L"nclr", L"NCLR Files (*.nclr)\0*.nclr\0");

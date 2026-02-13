@@ -29,8 +29,6 @@
 #define NSCR_TYPE_BIN       8
 #define NSCR_TYPE_COMBO     9
 
-extern LPCWSTR screenFormatNames[];
-
 typedef struct NSCR_ {
 	OBJECT_HEADER header;
 	unsigned int tilesX;
@@ -62,6 +60,8 @@ int ScrIsValidIsc(const unsigned char *buffer, unsigned int size);
 int ScrIsValidTose(const unsigned char *buffer, unsigned int size);
 
 int ScrIsValidBin(const unsigned char *buffer, unsigned int size);
+
+void ScrRegisterFormats(void);
 
 //
 // Idenfities the format of this screen data.

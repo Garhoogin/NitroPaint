@@ -2,11 +2,6 @@
 #include <Windows.h>
 #include "filecommon.h"
 
-extern LPCWSTR bnllFormatNames[];
-extern LPCWSTR bnclFormatNames[];
-extern LPCWSTR bnblFormatNames[];
-
-
 #define BNLL_TYPE_INVALID    0
 #define BNLL_TYPE_BNLL       1
 
@@ -41,6 +36,8 @@ typedef struct JLytAlignment_ {
 	JLytOrigin x;
 	JLytOrigin y;
 } JLytAlignment;
+
+void JLytRegisterFormats(void);
 
 
 // ----- BNLL

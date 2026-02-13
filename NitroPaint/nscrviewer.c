@@ -1353,6 +1353,8 @@ static void ScrViewerRegisterPreviewClass(void) {
 }
 
 void RegisterNscrViewerClass(void) {
+	ScrRegisterFormats();
+
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
 	EDITOR_CLASS *cls = EditorRegister(L"NscrViewerClass", ScrViewerWndProc, L"Screen Editor", sizeof(NSCRVIEWERDATA), features);
 	EditorAddFilter(cls, NSCR_TYPE_NSCR, L"nscr", L"NSCR Files (*.nscr)\0*.nscr\0");

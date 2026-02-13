@@ -25,8 +25,6 @@
 #define NANR_SEQ_MODE_BACKWARD      3
 #define NANR_SEQ_MODE_BACKWARD_LOOP 4
 
-extern LPCWSTR cellAnimationFormatNames[];
-
 typedef struct ANIM_DATA_ {
 	unsigned short index;
 } ANIM_DATA;
@@ -75,11 +73,10 @@ typedef struct NANR_ {
 	int uextSize;
 } NANR;
 
+void AnmRegisterFormats(void);
+
+
 void AnmInit(NANR *nanr, int format);
-
-int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
-
-int AnmIsValidNanr(const unsigned char *lpFile, unsigned int size);
 
 int AnmRead(NANR *nanr, const unsigned char *lpFile, unsigned int size);
 

@@ -1242,6 +1242,8 @@ static LRESULT CALLBACK MesgEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 }
 
 void MesgEditorRegisterClass(void) {
+	MesgRegisterFormats();
+
 	int features = 0;
 	EditorRegister(L"MesgEditorClass", MesgEditorWndProc, L"Message Editor", sizeof(MesgEditorData), features);
 }

@@ -7,7 +7,33 @@
 
 #include <stdio.h>
 
-LPCWSTR characterFormatNames[] = { L"Invalid", L"NCGR", L"NCG", L"ICG", L"ACG", L"Tose", L"Hudson", L"Hudson 2", L"Ghost Trick", L"Setosa", L"Binary", NULL };
+static int ChrIsValidHudson(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidAcg(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidIcg(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidNcg(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidTose(const unsigned char *buffer, unsigned int size);
+
+static void ChriRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_CHARACTER, format, name, flag, proc);
+}
+
+void ChrRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_CHARACTER, sizeof(NCGR), L"Character");
+	ChriRegisterFormat(NCGR_TYPE_NCGR, L"NCGR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, ChrIsValidNcgr);
+	ChriRegisterFormat(NCGR_TYPE_NC, L"NCG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidNcg);
+	ChriRegisterFormat(NCGR_TYPE_IC, L"ICG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidIcg);
+	ChriRegisterFormat(NCGR_TYPE_AC, L"ACG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidAcg);
+	ChriRegisterFormat(NCGR_TYPE_TOSE, L"Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidTose);
+	ChriRegisterFormat(NCGR_TYPE_HUDSON, L"Hudson", OBJ_ID_HEADER, ChrIsValidHudson);
+	ChriRegisterFormat(NCGR_TYPE_HUDSON2, L"Hudson 2", OBJ_ID_HEADER, ChrIsValidHudson);
+	ChriRegisterFormat(NCGR_TYPE_GHOSTTRICK, L"Ghost Trick", OBJ_ID_COMPRESSION, ChrIsValidGhostTrick);
+	ChriRegisterFormat(NCGR_TYPE_SETOSA, L"Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidSetosa);
+	ChriRegisterFormat(NCGR_TYPE_BIN, L"Binary", 0, ChrIsValidBin);
+}
+
 
 //Setosa file flags
 #define RES_CHAR_FLAG_1D        (1<<0)  // 1D mapping flag
@@ -36,7 +62,12 @@ int ChrGuessWidth(int nTiles) {
 	return height;
 }
 
-int ChrIsValidHudson(const unsigned char *buffer, unsigned int size) {
+int ChrIsValidBin(const unsigned char *buffer, unsigned int size) {
+	if (size & 0x1F) return 0;
+	return NCGR_TYPE_BIN;
+}
+
+static int ChrIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 0;
 	if (((*buffer) & 0xF0) != 0) return 0;
 	int dataLength = *(uint16_t *) (buffer + 1);
@@ -52,12 +83,7 @@ int ChrIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	return NCGR_TYPE_HUDSON;
 }
 
-int ChrIsValidBin(const unsigned char *buffer, unsigned int size) {
-	if (size & 0x1F) return 0;
-	return NCGR_TYPE_BIN;
-}
-
-int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
+static int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
 	//size must be at least 4
 	if (size < 4) return 0;
 
@@ -86,7 +112,7 @@ int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int ChrIsValidNcg(const unsigned char *buffer, unsigned int size) {
+static int ChrIsValidNcg(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "NCCG", 4) != 0) return 0;
 
@@ -114,21 +140,21 @@ static int ChriIsCommonScanFooter(const unsigned char *buffer, unsigned int size
 	return offs;
 }
 
-int ChrIsValidAcg(const unsigned char *buffer, unsigned int size) {
+static int ChrIsValidAcg(const unsigned char *buffer, unsigned int size) {
 	int dataOffset = ChriIsCommonScanFooter(buffer, size, NCGR_TYPE_AC);
 	if (dataOffset == -1) return 0;
 
 	return 1;
 }
 
-int ChrIsValidIcg(const unsigned char *buffer, unsigned int size) {
+static int ChrIsValidIcg(const unsigned char *buffer, unsigned int size) {
 	int dataOffset = ChriIsCommonScanFooter(buffer, size, NCGR_TYPE_IC);
 	if (dataOffset == -1) return 0;
 
 	return 1;
 }
 
-int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size) {
+static int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "RGCN", 4) != 0) return 0;
 
@@ -139,7 +165,7 @@ int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size) {
+static int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	if (!SetIsValid(buffer, size)) return 0;
 
 	//must have CHAR block
@@ -149,7 +175,7 @@ int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int ChrIsValidTose(const unsigned char *buffer, unsigned int size) {
+static int ChrIsValidTose(const unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 0;                              // size of file header
 	if (memcmp(buffer + 0x0, "NCG\0", 4) != 0) return 0; // file signature
 
@@ -162,16 +188,9 @@ int ChrIsValidTose(const unsigned char *buffer, unsigned int size) {
 }
 
 int ChrIdentify(const unsigned char *buffer, unsigned int size) {
-	if (ChrIsValidNcgr(buffer, size)) return NCGR_TYPE_NCGR;
-	if (ChrIsValidSetosa(buffer, size)) return NCGR_TYPE_SETOSA;
-	if (ChrIsValidNcg(buffer, size)) return NCGR_TYPE_NC;
-	if (ChrIsValidTose(buffer, size)) return NCGR_TYPE_TOSE;
-	if (ChrIsValidIcg(buffer, size)) return NCGR_TYPE_IC;
-	if (ChrIsValidAcg(buffer, size)) return NCGR_TYPE_AC;
-	if (ChrIsValidHudson(buffer, size)) return NCGR_TYPE_HUDSON;
-	if (ChrIsValidGhostTrick(buffer, size)) return NCGR_TYPE_GHOSTTRICK;
-	if (ChrIsValidBin(buffer, size)) return NCGR_TYPE_BIN;
-	return NCGR_TYPE_INVALID;
+	int fmt = NCGR_TYPE_INVALID;
+	ObjIdentifyExByType(buffer, size, FILE_TYPE_CHARACTER, &fmt);
+	return fmt;
 }
 
 void ChrFree(OBJECT_HEADER *header) {

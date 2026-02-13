@@ -35,12 +35,11 @@ typedef struct MesgFile_ {
 	int includeIdMap;
 } MesgFile;
 
-extern LPCWSTR gMesgFormatNames[];
+void MesgRegisterFormats(void);
 
 
 unsigned int MesgSingleByteLength(const unsigned char *buf);
 unsigned int MesgDoubleByteLength(const unsigned char *buf);
-
 
 int MesgIsValid(const unsigned char *buffer, unsigned int size);
 

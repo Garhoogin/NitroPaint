@@ -10,8 +10,6 @@
 #define NCER_TYPE_GHOSTTRICK 4
 #define NCER_TYPE_COMBO      5
 
-extern LPCWSTR cellFormatNames[];
-
 typedef struct NCER_CELL_ {
 	int nAttribs;
 	int cellAttr;
@@ -76,17 +74,12 @@ typedef struct NCER_ {
 	char *labl;                        // LABL
 } NCER;
 
+void CellRegisterFormats(void);
+
+
 void CellInit(NCER *ncer, int format);
 
 int CellIdentify(const unsigned char *buffer, unsigned int size);
-
-int CellIsValidHudson(const unsigned char *buffer, unsigned int size);
-
-int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
-
-int CellIsValidSetosa(const unsigned char *buffer, unsigned int size);
-
-int CellIsValidNcer(const unsigned char *buffer, unsigned int size);
 
 int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size);
 

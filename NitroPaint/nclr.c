@@ -5,7 +5,37 @@
 #include "nns.h"
 #include "setosa.h"
 
-LPCWSTR paletteFormatNames[] = { L"Invalid", L"NCLR", L"NCL", L"5PL", L"5PC", L"Tose", L"Hudson", L"Setosa", L"Binary", L"NTFP", NULL };
+static int PalIsValidNclr(const unsigned char *buffer, unsigned int size);
+static int PalIsValidNcl(const unsigned char *buffer, unsigned int size);
+static int PalIsValidIStudio(const unsigned char *buffer, unsigned int size);
+static int PalIsValidIStudioCompressed(const unsigned char *buffer, unsigned int size);
+static int PalIsValidTose(const unsigned char *buffer, unsigned int size);
+static int PalIsValidHudson(const unsigned char *lpFile, unsigned int size);
+static int PalIsValidSetosa(const unsigned char *buffer, unsigned int size);
+
+static void PaliRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_PALETTE, format, name, flag, proc);
+}
+
+void PalRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_PALETTE, sizeof(NCLR), L"Palette");
+	PaliRegisterFormat(NCLR_TYPE_NCLR, L"NCLR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, PalIsValidNclr);
+	PaliRegisterFormat(NCLR_TYPE_NC, L"NCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidNcl);
+	PaliRegisterFormat(NCLR_TYPE_ISTUDIO, L"5PL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudio);
+	PaliRegisterFormat(NCLR_TYPE_ISTUDIOC, L"5PC", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudioCompressed);
+	PaliRegisterFormat(NCLR_TYPE_TOSE, L"Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE, PalIsValidTose);
+	PaliRegisterFormat(NCLR_TYPE_HUDSON, L"Hudson", OBJ_ID_HEADER, PalIsValidHudson);
+	PaliRegisterFormat(NCLR_TYPE_SETOSA, L"Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED, PalIsValidSetosa);
+	PaliRegisterFormat(NCLR_TYPE_BIN, L"Binary", 0, PalIsValidBin);
+	PaliRegisterFormat(NCLR_TYPE_NTFP, L"NTFP", 0, PalIsValidNtfp);
+}
+
+int PalIdentify(const unsigned char *buffer, unsigned int size) {
+	int fmt = NCLR_TYPE_INVALID;
+	ObjIdentifyExByType(buffer, size, FILE_TYPE_PALETTE, &fmt);
+	return fmt;
+}
+
 
 void PalFree(OBJECT_HEADER *header) {
 	NCLR *nclr = (NCLR *) header;
@@ -26,7 +56,7 @@ void PalInit(NCLR *nclr, int format) {
 	nclr->header.writer = (OBJECT_WRITER) PalWrite;
 }
 
-int PalIsValidHudson(const unsigned char *lpFile, unsigned int size) {
+static int PalIsValidHudson(const unsigned char *lpFile, unsigned int size) {
 	if (size < 4) return 0;
 	if (*lpFile == 0x10) return 0;
 	int dataLength = *(uint16_t *) lpFile;
@@ -76,7 +106,7 @@ int PalIsValidNtfp(const unsigned char *lpFile, unsigned int size) {
 	return 1;
 }
 
-int PalIsValidNclr(const unsigned char *buffer, unsigned int size) {
+static int PalIsValidNclr(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "RLCN", 4) != 0 && memcmp(buffer, "RPCN", 4) != 0) return 0;
 
@@ -86,7 +116,7 @@ int PalIsValidNclr(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int PalIsValidNcl(const unsigned char *buffer, unsigned int size) {
+static int PalIsValidNcl(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "NCCL", 4) != 0) return 0;
 
@@ -96,7 +126,7 @@ int PalIsValidNcl(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int PalIsValidIStudio(const unsigned char *buffer, unsigned int size) {
+static int PalIsValidIStudio(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "NTPL", 4) != 0) return 0;
 
@@ -106,7 +136,7 @@ int PalIsValidIStudio(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int PalIsValidIStudioCompressed(const unsigned char *buffer, unsigned int size) {
+static int PalIsValidIStudioCompressed(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "NTPC", 4) != 0) return 0;
 
@@ -116,7 +146,7 @@ int PalIsValidIStudioCompressed(const unsigned char *buffer, unsigned int size) 
 	return 1;
 }
 
-int PalIsValidSetosa(const unsigned char *buffer, unsigned int size) {
+static int PalIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	if (!SetIsValid(buffer, size)) return 0;
 
 	const unsigned char *pPltt = SetGetBlock(buffer, size, "PLTT");
@@ -125,7 +155,7 @@ int PalIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int PalIsValidTose(const unsigned char *buffer, unsigned int size) {
+static int PalIsValidTose(const unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 0;                        // size of file header
 	if (memcmp(buffer, "NCL\0", 4) != 0) return 0; // file signature
 
@@ -133,19 +163,6 @@ int PalIsValidTose(const unsigned char *buffer, unsigned int size) {
 	if (nCol != (size - 8) / 2) return 0;
 
 	return 1;
-}
-
-int PalIdentify(const unsigned char *lpFile, unsigned int size) {
-	if (PalIsValidNclr(lpFile, size)) return NCLR_TYPE_NCLR;
-	if (PalIsValidNcl(lpFile, size)) return NCLR_TYPE_NC;
-	if (PalIsValidIStudio(lpFile, size)) return NCLR_TYPE_ISTUDIO;
-	if (PalIsValidIStudioCompressed(lpFile, size)) return NCLR_TYPE_ISTUDIOC;
-	if (PalIsValidSetosa(lpFile, size)) return NCLR_TYPE_SETOSA;
-	if (PalIsValidTose(lpFile, size)) return NCLR_TYPE_TOSE;
-	if (PalIsValidHudson(lpFile, size)) return NCLR_TYPE_HUDSON;
-	if (PalIsValidBin(lpFile, size)) return NCLR_TYPE_BIN;
-	if (PalIsValidNtfp(lpFile, size)) return NCLR_TYPE_NTFP;
-	return NCLR_TYPE_INVALID;
 }
 
 static int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int size) {

@@ -208,8 +208,6 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette) {
 	TxRenderRect(px, 0, 0, TEXW(texels->texImageParam), texels->height, texels, palette);
 }
 
-LPCWSTR textureFormatNames[] = { L"Invalid", L"NNS TGA", L"5TX", L"SPT", L"TDS", L"NTGA", L"To Love-Ru", L"GRF", NULL };
-
 
 void TxFree(OBJECT_HEADER *obj) {
 	TextureObject *texture = (TextureObject *) obj;
@@ -488,15 +486,25 @@ static int TxIsValidGrf(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+static void TxiRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_TEXTURE, format, name, flag, proc);
+}
+
+void TxRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_TEXTURE, sizeof(TextureObject), L"Texture");
+	TxiRegisterFormat(TEXTURE_TYPE_NNSTGA, L"NNS TGA", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE, TxIsValidNnsTga);
+	TxiRegisterFormat(TEXTURE_TYPE_ISTUDIO, L"5TX", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED, TxIsValidIStudio);
+	TxiRegisterFormat(TEXTURE_TYPE_SPT, L"SPT", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS, TxIsValidSpt);
+	TxiRegisterFormat(TEXTURE_TYPE_TDS, L"TDS", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidTds);
+	TxiRegisterFormat(TEXTURE_TYPE_NTGA, L"NTGA", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidNtga);
+	TxiRegisterFormat(TEXTURE_TYPE_TOLOVERU, L"To Love-Ru", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidToLoveRu);
+	TxiRegisterFormat(TEXTURE_TYPE_GRF, L"GRF", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, TxIsValidGrf);
+}
+
 int TxIdentify(const unsigned char *buffer, unsigned int size) {
-	if (TxIsValidGrf(buffer, size)) return TEXTURE_TYPE_GRF;
-	if (TxIsValidNnsTga(buffer, size)) return TEXTURE_TYPE_NNSTGA;
-	if (TxIsValidIStudio(buffer, size)) return TEXTURE_TYPE_ISTUDIO;
-	if (TxIsValidSpt(buffer, size)) return TEXTURE_TYPE_SPT;
-	if (TxIsValidTds(buffer, size)) return TEXTURE_TYPE_TDS;
-	if (TxIsValidNtga(buffer, size)) return TEXTURE_TYPE_NTGA;
-	if (TxIsValidToLoveRu(buffer, size)) return TEXTURE_TYPE_TOLOVERU;
-	return TEXTURE_TYPE_INVALID;
+	int fmt = TEXTURE_TYPE_INVALID;
+	ObjIdentifyExByType(buffer, size, FILE_TYPE_TEXTURE, &fmt);
+	return fmt;
 }
 
 int TxIdentifyFile(LPCWSTR path) {

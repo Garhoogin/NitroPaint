@@ -69,6 +69,8 @@ void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object);
 //
 void combo2dFree(COMBO2D *combo);
 
+void combo2dRegisterFormats(void);
+
 //
 // Returns the type of COMBO2D the buffer contains, or COMBO2D_TYPE_INVALID if the data is invalid.
 //

@@ -2684,6 +2684,8 @@ void AnmViewerUpdateCellBounds(HWND hWnd) {
 }
 
 void RegisterNanrViewerClass(void) {
+	AnmRegisterFormats();
+
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
 	EDITOR_CLASS *cls = EditorRegister(L"NanrViewerClass", AnmViewerWndProc, L"Animation Editor", sizeof(NANRVIEWERDATA), features);
 	EditorAddFilter(cls, NANR_TYPE_NANR, L"nanr", L"NANR Files (*.nanr)\0*.nanr\0");

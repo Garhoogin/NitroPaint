@@ -12,27 +12,6 @@
 #include "jlyt.h"
 #include "mesg.h"
 
-const wchar_t *gFileTypeNames[] = {
-	L"Invalid",
-	L"Palette",
-	L"Character",
-	L"Screen",
-	L"Cell",
-	L"Texture Archive",
-	L""
-	L"Texture",
-	L"Animation",
-	L"Image",
-	L"Combination",
-	L"Multi-Cell",
-	L"Multi-Cell Animation",
-	L"Font",
-	L"Letter Layout",
-	L"Cell Layout",
-	L"Button Layout",
-	NULL
-};
-
 LPCWSTR g_ObjCompressionNames[] = {
 	L"None", 
 	L"LZ77", 
@@ -136,29 +115,6 @@ LPWSTR ObjGetFileNameFromPath(LPCWSTR path) {
 	return lastB + 1;
 }
 
-LPCWSTR *ObjGetFormatNamesByType(int type) {
-	switch (type) {
-		case FILE_TYPE_PALETTE:
-			return paletteFormatNames;
-		case FILE_TYPE_CHAR:
-			return characterFormatNames;
-		case FILE_TYPE_SCREEN:
-			return screenFormatNames;
-		case FILE_TYPE_CELL:
-			return cellFormatNames;
-		case FILE_TYPE_NANR:
-			return cellAnimationFormatNames;
-		case FILE_TYPE_TEXTURE:
-			return textureFormatNames;
-		case FILE_TYPE_FONT:
-			return fontFormatNames;
-		case FILE_TYPE_MESG:
-			return gMesgFormatNames;
-		default:
-			return NULL;
-	}
-}
-
 void ObjInit(OBJECT_HEADER *header, int type, int format) {
 	int size = header->size; //restore this
 	memset(header, 0, size);
@@ -173,6 +129,136 @@ void ObjInit(OBJECT_HEADER *header, int type, int format) {
 int ObjIsValid(OBJECT_HEADER *obj) {
 	return obj->size != 0;
 }
+
+static int ObjiIsValidImage(const unsigned char *buffer, unsigned int size) {
+	int width, height;
+	COLOR32 *px = ImgReadMem(buffer, size, &width, &height);
+	
+	//no pixel buffer -> invalid image
+	if (px == NULL) return 0;
+	free(px);
+
+	//either dimension is zero -> invalid image
+	if (width == 0 && height == 0) return 0;
+
+	return 1;
+}
+
+
+
+static StMap sObjRegisteredTypes = { 0 };
+static StList sObjRegisteredFormats = { 0 };
+
+const wchar_t *ObjGetFormatNameByType(int type, int format) {
+	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
+		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
+		if (ent->type == type && ent->format == format) return ent->name;
+	}
+
+	return NULL;
+}
+
+unsigned int ObjGetFormatCountByType(int type) {
+	unsigned int n = 0;
+
+	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
+		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
+		if (ent->format != type) continue;
+
+		n++;
+	}
+	return n + 1;
+}
+
+static int ObjiIdFlagToConfidence(ObjIdFlag flag) {
+	int confidence = 0;
+
+	//headers are strong indicators of ability to identify. Footers may be strong, but not as much
+	//so since they must be scanned for. If a file had both header and footer, this is stronger.
+	if (flag & OBJ_ID_HEADER) confidence += 100;
+	if (flag & OBJ_ID_FOOTER) confidence += 50;
+
+	//a recognizable signature is a very good confidene indictator.
+	if (flag & OBJ_ID_SIGNATURE) confidence += 400;
+
+	//a block structure enforces restrictions on the file data.
+	if (flag & OBJ_ID_CHUNKED) confidence += 100;
+
+	//a file including a checksum should catch lots of incorrect detections.
+	if (flag & OBJ_ID_CHECKSUM) confidence += 200;
+
+	//inclusion of compressed data sections enforces stricter detection.
+	if (flag & OBJ_ID_COMPRESSION) confidence += 50;
+
+	//For a file with specific valid sizes, we can increase the confidence slightly.
+	if (flag & OBJ_ID_SIZE_CHECK) confidence += 25;
+
+	//A Windows codec takes on precedence just under a file with header and signature.
+	if (flag & (OBJ_ID_WINCODEC | OBJ_ID_WINCODEC_OVERRIDE)) confidence += 475;
+
+	return confidence;
+}
+
+static int ObjiIdEntryComparator(const void *e1, const void *e2) {
+	//descending order of confidence
+	const ObjIdEntry *ent1 = (const ObjIdEntry *) e1;
+	const ObjIdEntry *ent2 = (const ObjIdEntry *) e2;
+	return ObjiIdFlagToConfidence(ent1->idFlag) - ObjiIdFlagToConfidence(ent2->idFlag);
+}
+
+void ObjInitCommon(void) {
+	StMapCreate(&sObjRegisteredTypes, sizeof(int), sizeof(ObjTypeEntry));
+	StListCreate(&sObjRegisteredFormats, sizeof(ObjIdEntry), ObjiIdEntryComparator);
+
+	//register default formats
+	ObjRegisterType(FILE_TYPE_INVALID, 0, L"Invalid");
+	ObjRegisterType(FILE_TYPE_IMAGE, 0, L"Image");
+	ObjRegisterFormat(FILE_TYPE_IMAGE, 1, L"", OBJ_ID_WINCODEC, ObjiIsValidImage);
+}
+
+void ObjRegisterType(int type, size_t objSize, const wchar_t *name) {
+	ObjTypeEntry ent;
+	ent.name = _wcsdup(name);
+	ent.size = objSize;
+	StMapPut(&sObjRegisteredTypes, &type, &ent);
+}
+
+void ObjRegisterFormat(int type, int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjIdEntry ent;
+	ent.type = type;
+	ent.format = format;
+	ent.name = _wcsdup(name);
+	ent.idFlag = flag;
+	ent.idProc = proc;
+	StListAdd(&sObjRegisteredFormats, &ent);
+}
+
+int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type, int *pFormat) {
+	int format = 0;
+	int detectType = FILE_TYPE_INVALID;
+
+	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
+		ObjIdEntry *pEnt = StListGetPtr(&sObjRegisteredFormats, i);
+		if (pEnt->type != type && type != FILE_TYPE_INVALID) continue;
+
+		//check validity
+		if (pEnt->idProc(buffer, size)) {
+			//match
+			detectType = pEnt->type;
+			format = pEnt->format;
+			break;
+		}
+	}
+	
+	if (pFormat != NULL) *pFormat = format;
+	return detectType;
+}
+
+int ObjIdentifyEx(const unsigned char *buffer, unsigned int size, int *pFormat) {
+	return ObjIdentifyExByType(buffer, size, FILE_TYPE_INVALID, pFormat);
+}
+
+
 
 int ObjiScreenCharComparator(const void *v1, const void *v2) {
 	uint16_t u1 = *(const uint16_t *) v1;
@@ -335,120 +421,38 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 		buffer = CxDecompress(file, size, &bufferSize);
 	}
 
+	//TODO:
+	//  Check: NNS TGA files take precedence over TGA files
+	//  Files not mis-identified as ordinary TGA due to "Windows Codec" priority boost
+	//  Raw data files not misclassed due to too broad of name list
+	//  Mario Party DS files might be incorrectly identified
+
 	int type = FILE_TYPE_INVALID;
 
-	//test Nitro formats
-	if (NnsIsValid(buffer, bufferSize)) {
-		unsigned int magic = *(unsigned int *) buffer;
-		switch (magic) {
-			case 'NCLR':
-			case 'RLCN':
-			case 'NCCL':
-			case 'LCCN':
-			case 'NTPL':
-			case 'LPTN':
-			case 'NTPC':
-			case 'CPTN':
-			case 'NCPR':
-			case 'RPCN':
-				type = FILE_TYPE_PALETTE;
-				break;
-			case 'NCGR':
-			case 'RGCN':
-			case 'NCCG':
-			case 'GCCN':
-				type = FILE_TYPE_CHARACTER;
-				break;
-			case 'NSCR':
-			case 'RCSN':
-			case 'NCSC':
-			case 'CSCN':
-				type = FILE_TYPE_SCREEN;
-				break;
-			case 'NCER':
-			case 'RECN':
-				type = FILE_TYPE_CELL;
-				break;
-			case 'BTX0':
-			case '0XTB':
-			case 'BMD0':
-			case '0DMB':
-				type = FILE_TYPE_NSBTX;
-				break;
-			case 'NANR':
-			case 'RNAN':
-				type = FILE_TYPE_NANR;
-				break;
-			case 'NMCR':
-			case 'RCMN':
-				type = FILE_TYPE_NMCR;
-				break;
-			case 'NFTR':
-			case 'RTFN':
-				type = FILE_TYPE_FONT;
-				break;
-		}
+	if (path != NULL) {
+		//test common suffixes for raw binary data
+		if (PalIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
+		else if (PalIsValidNtfp(buffer, bufferSize) && ObjiPathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
+		else if (ScrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
+		else if (ChrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
+	}
+
+	if (type == FILE_TYPE_INVALID) {
+		//if the file name detection rules did not trigger, try identifying the file with our formats
+		type = ObjIdentifyEx(buffer, bufferSize, NULL);
 	}
 	
 	//no matches?
 	if (type == FILE_TYPE_INVALID) {
-		if (TxIdentify(buffer, bufferSize) != TEXTURE_TYPE_INVALID) {
-			type = FILE_TYPE_TEXTURE;
-		} else {
-			//image file?
-			int width, height;
-			COLOR32 *bits = ImgReadMem(buffer, bufferSize, &width, &height);
-			if (bits != NULL && width && height) {
-				free(bits);
-				type = FILE_TYPE_IMAGE;
-			} else {
+		//double check, without respect to the file name.
+		type = ObjiGuessPltChrScr(buffer, bufferSize);
 
-				//test other formats
-				if (MesgIsValid(buffer, size)) type = FILE_TYPE_MESG;
-				else if (NftrIdentify(buffer, bufferSize)) type = FILE_TYPE_FONT;
-				else if (BncmpIdentify(buffer, bufferSize)) type = FILE_TYPE_CMAP;
-				else if (TexarcIsValidBmd(buffer, bufferSize)) type = FILE_TYPE_NSBTX;
-				else if (combo2dIsValid(buffer, bufferSize)) type = FILE_TYPE_COMBO2D;
-				else if (BnllIdentify(buffer, bufferSize)) type = FILE_TYPE_BNLL;
-				else if (BnclIdentify(buffer, bufferSize)) type = FILE_TYPE_BNCL;
-				else if (BnblIdentify(buffer, bufferSize)) type = FILE_TYPE_BNBL;
-				else if (ChrIsValidTose(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-				else if (ScrIsValidTose(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-				else if (PalIsValidSetosa(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-				else if (ChrIsValidSetosa(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-				else if (ChrIsValidIcg(buffer, bufferSize)) type = FILE_TYPE_CHAR;
-				else if (ChrIsValidAcg(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-				else if (ScrIsValidIsc(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-				else if (ScrIsValidAsc(buffer, bufferSize))  type = FILE_TYPE_SCREEN;
-				else if (PalIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-				else if (ScrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-				else if (ChrIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-				else if (ChrIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-				else if (CellIsValidSetosa(buffer, bufferSize)) type = FILE_TYPE_CELL;
-				else if (CellIsValidHudson(buffer, bufferSize)) type = FILE_TYPE_CELL;
-				else if (CellIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_CELL;
-				else if (AnmIsValidGhostTrick(buffer, bufferSize)) type = FILE_TYPE_NANR;
-
-				//test for bin format files
-				else {
-					if (PalIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
-					else if (PalIsValidNtfp(buffer, bufferSize) && ObjiPathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
-					else if (ScrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
-					else if (ChrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
-					else {
-						//double check, without respect to the file name.
-						type = ObjiGuessPltChrScr(buffer, bufferSize);
-
-						//last ditch effort
-						if (type == FILE_TYPE_INVALID) {
-							if (PalIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-							else if (ScrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-							else if (ChrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-							else if (PalIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-						}
-					}
-				}
-			}
+		//last ditch effort
+		if (type == FILE_TYPE_INVALID) {
+			if (PalIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+			else if (ScrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
+			else if (ChrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
+			else if (PalIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
 		}
 	}
 

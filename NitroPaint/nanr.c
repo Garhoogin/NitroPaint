@@ -7,6 +7,20 @@
 #include "nclr.h"
 #include "nns.h"
 
+static int AnmIsValidNanr(const unsigned char *buffer, unsigned int size);
+static int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
+
+static void AnmiRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_NANR, format, name, flag, proc);
+}
+
+void AnmRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_NANR, sizeof(NANR), L"Animation");
+	AnmiRegisterFormat(NANR_TYPE_NANR, L"NANR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidNanr);
+	AnmiRegisterFormat(NANR_TYPE_GHOSTTRICK, L"Ghost Trick", OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidGhostTrick);
+}
+
+
 #define FX32_ONE               4096
 #define FX32_HALF              (FX32_ONE/2)
 #define FX32_FROM_F32(x)       ((int)(((x)<0.0f)?((x)*FX32_ONE+0.5f):((x)*FX32_ONE-0.5f)))
@@ -17,8 +31,6 @@
 #define RAD_90DEG              1.57079632679489662
 #define RAD_180DEG             3.14159265358979323
 #define RAD_360DEG             6.28318530717958648
-
-LPCWSTR cellAnimationFormatNames[] = { L"Invalid", L"NANR", L"Ghost Trick", NULL };
 
 static int AnmiOffsetComparator(const void *p1, const void *p2) {
 	uint32_t ofs1 = *(uint32_t *) p1;
@@ -141,7 +153,7 @@ static int AnmiGetCompressedSequenceType(NANR_SEQUENCE *seq) {
 	return NANR_SEQ_TYPE_INDEX;
 }
 
-int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
+static int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
 	//must be >0 and a multiple of 8
 	if (size < 8 || (size & 7)) return 0;
 
@@ -202,7 +214,7 @@ int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
 	return valid;
 }
 
-int AnmIsValidNanr(const unsigned char *buffer, unsigned int size) {
+static int AnmIsValidNanr(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "RNAN", 4) != 0) return 0;
 
@@ -213,9 +225,9 @@ int AnmIsValidNanr(const unsigned char *buffer, unsigned int size) {
 }
 
 int AnmIdentify(const unsigned char *buffer, unsigned int size) {
-	if (AnmIsValidNanr(buffer, size)) return NANR_TYPE_NANR;
-	if (AnmIsValidGhostTrick(buffer, size)) return NANR_TYPE_GHOSTTRICK;
-	return NANR_TYPE_INVALID;
+	int fmt = NANR_TYPE_INVALID;
+	ObjIdentifyExByType(buffer, size, FILE_TYPE_NANR, &fmt);
+	return fmt;
 }
 
 void AnmInit(NANR *nanr, int format) {

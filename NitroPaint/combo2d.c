@@ -463,16 +463,26 @@ Invalid:
 	return valid;
 }
 
+static void combo2dRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_COMBO2D, format, name, flag, proc);
+}
+
+void combo2dRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_COMBO2D, sizeof(COMBO2D), L"Combination");
+	combo2dRegisterFormat(COMBO2D_TYPE_5BG, L"5BG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValid5bg);
+	combo2dRegisterFormat(COMBO2D_TYPE_5BG_OBJ, L"5BG OBJ", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValid5bgObj);
+	combo2dRegisterFormat(COMBO2D_TYPE_BNCD, L"BNCD", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, combo2dIsValidBncd);
+	combo2dRegisterFormat(COMBO2D_TYPE_BANNER, L"Banner", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHECKSUM, combo2dIsValidBanner);
+	combo2dRegisterFormat(COMBO2D_TYPE_AOB, L"AOB", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValidAob);
+	combo2dRegisterFormat(COMBO2D_TYPE_GRF_BG, L"GRF", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValidGrf);
+	combo2dRegisterFormat(COMBO2D_TYPE_MBB, L"MBB", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, combo2dIsValidMbb);
+	combo2dRegisterFormat(COMBO2D_TYPE_TIMEACE, L"Time Ace", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, combo2dIsValidTimeAce);
+}
+
 int combo2dIsValid(const unsigned char *file, unsigned int size) {
-	if (combo2dIsValid5bg(file, size)) return COMBO2D_TYPE_5BG;
-	if (combo2dIsValid5bgObj(file, size)) return COMBO2D_TYPE_5BG_OBJ;
-	if (combo2dIsValidGrf(file, size)) return COMBO2D_TYPE_GRF_BG;
-	if (combo2dIsValidAob(file, size)) return COMBO2D_TYPE_AOB;
-	if (combo2dIsValidBncd(file, size)) return COMBO2D_TYPE_BNCD;
-	if (combo2dIsValidTimeAce(file, size)) return COMBO2D_TYPE_TIMEACE;
-	if (combo2dIsValidBanner(file, size)) return COMBO2D_TYPE_BANNER;
-	if (combo2dIsValidMbb(file, size)) return COMBO2D_TYPE_MBB;
-	return 0;
+	int fmt = COMBO2D_TYPE_INVALID;
+	ObjIdentifyExByType(file, size, FILE_TYPE_COMBO2D, &fmt);
+	return fmt;
 }
 
 int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {

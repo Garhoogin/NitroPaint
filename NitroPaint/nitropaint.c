@@ -2026,9 +2026,6 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						EDITOR_DATA *editorData = (EDITOR_DATA *) EditorGetData(hWndFocused);
 						if (editorData == NULL) break;
 
-						LPCWSTR *formats = ObjGetFormatNamesByType(editorData->file->type);
-						if (formats == NULL || formats[0] == NULL)  break;
-
 						HWND h = CreateWindow(L"ConvertFormatDialogClass", L"Convert Format", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
 						SendMessage(h, NV_SETDATA, 0, (LPARAM) editorData);
 						DoModal(h);
@@ -2987,13 +2984,13 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			HWND hWndCompressionCombobox = CreateWindow(WC_COMBOBOX, L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS, 120, 37, 100, 100, hWnd, NULL, NULL, NULL);
 			CreateButton(hWnd, L"Set", 120, 64, 100, 22, TRUE);
 
-			LPCWSTR *formats = ObjGetFormatNamesByType(editorData->file->type);
-			formats++; //skip invalid
-			while (*formats != NULL) {
-				UiCbAddString(hWndFormatCombobox, *formats);
-				formats++;
+			unsigned int nFormat = ObjGetFormatCountByType(editorData->file->type);
+			for (unsigned int i = 1; i < nFormat; i++) {
+				const wchar_t *name = ObjGetFormatNameByType(editorData->file->type, i);
+				UiCbAddString(hWndFormatCombobox, name);
 			}
 			UiCbSetCurSel(hWndFormatCombobox, editorData->file->format - 1);
+
 			LPCWSTR *compressions = g_ObjCompressionNames;
 			while (*compressions != NULL) {
 				UiCbAddString(hWndCompressionCombobox, *compressions);
@@ -4396,6 +4393,7 @@ static void RegisterClasses(void) {
 	RegisterIndexImageClass();
 	RegisterLytEditor();
 	MesgEditorRegisterClass();
+	combo2dRegisterFormats();
 }
 
 void InitializeDpiAwareness(void) {
@@ -4472,6 +4470,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	ReadConfiguration();
 	CheckExistingAppWindow();
 	InitializeDpiAwareness();
+
+	ObjInitCommon();
 
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);

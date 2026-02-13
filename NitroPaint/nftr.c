@@ -6,11 +6,46 @@
 #define NFTR_MAP_TABLE      1
 #define NFTR_MAP_SCAN       2
 
-extern LPCWSTR fontFormatNames[] = {
-	L"Invalid", L"NFTR 0.1", L"NFTR 1.0", L"NFTR 1.1", L"NFTR 1.2", L"BNFR 1.1", L"BNFR 1.2", L"BNFR 2.0", L"GameFreak NFTR 1.1", L"Starfy", NULL
-};
+static int NftrIsValidNftr01(const unsigned char *buffer, unsigned int size);
+static int NftrIsValidNftr10(const unsigned char *buffer, unsigned int size);
+static int NftrIsValidNftr11(const unsigned char *buffer, unsigned int size);
+static int NftrIsValidNftr12(const unsigned char *buffer, unsigned int size);
+static int NftrIsValidGfNftr11(const unsigned char *buffer, unsigned int size);
+static int NftrIsValidBnfr11(const unsigned char *buffer, unsigned int size);
+static int NftrIsValidBnfr12(const unsigned char *buffer, unsigned int size);
+static int NftrIsValidBnfr20(const unsigned char *buffer, unsigned int size);
+static int NftrIsValidStarfy(const unsigned char *buffer, unsigned int size);
 
+static int BncmpIsValidBncmp11(const unsigned char *buffer, unsigned int size);
+static int BncmpIsValidBncmp12(const unsigned char *buffer, unsigned int size);
 
+static void NftrRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_FONT, format, name, flag, proc);
+}
+
+void NftrRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_FONT, sizeof(NFTR), L"Font");
+	NftrRegisterFormat(NFTR_TYPE_NFTR_01, L"NFTR 0.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr01);
+	NftrRegisterFormat(NFTR_TYPE_NFTR_10, L"NFTR 1.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr10);
+	NftrRegisterFormat(NFTR_TYPE_NFTR_11, L"NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr11);
+	NftrRegisterFormat(NFTR_TYPE_NFTR_12, L"NFTR 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr12);
+	NftrRegisterFormat(NFTR_TYPE_BNFR_20, L"BNFR 2.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidBnfr20);
+	NftrRegisterFormat(NFTR_TYPE_BNFR_12, L"BNFR 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, NftrIsValidBnfr12);
+	NftrRegisterFormat(NFTR_TYPE_BNFR_11, L"BNFR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, NftrIsValidBnfr11);
+	NftrRegisterFormat(NFTR_TYPE_GF_NFTR_11, L"GameFreak NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidGfNftr11);
+	NftrRegisterFormat(NFTR_TYPE_STARFY, L"Starfy", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidStarfy);
+
+	//register BNCMP
+	ObjRegisterType(FILE_TYPE_CMAP, 0, L"Character Map");
+	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_11, L"BNCMP 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp11);
+	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_12, L"BNCMP 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp12);
+}
+
+int NftrIdentify(const unsigned char *buffer, unsigned int size) {
+	int fmt = NFTR_TYPE_INVALID;
+	ObjIdentifyExByType(buffer, size, FILE_TYPE_FONT, &fmt);
+	return fmt;
+}
 
 void NftrFree(OBJECT_HEADER *obj) {
 	NFTR *nftr = (NFTR*) obj;
@@ -134,19 +169,19 @@ static int NftrIsValidBnfr1x(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int NftrIsValidBnfr11(const unsigned char *buffer, unsigned int size) {
+static int NftrIsValidBnfr11(const unsigned char *buffer, unsigned int size) {
 	//check header
 	if (!JFntCheckHeader(buffer, size, 1, 1, "JNFR")) return 0;
 	return NftrIsValidBnfr1x(buffer, size);
 }
 
-int NftrIsValidBnfr12(const unsigned char *buffer, unsigned int size) {
+static int NftrIsValidBnfr12(const unsigned char *buffer, unsigned int size) {
 	//check header
 	if (!JFntCheckHeader(buffer, size, 1, 2, "JNFR")) return 0;
 	return NftrIsValidBnfr1x(buffer, size);
 }
 
-int NftrIsValidBnfr20(const unsigned char *buffer, unsigned int size) {
+static int NftrIsValidBnfr20(const unsigned char *buffer, unsigned int size) {
 	//check header
 	if (!JFntCheckHeader(buffer, size, 2, 0, "JNFR")) return 0;
 	if (size < 0xC) return 0;
@@ -331,19 +366,6 @@ static int NftrIsValidGfNftr11(const unsigned char *buffer, unsigned int size) {
 
 	if (cellSize < (bmpSize + 3)) return 0;
 	return 1;
-}
-
-int NftrIdentify(const unsigned char *buffer, unsigned int size) {
-	if (NftrIsValidNftr01(buffer, size)) return NFTR_TYPE_NFTR_01;
-	if (NftrIsValidNftr10(buffer, size)) return NFTR_TYPE_NFTR_10;
-	if (NftrIsValidNftr11(buffer, size)) return NFTR_TYPE_NFTR_11;
-	if (NftrIsValidNftr12(buffer, size)) return NFTR_TYPE_NFTR_12;
-	if (NftrIsValidBnfr20(buffer, size)) return NFTR_TYPE_BNFR_20;
-	if (NftrIsValidBnfr12(buffer, size)) return NFTR_TYPE_BNFR_12;
-	if (NftrIsValidBnfr11(buffer, size)) return NFTR_TYPE_BNFR_11;
-	if (NftrIsValidGfNftr11(buffer, size)) return NFTR_TYPE_GF_NFTR_11;
-	if (NftrIsValidStarfy(buffer, size)) return NFTR_TYPE_STARFY;
-	return NFTR_TYPE_INVALID;
 }
 
 static int NftrCodePointComparator(const void *p1, const void *p2) {

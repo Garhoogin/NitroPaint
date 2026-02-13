@@ -4,10 +4,26 @@
 #include "nns.h"
 #include "setosa.h"
 
+static int CellIsValidHudson(const unsigned char *buffer, unsigned int size);
+static int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
+static int CellIsValidSetosa(const unsigned char *buffer, unsigned int size);
+static int CellIsValidNcer(const unsigned char *buffer, unsigned int size);
+
+static void CellRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_CELL, format, name, flag, proc);
+}
+
+void CellRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_CELL, sizeof(NCER), L"Cell Bank");
+	CellRegisterFormat(NCER_TYPE_NCER, L"NCER", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, CellIsValidNcer);
+	CellRegisterFormat(NCER_TYPE_SETOSA, L"Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, CellIsValidSetosa);
+	CellRegisterFormat(NCER_TYPE_HUDSON, L"Hudson", OBJ_ID_HEADER | OBJ_ID_OFFSETS, CellIsValidHudson);
+	CellRegisterFormat(NCER_TYPE_GHOSTTRICK, L"Ghost Trick", OBJ_ID_HEADER | OBJ_ID_OFFSETS, CellIsValidGhostTrick);
+}
+
+
 #define SEXT8(n)   (((n)<0x080)?(n):((n)-0x100))
 #define SEXT9(n)   (((n)<0x100)?(n):((n)-0x200))
-
-LPCWSTR cellFormatNames[] = { L"Invalid", L"NCER", L"Setosa", L"Hudson", L"Ghost Trick", NULL };
 
 void CellInit(NCER *ncer, int format) {
 	ncer->header.size = sizeof(NCER);
@@ -16,7 +32,7 @@ void CellInit(NCER *ncer, int format) {
 	ncer->header.writer = (OBJECT_WRITER) CellWrite;
 }
 
-int CellIsValidHudson(const unsigned char *buffer, unsigned int size) {
+static int CellIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	if (size < 4) return 0;
 
 	unsigned int nCells = *(const uint32_t *) buffer;
@@ -41,7 +57,7 @@ int CellIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int CellIsValidNcer(const unsigned char *buffer, unsigned int size) {
+static int CellIsValidNcer(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return 0;
 	if (memcmp(buffer, "RECN", 4) != 0) return 0;
 
@@ -52,7 +68,7 @@ int CellIsValidNcer(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
+static int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
 	if (size < 2) return 0; //must contain at least 1 cell
 
 	const uint16_t *cellOffsets = (uint16_t *) buffer;
@@ -78,7 +94,7 @@ int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int CellIsValidSetosa(const unsigned char *buffer, unsigned int size) {
+static int CellIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	if (!SetIsValid(buffer, size)) return 0;
 
 	const unsigned char *cellBlock = SetGetBlock(buffer, size, "CELL");
@@ -87,11 +103,9 @@ int CellIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 }
 
 int CellIdentify(const unsigned char *buffer, unsigned int size) {
-	if (CellIsValidNcer(buffer, size)) return NCER_TYPE_NCER;
-	if (CellIsValidSetosa(buffer, size)) return NCER_TYPE_SETOSA;
-	if (CellIsValidHudson(buffer, size)) return NCER_TYPE_HUDSON;
-	if (CellIsValidGhostTrick(buffer, size)) return NCER_TYPE_GHOSTTRICK;
-	return NCER_TYPE_INVALID;
+	int fmt = NCER_TYPE_INVALID;
+	ObjIdentifyExByType(buffer, size, FILE_TYPE_CELL, &fmt);
+	return fmt;
 }
 
 int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {

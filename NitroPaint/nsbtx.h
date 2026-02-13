@@ -45,6 +45,8 @@ int TexarcRead(TexArc *nsbtx, const unsigned char *buffer, unsigned int size);
 
 int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size);
 
+void TexarcRegisterFormats(void);
+
 int TexarcReadFile(TexArc *nsbtx, LPCWSTR path);
 
 int TexarcWriteFile(TexArc *nsbtx, LPWSTR filename);

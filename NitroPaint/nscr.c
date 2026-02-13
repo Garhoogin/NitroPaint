@@ -7,8 +7,6 @@
 #include <stdio.h>
 #include <math.h>
 
-LPCWSTR screenFormatNames[] = { L"Invalid", L"NSCR", L"NSC", L"ISC", L"ASC", L"Tose", L"Hudson", L"Hudson 2", L"Binary", NULL };
-
 #define NSCR_FLIPNONE 0
 #define NSCR_FLIPX 1
 #define NSCR_FLIPY 2
@@ -268,15 +266,25 @@ int ScrIsValidTose(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+static void ScriRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_SCREEN, format, name, flag, proc);
+}
+
+void ScrRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_SCREEN, sizeof(NSCR), L"Screen");
+	ScriRegisterFormat(NSCR_TYPE_NSCR, L"NSCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ScrIsValidNscr);
+	ScriRegisterFormat(NSCR_TYPE_NC, L"NSC", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ScrIsValidNsc);
+	ScriRegisterFormat(NSCR_TYPE_IC, L"ISC", OBJ_ID_FOOTER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ScrIsValidIsc);
+	ScriRegisterFormat(NSCR_TYPE_AC, L"ASC", OBJ_ID_FOOTER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ScrIsValidAsc);
+	ScriRegisterFormat(NSCR_TYPE_TOSE, L"Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE, ScrIsValidTose);
+	ScriRegisterFormat(NSCR_TYPE_HUDSON, L"Hudson", OBJ_ID_HEADER, ScrIsValidHudson);
+	ScriRegisterFormat(NSCR_TYPE_BIN, L"Binary", OBJ_ID_SIZE_CHECK, ScrIsValidBin);
+}
+
 int ScrIdentify(const unsigned char *file, unsigned int size) {
-	if (ScrIsValidNscr(file, size)) return NSCR_TYPE_NSCR;
-	if (ScrIsValidNsc(file, size)) return NSCR_TYPE_NC;
-	if (ScrIsValidTose(file, size)) return NSCR_TYPE_TOSE;
-	if (ScrIsValidIsc(file, size)) return NSCR_TYPE_IC;
-	if (ScrIsValidAsc(file, size)) return NSCR_TYPE_AC;
-	if (ScrIsValidHudson(file, size)) return NSCR_TYPE_HUDSON;
-	if (ScrIsValidBin(file, size)) return NSCR_TYPE_BIN;
-	return NSCR_TYPE_INVALID;
+	int fmt = NSCR_TYPE_INVALID;
+	ObjIdentifyExByType(file, size, FILE_TYPE_SCREEN, &fmt);
+	return fmt;
 }
 
 void ScrFree(OBJECT_HEADER *header) {

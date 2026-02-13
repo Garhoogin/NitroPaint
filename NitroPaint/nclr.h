@@ -15,8 +15,6 @@
 #define NCLR_TYPE_NTFP        9
 #define NCLR_TYPE_COMBO      10
 
-extern LPCWSTR paletteFormatNames[];
-
 typedef struct NCLR_ {
 	OBJECT_HEADER header;
 	int nBits;             // bit depth of graphics this palette is intended for
@@ -29,29 +27,22 @@ typedef struct NCLR_ {
 
 #include "combo2d.h"
 
+void PalRegisterFormats(void);
+
+//
+// Determine the file format of a palette file.
+//
+int PalIdentify(const unsigned char *buffer, unsigned int size);
+
 //
 // Initialize an palette structure with sensible defaults given a format.
 //
 void PalInit(NCLR *nclr, int format);
 
 //
-// Determines if an byte array represents a valid Hudson palette file.
-//
-int PalIsValidHudson(const unsigned char *lpFile, unsigned int size);
-
-//
-// Determines if a byte array represents a valid Setosa format palette file.
-//
-int PalIsValidSetosa(const unsigned char *buffer, unsigned int size);
-
-//
 // Determines if a byte array represents a valid raw palette file.
 //
 int PalIsValidBin(const unsigned char *lpFile, unsigned int size);
-
-//
-// Determines if a byte array represents a valid NTFP file.
-//
 int PalIsValidNtfp(const unsigned char *lpFile, unsigned int size);
 
 //

@@ -30,11 +30,13 @@ typedef struct NMCR_ {
 	MULTI_CELL *multiCells;
 } NMCR;
 
+void nmcrRegisterFormats(void);
+
 //
 // Determine the type of NMCR pointed to. Can be NMCR_TYPE_NMCR or
 // NMCR_TYPE_INVALID.
 //
-int nmcrIsValid(char *buffer, unsigned int size);
+int nmcrIsValid(const unsigned char *buffer, unsigned int size);
 
 //
 // Read the NMCR file pointed to into the destination structure.

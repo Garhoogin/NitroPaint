@@ -1878,8 +1878,9 @@ static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 	}
 
 	if (cmapFormat == BNCMP_TYPE_INVALID) {
-		WCHAR textbuf[64];
-		wsprintfW(textbuf, L"%s format does not use a separate code map.", fontFormatNames[data->nftr->header.format]);
+		wchar_t textbuf[64];
+		const wchar_t *fmt = ObjGetFormatNameByType(FILE_TYPE_FONT, data->nftr->header.format);
+		wsprintfW(textbuf, L"%s format does not use a separate code map.", fmt);
 		MessageBox(hWndMain, textbuf, L"Error", MB_ICONERROR);
 		return;
 	}
@@ -2552,6 +2553,8 @@ static LRESULT CALLBACK NftrViewerExportWndProc(HWND hWnd, UINT msg, WPARAM wPar
 }
 
 void RegisterNftrViewerClass(void) {
+	NftrRegisterFormats();
+
 	int features = EDITOR_FEATURE_GRIDLINES | EDITOR_FEATURE_ZOOM;
 	EDITOR_CLASS *cls = EditorRegister(NFTR_VIEWER_CLASS_NAME, NftrViewerWndProc, L"Font Editor", sizeof(NFTRVIEWERDATA), features);
 

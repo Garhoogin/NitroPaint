@@ -1,6 +1,16 @@
 #include "mesg.h"
 
-LPCWSTR gMesgFormatNames[] = { L"Invalid", L"BMG", NULL };
+static int MesgIsValidBMG(const unsigned char *buffer, unsigned int size);
+
+static void MesgRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_MESG, format, name, flag, proc);
+}
+
+void MesgRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_MESG, sizeof(MesgFile), L"Message");
+	MesgRegisterFormat(MESG_TYPE_BMG, L"BMG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, MesgIsValidBMG);
+}
+
 
 #define JMSG_INVALID 0  // invalid message file
 #define JMSG_LE      1  // message file little endian
@@ -171,8 +181,9 @@ static int MesgIsValidBMG(const unsigned char *buffer, unsigned int size) {
 }
 
 int MesgIsValid(const unsigned char *buffer, unsigned int size) {
-	if (MesgIsValidBMG(buffer, size)) return MESG_TYPE_BMG;
-	return MESG_TYPE_INVALID;
+	int fmt;
+	ObjIdentifyExByType(buffer, size, FILE_TYPE_MESG, &fmt);
+	return fmt;
 }
 
 static unsigned int MesgGetStringLength(const unsigned char *buf, int encoding) {

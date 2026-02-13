@@ -17,8 +17,6 @@
 #define NFTR_TYPE_GF_NFTR_11    8  // GameFreak NFTR 1.1
 #define NFTR_TYPE_STARFY        9  // Starfy
 
-extern LPCWSTR fontFormatNames[];
-
 
 typedef enum FontCharacterSet_ {
 	FONT_CHARSET_UTF8,         // UTF-8 character set (store 16-bit Unicode code points)
@@ -63,9 +61,8 @@ typedef struct NFTR_ {
 	NFTR_GLYPH *glyphs;
 } NFTR;
 
-int NftrIsValidBnfr11(const unsigned char *buffer, unsigned int size);
-int NftrIsValidBnfr12(const unsigned char *buffer, unsigned int size);
-int NftrIsValidBnfr20(const unsigned char *buffer, unsigned int size);
+void NftrRegisterFormats(void);
+
 int NftrIdentify(const unsigned char *buffer, unsigned int size);
 
 void NftrInit(NFTR *nftr, int format);

@@ -2705,6 +2705,8 @@ static void RegisterTextureTileEditorClass(void) {
 }
 
 void RegisterTextureEditorClass(void) {
+	TxRegisterFormats();
+
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
 	EDITOR_CLASS *cls = EditorRegister(L"TextureEditorClass", TextureEditorWndProc, L"Texture Editor", sizeof(TEXTUREEDITORDATA), features);
 	EditorAddFilter(cls, TEXTURE_TYPE_NNSTGA, L"tga", L"NNS TGA Files (*.tga)\0*.tga\0");

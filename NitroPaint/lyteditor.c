@@ -1877,6 +1877,8 @@ HWND CreateBnblViewerImmediate(int x, int y, int width, int height, HWND hWndPar
 }
 
 void RegisterLytEditor(void) {
+	JLytRegisterFormats();
+
 	int features = EDITOR_FEATURE_GRIDLINES | EDITOR_FEATURE_ZOOM;
 	EDITOR_CLASS *clsBnll = EditorRegister(L"BnllEditorClass", BnllEditorWndProc, L"BNLL Editor", sizeof(BNLLEDITORDATA), features);
 	EDITOR_CLASS *clsBncl = EditorRegister(L"BnclEditorClass", BnclEditorWndProc, L"BNCL Editor", sizeof(BNCLEDITORDATA), features);

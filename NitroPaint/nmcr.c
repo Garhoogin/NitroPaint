@@ -6,6 +6,17 @@
 #include "nanr.h"
 #include "nmcr.h"
 
+static int nmcrIsValidNmcr(const unsigned char *buffer, unsigned int size);
+
+static void nmcrRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+	ObjRegisterFormat(FILE_TYPE_NMCR, format, name, flag, proc);
+}
+
+void nmcrRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_NMCR, sizeof(NMCR), L"Multi-Cell Animation");
+	nmcrRegisterFormat(NMCR_TYPE_NMCR, L"NMCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, nmcrIsValid);
+}
+
 int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
 	int type = nmcrIsValid(buffer, size);
 	if (type == NMCR_TYPE_INVALID) return 1;
@@ -33,7 +44,7 @@ int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
 	return 0;
 }
 
-int nmcrIsValid(char *buffer, unsigned int size) {
+static int nmcrIsValidNmcr(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return NMCR_TYPE_INVALID;
 	if (memcmp(buffer, "RCMN", 4) != 0) return 0;
 
@@ -41,6 +52,12 @@ int nmcrIsValid(char *buffer, unsigned int size) {
 	if (pMcbk == NULL) return NMCR_TYPE_INVALID;
 
 	return NMCR_TYPE_NMCR;
+}
+
+int nmcrIsValid(const unsigned char *buffer, unsigned int size) {
+	int fmt = NMCR_TYPE_INVALID;
+	ObjIdentifyExByType(buffer, size, FILE_TYPE_NMCR, &fmt);
+	return fmt;
 }
 
 int nmcrReadFile(NMCR *nmcr, LPCWSTR path) {

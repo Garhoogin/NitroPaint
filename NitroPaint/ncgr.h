@@ -27,8 +27,6 @@
 #define NCGR_BOUNDARY(n,x)      (NCGR_BYTE_BOUNDARY((n)->mappingMode)*(x)/(((n)->nBits)<<3))
 #define NCGR_CHNAME(x,m,b)      (NCGR_BYTE_BOUNDARY(m)*(x)/((b)<<3))
 
-extern LPCWSTR characterFormatNames[];
-
 typedef struct CHAR_SLICE_ {
 	unsigned int offset;
 	unsigned int size;
@@ -59,6 +57,9 @@ typedef struct CHAR_VRAM_TRANSFER_ {
 
 #include "combo2d.h"
 
+void ChrRegisterFormats(void);
+
+
 //
 // Calculates a sensible width given a character count.
 //
@@ -70,15 +71,8 @@ int ChrGuessWidth(int nTiles);
 void ChrInit(NCGR *ncgr, int format);
 
 //
-// Determines if a byte array represents a valid character graphics file
+// Determines the validity of this file being a raw character graphics file.
 //
-int ChrIsValidHudson(const unsigned char *buffer, unsigned int size);
-int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
-int ChrIsValidAcg(const unsigned char *buffer, unsigned int size);
-int ChrIsValidIcg(const unsigned char *buffer, unsigned int size);
-int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size);
-int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size);
-int ChrIsValidTose(const unsigned char *buffer, unsigned int size);
 int ChrIsValidBin(const unsigned char *buffer, unsigned int size);
 
 //

@@ -3,6 +3,21 @@
 
 #include "jlyt.h"
 
+int BnllIsValidBnll(const unsigned char *buffer, unsigned int size);
+int BnclIsValidBncl(const unsigned char *buffer, unsigned int size);
+int BnblIsValidBnbl(const unsigned char *buffer, unsigned int size);
+
+void JLytRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_BNLL, sizeof(BNLL), L"Letter Layout");
+	ObjRegisterType(FILE_TYPE_BNCL, sizeof(BNCL), L"Cell Layout");
+	ObjRegisterType(FILE_TYPE_BNBL, sizeof(BNBL), L"Button Layout");
+
+	ObjRegisterFormat(FILE_TYPE_BNLL, BNLL_TYPE_BNLL, L"BNLL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnllIsValidBnll);
+	ObjRegisterFormat(FILE_TYPE_BNCL, BNCL_TYPE_BNCL, L"BNCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnclIsValidBncl);
+	ObjRegisterFormat(FILE_TYPE_BNBL, BNBL_TYPE_BNBL, L"BNBL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnblIsValidBnbl);
+}
+
+
 // ----- common
 
 //

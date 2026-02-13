@@ -22,9 +22,7 @@
 #define FILE_TYPE_BNCL       16
 #define FILE_TYPE_BNBL       17
 #define FILE_TYPE_MESG       18
-#define FILE_TYPE_MAX        19  //highest file type +1
-
-extern const wchar_t *gFileTypeNames[];
+#define FILE_TYPE_MAX        19  // highest file type +1
 
 // ----- common status codes
 #define OBJ_STATUS_SUCCESS     0  // the operation completed successfully
@@ -36,6 +34,44 @@ extern const wchar_t *gFileTypeNames[];
 #define OBJ_STATUS_MAX         6
 
 #define OBJ_SUCCEEDED(s)       ((s)==OBJ_STATUS_SUCCESS)
+
+
+// ----- file identification flag constants
+typedef enum ObjIdFlag_ {
+	OBJ_ID_HEADER            = (1 <<  0),  // File has a header.
+	OBJ_ID_FOOTER            = (1 <<  1),  // File has a footer.
+	OBJ_ID_SIGNATURE         = (1 <<  2),  // File has a signature (specific identifiable byte mark in the header)
+	OBJ_ID_CHUNKED           = (1 <<  3),  // File is arranged as a sequence of binary blocks
+	OBJ_ID_CHECKSUM          = (1 <<  4),  // File includes a checksum of data
+	OBJ_ID_COMPRESSION       = (1 <<  5),  // File data includes compressed data (not counting total file compression)
+	OBJ_ID_VALIDATED         = (1 <<  6),  // File includes data which may be trivially deemed invalid
+	OBJ_ID_SIZE_CHECK        = (1 <<  7),  // File identification includes a check for the file's specific size
+	OBJ_ID_OFFSETS           = (1 <<  8),  // File includes offsets to data fields
+	OBJ_ID_WINCODEC          = (1 <<  9),  // File is a Windows codec (e.g. image file on the host system)
+	OBJ_ID_WINCODEC_OVERRIDE = (1 << 10),  // File may validate as a Windows codec but is not one
+} ObjIdFlag;
+
+// ----- callback function to identify file validity of a given format
+typedef int (*ObjIdProc) (const unsigned char *buffer, unsigned int size);
+
+typedef struct ObjTypeEntry_ {
+	size_t size;    // The size of the object data
+	wchar_t *name;  // The type name
+} ObjTypeEntry;
+
+typedef struct ObjIdEntry_ {
+	int type;          // The file type
+	int format;        // The file format (specific to the type)
+	wchar_t *name;     // The format name
+	ObjIdFlag idFlag;  // The flags for identification
+	ObjIdProc idProc;  // The callback for identification
+} ObjIdEntry;
+
+void ObjInitCommon(void);
+void ObjRegisterType(int type, size_t objSize, const wchar_t *name);
+void ObjRegisterFormat(int type, int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc);
+int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type, int *pFormat);
+int ObjIdentifyEx(const unsigned char *buffer, unsigned int size, int *pFormat);
 
 
 typedef int(*OBJECT_READER) (struct OBJECT_HEADER_ *object, char *buffer, int size);
@@ -66,7 +102,9 @@ extern LPCWSTR g_ObjCompressionNames[];
 //
 LPCWSTR ObjStatusToString(int status);
 
-LPCWSTR *ObjGetFormatNamesByType(int type);
+const wchar_t *ObjGetFormatNameByType(int type, int format);
+
+unsigned int ObjGetFormatCountByType(int type);
 
 //
 // Get a file name from a file path.

@@ -949,6 +949,8 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 }
 
 VOID RegisterNsbtxViewerClass(VOID) {
+	TexarcRegisterFormats();
+
 	int features = EDITOR_FEATURE_ZOOM;
 	EditorRegister(L"NsbtxViewerClass", NsbtxViewerWndProc, L"NSBTX Editor", sizeof(NSBTXVIEWERDATA), features);
 	RegisterGenericClass(L"VramUseClass", VramUseWndProc, 8 * sizeof(void *));

@@ -2707,6 +2707,8 @@ static void RegisterCharImportClass(void) {
 }
 
 void RegisterNcgrViewerClass(void) {
+	ChrRegisterFormats();
+
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
 	EDITOR_CLASS *cls = EditorRegister(L"NcgrViewerClass", ChrViewerWndProc, L"Character Editor", sizeof(NCGRVIEWERDATA), features);
 	EditorAddFilter(cls, NCGR_TYPE_NCGR, L"ncgr", L"NCGR Files (*.ncgr)\0*.ncgr\0");

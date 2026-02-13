@@ -4099,6 +4099,8 @@ static LRESULT CALLBACK CellViewerObjListWndProc(HWND hWnd, UINT msg, WPARAM wPa
 }
 
 void RegisterNcerViewerClass(void) {
+	CellRegisterFormats();
+
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
 	EDITOR_CLASS *cls = EditorRegister(L"NcerViewerClass", CellViewerWndProc, L"Cell Editor", sizeof(NCERVIEWERDATA), features);
 	RegisterGenericClass(L"NcerCreateCellClass", NcerCreateCellWndProc, 12 * sizeof(void *));
