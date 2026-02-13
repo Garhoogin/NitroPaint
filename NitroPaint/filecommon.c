@@ -421,12 +421,6 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 		buffer = CxDecompress(file, size, &bufferSize);
 	}
 
-	//TODO:
-	//  Check: NNS TGA files take precedence over TGA files
-	//  Files not mis-identified as ordinary TGA due to "Windows Codec" priority boost
-	//  Raw data files not misclassed due to too broad of name list
-	//  Mario Party DS files might be incorrectly identified
-
 	int type = FILE_TYPE_INVALID;
 
 	if (path != NULL) {

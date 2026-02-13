@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 static int ChrIsValidHudson(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidHudson2(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidAcg(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidIcg(const unsigned char *buffer, unsigned int size);
@@ -28,7 +29,7 @@ void ChrRegisterFormats(void) {
 	ChriRegisterFormat(NCGR_TYPE_AC, L"ACG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidAcg);
 	ChriRegisterFormat(NCGR_TYPE_TOSE, L"Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidTose);
 	ChriRegisterFormat(NCGR_TYPE_HUDSON, L"Hudson", OBJ_ID_HEADER, ChrIsValidHudson);
-	ChriRegisterFormat(NCGR_TYPE_HUDSON2, L"Hudson 2", OBJ_ID_HEADER, ChrIsValidHudson);
+	ChriRegisterFormat(NCGR_TYPE_HUDSON2, L"Hudson 2", OBJ_ID_HEADER, ChrIsValidHudson2);
 	ChriRegisterFormat(NCGR_TYPE_GHOSTTRICK, L"Ghost Trick", OBJ_ID_COMPRESSION, ChrIsValidGhostTrick);
 	ChriRegisterFormat(NCGR_TYPE_SETOSA, L"Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidSetosa);
 	ChriRegisterFormat(NCGR_TYPE_BIN, L"Binary", 0, ChrIsValidBin);
@@ -69,18 +70,32 @@ int ChrIsValidBin(const unsigned char *buffer, unsigned int size) {
 
 static int ChrIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	if (size < 8) return 0;
-	if (((*buffer) & 0xF0) != 0) return 0;
-	int dataLength = *(uint16_t *) (buffer + 1);
+	if (buffer[0] & 0xF0) return 0;
 	if (buffer[3] != 0) return 0;
+
+	unsigned int dataLength = *(const uint16_t *) (buffer + 1);
 	if (dataLength * 32 + 4 == size || dataLength * 64 + 4 == size) {
 		//no second header
-		return NCGR_TYPE_HUDSON2;
+		return 0;
 	}
 	if (buffer[4] != 1 && buffer[4] != 0) return 0;
 	dataLength -= 4;
 
 	if (dataLength + 8 != size) return 0;
-	return NCGR_TYPE_HUDSON;
+	return 1;
+}
+
+static int ChrIsValidHudson2(const unsigned char *buffer, unsigned int size) {
+	if (size < 8) return 0;
+	if (buffer[0] & 0xF0) return 0;
+	if (buffer[3] != 0) return 0;
+
+	unsigned int dataLength = *(const uint16_t *) (buffer + 1);
+	if (dataLength * 32 + 4 == size || dataLength * 64 + 4 == size) {
+		//no second header
+		return 1;
+	}
+	return 0;
 }
 
 static int ChrIsValidGhostTrick(const unsigned char *buffer, unsigned int size) {
