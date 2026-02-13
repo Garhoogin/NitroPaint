@@ -130,11 +130,6 @@ unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned s
 void ObjInit(OBJECT_HEADER *header, int type, int format);
 
 //
-// Compress a file given its path using the specified compression type.
-//
-void ObjCompressFile(LPWSTR name, int compression);
-
-//
 // Free the resources held by an open file, after which it can be safely freed
 //
 void ObjFree(OBJECT_HEADER *header);

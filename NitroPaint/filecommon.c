@@ -479,24 +479,6 @@ unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned s
 	return r;
 }
 
-void ObjCompressFile(LPWSTR name, int compression) {
-	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwSizeLow, dwSizeHigh, dwRead, dwWritten;
-	dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
-	char *buffer = (char *) calloc(dwSizeLow, 1);
-	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
-	CloseHandle(hFile);
-	int compressedSize;
-	char *compressedBuffer;
-	compressedBuffer = CxCompress(buffer, dwSizeLow, compression, &compressedSize);
-
-	hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	WriteFile(hFile, compressedBuffer, compressedSize, &dwWritten, NULL);
-	CloseHandle(hFile);
-	if (compressedBuffer != buffer) free(compressedBuffer);
-	free(buffer);
-}
-
 void ObjFree(OBJECT_HEADER *header) {
 	//clean up object outgoing links
 	OBJECT_HEADER *to = header->link.to;
