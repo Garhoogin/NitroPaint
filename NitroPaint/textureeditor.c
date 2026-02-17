@@ -1599,7 +1599,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 					TxConversionResult result = TexViewerModalConvert(&params, hWndMain);
 					free(params.pnam);
-					ObjFree(&paletteFile->header);
+					if (paletteFile != NULL) ObjFree(&paletteFile->header);
 
 					if (result != TEXCONV_SUCCESS) {
 						if (result != TEXCONV_ABORT) {

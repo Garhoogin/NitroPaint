@@ -1464,13 +1464,10 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	int compression, format;
 	int type = ObjIdentify(buffer, dwSize, path, FILE_TYPE_INVALID, &compression, &format);
 
-	ObjHeader *obj = NULL;
-	int status = ObjReadBuffer(&obj, buffer, dwSize, type, format, compression);
-	if (!OBJ_SUCCEEDED(status)) {
-		goto cleanup;
-	}
-
 	switch (type) {
+		case FILE_TYPE_IMAGE:
+			CreateImageDialog(hWnd, path);
+			break;
 		case FILE_TYPE_PALETTE:
 		case FILE_TYPE_CHARACTER:
 		case FILE_TYPE_SCREEN:
@@ -1484,17 +1481,16 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		case FILE_TYPE_MESG:
 		case FILE_TYPE_TEXTURE:
 		case FILE_TYPE_NMCR:
+		{
+			ObjHeader *obj = NULL;
+			int status = ObjReadBuffer(&obj, buffer, dwSize, type, format, compression);
+			if (!OBJ_SUCCEEDED(status)) {
+				goto cleanup;
+			}
+
 			NpOpenObjectAtPath(hWnd, obj, path);
 			break;
-		//case FILE_TYPE_TEXTURE:
-			//CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			//break;
-		//case FILE_TYPE_NMCR:
-			//data->hWndNmcrViewer = CreateNmcrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			//break;
-		case FILE_TYPE_IMAGE:
-			CreateImageDialog(hWnd, path);
-			break;
+		}
 		case FILE_TYPE_COMBO2D:
 		{
 			//since we're kind of stepping around things a bit, we need to decompress here if applicable
