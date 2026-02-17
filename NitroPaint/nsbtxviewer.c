@@ -274,10 +274,15 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 	if (path == NULL) return 0;
 
 	//read texture
-	int s = TxReadFileDirect(texels, palette, path);
-	if (!s) {
+	TextureObject *tex = (TextureObject *) ObjAutoReadFile(path, FILE_TYPE_TEXTURE);
+	if (tex != NULL) {
 		//success: return
 		free(path);
+
+		TEXTURE outTex;
+		TxUncontain(tex, &outTex);
+		memcpy(texels, &outTex.texels, sizeof(TEXELS));
+		memcpy(palette, &outTex.palette, sizeof(PALETTE));
 		return 1;
 	}
 
@@ -288,28 +293,25 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 	px = ImgRead(path, &bWidth, &bHeight);
 	if (px == NULL || bWidth == 0 || bHeight == 0) {
 		//invalid NNS TGA and image. Try reading a palette.
-		//MessageBox(data->hWnd, L"Invalid NNS TGA.", L"Invalid NNS TGA", MB_ICONERROR);
-		//succeeded = 0;
 		memset(texels, 0, sizeof(TEXELS));
 		texels->texImageParam = 0; //no texture
 
-		NCLR nclr;
-		int s = PalReadFile(&nclr, path);
-		if (s) {
+		NCLR *nclr = (NCLR *) ObjAutoReadFile(path, FILE_TYPE_PALETTE);
+		if (nclr == NULL) {
 			//invalid file.
 			MessageBox(data->hWnd, L"Invalid texture, image, or palette file.", L"Invalid File", MB_ICONERROR);
 			succeeded = 0;
 		} else {
 			//copy out
-			palette->nColors = nclr.nColors;
+			palette->nColors = nclr->nColors;
 			palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
-			memcpy(palette->pal, nclr.colors, palette->nColors * sizeof(COLOR));
+			memcpy(palette->pal, nclr->colors, palette->nColors * sizeof(COLOR));
 
 			//name
 			ConstructResourceNameFromFilePath(path, &palette->name);
 			
 			succeeded = 1;
-			ObjFree(&nclr.header);
+			ObjFree(&nclr->header);
 		}
 	} else if (!TxDimensionIsValid(bWidth) || (bWidth > 1024 || bHeight > 1024)) {
 		//invalid dimension.
@@ -326,8 +328,14 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 		//create temporary texture editor
 		SendMessage(hWndMdi, WM_SETREDRAW, FALSE, 0);
 		int verySmall = -(CW_USEDEFAULT >> 1); //(smallest power of 2 that won't be picked up as CW_USEDEFAULT)
-		HWND hWndTextureEditor = CreateTextureEditor(verySmall, verySmall, 0, 0, hWndMdi, path);
+
+		unsigned int size;
+		unsigned char *buf = ObjReadWholeFile(path, &size);
+
+		HWND hWndTextureEditor = CreateTextureEditorFromUnconverted(verySmall, verySmall, 0, 0, hWndMdi, buf, size);
 		ShowWindow(hWndTextureEditor, SW_HIDE);
+		free(buf);
+
 		TEXTUREEDITORDATA *teData = (TEXTUREEDITORDATA *) EditorGetData(hWndTextureEditor);
 		
 		//open conversion dialog
@@ -556,8 +564,19 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						LPWSTR location = saveFileDialog(hWnd, L"Save Texture", L"TGA Files (*.tga)\0*.tga\0All Files\0*.*\0", L"tga");
 						if (!location) break;
 
-						TxWriteFileDirect(data->nsbtx->textures + GetListBoxSelection(data->hWndTextureSelect),
-									  data->nsbtx->palettes + GetListBoxSelection(data->hWndPaletteSelect), TEXTURE_TYPE_NNSTGA, location);
+
+						TEXTURE copy = { 0 };
+						TEXELS *srcTex = data->nsbtx->textures + GetListBoxSelection(data->hWndTextureSelect);
+						memcpy(&copy.texels, srcTex, sizeof(TEXELS));
+
+						if (data->nsbtx->nPalettes > 0) {
+							PALETTE *srcPlt = data->nsbtx->palettes + GetListBoxSelection(data->hWndPaletteSelect);
+							memcpy(&copy.palette, srcPlt, sizeof(PALETTE));
+						}
+						TextureObject *obj = TxContain(&copy, TEXTURE_TYPE_NNSTGA);
+
+						ObjWriteFile(&obj->header, location);
+						TxUncontain(obj, &copy);
 
 						free(location);
 						break;
@@ -660,7 +679,15 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							//suffix ".tga"
 							memcpy(path + pathLen + strlen(name), L".tga", 10);
 
-							TxWriteFileDirect(&data->nsbtx->textures[i], &data->nsbtx->palettes[pltt], TEXTURE_TYPE_NNSTGA, path);
+							TEXTURE copy = { 0 };
+							memcpy(&copy.texels, &data->nsbtx->textures[i], sizeof(TEXELS));
+							if (pltt >= 0 && pltt < data->nsbtx->nPalettes) {
+								memcpy(&copy.palette, &data->nsbtx->palettes[pltt], sizeof(PALETTE));
+							}
+
+							TextureObject *obj = TxContain(&copy, TEXTURE_TYPE_NNSTGA);
+							ObjWriteFile(&obj->header, path);
+							TxUncontain(obj, &copy);
 						}
 
 						//free palette name array
@@ -960,17 +987,6 @@ static HWND CreateNsbtxViewerInternal(int x, int y, int width, int height, HWND 
 	HWND h = EditorCreate(L"NsbtxViewerClass", x, y, width, height, hWndParent);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) nsbtx);
 	return h;
-}
-
-HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	TexArc *nsbtx = (TexArc *) calloc(1, sizeof(TexArc));
-	if (TexarcReadFile(nsbtx, path)) {
-		free(nsbtx);
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
-	return CreateNsbtxViewerInternal(x, y, width, height, hWndParent, path, nsbtx);
 }
 
 HWND CreateNsbtxViewerImmediate(int x, int y, int width, int height, HWND hWndParent, TexArc *nsbtx) {

@@ -19,12 +19,14 @@ static int NftrIsValidStarfy(const unsigned char *buffer, unsigned int size);
 static int BncmpIsValidBncmp11(const unsigned char *buffer, unsigned int size);
 static int BncmpIsValidBncmp12(const unsigned char *buffer, unsigned int size);
 
+static void NftrFree(ObjHeader *obj);
+
 static void NftrRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_FONT, format, name, flag, proc);
 }
 
 void NftrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_FONT, sizeof(NFTR), L"Font");
+	ObjRegisterType(FILE_TYPE_FONT, sizeof(NFTR), L"Font", (ObjReader) NftrRead, (ObjWriter) NftrWrite, NULL, NftrFree);
 	NftrRegisterFormat(NFTR_TYPE_NFTR_01, L"NFTR 0.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr01);
 	NftrRegisterFormat(NFTR_TYPE_NFTR_10, L"NFTR 1.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr10);
 	NftrRegisterFormat(NFTR_TYPE_NFTR_11, L"NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr11);
@@ -36,7 +38,7 @@ void NftrRegisterFormats(void) {
 	NftrRegisterFormat(NFTR_TYPE_STARFY, L"Starfy", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidStarfy);
 
 	//register BNCMP
-	ObjRegisterType(FILE_TYPE_CMAP, 0, L"Character Map");
+	ObjRegisterType(FILE_TYPE_CMAP, 0, L"Character Map", (ObjReader) BncmpRead, (ObjWriter) BncmpWrite, NULL, NULL);
 	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_11, L"BNCMP 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp11);
 	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_12, L"BNCMP 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp12);
 }
@@ -47,7 +49,7 @@ int NftrIdentify(const unsigned char *buffer, unsigned int size) {
 	return fmt;
 }
 
-void NftrFree(OBJECT_HEADER *obj) {
+void NftrFree(ObjHeader *obj) {
 	NFTR *nftr = (NFTR*) obj;
 	if (nftr->glyphs != NULL) {
 		for (int i = 0; i < nftr->nGlyph; i++) {
@@ -56,14 +58,6 @@ void NftrFree(OBJECT_HEADER *obj) {
 		free(nftr->glyphs);
 		nftr->glyphs = NULL;
 	}
-}
-
-void NftrInit(NFTR *nftr, int format) {
-	nftr->header.size = sizeof(NFTR);
-	ObjInit(&nftr->header, FILE_TYPE_FONT, format);
-
-	nftr->header.dispose = NftrFree;
-	nftr->header.writer = (OBJECT_WRITER) NftrWrite;
 }
 
 
@@ -378,8 +372,6 @@ static int NftrCodePointComparator(const void *p1, const void *p2) {
 }
 
 static int NftrReadBnfr20(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_BNFR_20);
-
 	//get blocks
 	const unsigned char *img1 = NULL, *cmp1 = NULL, *wid1 = NULL;
 
@@ -539,12 +531,10 @@ static int NftrReadBnfr1x(NFTR *nftr, const unsigned char *buffer, unsigned int 
 }
 
 static int NftrReadBnfr12(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_BNFR_12);
 	return NftrReadBnfr1x(nftr, buffer, size);
 }
 
 static int NftrReadBnfr11(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_BNFR_11);
 	return NftrReadBnfr1x(nftr, buffer, size);
 }
 
@@ -748,33 +738,26 @@ static int NftrReadNftrCommon(NFTR *nftr, const unsigned char *buffer, unsigned 
 }
 
 static int NftrReadNftr01(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_NFTR_01);
 	return NftrReadNftrCommon(nftr, buffer, size);
 }
 
 static int NftrReadNftr10(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_NFTR_10);
 	return NftrReadNftrCommon(nftr, buffer, size);
 }
 
 static int NftrReadNftr11(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_NFTR_11);
 	return NftrReadNftrCommon(nftr, buffer, size);
 }
 
 static int NftrReadNftr12(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_NFTR_12);
 	return NftrReadNftrCommon(nftr, buffer, size);
 }
 
 static int NftrReadGfNftr11(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_GF_NFTR_11);
 	return NftrReadNftrCommon(nftr, buffer, size);
 }
 
 static int NftrReadStarfy(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	NftrInit(nftr, NFTR_TYPE_STARFY);
-
 	unsigned int nTable = *(const uint16_t *) (buffer + 0x2);
 	const uint32_t *ofsTable = (const uint32_t *) (buffer + 0x4);
 	unsigned int ofsPlaceholder = nTable * 4 + 4;
@@ -859,7 +842,7 @@ static int NftrReadStarfy(NFTR *nftr, const unsigned char *buffer, unsigned int 
 }
 
 int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	switch (NftrIdentify(buffer, size)) {
+	switch (nftr->header.format) {
 		case NFTR_TYPE_NFTR_01:
 			return NftrReadNftr01(nftr, buffer, size);
 		case NFTR_TYPE_NFTR_10:
@@ -880,10 +863,6 @@ int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
 			return NftrReadStarfy(nftr, buffer, size);
 	}
 	return OBJ_STATUS_INVALID;
-}
-
-int NftrReadFile(NFTR *nftr, LPCWSTR path) {
-	return ObjReadFile(path, (OBJECT_HEADER *) nftr, (OBJECT_READER) NftrRead);
 }
 
 // ----- Font operations

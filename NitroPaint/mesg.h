@@ -18,7 +18,7 @@ typedef struct MesgEntry_ {
 } MesgEntry;
 
 typedef struct MesgFile_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 
 	MesgEntry *messages;
 	unsigned int nMsg;
@@ -44,8 +44,6 @@ unsigned int MesgDoubleByteLength(const unsigned char *buf);
 int MesgIsValid(const unsigned char *buffer, unsigned int size);
 
 int MesgRead(MesgFile *mesg, const unsigned char *buffer, unsigned int size);
-
-int MesgReadFile(MesgFile *mesg, LPCWSTR path);
 
 int MesgWrite(MesgFile *mesg, BSTREAM *stream);
 

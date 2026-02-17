@@ -14,7 +14,7 @@ static void CellRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, 
 }
 
 void CellRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_CELL, sizeof(NCER), L"Cell Bank");
+	ObjRegisterType(FILE_TYPE_CELL, sizeof(NCER), L"Cell Bank", (ObjReader) CellRead, (ObjWriter) CellWrite, NULL, CellFree);
 	CellRegisterFormat(NCER_TYPE_NCER, L"NCER", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, CellIsValidNcer);
 	CellRegisterFormat(NCER_TYPE_SETOSA, L"Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, CellIsValidSetosa);
 	CellRegisterFormat(NCER_TYPE_HUDSON, L"Hudson", OBJ_ID_HEADER | OBJ_ID_OFFSETS, CellIsValidHudson);
@@ -24,13 +24,6 @@ void CellRegisterFormats(void) {
 
 #define SEXT8(n)   (((n)<0x080)?(n):((n)-0x100))
 #define SEXT9(n)   (((n)<0x100)?(n):((n)-0x200))
-
-void CellInit(NCER *ncer, int format) {
-	ncer->header.size = sizeof(NCER);
-	ObjInit((OBJECT_HEADER *) ncer, FILE_TYPE_CELL, format);
-	ncer->header.dispose = CellFree;
-	ncer->header.writer = (OBJECT_WRITER) CellWrite;
-}
 
 static int CellIsValidHudson(const unsigned char *buffer, unsigned int size) {
 	if (size < 4) return 0;
@@ -110,7 +103,6 @@ int CellIdentify(const unsigned char *buffer, unsigned int size) {
 
 int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 	int nCells = *(uint32_t *) buffer;
-	CellInit(ncer, NCER_TYPE_HUDSON);
 	ncer->labl = NULL;
 	ncer->lablSize = 0;
 	ncer->uext = NULL;
@@ -150,7 +142,6 @@ int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 }
 
 int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
-	CellInit(ncer, NCER_TYPE_NCER);
 	ncer->nCells = 0;
 	ncer->uextSize = 0;
 	ncer->lablSize = 0;
@@ -283,7 +274,6 @@ int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int siz
 
 	}
 
-	CellInit(ncer, NCER_TYPE_GHOSTTRICK);
 	ncer->nCells = nCells;
 	ncer->cells = cells;
 	ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_128K;
@@ -291,8 +281,6 @@ int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int siz
 }
 
 static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int size) {
-	CellInit(ncer, NCER_TYPE_SETOSA);
-
 	const unsigned char *cellBlock = SetGetBlock(buffer, size, "CELL");
 	const unsigned char *cbexBlock = SetGetBlock(buffer, size, "CBEX");
 
@@ -346,8 +334,7 @@ static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int 
 }
 
 int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size) {
-	int type = CellIdentify(buffer, size);
-	switch (type) {
+	switch (ncer->header.format) {
 		case NCER_TYPE_NCER:
 			return CellReadNcer(ncer, buffer, size);
 		case NCER_TYPE_SETOSA:
@@ -358,9 +345,6 @@ int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 			return CellReadGhostTrick(ncer, buffer, size);
 	}
 	return 1;
-}
-int CellReadFile(NCER *ncer, LPCWSTR path) {
-	return ObjReadFile(path, (OBJECT_HEADER *) ncer, (OBJECT_READER) CellRead);
 }
 
 void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj) {
@@ -590,7 +574,7 @@ void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst) {
 	}
 }
 
-int CellFree(OBJECT_HEADER *header) {
+int CellFree(ObjHeader *header) {
 	NCER *ncer = (NCER *) header;
 	if (ncer->uext) free(ncer->uext);
 	if (ncer->labl) free(ncer->labl);

@@ -13,6 +13,7 @@
 #define COMPRESSION_MVDK             10
 #define COMPRESSION_VLX              11
 #define COMPRESSION_ASH              12
+#define COMPRESSION_MAX              13 // max+1
 
 
 
@@ -41,7 +42,7 @@ unsigned char *CxDecompressLZHeader(const unsigned char *buffer, unsigned int si
 unsigned char *CxDecompressMvDK(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 unsigned char *CxDecompressVlx(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
 unsigned char *CxDecompressAsh(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
-unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize);
+unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, int type, unsigned int *uncompressedSize);
 
 
 /******************************************************************************\
@@ -115,6 +116,7 @@ int CxIsFilteredLZHeader(const unsigned char *buffer, unsigned int size);
 int CxIsCompressedMvDK(const unsigned char *buffer, unsigned int size);
 int CxIsCompressedVlx(const unsigned char *src, unsigned int size);
 int CxIsCompressedAsh(const unsigned char *src, unsigned int size);
+int CxIsCompressed(const unsigned char *buffer, unsigned int size, int type);
 
 //----- Common functions
 

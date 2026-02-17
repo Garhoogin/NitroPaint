@@ -56,7 +56,7 @@ typedef struct {
 } TEXTURE;
 
 typedef struct TextureObject_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 	TEXTURE texture;
 } TextureObject;
 
@@ -79,13 +79,11 @@ int TxDimensionIsValid(int x);
 
 // ----- Functions operating on the texture as an object
 
-void TxInit(TextureObject *texture, int format);
+void TxFree(ObjHeader *texture);
 
-void TxFree(OBJECT_HEADER *texture);
+TextureObject *TxContain(TEXTURE *texture, int format);
 
-void TxContain(TextureObject *object, int format, TEXTURE *texture);
-
-TEXTURE *TxUncontain(TextureObject *texture);
+void TxUncontain(TextureObject *texture, TEXTURE *out);
 
 int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size);
 
@@ -107,10 +105,6 @@ int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int 
 
 int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 
-int TxReadFile(TextureObject *texture, LPCWSTR path);
-
-int TxReadFileDirect(TEXELS *texels, PALETTE *palette, LPCWSTR path);
-
 int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream);
 
 int TxWriteTds(TextureObject *texture, BSTREAM *stream);
@@ -118,7 +112,3 @@ int TxWriteTds(TextureObject *texture, BSTREAM *stream);
 int TxWriteIStudio(TextureObject *texture, BSTREAM *stream);
 
 int TxWrite(TextureObject *texture, BSTREAM *stream);
-
-int TxWriteFile(TextureObject *texture, LPCWSTR path);
-
-int TxWriteFileDirect(TEXELS *texels, PALETTE *palette, int format, LPCWSTR path);

@@ -20,6 +20,4 @@ VOID RegisterNsbtxViewerClass(VOID);
 
 void CreateVramUseWindow(HWND hWndParent, TexArc *nsbtx);
 
-HWND CreateNsbtxViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
-
 HWND CreateNsbtxViewerImmediate(int x, int y, int width, int height, HWND hWndParent, TexArc *nsbtx);

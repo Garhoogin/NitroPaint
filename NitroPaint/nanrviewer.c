@@ -165,7 +165,7 @@ static HWND AnmViewerGetAssociatedEditor(NANRVIEWERDATA *data, int type) {
 	return NULL;
 }
 
-static OBJECT_HEADER *AnmViewerGetAssociatedObject(NANRVIEWERDATA *data, int type) {
+static ObjHeader *AnmViewerGetAssociatedObject(NANRVIEWERDATA *data, int type) {
 	HWND hWndEditor = AnmViewerGetAssociatedEditor(data, type);
 	if (hWndEditor == NULL) return NULL;
 
@@ -2699,15 +2699,6 @@ static HWND CreateNanrViewerInternal(int x, int y, int width, int height, HWND h
 	HWND h = EditorCreate(L"NanrViewerClass", x, y, width, height, hWndParent);
 	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) nanr);
 	return h;
-}
-
-HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
-	if (AnmReadFile(nanr, path)) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-	return CreateNanrViewerInternal(x, y, width, height, hWndParent, path, nanr);
 }
 
 HWND CreateNanrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NANR *nanr) {

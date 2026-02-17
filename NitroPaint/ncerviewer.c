@@ -4192,16 +4192,6 @@ static HWND CreateNcerViewerInternal(int x, int y, int width, int height, HWND h
 	return hWnd;
 }
 
-HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
-	if (CellReadFile(ncer, path)) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
-	return CreateNcerViewerInternal(x, y, width, height, hWndParent, path, ncer);
-}
-
 HWND CreateNcerViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCER *ncer) {
 	return CreateNcerViewerInternal(x, y, width, height, hWndParent, NULL, ncer);
 }

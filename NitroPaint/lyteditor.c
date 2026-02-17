@@ -403,7 +403,7 @@ static void LytEditorUpdateContentSize(LYTEDITOR *data) {
 }
 
 static LYTEDITOR *LytEditorAlloc(LYTEDITOR *ed, HWND hWnd) {
-	OBJECT_HEADER *obj = EditorGetObject(hWnd);
+	ObjHeader *obj = EditorGetObject(hWnd);
 	if (obj != NULL) {
 		ed->type = obj->type;
 	} else {
@@ -989,7 +989,7 @@ static void BLytEditorOnSize(BNBLEDITORDATA *data, const RECT *rcClient) {
 
 static void LytEditorOnInitialize(HWND hWnd, LYTEDITOR *ed, WPARAM wParam, LPARAM lParam) {
 	LPCWSTR path = (LPCWSTR) wParam;
-	OBJECT_HEADER *obj = (OBJECT_HEADER *) lParam;
+	ObjHeader *obj = (ObjHeader *) lParam;
 
 	//set file name
 	if (path != NULL) {
@@ -1821,47 +1821,12 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-static HWND LytEditorCreateInternal(LPCWSTR className, int x, int y, HWND hWndParent, LPCWSTR path, OBJECT_HEADER *obj) {
+static HWND LytEditorCreateInternal(LPCWSTR className, int x, int y, HWND hWndParent, LPCWSTR path, ObjHeader *obj) {
 	HWND hWnd = EditorCreate(className, x, y, 0, 0, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) obj);
 	SendMessage(hWnd, WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_JLAYOUT)));
 	ShowWindow(hWnd, SW_SHOW);
 	return hWnd;
-}
-
-static void LytEditorReleaseInvalidFile(OBJECT_HEADER *hdr, HWND hWndParent) {
-	free(hdr);
-	MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-}
-
-HWND CreateBnllViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	BNLL *bnll = (BNLL *) calloc(1, sizeof(BNLL));
-	if (BnllReadFile(bnll, path) == OBJ_STATUS_SUCCESS) {
-		return LytEditorCreateInternal(L"BnllEditorClass", x, y, hWndParent, path, &bnll->header);
-	}
-
-	LytEditorReleaseInvalidFile(&bnll->header, hWndParent);
-	return NULL;
-}
-
-HWND CreateBnclViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	BNCL *bncl = (BNCL *) calloc(1, sizeof(BNCL));
-	if (BnclReadFile(bncl, path) == OBJ_STATUS_SUCCESS) {
-		return LytEditorCreateInternal(L"BnclEditorClass", x, y, hWndParent, path, &bncl->header);
-	}
-
-	LytEditorReleaseInvalidFile(&bncl->header, hWndParent);
-	return NULL;
-}
-
-HWND CreateBnblViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	BNBL *bnbl = (BNBL *) calloc(1, sizeof(BNBL));
-	if (BnblReadFile(bnbl, path) == OBJ_STATUS_SUCCESS) {
-		return LytEditorCreateInternal(L"BnblEditorClass", x, y, hWndParent, path, &bnbl->header);
-	}
-
-	LytEditorReleaseInvalidFile(&bnbl->header, hWndParent);
-	return NULL;
 }
 
 HWND CreateBnllViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNLL *bnll) {

@@ -62,16 +62,16 @@ typedef struct {
 	HWND hWndPaletteBase;
 } TEXTUREEDITORDATA;
 
-WCHAR *TexNarrowResourceNameToWideChar(const char *name);
-char *TexNarrowResourceNameFromWideChar(const WCHAR *name);
+wchar_t *TexNarrowResourceNameToWideChar(const char *name);
+char *TexNarrowResourceNameFromWideChar(const wchar_t *name);
 
 void RegisterTextureEditorClass(void);
 
 int TexViewerIsConverted(TEXTUREEDITORDATA *data);
 
-HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
+HWND CreateTextureEditorFromUnconverted(int x, int y, int width, int height, HWND hWndParent, const unsigned char *buffer, unsigned int size);
 
-HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TEXTURE *texture);
+HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TextureObject *texture);
 
 int BatchTextureDialog(HWND hWndParent);
 

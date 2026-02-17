@@ -77,5 +77,4 @@ void NftrRenderString(
 
 void RegisterNftrViewerClass(void);
 
-HWND CreateNftrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
 HWND CreateNftrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NFTR *nftr);

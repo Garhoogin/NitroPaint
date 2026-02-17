@@ -87,8 +87,6 @@ typedef struct {
 
 VOID RegisterNanrViewerClass(VOID);
 
-HWND CreateNanrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
-
 HWND CreateNanrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NANR *nanr);
 
 void AnmViewerUpdateCellBounds(HWND hWnd);

@@ -707,7 +707,7 @@ static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, BggenColor0Mo
 	return pt;
 }
 
-void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width, int height, BgGenerateParameters *params,
+void BgGenerate(NCLR **pNclr, NCGR **pNcgr, NSCR **pNscr, COLOR32 *imgBits, int width, int height, BgGenerateParameters *params,
 	int *progress1, int *progress1Max, int *progress2, int *progress2Max) {
 
 	//palette setting
@@ -957,7 +957,7 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		outHeight = tilesY;
 	}
 
-	PalInit(nclr, paletteFormat);
+	NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, paletteFormat);
 	nclr->header.compression = compressPalette;
 	nclr->nBits = nBits;
 	nclr->nColors = nColorsOutput;
@@ -967,8 +967,9 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	for (int i = 0; i < nclr->nColors; i++) {
 		nclr->colors[i] = ColorConvertToDS(palette[i]);
 	}
+	*pNclr = nclr;
 
-	ChrInit(ncgr, characterFormat);
+	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, characterFormat);
 	ncgr->header.compression = compressCharacter;
 	ncgr->nBits = nBits;
 	ncgr->extPalette = nclr->extPalette;
@@ -979,9 +980,11 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 	ncgr->tilesY = outHeight;
 	ncgr->tiles = blocks;
 	ncgr->attr = chrAttr;
+	*pNcgr = ncgr;
 
+	NSCR *nscr = NULL;
 	if (params->bgType != BGGEN_BGTYPE_BITMAP) {
-		ScrInit(nscr, screenFormat);
+		nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, screenFormat);
 		nscr->header.compression = compressScreen;
 		nscr->tilesX = tilesX;
 		nscr->tilesY = tilesY;
@@ -992,8 +995,8 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 		ScrComputeHighestCharacter(nscr);
 	} else {
 		//no BG screen
-		memset(nscr, 0, sizeof(NSCR));
 	}
+	*pNscr = nscr;
 
 	if (params->fmt == BGGEN_FORMAT_IMAGESTUDIO || params->fmt == BGGEN_FORMAT_GRF) {
 		//link as combo
@@ -1003,11 +1006,10 @@ void BgGenerate(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *imgBits, int width,
 			case BGGEN_FORMAT_GRF:         combofmt = COMBO2D_TYPE_GRF_BG; break;
 		}
 
-		COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-		combo2dInit(combo, combofmt);
+		COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, combofmt);
 		combo2dLink(combo, &nclr->header);
 		combo2dLink(combo, &ncgr->header);
-		if (ObjIsValid(&nscr->header)) combo2dLink(combo, &nscr->header);
+		if (nscr != NULL) combo2dLink(combo, &nscr->header);
 	}
 
 	free(palette);

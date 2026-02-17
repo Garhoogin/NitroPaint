@@ -558,23 +558,22 @@ int PreviewLoadObjCell(NCER *ncer, NANR *nanr, int cellno) {
 	int animIndex = 0;
 	if (nanr == NULL) {
 		//write animation as NANR
-		NANR nanr;
-		AnmInit(&nanr, NANR_TYPE_NANR);
-		nanr.nSequences = 1;
-		nanr.sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
-		nanr.sequences[0].nFrames = 1;
-		nanr.sequences[0].mode = 2;
-		nanr.sequences[0].type = 0 | (1 << 16);
-		nanr.sequences[0].startFrameIndex = 0;
-		nanr.sequences[0].frames = (FRAME_DATA *) calloc(1, sizeof(FRAME_DATA));
-		nanr.sequences[0].frames[0].nFrames = 4;
-		nanr.sequences[0].frames[0].pad_ = 0xBEEF;
-		nanr.sequences[0].frames[0].animationData = calloc(1, sizeof(ANIM_DATA));
-		memset(nanr.sequences[0].frames[0].animationData, 0, sizeof(ANIM_DATA));
-		((ANIM_DATA *) nanr.sequences[0].frames[0].animationData)->index = cellno;
+		NANR *nanr = (NANR *) ObjAlloc(FILE_TYPE_NANR, NANR_TYPE_NANR);
+		nanr->nSequences = 1;
+		nanr->sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
+		nanr->sequences[0].nFrames = 1;
+		nanr->sequences[0].mode = 2;
+		nanr->sequences[0].type = 0 | (1 << 16);
+		nanr->sequences[0].startFrameIndex = 0;
+		nanr->sequences[0].frames = (FRAME_DATA *) calloc(1, sizeof(FRAME_DATA));
+		nanr->sequences[0].frames[0].nFrames = 4;
+		nanr->sequences[0].frames[0].pad_ = 0xBEEF;
+		nanr->sequences[0].frames[0].animationData = calloc(1, sizeof(ANIM_DATA));
+		memset(nanr->sequences[0].frames[0].animationData, 0, sizeof(ANIM_DATA));
+		((ANIM_DATA *) nanr->sequences[0].frames[0].animationData)->index = cellno;
 
-		AnmWriteFile(&nanr, pathNan);
-		AnmFree(&nanr.header);
+		ObjWriteFile(&nanr->header, pathNan);
+		ObjFree(&nanr->header);
 		animIndex = 0;
 	} else {
 		//load NANR as-is

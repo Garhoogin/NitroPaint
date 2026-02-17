@@ -46,7 +46,5 @@ void RegisterNcgrViewerClass(void);
 
 void ChrViewerGraphicsSizeUpdated(HWND hWnd);
 
-HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
-
 HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCGR *ncgr);
 

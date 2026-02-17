@@ -3751,8 +3751,26 @@ int CxGetCompressionType(const unsigned char *buffer, unsigned int size) {
 	return COMPRESSION_NONE;
 }
 
-unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
-	int type = CxGetCompressionType(buffer, size);
+int CxIsCompressed(const unsigned char *buffer, unsigned int size, int type) {
+	switch (type) {
+		case COMPRESSION_NONE             : return 1;
+		case COMPRESSION_LZ77             : return CxIsCompressedLZ(buffer, size);
+		case COMPRESSION_LZ77_HEADER      : return CxIsFilteredLZHeader(buffer, size);
+		case COMPRESSION_LZ11             : return CxIsCompressedLZX(buffer, size);
+		case COMPRESSION_RLE              : return CxIsCompressedRL(buffer, size);
+		case COMPRESSION_HUFFMAN_4        : return CxIsCompressedHuffman4(buffer, size);
+		case COMPRESSION_HUFFMAN_8        : return CxIsCompressedHuffman8(buffer, size);
+		case COMPRESSION_DIFF8            : return CxIsFilteredDiff8(buffer, size);
+		case COMPRESSION_DIFF16           : return CxIsFilteredDiff16(buffer, size);
+		case COMPRESSION_ASH              : return CxIsCompressedAsh(buffer, size);
+		case COMPRESSION_MVDK             : return CxIsCompressedMvDK(buffer, size);
+		case COMPRESSION_VLX              : return CxIsCompressedVlx(buffer, size);
+		case COMPRESSION_LZ11_COMP_HEADER : return CxIsCompressedLZXComp(buffer, size);
+	}
+	return 0;
+}
+
+unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, int type, unsigned int *uncompressedSize) {
 	switch (type) {
 		case COMPRESSION_NONE:
 		{

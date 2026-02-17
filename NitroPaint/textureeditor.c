@@ -687,23 +687,16 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			break;
 		case NV_INITIALIZE:
 		{
+			//initializing from unconverted
 			COLOR32 *px = (COLOR32 *) lParam;
-			data->texture = (TextureObject *) calloc(1, sizeof(TextureObject));
-			TxInit(data->texture, TexViewerGetFormatForPreset());
+			data->texture = (TextureObject *) ObjAlloc(FILE_TYPE_TEXTURE, TexViewerGetFormatForPreset());
 
-			//check: is it a Nitro TGA?
-			if (!TxReadFile(data->texture, data->szInitialFile)) {
-				int format = FORMAT(data->texture->texture.texels.texImageParam);
-				EditorSetFile(hWnd, data->szInitialFile);
-				TxRender(px, &data->texture->texture.texels, &data->texture->texture.palette);
-				TexViewerUpdateStatusBar(hWnd);
-			}
 			TexViewerEnsurePaletteEditor(data);
-
 			TexViewerSetImage(data, px, LOWORD(wParam), HIWORD(wParam));
 
 			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);
 			RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			TexViewerUpdateStatusBar(hWnd);
 			break;
 		}
 		case NV_INITIALIZE_IMMEDIATE:
@@ -1533,22 +1526,19 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					WCHAR path[MAX_PATH];
 					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH, (LPARAM) path);
 
-					NCLR paletteFile = { 0 };
+					NCLR *paletteFile = NULL;
 					BOOL fixedPalette = GetCheckboxChecked(data->hWndFixedPalette);
-					if (fixedPalette) {
-						int status = 1;
-						if (path[0]) {
-							status = PalReadFile(&paletteFile, path);
-						}
-						if (status) {
+					if (fixedPalette && path[0]) {
+						paletteFile = (NCLR *) ObjAutoReadFile(path, FILE_TYPE_PALETTE);
+						if (paletteFile == NULL) {
 							MessageBox(hWnd, L"Invalid palette file.", L"Invalid file", MB_ICONERROR);
 							break;
 						}
 					}
 
 					WCHAR bf[64];
-					int colorEntries = GetEditNumber(data->hWndColorEntries); //for 4x4
-					int paletteSize = GetEditNumber(data->hWndPaletteSize); //for non-4x4
+					int colorEntries = GetEditNumber(data->hWndColorEntries); // for 4x4
+					int paletteSize = GetEditNumber(data->hWndPaletteSize);   // for non-4x4
 					params.diffuseAmount = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
 					params.threshold = GetTrackbarPosition(data->hWndOptimizationSlider);
 					SendMessage(data->hWndPaletteName, WM_GETTEXT, 63, (LPARAM) bf);
@@ -1596,12 +1586,12 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					params.height = data->height;
 					params.fmt = fmt;
 					params.useFixedPalette = fixedPalette;
-					params.colorEntries = fixedPalette ? paletteFile.nColors : (fmt == CT_4x4 ? colorEntries : paletteSize);
+					params.colorEntries = fixedPalette ? paletteFile->nColors : (fmt == CT_4x4 ? colorEntries : paletteSize);
 					params.balance = balance.balance;
 					params.colorBalance = balance.colorBalance;
 					params.enhanceColors = balance.enhanceColors;
 					params.dest = &data->texture->texture;
-					params.fixedPalette = fixedPalette ? paletteFile.colors : NULL;
+					params.fixedPalette = fixedPalette ? paletteFile->colors : NULL;
 					params.pnam = TexNarrowResourceNameFromWideChar(bf);
 
 					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
@@ -1609,6 +1599,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 					TxConversionResult result = TexViewerModalConvert(&params, hWndMain);
 					free(params.pnam);
+					ObjFree(&paletteFile->header);
 
 					if (result != TEXCONV_SUCCESS) {
 						if (result != TEXCONV_ABORT) {
@@ -2416,17 +2407,17 @@ BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
 	if (!valid) return TRUE;
 
 	//read texture
-	TextureObject textureObj = { 0 };
-	TxReadFile(&textureObj, path);
+	TextureObject *textureObj = (TextureObject *) ObjAutoReadFile(path, FILE_TYPE_TEXTURE);
 
 	//split from object
-	TEXTURE *texture = TxUncontain(&textureObj);
+	TEXTURE texture;
+	TxUncontain(textureObj, &texture);
 
 	//add to TexArc
-	int fmt = FORMAT(texture->texels.texImageParam);
-	TexarcAddTexture(nsbtx, &texture->texels);
+	int fmt = FORMAT(texture.texels.texImageParam);
+	TexarcAddTexture(nsbtx, &texture.texels);
 	if (fmt != CT_DIRECT) {
-		TexarcAddPalette(nsbtx, &texture->palette);
+		TexarcAddPalette(nsbtx, &texture.palette);
 	}
 	return TRUE;
 }
@@ -2438,15 +2429,14 @@ BOOL CALLBACK BatchTexAddDir(LPCWSTR path, void *param) {
 
 void BatchTexShowVramStatistics(HWND hWnd, LPCWSTR convertedDir) {
 	//enumerate files in this folder and construct a temporary texture archive of them
-	TexArc nsbtx;
-	TexarcInit(&nsbtx, NSBTX_TYPE_NNS);
-	EnumAllFiles(convertedDir, BatchTexAddTexture, BatchTexAddDir, NULL, (void *) &nsbtx);
+	TexArc *nsbtx = (TexArc *) ObjAlloc(FILE_TYPE_NSBTX, NSBTX_TYPE_NNS);
+	EnumAllFiles(convertedDir, BatchTexAddTexture, BatchTexAddDir, NULL, nsbtx);
 
 	//create dialog
-	CreateVramUseWindow(hWnd, &nsbtx);
+	CreateVramUseWindow(hWnd, nsbtx);
 
 	//free
-	ObjFree(&nsbtx.header);
+	ObjFree(&nsbtx->header);
 }
 
 LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2583,14 +2573,13 @@ static LRESULT CALLBACK BatchTexProgressProc(HWND hWnd, UINT msg, WPARAM wParam,
 						if (ent->params.result != TEXCONV_SUCCESS) continue; // skip an incomplete texture
 
 						//contain texture
-						TextureObject textureObj;
-						TxContain(&textureObj, TEXTURE_TYPE_NNSTGA, ent->params.dest);
+						TextureObject *textureObj = TxContain(ent->params.dest, TEXTURE_TYPE_NNSTGA);
 
 						//write file out
-						TxWriteFile(&textureObj, ent->outPath);
+						ObjWriteFile(&textureObj->header, ent->outPath);
 
 						//free texture memory
-						ObjFree(&textureObj.header);
+						ObjFree(&textureObj->header);
 						memset(ent->params.dest, 0, sizeof(TEXTURE));
 					}
 
@@ -2748,54 +2737,30 @@ static void TexViewerEnsurePaletteEditor(TEXTUREEDITORDATA *data) {
 	RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 }
 
-HWND CreateTextureEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	unsigned int fileSize;
-	unsigned char *bytes = ObjReadWholeFile(path, &fileSize);
-	int compression = CxGetCompressionType(bytes, fileSize);
-	if (compression != COMPRESSION_NONE) {
-		unsigned char *dec = CxDecompress(bytes, fileSize, &fileSize);
-		free(bytes);
-		bytes = dec;
-	}
-	int textureType = TxIdentify(bytes, fileSize);
-	free(bytes);
-
+HWND CreateTextureEditorFromUnconverted(int x, int y, int width, int height, HWND hWndParent, const unsigned char *buffer, unsigned int size) {
+	//read image bits
 	int bWidth, bHeight;
-	COLOR32 *bits = ImgRead(path, &bWidth, &bHeight);
-	if (bits == NULL && textureType == TEXTURE_TYPE_INVALID) {
-		MessageBox(hWndParent, L"An invalid image file was specified.", L"Invalid Image", MB_ICONERROR);
+	COLOR32 *bits = ImgReadMem(buffer, size, &bWidth, &bHeight);
+	if (bits == NULL || bWidth == 0 || bHeight == 0) {
+		free(bits);
 		return NULL;
 	}
 
-	//if not already a valid texture file, validate dimensions
-	if (textureType == TEXTURE_TYPE_INVALID && (!TxDimensionIsValid(bWidth) || (bHeight > 1024))) {
+	//check size
+	if (!TxDimensionIsValid(bWidth) || (bHeight > 1024)) {
 		free(bits);
 		MessageBox(hWndParent, L"Textures must have dimensions as powers of two greater than or equal to 8, and not exceeding 1024.", L"Invalid dimensions", MB_ICONERROR);
 		return NULL;
 	}
 
+	//create editor
 	HWND h = EditorCreate(L"TextureEditorClass", x, y, width, height, hWndParent);
-
-	//for unconverted images, open path and bitmap
-	if (textureType == TEXTURE_TYPE_INVALID) {
-		SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
-		SendMessage(h, NV_INITIALIZE, bWidth | (bHeight << 16), (LPARAM) bits);
-	} else {
-		TextureObject *texture = (TextureObject *) calloc(1, sizeof(TextureObject));
-		TxReadFile(texture, path);
-		SendMessage(h, NV_SETPATH, wcslen(path), (LPARAM) path);
-		SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) texture);
-		EditorSetFile(h, path);
-	}
+	SendMessage(h, NV_INITIALIZE, bWidth | (bHeight << 16), (LPARAM) bits);
 	return h;
 }
 
-HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TEXTURE *texture) {
-	TextureObject *texObj = (TextureObject *) calloc(1, sizeof(TextureObject));
-	TxInit(texObj, TEXTURE_TYPE_NNSTGA);
-	memcpy(&texObj->texture, texture, sizeof(TEXTURE));
-
+HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TextureObject *texture) {
 	HWND h = EditorCreate(L"TextureEditorClass", x, y, width, height, hWndParent);
-	SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) texObj);
+	SendMessage(h, NV_INITIALIZE_IMMEDIATE, 0, (LPARAM) texture);
 	return h;
 }

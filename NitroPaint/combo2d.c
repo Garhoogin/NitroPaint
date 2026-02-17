@@ -46,29 +46,28 @@ typedef enum BgdtScreenFormat_ {
 	BGDT_SCREENFORMAT_DIRECT             = 0x12   // Direct color 16bpp
 } BgdtScreenFormat;
 
-void combo2dInit(COMBO2D *combo, int format) {
-	ObjInit(&combo->header, FILE_TYPE_COMBO2D, format);
-	StListCreateInline(&combo->links, OBJECT_HEADER *, NULL);
+static int combo2dInit(ObjHeader *obj) {
+	COMBO2D *combo = (COMBO2D *) obj;
 
-	combo->header.writer = (OBJECT_WRITER) combo2dWrite;
-	combo->header.dispose = combo2dFree;
+	StListCreateInline(&combo->links, ObjHeader *, NULL);
+	return OBJ_STATUS_SUCCESS;
 }
 
 int combo2dCount(COMBO2D *combo, int type) {
 	int count = 0;
 	for (unsigned int i = 0; i < combo->links.length; i++) {
-		OBJECT_HEADER *header;
+		ObjHeader *header;
 		StListGet(&combo->links, i, &header);
 		if (header->type == type) count++;
 	}
 	return count;
 }
 
-OBJECT_HEADER *combo2dGet(COMBO2D *combo, int type, int index) {
+ObjHeader *combo2dGet(COMBO2D *combo, int type, int index) {
 	//keep track of number of objects of this type we've counted
 	int nCounted = 0;
 	for (unsigned int i = 0; i < combo->links.length; i++) {
-		OBJECT_HEADER *object;
+		ObjHeader *object;
 		StListGet(&combo->links, i, &object);
 		if (object->type != type) continue;
 
@@ -78,16 +77,16 @@ OBJECT_HEADER *combo2dGet(COMBO2D *combo, int type, int index) {
 	return NULL;
 }
 
-void combo2dLink(COMBO2D *combo, OBJECT_HEADER *object) {
+void combo2dLink(COMBO2D *combo, ObjHeader *object) {
 	StListAdd(&combo->links, &object);
 	object->combo = (void *) combo;
 }
 
-void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object) {
+void combo2dUnlink(COMBO2D *combo, ObjHeader *object) {
 	object->combo = NULL;
 	object->format = 0;
 	for (unsigned int i = 0; i < combo->links.length; i++) {
-		OBJECT_HEADER *objI;
+		ObjHeader *objI;
 		StListGet(&combo->links, i, &objI);
 		if (objI != object) continue;
 
@@ -98,7 +97,7 @@ void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object) {
 
 	//free combo if all links are freed
 	if (combo->links.length == 0) {
-		combo2dFree(combo);
+		combo2dFree(&combo->header);
 		free(combo);
 	}
 }
@@ -219,13 +218,14 @@ int combo2dCanSave(COMBO2D *combo) {
 	return 1;
 }
 
-void combo2dFree(COMBO2D *combo) {
+void combo2dFree(ObjHeader *obj) {
+	COMBO2D *combo = (COMBO2D *) obj;
+
 	//free all links
 	for (unsigned int i = 0; i < combo->links.length; i++) {
-		OBJECT_HEADER *object;
+		ObjHeader *object;
 		StListGet(&combo->links, i, &object);
 		ObjFree(object);
-		free(object);
 	}
 	StListFree(&combo->links);
 
@@ -468,7 +468,7 @@ static void combo2dRegisterFormat(int format, const wchar_t *name, ObjIdFlag fla
 }
 
 void combo2dRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_COMBO2D, sizeof(COMBO2D), L"Combination");
+	ObjRegisterType(FILE_TYPE_COMBO2D, sizeof(COMBO2D), L"Combination", (ObjReader) combo2dRead, (ObjWriter) combo2dWrite, combo2dInit, combo2dFree);
 	combo2dRegisterFormat(COMBO2D_TYPE_5BG, L"5BG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValid5bg);
 	combo2dRegisterFormat(COMBO2D_TYPE_5BG_OBJ, L"5BG OBJ", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValid5bgObj);
 	combo2dRegisterFormat(COMBO2D_TYPE_BNCD, L"BNCD", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, combo2dIsValidBncd);
@@ -487,8 +487,7 @@ int combo2dIsValid(const unsigned char *file, unsigned int size) {
 
 int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
 	//add palette
-	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	PalInit(nclr, NCLR_TYPE_COMBO);
+	NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_COMBO);
 	nclr->nColors = 256;
 	nclr->extPalette = 0;
 	nclr->nBits = 4;
@@ -497,8 +496,7 @@ int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int
 	combo2dLink(combo, &nclr->header);
 
 	//add character
-	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ChrInit(ncgr, NCGR_TYPE_COMBO);
+	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_COMBO);
 	ncgr->nTiles = *(int *) (buffer + 0xA08);
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
 	ncgr->nBits = *(int *) buffer == 0 ? 4 : 8;
@@ -508,8 +506,7 @@ int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int
 	combo2dLink(combo, &ncgr->header);
 
 	//add screen
-	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-	ScrInit(nscr, NSCR_TYPE_COMBO);
+	NSCR *nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NSCR_TYPE_COMBO);
 	nscr->tilesX = 256 / 8;
 	nscr->tilesY = 256 / 8;
 	nscr->dataSize = nscr->tilesX * nscr->tilesY * 2;
@@ -529,10 +526,8 @@ int combo2dReadBncd(COMBO2D *combo, const unsigned char *buffer, unsigned int si
 	uint32_t offsChar = *(uint32_t *) (buffer + 0x10);
 	uint32_t sizeChar = *(uint32_t *) (buffer + 0x14);
 
-	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
-	ChrInit(ncgr, NCGR_TYPE_COMBO);
-	CellInit(ncer, NCER_TYPE_COMBO);
+	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_COMBO);
+	NCER *ncer = (NCER *) ObjAlloc(FILE_TYPE_CELL, NCER_TYPE_COMBO);
 
 	int depth = combo2dBncdGetBitDepth(buffer);
 	int mappingMode = combo2dBncdGetMappingMode(buffer);
@@ -644,8 +639,7 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	unsigned int scrDataSize = scrX * scrY * 2;
 
 	//addpalette
-	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	PalInit(nclr, NCLR_TYPE_COMBO);
+	NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_COMBO);
 	nclr->nColors = nColors;
 	nclr->extPalette = 0;
 	nclr->nBits = nBits;
@@ -654,8 +648,7 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	combo2dLink(combo, &nclr->header);
 
 	//add character
-	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ChrInit(ncgr, NCGR_TYPE_COMBO);
+	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_COMBO);
 	ncgr->nTiles = nCharsX * nCharsY;
 	ncgr->tilesX = nCharsX;
 	ncgr->tilesY = nCharsY;
@@ -667,8 +660,7 @@ int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 
 	if (!isBitmap) {
 		//add screen (only if not bitmap mode BG)
-		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-		ScrInit(nscr, NSCR_TYPE_COMBO);
+		NSCR *nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NSCR_TYPE_COMBO);
 		nscr->colorMode = screenColorMode;
 		nscr->fmt = screenFormat;
 		nscr->tilesX = scrX;
@@ -798,8 +790,7 @@ int combo2dRead5bgObj(COMBO2D *combo, const unsigned char *buffer, unsigned int 
 	}
 
 	//addpalette
-	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	PalInit(nclr, NCLR_TYPE_COMBO);
+	NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_COMBO);
 	nclr->nColors = nColors;
 	nclr->extPalette = 0;
 	nclr->nBits = 4;
@@ -808,8 +799,7 @@ int combo2dRead5bgObj(COMBO2D *combo, const unsigned char *buffer, unsigned int 
 	combo2dLink(combo, &nclr->header);
 
 	//add character
-	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ChrInit(ncgr, NCGR_TYPE_COMBO);
+	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_COMBO);
 	ncgr->nTiles = nChars;
 	ncgr->tilesX = nCharsX;
 	ncgr->tilesY = nCharsY;
@@ -819,8 +809,7 @@ int combo2dRead5bgObj(COMBO2D *combo, const unsigned char *buffer, unsigned int 
 	ChrReadChars(ncgr, objd + charOffset);
 	combo2dLink(combo, &ncgr->header);
 
-	NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
-	CellInit(ncer, NCER_TYPE_COMBO);
+	NCER *ncer = (NCER *) ObjAlloc(FILE_TYPE_CELL, NCER_TYPE_COMBO);
 	ncer->cells = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
 	ncer->nCells = 1;
 	ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
@@ -840,8 +829,7 @@ int combo2dReadBanner(COMBO2D *combo, const unsigned char *buffer, unsigned int 
 	if (info->version >= 3) memcpy(info->titleHn, buffer + 0x940, 0x100);
 
 	//add palette
-	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	PalInit(nclr, NCLR_TYPE_COMBO);
+	NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_COMBO);
 	nclr->nColors = 16;
 	nclr->extPalette = 0;
 	nclr->nBits = 4;
@@ -850,8 +838,7 @@ int combo2dReadBanner(COMBO2D *combo, const unsigned char *buffer, unsigned int 
 	combo2dLink(combo, &nclr->header);
 
 	//add character
-	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ChrInit(ncgr, FILE_TYPE_CHARACTER);
+	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_COMBO);
 	ncgr->nTiles = 16;
 	ncgr->tilesX = 4;
 	ncgr->tilesY = 4;
@@ -877,8 +864,7 @@ int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	int nChars = (charSize * 0x20) / (8 * nBits);
 
 	//add palette
-	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	PalInit(nclr, NCLR_TYPE_COMBO);
+	NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_COMBO);
 	nclr->nColors = 256;
 	nclr->extPalette = 0;
 	nclr->nBits = nBits;
@@ -887,8 +873,7 @@ int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 	combo2dLink(combo, &nclr->header);
 
 	//add character
-	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ChrInit(ncgr, NCGR_TYPE_COMBO);
+	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_COMBO);
 	ncgr->nBits = nBits;
 	ncgr->nTiles = nChars;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
@@ -907,8 +892,7 @@ int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int siz
 		int scrDataSize = (scrWidth / 8) * (scrHeight / 8) * 2;
 
 		//add screen
-		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-		ScrInit(nscr, NSCR_TYPE_COMBO);
+		NSCR *nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NSCR_TYPE_COMBO);
 		nscr->tilesX = scrWidth / 8;
 		nscr->tilesY = scrHeight / 8;
 		nscr->dataSize = scrDataSize;
@@ -947,8 +931,7 @@ static int combo2dReadAob(COMBO2D *combo, const unsigned char *buffer, unsigned 
 
 	unsigned int nObjEntry = *(const unsigned char *) (agb + 0x0);
 
-	NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
-	CellInit(ncer, NCER_TYPE_COMBO);
+	NCER *ncer = (NCER *) ObjAlloc(FILE_TYPE_CELL, NCER_TYPE_COMBO);
 	ncer->mappingMode = mappingMode;
 	ncer->nCells = nObjEntry;
 	ncer->cells = (NCER_CELL *) calloc(ncer->nCells, sizeof(NCER_CELL));
@@ -1000,8 +983,7 @@ static int combo2dReadAob(COMBO2D *combo, const unsigned char *buffer, unsigned 
 
 	}
 
-	NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
-	AnmInit(nanr, NANR_TYPE_COMBO);
+	NANR *nanr = (NANR *) ObjAlloc(FILE_TYPE_NANR, NANR_TYPE_COMBO);
 
 	//read animation sequences
 	unsigned int nSeq = *(anim++);
@@ -1080,15 +1062,13 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 
 	unsigned int sizeChar = 8 * gfxAttr;
 
-	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	PalInit(nclr, NCLR_TYPE_COMBO);
+	NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_COMBO);
 	nclr->nBits = gfxAttr;
 	nclr->nColors = palSize / sizeof(COLOR);
 	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
 	memcpy(nclr->colors, pal, nclr->nColors * sizeof(COLOR));
 
-	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	ChrInit(ncgr, NCGR_TYPE_COMBO);
+	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_COMBO);
 	ncgr->nBits = gfxAttr;
 	ncgr->nTiles = gfxSize / sizeChar;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
@@ -1096,8 +1076,7 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 	ChrReadGraphics(ncgr, gfx);
 
 	if (scrType != 0) {
-		NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-		ScrInit(nscr, NSCR_TYPE_COMBO);
+		NSCR *nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NSCR_TYPE_COMBO);
 		nscr->tilesX = width / 8;
 		nscr->tilesY = height / 8;
 		nscr->dataSize = nscr->tilesX * nscr->tilesY * sizeof(uint16_t);
@@ -1126,8 +1105,7 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 
 	//cell data?
 	if ((flags >> 14) == 2 && obj != NULL) {
-		NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
-		CellInit(ncer, NCER_TYPE_COMBO);
+		NCER *ncer = (NCER *) ObjAlloc(FILE_TYPE_CELL, NCER_TYPE_COMBO);
 
 		int nCell = *(const uint16_t *) (obj + 0x2);
 		int mapping = *(const uint16_t *) (obj + 0x0);
@@ -1160,8 +1138,7 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 	}
 
 	if (anm != NULL) {
-		NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
-		AnmInit(nanr, NANR_TYPE_COMBO);
+		NANR *nanr = (NANR *) ObjAlloc(FILE_TYPE_NANR, NANR_TYPE_COMBO);
 
 		unsigned int nSeq = *(const uint32_t *) (anm + 0x0);
 		nanr->nSequences = nSeq;
@@ -1233,10 +1210,8 @@ static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned 
 }
 
 int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size) {
-	int format = combo2dIsValid(buffer, size);
-	if (format == COMBO2D_TYPE_INVALID) return 1;
+	int format = combo->header.format;
 
-	combo2dInit(combo, format);
 	switch (format) {
 		case COMBO2D_TYPE_TIMEACE:
 			return combo2dReadTimeAce(combo, buffer, size);
@@ -1400,7 +1375,7 @@ static int combo2dWriteDataFile(COMBO2D *combo, BSTREAM *stream) {
 
 	//process all contained objects
 	for (unsigned int i = 0; i < combo->links.length; i++) {
-		OBJECT_HEADER *object;
+		ObjHeader *object;
 		StListGet(&combo->links, i, &object);
 		int type = object->type;
 

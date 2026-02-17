@@ -81,8 +81,6 @@ void CellViewerCopyObjData(NP_OBJ *obj);
 
 NP_OBJ *CellViewerGetCopiedObjData(void);
 
-HWND CreateNcerViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
-
 HWND CreateNcerViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCER *ncer);
 
 

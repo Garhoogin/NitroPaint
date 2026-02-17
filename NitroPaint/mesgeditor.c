@@ -1254,17 +1254,6 @@ static HWND CreateMesgEditorInternal(int x, int y, int width, int height, HWND h
 	return h;
 }
 
-HWND CreateMesgEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	MesgFile *mesg = (MesgFile *) calloc(1, sizeof(MesgFile));
-	if (MesgReadFile(mesg, path)) {
-		free(mesg);
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
-	return CreateMesgEditorInternal(x, y, width, height, hWndParent, path, mesg);
-}
-
 HWND CreateMesgEditorImmediate(int x, int y, int width, int height, HWND hWndParent, MesgFile *mesg) {
 	return CreateMesgEditorInternal(x, y, width, height, hWndParent, NULL, mesg);
 }

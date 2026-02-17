@@ -42,7 +42,7 @@ typedef struct NFTR_GLYPH_ {
 } NFTR_GLYPH;
 
 typedef struct NFTR_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 	int cellWidth;             // width of each glyph cell
 	int cellHeight;            // height of each glyph cell
 	int lineHeight;            // height of a line
@@ -65,9 +65,7 @@ void NftrRegisterFormats(void);
 
 int NftrIdentify(const unsigned char *buffer, unsigned int size);
 
-void NftrInit(NFTR *nftr, int format);
 int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size);
-int NftrReadFile(NFTR *nftr, LPCWSTR path);
 
 int NftrGetGlyphIndexByCP(NFTR *nftr, uint16_t cp);
 int NftrGetInvalidGlyphIndex(NFTR *nftr);

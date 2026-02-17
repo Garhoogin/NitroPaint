@@ -1250,7 +1250,7 @@ static int NpGetComboFormatForPreset(void) {
 	}
 }
 
-static HWND NpOpenObject(HWND hWnd, OBJECT_HEADER *object) {
+static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 	NITROPAINTSTRUCT *data = NpGetData(hWnd);
 	HWND h = NULL;
 
@@ -1260,6 +1260,7 @@ static HWND NpOpenObject(HWND hWnd, OBJECT_HEADER *object) {
 			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
 			h = CreateNclrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, (NCLR *) object);
 			data->hWndNclrViewer = h;
+			if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
 			break;
 		case FILE_TYPE_CHARACTER:
 			//if there is already an NCGR open, close it.
@@ -1272,8 +1273,10 @@ static HWND NpOpenObject(HWND hWnd, OBJECT_HEADER *object) {
 			h = CreateNscrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, (NSCR *) object);
 			break;
 		case FILE_TYPE_CELL:
+			if (data->hWndNcerViewer) DestroyChild(data->hWndNcerViewer);
 			h = CreateNcerViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NCER *) object);
 			data->hWndNcerViewer = h;
+			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
 			break;
 		case FILE_TYPE_NANR:
 			h = CreateNanrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NANR *) object);
@@ -1293,18 +1296,29 @@ static HWND NpOpenObject(HWND hWnd, OBJECT_HEADER *object) {
 		case FILE_TYPE_BNBL:
 			h = CreateBnblViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (BNBL *) object);
 			break;
+		case FILE_TYPE_TEXTURE:
+			CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (TextureObject *) object);
+			break;
+
+		case FILE_TYPE_NMCR:
+			//TODO
+			//data->hWndNmcrViewer = CreateNmcrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			break;
+		case FILE_TYPE_MESG:
+			h = CreateMesgEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (MesgFile *) object);
+			break;
 	}
 	return h;
 }
 
-static HWND NpOpenObjectAtPath(HWND hWndMain, OBJECT_HEADER *object, const wchar_t *path) {
+static HWND NpOpenObjectAtPath(HWND hWndMain, ObjHeader *object, const wchar_t *path) {
 	HWND h = NpOpenObject(hWndMain, object);
 	if (h != NULL) EditorSetFile(h, path);
 
 	return h;
 }
 
-static void NpEnsureComboObject(HWND hWndMain, OBJECT_HEADER *obj, int combofmt) {
+static void NpEnsureComboObject(HWND hWndMain, ObjHeader *obj, int combofmt) {
 	if (combofmt == COMBO2D_TYPE_INVALID) return;
 
 	//first, search for another editor owning a combo file in the same format.
@@ -1331,8 +1345,7 @@ static void NpEnsureComboObject(HWND hWndMain, OBJECT_HEADER *obj, int combofmt)
 		//if the combo was not found, create and initialize a new one.
 		if (combo == NULL) {
 			//create a combo and link it
-			combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-			combo2dInit(combo, combofmt);
+			combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, combofmt);
 		}
 
 		combo2dLink(combo, obj);
@@ -1343,7 +1356,7 @@ static void NpEnsureComboObject(HWND hWndMain, OBJECT_HEADER *obj, int combofmt)
 			unsigned int nObj = curr->links.length;
 			for (unsigned int i = 0; i < nObj; i++) {
 				//move links (beware: combo is deallocated when all links are deleted!)
-				OBJECT_HEADER *obj2 = *(OBJECT_HEADER **) StListGetPtr(&curr->links, 0);
+				ObjHeader *obj2 = *(ObjHeader **) StListGetPtr(&curr->links, 0);
 				combo2dUnlink(curr, obj2);
 				combo2dLink(combo, obj2);
 			}
@@ -1351,6 +1364,17 @@ static void NpEnsureComboObject(HWND hWndMain, OBJECT_HEADER *obj, int combofmt)
 	}
 
 	StListFree(&editors);
+}
+
+VOID OpenFileByNameAs(HWND hWnd, LPCWSTR path) {
+	HWND h = CreateWindow(L"OpenAsDialogClass", L"Open As", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWnd, NULL, NULL, NULL);
+	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) hWnd);
+	DoModal(h);
+}
+
+void OpenFileByContent(HWND hWnd, const unsigned char *buffer, unsigned int size, const wchar_t *path, int compression, int type, int format) {
+
 }
 
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
@@ -1382,8 +1406,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		void *fp = ObjReadWholeFile(pathBuffer, &comboSize);
 
 		//refName is the name of the file to read.
-		COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-		combo2dInit(combo, COMBO2D_TYPE_DATAFILE);
+		COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, COMBO2D_TYPE_DATAFILE);
 		combo->header.dispose = NULL;
 		combo->header.compression = COMPRESSION_NONE;
 		combo->extraData = (DATAFILECOMBO *) calloc(1, sizeof(DATAFILECOMBO));
@@ -1409,21 +1432,18 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 		//read applicable sections
 		if (pltRef != NULL) {
-			nclr = (NCLR *) calloc(1, sizeof(NCLR));
+			nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_COMBO);
 			PalRead(nclr, dfc->data + pltOffset, pltSize);
-			nclr->header.format = NCLR_TYPE_COMBO;
 			combo2dLink(combo, &nclr->header);
 		}
 		if (chrRef != NULL) {
-			ncgr = (NCGR *) calloc(1, sizeof(NCGR));
+			ncgr = (NCGR *) ObjAlloc(FILE_TYPE_PALETTE, NCGR_TYPE_COMBO);
 			ChrRead(ncgr, dfc->data + chrOffset, chrSize);
-			ncgr->header.format = NCGR_TYPE_COMBO;
 			combo2dLink(combo, &ncgr->header);
 		}
 		if (scrRef != NULL) {
-			nscr = (NSCR *) calloc(1, sizeof(NSCR));
+			nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NSCR_TYPE_COMBO);
 			ScrRead(nscr, dfc->data + scrOffset, scrSize);
-			nscr->header.format = NSCR_TYPE_COMBO;
 			combo2dLink(combo, &nscr->header);
 		}
 
@@ -1440,84 +1460,63 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		goto cleanup;
 	}
 
-	int format = ObjIdentify(buffer, dwSize, path);
-	switch (format) {
+	//identify the kind of object
+	int compression, format;
+	int type = ObjIdentify(buffer, dwSize, path, FILE_TYPE_INVALID, &compression, &format);
+
+	ObjHeader *obj = NULL;
+	int status = ObjReadBuffer(&obj, buffer, dwSize, type, format, compression);
+	if (!OBJ_SUCCEEDED(status)) {
+		goto cleanup;
+	}
+
+	switch (type) {
 		case FILE_TYPE_PALETTE:
-			//if there is already an NCLR open, close it.
-			if (data->hWndNclrViewer) DestroyChild(data->hWndNclrViewer);
-			data->hWndNclrViewer = CreateNclrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 257, data->hWndMdi, path);
-			if (data->hWndNcerViewer) InvalidateRect(data->hWndNcerViewer, NULL, FALSE);
-			break;
 		case FILE_TYPE_CHARACTER:
-			//if there is already an NCGR open, close it.
-			if (data->hWndNcgrViewer) DestroyChild(data->hWndNcgrViewer);
-			data->hWndNcgrViewer = CreateNcgrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 256, 256, data->hWndMdi, path);
-			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-			break;
 		case FILE_TYPE_SCREEN:
-			//create editor
-			CreateNscrViewer(CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->hWndMdi, path);
-			break;
 		case FILE_TYPE_CELL:
-			//if there is already an NCER open, close it.
-			if (data->hWndNcerViewer) DestroyChild(data->hWndNcerViewer);
-			data->hWndNcerViewer = CreateNcerViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			if (data->hWndNclrViewer) InvalidateRect(data->hWndNclrViewer, NULL, FALSE);
-			break;
 		case FILE_TYPE_NSBTX:
-			CreateNsbtxViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			break;
-		case FILE_TYPE_TEXTURE:
-			CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			break;
 		case FILE_TYPE_NANR:
-			data->hWndNanrViewer = CreateNanrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			break;
-		case FILE_TYPE_NMCR:
-			data->hWndNmcrViewer = CreateNmcrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			break;
 		case FILE_TYPE_FONT:
-			CreateNftrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			break;
 		case FILE_TYPE_BNLL:
-			CreateBnllViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			break;
 		case FILE_TYPE_BNCL:
-			CreateBnclViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			break;
 		case FILE_TYPE_BNBL:
-			CreateBnblViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
-			break;
 		case FILE_TYPE_MESG:
-			CreateMesgEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+		case FILE_TYPE_TEXTURE:
+		case FILE_TYPE_NMCR:
+			NpOpenObjectAtPath(hWnd, obj, path);
 			break;
+		//case FILE_TYPE_TEXTURE:
+			//CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			//break;
+		//case FILE_TYPE_NMCR:
+			//data->hWndNmcrViewer = CreateNmcrViewer(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			//break;
 		case FILE_TYPE_IMAGE:
 			CreateImageDialog(hWnd, path);
 			break;
 		case FILE_TYPE_COMBO2D:
 		{
 			//since we're kind of stepping around things a bit, we need to decompress here if applicable
-			int decompressedSize = dwSize;
-			int compressionType = CxGetCompressionType(buffer, dwSize);
-			char *decompressed = CxDecompress(buffer, dwSize, &decompressedSize);
-			int type = combo2dIsValid(decompressed, decompressedSize);
+			unsigned int decompressedSize = dwSize;
+			unsigned char *decompressed = CxDecompress(buffer, dwSize, compression, &decompressedSize);
 
 			//read combo
-			COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
+			COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, format);
 			combo2dRead(combo, decompressed, decompressedSize);
-			if (compressionType != COMPRESSION_NONE) combo->header.compression = compressionType;
+			if (compression != COMPRESSION_NONE) combo->header.compression = compression;
 			free(decompressed);
 
 			//open the component objects
 			for (unsigned int i = 0; i < combo->links.length; i++) {
-				OBJECT_HEADER *object;
+				ObjHeader *object;
 				StListGet(&combo->links, i, &object);
 				int type = object->type;
 
 				HWND h = NpOpenObject(hWnd, object);
 
 				//set compression type for all links
-				(*(OBJECT_HEADER **) StListGetPtr(&combo->links, i))->compression = compressionType;
+				(*(ObjHeader **) StListGetPtr(&combo->links, i))->compression = compression;
 
 				//point the editor window at the right file
 				EditorSetFile(h, path);
@@ -1849,6 +1848,15 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						free(path);
 						break;
 					}
+					case ID_FILE_OPENAS:
+					{
+						LPWSTR path = openFileDialog(hWnd, L"Open As", L"All Files (*.*)\0*.*\0", L"");
+						if (path == NULL) break;
+
+						OpenFileByNameAs(hWnd, path);
+						free(path);
+						break;
+					}
 					case ID_FILE_SAVEALL:
 					{
 						HWND hWndMdi = data->hWndMdi;
@@ -1874,7 +1882,13 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
 						if (path == NULL) break;
 
-						HWND h = CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+						//take as unconverted image file.
+						unsigned int size;
+						unsigned char *buffer = ObjReadWholeFile(path, &size);
+
+						HWND h = CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi,
+							buffer, size);
+						EditorSetFile(h, path);
 						free(path);
 						break;
 					}
@@ -1889,8 +1903,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						if (data->hWndNcerViewer != NULL) DestroyChild(data->hWndNcerViewer);
 						data->hWndNcerViewer = NULL;
 
-						NCER *ncer = (NCER *) calloc(1, sizeof(NCER));
-						CellInit(ncer, NpGetCellFormatForPreset());
+						NCER *ncer = (NCER *) ObjAlloc(FILE_TYPE_CELL, NpGetCellFormatForPreset());
 						ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 						ncer->nCells = 1;
 						ncer->cells = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
@@ -1930,8 +1943,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEW_NEWANIMATION:
 					{
-						NANR *nanr = (NANR *) calloc(1, sizeof(NANR));
-						AnmInit(nanr, NpGetAnimFormatForPreset());
+						NANR *nanr = (NANR *) ObjAlloc(FILE_TYPE_NANR, NpGetAnimFormatForPreset());
 
 						nanr->nSequences = 1;
 						nanr->sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
@@ -1959,16 +1971,14 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEW_NEWTEXTUREARCHIVE:
 					{
-						TexArc *nsbtx = (TexArc *) calloc(1, sizeof(TexArc));
-						TexarcInit(nsbtx, NSBTX_TYPE_NNS);
+						TexArc *nsbtx = (TexArc *) ObjAlloc(FILE_TYPE_NSBTX, NSBTX_TYPE_NNS);
 						NpOpenObject(hWnd, &nsbtx->header);
 						break;
 					}
 					case ID_NEW_NEWFONT:
 					{
 						//init sensible defaults
-						NFTR *nftr = (NFTR *) calloc(1, sizeof(NFTR));
-						NftrInit(nftr, NFTR_TYPE_NFTR_10);
+						NFTR *nftr = (NFTR *) ObjAlloc(FILE_TYPE_FONT, NFTR_TYPE_NFTR_10);
 						nftr->bpp = 1;
 						nftr->hasCodeMap = 1;
 						nftr->cellWidth = 8;
@@ -1982,8 +1992,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEWLAYOUT_LETTERLAYOUT:
 					{
-						BNLL *bnll = (BNLL *) calloc(1, sizeof(BNLL));
-						BnllInit(bnll, BNLL_TYPE_BNLL);
+						BNLL *bnll = (BNLL *) ObjAlloc(FILE_TYPE_BNLL, BNLL_TYPE_BNLL);
 						bnll->nMsg = 1;
 						bnll->messages = (BnllMessage *) calloc(1, sizeof(BnllMessage));
 						bnll->messages[0].pos.x.pos = 128;
@@ -1993,8 +2002,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEWLAYOUT_CELLLAYOUT:
 					{
-						BNCL *bncl = (BNCL *) calloc(1, sizeof(BNCL));
-						BnclInit(bncl, BNCL_TYPE_BNCL);
+						BNCL *bncl = (BNCL *) ObjAlloc(FILE_TYPE_BNCL, BNCL_TYPE_BNCL);
 						bncl->nCell = 1;
 						bncl->cells = (BnclCell *) calloc(1, sizeof(BnclCell));
 						bncl->cells[0].pos.x.pos = 128;
@@ -2004,8 +2012,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEWLAYOUT_BUTTONLAYOUT:
 					{
-						BNBL *bnbl = (BNBL *) calloc(1, sizeof(BNBL));
-						BnblInit(bnbl, BNLL_TYPE_BNLL);
+						BNBL *bnbl = (BNBL *) ObjAlloc(FILE_TYPE_BNBL, BNBL_TYPE_BNBL);
 						bnbl->nRegion = 1;
 						bnbl->regions = (BnblRegion *) calloc(1, sizeof(BnblRegion));
 						bnbl->regions[0].pos.x.pos = 128;
@@ -2309,15 +2316,14 @@ void nscrCreateCallback(void *data) {
 	HWND hWndNcgrViewer = NpOpenObject(hWndMain, &createData->ncgr->header);
 	HWND hWndNscrViewer = NULL;
 
-	OBJECT_HEADER *palobj = EditorGetObject(nitroPaintStruct->hWndNclrViewer);
-	OBJECT_HEADER *chrobj = EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
-	OBJECT_HEADER *scrobj = NULL;
+	ObjHeader *palobj = EditorGetObject(nitroPaintStruct->hWndNclrViewer);
+	ObjHeader *chrobj = EditorGetObject(nitroPaintStruct->hWndNcgrViewer);
+	ObjHeader *scrobj = NULL;
 
 	if (createData->genParams.bgType != BGGEN_BGTYPE_BITMAP) {
 		hWndNscrViewer = NpOpenObject(hWndMain, &createData->nscr->header);
 		scrobj = EditorGetObject(hWndNscrViewer);
 	} else {
-		free(createData->nscr);
 	}
 
 	//link data
@@ -2347,7 +2353,7 @@ typedef struct {
 
 DWORD WINAPI threadedNscrCreateInternal(LPVOID lpParameter) {
 	THREADEDNSCRCREATEPARAMS *params = lpParameter;
-	BgGenerate(params->createData->nclr, params->createData->ncgr, params->createData->nscr, 
+	BgGenerate(&params->createData->nclr, &params->createData->ncgr, &params->createData->nscr, 
 			   params->bbits, params->width, params->height, &params->params,
 			   &params->data->progress1, &params->data->progress1Max, &params->data->progress2, &params->data->progress2Max);
 	params->data->waitOn = 1;
@@ -2548,9 +2554,9 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 					progressData->callback = nscrCreateCallback;
 					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
 
-					createData->nclr = (NCLR *) calloc(1, sizeof(NCLR));
-					createData->ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-					createData->nscr = (NSCR *) calloc(1, sizeof(NSCR));
+					createData->nclr = NULL;
+					createData->ncgr = NULL;
+					createData->nscr = NULL;
 
 					//global setting
 					BgGenerateParameters params;
@@ -2947,7 +2953,11 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 				HWND hWndMdi = nitroPaintStruct->hWndMdi;
-				CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, &texture);
+
+				//create texture object
+				TextureObject *obj = (TextureObject *) ObjAlloc(FILE_TYPE_TEXTURE, TEXTURE_TYPE_NNSTGA);
+				memcpy(&obj->texture, &texture, sizeof(texture));
+				CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, obj);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
 			}
@@ -3070,7 +3080,13 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 					DoModal(h);
 				} else if (hWndControl == data->hWndTexture) {
-					CreateTextureEditor(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, data->szPath);
+
+					unsigned int size;
+					unsigned char *buffer = ObjReadWholeFile(data->szPath, &size);
+
+					CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+						hWndMdi, buffer, size);
+					free(buffer);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}
 			}
@@ -3180,14 +3196,12 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					int charFormat = charFormats[format];
 					int palFormat = palFormats[format];
 
-					NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-					PalInit(nclr, palFormat);
+					NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, palFormat);
 					nclr->colors = (COLOR *) calloc(256, sizeof(COLOR));
 					nclr->nColors = 256;
 					nclr->nBits = nBits;
 					
-					NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-					ChrInit(ncgr, charFormat);
+					NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, charFormat);
 					ncgr->header.compression = compression;
 					ncgr->nBits = nBits;
 					ncgr->mappingMode = mapping;
@@ -3211,8 +3225,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							case 7: combofmt = COMBO2D_TYPE_GRF_BG; break;
 						}
 
-						COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-						combo2dInit(combo, combofmt);
+						COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, combofmt);
 						combo2dLink(combo, &nclr->header);
 						combo2dLink(combo, &ncgr->header);
 
@@ -3337,8 +3350,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 						break;
 				}
 
-				NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-				ScrInit(nscr, NpGetScreenFormatForPreset());
+				NSCR *nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NpGetScreenFormatForPreset());
 				nscr->fmt = format;
 				nscr->colorMode = colorMode;
 				nscr->tilesX = tilesX;
@@ -3413,8 +3425,7 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int newTilesY = tilesY / y;
 				for (int i = 0; i < y; i++) {
 					for (int j = 0; j < x; j++) {
-						NSCR *newNscr = (NSCR *) calloc(1, sizeof(NSCR));
-						ScrInit(newNscr, nscr->header.format);
+						NSCR *newNscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, nscr->header.format);
 						newNscr->fmt = nscr->fmt;
 						newNscr->colorMode = nscr->colorMode;
 						newNscr->clearValue = nscr->clearValue;
@@ -3628,7 +3639,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 		{
 			//active editor window in lParam.
 			HWND hWndEditor = (HWND) lParam;
-			OBJECT_HEADER *obj = (OBJECT_HEADER *) EditorGetObject(hWndEditor);
+			ObjHeader *obj = (ObjHeader *) EditorGetObject(hWndEditor);
 
 			//get combo if the object is a part of one
 			COMBO2D *combo = (COMBO2D *) obj->combo;
@@ -3639,7 +3650,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			for (size_t i = 0; i < data->editors.length; i++) {
 				int remove = 0;
 
-				OBJECT_HEADER *obj2 = (*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
+				ObjHeader *obj2 = (*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
 				if (obj2 == NULL) {
 					remove = 1;
 				} else if (combo != NULL) {
@@ -3679,8 +3690,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 					//if no combo in data, create a new one.
 					if (data->combo == NULL) {
-						COMBO2D *combo = (COMBO2D *) calloc(1, sizeof(COMBO2D));
-						combo2dInit(combo, fmt);
+						COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, fmt);
 						
 						//for each window selected, link
 						for (size_t i = 0; i < data->editors.length; i++) {
@@ -3693,7 +3703,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 						//first, add any links we don't have, then remove the removed ones.
 						for (size_t i = 0; i < data->editors.length; i++) {
-							OBJECT_HEADER *obj = (*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
+							ObjHeader *obj = (*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
 
 							if (CheckedListViewIsChecked(data->hWndObjects, i) && obj->combo == NULL) {
 								combo2dLink(data->combo, obj);
@@ -3701,7 +3711,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 
 						for (size_t i = 0; i < data->editors.length; i++) {
-							OBJECT_HEADER *obj = (*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
+							ObjHeader *obj = (*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
 
 							if (!CheckedListViewIsChecked(data->hWndObjects, i) && obj->combo == data->combo) {
 								combo2dUnlink(data->combo, obj);
@@ -3764,8 +3774,7 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
-				NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-				PalInit(nclr, NpGetPaletteFormatForPreset());
+				NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NpGetPaletteFormatForPreset());
 				nclr->nBits = depthSel ? 8 : 4;
 				nclr->nColors = countSel << nclr->nBits;
 				nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
@@ -3787,6 +3796,162 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 		case WM_DESTROY:
 		{
 			free(data);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+typedef struct OpenAsData_ {
+	const wchar_t *path;
+	unsigned char *buffer;
+	unsigned int size;
+
+	StList formats;
+	StList compressions;
+
+	HWND hWndCompressionLabel;
+	HWND hWndCompressionDropdown;
+
+	HWND hWndFormatLabel;
+	HWND hWndFormatDropdown;
+
+	HWND hWndOK;
+	HWND hWndCancel;
+} OpenAsData;
+
+static void OpenAsOnCompressionChanged(OpenAsData *data) {
+	int compression;
+	int sel = UiCbGetCurSel(data->hWndCompressionDropdown);
+	StListGet(&data->compressions, sel, &compression);
+
+	//decompress
+	unsigned int uncompSize;
+	unsigned char *uncomp = CxDecompress(data->buffer, data->size, compression, &uncompSize);
+
+	StList ids;
+	StListCreateInline(&ids, ObjIdEntry, NULL);
+	ObjIdentifyMultipleByType(&ids, uncomp, uncompSize, FILE_TYPE_INVALID);
+
+	SendMessage(data->hWndFormatDropdown, CB_RESETCONTENT, 0, 0);
+	for (size_t i = 0; i < ids.length; i++) {
+		ObjIdEntry *ent = StListGetPtr(&ids, i);
+		const wchar_t *typeName = ObjGetFileTypeName(ent->type);
+
+		wchar_t textbuf[64];
+		wsprintfW(textbuf, L"%s (%s)", typeName, ent->name);
+		UiCbAddString(data->hWndFormatDropdown, textbuf);
+	}
+
+	//set default
+	UiCbSetCurSel(data->hWndFormatDropdown, 0);
+
+	//if nonzero number of formats responded, enable the OK button.
+	if (ids.length > 0) {
+		EnableWindow(data->hWndOK, TRUE);
+	} else {
+		EnableWindow(data->hWndOK, FALSE);
+	}
+
+	StListFree(&ids);
+	free(uncomp);
+}
+
+static LRESULT CALLBACK OpenAsDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	OpenAsData *data = (OpenAsData *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			data = (OpenAsData *) calloc(1, sizeof(OpenAsData));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			//init lists
+			StListCreateInline(&data->formats, ObjIdEntry, NULL);
+			StListCreateInline(&data->compressions, int, NULL);
+
+			data->hWndCompressionLabel = CreateStatic(hWnd, L"Compression:", 10, 10, 100, 22);
+			data->hWndCompressionDropdown = CreateCombobox(hWnd, NULL, 0, 110, 10, 200, 22, 0);
+			data->hWndFormatLabel = CreateStatic(hWnd, L"Format:", 10, 37, 100, 22);
+			data->hWndFormatDropdown = CreateCombobox(hWnd, NULL, 0, 110, 37, 200, 22, 0);
+
+			data->hWndOK = CreateButton(hWnd, L"Open", 210, 64, 100, 22, TRUE);
+			data->hWndCancel = CreateButton(hWnd, L"Cancel", 105, 64, 100, 22, FALSE);
+
+			SetWindowSize(hWnd, 320, 96);
+			SetGUIFont(hWnd);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			const wchar_t *path = (const wchar_t *) wParam;
+			data->path = path;
+
+			unsigned int size;
+			unsigned char *buf = ObjReadWholeFile(path, &size);
+			data->buffer = buf;
+			data->size = size;
+
+			//detect compression
+			int def = 0; // no compression
+			for (int i = 0; i < COMPRESSION_MAX; i++) {
+				if (CxIsCompressed(buf, size, i)) {
+					StListAdd(&data->compressions, &i);
+				}
+			}
+			def = CxGetCompressionType(buf, size);
+
+			for (size_t i = 0; i < data->compressions.length; i++) {
+				int type;
+				StListGet(&data->compressions, i, &type);
+
+				UiCbAddString(data->hWndCompressionDropdown, g_ObjCompressionNames[type]);
+			}
+			UiCbSetCurSel(data->hWndCompressionDropdown, StListIndexOf(&data->compressions, &def));
+
+			OpenAsOnCompressionChanged(data);
+
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndCtl = (HWND) lParam;
+			int idCtl = LOWORD(wParam);
+			int cmd = HIWORD(wParam);
+
+			if (hWndCtl == data->hWndCompressionDropdown && cmd == CBN_SELCHANGE) {
+				//update detections list
+				OpenAsOnCompressionChanged(data);
+			} else if ((hWndCtl == data->hWndCancel || idCtl == IDCANCEL) && cmd == BN_CLICKED) {
+				//exit
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			} else if ((hWndCtl == data->hWndOK || idCtl == IDOK) && cmd == BN_CLICKED) {
+
+				//get selected parameters
+				int iCompression = UiCbGetCurSel(data->hWndCompressionDropdown);
+				int iFormat = UiCbGetCurSel(data->hWndFormatDropdown);
+
+				int compression;
+				ObjIdEntry idEntry;
+				StListGet(&data->compressions, iCompression, &compression);
+				StListGet(&data->formats, iFormat, &idEntry);
+
+				//select
+				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+				OpenFileByContent(hWndMain, data->buffer, data->size, data->path, compression, idEntry.type, idEntry.format);
+
+				//close
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+		case WM_DESTROY:
+		{
+			StListFree(&data->compressions);
+			StListFree(&data->formats);
+
+			free(data);
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
 			break;
 		}
 	}
@@ -4294,6 +4459,10 @@ static void RegisterIndexImageClass(void) {
 	RegisterGenericClass(L"IndexImagePreview", RedGuiIndexImagePreviewProc, sizeof(LPVOID));
 }
 
+static void RegisterOpenAsDialogClass(void) {
+	RegisterGenericClass(L"OpenAsDialogClass", OpenAsDialogProc, sizeof(LPVOID));
+}
+
 static BOOL NpCfgWriteInt(LPCWSTR section, LPCWSTR prop, int val) {
 	WCHAR buf[32];
 	wsprintfW(buf, L"%d", val);
@@ -4393,6 +4562,7 @@ static void RegisterClasses(void) {
 	RegisterIndexImageClass();
 	RegisterLytEditor();
 	MesgEditorRegisterClass();
+	RegisterOpenAsDialogClass();
 	combo2dRegisterFormats();
 }
 

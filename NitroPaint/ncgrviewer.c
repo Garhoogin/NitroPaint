@@ -2735,16 +2735,6 @@ static HWND CreateNcgrViewerInternal(int x, int y, int width, int height, HWND h
 	return hWnd;
 }
 
-HWND CreateNcgrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NCGR *ncgr = (NCGR *) calloc(1, sizeof(NCGR));
-	if (ChrReadFile(ncgr, path)) {
-		free(ncgr);
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-	return CreateNcgrViewerInternal(x, y, width, height, hWndParent, path, ncgr);
-}
-
 HWND CreateNcgrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCGR *ncgr) {
 	return CreateNcgrViewerInternal(x, y, width, height, hWndParent, NULL, ncgr);
 }

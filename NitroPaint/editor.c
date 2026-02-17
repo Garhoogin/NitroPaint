@@ -140,7 +140,7 @@ void EditorInvalidateAllByType(HWND hWndMgr, int type) {
 	}
 }
 
-HWND EditorFindByObject(HWND hWndParent, OBJECT_HEADER *obj) {
+HWND EditorFindByObject(HWND hWndParent, ObjHeader *obj) {
 	//find edtor
 	EditorManager *mgr = EditorGetManager(hWndParent);
 	for (size_t i = 0; i < mgr->editorList.length; i++) {
@@ -227,7 +227,7 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 		}
 		case ID_EDIT_COMMENT:
 		{
-			OBJECT_HEADER *obj = EditorGetObject(hWnd);
+			ObjHeader *obj = EditorGetObject(hWnd);
 			WCHAR textBuffer[256] = { 0 };
 			if (obj != NULL && obj->comment != NULL) {
 				for (unsigned int i = 0; i < strlen(obj->comment); i++) {
@@ -313,7 +313,7 @@ static void EditorTerminateCombo(EDITOR_DATA *data) {
 	int nLinks = combo->links.length;
 	while (nLinks > 0) {
 		//unlink
-		OBJECT_HEADER *obj;
+		ObjHeader *obj;
 		StListGet(&combo->links, 0, &obj);
 		combo2dUnlink(combo, obj);
 		nLinks--;
@@ -462,7 +462,6 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				if (idx <= ST_INDEX_MAX) {
 					StListRemove(&mgr->editorList, idx);
 				}
-				free(data->file); // ownership assumed
 				free(data);
 			}
 		}
@@ -630,7 +629,7 @@ static int EditorSaveInternal(HWND hWnd) {
 		COMBO2D *combo = (COMBO2D *) data->file->combo;
 
 		for (size_t i = 0; i < combo->links.length; i++) {
-			OBJECT_HEADER *obj = *(OBJECT_HEADER **) StListGetPtr(&combo->links, i);
+			ObjHeader *obj = *(ObjHeader **) StListGetPtr(&combo->links, i);
 			if (obj == data->file) continue; // skip current file
 
 			HWND hWndEditor = EditorFindByObject(data->editorMgr->hWnd, obj);
@@ -718,11 +717,11 @@ void EditorSetData(HWND hWnd, void *data) {
 	SetWindowLongPtr(hWnd, EDITOR_WD_DATA, (LONG_PTR) data);
 }
 
-OBJECT_HEADER *EditorGetObject(HWND hWnd) {
+ObjHeader *EditorGetObject(HWND hWnd) {
 	EDITOR_DATA *data = EditorGetData(hWnd);
 	if (data == NULL) return NULL;
 
-	OBJECT_HEADER *obj = data->file;
+	ObjHeader *obj = data->file;
 	if (!ObjIsValid(obj)) return NULL;
 	return obj;
 }

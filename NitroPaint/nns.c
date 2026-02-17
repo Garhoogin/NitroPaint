@@ -908,7 +908,7 @@ unsigned char *GrfReadBlockUncompressed(const unsigned char *buffer, unsigned in
 		case 0x2:
 		case 0x3:
 			//decompress only the valid compression formats supported by the loader
-			return CxDecompress(block, blockSize, pSize);
+			return CxDecompress(block, blockSize, CxGetCompressionType(block, blockSize), pSize);
 	}
 	return NULL;
 }

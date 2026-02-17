@@ -1379,16 +1379,6 @@ static HWND CreateNscrViewerInternal(int x, int y, int width, int height, HWND h
 	return hWnd;
 }
 
-HWND CreateNscrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NSCR *nscr = (NSCR *) calloc(1, sizeof(NSCR));
-	if (ScrReadFile(nscr, path)) {
-		free(nscr);
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-	return CreateNscrViewerInternal(x, y, width, height, hWndParent, path, nscr);
-}
-
 HWND CreateNscrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NSCR *nscr) {
 	return CreateNscrViewerInternal(x, y, width, height, hWndParent, NULL, nscr);
 }

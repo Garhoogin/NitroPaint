@@ -96,14 +96,8 @@ void RegisterNmcrViewerClass(void) {
 	EditorRegister(L"NmcrViewerClass", NmcrViewerWndProc, L"NMCR Viewer", sizeof(NMCRVIEWERDATA), 0);
 }
 
-HWND CreateNmcrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NMCR *nmcr = (NMCR *) calloc(1, sizeof(NMCR));
-	if (nmcrReadFile(nmcr, path)) {
-		free(nmcr);
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
+HWND CreateNmcrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NMCR *nmcr) {
 	HWND h = EditorCreate(L"NmcrViewerClass", x, y, width, height, hWndParent);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) nmcr);
+	SendMessage(h, NV_INITIALIZE, (WPARAM) NULL, (LPARAM) nmcr);
 	return h;
 }

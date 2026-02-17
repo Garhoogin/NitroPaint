@@ -38,7 +38,7 @@ typedef struct DICTPLTTDATA_ {
 
 //----- END Code for constructing an TexArc dictionary
 
-void TexarcFree(OBJECT_HEADER *header) {
+void TexarcFree(ObjHeader *header) {
 	TexArc *nsbtx = (TexArc *) header;
 	if (nsbtx->textures != NULL) {
 		for (int i = 0; i < nsbtx->nTextures; i++) {
@@ -74,14 +74,6 @@ void TexarcFree(OBJECT_HEADER *header) {
 		nsbtx->bmdData = NULL;
 	}
 	
-}
-
-void TexarcInit(TexArc *nsbtx, int format) {
-	nsbtx->header.size = sizeof(TexArc);
-	ObjInit((OBJECT_HEADER *) nsbtx, FILE_TYPE_NSBTX, format);
-
-	nsbtx->header.dispose = TexarcFree;
-	nsbtx->header.writer = (OBJECT_WRITER) TexarcWrite;
 }
 
 //TexArc code adapted from Gericom's code in Fvery File Explorer.
@@ -171,16 +163,12 @@ static void TexarcRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag
 }
 
 void TexarcRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_NSBTX, sizeof(TexArc), L"Texture Archive");
+	ObjRegisterType(FILE_TYPE_NSBTX, sizeof(TexArc), L"Texture Archive", (ObjReader) TexarcRead, (ObjWriter) TexarcWrite, NULL, TexarcFree);
 	TexarcRegisterFormat(NSBTX_TYPE_NNS, L"NSBTX", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, TexarcIsValidNsbtx);
 	TexarcRegisterFormat(NSBTX_TYPE_BMD, L"BMD", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TexarcIsValidBmd);
 }
 
 static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size) {
-	//is it valid?
-	if (!TexarcIsValidNsbtx(buffer, size)) return 1;
-
-	TexarcInit(nsbtx, NSBTX_TYPE_NNS);
 	//iterate over each section
 	const uint32_t *sectionOffsets = (const uint32_t *) (buffer + 0x10);
 	unsigned int nSections = *(const uint16_t *) (buffer + 0xE);
@@ -316,9 +304,6 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size)
 }
 
 int TexarcReadBmd(TexArc *nsbtx, const unsigned char *buffer, unsigned int size) {
-	if (!TexarcIsValidBmd(buffer, size)) return 1;
-
-	TexarcInit(nsbtx, NSBTX_TYPE_BMD);
 	nsbtx->bmdData = (BMD_DATA *) calloc(1, sizeof(BMD_DATA));
 	BMD_DATA *bmd = nsbtx->bmdData;
 
@@ -413,13 +398,14 @@ int TexarcReadBmd(TexArc *nsbtx, const unsigned char *buffer, unsigned int size)
 }
 
 int TexarcRead(TexArc *nsbtx, const unsigned char *buffer, unsigned int size) {
-	if (TexarcIsValidNsbtx(buffer, size)) return TexarcReadNsbtx(nsbtx, buffer, size);
-	if (TexarcIsValidBmd(buffer, size)) return TexarcReadBmd(nsbtx, buffer, size);
-	return OBJ_STATUS_INVALID;
-}
+	switch (nsbtx->header.format) {
+		case NSBTX_TYPE_NNS:
+			return TexarcReadNsbtx(nsbtx, buffer, size);
+		case NSBTX_TYPE_BMD:
+			return TexarcReadBmd(nsbtx, buffer, size);
+	}
 
-int TexarcReadFile(TexArc *nsbtx, LPCWSTR path) {
-	return ObjReadFile(path, (OBJECT_HEADER *) nsbtx, (OBJECT_READER) TexarcRead);
+	return OBJ_STATUS_INVALID;
 }
 
 static char *TexarciGetTextureNameCallback(void *texels) {

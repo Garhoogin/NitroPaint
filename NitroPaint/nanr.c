@@ -15,7 +15,7 @@ static void AnmiRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, 
 }
 
 void AnmRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_NANR, sizeof(NANR), L"Animation");
+	ObjRegisterType(FILE_TYPE_NANR, sizeof(NANR), L"Animation", (ObjReader) AnmRead, (ObjWriter) AnmWrite, NULL, AnmFree);
 	AnmiRegisterFormat(NANR_TYPE_NANR, L"NANR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidNanr);
 	AnmiRegisterFormat(NANR_TYPE_GHOSTTRICK, L"Ghost Trick", OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidGhostTrick);
 }
@@ -230,16 +230,7 @@ int AnmIdentify(const unsigned char *buffer, unsigned int size) {
 	return fmt;
 }
 
-void AnmInit(NANR *nanr, int format) {
-	nanr->header.size = sizeof(NANR);
-	ObjInit(&nanr->header, FILE_TYPE_NANR, format);
-	nanr->header.dispose = AnmFree;
-	nanr->header.writer = (OBJECT_WRITER) AnmWrite;
-}
-
 int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
-	AnmInit(nanr, NANR_TYPE_NANR);
-
 	const unsigned char *abnk = NnsG2dFindBlockBySignature(buffer, size, "ABNK", NNS_SIG_LE, NULL);
 
 	int nSequences = *(uint16_t *) (abnk + 0);
@@ -303,7 +294,6 @@ int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 
 int AnmReadGhostTrick(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 	//Ghost Trick files contain only one sequence. Read it here.
-	AnmInit(nanr, NANR_TYPE_GHOSTTRICK);
 	nanr->nSequences = 1;
 	nanr->sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
 	
@@ -349,18 +339,13 @@ int AnmReadGhostTrick(NANR *nanr, const unsigned char *buffer, unsigned int size
 }
 
 int AnmRead(NANR *nanr, const unsigned char *buffer, unsigned int size) {
-	int type = AnmIdentify(buffer, size);
-	switch (type) {
+	switch (nanr->header.format) {
 		case NANR_TYPE_NANR:
 			return AnmReadNanr(nanr, buffer, size);
 		case NANR_TYPE_GHOSTTRICK:
 			return AnmReadGhostTrick(nanr, buffer, size);
 	}
 	return 1;
-}
-
-int AnmReadFile(NANR *nanr, LPCWSTR path) {
-	return ObjReadFile(path, (OBJECT_HEADER *) nanr, (OBJECT_READER) AnmRead);
 }
 
 static int AnmiCountFrames(NANR *nanr) {
@@ -524,7 +509,7 @@ int AnmWriteFile(NANR *nanr, LPWSTR name) {
 	return ObjWriteFile(&nanr->header, name);
 }
 
-void AnmFree(OBJECT_HEADER *obj) {
+void AnmFree(ObjHeader *obj) {
 	NANR *nanr = (NANR *) obj;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;

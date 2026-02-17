@@ -17,12 +17,14 @@ static int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidTose(const unsigned char *buffer, unsigned int size);
 
+static void ChrFree(ObjHeader *obj);
+
 static void ChriRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_CHARACTER, format, name, flag, proc);
 }
 
 void ChrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_CHARACTER, sizeof(NCGR), L"Character");
+	ObjRegisterType(FILE_TYPE_CHARACTER, sizeof(NCGR), L"Character", (ObjReader) ChrRead, (ObjWriter) ChrWrite, NULL, ChrFree);
 	ChriRegisterFormat(NCGR_TYPE_NCGR, L"NCGR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, ChrIsValidNcgr);
 	ChriRegisterFormat(NCGR_TYPE_NC, L"NCG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidNcg);
 	ChriRegisterFormat(NCGR_TYPE_IC, L"ICG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidIcg);
@@ -208,7 +210,7 @@ int ChrIdentify(const unsigned char *buffer, unsigned int size) {
 	return fmt;
 }
 
-void ChrFree(OBJECT_HEADER *header) {
+void ChrFree(ObjHeader *header) {
 	NCGR *ncgr = (NCGR *) header;
 	if (ncgr->tiles != NULL) {
 		for (int i = 0; i < ncgr->nTiles; i++) {
@@ -227,14 +229,6 @@ void ChrFree(OBJECT_HEADER *header) {
 	if (combo != NULL) {
 		combo2dUnlink(combo, &ncgr->header);
 	}
-}
-
-void ChrInit(NCGR *ncgr, int format) {
-	ncgr->header.size = sizeof(NCGR);
-	ObjInit((OBJECT_HEADER *) ncgr, FILE_TYPE_CHARACTER, format);
-
-	ncgr->header.dispose = ChrFree;
-	ncgr->header.writer = (OBJECT_WRITER) ChrWrite;
 }
 
 void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
@@ -311,21 +305,21 @@ void ChrReadGraphics(NCGR *ncgr, const unsigned char *buffer) {
 }
 
 static int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	int type = ChrIsValidHudson(buffer, size);
+	int type = 0;
 
 	int nCharacters = 0;
-	if (type == NCGR_TYPE_HUDSON) {
+	if (ChrIsValidHudson(buffer, size)) {
 
 		unsigned int dataLength = *(uint16_t *) (buffer + 1);
 		dataLength -= 4;
-		if (dataLength + 8 > size) return 1;
 
 		nCharacters = *(uint16_t *) (buffer + 5);
-	} else if (type == NCGR_TYPE_HUDSON2) {
+		type = NCGR_TYPE_HUDSON;
+	} else if (ChrIsValidHudson2(buffer, size)) {
 		nCharacters = *(uint16_t *) (buffer + 1);
+		type = NCGR_TYPE_HUDSON2;
 	}
 
-	ChrInit(ncgr, type);
 	ncgr->nTiles = nCharacters;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nBits = 8;
@@ -405,7 +399,6 @@ static int ChriIsCommonRead(NCGR *ncgr, const unsigned char *buffer, unsigned in
 	int nChars = width * height;
 	const unsigned char *attr = buffer + (nChars * 8 * depth);
 
-	ChrInit(ncgr, type);
 	ncgr->tilesX = width;
 	ncgr->tilesY = height;
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
@@ -432,7 +425,6 @@ static int ChrReadIcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size
 }
 
 static int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	ChrInit(ncgr, NCGR_TYPE_BIN);
 	ncgr->nTiles = size / 0x20;
 	ncgr->nBits = 4;
 	ncgr->bitmap = 0;
@@ -445,7 +437,6 @@ static int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size
 }
 
 static int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	ChrInit(ncgr, NCGR_TYPE_GHOSTTRICK);
 	ncgr->nBits = 4;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_128K;
 
@@ -493,8 +484,6 @@ static int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned i
 }
 
 static int ChrReadSetosa(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	ChrInit(ncgr, NCGR_TYPE_SETOSA);
-
 	//CHAR and CATR blocks
 	const unsigned char *pChar = SetGetBlock(buffer, size, "CHAR");
 	const unsigned char *pCatr = SetGetBlock(buffer, size, "CATR");
@@ -542,8 +531,6 @@ static int ChrReadSetosa(NCGR *ncgr, const unsigned char *buffer, unsigned int s
 }
 
 static int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	ChrInit(ncgr, NCGR_TYPE_NC);
-
 	unsigned int charSize = 0, attrSize = 0, linkSize = 0, cmntSize = 0;
 	const unsigned char *sChar = NnsG2dFindBlockBySignature(buffer, size, "CHAR", NNS_SIG_BE, &charSize);
 	const unsigned char *sAttr = NnsG2dFindBlockBySignature(buffer, size, "ATTR", NNS_SIG_BE, &attrSize);
@@ -606,7 +593,6 @@ static int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 		tilesY = tileCount / tilesX;
 	}
 
-	ChrInit(ncgr, NCGR_TYPE_NCGR);
 	ncgr->nBits = depth;
 	ncgr->bitmap = 0;
 	ncgr->nTiles = tileCount;
@@ -620,8 +606,6 @@ static int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 }
 
 static int ChrReadTose(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	ChrInit(ncgr, NCGR_TYPE_TOSE);
-
 	//bit depth
 	unsigned int nChr = *(const uint16_t *) (buffer + 0x4);
 	unsigned int gfxSize = size - 8;
@@ -639,8 +623,7 @@ static int ChrReadTose(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 }
 
 int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	int type = ChrIdentify(buffer, size);
-	switch (type) {
+	switch (ncgr->header.format) {
 		case NCGR_TYPE_NCGR:
 			return ChrReadNcgr(ncgr, buffer, size);
 		case NCGR_TYPE_NC:
@@ -661,10 +644,6 @@ int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
 			return ChrReadBin(ncgr, buffer, size);
 	}
 	return OBJ_STATUS_INVALID;
-}
-
-int ChrReadFile(NCGR *ncgr, LPCWSTR path) {
-	return ObjReadFile(path, (OBJECT_HEADER *) ncgr, (OBJECT_READER) ChrRead);
 }
 
 void ChrGetChar(NCGR *ncgr, int chno, CHAR_VRAM_TRANSFER *transfer, unsigned char *out) {

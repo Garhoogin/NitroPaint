@@ -13,12 +13,14 @@ static int PalIsValidTose(const unsigned char *buffer, unsigned int size);
 static int PalIsValidHudson(const unsigned char *lpFile, unsigned int size);
 static int PalIsValidSetosa(const unsigned char *buffer, unsigned int size);
 
+static void PalFree(ObjHeader *obj);
+
 static void PaliRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_PALETTE, format, name, flag, proc);
 }
 
 void PalRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_PALETTE, sizeof(NCLR), L"Palette");
+	ObjRegisterType(FILE_TYPE_PALETTE, sizeof(NCLR), L"Palette", (ObjReader) PalRead, (ObjWriter) PalWrite, NULL, PalFree);
 	PaliRegisterFormat(NCLR_TYPE_NCLR, L"NCLR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, PalIsValidNclr);
 	PaliRegisterFormat(NCLR_TYPE_NC, L"NCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidNcl);
 	PaliRegisterFormat(NCLR_TYPE_ISTUDIO, L"5PL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudio);
@@ -37,7 +39,7 @@ int PalIdentify(const unsigned char *buffer, unsigned int size) {
 }
 
 
-void PalFree(OBJECT_HEADER *header) {
+void PalFree(ObjHeader *header) {
 	NCLR *nclr = (NCLR *) header;
 	if (nclr->colors != NULL) free(nclr->colors);
 	nclr->colors = NULL;
@@ -46,14 +48,6 @@ void PalFree(OBJECT_HEADER *header) {
 	if (combo2d != NULL) {
 		combo2dUnlink(combo2d, &nclr->header);
 	}
-}
-
-void PalInit(NCLR *nclr, int format) {
-	nclr->header.size = sizeof(NCLR);
-	ObjInit((OBJECT_HEADER *) nclr, FILE_TYPE_PALETTE, format);
-
-	nclr->header.dispose = PalFree;
-	nclr->header.writer = (OBJECT_WRITER) PalWrite;
 }
 
 static int PalIsValidHudson(const unsigned char *lpFile, unsigned int size) {
@@ -169,7 +163,6 @@ static int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int s
 	int dataLength = *(uint16_t *) buffer;
 	int nColors = *(uint16_t *) (buffer + 2);
 
-	PalInit(nclr, NCLR_TYPE_HUDSON);
 	nclr->nColors = nColors;
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
@@ -182,7 +175,6 @@ static int PalReadBin(NCLR *nclr, const unsigned char *buffer, unsigned int size
 	
 	int nColors = size >> 1;
 
-	PalInit(nclr, PalIsValidBin(buffer, size) ? NCLR_TYPE_BIN : NCLR_TYPE_NTFP);
 	nclr->nColors = nColors;
 	nclr->nBits = 4;
 	nclr->colors = (COLOR *) calloc(nColors, 2);
@@ -191,8 +183,6 @@ static int PalReadBin(NCLR *nclr, const unsigned char *buffer, unsigned int size
 }
 
 static int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	PalInit(nclr, NCLR_TYPE_NC);
-
 	unsigned int paltSize = 0, cmntSize = 0;
 	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, &paltSize);
 	const unsigned char *cmnt = NnsG2dFindBlockBySignature(buffer, size, "CMNT", NNS_SIG_BE, &cmntSize);
@@ -223,13 +213,11 @@ static void PaliReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned in
 }
 
 static int PalReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	PalInit(nclr, NCLR_TYPE_ISTUDIO);
 	PaliReadIStudio(nclr, buffer, size);
 	return OBJ_STATUS_SUCCESS;
 }
 
 static int PalReadIStudioCompressed(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	PalInit(nclr, NCLR_TYPE_ISTUDIOC);
 	PaliReadIStudio(nclr, buffer, size);
 	return OBJ_STATUS_SUCCESS;
 }
@@ -244,7 +232,6 @@ static int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int siz
 	int dataOffset = *(uint32_t *) (pltt + 0xC);
 	int nColors = (plttSize - dataOffset) / sizeof(COLOR);
 
-	PalInit(nclr, NCLR_TYPE_NCLR);
 	nclr->nBits = bits;
 	nclr->extPalette = *(uint32_t *) (pltt + 0x4);
 	nclr->nColors = nColors;
@@ -284,8 +271,6 @@ static int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int siz
 }
 
 static int PalReadSetosa(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	PalInit(nclr, NCLR_TYPE_SETOSA);
-
 	const unsigned char *pPltt = SetGetBlock(buffer, size, "PLTT");
 	unsigned int nColors = (*(const uint32_t *) (pPltt + 0x0)) / sizeof(COLOR);
 
@@ -298,8 +283,6 @@ static int PalReadSetosa(NCLR *nclr, const unsigned char *buffer, unsigned int s
 }
 
 static int PalReadTose(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	PalInit(nclr, NCLR_TYPE_TOSE);
-
 	unsigned int nCol = *(const uint32_t *) (buffer + 0x4);
 	nclr->nColors = nCol;
 	nclr->nBits = nCol <= 0x100 ? 4 : 8; // heuristic
@@ -310,8 +293,7 @@ static int PalReadTose(NCLR *nclr, const unsigned char *buffer, unsigned int siz
 }
 
 int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	int type = PalIdentify(buffer, size);
-	switch (type) {
+	switch (nclr->header.format) {
 		case NCLR_TYPE_NCLR:
 			return PalReadNclr(nclr, buffer, size);
 		case NCLR_TYPE_NC:
@@ -332,10 +314,6 @@ int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 			return PalReadBin(nclr, buffer, size);
 	}
 	return OBJ_STATUS_INVALID;
-}
-
-int PalReadFile(NCLR *nclr, LPCWSTR path) {
-	return ObjReadFile(path, (OBJECT_HEADER *) nclr, (OBJECT_READER) PalRead);
 }
 
 static uint16_t *PalConstructDataOutput(NCLR *nclr, unsigned int *size, uint16_t **pOutIndexTable, unsigned int *pSizeIndexTable) {

@@ -28,7 +28,7 @@ typedef struct BMD_DATA_ {
 
 
 typedef struct TexArc_ { //these should not be converted to other formats
-	OBJECT_HEADER header;
+	ObjHeader header;
 	int nTextures;
 	int nPalettes;
 	TEXELS *textures;
@@ -39,15 +39,11 @@ typedef struct TexArc_ { //these should not be converted to other formats
 	BMD_DATA *bmdData;	//for handling BMD files
 } TexArc;
 
-void TexarcInit(TexArc *nsbtx, int format);
-
 int TexarcRead(TexArc *nsbtx, const unsigned char *buffer, unsigned int size);
 
 int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size);
 
 void TexarcRegisterFormats(void);
-
-int TexarcReadFile(TexArc *nsbtx, LPCWSTR path);
 
 int TexarcWriteFile(TexArc *nsbtx, LPWSTR filename);
 

@@ -13,16 +13,14 @@ static void nmcrRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, 
 }
 
 void nmcrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_NMCR, sizeof(NMCR), L"Multi-Cell Animation");
-	nmcrRegisterFormat(NMCR_TYPE_NMCR, L"NMCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, nmcrIsValid);
+	ObjRegisterType(FILE_TYPE_NMCR, sizeof(NMCR), L"Multi-Cell Animation", (ObjReader) nmcrRead, NULL, NULL, NULL);
+	nmcrRegisterFormat(NMCR_TYPE_NMCR, L"NMCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, nmcrIsValidNmcr);
 }
 
 int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
-	int type = nmcrIsValid(buffer, size);
+	int type = nmcr->header.format;
 	if (type == NMCR_TYPE_INVALID) return 1;
 
-	nmcr->header.size = sizeof(NMCR);
-	ObjInit((OBJECT_HEADER *) nmcr, FILE_TYPE_NMCR, type);
 	if (type == NMCR_TYPE_NMCR) {
 		char *pMcbk = NnsG2dFindBlockBySignature(buffer, size, "MCBK", NNS_SIG_LE, NULL);
 
@@ -58,8 +56,4 @@ int nmcrIsValid(const unsigned char *buffer, unsigned int size) {
 	int fmt = NMCR_TYPE_INVALID;
 	ObjIdentifyExByType(buffer, size, FILE_TYPE_NMCR, &fmt);
 	return fmt;
-}
-
-int nmcrReadFile(NMCR *nmcr, LPCWSTR path) {
-	return ObjReadFile(path, (OBJECT_HEADER *) nmcr, (OBJECT_READER) nmcrRead);
 }

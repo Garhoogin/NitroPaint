@@ -146,9 +146,9 @@ int BgPerformCharacterCompression(
 *
 \****************************************************************************/
 void BgGenerate(
-	NCLR *nclr,
-	NCGR *ncgr,
-	NSCR *nscr,
+	NCLR **pNclr,
+	NCGR **pNcgr,
+	NSCR **pNscr,
 	COLOR32 *px,
 	int width,
 	int height,

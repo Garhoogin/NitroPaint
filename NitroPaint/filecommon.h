@@ -36,6 +36,8 @@
 #define OBJ_SUCCEEDED(s)       ((s)==OBJ_STATUS_SUCCESS)
 
 
+typedef struct ObjHeader_ ObjHeader;
+
 // ----- file identification flag constants
 typedef enum ObjIdFlag_ {
 	OBJ_ID_HEADER            = (1 <<  0),  // File has a header.
@@ -51,12 +53,22 @@ typedef enum ObjIdFlag_ {
 	OBJ_ID_WINCODEC_OVERRIDE = (1 << 10),  // File may validate as a Windows codec but is not one
 } ObjIdFlag;
 
+
+typedef int (*ObjReader) (ObjHeader *object, char *buffer, int size);
+typedef int (*ObjWriter) (ObjHeader *object, BSTREAM *stream);
+typedef int (*ObjInitProc) (ObjHeader *object);
+typedef void (*ObjDispose) (ObjHeader *object);
+
 // ----- callback function to identify file validity of a given format
 typedef int (*ObjIdProc) (const unsigned char *buffer, unsigned int size);
 
 typedef struct ObjTypeEntry_ {
-	size_t size;    // The size of the object data
-	wchar_t *name;  // The type name
+	size_t size;        // The size of the object data
+	wchar_t *name;      // The type name
+	ObjReader reader;   // object reader routine
+	ObjWriter writer;   // object writer routine
+	ObjInitProc init;   // object initializer routine
+	ObjDispose dispose; // object dispose routine
 } ObjTypeEntry;
 
 typedef struct ObjIdEntry_ {
@@ -68,32 +80,32 @@ typedef struct ObjIdEntry_ {
 } ObjIdEntry;
 
 void ObjInitCommon(void);
-void ObjRegisterType(int type, size_t objSize, const wchar_t *name);
+void ObjRegisterType(int type, size_t objSize, const wchar_t *name, ObjReader reader, ObjWriter writer, ObjInitProc init, ObjDispose dispose);
 void ObjRegisterFormat(int type, int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc);
+void ObjIdentifyMultipleByType(StList *list, const unsigned char *buffer, unsigned int size, int type);
 int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type, int *pFormat);
 int ObjIdentifyEx(const unsigned char *buffer, unsigned int size, int *pFormat);
 
+ObjHeader *ObjAlloc(int type, int format);
 
-typedef int(*OBJECT_READER) (struct OBJECT_HEADER_ *object, char *buffer, int size);
-typedef int(*OBJECT_WRITER) (struct OBJECT_HEADER_ *object, BSTREAM *stream);
 
 typedef struct ObjLink_ {
-	struct OBJECT_HEADER_ *to;
+	ObjHeader *to;
 	StList from;
 } ObjLink;
 
-typedef struct OBJECT_HEADER_ {
-	int size;                                   // Size of the containing struct in bytes
-	int type;                                   // The type of file
-	int format;                                 // The format of file (specific to file type)
-	int compression;                            // The compression scheme used on this file
-	void (*dispose) (struct OBJECT_HEADER_ *);  // The callback for freeing the file
-	OBJECT_WRITER writer;                       // The callback for writing the file to a stream
-	void *combo;                                // Pointer to a structure maintaining strict links to objects in the same file
-	ObjLink link;                               // A structure maintaining file links to this file
-	char *fileLink;                             // The name of the file that this object references
-	char *comment;                              // The stored file comment (if supported)
-} OBJECT_HEADER;
+struct ObjHeader_ {
+	int size;             // Size of the containing struct in bytes
+	int type;             // The type of file
+	int format;           // The format of file (specific to file type)
+	int compression;      // The compression scheme used on this file
+	ObjDispose dispose;   // The callback for freeing the file
+	ObjWriter writer;     // The callback for writing the file to a stream
+	void *combo;          // Pointer to a structure maintaining strict links to objects in the same file
+	ObjLink link;         // A structure maintaining file links to this file
+	char *fileLink;       // The name of the file that this object references
+	char *comment;        // The stored file comment (if supported)
+};
 
 extern LPCWSTR g_ObjCompressionNames[];
 
@@ -101,6 +113,8 @@ extern LPCWSTR g_ObjCompressionNames[];
 // Converts a status code into a string.
 //
 LPCWSTR ObjStatusToString(int status);
+
+const wchar_t *ObjGetFileTypeName(int type);
 
 const wchar_t *ObjGetFormatNameByType(int type, int format);
 
@@ -116,7 +130,7 @@ LPWSTR ObjGetFileNameFromPath(LPCWSTR path);
 // is only used as a fallback when regular detection becomes too vague to rely
 // on.
 //
-int ObjIdentify(char *file, int size, LPCWSTR path);
+int ObjIdentify(unsigned char *file, unsigned int size, const wchar_t *path, int knownType, int *pCompression, int *pFormat);
 
 //
 // Compute CRC16 checksum for an array of bytes.
@@ -124,20 +138,14 @@ int ObjIdentify(char *file, int size, LPCWSTR path);
 unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned short init);
 
 //
-// Initialize a file's OBJECT_HEADER. The size field must be set before calling
-// this function to the size of the whole file object.
-//
-void ObjInit(OBJECT_HEADER *header, int type, int format);
-
-//
 // Free the resources held by an open file, after which it can be safely freed
 //
-void ObjFree(OBJECT_HEADER *header);
+void ObjFree(ObjHeader *header);
 
 //
 // Determines the validity of an object.
 //
-int ObjIsValid(OBJECT_HEADER *header);
+int ObjIsValid(ObjHeader *header);
 
 //
 // Read an entire file into memory from path. No decompression is performed.
@@ -147,29 +155,39 @@ void *ObjReadWholeFile(const wchar_t *name, unsigned int *size);
 //
 // Reads a file into the specified object with the given reader function.
 //
-int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader);
+int ObjReadFile(ObjHeader **ppObject, const wchar_t *name, int type, int format, int compression);
+
+//
+// Reads a file.
+//
+ObjHeader *ObjAutoReadFile(const wchar_t *path, int type);
+
+//
+// Read a buffer.
+//
+int ObjReadBuffer(ObjHeader **ppObject, const unsigned char *buffer, unsigned int size, int type, int format, int compression);
 
 //
 // Writes a file to the disk using a provided writer function.
 //
-int ObjWriteFile(OBJECT_HEADER *object, const wchar_t *name);
+int ObjWriteFile(ObjHeader *object, const wchar_t *name);
 
 //
 // Link an object to another in a directed way.
 //
-void ObjLinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from);
+void ObjLinkObjects(ObjHeader *to, ObjHeader *from);
 
 //
 // Unlink an object from another.
 //
-void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from);
+void ObjUnlinkObjects(ObjHeader *to, ObjHeader *from);
 
 //
 // Sets a file link for an object.
 //
-void ObjSetFileLink(OBJECT_HEADER *obj, const wchar_t *link);
+void ObjSetFileLink(ObjHeader *obj, const wchar_t *link);
 
 //
 // Update the file links of all objects linking to this one.
 //
-void ObjUpdateLinks(OBJECT_HEADER *obj, const wchar_t *path);
+void ObjUpdateLinks(ObjHeader *obj, const wchar_t *path);

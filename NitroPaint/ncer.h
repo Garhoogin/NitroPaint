@@ -56,7 +56,7 @@ typedef struct NCER_CELL_INFO_ {
 } NCER_CELL_INFO;
 
 typedef struct NCER_ {
-	OBJECT_HEADER header;              // object header
+	ObjHeader header;              // object header
 	int nCells;                        // number of cells in cell bank
 	int bankAttribs;                   // cell bank attribute
 	int mappingMode;                   // cell mapping mode
@@ -77,13 +77,9 @@ typedef struct NCER_ {
 void CellRegisterFormats(void);
 
 
-void CellInit(NCER *ncer, int format);
-
 int CellIdentify(const unsigned char *buffer, unsigned int size);
 
 int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size);
-
-int CellReadFile(NCER *ncer, LPCWSTR path);
 
 void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj);
 
@@ -97,7 +93,7 @@ void CellGetObjDimensions(int shape, int size, int *width, int *height);
 
 int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
 
-int CellFree(OBJECT_HEADER *header);
+int CellFree(ObjHeader *header);
 
 void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CHAR_VRAM_TRANSFER *vramTransfer, COLOR32 *out);
 

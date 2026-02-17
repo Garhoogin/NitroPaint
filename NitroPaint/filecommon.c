@@ -115,18 +115,7 @@ LPWSTR ObjGetFileNameFromPath(LPCWSTR path) {
 	return lastB + 1;
 }
 
-void ObjInit(OBJECT_HEADER *header, int type, int format) {
-	int size = header->size; //restore this
-	memset(header, 0, size);
-	header->type = type;
-	header->format = format;
-	header->compression = COMPRESSION_NONE;
-	header->size = size;
-	header->link.to = NULL;
-	StListCreateInline(&header->link.from, OBJECT_HEADER *, NULL);
-}
-
-int ObjIsValid(OBJECT_HEADER *obj) {
+int ObjIsValid(ObjHeader *obj) {
 	return obj->size != 0;
 }
 
@@ -149,6 +138,12 @@ static int ObjiIsValidImage(const unsigned char *buffer, unsigned int size) {
 static StMap sObjRegisteredTypes = { 0 };
 static StList sObjRegisteredFormats = { 0 };
 
+const wchar_t *ObjGetFileTypeName(int type) {
+	ObjTypeEntry ent;
+	StMapGet(&sObjRegisteredTypes, &type, &ent);
+	return ent.name;
+}
+
 const wchar_t *ObjGetFormatNameByType(int type, int format) {
 	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
 		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
@@ -163,7 +158,7 @@ unsigned int ObjGetFormatCountByType(int type) {
 
 	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
 		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
-		if (ent->format != type) continue;
+		if (ent->type != type) continue;
 
 		n++;
 	}
@@ -211,15 +206,19 @@ void ObjInitCommon(void) {
 	StListCreate(&sObjRegisteredFormats, sizeof(ObjIdEntry), ObjiIdEntryComparator);
 
 	//register default formats
-	ObjRegisterType(FILE_TYPE_INVALID, 0, L"Invalid");
-	ObjRegisterType(FILE_TYPE_IMAGE, 0, L"Image");
-	ObjRegisterFormat(FILE_TYPE_IMAGE, 1, L"", OBJ_ID_WINCODEC, ObjiIsValidImage);
+	ObjRegisterType(FILE_TYPE_INVALID, 0, L"Invalid", NULL, NULL, NULL, NULL);
+	ObjRegisterType(FILE_TYPE_IMAGE, 0, L"Image", NULL, NULL, NULL, NULL); // TODO
+	ObjRegisterFormat(FILE_TYPE_IMAGE, 1, L"Host Codecs", OBJ_ID_WINCODEC, ObjiIsValidImage);
 }
 
-void ObjRegisterType(int type, size_t objSize, const wchar_t *name) {
+void ObjRegisterType(int type, size_t objSize, const wchar_t *name, ObjReader reader, ObjWriter writer, ObjInitProc init, ObjDispose dispose) {
 	ObjTypeEntry ent;
 	ent.name = _wcsdup(name);
 	ent.size = objSize;
+	ent.reader = reader;
+	ent.writer = writer;
+	ent.init = init;
+	ent.dispose = dispose;
 	StMapPut(&sObjRegisteredTypes, &type, &ent);
 }
 
@@ -231,6 +230,19 @@ void ObjRegisterFormat(int type, int format, const wchar_t *name, ObjIdFlag flag
 	ent.idFlag = flag;
 	ent.idProc = proc;
 	StListAdd(&sObjRegisteredFormats, &ent);
+}
+
+void ObjIdentifyMultipleByType(StList *list, const unsigned char *buffer, unsigned int size, int type) {
+	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
+		ObjIdEntry *pEnt = StListGetPtr(&sObjRegisteredFormats, i);
+		if (pEnt->type != type && type != FILE_TYPE_INVALID) continue;
+
+		//check validity
+		if (pEnt->idProc(buffer, size)) {
+			//match
+			StListAdd(list, pEnt);			
+		}
+	}
 }
 
 int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type, int *pFormat) {
@@ -256,6 +268,65 @@ int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type
 
 int ObjIdentifyEx(const unsigned char *buffer, unsigned int size, int *pFormat) {
 	return ObjIdentifyExByType(buffer, size, FILE_TYPE_INVALID, pFormat);
+}
+
+ObjHeader *ObjAlloc(int type, int format) {
+	//get the size of the object required
+	ObjTypeEntry ent;
+	StStatus s = StMapGet(&sObjRegisteredTypes, &type, &ent);
+	if (!ST_SUCCEEDED(s)) return NULL;
+
+	//allocate the object
+	ObjHeader *obj = (ObjHeader *) calloc(1, ent.size);
+	if (obj == NULL) return NULL;
+
+	//initial members
+	obj->size = ent.size;
+	obj->type = type;
+	obj->format = format;
+	obj->writer = ent.writer;
+	obj->dispose = ent.dispose;
+	obj->link.to = NULL;
+	StListCreateInline(&obj->link.from, ObjHeader *, NULL);
+
+	//call initializer
+	if (ent.init != NULL) {
+		int status = ent.init(obj);
+		if (!OBJ_SUCCEEDED(status)) {
+			ObjFree(obj);
+			obj = NULL;
+		}
+	}
+
+	return obj;
+}
+
+void ObjFree(ObjHeader *header) {
+	//clean up object outgoing links
+	ObjHeader *to = header->link.to;
+	if (to != NULL) {
+		ObjUnlinkObjects(to, header);
+	}
+
+	//clean up object incoming links
+	while (header->link.from.length > 0) {
+		ObjHeader *other;
+		StListGet(&header->link.from, 0, &other);
+		ObjUnlinkObjects(header, other);
+	}
+	StListFree(&header->link.from);
+
+	//free strings
+	if (header->fileLink != NULL) free(header->fileLink);
+	if (header->comment != NULL) free(header->comment);
+	header->fileLink = NULL;
+	header->comment = NULL;
+
+	//free object resources
+	if (header->dispose != NULL) header->dispose(header);
+
+	//heap free
+	free(header);
 }
 
 
@@ -414,26 +485,38 @@ static int ObjiGuessPltChrScr(const unsigned char *ptr, unsigned int size) {
 	return FILE_TYPE_CHAR;
 }
 
-int ObjIdentify(char *file, int size, LPCWSTR path) {
-	char *buffer = file;
-	int bufferSize = size;
-	if (CxGetCompressionType(file, size) != COMPRESSION_NONE) {
-		buffer = CxDecompress(file, size, &bufferSize);
+int ObjIdentify(unsigned char *file, unsigned int size, const wchar_t *path, int knownType, int *pCompression, int *pFormat) {
+	unsigned char *buffer = file;
+	unsigned int bufferSize = size;
+	int compression = CxGetCompressionType(file, size);
+	if (compression != COMPRESSION_NONE) {
+		buffer = CxDecompress(file, size, compression, &bufferSize);
 	}
 
 	int type = FILE_TYPE_INVALID;
+	int format = 0;
 
-	if (path != NULL) {
+	//TODO: revisit these checks (allow for knownType to match the selected type)
+	if (path != NULL && knownType == FILE_TYPE_INVALID) {
 		//test common suffixes for raw binary data
-		if (PalIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonPaletteEndings)) type = FILE_TYPE_PALETTE;
-		else if (PalIsValidNtfp(buffer, bufferSize) && ObjiPathEndsWith(path, L".ntfp")) type = FILE_TYPE_PALETTE;
-		else if (ScrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonScreenEndings)) type = FILE_TYPE_SCREEN;
-		else if (ChrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonCharacterEndings)) type = FILE_TYPE_CHARACTER;
+		if (PalIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonPaletteEndings)) {
+			type = FILE_TYPE_PALETTE;
+			format = NCLR_TYPE_BIN;
+		} else if (PalIsValidNtfp(buffer, bufferSize) && ObjiPathEndsWith(path, L".ntfp")) {
+			type = FILE_TYPE_PALETTE;
+			format = NCLR_TYPE_NTFP;
+		} else if (ScrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonScreenEndings)) {
+			type = FILE_TYPE_SCREEN;
+			format = NSCR_TYPE_BIN;
+		} else if (ChrIsValidBin(buffer, bufferSize) && ObjiPathEndsWithOneOf(path, sCommonCharacterEndings)) {
+			type = FILE_TYPE_CHARACTER;
+			format = NCGR_TYPE_BIN;
+		}
 	}
 
 	if (type == FILE_TYPE_INVALID) {
 		//if the file name detection rules did not trigger, try identifying the file with our formats
-		type = ObjIdentifyEx(buffer, bufferSize, NULL);
+		type = ObjIdentifyExByType(buffer, bufferSize, knownType, &format);
 	}
 	
 	//no matches?
@@ -443,17 +526,50 @@ int ObjIdentify(char *file, int size, LPCWSTR path) {
 
 		//last ditch effort
 		if (type == FILE_TYPE_INVALID) {
-			if (PalIsValidBin(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
-			else if (ScrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_SCREEN;
-			else if (ChrIsValidBin(buffer, bufferSize)) type = FILE_TYPE_CHARACTER;
-			else if (PalIsValidNtfp(buffer, bufferSize)) type = FILE_TYPE_PALETTE;
+			if (PalIsValidBin(buffer, bufferSize)) {
+				type = FILE_TYPE_PALETTE;
+				format = NCLR_TYPE_BIN;
+			} else if (ScrIsValidBin(buffer, bufferSize)) {
+				type = FILE_TYPE_SCREEN;
+				format = NSCR_TYPE_BIN;
+			} else if (ChrIsValidBin(buffer, bufferSize)) {
+				type = FILE_TYPE_CHARACTER;
+				format = NCGR_TYPE_BIN;
+			} else if (PalIsValidNtfp(buffer, bufferSize)) {
+				type = FILE_TYPE_PALETTE;
+				format = NCLR_TYPE_NTFP;
+			}
 		}
 	}
+
+	if (pCompression != NULL) *pCompression = compression;
+	if (pFormat != NULL) *pFormat = format;
 
 	if (buffer != file) {
 		free(buffer);
 	}
 	return type;
+}
+
+ObjHeader *ObjAutoReadFile(const wchar_t *path, int type) {
+	unsigned int size;
+	void *buf = ObjReadWholeFile(path, &size);
+
+	int compression, format;
+	if (ObjIdentify(buf, size, path, type, &compression, &format) != type) {
+		free(buf);
+		return NULL;
+	}
+
+	ObjHeader *obj = NULL;
+	int status = ObjReadBuffer(&obj, buf, size, type, format, compression);
+	free(buf);
+
+	if (!OBJ_SUCCEEDED(status)) {
+		return NULL;
+	}
+
+	return obj;
 }
 
 unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned short init) {
@@ -471,33 +587,6 @@ unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned s
 		data++;
 	}
 	return r;
-}
-
-void ObjFree(OBJECT_HEADER *header) {
-	//clean up object outgoing links
-	OBJECT_HEADER *to = header->link.to;
-	if (to != NULL) {
-		ObjUnlinkObjects(to, header);
-	}
-
-	//clean up object incoming links
-	while (header->link.from.length > 0) {
-		OBJECT_HEADER *other;
-		StListGet(&header->link.from, 0, &other);
-		ObjUnlinkObjects(header, other);
-	}
-	StListFree(&header->link.from);
-
-	//free strings
-	if (header->fileLink != NULL) free(header->fileLink);
-	if (header->comment != NULL) free(header->comment);
-	header->fileLink = NULL;
-	header->comment = NULL;
-
-	//free object resources
-	if (header->dispose != NULL) header->dispose(header);
-
-	memset(header, 0, header->size);
 }
 
 void *ObjReadWholeFile(const wchar_t *name, unsigned int *size) {
@@ -526,30 +615,75 @@ void *ObjReadWholeFile(const wchar_t *name, unsigned int *size) {
 	return buffer;
 }
 
-int ObjReadFile(LPCWSTR name, OBJECT_HEADER *object, OBJECT_READER reader) {
+int ObjReadBuffer(ObjHeader **ppObject, const unsigned char *buffer, unsigned int size, int type, int format, int compression) {
+	//check compression
+	if (!CxIsCompressed(buffer, size, compression)) {
+		*ppObject = NULL;
+		return OBJ_STATUS_INVALID;
+	}
+
+	//get the type entry
+	ObjTypeEntry ent;
+	StMapGet(&sObjRegisteredTypes, &type, &ent);
+
+	//uncompress
+	unsigned int uncompSize;
+	unsigned char *uncomp = CxDecompress(buffer, size, compression, &uncompSize);
+
+	//allocate
+	ObjHeader *object = ObjAlloc(type, format);
+	if (object == NULL) {
+		free(uncomp);
+		return OBJ_STATUS_NO_MEMORY;
+	}
+
+	object->compression = compression;
+
+	//read buffer
+	int status = ent.reader(object, (char *) uncomp, (int) uncompSize);
+	free(uncomp);
+
+	if (!OBJ_SUCCEEDED(status)) {
+		//read failed
+		ObjFree(object);
+		*ppObject = NULL;
+		return status;
+	}
+
+	*ppObject = object;
+	return OBJ_STATUS_SUCCESS;
+}
+
+int ObjReadFile(ObjHeader **ppObject, const wchar_t *name, int type, int format, int compression) {
 	unsigned int size;
 	void *buffer = ObjReadWholeFile(name, &size);
-	if (buffer == NULL) {
-		return OBJ_STATUS_NO_ACCESS;
-	}
+	if (buffer == NULL) return OBJ_STATUS_NO_ACCESS;
+
+	ObjHeader *object = ObjAlloc(type, format);
+	if (object == NULL) return OBJ_STATUS_NO_MEMORY;
+
+	ObjTypeEntry typeEntry;
+	StMapGet(&sObjRegisteredTypes, &type, &typeEntry);
 
 	int status;
 	int compType = CxGetCompressionType(buffer, size);
 	if (compType == COMPRESSION_NONE) {
-		status = reader(object, buffer, size);
+		status = typeEntry.reader(object, buffer, size);
 	} else {
-		int decompressedSize;
-		void *decompressed = CxDecompress(buffer, size, &decompressedSize);
-		status = reader(object, decompressed, decompressedSize);
+		unsigned int decompressedSize;
+		void *decompressed = CxDecompress(buffer, size, compType, &decompressedSize);
+		status = typeEntry.reader(object, decompressed, decompressedSize);
 		free(decompressed);
-		object->compression = compType;
 	}
+
+	object->compression = compType;
+	*ppObject = object;
 
 	free(buffer);
 	return status;
 }
 
-int ObjWrite(OBJECT_HEADER *object, BSTREAM *stream) {
+int ObjWrite(ObjHeader *object, BSTREAM *stream) {
 	if (object->combo != NULL) {
 		COMBO2D *combo = (COMBO2D *) object->combo;
 		return ObjWrite(&combo->header, stream);
@@ -558,7 +692,7 @@ int ObjWrite(OBJECT_HEADER *object, BSTREAM *stream) {
 	}
 }
 
-int ObjWriteFile(OBJECT_HEADER *object, const wchar_t *name) {
+int ObjWriteFile(ObjHeader *object, const wchar_t *name) {
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
 	int status = ObjWrite(object, &stream);
@@ -594,7 +728,7 @@ int ObjWriteFile(OBJECT_HEADER *object, const wchar_t *name) {
 	return status;
 }
 
-void ObjLinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
+void ObjLinkObjects(ObjHeader *to, ObjHeader *from) {
 	//if the from object is already linking an object, unlink it
 	if (from->link.to != NULL) {
 		ObjUnlinkObjects(to, from);
@@ -605,7 +739,7 @@ void ObjLinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
 	from->link.to = to;
 }
 
-void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
+void ObjUnlinkObjects(ObjHeader *to, ObjHeader *from) {
 	//if not linked in this direction...
 	if (from->link.to != to) return;
 
@@ -613,7 +747,7 @@ void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
 
 	//scan for link in to object
 	for (unsigned int i = 0; i < to->link.from.length; i++) {
-		OBJECT_HEADER *objI;
+		ObjHeader *objI;
 		StListGet(&to->link.from, i, &objI);
 
 		if (objI == from) {
@@ -624,7 +758,7 @@ void ObjUnlinkObjects(OBJECT_HEADER *to, OBJECT_HEADER *from) {
 	}
 }
 
-void ObjSetFileLink(OBJECT_HEADER *obj, const wchar_t *link) {
+void ObjSetFileLink(ObjHeader *obj, const wchar_t *link) {
 	if (obj->fileLink != NULL) free(obj->fileLink);
 
 	int len = wcslen(link);
@@ -634,9 +768,9 @@ void ObjSetFileLink(OBJECT_HEADER *obj, const wchar_t *link) {
 	}
 }
 
-void ObjUpdateLinks(OBJECT_HEADER *obj, const wchar_t *path) {
+void ObjUpdateLinks(ObjHeader *obj, const wchar_t *path) {
 	for (unsigned int i = 0; i < obj->link.from.length; i++) {
-		OBJECT_HEADER *linked;
+		ObjHeader *linked;
 		StListGet(&obj->link.from, i, &linked);
 		ObjSetFileLink(linked, path);
 	}

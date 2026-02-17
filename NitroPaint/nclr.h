@@ -16,7 +16,7 @@
 #define NCLR_TYPE_COMBO      10
 
 typedef struct NCLR_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 	int nBits;             // bit depth of graphics this palette is intended for
 	int nColors;           // number of colors in the unpacked palette
 	int extPalette;        // whether this palette is an extended palette or not
@@ -33,11 +33,6 @@ void PalRegisterFormats(void);
 // Determine the file format of a palette file.
 //
 int PalIdentify(const unsigned char *buffer, unsigned int size);
-
-//
-// Initialize an palette structure with sensible defaults given a format.
-//
-void PalInit(NCLR *nclr, int format);
 
 //
 // Determines if a byte array represents a valid raw palette file.
@@ -59,8 +54,3 @@ int PalWrite(NCLR *nclr, BSTREAM *stream);
 // Writes a palette to a file.
 //
 int PalWriteFile(NCLR *nclr, LPCWSTR name);
-
-//
-// Reads a palette from a file.
-//
-int PalReadFile(NCLR *nclr, LPCWSTR path);

@@ -17,11 +17,11 @@ extern const wchar_t *gComboFormats[];
 
 //structure that manages a linkage of palette, graphics, and screen.
 typedef struct COMBO2D_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 
 	//component files stored here
 	//int nLinks;
-	//OBJECT_HEADER **links;
+	//ObjHeader **links;
 	StList links;
 
 	void *extraData; //depends on the type, store data we're not interested in particularly
@@ -54,20 +54,18 @@ int combo2dGetObjMinCount(int comboType, int objType);
 //
 int combo2dGetObjMaxCount(int comboType, int objType);
 
-void combo2dInit(COMBO2D *combo, int format);
-
 int combo2dCount(COMBO2D *combo, int type);
 
-OBJECT_HEADER *combo2dGet(COMBO2D *combo, int type, int index);
+ObjHeader *combo2dGet(COMBO2D *combo, int type, int index);
 
-void combo2dLink(COMBO2D *combo, OBJECT_HEADER *object);
+void combo2dLink(COMBO2D *combo, ObjHeader *object);
 
-void combo2dUnlink(COMBO2D *combo, OBJECT_HEADER *object);
+void combo2dUnlink(COMBO2D *combo, ObjHeader *object);
 
 //
 // Prepares a COMBO2D structure for deletion, can safely call free() after this.
 //
-void combo2dFree(COMBO2D *combo);
+void combo2dFree(ObjHeader *obj);
 
 void combo2dRegisterFormats(void);
 

@@ -1898,15 +1898,15 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 						//try texture
 						if (TxIdentifyFile(path) != TEXTURE_TYPE_INVALID) {
-							TextureObject texture = { 0 };
-							TxReadFile(&texture, path);
+							TextureObject *texture = (TextureObject *) ObjAutoReadFile(path, FILE_TYPE_TEXTURE);
 
-							if (texture.texture.palette.pal != NULL) {
-								nColors = texture.texture.palette.nColors;
+							if (texture->texture.palette.pal != NULL) {
+								nColors = texture->texture.palette.nColors;
 								colors = (COLOR *) calloc(nColors, sizeof(COLOR));
-								memcpy(colors, texture.texture.palette.pal, nColors * sizeof(COLOR));
+								memcpy(colors, texture->texture.palette.pal, nColors * sizeof(COLOR));
 							}
-							TxFree(&texture.header);
+							TxFree(&texture->header);
+							ObjFree(&texture->header);
 						} else {
 							//try image
 							int width, height;
@@ -1921,15 +1921,15 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 								free(src);
 							} else {
 								//try palette file
-								NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-								PalReadFile(nclr, path);
+								NCLR *nclr = (NCLR *) ObjAutoReadFile(path, FILE_TYPE_PALETTE);
 
-								nColors = nclr->nColors;
-								colors = (COLOR *) calloc(nColors, sizeof(COLOR));
-								memcpy(colors, nclr->colors, nColors * sizeof(COLOR));
+								if (nclr != NULL) {
+									nColors = nclr->nColors;
+									colors = (COLOR *) calloc(nColors, sizeof(COLOR));
+									memcpy(colors, nclr->colors, nColors * sizeof(COLOR));
 
-								ObjFree(&nclr->header);
-								free(nclr);
+									ObjFree(&nclr->header);
+								}
 							}
 						}
 						free(path);
@@ -2520,17 +2520,6 @@ static HWND CreateNclrViewerInternal(int x, int y, int width, int height, HWND h
 	HWND hWnd = EditorCreate(L"NclrViewerClass", x, y, width, height, hWndParent);
 	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) path, (LPARAM) nclr);
 	return hWnd;
-}
-
-HWND CreateNclrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NCLR *nclr = (NCLR *) calloc(1, sizeof(NCLR));
-	if (PalReadFile(nclr, path)) {
-		free(nclr);
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
-	return CreateNclrViewerInternal(x, y, width, height, hWndParent, path, nclr);
 }
 
 HWND CreateNclrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NCLR *nclr) {

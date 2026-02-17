@@ -72,7 +72,7 @@ typedef struct EDITOR_DATA_ {
 	EDITOR_BASIC_MEMBERS;
 
 	//first part of file object info
-	OBJECT_HEADER *file;
+	ObjHeader *file;
 
 	//after here may vary...
 } EDITOR_DATA;
@@ -92,7 +92,7 @@ void EditorRemoveCreateCallback(EditorManager *mgr, int type, EditorCreatedCallb
 
 StStatus EditorGetAllByType(HWND hWndMgr, int type, StList *list);
 
-HWND EditorFindByObject(HWND hWndMgr, OBJECT_HEADER *obj);
+HWND EditorFindByObject(HWND hWndMgr, ObjHeader *obj);
 
 void EditorInvalidateAllByType(HWND hWndMgr, int type);
 
@@ -110,7 +110,7 @@ void EditorSetFile(HWND hWnd, LPCWSTR file);
 
 void *EditorGetData(HWND hWnd);
 
-OBJECT_HEADER *EditorGetObject(HWND hWnd);
+ObjHeader *EditorGetObject(HWND hWnd);
 
 void EditorSetData(HWND hWnd, void *data);
 

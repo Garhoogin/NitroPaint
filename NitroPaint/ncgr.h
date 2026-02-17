@@ -33,7 +33,7 @@ typedef struct CHAR_SLICE_ {
 } CHAR_SLICE;
 
 typedef struct NCGR_{
-	OBJECT_HEADER header;
+	ObjHeader header;
 	int nTiles;
 	int tilesX;
 	int tilesY;
@@ -64,11 +64,6 @@ void ChrRegisterFormats(void);
 // Calculates a sensible width given a character count.
 //
 int ChrGuessWidth(int nTiles);
-
-//
-// Initialize an NCGR structure with sensible values.
-//
-void ChrInit(NCGR *ncgr, int format);
 
 //
 // Determines the validity of this file being a raw character graphics file.
@@ -114,11 +109,6 @@ void ChrReadGraphics(NCGR *ncgr, const unsigned char *buffer);
 // Read character graphics from a byte array.
 //
 int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
-
-//
-// Read character graphics from a file.
-//
-int ChrReadFile(NCGR *ncgr, LPCWSTR path);
 
 //
 // Write character data to stream.

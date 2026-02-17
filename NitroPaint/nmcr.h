@@ -25,7 +25,7 @@ typedef struct MULTI_CELL_ {
 } MULTI_CELL;
 
 typedef struct NMCR_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 	int nMultiCell;
 	MULTI_CELL *multiCells;
 } NMCR;
@@ -42,8 +42,3 @@ int nmcrIsValid(const unsigned char *buffer, unsigned int size);
 // Read the NMCR file pointed to into the destination structure.
 //
 int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size);
-
-//
-// Read NMCR from file
-//
-int nmcrReadFile(NMCR *nmcr, LPCWSTR path);

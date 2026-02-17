@@ -34,6 +34,4 @@ typedef struct MesgEditorData_ {
 
 void MesgEditorRegisterClass(void);
 
-HWND CreateMesgEditor(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path);
-
 HWND CreateMesgEditorImmediate(int x, int y, int width, int height, HWND hWndParent, MesgFile *mesg);

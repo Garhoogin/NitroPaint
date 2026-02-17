@@ -61,7 +61,7 @@ typedef struct NANR_SQUENCE_ {
 
 
 typedef struct NANR_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 
 	int nSequences;
 	NANR_SEQUENCE *sequences;  //animation sequences
@@ -76,17 +76,13 @@ typedef struct NANR_ {
 void AnmRegisterFormats(void);
 
 
-void AnmInit(NANR *nanr, int format);
-
 int AnmRead(NANR *nanr, const unsigned char *lpFile, unsigned int size);
-
-int AnmReadFile(NANR *nanr, LPCWSTR path);
 
 int AnmWrite(NANR *nanr, BSTREAM *stream);
 
 int AnmWriteFile(NANR *nanr, LPWSTR name);
 
-void AnmFree(OBJECT_HEADER *obj);
+void AnmFree(ObjHeader *obj);
 
 
 // ----- animation operations

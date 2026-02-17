@@ -209,7 +209,7 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette) {
 }
 
 
-void TxFree(OBJECT_HEADER *obj) {
+void TxFree(ObjHeader *obj) {
 	TextureObject *texture = (TextureObject *) obj;
 	if (texture->texture.texels.texel != NULL) free(texture->texture.texels.texel);
 	if (texture->texture.texels.cmp != NULL) free(texture->texture.texels.cmp);
@@ -219,22 +219,18 @@ void TxFree(OBJECT_HEADER *obj) {
 	texture->texture.palette.pal = NULL;
 }
 
-void TxInit(TextureObject *texture, int format) {
-	texture->header.size = sizeof(*texture);
-	ObjInit(&texture->header, FILE_TYPE_TEXTURE, format);
-
-	texture->header.dispose = TxFree;
-	texture->header.writer = (OBJECT_WRITER) TxWrite;
-}
-
-TEXTURE *TxUncontain(TextureObject *texture) {
+void TxUncontain(TextureObject *texture, TEXTURE *out) {
 	//nothing needs to be done here at the moment.
-	return &texture->texture;
+	memcpy(out, &texture->texture, sizeof(TEXTURE));
+
+	memset(&texture->texture, 0, sizeof(TEXTURE));
+	ObjFree(&texture->header);
 }
 
-void TxContain(TextureObject *object, int format, TEXTURE *texture) {
-	TxInit(object, format);
+TextureObject *TxContain(TEXTURE *texture, int format) {
+	TextureObject *object = (TextureObject *) ObjAlloc(FILE_TYPE_TEXTURE, format);
 	memcpy(&object->texture, texture, sizeof(TEXTURE));
+	return object;
 }
 
 int ilog2(int x) {
@@ -491,7 +487,7 @@ static void TxiRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, O
 }
 
 void TxRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_TEXTURE, sizeof(TextureObject), L"Texture");
+	ObjRegisterType(FILE_TYPE_TEXTURE, sizeof(TextureObject), L"Texture", (ObjReader) TxRead, (ObjWriter) TxWrite, NULL, TxFree);
 	TxiRegisterFormat(TEXTURE_TYPE_NNSTGA, L"NNS TGA", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE, TxIsValidNnsTga);
 	TxiRegisterFormat(TEXTURE_TYPE_ISTUDIO, L"5TX", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED, TxIsValidIStudio);
 	TxiRegisterFormat(TEXTURE_TYPE_SPT, L"SPT", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS, TxIsValidSpt);
@@ -522,8 +518,6 @@ int TxIdentifyFile(LPCWSTR path) {
 }
 
 int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned int dwSize) {
-	TxInit(texture, TEXTURE_TYPE_NNSTGA);
-
 	int commentLength = *lpBuffer;
 	int nitroOffset = *(int *) (lpBuffer + 0x12 + commentLength - 4);
 	const unsigned char *buffer = lpBuffer + nitroOffset;
@@ -607,8 +601,6 @@ int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned
 }
 
 int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
-	TxInit(texture, TEXTURE_TYPE_ISTUDIO);
-
 	const unsigned char *palt = NnsG2dFindBlockBySignature(buffer, size, "PALT", NNS_SIG_BE, NULL);
 	const unsigned char *imge = NnsG2dFindBlockBySignature(buffer, size, "IMGE", NNS_SIG_BE, NULL);
 
@@ -656,7 +648,6 @@ int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned 
 int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
 	if (!TxIsValidTds(buffer, size)) return 1;
 
-	TxInit(texture, TEXTURE_TYPE_TDS);
 	uint32_t texFormat = *(uint8_t*) (buffer + 0x08);
 	uint32_t texSizeS = *(uint8_t*) (buffer + 0x09);
 	uint32_t texSizeT = *(uint8_t*) (buffer + 0x0A);
@@ -690,8 +681,6 @@ int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int 
 }
 
 int TxReadNtga(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
-	TxInit(texture, TEXTURE_TYPE_NTGA);
-
 	uint32_t fmt = *(uint32_t *) (buffer + 0x4);
 	uint32_t sizeS = *(uint32_t *) (buffer + 0x8);
 	uint32_t sizeT = *(uint32_t *) (buffer + 0xC);
@@ -724,8 +713,6 @@ int TxReadNtga(TextureObject *texture, const unsigned char *buffer, unsigned int
 }
 
 int TxReadToLoveRu(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
-	TxInit(texture, TEXTURE_TYPE_TOLOVERU);
-
 	//? + 0x04
 	uint16_t fmt = *(uint16_t *) (buffer + 0x06);
 	uint16_t width = *(uint16_t *) (buffer + 0x08);
@@ -760,8 +747,6 @@ int TxReadToLoveRu(TextureObject *texture, const unsigned char *buffer, unsigned
 }
 
 static int TxReadSpt(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
-	TxInit(texture, TEXTURE_TYPE_SPT);
-
 	uint32_t param = *(const uint32_t *) (buffer + 0x04);
 	uint32_t sizTex = *(const uint32_t *) (buffer + 0x08);
 	uint32_t ofsPlt = *(const uint32_t *) (buffer + 0x0C);
@@ -798,8 +783,6 @@ static int TxReadSpt(TextureObject *texture, const unsigned char *buffer, unsign
 }
 
 static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
-	TxInit(texture, TEXTURE_TYPE_GRF);
-
 	unsigned int headerSize;
 	unsigned char *hdr = GrfGetHeader(buffer, size, &headerSize);
 
@@ -861,8 +844,7 @@ static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsign
 }
 
 int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
-	int type = TxIdentify(buffer, size);
-	switch (type) {
+	switch (texture->header.format) {
 		case TEXTURE_TYPE_NNSTGA:
 			return TxReadNnsTga(texture, buffer, size);
 		case TEXTURE_TYPE_SPT:
@@ -878,42 +860,7 @@ int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int siz
 		case TEXTURE_TYPE_GRF:
 			return TxReadGrf(texture, buffer, size);
 	}
-	return 1;
-}
-
-int TxReadFile(TextureObject *texture, LPCWSTR path) {
-	int status = ObjReadFile(path, &texture->header, (OBJECT_READER) TxRead);
-
-	if (status == 0) {
-		//copy texture name
-		int nameOffset = 0;
-		for (unsigned int i = 0; i < wcslen(path); i++) {
-			if (path[i] == L'/' || path[i] == L'\\') nameOffset = i + 1;
-		}
-
-		LPCWSTR name = path + nameOffset;
-		const WCHAR *pEnd = wcsrchr(name, L'.');
-		if (pEnd == NULL) pEnd = name + wcslen(name);
-
-		unsigned int nameLength = pEnd - name;
-		texture->texture.texels.name = calloc(nameLength + 1, 1);
-		for (unsigned int i = 0; i < nameLength; i++) {
-			texture->texture.texels.name[i] = (char) name[i];
-		}
-	}
-
-	return status;
-}
-
-int TxReadFileDirect(TEXELS *texels, PALETTE *palette, LPCWSTR path) {
-	TextureObject obj = { 0 };
-	int status = TxReadFile(&obj, path);
-	if (status) return status;
-
-	TEXTURE *texture = TxUncontain(&obj);
-	memcpy(texels, &texture->texels, sizeof(TEXELS));
-	memcpy(palette, &texture->palette, sizeof(PALETTE));
-	return status;
+	return OBJ_STATUS_INVALID;
 }
 
 
@@ -1316,20 +1263,4 @@ int TxWrite(TextureObject *texture, BSTREAM *stream) {
 			return TxWriteGRF(texture, stream);
 	}
 	return 1;
-}
-
-int TxWriteFile(TextureObject *texture, LPCWSTR path) {
-	return ObjWriteFile(&texture->header, path);
-}
-
-int TxWriteFileDirect(TEXELS *texels, PALETTE *palette, int format, LPCWSTR path) {
-	//contain the parameters
-	TextureObject textureObj = { 0 };
-	TxInit(&textureObj, format);
-	memcpy(&textureObj.texture.texels, texels, sizeof(TEXELS));
-	memcpy(&textureObj.texture.palette, palette, sizeof(PALETTE));
-
-	int status = TxWriteFile(&textureObj, path);
-	TxUncontain(&textureObj);
-	return status;
 }

@@ -3,14 +3,18 @@
 
 #include "jlyt.h"
 
-int BnllIsValidBnll(const unsigned char *buffer, unsigned int size);
-int BnclIsValidBncl(const unsigned char *buffer, unsigned int size);
-int BnblIsValidBnbl(const unsigned char *buffer, unsigned int size);
+static int BnllIsValidBnll(const unsigned char *buffer, unsigned int size);
+static int BnclIsValidBncl(const unsigned char *buffer, unsigned int size);
+static int BnblIsValidBnbl(const unsigned char *buffer, unsigned int size);
+
+static void BnllFree(ObjHeader *hdr);
+static void BnclFree(ObjHeader *hdr);
+static void BnblFree(ObjHeader *hdr);
 
 void JLytRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_BNLL, sizeof(BNLL), L"Letter Layout");
-	ObjRegisterType(FILE_TYPE_BNCL, sizeof(BNCL), L"Cell Layout");
-	ObjRegisterType(FILE_TYPE_BNBL, sizeof(BNBL), L"Button Layout");
+	ObjRegisterType(FILE_TYPE_BNLL, sizeof(BNLL), L"Letter Layout", (ObjReader) BnllRead, (ObjWriter) BnllWrite, NULL, BnllFree);
+	ObjRegisterType(FILE_TYPE_BNCL, sizeof(BNCL), L"Cell Layout", (ObjReader) BnclRead, (ObjWriter) BnclWrite, NULL, BnclFree);
+	ObjRegisterType(FILE_TYPE_BNBL, sizeof(BNBL), L"Button Layout", (ObjReader) BnblRead, (ObjWriter) BnblWrite, NULL, BnblFree);
 
 	ObjRegisterFormat(FILE_TYPE_BNLL, BNLL_TYPE_BNLL, L"BNLL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnllIsValidBnll);
 	ObjRegisterFormat(FILE_TYPE_BNCL, BNCL_TYPE_BNCL, L"BNCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnclIsValidBncl);
@@ -114,23 +118,14 @@ int BnllIdentify(const unsigned char *buffer, unsigned int size) {
 	return BNLL_TYPE_INVALID;
 }
 
-static void BnllFree(OBJECT_HEADER *hdr) {
+static void BnllFree(ObjHeader *hdr) {
 	BNLL *bnll = (BNLL *) hdr;
 	free(bnll->messages);
 	bnll->messages = NULL;
 	bnll->nMsg = 0;
 }
 
-void BnllInit(BNLL *bnll, int fmt) {
-	bnll->header.size = sizeof(BNLL);
-	ObjInit(&bnll->header, FILE_TYPE_BNLL, fmt);
-	bnll->header.dispose = BnllFree;
-	bnll->header.writer = (OBJECT_WRITER) BnllWrite;
-}
-
 static int BnllReadBnll(BNLL *bnll, const unsigned char *buffer, unsigned int size) {
-	BnllInit(bnll, BNLL_TYPE_BNLL);
-
 	uint16_t nEntry = *(const uint16_t *) (buffer + 0x6);
 	bnll->nMsg = nEntry;
 	bnll->messages = (BnllMessage *) calloc(nEntry, sizeof(BnllMessage));
@@ -178,10 +173,6 @@ int BnllRead(BNLL *bnll, const unsigned char *buffer, unsigned int size) {
 			return BnllReadBnll(bnll, buffer, size);
 	}
 	return OBJ_STATUS_INVALID;
-}
-
-int BnllReadFile(BNLL *bnll, LPCWSTR path) {
-	return ObjReadFile(path, &bnll->header, (OBJECT_READER) BnllRead);
 }
 
 static int BnllWriteBnll(BNLL *bnll, BSTREAM *stream) {
@@ -276,23 +267,14 @@ int BnclIdentify(const unsigned char *buffer, unsigned int size) {
 	return BNCL_TYPE_INVALID;
 }
 
-static void BnclFree(OBJECT_HEADER *hdr) {
+static void BnclFree(ObjHeader *hdr) {
 	BNCL *bncl = (BNCL *) hdr;
 	free(bncl->cells);
 	bncl->cells = NULL;
 	bncl->nCell = 0;
 }
 
-void BnclInit(BNCL *bncl, int fmt) {
-	bncl->header.size = sizeof(BNCL);
-	ObjInit(&bncl->header, FILE_TYPE_BNCL, fmt);
-	bncl->header.dispose = BnclFree;
-	bncl->header.writer = (OBJECT_WRITER) BnclWrite;
-}
-
 static int BnclReadBncl(BNCL *bncl, const unsigned char *buffer, unsigned int size) {
-	BnclInit(bncl, BNCL_TYPE_BNCL);
-	
 	uint16_t nEntry = *(const uint16_t *) (buffer + 0x6);
 	bncl->nCell = nEntry;
 	bncl->cells = (BnclCell *) calloc(nEntry, sizeof(BnclCell));
@@ -317,10 +299,6 @@ int BnclRead(BNCL *bncl, const unsigned char *buffer, unsigned int size) {
 			return BnclReadBncl(bncl, buffer, size);
 	}
 	return OBJ_STATUS_INVALID;
-}
-
-int BnclReadFile(BNCL *bncl, LPCWSTR path) {
-	return ObjReadFile(path, &bncl->header, (OBJECT_READER) BnclRead);
 }
 
 static int BnclWriteBncl(BNCL *bncl, BSTREAM *stream) {
@@ -375,23 +353,14 @@ int BnblIdentify(const unsigned char *buffer, unsigned int size) {
 	return BNBL_TYPE_INVALID;
 }
 
-static void BnblFree(OBJECT_HEADER *hdr) {
+static void BnblFree(ObjHeader *hdr) {
 	BNBL *bnbl = (BNBL *) hdr;
 	free(bnbl->regions);
 	bnbl->regions = NULL;
 	bnbl->nRegion = 0;
 }
 
-void BnblInit(BNBL *bnbl, int fmt) {
-	bnbl->header.size = sizeof(BNBL);
-	ObjInit(&bnbl->header, FILE_TYPE_BNBL, fmt);
-	bnbl->header.dispose = BnblFree;
-	bnbl->header.writer = (OBJECT_WRITER) BnblWrite;
-}
-
 static int BnblReadBnbl(BNBL *bnbl, const unsigned char *buffer, unsigned int size) {
-	BnblInit(bnbl, BNBL_TYPE_BNBL);
-
 	uint16_t nEntry = *(const uint16_t *) (buffer + 0x6);
 	bnbl->nRegion = nEntry;
 	bnbl->regions = (BnblRegion *) calloc(nEntry, sizeof(BnblRegion));
@@ -416,10 +385,6 @@ int BnblRead(BNBL *bnbl, const unsigned char *buffer, unsigned int size) {
 			return BnblReadBnbl(bnbl, buffer, size);
 	}
 	return OBJ_STATUS_INVALID;
-}
-
-int BnblReadFile(BNBL *bnbl, LPCWSTR path) {
-	return ObjReadFile(path, &bnbl->header, (OBJECT_READER) BnblRead);
 }
 
 static int BnblWriteBnbl(BNBL *bnbl, BSTREAM *stream) {

@@ -2579,16 +2579,6 @@ static HWND CreateNftrViewerInternal(int x, int y, int width, int height, HWND h
 	return hWndEditor;
 }
 
-HWND CreateNftrViewer(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path) {
-	NFTR *nftr = (NFTR *) calloc(1, sizeof(NFTR));
-	if (NftrReadFile(nftr, path)) {
-		MessageBox(hWndParent, L"Invalid file.", L"Invalid file", MB_ICONERROR);
-		return NULL;
-	}
-
-	return CreateNftrViewerInternal(x, y, width, height, hWndParent, path, nftr);
-}
-
 HWND CreateNftrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NFTR *nftr) {
 	return CreateNftrViewerInternal(x, y, width, height, hWndParent, NULL, nftr);
 }

@@ -30,7 +30,7 @@
 #define NSCR_TYPE_COMBO     9
 
 typedef struct NSCR_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 	unsigned int tilesX;
 	unsigned int tilesY;
 	unsigned int dataSize;
@@ -46,18 +46,6 @@ typedef struct NSCR_ {
 
 #include "combo2d.h"
 
-//
-// Initialize an NSCR structure with sensible values.
-//
-void ScrInit(NSCR *nscr, int format);
-
-//
-// Determines if a byte array represents a valid Hudson screen file.
-//
-int ScrIsValidHudson(const unsigned char *buffer, unsigned int size);
-int ScrIsValidAsc(const unsigned char *buffer, unsigned int size);
-int ScrIsValidIsc(const unsigned char *buffer, unsigned int size);
-int ScrIsValidTose(const unsigned char *buffer, unsigned int size);
 
 int ScrIsValidBin(const unsigned char *buffer, unsigned int size);
 
@@ -72,11 +60,6 @@ int ScrIdentify(const unsigned char *file, unsigned int size);
 // Reads a screen file from an array.
 //
 int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize);
-
-//
-// Reads a screen from a file.
-//
-int ScrReadFile(NSCR *nscr, LPCWSTR path);
 
 //
 // Write a screen to a stream.

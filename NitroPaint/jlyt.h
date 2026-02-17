@@ -54,16 +54,14 @@ typedef struct BnllMessage_ {
 } BnllMessage;
 
 typedef struct BNLL_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 
 	int nMsg;
 	BnllMessage *messages;
 } BNLL;
 
-void BnllInit(BNLL *bnll, int fmt);
 int BnllIdentify(const unsigned char *buffer, unsigned int size);
 int BnllRead(BNLL *bnll, const unsigned char *buffer, unsigned int size);
-int BnllReadFile(BNLL *bnll, LPCWSTR path);
 int BnllWrite(BNLL *bnll, BSTREAM *stream);
 
 
@@ -76,16 +74,14 @@ typedef struct BnclCell_ {
 } BnclCell;
 
 typedef struct BNCL_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 
 	int nCell;
 	BnclCell *cells;
 } BNCL;
 
-void BnclInit(BNCL *bncl, int fmt);
 int BnclIdentify(const unsigned char *buffer, unsigned int size);
 int BnclRead(BNCL *bncl, const unsigned char *buffer, unsigned int size);
-int BnclReadFile(BNCL *bncl, LPCWSTR path);
 int BnclWrite(BNCL *bncl, BSTREAM *stream);
 
 
@@ -99,14 +95,12 @@ typedef struct BnblRegion_ {
 } BnblRegion;
 
 typedef struct BNBL_ {
-	OBJECT_HEADER header;
+	ObjHeader header;
 
 	int nRegion;
 	BnblRegion *regions;
 } BNBL;
 
-void BnblInit(BNBL *bnbl, int fmt);
 int BnblIdentify(const unsigned char *buffer, unsigned int size);
 int BnblRead(BNBL *bnbl, const unsigned char *buffer, unsigned int size);
-int BnblReadFile(BNBL *bnbl, LPCWSTR path);
 int BnblWrite(BNBL *bnbl, BSTREAM *stream);

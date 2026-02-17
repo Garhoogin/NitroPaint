@@ -22,8 +22,6 @@ typedef struct PAL_OP_DATA_ {
 	int inited;
 } PAL_OP_DATA;
 
-#define NV_SETDATA (WM_USER+1)
-
 void PalopPopulateUI(PAL_OP_DATA *data, PAL_OP *op) {
 	SendMessage(data->hWndIgnoreFirst, BM_SETCHECK, op->ignoreFirst, 0);
 	SetEditNumber(data->hWndHue, op->hueRotate);
