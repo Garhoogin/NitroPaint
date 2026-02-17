@@ -1307,6 +1307,20 @@ static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 		case FILE_TYPE_MESG:
 			h = CreateMesgEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (MesgFile *) object);
 			break;
+
+		case FILE_TYPE_COMBO2D:
+		{
+			//create an editor for each sub-object (recursive)
+			COMBO2D *combo = (COMBO2D *) object;
+
+			for (unsigned int i = 0; i < combo->links.length; i++) {
+				ObjHeader *object;
+				StListGet(&combo->links, i, &object);
+
+				h = NpOpenObject(hWnd, object);
+			}
+			break;
+		}
 	}
 	return h;
 }
@@ -1374,7 +1388,21 @@ VOID OpenFileByNameAs(HWND hWnd, LPCWSTR path) {
 }
 
 void OpenFileByContent(HWND hWnd, const unsigned char *buffer, unsigned int size, const wchar_t *path, int compression, int type, int format) {
+	if (type == FILE_TYPE_IMAGE) {
+		//create texture editor
+		NITROPAINTSTRUCT *np = NpGetData(hWnd);
+		CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, np->hWndMdi, buffer, size);
+	} else if (type == FILE_TYPE_COMBO2D) {
+		//TODO
+	} else {
+		//open the file
+		ObjHeader *obj = NULL;
+		int status = ObjReadBuffer(&obj, buffer, size, type, format, compression);
+		if (!OBJ_SUCCEEDED(status)) return;
 
+		//open in an editor
+		NpOpenObject(hWnd, obj);
+	}
 }
 
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
@@ -1484,11 +1512,10 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		{
 			ObjHeader *obj = NULL;
 			int status = ObjReadBuffer(&obj, buffer, dwSize, type, format, compression);
-			if (!OBJ_SUCCEEDED(status)) {
-				goto cleanup;
+			if (OBJ_SUCCEEDED(status)) {
+				NpOpenObjectAtPath(hWnd, obj, path);
 			}
 
-			NpOpenObjectAtPath(hWnd, obj, path);
 			break;
 		}
 		case FILE_TYPE_COMBO2D:
@@ -1500,22 +1527,15 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			//read combo
 			COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, format);
 			combo2dRead(combo, decompressed, decompressedSize);
-			if (compression != COMPRESSION_NONE) combo->header.compression = compression;
+			combo->header.compression = compression;
 			free(decompressed);
 
 			//open the component objects
 			for (unsigned int i = 0; i < combo->links.length; i++) {
 				ObjHeader *object;
 				StListGet(&combo->links, i, &object);
-				int type = object->type;
 
-				HWND h = NpOpenObject(hWnd, object);
-
-				//set compression type for all links
-				(*(ObjHeader **) StListGetPtr(&combo->links, i))->compression = compression;
-
-				//point the editor window at the right file
-				EditorSetFile(h, path);
+				NpOpenObjectAtPath(hWnd, object, path);
 			}
 			break;
 		}
@@ -1588,8 +1608,6 @@ static BOOL CALLBACK ListWindowsProc(HWND hWnd, LPARAM lParam) {
 
 static int SortWindowsComputeOrder(int type) {
 	switch (type) {
-		case FILE_TYPE_INVALID:
-			return 0;
 		case FILE_TYPE_PALETTE:
 			return 1;
 		case FILE_TYPE_CHAR:
@@ -1605,11 +1623,8 @@ static int SortWindowsComputeOrder(int type) {
 		case FILE_TYPE_NMAR:
 			return 7;
 		case FILE_TYPE_FONT:
-			return 8;
 		case FILE_TYPE_TEXTURE:
-			return 9;
 		case FILE_TYPE_NSBTX:
-			return 10;
 		case FILE_TYPE_BNBL:
 		case FILE_TYPE_BNCL:
 		case FILE_TYPE_BNLL:
@@ -3825,13 +3840,13 @@ static void OpenAsOnCompressionChanged(OpenAsData *data) {
 	unsigned int uncompSize;
 	unsigned char *uncomp = CxDecompress(data->buffer, data->size, compression, &uncompSize);
 
-	StList ids;
-	StListCreateInline(&ids, ObjIdEntry, NULL);
-	ObjIdentifyMultipleByType(&ids, uncomp, uncompSize, FILE_TYPE_INVALID);
+	StListClear(&data->formats);
+	StListCreateInline(&data->formats, ObjIdEntry, NULL);
+	ObjIdentifyMultipleByType(&data->formats, uncomp, uncompSize, FILE_TYPE_INVALID);
 
 	SendMessage(data->hWndFormatDropdown, CB_RESETCONTENT, 0, 0);
-	for (size_t i = 0; i < ids.length; i++) {
-		ObjIdEntry *ent = StListGetPtr(&ids, i);
+	for (size_t i = 0; i < data->formats.length; i++) {
+		ObjIdEntry *ent = StListGetPtr(&data->formats, i);
 		const wchar_t *typeName = ObjGetFileTypeName(ent->type);
 
 		wchar_t textbuf[64];
@@ -3843,13 +3858,12 @@ static void OpenAsOnCompressionChanged(OpenAsData *data) {
 	UiCbSetCurSel(data->hWndFormatDropdown, 0);
 
 	//if nonzero number of formats responded, enable the OK button.
-	if (ids.length > 0) {
+	if (data->formats.length > 0) {
 		EnableWindow(data->hWndOK, TRUE);
 	} else {
 		EnableWindow(data->hWndOK, FALSE);
 	}
 
-	StListFree(&ids);
 	free(uncomp);
 }
 
