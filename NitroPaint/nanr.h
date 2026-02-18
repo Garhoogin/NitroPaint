@@ -26,23 +26,23 @@
 #define NANR_SEQ_MODE_BACKWARD_LOOP 4
 
 typedef struct ANIM_DATA_ {
-	unsigned short index;
+	uint16_t index;
 } ANIM_DATA;
 
 typedef struct ANIM_DATA_SRT_ {
-	unsigned short index;
-	unsigned short rotZ;
-	int sx;
-	int sy;
-	short px;
-	short py;
+	uint16_t index;
+	uint16_t rotZ;
+	int32_t sx;
+	int32_t sy;
+	int16_t px;
+	int16_t py;
 } ANIM_DATA_SRT;
 
 typedef struct ANIM_DATA_T_ {
-	unsigned short index;
-	unsigned short pad_;
-	short px;
-	short py;
+	uint16_t index;
+	uint16_t pad_;
+	int16_t px;
+	int16_t py;
 } ANIM_DATA_T;
 
 typedef struct FRAME_DATA_ {

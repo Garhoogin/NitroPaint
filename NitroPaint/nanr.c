@@ -358,8 +358,10 @@ static int AnmiCountFrames(NANR *nanr) {
 
 //ensure frame is in the stream, and return the offset to it
 static unsigned int AnmiNanrWriteFrame(BSTREAM *stream, const void *data, int element) {
-	const unsigned int sizes[] = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
-	unsigned int size = sizes[element];
+	static const unsigned char sizes[]  = { sizeof(ANIM_DATA), sizeof(ANIM_DATA_SRT), sizeof(ANIM_DATA_T) };
+	static const unsigned char aligns[] = { 2,                 4,                     2                   };
+	unsigned int sizeElement = sizes[element];
+	unsigned int alignElement = aligns[element];
 
 	//search for element
 	int found = 0;
@@ -368,8 +370,8 @@ static unsigned int AnmiNanrWriteFrame(BSTREAM *stream, const void *data, int el
 		case NANR_SEQ_TYPE_INDEX:
 		case NANR_SEQ_TYPE_INDEX_SRT:
 			//both Index and Index+SRT, compare whole animation dat
-			for (i = 0; i <= stream->size - size; i += 2) { //2-byte alignment
-				if (memcmp(stream->buffer + i, data, size) == 0) {
+			for (i = 0; (i + sizeElement) <= stream->size; i += alignElement) {
+				if (memcmp(stream->buffer + i, data, sizeElement) == 0) {
 					found = 1;
 					foundOffset = i;
 					break;
@@ -380,7 +382,8 @@ static unsigned int AnmiNanrWriteFrame(BSTREAM *stream, const void *data, int el
 		{
 			//Index+T: compare all but padding
 			ANIM_DATA_T *d1 = (ANIM_DATA_T *) data;
-			for (i = 0; i <= stream->size - size; i += 4) { //4-byte alignment
+			for (i = 0; (i + sizeElement) <= stream->size; i += alignElement) {
+				//do not memcmp directly: we don't want to compare the padding space (not used by the runtime)
 				ANIM_DATA_T *d2 = (ANIM_DATA_T *) (stream->buffer + i);
 				if (d1->index == d2->index && d1->px == d2->px && d1->py == d2->py) {
 					found = 1;
@@ -392,21 +395,17 @@ static unsigned int AnmiNanrWriteFrame(BSTREAM *stream, const void *data, int el
 		}
 	}
 
-	//return found offset
-	if (found) {
-		return foundOffset;
-	}
-
-	uint32_t pad0 = 0;
-	if (element != NANR_SEQ_TYPE_INDEX && (stream->pos & 3)) {
+	if (!found) {
 		//align stream before writing data out
-		bstreamWrite(stream, &pad0, 4 - (stream->pos & 3));
+		bstreamAlign(stream, alignElement);
+
+		//put the new element
+		foundOffset = stream->pos;
+		bstreamWrite(stream, data, sizeElement);
 	}
 
-	//TODO: search
-	unsigned int ofs = stream->pos;
-	bstreamWrite(stream, data, size);
-	return ofs;
+	//return the offset of added element
+	return foundOffset;
 }
 
 int AnmWrite(NANR *nanr, BSTREAM *stream) {

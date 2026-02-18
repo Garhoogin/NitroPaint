@@ -1250,6 +1250,22 @@ static int NpGetComboFormatForPreset(void) {
 	}
 }
 
+static HWND NpOpenObject(HWND hWnd, ObjHeader *object);
+static HWND NpOpenObjectAtPath(HWND hWnd, ObjHeader *object, const wchar_t *path);
+
+static void NpOpenCombo(HWND hWnd, COMBO2D *combo, const wchar_t *path) {
+	for (unsigned int i = 0; i < combo->links.length; i++) {
+		ObjHeader *object;
+		StListGet(&combo->links, i, &object);
+
+		if (path == NULL) {
+			NpOpenObject(hWnd, object);
+		} else {
+			NpOpenObjectAtPath(hWnd, object, path);
+		}
+	}
+}
+
 static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 	NITROPAINTSTRUCT *data = NpGetData(hWnd);
 	HWND h = NULL;
@@ -1312,13 +1328,7 @@ static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 		{
 			//create an editor for each sub-object (recursive)
 			COMBO2D *combo = (COMBO2D *) object;
-
-			for (unsigned int i = 0; i < combo->links.length; i++) {
-				ObjHeader *object;
-				StListGet(&combo->links, i, &object);
-
-				h = NpOpenObject(hWnd, object);
-			}
+			NpOpenCombo(hWnd, combo, NULL);
 			break;
 		}
 	}
@@ -1392,8 +1402,6 @@ void OpenFileByContent(HWND hWnd, const unsigned char *buffer, unsigned int size
 		//create texture editor
 		NITROPAINTSTRUCT *np = NpGetData(hWnd);
 		CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, np->hWndMdi, buffer, size);
-	} else if (type == FILE_TYPE_COMBO2D) {
-		//TODO
 	} else {
 		//open the file
 		ObjHeader *obj = NULL;
@@ -1401,7 +1409,11 @@ void OpenFileByContent(HWND hWnd, const unsigned char *buffer, unsigned int size
 		if (!OBJ_SUCCEEDED(status)) return;
 
 		//open in an editor
-		NpOpenObject(hWnd, obj);
+		if (obj->type == FILE_TYPE_COMBO2D) {
+			NpOpenCombo(hWnd, (COMBO2D *) obj, path);
+		} else {
+			NpOpenObjectAtPath(hWnd, obj, path);
+		}
 	}
 }
 
@@ -1531,12 +1543,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			free(decompressed);
 
 			//open the component objects
-			for (unsigned int i = 0; i < combo->links.length; i++) {
-				ObjHeader *object;
-				StListGet(&combo->links, i, &object);
-
-				NpOpenObjectAtPath(hWnd, object, path);
-			}
+			NpOpenCombo(hWnd, combo, path);
 			break;
 		}
 		default: //unrecognized file
