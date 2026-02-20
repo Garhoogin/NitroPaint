@@ -420,6 +420,171 @@ static void CxiBitWriterWriteBitsBE(CxiBitWriter *writer, uint32_t bits, unsigne
 }
 
 
+// ----- Huffman coding routines
+
+typedef struct CxiHuffNode_ {
+	uint16_t sym;
+	uint16_t symMin;
+	uint16_t symMax;
+	int freq;
+	struct CxiHuffNode_ *left;
+	struct CxiHuffNode_ *right;
+} CxiHuffNode;
+
+typedef struct CxiHuffCode_ {
+	uint16_t value;
+	uint16_t length;
+	uint32_t encoding;
+} CxiHuffCode;
+
+#define ISLEAF(n) ((n)->left==NULL&&(n)->right==NULL)
+
+static int CxiHuffFrequencyComparator(const void *p1, const void *p2) {
+	const CxiHuffNode *n1 = (const CxiHuffNode *) p1;
+	const CxiHuffNode *n2 = (const CxiHuffNode *) p2;
+
+	//sort first according to descending frequency
+	if (n2->freq != n1->freq) return n2->freq - n1->freq;
+
+	//sort secondarily by symbol value (low symbols first)
+	if (n1->sym < n2->sym) return -1;
+	if (n1->sym > n2->sym) return  1;
+	return 0;
+}
+
+static int CxiHuffCanonicalComparator(const void *p1, const void *p2) {
+	const CxiHuffCode *c1 = (const CxiHuffCode *) p1;
+	const CxiHuffCode *c2 = (const CxiHuffCode *) p2;
+
+	//force 0-length (excluded) symbols to the end
+	if (c1->length == 0) return 1;
+	if (c2->length == 0) return -1;
+
+	if (c1->length < c2->length) return -1;
+	if (c1->length > c2->length) return 1;
+	if (c1->value < c2->value) return -1;
+	if (c1->value > c2->value) return 1;
+	return 0;
+}
+
+static int CxiHuffSymbolComparator(const void *p1, const void *p2) {
+	const CxiHuffCode *c1 = (const CxiHuffCode *) p1;
+	const CxiHuffCode *c2 = (const CxiHuffCode *) p2;
+
+	if (c1->value < c2->value) return -1;
+	if (c1->value > c2->value) return 1;
+	return 0;
+}
+
+static int CxiHuffmanHasSymbol(CxiHuffNode *node, uint16_t sym) {
+	if (ISLEAF(node)) return node->sym == sym;
+	if (sym < node->symMin || sym > node->symMax) return 0;
+	
+	return CxiHuffmanHasSymbol(node->left, sym) || CxiHuffmanHasSymbol(node->right, sym);
+}
+
+static void CxiHuffmanWriteSymbol(CxiBitWriter *bits, uint16_t sym, const CxiHuffNode *tree) {
+	if (ISLEAF(tree)) return;
+	
+	if (CxiHuffmanHasSymbol(tree->left, sym)) {
+		CxiBitWriterWriteBit(bits, 0);
+		CxiHuffmanWriteSymbol(bits, sym, tree->left);
+	} else {
+		CxiBitWriterWriteBit(bits, 1);
+		CxiHuffmanWriteSymbol(bits, sym, tree->right);
+	}
+}
+
+static unsigned int CxiHuffmanConstructTree(CxiHuffNode *nodes, unsigned int nNodes, unsigned int nNodeMin) {
+	//initialize symMin, symMax
+	for (unsigned int i = 0; i < nNodes; i++) {
+		nodes[i].symMin = nodes[i].symMax = nodes[i].sym;
+	}
+
+	//sort by frequency, then cut off the remainder (freq=0).
+	qsort(nodes, nNodes, sizeof(CxiHuffNode), CxiHuffFrequencyComparator);
+	for (unsigned int i = 0; i < nNodes; i++) {
+		if (nodes[i].freq == 0) {
+			nNodes = i;
+			break;
+		}
+	}
+	if (nNodes < nNodeMin) nNodes = nNodeMin;
+
+	//unflatten the histogram into a huffman tree. 
+	int nRoots = nNodes;
+	int nTotalNodes = nNodes;
+	while (nRoots > 1) {
+		//copy bottom two nodes to just outside the current range
+		CxiHuffNode *srcA = nodes + nRoots - 2;
+		CxiHuffNode *destA = nodes + nTotalNodes;
+		memcpy(destA, srcA, sizeof(CxiHuffNode));
+
+		CxiHuffNode *left = destA;
+		CxiHuffNode *right = nodes + nRoots - 1;
+		CxiHuffNode *branch = srcA;
+
+		branch->freq = left->freq + right->freq;
+		branch->sym = 0;
+		branch->left = left;
+		branch->right = right;
+		branch->symMin = min(left->symMin, right->symMin);
+		branch->symMax = max(right->symMax, left->symMax);
+
+		nRoots--;
+		nTotalNodes++;
+		qsort(nodes, nRoots, sizeof(CxiHuffNode), CxiHuffFrequencyComparator);
+	}
+
+	return nNodes;
+}
+
+static int CxiHuffAppendCanonicalCode(CxiHuffNode *tree, CxiHuffCode *codes, uint32_t encoding, int depth) {
+	if (ISLEAF(tree)) {
+		codes[tree->sym].length = depth;
+		return 1;
+	}
+
+	//recurse
+	int nl = CxiHuffAppendCanonicalCode(tree->left, codes, (encoding << 1) | 0, depth + 1);
+	int nr = CxiHuffAppendCanonicalCode(tree->right, codes, (encoding << 1) | 1, depth + 1);
+	return nl + nr;
+}
+
+static void CxiHuffMakeCanonicalCodes(CxiHuffNode *tree, CxiHuffCode *codes, int nMaxNodes) {
+	//first, recursively append to the list.
+	int nNodes = CxiHuffAppendCanonicalCode(tree, codes, 0, 1);
+	for (int i = 0; i < nMaxNodes; i++) {
+		codes[i].value = i;
+	}
+
+	//next, apply sort. Unassigned codes are pushed to the end of the list.
+	qsort(codes, nMaxNodes, sizeof(CxiHuffCode), CxiHuffCanonicalComparator);
+
+	//next, we can start assigning codes.
+	uint32_t curcode = 0, curbits = 0, curmask = 0;
+	for (int i = 0; i < nNodes; i++) {
+		//shift code
+		while (curbits < codes[i].length) {
+			curcode <<= 1;
+			curmask = (curmask << 1) | 1;
+			curbits++;
+		}
+		codes[i].encoding = curcode;
+
+		//increment current code
+		curcode++;
+		if ((curcode & curmask) == 0) {
+			curmask = (curmask << 1) | 1;
+			curbits++;
+		}
+	}
+
+	//sort codes by symbol value again (for constant code lookup time)
+	qsort(codes, nMaxNodes, sizeof(CxiHuffCode), CxiHuffSymbolComparator);
+}
+
+
 // ----- LZ77 Routines
 
 #define LZ_MIN_DISTANCE        0x01   // minimum distance per LZ encoding
@@ -971,60 +1136,44 @@ unsigned char *CxAdvanceLZX(const unsigned char *buffer, unsigned int size) {
 
 // ----- Huffman Routines
 
-typedef struct CxiHuffNode_ {
-	uint16_t sym;
-	uint16_t symMin; //had space to spare, maybe make searches a little simpler
-	uint16_t symMax;
-	uint16_t nRepresent;
-	int freq;
-	struct CxiHuffNode_ *left;
-	struct CxiHuffNode_ *right;
-} CxiHuffNode;
-
 unsigned char *CxDecompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
-	if (size < 5) return NULL;
-
-	uint32_t outSize = (*(uint32_t *) buffer) >> 8;
+	uint32_t outSize = (*(const uint32_t *) buffer) >> 8;
 	unsigned char *out = (unsigned char *) malloc((outSize + 3) & ~3);
 	*uncompressedSize = outSize;
 
 	const unsigned char *treeBase = buffer + 4;
-	int symSize = *buffer & 0xF;
-	int bufferFill = 0;
-	int bufferSize = 32 / symSize;
+	unsigned int symSize = *buffer & 0xF;
+	unsigned int bufferFill = 0;
+	unsigned int bufferSize = 32 / symSize;
 	uint32_t outBuffer = 0;
 
-	int offs = ((*treeBase + 1) << 1) + 4;
-	int trOffs = 1;
+	unsigned int offs = ((*treeBase + 1) << 1) + 4;
+	unsigned int trOffs = 1;
+
+	CxiBitReader reader;
+	CxiBitReaderInit(&reader, buffer + offs, buffer + size, 1, 0);
 
 	unsigned int nWritten = 0;
 	while (nWritten < outSize) {
+		unsigned int lr = CxiBitReaderReadBit(&reader);
+		unsigned char thisNode = treeBase[trOffs];
+		unsigned int thisNodeOffs = ((thisNode & 0x3F) + 1) << 1; //add to current offset rounded down to get next element offset
 
-		uint32_t bits = *(uint32_t *) (buffer + offs);
-		offs += 4;
+		trOffs = (trOffs & ~1) + thisNodeOffs + lr;
 
-		for (int i = 0; i < 32; i++) {
-			int lr = (bits >> 31) & 1;
-			unsigned char thisNode = treeBase[trOffs];
-			int thisNodeOffs = ((thisNode & 0x3F) + 1) << 1; //add to current offset rounded down to get next element offset
+		if (thisNode & (0x80 >> lr)) { //reached a leaf node!
+			outBuffer >>= symSize;
+			outBuffer |= treeBase[trOffs] << (32 - symSize);
+			trOffs = 1;
+			bufferFill++;
 
-			trOffs = (trOffs & ~1) + thisNodeOffs + lr;
-
-			if (thisNode & (0x80 >> lr)) { //reached a leaf node!
-				outBuffer >>= symSize;
-				outBuffer |= treeBase[trOffs] << (32 - symSize);
-				trOffs = 1;
-				bufferFill++;
-
-				if (bufferFill >= bufferSize) {
-					*(uint32_t *) (out + nWritten) = outBuffer;
-					nWritten += 4;
-					bufferFill = 0;
-				}
+			if (bufferFill >= bufferSize) {
+				*(uint32_t *) (out + nWritten) = outBuffer;
+				nWritten += 4;
+				bufferFill = 0;
 			}
-			if (nWritten >= outSize) return out;
-			bits <<= 1; //next bit
 		}
+		if (nWritten >= outSize) return out;
 	}
 
 	return out;
@@ -1308,87 +1457,6 @@ int CxIsFilteredDiff16(const unsigned char *buffer, unsigned int size) {
 }
 
 
-
-
-#define ISLEAF(n) ((n)->left==NULL&&(n)->right==NULL)
-
-static int CxiHuffmanNodeComparator(const void *p1, const void *p2) {
-	return ((CxiHuffNode *) p2)->freq - ((CxiHuffNode *) p1)->freq;
-}
-
-static void CxiHuffmanMakeShallowFirst(CxiHuffNode *node) {
-	if (ISLEAF(node)) return;
-	if (node->left->nRepresent > node->right->nRepresent) {
-		CxiHuffNode *left = node->left;
-		node->left = node->right;
-		node->right = left;
-	}
-	CxiHuffmanMakeShallowFirst(node->left);
-	CxiHuffmanMakeShallowFirst(node->right);
-}
-
-static int CxiHuffmanHasSymbol(CxiHuffNode *node, uint16_t sym) {
-	if (ISLEAF(node)) return node->sym == sym;
-	if (sym < node->symMin || sym > node->symMax) return 0;
-	CxiHuffNode *left = node->left;
-	CxiHuffNode *right = node->right;
-	return CxiHuffmanHasSymbol(left, sym) || CxiHuffmanHasSymbol(right, sym);
-}
-
-static void CxiHuffmanWriteSymbol(CxiBitWriter *bits, uint16_t sym, CxiHuffNode *tree) {
-	if (ISLEAF(tree)) return;
-	CxiHuffNode *left = tree->left;
-	CxiHuffNode *right = tree->right;
-	if (CxiHuffmanHasSymbol(left, sym)) {
-		CxiBitWriterWriteBit(bits, 0);
-		CxiHuffmanWriteSymbol(bits, sym, left);
-	} else {
-		CxiBitWriterWriteBit(bits, 1);
-		CxiHuffmanWriteSymbol(bits, sym, right);
-	}
-}
-
-static void CxiHuffmanConstructTree(CxiHuffNode *nodes, int nNodes) {
-	//sort by frequency, then cut off the remainder (freq=0).
-	qsort(nodes, nNodes, sizeof(CxiHuffNode), CxiHuffmanNodeComparator);
-	for (int i = 0; i < nNodes; i++) {
-		if (nodes[i].freq == 0) {
-			nNodes = i;
-			break;
-		}
-	}
-
-	//unflatten the histogram into a huffman tree. 
-	int nRoots = nNodes;
-	int nTotalNodes = nNodes;
-	while (nRoots > 1) {
-		//copy bottom two nodes to just outside the current range
-		CxiHuffNode *srcA = nodes + nRoots - 2;
-		CxiHuffNode *destA = nodes + nTotalNodes;
-		memcpy(destA, srcA, sizeof(CxiHuffNode));
-
-		CxiHuffNode *left = destA;
-		CxiHuffNode *right = nodes + nRoots - 1;
-		CxiHuffNode *branch = srcA;
-
-		branch->freq = left->freq + right->freq;
-		branch->sym = 0;
-		branch->left = left;
-		branch->right = right;
-		branch->symMin = min(left->symMin, right->symMin);
-		branch->symMax = max(right->symMax, left->symMax);
-		branch->nRepresent = left->nRepresent + right->nRepresent; //may overflow for root, but the root doesn't really matter for this
-
-		nRoots--;
-		nTotalNodes++;
-		qsort(nodes, nRoots, sizeof(CxiHuffNode), CxiHuffmanNodeComparator);
-	}
-
-	//just to be sure, make sure the shallow node always comes first
-	CxiHuffmanMakeShallowFirst(nodes);
-}
-
-
 // ----- Standard Huffman routines
 
 typedef struct CxiHuffTreeCode_ {
@@ -1506,9 +1574,6 @@ unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size,
 	int nSym = 1 << nBits;
 	for (int i = 0; i < nSym; i++) {
 		nodes[i].sym = i;
-		nodes[i].symMin = i;
-		nodes[i].symMax = i;
-		nodes[i].nRepresent = 1;
 	}
 
 	//construct histogram
@@ -1523,20 +1588,8 @@ unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size,
 		}
 	}
 
-	//count nodes
-	int nLeaf = 0;
-	for (int i = 0; i < nSym; i++) {
-		if (nodes[i].freq) nLeaf++;
-	}
-	if (nLeaf < 2) {
-		//insert dummy nodes
-		for (int i = 0; i < nSym && nLeaf < 2; i++) {
-			if (nodes[i].freq == 0) nodes[i].freq = 1;
-		}
-	}
-
 	//build Huffman tree
-	CxiHuffmanConstructTree(nodes, nSym);
+	int nLeaf = CxiHuffmanConstructTree(nodes, nSym, 2);
 
 	//construct Huffman tree encoding
 	CxiHuffTreeCode treeCode[512] = { 0 };
@@ -2116,13 +2169,6 @@ Error:
 	return NULL;
 }
 
-
-typedef struct CxiHuffmanCode_ {
-	uint32_t encoding;
-	uint16_t value;
-	uint16_t length;
-} CxiHuffmanCode;
-
 static int CxiMvdkLookupDeflateTableEntry(const DEFLATE_TABLE_ENTRY *table, int tableSize, unsigned int n) {
 	for (int i = tableSize - 1; i >= 0; i--) {
 		if (n >= table[i].majorPart) return i;
@@ -2130,7 +2176,7 @@ static int CxiMvdkLookupDeflateTableEntry(const DEFLATE_TABLE_ENTRY *table, int 
 	return 0;
 }
 
-static unsigned int CxiMvdkGetLengthCost(unsigned int length, CxiHuffmanCode *symCodes) {
+static unsigned int CxiMvdkGetLengthCost(unsigned int length, CxiHuffCode *symCodes) {
 	//get length node from table
 	int idx = CxiMvdkLookupDeflateTableEntry(sDeflateLengthTable, 29, length - 3);
 
@@ -2141,7 +2187,7 @@ static unsigned int CxiMvdkGetLengthCost(unsigned int length, CxiHuffmanCode *sy
 	return cost;
 }
 
-static unsigned int CxiMvdkGetDistanceCost(unsigned int distance, CxiHuffmanCode *distCodes) {
+static unsigned int CxiMvdkGetDistanceCost(unsigned int distance, CxiHuffCode *distCodes) {
 	//get distance node from table
 	int idx = CxiMvdkLookupDeflateTableEntry(sDeflateOffsetTable, 30, distance - 1);
 	
@@ -2151,7 +2197,7 @@ static unsigned int CxiMvdkGetDistanceCost(unsigned int distance, CxiHuffmanCode
 	return cost;
 }
 
-static unsigned int CxiMvdkGetByteCost(unsigned int symbol, CxiHuffmanCode *symCodes) {
+static unsigned int CxiMvdkGetByteCost(unsigned int symbol, CxiHuffCode *symCodes) {
 	//return cost as direct stored symbol
 	return symCodes[symbol].length;
 }
@@ -2162,82 +2208,12 @@ static void CxiMvdkInsertDummyNode(CxiHuffNode *nodes, int nNodes) {
 		if (nodes[i].freq > 0) continue;
 
 		nodes[i].freq = 1;
-		nodes[i].symMin = nodes[i].symMax = nodes[i].sym = i;
-		nodes[i].nRepresent = 1;
+		nodes[i].sym = i;
 		break;
 	}
 }
 
-static int CxiMvdkAppendCanonicalNode(CxiHuffNode *tree, CxiHuffmanCode *codes, uint32_t encoding, int depth) {
-	if (ISLEAF(tree)) {
-		codes[tree->sym].length = depth;
-		return 1;
-	}
-
-	//recurse
-	int nl = CxiMvdkAppendCanonicalNode(tree->left, codes, (encoding << 1) | 0, depth + 1);
-	int nr = CxiMvdkAppendCanonicalNode(tree->right, codes, (encoding << 1) | 1, depth + 1);
-	return nl + nr;
-}
-
-static int CxiMvdkHuffmanCanonicalComparator(const void *p1, const void *p2) {
-	const CxiHuffmanCode *c1 = (const CxiHuffmanCode *) p1;
-	const CxiHuffmanCode *c2 = (const CxiHuffmanCode *) p2;
-
-	//force 0-length (excluded) symbols to the end
-	if (c1->length == 0) return 1;
-	if (c2->length == 0) return -1;
-
-	if (c1->length < c2->length) return -1;
-	if (c1->length > c2->length) return 1;
-	if (c1->value < c2->value) return -1;
-	if (c1->value > c2->value) return 1;
-	return 0;
-}
-
-static int CxiMvdkHuffmanSymbolComparator(const void *p1, const void *p2) {
-	const CxiHuffmanCode *c1 = (const CxiHuffmanCode *) p1;
-	const CxiHuffmanCode *c2 = (const CxiHuffmanCode *) p2;
-
-	if (c1->value < c2->value) return -1;
-	if (c1->value > c2->value) return 1;
-	return 0;
-}
-
-static void CxiMvdkMakeCanonicalTree(CxiHuffNode *tree, CxiHuffmanCode *codes, int nMaxNodes) {
-	//first, recursively append to the list.
-	int nNodes = CxiMvdkAppendCanonicalNode(tree, codes, 0, 1);
-	for (int i = 0; i < nMaxNodes; i++) {
-		codes[i].value = i;
-	}
-
-	//next, apply sort. Unassigned codes are pushed to the end of the list.
-	qsort(codes, nMaxNodes, sizeof(CxiHuffmanCode), CxiMvdkHuffmanCanonicalComparator);
-
-	//next, we can start assigning codes.
-	uint32_t curcode = 0, curbits = 0, curmask = 0;
-	for (int i = 0; i < nNodes; i++) {
-		//shift code
-		while (curbits < codes[i].length) {
-			curcode <<= 1;
-			curmask = (curmask << 1) | 1;
-			curbits++;
-		}
-		codes[i].encoding = curcode;
-
-		//increment current code
-		curcode++;
-		if ((curcode & curmask) == 0) {
-			curmask = (curmask << 1) | 1;
-			curbits++;
-		}
-	}
-
-	//sort codes by symbol value again (for constant code lookup time)
-	qsort(codes, nMaxNodes, sizeof(CxiHuffmanCode), CxiMvdkHuffmanSymbolComparator);
-}
-
-static void CxiMvdkWriteHuffmanTree(CxiBitWriter *stream, CxiHuffmanCode *codes, int nCodes) {
+static void CxiMvdkWriteHuffmanTree(CxiBitWriter *stream, CxiHuffCode *codes, int nCodes) {
 	//write tree
 	for (int i = 0; i < nCodes;) {
 		//same as next nodes?
@@ -2311,36 +2287,28 @@ static void CxiMvdkCreateHuffmanTree(CxiLzToken *tokens, int nTokens, CxiHuffNod
 		if (symbolFrequencies[i] == 0) continue;
 
 		CxiHuffNode *node = symbolTree + symbolTreeSize;
-		node->sym = node->symMin = node->symMax = i;
+		node->sym = i;
 		node->freq = symbolFrequencies[i];
-		node->nRepresent = 1;
 		symbolTreeSize++;
 	}
 	for (int i = 0; i < 30; i++) {
 		if (offsetBinFrequencies[i] == 0) continue;
 
 		CxiHuffNode *node = offsetTree + lengthTreeSize;
-		node->sym = node->symMin = node->symMax = i;
+		node->sym = i;
 		node->freq = offsetBinFrequencies[i];
-		node->nRepresent = 1;
 		lengthTreeSize++;
 	}
 
 	//if we have one node of a tree, insert a dummy node of low frequency. The decompressor
 	//won't accept a 0-depth tree (nodes not added to the tree). So we need to ensure that
 	//all leaf nodes have a depth of 1 or higher.
-	if (symbolTreeSize == 1) {
-		CxiMvdkInsertDummyNode(symbolTree, 0x100 + 29);
-		symbolTreeSize++;
-	}
-	if (lengthTreeSize == 1) {
-		CxiMvdkInsertDummyNode(offsetTree, 30);
-		lengthTreeSize++;
-	}
+	if (symbolTreeSize < 2) symbolTreeSize = 2;
+	if (lengthTreeSize < 2) lengthTreeSize = 2;
 
 	//construct tree structure
-	CxiHuffmanConstructTree(symbolTree, symbolTreeSize);
-	CxiHuffmanConstructTree(offsetTree, lengthTreeSize);
+	CxiHuffmanConstructTree(symbolTree, symbolTreeSize, 2);
+	CxiHuffmanConstructTree(offsetTree, lengthTreeSize, 2);
 	free(symbolFrequencies);
 	free(offsetBinFrequencies);
 
@@ -2348,7 +2316,7 @@ static void CxiMvdkCreateHuffmanTree(CxiLzToken *tokens, int nTokens, CxiHuffNod
 	*pOffsetTree = offsetTree;
 }
 
-static int CxiMvdkIsLengthAvailable(unsigned int length, CxiHuffmanCode *encLengths) {
+static int CxiMvdkIsLengthAvailable(unsigned int length, CxiHuffCode *encLengths) {
 	if (length == 1) return 1; // 1: direct byte (always available)
 	if (length == 2) return 0; // 2: never available
 
@@ -2359,7 +2327,7 @@ static int CxiMvdkIsLengthAvailable(unsigned int length, CxiHuffmanCode *encLeng
 	return encLengths[0x100 + idx].length != 0;
 }
 
-static unsigned int CxiMvdkRoundDownLength(unsigned int length, CxiHuffmanCode *encLengths) {
+static unsigned int CxiMvdkRoundDownLength(unsigned int length, CxiHuffCode *encLengths) {
 	if (length == 1 || length == 2) return 1;
 	if (length < 3) return 0;
 
@@ -2383,7 +2351,7 @@ static unsigned int CxiMvdkGetDistanceTableMax(int idx) {
 	return (entry->majorPart + ((1 << entry->nMinorBits) - 1)) + 1;
 }
 
-static unsigned int CxiMvdkSearchLZzestrictedFast(CxiLzState *state, CxiHuffmanCode *distanceCodes, unsigned int *pDistance) {
+static unsigned int CxiMvdkSearchLZzestrictedFast(CxiLzState *state, CxiHuffCode *distanceCodes, unsigned int *pDistance) {
 	//nProcessedBytes = curpos
 	unsigned int nBytesLeft = state->size - state->pos;
 	if (nBytesLeft < state->minLength || nBytesLeft < 3) {
@@ -2442,10 +2410,10 @@ static unsigned int CxiMvdkSearchLZzestrictedFast(CxiLzState *state, CxiHuffmanC
 
 static CxiLzToken *CxiMvdkRetokenize(const unsigned char *buffer, unsigned int size, int *pnTokens, CxiHuffNode *symbolTree, CxiHuffNode *offsetTree) {
 	//create canonical tree and get encodings
-	CxiHuffmanCode *lengthEncodings = (CxiHuffmanCode *) calloc(0x100 + 29, sizeof(CxiHuffmanCode));
-	CxiHuffmanCode *offsetEncodings = (CxiHuffmanCode *) calloc(30, sizeof(CxiHuffmanCode));
-	CxiMvdkMakeCanonicalTree(symbolTree, lengthEncodings, 0x100 + 29);
-	CxiMvdkMakeCanonicalTree(offsetTree, offsetEncodings, 30);
+	CxiHuffCode *lengthEncodings = (CxiHuffCode *) calloc(0x100 + 29, sizeof(CxiHuffCode));
+	CxiHuffCode *offsetEncodings = (CxiHuffCode *) calloc(30, sizeof(CxiHuffCode));
+	CxiHuffMakeCanonicalCodes(symbolTree, lengthEncodings, 0x100 + 29);
+	CxiHuffMakeCanonicalCodes(offsetTree, offsetEncodings, 30);
 
 	//count available length nodes
 	int nLenNodesAvailable = 0;
@@ -2664,10 +2632,10 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 	}
 
 	//convert Huffman tree to canonical form
-	CxiHuffmanCode *lengthEncodings = (CxiHuffmanCode *) calloc(0x100 + 29, sizeof(CxiHuffmanCode));
-	CxiHuffmanCode *offsetEncodings = (CxiHuffmanCode *) calloc(30, sizeof(CxiHuffmanCode));
-	CxiMvdkMakeCanonicalTree(symbolTree, lengthEncodings, 0x100 + 29);
-	CxiMvdkMakeCanonicalTree(offsetTree, offsetEncodings, 30);
+	CxiHuffCode *lengthEncodings = (CxiHuffCode *) calloc(0x100 + 29, sizeof(CxiHuffCode));
+	CxiHuffCode *offsetEncodings = (CxiHuffCode *) calloc(30, sizeof(CxiHuffCode));
+	CxiHuffMakeCanonicalCodes(symbolTree, lengthEncodings, 0x100 + 29);
+	CxiHuffMakeCanonicalCodes(offsetTree, offsetEncodings, 30);
 	free(symbolTree);
 	free(offsetTree);
 
@@ -3223,7 +3191,7 @@ static CxiLzToken *CxiVlxComputeLzStatistics(const unsigned char *buffer, unsign
 }
 
 static int CxiVlxWriteHuffmanTree(CxiHuffNode *tree, uint16_t *dest, int pos, uint16_t *reps, int *lengths, uint16_t curval, int nBitsVal) {
-	if (tree->nRepresent == 1) {
+	if (ISLEAF(tree)) {
 		dest[pos] = (tree->sym << 12) | (curval | (1 << nBitsVal));
 		lengths[tree->sym] = nBitsVal;
 		reps[tree->sym] = curval;
@@ -3261,16 +3229,14 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 	for (int i = 0; i < 12; i++) {
 		if (lengthCounts[i] == 0) continue;
 
-		lengthNodes[nLengthNodes].symMin = lengthNodes[nLengthNodes].symMax = lengthNodes[nLengthNodes].sym = i;
-		lengthNodes[nLengthNodes].nRepresent = 1;
+		lengthNodes[nLengthNodes].sym = i;
 		lengthNodes[nLengthNodes].freq = lengthCounts[i];
 		nLengthNodes++;
 	}
 	for (int i = 0; i < 12; i++) {
 		if (distCounts[i] == 0) continue;
 
-		distNodes[nDistNodes].symMin = distNodes[nDistNodes].symMax = distNodes[nDistNodes].sym = i;
-		distNodes[nDistNodes].nRepresent = 1;
+		distNodes[nDistNodes].sym = i;
 		distNodes[nDistNodes].freq = distCounts[i];
 		nDistNodes++;
 	}
@@ -3280,8 +3246,7 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 	for (int i = 0; i < 12 && nLengthNodes < 2; i++) {
 		if (lengthCounts[i] == 0) {
 			lengthCounts[i] = 1;
-			lengthNodes[nLengthNodes].symMin = lengthNodes[nLengthNodes].symMax = lengthNodes[nLengthNodes].sym = i;
-			lengthNodes[nLengthNodes].nRepresent = 1;
+			lengthNodes[nLengthNodes].sym = i;
 			lengthNodes[nLengthNodes].freq = lengthCounts[i];
 			nLengthNodes++;
 		}
@@ -3289,15 +3254,14 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 	for (int i = 0; i < 12 && nDistNodes < 2; i++) {
 		if (distCounts[i] == 0) {
 			distCounts[i] = 1;
-			distNodes[nDistNodes].symMin = distNodes[nDistNodes].symMax = distNodes[nDistNodes].sym = i;
-			distNodes[nDistNodes].nRepresent = 1;
+			distNodes[nDistNodes].sym = i;
 			distNodes[nDistNodes].freq = distCounts[i];
 			nDistNodes++;
 		}
 	}
 
-	CxiHuffmanConstructTree(lengthNodes, nLengthNodes);
-	CxiHuffmanConstructTree(distNodes, nDistNodes);
+	CxiHuffmanConstructTree(lengthNodes, nLengthNodes, 2);
+	CxiHuffmanConstructTree(distNodes, nDistNodes, 2);
 
 	//write tree
 	uint16_t treeData[24] = { 0 };
@@ -3377,7 +3341,7 @@ unsigned char *CxCompressVlx(const unsigned char *buffer, unsigned int size, uns
 #define TREE_VAL_MASK 0x3FFFFFFF
 
 static uint32_t BigToLittle32(uint32_t x) {
-	return (x >> 24) | (x << 24) | ((x & 0x00FF0000) >> 8) | ((x & 0x0000FF00) << 8);
+	return CxiByteSwap(x);
 }
 
 uint32_t CxAshReadTree(CxiBitReader *reader, int width, uint32_t *leftTree, uint32_t *rightTree) {
@@ -3424,27 +3388,6 @@ uint32_t CxAshReadTree(CxiBitReader *reader, int width, uint32_t *leftTree, uint
 Error:
 	free(workmem);
 	return UINT32_MAX;
-}
-
-
-static void CxiAshEnsureTreeElements(CxiHuffNode *nodes, int nNodes, int nMinNodes) {
-	//count nodes
-	int nPresent = 0;
-	for (int i = 0; i < nNodes; i++) {
-		if (nodes[i].freq) nPresent++;
-	}
-
-	//have sufficient nodes?
-	if (nPresent >= nMinNodes) return;
-
-	//add dummy nodes
-	for (int i = 0; i < nNodes; i++) {
-		if (nodes[i].freq == 0) {
-			nodes[i].freq = 1;
-			nPresent++;
-			if (nPresent >= nMinNodes) return;
-		}
-	}
 }
 
 static void CxiAshWriteTree(CxiBitWriter *stream, CxiHuffNode *nodes, int nBits) {
@@ -3511,14 +3454,8 @@ unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, uns
 	CxiHuffNode *symNodes = (CxiHuffNode *) calloc(nSymNodes * 2, sizeof(CxiHuffNode));
 	CxiHuffNode *dstNodes = (CxiHuffNode *) calloc(nDstNodes * 2, sizeof(CxiHuffNode));
 
-	for (int i = 0; i < nSymNodes; i++) {
-		symNodes[i].sym = symNodes[i].symMin = symNodes[i].symMax = i;
-		symNodes[i].nRepresent = 1;
-	}
-	for (int i = 0; i < nDstNodes; i++) {
-		dstNodes[i].sym = dstNodes[i].symMin = dstNodes[i].symMax = i;
-		dstNodes[i].nRepresent = 1;
-	}
+	for (int i = 0; i < nSymNodes; i++) symNodes[i].sym = i;
+	for (int i = 0; i < nDstNodes; i++) dstNodes[i].sym = i;
 
 	//tokenize
 	unsigned int nTokens = 0;
@@ -3535,13 +3472,9 @@ unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, uns
 		}
 	}
 
-	//pre-tree construction: ensure at least two nodes are used
-	CxiAshEnsureTreeElements(symNodes, nSymNodes, 2);
-	CxiAshEnsureTreeElements(dstNodes, nDstNodes, 2);
-
 	//construct trees
-	CxiHuffmanConstructTree(symNodes, nSymNodes);
-	CxiHuffmanConstructTree(dstNodes, nDstNodes);
+	CxiHuffmanConstructTree(symNodes, nSymNodes, 2);
+	CxiHuffmanConstructTree(dstNodes, nDstNodes, 2);
 
 	//init streams
 	CxiBitWriter symStream, dstStream;
@@ -3568,8 +3501,7 @@ unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, uns
 	free(dstNodes);
 
 	//encode data output
-	unsigned int symStreamSize = 0;
-	unsigned int dstStreamSize = 0;
+	unsigned int symStreamSize = 0, dstStreamSize = 0;
 	void *symBytes = CxiBitWriterGetBytes(&symStream, 1, 1, 1, &symStreamSize);
 	void *dstBytes = CxiBitWriterGetBytes(&dstStream, 1, 1, 1, &dstStreamSize);
 
