@@ -232,6 +232,111 @@ static unsigned int CxiSearchLZ(const unsigned char *buffer, unsigned int size, 
 }
 
 
+// ----- Bit reader routines
+
+typedef struct CxiBitReader_ {
+	const unsigned char *start;
+	const unsigned char *end;
+	const unsigned char *pos;
+	uint32_t current;
+	uint8_t nBitsBuffered;
+	uint8_t error;
+	uint8_t beBits  : 1;  // big-endian bit order
+	uint8_t beBytes : 1;  // big-endian byte order (requires full word buffer)
+	uint32_t nBitsRead;
+} CxiBitReader;
+
+static uint32_t CxiReverseWord(uint32_t x) {
+	x = ((x & 0xFFFF0000) >> 16) | ((x & ~0xFFFF0000) << 16);
+	x = ((x & 0xFF00FF00) >>  8) | ((x & ~0xFF00FF00) <<  8);
+	x = ((x & 0xF0F0F0F0) >>  4) | ((x & ~0xF0F0F0F0) <<  4);
+	x = ((x & 0xCCCCCCCC) >>  2) | ((x & ~0xCCCCCCCC) <<  2);
+	x = ((x & 0xAAAAAAAA) >>  1) | ((x & ~0xAAAAAAAA) <<  1);
+	return x;
+}
+
+static unsigned char CxiReverseByte(unsigned char x) {
+	return CxiReverseWord(x << 24);
+}
+
+static void CxiBitReaderFetch(CxiBitReader *reader) {
+	//when bit and byte endianness do not match, we must fetch full words. When they match,
+	//we can get by with fetching one byte at a time.
+	int fullWords = reader->beBits != reader->beBytes;
+	unsigned int unitSize = fullWords ? 4 : 1;
+
+	if ((reader->pos + unitSize) <= reader->end) {
+		if (!fullWords) {
+			//fetch byte
+			reader->current = *reader->pos;
+		} else {
+			//fetch word
+			if (reader->beBytes) {
+				reader->current = reader->pos[3] | (reader->pos[2] << 8) | (reader->pos[1] << 16) | (reader->pos[0] << 24);
+			} else {
+				reader->current = reader->pos[0] | (reader->pos[1] << 8) | (reader->pos[2] << 16) | (reader->pos[3] << 24);
+			}
+		}
+		reader->nBitsBuffered = 8 * unitSize;
+		reader->pos += unitSize;
+
+		//in big endian bit order we internally reverse the bit buffer
+		if (reader->beBits) {
+			if (!fullWords) {
+				reader->current = CxiReverseByte(reader->current);
+			} else {
+				reader->current = CxiReverseWord(reader->current);
+			}
+		}
+	} else {
+		//out of bounds access
+		reader->error = 1;
+	}
+}
+
+static void CxiBitReaderInit(CxiBitReader *reader, const unsigned char *pos, const unsigned char *end, int beBits, int beBytes) {
+	reader->pos = pos;
+	reader->end = end;
+	reader->start = pos;
+	reader->beBits = beBits;
+	reader->beBytes = beBytes;
+	reader->nBitsBuffered = 0;
+	reader->nBitsRead = 0;
+	reader->current = 0;
+	reader->error = 0;
+}
+
+static uint32_t CxiBitReaderReadBit(CxiBitReader *reader) {
+	if (reader->nBitsBuffered == 0) {
+		//fetch next bits
+		CxiBitReaderFetch(reader);
+	}
+
+	uint32_t current = reader->current;
+	reader->current >>= 1;
+	reader->nBitsBuffered--;
+	reader->nBitsRead++;
+	return current & 1;
+}
+
+static uint32_t CxiBitReaderReadBits(CxiBitReader *reader, unsigned int nBits) {
+	uint32_t string = 0, i = 0;
+	for (i = 0; i < nBits; i++) {
+		uint32_t bit = CxiBitReaderReadBit(reader);
+		if (reader->error) return string;
+
+		if (reader->beBits) {
+			string <<= 1;
+			string |= bit;
+		} else {
+			string |= bit << i;
+		}
+	}
+
+	return string;
+}
+
+
 // ----- LZ77 Routines
 
 #define LZ_MIN_DISTANCE        0x01   // minimum distance per LZ encoding
@@ -1658,17 +1763,6 @@ typedef struct DEFLATE_WORK_BUFFER_ {
 	DEFLATE_TREE_NODE *nextAvailable;
 } DEFLATE_WORK_BUFFER;
 
-typedef struct BIT_READER_8_ {
-	const unsigned char *start;
-	const unsigned char *end;
-	const unsigned char *pos;
-	unsigned char current;
-	uint8_t nBitsBuffered;
-	uint8_t error;
-	uint8_t beBits;
-	uint32_t nBitsRead;
-} BIT_READER_8;
-
 static const DEFLATE_TABLE_ENTRY sDeflateLengthTable[] = {
 	{ 0, 0x00 }, { 0, 0x01 }, { 0, 0x02 }, { 0, 0x03 }, { 0, 0x04 }, { 0, 0x05 }, { 0, 0x06 }, { 0, 0x07 },
 	{ 1, 0x08 }, { 1, 0x0A }, { 1, 0x0C }, { 1, 0x0E }, { 2, 0x10 }, { 2, 0x14 }, { 2, 0x18 }, { 2, 0x1C },
@@ -1688,84 +1782,6 @@ static const DEFLATE_TABLE_ENTRY sDeflateOffsetTable[] = {
 };
 
 // deflate decompress (inflate?)
-
-
-unsigned char CxiReverseByte(unsigned char x) {
-	unsigned char out = 0;
-	for (int i = 0; i < 8; i++) out |= ((x >> i) & 1) << (7 - i);
-	return out;
-}
-
-void CxiInitBitReader(BIT_READER_8 *reader, const unsigned char *pos, const unsigned char *end, int beBits) {
-	reader->pos = pos;
-	reader->end = end;
-	reader->start = pos;
-	reader->beBits = beBits;
-	reader->nBitsBuffered = 8;
-	reader->nBitsRead = 0;
-	reader->current = 0;
-	reader->error = 0;
-	if (pos < end) reader->current = *pos;
-	if (reader->beBits) reader->current = CxiReverseByte(reader->current);
-}
-
-uint32_t CxiConsumeBit(BIT_READER_8 *reader) {
-	if (reader->pos >= reader->end) {
-		//error
-		reader->error = 1;
-		return 0;
-	}
-
-	unsigned char byteVal = reader->current;
-	reader->nBitsBuffered--;
-	reader->nBitsRead++;
-
-	if (reader->nBitsBuffered > 0) {
-		reader->current >>= 1;
-	} else {
-		reader->pos++;
-		if (reader->pos < reader->end) {
-			reader->nBitsBuffered = 8;
-			reader->current = *reader->pos;
-			if (reader->beBits) reader->current = CxiReverseByte(reader->current);
-		}
-	}
-
-	return byteVal & 1;
-}
-
-uint32_t CxiConsumeBits(BIT_READER_8 *bitReader, unsigned int nBits) {
-	uint32_t string = 0, i = 0;
-	for (i = 0; i < nBits; i++) {
-		if (bitReader->pos >= bitReader->end) {
-			//error
-			bitReader->error = 1;
-			return string;
-		}
-
-		bitReader->nBitsBuffered--;
-		bitReader->nBitsRead++;
-		if (bitReader->beBits) {
-			string <<= 1;
-			string |= (bitReader->current & 1);
-		} else {
-			string |= (bitReader->current & 1) << i;
-		}
-
-		if (bitReader->nBitsBuffered > 0) {
-			bitReader->current >>= 1;
-		} else {
-			bitReader->pos++;
-			if (bitReader->pos < bitReader->end) {
-				bitReader->nBitsBuffered = 8;
-				bitReader->current = *bitReader->pos;
-				if (bitReader->beBits) bitReader->current = CxiReverseByte(bitReader->current);
-			}
-		}
-	}
-
-	return string;
-}
 
 
 // ----- Huffman tree construction
@@ -1804,7 +1820,7 @@ void CxiHuffmanInsertNode(DEFLATE_WORK_BUFFER *auxBuffer, DEFLATE_TREE_NODE *roo
 }
 
 
-DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER_8 *reader, DEFLATE_TREE_NODE *nodeBuffer, unsigned int nNodes) {
+DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, CxiBitReader *reader, DEFLATE_TREE_NODE *nodeBuffer, unsigned int nNodes) {
 	unsigned int i, j;
 	int paths[32];
 	int depthCounts[32];
@@ -1817,14 +1833,14 @@ DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER
 	i = 0;
 	while (i < nNodes) {
 		//Read 1 bit - determines format of node structure?
-		if (CxiConsumeBit(reader)) {
+		if (CxiBitReaderReadBit(reader)) {
 			//read 7-bit number from 2 to 129 (number of loop iterations)
-			unsigned int nNodesBlock = CxiConsumeBits(reader, 7) + 2;
+			unsigned int nNodesBlock = CxiBitReaderReadBits(reader, 7) + 2;
 			if (reader->error) return NULL;
 			if (i + nNodesBlock > nNodes) return NULL;
 
 			//this 5-bit value gets put into the depth of all nodes written here
-			unsigned int depth = CxiConsumeBits(reader, 5);
+			unsigned int depth = CxiBitReaderReadBits(reader, 5);
 			if (reader->error) return NULL;
 
 			for (j = 0; j < nNodesBlock; j++) {
@@ -1834,12 +1850,12 @@ DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER
 			i += nNodesBlock;
 		} else {
 			//read 7-bit number from 1 to 128. Number of loop iterations.
-			unsigned int nNodesBlock = CxiConsumeBits(reader, 7) + 1;
+			unsigned int nNodesBlock = CxiBitReaderReadBits(reader, 7) + 1;
 			if (reader->error) return NULL;
 			if (i + nNodesBlock > nNodes) return NULL;
 
 			for (j = 0; j < nNodesBlock; j++) {
-				uint8_t depth = CxiConsumeBits(reader, 5);
+				uint8_t depth = CxiBitReaderReadBits(reader, 5);
 				if (reader->error) return NULL;
 
 				nodeBuffer[i + j].depth = depth;
@@ -1876,11 +1892,11 @@ DEFLATE_TREE_NODE *CxiHuffmanReadTree(DEFLATE_WORK_BUFFER *auxBuffer, BIT_READER
 	return root;
 }
 
-uint32_t CxiLookupTreeNode(DEFLATE_TREE_NODE *node, BIT_READER_8 *reader) {
+uint32_t CxiLookupTreeNode(DEFLATE_TREE_NODE *node, CxiBitReader *reader) {
 	if (node == NULL) return (uint32_t) -1;
 
 	while (!node->isLeaf) {
-		if (CxiConsumeBit(reader)) {
+		if (CxiBitReaderReadBit(reader)) {
 			node = node->right;
 		} else {
 			node = node->left;
@@ -1893,14 +1909,14 @@ uint32_t CxiLookupTreeNode(DEFLATE_TREE_NODE *node, BIT_READER_8 *reader) {
 unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigned char *destBase, const unsigned char **pPos, unsigned char *dest, 
 		unsigned char *end, const unsigned char *srcEnd, int write) {
 	//init reader
-	BIT_READER_8 reader;
+	CxiBitReader reader;
 	const unsigned char *pos = *pPos;
 	uint32_t nBytesConsumed = 0;
-	CxiInitBitReader(&reader, pos, srcEnd, 0);
+	CxiBitReaderInit(&reader, pos, srcEnd, 0, 0);
 
-	int isCompressed = CxiConsumeBit(&reader);
+	int isCompressed = CxiBitReaderReadBit(&reader);
 	if (reader.error) return NULL;
-	uint32_t chunkLen = CxiConsumeBits(&reader, 31);
+	uint32_t chunkLen = CxiBitReaderReadBits(&reader, 31);
 	if (reader.error) return NULL;
 
 	if (!isCompressed) {
@@ -1914,7 +1930,7 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 		const unsigned char *tableBase = reader.pos;
 
 		//Consume a Huffman tree. The length of the tree data (in bits) is given by the next 16 bits in the stream.
-		uint32_t lzLen2 = CxiConsumeBits(&reader, 16);
+		uint32_t lzLen2 = CxiBitReaderReadBits(&reader, 16);
 		uint32_t table1SizeBytes = (lzLen2 + 7) >> 3;
 		const unsigned char *postTree = reader.pos + table1SizeBytes;
 		DEFLATE_TREE_NODE *huffRoot1 = CxiHuffmanReadTree(auxBuffer, &reader, auxBuffer->symbolNodeBuffer, 0x11D);
@@ -1923,9 +1939,9 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 
 		//Reposition stream after the Huffman tree. Read out the LZ distance tree next.
 		//Its size in bits is given by the following 16 bits from the stream.
-		CxiInitBitReader(&reader, postTree, srcEnd, 0);
+		CxiBitReaderInit(&reader, postTree, srcEnd, 0, 0);
 		reader.nBitsRead = (postTree - pos) * 8;
-		lzLen2 = CxiConsumeBits(&reader, 16);
+		lzLen2 = CxiBitReaderReadBits(&reader, 16);
 		uint32_t table2SizeBytes = (lzLen2 + 7) >> 3;
 
 		postTree = reader.pos + table2SizeBytes;
@@ -1934,7 +1950,7 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 		if (postTree > srcEnd) return NULL;         // Validate tree size
 
 		//Reposition stream after this tree to prepare for reading the compressed sequence.
-		CxiInitBitReader(&reader, postTree, srcEnd, 0);
+		CxiBitReaderInit(&reader, postTree, srcEnd, 0, 0);
 		reader.nBitsRead = (reader.pos - pos) * 8;
 
 		while (reader.nBitsRead < chunkLen && dest < end) {
@@ -1951,7 +1967,7 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 				//read out length
 				uint32_t nLengthMinorBits = sDeflateLengthTable[huffVal - 0x100].nMinorBits;
 				uint32_t lzLen1 = sDeflateLengthTable[huffVal - 0x100].majorPart;
-				uint32_t lzLen2 = CxiConsumeBits(&reader, nLengthMinorBits);
+				uint32_t lzLen2 = CxiBitReaderReadBits(&reader, nLengthMinorBits);
 				uint32_t lzLen = lzLen1 + lzLen2 + 3;
 
 				//read out offset
@@ -1960,7 +1976,7 @@ unsigned char *CxiDecompressDeflateChunk(DEFLATE_WORK_BUFFER *auxBuffer, unsigne
 
 				uint32_t nOffsetMinorBits = sDeflateOffsetTable[nodeVal2].nMinorBits;
 				uint32_t lzOffset1 = sDeflateOffsetTable[nodeVal2].majorPart;
-				uint32_t lzOffset2 = CxiConsumeBits(&reader, nOffsetMinorBits);
+				uint32_t lzOffset2 = CxiBitReaderReadBits(&reader, nOffsetMinorBits);
 				uint32_t lzOffset = lzOffset1 + lzOffset2 + 1;
 
 				size_t curoffs = dest - destBase;
@@ -3362,7 +3378,7 @@ static uint32_t BigToLittle32(uint32_t x) {
 	return (x >> 24) | (x << 24) | ((x & 0x00FF0000) >> 8) | ((x & 0x0000FF00) << 8);
 }
 
-uint32_t CxAshReadTree(BIT_READER_8 *reader, int width, uint32_t *leftTree, uint32_t *rightTree) {
+uint32_t CxAshReadTree(CxiBitReader *reader, int width, uint32_t *leftTree, uint32_t *rightTree) {
 	uint32_t *workmem = (uint32_t *) calloc(2 * (1 << width), sizeof(uint32_t));
 	uint32_t *work = workmem;
 
@@ -3370,7 +3386,7 @@ uint32_t CxAshReadTree(BIT_READER_8 *reader, int width, uint32_t *leftTree, uint
 	uint32_t symRoot;
 	uint32_t nNodes = 0;
 	do {
-		int bit = CxiConsumeBit(reader);
+		int bit = CxiBitReaderReadBit(reader);
 		if (reader->error) goto Error;
 
 		if (bit) {
@@ -3383,7 +3399,7 @@ uint32_t CxAshReadTree(BIT_READER_8 *reader, int width, uint32_t *leftTree, uint
 		} else {
 			if (nNodes == 0) goto Error;
 
-			symRoot = CxiConsumeBits(reader, width);
+			symRoot = CxiBitReaderReadBits(reader, width);
 			if (reader->error) goto Error;
 			do {
 				uint32_t nodeval = *--work;
@@ -3588,9 +3604,9 @@ unsigned char *CxDecompressAsh(const unsigned char *buffer, unsigned int size, u
 	uint8_t *outbuf = calloc(uncompSize, 1);
 	uint8_t *destp = outbuf;
 
-	BIT_READER_8 reader, reader2;
-	CxiInitBitReader(&reader, buffer + BigToLittle32(*(const uint32_t *) (buffer + 0x8)), buffer + size, 1);
-	CxiInitBitReader(&reader2, buffer + 0xC, buffer + size, 1);
+	CxiBitReader reader, reader2;
+	CxiBitReaderInit(&reader, buffer + BigToLittle32(*(const uint32_t *) (buffer + 0x8)), buffer + size, 1, 1);
+	CxiBitReaderInit(&reader2, buffer + 0xC, buffer + size, 1, 1);
 
 	uint32_t symMax = (1 << symBits);
 	uint32_t distMax = (1 << distBits);
@@ -3609,7 +3625,7 @@ unsigned char *CxDecompressAsh(const unsigned char *buffer, unsigned int size, u
 	do {
 		uint32_t sym = symRoot;
 		while (sym >= symMax) {
-			if (!CxiConsumeBit(&reader2)) {
+			if (!CxiBitReaderReadBit(&reader2)) {
 				sym = symLeftTree[sym];
 			} else {
 				sym = symRightTree[sym];
@@ -3622,7 +3638,7 @@ unsigned char *CxDecompressAsh(const unsigned char *buffer, unsigned int size, u
 		} else {
 			uint32_t distsym = distRoot;
 			while (distsym >= distMax) {
-				if (!CxiConsumeBit(&reader)) {
+				if (!CxiBitReaderReadBit(&reader)) {
 					distsym = distLeftTree[distsym];
 				} else {
 					distsym = distRightTree[distsym];
@@ -3659,12 +3675,12 @@ int CxIsCompressedAsh(const unsigned char *buffer, unsigned int size) {
 	uint32_t uncompSize = BigToLittle32(*(uint32_t *) (buffer + 4)) & 0x00FFFFFF;
 	uint32_t outSize = uncompSize;
 
-	BIT_READER_8 reader, reader2;
+	CxiBitReader reader, reader2;
 	uint32_t offsDist = BigToLittle32(*(const uint32_t *) (buffer + 0x8));
 	if (offsDist < 0xC || offsDist >= size) return 0;
 
-	CxiInitBitReader(&reader, buffer + offsDist, buffer + size, 1);
-	CxiInitBitReader(&reader2, buffer + 0xC, buffer + size, 1);
+	CxiBitReaderInit(&reader, buffer + offsDist, buffer + size, 1, 1);
+	CxiBitReaderInit(&reader2, buffer + 0xC, buffer + size, 1, 1);
 
 	uint32_t symMax = (1 << symBits);
 	uint32_t distMax = (1 << distBits);
@@ -3685,7 +3701,7 @@ int CxIsCompressedAsh(const unsigned char *buffer, unsigned int size) {
 	do {
 		uint32_t sym = symRoot;
 		while (sym >= symMax) {
-			int bit = CxiConsumeBit(&reader2);
+			int bit = CxiBitReaderReadBit(&reader2);
 			if (reader2.error) goto Cleanup;
 
 			if (!bit) {
@@ -3701,7 +3717,7 @@ int CxIsCompressedAsh(const unsigned char *buffer, unsigned int size) {
 		} else {
 			uint32_t distsym = distRoot;
 			while (distsym >= distMax) {
-				int bit = CxiConsumeBit(&reader);
+				int bit = CxiBitReaderReadBit(&reader);
 				if (reader.error) goto Cleanup;
 
 				if (!bit) {
@@ -3731,6 +3747,221 @@ Cleanup:
 }
 
 
+// ----- PuCrunch routines
+
+static uint32_t CxiBitReaderReadGamma(CxiBitReader *reader) {
+	unsigned int len = 0;
+	for (unsigned int i = 0; i < 7; i++) {
+		int b = CxiBitReaderReadBit(reader);
+		if (!b) break;
+
+		len++;
+	}
+
+	uint32_t x = 1;
+	for (unsigned int i = 0; i < len; i++) {
+		x <<= 1;
+		x |= (uint32_t) CxiBitReaderReadBit(reader);
+	}
+	return x;
+}
+
+int CxIsCompressedPuCrunch(const unsigned char *buffer, unsigned int size) {
+	//header check
+	if (size < 8 || buffer[0] != 0x60) return 0;
+
+	uint32_t header = *(const uint32_t *) buffer;
+	unsigned int uncompSize = header >> 8;
+	
+	const unsigned char *info      = buffer + 4;
+	const unsigned char *freqTable = buffer + 8;
+	unsigned int  freqTblSize = info[0];  // size of RL table
+	unsigned char esc         = info[1];  // initial escape sequence
+	unsigned int  nLzExtra    = info[2];  // # extra bits LZ
+	unsigned int  escBits     = info[3];  // # ecsape bits
+	
+	//limits of header fields:
+	if (freqTblSize > (size - 8))                                        return 0;
+	if ((freqTblSize & 3) || (freqTblSize > 0x20) || (freqTblSize == 0)) return 0;
+	if (escBits > 8 || nLzExtra > 24)                                    return 0;
+
+	CxiBitReader reader;
+	const unsigned char *bitStmStart = info + 4 + freqTblSize;
+	CxiBitReaderInit(&reader, bitStmStart, buffer + size, 1, 0);
+
+	unsigned int nLzBits = nLzExtra + 8;
+	unsigned int outpos = 0;
+	while (1) {
+		//feed command
+		unsigned char initBits = CxiBitReaderReadBits(&reader, escBits);
+
+		if (initBits != esc) {
+			//byte literal, assemble the remaining bits from the stream
+			if (outpos++ >= uncompSize) return 0;
+
+			CxiBitReaderReadBits(&reader, 8 - escBits);
+		} else {
+			//escape sequence processing
+			uint32_t x = CxiBitReaderReadGamma(&reader) + 1;
+
+			if (x > 2) {
+				//LZ copy
+				unsigned int hi = CxiBitReaderReadGamma(&reader) - 1;
+				if (hi == 0xFE) break;
+
+				unsigned int offset = (hi << nLzBits) | CxiBitReaderReadBits(&reader, nLzBits);
+				offset++;
+
+				if (offset > outpos)           return 0;
+				if (x > (uncompSize - outpos)) return 0;
+				outpos += x;
+			} else if (!CxiBitReaderReadBit(&reader)) {
+				//2-byte LZ
+				unsigned int offset = CxiBitReaderReadBits(&reader, 8) + 1;
+				if (offset > outpos)           return 0;
+				if (2 > (uncompSize - outpos)) return 0;
+
+				outpos += 2;
+			} else if (!CxiBitReaderReadBit(&reader)) {
+				//escaped literal
+				if (outpos++ >= uncompSize) return 0;
+
+				//put new escape
+				esc = CxiBitReaderReadBits(&reader, escBits);
+				CxiBitReaderReadBits(&reader, 8 - escBits);
+			} else {
+				//RLE
+				unsigned int rlLen = CxiBitReaderReadGamma(&reader);
+
+				if (rlLen >= 0x80) {
+					//feed in one bit and out the msb
+					rlLen = (rlLen << 1) + CxiBitReaderReadBit(&reader);
+					rlLen &= 0xFF;
+
+					//high bits of length
+					rlLen |= (CxiBitReaderReadGamma(&reader) - 1) << 8;
+				}
+				rlLen++;
+
+				//feed literal
+				if (CxiBitReaderReadGamma(&reader) >= 32) {
+					CxiBitReaderReadBits(&reader, 3);
+				}
+
+				//check copy length
+				if (rlLen > (uncompSize - outpos)) return 0;
+				outpos += rlLen;
+			}
+		}
+	}
+
+	//valid? check the stream error state
+	return !reader.error;
+}
+
+unsigned char *CxDecompressPuCrunch(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
+	uint32_t header = *(const uint32_t *) buffer;
+	unsigned int uncompSize = header >> 8;
+	unsigned char *out = (unsigned char *) calloc(uncompSize, 1);
+
+	const unsigned char *info = buffer + 4;
+	const unsigned char *freqTable = info + 4;
+	unsigned int freqTblSize = info[0];  // size of RL table
+	unsigned char esc = info[1];         // initial escape sequence
+	unsigned int nLzExtra = info[2];     // # extra bits LZ
+	unsigned int escBits = info[3];      // # ecsape bits
+
+	const unsigned char *bitStmStart = info + 4 + freqTblSize;
+
+	CxiBitReader reader;
+	CxiBitReaderInit(&reader, bitStmStart, buffer + size, 1, 0);
+
+	unsigned int nLzBits = 8 + nLzExtra;
+	unsigned int outpos = 0;
+	while (1) {
+		//feed command
+		unsigned char initBits = CxiBitReaderReadBits(&reader, escBits);
+
+		if (initBits != esc) {
+			//byte literal, assemble the remaining bits from the stream
+			unsigned char rest = CxiBitReaderReadBits(&reader, 8 - escBits);
+			unsigned char b = (initBits << (8 - escBits)) | rest;
+
+			out[outpos++] = b;
+		} else {
+			//escape sequence processing
+			uint32_t x = CxiBitReaderReadGamma(&reader) + 1;
+
+			if (x > 2) {
+				//LZ copy
+				unsigned int hi = CxiBitReaderReadGamma(&reader) - 1;
+				if (hi == 0xFE) break;
+
+				unsigned int offset = (hi << nLzBits) | CxiBitReaderReadBits(&reader, nLzBits);
+				offset++;
+
+				for (unsigned int i = 0; i < x; i++) {
+					out[outpos] = out[outpos - offset];
+					outpos++;
+				}
+			} else if (!CxiBitReaderReadBit(&reader)) {
+				//2-byte LZ
+				unsigned int offset = CxiBitReaderReadBits(&reader, 8) + 1;
+
+				out[outpos + 0] = out[outpos + 0 - offset];
+				out[outpos + 1] = out[outpos + 1 - offset];
+				outpos += 2;
+			} else if (!CxiBitReaderReadBit(&reader)) {
+				//escaped literal
+				unsigned char newEsc = CxiBitReaderReadBits(&reader, escBits);
+
+				unsigned char b = (esc << (8 - escBits)) | CxiBitReaderReadBits(&reader, 8 - escBits);
+				out[outpos++] = b;
+
+				//put new escape
+				esc = newEsc;
+			} else {
+				//RLE
+				unsigned int rlLen = CxiBitReaderReadGamma(&reader);
+
+				if (rlLen >= 0x80) {
+					//feed in one bit and out the msb
+					rlLen = (rlLen << 1) + CxiBitReaderReadBit(&reader);
+					rlLen &= 0xFF;
+
+					//high bits of length
+					rlLen |= (CxiBitReaderReadGamma(&reader) - 1) << 8;
+				}
+				rlLen++;
+
+				//get literal
+				unsigned int bRepeat = CxiBitReaderReadGamma(&reader);
+				if (bRepeat < 32) {
+					bRepeat = freqTable[bRepeat - 1];
+				} else {
+					bRepeat = (bRepeat << 3) | CxiBitReaderReadBits(&reader, 3);
+					bRepeat &= 0xFF;
+				}
+
+				//put repeat
+				for (unsigned int i = 0; i < rlLen; i++) {
+					out[outpos++] = bRepeat;
+				}
+			}
+		}
+	}
+
+	*uncompressedSize = uncompSize;
+	return out;
+}
+
+unsigned char *CxCompressPuCrunch(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
+	//TODO
+	*compressedSize = 0;
+	return NULL;
+}
+
+
 
 // ----- Generic Routines
 
@@ -3744,6 +3975,7 @@ int CxGetCompressionType(const unsigned char *buffer, unsigned int size) {
 	if (CxIsCompressedHuffman8(buffer, size)) return COMPRESSION_HUFFMAN_8;
 	if (CxIsFilteredDiff8(buffer, size)) return COMPRESSION_DIFF8;
 	if (CxIsFilteredDiff16(buffer, size)) return COMPRESSION_DIFF16;
+	if (CxIsCompressedPuCrunch(buffer, size)) return COMPRESSION_PUCRUNCH;
 	if (CxIsCompressedMvDK(buffer, size)) return COMPRESSION_MVDK;
 	if (CxIsCompressedVlx(buffer, size)) return COMPRESSION_VLX;
 	if (CxIsCompressedAsh(buffer, size)) return COMPRESSION_ASH;
@@ -3766,6 +3998,7 @@ int CxIsCompressed(const unsigned char *buffer, unsigned int size, int type) {
 		case COMPRESSION_MVDK             : return CxIsCompressedMvDK(buffer, size);
 		case COMPRESSION_VLX              : return CxIsCompressedVlx(buffer, size);
 		case COMPRESSION_LZ11_COMP_HEADER : return CxIsCompressedLZXComp(buffer, size);
+		case COMPRESSION_PUCRUNCH         : return CxIsCompressedPuCrunch(buffer, size);
 	}
 	return 0;
 }
@@ -3802,6 +4035,8 @@ unsigned char *CxDecompress(const unsigned char *buffer, unsigned int size, int 
 			return CxDecompressVlx(buffer, size, uncompressedSize);
 		case COMPRESSION_ASH:
 			return CxDecompressAsh(buffer, size, uncompressedSize);
+		case COMPRESSION_PUCRUNCH:
+			return CxDecompressPuCrunch(buffer, size, uncompressedSize);
 	}
 	return NULL;
 }
@@ -3839,6 +4074,8 @@ unsigned char *CxCompress(const unsigned char *buffer, unsigned int size, int co
 			return CxCompressVlx(buffer, size, compressedSize);
 		case COMPRESSION_ASH:
 			return CxCompressAsh(buffer, size, compressedSize);
+		case COMPRESSION_PUCRUNCH:
+			return CxCompressPuCrunch(buffer, size, compressedSize);
 	}
 	return NULL;
 }

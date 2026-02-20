@@ -26,6 +26,7 @@ LPCWSTR g_ObjCompressionNames[] = {
 	L"MvDK", 
 	L"VLX",
 	L"ASH",
+	L"PuCrunch",
 	NULL
 };
 
