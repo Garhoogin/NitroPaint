@@ -3846,8 +3846,12 @@ int CxIsCompressedPuCrunch(const unsigned char *buffer, unsigned int size) {
 				rlLen++;
 
 				//feed literal
-				if (CxiBitReaderReadGamma(&reader) >= 32) {
+				unsigned int tableIndex = CxiBitReaderReadGamma(&reader) - 1;
+				if (tableIndex >= 31) {
 					CxiBitReaderReadBits(&reader, 3);
+				} else {
+					//bounds check the table access
+					if ((8 + tableIndex) >= size) return 0;
 				}
 
 				//check copy length
