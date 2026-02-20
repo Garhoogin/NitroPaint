@@ -19,6 +19,26 @@ static void *CxiShrink(void *block, unsigned int to) {
 	return newblock;
 }
 
+static uint32_t CxiBitReverse32(uint32_t x) {
+	x = ((x & 0xFFFF0000) >> 16) | ((x & ~0xFFFF0000) << 16);
+	x = ((x & 0xFF00FF00) >> 8) | ((x & ~0xFF00FF00) << 8);
+	x = ((x & 0xF0F0F0F0) >> 4) | ((x & ~0xF0F0F0F0) << 4);
+	x = ((x & 0xCCCCCCCC) >> 2) | ((x & ~0xCCCCCCCC) << 2);
+	x = ((x & 0xAAAAAAAA) >> 1) | ((x & ~0xAAAAAAAA) << 1);
+	return x;
+}
+
+static unsigned char CxiBitReverse8(unsigned char x) {
+	return CxiBitReverse32(x << 24);
+}
+
+static uint32_t CxiByteSwap(uint32_t x) {
+	return ((x & 0xFF000000) >> 24)
+		| ((x & 0x00FF0000) >> 8)
+		| ((x & 0x0000FF00) << 8)
+		| ((x & 0x000000FF) << 24);
+}
+
 // ----- Common LZ subroutines
 
 //struct for mapping an LZ graph
@@ -246,19 +266,6 @@ typedef struct CxiBitReader_ {
 	uint32_t nBitsRead;
 } CxiBitReader;
 
-static uint32_t CxiReverseWord(uint32_t x) {
-	x = ((x & 0xFFFF0000) >> 16) | ((x & ~0xFFFF0000) << 16);
-	x = ((x & 0xFF00FF00) >>  8) | ((x & ~0xFF00FF00) <<  8);
-	x = ((x & 0xF0F0F0F0) >>  4) | ((x & ~0xF0F0F0F0) <<  4);
-	x = ((x & 0xCCCCCCCC) >>  2) | ((x & ~0xCCCCCCCC) <<  2);
-	x = ((x & 0xAAAAAAAA) >>  1) | ((x & ~0xAAAAAAAA) <<  1);
-	return x;
-}
-
-static unsigned char CxiReverseByte(unsigned char x) {
-	return CxiReverseWord(x << 24);
-}
-
 static void CxiBitReaderFetch(CxiBitReader *reader) {
 	//when bit and byte endianness do not match, we must fetch full words. When they match,
 	//we can get by with fetching one byte at a time.
@@ -271,10 +278,9 @@ static void CxiBitReaderFetch(CxiBitReader *reader) {
 			reader->current = *reader->pos;
 		} else {
 			//fetch word
+			reader->current = reader->pos[0] | (reader->pos[1] << 8) | (reader->pos[2] << 16) | (reader->pos[3] << 24);
 			if (reader->beBytes) {
-				reader->current = reader->pos[3] | (reader->pos[2] << 8) | (reader->pos[1] << 16) | (reader->pos[0] << 24);
-			} else {
-				reader->current = reader->pos[0] | (reader->pos[1] << 8) | (reader->pos[2] << 16) | (reader->pos[3] << 24);
+				reader->current = CxiByteSwap(reader->current);
 			}
 		}
 		reader->nBitsBuffered = 8 * unitSize;
@@ -283,9 +289,9 @@ static void CxiBitReaderFetch(CxiBitReader *reader) {
 		//in big endian bit order we internally reverse the bit buffer
 		if (reader->beBits) {
 			if (!fullWords) {
-				reader->current = CxiReverseByte(reader->current);
+				reader->current = CxiBitReverse8(reader->current);
 			} else {
-				reader->current = CxiReverseWord(reader->current);
+				reader->current = CxiBitReverse32(reader->current);
 			}
 		}
 	} else {
@@ -334,6 +340,83 @@ static uint32_t CxiBitReaderReadBits(CxiBitReader *reader, unsigned int nBits) {
 	}
 
 	return string;
+}
+
+
+// ----- Bit writer routines
+
+typedef struct CxiBitWriter_ {
+	uint32_t *bits;
+	unsigned int nWords;
+	unsigned int nBitsInLastWord;
+	unsigned int nWordsAlloc;
+	unsigned int length;
+} CxiBitWriter;
+
+static void CxiBitWriterInit(CxiBitWriter *writer) {
+	writer->nWords = 0;
+	writer->length = 0;
+	writer->nBitsInLastWord = 32;
+	writer->nWordsAlloc = 16;
+	writer->bits = (uint32_t *) calloc(writer->nWordsAlloc, 4);
+}
+
+static void CxiBitWriterFree(CxiBitWriter *writer) {
+	free(writer->bits);
+}
+
+static void CxiBitWriterWriteBit(CxiBitWriter *writer, int bit) {
+	if (writer->nBitsInLastWord == 32) {
+		writer->nBitsInLastWord = 0;
+		writer->nWords++;
+		if (writer->nWords > writer->nWordsAlloc) {
+			unsigned int newAllocSize = (writer->nWordsAlloc + 2) * 3 / 2;
+			writer->bits = realloc(writer->bits, newAllocSize * 4);
+			writer->nWordsAlloc = newAllocSize;
+		}
+		writer->bits[writer->nWords - 1] = 0;
+	}
+
+	writer->bits[writer->nWords - 1] |= bit << (31 - writer->nBitsInLastWord);
+	writer->nBitsInLastWord++;
+	writer->length++;
+}
+
+static void *CxiBitWriterGetBytes(CxiBitWriter *writer, int wordAlign, int beBytes, int beBits, unsigned int *size) {
+	//allocate buffer
+	unsigned int outSize = writer->nWords * 4;
+	if (!wordAlign && beBytes != beBits) {
+		//nBitsInLast word is 32 if last word is full, 0 if empty.
+		if (writer->nBitsInLastWord <= 24) outSize--;
+		if (writer->nBitsInLastWord <= 16) outSize--;
+		if (writer->nBitsInLastWord <=  8) outSize--;
+		if (writer->nBitsInLastWord <=  0) outSize--;
+	}
+	unsigned char *outbuf = (unsigned char *) calloc(outSize, 1);
+
+	//this function handles converting byte and bit orders from the internal
+	//representation. Internally, we store the bit sequence as an array of
+	//words, where the first bits are inserted at the most significant bit.
+	for (unsigned int i = 0; i < outSize; i++) {
+		uint32_t word = writer->bits[i / 4];
+		if (beBytes) word = CxiByteSwap(word);
+
+		//if little endian bit order, swap here
+		uint8_t byte = (word >> (8 * (i % 4))) & 0xFF;
+		if (!beBits) byte = CxiBitReverse8(byte);
+		outbuf[i] = byte;
+	}
+
+	*size = outSize;
+	return outbuf;
+}
+
+static void CxiBitWriterWriteBits(CxiBitWriter *writer, uint32_t bits, unsigned int nBits) {
+	for (unsigned int i = 0; i < nBits; i++) CxiBitWriterWriteBit(writer, (bits >> i) & 1);
+}
+
+static void CxiBitWriterWriteBitsBE(CxiBitWriter *writer, uint32_t bits, unsigned int nBits) {
+	for (unsigned int i = 0; i < nBits; i++) CxiBitWriterWriteBit(writer, (bits >> (nBits - 1 - i)) & 1);
 }
 
 
@@ -898,14 +981,6 @@ typedef struct CxiHuffNode_ {
 	struct CxiHuffNode_ *right;
 } CxiHuffNode;
 
-typedef struct CxiBitStream_ {
-	uint32_t *bits;
-	int nWords;
-	int nBitsInLastWord;
-	int nWordsAlloc;
-	int length;
-} CxiBitStream;
-
 unsigned char *CxDecompressHuffman(const unsigned char *buffer, unsigned int size, unsigned int *uncompressedSize) {
 	if (size < 5) return NULL;
 
@@ -1234,77 +1309,6 @@ int CxIsFilteredDiff16(const unsigned char *buffer, unsigned int size) {
 
 
 
-static void CxiBitStreamCreate(CxiBitStream *stream) {
-	stream->nWords = 0;
-	stream->length = 0;
-	stream->nBitsInLastWord = 32;
-	stream->nWordsAlloc = 16;
-	stream->bits = (uint32_t *) calloc(stream->nWordsAlloc, 4);
-}
-
-static void CxiBitStreamFree(CxiBitStream *stream) {
-	free(stream->bits);
-}
-
-static void CxiBitStreamWrite(CxiBitStream *stream, int bit) {
-	if (stream->nBitsInLastWord == 32) {
-		stream->nBitsInLastWord = 0;
-		stream->nWords++;
-		if (stream->nWords > stream->nWordsAlloc) {
-			int newAllocSize = (stream->nWordsAlloc + 2) * 3 / 2;
-			stream->bits = realloc(stream->bits, newAllocSize * 4);
-			stream->nWordsAlloc = newAllocSize;
-		}
-		stream->bits[stream->nWords - 1] = 0;
-	}
-
-	stream->bits[stream->nWords - 1] |= (bit << (31 - stream->nBitsInLastWord));
-	stream->nBitsInLastWord++;
-	stream->length++;
-}
-
-static void *CxiBitStreamGetBytes(CxiBitStream *stream, int wordAlign, int beBytes, int beBits, unsigned int *size) {
-	//allocate buffer
-	unsigned int outSize = stream->nWords * 4;
-	if (!wordAlign) {
-		//nBitsInLast word is 32 if last word is full, 0 if empty.
-		if (stream->nBitsInLastWord <= 24) outSize--;
-		if (stream->nBitsInLastWord <= 16) outSize--;
-		if (stream->nBitsInLastWord <=  8) outSize--;
-		if (stream->nBitsInLastWord <=  0) outSize--;
-	}
-	unsigned char *outbuf = (unsigned char *) calloc(outSize, 1);
-
-	//this function handles converting byte and bit orders from the internal
-	//representation. Internally, we store the bit sequence as an array of
-	//words, where the first bits are inserted at the most significant bit.
-	//
-
-	for (unsigned int i = 0; i < outSize; i++) {
-		int byteShift = 8 * ((beBytes) ? (3 - (i % 4)) : (i % 4));
-		uint32_t word = stream->bits[i / 4];
-		uint8_t byte = (word >> byteShift) & 0xFF;
-
-		//if little endian bit order, swap here
-		if (!beBits) {
-			uint8_t temp = byte;
-			byte = 0;
-			for (int j = 0; j < 8; j++) byte |= ((temp >> j) & 1) << (7 - j);
-		}
-		outbuf[i] = byte;
-	}
-
-	*size = outSize;
-	return outbuf;
-}
-
-static void CxiBitStreamWriteBits(CxiBitStream *stream, uint32_t bits, int nBits) {
-	for (int i = 0; i < nBits; i++) CxiBitStreamWrite(stream, (bits >> i) & 1);
-}
-
-static void CxiBitStreamWriteBitsBE(CxiBitStream *stream, uint32_t bits, int nBits) {
-	for (int i = 0; i < nBits; i++) CxiBitStreamWrite(stream, (bits >> (nBits - 1 - i)) & 1);
-}
 
 #define ISLEAF(n) ((n)->left==NULL&&(n)->right==NULL)
 
@@ -1331,15 +1335,15 @@ static int CxiHuffmanHasSymbol(CxiHuffNode *node, uint16_t sym) {
 	return CxiHuffmanHasSymbol(left, sym) || CxiHuffmanHasSymbol(right, sym);
 }
 
-static void CxiHuffmanWriteSymbol(CxiBitStream *bits, uint16_t sym, CxiHuffNode *tree) {
+static void CxiHuffmanWriteSymbol(CxiBitWriter *bits, uint16_t sym, CxiHuffNode *tree) {
 	if (ISLEAF(tree)) return;
 	CxiHuffNode *left = tree->left;
 	CxiHuffNode *right = tree->right;
 	if (CxiHuffmanHasSymbol(left, sym)) {
-		CxiBitStreamWrite(bits, 0);
+		CxiBitWriterWriteBit(bits, 0);
 		CxiHuffmanWriteSymbol(bits, sym, left);
 	} else {
-		CxiBitStreamWrite(bits, 1);
+		CxiBitWriterWriteBit(bits, 1);
 		CxiHuffmanWriteSymbol(bits, sym, right);
 	}
 }
@@ -1544,8 +1548,8 @@ unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size,
 	CxiHuffmanCheckTree(treeCode, nLeaf * 2);
 
 	//now write bits out.
-	CxiBitStream stream;
-	CxiBitStreamCreate(&stream);
+	CxiBitWriter stream;
+	CxiBitWriterInit(&stream);
 	if (nBits == 8) {
 		for (unsigned int i = 0; i < size; i++) {
 			CxiHuffmanWriteSymbol(&stream, buffer[i], nodes);
@@ -1569,7 +1573,7 @@ unsigned char *CxCompressHuffman(const unsigned char *buffer, unsigned int size,
 
 	memcpy(finbuf + 4 + treeSize, stream.bits, stream.nWords * 4);
 	free(nodes);
-	CxiBitStreamFree(&stream);
+	CxiBitWriterFree(&stream);
 
 	*compressedSize = outSize;
 	return finbuf;
@@ -2233,7 +2237,7 @@ static void CxiMvdkMakeCanonicalTree(CxiHuffNode *tree, CxiHuffmanCode *codes, i
 	qsort(codes, nMaxNodes, sizeof(CxiHuffmanCode), CxiMvdkHuffmanSymbolComparator);
 }
 
-static void CxiMvdkWriteHuffmanTree(CxiBitStream *stream, CxiHuffmanCode *codes, int nCodes) {
+static void CxiMvdkWriteHuffmanTree(CxiBitWriter *stream, CxiHuffmanCode *codes, int nCodes) {
 	//write tree
 	for (int i = 0; i < nCodes;) {
 		//same as next nodes?
@@ -2259,15 +2263,15 @@ static void CxiMvdkWriteHuffmanTree(CxiBitStream *stream, CxiHuffmanCode *codes,
 
 		//run length >= 2: write run length block
 		if (repeatedRun) {
-			CxiBitStreamWrite(stream, 1);
-			CxiBitStreamWriteBits(stream, nRunLength - 2, 7);
-			CxiBitStreamWriteBits(stream, codes[i].length == 0 ? 0 : (codes[i].length - 1), 5);
+			CxiBitWriterWriteBit(stream, 1);
+			CxiBitWriterWriteBits(stream, nRunLength - 2, 7);
+			CxiBitWriterWriteBits(stream, codes[i].length == 0 ? 0 : (codes[i].length - 1), 5);
 		} else {
-			CxiBitStreamWrite(stream, 0);
-			CxiBitStreamWriteBits(stream, nRunLength - 1, 7);
+			CxiBitWriterWriteBit(stream, 0);
+			CxiBitWriterWriteBits(stream, nRunLength - 1, 7);
 			for (int j = 0; j < nRunLength; j++) {
 				unsigned int length = codes[i + j].length;
-				CxiBitStreamWriteBits(stream, length == 0 ? 0 : (length - 1), 5);
+				CxiBitWriterWriteBits(stream, length == 0 ? 0 : (length - 1), 5);
 			}
 		}
 		i += nRunLength;
@@ -2671,16 +2675,16 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 	unsigned char *treeData = NULL;
 	unsigned int treeSize = 0;
 	{
-		CxiBitStream symbolStream, offsetStream;
-		CxiBitStreamCreate(&symbolStream);
-		CxiBitStreamCreate(&offsetStream);
+		CxiBitWriter symbolStream, offsetStream;
+		CxiBitWriterInit(&symbolStream);
+		CxiBitWriterInit(&offsetStream);
 		CxiMvdkWriteHuffmanTree(&symbolStream, lengthEncodings, 0x100 + 29);
 		CxiMvdkWriteHuffmanTree(&offsetStream, offsetEncodings, 30);
 		
 		unsigned int nBytesSymbolTree = (symbolStream.length + 7) / 8;
 		unsigned int nBytesOffsetTree = (offsetStream.length + 7) / 8;
-		void *symbolTree = CxiBitStreamGetBytes(&symbolStream, 0, 1, 0, &nBytesSymbolTree);
-		void *offsetTree = CxiBitStreamGetBytes(&offsetStream, 0, 1, 0, &nBytesOffsetTree);
+		void *symbolTree = CxiBitWriterGetBytes(&symbolStream, 0, 1, 0, &nBytesSymbolTree);
+		void *offsetTree = CxiBitWriterGetBytes(&offsetStream, 0, 1, 0, &nBytesOffsetTree);
 
 		treeSize = 2 + nBytesSymbolTree + 2 + nBytesOffsetTree;
 		treeData = (unsigned char *) malloc(treeSize);
@@ -2690,20 +2694,20 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 		memcpy(treeData + 2, symbolTree, nBytesSymbolTree);
 		memcpy(treeData + 2 + nBytesSymbolTree + 2, offsetTree, nBytesOffsetTree);
 		
-		CxiBitStreamFree(&symbolStream);
-		CxiBitStreamFree(&offsetStream);
+		CxiBitWriterFree(&symbolStream);
+		CxiBitWriterFree(&offsetStream);
 		free(symbolTree);
 		free(offsetTree);
 	}
 
 	//TEST: write out bit stream
-	CxiBitStream bitStream;
-	CxiBitStreamCreate(&bitStream);
+	CxiBitWriter bitStream;
+	CxiBitWriterInit(&bitStream);
 	for (int i = 0; i < nTokens; i++) {
 
 		if (!tokens[i].isReference) {
 			//CxiHuffmanWriteSymbol(&bitStream, tokens[i].symbol, symbolTree);
-			CxiBitStreamWriteBitsBE(&bitStream, lengthEncodings[tokens[i].symbol].encoding, lengthEncodings[tokens[i].symbol].length - 1);
+			CxiBitWriterWriteBitsBE(&bitStream, lengthEncodings[tokens[i].symbol].encoding, lengthEncodings[tokens[i].symbol].length - 1);
 		} else {
 			int lensym = CxiMvdkLookupDeflateTableEntry(sDeflateLengthTable, 29, tokens[i].length - 3);
 			int offsym = CxiMvdkLookupDeflateTableEntry(sDeflateOffsetTable, 30, tokens[i].distance - 1);
@@ -2713,11 +2717,11 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 			int nLengthMinor = sDeflateLengthTable[lensym].nMinorBits;
 			int nOffsetMinor = sDeflateOffsetTable[offsym].nMinorBits;
 			
-			CxiBitStreamWriteBitsBE(&bitStream, lengthEncodings[0x100 + lensym].encoding, lengthEncodings[0x100 + lensym].length - 1);
-			CxiBitStreamWriteBits(&bitStream, lengthMinor, nLengthMinor);
+			CxiBitWriterWriteBitsBE(&bitStream, lengthEncodings[0x100 + lensym].encoding, lengthEncodings[0x100 + lensym].length - 1);
+			CxiBitWriterWriteBits(&bitStream, lengthMinor, nLengthMinor);
 
-			CxiBitStreamWriteBitsBE(&bitStream, offsetEncodings[offsym].encoding, offsetEncodings[offsym].length - 1);
-			CxiBitStreamWriteBits(&bitStream, offsetMinor, nOffsetMinor);
+			CxiBitWriterWriteBitsBE(&bitStream, offsetEncodings[offsym].encoding, offsetEncodings[offsym].length - 1);
+			CxiBitWriterWriteBits(&bitStream, offsetMinor, nOffsetMinor);
 		}
 	}
 	free(tokens);
@@ -2728,8 +2732,8 @@ static unsigned char *CxiCompressMvdkDeflateChunk(const unsigned char *buffer, u
 	//extract bytes of bit sequence
 	unsigned int nBitsComp = bitStream.length;
 	unsigned int compDataSize;
-	unsigned char *bytes = CxiBitStreamGetBytes(&bitStream, 0, 1, 0, &compDataSize);
-	CxiBitStreamFree(&bitStream);
+	unsigned char *bytes = CxiBitWriterGetBytes(&bitStream, 0, 1, 0, &compDataSize);
+	CxiBitWriterFree(&bitStream);
 
 	unsigned int totalSizeBytes = treeSize + compDataSize;
 	unsigned char *outbuf = (unsigned char *) malloc(totalSizeBytes);
@@ -3231,9 +3235,9 @@ static int CxiVlxWriteHuffmanTree(CxiHuffNode *tree, uint16_t *dest, int pos, ui
 	}
 }
 
-static void CxiVlxWriteSymbol(CxiBitStream *stream, uint32_t string, int length) {
+static void CxiVlxWriteSymbol(CxiBitWriter *stream, uint32_t string, int length) {
 	for (int i = 0; i < length; i++) {
-		CxiBitStreamWrite(stream, (string >> (length - 1 - i)) & 1);
+		CxiBitWriterWriteBit(stream, (string >> (length - 1 - i)) & 1);
 	}
 }
 
@@ -3305,8 +3309,8 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 	treeDataSize = CxiVlxWriteHuffmanTree(distNodes, treeData, treeDataSize, distReps, distLengths, 0, 0);
 
 	//write tokens
-	CxiBitStream stream;
-	CxiBitStreamCreate(&stream);
+	CxiBitWriter stream;
+	CxiBitWriterInit(&stream);
 	for (int i = 0; i < nTokens; i++) {
 		CxiLzToken *token = tokens + i;
 		if (!token->isReference) {
@@ -3331,10 +3335,8 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 	CxiVlxWriteSymbol(&stream, 0, 24);
 
 	//last: switch endianness of stream (uses big endian)
-	for (int i = 0; i < stream.nWords; i++) {
-		uint32_t w = stream.bits[i];
-		w = ((w & 0xFF) << 24) | ((w & 0xFF00) << 8) | ((w & 0xFF0000) >> 8) | ((w & 0xFF000000) >> 24);
-		stream.bits[i] = w;
+	for (unsigned int i = 0; i < stream.nWords; i++) {
+		stream.bits[i] = CxiByteSwap(stream.bits[i]);
 	}
 
 	unsigned int outsize = 1 + header[0] + treeDataSize * sizeof(uint16_t) + stream.nWords * 4;
@@ -3349,7 +3351,7 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 	memcpy(pos, treeData, treeDataSize * sizeof(uint16_t));
 	pos += treeDataSize * sizeof(uint16_t);
 	memcpy(pos, stream.bits, stream.nWords * 4);
-	CxiBitStreamFree(&stream);
+	CxiBitWriterFree(&stream);
 
 	*compressedSize = outsize;
 	return outbuf;
@@ -3445,16 +3447,16 @@ static void CxiAshEnsureTreeElements(CxiHuffNode *nodes, int nNodes, int nMinNod
 	}
 }
 
-static void CxiAshWriteTree(CxiBitStream *stream, CxiHuffNode *nodes, int nBits) {
+static void CxiAshWriteTree(CxiBitWriter *stream, CxiHuffNode *nodes, int nBits) {
 	if (nodes->left != NULL) {
 		//
-		CxiBitStreamWrite(stream, 1);
+		CxiBitWriterWriteBit(stream, 1);
 		CxiAshWriteTree(stream, nodes->left, nBits);
 		CxiAshWriteTree(stream, nodes->right, nBits);
 	} else {
 		//write value
-		CxiBitStreamWrite(stream, 0);
-		CxiBitStreamWriteBitsBE(stream, nodes->sym, nBits);
+		CxiBitWriterWriteBit(stream, 0);
+		CxiBitWriterWriteBitsBE(stream, nodes->sym, nBits);
 	}
 }
 
@@ -3542,9 +3544,9 @@ unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, uns
 	CxiHuffmanConstructTree(dstNodes, nDstNodes);
 
 	//init streams
-	CxiBitStream symStream, dstStream;
-	CxiBitStreamCreate(&symStream);
-	CxiBitStreamCreate(&dstStream);
+	CxiBitWriter symStream, dstStream;
+	CxiBitWriterInit(&symStream);
+	CxiBitWriterInit(&dstStream);
 
 	//first, write huffman trees.
 	CxiAshWriteTree(&symStream, symNodes, nSymBits);
@@ -3568,8 +3570,8 @@ unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, uns
 	//encode data output
 	unsigned int symStreamSize = 0;
 	unsigned int dstStreamSize = 0;
-	void *symBytes = CxiBitStreamGetBytes(&symStream, 1, 1, 1, &symStreamSize);
-	void *dstBytes = CxiBitStreamGetBytes(&dstStream, 1, 1, 1, &dstStreamSize);
+	void *symBytes = CxiBitWriterGetBytes(&symStream, 1, 1, 1, &symStreamSize);
+	void *dstBytes = CxiBitWriterGetBytes(&dstStream, 1, 1, 1, &dstStreamSize);
 
 	//write data out
 	unsigned char *out = (unsigned char *) calloc(0xC + symStreamSize + dstStreamSize, 1);
@@ -3589,8 +3591,8 @@ unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, uns
 	}
 
 	//free stuff
-	CxiBitStreamFree(&symStream);
-	CxiBitStreamFree(&dstStream);
+	CxiBitWriterFree(&symStream);
+	CxiBitWriterFree(&dstStream);
 
 	*compressedSize = 0xC + symStreamSize + dstStreamSize;
 	return out;
