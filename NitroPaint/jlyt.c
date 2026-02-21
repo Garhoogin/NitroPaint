@@ -12,13 +12,13 @@ static void BnclFree(ObjHeader *hdr);
 static void BnblFree(ObjHeader *hdr);
 
 void JLytRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_BNLL, sizeof(BNLL), L"Letter Layout", (ObjReader) BnllRead, (ObjWriter) BnllWrite, NULL, BnllFree);
-	ObjRegisterType(FILE_TYPE_BNCL, sizeof(BNCL), L"Cell Layout", (ObjReader) BnclRead, (ObjWriter) BnclWrite, NULL, BnclFree);
-	ObjRegisterType(FILE_TYPE_BNBL, sizeof(BNBL), L"Button Layout", (ObjReader) BnblRead, (ObjWriter) BnblWrite, NULL, BnblFree);
+	ObjRegisterType(FILE_TYPE_BNLL, sizeof(BNLL), "Letter Layout", (ObjReader) BnllRead, (ObjWriter) BnllWrite, NULL, BnllFree);
+	ObjRegisterType(FILE_TYPE_BNCL, sizeof(BNCL), "Cell Layout", (ObjReader) BnclRead, (ObjWriter) BnclWrite, NULL, BnclFree);
+	ObjRegisterType(FILE_TYPE_BNBL, sizeof(BNBL), "Button Layout", (ObjReader) BnblRead, (ObjWriter) BnblWrite, NULL, BnblFree);
 
-	ObjRegisterFormat(FILE_TYPE_BNLL, BNLL_TYPE_BNLL, L"BNLL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnllIsValidBnll);
-	ObjRegisterFormat(FILE_TYPE_BNCL, BNCL_TYPE_BNCL, L"BNCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnclIsValidBncl);
-	ObjRegisterFormat(FILE_TYPE_BNBL, BNBL_TYPE_BNBL, L"BNBL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnblIsValidBnbl);
+	ObjRegisterFormat(FILE_TYPE_BNLL, BNLL_TYPE_BNLL, "BNLL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnllIsValidBnll);
+	ObjRegisterFormat(FILE_TYPE_BNCL, BNCL_TYPE_BNCL, "BNCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnclIsValidBncl);
+	ObjRegisterFormat(FILE_TYPE_BNBL, BNBL_TYPE_BNBL, "BNBL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnblIsValidBnbl);
 }
 
 

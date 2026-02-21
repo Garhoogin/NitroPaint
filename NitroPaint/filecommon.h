@@ -1,8 +1,9 @@
 #pragma once
+#include <stdlib.h>
+
 #include "compression.h"
 #include "bstream.h"
 #include "struct.h"
-#include <Windows.h>
 
 #define FILE_TYPE_INVALID    0
 #define FILE_TYPE_PALETTE    1
@@ -64,7 +65,7 @@ typedef int (*ObjIdProc) (const unsigned char *buffer, unsigned int size);
 
 typedef struct ObjTypeEntry_ {
 	size_t size;        // The size of the object data
-	wchar_t *name;      // The type name
+	char *name;         // The type name
 	ObjReader reader;   // object reader routine
 	ObjWriter writer;   // object writer routine
 	ObjInitProc init;   // object initializer routine
@@ -74,14 +75,14 @@ typedef struct ObjTypeEntry_ {
 typedef struct ObjIdEntry_ {
 	int type;          // The file type
 	int format;        // The file format (specific to the type)
-	wchar_t *name;     // The format name
+	char *name;        // The format name
 	ObjIdFlag idFlag;  // The flags for identification
 	ObjIdProc idProc;  // The callback for identification
 } ObjIdEntry;
 
 void ObjInitCommon(void);
-void ObjRegisterType(int type, size_t objSize, const wchar_t *name, ObjReader reader, ObjWriter writer, ObjInitProc init, ObjDispose dispose);
-void ObjRegisterFormat(int type, int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc);
+void ObjRegisterType(int type, size_t objSize, const char *name, ObjReader reader, ObjWriter writer, ObjInitProc init, ObjDispose dispose);
+void ObjRegisterFormat(int type, int format, const char *name, ObjIdFlag flag, ObjIdProc proc);
 void ObjIdentifyMultipleByType(StList *list, const unsigned char *buffer, unsigned int size, int type);
 int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type, int *pFormat);
 int ObjIdentifyEx(const unsigned char *buffer, unsigned int size, int *pFormat);
@@ -107,23 +108,23 @@ struct ObjHeader_ {
 	char *comment;        // The stored file comment (if supported)
 };
 
-extern LPCWSTR g_ObjCompressionNames[];
+extern const char *const g_ObjCompressionNames[];
 
 //
 // Converts a status code into a string.
 //
-LPCWSTR ObjStatusToString(int status);
+const wchar_t *ObjStatusToString(int status);
 
-const wchar_t *ObjGetFileTypeName(int type);
+const char *ObjGetFileTypeName(int type);
 
-const wchar_t *ObjGetFormatNameByType(int type, int format);
+const char *ObjGetFormatNameByType(int type, int format);
 
 unsigned int ObjGetFormatCountByType(int type);
 
 //
 // Get a file name from a file path.
 //
-LPWSTR ObjGetFileNameFromPath(LPCWSTR path);
+wchar_t *ObjGetFileNameFromPath(const wchar_t *path);
 
 //
 // Identify the type of a file based on its bytes and file name. File name is

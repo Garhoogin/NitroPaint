@@ -158,14 +158,14 @@ int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-static void TexarcRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+static void TexarcRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_NSBTX, format, name, flag, proc);
 }
 
 void TexarcRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_NSBTX, sizeof(TexArc), L"Texture Archive", (ObjReader) TexarcRead, (ObjWriter) TexarcWrite, NULL, TexarcFree);
-	TexarcRegisterFormat(NSBTX_TYPE_NNS, L"NSBTX", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, TexarcIsValidNsbtx);
-	TexarcRegisterFormat(NSBTX_TYPE_BMD, L"BMD", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TexarcIsValidBmd);
+	ObjRegisterType(FILE_TYPE_NSBTX, sizeof(TexArc), "Texture Archive", (ObjReader) TexarcRead, (ObjWriter) TexarcWrite, NULL, TexarcFree);
+	TexarcRegisterFormat(NSBTX_TYPE_NNS, "NSBTX", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, TexarcIsValidNsbtx);
+	TexarcRegisterFormat(NSBTX_TYPE_BMD, "BMD", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TexarcIsValidBmd);
 }
 
 static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size) {

@@ -2,6 +2,8 @@
 #include "color.h"
 #include "texconv.h"
 
+#include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 //optimize for speed rather than size

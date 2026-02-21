@@ -10,14 +10,14 @@
 static int AnmIsValidNanr(const unsigned char *buffer, unsigned int size);
 static int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 
-static void AnmiRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+static void AnmiRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_NANR, format, name, flag, proc);
 }
 
 void AnmRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_NANR, sizeof(NANR), L"Animation", (ObjReader) AnmRead, (ObjWriter) AnmWrite, NULL, AnmFree);
-	AnmiRegisterFormat(NANR_TYPE_NANR, L"NANR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidNanr);
-	AnmiRegisterFormat(NANR_TYPE_GHOSTTRICK, L"Ghost Trick", OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidGhostTrick);
+	ObjRegisterType(FILE_TYPE_NANR, sizeof(NANR), "Animation", (ObjReader) AnmRead, (ObjWriter) AnmWrite, NULL, AnmFree);
+	AnmiRegisterFormat(NANR_TYPE_NANR, "NANR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidNanr);
+	AnmiRegisterFormat(NANR_TYPE_GHOSTTRICK, "Ghost Trick", OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidGhostTrick);
 }
 
 

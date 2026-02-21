@@ -8,13 +8,13 @@
 
 static int nmcrIsValidNmcr(const unsigned char *buffer, unsigned int size);
 
-static void nmcrRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+static void nmcrRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_NMCR, format, name, flag, proc);
 }
 
 void nmcrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_NMCR, sizeof(NMCR), L"Multi-Cell Animation", (ObjReader) nmcrRead, NULL, NULL, NULL);
-	nmcrRegisterFormat(NMCR_TYPE_NMCR, L"NMCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, nmcrIsValidNmcr);
+	ObjRegisterType(FILE_TYPE_NMCR, sizeof(NMCR), "Multi-Cell Animation", (ObjReader) nmcrRead, NULL, NULL, NULL);
+	nmcrRegisterFormat(NMCR_TYPE_NMCR, "NMCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, nmcrIsValidNmcr);
 }
 
 int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {

@@ -15,21 +15,21 @@ static int PalIsValidSetosa(const unsigned char *buffer, unsigned int size);
 
 static void PalFree(ObjHeader *obj);
 
-static void PaliRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+static void PaliRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_PALETTE, format, name, flag, proc);
 }
 
 void PalRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_PALETTE, sizeof(NCLR), L"Palette", (ObjReader) PalRead, (ObjWriter) PalWrite, NULL, PalFree);
-	PaliRegisterFormat(NCLR_TYPE_NCLR, L"NCLR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, PalIsValidNclr);
-	PaliRegisterFormat(NCLR_TYPE_NC, L"NCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidNcl);
-	PaliRegisterFormat(NCLR_TYPE_ISTUDIO, L"5PL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudio);
-	PaliRegisterFormat(NCLR_TYPE_ISTUDIOC, L"5PC", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudioCompressed);
-	PaliRegisterFormat(NCLR_TYPE_TOSE, L"Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE, PalIsValidTose);
-	PaliRegisterFormat(NCLR_TYPE_HUDSON, L"Hudson", OBJ_ID_HEADER, PalIsValidHudson);
-	PaliRegisterFormat(NCLR_TYPE_SETOSA, L"Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED, PalIsValidSetosa);
-	PaliRegisterFormat(NCLR_TYPE_BIN, L"Binary", 0, PalIsValidBin);
-	PaliRegisterFormat(NCLR_TYPE_NTFP, L"NTFP", 0, PalIsValidNtfp);
+	ObjRegisterType(FILE_TYPE_PALETTE, sizeof(NCLR), "Palette", (ObjReader) PalRead, (ObjWriter) PalWrite, NULL, PalFree);
+	PaliRegisterFormat(NCLR_TYPE_NCLR, "NCLR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, PalIsValidNclr);
+	PaliRegisterFormat(NCLR_TYPE_NC, "NCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidNcl);
+	PaliRegisterFormat(NCLR_TYPE_ISTUDIO, "5PL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudio);
+	PaliRegisterFormat(NCLR_TYPE_ISTUDIOC, "5PC", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudioCompressed);
+	PaliRegisterFormat(NCLR_TYPE_TOSE, "Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE, PalIsValidTose);
+	PaliRegisterFormat(NCLR_TYPE_HUDSON, "Hudson", OBJ_ID_HEADER, PalIsValidHudson);
+	PaliRegisterFormat(NCLR_TYPE_SETOSA, "Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED, PalIsValidSetosa);
+	PaliRegisterFormat(NCLR_TYPE_BIN, "Binary", 0, PalIsValidBin);
+	PaliRegisterFormat(NCLR_TYPE_NTFP, "NTFP", 0, PalIsValidNtfp);
 }
 
 int PalIdentify(const unsigned char *buffer, unsigned int size) {

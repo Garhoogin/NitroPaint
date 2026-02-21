@@ -4,13 +4,13 @@ static int MesgIsValidBMG(const unsigned char *buffer, unsigned int size);
 
 static void MesgFree(ObjHeader *header);
 
-static void MesgRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+static void MesgRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_MESG, format, name, flag, proc);
 }
 
 void MesgRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_MESG, sizeof(MesgFile), L"Message", (ObjReader) MesgRead, (ObjWriter) MesgWrite, NULL, MesgFree);
-	MesgRegisterFormat(MESG_TYPE_BMG, L"BMG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, MesgIsValidBMG);
+	ObjRegisterType(FILE_TYPE_MESG, sizeof(MesgFile), "Message", (ObjReader) MesgRead, (ObjWriter) MesgWrite, NULL, MesgFree);
+	MesgRegisterFormat(MESG_TYPE_BMG, "BMG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, MesgIsValidBMG);
 }
 
 
@@ -481,8 +481,4 @@ int MesgWrite(MesgFile *mesg, BSTREAM *stream) {
 			return MesgWriteBMG(mesg, stream);
 	}
 	return OBJ_STATUS_INVALID;
-}
-
-int MesgWriteFile(MesgFile *mesg, LPCWSTR path) {
-	return ObjWriteFile(&mesg->header, path);
 }

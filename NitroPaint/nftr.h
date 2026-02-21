@@ -76,13 +76,10 @@ void NftrSetBitDepth(NFTR *nftr, int depth);
 void NftrSetCellSize(NFTR *nftr, int width, int height);
 
 int NftrWrite(NFTR *nftr, BSTREAM *stream);
-int NftrWriteFile(NFTR *nftr, LPWSTR name);
 
 
 
 // ----- Code map file 
-
-extern LPCWSTR codeMapFormatNames[];
 
 #define BNCMP_TYPE_INVALID   0
 #define BNCMP_TYPE_BNCMP_11  1 // BNCMP 1.1

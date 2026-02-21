@@ -19,22 +19,22 @@ static int ChrIsValidTose(const unsigned char *buffer, unsigned int size);
 
 static void ChrFree(ObjHeader *obj);
 
-static void ChriRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+static void ChriRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_CHARACTER, format, name, flag, proc);
 }
 
 void ChrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_CHARACTER, sizeof(NCGR), L"Character", (ObjReader) ChrRead, (ObjWriter) ChrWrite, NULL, ChrFree);
-	ChriRegisterFormat(NCGR_TYPE_NCGR, L"NCGR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, ChrIsValidNcgr);
-	ChriRegisterFormat(NCGR_TYPE_NC, L"NCG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidNcg);
-	ChriRegisterFormat(NCGR_TYPE_IC, L"ICG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidIcg);
-	ChriRegisterFormat(NCGR_TYPE_AC, L"ACG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidAcg);
-	ChriRegisterFormat(NCGR_TYPE_TOSE, L"Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidTose);
-	ChriRegisterFormat(NCGR_TYPE_HUDSON, L"Hudson", OBJ_ID_HEADER, ChrIsValidHudson);
-	ChriRegisterFormat(NCGR_TYPE_HUDSON2, L"Hudson 2", OBJ_ID_HEADER, ChrIsValidHudson2);
-	ChriRegisterFormat(NCGR_TYPE_GHOSTTRICK, L"Ghost Trick", OBJ_ID_COMPRESSION, ChrIsValidGhostTrick);
-	ChriRegisterFormat(NCGR_TYPE_SETOSA, L"Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidSetosa);
-	ChriRegisterFormat(NCGR_TYPE_BIN, L"Binary", 0, ChrIsValidBin);
+	ObjRegisterType(FILE_TYPE_CHARACTER, sizeof(NCGR), "Character", (ObjReader) ChrRead, (ObjWriter) ChrWrite, NULL, ChrFree);
+	ChriRegisterFormat(NCGR_TYPE_NCGR, "NCGR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, ChrIsValidNcgr);
+	ChriRegisterFormat(NCGR_TYPE_NC, "NCG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidNcg);
+	ChriRegisterFormat(NCGR_TYPE_IC, "ICG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidIcg);
+	ChriRegisterFormat(NCGR_TYPE_AC, "ACG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidAcg);
+	ChriRegisterFormat(NCGR_TYPE_TOSE, "Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidTose);
+	ChriRegisterFormat(NCGR_TYPE_HUDSON, "Hudson", OBJ_ID_HEADER, ChrIsValidHudson);
+	ChriRegisterFormat(NCGR_TYPE_HUDSON2, "Hudson 2", OBJ_ID_HEADER, ChrIsValidHudson2);
+	ChriRegisterFormat(NCGR_TYPE_GHOSTTRICK, "Ghost Trick", OBJ_ID_COMPRESSION, ChrIsValidGhostTrick);
+	ChriRegisterFormat(NCGR_TYPE_SETOSA, "Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidSetosa);
+	ChriRegisterFormat(NCGR_TYPE_BIN, "Binary", 0, ChrIsValidBin);
 }
 
 

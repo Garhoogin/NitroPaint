@@ -482,19 +482,19 @@ static int TxIsValidGrf(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-static void TxiRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+static void TxiRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_TEXTURE, format, name, flag, proc);
 }
 
 void TxRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_TEXTURE, sizeof(TextureObject), L"Texture", (ObjReader) TxRead, (ObjWriter) TxWrite, NULL, TxFree);
-	TxiRegisterFormat(TEXTURE_TYPE_NNSTGA, L"NNS TGA", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE, TxIsValidNnsTga);
-	TxiRegisterFormat(TEXTURE_TYPE_ISTUDIO, L"5TX", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED, TxIsValidIStudio);
-	TxiRegisterFormat(TEXTURE_TYPE_SPT, L"SPT", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS, TxIsValidSpt);
-	TxiRegisterFormat(TEXTURE_TYPE_TDS, L"TDS", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidTds);
-	TxiRegisterFormat(TEXTURE_TYPE_NTGA, L"NTGA", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidNtga);
-	TxiRegisterFormat(TEXTURE_TYPE_TOLOVERU, L"To Love-Ru", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidToLoveRu);
-	TxiRegisterFormat(TEXTURE_TYPE_GRF, L"GRF", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, TxIsValidGrf);
+	ObjRegisterType(FILE_TYPE_TEXTURE, sizeof(TextureObject), "Texture", (ObjReader) TxRead, (ObjWriter) TxWrite, NULL, TxFree);
+	TxiRegisterFormat(TEXTURE_TYPE_NNSTGA, "NNS TGA", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE, TxIsValidNnsTga);
+	TxiRegisterFormat(TEXTURE_TYPE_ISTUDIO, "5TX", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED, TxIsValidIStudio);
+	TxiRegisterFormat(TEXTURE_TYPE_SPT, "SPT", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS, TxIsValidSpt);
+	TxiRegisterFormat(TEXTURE_TYPE_TDS, "TDS", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidTds);
+	TxiRegisterFormat(TEXTURE_TYPE_NTGA, "NTGA", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidNtga);
+	TxiRegisterFormat(TEXTURE_TYPE_TOLOVERU, "To Love-Ru", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidToLoveRu);
+	TxiRegisterFormat(TEXTURE_TYPE_GRF, "GRF", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, TxIsValidGrf);
 }
 
 int TxIdentify(const unsigned char *buffer, unsigned int size) {
@@ -503,7 +503,7 @@ int TxIdentify(const unsigned char *buffer, unsigned int size) {
 	return fmt;
 }
 
-int TxIdentifyFile(LPCWSTR path) {
+int TxIdentifyFile(const wchar_t *path) {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	DWORD dwSizeHigh;
 	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);

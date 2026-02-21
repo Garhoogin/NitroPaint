@@ -95,7 +95,7 @@ void TxRegisterFormats(void);
 
 int TxIdentify(const unsigned char *buffer, unsigned int size);
 
-int TxIdentifyFile(LPCWSTR path);
+int TxIdentifyFile(const wchar_t *path);
 
 int TxReadNnsTga(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 

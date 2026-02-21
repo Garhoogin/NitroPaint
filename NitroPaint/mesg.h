@@ -47,5 +47,3 @@ int MesgRead(MesgFile *mesg, const unsigned char *buffer, unsigned int size);
 
 int MesgWrite(MesgFile *mesg, BSTREAM *stream);
 
-int MesgWriteFile(MesgFile *mesg, LPCWSTR path);
-

@@ -2,6 +2,8 @@
 #include "struct.h"
 #include "nns.h"
 
+#include <string.h>
+
 #define NFTR_MAP_DIRECT     0
 #define NFTR_MAP_TABLE      1
 #define NFTR_MAP_SCAN       2
@@ -21,26 +23,26 @@ static int BncmpIsValidBncmp12(const unsigned char *buffer, unsigned int size);
 
 static void NftrFree(ObjHeader *obj);
 
-static void NftrRegisterFormat(int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+static void NftrRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_FONT, format, name, flag, proc);
 }
 
 void NftrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_FONT, sizeof(NFTR), L"Font", (ObjReader) NftrRead, (ObjWriter) NftrWrite, NULL, NftrFree);
-	NftrRegisterFormat(NFTR_TYPE_NFTR_01, L"NFTR 0.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr01);
-	NftrRegisterFormat(NFTR_TYPE_NFTR_10, L"NFTR 1.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr10);
-	NftrRegisterFormat(NFTR_TYPE_NFTR_11, L"NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr11);
-	NftrRegisterFormat(NFTR_TYPE_NFTR_12, L"NFTR 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr12);
-	NftrRegisterFormat(NFTR_TYPE_BNFR_20, L"BNFR 2.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidBnfr20);
-	NftrRegisterFormat(NFTR_TYPE_BNFR_12, L"BNFR 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, NftrIsValidBnfr12);
-	NftrRegisterFormat(NFTR_TYPE_BNFR_11, L"BNFR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, NftrIsValidBnfr11);
-	NftrRegisterFormat(NFTR_TYPE_GF_NFTR_11, L"GameFreak NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidGfNftr11);
-	NftrRegisterFormat(NFTR_TYPE_STARFY, L"Starfy", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidStarfy);
+	ObjRegisterType(FILE_TYPE_FONT, sizeof(NFTR), "Font", (ObjReader) NftrRead, (ObjWriter) NftrWrite, NULL, NftrFree);
+	NftrRegisterFormat(NFTR_TYPE_NFTR_01, "NFTR 0.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr01);
+	NftrRegisterFormat(NFTR_TYPE_NFTR_10, "NFTR 1.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr10);
+	NftrRegisterFormat(NFTR_TYPE_NFTR_11, "NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr11);
+	NftrRegisterFormat(NFTR_TYPE_NFTR_12, "NFTR 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr12);
+	NftrRegisterFormat(NFTR_TYPE_BNFR_20, "BNFR 2.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidBnfr20);
+	NftrRegisterFormat(NFTR_TYPE_BNFR_12, "BNFR 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, NftrIsValidBnfr12);
+	NftrRegisterFormat(NFTR_TYPE_BNFR_11, "BNFR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, NftrIsValidBnfr11);
+	NftrRegisterFormat(NFTR_TYPE_GF_NFTR_11, "GameFreak NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidGfNftr11);
+	NftrRegisterFormat(NFTR_TYPE_STARFY, "Starfy", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidStarfy);
 
 	//register BNCMP
-	ObjRegisterType(FILE_TYPE_CMAP, 0, L"Character Map", (ObjReader) BncmpRead, (ObjWriter) BncmpWrite, NULL, NULL);
-	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_11, L"BNCMP 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp11);
-	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_12, L"BNCMP 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp12);
+	ObjRegisterType(FILE_TYPE_CMAP, 0, "Character Map", (ObjReader) BncmpRead, (ObjWriter) BncmpWrite, NULL, NULL);
+	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_11, "BNCMP 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp11);
+	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_12, "BNCMP 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp12);
 }
 
 int NftrIdentify(const unsigned char *buffer, unsigned int size) {
@@ -2463,16 +2465,8 @@ int NftrWrite(NFTR *nftr, BSTREAM *stream) {
 	return OBJ_STATUS_UNSUPPORTED;
 }
 
-int NftrWriteFile(NFTR *nftr, LPWSTR name) {
-	return ObjWriteFile(&nftr->header, name);
-}
-
 
 // ----- BNCMP Routines -- for use with BNFR 1.x files
-
-LPCWSTR codeMapFormatNames[] = {
-	L"Invalid", L"BNCMP 1.1", L"BNCMP 1.2", NULL
-};
 
 static int BncmpIsValidBncmp11(const unsigned char *buffer, unsigned int size) {
 	if (!JFntCheckHeader(buffer, size, 1, 1, "JNCM")) return 0;

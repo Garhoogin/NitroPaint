@@ -3014,15 +3014,21 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 
 			unsigned int nFormat = ObjGetFormatCountByType(editorData->file->type);
 			for (unsigned int i = 1; i < nFormat; i++) {
-				const wchar_t *name = ObjGetFormatNameByType(editorData->file->type, i);
-				UiCbAddString(hWndFormatCombobox, name);
+				const char *name = ObjGetFormatNameByType(editorData->file->type, i);
+
+				wchar_t buf[64];
+				mbstowcs(buf, name, sizeof(buf) / sizeof(buf[0]));
+
+				UiCbAddString(hWndFormatCombobox, buf);
 			}
 			UiCbSetCurSel(hWndFormatCombobox, editorData->file->format - 1);
 
-			LPCWSTR *compressions = g_ObjCompressionNames;
+			const char *const *compressions = g_ObjCompressionNames;
 			while (*compressions != NULL) {
-				UiCbAddString(hWndCompressionCombobox, *compressions);
-				compressions++;
+				wchar_t buf[64];
+				mbstowcs(buf, *(compressions++), sizeof(buf) / sizeof(buf[0]));
+
+				UiCbAddString(hWndCompressionCombobox, buf);
 			}
 			UiCbSetCurSel(hWndCompressionCombobox, editorData->file->compression);
 
@@ -3854,10 +3860,10 @@ static void OpenAsOnCompressionChanged(OpenAsData *data) {
 	SendMessage(data->hWndFormatDropdown, CB_RESETCONTENT, 0, 0);
 	for (size_t i = 0; i < data->formats.length; i++) {
 		ObjIdEntry *ent = StListGetPtr(&data->formats, i);
-		const wchar_t *typeName = ObjGetFileTypeName(ent->type);
+		const char *typeName = ObjGetFileTypeName(ent->type);
 
 		wchar_t textbuf[64];
-		wsprintfW(textbuf, L"%s (%s)", typeName, ent->name);
+		wsprintfW(textbuf, L"%S (%S)", typeName, ent->name);
 		UiCbAddString(data->hWndFormatDropdown, textbuf);
 	}
 
@@ -3922,7 +3928,10 @@ static LRESULT CALLBACK OpenAsDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 				int type;
 				StListGet(&data->compressions, i, &type);
 
-				UiCbAddString(data->hWndCompressionDropdown, g_ObjCompressionNames[type]);
+				wchar_t buf[64];
+				mbstowcs(buf, g_ObjCompressionNames[type], sizeof(buf) / sizeof(buf[0]));
+
+				UiCbAddString(data->hWndCompressionDropdown, buf);
 			}
 			UiCbSetCurSel(data->hWndCompressionDropdown, StListIndexOf(&data->compressions, &def));
 

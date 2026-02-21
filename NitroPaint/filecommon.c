@@ -12,21 +12,21 @@
 #include "jlyt.h"
 #include "mesg.h"
 
-LPCWSTR g_ObjCompressionNames[] = {
-	L"None", 
-	L"LZ77", 
-	L"LZ11", 
-	L"LZ11 COMP", 
-	L"Huffman 4", 
-	L"Huffman 8", 
-	L"RLE",
-	L"Diff 8",
-	L"Diff 16", 
-	L"LZ77 Header", 
-	L"MvDK", 
-	L"VLX",
-	L"ASH",
-	L"PuCrunch",
+const char *const g_ObjCompressionNames[] = {
+	"None", 
+	"LZ77", 
+	"LZ11", 
+	"LZ11 COMP", 
+	"Huffman 4", 
+	"Huffman 8", 
+	"RLE",
+	"Diff 8",
+	"Diff 16", 
+	"LZ77 Header", 
+	"MvDK", 
+	"VLX",
+	"ASH",
+	"PuCrunch",
 	NULL
 };
 
@@ -68,7 +68,7 @@ static LPCWSTR sCommonScreenEndings[] = {
 	NULL
 };
 
-LPCWSTR ObjStatusToString(int status) {
+const wchar_t *ObjStatusToString(int status) {
 	switch (status) {
 		case OBJ_STATUS_SUCCESS:
 			return L"Success";
@@ -106,7 +106,7 @@ static int ObjiPathEndsWithOneOf(LPCWSTR str, LPCWSTR *endings) {
 	return 0;
 }
 
-LPWSTR ObjGetFileNameFromPath(LPCWSTR path) {
+wchar_t *ObjGetFileNameFromPath(const wchar_t *path) {
 	LPWSTR lastF = wcsrchr(path, L'/');
 	LPWSTR lastB = wcsrchr(path, L'\\');
 	if (lastF == NULL && lastB != NULL) return lastB + 1;
@@ -139,13 +139,13 @@ static int ObjiIsValidImage(const unsigned char *buffer, unsigned int size) {
 static StMap sObjRegisteredTypes = { 0 };
 static StList sObjRegisteredFormats = { 0 };
 
-const wchar_t *ObjGetFileTypeName(int type) {
+const char *ObjGetFileTypeName(int type) {
 	ObjTypeEntry ent;
 	StMapGet(&sObjRegisteredTypes, &type, &ent);
 	return ent.name;
 }
 
-const wchar_t *ObjGetFormatNameByType(int type, int format) {
+const char *ObjGetFormatNameByType(int type, int format) {
 	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
 		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
 		if (ent->type == type && ent->format == format) return ent->name;
@@ -207,14 +207,14 @@ void ObjInitCommon(void) {
 	StListCreate(&sObjRegisteredFormats, sizeof(ObjIdEntry), ObjiIdEntryComparator);
 
 	//register default formats
-	ObjRegisterType(FILE_TYPE_INVALID, 0, L"Invalid", NULL, NULL, NULL, NULL);
-	ObjRegisterType(FILE_TYPE_IMAGE, 0, L"Image", NULL, NULL, NULL, NULL); // TODO
-	ObjRegisterFormat(FILE_TYPE_IMAGE, 1, L"Host Codecs", OBJ_ID_WINCODEC, ObjiIsValidImage);
+	ObjRegisterType(FILE_TYPE_INVALID, 0, "Invalid", NULL, NULL, NULL, NULL);
+	ObjRegisterType(FILE_TYPE_IMAGE, 0, "Image", NULL, NULL, NULL, NULL); // TODO
+	ObjRegisterFormat(FILE_TYPE_IMAGE, 1, "Host Codecs", OBJ_ID_WINCODEC, ObjiIsValidImage);
 }
 
-void ObjRegisterType(int type, size_t objSize, const wchar_t *name, ObjReader reader, ObjWriter writer, ObjInitProc init, ObjDispose dispose) {
+void ObjRegisterType(int type, size_t objSize, const char *name, ObjReader reader, ObjWriter writer, ObjInitProc init, ObjDispose dispose) {
 	ObjTypeEntry ent;
-	ent.name = _wcsdup(name);
+	ent.name = _strdup(name);
 	ent.size = objSize;
 	ent.reader = reader;
 	ent.writer = writer;
@@ -223,11 +223,11 @@ void ObjRegisterType(int type, size_t objSize, const wchar_t *name, ObjReader re
 	StMapPut(&sObjRegisteredTypes, &type, &ent);
 }
 
-void ObjRegisterFormat(int type, int format, const wchar_t *name, ObjIdFlag flag, ObjIdProc proc) {
+void ObjRegisterFormat(int type, int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjIdEntry ent;
 	ent.type = type;
 	ent.format = format;
-	ent.name = _wcsdup(name);
+	ent.name = _strdup(name);
 	ent.idFlag = flag;
 	ent.idProc = proc;
 	StListAdd(&sObjRegisteredFormats, &ent);
