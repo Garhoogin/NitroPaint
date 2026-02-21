@@ -1652,19 +1652,39 @@ int CxIsCompressedLZX(const unsigned char *buffer, unsigned int size) {
 }
 
 int CxIsCompressedHuffman(const unsigned char *buffer, unsigned int size) {
-	if (size < 5) return 0;
-	if (*buffer != 0x24 && *buffer != 0x28) return 0;
+	if (size < 5 || (*buffer != 0x28 && *buffer != 0x24)) return 0;
 
-	uint32_t length = (*(uint32_t *) buffer) >> 8;
+	uint32_t outSize = (*(const uint32_t *) buffer) >> 8;
+	unsigned int symSize = *buffer & 0xF;
 
-	//process huffman tree
-	uint32_t dataOffset = ((buffer[4] + 1) << 1) + 4;
-	if (dataOffset > size) return 0;
+	unsigned int bufferFill = 0;
+	unsigned int bufferSize = 32 / symSize;
+	unsigned int trOffs = 1;
 
-	//check if the uncompressed size makes sense
-	uint32_t bitStreamLength = size - dataOffset;
-	if (bitStreamLength * 8 < length) return 0;
-	return 1;
+	CxiBitReader reader;
+	CxiBitReaderInit(&reader, buffer + 4 + ((buffer[4] + 1) << 1), buffer + size, 1, 0);
+
+	unsigned int nWritten = 0;
+	while (nWritten < outSize) {
+		unsigned int lr = CxiBitReaderReadBit(&reader);
+		unsigned char thisNode = buffer[4 + trOffs];
+		if ((4 + thisNode) >= size) return 0;
+
+		unsigned int thisNodeOffs = ((thisNode & 0x3F) + 1) << 1;
+		trOffs = (trOffs & ~1) + thisNodeOffs + lr;
+
+		if (thisNode & (0x80 >> lr)) {
+			if ((4 + trOffs) >= size) return 0;
+			trOffs = 1;
+			bufferFill++;
+
+			if (bufferFill >= bufferSize) {
+				nWritten += 4;
+				bufferFill = 0;
+			}
+		}
+	}
+	return !reader.error;
 }
 
 int CxIsCompressedHuffman4(const unsigned char *buffer, unsigned int size) {
