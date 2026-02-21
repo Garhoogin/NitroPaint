@@ -3,6 +3,8 @@
 #include "nns.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 extern size_t my_strnlen(const char *_Str, size_t _MaxCount);
 extern size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
@@ -77,7 +79,7 @@ void TexarcFree(ObjHeader *header) {
 
 //TexArc code adapted from Gericom's code in Fvery File Explorer.
 
-static unsigned char *readDictionary(DICTIONARY *dict, const unsigned char *base, int entrySize) {
+static void readDictionary(DICTIONARY *dict, const unsigned char *base, int entrySize) {
 	const unsigned char *pos = base;
 	int nEntries = *(const uint8_t *) (pos + 1);
 	int dictSize = *(const uint16_t *) (pos + 4);
@@ -93,18 +95,17 @@ static unsigned char *readDictionary(DICTIONARY *dict, const unsigned char *base
 	pos += entrySize * dict->nEntries;
 
 	dict->namesPtr = (char *) pos;
-	pos = base + dictSize; //end of dict
-	return (unsigned char *) pos;
 }
 
 static int TexarcIsValidNsbtx(const unsigned char *buffer, unsigned int size) {
 	if (!NnsIsValid(buffer, size)) return 0;
 
-	//check magic (only TexArc or NSBMD)
-	if ((buffer[0] != 'B' || buffer[1] != 'T' || buffer[2] != 'X' || buffer[3] != '0') &&
-		(buffer[0] != 'B' || buffer[1] != 'M' || buffer[2] != 'D' || buffer[3] != '0')) return 0;
-
-	return 1;
+	//check magic (only NSBTX or NSBMD)
+	if (memcmp(buffer, "BTX0", 4) != 0 && memcmp(buffer, "BMD0", 4) != 0) return 0;
+	
+	unsigned int tex0Size;
+	const unsigned char *tex0 = NnsG3dGetSectionByMagic(buffer, size, "TEX0", &tex0Size);
+	return tex0 != NULL;
 }
 
 int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size) {
@@ -168,39 +169,20 @@ void TexarcRegisterFormats(void) {
 }
 
 static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size) {
-	//iterate over each section
-	const uint32_t *sectionOffsets = (const uint32_t *) (buffer + 0x10);
-	unsigned int nSections = *(const uint16_t *) (buffer + 0xE);
+	//find TEX0, MDL0 blocks
+	unsigned int tex0Size, mdl0Size;
+	const unsigned char *tex0 = NnsG3dGetSectionByMagic(buffer, size, "TEX0", &tex0Size);
+	const unsigned char *mdl0 = NnsG3dGetSectionByMagic(buffer, size, "MDL0", &mdl0Size);
 
-	//find the TEX0 section
-	const unsigned char *tex0 = NULL;
-	unsigned int tex0Offset = 0;
-
-	nsbtx->mdl0 = NULL;
-	nsbtx->mdl0Size = 0;
-	for (unsigned int i = 0; i < nSections; i++) {
-		const unsigned char *sect = buffer + sectionOffsets[i];
-		if (sect[0] == 'T' && sect[1] == 'E' && sect[2] == 'X' && sect[3] == '0') {
-			tex0 = sect;
-			tex0Offset = sect - buffer;
-			break;
-		} else if (sect[0] == 'M' && sect[1] == 'D' && sect[2] == 'L' && sect[3] == '0') {
-			nsbtx->mdl0Size = *(const uint32_t *) (sect + 4) - 8;
-			nsbtx->mdl0 = malloc(nsbtx->mdl0Size);
-			memcpy(nsbtx->mdl0, sect + 8, nsbtx->mdl0Size);
-		}
+	if (mdl0 != NULL) {
+		//model data (just copy bytes to reproduce, we won't process)
+		nsbtx->mdl0Size = mdl0Size;
+		nsbtx->mdl0 = malloc(nsbtx->mdl0Size);
+		memcpy(nsbtx->mdl0, mdl0, nsbtx->mdl0Size);
+	} else {
+		nsbtx->mdl0 = NULL;
+		nsbtx->mdl0Size = 0;
 	}
-	if (tex0 == NULL) {
-		if (nsbtx->mdl0 != NULL) {
-			free(nsbtx->mdl0);
-			nsbtx->mdl0 = NULL;
-			nsbtx->mdl0Size = 0;
-		}
-		return 1;
-	}
-
-	//next, process the tex0 section.
-	unsigned int blockSize = *(const uint32_t *) (tex0 + 0x4);
 	
 	//texture header
 	unsigned int textureDataSize = (*(const uint16_t *) (tex0 + 0xC)) << 3;
@@ -216,58 +198,53 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size)
 	unsigned int paletteInfoOffset = *(const uint32_t *) (tex0 + 0x34); //dictionary
 	unsigned int paletteDataOffset = *(const uint32_t *) (tex0 + 0x38);
 
-	const unsigned char *texInfo = tex0 + textureInfoOffset;
-	const unsigned char *palInfo = tex0 + paletteInfoOffset;
+	unsigned int tex0Offset = tex0 - buffer;
 
-	DICTIONARY dictTex;
+	DICTIONARY dictTex, dictPal;
 	readDictionary(&dictTex, tex0 + textureInfoOffset, sizeof(DICTTEXDATA));
+	readDictionary(&dictPal, tex0 + paletteInfoOffset, sizeof(DICTPLTTDATA));
+
 	DICTTEXDATA *dictTexData = (DICTTEXDATA *) dictTex.entry.data;
-	TEXELS *texels = (TEXELS *) calloc(dictTex.nEntries, sizeof(TEXELS));
-	
-	DICTIONARY dictPal;
-	char *pos = readDictionary(&dictPal, tex0 + paletteInfoOffset, sizeof(DICTPLTTDATA));
 	DICTPLTTDATA *dictPalData = (DICTPLTTDATA *) dictPal.entry.data;
+
+	TEXELS *texels = (TEXELS *) calloc(dictTex.nEntries, sizeof(TEXELS));
 	PALETTE *palettes = (PALETTE *) calloc(dictPal.nEntries, sizeof(PALETTE));
 
 	int baseOffsetTex = textureDataOffset;
 	int baseOffsetTex4x4 = compressedTextureDataOffset;
 	int baseOffsetTex4x4Info = compressedTextureInfoDataOffset;
-	int texPlttSetOffset = tex0Offset;
 	for (int i = 0; i < dictTex.nEntries; i++) {
 		//read a texture from pos.
-		DICTTEXDATA *texData = dictTexData + i;
-		int offset = OFFSET(texData->texImageParam);
+		DICTTEXDATA *texData = &dictTexData[i];
+		unsigned int offset = OFFSET(texData->texImageParam);
 
-		int width = TEXW(texData->texImageParam);
-		int height = TEXH(texData->texImageParam);
-		int texelSize = TxGetTexelSize(width, height, texData->texImageParam);
+		unsigned int width = TEXW(texData->texImageParam);
+		unsigned int height = TEXH(texData->texImageParam);
+		unsigned int texelSize = TxGetTexelSize(width, height, texData->texImageParam);
 
 		uint32_t paramEx = texData->extraParam;
-		int origWidth = width, origHeight = height;
+		unsigned int origWidth = width, origHeight = height;
 		if (!(paramEx & 0x80000000)) {
 			origWidth = (paramEx >> 0) & 0x7FF;
 			origHeight = (paramEx >> 11) & 0x7FF;
 		}
 
+		texels[i].texImageParam = texData->texImageParam;
+		texels[i].height = origHeight;
+		texels[i].texel = calloc(texelSize, 1);
+
 		if (FORMAT(texData->texImageParam) == CT_4x4) {
-			texels[i].texImageParam = texData->texImageParam;
-			texels[i].texel = calloc(texelSize, 1);
 			texels[i].cmp = calloc(texelSize >> 1, 1);
 			memcpy(texels[i].texel, tex0 + offset + baseOffsetTex4x4, texelSize);
 			memcpy(texels[i].cmp, tex0 + baseOffsetTex4x4Info + offset / 2, texelSize >> 1);
-			
 		} else {
-			texels[i].texImageParam = texData->texImageParam;
 			texels[i].cmp = NULL;
-			texels[i].texel = calloc(texelSize, 1);
 			memcpy(texels[i].texel, tex0 + offset + baseOffsetTex, texelSize);
 		}
 
 		int texNameLen = strnlen(dictTex.namesPtr + i * 16, 16);
 		texels[i].name = calloc(texNameLen + 1, 1);
 		memcpy(texels[i].name, dictTex.namesPtr + i * 16, texNameLen);
-
-		texels[i].height = origHeight;
 	}
 
 	for (int i = 0; i < dictPal.nEntries; i++) {

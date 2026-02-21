@@ -27,7 +27,7 @@ typedef char *(*NnsGetResourceNameCallback) (void *resource);
 
 int NnsG3dIsValid(const unsigned char *buffer, unsigned int size);
 
-unsigned char *NnsG3dGetSectionByMagic(const unsigned char *buffer, unsigned int size, const char *magic);
+unsigned char *NnsG3dGetSectionByMagic(const unsigned char *buffer, unsigned int size, const char *magic, unsigned int *pSize);
 
 unsigned char *NnsG3dGetSectionByIndex(const unsigned char *buffer, unsigned int size, int index);
 

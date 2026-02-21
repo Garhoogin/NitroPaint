@@ -565,7 +565,7 @@ int NnsG3dIsValid(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-unsigned char *NnsG3dGetSectionByMagic(const unsigned char *buffer, unsigned int size, const char *magic) {
+unsigned char *NnsG3dGetSectionByMagic(const unsigned char *buffer, unsigned int size, const char *magic, unsigned int *pSize) {
 	//iterate sections
 	unsigned int nSections = *(uint16_t *) (buffer + 0xE);
 	uint32_t headerSize = *(uint16_t *) (buffer + 0xC);
@@ -573,7 +573,10 @@ unsigned char *NnsG3dGetSectionByMagic(const unsigned char *buffer, unsigned int
 
 	for (unsigned int i = 0; i < nSections; i++) {
 		const unsigned char *sect = buffer + offsets[i];
-		if (memcmp(sect, magic, 4) == 0) return (unsigned char *) sect; //cast away const
+		if (memcmp(sect, magic, 4) == 0) {
+			*pSize = *(const uint32_t *) (sect + 4);
+			return (unsigned char *) sect; // cast away const
+		}
 	}
 	return NULL;
 }
