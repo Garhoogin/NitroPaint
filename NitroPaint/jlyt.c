@@ -113,11 +113,6 @@ static int BnllIsValidBnll(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int BnllIdentify(const unsigned char *buffer, unsigned int size) {
-	if (BnllIsValidBnll(buffer, size)) return BNLL_TYPE_BNLL;
-	return BNLL_TYPE_INVALID;
-}
-
 static void BnllFree(ObjHeader *hdr) {
 	BNLL *bnll = (BNLL *) hdr;
 	free(bnll->messages);
@@ -168,7 +163,7 @@ static int BnllReadBnll(BNLL *bnll, const unsigned char *buffer, unsigned int si
 }
 
 int BnllRead(BNLL *bnll, const unsigned char *buffer, unsigned int size) {
-	switch (BnllIdentify(buffer, size)) {
+	switch (bnll->header.format) {
 		case BNLL_TYPE_BNLL:
 			return BnllReadBnll(bnll, buffer, size);
 	}
@@ -262,11 +257,6 @@ static int BnclIsValidBncl(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int BnclIdentify(const unsigned char *buffer, unsigned int size) {
-	if (BnclIsValidBncl(buffer, size)) return BNCL_TYPE_BNCL;
-	return BNCL_TYPE_INVALID;
-}
-
 static void BnclFree(ObjHeader *hdr) {
 	BNCL *bncl = (BNCL *) hdr;
 	free(bncl->cells);
@@ -294,7 +284,7 @@ static int BnclReadBncl(BNCL *bncl, const unsigned char *buffer, unsigned int si
 }
 
 int BnclRead(BNCL *bncl, const unsigned char *buffer, unsigned int size) {
-	switch (BnclIdentify(buffer, size)) {
+	switch (bncl->header.format) {
 		case BNCL_TYPE_BNCL:
 			return BnclReadBncl(bncl, buffer, size);
 	}
@@ -348,11 +338,6 @@ static int BnblIsValidBnbl(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int BnblIdentify(const unsigned char *buffer, unsigned int size) {
-	if (BnblIsValidBnbl(buffer, size)) return BNBL_TYPE_BNBL;
-	return BNBL_TYPE_INVALID;
-}
-
 static void BnblFree(ObjHeader *hdr) {
 	BNBL *bnbl = (BNBL *) hdr;
 	free(bnbl->regions);
@@ -380,7 +365,7 @@ static int BnblReadBnbl(BNBL *bnbl, const unsigned char *buffer, unsigned int si
 }
 
 int BnblRead(BNBL *bnbl, const unsigned char *buffer, unsigned int size) {
-	switch (BnblIdentify(buffer, size)) {
+	switch (bnbl->header.format) {
 		case BNBL_TYPE_BNBL:
 			return BnblReadBnbl(bnbl, buffer, size);
 	}

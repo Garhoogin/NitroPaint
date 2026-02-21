@@ -32,12 +32,6 @@ void PalRegisterFormats(void) {
 	PaliRegisterFormat(NCLR_TYPE_NTFP, "NTFP", 0, PalIsValidNtfp);
 }
 
-int PalIdentify(const unsigned char *buffer, unsigned int size) {
-	int fmt = NCLR_TYPE_INVALID;
-	ObjIdentifyExByType(buffer, size, FILE_TYPE_PALETTE, &fmt);
-	return fmt;
-}
-
 
 void PalFree(ObjHeader *header) {
 	NCLR *nclr = (NCLR *) header;

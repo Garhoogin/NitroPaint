@@ -63,8 +63,6 @@ typedef struct NFTR_ {
 
 void NftrRegisterFormats(void);
 
-int NftrIdentify(const unsigned char *buffer, unsigned int size);
-
 int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size);
 
 int NftrGetGlyphIndexByCP(NFTR *nftr, uint16_t cp);

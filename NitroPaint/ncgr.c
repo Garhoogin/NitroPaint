@@ -204,12 +204,6 @@ static int ChrIsValidTose(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int ChrIdentify(const unsigned char *buffer, unsigned int size) {
-	int fmt = NCGR_TYPE_INVALID;
-	ObjIdentifyExByType(buffer, size, FILE_TYPE_CHARACTER, &fmt);
-	return fmt;
-}
-
 void ChrFree(ObjHeader *header) {
 	NCGR *ncgr = (NCGR *) header;
 	if (ncgr->tiles != NULL) {

@@ -33,12 +33,6 @@ typedef struct NMCR_ {
 void nmcrRegisterFormats(void);
 
 //
-// Determine the type of NMCR pointed to. Can be NMCR_TYPE_NMCR or
-// NMCR_TYPE_INVALID.
-//
-int nmcrIsValid(const unsigned char *buffer, unsigned int size);
-
-//
 // Read the NMCR file pointed to into the destination structure.
 //
 int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size);

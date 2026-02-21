@@ -76,8 +76,6 @@ typedef struct NCER_ {
 void CellRegisterFormats(void);
 
 
-int CellIdentify(const unsigned char *buffer, unsigned int size);
-
 int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size);
 
 void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj);

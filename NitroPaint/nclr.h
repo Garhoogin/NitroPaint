@@ -28,11 +28,6 @@ typedef struct NCLR_ {
 void PalRegisterFormats(void);
 
 //
-// Determine the file format of a palette file.
-//
-int PalIdentify(const unsigned char *buffer, unsigned int size);
-
-//
 // Determines if a byte array represents a valid raw palette file.
 //
 int PalIsValidBin(const unsigned char *lpFile, unsigned int size);

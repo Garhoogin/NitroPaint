@@ -292,12 +292,6 @@ void ScrRegisterFormats(void) {
 	ScriRegisterFormat(NSCR_TYPE_BIN, "Binary", OBJ_ID_SIZE_CHECK, ScrIsValidBin);
 }
 
-int ScrIdentify(const unsigned char *file, unsigned int size) {
-	int fmt = NSCR_TYPE_INVALID;
-	ObjIdentifyExByType(file, size, FILE_TYPE_SCREEN, &fmt);
-	return fmt;
-}
-
 void ScrFree(ObjHeader *header) {
 	NSCR *nscr = (NSCR *) header;
 	if (nscr->data != NULL) free(nscr->data);

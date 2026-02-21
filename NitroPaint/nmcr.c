@@ -51,9 +51,3 @@ static int nmcrIsValidNmcr(const unsigned char *buffer, unsigned int size) {
 
 	return NMCR_TYPE_NMCR;
 }
-
-int nmcrIsValid(const unsigned char *buffer, unsigned int size) {
-	int fmt = NMCR_TYPE_INVALID;
-	ObjIdentifyExByType(buffer, size, FILE_TYPE_NMCR, &fmt);
-	return fmt;
-}

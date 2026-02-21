@@ -45,12 +45,6 @@ void NftrRegisterFormats(void) {
 	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_12, "BNCMP 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp12);
 }
 
-int NftrIdentify(const unsigned char *buffer, unsigned int size) {
-	int fmt = NFTR_TYPE_INVALID;
-	ObjIdentifyExByType(buffer, size, FILE_TYPE_FONT, &fmt);
-	return fmt;
-}
-
 void NftrFree(ObjHeader *obj) {
 	NFTR *nftr = (NFTR*) obj;
 	if (nftr->glyphs != NULL) {

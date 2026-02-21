@@ -49,11 +49,6 @@ int ScrIsValidBin(const unsigned char *buffer, unsigned int size);
 void ScrRegisterFormats(void);
 
 //
-// Idenfities the format of this screen data.
-//
-int ScrIdentify(const unsigned char *file, unsigned int size);
-
-//
 // Reads a screen file from an array.
 //
 int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize);

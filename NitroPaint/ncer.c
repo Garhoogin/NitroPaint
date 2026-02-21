@@ -97,12 +97,6 @@ static int CellIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	return cellBlock != NULL || cbexBlock != NULL;
 }
 
-int CellIdentify(const unsigned char *buffer, unsigned int size) {
-	int fmt = NCER_TYPE_INVALID;
-	ObjIdentifyExByType(buffer, size, FILE_TYPE_CELL, &fmt);
-	return fmt;
-}
-
 int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 	int nCells = *(uint32_t *) buffer;
 	ncer->labl = NULL;
