@@ -1,6 +1,9 @@
+#include <string.h>
+#include <stdlib.h>
 #include <math.h>
 
 #include "bggen.h"
+#include "combo2d.h"
 #include "color.h"
 #include "palette.h"
 
@@ -1083,8 +1086,8 @@ static double BgiBestPaletteCharError(RxReduction *reduction, COLOR32 *block, Rx
 void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width, int height,
 	int writeScreen, int writeCharacterIndices,
 	int tileBase, int nPalettes, int paletteNumber, int paletteOffset,
-	int paletteSize, BOOL newPalettes, int writeCharBase, int nMaxChars,
-	BOOL newCharacters, BOOL dither, float diffuse, int maxTilesX, int maxTilesY,
+	int paletteSize, int newPalettes, int writeCharBase, int nMaxChars,
+	int newCharacters, int dither, float diffuse, int maxTilesX, int maxTilesY,
 	int nscrTileX, int nscrTileY, int balance, int colorBalance, int enhanceColors,
 	int *progress, int *progressMax, int *progress2, int *progress2Max) {
 

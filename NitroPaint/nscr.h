@@ -1,5 +1,4 @@
 #pragma once
-#include <Windows.h>
 #include <stdint.h>
 
 #include "ncgr.h"
@@ -44,8 +43,6 @@ typedef struct NSCR_ {
 	short gridHeight;    // for NC
 } NSCR;
 
-#include "combo2d.h"
-
 
 int ScrIsValidBin(const unsigned char *buffer, unsigned int size);
 
@@ -65,11 +62,6 @@ int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize);
 // Write a screen to a stream.
 //
 int ScrWrite(NSCR *nscr, BSTREAM *stream);
-
-//
-// Write a screen to a file.
-//
-int ScrWriteFile(NSCR *nscr, LPCWSTR name);
 
 //
 // Render a single tile of a screen to 32-bit output, with respect to character

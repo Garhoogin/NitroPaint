@@ -2,15 +2,8 @@
 #include "nclr.h"
 #include "ncgr.h"
 #include "nscr.h"
-#include "ncer.h"
-#include "nsbtx.h"
-#include "nanr.h"
-#include "nftr.h"
-#include "texture.h"
 #include "gdip.h"
-#include "nns.h"
-#include "jlyt.h"
-#include "mesg.h"
+#include "combo2d.h"
 
 const char *const g_ObjCompressionNames[] = {
 	"None", 
@@ -325,6 +318,11 @@ void ObjFree(ObjHeader *header) {
 
 	//free object resources
 	if (header->dispose != NULL) header->dispose(header);
+
+	//unlink from combo
+	if (header->combo != NULL) {
+		combo2dUnlink((COMBO2D *) header->combo, header);
+	}
 
 	//heap free
 	free(header);

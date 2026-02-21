@@ -83,8 +83,3 @@ int combo2dRead(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
 // Writes a COMBO2D to a BSTREAM.
 //
 int combo2dWrite(COMBO2D *combo, BSTREAM *stream);
-
-//
-// Write a COMBO2D to a file.
-//
-int combo2dWriteFile(COMBO2D *combo, LPWSTR path);

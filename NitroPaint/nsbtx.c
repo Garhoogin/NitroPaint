@@ -2,7 +2,6 @@
 #include "texture.h"
 #include "nns.h"
 
-#include <Windows.h>
 #include <stdio.h>
 
 extern size_t my_strnlen(const char *_Str, size_t _MaxCount);
@@ -455,7 +454,7 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 			int ofs = (tex4x4Data.pos >> 3) & 0xFFFF;
 			texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ofs;
 			bstreamWrite(&tex4x4Data, texture->texel, texelSize);
-			bstreamWrite(&tex4x4PlttIdxData, (BYTE *) texture->cmp, texelSize / 2);
+			bstreamWrite(&tex4x4PlttIdxData, texture->cmp, texelSize / 2);
 		} else {
 			int ofs = (texData.pos >> 3) & 0xFFFF;
 			texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ofs;
@@ -477,7 +476,7 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 		paletteOffsets[i] = paletteData.pos;
 
 		//palette
-		bstreamWrite(&paletteData, (BYTE *) palette->pal, nColors * 2);
+		bstreamWrite(&paletteData, palette->pal, nColors * 2);
 
 		//do we have 4 color?
 		if (nColors <= 4) has4Color = 1;
@@ -556,9 +555,9 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 	bstreamWrite(stream, paletteData.buffer, paletteData.pos);
 
 	//write back the proper sizes
-	DWORD endPos = stream->pos;
+	uint32_t endPos = stream->pos;
 	stream->pos = 8;
-	bstreamWrite(stream, &endPos, 4);
+	bstreamWrite(stream, &endPos, sizeof(endPos));
 	if (nsbtx->mdl0 == NULL) {
 		int tex0Size = endPos - 0x14;
 
@@ -721,10 +720,6 @@ int TexarcWrite(TexArc *nsbtx, BSTREAM *stream) {
 			return TexarcWriteBmd(nsbtx, stream);
 	}
 	return 1;
-}
-
-int TexarcWriteFile(TexArc *nsbtx, LPWSTR name) {
-	return ObjWriteFile(&nsbtx->header, name);
 }
 
 int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name) {

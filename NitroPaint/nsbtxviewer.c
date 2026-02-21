@@ -593,7 +593,7 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 							} else break;
 						}
 						if (NsbtxViewerCheckSave(data)) {
-							TexarcWriteFile(data->nsbtx, data->szOpenFile);
+							ObjWriteFile(&data->nsbtx->header, data->szOpenFile);
 						}
 						break;
 					}

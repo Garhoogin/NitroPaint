@@ -1,4 +1,3 @@
-#include <Windows.h>
 #include "color.h"
 #include "combo2d.h"
 #include "nns.h"
@@ -25,14 +24,14 @@ extern const wchar_t *gComboFormats[] = {
 
 typedef struct BANNER_INFO_ {
 	int version;
-	WCHAR titleJp[128];
-	WCHAR titleEn[128];
-	WCHAR titleFr[128];
-	WCHAR titleGe[128];
-	WCHAR titleIt[128];
-	WCHAR titleSp[128];
-	WCHAR titleCn[128];
-	WCHAR titleHn[128];
+	wchar_t titleJp[128];
+	wchar_t titleEn[128];
+	wchar_t titleFr[128];
+	wchar_t titleGe[128];
+	wchar_t titleIt[128];
+	wchar_t titleSp[128];
+	wchar_t titleCn[128];
+	wchar_t titleHn[128];
 } BANNER_INFO;
 
 typedef enum BgdtScreenFormat_ {
@@ -1237,7 +1236,7 @@ static int combo2dWriteTimeAce(COMBO2D *combo, BSTREAM *stream) {
 	NCLR *nclr = (NCLR *) combo2dGet(combo, FILE_TYPE_PALETTE, 0);
 	NCGR *ncgr = (NCGR *) combo2dGet(combo, FILE_TYPE_CHARACTER, 0);
 	NSCR *nscr = (NSCR *) combo2dGet(combo, FILE_TYPE_SCREEN, 0);
-	BOOL is8bpp = ncgr->nBits == 8;
+	int is8bpp = ncgr->nBits == 8;
 	int dummy = 0;
 
 	bstreamWrite(stream, &is8bpp, sizeof(is8bpp));
@@ -1810,8 +1809,4 @@ int combo2dWrite(COMBO2D *combo, BSTREAM *stream) {
 	}
 
 	return OBJ_STATUS_INVALID;
-}
-
-int combo2dWriteFile(COMBO2D *combo, LPWSTR path) {
-	return ObjWriteFile(&combo->header, path);
 }

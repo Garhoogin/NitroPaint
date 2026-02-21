@@ -1,4 +1,3 @@
-#include <Windows.h>
 #include <math.h>
 
 #include "ncer.h"
@@ -502,10 +501,6 @@ int AnmWrite(NANR *nanr, BSTREAM *stream) {
 	NnsStreamFree(&nnsStream);
 
 	return status;
-}
-
-int AnmWriteFile(NANR *nanr, LPWSTR name) {
-	return ObjWriteFile(&nanr->header, name);
 }
 
 void AnmFree(ObjHeader *obj) {

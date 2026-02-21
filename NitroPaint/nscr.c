@@ -3,14 +3,8 @@
 #include "ncgr.h"
 #include "nns.h"
 
-#include <Windows.h>
 #include <stdio.h>
 #include <math.h>
-
-#define NSCR_FLIPNONE 0
-#define NSCR_FLIPX 1
-#define NSCR_FLIPY 2
-#define NSCR_FLIPXY (NSCR_FLIPX|NSCR_FLIPY)
 
 
 static int ScrIsValidHudson(const unsigned char *buffer, unsigned int size);
@@ -308,11 +302,6 @@ void ScrFree(ObjHeader *header) {
 	NSCR *nscr = (NSCR *) header;
 	if (nscr->data != NULL) free(nscr->data);
 	nscr->data = NULL;
-
-	COMBO2D *combo = (COMBO2D *) nscr->header.combo;
-	if (combo != NULL) {
-		combo2dUnlink(combo, &nscr->header);
-	}
 }
 
 static int ScrReadHudson(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
@@ -865,8 +854,4 @@ int ScrWrite(NSCR *nscr, BSTREAM *stream) {
 	}
 
 	return 1;
-}
-
-int ScrWriteFile(NSCR *nscr, LPCWSTR name) {
-	return ObjWriteFile(&nscr->header, name);
 }

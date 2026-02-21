@@ -1,6 +1,4 @@
 #pragma once
-#include <Windows.h>
-
 #include "filecommon.h"
 #include "ncer.h"
 #include "ncgr.h"
@@ -75,12 +73,9 @@ typedef struct NANR_ {
 
 void AnmRegisterFormats(void);
 
-
 int AnmRead(NANR *nanr, const unsigned char *lpFile, unsigned int size);
 
 int AnmWrite(NANR *nanr, BSTREAM *stream);
-
-int AnmWriteFile(NANR *nanr, LPWSTR name);
 
 void AnmFree(ObjHeader *obj);
 

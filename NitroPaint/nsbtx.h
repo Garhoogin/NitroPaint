@@ -1,5 +1,4 @@
 #pragma once
-#include <Windows.h>
 #include "texture.h"
 #include "filecommon.h"
 
@@ -44,8 +43,6 @@ int TexarcRead(TexArc *nsbtx, const unsigned char *buffer, unsigned int size);
 int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size);
 
 void TexarcRegisterFormats(void);
-
-int TexarcWriteFile(TexArc *nsbtx, LPWSTR filename);
 
 int TexarcWrite(TexArc *nsbtx, BSTREAM *stream);
 

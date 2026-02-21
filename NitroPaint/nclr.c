@@ -43,11 +43,6 @@ void PalFree(ObjHeader *header) {
 	NCLR *nclr = (NCLR *) header;
 	if (nclr->colors != NULL) free(nclr->colors);
 	nclr->colors = NULL;
-
-	COMBO2D *combo2d = (COMBO2D *) nclr->header.combo;
-	if (combo2d != NULL) {
-		combo2dUnlink(combo2d, &nclr->header);
-	}
 }
 
 static int PalIsValidHudson(const unsigned char *lpFile, unsigned int size) {
@@ -536,8 +531,4 @@ int PalWrite(NCLR *nclr, BSTREAM *stream) {
 			return PalWriteSetosa(nclr, stream);
 	}
 	return OBJ_STATUS_INVALID;
-}
-
-int PalWriteFile(NCLR *nclr, LPCWSTR name) {
-	return ObjWriteFile(&nclr->header, name);
 }

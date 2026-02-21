@@ -1,5 +1,4 @@
 #pragma once
-#include <Windows.h>
 #include "filecommon.h"
 
 #define BNLL_TYPE_INVALID    0

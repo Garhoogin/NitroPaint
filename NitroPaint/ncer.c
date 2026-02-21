@@ -4,6 +4,8 @@
 #include "nns.h"
 #include "setosa.h"
 
+#include <string.h>
+
 static int CellIsValidHudson(const unsigned char *buffer, unsigned int size);
 static int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 static int CellIsValidSetosa(const unsigned char *buffer, unsigned int size);
@@ -435,7 +437,7 @@ void CellRenderObj(NCER_CELL_INFO *info, int mapping, NCGR *ncgr, NCLR *nclr, CH
 					index = ncgrStart + x + y * tilesX;
 				}
 
-				ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette, TRUE);
+				ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette, 1);
 				for (int i = 0; i < 8; i++) {
 					memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
 				}
@@ -860,10 +862,6 @@ int CellWrite(NCER *ncer, BSTREAM *stream) {
 	return OBJ_STATUS_UNSUPPORTED;
 }
 
-int CellWriteFile(NCER *ncer, LPWSTR name) {
-	return ObjWriteFile(&ncer->header, name);
-}
-
 // ----- cell rendering
 
 
@@ -901,7 +899,7 @@ static void CellRenderOBJ(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *
 				index = ncgrStart + x + y * tilesX;
 			}
 
-			ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette, TRUE);
+			ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette, 1);
 			for (int i = 0; i < 8; i++) {
 				memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
 			}

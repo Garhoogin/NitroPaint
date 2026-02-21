@@ -224,11 +224,6 @@ void ChrFree(ObjHeader *header) {
 		free(ncgr->attr);
 		ncgr->attr = NULL;
 	}
-
-	COMBO2D *combo = (COMBO2D *) ncgr->header.combo;
-	if (combo != NULL) {
-		combo2dUnlink(combo, &ncgr->header);
-	}
 }
 
 void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
@@ -1100,10 +1095,6 @@ int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
 			return ChrWriteBin(ncgr, stream);
 	}
 	return 1;
-}
-
-int ChrWriteFile(NCGR *ncgr, LPCWSTR name) {
-	return ObjWriteFile(&ncgr->header, name);
 }
 
 void ChrSetDepth(NCGR *ncgr, int depth) {

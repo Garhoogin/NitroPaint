@@ -4,6 +4,7 @@
 #include "ncerviewer.h"
 #include "nftrviewer.h"
 #include "resource.h"
+#include "combo2d.h"
 
 
 #define LYT_HIT_TYPE_MASK       0x8000 // hit type mask

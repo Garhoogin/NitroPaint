@@ -1,5 +1,4 @@
 #pragma once
-#include <Windows.h>
 #include "ncgr.h"
 #include "nclr.h"
 
@@ -104,8 +103,6 @@ void CellDeleteCell(NCER *ncer, int idx);
 void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst);
 
 int CellWrite(NCER *ncer, BSTREAM *stream);
-
-int CellWriteFile(NCER *ncer, LPWSTR name);
 
 
 

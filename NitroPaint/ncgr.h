@@ -44,7 +44,7 @@ typedef struct NCGR_{
 	unsigned char *attr;      // per-character palette attribute data
 	int isExChar;             // is extended character data
 	int isIntermediate;       // is intermediate file?
-	BYTE **tiles;
+	unsigned char **tiles;
 	CHAR_SLICE *slices;       // for Ghost Trick files
 	int nSlices;              // for Ghost Trick files
 } NCGR;
@@ -55,7 +55,6 @@ typedef struct CHAR_VRAM_TRANSFER_ {
 	unsigned int size;    //size in bytes
 } CHAR_VRAM_TRANSFER;
 
-#include "combo2d.h"
 
 void ChrRegisterFormats(void);
 
@@ -124,11 +123,6 @@ void ChrWriteGraphics(NCGR *ncgr, BSTREAM *stream);
 // Write character graphics to a stream.
 //
 int ChrWrite(NCGR *ncgr, BSTREAM *stream);
-
-//
-// Write character graphics to a file.
-//
-int ChrWriteFile(NCGR *ncgr, LPCWSTR name);
 
 //
 // Change the bit depth of character graphics.

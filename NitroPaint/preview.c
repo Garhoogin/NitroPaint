@@ -550,7 +550,7 @@ int PreviewLoadObjCell(NCER *ncer, NANR *nanr, int cellno) {
 	int bankAttr = ncer->bankAttribs;
 	ncer->header.format = NCER_TYPE_NCER;
 	ncer->bankAttribs = 0; //no BR (breaks NITRO-Viewer)
-	CellWriteFile(ncer, pathNce);
+	ObjWriteFile(&ncer->header, pathNce);
 	ncer->header.format = fmt;
 	ncer->bankAttribs = bankAttr;
 	sMappingMode = ncer->mappingMode;
@@ -579,7 +579,7 @@ int PreviewLoadObjCell(NCER *ncer, NANR *nanr, int cellno) {
 		//load NANR as-is
 		int fmt = nanr->header.format;
 		nanr->header.format = NANR_TYPE_NANR;
-		AnmWriteFile(nanr, pathNan);
+		ObjWriteFile(&nanr->header, pathNan);
 		nanr->header.format = fmt;
 		animIndex = cellno;
 	}
