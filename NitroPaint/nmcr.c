@@ -6,18 +6,18 @@
 #include "nanr.h"
 #include "nmcr.h"
 
-static int nmcrIsValidNmcr(const unsigned char *buffer, unsigned int size);
+static int McbkIsValidNmcr(const unsigned char *buffer, unsigned int size);
 
-static void nmcrRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
+static void McbkRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
 	ObjRegisterFormat(FILE_TYPE_NMCR, format, name, flag, proc);
 }
 
-void nmcrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_NMCR, sizeof(NMCR), "Multi-Cell Animation", (ObjReader) nmcrRead, NULL, NULL, NULL);
-	nmcrRegisterFormat(NMCR_TYPE_NMCR, "NMCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, nmcrIsValidNmcr);
+void McbkRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_NMCR, sizeof(NMCR), "Multi-Cell Animation", (ObjReader) McbkRead, NULL, NULL, NULL);
+	McbkRegisterFormat(NMCR_TYPE_NMCR, "NMCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, McbkIsValidNmcr);
 }
 
-int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
+int McbkRead(NMCR *nmcr, char *buffer, unsigned int size) {
 	int type = nmcr->header.format;
 	if (type == NMCR_TYPE_INVALID) return 1;
 
@@ -42,7 +42,7 @@ int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size) {
 	return 0;
 }
 
-static int nmcrIsValidNmcr(const unsigned char *buffer, unsigned int size) {
+static int McbkIsValidNmcr(const unsigned char *buffer, unsigned int size) {
 	if (!NnsG2dIsValid(buffer, size)) return NMCR_TYPE_INVALID;
 	if (memcmp(buffer, "RCMN", 4) != 0) return 0;
 

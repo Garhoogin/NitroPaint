@@ -30,9 +30,9 @@ typedef struct NMCR_ {
 	MULTI_CELL *multiCells;
 } NMCR;
 
-void nmcrRegisterFormats(void);
+void McbkRegisterFormats(void);
 
 //
 // Read the NMCR file pointed to into the destination structure.
 //
-int nmcrRead(NMCR *nmcr, char *buffer, unsigned int size);
+int McbkRead(NMCR *nmcr, char *buffer, unsigned int size);
