@@ -1318,8 +1318,7 @@ static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 			break;
 
 		case FILE_TYPE_NMCR:
-			//TODO
-			//data->hWndNmcrViewer = CreateNmcrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, path);
+			data->hWndNmcrViewer = CreateNmcrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NMCR *) object);
 			break;
 		case FILE_TYPE_MESG:
 			h = CreateMesgEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (MesgFile *) object);
