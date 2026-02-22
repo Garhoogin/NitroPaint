@@ -582,21 +582,11 @@ LRESULT WINAPI NsbtxViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 						break;
 					}
 					case ID_FILE_SAVEAS:
-					case ID_FILE_SAVE:
-					{
-						if (data->szOpenFile[0] == L'\0' || LOWORD(wParam) == ID_FILE_SAVEAS) {
-							LPCWSTR filter = L"TexArc Files (*.nsbtx)\0*.nsbtx\0All Files\0*.*\0";
-							LPWSTR path = saveFileDialog(data->editorMgr->hWnd, L"Save As...", filter, L"nsbtx");
-							if (path != NULL) {
-								EditorSetFile(hWnd, path);
-								free(path);
-							} else break;
-						}
-						if (NsbtxViewerCheckSave(data)) {
-							ObjWriteFile(&data->nsbtx->header, data->szOpenFile);
-						}
+						if (NsbtxViewerCheckSave(data)) EditorSaveAs(data->hWnd);
 						break;
-					}
+					case ID_FILE_SAVE:
+						if (NsbtxViewerCheckSave(data)) EditorSave(data->hWnd);
+						break;
 				}
 			}
 			if (lParam) {
