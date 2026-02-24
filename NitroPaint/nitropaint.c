@@ -1297,6 +1297,7 @@ static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 			break;
 		case FILE_TYPE_NANR:
 			h = CreateNanrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NANR *) object);
+			data->hWndNanrViewer = h;
 			break;
 		case FILE_TYPE_NSBTX:
 			h = CreateNsbtxViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (TexArc *) object);
@@ -1314,11 +1315,12 @@ static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 			h = CreateBnblViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (BNBL *) object);
 			break;
 		case FILE_TYPE_TEXTURE:
-			CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (TextureObject *) object);
+			h = CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (TextureObject *) object);
 			break;
 
 		case FILE_TYPE_NMCR:
-			data->hWndNmcrViewer = CreateNmcrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NMCR *) object);
+			h = CreateNmcrViewerImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (NMCR *) object);
+			data->hWndNmcrViewer = h;
 			break;
 		case FILE_TYPE_MESG:
 			h = CreateMesgEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi, (MesgFile *) object);

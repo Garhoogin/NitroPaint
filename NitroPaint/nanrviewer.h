@@ -26,12 +26,7 @@ typedef struct {
 	UiCtlManager mgr;            // UI control manager
 	FrameBuffer fb;              // rendering frame buffer
 
-	int currentAnim;             // index of current animation
-	int currentFrame;            // index of current frame
-	int playing;                 // currently playing
-	int curFrameTime;            // current time on animation frame
-	int direction;               // current animation direction
-	int resetFlag;               // sequence is stopped and will be restarted
+	AnmSeqPlayer player;
 
 	int forceAffine;             // force affine mode for OBJ
 	int forceDoubleSize;         // force double size for OBJ

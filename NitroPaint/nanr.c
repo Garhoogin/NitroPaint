@@ -654,3 +654,146 @@ void AnmRenderSequenceFrame(COLOR32 *dest, NANR *nanr, NCER *ncer, NCGR *ncgr, N
 		forceAffine, forceDoubleSize);
 }
 
+
+// ----- Sequence player
+
+static NANR_SEQUENCE *AnmSeqPlayerGetSequence(AnmSeqPlayer *player) {
+	if (player->animBank == NULL) return NULL;
+
+	int anim = player->currentAnim;
+	if (anim < 0 || anim >= player->animBank->nSequences) return NULL;
+	return &player->animBank->sequences[anim];
+}
+
+void AnmSeqPlayerSetup(AnmSeqPlayer *player, NANR *nanr, int iSeq) {
+	player->animBank = nanr;
+	player->resetFlag = 1;
+	player->playing = 0;
+	player->direction = ANM_SEQ_PLAYER_FORWARD;
+	player->currentAnim = iSeq;
+	player->currentFrame = 0;
+	player->curFrameTime = 0;
+}
+
+void AnmSeqPlayerFree(AnmSeqPlayer *player) {
+	AnmSeqPlayerSetup(player, NULL, 0);
+}
+
+AnmSeqPlayerState AnmSeqPlayerStartPlayback(AnmSeqPlayer *player) {
+	if (player->resetFlag) {
+		NANR_SEQUENCE *seq = AnmSeqPlayerGetSequence(player);
+
+		int initFrame = 0;
+		if (seq != NULL) initFrame = seq->startFrameIndex;
+
+		player->curFrameTime = 0;                    // start frame
+		player->direction = ANM_SEQ_PLAYER_FORWARD;  // forward
+		player->currentFrame = initFrame;            // initial frame
+	}
+
+	player->resetFlag = 0; // clear re-set flag
+
+	//set playing flag
+	player->playing = 1;
+	return ANM_SEQ_PLAYER_PLAYING;
+}
+
+AnmSeqPlayerState AnmSeqPlayerPausePlayback(AnmSeqPlayer *player) {
+	player->playing = 0;
+	return ANM_SEQ_PLAYER_STOP;
+}
+
+AnmSeqPlayerState AnmSeqPlayerStopPlayback(AnmSeqPlayer *player) {
+	AnmSeqPlayerPausePlayback(player);
+	player->resetFlag = 1; // set the reset flag
+
+	return ANM_SEQ_PLAYER_STOP;
+}
+
+AnmSeqPlayerState AnmSeqPlayerAdvanceFrame(AnmSeqPlayer *player) {
+	NANR_SEQUENCE *seq = AnmSeqPlayerGetSequence(player);
+
+	//start next frame
+	player->curFrameTime = 0;
+	player->resetFlag = 0;
+
+	if (player->direction == ANM_SEQ_PLAYER_FORWARD) {
+		//forwards
+		player->currentFrame++;
+
+		//bounds checks, looping
+		if (player->currentFrame >= seq->nFrames) {
+			player->currentFrame--;
+
+			//control looping
+			switch (seq->mode) {
+				case NANR_SEQ_MODE_FORWARD:
+					//forward (no loop): end playback
+					AnmSeqPlayerStopPlayback(player);
+					break;
+				case NANR_SEQ_MODE_FORWARD_LOOP:
+					//forward loop: restart playback
+					player->currentFrame = 0; // start frame
+					break;
+				case NANR_SEQ_MODE_BACKWARD:
+				case NANR_SEQ_MODE_BACKWARD_LOOP:
+					//backward (with or without loop): reverse direction
+					player->direction = ANM_SEQ_PLAYER_BACKWARD;
+					if (player->currentFrame > 0) player->currentFrame--;
+					break;
+			}
+		}
+	} else {
+		//backwards
+		player->currentFrame--;
+
+		//bounds checks, looping
+		if (player->currentFrame < 0) {
+			player->currentFrame = 0;
+
+			//control looping
+			switch (seq->mode) {
+				case NANR_SEQ_MODE_FORWARD:
+				case NANR_SEQ_MODE_FORWARD_LOOP:
+					//forward (with or without loop): how did we get here?
+					AnmSeqPlayerStopPlayback(player);
+					break;
+				case NANR_SEQ_MODE_BACKWARD:
+					//backward (no loop): stop playback
+					AnmSeqPlayerStopPlayback(player);
+					break;
+				case NANR_SEQ_MODE_BACKWARD_LOOP:
+					//backward loop: restart
+					player->direction = ANM_SEQ_PLAYER_FORWARD;
+					player->currentFrame = 1;
+					break;
+			}
+		}
+	}
+
+	if (player->currentFrame >= seq->nFrames) player->currentFrame = seq->nFrames - 1;
+	if (player->currentFrame < 0) player->currentFrame = 0;
+	return player->playing ? ANM_SEQ_PLAYER_PLAYING : ANM_SEQ_PLAYER_STOP;
+}
+
+AnmSeqPlayerState AnmSeqPlayerTickPlayback(AnmSeqPlayer *player) {
+	if (!player->playing) return ANM_SEQ_PLAYER_STOP;
+
+	NANR_SEQUENCE *seq = AnmSeqPlayerGetSequence(player);
+
+	//increment the frame time
+	player->curFrameTime++;
+
+	int curFrame = player->currentFrame;
+	if (curFrame < 0 || curFrame >= seq->nFrames) return ANM_SEQ_PLAYER_PLAYING;
+
+	//compare to the sequence frame duration
+	int duration = seq->frames[curFrame].nFrames;
+	if (player->curFrameTime >= duration) {
+		//advance the sequence
+		AnmSeqPlayerAdvanceFrame(player);
+	}
+
+	//return the updated player state
+	return player->playing ? ANM_SEQ_PLAYER_PLAYING : ANM_SEQ_PLAYER_STOP;
+}

@@ -115,3 +115,32 @@ void AnmRenderSequenceFrame(
 	int      forceAffine,    // force affine mode for all OBJ
 	int      forceDoubleSize // force double size for all affine OBJ
 );
+
+
+typedef enum AnmSeqPlayerState_ {
+	ANM_SEQ_PLAYER_PLAYING,
+	ANM_SEQ_PLAYER_STOP
+} AnmSeqPlayerState;
+
+typedef enum AnmSeqPlayerDirection_ {
+	ANM_SEQ_PLAYER_FORWARD,
+	ANM_SEQ_PLAYER_BACKWARD
+} AnmSeqPlayerDirection;
+
+typedef struct AnmSeqPlayer_ {
+	NANR *animBank;
+	int currentAnim;                  // index of current animation
+	int currentFrame;                 // index of current frame
+	int playing;                      // currently playing
+	int curFrameTime;                 // current time on animation frame
+	AnmSeqPlayerDirection direction;  // current animation direction
+	int resetFlag;                    // sequence is stopped and will be restarted
+} AnmSeqPlayer;
+
+void AnmSeqPlayerSetup(AnmSeqPlayer *player, NANR *nanr, int iSeq);
+void AnmSeqPlayerFree(AnmSeqPlayer *player);
+AnmSeqPlayerState AnmSeqPlayerStartPlayback(AnmSeqPlayer *player);
+AnmSeqPlayerState AnmSeqPlayerPausePlayback(AnmSeqPlayer *player);
+AnmSeqPlayerState AnmSeqPlayerStopPlayback(AnmSeqPlayer *player);
+AnmSeqPlayerState AnmSeqPlayerAdvanceFrame(AnmSeqPlayer *player);
+AnmSeqPlayerState AnmSeqPlayerTickPlayback(AnmSeqPlayer *player);

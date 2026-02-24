@@ -714,7 +714,7 @@ static void AnmViewerSetRotationPoint(NANRVIEWERDATA *data) {
 	if (ncer == NULL) return;
 
 	ANIM_DATA_SRT frame;
-	if (!AnmViewerGetAnimFrame(data, data->currentAnim, data->currentFrame, &frame, NULL)) return;
+	if (!AnmViewerGetAnimFrame(data, data->player.currentAnim, data->player.currentFrame, &frame, NULL)) return;
 
 	int cellIndex = frame.index;
 	if (cellIndex < 0 || cellIndex >= ncer->nCells) return;
@@ -767,7 +767,7 @@ static void AnmViewerSetDefaultAnchor(NANRVIEWERDATA *data) {
 	if (ncer == NULL) return;
 
 	ANIM_DATA_SRT frame;
-	if (!AnmViewerGetAnimFrame(data, data->currentAnim, data->currentFrame, &frame, NULL)) return;
+	if (!AnmViewerGetAnimFrame(data, data->player.currentAnim, data->player.currentFrame, &frame, NULL)) return;
 
 	int cellIndex = frame.index;
 	if (cellIndex < 0 || cellIndex >= ncer->nCells) return;
@@ -795,7 +795,7 @@ static void AnmViewerSetCurrentFrame(NANRVIEWERDATA *data, int frm, BOOL updateL
 	if (seq == NULL) return;
 	if (frm < 0 || frm >= seq->nFrames) return;
 
-	data->currentFrame = frm;
+	data->player.currentFrame = frm;
 	InvalidateRect(data->hWndPreview, NULL, FALSE);
 
 	if (updateList) {
@@ -806,7 +806,7 @@ static void AnmViewerSetCurrentFrame(NANRVIEWERDATA *data, int frm, BOOL updateL
 }
 
 static void AnmViewerSetCurrentSequence(NANRVIEWERDATA *data, int seq, BOOL updateList) {
-	if (seq < 0 || seq >= data->nanr->nSequences || seq == data->currentAnim) return;
+	if (seq < 0 || seq >= data->nanr->nSequences || seq == data->player.currentAnim) return;
 
 	//update list
 	if (updateList) {
@@ -824,7 +824,7 @@ static void AnmViewerSetCurrentSequence(NANRVIEWERDATA *data, int seq, BOOL upda
 	UiCbSetCurSel(data->hWndPlayMode, data->nanr->sequences[seq].mode - NANR_SEQ_MODE_FORWARD);
 
 	//set state
-	data->currentAnim = seq;
+	data->player.currentAnim = seq;
 	AnmViewerSetCurrentFrame(data, 0, TRUE);
 	AnmViewerStopPlayback(data);
 	InvalidateRect(data->hWndPreview, NULL, FALSE);
@@ -834,8 +834,8 @@ static void AnmViewerSetCurrentSequence(NANRVIEWERDATA *data, int seq, BOOL upda
 // ----- core routines
 
 static NANR_SEQUENCE *AnmViewerGetCurrentSequence(NANRVIEWERDATA *data) {
-	if (data->currentAnim < 0 || data->currentAnim >= data->nanr->nSequences) return NULL;
-	return &data->nanr->sequences[data->currentAnim];
+	if (data->player.currentAnim < 0 || data->player.currentAnim >= data->nanr->nSequences) return NULL;
+	return &data->nanr->sequences[data->player.currentAnim];
 }
 
 static int AnmViewerGetAnimFrame(NANRVIEWERDATA *data, int iSeq, int iFrm, ANIM_DATA_SRT *pFrame, int *pDuration) {
@@ -843,15 +843,15 @@ static int AnmViewerGetAnimFrame(NANRVIEWERDATA *data, int iSeq, int iFrm, ANIM_
 }
 
 static int AnmViewerGetCurrentAnimFrame(NANRVIEWERDATA *data, ANIM_DATA_SRT *pFrame, int *pDuration) {
-	return AnmViewerGetAnimFrame(data, data->currentAnim, data->currentFrame, pFrame, pDuration);
+	return AnmViewerGetAnimFrame(data, data->player.currentAnim, data->player.currentFrame, pFrame, pDuration);
 }
 
 static void AnmViewerPutCurrentAnimFrame(NANRVIEWERDATA *data, const ANIM_DATA_SRT *frm, const int *pDuration) {
 	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
 	if (seq == NULL) return;
-	if (data->currentFrame < 0 || data->currentFrame >= seq->nFrames) return;
+	if (data->player.currentFrame < 0 || data->player.currentFrame >= seq->nFrames) return;
 
-	FRAME_DATA *frameData = &seq->frames[data->currentFrame];
+	FRAME_DATA *frameData = &seq->frames[data->player.currentFrame];
 	if (pDuration != NULL) frameData->nFrames = *pDuration;
 
 	if (frm != NULL) {
@@ -882,126 +882,68 @@ static void AnmViewerPutCurrentAnimFrame(NANRVIEWERDATA *data, const ANIM_DATA_S
 	AnmViewerFrameListUpdate(data);
 }
 
-static void AnmViewerStartPlayback(NANRVIEWERDATA *data) {
-	if (data->resetFlag) {
-		NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
-		int initFrame = 0;
-		if (seq != NULL) initFrame = seq->startFrameIndex;
-
-		data->curFrameTime = 0;         // start frame
-		data->direction = 0;            // forward
-		data->currentFrame = initFrame; // initial frame
+static void AnmViewerSetButtons(NANRVIEWERDATA *data, AnmSeqPlayerState state) {
+	if (state == ANM_SEQ_PLAYER_PLAYING) {
+		//player is playing
+		SendMessage(data->hWndPlayPause, WM_SETTEXT, 0, (LPARAM) L"Pause");
+		SendMessage(data->hWndStop, WM_SETTEXT, 0, (LPARAM) L"Stop");
+	} else {
+		//player is not playing
+		SendMessage(data->hWndPlayPause, WM_SETTEXT, 0, (LPARAM) L"Play");
+		SendMessage(data->hWndStop, WM_SETTEXT, 0, (LPARAM) L"Step");
 	}
+}
 
-	data->resetFlag = 0; // clear re-set flag
+static void AnmViewerStartPlayback(NANRVIEWERDATA *data) {
+	AnmSeqPlayerStartPlayback(&data->player);
 
 	//start timer
-	data->playing = 1;
 	SetTimer(data->hWnd, NANRVIEWER_TIMER_TICK, 16, NULL);
 
-	SendMessage(data->hWndPlayPause, WM_SETTEXT, 0, (LPARAM) L"Pause");
-	SendMessage(data->hWndStop, WM_SETTEXT, 0, (LPARAM) L"Stop");
+	AnmViewerSetButtons(data, ANM_SEQ_PLAYER_PLAYING);
 
 }
 
 static void AnmViewerPausePlayback(NANRVIEWERDATA *data) {
-	data->playing = 0;
+	AnmSeqPlayerPausePlayback(&data->player);
 
 	//kill timer
 	KillTimer(data->hWnd, NANRVIEWER_TIMER_TICK);
 
 	//update button text
-	SendMessage(data->hWndPlayPause, WM_SETTEXT, 0, (LPARAM) L"Play");
-	SendMessage(data->hWndStop, WM_SETTEXT, 0, (LPARAM) L"Step");
+	AnmViewerSetButtons(data, ANM_SEQ_PLAYER_STOP);
 }
 
 static void AnmViewerStopPlayback(NANRVIEWERDATA *data) {
-	AnmViewerPausePlayback(data);
-	data->resetFlag = 1; // set the reset flag
+	AnmSeqPlayerStopPlayback(&data->player);
+
+	//kill timer
+	KillTimer(data->hWnd, NANRVIEWER_TIMER_TICK);
+
+	//update button text
+	AnmViewerSetButtons(data, ANM_SEQ_PLAYER_STOP);
 
 	//set anchor
 	AnmViewerSetDefaultAnchor(data);
 }
 
 static void AnmViewerAdvanceSequence(NANRVIEWERDATA *data) {
-	//start next frame
-	data->curFrameTime = 0;
-	data->resetFlag = 0;
+	AnmSeqPlayerAdvanceFrame(&data->player);
 
-	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
-
-	if (!data->direction) {
-		//forwards
-		data->currentFrame++;
-
-		//bounds checks, looping
-		if (data->currentFrame >= seq->nFrames) {
-			data->currentFrame--;
-
-			//control looping
-			switch (seq->mode) {
-				case NANR_SEQ_MODE_FORWARD:
-					//forward (no loop): end playback
-					AnmViewerStopPlayback(data);
-					break;
-				case NANR_SEQ_MODE_FORWARD_LOOP:
-					//forward loop: restart playback
-					data->currentFrame = 0; // start frame
-					break;
-				case NANR_SEQ_MODE_BACKWARD:
-				case NANR_SEQ_MODE_BACKWARD_LOOP:
-					//backward (with or without loop): reverse direction
-					data->direction = 1;
-					if (data->currentFrame > 0) data->currentFrame--;
-					break;
-			}
-		}
-	} else {
-		//backwards
-		data->currentFrame--;
-
-		//bounds checks, looping
-		if (data->currentFrame < 0) {
-			data->currentFrame = 0;
-
-			//control looping
-			switch (seq->mode) {
-				case NANR_SEQ_MODE_FORWARD:
-				case NANR_SEQ_MODE_FORWARD_LOOP:
-					//forward (with or without loop): how did we get here?
-					AnmViewerStopPlayback(data);
-					break;
-				case NANR_SEQ_MODE_BACKWARD:
-					//backward (no loop): stop playback
-					AnmViewerStopPlayback(data);
-					break;
-				case NANR_SEQ_MODE_BACKWARD_LOOP:
-					//backward loop: restart
-					data->direction = 0;
-					data->currentFrame = 1;
-					break;
-			}
-		}
-	}
-
-	if (data->currentFrame >= seq->nFrames) data->currentFrame = seq->nFrames - 1;
-	if (data->currentFrame < 0) data->currentFrame = 0;
-	AnmViewerFrameListSelectFrame(data, data->currentFrame);
+	AnmViewerFrameListSelectFrame(data, data->player.currentFrame);
 }
 
 static void AnmViewerTickPlayback(NANRVIEWERDATA *data) {
-	if (!data->playing) return;
+	int curFrame = data->player.currentFrame;
 
-	//increment frame time
-	data->curFrameTime++;
-	
-	//compare to frame duration
-	int duration;
-	if (!AnmViewerGetCurrentAnimFrame(data, NULL, &duration)) return;
+	AnmSeqPlayerState state = AnmSeqPlayerTickPlayback(&data->player);
+	if (state == ANM_SEQ_PLAYER_STOP) {
+		//reached the end of the animation: update UI for stopped sequence
+		AnmViewerStopPlayback(data);
+	}
 
-	//if frame time exceeds this frame's duration, advance the sequence
-	if (data->curFrameTime >= duration) {
-		AnmViewerAdvanceSequence(data);
+	if (data->player.currentFrame != curFrame) {
+		AnmViewerFrameListSelectFrame(data, data->player.currentFrame);
 	}
 }
 
@@ -1009,7 +951,7 @@ static void AnmViewerDeleteCurrentFrame(NANRVIEWERDATA *data) {
 	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
 	if (seq == NULL) return;
 
-	int frm = data->currentFrame;
+	int frm = data->player.currentFrame;
 	if (frm < 0 || frm >= seq->nFrames) return;
 
 	//remove frame
@@ -1022,7 +964,7 @@ static void AnmViewerDeleteCurrentFrame(NANRVIEWERDATA *data) {
 		frm--;
 		if (frm < 0) frm = 0;
 	}
-	data->currentFrame = frm;
+	data->player.currentFrame = frm;
 
 	AnmViewerFrameListSelectFrame(data, frm);
 	AnmViewerFrameListUpdate(data);
@@ -1041,7 +983,7 @@ static void AnmViewerDeleteCurrentSequence(NANRVIEWERDATA *data) {
 	free(seq->frames);
 
 	//remove
-	int i = data->currentAnim;
+	int i = data->player.currentAnim;
 	memmove(&data->nanr->sequences[i], &data->nanr->sequences[i + 1], (data->nanr->nSequences - 1 - i) * sizeof(NANR_SEQUENCE));
 	data->nanr->nSequences--;
 	data->nanr->sequences = (NANR_SEQUENCE *) realloc(data->nanr->sequences, data->nanr->nSequences * sizeof(NANR_SEQUENCE));
@@ -1076,7 +1018,7 @@ static void AnmViewerCmdOnPlayPause(HWND hWnd, HWND hWndCtl, int notif, void *pa
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) param;
 
 	//invert playback state
-	if (data->playing) {
+	if (data->player.playing) {
 		AnmViewerPausePlayback(data);
 		AnmViewerSetDefaultAnchor(data);
 	} else {
@@ -1089,7 +1031,7 @@ static void AnmViewerCmdOnStop(HWND hWnd, HWND hWndCtl, int notif, void *param) 
 	NANRVIEWERDATA *data = (NANRVIEWERDATA *) param;
 
 	//if playing, this is the stop button. If not playing, this is the step button.
-	if (data->playing) {
+	if (data->player.playing) {
 		AnmViewerStopPlayback(data);
 	} else {
 		AnmViewerAdvanceSequence(data);
@@ -1220,6 +1162,9 @@ static void AnmViewerOnCreate(NANRVIEWERDATA *data) {
 	data->scale = 2;
 	data->showBorders = 1;
 
+	//setup sequence player
+	AnmSeqPlayerSetup(&data->player, NULL, -1);
+
 	data->hWndAnimList = AnmViewerAnimListCreate(data);
 	data->hWndNewSequence = CreateButton(data->hWnd, L"New Sequence", 0, 0, 0, 0, FALSE);
 	data->hWndPreview = CreateWindow(L"NanrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL | WS_CLIPSIBLINGS,
@@ -1324,9 +1269,11 @@ static void AnmViewerOnInitialize(NANRVIEWERDATA *data, NANR *nanr, LPCWSTR path
 	//own data
 	data->nanr = nanr;
 
+	//setup sequence player
+	AnmSeqPlayerSetup(&data->player, nanr, -1);
+
 	data->frameData.contentWidth = 512 * data->scale;
 	data->frameData.contentHeight = 256 * data->scale;
-	data->currentAnim = -1;
 	AnmViewerPreviewCenter(data);
 
 	//initialize listview
@@ -1345,6 +1292,7 @@ static void AnmViewerOnInitialize(NANRVIEWERDATA *data, NANR *nanr, LPCWSTR path
 }
 
 static void AnmViewerOnDestroy(NANRVIEWERDATA *data) {
+	AnmSeqPlayerFree(&data->player);
 	FbDestroy(&data->fb);
 	UiCtlMgrFree(&data->mgr);
 
@@ -1399,7 +1347,7 @@ static LRESULT AnmViewerOnNotify(NANRVIEWERDATA *data, WPARAM wParam, LPNMHDR hd
 				LPNMITEMACTIVATE nma = (LPNMITEMACTIVATE) hdr;
 				if (nma->iItem == -1) {
 					//item being unselected. Mark variable to cancel the deselection.
-					ListView_SetItemState(data->hWndAnimList, data->currentAnim, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+					ListView_SetItemState(data->hWndAnimList, data->player.currentAnim, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 				}
 				break;
 			}
@@ -1521,7 +1469,7 @@ static void AnmViewerRenderFrameFromCurrentSequence(NANRVIEWERDATA *data, COLOR3
 
 	//get frame data
 	ANIM_DATA_SRT frm;
-	if (!AnmViewerGetAnimFrame(data, data->currentAnim, iFrm, &frm, NULL)) return;
+	if (!AnmViewerGetAnimFrame(data, data->player.currentAnim, iFrm, &frm, NULL)) return;
 	if (frm.index < 0 || frm.index >= ncer->nCells) return;
 
 	//get referenced cell
@@ -1562,7 +1510,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 
 	//render
 	memset(data->cellRender, 0, sizeof(data->cellRender));
-	AnmViewerRenderFrameFromCurrentSequence(data, data->cellRender, data->currentFrame, FALSE);
+	AnmViewerRenderFrameFromCurrentSequence(data, data->cellRender, data->player.currentFrame, FALSE);
 
 	//ensure framebuffer size
 	RECT rcClient;
@@ -1614,7 +1562,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	}
 
 	//render bounds
-	if (cell != NULL && !data->playing) {
+	if (cell != NULL && !data->player.playing) {
 		int boxX, boxY, boxW, boxH;
 		AnmViewerGetCellBounds(cell, &boxX, &boxY, &boxW, &boxH);
 
@@ -1644,7 +1592,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	}
 
 	//draw rotation guide circle
-	if (!data->playing) {
+	if (!data->player.playing) {
 		int hit = AnmViewerGetEffectiveHit(data);
 		COLOR32 col = (hit == ANM_HIT_ROT_CIRCLE) ? 0x00FFFF : 0x00FF00; // yellow when hit
 
@@ -1654,7 +1602,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	}
 
 	//draw anchor
-	if (!data->playing) {
+	if (!data->player.playing) {
 		//draw anchor
 		int anchorX = data->anchorX * data->scale + 256 * data->scale - scrollX;
 		int anchorY = data->anchorY * data->scale + 128 * data->scale - scrollY;
@@ -1669,7 +1617,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 	}
 
 	//draw rotation point
-	if (!data->playing) {
+	if (!data->player.playing) {
 		//draw rotation point
 		int anchorX = data->rotPtX * data->scale + 256 * data->scale - scrollX;
 		int anchorY = data->rotPtY * data->scale + 128 * data->scale - scrollY;
@@ -2240,30 +2188,30 @@ static void AnmViewerInsertFrame(NANRVIEWERDATA *data, int i) {
 	dest->animationData = malloc(frameSizes[seq->type & 0xFFFF]);
 
 	//init
-	int oldI = data->currentFrame;
+	int oldI = data->player.currentFrame;
 	ANIM_DATA_SRT frm = { 0 };
 	frm.sx = FX32_ONE;
 	frm.sy = FX32_ONE;
-	data->currentFrame = i;
+	data->player.currentFrame = i;
 	AnmViewerPutCurrentAnimFrame(data, &frm, NULL);
-	data->currentFrame = oldI;
+	data->player.currentFrame = oldI;
 	AnmViewerSetCurrentFrame(data, i, TRUE);
 	AnmViewerSetDefaultAnchor(data);
 }
 
 static void AnmViewerCmdInsertFrameAbove(NANRVIEWERDATA *data) {
-	AnmViewerInsertFrame(data, data->currentFrame);
+	AnmViewerInsertFrame(data, data->player.currentFrame);
 }
 
 static void AnmViewerCmdInsertFrameBelow(NANRVIEWERDATA *data) {
-	AnmViewerInsertFrame(data, data->currentFrame + 1);
+	AnmViewerInsertFrame(data, data->player.currentFrame + 1);
 }
 
 static void AnmViewerCmdInterpolateBelow(NANRVIEWERDATA *data) {
 	NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
 	if (seq == NULL) return;
 
-	int frame0 = data->currentFrame;
+	int frame0 = data->player.currentFrame;
 	int frame1 = frame0 + 1;
 
 	//bound check
@@ -2276,8 +2224,8 @@ static void AnmViewerCmdInterpolateBelow(NANRVIEWERDATA *data) {
 	setting.clockwise = 1;     // default: rotations clockwise
 	setting.nFrames = 1;       // default: 1 generated frame
 	setting.totalDuration = 4; // default: 4 frames duration
-	AnmViewerGetAnimFrame(data, data->currentAnim, frame0, &setting.start, NULL);
-	AnmViewerGetAnimFrame(data, data->currentAnim, frame1, &setting.end, NULL);
+	AnmViewerGetAnimFrame(data, data->player.currentAnim, frame0, &setting.start, NULL);
+	AnmViewerGetAnimFrame(data, data->player.currentAnim, frame1, &setting.end, NULL);
 
 	int status = AnmViewerPromptInterpolation(data, &setting);
 	if (!status) return;
@@ -2293,7 +2241,7 @@ static void AnmViewerCmdInterpolateBelow(NANRVIEWERDATA *data) {
 		dest[i].pad_ = 0xBEEF;
 		dest[i].nFrames = setting.durations[i];
 		dest[i].animationData = calloc(1, frameSizes[seq->type & 0xFFFF]);
-		data->currentFrame = frame1 + i;
+		data->player.currentFrame = frame1 + i;
 		AnmViewerPutCurrentAnimFrame(data, &setting.result[i], NULL);
 	}
 	AnmViewerSetCurrentFrame(data, frame0, TRUE);
@@ -2332,7 +2280,7 @@ static LRESULT CALLBACK AnmViewerFrameListProc(HWND hWnd, UINT msg, WPARAM wPara
 			NANR_SEQUENCE *seq = AnmViewerGetCurrentSequence(data);
 			if (seq != NULL) {
 				ListView_SetItemCount(data->hWndFrameList, seq->nFrames);
-				AnmViewerFrameListSelectFrame(data, data->currentFrame);
+				AnmViewerFrameListSelectFrame(data, data->player.currentFrame);
 			}
 
 			//fall through
@@ -2369,7 +2317,7 @@ static LRESULT CALLBACK AnmViewerFrameListProc(HWND hWnd, UINT msg, WPARAM wPara
 						LPNMITEMACTIVATE nma = (LPNMITEMACTIVATE) hdr;
 						if (nma->iItem == -1) {
 							//item being unselected. Mark variable to cancel the deselection.
-							ListView_SetItemState(data->hWndFrameList, data->currentFrame, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+							ListView_SetItemState(data->hWndFrameList, data->player.currentFrame, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 						}
 						break;
 					}
@@ -2389,7 +2337,7 @@ static LRESULT CALLBACK AnmViewerFrameListProc(HWND hWnd, UINT msg, WPARAM wPara
 						if (di->item.mask & LVIF_TEXT) {
 							ANIM_DATA_SRT srt;
 							int duration;
-							int s = AnmViewerGetAnimFrame(data, data->currentAnim, di->item.iItem, &srt, &duration);
+							int s = AnmViewerGetAnimFrame(data, data->player.currentAnim, di->item.iItem, &srt, &duration);
 
 							if (s && di->item.iSubItem < 8) {
 								di->item.pszText = data->frameListBuffers[di->item.iSubItem];
