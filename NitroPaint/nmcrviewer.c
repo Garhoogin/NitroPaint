@@ -235,10 +235,6 @@ static void NmcrViewerOnPaint(NMCRVIEWERDATA *data) {
 	EndPaint(data->hWnd, &ps);
 }
 
-static void NmcrViewerOnDestroy(NMCRVIEWERDATA *data) {
-	NmcrViewerFreeSeqPlayers(data);
-}
-
 static void NmcrViewerRegisterNanrViewer(NMCRVIEWERDATA *data, NANRVIEWERDATA *nanrViewerData) {
 	//set new pointer
 	data->nanrViewer = nanrViewerData;
@@ -288,6 +284,16 @@ static void NmcrViewerOnCreate(NMCRVIEWERDATA *data) {
 
 	//register NANR viewer create callback
 	EditorRegisterCreateCallback(data->editorMgr, FILE_TYPE_NANR, NmcrViewerOnCreateNanrViewer, data);
+}
+
+static void NmcrViewerOnDestroy(NMCRVIEWERDATA *data) {
+	NmcrViewerFreeSeqPlayers(data);
+
+	//remove create/destroy NANR callback
+	EditorRemoveCreateCallback(data->editorMgr, FILE_TYPE_NANR, NmcrViewerOnCreateNanrViewer, data);
+	if (data->nanrViewer != NULL) {
+		EditorRemoveDestroyCallback((EDITOR_DATA *) data->nanrViewer, NmcrViewerOnDestroyNanrViewer, data);
+	}
 }
 
 static void NmcrViewerOnSize(NMCRVIEWERDATA *data) {
