@@ -3,6 +3,7 @@
 #include "editor.h"
 #include "nclr.h"
 #include "palops.h"
+#include "framebuffer.h"
 
 //edit modes
 #define PALVIEWER_MODE_EDIT       0
@@ -25,6 +26,8 @@ typedef struct {
 	int hoverIndex;
 	int showFrequency;
 	int showUnused;
+
+	FrameBuffer fb;
 
 	POINT dragStart; //in client coordinates, scroll transformed
 	POINT dragPoint; //in client coordinates, scroll transformed

@@ -112,6 +112,14 @@ static int PalViewerGetSelectionSize(NCLRVIEWERDATA *data) {
 	}
 }
 
+static int PalViewerGetScroll(NCLRVIEWERDATA *data) {
+	SCROLLINFO vert;
+	vert.cbSize = sizeof(vert);
+	vert.fMask = SIF_ALL;
+	GetScrollInfo(data->hWnd, SB_VERT, &vert);
+	return vert.nPos;
+}
+
 static void PalViewerGetSelectionDimensionsForRange(NCLRVIEWERDATA *data, int start, int end, int *selX, int *selY, int *outWidth, int *outHeight) {
 	//if 1D, say it's a row
 	if (data->selMode == PALVIEWER_SELMODE_1D) {
@@ -885,7 +893,7 @@ static void PalViewerDoPreserveTransform(NCLRVIEWERDATA *data, NCGR *ncgr, NSCR 
 	free(map);
 }
 
-static void PalViewerOutlineSelection(NCLRVIEWERDATA *data, HDC hDC, int selStart, int selEnd) {
+static void PalViewerOutlineSelection(NCLRVIEWERDATA *data, HDC hDC, int selStart, int selEnd, int scrollY) {
 	//use the current pen and current selection mode to highlight a selection region
 	HBRUSH hHollowBrush = (HBRUSH) GetStockObject(HOLLOW_BRUSH);
 	HBRUSH hOldBrush = (HBRUSH) SelectObject(hDC, hHollowBrush);
@@ -897,7 +905,7 @@ static void PalViewerOutlineSelection(NCLRVIEWERDATA *data, HDC hDC, int selStar
 		//outline rectangle
 		int rectX = selStartX * COLOR_SIZE, rectY = selStartY * COLOR_SIZE;
 		int rectW = selWidth * COLOR_SIZE, rectH = selHeight * COLOR_SIZE;
-		Rectangle(hDC, rectX, rectY, rectX + rectW, rectY + rectH);
+		Rectangle(hDC, rectX, rectY - scrollY, rectX + rectW, rectY + rectH - scrollY);
 	} else {
 		//piecewise
 		int selEndX = selEnd % 16;
@@ -906,35 +914,35 @@ static void PalViewerOutlineSelection(NCLRVIEWERDATA *data, HDC hDC, int selStar
 
 		//top row
 		{
-			MoveToEx(hDC, 0, (selStartY + 1) * COLOR_SIZE, NULL);
-			LineTo(hDC, selStartX * COLOR_SIZE, (selStartY + 1) * COLOR_SIZE);
-			LineTo(hDC, selStartX * COLOR_SIZE, selStartY * COLOR_SIZE);
-			LineTo(hDC, 16 * COLOR_SIZE - 1, selStartY * COLOR_SIZE);
-			LineTo(hDC, 16 * COLOR_SIZE - 1, (selStartY + 1) * COLOR_SIZE);
+			MoveToEx(hDC, 0, (selStartY + 1) * COLOR_SIZE - scrollY, NULL);
+			LineTo(hDC, selStartX * COLOR_SIZE, (selStartY + 1) * COLOR_SIZE - scrollY);
+			LineTo(hDC, selStartX * COLOR_SIZE, selStartY * COLOR_SIZE - scrollY);
+			LineTo(hDC, 16 * COLOR_SIZE - 1, selStartY * COLOR_SIZE - scrollY);
+			LineTo(hDC, 16 * COLOR_SIZE - 1, (selStartY + 1) * COLOR_SIZE - scrollY);
 		}
 
 		//middle
 		if (nRows >= 3) {
-			MoveToEx(hDC, 0, (selStartY + 1) * COLOR_SIZE, NULL);
-			LineTo(hDC, 0, selEndY * COLOR_SIZE - 1);
-			MoveToEx(hDC, 16 * COLOR_SIZE - 1, (selStartY + 1) * COLOR_SIZE, NULL);
-			LineTo(hDC, 16 * COLOR_SIZE - 1, selEndY * COLOR_SIZE);
+			MoveToEx(hDC, 0, (selStartY + 1) * COLOR_SIZE - scrollY, NULL);
+			LineTo(hDC, 0, selEndY * COLOR_SIZE - 1 - scrollY);
+			MoveToEx(hDC, 16 * COLOR_SIZE - 1, (selStartY + 1) * COLOR_SIZE - scrollY, NULL);
+			LineTo(hDC, 16 * COLOR_SIZE - 1, selEndY * COLOR_SIZE - scrollY);
 		}
 
 		//bottom row
 		{
-			MoveToEx(hDC, 0, selEndY * COLOR_SIZE - 1, NULL);
-			LineTo(hDC, 0, (selEndY + 1) * COLOR_SIZE - 1);
-			LineTo(hDC, (selEndX + 1) * COLOR_SIZE - 1, (selEndY + 1) * COLOR_SIZE - 1);
-			LineTo(hDC, (selEndX + 1) * COLOR_SIZE - 1, selEndY * COLOR_SIZE - 1);
-			LineTo(hDC, 16 * COLOR_SIZE - 1, selEndY * COLOR_SIZE - 1);
+			MoveToEx(hDC, 0, selEndY * COLOR_SIZE - 1 - scrollY, NULL);
+			LineTo(hDC, 0, (selEndY + 1) * COLOR_SIZE - 1 - scrollY);
+			LineTo(hDC, (selEndX + 1) * COLOR_SIZE - 1, (selEndY + 1) * COLOR_SIZE - 1 - scrollY);
+			LineTo(hDC, (selEndX + 1) * COLOR_SIZE - 1, selEndY * COLOR_SIZE - 1 - scrollY);
+			LineTo(hDC, 16 * COLOR_SIZE - 1, selEndY * COLOR_SIZE - 1 - scrollY);
 		}
 	}
 
 	SelectObject(hDC, hOldBrush);
 }
 
-static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, int xMax, int yMax) {
+static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int yMin, int yMax) {
 	COLOR *cols = data->nclr->colors;
 	int nRows = (data->nclr->nColors + 15) / 16;
 
@@ -1040,7 +1048,7 @@ static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, in
 			hOutlinePen = CreatePen(outlineStyle, 1, outlineColor);
 
 			HPEN hOldPen = SelectObject(hDC, hOutlinePen);
-			Rectangle(hDC, x * COLOR_SIZE, y * COLOR_SIZE, (x + 1) * COLOR_SIZE, (y + 1) * COLOR_SIZE);
+			Rectangle(hDC, x * COLOR_SIZE, y * COLOR_SIZE - yMin, (x + 1) * COLOR_SIZE, (y + 1) * COLOR_SIZE - yMin);
 			SelectObject(hDC, hOldPen);
 
 			//if frequency is 0 and we're outlining frequencies, slash this color
@@ -1049,10 +1057,10 @@ static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, in
 				HPEN hSlashPen = CreatePen(PS_SOLID, 1, slashColor);
 				HPEN hOldPen = SelectObject(hDC, hSlashPen);
 
-				MoveToEx(hDC, (x + 0) * COLOR_SIZE + 1, (y + 1) * COLOR_SIZE - 2, NULL);
-				LineTo(hDC, (x + 1) * COLOR_SIZE - 1, (y + 0) * COLOR_SIZE);
-				MoveToEx(hDC, (x + 0) * COLOR_SIZE + 1, (y + 0) * COLOR_SIZE + 1, NULL);
-				LineTo(hDC, (x + 1) * COLOR_SIZE - 1, (y + 1) * COLOR_SIZE - 1);
+				MoveToEx(hDC, (x + 0) * COLOR_SIZE + 1, (y + 1) * COLOR_SIZE - 2 - yMin, NULL);
+				LineTo(hDC, (x + 1) * COLOR_SIZE - 1, (y + 0) * COLOR_SIZE - yMin);
+				MoveToEx(hDC, (x + 0) * COLOR_SIZE + 1, (y + 0) * COLOR_SIZE + 1 - yMin, NULL);
+				LineTo(hDC, (x + 1) * COLOR_SIZE - 1, (y + 1) * COLOR_SIZE - 1 - yMin);
 
 				SelectObject(hDC, hOldPen);
 				DeleteObject(hSlashPen);
@@ -1069,7 +1077,7 @@ static void PalViewerPaint(NCLRVIEWERDATA *data, HDC hDC, int xMin, int yMin, in
 		HPEN hOldPen = SelectObject(hDC, hDotOutline);
 		int dx, dy;
 		int d = PalViewerGetDragDelta(data, &dx, &dy);
-		PalViewerOutlineSelection(data, hDC, min(data->selStart, data->selEnd) + d, max(data->selStart, data->selEnd) + d);
+		PalViewerOutlineSelection(data, hDC, min(data->selStart, data->selEnd) + d, max(data->selStart, data->selEnd) + d, yMin);
 		SelectObject(hDC, hOldPen);
 		DeleteObject(hDotOutline);
 	}
@@ -1222,21 +1230,13 @@ static DWORD CALLBACK PalViewerSortNeuro(LPVOID param) {
 	return 0;
 }
 
-static void PalViewerGetClientCursorPosition(HWND hWnd, int *px, int *py) {
+static void PalViewerGetClientCursorPosition(NCLRVIEWERDATA *data, int *px, int *py) {
 	POINT mousePos;
 	GetCursorPos(&mousePos);
-	ScreenToClient(hWnd, &mousePos);
+	ScreenToClient(data->hWnd, &mousePos);
 
 	//adjust for scroll
-	SCROLLINFO horiz, vert;
-	horiz.cbSize = sizeof(horiz);
-	vert.cbSize = sizeof(vert);
-	horiz.fMask = SIF_ALL;
-	vert.fMask = SIF_ALL;
-	GetScrollInfo(hWnd, SB_HORZ, &horiz);
-	GetScrollInfo(hWnd, SB_VERT, &vert);
-	mousePos.x += horiz.nPos;
-	mousePos.y += vert.nPos;
+	mousePos.y += PalViewerGetScroll(data);
 	
 	*px = mousePos.x;
 	*py = mousePos.y;
@@ -1389,6 +1389,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hoverY = -1;
 			data->hoverIndex = -1;
 
+			FbCreate(&data->fb, hWnd, 256, 256);
+
 			PAL_OP *palOp = &data->palOp;
 			palOp->hWndParent = data->editorMgr->hWnd;
 			palOp->param = (void *) hWnd;
@@ -1460,7 +1462,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_NCMOUSEMOVE:
 		{
 			POINT mousePos;
-			PalViewerGetClientCursorPosition(hWnd, &mousePos.x, &mousePos.y);
+			PalViewerGetClientCursorPosition(data, &mousePos.x, &mousePos.y);
 
 			//if we're dragging, clamp position
 			if (data->mouseDown) {
@@ -1501,7 +1503,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_MOUSELEAVE:
 		{
 			POINT mousePos;
-			PalViewerGetClientCursorPosition(hWnd, &mousePos.x, &mousePos.y);
+			PalViewerGetClientCursorPosition(data, &mousePos.x, &mousePos.y);
 
 			int nRows = data->nclr->nColors / 16;
 
@@ -1533,7 +1535,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			int ctrlPressed = GetKeyState(VK_CONTROL) >> 15;
 
 			if (mousePos.x >= 0 && mousePos.y >= 0 && mousePos.x < (16 * COLOR_SIZE)) {
-				PalViewerGetClientCursorPosition(hWnd, &mousePos.x, &mousePos.y);
+				PalViewerGetClientCursorPosition(data, &mousePos.x, &mousePos.y);
 
 				int x = mousePos.x / COLOR_SIZE;
 				int y = mousePos.y / COLOR_SIZE;
@@ -1543,7 +1545,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					data->dragging = 0;
 					data->preserveDragging = !!shiftPressed;
 
-					PalViewerGetClientCursorPosition(hWnd, &mousePos.x, &mousePos.y);
+					PalViewerGetClientCursorPosition(data, &mousePos.x, &mousePos.y);
 
 					data->dragStart.x = mousePos.x;
 					data->dragStart.y = mousePos.y;
@@ -1577,7 +1579,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ReleaseCapture();
 
 			POINT mousePos;
-			PalViewerGetClientCursorPosition(hWnd, &mousePos.x, &mousePos.y);
+			PalViewerGetClientCursorPosition(data, &mousePos.x, &mousePos.y);
 
 			if (!data->dragging && !data->makingSelection) {
 
@@ -1647,7 +1649,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case WM_RBUTTONUP:
 		{
 			POINT mousePos;
-			PalViewerGetClientCursorPosition(hWnd, &mousePos.x, &mousePos.y);
+			PalViewerGetClientCursorPosition(data, &mousePos.x, &mousePos.y);
 
 			int hoverY = data->hoverY;
 			int hoverX = data->hoverX;
@@ -1691,37 +1693,21 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			break;
 		case WM_PAINT:
 		{
+			PAINTSTRUCT ps;
+			HDC hDC = BeginPaint(hWnd, &ps);
+
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
-			PAINTSTRUCT ps;
-			HDC hWindowDC = BeginPaint(hWnd, &ps);
 
-			SCROLLINFO horiz, vert;
-			horiz.cbSize = sizeof(horiz);
-			vert.cbSize = sizeof(vert);
-			horiz.fMask = SIF_ALL;
-			vert.fMask = SIF_ALL;
-			GetScrollInfo(hWnd, SB_HORZ, &horiz);
-			GetScrollInfo(hWnd, SB_VERT, &vert);
+			int scroll = PalViewerGetScroll(data);
 
+			FbSetSize(&data->fb, rcClient.right, rcClient.bottom);
 
-			HDC hDC = CreateCompatibleDC(hWindowDC);
-			HBITMAP hBitmap = CreateCompatibleBitmap(hWindowDC, max(data->frameData.contentWidth, horiz.nPos + rcClient.right), max(data->frameData.contentHeight, vert.nPos + rcClient.bottom));
-			SelectObject(hDC, hBitmap);
-			IntersectClipRect(hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
-			DefMDIChildProc(hWnd, WM_ERASEBKGND, (WPARAM) hDC, 0);
-			HPEN defaultPen = SelectObject(hDC, GetStockObject(NULL_PEN));
-			HBRUSH defaultBrush = SelectObject(hDC, GetSysColorBrush(GetClassLong(hWnd, GCL_HBRBACKGROUND) - 1));
-			Rectangle(hDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
-			SelectObject(hDC, defaultPen);
-			SelectObject(hDC, defaultBrush);
+			DefMDIChildProc(hWnd, WM_ERASEBKGND, (WPARAM) data->fb.hDC, 0);
+			PalViewerPaint(data, data->fb.hDC, scroll, scroll + rcClient.bottom);
 
-			PalViewerPaint(data, hDC, horiz.nPos, vert.nPos, horiz.nPos + rcClient.right, vert.nPos + rcClient.bottom);
-
-			BitBlt(hWindowDC, 0, 0, rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, hDC, horiz.nPos, vert.nPos, SRCCOPY);
+			FbDraw(&data->fb, hDC, 0, 0, rcClient.right, rcClient.bottom, 0, 0);
 			EndPaint(hWnd, &ps);
-			DeleteObject(hDC);
-			DeleteObject(hBitmap);
 			break;
 		}
 		case WM_ERASEBKGND:
@@ -2098,6 +2084,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
 			nitroPaintStruct->hWndNclrViewer = NULL;
+			FbDestroy(&data->fb);
 			PalViewerUpdateViewers(data, PALVIEWER_UPDATE_ALL);
 			break;
 		}
