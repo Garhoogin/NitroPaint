@@ -212,9 +212,6 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size)
 	TEXELS *texels = (TEXELS *) calloc(dictTex.nEntries, sizeof(TEXELS));
 	PALETTE *palettes = (PALETTE *) calloc(dictPal.nEntries, sizeof(PALETTE));
 
-	int baseOffsetTex = textureDataOffset;
-	int baseOffsetTex4x4 = compressedTextureDataOffset;
-	int baseOffsetTex4x4Info = compressedTextureInfoDataOffset;
 	for (int i = 0; i < dictTex.nEntries; i++) {
 		//read a texture from pos.
 		DICTTEXDATA *texData = &dictTexData[i];
@@ -237,11 +234,11 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size)
 
 		if (FORMAT(texData->texImageParam) == CT_4x4) {
 			texels[i].cmp = calloc(texelSize >> 1, 1);
-			memcpy(texels[i].texel, tex0 + offset + baseOffsetTex4x4, texelSize);
-			memcpy(texels[i].cmp, tex0 + baseOffsetTex4x4Info + offset / 2, texelSize >> 1);
+			memcpy(texels[i].texel, tex0 + offset + compressedTextureDataOffset, texelSize);
+			memcpy(texels[i].cmp, tex0 + compressedTextureInfoDataOffset + offset / 2, texelSize >> 1);
 		} else {
 			texels[i].cmp = NULL;
-			memcpy(texels[i].texel, tex0 + offset + baseOffsetTex, texelSize);
+			memcpy(texels[i].texel, tex0 + offset + textureDataOffset, texelSize);
 		}
 
 		int texNameLen = strnlen(dictTex.namesPtr + i * 16, 16);
@@ -250,7 +247,7 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size)
 	}
 
 	for (int i = 0; i < dictPal.nEntries; i++) {
-		DICTPLTTDATA *palData = dictPalData + i;
+		DICTPLTTDATA *palData = &dictPalData[i];
 		
 		//find the length of the palette, by finding the least offset greater than this one's palette
 		int offset = size - paletteDataOffset - (palData->offset << 3) - tex0Offset + (palData->offset << 3);
@@ -262,11 +259,11 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, int size)
 			}
 		}
 
-		int nColors = (offset - (palData->offset << 3)) >> 1;
-		if (palData->flag & 0x0001) nColors = 4; //4-color flag
+		unsigned int nColors = (offset - (palData->offset << 3)) >> 1;
+		if (palData->flag & 0x0001) nColors = 4; // 4-color flag
 		palettes[i].nColors = nColors;
-		palettes[i].pal = (COLOR *) calloc(nColors, 2);
-		memcpy(palettes[i].pal, tex0 + paletteDataOffset + (palData->offset << 3), nColors * 2);
+		palettes[i].pal = (COLOR *) calloc(nColors, sizeof(COLOR));
+		memcpy(palettes[i].pal, tex0 + paletteDataOffset + (palData->offset << 3), nColors * sizeof(COLOR));
 
 		int palNameLen = strnlen(dictPal.namesPtr + i * 16, 16);
 		palettes[i].name = calloc(palNameLen + 1, 1);
