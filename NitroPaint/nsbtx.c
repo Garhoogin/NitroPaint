@@ -391,6 +391,42 @@ static char *TexarciGetPaletteNameCallback(void *palette) {
 	return ((PALETTE *) palette)->name;
 }
 
+static unsigned int TexarciPutTextureData(BSTREAM *outTex, BSTREAM *outPlttIdx, const void *texel, const void *idx, unsigned int size) {
+
+	//search the texture data for a matching data, in 8-byte increments (address granularity of TEXIMAGE_PARAM).
+	unsigned int foundOffset = outTex->pos;
+	for (unsigned int i = 0; i < outTex->size; i += 8) {
+		//compare up to size bytes, or remaining in the buffer, whichever is lesser
+		unsigned int nCompare = size;
+		if (nCompare > (outTex->size - i)) nCompare = outTex->size - i;
+
+		//compare texel data
+		if (memcmp(outTex->buffer + i, texel, nCompare) != 0) continue;
+
+		//if the palette index exists, compare it as well.
+		if (idx != NULL) {
+			if (memcmp(outPlttIdx->buffer + i / 2, idx, nCompare / 2) != 0) continue;
+		}
+
+		//matching data
+		foundOffset = i;
+		break;
+	}
+
+	if (size > (outTex->size - foundOffset)) {
+		//write remaining portion of texture data
+		unsigned int nWrite = size - (outTex->size - foundOffset);
+		unsigned int writeOffset = size - nWrite;
+		
+		bstreamWrite(outTex, ((const unsigned char *) texel) + writeOffset, nWrite);
+		if (idx != NULL) {
+			bstreamWrite(outPlttIdx, ((const unsigned char *) idx) + writeOffset / 2, nWrite / 2);
+		}
+	}
+
+	return foundOffset;
+}
+
 int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 	NnsStream nns;
 	NnsStreamCreate(&nns, nsbtx->mdl0 == NULL ? "BTX0" : "BMD0", 0, 1, NNS_TYPE_G3D, NNS_SIG_BE);
@@ -412,21 +448,21 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		TEXELS *texture = &nsbtx->textures[i];
 		unsigned int width = TEXW(texture->texImageParam);
-		unsigned int height = texture->height;
+		unsigned int height = TEXH(texture->texImageParam);
 		unsigned int texelSize = TxGetTexelSize(width, height, texture->texImageParam);
 
 		unsigned int fmt = FORMAT(texture->texImageParam);
-		unsigned int ofs = (fmt == CT_4x4) ? tex4x4Data.pos : texData.pos;
-		ofs = (ofs >> 3) & 0xFFFF;
-		texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ofs;
-
+		unsigned int ofs;
 		if (fmt == CT_4x4) {
-			//write the offset in the texImageParams
-			bstreamWrite(&tex4x4Data, texture->texel, texelSize);
-			bstreamWrite(&tex4x4PlttIdxData, texture->cmp, texelSize / 2);
+			//put the texel and palette index data.
+			ofs = TexarciPutTextureData(&tex4x4Data, &tex4x4PlttIdxData, texture->texel, texture->cmp, texelSize);
 		} else {
-			bstreamWrite(&texData, texture->texel, texelSize);
+			//put the texel data. Since the offsets are not tied, search for an existing
+			//data block we can share a pointer with.
+			ofs = TexarciPutTextureData(&texData, NULL, texture->texel, NULL, texelSize);
 		}
+
+		texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ((ofs >> 3) & 0xFFFF);
 	}
 
 	unsigned int *paletteOffsets = (unsigned int *) calloc(nsbtx->nTextures, sizeof(unsigned int));
