@@ -49,16 +49,6 @@ int ScrIsValidBin(const unsigned char *buffer, unsigned int size);
 void ScrRegisterFormats(void);
 
 //
-// Reads a screen file from an array.
-//
-int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize);
-
-//
-// Write a screen to a stream.
-//
-int ScrWrite(NSCR *nscr, BSTREAM *stream);
-
-//
 // Render a single tile of a screen to 32-bit output, with respect to character
 // base for quirks in some game setups.
 //

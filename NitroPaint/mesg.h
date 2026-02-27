@@ -37,13 +37,6 @@ typedef struct MesgFile_ {
 
 void MesgRegisterFormats(void);
 
-
 unsigned int MesgSingleByteLength(const unsigned char *buf);
 unsigned int MesgDoubleByteLength(const unsigned char *buf);
-
-int MesgIsValid(const unsigned char *buffer, unsigned int size);
-
-int MesgRead(MesgFile *mesg, const unsigned char *buffer, unsigned int size);
-
-int MesgWrite(MesgFile *mesg, BSTREAM *stream);
 

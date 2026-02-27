@@ -1,16 +1,26 @@
 #include "mesg.h"
 
 static int MesgIsValidBMG(const unsigned char *buffer, unsigned int size);
-
 static void MesgFree(ObjHeader *header);
+static int MesgReadBMG(MesgFile *mesg, const unsigned char *buffer, unsigned int size);
+static int MesgWriteBMG(MesgFile *mesg, BSTREAM *stream);
 
-static void MesgRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_MESG, format, name, flag, proc);
-}
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_MESG, MESG_TYPE_BMG, "BMG",
+		 OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		 MesgIsValidBMG,
+		 (ObjReader) MesgReadBMG,
+		 (ObjWriter) MesgWriteBMG
+	}
+};
 
 void MesgRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_MESG, sizeof(MesgFile), "Message", (ObjReader) MesgRead, (ObjWriter) MesgWrite, NULL, MesgFree);
-	MesgRegisterFormat(MESG_TYPE_BMG, "BMG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, MesgIsValidBMG);
+	ObjRegisterType(FILE_TYPE_MESG, sizeof(MesgFile), "Message", NULL, MesgFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 
@@ -174,12 +184,6 @@ static int MesgIsValidBMG(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int MesgIsValid(const unsigned char *buffer, unsigned int size) {
-	int fmt;
-	ObjIdentifyExByType(buffer, size, FILE_TYPE_MESG, &fmt);
-	return fmt;
-}
-
 static unsigned int MesgGetStringLength(const unsigned char *buf, int encoding) {
 	switch (encoding) {
 		case MESG_ENCODING_UNDEFINED:
@@ -267,15 +271,6 @@ static int MesgReadBMG(MesgFile *mesg, const unsigned char *buffer, unsigned int
 	if (mid1 != NULL) mesg->includeIdMap = 1;
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int MesgRead(MesgFile *mesg, const unsigned char *buffer, unsigned int size) {
-	int type = MesgIsValid(buffer, size);
-	switch (type) {
-		case MESG_TYPE_BMG:
-			return MesgReadBMG(mesg, buffer, size);
-	}
-	return OBJ_STATUS_INVALID;
 }
 
 
@@ -473,12 +468,4 @@ static int MesgWriteBMG(MesgFile *mesg, BSTREAM *stream) {
 	free(inf1);
 	bstreamFree(&stmDat1);
 	return OBJ_STATUS_SUCCESS;
-}
-
-int MesgWrite(MesgFile *mesg, BSTREAM *stream) {
-	switch (mesg->header.format) {
-		case MESG_TYPE_BMG:
-			return MesgWriteBMG(mesg, stream);
-	}
-	return OBJ_STATUS_INVALID;
 }

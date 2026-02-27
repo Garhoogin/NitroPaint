@@ -1468,30 +1468,25 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		dfc->data = fp;
 		dfc->size = comboSize;
 
-		NCLR *nclr = NULL;
-		NCGR *ncgr = NULL;
-		NSCR *nscr = NULL;
+		ObjHeader *nclr = NULL, *ncgr = NULL, *nscr = NULL;
 
 		//read applicable sections
 		if (pltRef != NULL) {
-			nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_COMBO);
-			PalRead(nclr, dfc->data + pltOffset, pltSize);
-			combo2dLink(combo, &nclr->header);
+			ObjReadBuffer(&nclr, dfc->data + pltOffset, pltSize, FILE_TYPE_PALETTE, NCLR_TYPE_BIN, COMPRESSION_NONE);
+			combo2dLink(combo, nclr);
 		}
 		if (chrRef != NULL) {
-			ncgr = (NCGR *) ObjAlloc(FILE_TYPE_PALETTE, NCGR_TYPE_COMBO);
-			ChrRead(ncgr, dfc->data + chrOffset, chrSize);
-			combo2dLink(combo, &ncgr->header);
+			ObjReadBuffer(&ncgr, dfc->data + chrOffset, chrSize, FILE_TYPE_CHARACTER, NCGR_TYPE_BIN, COMPRESSION_NONE);
+			combo2dLink(combo, nclr);
 		}
 		if (scrRef != NULL) {
-			nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NSCR_TYPE_COMBO);
-			ScrRead(nscr, dfc->data + scrOffset, scrSize);
-			combo2dLink(combo, &nscr->header);
+			ObjReadBuffer(&nscr, dfc->data + scrOffset, scrSize, FILE_TYPE_SCREEN, NSCR_TYPE_BIN, COMPRESSION_NONE);
+			combo2dLink(combo, nclr);
 		}
 
-		if (pltRef != NULL) NpOpenObjectAtPath(hWnd, &nclr->header, pathBuffer); // open the color palette
-		if (chrRef != NULL) NpOpenObjectAtPath(hWnd, &ncgr->header, pathBuffer); // open the graphics
-		if (scrRef != NULL) NpOpenObjectAtPath(hWnd, &nscr->header, pathBuffer); // open BG screen data
+		if (pltRef != NULL) NpOpenObjectAtPath(hWnd, nclr, pathBuffer); // open the color palette
+		if (chrRef != NULL) NpOpenObjectAtPath(hWnd, ncgr, pathBuffer); // open the graphics
+		if (scrRef != NULL) NpOpenObjectAtPath(hWnd, nscr, pathBuffer); // open BG screen data
 
 		free(pathBuffer);
 

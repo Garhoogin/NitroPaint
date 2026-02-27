@@ -96,19 +96,3 @@ void TxRegisterFormats(void);
 int TxIdentify(const unsigned char *buffer, unsigned int size);
 
 int TxIdentifyFile(const wchar_t *path);
-
-int TxReadNnsTga(TextureObject *texture, const unsigned char *buffer, unsigned int size);
-
-int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned int size);
-
-int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int size);
-
-int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int size);
-
-int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream);
-
-int TxWriteTds(TextureObject *texture, BSTREAM *stream);
-
-int TxWriteIStudio(TextureObject *texture, BSTREAM *stream);
-
-int TxWrite(TextureObject *texture, BSTREAM *stream);

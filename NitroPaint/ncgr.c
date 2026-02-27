@@ -17,24 +17,100 @@ static int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidTose(const unsigned char *buffer, unsigned int size);
 
+static int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadIcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadAcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadHudson2(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadTose(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadSetosa(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+
+static int ChrWriteNcgr(NCGR *ncgr, BSTREAM *stream);
+static int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream);
+static int ChrWriteIcg(NCGR *ncgr, BSTREAM *stream);
+static int ChrWriteAcg(NCGR *ncgr, BSTREAM *stream);
+static int ChrWriteHudson(NCGR *ncgr, BSTREAM *stream);
+static int ChrWriteHudson2(NCGR *ncgr, BSTREAM *stream);
+static int ChrWriteTose(NCGR *ncgr, BSTREAM *Stream);
+static int ChrWriteGhostTrick(NCGR *ncgr, BSTREAM *stream);
+static int ChrWriteSetosa(NCGR *ncgr, BSTREAM *stream);
+static int ChrWriteBin(NCGR *ncgr, BSTREAM *stream);
+
 static void ChrFree(ObjHeader *obj);
 
-static void ChriRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_CHARACTER, format, name, flag, proc);
-}
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_CHARACTER, NCGR_TYPE_NCGR, "NCGR",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		ChrIsValidNcgr,
+		(ObjReader) ChrReadNcgr,
+		(ObjWriter) ChrWriteNcgr
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_NC, "NCG",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		ChrIsValidNcg,
+		(ObjReader) ChrReadNcg,
+		(ObjWriter) ChrWriteNcg
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_IC, "ICG",
+		OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		ChrIsValidIcg,
+		(ObjReader) ChrReadIcg,
+		(ObjWriter) ChrWriteIcg
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_AC, "ACG",
+		OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		ChrIsValidAcg,
+		(ObjReader) ChrReadAcg,
+		(ObjWriter) ChrWriteAcg
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_TOSE, "Tose",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		ChrIsValidTose,
+		(ObjReader) ChrReadTose,
+		(ObjWriter) ChrWriteTose
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_HUDSON, "Hudson",
+		OBJ_ID_HEADER,
+		ChrIsValidHudson,
+		(ObjReader) ChrReadHudson,
+		(ObjWriter) ChrWriteHudson
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_HUDSON2, "Hudson 2",
+		OBJ_ID_HEADER,
+		ChrIsValidHudson,
+		(ObjReader) ChrReadHudson2,
+		(ObjWriter) ChrWriteHudson2
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_GHOSTTRICK, "Ghost Trick",
+		OBJ_ID_COMPRESSION,
+		ChrIsValidGhostTrick,
+		(ObjReader) ChrReadGhostTrick,
+		(ObjWriter) ChrWriteGhostTrick
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_SETOSA, "Setosa",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		ChrIsValidSetosa,
+		(ObjReader) ChrReadSetosa,
+		(ObjWriter) ChrWriteSetosa
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_BIN, "Binary",
+		0,
+		ChrIsValidBin,
+		(ObjReader) ChrReadBin,
+		(ObjWriter) ChrWriteBin
+	}
+};
 
 void ChrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_CHARACTER, sizeof(NCGR), "Character", (ObjReader) ChrRead, (ObjWriter) ChrWrite, NULL, ChrFree);
-	ChriRegisterFormat(NCGR_TYPE_NCGR, "NCGR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, ChrIsValidNcgr);
-	ChriRegisterFormat(NCGR_TYPE_NC, "NCG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidNcg);
-	ChriRegisterFormat(NCGR_TYPE_IC, "ICG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidIcg);
-	ChriRegisterFormat(NCGR_TYPE_AC, "ACG", OBJ_ID_FOOTER | OBJ_ID_CHUNKED | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidAcg);
-	ChriRegisterFormat(NCGR_TYPE_TOSE, "Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, ChrIsValidTose);
-	ChriRegisterFormat(NCGR_TYPE_HUDSON, "Hudson", OBJ_ID_HEADER, ChrIsValidHudson);
-	ChriRegisterFormat(NCGR_TYPE_HUDSON2, "Hudson 2", OBJ_ID_HEADER, ChrIsValidHudson2);
-	ChriRegisterFormat(NCGR_TYPE_GHOSTTRICK, "Ghost Trick", OBJ_ID_COMPRESSION, ChrIsValidGhostTrick);
-	ChriRegisterFormat(NCGR_TYPE_SETOSA, "Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ChrIsValidSetosa);
-	ChriRegisterFormat(NCGR_TYPE_BIN, "Binary", 0, ChrIsValidBin);
+	ObjRegisterType(FILE_TYPE_CHARACTER, sizeof(NCGR), "Character", NULL, ChrFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 
@@ -294,50 +370,43 @@ void ChrReadGraphics(NCGR *ncgr, const unsigned char *buffer) {
 }
 
 static int ChrReadHudson(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	int type = 0;
-
-	int nCharacters = 0;
-	if (ChrIsValidHudson(buffer, size)) {
-
-		unsigned int dataLength = *(uint16_t *) (buffer + 1);
-		dataLength -= 4;
-
-		nCharacters = *(uint16_t *) (buffer + 5);
-		type = NCGR_TYPE_HUDSON;
-	} else if (ChrIsValidHudson2(buffer, size)) {
-		nCharacters = *(uint16_t *) (buffer + 1);
-		type = NCGR_TYPE_HUDSON2;
-	}
+	int nCharacters = *(uint16_t *) (buffer + 5);
+	int tilesX = ChrGuessWidth(nCharacters);
+	int tilesY = nCharacters / tilesX;
 
 	ncgr->nTiles = nCharacters;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ncgr->nBits = 8;
-	ncgr->tilesX = -1;
-	ncgr->tilesY = -1;
 	ncgr->bitmap = 0;
-
-	if (type == NCGR_TYPE_HUDSON) {
-		if (buffer[4] == 0) {
-			ncgr->nBits = 4;
-		}
-	} else if (type == NCGR_TYPE_HUDSON2) {
-		//00: 4-bit, 01: 8-bit
-		if (buffer[0] == 0) {
-			ncgr->nBits = 4;
-		}
-	}
-
-	int tileCount = nCharacters;
-	int tilesX, tilesY;
-	tilesX = ChrGuessWidth(nCharacters);
-	tilesY = tileCount / tilesX;
-
-	buffer += 0x4;
-	if (type == NCGR_TYPE_HUDSON) buffer += 0x4;
-
 	ncgr->tilesX = tilesX;
 	ncgr->tilesY = tilesY;
-	ChrReadGraphics(ncgr, buffer);
+
+	if (buffer[4] == 0) {
+		ncgr->nBits = 4;
+	}
+
+	ChrReadGraphics(ncgr, buffer + 0x8);
+	return OBJ_STATUS_SUCCESS;
+}
+
+static int ChrReadHudson2(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	int nCharacters = *(const uint16_t *) (buffer + 1);
+	int tilesX = ChrGuessWidth(nCharacters);
+	int tilesY = nCharacters / tilesX;
+
+	ncgr->nTiles = nCharacters;
+	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+	ncgr->nBits = 8;
+	ncgr->bitmap = 0;
+	ncgr->tilesX = tilesX;
+	ncgr->tilesY = tilesY;
+
+	//00: 4-bit, 01: 8-bit
+	if (buffer[0] == 0) {
+		ncgr->nBits = 4;
+	}
+
+	ChrReadGraphics(ncgr, buffer + 0x4);
 	return OBJ_STATUS_SUCCESS;
 }
 
@@ -609,30 +678,6 @@ static int ChrReadTose(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 	ChrReadChars(ncgr, buffer + 8);
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
-	switch (ncgr->header.format) {
-		case NCGR_TYPE_NCGR:
-			return ChrReadNcgr(ncgr, buffer, size);
-		case NCGR_TYPE_NC:
-			return ChrReadNcg(ncgr, buffer, size);
-		case NCGR_TYPE_IC:
-			return ChrReadIcg(ncgr, buffer, size);
-		case NCGR_TYPE_AC:
-			return ChrReadAcg(ncgr, buffer, size);
-		case NCGR_TYPE_TOSE:
-			return ChrReadTose(ncgr, buffer, size);
-		case NCGR_TYPE_HUDSON:
-			return ChrReadHudson(ncgr, buffer, size);
-		case NCGR_TYPE_GHOSTTRICK:
-			return ChrReadGhostTrick(ncgr, buffer, size);
-		case NCGR_TYPE_SETOSA:
-			return ChrReadSetosa(ncgr, buffer, size);
-		case NCGR_TYPE_BIN:
-			return ChrReadBin(ncgr, buffer, size);
-	}
-	return OBJ_STATUS_INVALID;
 }
 
 void ChrGetChar(NCGR *ncgr, int chno, CHAR_VRAM_TRANSFER *transfer, unsigned char *out) {
@@ -960,23 +1005,25 @@ int ChrWriteIcg(NCGR *ncgr, BSTREAM *stream) {
 	return ChriIsCommonWrite(ncgr, stream);
 }
 
-int ChrWriteHudson(NCGR *ncgr, BSTREAM *stream) {
-	if (ncgr->header.format == NCGR_TYPE_HUDSON) {
-		unsigned char header[] = { 0, 0, 0, 0, 1, 0, 0, 0 };
-		if (ncgr->nBits == 4) header[4] = 0;
-		*(uint16_t *) (header + 5) = ncgr->nTiles;
-		int nCharacterBytes = 64 * ncgr->nTiles;
-		if (ncgr->nBits == 4) nCharacterBytes >>= 1;
-		*(uint16_t *) (header + 1) = nCharacterBytes + 4;
+static int ChrWriteHudson(NCGR *ncgr, BSTREAM *stream) {
+	unsigned char header[] = { 0, 0, 0, 0, 1, 0, 0, 0 };
+	if (ncgr->nBits == 4) header[4] = 0;
+	*(uint16_t *) (header + 5) = ncgr->nTiles;
+	int nCharacterBytes = 64 * ncgr->nTiles;
+	if (ncgr->nBits == 4) nCharacterBytes >>= 1;
+	*(uint16_t *) (header + 1) = nCharacterBytes + 4;
 
-		bstreamWrite(stream, header, sizeof(header));
-	} else if(ncgr->header.format == NCGR_TYPE_HUDSON2) {
-		unsigned char header[] = { 0, 0, 0, 0 };
-		header[0] = (ncgr->nBits == 8) ? 1 : 0;
-		*(uint16_t *) (header + 1) = ncgr->nTiles;
-		bstreamWrite(stream, header, sizeof(header));
-	}
+	bstreamWrite(stream, header, sizeof(header));
+	ChrWriteChars(ncgr, stream);
+	return 0;
+}
 
+static int ChrWriteHudson2(NCGR *ncgr, BSTREAM *stream) {
+	unsigned char header[] = { 0, 0, 0, 0 };
+	header[0] = (ncgr->nBits == 8) ? 1 : 0;
+	*(uint16_t *) (header + 1) = ncgr->nTiles;
+
+	bstreamWrite(stream, header, sizeof(header));
 	ChrWriteChars(ncgr, stream);
 	return 0;
 }

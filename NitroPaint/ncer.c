@@ -11,16 +11,49 @@ static int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size)
 static int CellIsValidSetosa(const unsigned char *buffer, unsigned int size);
 static int CellIsValidNcer(const unsigned char *buffer, unsigned int size);
 
-static void CellRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_CELL, format, name, flag, proc);
-}
+static int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size);
+static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int size);
+static int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size);
+static int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int size);
+
+static int CellWriteNcer(NCER *ncer, BSTREAM *stream);
+static int CellWriteSetosa(NCER *ncer, BSTREAM *stream);
+static int CellWriteHudson(NCER *ncer, BSTREAM *stream);
+
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_CELL, NCER_TYPE_NCER, "NCER",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		CellIsValidNcer,
+		(ObjReader) CellReadNcer,
+		(ObjWriter) CellWriteNcer
+	}, {
+		FILE_TYPE_CELL, NCER_TYPE_SETOSA, "Setosa",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		CellIsValidSetosa,
+		(ObjReader) CellReadSetosa,
+		(ObjWriter) CellWriteSetosa
+	}, {
+		FILE_TYPE_CELL, NCER_TYPE_HUDSON, "Hudson",
+		OBJ_ID_HEADER | OBJ_ID_OFFSETS,
+		CellIsValidHudson,
+		(ObjReader) CellReadHudson,
+		(ObjWriter) CellWriteHudson
+	}, {
+		FILE_TYPE_CELL, NCER_TYPE_GHOSTTRICK, "Ghost Trick",
+		OBJ_ID_HEADER | OBJ_ID_OFFSETS,
+		CellIsValidGhostTrick,
+		(ObjReader) CellReadGhostTrick,
+		NULL
+	}
+};
 
 void CellRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_CELL, sizeof(NCER), "Cell Bank", (ObjReader) CellRead, (ObjWriter) CellWrite, NULL, CellFree);
-	CellRegisterFormat(NCER_TYPE_NCER, "NCER", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, CellIsValidNcer);
-	CellRegisterFormat(NCER_TYPE_SETOSA, "Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, CellIsValidSetosa);
-	CellRegisterFormat(NCER_TYPE_HUDSON, "Hudson", OBJ_ID_HEADER | OBJ_ID_OFFSETS, CellIsValidHudson);
-	CellRegisterFormat(NCER_TYPE_GHOSTTRICK, "Ghost Trick", OBJ_ID_HEADER | OBJ_ID_OFFSETS, CellIsValidGhostTrick);
+	ObjRegisterType(FILE_TYPE_CELL, sizeof(NCER), "Cell Bank", NULL, CellFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 
@@ -327,20 +360,6 @@ static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int 
 	}
 
 	return 0;
-}
-
-int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size) {
-	switch (ncer->header.format) {
-		case NCER_TYPE_NCER:
-			return CellReadNcer(ncer, buffer, size);
-		case NCER_TYPE_SETOSA:
-			return CellReadSetosa(ncer, buffer, size);
-		case NCER_TYPE_HUDSON:
-			return CellReadHudson(ncer, buffer, size);
-		case NCER_TYPE_GHOSTTRICK:
-			return CellReadGhostTrick(ncer, buffer, size);
-	}
-	return 1;
 }
 
 void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj) {
@@ -727,19 +746,6 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 	SetStreamFree(&setStream);
 
 	return 0;
-}
-
-int CellWrite(NCER *ncer, BSTREAM *stream) {
-	switch (ncer->header.format) {
-		case NCER_TYPE_NCER:
-			return CellWriteNcer(ncer, stream);
-		case NCER_TYPE_HUDSON:
-			return CellWriteHudson(ncer, stream);
-		case NCER_TYPE_SETOSA:
-			return CellWriteSetosa(ncer, stream);
-	}
-
-	return OBJ_STATUS_UNSUPPORTED;
 }
 
 // ----- cell rendering

@@ -11,14 +11,44 @@ static void BnllFree(ObjHeader *hdr);
 static void BnclFree(ObjHeader *hdr);
 static void BnblFree(ObjHeader *hdr);
 
-void JLytRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_BNLL, sizeof(BNLL), "Letter Layout", (ObjReader) BnllRead, (ObjWriter) BnllWrite, NULL, BnllFree);
-	ObjRegisterType(FILE_TYPE_BNCL, sizeof(BNCL), "Cell Layout", (ObjReader) BnclRead, (ObjWriter) BnclWrite, NULL, BnclFree);
-	ObjRegisterType(FILE_TYPE_BNBL, sizeof(BNBL), "Button Layout", (ObjReader) BnblRead, (ObjWriter) BnblWrite, NULL, BnblFree);
+static int BnllReadBnll(BNLL *bnll, const unsigned char *buffer, unsigned int size);
+static int BnclReadBncl(BNCL *bncl, const unsigned char *buffer, unsigned int size);
+static int BnblReadBnbl(BNBL *bnbl, const unsigned char *buffer, unsigned int size);
 
-	ObjRegisterFormat(FILE_TYPE_BNLL, BNLL_TYPE_BNLL, "BNLL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnllIsValidBnll);
-	ObjRegisterFormat(FILE_TYPE_BNCL, BNCL_TYPE_BNCL, "BNCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnclIsValidBncl);
-	ObjRegisterFormat(FILE_TYPE_BNBL, BNBL_TYPE_BNBL, "BNBL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED, BnblIsValidBnbl);
+static int BnllWriteBnll(BNLL *bnll, BSTREAM *stream);
+static int BnclWriteBncl(BNCL *bncl, BSTREAM *stream);
+static int BnblWriteBnbl(BNBL *bnbl, BSTREAM *stream);
+
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_BNLL, BNLL_TYPE_BNLL, "BNLL",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		BnllIsValidBnll,
+		(ObjReader) BnllReadBnll,
+		(ObjWriter) BnllWriteBnll
+	}, {
+		FILE_TYPE_BNCL, BNCL_TYPE_BNCL, "BNCL",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		BnclIsValidBncl,
+		(ObjReader) BnclReadBncl,
+		(ObjWriter) BnclWriteBncl
+	}, {
+		FILE_TYPE_BNBL, BNBL_TYPE_BNBL, "BNBL",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		BnblIsValidBnbl,
+		(ObjReader) BnblReadBnbl,
+		(ObjWriter) BnblWriteBnbl
+	}
+};
+
+void JLytRegisterFormats(void) {
+	ObjRegisterType(FILE_TYPE_BNLL, sizeof(BNLL), "Letter Layout", NULL, BnllFree);
+	ObjRegisterType(FILE_TYPE_BNCL, sizeof(BNCL), "Cell Layout", NULL, BnclFree);
+	ObjRegisterType(FILE_TYPE_BNBL, sizeof(BNBL), "Button Layout", NULL, BnblFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 
@@ -162,14 +192,6 @@ static int BnllReadBnll(BNLL *bnll, const unsigned char *buffer, unsigned int si
 	return OBJ_STATUS_SUCCESS;
 }
 
-int BnllRead(BNLL *bnll, const unsigned char *buffer, unsigned int size) {
-	switch (bnll->header.format) {
-		case BNLL_TYPE_BNLL:
-			return BnllReadBnll(bnll, buffer, size);
-	}
-	return OBJ_STATUS_INVALID;
-}
-
 static int BnllWriteBnll(BNLL *bnll, BSTREAM *stream) {
 	//header
 	JLytWriteFntHeader(stream, "JNLL", bnll->nMsg);
@@ -225,14 +247,6 @@ static int BnllWriteBnll(BNLL *bnll, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
-int BnllWrite(BNLL *bnll, BSTREAM *stream) {
-	switch (bnll->header.format) {
-		case BNLL_TYPE_BNLL:
-			return BnllWriteBnll(bnll, stream);
-	}
-	return OBJ_STATUS_INVALID;
-}
-
 
 
 // ----- BNCL
@@ -283,14 +297,6 @@ static int BnclReadBncl(BNCL *bncl, const unsigned char *buffer, unsigned int si
 	return OBJ_STATUS_SUCCESS;
 }
 
-int BnclRead(BNCL *bncl, const unsigned char *buffer, unsigned int size) {
-	switch (bncl->header.format) {
-		case BNCL_TYPE_BNCL:
-			return BnclReadBncl(bncl, buffer, size);
-	}
-	return OBJ_STATUS_INVALID;
-}
-
 static int BnclWriteBncl(BNCL *bncl, BSTREAM *stream) {
 	JLytWriteFntHeader(stream, "JNCL", bncl->nCell);
 
@@ -304,14 +310,6 @@ static int BnclWriteBncl(BNCL *bncl, BSTREAM *stream) {
 	}
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int BnclWrite(BNCL *bncl, BSTREAM *stream) {
-	switch (bncl->header.format) {
-		case BNCL_TYPE_BNCL:
-			return BnclWriteBncl(bncl, stream);
-	}
-	return OBJ_STATUS_INVALID;
 }
 
 
@@ -364,14 +362,6 @@ static int BnblReadBnbl(BNBL *bnbl, const unsigned char *buffer, unsigned int si
 	return OBJ_STATUS_SUCCESS;
 }
 
-int BnblRead(BNBL *bnbl, const unsigned char *buffer, unsigned int size) {
-	switch (bnbl->header.format) {
-		case BNBL_TYPE_BNBL:
-			return BnblReadBnbl(bnbl, buffer, size);
-	}
-	return OBJ_STATUS_INVALID;
-}
-
 static int BnblWriteBnbl(BNBL *bnbl, BSTREAM *stream) {
 	//file header
 	JLytWriteFntHeader(stream, "JNBL", bnbl->nRegion);
@@ -386,12 +376,4 @@ static int BnblWriteBnbl(BNBL *bnbl, BSTREAM *stream) {
 	}
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int BnblWrite(BNBL *bnbl, BSTREAM *stream) {
-	switch (bnbl->header.format) {
-		case BNBL_TYPE_BNBL:
-			return BnblWriteBnbl(bnbl, stream);
-	}
-	return OBJ_STATUS_INVALID;
 }

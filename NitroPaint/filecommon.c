@@ -159,6 +159,20 @@ unsigned int ObjGetFormatCountByType(int type) {
 	return n + 1;
 }
 
+static int ObjGetFormat(ObjIdEntry *pInfo, int type, int format) {
+	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
+		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
+		if (ent->type != type || ent->format != format) continue;
+
+		//copy out
+		memcpy(pInfo, ent, sizeof(ObjIdEntry));
+		return 1;
+	}
+
+	//not found
+	return 0;
+}
+
 static int ObjiIdFlagToConfidence(ObjIdFlag flag) {
 	int confidence = 0;
 
@@ -200,29 +214,37 @@ void ObjInitCommon(void) {
 	StListCreate(&sObjRegisteredFormats, sizeof(ObjIdEntry), ObjiIdEntryComparator);
 
 	//register default formats
-	ObjRegisterType(FILE_TYPE_INVALID, 0, "Invalid", NULL, NULL, NULL, NULL);
-	ObjRegisterType(FILE_TYPE_IMAGE, 0, "Image", NULL, NULL, NULL, NULL); // TODO
-	ObjRegisterFormat(FILE_TYPE_IMAGE, 1, "Host Codecs", OBJ_ID_WINCODEC, ObjiIsValidImage);
+	ObjRegisterType(FILE_TYPE_INVALID, 0, "Invalid", NULL, NULL);
+	ObjRegisterType(FILE_TYPE_IMAGE, 0, "Image", NULL, NULL);
+
+	static const ObjIdEntry hostCodecs = {
+		FILE_TYPE_IMAGE, 1, "Host Codecs",
+		OBJ_ID_WINCODEC,
+		ObjiIsValidImage,
+		NULL,
+		NULL
+	};
+	ObjRegisterFormat(&hostCodecs); // TODO
 }
 
-void ObjRegisterType(int type, size_t objSize, const char *name, ObjReader reader, ObjWriter writer, ObjInitProc init, ObjDispose dispose) {
+void ObjRegisterType(int type, size_t objSize, const char *name, ObjInitProc init, ObjDispose dispose) {
 	ObjTypeEntry ent;
 	ent.name = _strdup(name);
 	ent.size = objSize;
-	ent.reader = reader;
-	ent.writer = writer;
 	ent.init = init;
 	ent.dispose = dispose;
 	StMapPut(&sObjRegisteredTypes, &type, &ent);
 }
 
-void ObjRegisterFormat(int type, int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
+void ObjRegisterFormat(const ObjIdEntry *entry) {
 	ObjIdEntry ent;
-	ent.type = type;
-	ent.format = format;
-	ent.name = _strdup(name);
-	ent.idFlag = flag;
-	ent.idProc = proc;
+	ent.type = entry->type;
+	ent.format = entry->format;
+	ent.name = _strdup(entry->name);
+	ent.idFlag = entry->idFlag;
+	ent.idProc = entry->idProc;
+	ent.reader = entry->reader;
+	ent.writer = entry->writer;
 	StListAdd(&sObjRegisteredFormats, &ent);
 }
 
@@ -270,6 +292,9 @@ ObjHeader *ObjAlloc(int type, int format) {
 	StStatus s = StMapGet(&sObjRegisteredTypes, &type, &ent);
 	if (!ST_SUCCEEDED(s)) return NULL;
 
+	ObjIdEntry fmtEntry;
+	if (!ObjGetFormat(&fmtEntry, type, format)) return NULL;
+
 	//allocate the object
 	ObjHeader *obj = (ObjHeader *) calloc(1, ent.size);
 	if (obj == NULL) return NULL;
@@ -278,7 +303,7 @@ ObjHeader *ObjAlloc(int type, int format) {
 	obj->size = ent.size;
 	obj->type = type;
 	obj->format = format;
-	obj->writer = ent.writer;
+	obj->writer = fmtEntry.writer;
 	obj->dispose = ent.dispose;
 	obj->link.to = NULL;
 	StListCreateInline(&obj->link.from, ObjHeader *, NULL);
@@ -625,6 +650,10 @@ int ObjReadBuffer(ObjHeader **ppObject, const unsigned char *buffer, unsigned in
 	ObjTypeEntry ent;
 	StMapGet(&sObjRegisteredTypes, &type, &ent);
 
+	//get the format entry
+	ObjIdEntry fmtEntry;
+	ObjGetFormat(&fmtEntry, type, format);
+
 	//uncompress
 	unsigned int uncompSize;
 	unsigned char *uncomp = CxDecompress(buffer, size, compression, &uncompSize);
@@ -639,7 +668,7 @@ int ObjReadBuffer(ObjHeader **ppObject, const unsigned char *buffer, unsigned in
 	object->compression = compression;
 
 	//read buffer
-	int status = ent.reader(object, (char *) uncomp, (int) uncompSize);
+	int status = fmtEntry.reader(object, (char *) uncomp, (int) uncompSize);
 	free(uncomp);
 
 	if (!OBJ_SUCCEEDED(status)) {
@@ -664,14 +693,18 @@ int ObjReadFile(ObjHeader **ppObject, const wchar_t *name, int type, int format,
 	ObjTypeEntry typeEntry;
 	StMapGet(&sObjRegisteredTypes, &type, &typeEntry);
 
+	//get the format entry
+	ObjIdEntry fmtEntry;
+	ObjGetFormat(&fmtEntry, type, format);
+
 	int status;
 	int compType = CxGetCompressionType(buffer, size);
 	if (compType == COMPRESSION_NONE) {
-		status = typeEntry.reader(object, buffer, size);
+		status = fmtEntry.reader(object, buffer, size);
 	} else {
 		unsigned int decompressedSize;
 		void *decompressed = CxDecompress(buffer, size, compType, &decompressedSize);
-		status = typeEntry.reader(object, decompressed, decompressedSize);
+		status = fmtEntry.reader(object, decompressed, decompressedSize);
 		free(decompressed);
 	}
 

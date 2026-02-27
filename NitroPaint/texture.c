@@ -482,19 +482,68 @@ static int TxIsValidGrf(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-static void TxiRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_TEXTURE, format, name, flag, proc);
-}
+static int TxReadNnsTga(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+static int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+static int TxReadSpt(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+static int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+static int TxReadNtga(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+static int TxReadToLoveRu(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+
+static int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream);
+static int TxWriteIStudio(TextureObject *texture, BSTREAM *stream);
+static int TxWriteSpt(TextureObject *texture, BSTREAM *stream);
+static int TxWriteTds(TextureObject *texture, BSTREAM *stream);
+static int TxWriteNtga(TextureObject *texture, BSTREAM *stream);
+static int TxWriteToLoveRu(TextureObject *texture, BSTREAM *stream);
+static int TxWriteGRF(TextureObject *texture, BSTREAM *stream);
+
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_TEXTURE, TEXTURE_TYPE_NNSTGA, "NNS TGA",
+		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE,
+		TxIsValidNnsTga,
+		(ObjReader) TxReadNnsTga,
+		(ObjWriter) TxWriteNnsTga
+	}, {
+		FILE_TYPE_TEXTURE, TEXTURE_TYPE_ISTUDIO, "5TX",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED,
+		TxIsValidIStudio,
+		(ObjReader) TxReadIStudio,
+		(ObjWriter) TxWriteIStudio
+	}, {
+		FILE_TYPE_TEXTURE, TEXTURE_TYPE_TDS, "TDS",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		TxIsValidTds,
+		(ObjReader) TxReadTds,
+		(ObjWriter) TxWriteTds
+	}, {
+		FILE_TYPE_TEXTURE, TEXTURE_TYPE_NTGA, "NTGA",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		TxIsValidNtga,
+		(ObjReader) TxReadNtga,
+		(ObjWriter) TxWriteNtga
+	}, {
+		FILE_TYPE_TEXTURE, TEXTURE_TYPE_TOLOVERU, "To Love-Ru",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		TxIsValidToLoveRu,
+		(ObjReader) TxReadToLoveRu,
+		(ObjWriter) TxWriteToLoveRu
+	}, {
+		FILE_TYPE_TEXTURE, TEXTURE_TYPE_GRF, "GRF",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		TxIsValidGrf,
+		(ObjReader) TxReadGrf,
+		(ObjWriter) TxWriteGRF
+	}
+};
 
 void TxRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_TEXTURE, sizeof(TextureObject), "Texture", (ObjReader) TxRead, (ObjWriter) TxWrite, NULL, TxFree);
-	TxiRegisterFormat(TEXTURE_TYPE_NNSTGA, "NNS TGA", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE, TxIsValidNnsTga);
-	TxiRegisterFormat(TEXTURE_TYPE_ISTUDIO, "5TX", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED, TxIsValidIStudio);
-	TxiRegisterFormat(TEXTURE_TYPE_SPT, "SPT", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS, TxIsValidSpt);
-	TxiRegisterFormat(TEXTURE_TYPE_TDS, "TDS", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidTds);
-	TxiRegisterFormat(TEXTURE_TYPE_NTGA, "NTGA", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidNtga);
-	TxiRegisterFormat(TEXTURE_TYPE_TOLOVERU, "To Love-Ru", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, TxIsValidToLoveRu);
-	TxiRegisterFormat(TEXTURE_TYPE_GRF, "GRF", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, TxIsValidGrf);
+	ObjRegisterType(FILE_TYPE_TEXTURE, sizeof(TextureObject), "Texture", NULL, TxFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 int TxIdentify(const unsigned char *buffer, unsigned int size) {
@@ -841,26 +890,6 @@ static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsign
 	}
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int TxRead(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
-	switch (texture->header.format) {
-		case TEXTURE_TYPE_NNSTGA:
-			return TxReadNnsTga(texture, buffer, size);
-		case TEXTURE_TYPE_SPT:
-			return TxReadSpt(texture, buffer, size);
-		case TEXTURE_TYPE_ISTUDIO:
-			return TxReadIStudio(texture, buffer, size);
-		case TEXTURE_TYPE_TDS:
-			return TxReadTds(texture, buffer, size);
-		case TEXTURE_TYPE_NTGA:
-			return TxReadNtga(texture, buffer, size);
-		case TEXTURE_TYPE_TOLOVERU:
-			return TxReadToLoveRu(texture, buffer, size);
-		case TEXTURE_TYPE_GRF:
-			return TxReadGrf(texture, buffer, size);
-	}
-	return OBJ_STATUS_INVALID;
 }
 
 
@@ -1243,24 +1272,4 @@ static int TxWriteGRF(TextureObject *texture, BSTREAM *stream) {
 	GrfStreamFree(&grfStream);
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int TxWrite(TextureObject *texture, BSTREAM *stream) {
-	switch (texture->header.format) {
-		case TEXTURE_TYPE_NNSTGA:
-			return TxWriteNnsTga(texture, stream);
-		case TEXTURE_TYPE_ISTUDIO:
-			return TxWriteIStudio(texture, stream);
-		case TEXTURE_TYPE_SPT:
-			return TxWriteSpt(texture, stream);
-		case TEXTURE_TYPE_TDS:
-			return TxWriteTds(texture, stream);
-		case TEXTURE_TYPE_NTGA:
-			return TxWriteNtga(texture, stream);
-		case TEXTURE_TYPE_TOLOVERU:
-			return TxWriteToLoveRu(texture, stream);
-		case TEXTURE_TYPE_GRF:
-			return TxWriteGRF(texture, stream);
-	}
-	return 1;
 }

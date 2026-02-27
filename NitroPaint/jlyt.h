@@ -59,8 +59,6 @@ typedef struct BNLL_ {
 	BnllMessage *messages;
 } BNLL;
 
-int BnllRead(BNLL *bnll, const unsigned char *buffer, unsigned int size);
-int BnllWrite(BNLL *bnll, BSTREAM *stream);
 
 
 
@@ -78,8 +76,6 @@ typedef struct BNCL_ {
 	BnclCell *cells;
 } BNCL;
 
-int BnclRead(BNCL *bncl, const unsigned char *buffer, unsigned int size);
-int BnclWrite(BNCL *bncl, BSTREAM *stream);
 
 
 
@@ -98,5 +94,3 @@ typedef struct BNBL_ {
 	BnblRegion *regions;
 } BNBL;
 
-int BnblRead(BNBL *bnbl, const unsigned char *buffer, unsigned int size);
-int BnblWrite(BNBL *bnbl, BSTREAM *stream);

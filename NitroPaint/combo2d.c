@@ -462,20 +462,80 @@ Invalid:
 	return valid;
 }
 
-static void combo2dRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_COMBO2D, format, name, flag, proc);
-}
+static int combo2dRead5bg(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
+static int combo2dRead5bgObj(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
+static int combo2dReadBncd(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
+static int combo2dReadBanner(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
+static int combo2dReadAob(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
+static int combo2dReadGrf(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
+static int combo2dReadMbb(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
+static int combo2dReadTimeAce(COMBO2D *combo, const unsigned char *buffer, unsigned int size);
+
+static int combo2dWrite5bg(COMBO2D *combo, BSTREAM *stream);
+static int combo2dWriteBncd(COMBO2D *combo, BSTREAM *stream);
+static int combo2dWriteBanner(COMBO2D *combo, BSTREAM *stream);
+static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream);
+static int combo2dWriteMbb(COMBO2D *combo, BSTREAM *stream);
+static int combo2dWriteTimeAce(COMBO2D *combo, BSTREAM *stream);
+
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_5BG, "5BG",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		combo2dIsValid5bg,
+		(ObjReader) combo2dRead5bg,
+		(ObjWriter) combo2dWrite5bg
+	}, {
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_5BG_OBJ, "5BG OBJ",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		combo2dIsValid5bgObj,
+		(ObjReader) combo2dRead5bgObj,
+		NULL
+	}, {
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_BNCD, "BNCD",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		combo2dIsValidBncd,
+		(ObjReader) combo2dReadBncd,
+		(ObjWriter) combo2dWriteBncd
+	}, {
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_BANNER, "Banner",
+		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHECKSUM,
+		combo2dIsValidBanner,
+		(ObjReader) combo2dReadBanner,
+		(ObjWriter) combo2dWriteBanner
+	}, {
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_AOB, "AOB",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		combo2dIsValidAob,
+		(ObjReader) combo2dReadAob,
+		NULL
+	}, {
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_GRF_BG, "GRF",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		combo2dIsValidGrf,
+		(ObjReader) combo2dReadGrf,
+		(ObjWriter) combo2dWriteGrf
+	}, {
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_MBB, "MBB",
+		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		combo2dIsValidMbb,
+		(ObjReader) combo2dReadMbb,
+		(ObjWriter) combo2dWriteMbb
+	}, {
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_TIMEACE, "Time Ace",
+		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		combo2dIsValidTimeAce,
+		(ObjReader) combo2dReadTimeAce,
+		(ObjWriter) combo2dWriteTimeAce
+	}
+};
 
 void combo2dRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_COMBO2D, sizeof(COMBO2D), "Combination", (ObjReader) combo2dRead, (ObjWriter) combo2dWrite, combo2dInit, combo2dFree);
-	combo2dRegisterFormat(COMBO2D_TYPE_5BG, "5BG", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValid5bg);
-	combo2dRegisterFormat(COMBO2D_TYPE_5BG_OBJ, "5BG OBJ", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValid5bgObj);
-	combo2dRegisterFormat(COMBO2D_TYPE_BNCD, "BNCD", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, combo2dIsValidBncd);
-	combo2dRegisterFormat(COMBO2D_TYPE_BANNER, "Banner", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHECKSUM, combo2dIsValidBanner);
-	combo2dRegisterFormat(COMBO2D_TYPE_AOB, "AOB", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValidAob);
-	combo2dRegisterFormat(COMBO2D_TYPE_GRF_BG, "GRF", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, combo2dIsValidGrf);
-	combo2dRegisterFormat(COMBO2D_TYPE_MBB, "MBB", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, combo2dIsValidMbb);
-	combo2dRegisterFormat(COMBO2D_TYPE_TIMEACE, "Time Ace", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, combo2dIsValidTimeAce);
+	ObjRegisterType(FILE_TYPE_COMBO2D, sizeof(COMBO2D), "Combination", combo2dInit, combo2dFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 int combo2dIsValid(const unsigned char *file, unsigned int size) {

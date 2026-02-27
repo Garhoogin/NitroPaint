@@ -276,20 +276,82 @@ static int ScrIsValidTose(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-static void ScriRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_SCREEN, format, name, flag, proc);
-}
+static int ScrReadNscr(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+static int ScrReadNsc(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+static int ScrReadIsc(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+static int ScrReadAsc(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+static int ScrReadTose(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+static int ScrReadHudson(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+static int ScrReadHudson2(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+static int ScrReadBin(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+
+static int ScrWriteNscr(NSCR *nscr, BSTREAM *stream);
+static int ScrWriteNsc(NSCR *nscr, BSTREAM *stream);
+static int ScrWriteIsc(NSCR *nscr, BSTREAM *stream);
+static int ScrWriteAsc(NSCR *nscr, BSTREAM *stream);
+static int ScrWriteTose(NSCR *nscr, BSTREAM *stream);
+static int ScrWriteHudson(NSCR *nscr, BSTREAM *stream);
+static int ScrWriteHudson2(NSCR *nscr, BSTREAM *stream);
+static int ScrWriteBin(NSCR *nscr, BSTREAM *stream);
+
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_SCREEN, NSCR_TYPE_NSCR, "NSCR",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		ScrIsValidNscr,
+		(ObjReader) ScrReadNscr,
+		(ObjWriter) ScrWriteNscr
+	}, {
+		FILE_TYPE_SCREEN, NSCR_TYPE_NC, "NSC",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		ScrIsValidNsc,
+		(ObjReader) ScrReadNsc,
+		(ObjWriter) ScrWriteNsc
+	}, {
+		FILE_TYPE_SCREEN, NSCR_TYPE_IC, "ISC",
+		OBJ_ID_FOOTER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		ScrIsValidIsc,
+		(ObjReader) ScrReadIsc,
+		(ObjWriter) ScrWriteIsc
+	}, {
+		FILE_TYPE_SCREEN, NSCR_TYPE_AC, "ASC",
+		OBJ_ID_FOOTER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		ScrIsValidAsc,
+		(ObjReader) ScrReadAsc,
+		(ObjWriter) ScrWriteAsc
+	}, {
+		FILE_TYPE_SCREEN, NSCR_TYPE_TOSE, "Tose",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE,
+		ScrIsValidTose,
+		(ObjReader) ScrReadTose,
+		(ObjWriter) ScrWriteTose
+	}, {
+		FILE_TYPE_SCREEN, NSCR_TYPE_HUDSON, "Hudson",
+		OBJ_ID_HEADER,
+		ScrIsValidHudson,
+		(ObjReader) ScrReadHudson,
+		(ObjWriter) ScrWriteHudson
+	}, {
+		FILE_TYPE_SCREEN, NSCR_TYPE_HUDSON2, "Hudson 2",
+		OBJ_ID_HEADER,
+		ScrIsValidHudson2,
+		(ObjReader) ScrReadHudson2,
+		(ObjWriter) ScrWriteHudson2
+	}, {
+		FILE_TYPE_SCREEN, NSCR_TYPE_BIN, "Binary",
+		OBJ_ID_SIZE_CHECK,
+		ScrIsValidBin,
+		(ObjReader) ScrReadBin,
+		(ObjWriter) ScrWriteBin
+	}
+};
 
 void ScrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_SCREEN, sizeof(NSCR), "Screen", (ObjReader) ScrRead, (ObjWriter) ScrWrite, NULL, ScrFree);
-	ScriRegisterFormat(NSCR_TYPE_NSCR, "NSCR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ScrIsValidNscr);
-	ScriRegisterFormat(NSCR_TYPE_NC, "NSC", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ScrIsValidNsc);
-	ScriRegisterFormat(NSCR_TYPE_IC, "ISC", OBJ_ID_FOOTER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ScrIsValidIsc);
-	ScriRegisterFormat(NSCR_TYPE_AC, "ASC", OBJ_ID_FOOTER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, ScrIsValidAsc);
-	ScriRegisterFormat(NSCR_TYPE_TOSE, "Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE, ScrIsValidTose);
-	ScriRegisterFormat(NSCR_TYPE_HUDSON, "Hudson", OBJ_ID_HEADER, ScrIsValidHudson);
-	ScriRegisterFormat(NSCR_TYPE_HUDSON2, "Hudson 2", OBJ_ID_HEADER, ScrIsValidHudson2);
-	ScriRegisterFormat(NSCR_TYPE_BIN, "Binary", OBJ_ID_SIZE_CHECK, ScrIsValidBin);
+	ObjRegisterType(FILE_TYPE_SCREEN, sizeof(NSCR), "Screen", NULL, ScrFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 void ScrFree(ObjHeader *header) {
@@ -299,21 +361,23 @@ void ScrFree(ObjHeader *header) {
 }
 
 static int ScrReadHudson(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
-	int type = nscr->header.format;
+	unsigned int tilesX = file[6];
+	unsigned int tilesY = file[7];
+	const uint16_t *srcData = (const uint16_t *) (file + 8);
 
-	int tilesX = 0, tilesY = 0;
-	uint16_t *srcData = NULL;
+	nscr->fmt = SCREENFORMAT_TEXT;
+	nscr->colorMode = SCREENCOLORMODE_16x16;
+	nscr->tilesX = tilesX;
+	nscr->tilesY = tilesY;
+	ScriReadScreenData(nscr, srcData, tilesX * tilesY * 2);
+	ScrComputeHighestCharacter(nscr);
+	return OBJ_STATUS_SUCCESS;
+}
 
-	if (type == NSCR_TYPE_HUDSON) {
-		int fileSize = 4 + *(uint16_t *) (file + 1);
-		tilesX = file[6];
-		tilesY = file[7];
-		srcData = (uint16_t *) (file + 8);
-	} else if (type == NSCR_TYPE_HUDSON2) {
-		tilesX = file[2];
-		tilesY = file[3];
-		srcData = (uint16_t *) (file + 4);
-	}
+static int ScrReadHudson2(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
+	unsigned int tilesX = file[2];
+	unsigned int tilesY = file[3];
+	const uint16_t *srcData = (const uint16_t *) (file + 4);
 
 	nscr->fmt = SCREENFORMAT_TEXT;
 	nscr->colorMode = SCREENCOLORMODE_16x16;
@@ -515,26 +579,6 @@ static int ScrReadTose(NSCR *nscr, const unsigned char *buffer, unsigned int siz
 	ScrComputeHighestCharacter(nscr);
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int ScrRead(NSCR *nscr, const unsigned char *file, unsigned int dwFileSize) {
-	switch (nscr->header.format) {
-		case NSCR_TYPE_NSCR:
-			return ScrReadNscr(nscr, file, dwFileSize);
-		case NSCR_TYPE_NC:
-			return ScrReadNsc(nscr, file, dwFileSize);
-		case NSCR_TYPE_IC:
-			return ScrReadIsc(nscr, file, dwFileSize);
-		case NSCR_TYPE_AC:
-			return ScrReadAsc(nscr, file, dwFileSize);
-		case NSCR_TYPE_TOSE:
-			return ScrReadTose(nscr, file, dwFileSize);
-		case NSCR_TYPE_HUDSON:
-			return ScrReadHudson(nscr, file, dwFileSize);
-		case NSCR_TYPE_BIN:
-			return ScrReadBin(nscr, file, dwFileSize);
-	}
-	return OBJ_STATUS_INVALID;
 }
 
 int nscrGetTileEx(NSCR *nscr, NCGR *ncgr, NCLR *nclr, int charBase, int x, int y, COLOR32 *out, int *tileNo, int transparent) {
@@ -780,31 +824,35 @@ static int ScriIsCommonWrite(NSCR *nscr, BSTREAM *stream) {
 	return 0;
 }
 
-int ScrWriteAsc(NSCR *nscr, BSTREAM *stream) {
+static int ScrWriteAsc(NSCR *nscr, BSTREAM *stream) {
 	return ScriIsCommonWrite(nscr, stream);
 }
 
-int ScrWriteIsc(NSCR *nscr, BSTREAM *stream) {
+static int ScrWriteIsc(NSCR *nscr, BSTREAM *stream) {
 	return ScriIsCommonWrite(nscr, stream);
 }
 
-int ScrWriteHudson(NSCR *nscr, BSTREAM *stream) {
-	int nTotalTiles = nscr->tilesX * nscr->tilesY;
-	if (nscr->header.format == NSCR_TYPE_HUDSON) {
-		unsigned char header[8] = { 0 };
-		*(uint16_t *) (header + 1) = 2 * nTotalTiles + 4;
-		*(uint16_t *) (header + 4) = 2 * nTotalTiles;
-		header[6] = nscr->tilesX;
-		header[7] = nscr->tilesY;
-		bstreamWrite(stream, header, sizeof(header));
-	} else if (nscr->header.format == NSCR_TYPE_HUDSON2) {
-		unsigned char header[4] = { 0, 0, 0, 0 };
-		*(uint16_t *) header = nTotalTiles * 2;
-		header[2] = nscr->tilesX;
-		header[3] = nscr->tilesY;
-		bstreamWrite(stream, header, sizeof(header));
-	}
+static int ScrWriteHudson(NSCR *nscr, BSTREAM *stream) {
+	unsigned int nTotalTiles = nscr->tilesX * nscr->tilesY;
+	unsigned char header[8] = { 0 };
+	*(uint16_t *) (header + 1) = 2 * nTotalTiles + 4;
+	*(uint16_t *) (header + 4) = 2 * nTotalTiles;
+	header[6] = nscr->tilesX;
+	header[7] = nscr->tilesY;
 
+	bstreamWrite(stream, header, sizeof(header));
+	bstreamWrite(stream, nscr->data, 2 * nTotalTiles);
+	return 0;
+}
+
+static int ScrWriteHudson2(NSCR *nscr, BSTREAM *stream) {
+	unsigned int nTotalTiles = nscr->tilesX * nscr->tilesY;
+	unsigned char header[4] = { 0, 0, 0, 0 };
+	*(uint16_t *) header = nTotalTiles * 2;
+	header[2] = nscr->tilesX;
+	header[3] = nscr->tilesY;
+
+	bstreamWrite(stream, header, sizeof(header));
 	bstreamWrite(stream, nscr->data, 2 * nTotalTiles);
 	return 0;
 }
@@ -826,26 +874,4 @@ static int ScrWriteTose(NSCR *nscr, BSTREAM *stream) {
 int ScrWriteBin(NSCR *nscr, BSTREAM *stream) {
 	bstreamWrite(stream, nscr->data, nscr->dataSize);
 	return 0;
-}
-
-int ScrWrite(NSCR *nscr, BSTREAM *stream) {
-	switch (nscr->header.format) {
-		case NSCR_TYPE_NSCR:
-			return ScrWriteNscr(nscr, stream);
-		case NSCR_TYPE_NC:
-			return ScrWriteNsc(nscr, stream);
-		case NSCR_TYPE_AC:
-			return ScrWriteAsc(nscr, stream);
-		case NSCR_TYPE_IC:
-			return ScrWriteIsc(nscr, stream);
-		case NSCR_TYPE_TOSE:
-			return ScrWriteTose(nscr, stream);
-		case NSCR_TYPE_HUDSON:
-		case NSCR_TYPE_HUDSON2:
-			return ScrWriteHudson(nscr, stream);
-		case NSCR_TYPE_BIN:
-			return ScrWriteBin(nscr, stream);
-	}
-
-	return 1;
 }

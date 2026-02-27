@@ -18,31 +18,114 @@ static int NftrIsValidBnfr12(const unsigned char *buffer, unsigned int size);
 static int NftrIsValidBnfr20(const unsigned char *buffer, unsigned int size);
 static int NftrIsValidStarfy(const unsigned char *buffer, unsigned int size);
 
+static int NftrReadNftr01(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int NftrReadNftr10(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int NftrReadNftr11(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int NftrReadNftr12(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int NftrReadGfNftr11(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int NftrReadBnfr11(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int NftrReadBnfr12(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int NftrReadBnfr20(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int NftrReadStarfy(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+
+static int NftrWriteNftr01(NFTR *nftr, BSTREAM *stream);
+static int NftrWriteNftr10(NFTR *nftr, BSTREAM *stream);
+static int NftrWriteNftr11(NFTR *nftr, BSTREAM *stream);
+static int NftrWriteNftr12(NFTR *nftr, BSTREAM *stream);
+static int NftrWriteGfNftr11(NFTR *nftr, BSTREAM *stream);
+static int NftrWriteBnfr11(NFTR *nftr, BSTREAM *stream);
+static int NftrWriteBnfr12(NFTR *nftr, BSTREAM *stream);
+static int NftrWriteBnfr20(NFTR *nftr, BSTREAM *stream);
+static int NftrWriteStarfy(NFTR *nftr, BSTREAM *stream);
+
 static int BncmpIsValidBncmp11(const unsigned char *buffer, unsigned int size);
 static int BncmpIsValidBncmp12(const unsigned char *buffer, unsigned int size);
 
+static int BncmpReadBncmp11(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+static int BncmpReadBncmp12(NFTR *nftr, const unsigned char *buffer, unsigned int size);
+
 static void NftrFree(ObjHeader *obj);
 
-static void NftrRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_FONT, format, name, flag, proc);
-}
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_FONT, NFTR_TYPE_NFTR_01, "NFTR 0.1",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		NftrIsValidNftr01,
+		(ObjReader) NftrReadNftr01,
+		(ObjWriter) NftrWriteNftr01
+	}, {
+		FILE_TYPE_FONT, NFTR_TYPE_NFTR_10, "NFTR 1.0",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		NftrIsValidNftr10,
+		(ObjReader) NftrReadNftr10,
+		(ObjWriter) NftrWriteNftr10
+	}, {
+		FILE_TYPE_FONT, NFTR_TYPE_NFTR_11, "NFTR 1.1",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		NftrIsValidNftr11,
+		(ObjReader) NftrReadNftr11,
+		(ObjWriter) NftrWriteNftr11
+	}, {
+		FILE_TYPE_FONT, NFTR_TYPE_NFTR_12, "NFTR 1.2",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		NftrIsValidNftr12,
+		(ObjReader) NftrReadNftr12,
+		(ObjWriter) NftrWriteNftr12
+	}, {
+		FILE_TYPE_FONT, NFTR_TYPE_BNFR_20, "BNFR 2.0",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		NftrIsValidBnfr20,
+		(ObjReader) NftrReadBnfr20,
+		(ObjWriter) NftrWriteBnfr20
+	}, {
+		FILE_TYPE_FONT, NFTR_TYPE_BNFR_12, "BNFR 1.2",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		NftrIsValidBnfr12,
+		(ObjReader) NftrReadBnfr12,
+		(ObjWriter) NftrWriteBnfr12
+	}, {
+		FILE_TYPE_FONT, NFTR_TYPE_BNFR_11, "BNFR 1.1",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		NftrIsValidBnfr11,
+		(ObjReader) NftrReadBnfr11,
+		(ObjWriter) NftrWriteBnfr11
+	}, {
+		FILE_TYPE_FONT, NFTR_TYPE_GF_NFTR_11, "GameFreak NFTR 1.1",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		NftrIsValidGfNftr11,
+		(ObjReader) NftrReadGfNftr11,
+		(ObjWriter) NftrWriteGfNftr11
+	}, {
+		FILE_TYPE_FONT, NFTR_TYPE_STARFY, "Starfy",
+		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		NftrIsValidStarfy,
+		(ObjReader) NftrReadStarfy,
+		(ObjWriter) NftrWriteStarfy
+	},
+	
+	//Code map files
+	{
+		FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_11, "BNCMP 1.1",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		BncmpIsValidBncmp11,
+		(ObjReader) BncmpReadBncmp11,
+		NULL
+	}, {
+		FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_12, "BNCMP 1.2",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		BncmpIsValidBncmp12,
+		(ObjReader) BncmpReadBncmp12,
+		NULL
+	}
+};
 
 void NftrRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_FONT, sizeof(NFTR), "Font", (ObjReader) NftrRead, (ObjWriter) NftrWrite, NULL, NftrFree);
-	NftrRegisterFormat(NFTR_TYPE_NFTR_01, "NFTR 0.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr01);
-	NftrRegisterFormat(NFTR_TYPE_NFTR_10, "NFTR 1.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr10);
-	NftrRegisterFormat(NFTR_TYPE_NFTR_11, "NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr11);
-	NftrRegisterFormat(NFTR_TYPE_NFTR_12, "NFTR 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidNftr12);
-	NftrRegisterFormat(NFTR_TYPE_BNFR_20, "BNFR 2.0", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, NftrIsValidBnfr20);
-	NftrRegisterFormat(NFTR_TYPE_BNFR_12, "BNFR 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, NftrIsValidBnfr12);
-	NftrRegisterFormat(NFTR_TYPE_BNFR_11, "BNFR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, NftrIsValidBnfr11);
-	NftrRegisterFormat(NFTR_TYPE_GF_NFTR_11, "GameFreak NFTR 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidGfNftr11);
-	NftrRegisterFormat(NFTR_TYPE_STARFY, "Starfy", OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, NftrIsValidStarfy);
+	ObjRegisterType(FILE_TYPE_FONT, sizeof(NFTR), "Font", NULL, NftrFree);
+	ObjRegisterType(FILE_TYPE_CMAP, 0, "Character Map", NULL, NULL);
 
-	//register BNCMP
-	ObjRegisterType(FILE_TYPE_CMAP, 0, "Character Map", (ObjReader) BncmpRead, (ObjWriter) BncmpWrite, NULL, NULL);
-	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_11, "BNCMP 1.1", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp11);
-	ObjRegisterFormat(FILE_TYPE_CMAP, BNCMP_TYPE_BNCMP_12, "BNCMP 1.2", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, BncmpIsValidBncmp12);
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 void NftrFree(ObjHeader *obj) {
@@ -2172,6 +2255,27 @@ static int NftrWriteNftrCommon(NFTR *nftr, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
+static int NftrWriteNftr01(NFTR *nftr, BSTREAM *stream) {
+	return NftrWriteNftrCommon(nftr, stream);
+}
+
+static int NftrWriteNftr10(NFTR *nftr, BSTREAM *stream) {
+	return NftrWriteNftrCommon(nftr, stream);
+}
+
+static int NftrWriteNftr11(NFTR *nftr, BSTREAM *stream) {
+	return NftrWriteNftrCommon(nftr, stream);
+}
+
+static int NftrWriteNftr12(NFTR *nftr, BSTREAM *stream) {
+	return NftrWriteNftrCommon(nftr, stream);
+}
+
+static int NftrWriteGfNftr11(NFTR *nftr, BSTREAM *stream) {
+	return NftrWriteNftrCommon(nftr, stream);
+}
+
+
 static void NftrWriteBnfrBncmp1x(NFTR *nftr, int verHi, int verLo, BSTREAM *streamFnt, BSTREAM *streamCmp) {
 	//write file header
 	if (streamFnt != NULL) JFntWriteHeader(streamFnt, verHi, verLo, nftr->nGlyph, "JNFR");
@@ -2437,26 +2541,6 @@ static int NftrWriteStarfy(NFTR *nftr, BSTREAM *stream) {
 	}
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int NftrWrite(NFTR *nftr, BSTREAM *stream) {
-	switch (nftr->header.format) {
-		case NFTR_TYPE_BNFR_11:
-			return NftrWriteBnfr11(nftr, stream);
-		case NFTR_TYPE_BNFR_12:
-			return NftrWriteBnfr12(nftr, stream);
-		case NFTR_TYPE_BNFR_20:
-			return NftrWriteBnfr20(nftr, stream);
-		case NFTR_TYPE_NFTR_01:
-		case NFTR_TYPE_NFTR_10:
-		case NFTR_TYPE_NFTR_11:
-		case NFTR_TYPE_NFTR_12:
-		case NFTR_TYPE_GF_NFTR_11:
-			return NftrWriteNftrCommon(nftr, stream);
-		case NFTR_TYPE_STARFY:
-			return NftrWriteStarfy(nftr, stream);
-	}
-	return OBJ_STATUS_UNSUPPORTED;
 }
 
 

@@ -9,14 +9,35 @@
 static int AnmIsValidNanr(const unsigned char *buffer, unsigned int size);
 static int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 
-static void AnmiRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_NANR, format, name, flag, proc);
-}
+static int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size);
+static int AnmReadGhostTrick(NANR *nanr, const unsigned char *buffer, unsigned int size);
+
+static int AnmWriteNanr(NANR *nanr, BSTREAM *stream);
+
+static void AnmFree(ObjHeader *header);
+
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_NANR, NANR_TYPE_NANR, "NANR",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		AnmIsValidNanr,
+		(ObjReader) AnmReadNanr,
+		(ObjWriter) AnmWriteNanr
+	}, {
+		FILE_TYPE_NANR, NANR_TYPE_GHOSTTRICK, "Ghost Trick",
+		OBJ_ID_OFFSETS | OBJ_ID_VALIDATED,
+		AnmIsValidGhostTrick,
+		(ObjReader) AnmReadGhostTrick,
+		NULL
+	}
+};
 
 void AnmRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_NANR, sizeof(NANR), "Animation", (ObjReader) AnmRead, (ObjWriter) AnmWrite, NULL, AnmFree);
-	AnmiRegisterFormat(NANR_TYPE_NANR, "NANR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidNanr);
-	AnmiRegisterFormat(NANR_TYPE_GHOSTTRICK, "Ghost Trick", OBJ_ID_OFFSETS | OBJ_ID_VALIDATED, AnmIsValidGhostTrick);
+	ObjRegisterType(FILE_TYPE_NANR, sizeof(NANR), "Animation", NULL, AnmFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 
@@ -223,13 +244,7 @@ static int AnmIsValidNanr(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-int AnmIdentify(const unsigned char *buffer, unsigned int size) {
-	int fmt = NANR_TYPE_INVALID;
-	ObjIdentifyExByType(buffer, size, FILE_TYPE_NANR, &fmt);
-	return fmt;
-}
-
-int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
+static int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 	const unsigned char *abnk = NnsG2dFindBlockBySignature(buffer, size, "ABNK", NNS_SIG_LE, NULL);
 
 	int nSequences = *(uint16_t *) (abnk + 0);
@@ -291,7 +306,7 @@ int AnmReadNanr(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 	return 0;
 }
 
-int AnmReadGhostTrick(NANR *nanr, const unsigned char *buffer, unsigned int size) {
+static int AnmReadGhostTrick(NANR *nanr, const unsigned char *buffer, unsigned int size) {
 	//Ghost Trick files contain only one sequence. Read it here.
 	nanr->nSequences = 1;
 	nanr->sequences = (NANR_SEQUENCE *) calloc(1, sizeof(NANR_SEQUENCE));
@@ -335,16 +350,6 @@ int AnmReadGhostTrick(NANR *nanr, const unsigned char *buffer, unsigned int size
 
 	free(copy);
 	return 0;
-}
-
-int AnmRead(NANR *nanr, const unsigned char *buffer, unsigned int size) {
-	switch (nanr->header.format) {
-		case NANR_TYPE_NANR:
-			return AnmReadNanr(nanr, buffer, size);
-		case NANR_TYPE_GHOSTTRICK:
-			return AnmReadGhostTrick(nanr, buffer, size);
-	}
-	return 1;
 }
 
 static int AnmiCountFrames(NANR *nanr) {
@@ -407,7 +412,7 @@ static unsigned int AnmiNanrWriteFrame(BSTREAM *stream, const void *data, int el
 	return foundOffset;
 }
 
-int AnmWrite(NANR *nanr, BSTREAM *stream) {
+static int AnmWriteNanr(NANR *nanr, BSTREAM *stream) {
 	int status = 0;
 
 	NnsStream nnsStream;
@@ -503,7 +508,7 @@ int AnmWrite(NANR *nanr, BSTREAM *stream) {
 	return status;
 }
 
-void AnmFree(ObjHeader *obj) {
+static void AnmFree(ObjHeader *obj) {
 	NANR *nanr = (NANR *) obj;
 	for (int i = 0; i < nanr->nSequences; i++) {
 		NANR_SEQUENCE *sequence = nanr->sequences + i;

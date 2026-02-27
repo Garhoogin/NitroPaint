@@ -73,12 +73,6 @@ typedef struct NANR_ {
 
 void AnmRegisterFormats(void);
 
-int AnmRead(NANR *nanr, const unsigned char *lpFile, unsigned int size);
-
-int AnmWrite(NANR *nanr, BSTREAM *stream);
-
-void AnmFree(ObjHeader *obj);
-
 
 // ----- animation operations
 

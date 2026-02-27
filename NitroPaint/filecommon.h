@@ -66,8 +66,6 @@ typedef int (*ObjIdProc) (const unsigned char *buffer, unsigned int size);
 typedef struct ObjTypeEntry_ {
 	size_t size;        // The size of the object data
 	char *name;         // The type name
-	ObjReader reader;   // object reader routine
-	ObjWriter writer;   // object writer routine
 	ObjInitProc init;   // object initializer routine
 	ObjDispose dispose; // object dispose routine
 } ObjTypeEntry;
@@ -78,11 +76,13 @@ typedef struct ObjIdEntry_ {
 	char *name;        // The format name
 	ObjIdFlag idFlag;  // The flags for identification
 	ObjIdProc idProc;  // The callback for identification
+	ObjReader reader;  // Object reader routine
+	ObjWriter writer;  // Object writer routine
 } ObjIdEntry;
 
 void ObjInitCommon(void);
-void ObjRegisterType(int type, size_t objSize, const char *name, ObjReader reader, ObjWriter writer, ObjInitProc init, ObjDispose dispose);
-void ObjRegisterFormat(int type, int format, const char *name, ObjIdFlag flag, ObjIdProc proc);
+void ObjRegisterType(int type, size_t objSize, const char *name, ObjInitProc init, ObjDispose dispose);
+void ObjRegisterFormat(const ObjIdEntry *entry);
 void ObjIdentifyMultipleByType(StList *list, const unsigned char *buffer, unsigned int size, int type);
 int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type, int *pFormat);
 int ObjIdentifyEx(const unsigned char *buffer, unsigned int size, int *pFormat);

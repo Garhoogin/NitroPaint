@@ -76,8 +76,6 @@ typedef struct NCER_ {
 void CellRegisterFormats(void);
 
 
-int CellRead(NCER *ncer, const unsigned char *buffer, unsigned int size);
-
 void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj);
 
 void CellInsertOBJ(NCER_CELL *cell, int index, int nObj);
@@ -95,8 +93,6 @@ int CellFree(ObjHeader *header);
 void CellDeleteCell(NCER *ncer, int idx);
 
 void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst);
-
-int CellWrite(NCER *ncer, BSTREAM *stream);
 
 
 

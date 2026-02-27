@@ -13,23 +13,90 @@ static int PalIsValidTose(const unsigned char *buffer, unsigned int size);
 static int PalIsValidHudson(const unsigned char *lpFile, unsigned int size);
 static int PalIsValidSetosa(const unsigned char *buffer, unsigned int size);
 
+static int PalReadNclr(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+static int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+static int PalReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+static int PalReadIStudioCompressed(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+static int PalReadTose(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+static int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+static int PalReadSetosa(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+static int PalReadBin(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+
+static int PalWriteNclr(NCLR *nclr, BSTREAM *stream);
+static int PalWriteNcl(NCLR *nclr, BSTREAM *stream);
+static int PalWriteIStudio(NCLR *nclr, BSTREAM *stream);
+static int PalWriteIStudioCompressed(NCLR *nclr, BSTREAM *stream);
+static int PalWriteTose(NCLR *nclr, BSTREAM *stream);
+static int PalWriteHudson(NCLR *nclr, BSTREAM *stream);
+static int PalWriteSetosa(NCLR *nclr, BSTREAM *stream);
+static int PalWriteBin(NCLR *nclr, BSTREAM *stream);
+
 static void PalFree(ObjHeader *obj);
 
-static void PaliRegisterFormat(int format, const char *name, ObjIdFlag flag, ObjIdProc proc) {
-	ObjRegisterFormat(FILE_TYPE_PALETTE, format, name, flag, proc);
-}
+static const ObjIdEntry sFormats[] = {
+	{
+		FILE_TYPE_PALETTE, NCLR_TYPE_NCLR, "NCLR",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
+		PalIsValidNclr,
+		(ObjReader) PalReadNclr,
+		(ObjWriter) PalWriteNclr
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_NC, "NCL",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		PalIsValidNcl,
+		(ObjReader) PalReadNcl,
+		(ObjWriter) PalWriteNcl
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_ISTUDIO, "5PL",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		PalIsValidIStudio,
+		(ObjReader) PalReadIStudio,
+		(ObjWriter) PalWriteIStudio
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_ISTUDIOC, "5PC",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
+		PalIsValidIStudioCompressed,
+		(ObjReader) PalReadIStudioCompressed,
+		(ObjWriter) PalWriteIStudioCompressed
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_TOSE, "Tose",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE,
+		PalIsValidTose,
+		(ObjReader) PalReadTose,
+		(ObjWriter) PalWriteTose
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_HUDSON, "Hudson",
+		OBJ_ID_HEADER,
+		PalIsValidHudson,
+		(ObjReader) PalReadHudson,
+		(ObjWriter) PalWriteHudson
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_SETOSA, "Setosa",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED,
+		PalIsValidSetosa,
+		(ObjReader) PalReadSetosa,
+		(ObjWriter) PalWriteSetosa
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_BIN, "Binary",
+		0,
+		PalIsValidBin,
+		(ObjReader) PalReadBin,
+		(ObjWriter) PalWriteBin
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_NTFP, "NTFP",
+		0,
+		PalIsValidNtfp,
+		(ObjReader) PalReadBin,
+		(ObjWriter) PalWriteBin
+	}
+};
 
 void PalRegisterFormats(void) {
-	ObjRegisterType(FILE_TYPE_PALETTE, sizeof(NCLR), "Palette", (ObjReader) PalRead, (ObjWriter) PalWrite, NULL, PalFree);
-	PaliRegisterFormat(NCLR_TYPE_NCLR, "NCLR", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS, PalIsValidNclr);
-	PaliRegisterFormat(NCLR_TYPE_NC, "NCL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidNcl);
-	PaliRegisterFormat(NCLR_TYPE_ISTUDIO, "5PL", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudio);
-	PaliRegisterFormat(NCLR_TYPE_ISTUDIOC, "5PC", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED, PalIsValidIStudioCompressed);
-	PaliRegisterFormat(NCLR_TYPE_TOSE, "Tose", OBJ_ID_HEADER | OBJ_ID_SIGNATURE, PalIsValidTose);
-	PaliRegisterFormat(NCLR_TYPE_HUDSON, "Hudson", OBJ_ID_HEADER, PalIsValidHudson);
-	PaliRegisterFormat(NCLR_TYPE_SETOSA, "Setosa", OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED, PalIsValidSetosa);
-	PaliRegisterFormat(NCLR_TYPE_BIN, "Binary", 0, PalIsValidBin);
-	PaliRegisterFormat(NCLR_TYPE_NTFP, "NTFP", 0, PalIsValidNtfp);
+	ObjRegisterType(FILE_TYPE_PALETTE, sizeof(NCLR), "Palette", NULL, PalFree);
+
+	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
+		ObjRegisterFormat(&sFormats[i]);
+	}
 }
 
 
@@ -479,6 +546,10 @@ int PalWriteIStudio(NCLR *nclr, BSTREAM *stream) {
 	return 0;
 }
 
+static int PalWriteIStudioCompressed(NCLR *nclr, BSTREAM *stream) {
+	return PalWriteIStudio(nclr, stream);
+}
+
 static int PalWriteSetosa(NCLR *nclr, BSTREAM *stream) {
 	SetStream setStream;
 	SetStreamCreate(&setStream);
@@ -503,26 +574,4 @@ static int PalWriteTose(NCLR *nclr, BSTREAM *stream) {
 	bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
 
 	return OBJ_STATUS_SUCCESS;
-}
-
-int PalWrite(NCLR *nclr, BSTREAM *stream) {
-	switch (nclr->header.format) {
-		case NCLR_TYPE_NCLR:
-			return PalWriteNclr(nclr, stream);
-		case NCLR_TYPE_NC:
-			return PalWriteNcl(nclr, stream);
-		case NCLR_TYPE_ISTUDIO:
-		case NCLR_TYPE_ISTUDIOC:
-			return PalWriteIStudio(nclr, stream);
-		case NCLR_TYPE_TOSE:
-			return PalWriteTose(nclr, stream);
-		case NCLR_TYPE_HUDSON:
-			return PalWriteHudson(nclr, stream);
-		case NCLR_TYPE_BIN:
-		case NCLR_TYPE_NTFP:
-			return PalWriteBin(nclr, stream);
-		case NCLR_TYPE_SETOSA:
-			return PalWriteSetosa(nclr, stream);
-	}
-	return OBJ_STATUS_INVALID;
 }

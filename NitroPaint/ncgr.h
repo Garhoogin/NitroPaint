@@ -105,11 +105,6 @@ void ChrReadBitmap(NCGR *ncgr, const unsigned char *buffer);
 void ChrReadGraphics(NCGR *ncgr, const unsigned char *buffer);
 
 //
-// Read character graphics from a byte array.
-//
-int ChrRead(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
-
-//
 // Write character data to stream.
 //
 void ChrWriteChars(NCGR *ncgr, BSTREAM *stream);
@@ -118,11 +113,6 @@ void ChrWriteChars(NCGR *ncgr, BSTREAM *stream);
 // Write graphics data to stream.
 //
 void ChrWriteGraphics(NCGR *ncgr, BSTREAM *stream);
-
-//
-// Write character graphics to a stream.
-//
-int ChrWrite(NCGR *ncgr, BSTREAM *stream);
 
 //
 // Change the bit depth of character graphics.
