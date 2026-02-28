@@ -2747,7 +2747,7 @@ static void TexViewerEnsurePaletteEditor(TEXTUREEDITORDATA *data) {
 	RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
 }
 
-HWND CreateTextureEditorFromUnconverted(int x, int y, int width, int height, HWND hWndParent, const unsigned char *buffer, unsigned int size) {
+HWND CreateTextureEditorFromUnconverted(int x, int y, int width, int height, HWND hWndParent, const unsigned char *buffer, unsigned int size, const wchar_t *path) {
 	//read image bits
 	int bWidth, bHeight;
 	COLOR32 *bits = ImgReadMem(buffer, size, &bWidth, &bHeight);
@@ -2766,6 +2766,13 @@ HWND CreateTextureEditorFromUnconverted(int x, int y, int width, int height, HWN
 	//create editor
 	HWND h = EditorCreate(L"TextureEditorClass", x, y, width, height, hWndParent);
 	SendMessage(h, NV_INITIALIZE, bWidth | (bHeight << 16), (LPARAM) bits);
+
+	//set path of input
+	if (path != NULL) {
+		TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(h);
+		memcpy(data->szInitialFile, path, wcslen(path) * sizeof(wchar_t));
+	}
+
 	return h;
 }
 

@@ -1403,7 +1403,7 @@ void OpenFileByContent(HWND hWnd, const unsigned char *buffer, unsigned int size
 	if (type == FILE_TYPE_IMAGE) {
 		//create texture editor
 		NITROPAINTSTRUCT *np = NpGetData(hWnd);
-		CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, np->hWndMdi, buffer, size);
+		CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, np->hWndMdi, buffer, size, path);
 	} else {
 		//open the file
 		ObjHeader *obj = NULL;
@@ -1902,7 +1902,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						unsigned char *buffer = ObjReadWholeFile(path, &size);
 
 						HWND h = CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi,
-							buffer, size);
+							buffer, size, path);
 						EditorSetFile(h, path);
 						free(path);
 						break;
@@ -3106,7 +3106,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 					unsigned char *buffer = ObjReadWholeFile(data->szPath, &size);
 
 					CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-						hWndMdi, buffer, size);
+						hWndMdi, buffer, size, data->szPath);
 					free(buffer);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}

@@ -69,7 +69,7 @@ void RegisterTextureEditorClass(void);
 
 int TexViewerIsConverted(TEXTUREEDITORDATA *data);
 
-HWND CreateTextureEditorFromUnconverted(int x, int y, int width, int height, HWND hWndParent, const unsigned char *buffer, unsigned int size);
+HWND CreateTextureEditorFromUnconverted(int x, int y, int width, int height, HWND hWndParent, const unsigned char *buffer, unsigned int size, const wchar_t *path);
 
 HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWndParent, TextureObject *texture);
 

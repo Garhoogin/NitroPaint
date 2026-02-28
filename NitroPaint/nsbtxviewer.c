@@ -332,7 +332,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 		unsigned int size;
 		unsigned char *buf = ObjReadWholeFile(path, &size);
 
-		HWND hWndTextureEditor = CreateTextureEditorFromUnconverted(verySmall, verySmall, 0, 0, hWndMdi, buf, size);
+		HWND hWndTextureEditor = CreateTextureEditorFromUnconverted(verySmall, verySmall, 0, 0, hWndMdi, buf, size, path);
 		ShowWindow(hWndTextureEditor, SW_HIDE);
 		free(buf);
 
