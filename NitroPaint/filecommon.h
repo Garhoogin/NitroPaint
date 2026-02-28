@@ -5,15 +5,15 @@
 #include "bstream.h"
 #include "struct.h"
 
-#define FILE_TYPE_INVALID    0
-#define FILE_TYPE_PALETTE    1
-#define FILE_TYPE_CHARACTER  2
-#define FILE_TYPE_SCREEN     3
-#define FILE_TYPE_CELL       4
-#define FILE_TYPE_NSBTX      5
-#define FILE_TYPE_TEXTURE    7
-#define FILE_TYPE_NANR       8
-#define FILE_TYPE_IMAGE      9
+#define FILE_TYPE_INVALID     0
+#define FILE_TYPE_PALETTE     1
+#define FILE_TYPE_CHARACTER   2
+#define FILE_TYPE_SCREEN      3
+#define FILE_TYPE_CELL        4
+#define FILE_TYPE_NSBTX       5
+#define FILE_TYPE_TEXTURE     7
+#define FILE_TYPE_NANR        8
+#define FILE_TYPE_IMAGE       9
 #define FILE_TYPE_COMBO2D    10
 #define FILE_TYPE_NMCR       11
 #define FILE_TYPE_NMAR       12
@@ -26,13 +26,15 @@
 #define FILE_TYPE_MAX        19  // highest file type +1
 
 // ----- common status codes
-#define OBJ_STATUS_SUCCESS     0  // the operation completed successfully
-#define OBJ_STATUS_INVALID     1  // the byte stream was not a valid object
-#define OBJ_STATUS_NO_MEMORY   2  // not enough memory
-#define OBJ_STATUS_UNSUPPORTED 3  // feature unsupported
-#define OBJ_STATUS_NO_ACCESS   4  // access denied accessing a resource
-#define OBJ_STATUS_MISMATCH    5  // a data mismatch error occurred
-#define OBJ_STATUS_MAX         6
+#define OBJ_STATUS_SUCCESS            0  // the operation completed successfully
+#define OBJ_STATUS_INVALID            1  // the byte stream did not represent a valid object
+#define OBJ_STATUS_NO_MEMORY          2  // not enough memory
+#define OBJ_STATUS_UNSUPPORTED        3  // feature unsupported
+#define OBJ_STATUS_NO_ACCESS          4  // access denied when accessing a resource
+#define OBJ_STATUS_MISMATCH           5  // a data mismatch error occurred
+#define OBJ_STATUS_OUTSTANDING_REFS   6  // the resource could not be freed because of outstanding references
+#define OBJ_STATUS_ALREADY_REGISTERED 7  // the object could not be registered because it was already registered
+#define OBJ_STATUS_MAX                8
 
 #define OBJ_SUCCEEDED(s)       ((s)==OBJ_STATUS_SUCCESS)
 
@@ -63,13 +65,6 @@ typedef void (*ObjDispose) (ObjHeader *object);
 // ----- callback function to identify file validity of a given format
 typedef int (*ObjIdProc) (const unsigned char *buffer, unsigned int size);
 
-typedef struct ObjTypeEntry_ {
-	size_t size;        // The size of the object data
-	char *name;         // The type name
-	ObjInitProc init;   // object initializer routine
-	ObjDispose dispose; // object dispose routine
-} ObjTypeEntry;
-
 typedef struct ObjIdEntry_ {
 	int type;          // The file type
 	int format;        // The file format (specific to the type)
@@ -79,16 +74,6 @@ typedef struct ObjIdEntry_ {
 	ObjReader reader;  // Object reader routine
 	ObjWriter writer;  // Object writer routine
 } ObjIdEntry;
-
-void ObjInitCommon(void);
-void ObjRegisterType(int type, size_t objSize, const char *name, ObjInitProc init, ObjDispose dispose);
-void ObjRegisterFormat(const ObjIdEntry *entry);
-void ObjIdentifyMultipleByType(StList *list, const unsigned char *buffer, unsigned int size, int type);
-int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type, int *pFormat);
-int ObjIdentifyEx(const unsigned char *buffer, unsigned int size, int *pFormat);
-
-ObjHeader *ObjAlloc(int type, int format);
-
 
 typedef struct ObjLink_ {
 	ObjHeader *to;
@@ -102,13 +87,298 @@ struct ObjHeader_ {
 	int compression;      // The compression scheme used on this file
 	ObjDispose dispose;   // The callback for freeing the file
 	ObjWriter writer;     // The callback for writing the file to a stream
-	void *combo;          // Pointer to a structure maintaining strict links to objects in the same file
+	ObjHeader *combo;     // Pointer to a structure maintaining strict links to objects in the same file
 	ObjLink link;         // A structure maintaining file links to this file
 	char *fileLink;       // The name of the file that this object references
 	char *comment;        // The stored file comment (if supported)
 };
 
-extern const char *const g_ObjCompressionNames[];
+// -----------------------------------------------------------------------------------------------
+// Name: ObjInitCommon
+//
+// Initializes the object manager. This function must be called once before any other object
+// manager routines are used.
+// -----------------------------------------------------------------------------------------------
+void ObjInitCommon(void);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjRegisterType
+//
+// Register an object type with the object manager. This provides the object manager with the
+// required information to allocate, initialize, and free an object of the new type.
+//
+// The objSize parameter is the size of the object's structure. After the object is allocated,
+// the init function pointer is called on the new struct, if specified. When the object is
+// being freed, the dispose function pointer is called before memory is released.
+//
+// The type ID may be passed as 0, in which case an ID will be allocated by the manager. When
+// the ID is nonzero, it must be unique, and an error is returned if an object of that ID is
+// already registered.
+//
+// The type name must not be NULL, and is copied internally by the object manager.
+//
+// Parameters:
+//   type          The type ID of the object.
+//   objSize       The object structure size.
+//   name          The object type name.
+//   init          The initialization routine for the object type.
+//   dispose       The disposal routine for the object type.
+//
+// Returns:
+//   The ID of the registered type, or 0 on failure.
+// -----------------------------------------------------------------------------------------------
+int ObjRegisterType(
+	int         type,
+	size_t      objSize,
+	const char *name,
+	ObjInitProc init,
+	ObjDispose  dispose
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjRegisterFormat
+//
+// Register a file format with the object manager. This provides the object manager with the
+// information required to validate a byte sequence against the format, read one from a byte
+// sequence, and write one to a byte stream.
+//
+// The type ID must be nonzero and reference a registered object type. The format ID may be zero,
+// in which case a format ID will be allocated by the object manager. If it is nonzero, it must
+// not be the same as a registered format of the object type. They are not globally unique.
+//
+// The format name must not be NULL, and is copied internally by the object manager.
+//
+// Parameters:
+//   entry         The format information.
+//
+// Returns:
+//   The ID of the registered file format, or 0 on failure.
+// -----------------------------------------------------------------------------------------------
+int ObjRegisterFormat(
+	const ObjIdEntry *entry
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjAlloc
+//
+// Allocates an object of the specified type and format. The type field should be a type ID 
+// returned by ObjRegisterType, and format should be a format ID returned by ObjRegisterFormat. 
+// 
+// On success, the function returns a pointer to the object, initialized by the object type's
+// initialization routine. On failure, this function returns NULL.
+//
+// Parameters:
+//   type          The object type
+//   format        The file format
+//
+// Returns:
+//   The pointer to the object, on success, or NULL on failure.
+// -----------------------------------------------------------------------------------------------
+ObjHeader *ObjAlloc(
+	int type,
+	int format
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjFree
+//
+// Frees the resources held by an object. Before releasing memory held, the object's dispose
+// routine is called. After returning, access to the object is undefined.
+//
+// Parameters:
+//   obj           The object to be freed
+// -----------------------------------------------------------------------------------------------
+void ObjFree(
+	ObjHeader *obj
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjIdentify
+//
+// Identify the type, format, and compression of a sequence of bytes. 
+//
+// First, the compression format of the buffer is identified. Next, the buffer is validated
+// against the registered file formats. The format of highest confidence is chosen. Optionally,
+// the type of object may be specified by the knownType parameter, or FILE_TYPE_INVALID if it is
+// not known beforehand.
+//
+// In the case where the path is specified, it is checked for suffixes for certain types of files
+// files before checking the rest of the format registry. 
+//
+// Parameters:
+//   buffer        The input byte buffer
+//   size          The size of the input buffer
+//   path          The file path (if it exists)
+//   knownType     The type of object (optional)
+//   pCompression  The pointer to the validated compression format (optional)
+//   pFormat       The pointer to the validated format (optional)
+//
+// Returns:
+//   The type ID of the format that validated the buffer, or FILE_TYPE_INVALID if none.
+// -----------------------------------------------------------------------------------------------
+int ObjIdentify(
+	unsigned char *buffer,
+	unsigned int   size,
+	const wchar_t *path,
+	int            knownType,
+	int           *pCompression,
+	int           *pFormat
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjIdentifyMultipleByType
+//
+// Validate a byte sequence against the registered file formats. Optionally, only formats for a
+// specific object type can be validated. When more than one format validates the buffer, multiple
+// entries are added to the output list. The output elements are added in descending order of
+// confidence.
+//
+// This function does not perform any decompression of the input buffer.
+//
+// Parameters:
+//   list          The output list of ObjIdEntry (must be already initialized)
+//   buffer        The input byte buffer
+//   size          The size of the input byte buffer.
+//   type          The type of object (optional).
+// -----------------------------------------------------------------------------------------------
+void ObjIdentifyMultipleByType(
+	StList              *list,
+	const unsigned char *buffer,
+	unsigned int        size,
+	int                 type
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjIdentifyExByType
+//
+// Validate a byte sequence against the registered file formats. Optionally, only formats for a
+// specific object type can be validated. When more than one format validates the buffer, only
+// the one with highest confidence is returned. 
+//
+// This function does not perform any decompression of the input buffer.
+//
+// Parameters:
+//   buffer        The input byte buffer
+//   size          The size of the input buffer
+//   type          The type of object (optional).
+//   pFormat       The pointer to the validated format (optional)
+//
+// Returns:
+//   The type ID of the format that validated the buffer, or FILE_TYPE_INVALID if none.
+// -----------------------------------------------------------------------------------------------
+int ObjIdentifyExByType(
+	const unsigned char *buffer,
+	unsigned int         size,
+	int                  type,
+	int                 *pFormat
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjIdentifyEx
+//
+// Validate a byte sequence against the registered file formats. When more than one format
+// validates the buffer, only the one with highest confidence is returned. 
+//
+// This function does not perform any decompression of the input buffer.
+//
+// Parameters:
+//   buffer        The input byte buffer
+//   size          The size of the input buffer
+//   pFormat       The pointer to the validated format (optional)
+//
+// Returns:
+//   The type ID of the format that validated the buffer, or FILE_TYPE_INVALID if none.
+// -----------------------------------------------------------------------------------------------
+int ObjIdentifyEx(
+	const unsigned char *buffer,
+	unsigned int         size,
+	int                 *pFormat
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjReadBuffer
+//
+// Reads an object from a byte buffer.
+//
+// Parameters:
+//   ppObject      The pointer to receive the allocated object
+//   buffer        The input byte buffer
+//   size          The size of the input buffer
+//   type          The object type
+//   format        The file format
+//   compression   The compression format
+//
+// Returns:
+//   The status of the operation.
+// -----------------------------------------------------------------------------------------------
+int ObjReadBuffer(
+	ObjHeader          **ppObject,
+	const unsigned char *buffer,
+	unsigned int         size,
+	int                  type,
+	int                  format,
+	int                  compression
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjReadBuffer
+//
+// Reads an object from a file.
+//
+// Parameters:
+//   ppObject      The pointer to receive the allocated object
+//   path          The input byte buffer
+//   type          The object type
+//   format        The file format
+//   compression   The compression format
+//
+// Returns:
+//   The status of the operation.
+// -----------------------------------------------------------------------------------------------
+int ObjReadFile(
+	ObjHeader    **ppObject,
+	const wchar_t *path,
+	int            type,
+	int            format,
+	int            compression
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjAutoReadFile
+//
+// Reads an object from a file with automatic type, format, and compression detection.
+//
+// Parameters:
+//   path          The input byte buffer
+//   type          The object type
+//
+// Returns:
+//   The allocated object if successful, or NULL on failure.
+// -----------------------------------------------------------------------------------------------
+ObjHeader *ObjAutoReadFile(
+	const wchar_t *path,
+	int            type
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjWriteFile
+//
+// Writes an object to a file.
+//
+// Parameters:
+//   object        The input byte buffer
+//   path          The object type
+//
+// Returns:
+//   The status of the operation.
+// -----------------------------------------------------------------------------------------------
+int ObjWriteFile(
+	ObjHeader     *object,
+	const wchar_t *path
+);
+
+
+
 
 //
 // Converts a status code into a string.
@@ -127,21 +397,9 @@ unsigned int ObjGetFormatCountByType(int type);
 wchar_t *ObjGetFileNameFromPath(const wchar_t *path);
 
 //
-// Identify the type of a file based on its bytes and file name. File name is
-// is only used as a fallback when regular detection becomes too vague to rely
-// on.
-//
-int ObjIdentify(unsigned char *file, unsigned int size, const wchar_t *path, int knownType, int *pCompression, int *pFormat);
-
-//
 // Compute CRC16 checksum for an array of bytes.
 //
 unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned short init);
-
-//
-// Free the resources held by an open file, after which it can be safely freed
-//
-void ObjFree(ObjHeader *header);
 
 //
 // Determines the validity of an object.
@@ -152,26 +410,6 @@ int ObjIsValid(ObjHeader *header);
 // Read an entire file into memory from path. No decompression is performed.
 //
 void *ObjReadWholeFile(const wchar_t *name, unsigned int *size);
-
-//
-// Reads a file into the specified object with the given reader function.
-//
-int ObjReadFile(ObjHeader **ppObject, const wchar_t *name, int type, int format, int compression);
-
-//
-// Reads a file.
-//
-ObjHeader *ObjAutoReadFile(const wchar_t *path, int type);
-
-//
-// Read a buffer.
-//
-int ObjReadBuffer(ObjHeader **ppObject, const unsigned char *buffer, unsigned int size, int type, int format, int compression);
-
-//
-// Writes a file to the disk using a provided writer function.
-//
-int ObjWriteFile(ObjHeader *object, const wchar_t *name);
 
 //
 // Link an object to another in a directed way.
@@ -192,3 +430,7 @@ void ObjSetFileLink(ObjHeader *obj, const wchar_t *link);
 // Update the file links of all objects linking to this one.
 //
 void ObjUpdateLinks(ObjHeader *obj, const wchar_t *path);
+
+
+
+extern const char *const g_ObjCompressionNames[];

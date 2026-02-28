@@ -33,13 +33,3 @@ void PalRegisterFormats(void);
 int PalIsValidBin(const unsigned char *lpFile, unsigned int size);
 int PalIsValidNtfp(const unsigned char *lpFile, unsigned int size);
 
-//
-// Reads an palette file from a byte array.
-//
-int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size);
-
-//
-// Writes a palette to a stream.
-//
-int PalWrite(NCLR *nclr, BSTREAM *stream);
-

@@ -348,30 +348,6 @@ static int PalReadTose(NCLR *nclr, const unsigned char *buffer, unsigned int siz
 	return OBJ_STATUS_SUCCESS;
 }
 
-int PalRead(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
-	switch (nclr->header.format) {
-		case NCLR_TYPE_NCLR:
-			return PalReadNclr(nclr, buffer, size);
-		case NCLR_TYPE_NC:
-			return PalReadNcl(nclr, buffer, size);
-		case NCLR_TYPE_ISTUDIO:
-			return PalReadIStudio(nclr, buffer, size);
-		case NCLR_TYPE_ISTUDIOC:
-			return PalReadIStudioCompressed(nclr, buffer, size);
-		case NCLR_TYPE_TOSE:
-			return PalReadTose(nclr, buffer, size);
-		case NCLR_TYPE_HUDSON:
-			return PalReadHudson(nclr, buffer, size);
-		case NCLR_TYPE_SETOSA:
-			return PalReadSetosa(nclr, buffer, size);
-		case NCLR_TYPE_BIN:
-			return PalReadBin(nclr, buffer, size);
-		case NCLR_TYPE_NTFP:
-			return PalReadBin(nclr, buffer, size);
-	}
-	return OBJ_STATUS_INVALID;
-}
-
 static uint16_t *PalConstructDataOutput(NCLR *nclr, unsigned int *size, uint16_t **pOutIndexTable, unsigned int *pSizeIndexTable) {
 	if (!nclr->compressedPalette) {
 		//palette compression not used, write directly

@@ -5,6 +5,174 @@
 #include "gdip.h"
 #include "combo2d.h"
 
+
+typedef struct ObjTypeEntry_ {
+	size_t size;        // The size of the object data
+	char *name;         // The type name
+	ObjInitProc init;   // object initializer routine
+	ObjDispose dispose; // object dispose routine
+	StList formats;     // formats of this type (int -> ObjTypeEntry)
+} ObjTypeEntry;
+
+static int sObjInited = 0;
+static StList sObjAllocatedTypeIDs = { 0 };    // set of int           For format ID allocation
+static StList sObjFormats = { 0 };             // [] -> ObjIdEntry     For file detection
+static StMap sObjRegisteredTypes = { 0 };      // int -> ObjTypeEntry
+
+static int ObjiIdFlagToConfidence(ObjIdFlag flag) {
+	int confidence = 0;
+
+	//headers are strong indicators of ability to identify. Footers may be strong, but not as much
+	//so since they must be scanned for. If a file had both header and footer, this is stronger.
+	if (flag & OBJ_ID_HEADER) confidence += 100;
+	if (flag & OBJ_ID_FOOTER) confidence += 50;
+
+	//a recognizable signature is a very good confidene indictator.
+	if (flag & OBJ_ID_SIGNATURE) confidence += 400;
+
+	//a block structure enforces restrictions on the file data.
+	if (flag & OBJ_ID_CHUNKED) confidence += 100;
+
+	//a file including a checksum should catch lots of incorrect detections.
+	if (flag & OBJ_ID_CHECKSUM) confidence += 200;
+
+	//inclusion of compressed data sections enforces stricter detection.
+	if (flag & OBJ_ID_COMPRESSION) confidence += 50;
+
+	//For a file with specific valid sizes, we can increase the confidence slightly.
+	if (flag & OBJ_ID_SIZE_CHECK) confidence += 25;
+
+	//A Windows codec takes on precedence just under a file with header and signature.
+	if (flag & (OBJ_ID_WINCODEC | OBJ_ID_WINCODEC_OVERRIDE)) confidence += 475;
+
+	return confidence;
+}
+
+static int ObjiIdEntryComparator(const void *e1, const void *e2) {
+	//descending order of confidence
+	const ObjIdEntry *ent1 = (const ObjIdEntry *) e1;
+	const ObjIdEntry *ent2 = (const ObjIdEntry *) e2;
+	return ObjiIdFlagToConfidence(ent1->idFlag) - ObjiIdFlagToConfidence(ent2->idFlag);
+}
+
+static int ObjiIntComparator(const void *e1, const void *e2) {
+	return (*(const int *) e1) - (*(const int *) e2);
+}
+
+void ObjInitCommon(void) {
+	if (sObjInited) return;
+
+	StMapCreate(&sObjRegisteredTypes, sizeof(int), sizeof(ObjTypeEntry));
+	StListCreateInline(&sObjAllocatedTypeIDs, int, ObjiIntComparator);
+	StListCreateInline(&sObjFormats, ObjIdEntry, ObjiIdEntryComparator);
+
+	//register default formats
+	ObjRegisterType(FILE_TYPE_INVALID, 0, "Invalid", NULL, NULL);
+	ObjRegisterType(FILE_TYPE_IMAGE, 0, "Image", NULL, NULL);
+
+	int ObjiIsValidImage(const unsigned char *buffer, unsigned int size);
+
+	static const ObjIdEntry hostCodecs = {
+		FILE_TYPE_IMAGE, 1, "Host Codecs",
+		OBJ_ID_WINCODEC,
+		ObjiIsValidImage,
+		NULL,
+		NULL
+	};
+	ObjRegisterFormat(&hostCodecs); // TODO
+
+	sObjInited = 1;
+}
+
+static ObjTypeEntry *ObjiGetTypeByID(int type) {
+	return StMapGetPtr(&sObjRegisteredTypes, &type);
+}
+
+int ObjRegisterType(int type, size_t objSize, const char *name, ObjInitProc init, ObjDispose dispose) {
+	//object of type must not be registered
+	if (StListIndexOf(&sObjAllocatedTypeIDs, &type) != ST_INDEX_NOT_FOUND) return 0;
+
+	ObjTypeEntry ent;
+	ent.name = _strdup(name);
+	ent.size = objSize;
+	ent.init = init;
+	ent.dispose = dispose;
+	StListCreateInline(&ent.formats, ObjIdEntry, ObjiIdEntryComparator);
+	StMapPut(&sObjRegisteredTypes, &type, &ent);
+
+	StListAdd(&sObjAllocatedTypeIDs, &type);
+
+	return type;
+}
+
+int ObjRegisterFormat(const ObjIdEntry *entry) {
+	ObjTypeEntry *type = ObjiGetTypeByID(entry->type);
+	if (type == NULL) return 0; // invalid type
+
+	int idFormat = entry->format;
+	if (idFormat == 0) {
+		//TODO: allocate a format ID
+	}
+
+	ObjIdEntry ent;
+	ent.type = entry->type;
+	ent.format = idFormat;
+	ent.name = _strdup(entry->name);
+	ent.idFlag = entry->idFlag;
+	ent.idProc = entry->idProc;
+	ent.reader = entry->reader;
+	ent.writer = entry->writer;
+
+	StListAdd(&type->formats, &ent);
+	StListAdd(&sObjFormats, &ent);
+
+	return idFormat;
+}
+
+const char *ObjGetFileTypeName(int type) {
+	ObjTypeEntry ent;
+	StMapGet(&sObjRegisteredTypes, &type, &ent);
+	return ent.name;
+}
+
+const char *ObjGetFormatNameByType(int type, int format) {
+	ObjTypeEntry *pType = ObjiGetTypeByID(type);
+	if (pType == NULL) return NULL; // does not exist
+
+	for (size_t i = 0; i < pType->formats.length; i++) {
+		ObjIdEntry *ent = StListGetPtr(&pType->formats, i);
+		if (ent->format == format) return ent->name;
+	}
+
+	return NULL;
+}
+
+unsigned int ObjGetFormatCountByType(int type) {
+	ObjTypeEntry *pType = ObjiGetTypeByID(type);
+	if (pType == NULL) return 0;
+
+	return pType->formats.length + 1;  // +1 for the "Invalid" type
+}
+
+static int ObjGetFormat(ObjIdEntry *pInfo, int type, int format) {
+	ObjTypeEntry *pType = ObjiGetTypeByID(type);
+	if (pType == NULL) return 0;  // not found
+
+	for (size_t i = 0; i < pType->formats.length; i++) {
+		ObjIdEntry *ent = StListGetPtr(&pType->formats, i);
+		if (ent->format != format) continue;
+
+		//copy out
+		memcpy(pInfo, ent, sizeof(ObjIdEntry));
+		return 1;
+	}
+
+	//not found
+	return 0;
+}
+
+
+
 const char *const g_ObjCompressionNames[] = {
 	"None", 
 	"LZ77", 
@@ -75,6 +243,10 @@ const wchar_t *ObjStatusToString(int status) {
 			return L"Out of memory";
 		case OBJ_STATUS_UNSUPPORTED:
 			return L"Unsupported";
+		case OBJ_STATUS_OUTSTANDING_REFS:
+			return L"Outstanding references";
+		case OBJ_STATUS_ALREADY_REGISTERED:
+			return L"Already registered";
 	}
 
 	return NULL;
@@ -129,156 +301,58 @@ static int ObjiIsValidImage(const unsigned char *buffer, unsigned int size) {
 
 
 
-static StMap sObjRegisteredTypes = { 0 };
-static StList sObjRegisteredFormats = { 0 };
-
-const char *ObjGetFileTypeName(int type) {
-	ObjTypeEntry ent;
-	StMapGet(&sObjRegisteredTypes, &type, &ent);
-	return ent.name;
-}
-
-const char *ObjGetFormatNameByType(int type, int format) {
-	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
-		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
-		if (ent->type == type && ent->format == format) return ent->name;
+static void ObjiIdentifyMultipleByTypeInternal(StList *list, const unsigned char *buffer, unsigned int size, int type, unsigned int nMax) {
+	StList *pRegistry = &sObjFormats;
+	if (type != FILE_TYPE_INVALID) {
+		ObjTypeEntry *pType = ObjiGetTypeByID(type);
+		if (pType == NULL) {
+			//unregistered format
+			pRegistry = NULL;
+		} else {
+			//registered format
+			pRegistry = &pType->formats;
+		}
 	}
 
-	return NULL;
-}
+	//check formats
+	unsigned int nAdd = 0;
+	for (size_t i = 0; i < pRegistry->length; i++) {
+		ObjIdEntry *pEnt = StListGetPtr(pRegistry, i);
+		if (pEnt->type != type && type != FILE_TYPE_INVALID) continue;
 
-unsigned int ObjGetFormatCountByType(int type) {
-	unsigned int n = 0;
+		//check validity
+		if (pEnt->idProc(buffer, size)) {
+			//match
+			StListAdd(list, pEnt);
 
-	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
-		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
-		if (ent->type != type) continue;
-
-		n++;
+			if (++nAdd >= nMax) return;
+		}
 	}
-	return n + 1;
-}
-
-static int ObjGetFormat(ObjIdEntry *pInfo, int type, int format) {
-	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
-		ObjIdEntry *ent = StListGetPtr(&sObjRegisteredFormats, i);
-		if (ent->type != type || ent->format != format) continue;
-
-		//copy out
-		memcpy(pInfo, ent, sizeof(ObjIdEntry));
-		return 1;
-	}
-
-	//not found
-	return 0;
-}
-
-static int ObjiIdFlagToConfidence(ObjIdFlag flag) {
-	int confidence = 0;
-
-	//headers are strong indicators of ability to identify. Footers may be strong, but not as much
-	//so since they must be scanned for. If a file had both header and footer, this is stronger.
-	if (flag & OBJ_ID_HEADER) confidence += 100;
-	if (flag & OBJ_ID_FOOTER) confidence += 50;
-
-	//a recognizable signature is a very good confidene indictator.
-	if (flag & OBJ_ID_SIGNATURE) confidence += 400;
-
-	//a block structure enforces restrictions on the file data.
-	if (flag & OBJ_ID_CHUNKED) confidence += 100;
-
-	//a file including a checksum should catch lots of incorrect detections.
-	if (flag & OBJ_ID_CHECKSUM) confidence += 200;
-
-	//inclusion of compressed data sections enforces stricter detection.
-	if (flag & OBJ_ID_COMPRESSION) confidence += 50;
-
-	//For a file with specific valid sizes, we can increase the confidence slightly.
-	if (flag & OBJ_ID_SIZE_CHECK) confidence += 25;
-
-	//A Windows codec takes on precedence just under a file with header and signature.
-	if (flag & (OBJ_ID_WINCODEC | OBJ_ID_WINCODEC_OVERRIDE)) confidence += 475;
-
-	return confidence;
-}
-
-static int ObjiIdEntryComparator(const void *e1, const void *e2) {
-	//descending order of confidence
-	const ObjIdEntry *ent1 = (const ObjIdEntry *) e1;
-	const ObjIdEntry *ent2 = (const ObjIdEntry *) e2;
-	return ObjiIdFlagToConfidence(ent1->idFlag) - ObjiIdFlagToConfidence(ent2->idFlag);
-}
-
-void ObjInitCommon(void) {
-	StMapCreate(&sObjRegisteredTypes, sizeof(int), sizeof(ObjTypeEntry));
-	StListCreate(&sObjRegisteredFormats, sizeof(ObjIdEntry), ObjiIdEntryComparator);
-
-	//register default formats
-	ObjRegisterType(FILE_TYPE_INVALID, 0, "Invalid", NULL, NULL);
-	ObjRegisterType(FILE_TYPE_IMAGE, 0, "Image", NULL, NULL);
-
-	static const ObjIdEntry hostCodecs = {
-		FILE_TYPE_IMAGE, 1, "Host Codecs",
-		OBJ_ID_WINCODEC,
-		ObjiIsValidImage,
-		NULL,
-		NULL
-	};
-	ObjRegisterFormat(&hostCodecs); // TODO
-}
-
-void ObjRegisterType(int type, size_t objSize, const char *name, ObjInitProc init, ObjDispose dispose) {
-	ObjTypeEntry ent;
-	ent.name = _strdup(name);
-	ent.size = objSize;
-	ent.init = init;
-	ent.dispose = dispose;
-	StMapPut(&sObjRegisteredTypes, &type, &ent);
-}
-
-void ObjRegisterFormat(const ObjIdEntry *entry) {
-	ObjIdEntry ent;
-	ent.type = entry->type;
-	ent.format = entry->format;
-	ent.name = _strdup(entry->name);
-	ent.idFlag = entry->idFlag;
-	ent.idProc = entry->idProc;
-	ent.reader = entry->reader;
-	ent.writer = entry->writer;
-	StListAdd(&sObjRegisteredFormats, &ent);
 }
 
 void ObjIdentifyMultipleByType(StList *list, const unsigned char *buffer, unsigned int size, int type) {
-	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
-		ObjIdEntry *pEnt = StListGetPtr(&sObjRegisteredFormats, i);
-		if (pEnt->type != type && type != FILE_TYPE_INVALID) continue;
-
-		//check validity
-		if (pEnt->idProc(buffer, size)) {
-			//match
-			StListAdd(list, pEnt);			
-		}
-	}
+	ObjiIdentifyMultipleByTypeInternal(list, buffer, size, type, UINT_MAX);
 }
 
 int ObjIdentifyExByType(const unsigned char *buffer, unsigned int size, int type, int *pFormat) {
-	int format = 0;
-	int detectType = FILE_TYPE_INVALID;
+	int detectType = FILE_TYPE_INVALID, detectFormat = 0;
 
-	for (size_t i = 0; i < sObjRegisteredFormats.length; i++) {
-		ObjIdEntry *pEnt = StListGetPtr(&sObjRegisteredFormats, i);
-		if (pEnt->type != type && type != FILE_TYPE_INVALID) continue;
+	//enumerate the registry
+	StList types;
+	StListCreateInline(&types, ObjIdEntry, NULL);
+	ObjiIdentifyMultipleByTypeInternal(&types, buffer, size, type, 1);
 
-		//check validity
-		if (pEnt->idProc(buffer, size)) {
-			//match
-			detectType = pEnt->type;
-			format = pEnt->format;
-			break;
-		}
+	if (types.length > 0) {
+		//if there were detections, pick the first (most likely) one
+		ObjIdEntry ent;
+		StListGet(&types, 0, &ent);
+		detectType = ent.type;
+		detectFormat = ent.format;
 	}
-	
-	if (pFormat != NULL) *pFormat = format;
+
+	StListFree(&types);
+
+	if (pFormat != NULL) *pFormat = detectFormat;
 	return detectType;
 }
 
@@ -720,6 +794,8 @@ int ObjWrite(ObjHeader *object, BSTREAM *stream) {
 		COMBO2D *combo = (COMBO2D *) object->combo;
 		return ObjWrite(&combo->header, stream);
 	} else {
+		if (object->writer == NULL) return OBJ_STATUS_UNSUPPORTED;
+
 		return object->writer(object, stream);
 	}
 }

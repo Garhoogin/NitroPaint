@@ -63,8 +63,6 @@ typedef struct NFTR_ {
 
 void NftrRegisterFormats(void);
 
-int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size);
-
 int NftrGetGlyphIndexByCP(NFTR *nftr, uint16_t cp);
 int NftrGetInvalidGlyphIndex(NFTR *nftr);
 NFTR_GLYPH *NftrGetGlyphByCP(NFTR *nftr, uint16_t cp);
@@ -72,8 +70,6 @@ NFTR_GLYPH *NftrGetInvalidGlyph(NFTR *nftr);
 void NftrEnsureSorted(NFTR *nftr);
 void NftrSetBitDepth(NFTR *nftr, int depth);
 void NftrSetCellSize(NFTR *nftr, int width, int height);
-
-int NftrWrite(NFTR *nftr, BSTREAM *stream);
 
 
 

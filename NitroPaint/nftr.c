@@ -920,30 +920,6 @@ static int NftrReadStarfy(NFTR *nftr, const unsigned char *buffer, unsigned int 
 	return OBJ_STATUS_SUCCESS;
 }
 
-int NftrRead(NFTR *nftr, const unsigned char *buffer, unsigned int size) {
-	switch (nftr->header.format) {
-		case NFTR_TYPE_NFTR_01:
-			return NftrReadNftr01(nftr, buffer, size);
-		case NFTR_TYPE_NFTR_10:
-			return NftrReadNftr10(nftr, buffer, size);
-		case NFTR_TYPE_NFTR_11:
-			return NftrReadNftr11(nftr, buffer, size);
-		case NFTR_TYPE_NFTR_12:
-			return NftrReadNftr12(nftr, buffer, size);
-		case NFTR_TYPE_BNFR_20:
-			return NftrReadBnfr20(nftr, buffer, size);
-		case NFTR_TYPE_BNFR_12:
-			return NftrReadBnfr12(nftr, buffer, size);
-		case NFTR_TYPE_BNFR_11:
-			return NftrReadBnfr11(nftr, buffer, size);
-		case NFTR_TYPE_GF_NFTR_11:
-			return NftrReadGfNftr11(nftr, buffer, size);
-		case NFTR_TYPE_STARFY:
-			return NftrReadStarfy(nftr, buffer, size);
-	}
-	return OBJ_STATUS_INVALID;
-}
-
 // ----- Font operations
 
 int NftrGetGlyphIndexByCP(NFTR *nftr, uint16_t cp) {

@@ -1113,31 +1113,6 @@ static int ChrWriteTose(NCGR *ncgr, BSTREAM *stream) {
 	return OBJ_STATUS_SUCCESS;
 }
 
-int ChrWrite(NCGR *ncgr, BSTREAM *stream) {
-	switch (ncgr->header.format) {
-		case NCGR_TYPE_NCGR:
-			return ChrWriteNcgr(ncgr, stream);
-		case NCGR_TYPE_NC:
-			return ChrWriteNcg(ncgr, stream);
-		case NCGR_TYPE_AC:
-			return ChrWriteAcg(ncgr, stream);
-		case NCGR_TYPE_IC:
-			return ChrWriteIcg(ncgr, stream);
-		case NCGR_TYPE_TOSE:
-			return ChrWriteTose(ncgr, stream);
-		case NCGR_TYPE_HUDSON:
-		case NCGR_TYPE_HUDSON2:
-			return ChrWriteHudson(ncgr, stream);
-		case NCGR_TYPE_GHOSTTRICK:
-			return ChrWriteGhostTrick(ncgr, stream);
-		case NCGR_TYPE_SETOSA:
-			return ChrWriteSetosa(ncgr, stream);
-		case NCGR_TYPE_BIN:
-			return ChrWriteBin(ncgr, stream);
-	}
-	return 1;
-}
-
 void ChrSetDepth(NCGR *ncgr, int depth) {
 	if (depth == ncgr->nBits) return; //do nothing
 

@@ -707,17 +707,6 @@ int TexarcWriteBmd(TexArc *nsbtx, BSTREAM *stream) {
 	return 0;
 }
 
-int TexarcWrite(TexArc *nsbtx, BSTREAM *stream) {
-	int fmt = nsbtx->header.format;
-	switch (fmt) {
-		case NSBTX_TYPE_NNS:
-			return TexarcWriteNsbtx(nsbtx, stream);
-		case NSBTX_TYPE_BMD:
-			return TexarcWriteBmd(nsbtx, stream);
-	}
-	return 1;
-}
-
 int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name) {
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		if (strcmp(nsbtx->textures[i].name, name) == 0) {

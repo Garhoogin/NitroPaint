@@ -38,13 +38,9 @@ typedef struct TexArc_ { //these should not be converted to other formats
 	BMD_DATA *bmdData;	//for handling BMD files
 } TexArc;
 
-int TexarcRead(TexArc *nsbtx, const unsigned char *buffer, unsigned int size);
-
-int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size);
-
 void TexarcRegisterFormats(void);
 
-int TexarcWrite(TexArc *nsbtx, BSTREAM *stream);
+int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size);
 
 int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name);
 

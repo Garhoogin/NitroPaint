@@ -1358,7 +1358,7 @@ static void NpEnsureComboObject(HWND hWndMain, ObjHeader *obj, int combofmt) {
 		if (ed->file->combo == NULL) continue;
 
 		COMBO2D *found = (COMBO2D *) ed->file->combo;
-		if (obj->combo == found) continue; // skip objects linked to this one already
+		if ((COMBO2D *) obj->combo == found) continue; // skip objects linked to this one already
 
 		if (found->header.format == combofmt) {
 			combo = found;
@@ -3675,7 +3675,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				if (obj2 == NULL) {
 					remove = 1;
 				} else if (combo != NULL) {
-					if (obj2->combo != NULL && obj2->combo != combo) remove = 1;
+					if (obj2->combo != NULL && (COMBO2D *) obj2->combo != combo) remove = 1;
 				} else {
 					if (obj2->combo != NULL) remove = 1;
 				}
@@ -3692,7 +3692,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&data->editors, i);
 
 				SendMessage(ed->hWnd, WM_GETTEXT, (WPARAM) MAX_PATH, (LPARAM) buf);
-				AddCheckedListViewItem(data->hWndObjects, buf, i, (hWndEditor == ed->hWnd) || (combo != NULL && ed->file->combo == combo));
+				AddCheckedListViewItem(data->hWndObjects, buf, i, (hWndEditor == ed->hWnd) || (combo != NULL && (COMBO2D *) ed->file->combo == combo));
 			}
 
 			//populate type field
@@ -3734,7 +3734,7 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						for (size_t i = 0; i < data->editors.length; i++) {
 							ObjHeader *obj = (*(EDITOR_DATA **) StListGetPtr(&data->editors, i))->file;
 
-							if (!CheckedListViewIsChecked(data->hWndObjects, i) && obj->combo == data->combo) {
+							if (!CheckedListViewIsChecked(data->hWndObjects, i) && (COMBO2D *) obj->combo == data->combo) {
 								combo2dUnlink(data->combo, obj);
 							}
 						}
