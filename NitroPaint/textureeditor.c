@@ -1711,6 +1711,11 @@ typedef struct {
 	int hoverY;
 	int hoverIndex;
 	int contextHoverIndex;
+	FrameBuffer fb;
+	HPEN hBlackPen;
+	HPEN hWhitePen;
+	HPEN hRowPen;
+	HPEN hGreenPen;
 } TEXTUREPALETTEEDITORDATA;
 
 LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1720,6 +1725,15 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
 	}
 	switch (msg) {
+		case WM_CREATE:
+		{
+			FbCreate(&data->fb, hWnd, 256, 256);
+			data->hBlackPen = GetStockObject(BLACK_PEN);
+			data->hWhitePen = GetStockObject(WHITE_PEN);
+			data->hRowPen = CreatePen(PS_SOLID, 1, RGB(127, 127, 127));
+			data->hGreenPen = CreatePen(PS_SOLID, 1, RGB(0, 255, 0));
+			break;
+		}
 		case NV_INITIALIZE:
 		{
 			data->data = (TEXTUREEDITORDATA *) lParam;
@@ -1742,6 +1756,8 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			RECT rcClient;
 			GetClientRect(hWnd, &rcClient);
 
+			FbSetSize(&data->fb, rcClient.right, rcClient.bottom);
+
 			SCROLLINFO vert;
 			vert.cbSize = sizeof(vert);
 			vert.fMask = SIF_ALL;
@@ -1749,19 +1765,14 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 			PAINTSTRUCT ps;
 			HDC hDC = BeginPaint(hWnd, &ps);
+			HDC hOffDC = data->fb.hDC;
 
-			HDC hOffDC = CreateCompatibleDC(hDC);
-			HBITMAP hBitmap = CreateCompatibleBitmap(hDC, rcClient.right, rcClient.bottom);
-			SelectObject(hOffDC, hBitmap);
 			HBRUSH hBackground = GetSysColorBrush(GetClassLong(hWnd, GCL_HBRBACKGROUND) - 1);
 			SelectObject(hOffDC, hBackground);
-			HPEN hBlackPen = SelectObject(hOffDC, GetStockObject(NULL_PEN));
+			SelectObject(hOffDC, GetStockObject(NULL_PEN));
 			Rectangle(hOffDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
-			SelectObject(hOffDC, hBlackPen);
+			SelectObject(hOffDC, data->hBlackPen);
 
-			HPEN hRowPen = CreatePen(PS_SOLID, 1, RGB(127, 127, 127));
-			HPEN hWhitePen = GetStockObject(WHITE_PEN);
-			HPEN hGreenPen = CreatePen(PS_SOLID, 1, RGB(0, 255, 0));
 
 			int hlStart = data->data->highlightStart;
 			int hlEnd = hlStart + data->data->highlightLength;
@@ -1777,24 +1788,20 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 					int index = x + y * 16;
 
-					if (index == data->hoverIndex) SelectObject(hOffDC, hWhitePen);
-					else if (index >= hlStart && index < hlEnd) SelectObject(hOffDC, hGreenPen);
-					else if (y == data->hoverY) SelectObject(hOffDC, hRowPen);
-					else SelectObject(hOffDC, hBlackPen);
+					if (index == data->hoverIndex) SelectObject(hOffDC, data->hWhitePen);
+					else if (index >= hlStart && index < hlEnd) SelectObject(hOffDC, data->hGreenPen);
+					else if (y == data->hoverY) SelectObject(hOffDC, data->hRowPen);
+					else SelectObject(hOffDC, data->hBlackPen);
 
 					Rectangle(hOffDC, x * 16, y * 16 - vert.nPos, x * 16 + 16, y * 16 + 16 - vert.nPos);
 					DeleteObject(hbr);
 				}
 			}
 
-			BitBlt(hDC, 0, 0, rcClient.right, rcClient.bottom, hOffDC, 0, 0, SRCCOPY);
+			FbDraw(&data->fb, hDC, 0, 0, rcClient.right, rcClient.bottom, 0, 0);
 			EndPaint(hWnd, &ps);
 
-			DeleteObject(hOffDC);
-			DeleteObject(hBitmap);
 			DeleteObject(hBackground);
-			DeleteObject(hRowPen);
-			DeleteObject(hGreenPen);
 			break;
 		}
 		case WM_ERASEBKGND:
@@ -1945,6 +1952,9 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		}
 		case WM_DESTROY:
 		{
+			DeleteObject(data->hRowPen);
+			DeleteObject(data->hGreenPen);
+			FbDestroy(&data->fb);
 			free(data);
 			SetWindowLongPtr(hWnd, 0, 0);
 			return DefWindowProc(hWnd, msg, wParam, lParam);
