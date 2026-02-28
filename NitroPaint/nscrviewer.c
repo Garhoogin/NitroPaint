@@ -1364,7 +1364,6 @@ void RegisterNscrViewerClass(void) {
 	EditorAddFilter(cls, NSCR_TYPE_HUDSON, L"bin", L"Screen Files (*.bin)\0*.bin\0");
 	EditorAddFilter(cls, NSCR_TYPE_HUDSON2, L"bin", L"Screen Files (*.bin)\0*.bin\0");
 	EditorAddFilter(cls, NSCR_TYPE_BIN, L"bin", L"Screen Files (*.bin, *nsc.bin, *isc.bin, *.nbfs)\0*.bin;*.nbfs\0");
-	EditorAddFilter(cls, NSCR_TYPE_COMBO, L"bin", L"Combination Files (*.dat, *.bin)\0*.dat;*.bin\0");
 
 	ScrViewerRegisterImportClass();
 	ScrViewerRegisterPreviewClass();

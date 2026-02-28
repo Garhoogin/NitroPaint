@@ -26,7 +26,6 @@
 #define NSCR_TYPE_HUDSON	6
 #define NSCR_TYPE_HUDSON2	7
 #define NSCR_TYPE_BIN       8
-#define NSCR_TYPE_COMBO     9
 
 typedef struct NSCR_ {
 	ObjHeader header;

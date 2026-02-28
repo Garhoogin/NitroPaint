@@ -12,7 +12,6 @@
 #define NCLR_TYPE_SETOSA      7
 #define NCLR_TYPE_BIN         8
 #define NCLR_TYPE_NTFP        9
-#define NCLR_TYPE_COMBO      10
 
 typedef struct NCLR_ {
 	ObjHeader header;

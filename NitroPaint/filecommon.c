@@ -366,8 +366,10 @@ ObjHeader *ObjAlloc(int type, int format) {
 	StStatus s = StMapGet(&sObjRegisteredTypes, &type, &ent);
 	if (!ST_SUCCEEDED(s)) return NULL;
 
-	ObjIdEntry fmtEntry;
-	if (!ObjGetFormat(&fmtEntry, type, format)) return NULL;
+	ObjIdEntry fmtEntry = { 0 };
+	if (format != 0) {
+		if (!ObjGetFormat(&fmtEntry, type, format)) return NULL;
+	}
 
 	//allocate the object
 	ObjHeader *obj = (ObjHeader *) calloc(1, ent.size);

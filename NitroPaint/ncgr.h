@@ -13,7 +13,6 @@
 #define NCGR_TYPE_GHOSTTRICK  8
 #define NCGR_TYPE_SETOSA      9
 #define NCGR_TYPE_BIN        10
-#define NCGR_TYPE_COMBO      11
 
 #define GX_OBJVRAMMODE_CHAR_2D        0x000000
 #define GX_OBJVRAMMODE_CHAR_1D_32K    0x000010

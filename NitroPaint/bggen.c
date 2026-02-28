@@ -932,9 +932,9 @@ void BgGenerate(NCLR **pNclr, NCGR **pNcgr, NSCR **pNscr, COLOR32 *imgBits, int 
 			break;
 		case BGGEN_FORMAT_IMAGESTUDIO:
 		case BGGEN_FORMAT_GRF:
-			paletteFormat = NCLR_TYPE_COMBO;
-			characterFormat = NCGR_TYPE_COMBO;
-			screenFormat = NSCR_TYPE_COMBO;
+			paletteFormat = 0;    // combo
+			characterFormat = 0;  // combo
+			screenFormat = 0;     // combo
 			break;
 		case BGGEN_FORMAT_BIN:
 		case BGGEN_FORMAT_BIN_COMPRESSED:

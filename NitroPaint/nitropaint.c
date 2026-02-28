@@ -1187,67 +1187,67 @@ NITROPAINTSTRUCT *NpGetData(HWND hWndMain) {
 static int NpGetPaletteFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default:
-		case NP_PRESET_NITROSYSTEM: return NCLR_TYPE_NCLR;
-		case NP_PRESET_NITROCHARACTER: return NCLR_TYPE_NC;
-		case NP_PRESET_IRIS_CHARACTER: return NCLR_TYPE_BIN;
-		case NP_PRESET_AGB_CHARACTER: return NCLR_TYPE_BIN;
-		case NP_PRESET_IMAGESTUDIO: return NCLR_TYPE_COMBO;
-		case NP_PRESET_GRIT: return NCLR_TYPE_COMBO;
-		case NP_PRESET_RAW: return NCLR_TYPE_BIN;
+		case NP_PRESET_NITROSYSTEM    : return NCLR_TYPE_NCLR;
+		case NP_PRESET_NITROCHARACTER : return NCLR_TYPE_NC;
+		case NP_PRESET_IRIS_CHARACTER : return NCLR_TYPE_BIN;
+		case NP_PRESET_AGB_CHARACTER  : return NCLR_TYPE_BIN;
+		case NP_PRESET_IMAGESTUDIO    : return 0;              // combo
+		case NP_PRESET_GRIT           : return 0;              // combo
+		case NP_PRESET_RAW            : return NCLR_TYPE_BIN;
 	}
 }
 
 static int NpGetCharacterFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default:
-		case NP_PRESET_NITROSYSTEM: return NCGR_TYPE_NCGR;
-		case NP_PRESET_NITROCHARACTER: return NCGR_TYPE_NC;
-		case NP_PRESET_IRIS_CHARACTER: return NCGR_TYPE_IC;
-		case NP_PRESET_AGB_CHARACTER: return NCGR_TYPE_AC;
-		case NP_PRESET_IMAGESTUDIO: return NCGR_TYPE_COMBO;
-		case NP_PRESET_GRIT: return NCGR_TYPE_COMBO;
-		case NP_PRESET_RAW: return NCGR_TYPE_BIN;
+		case NP_PRESET_NITROSYSTEM    : return NCGR_TYPE_NCGR;
+		case NP_PRESET_NITROCHARACTER : return NCGR_TYPE_NC;
+		case NP_PRESET_IRIS_CHARACTER : return NCGR_TYPE_IC;
+		case NP_PRESET_AGB_CHARACTER  : return NCGR_TYPE_AC;
+		case NP_PRESET_IMAGESTUDIO    : return 0;              // combo
+		case NP_PRESET_GRIT           : return 0;              // combo
+		case NP_PRESET_RAW            : return NCGR_TYPE_BIN;
 	}
 }
 
 static int NpGetScreenFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default:
-		case NP_PRESET_NITROSYSTEM: return NSCR_TYPE_NSCR;
-		case NP_PRESET_NITROCHARACTER: return NSCR_TYPE_NC;
-		case NP_PRESET_IRIS_CHARACTER: return NSCR_TYPE_IC;
-		case NP_PRESET_AGB_CHARACTER: return NSCR_TYPE_AC;
-		case NP_PRESET_IMAGESTUDIO: return NSCR_TYPE_COMBO;
-		case NP_PRESET_GRIT: return NSCR_TYPE_COMBO;
-		case NP_PRESET_RAW: return NSCR_TYPE_BIN;
+		case NP_PRESET_NITROSYSTEM    : return NSCR_TYPE_NSCR;
+		case NP_PRESET_NITROCHARACTER : return NSCR_TYPE_NC;
+		case NP_PRESET_IRIS_CHARACTER : return NSCR_TYPE_IC;
+		case NP_PRESET_AGB_CHARACTER  : return NSCR_TYPE_AC;
+		case NP_PRESET_IMAGESTUDIO    : return 0;              // combo
+		case NP_PRESET_GRIT           : return 0;              // combo
+		case NP_PRESET_RAW            : return NSCR_TYPE_BIN;
 	}
 }
 
 static int NpGetCellFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default:
-		case NP_PRESET_NITROSYSTEM: return NCER_TYPE_NCER;
+		case NP_PRESET_NITROSYSTEM : return NCER_TYPE_NCER;
 		//case NP_PRESET_NITROCHARACTER: // TODO
 		//case NP_PRESET_IRIS_CHARACTER: // TODO
 		//case NP_PRESET_AGB_CHARACTER: // TODO
-		case NP_PRESET_GRIT: return NCER_TYPE_COMBO;
-		case NP_PRESET_RAW: return NCER_TYPE_HUDSON;
+		case NP_PRESET_GRIT        : return 0;                 // combo
+		case NP_PRESET_RAW         : return NCER_TYPE_HUDSON;
 	}
 }
 
 static int NpGetAnimFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default:
-		case NP_PRESET_NITROSYSTEM: return NANR_TYPE_NANR;
-		case NP_PRESET_GRIT: return NANR_TYPE_COMBO;
+		case NP_PRESET_NITROSYSTEM : return NANR_TYPE_NANR;
+		case NP_PRESET_GRIT        : return 0;               // combo
 	}
 }
 
 static int NpGetComboFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default: return COMBO2D_TYPE_INVALID;
-		case NP_PRESET_IMAGESTUDIO: return COMBO2D_TYPE_5BG;
-		case NP_PRESET_GRIT: return COMBO2D_TYPE_GRF_BG;
+		case NP_PRESET_IMAGESTUDIO : return COMBO2D_TYPE_5BG;
+		case NP_PRESET_GRIT        : return COMBO2D_TYPE_GRF_BG;
 	}
 }
 
@@ -1518,29 +1518,17 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		case FILE_TYPE_MESG:
 		case FILE_TYPE_TEXTURE:
 		case FILE_TYPE_NMCR:
+		case FILE_TYPE_COMBO2D:
 		{
 			ObjHeader *obj = NULL;
 			int status = ObjReadBuffer(&obj, buffer, dwSize, type, format, compression);
 			if (OBJ_SUCCEEDED(status)) {
-				NpOpenObjectAtPath(hWnd, obj, path);
+				if (obj->type == FILE_TYPE_COMBO2D) {
+					NpOpenCombo(hWnd, (COMBO2D *) obj, path);
+				} else {
+					NpOpenObjectAtPath(hWnd, obj, path);
+				}
 			}
-
-			break;
-		}
-		case FILE_TYPE_COMBO2D:
-		{
-			//since we're kind of stepping around things a bit, we need to decompress here if applicable
-			unsigned int decompressedSize = dwSize;
-			unsigned char *decompressed = CxDecompress(buffer, dwSize, compression, &decompressedSize);
-
-			//read combo
-			COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, format);
-			combo2dRead(combo, decompressed, decompressedSize);
-			combo->header.compression = compression;
-			free(decompressed);
-
-			//open the component objects
-			NpOpenCombo(hWnd, combo, path);
 			break;
 		}
 		default: //unrecognized file
@@ -1927,7 +1915,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						ncer->cells[0].cellAttr = 0;
 
 						//create combo for object if necessary
-						if (ncer->header.format == NCER_TYPE_COMBO) {
+						if (ncer->header.format == 0) {
 							NpEnsureComboObject(hWnd, &ncer->header, NpGetComboFormatForPreset());
 						}
 
@@ -1976,7 +1964,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						srt->sx = 4096; // 1.0
 						srt->sy = 4096; // 1.0
 
-						if (nanr->header.format == NANR_TYPE_COMBO) {
+						if (nanr->header.format == 0) {
 							NpEnsureComboObject(hWnd, &nanr->header, NpGetComboFormatForPreset());
 						}
 
@@ -3194,10 +3182,10 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						NCGR_TYPE_NC,
 						NCGR_TYPE_IC,
 						NCGR_TYPE_AC,
-						NCGR_TYPE_COMBO,   // iMageStudio
+						0,                 // iMageStudio
 						NCGR_TYPE_HUDSON,
 						NCGR_TYPE_HUDSON2,
-						NCGR_TYPE_COMBO,   // GRF
+						0,                 // GRF
 						NCGR_TYPE_BIN,     // raw (uncompressed)
 						NCGR_TYPE_BIN      // raw (compressed)
 					};
@@ -3206,10 +3194,10 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						NCLR_TYPE_NC,
 						NCLR_TYPE_BIN,
 						NCLR_TYPE_BIN,
-						NCLR_TYPE_COMBO,   // iMageStudio 
+						0,                 // iMageStudio 
 						NCLR_TYPE_HUDSON, 
 						NCLR_TYPE_HUDSON,
-						NCLR_TYPE_COMBO,   // GRF
+						0,                 // GRF
 						NCLR_TYPE_BIN,     // raw (uncompressed)
 						NCLR_TYPE_BIN      // raw (compressed)
 					};
@@ -3238,14 +3226,14 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					//link objects
 					ObjLinkObjects(&nclr->header, &ncgr->header);
 
-					//link by combo
-					if (nclr->header.format == NCLR_TYPE_COMBO) {
-						int combofmt = COMBO2D_TYPE_GRF_BG;
-						switch (format) {
-							case 4: combofmt = COMBO2D_TYPE_5BG; break;
-							case 7: combofmt = COMBO2D_TYPE_GRF_BG; break;
-						}
+					int combofmt = COMBO2D_TYPE_INVALID;
+					switch (format) {
+						case 4: combofmt = COMBO2D_TYPE_5BG; break;
+						case 7: combofmt = COMBO2D_TYPE_GRF_BG; break;
+					}
 
+					//link by combo
+					if (combofmt != COMBO2D_TYPE_INVALID) {
 						COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, combofmt);
 						combo2dLink(combo, &nclr->header);
 						combo2dLink(combo, &ncgr->header);
@@ -3380,7 +3368,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 				nscr->data = (uint16_t *) calloc(tilesX * tilesY, sizeof(uint16_t));
 
 				//create combo for object if necessary
-				if (nscr->header.format == NSCR_TYPE_COMBO) {
+				if (nscr->header.format == 0) {
 					NpEnsureComboObject(hWndMain, &nscr->header, NpGetComboFormatForPreset());
 				}
 
@@ -3802,7 +3790,7 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				nclr->extPalette = (depthSel && countSel > 1);
 
 				//create combo for object if necessary
-				if (nclr->header.format == NCLR_TYPE_COMBO) {
+				if (nclr->header.format == 0) {
 					NpEnsureComboObject(hWndMain, &nclr->header, NpGetComboFormatForPreset());
 				}
 

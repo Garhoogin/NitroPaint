@@ -8,7 +8,6 @@
 #define NANR_TYPE_INVALID    0
 #define NANR_TYPE_NANR       1
 #define NANR_TYPE_GHOSTTRICK 2
-#define NANR_TYPE_COMBO      3
 
 
 #define NANR_SEQ_TYPE_INDEX         0

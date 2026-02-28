@@ -1166,9 +1166,10 @@ static void LytEditorRenderSolidLineV(FrameBuffer *fb, int x, int height, COLOR3
 
 static int CLytIsCellBankBNCD(NCER *ncer) {
 	if (ncer == NULL) return 0;
-	if (ncer->header.format != NCER_TYPE_COMBO) return 0;
 
 	COMBO2D *combo = (COMBO2D *) ncer->header.combo;
+	if (combo == NULL) return 0;
+
 	return combo->header.format == COMBO2D_TYPE_BNCD;
 }
 
