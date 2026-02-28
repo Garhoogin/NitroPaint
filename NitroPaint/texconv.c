@@ -285,17 +285,34 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params, RxReducti
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
-	RxFlag flag = RX_FLAG_ALPHA_MODE_PALETTE | RX_FLAG_PRESERVE_ALPHA;
-	if (!params->ditherAlpha) flag |= RX_FLAG_NO_ALPHA_DITHER;
-	RxApplyFlags(reduction, flag);
-
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate2, params);
-	RxReduceImageWithContext(reduction, params->px, idxs, width, height, palette, 256, flag, diffuse);
 
-	TEXCONV_CHECK_ABORT(params->terminate);
+	if (!params->dither || !params->ditherAlpha) {
+		RxFlag flag = RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER;
+		RxApplyFlags(reduction, flag);
+
+		//set the alpha channel for the texel data
+		for (unsigned int i = 0; i < width * height; i++) {
+			unsigned int a = params->px[i] >> 24;
+			a = (a * alphaMax * 2 + 255) / 510;
+
+			//setting upper bits of the texel data
+			txel[i] = a << alphaShift;
+			params->px[i] |= 0xFF000000;
+		}
+
+		//when color and alpha not jointly dithered, we fall back to a simplified model.
+		RxReduceImageWithContext(reduction, params->px, idxs, width, height, palette + (alphaMax << alphaShift), nColors, flag, diffuse);
+	} else {
+		RxFlag flag = RX_FLAG_ALPHA_MODE_PALETTE | RX_FLAG_PRESERVE_ALPHA;
+		RxApplyFlags(reduction, flag);
+
+		//dithering with alpha: use alpha dithered mode
+		RxReduceImageWithContext(reduction, params->px, idxs, width, height, palette, 256, flag, diffuse);
+	}
 
 	//write texel data.
-	for (unsigned int i = 0; i < width * height; i++) txel[i] = (uint8_t) idxs[i];
+	for (unsigned int i = 0; i < width * height; i++) txel[i] |= (uint8_t) idxs[i];
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
