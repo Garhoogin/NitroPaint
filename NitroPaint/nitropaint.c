@@ -1392,6 +1392,39 @@ static void NpEnsureComboObject(HWND hWndMain, ObjHeader *obj, int combofmt) {
 	StListFree(&editors);
 }
 
+static void CompressFileDialog(HWND hWndParent, const unsigned char *buf, unsigned int size) {
+	HWND h = CreateWindow(L"CompressFileDialog", L"Compress File", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndParent, NULL, NULL, NULL);
+	SendMessage(h, NV_INITIALIZE, (WPARAM) size, (LPARAM) buf);
+	DoModal(h);
+}
+
+static void DecompressFileDialog(HWND hWndParent, const unsigned char *buf, unsigned int size) {
+	int compression = CxGetCompressionType(buf, size);
+	if (compression == COMPRESSION_NONE) {
+		MessageBox(hWndParent, L"The file is not of a recognized compression format.", L"Error", MB_ICONERROR);
+		return;
+	}
+
+	unsigned int uncompSize;
+	unsigned char *uncomp = CxDecompress(buf, size, compression, &uncompSize);
+
+	//save
+	LPWSTR path = saveFileDialog(hWndParent, L"Save File", L"All Files\0*.*\0", L"");
+	if (path != NULL) {
+
+		HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile != NULL) {
+			DWORD dwWritten;
+			WriteFile(hFile, uncomp, uncompSize, &dwWritten, NULL);
+			CloseHandle(hFile);
+		}
+	}
+
+	free(uncomp);
+
+}
+
 VOID OpenFileByNameAs(HWND hWnd, LPCWSTR path) {
 	HWND h = CreateWindow(L"OpenAsDialogClass", L"Open As", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWnd, NULL, NULL, NULL);
@@ -2232,6 +2265,32 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						HWND h = CreateWindow(L"IndexImageClass", L"Color Reduction", WS_OVERLAPPEDWINDOW & ~(WS_MINIMIZEBOX),
 							CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWnd, NULL, NULL, NULL);
 						DoModal(h);
+						break;
+					}
+					case ID_COMPRESSION_COMPRESSFILE:
+					{
+						LPWSTR path = openFileDialog(hWnd, L"Compress File...", L"All Files\0*.*\0", L"");
+						if (path == NULL) break;
+
+						unsigned int size;
+						void *buf = ObjReadWholeFile(path, &size);
+						free(path);
+
+						CompressFileDialog(hWnd, buf, size);
+						free(buf);
+						break;
+					}
+					case ID_COMPRESSION_DECOMPRESSFILE:
+					{
+						LPWSTR path = openFileDialog(hWnd, L"Decompress File...", L"All Files\0*.*\0", L"");
+						if (path == NULL) break;
+
+						unsigned int size;
+						void *buf = ObjReadWholeFile(path, &size);
+						free(path);
+
+						DecompressFileDialog(hWnd, buf, size);
+						free(buf);
 						break;
 					}
 				}
@@ -4428,6 +4487,118 @@ static LRESULT CALLBACK RedGuiIndexImagePreviewProc(HWND hWnd, UINT msg, WPARAM 
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct CompressFileData_ {
+	unsigned int size;
+	const unsigned char *buffer;
+
+	unsigned int compSize;
+	unsigned char *comp;
+
+	HWND hWndCompressionFormats;
+	HWND hWndStatus;
+	HWND hWndOK;
+} CompressFileData;
+
+static void CompressDialogUpdate(CompressFileData *data) {
+	int sel = UiCbGetCurSel(data->hWndCompressionFormats) + 1;
+
+	free(data->comp);
+
+	unsigned int compSize;
+	unsigned char *comp = CxCompress(data->buffer, data->size, sel, &compSize);
+
+	data->compSize = compSize;
+	data->comp = comp;
+
+	unsigned int permille = 0;
+
+	if (data->size > 0) {
+		if (compSize <= data->size) {
+			//reduction
+			permille = 1000 - (compSize * 2000 + data->size) / (2 * data->size);
+		} else {
+			//inflation
+			permille = (compSize * 2000 + data->size) / (2 * data->size) - 1000;
+		}
+	}
+
+	//put label
+	WCHAR buf[128];
+	wsprintfW(buf, L"Compressed to %d bytes (%d.%d%% %S)", compSize, permille / 10, permille % 10,
+		compSize <= data->size ? "reduction" : "inflation");
+	SendMessage(data->hWndStatus, WM_SETTEXT, 0, (LPARAM) buf);
+}
+
+static LRESULT CALLBACK CompressFileProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	CompressFileData *data = (CompressFileData *) GetWindowLongPtr(hWnd, 0);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			data = (CompressFileData *) calloc(1, sizeof(CompressFileData));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			CreateStatic(hWnd, L"Compression:", 10, 10, 75, 22);
+			data->hWndCompressionFormats = CreateCombobox(hWnd, NULL, 0, 85, 10, 200, 22, 0);
+			data->hWndStatus = CreateStatic(hWnd, L"", 10, 37, 275, 22);
+			data->hWndOK = CreateButton(hWnd, L"Compress", 185, 64, 100, 22, TRUE);
+
+			//add compression formats
+			for (int i = 1; i < COMPRESSION_MAX; i++) {
+				WCHAR buf[32];
+				
+				mbstowcs(buf, g_ObjCompressionNames[i], sizeof(buf) / sizeof(buf[0]));
+				UiCbAddString(data->hWndCompressionFormats, buf);
+			}
+			UiCbSetCurSel(data->hWndCompressionFormats, 0);
+
+			SetGUIFont(hWnd);
+			SetWindowSize(hWnd, 295, 96);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			unsigned int size = wParam;
+			const void *buf = (const void *) lParam;
+			data->size = size;
+			data->buffer = buf;
+			CompressDialogUpdate(data);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndCtl = (HWND) lParam;
+			if (hWndCtl == data->hWndCompressionFormats && HIWORD(wParam) == CBN_SELCHANGE) {
+				CompressDialogUpdate(data);
+			} else if ((hWndCtl == data->hWndOK || LOWORD(wParam) == IDOK) && HIWORD(wParam) == BN_CLICKED) {
+				//save
+				LPWSTR path = saveFileDialog(hWnd, L"Save File", L"All Files\0*.*\0", L"");
+				if (path == NULL) break;
+
+				HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+				if (hFile != INVALID_HANDLE_VALUE) {
+					DWORD dwWritten;
+					WriteFile(hFile, data->comp, data->compSize, &dwWritten, NULL);
+					CloseHandle(hFile);
+
+					//close
+					SendMessage(hWnd, WM_CLOSE, 0, 0);
+				}
+
+				free(path);
+			}
+			break;
+		}
+		case WM_DESTROY:
+		{
+			free(data->comp);
+			free(data);
+			break;
+		}
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 
 static void RegisterImageDialogClass(void) {
 	RegisterGenericClass(L"ImageDialogClass", ImageDialogProc, sizeof(LPVOID));
@@ -4472,6 +4643,10 @@ static void RegisterIndexImageClass(void) {
 
 static void RegisterOpenAsDialogClass(void) {
 	RegisterGenericClass(L"OpenAsDialogClass", OpenAsDialogProc, sizeof(LPVOID));
+}
+
+static void RegisterCompressDialogClass(void) {
+	RegisterGenericClass(L"CompressFileDialog", CompressFileProc, sizeof(LPVOID));
 }
 
 static BOOL NpCfgWriteInt(LPCWSTR section, LPCWSTR prop, int val) {
@@ -4574,6 +4749,7 @@ static void RegisterClasses(void) {
 	RegisterLytEditor();
 	MesgEditorRegisterClass();
 	RegisterOpenAsDialogClass();
+	RegisterCompressDialogClass();
 	combo2dRegisterFormats();
 }
 
