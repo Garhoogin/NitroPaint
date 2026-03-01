@@ -18,12 +18,14 @@ typedef struct {
 	COLOR32 *px;
 	int width;
 	int height;
+	int showAlpha;
 
 	HWND hWndConvert;
 	HWND hWndTileEditor;
 	HWND hWndConvertDialog;
 	HWND hWndExportNTF;
 	HWND hWndStatus;
+	HWND hWndShowAlpha;
 
 	HWND hWndFormat;
 	HWND hWndPaletteName;

@@ -356,7 +356,16 @@ static void TexViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 			COLOR32 c = data->px[srcX + srcY * width];
 
 			//alpha blend
-			c = TedAlphaBlendColor(c, x, y);
+			if (!data->showAlpha) {
+				//alpha blend to background
+				c = TedAlphaBlendColor(c, x, y);
+			} else {
+				//broadcast alpha across RGB channels
+				c = c >> 24;
+				c |= c << 8;
+				c |= c << 16;
+				c |= 0xFF000000;
+			}
 			fb->px[x + y * fb->width] = REVERSE(c);
 		}
 	}
@@ -411,6 +420,7 @@ static void TexViewerOnCreate(HWND hWnd) {
 
 	data->hWndConvert = CreateButton(hWnd, L"Convert To...", 0, 0, 0, 0, FALSE);
 	data->hWndExportNTF = CreateButton(hWnd, L"Export NTF", 0, 0, 0, 0, FALSE);
+	data->hWndShowAlpha = CreateCheckbox(hWnd, L"Show Alpha", 0, 0, 0, 0, FALSE);
 }
 
 static void TexViewerOnPaint(TEXTUREEDITORDATA *data) {
@@ -428,10 +438,9 @@ static void TexViewerUpdateLayout(TEXTUREEDITORDATA *data) {
 
 	float dpiScale = GetDpiScale();
 
-	int panelWidth = UI_SCALE_COORD(120, dpiScale);
 	int ctlWidth = UI_SCALE_COORD(100, dpiScale);
 	int ctlHeight = UI_SCALE_COORD(22, dpiScale);
-	int panelPadding = UI_SCALE_COORD(10, dpiScale);
+	int padWidth = UI_SCALE_COORD(10, dpiScale);
 
 	int viewerWidth = rcClient.right - MARGIN_TOTAL_SIZE;
 	int paletteWidth = 0;
@@ -445,6 +454,7 @@ static void TexViewerUpdateLayout(TEXTUREEDITORDATA *data) {
 		viewerWidth, rcClient.bottom - MARGIN_TOTAL_SIZE - ctlHeight, FALSE);
 	MoveWindow(data->hWndConvert, ctlWidth * 0, 0, ctlWidth, ctlHeight, TRUE);
 	MoveWindow(data->hWndExportNTF, ctlWidth * 1, 0, ctlWidth, ctlHeight, TRUE);
+	MoveWindow(data->hWndShowAlpha, ctlWidth * 2 + padWidth, 0, ctlWidth, ctlHeight, TRUE);
 
 	if (data->hWndPaletteEditor != NULL) {
 		MoveWindow(data->hWndPaletteEditor, rcClient.right - paletteWidth, ctlHeight, paletteWidth, rcClient.bottom - ctlHeight, TRUE);
@@ -525,6 +535,11 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 
 			free(ntfpPath);
 		}
+	} else if (hWndControl == data->hWndShowAlpha) {
+		int checked = GetCheckboxChecked(hWndControl);
+
+		data->showAlpha = checked;
+		InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 	}
 }
 
