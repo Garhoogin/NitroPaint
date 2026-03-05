@@ -96,6 +96,14 @@ void IscadWriteBlock(IscadStream *stream, const char *signature, const void *dat
 void IscadStreamFlushOut(IscadStream *stream, BSTREAM *out);
 
 
+
+// ----- Bomberman Land Touch 2 format
+
+int BldtIsValid(const unsigned char *buffer, unsigned int size);
+unsigned char *BldtGetUncompressed(const unsigned char *buffer, unsigned int size, unsigned int *pOutSize);
+void BldtWrite(BSTREAM *stream, const unsigned char *buffer, unsigned int size, int compressed);
+
+
 // ----- Homebrew file format
 
 #define GRF_TYPE_INVALID 0   // invalid

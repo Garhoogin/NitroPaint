@@ -276,11 +276,35 @@ static int ScrIsValidTose(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+static int ScrIsValidBomberman(const unsigned char *buffer, unsigned int size) {
+	if (!BldtIsValid(buffer, size)) return 0;
+
+	unsigned int uncompSize;
+	unsigned char *uncomp = BldtGetUncompressed(buffer, size, &uncompSize);
+	if (uncompSize < 0x10) {
+		free(uncomp);
+		return 0;
+	}
+
+	unsigned int scrDataSize = *(const uint32_t *) (uncomp + 0x0);
+	unsigned int scrW = *(const uint16_t *) (uncomp + 0x8);
+	unsigned int scrH = *(const uint16_t *) (uncomp + 0xA);
+	free(uncomp);
+
+	if (scrDataSize > (uncompSize - 0x10)) return 0;
+
+	if (scrW == 0 || scrH == 0) return 0;
+	if (scrW * scrH * 2 != scrDataSize) return 0;
+
+	return 1;
+}
+
 static int ScrReadNscr(NSCR *nscr, const unsigned char *buffer, unsigned int size);
 static int ScrReadNsc(NSCR *nscr, const unsigned char *buffer, unsigned int size);
 static int ScrReadIsc(NSCR *nscr, const unsigned char *buffer, unsigned int size);
 static int ScrReadAsc(NSCR *nscr, const unsigned char *buffer, unsigned int size);
 static int ScrReadTose(NSCR *nscr, const unsigned char *buffer, unsigned int size);
+static int ScrReadBomberman(NSCR *nscr, const unsigned char *buffer, unsigned int size);
 static int ScrReadHudson(NSCR *nscr, const unsigned char *buffer, unsigned int size);
 static int ScrReadHudson2(NSCR *nscr, const unsigned char *buffer, unsigned int size);
 static int ScrReadBin(NSCR *nscr, const unsigned char *buffer, unsigned int size);
@@ -290,6 +314,7 @@ static int ScrWriteNsc(NSCR *nscr, BSTREAM *stream);
 static int ScrWriteIsc(NSCR *nscr, BSTREAM *stream);
 static int ScrWriteAsc(NSCR *nscr, BSTREAM *stream);
 static int ScrWriteTose(NSCR *nscr, BSTREAM *stream);
+static int ScrWriteBomberman(NSCR *nscr, BSTREAM *stream);
 static int ScrWriteHudson(NSCR *nscr, BSTREAM *stream);
 static int ScrWriteHudson2(NSCR *nscr, BSTREAM *stream);
 static int ScrWriteBin(NSCR *nscr, BSTREAM *stream);
@@ -325,6 +350,12 @@ static const ObjIdEntry sFormats[] = {
 		ScrIsValidTose,
 		(ObjReader) ScrReadTose,
 		(ObjWriter) ScrWriteTose
+	}, {
+		FILE_TYPE_SCREEN, NSCR_TYPE_BOMBERMAN, "Bomberman",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		ScrIsValidBomberman,
+		(ObjReader) ScrReadBomberman,
+		(ObjWriter) ScrWriteBomberman
 	}, {
 		FILE_TYPE_SCREEN, NSCR_TYPE_HUDSON, "Hudson",
 		OBJ_ID_HEADER,
@@ -576,6 +607,25 @@ static int ScrReadTose(NSCR *nscr, const unsigned char *buffer, unsigned int siz
 	nscr->colorMode = SCREENCOLORMODE_256x16;
 	nscr->fmt = SCREENFORMAT_AFFINEEXT;
 	ScriReadScreenData(nscr, buffer + 0xC, tileX * tileY * 2);
+	ScrComputeHighestCharacter(nscr);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
+static int ScrReadBomberman(NSCR *nscr, const unsigned char *buffer, unsigned int size) {
+	unsigned int uncompSize;
+	unsigned char *uncomp = BldtGetUncompressed(buffer, size, &uncompSize);
+
+	unsigned int tileX = *(const uint16_t *) (uncomp + 0x8);
+	unsigned int tileY = *(const uint16_t *) (uncomp + 0xA);
+
+	nscr->tilesX = tileX;
+	nscr->tilesY = tileY;
+	nscr->dataSize = 2 * tileX * tileY;
+	nscr->fmt = SCREENFORMAT_TEXT;
+	nscr->colorMode = SCREENCOLORMODE_16x16;
+	nscr->data = (uint16_t *) calloc(tileX * tileY, sizeof(uint16_t));
+	ScriReadScreenData(nscr, uncomp + 0x10, uncompSize - 0x10);
 	ScrComputeHighestCharacter(nscr);
 
 	return OBJ_STATUS_SUCCESS;
@@ -867,6 +917,25 @@ static int ScrWriteTose(NSCR *nscr, BSTREAM *stream) {
 	bstreamWrite(stream, header, sizeof(header));
 
 	bstreamWrite(stream, nscr->data, nscr->dataSize);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
+static int ScrWriteBomberman(NSCR *nscr, BSTREAM *stream) {
+
+	BSTREAM stmUnpacked;
+	bstreamCreate(&stmUnpacked, NULL, 0);
+
+	unsigned char header[0x10] = { 0 };
+	*(uint32_t *) (header + 0x0) = nscr->dataSize;
+	*(uint16_t *) (header + 0x8) = nscr->tilesX;
+	*(uint16_t *) (header + 0xA) = nscr->tilesY;
+	bstreamWrite(&stmUnpacked, header, sizeof(header));
+
+	ScriWriteScreenData(nscr, &stmUnpacked);
+
+	BldtWrite(stream, stmUnpacked.buffer, stmUnpacked.size, 0);
+	bstreamFree(&stmUnpacked);
 
 	return OBJ_STATUS_SUCCESS;
 }

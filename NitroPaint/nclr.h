@@ -8,10 +8,11 @@
 #define NCLR_TYPE_ISTUDIO     3
 #define NCLR_TYPE_ISTUDIOC    4
 #define NCLR_TYPE_TOSE        5
-#define NCLR_TYPE_HUDSON      6
-#define NCLR_TYPE_SETOSA      7
-#define NCLR_TYPE_BIN         8
-#define NCLR_TYPE_NTFP        9
+#define NCLR_TYPE_BOMBERMAN   6
+#define NCLR_TYPE_HUDSON      7
+#define NCLR_TYPE_SETOSA      8
+#define NCLR_TYPE_BIN         9
+#define NCLR_TYPE_NTFP       10
 
 typedef struct NCLR_ {
 	ObjHeader header;

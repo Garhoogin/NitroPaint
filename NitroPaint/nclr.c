@@ -10,6 +10,7 @@ static int PalIsValidNcl(const unsigned char *buffer, unsigned int size);
 static int PalIsValidIStudio(const unsigned char *buffer, unsigned int size);
 static int PalIsValidIStudioCompressed(const unsigned char *buffer, unsigned int size);
 static int PalIsValidTose(const unsigned char *buffer, unsigned int size);
+static int PalIsValidBomberman(const unsigned char *buffer, unsigned int size);
 static int PalIsValidHudson(const unsigned char *lpFile, unsigned int size);
 static int PalIsValidSetosa(const unsigned char *buffer, unsigned int size);
 
@@ -18,6 +19,7 @@ static int PalReadNcl(NCLR *nclr, const unsigned char *buffer, unsigned int size
 static int PalReadIStudio(NCLR *nclr, const unsigned char *buffer, unsigned int size);
 static int PalReadIStudioCompressed(NCLR *nclr, const unsigned char *buffer, unsigned int size);
 static int PalReadTose(NCLR *nclr, const unsigned char *buffer, unsigned int size);
+static int PalReadBomberman(NCLR *nclr, const unsigned char *buffer, unsigned int size);
 static int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int size);
 static int PalReadSetosa(NCLR *nclr, const unsigned char *buffer, unsigned int size);
 static int PalReadBin(NCLR *nclr, const unsigned char *buffer, unsigned int size);
@@ -27,6 +29,7 @@ static int PalWriteNcl(NCLR *nclr, BSTREAM *stream);
 static int PalWriteIStudio(NCLR *nclr, BSTREAM *stream);
 static int PalWriteIStudioCompressed(NCLR *nclr, BSTREAM *stream);
 static int PalWriteTose(NCLR *nclr, BSTREAM *stream);
+static int PalWriteBomberman(NCLR *nclr, BSTREAM *stream);
 static int PalWriteHudson(NCLR *nclr, BSTREAM *stream);
 static int PalWriteSetosa(NCLR *nclr, BSTREAM *stream);
 static int PalWriteBin(NCLR *nclr, BSTREAM *stream);
@@ -64,6 +67,12 @@ static const ObjIdEntry sFormats[] = {
 		PalIsValidTose,
 		(ObjReader) PalReadTose,
 		(ObjWriter) PalWriteTose
+	}, {
+		FILE_TYPE_PALETTE, NCLR_TYPE_BOMBERMAN, "Bomberman",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		PalIsValidBomberman,
+		(ObjReader) PalReadBomberman,
+		(ObjWriter) PalWriteBomberman
 	}, {
 		FILE_TYPE_PALETTE, NCLR_TYPE_HUDSON, "Hudson",
 		OBJ_ID_HEADER,
@@ -215,6 +224,28 @@ static int PalIsValidTose(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+static int PalIsValidBomberman(const unsigned char *buffer, unsigned int size) {
+	if (!BldtIsValid(buffer, size)) return 0;
+
+	unsigned int uncompSize;
+	unsigned char *uncomp = BldtGetUncompressed(buffer, size, &uncompSize);
+
+	if (uncompSize < 0x10) {
+		free(uncomp);
+		return 0;
+	}
+
+	unsigned int dataSize = *(const uint32_t *) (uncomp + 0x0);
+	unsigned int sbz = *(const uint32_t *) (uncomp + 0x08);
+	free(uncomp);
+	
+	if (dataSize == 0 || (dataSize & 1)) return 0;
+	if (dataSize > (uncompSize - 0x10)) return 0;
+	if (sbz) return 0;
+
+	return 1;
+}
+
 static int PalReadHudson(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
 	int dataLength = *(uint16_t *) buffer;
 	int nColors = *(uint16_t *) (buffer + 2);
@@ -344,6 +375,19 @@ static int PalReadTose(NCLR *nclr, const unsigned char *buffer, unsigned int siz
 	nclr->nBits = nCol <= 0x100 ? 4 : 8; // heuristic
 	nclr->colors = (COLOR *) calloc(nCol, sizeof(COLOR));
 	memcpy(nclr->colors, buffer + 8, nCol * sizeof(COLOR));
+
+	return OBJ_STATUS_SUCCESS;
+}
+
+static int PalReadBomberman(NCLR *nclr, const unsigned char *buffer, unsigned int size) {
+	unsigned int uncompSize;
+	unsigned char *data = BldtGetUncompressed(buffer, size, &uncompSize);
+
+	unsigned int dataSize = *(uint32_t *) (data + 0x0);
+	nclr->nBits = 4;
+	nclr->nColors = dataSize / 2;
+	nclr->colors = (COLOR *) calloc(nclr->nColors, sizeof(COLOR));
+	memcpy(nclr->colors, data + 0x10, nclr->nColors * sizeof(COLOR));
 
 	return OBJ_STATUS_SUCCESS;
 }
@@ -548,6 +592,21 @@ static int PalWriteTose(NCLR *nclr, BSTREAM *stream) {
 	bstreamWrite(stream, "NCL\0", 4);
 	bstreamWrite(stream, &nCol, sizeof(nCol));
 	bstreamWrite(stream, nclr->colors, nclr->nColors * sizeof(COLOR));
+
+	return OBJ_STATUS_SUCCESS;
+}
+
+static int PalWriteBomberman(NCLR *nclr, BSTREAM *stream) {
+	//construct output
+	unsigned int unpackedSize = 0x10 + nclr->nColors * sizeof(COLOR);
+	unsigned char *unpacked = (unsigned char *) calloc(unpackedSize, 1);
+
+	*(uint32_t *) (unpacked + 0x0) = nclr->nColors * sizeof(COLOR);
+	memcpy(unpacked + 0x10, nclr->colors, nclr->nColors * sizeof(COLOR));
+
+	//write
+	BldtWrite(stream, unpacked, unpackedSize, 1);
+	free(unpacked);
 
 	return OBJ_STATUS_SUCCESS;
 }

@@ -23,9 +23,10 @@
 #define NSCR_TYPE_IC        3
 #define NSCR_TYPE_AC        4
 #define NSCR_TYPE_TOSE      5
-#define NSCR_TYPE_HUDSON	6
-#define NSCR_TYPE_HUDSON2	7
-#define NSCR_TYPE_BIN       8
+#define NSCR_TYPE_BOMBERMAN 6
+#define NSCR_TYPE_HUDSON	7
+#define NSCR_TYPE_HUDSON2	8
+#define NSCR_TYPE_BIN       9
 
 typedef struct NSCR_ {
 	ObjHeader header;

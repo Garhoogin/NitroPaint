@@ -836,6 +836,73 @@ void IscadStreamFlushOut(IscadStream *stream, BSTREAM *out) {
 }
 
 
+
+// ----- Bomberman Land Touch 2 Format Routines
+
+int BldtIsValid(const unsigned char *buffer, unsigned int size) {
+	//file header
+	if (size < 8 || memcmp(buffer, "BLDT", 4) != 0) return 0;
+
+	uint32_t compFlag = *(const uint32_t *) (buffer + 0x4);
+	if (compFlag & 0x80000000) {
+		//data are compressed
+		if (!CxIsCompressedLZ(buffer + 8, size - 8)) return 0;
+
+		unsigned int dataLength = compFlag & 0x003FFFFF;
+		unsigned int uncompSize;
+		unsigned char *uncomp = CxDecompressLZ(buffer + 8, size - 8, &uncompSize);
+		free(uncomp);
+
+		if (uncompSize != dataLength) return 0;
+
+		return 1;
+	} else {
+		//data are not compressed
+		return 1;
+	}
+}
+
+unsigned char *BldtGetUncompressed(const unsigned char *buffer, unsigned int size, unsigned int *pOutSize) {
+	uint32_t compFlag = *(const uint32_t *) (buffer + 0x4);
+	if (compFlag & 0x80000000) {
+		//data are compressed
+		return CxDecompressLZ(buffer + 8, size - 8, pOutSize);
+	} else {
+		//data are not compressed: copy data
+		unsigned char *cpy = malloc(size - 8);
+		memcpy(cpy, buffer + 8, size - 8);
+
+		*pOutSize = size - 8;
+		return cpy;
+	}
+}
+
+void BldtWrite(BSTREAM *stream, const unsigned char *buffer, unsigned int size, int compressed) {
+	bstreamWrite(stream, "BLDT", 4);
+
+	//compress header
+	uint32_t compFlag = 0;
+	if (compressed) compFlag = 0x80000000 | size;
+	bstreamWrite(stream, &compFlag, sizeof(compFlag));
+
+	//compress data
+	if (compressed) {
+		//compress
+		unsigned int compSize;
+		unsigned char *comp = CxCompressLZ(buffer, size, &compSize);
+
+		bstreamWrite(stream, comp, compSize);
+
+		//replace
+		free(comp);
+	} else {
+		//write direct
+		bstreamWrite(stream, buffer, size);
+	}
+
+}
+
+
 // ----- Homebrew file format
 
 #include "texture.h"

@@ -16,6 +16,7 @@ static int ChrIsValidNcg(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidNcgr(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidSetosa(const unsigned char *buffer, unsigned int size);
 static int ChrIsValidTose(const unsigned char *buffer, unsigned int size);
+static int ChrIsValidBomberman(const unsigned char *buffer, unsigned int size);
 
 static int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
 static int ChrReadNcg(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
@@ -27,6 +28,7 @@ static int ChrReadTose(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 static int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
 static int ChrReadSetosa(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
 static int ChrReadBin(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
+static int ChrReadBomberman(NCGR *ncgr, const unsigned char *buffer, unsigned int size);
 
 static int ChrWriteNcgr(NCGR *ncgr, BSTREAM *stream);
 static int ChrWriteNcg(NCGR *ncgr, BSTREAM *stream);
@@ -35,6 +37,7 @@ static int ChrWriteAcg(NCGR *ncgr, BSTREAM *stream);
 static int ChrWriteHudson(NCGR *ncgr, BSTREAM *stream);
 static int ChrWriteHudson2(NCGR *ncgr, BSTREAM *stream);
 static int ChrWriteTose(NCGR *ncgr, BSTREAM *Stream);
+static int ChrWriteBomberman(NCGR *ncgr, BSTREAM *stream);
 static int ChrWriteGhostTrick(NCGR *ncgr, BSTREAM *stream);
 static int ChrWriteSetosa(NCGR *ncgr, BSTREAM *stream);
 static int ChrWriteBin(NCGR *ncgr, BSTREAM *stream);
@@ -72,6 +75,12 @@ static const ObjIdEntry sFormats[] = {
 		ChrIsValidTose,
 		(ObjReader) ChrReadTose,
 		(ObjWriter) ChrWriteTose
+	}, {
+		FILE_TYPE_CHARACTER, NCGR_TYPE_BOMBERMAN, "Bomberman",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_COMPRESSION,
+		ChrIsValidBomberman,
+		(ObjReader) ChrReadBomberman,
+		(ObjWriter) ChrWriteBomberman
 	}, {
 		FILE_TYPE_CHARACTER, NCGR_TYPE_HUDSON, "Hudson",
 		OBJ_ID_HEADER,
@@ -276,6 +285,40 @@ static int ChrIsValidTose(const unsigned char *buffer, unsigned int size) {
 	unsigned int gfxSize = size - 8;
 
 	if (gfxSize != nChr * 0x20 && gfxSize != nChr * 0x40) return 0;
+
+	return 1;
+}
+
+static int ChrIsValidBomberman(const unsigned char *buffer, unsigned int size) {
+	if (!BldtIsValid(buffer, size)) return 0;
+
+	//check uncompressed data
+	unsigned int uncompSize;
+	unsigned char *uncomp = BldtGetUncompressed(buffer, size, &uncompSize);
+
+	if (uncompSize < 8) {
+		//has 8-byte header
+		free(uncomp);
+		return 0;
+	}
+
+	uint32_t charSize = *(const uint32_t *) (uncomp + 0x0);
+	unsigned int nCharX = uncomp[4];
+	unsigned int nCharY = uncomp[5];
+	int is8bpp = uncomp[6];
+	int field7 = uncomp[7];
+	free(uncomp);
+
+	//TODO: what is field7?
+
+	if (nCharX == 0 || nCharY == 0) return 0;
+	if (is8bpp != 0 && is8bpp != 1) return 0;
+
+	unsigned int sizeChar = is8bpp ? 0x40 : 0x20;
+
+	//check character data size
+	if ((charSize + 8) != uncompSize) return 0;
+	if (charSize % sizeChar) return 0;
 
 	return 1;
 }
@@ -676,6 +719,34 @@ static int ChrReadTose(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
 	ChrReadChars(ncgr, buffer + 8);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
+static int ChrReadBomberman(NCGR *ncgr, const unsigned char *buffer, unsigned int size) {
+	unsigned int uncompSize;
+	unsigned char *uncomp = BldtGetUncompressed(buffer, size, &uncompSize);
+
+	unsigned int nCharX = uncomp[4];
+	unsigned int nCharY = uncomp[5];
+	int is8bpp = uncomp[6];
+	int field7 = uncomp[7];
+
+	unsigned int depth = is8bpp ? 8 : 4;
+	unsigned int sizeChar = is8bpp ? 0x40 : 0x20;
+	unsigned int nChar = (uncompSize - 8) / sizeChar;
+
+	if (nCharX * nCharY != nChar) {
+		//if the specified size does not line up, we'll use our own guessed.
+		nCharX = ChrGuessWidth(nChar);
+		nCharY = nChar / nCharX;
+	}
+
+	ncgr->nBits = depth;
+	ncgr->nTiles = nChar;
+	ncgr->tilesX = nCharX;
+	ncgr->tilesY = nCharY;
+	ChrReadChars(ncgr, uncomp + 8);
 
 	return OBJ_STATUS_SUCCESS;
 }
@@ -1109,6 +1180,28 @@ static int ChrWriteTose(NCGR *ncgr, BSTREAM *stream) {
 	bstreamWrite(stream, "NCG\0", 4);
 	bstreamWrite(stream, hdr, sizeof(hdr));
 	ChrWriteChars(ncgr, stream);
+
+	return OBJ_STATUS_SUCCESS;
+}
+
+static int ChrWriteBomberman(NCGR *ncgr, BSTREAM *stream) {
+	//construct data
+	BSTREAM stmUnpacked;
+	bstreamCreate(&stmUnpacked, NULL, 0);
+
+	unsigned char header[8];
+	*(uint32_t *) (header + 0x0) = ncgr->nTiles * (8 * ncgr->nBits);
+	header[4] = 0x20;
+	header[5] = (ncgr->nTiles + 0x1F) / 0x20;
+	header[6] = ncgr->nBits == 8;
+	header[7] = 0; // ?
+	bstreamWrite(&stmUnpacked, header, sizeof(header));
+
+	ChrWriteChars(ncgr, &stmUnpacked);
+
+	//put BLDT data
+	BldtWrite(stream, stmUnpacked.buffer, stmUnpacked.size, 1);
+	bstreamFree(&stmUnpacked);
 
 	return OBJ_STATUS_SUCCESS;
 }
