@@ -1635,7 +1635,23 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
 
-	int mapFullToHalf = MessageBox(hWndMain, L"Map full-width glyphs to half-width?", L"Import LC Font", MB_ICONQUESTION | MB_YESNO) == IDYES;
+	//detect input code-page.
+	FontCharacterSet inCP = FONT_CHARSET_SJIS;
+	if (nGlyph > 0) {
+		const unsigned char *pGlyph = buf;
+		uint16_t cp = (pGlyph[0] << 8) | (pGlyph[1]);
+
+		if (cp < 0x8000) {
+			//SJIS LC fonts will begin in the 8xxx range.
+			inCP = FONT_CHARSET_UTF16;
+		}
+	}
+
+	int mapFullToHalf = 0;
+	if (inCP == FONT_CHARSET_SJIS) {
+		//SJIS LC fonts have latin characters in the full-width range
+		mapFullToHalf = MessageBox(hWndMain, L"Map full-width glyphs to half-width?", L"Import LC Font", MB_ICONQUESTION | MB_YESNO) == IDYES;
+	}
 
 	//add glyphs in range
 	int nAdd = 0, iLastAdd = -1;
@@ -1645,8 +1661,10 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 		const unsigned char *pGlyphbm = pGlyph + 2;
 
 		uint16_t cp = (pGlyph[0] << 8) | (pGlyph[1]); // SJIS
-		cp = (uint16_t) NftrViewerDecodeSjisCharacter(cp);
-		if (!cp) continue;
+		if (inCP == FONT_CHARSET_SJIS) {
+			cp = (uint16_t) NftrViewerDecodeSjisCharacter(cp);
+			if (!cp) continue;
+		}
 
 		//map full to half width
 		if (mapFullToHalf) {
