@@ -1585,7 +1585,7 @@ static unsigned int NftrViewerLcFontGetPitch(const unsigned char *buf, unsigned 
 
 static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 	HWND hWndMain = data->editorMgr->hWnd;
-	LPWSTR path = openFileDialog(hWndMain, L"Import LC Font", L"LC Font Files (*.dat)\0*.dat\0All Files\0*.*", L"dat");
+	LPWSTR path = openFileDialog(hWndMain, L"Import LC Font", L"LC Font Files (*.dat)\0*.dat\0All Files\0*.*\0", L"dat");
 	if (path == NULL) return;
 
 	unsigned int size;
