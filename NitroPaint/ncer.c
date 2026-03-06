@@ -9,15 +9,18 @@
 static int CellIsValidHudson(const unsigned char *buffer, unsigned int size);
 static int CellIsValidGhostTrick(const unsigned char *buffer, unsigned int size);
 static int CellIsValidSetosa(const unsigned char *buffer, unsigned int size);
+static int CellIsValidBomberman(const unsigned char *buffer, unsigned int size);
 static int CellIsValidNcer(const unsigned char *buffer, unsigned int size);
 
 static int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size);
 static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int size);
 static int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size);
+static int CellReadBomberman(NCER *ncer, const unsigned char *buffer, unsigned int size);
 static int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int size);
 
 static int CellWriteNcer(NCER *ncer, BSTREAM *stream);
 static int CellWriteSetosa(NCER *ncer, BSTREAM *stream);
+static int CellWriteBomberman(NCER *ncer, BSTREAM *stream);
 static int CellWriteHudson(NCER *ncer, BSTREAM *stream);
 
 static const ObjIdEntry sFormats[] = {
@@ -39,6 +42,12 @@ static const ObjIdEntry sFormats[] = {
 		CellIsValidHudson,
 		(ObjReader) CellReadHudson,
 		(ObjWriter) CellWriteHudson
+	}, {
+		FILE_TYPE_CELL, NCER_TYPE_BOMBERMAN, "Bomberman",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		CellIsValidBomberman,
+		(ObjReader) CellReadBomberman,
+		(ObjWriter) CellWriteBomberman
 	}, {
 		FILE_TYPE_CELL, NCER_TYPE_GHOSTTRICK, "Ghost Trick",
 		OBJ_ID_HEADER | OBJ_ID_OFFSETS,
@@ -128,6 +137,37 @@ static int CellIsValidSetosa(const unsigned char *buffer, unsigned int size) {
 	const unsigned char *cellBlock = SetGetBlock(buffer, size, "CELL");
 	const unsigned char *cbexBlock = SetGetBlock(buffer, size, "CBEX");
 	return cellBlock != NULL || cbexBlock != NULL;
+}
+
+static int CellIsValidBomberman(const unsigned char *buffer, unsigned int size) {
+	if (!BldtIsValid(buffer, size)) return 0;
+
+	unsigned int unpackedSize;
+	unsigned char *unpacked = BldtGetUncompressed(buffer, size, &unpackedSize);
+
+	unsigned int ofs0 = *(const uint32_t *) (unpacked + 0x00);
+	unsigned int ofsObj = *(const uint32_t *) (unpacked + 0x0C);
+	if (ofs0 < 0x14 || ofs0 > size) goto Invalid;
+	if (ofsObj < 0x14 || ofsObj > size) goto Invalid;
+
+	//Check cell data
+	unsigned int nCell = (ofs0 - 0x14) / 8;
+	for (unsigned int i = 0; i < nCell; i++) {
+		const unsigned char *cellInfo = unpacked + 0x14 + i * 8;
+		unsigned int iObj = *(const uint16_t *) (cellInfo + 0x0);
+		unsigned int nObj = *(const uint8_t *) (cellInfo + 0x2);
+
+		unsigned int objStart = ofsObj + iObj * 0xC;
+		if (objStart > size) return 0;                 // offset within file
+		if ((size - objStart) < nObj * 0xC) return 0;  // enough space for OBJ
+	}
+
+	free(unpacked);
+	return 1;
+
+Invalid:
+	free(unpacked);
+	return 0;
 }
 
 int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {
@@ -360,6 +400,57 @@ static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int 
 	}
 
 	return 0;
+}
+
+static int CellReadBomberman(NCER *ncer, const unsigned char *buffer, unsigned int size) {
+	unsigned int unpackedSize;
+	unsigned char *unpacked = BldtGetUncompressed(buffer, size, &unpackedSize);
+
+	unsigned int ofs0 = *(const uint32_t *) (unpacked + 0x00);
+	unsigned int ofsObj = *(const uint32_t *) (unpacked + 0x0C);
+
+	//Check cell data
+	unsigned int nCell = (ofs0 - 0x14) / 8;
+	ncer->nCells = nCell;
+	ncer->cells = (NCER_CELL *) calloc(nCell, sizeof(NCER_CELL));
+	ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
+
+	//read cell data
+	for (unsigned int i = 0; i < nCell; i++) {
+		const unsigned char *cellInfo = unpacked + 0x14 + i * 8;
+		unsigned int iObj = *(const uint16_t *) (cellInfo + 0x0);
+		unsigned int nObj = *(const uint8_t *) (cellInfo + 0x2);
+
+		unsigned int objStart = ofsObj + iObj * 0xC;
+		const unsigned char *objData = unpacked + objStart;
+
+		NCER_CELL *cell = &ncer->cells[i];
+		cell->nAttribs = nObj;
+		cell->attr = (uint16_t *) calloc(nObj, 3 * sizeof(uint16_t));
+
+		for (unsigned int j = 0; j < nObj; j++) {
+			const unsigned char *thisObj = objData + 0xC * j;
+
+			//TODO
+			int x = *(const int16_t *) (thisObj + 0x0);
+			int y = *(const int16_t *) (thisObj + 0x2);
+			unsigned int charName = *(const uint16_t *) (thisObj + 0x4);
+			unsigned int flags = *(const uint16_t *) (thisObj + 0x6);
+
+			unsigned int shape = (flags >> 0) & 0x3;
+			unsigned int size = (flags >> 2) & 0x3;
+
+			int width, height;
+			CellGetObjDimensions(shape, size, &width, &height);
+
+			cell->attr[j * 3 + 0] = (y & 0x00FF) | (shape << 14);
+			cell->attr[j * 3 + 1] = (x & 0x01FF) | (size << 14);
+			cell->attr[j * 3 + 2] = (charName & 0x03FF);
+		}
+	}
+
+	free(unpacked);
+	return OBJ_STATUS_SUCCESS;
 }
 
 void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj) {
@@ -746,6 +837,12 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 	SetStreamFree(&setStream);
 
 	return 0;
+}
+
+static int CellWriteBomberman(NCER *ncer, BSTREAM *stream) {
+	//TODO
+	__debugbreak();
+	return OBJ_STATUS_UNSUPPORTED;
 }
 
 // ----- cell rendering
