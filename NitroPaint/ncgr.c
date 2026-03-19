@@ -325,27 +325,34 @@ static int ChrIsValidBomberman(const unsigned char *buffer, unsigned int size) {
 
 void ChrFree(ObjHeader *header) {
 	NCGR *ncgr = (NCGR *) header;
-	if (ncgr->tiles != NULL) {
-		for (int i = 0; i < ncgr->nTiles; i++) {
-			free(ncgr->tiles[i]);
-		}
-		free(ncgr->tiles);
-	}
-	ncgr->tiles = NULL;
 
-	if (ncgr->attr != NULL) {
-		free(ncgr->attr);
-		ncgr->attr = NULL;
+	free(ncgr->tiles);
+	free(ncgr->charbuf);
+	free(ncgr->attr);
+
+	ncgr->tiles = NULL;
+	ncgr->charbuf = NULL;
+	ncgr->attr = NULL;
+}
+
+static void ChriCreateIndexes(NCGR *ncgr) {
+	//free the old index
+	free(ncgr->tiles);
+
+	//create the new one
+	ncgr->tiles = (unsigned char **) calloc(ncgr->nTiles, sizeof(unsigned char *));
+	for (int i = 0; i < ncgr->nTiles; i++) {
+		ncgr->tiles[i] = &ncgr->charbuf[i * 64];
 	}
 }
 
 void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
 	int nChars = ncgr->nTiles;
+	ncgr->charbuf = (unsigned char *) calloc(nChars, 8 * 8);
+	ChriCreateIndexes(ncgr);
 
-	unsigned char **tiles = (unsigned char **) calloc(nChars, sizeof(unsigned char **));
 	for (int i = 0; i < nChars; i++) {
-		tiles[i] = (unsigned char *) calloc(64, 1);
-		unsigned char *tile = tiles[i];
+		unsigned char *tile = ncgr->tiles[i];
 
 		if (ncgr->nBits == 8) {
 			//8-bit graphics: no need to unpack
@@ -363,36 +370,29 @@ void ChrReadChars(NCGR *ncgr, const unsigned char *buffer) {
 			}
 		}
 	}
-	ncgr->tiles = tiles;
 }
 
 void ChrReadBitmap(NCGR *ncgr, const unsigned char *buffer) {
 	int depth = ncgr->nBits;
 	int tilesX = ncgr->tilesX, tilesY = ncgr->tilesY;
-	unsigned char **tiles = (unsigned char **) calloc(ncgr->nTiles, sizeof(unsigned char **));
+	ncgr->charbuf = (unsigned char *) calloc(ncgr->nTiles, 8 * 8);
+	ChriCreateIndexes(ncgr);
 
 	for (int y = 0; y < tilesY; y++) {
 		for (int x = 0; x < tilesX; x++) {
-
 			int offset = x * 4 + 4 * y * tilesX * 8;
-			unsigned char *tile = calloc(64, 1);
-			tiles[x + y * tilesX] = tile;
+			unsigned char *tile = ncgr->charbuf + 64 * (x + y * tilesX);
+
 			if (depth == 8) {
-				offset *= 2;
-				const unsigned char *indices = buffer + offset;
-				memcpy(tile, indices, 8);
-				memcpy(tile + 8, indices + 8 * tilesX, 8);
-				memcpy(tile + 16, indices + 16 * tilesX, 8);
-				memcpy(tile + 24, indices + 24 * tilesX, 8);
-				memcpy(tile + 32, indices + 32 * tilesX, 8);
-				memcpy(tile + 40, indices + 40 * tilesX, 8);
-				memcpy(tile + 48, indices + 48 * tilesX, 8);
-				memcpy(tile + 56, indices + 56 * tilesX, 8);
+				const unsigned char *indices = buffer + offset * 2;
+				for (int i = 0; i < 8; i++) {
+					memcpy(tile + 8 * i, indices + 8 * i * tilesX, 8);
+				}
 			} else if (depth == 4) {
 				const unsigned char *indices = buffer + offset;
 				for (int j = 0; j < 8; j++) {
 					for (int i = 0; i < 4; i++) {
-						tile[i * 2 + j * 8] = indices[i + j * 4 * tilesX] & 0xF;
+						tile[i * 2 + 0 + j * 8] = indices[i + j * 4 * tilesX] & 0xF;
 						tile[i * 2 + 1 + j * 8] = indices[i + j * 4 * tilesX] >> 4;
 					}
 				}
@@ -400,8 +400,6 @@ void ChrReadBitmap(NCGR *ncgr, const unsigned char *buffer) {
 
 		}
 	}
-
-	ncgr->tiles = tiles;
 }
 
 void ChrReadGraphics(NCGR *ncgr, const unsigned char *buffer) {
@@ -576,7 +574,6 @@ static int ChrReadGhostTrick(NCGR *ncgr, const unsigned char *buffer, unsigned i
 	ncgr->nTiles = uncompSize / 0x20;
 	ncgr->tilesX = ChrGuessWidth(ncgr->nTiles);
 	ncgr->tilesY = ncgr->nTiles / ncgr->tilesX;
-	ncgr->tiles = (unsigned char **) calloc(ncgr->nTiles, sizeof(unsigned char *));
 	ncgr->slices = slices;
 	ncgr->nSlices = nSlices;
 	ChrReadGraphics(ncgr, uncomp);
@@ -1210,7 +1207,8 @@ void ChrSetDepth(NCGR *ncgr, int depth) {
 	if (depth == ncgr->nBits) return; //do nothing
 
 	//compute new tile count
-	int nTiles2 = ncgr->nTiles;
+	unsigned char *charbuf1 = ncgr->charbuf;
+	int nTiles1 = ncgr->nTiles, nTiles2 = ncgr->nTiles;
 	if (depth == 8) {
 		//4bpp -> 8bpp, tile count /= 2
 		nTiles2 = (nTiles2 + 1) / 2;
@@ -1218,28 +1216,19 @@ void ChrSetDepth(NCGR *ncgr, int depth) {
 		//8bpp -> 4bpp, tile count *= 2
 		nTiles2 *= 2;
 	}
-	unsigned char **tiles2 = (unsigned char **) calloc(nTiles2, sizeof(unsigned char **));
-	unsigned char *attr2 = (unsigned char *) calloc(nTiles2, 1);
+	ncgr->nTiles = nTiles2;
+	ncgr->charbuf = (unsigned char *) calloc(ncgr->nTiles, 64);
+	ChriCreateIndexes(ncgr);
+
+	unsigned char *attr2 = (unsigned char *) calloc(ncgr->nTiles, 1);
 
 	if (depth == 8) {
 		//convert 4bpp graphic to 8bpp
-		for (int i = 0; i < nTiles2; i++) {
-			unsigned char *tile1 = ncgr->tiles[i * 2];
-			unsigned char *dest = (unsigned char *) calloc(64, 1);
-			tiles2[i] = dest;
-
-			//first half
-			for (int j = 0; j < 32; j++) {
-				dest[j] = tile1[j * 2] | (tile1[j * 2 + 1] << 4);
-			}
-
-			//second half, only if it exists
-			if ((i * 2 + 1) < ncgr->nTiles) {
-				unsigned char *tile2 = ncgr->tiles[i * 2 + 1];
-				for (int j = 0; j < 32; j++) {
-					dest[j + 32] = tile2[j * 2] | (tile2[j * 2 + 1] << 4);
-				}
-			}
+		//interleave adjacent 4-bit pairs (internal representation is 8bpp)
+		for (int i = 0; i < 32 * nTiles1; i++) {
+			unsigned char p1 = charbuf1[2 * i + 0];
+			unsigned char p2 = charbuf1[2 * i + 1];
+			ncgr->charbuf[i] = p1 | (p2 << 4);
 		}
 
 		//attribute data: take every other attribute
@@ -1248,19 +1237,11 @@ void ChrSetDepth(NCGR *ncgr, int depth) {
 		}
 	} else {
 		//covert 8bpp graphic to 4bpp
-		for (int i = 0; i < ncgr->nTiles; i++) {
-			unsigned char *tile1 = calloc(64, 1);
-			unsigned char *tile2 = calloc(64, 1);
-			unsigned char *src = ncgr->tiles[i];
-			tiles2[i * 2 + 0] = tile1;
-			tiles2[i * 2 + 1] = tile2;
-
-			for (int j = 0; j < 32; j++) {
-				tile1[j * 2 + 0] = (src[j +  0] >> 0) & 0xF;
-				tile1[j * 2 + 1] = (src[j +  0] >> 4) & 0xF;
-				tile2[j * 2 + 0] = (src[j + 32] >> 0) & 0xF;
-				tile2[j * 2 + 1] = (src[j + 32] >> 4) & 0xF;
-			}
+		//split 4-bit pairs
+		for (int i = 0; i < 32 * nTiles2; i++) {
+			unsigned char p = charbuf1[i];
+			ncgr->charbuf[2 * i + 0] = (p >> 0) & 0xF;
+			ncgr->charbuf[2 * i + 1] = (p >> 4) & 0xF;
 		}
 
 		//attribute data: double up each attribute byte
@@ -1269,19 +1250,11 @@ void ChrSetDepth(NCGR *ncgr, int depth) {
 		}
 	}
 
-	//replace graphics
-	for (int i = 0; i < ncgr->nTiles; i++) {
-		if (ncgr->tiles[i] != NULL) free(ncgr->tiles[i]);
-	}
-	free(ncgr->tiles);
-	ncgr->tiles = tiles2;
-
 	//replace attributes
 	if (ncgr->attr != NULL) free(ncgr->attr);
 	ncgr->attr = attr2;
 
 	//adjust dimensions and size
-	ncgr->nTiles = nTiles2;
 	ncgr->nBits = depth;
 	if (depth == 8) {
 		//may not be able to just halve the width
@@ -1319,9 +1292,6 @@ void ChrResize(NCGR *ncgr, int width, int height) {
 	}
 
 	//free original character
-	for (int i = 0; i < ncgr->nTiles; i++) {
-		free(ncgr->tiles[i]);
-	}
 	free(ncgr->tiles);
 	if (ncgr->attr != NULL) free(ncgr->attr);
 	ncgr->tiles = chars2;

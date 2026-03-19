@@ -2185,7 +2185,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 				//create and write palette
 				RxComputePalette(reduction, nColors - reserveFirst);
 				for (int i = 0; i < nColors - reserveFirst; i++) {
-					(paletteCopy + reserveFirst)[i] = reduction->paletteRgb[i];
+					(paletteCopy + reserveFirst)[i] = reduction->paletteRgb[i][0];
 				}
 				qsort(paletteCopy + reserveFirst, nColors - reserveFirst, sizeof(COLOR32), RxColorLightnessComparator);
 				RxFree(reduction);

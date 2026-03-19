@@ -1866,7 +1866,7 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 
 			int srcTileX = srcX / 8;
 			int srcTileY = srcY / 8;
-			unsigned char *chr = ncgr->tiles[srcTileX + srcTileY * tilesX];
+			unsigned char *chr = &ncgr->charbuf[64 * (srcTileX + srcTileY * tilesX)];
 			int plt = ChrViewerGetCharPalette(data, srcTileX, srcTileY);
 			int rawIdx = chr[(srcX % 8) + (srcY % 8) * 8];
 			int idx = rawIdx + (plt << ncgr->nBits);

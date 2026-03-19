@@ -7,6 +7,9 @@
 #include "color.h"
 #include "palette.h"
 
+//TODO: delete this
+#define COV_DIM 4
+
 //optimize for speed rather than size
 #ifndef _DEBUG
 #ifdef _MSC_VER
@@ -42,6 +45,7 @@
 #define INV_3      0.3333333333333333333 // 1.0/  3.0
 #define TWO_THIRDS 0.6666666666666666667 // 2.0/  3.0
 
+//default parameters for alpha processing (describes the distribution of colors)
 #define MEAN_Y    218.5703266931449500000  // mean of Y
 #define MEAN_I     -0.0126499310411609110  // mean of I
 #define MEAN_Q      0.0094274570675025038  // mean of Q
@@ -56,78 +60,78 @@ typedef struct {
 	double SiU;       // sum (i)
 	double SqU;       // sum (q)
 	double SaU;       // sum (a)
-	double weightL;  // weight of left side
-} RxiClusterSum;
+} RxiLongColor;
 
 static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff);
+static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors);
 
 
 //luma table: sLumaTable[i] = 511.0 * pow(i / 511.0, RX_GAMMA)
 static const float sLumaTable[] = {
-		  0.000000f,   0.185663f,   0.447749f,   0.749325f,   1.079798f,   1.433568f,   1.807084f,   2.197864f,
-		  2.604058f,   3.024227f,   3.457215f,   3.902070f,   4.357993f,   4.824301f,   5.300404f,   5.785785f,
-		  6.279987f,   6.782604f,   7.293272f,   7.811662f,   8.337473f,   8.870434f,   9.410293f,   9.956821f,
-		 10.509804f,  11.069045f,  11.634360f,  12.205578f,  12.782537f,  13.365088f,  13.953089f,  14.546406f,
-		 15.144915f,  15.748495f,  16.357035f,  16.970427f,  17.588570f,  18.211367f,  18.838726f,  19.470558f,
-		 20.106781f,  20.747313f,  21.392077f,  22.041000f,  22.694011f,  23.351041f,  24.012026f,  24.676902f,
-		 25.345609f,  26.018088f,  26.694283f,  27.374140f,  28.057605f,  28.744629f,  29.435162f,  30.129156f,
-		 30.826566f,  31.527347f,  32.231455f,  32.938848f,  33.649487f,  34.363330f,  35.080341f,  35.800480f,
-		 36.523713f,  37.250004f,  37.979317f,  38.711621f,  39.446882f,  40.185068f,  40.926148f,  41.670092f,
-		 42.416871f,  43.166456f,  43.918818f,  44.673930f,  45.431766f,  46.192299f,  46.955504f,  47.721355f,
-		 48.489828f,  49.260899f,  50.034544f,  50.810742f,  51.589468f,  52.370702f,  53.154421f,  53.940604f,
-		 54.729232f,  55.520282f,  56.313736f,  57.109575f,  57.907778f,  58.708327f,  59.511203f,  60.316389f,
-		 61.123867f,  61.933619f,  62.745628f,  63.559878f,  64.376351f,  65.195032f,  66.015904f,  66.838952f,
-		 67.664160f,  68.491514f,  69.320998f,  70.152597f,  70.986298f,  71.822085f,  72.659945f,  73.499865f,
-		 74.341830f,  75.185827f,  76.031843f,  76.879865f,  77.729881f,  78.581878f,  79.435843f,  80.291764f,
-		 81.149629f,  82.009427f,  82.871145f,  83.734773f,  84.600299f,  85.467711f,  86.336999f,  87.208152f,
-		 88.081159f,  88.956009f,  89.832692f,  90.711198f,  91.591516f,  92.473637f,  93.357551f,  94.243248f,
-		 95.130717f,  96.019950f,  96.910938f,  97.803670f,  98.698139f,  99.594334f, 100.492246f, 101.391868f,
-		102.293190f, 103.196203f, 104.100900f, 105.007271f, 105.915308f, 106.825004f, 107.736349f, 108.649337f,
-		109.563958f, 110.480206f, 111.398071f, 112.317548f, 113.238627f, 114.161303f, 115.085566f, 116.011410f,
-		116.938827f, 117.867811f, 118.798355f, 119.730450f, 120.664091f, 121.599270f, 122.535980f, 123.474215f,
-		124.413969f, 125.355234f, 126.298004f, 127.242273f, 128.188033f, 129.135280f, 130.084006f, 131.034205f,
-		131.985872f, 132.938999f, 133.893582f, 134.849614f, 135.807088f, 136.766001f, 137.726344f, 138.688114f,
-		139.651303f, 140.615907f, 141.581920f, 142.549336f, 143.518149f, 144.488356f, 145.459949f, 146.432924f,
-		147.407275f, 148.382997f, 149.360086f, 150.338535f, 151.318340f, 152.299495f, 153.281997f, 154.265838f,
-		155.251016f, 156.237525f, 157.225359f, 158.214515f, 159.204988f, 160.196772f, 161.189863f, 162.184257f,
-		163.179949f, 164.176934f, 165.175208f, 166.174766f, 167.175604f, 168.177717f, 169.181102f, 170.185753f,
-		171.191667f, 172.198839f, 173.207265f, 174.216941f, 175.227862f, 176.240025f, 177.253425f, 178.268058f,
-		179.283920f, 180.301008f, 181.319317f, 182.338843f, 183.359583f, 184.381532f, 185.404687f, 186.429044f,
-		187.454598f, 188.481347f, 189.509286f, 190.538412f, 191.568721f, 192.600210f, 193.632874f, 194.666711f,
-		195.701716f, 196.737886f, 197.775218f, 198.813708f, 199.853352f, 200.894147f, 201.936090f, 202.979177f,
-		204.023405f, 205.068771f, 206.115270f, 207.162901f, 208.211659f, 209.261541f, 210.312544f, 211.364665f,
-		212.417901f, 213.472248f, 214.527703f, 215.584264f, 216.641926f, 217.700688f, 218.760545f, 219.821495f,
-		220.883535f, 221.946662f, 223.010872f, 224.076163f, 225.142532f, 226.209975f, 227.278491f, 228.348076f,
-		229.418727f, 230.490441f, 231.563216f, 232.637048f, 233.711935f, 234.787874f, 235.864863f, 236.942898f,
-		238.021976f, 239.102096f, 240.183254f, 241.265448f, 242.348675f, 243.432932f, 244.518216f, 245.604526f,
-		246.691858f, 247.780210f, 248.869580f, 249.959964f, 251.051360f, 252.143766f, 253.237179f, 254.331596f,
-		255.427016f, 256.523436f, 257.620852f, 258.719263f, 259.818667f, 260.919061f, 262.020442f, 263.122808f,
-		264.226157f, 265.330486f, 266.435794f, 267.542077f, 268.649333f, 269.757561f, 270.866757f, 271.976920f,
-		273.088047f, 274.200136f, 275.313185f, 276.427191f, 277.542152f, 278.658067f, 279.774932f, 280.892746f,
-		282.011507f, 283.131212f, 284.251859f, 285.373447f, 286.495972f, 287.619433f, 288.743827f, 289.869154f,
-		290.995410f, 292.122593f, 293.250702f, 294.379734f, 295.509688f, 296.640561f, 297.772351f, 298.905056f,
-		300.038675f, 301.173205f, 302.308645f, 303.444992f, 304.582244f, 305.720399f, 306.859457f, 307.999413f,
-		309.140268f, 310.282018f, 311.424662f, 312.568199f, 313.712625f, 314.857940f, 316.004141f, 317.151226f,
-		318.299195f, 319.448044f, 320.597772f, 321.748377f, 322.899858f, 324.052213f, 325.205439f, 326.359536f,
-		327.514501f, 328.670332f, 329.827028f, 330.984587f, 332.143008f, 333.302288f, 334.462426f, 335.623420f,
-		336.785269f, 337.947970f, 339.111522f, 340.275924f, 341.441174f, 342.607269f, 343.774209f, 344.941992f,
-		346.110616f, 347.280079f, 348.450380f, 349.621518f, 350.793490f, 351.966295f, 353.139931f, 354.314397f,
-		355.489692f, 356.665813f, 357.842759f, 359.020529f, 360.199121f, 361.378533f, 362.558764f, 363.739813f,
-		364.921677f, 366.104356f, 367.287847f, 368.472150f, 369.657263f, 370.843183f, 372.029911f, 373.217444f,
-		374.405781f, 375.594920f, 376.784861f, 377.975600f, 379.167138f, 380.359473f, 381.552602f, 382.746525f,
-		383.941241f, 385.136747f, 386.333043f, 387.530127f, 388.727998f, 389.926654f, 391.126093f, 392.326316f,
-		393.527319f, 394.729102f, 395.931664f, 397.135002f, 398.339116f, 399.544005f, 400.749667f, 401.956100f,
-		403.163303f, 404.371276f, 405.580016f, 406.789522f, 407.999794f, 409.210829f, 410.422627f, 411.635186f,
-		412.848504f, 414.062581f, 415.277416f, 416.493006f, 417.709352f, 418.926450f, 420.144301f, 421.362903f,
-		422.582255f, 423.802355f, 425.023202f, 426.244796f, 427.467134f, 428.690215f, 429.914039f, 431.138604f,
-		432.363909f, 433.589953f, 434.816734f, 436.044251f, 437.272504f, 438.501490f, 439.731209f, 440.961660f,
-		442.192841f, 443.424751f, 444.657390f, 445.890755f, 447.124846f, 448.359661f, 449.595200f, 450.831461f,
-		452.068443f, 453.306146f, 454.544567f, 455.783706f, 457.023562f, 458.264133f, 459.505418f, 460.747417f,
-		461.990128f, 463.233550f, 464.477682f, 465.722523f, 466.968071f, 468.214327f, 469.461288f, 470.708953f,
-		471.957322f, 473.206394f, 474.456166f, 475.706640f, 476.957812f, 478.209682f, 479.462250f, 480.715513f,
-		481.969472f, 483.224125f, 484.479470f, 485.735508f, 486.992236f, 488.249654f, 489.507761f, 490.766556f,
-		492.026038f, 493.286205f, 494.547058f, 495.808594f, 497.070812f, 498.333713f, 499.597294f, 500.861556f,
-		502.126496f, 503.392113f, 504.658408f, 505.925379f, 507.193024f, 508.461343f, 509.730336f, 511.000000f
+	  0.000000f,   0.185663f,   0.447749f,   0.749325f,   1.079798f,   1.433568f,   1.807084f,   2.197864f,
+	  2.604058f,   3.024227f,   3.457215f,   3.902070f,   4.357993f,   4.824301f,   5.300404f,   5.785785f,
+	  6.279987f,   6.782604f,   7.293272f,   7.811662f,   8.337473f,   8.870434f,   9.410293f,   9.956821f,
+	 10.509804f,  11.069045f,  11.634360f,  12.205578f,  12.782537f,  13.365088f,  13.953089f,  14.546406f,
+	 15.144915f,  15.748495f,  16.357035f,  16.970427f,  17.588570f,  18.211367f,  18.838726f,  19.470558f,
+	 20.106781f,  20.747313f,  21.392077f,  22.041000f,  22.694011f,  23.351041f,  24.012026f,  24.676902f,
+	 25.345609f,  26.018088f,  26.694283f,  27.374140f,  28.057605f,  28.744629f,  29.435162f,  30.129156f,
+	 30.826566f,  31.527347f,  32.231455f,  32.938848f,  33.649487f,  34.363330f,  35.080341f,  35.800480f,
+	 36.523713f,  37.250004f,  37.979317f,  38.711621f,  39.446882f,  40.185068f,  40.926148f,  41.670092f,
+	 42.416871f,  43.166456f,  43.918818f,  44.673930f,  45.431766f,  46.192299f,  46.955504f,  47.721355f,
+	 48.489828f,  49.260899f,  50.034544f,  50.810742f,  51.589468f,  52.370702f,  53.154421f,  53.940604f,
+	 54.729232f,  55.520282f,  56.313736f,  57.109575f,  57.907778f,  58.708327f,  59.511203f,  60.316389f,
+	 61.123867f,  61.933619f,  62.745628f,  63.559878f,  64.376351f,  65.195032f,  66.015904f,  66.838952f,
+	 67.664160f,  68.491514f,  69.320998f,  70.152597f,  70.986298f,  71.822085f,  72.659945f,  73.499865f,
+	 74.341830f,  75.185827f,  76.031843f,  76.879865f,  77.729881f,  78.581878f,  79.435843f,  80.291764f,
+	 81.149629f,  82.009427f,  82.871145f,  83.734773f,  84.600299f,  85.467711f,  86.336999f,  87.208152f,
+	 88.081159f,  88.956009f,  89.832692f,  90.711198f,  91.591516f,  92.473637f,  93.357551f,  94.243248f,
+	 95.130717f,  96.019950f,  96.910938f,  97.803670f,  98.698139f,  99.594334f, 100.492246f, 101.391868f,
+	102.293190f, 103.196203f, 104.100900f, 105.007271f, 105.915308f, 106.825004f, 107.736349f, 108.649337f,
+	109.563958f, 110.480206f, 111.398071f, 112.317548f, 113.238627f, 114.161303f, 115.085566f, 116.011410f,
+	116.938827f, 117.867811f, 118.798355f, 119.730450f, 120.664091f, 121.599270f, 122.535980f, 123.474215f,
+	124.413969f, 125.355234f, 126.298004f, 127.242273f, 128.188033f, 129.135280f, 130.084006f, 131.034205f,
+	131.985872f, 132.938999f, 133.893582f, 134.849614f, 135.807088f, 136.766001f, 137.726344f, 138.688114f,
+	139.651303f, 140.615907f, 141.581920f, 142.549336f, 143.518149f, 144.488356f, 145.459949f, 146.432924f,
+	147.407275f, 148.382997f, 149.360086f, 150.338535f, 151.318340f, 152.299495f, 153.281997f, 154.265838f,
+	155.251016f, 156.237525f, 157.225359f, 158.214515f, 159.204988f, 160.196772f, 161.189863f, 162.184257f,
+	163.179949f, 164.176934f, 165.175208f, 166.174766f, 167.175604f, 168.177717f, 169.181102f, 170.185753f,
+	171.191667f, 172.198839f, 173.207265f, 174.216941f, 175.227862f, 176.240025f, 177.253425f, 178.268058f,
+	179.283920f, 180.301008f, 181.319317f, 182.338843f, 183.359583f, 184.381532f, 185.404687f, 186.429044f,
+	187.454598f, 188.481347f, 189.509286f, 190.538412f, 191.568721f, 192.600210f, 193.632874f, 194.666711f,
+	195.701716f, 196.737886f, 197.775218f, 198.813708f, 199.853352f, 200.894147f, 201.936090f, 202.979177f,
+	204.023405f, 205.068771f, 206.115270f, 207.162901f, 208.211659f, 209.261541f, 210.312544f, 211.364665f,
+	212.417901f, 213.472248f, 214.527703f, 215.584264f, 216.641926f, 217.700688f, 218.760545f, 219.821495f,
+	220.883535f, 221.946662f, 223.010872f, 224.076163f, 225.142532f, 226.209975f, 227.278491f, 228.348076f,
+	229.418727f, 230.490441f, 231.563216f, 232.637048f, 233.711935f, 234.787874f, 235.864863f, 236.942898f,
+	238.021976f, 239.102096f, 240.183254f, 241.265448f, 242.348675f, 243.432932f, 244.518216f, 245.604526f,
+	246.691858f, 247.780210f, 248.869580f, 249.959964f, 251.051360f, 252.143766f, 253.237179f, 254.331596f,
+	255.427016f, 256.523436f, 257.620852f, 258.719263f, 259.818667f, 260.919061f, 262.020442f, 263.122808f,
+	264.226157f, 265.330486f, 266.435794f, 267.542077f, 268.649333f, 269.757561f, 270.866757f, 271.976920f,
+	273.088047f, 274.200136f, 275.313185f, 276.427191f, 277.542152f, 278.658067f, 279.774932f, 280.892746f,
+	282.011507f, 283.131212f, 284.251859f, 285.373447f, 286.495972f, 287.619433f, 288.743827f, 289.869154f,
+	290.995410f, 292.122593f, 293.250702f, 294.379734f, 295.509688f, 296.640561f, 297.772351f, 298.905056f,
+	300.038675f, 301.173205f, 302.308645f, 303.444992f, 304.582244f, 305.720399f, 306.859457f, 307.999413f,
+	309.140268f, 310.282018f, 311.424662f, 312.568199f, 313.712625f, 314.857940f, 316.004141f, 317.151226f,
+	318.299195f, 319.448044f, 320.597772f, 321.748377f, 322.899858f, 324.052213f, 325.205439f, 326.359536f,
+	327.514501f, 328.670332f, 329.827028f, 330.984587f, 332.143008f, 333.302288f, 334.462426f, 335.623420f,
+	336.785269f, 337.947970f, 339.111522f, 340.275924f, 341.441174f, 342.607269f, 343.774209f, 344.941992f,
+	346.110616f, 347.280079f, 348.450380f, 349.621518f, 350.793490f, 351.966295f, 353.139931f, 354.314397f,
+	355.489692f, 356.665813f, 357.842759f, 359.020529f, 360.199121f, 361.378533f, 362.558764f, 363.739813f,
+	364.921677f, 366.104356f, 367.287847f, 368.472150f, 369.657263f, 370.843183f, 372.029911f, 373.217444f,
+	374.405781f, 375.594920f, 376.784861f, 377.975600f, 379.167138f, 380.359473f, 381.552602f, 382.746525f,
+	383.941241f, 385.136747f, 386.333043f, 387.530127f, 388.727998f, 389.926654f, 391.126093f, 392.326316f,
+	393.527319f, 394.729102f, 395.931664f, 397.135002f, 398.339116f, 399.544005f, 400.749667f, 401.956100f,
+	403.163303f, 404.371276f, 405.580016f, 406.789522f, 407.999794f, 409.210829f, 410.422627f, 411.635186f,
+	412.848504f, 414.062581f, 415.277416f, 416.493006f, 417.709352f, 418.926450f, 420.144301f, 421.362903f,
+	422.582255f, 423.802355f, 425.023202f, 426.244796f, 427.467134f, 428.690215f, 429.914039f, 431.138604f,
+	432.363909f, 433.589953f, 434.816734f, 436.044251f, 437.272504f, 438.501490f, 439.731209f, 440.961660f,
+	442.192841f, 443.424751f, 444.657390f, 445.890755f, 447.124846f, 448.359661f, 449.595200f, 450.831461f,
+	452.068443f, 453.306146f, 454.544567f, 455.783706f, 457.023562f, 458.264133f, 459.505418f, 460.747417f,
+	461.990128f, 463.233550f, 464.477682f, 465.722523f, 466.968071f, 468.214327f, 469.461288f, 470.708953f,
+	471.957322f, 473.206394f, 474.456166f, 475.706640f, 476.957812f, 478.209682f, 479.462250f, 480.715513f,
+	481.969472f, 483.224125f, 484.479470f, 485.735508f, 486.992236f, 488.249654f, 489.507761f, 490.766556f,
+	492.026038f, 493.286205f, 494.547058f, 495.808594f, 497.070812f, 498.333713f, 499.597294f, 500.861556f,
+	502.126496f, 503.392113f, 504.658408f, 505.925379f, 507.193024f, 508.461343f, 509.730336f, 511.000000f
 };
 
 
@@ -136,6 +140,7 @@ static const float sLumaTable[] = {
 
 #if defined(RX_SIMD) && !defined(_M_X64)
 
+//alignment of memory to be allocated by RxMem* routines
 #define ALLOC_ALIGN sizeof(__m128)
 
 void *RxMemAlloc(size_t size) {
@@ -161,6 +166,193 @@ void RxMemFree(void *p) {
 #endif
 
 
+// ----- routines for operating on colors
+
+
+static inline double RxiDelinearizeLuma(float luma) {
+	return 511.0 * pow(luma * INV_511, 1.0 / RX_GAMMA);
+}
+
+static inline float RxiLinearizeLuma(float luma) {
+	RX_ASSUME(luma >= 0 && luma < 512);
+#ifndef RX_SIMD
+	return sLumaTable[(int) (luma + 0.5)];
+#else
+	return sLumaTable[_mm_cvtss_si32(_mm_set_ss(luma))];
+#endif
+}
+
+void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
+	//implementations using scalar and vector arithmetic
+#ifndef RX_SIMD
+	double r = (double) ((rgb >>  0) & 0xFF);
+	double g = (double) ((rgb >>  8) & 0xFF);
+	double b = (double) ((rgb >> 16) & 0xFF);
+
+	//twice the standard RGB->YIQ matrix (doubles output components)
+	double y = r * 0.59800 + g * 1.17400 + b * 0.22800;
+	double i = r * 1.19208 - g * 0.54804 - b * 0.64406;
+	double q = r * 0.42204 - g * 1.04408 + b * 0.62206;
+
+	if (i >  245.0) i = (i - 245.0) * TWO_THIRDS + 245.0;
+	if (q < -215.0) q = (q + 215.0) * TWO_THIRDS - 215.0;
+
+	double iqDiff = q - i;
+	if (iqDiff > 265.0) {
+		double diq = (iqDiff - 265.0) * 0.25;
+		i += diq;
+		q -= diq;
+	}
+
+	if (i < 0.0 && q > 0.0) y -= (q * i) * INV_512;
+
+	//write rounded color
+	float a = ((rgb >> 24) & 0xFF) / 255.0f;
+	yiq->y = a * RxiLinearizeLuma((float) y); //    0 - 511
+	yiq->i = a * (float) i;                   // -320 - 319
+	yiq->q = a * (float) q;                   // -270 - 269
+	yiq->a = a;
+#else
+	//vectorized implementation
+	__m128i rgbVeci = _mm_unpacklo_epi16(_mm_unpacklo_epi8(_mm_cvtsi32_si128(rgb), _mm_setzero_si128()), _mm_setzero_si128());
+	__m128 rgbVec = _mm_cvtepi32_ps(rgbVeci);
+
+	__m128 yVec = _mm_mul_ps(rgbVec, _mm_setr_ps(0.59800f,  1.17400f,  0.22800f, 0.0f));
+	__m128 iVec = _mm_mul_ps(rgbVec, _mm_setr_ps(1.19208f, -0.54804f, -0.64406f, 0.0f));
+	__m128 qVec = _mm_mul_ps(rgbVec, _mm_setr_ps(0.42204f, -1.04408f,  0.62206f, 0.0f));
+
+	//do three horizontal sums
+	yVec = _mm_add_ps(yVec, _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(2, 3, 0, 1)));
+	iVec = _mm_add_ps(iVec, _mm_shuffle_ps(iVec, iVec, _MM_SHUFFLE(0, 1, 2, 3)));
+	qVec = _mm_add_ps(qVec, _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(0, 1, 2, 3)));
+
+	__m128 iqVec = _mm_shuffle_ps(iVec, qVec, _MM_SHUFFLE(0, 1, 0, 1)); // lo: half I sum, hi: half Q sum, halves reversed
+	iqVec = _mm_add_ps(iqVec, _mm_shuffle_ps(iqVec, iqVec, _MM_SHUFFLE(2, 3, 0, 1)));
+
+	//place components into low parts of vector registers
+	__m128 y = _mm_add_ss(yVec, _mm_movehl_ps(yVec, yVec));
+	__m128 i = iqVec;
+	__m128 q = _mm_movehl_ps(iqVec, iqVec);
+
+	//apply soft clamping by I>245, Q<-215 by 2/3
+	__m128 twoThirds = _mm_set_ss((float) TWO_THIRDS);
+	if (_mm_ucomigt_ss(i, _mm_set_ss( 245.0f))) i = _mm_add_ss(_mm_mul_ss(i, twoThirds), _mm_set_ss((float) (245.0 - 245.0 * TWO_THIRDS)));
+	if (_mm_ucomilt_ss(q, _mm_set_ss(-215.0f))) q = _mm_add_ss(_mm_mul_ss(q, twoThirds), _mm_set_ss((float) (215.0 * TWO_THIRDS - 215.0)));
+
+	__m128 iqDiff = _mm_sub_ss(q, i);
+	if (_mm_ucomigt_ss(iqDiff, _mm_set_ss(265.0f))) {
+		__m128 diq = _mm_mul_ss(_mm_sub_ss(iqDiff, _mm_set_ss(265.0f)), _mm_set_ss(0.25f));
+		i = _mm_add_ss(i, diq);
+		q = _mm_sub_ss(q, diq);
+	}
+
+	__m128 zero = _mm_setzero_ps();
+	if (_mm_ucomilt_ss(i, zero) && _mm_ucomigt_ss(q, zero)) y = _mm_sub_ss(y, _mm_mul_ss(_mm_mul_ss(q, i), _mm_set_ss((float) INV_512)));
+
+	//horizontal sum
+	__m128 yiqa = _mm_movelh_ps(_mm_unpacklo_ps(y, i), _mm_unpacklo_ps(q, zero));
+
+	//linearize luma
+	yiqa = _mm_move_ss(yiqa, _mm_load_ss(&sLumaTable[_mm_cvt_ss2si(yiqa)]));
+
+	//insert alpha channel to the output vector and premultiply
+	__m128 aVec = _mm_div_ps(_mm_shuffle_ps(rgbVec, rgbVec, _MM_SHUFFLE(3, 3, 3, 3)), _mm_set1_ps(255.0f));
+	yiqa = _mm_mul_ps(yiqa, aVec);
+	yiqa = _mm_or_ps(yiqa, _mm_and_ps(_mm_castsi128_ps(_mm_setr_epi32(0, 0, 0, -1)), aVec));
+
+	yiq->yiq = yiqa;
+#endif
+}
+
+COLOR32 RxConvertYiqToRgb(const RxYiqColor *yiq) {
+	double da = yiq->a;
+	double y = 0.0, i = 0.0, q = 0.0;
+	if (da > 0.0) {
+		y = RxiDelinearizeLuma(yiq->y) / da;
+		i = yiq->i / da;
+		q = yiq->q / da;
+	}
+
+	if (i < 0.0 && q > 0.0) y += (q * i) * INV_512;
+
+	if (y < 0.0) y = 0.0;
+	else if (y > 511.0) y = 511.0;	
+
+	double iqDiff = q - i;
+	if (iqDiff > 265.0) {
+		double diq = (iqDiff - 265.0) * 0.5;
+		i -= diq;
+		q += diq;
+	}
+
+	if (q < -215.0) q = (q + 215.0) * 1.5 - 215.0;
+	if (i >  245.0) i = (i - 245.0) * 1.5 + 245.0;
+
+	int r = (int) (y * 0.5 + i * 0.477791 + q * 0.311426 + 0.5);
+	int g = (int) (y * 0.5 - i * 0.136066 - q * 0.324141 + 0.5);
+	int b = (int) (y * 0.5 - i * 0.552535 + q * 0.852230 + 0.5);
+	int a = (int) (yiq->a * 255.0 + 0.5);
+
+	//pack clamped color
+	r = min(max(r, 0), 255);
+	g = min(max(g, 0), 255);
+	b = min(max(b, 0), 255);
+	a = min(max(a, 0), 255);
+	return r | (g << 8) | (b << 16) | (a << 24);
+}
+
+static inline double RxiComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
+#ifndef RX_SIMD
+	double yw2 = reduction->yWeight2;
+	double iw2 = reduction->iWeight2;
+	double qw2 = reduction->qWeight2;
+	double aw2 = reduction->aWeight2;
+
+	double dy = yiq1->y - yiq2->y;
+	double di = yiq1->i - yiq2->i;
+	double dq = yiq1->q - yiq2->q;
+	double da = yiq1->a - yiq2->a;
+
+	double d2 = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
+
+	if (da != 0.0) {
+		//The color difference with alpha. We define the difference to be the average squared difference
+		//between the two input colors composited onto a random background color, where the background
+		//color is drawn from a uniform distribution in RGB space. The below interaction term results from
+		//evaluating this integral.
+		d2 += aw2 * da * da - da * (reduction->interactionY * dy + reduction->interactionI * di + reduction->interactionQ * dq);
+	}
+	return d2;
+#else // RX_SIMD
+	//color difference vector
+	__m128 d = _mm_sub_ps(yiq1->yiq, yiq2->yiq);
+	__m128 da = _mm_shuffle_ps(d, d, _MM_SHUFFLE(3, 3, 3, 3));
+
+	//squared components, minus alpha interaction
+	__m128 d2 = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(d, reduction->yiqaWeight2), _mm_mul_ps(da, reduction->interactionYIQA)), d);
+
+	//final horizontal sum
+	d2 = _mm_add_ps(d2, _mm_shuffle_ps(d2, d2, _MM_SHUFFLE(2, 3, 0, 1)));
+	d2 = _mm_add_ss(d2, _mm_movehl_ps(d2, d2));
+	return (double) _mm_cvtss_f32(d2);
+#endif
+}
+
+static inline double RxiComputeLayeredColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
+	double diff = 0.0;
+
+	//add multiple diffs
+	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+		diff += RxiComputeColorDifference(reduction, &yiq1[i], &yiq2[i]);
+	}
+
+	return diff;
+}
+
+double RxComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
+	return RxiComputeColorDifference(reduction, yiq1, yiq2);
+}
+
 static COLOR32 RxMaskColorToDS15(COLOR32 c) {
 	//DS mode masking: round color channels to 5-bit values, and force alpha=0xff
 	return ColorRoundToDS15(c) | 0xFF000000;
@@ -171,24 +363,39 @@ static COLOR32 RxMaskColorDummy(COLOR32 c) {
 	return c;
 }
 
-int RxColorLightnessComparator(const void *d1, const void *d2) {
-	COLOR32 c1 = *(COLOR32 *) d1;
-	COLOR32 c2 = *(COLOR32 *) d2;
-	if (c1 == c2) return 0;
-
-	//sort by ascending alpha value first, pushing fully opaque colors to the end of the palette.
-	//this allows more efficient palette alpha representation in formats like PNG.
-	int a1 = c1 >> 24, a2 = c2 >> 24;
-	if (a1 != a2) return a1 - a2;
-	
-	RxYiqColor yiq1, yiq2;
-	RxConvertRgbToYiq(c1, &yiq1);
-	RxConvertRgbToYiq(c2, &yiq2);
-
-	if (yiq1.y < yiq2.y) return -1;
-	if (yiq1.y > yiq2.y) return 1;
-	return 0;
+static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *yiq) {
+	return reduction->maskColors(RxConvertYiqToRgb(yiq));
 }
+
+static inline void RxiColorMakeOpaque(RxYiqColor *yiq) {
+	RX_ASSUME(yiq->a != 0.0f);  // a fully transparent color has no meaningful color information
+
+#ifndef RX_SIMD
+	yiq->y /= yiq->a;
+	yiq->i /= yiq->a;
+	yiq->q /= yiq->a;
+	yiq->a = 1.0f;
+#else
+	__m128 vec = yiq->yiq;
+	__m128 a = _mm_shuffle_ps(vec, vec, _MM_SHUFFLE(3, 3, 3, 3));
+	yiq->yiq = _mm_div_ps(vec, a);
+#endif
+}
+
+static inline void RxiColorMakeTransparent(RxYiqColor *yiq) {
+#ifndef RX_SIMD
+	yiq->y = 0.0f;
+	yiq->i = 0.0f;
+	yiq->q = 0.0f;
+	yiq->a = 0.0f;
+#else
+	yiq->yiq = _mm_setzero_ps();
+#endif
+}
+
+
+
+// ----- reduction context initialization/setup routines
 
 static void RxiComputeAlphaInteraction(RxReduction *reduction) {
 	//color difference is computed by taking the average squared difference between colors composited onto
@@ -232,6 +439,17 @@ void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enh
 	reduction->enhanceColors = enhanceColors;
 }
 
+RxStatus RxSetPaletteLayers(RxReduction *reduction, unsigned int nLayers) {
+	//check valid layer count
+	if (nLayers == 0 || nLayers > RX_PALETTE_MAX_COUNT) return RX_STATUS_INVALID;
+
+	//the context must not have any histogram colors
+	if (reduction->histogram != NULL && reduction->histogram->nEntries > 0) return RX_STATUS_INCORRECT_STATE;
+
+	reduction->paletteLayers = nLayers;
+	return RX_STATUS_OK;
+}
+
 void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
 	memset(reduction, 0, sizeof(RxReduction));
 
@@ -244,6 +462,7 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 	reduction->meanQ2 = MEAN_Q2;
 
 	RxSetBalance(reduction, balance, colorBalance, enhanceColors);
+	RxSetPaletteLayers(reduction, 1);
 
 	reduction->nReclusters = RECLUSTER_DEFAULT;
 	reduction->nPaletteColors = RX_PALETTE_MAX_SIZE;
@@ -330,6 +549,28 @@ static void RxiUpdateProgress(RxReduction *reduction, unsigned int progress, uns
 	}
 }
 
+int RxColorLightnessComparator(const void *d1, const void *d2) {
+	COLOR32 c1 = *(COLOR32 *) d1;
+	COLOR32 c2 = *(COLOR32 *) d2;
+	if (c1 == c2) return 0;
+
+	//sort by ascending alpha value first, pushing fully opaque colors to the end of the palette.
+	//this allows more efficient palette alpha representation in formats like PNG.
+	int a1 = c1 >> 24, a2 = c2 >> 24;
+	if (a1 != a2) return a1 - a2;
+
+	RxYiqColor yiq1, yiq2;
+	RxConvertRgbToYiq(c1, &yiq1);
+	RxConvertRgbToYiq(c2, &yiq2);
+
+	if (yiq1.y < yiq2.y) return -1;
+	if (yiq1.y > yiq2.y) return 1;
+	return 0;
+}
+
+
+// ----- internal allocator routines
+
 static void *RxiSlabAlloc(RxSlab *allocator, unsigned int size) {
 	RX_ASSUME(size <= RX_SLAB_SIZE);
 
@@ -359,87 +600,51 @@ static void *RxiSlabAlloc(RxSlab *allocator, unsigned int size) {
 	return res;
 }
 
-static void RxiSlabFree(RxSlab *allocator) {
+static void RxiSlabFreeAll(RxSlab *allocator) {
 	if (allocator->allocation != NULL) RxMemFree(allocator->allocation);
 	allocator->allocation = NULL;
 
 	if (allocator->next != NULL) {
-		RxiSlabFree(allocator->next);
+		RxiSlabFreeAll(allocator->next);
 		allocator->next = NULL;
 	}
 }
 
-static inline void RxiColorMakeOpaque(RxYiqColor *yiq) {
-	RX_ASSUME(yiq->a != 0.0f);
 
-#ifndef RX_SIMD
-	yiq->y /= yiq->a;
-	yiq->i /= yiq->a;
-	yiq->q /= yiq->a;
-	yiq->a = 1.0f;
-#else
-	__m128 vec = yiq->yiq;
-	__m128 a = _mm_shuffle_ps(vec, vec, _MM_SHUFFLE(3, 3, 3, 3));
-	yiq->yiq = _mm_div_ps(vec, a);
-#endif
-}
 
-static inline void RxiColorMakeTransparent(RxYiqColor *yiq) {
-#ifndef RX_SIMD
-	yiq->y = 0.0f;
-	yiq->i = 0.0f;
-	yiq->q = 0.0f;
-	yiq->a = 0.0f;
-#else
-	yiq->yiq = _mm_setzero_ps();
-#endif
-}
+// ----- histogram routines
 
+//hash a color for use in the histogram
 static inline unsigned int RxiHistHashColor(const RxYiqColor *yiq) {
 #ifndef RX_SIMD
-	int yi = (int) yiq->y, ii = (int) yiq->i, qi = (int) yiq->q, ai = (int) (255.0f * yiq->a);
-	return (qi + (yi * 64 + ii) * 4 + ai) & 0x1FFFF;
+	double yi = yiq->y * 256.0, ii = yiq->i * 1.0, qi = yiq->q * 4.0, ai = 255.0f * yiq->a;
+	return ((int) (yi + ii + qi + ai + 0.5)) & (RX_HISTOGRAM_SIZE - 1);
 #else
 	__m128i yiqI = _mm_cvtps_epi32(_mm_mul_ps(yiq->yiq, _mm_set_ps(255.0f, 1.0f, 4.0f, 256.0f)));
 	__m128i sum = _mm_add_epi32(yiqI, _mm_shuffle_epi32(yiqI, _MM_SHUFFLE(2, 3, 0, 1)));
 	sum = _mm_add_epi32(sum, _mm_shuffle_epi32(sum, _MM_SHUFFLE(0, 1, 2, 3)));
-	return _mm_cvtsi128_si32(sum) & 0x1FFFF;
+	return _mm_cvtsi128_si32(sum) & (RX_HISTOGRAM_SIZE - 1);
 #endif
+}
+
+RxStatus RxHistInit(RxReduction *reduction) {
+	if (reduction->histogram != NULL) RxHistClear(reduction);
+
+	reduction->histogram = (RxHistogram *) calloc(1, sizeof(RxHistogram));
+	if (reduction->histogram == NULL) return RX_STATUS_NOMEM;
+
+	reduction->histogram->firstSlot = RX_HISTOGRAM_SIZE;
+	return RX_STATUS_OK;
 }
 
 void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight) {
 	RxHistogram *histogram = reduction->histogram;
 	if (reduction->status != RX_STATUS_OK) return;
 
-	RxYiqColor yiq;
-	memcpy(&yiq, col, sizeof(RxYiqColor));
+	unsigned int nLayer = reduction->paletteLayers;
 
-	//process the alpha value.
-	switch (reduction->alphaMode) {
-		case RX_ALPHA_NONE:
-		case RX_ALPHA_RESERVE:
-			//we use tha alpha threshold here since these alpha modes imply binary alpha.
-			if (yiq.a < reduction->fAlphaThreshold) return;
-			RxiColorMakeOpaque(&yiq);
-			break;
-
-		case RX_ALPHA_PIXEL:
-			//we'll discard alpha=0 since it doesn't need to appear in the palette.
-			if (yiq.a == 0.0f) return;
-			weight *= yiq.a;
-			RxiColorMakeOpaque(&yiq);
-			break;
-
-		case RX_ALPHA_PALETTE:
-			//we explicitly must pass all alpha values.
-			break;
-
-		default:
-			//must not reach here
-			RX_ASSUME(0);
-	}
-
-	int slotIndex = RxiHistHashColor(&yiq);
+	//update the first slot index with hash of new color
+	int slotIndex = RxiHistHashColor(col);
 	if (slotIndex < histogram->firstSlot) histogram->firstSlot = slotIndex;
 
 	//find a slot with the same YIQA, or create a new one if none exists.
@@ -448,7 +653,7 @@ void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight
 		RxHistEntry *slot = *ppslot;
 
 		//matching slot? add weight
-		if (memcmp(&slot->color, &yiq, sizeof(RxYiqColor)) == 0) {
+		if (memcmp(slot->color, col, nLayer * sizeof(RxYiqColor)) == 0) {
 			slot->weight += weight;
 			return;
 		}
@@ -456,7 +661,7 @@ void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight
 		ppslot = &slot->next;
 	}
 
-	RxHistEntry *slot = (RxHistEntry *) RxiSlabAlloc(&histogram->allocator, sizeof(RxHistEntry));;
+	RxHistEntry *slot = (RxHistEntry *) RxiSlabAlloc(&histogram->allocator, sizeof(RxHistEntry) + nLayer * sizeof(RxYiqColor));
 	if (slot == NULL) {
 		reduction->status = RX_STATUS_NOMEM;
 		return;
@@ -464,189 +669,12 @@ void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight
 
 	//put new color
 	*ppslot = slot;
-	memcpy(&slot->color, &yiq, sizeof(yiq));
+	memcpy(slot->color, col, nLayer * sizeof(RxYiqColor));
 	slot->weight = weight;
 	slot->next = NULL;
 	slot->value = 0.0;
 	histogram->nEntries++;
 	histogram->totalWeight += weight;
-}
-
-static inline double RxiDelinearizeLuma(float luma) {
-	return 511.0 * pow(luma * INV_511, 1.0 / RX_GAMMA);
-}
-
-static inline float RxiLinearizeLuma(float luma) {
-	RX_ASSUME(luma >= 0 && luma < 512);
-#ifndef RX_SIMD
-	return sLumaTable[(int) (luma + 0.5)];
-#else
-	return sLumaTable[_mm_cvtss_si32(_mm_set_ss(luma))];
-#endif
-}
-
-void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
-	//implementations using scalar and vector arithmetic
-#ifndef RX_SIMD
-	double r = (double) ((rgb >>  0) & 0xFF);
-	double g = (double) ((rgb >>  8) & 0xFF);
-	double b = (double) ((rgb >> 16) & 0xFF);
-
-	//twice the standard RGB->YIQ matrix (doubles output components)
-	double y = r * 0.59800 + g * 1.17400 + b * 0.22800;
-	double i = r * 1.19208 - g * 0.54804 - b * 0.64406;
-	double q = r * 0.42204 - g * 1.04408 + b * 0.62206;
-
-	if (i >  245.0) i = (i - 245.0) * TWO_THIRDS + 245.0;
-	if (q < -215.0) q = (q + 215.0) * TWO_THIRDS - 215.0;
-
-	double iqDiff = q - i;
-	if (iqDiff > 265.0) {
-		double diq = (iqDiff - 265.0) * 0.25;
-		i += diq;
-		q -= diq;
-	}
-
-	if (i < 0.0 && q > 0.0) y -= (q * i) * INV_512;
-
-	//write rounded color
-	float a = ((rgb >> 24) & 0xFF) / 255.0f;
-	yiq->y = a * RxiLinearizeLuma((float) y); //    0 - 511
-	yiq->i = a * (float) i;                   // -320 - 319
-	yiq->q = a * (float) q;                   // -270 - 269
-	yiq->a = a;
-#else
-	//vectorized implementation
-	__m128i rgbVeci = _mm_unpacklo_epi16(_mm_unpacklo_epi8(_mm_cvtsi32_si128(rgb), _mm_setzero_si128()), _mm_setzero_si128());
-	__m128 rgbVec = _mm_cvtepi32_ps(rgbVeci);
-
-	__m128 yVec = _mm_mul_ps(rgbVec, _mm_setr_ps(0.59800f,  1.17400f,  0.22800f, 0.0f));
-	__m128 iVec = _mm_mul_ps(rgbVec, _mm_setr_ps(1.19208f, -0.54804f, -0.64406f, 0.0f));
-	__m128 qVec = _mm_mul_ps(rgbVec, _mm_setr_ps(0.42204f, -1.04408f,  0.62206f, 0.0f));
-
-	//do three horizontal sums
-	yVec = _mm_add_ps(yVec, _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(2, 3, 0, 1)));
-	iVec = _mm_add_ps(iVec, _mm_shuffle_ps(iVec, iVec, _MM_SHUFFLE(0, 1, 2, 3)));
-	qVec = _mm_add_ps(qVec, _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(0, 1, 2, 3)));
-
-	__m128 iqVec = _mm_shuffle_ps(iVec, qVec, _MM_SHUFFLE(0, 1, 0, 1)); // lo: half I sum, hi: half Q sum, halves reversed
-	iqVec = _mm_add_ps(iqVec, _mm_shuffle_ps(iqVec, iqVec, _MM_SHUFFLE(2, 3, 0, 1)));
-
-	//place components into low parts of vector registers
-	__m128 y = _mm_add_ss(yVec, _mm_movehl_ps(yVec, yVec));
-	__m128 i = iqVec;
-	__m128 q = _mm_movehl_ps(iqVec, iqVec);
-
-	//apply soft clamping by I>245, Q<-215 by 2/3
-	__m128 twoThirds = _mm_set_ss((float) TWO_THIRDS);
-	if (_mm_ucomigt_ss(i, _mm_set_ss( 245.0f))) i = _mm_add_ss(_mm_mul_ss(i, twoThirds), _mm_set_ss(245.0 - 245.0 * TWO_THIRDS));
-	if (_mm_ucomilt_ss(q, _mm_set_ss(-215.0f))) q = _mm_add_ss(_mm_mul_ss(q, twoThirds), _mm_set_ss(215.0 * TWO_THIRDS - 215.0));
-
-	__m128 iqDiff = _mm_sub_ss(q, i);
-	if (_mm_ucomigt_ss(iqDiff, _mm_set_ss(265.0f))) {
-		__m128 diq = _mm_mul_ss(_mm_sub_ss(iqDiff, _mm_set_ss(265.0f)), _mm_set_ss(0.25f));
-		i = _mm_add_ss(i, diq);
-		q = _mm_sub_ss(q, diq);
-	}
-
-	__m128 zero = _mm_setzero_ps();
-	if (_mm_ucomilt_ss(i, zero) && _mm_ucomigt_ss(q, zero)) y = _mm_sub_ss(y, _mm_mul_ss(_mm_mul_ss(q, i), _mm_set_ss((float) INV_512)));
-
-	//horizontal sum
-	__m128 yiqa = _mm_movelh_ps(_mm_unpacklo_ps(y, i), _mm_unpacklo_ps(q, zero));
-
-	//linearize luma
-	yiqa = _mm_move_ss(yiqa, _mm_load_ss(&sLumaTable[_mm_cvt_ss2si(yiqa)]));
-
-	//insert alpha channel to the output vector and premultiply
-	__m128 aVec = _mm_div_ps(_mm_shuffle_ps(rgbVec, rgbVec, _MM_SHUFFLE(3, 3, 3, 3)), _mm_set1_ps(255.0f));
-	yiqa = _mm_mul_ps(yiqa, aVec);
-	yiqa = _mm_or_ps(yiqa, _mm_and_ps(_mm_castsi128_ps(_mm_setr_epi32(0, 0, 0, -1)), aVec));
-
-	yiq->yiq = yiqa;
-#endif
-}
-
-COLOR32 RxConvertYiqToRgb(const RxYiqColor *yiq) {
-	double da = yiq->a;
-	double y = 0.0, i = 0.0, q = 0.0;
-	if (da > 0.0) {
-		y = RxiDelinearizeLuma(yiq->y) / da;
-		i = yiq->i / da;
-		q = yiq->q / da;
-	}
-
-	if (i < 0.0 && q > 0.0) y += (q * i) * INV_512;
-
-	if (y < 0.0) y = 0.0;
-	else if (y > 511.0) y = 511.0;	
-
-	double iqDiff = q - i;
-	if (iqDiff > 265.0) {
-		double diq = (iqDiff - 265.0) * 0.5;
-		i -= diq;
-		q += diq;
-	}
-
-	if (q < -215.0) q = (q + 215.0) * 1.5 - 215.0;
-	if (i >  245.0) i = (i - 245.0) * 1.5 + 245.0;
-
-	int r = (int) (y * 0.5 + i * 0.477791 + q * 0.311426 + 0.5);
-	int g = (int) (y * 0.5 - i * 0.136066 - q * 0.324141 + 0.5);
-	int b = (int) (y * 0.5 - i * 0.552535 + q * 0.852230 + 0.5);
-	int a = (int) (yiq->a * 255.0 + 0.5);
-
-	//pack clamped color
-	r = min(max(r, 0), 255);
-	g = min(max(g, 0), 255);
-	b = min(max(b, 0), 255);
-	a = min(max(a, 0), 255);
-	return r | (g << 8) | (b << 16) | (a << 24);
-}
-
-static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *yiq) {
-	return reduction->maskColors(RxConvertYiqToRgb(yiq));
-}
-
-static inline double RxiComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
-#ifndef RX_SIMD
-	double yw2 = reduction->yWeight2;
-	double iw2 = reduction->iWeight2;
-	double qw2 = reduction->qWeight2;
-	double aw2 = reduction->aWeight2;
-
-	double dy = yiq1->y - yiq2->y;
-	double di = yiq1->i - yiq2->i;
-	double dq = yiq1->q - yiq2->q;
-	double da = yiq1->a - yiq2->a;
-
-	double d2 = yw2 * dy * dy + iw2 * di * di + qw2 * dq * dq;
-
-	if (da != 0.0) {
-		//The color difference with alpha. We define the difference to be the average squared difference
-		//between the two input colors composited onto a random background color, where the background
-		//color is drawn from a uniform distribution in RGB space. The below interaction term results from
-		//evaluating this integral.
-		d2 += aw2 * da * da - da * (reduction->interactionY * dy + reduction->interactionI * di + reduction->interactionQ * dq);
-	}
-	return d2;
-#else // RX_SIMD
-	//color difference vector
-	__m128 d = _mm_sub_ps(yiq1->yiq, yiq2->yiq);
-	__m128 da = _mm_shuffle_ps(d, d, _MM_SHUFFLE(3, 3, 3, 3));
-
-	//squared components, minus alpha interaction
-	__m128 d2 = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(d, reduction->yiqaWeight2), _mm_mul_ps(da, reduction->interactionYIQA)), d);
-
-	//final horizontal sum
-	d2 = _mm_add_ps(d2, _mm_shuffle_ps(d2, d2, _MM_SHUFFLE(2, 3, 0, 1)));
-	d2 = _mm_add_ss(d2, _mm_movehl_ps(d2, d2));
-	return (double) _mm_cvtss_f32(d2);
-#endif
-}
-
-double RxComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
-	return RxiComputeColorDifference(reduction, yiq1, yiq2);
 }
 
 RxStatus RxHistFinalize(RxReduction *reduction) {
@@ -665,7 +693,7 @@ RxStatus RxHistFinalize(RxReduction *reduction) {
 
 	RxHistEntry **pos = reduction->histogramFlat;
 
-	for (int i = reduction->histogram->firstSlot; i < 0x20000; i++) {
+	for (int i = reduction->histogram->firstSlot; i < RX_HISTOGRAM_SIZE; i++) {
 		RxHistEntry *entry = reduction->histogram->entries[i];
 
 		while (entry != NULL) {
@@ -673,16 +701,6 @@ RxStatus RxHistFinalize(RxReduction *reduction) {
 			entry = entry->next;
 		}
 	}
-	return RX_STATUS_OK;
-}
-
-RxStatus RxHistInit(RxReduction *reduction) {
-	if (reduction->histogram != NULL) RxHistClear(reduction);
-
-	reduction->histogram = (RxHistogram *) calloc(1, sizeof(RxHistogram));
-	if (reduction->histogram == NULL) return RX_STATUS_NOMEM;
-
-	reduction->histogram->firstSlot = 0x20000;
 	return RX_STATUS_OK;
 }
 
@@ -694,40 +712,202 @@ RxStatus RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int widt
 	
 	if (width == 0 || height == 0) return reduction->status;
 
-	for (unsigned int y = 0; y < height; y++) {
-		//track block of 3 pixels
-		RxYiqColor rowBlock[3];
-		RxConvertRgbToYiq(img[y * width + 0], &rowBlock[0]);     // left
-		memcpy(&rowBlock[1], &rowBlock[0], sizeof(RxYiqColor));  // center
-		memcpy(&rowBlock[2], &rowBlock[1], sizeof(RxYiqColor));  // right
+	//create YIQ data buffer, 1px overhang in all directions where pixels are duplicated
+	unsigned int padWidth = width + 2, padHeight = height + 2, nLayer = reduction->paletteLayers;
+	unsigned int nPxSrc = width * height;
+	
+	RxYiqColor *yiqbuf = (RxYiqColor *) RxMemAlloc(padWidth * padHeight * nLayer * sizeof(RxYiqColor));
+	if (yiqbuf == NULL) {
+		return reduction->status = RX_STATUS_NOMEM;
+	}
 
-		for (unsigned int x = 0; x < width; x++) {
-			//fill right pixel
-			if ((x + 1) < width) {
-				RxConvertRgbToYiq(img[y * width + x + 1], &rowBlock[2]);
+	//convert input data into YIQ space. We rearrange the data to being indexed as
+	//[layer][y][x], to [y][x][layer].
+	for (unsigned int i = 0; i < nLayer; i++) {
+		const COLOR32 *imgI = img + i * nPxSrc;
+
+		for (unsigned int y = 0; y < height; y++) {
+			for (unsigned int x = 0; x < width; x++) {
+				RxConvertRgbToYiq(imgI[x + y * width], &yiqbuf[((x + 1) + (y + 1) * padWidth) * nLayer + i]);
 			}
-
-			//top and bottom pixel
-			RxYiqColor top, bottom;
-			if (y > 0) RxConvertRgbToYiq(img[(y - 1) * width + x], &top);
-			else memcpy(&top, &rowBlock[1], sizeof(RxYiqColor));
-			if ((y + 1) < height) RxConvertRgbToYiq(img[(y + 1) * width + x], &bottom);
-			else memcpy(&bottom, &rowBlock[1], sizeof(RxYiqColor));
-
-			//compute weight
-			double yInter = 0.25 * (rowBlock[0].y + rowBlock[1].y + top.y + bottom.y);
-			double yCenter = rowBlock[1].y;
-			double yDiff = fabs(yCenter - yInter);
-			double weight = 16.0 - fabs(16.0 - yDiff) / 8.0;
-			if (weight < 1.0) weight = 1.0;
-			RxHistAddColor(reduction, &rowBlock[1], weight);
-
-			//slide row
-			memmove(&rowBlock[0], &rowBlock[1], 2 * sizeof(RxYiqColor));
 		}
 	}
+
+	//copy pixels into the overhang areas
+	for (unsigned int y = 0; y < height; y++) {
+		RxYiqColor *row = &yiqbuf[(y + 1) * padWidth * nLayer];
+
+		memcpy(&row[0], &row[1 * nLayer], nLayer * sizeof(RxYiqColor));
+		memcpy(&row[(width + 1) * nLayer], &row[width * nLayer], nLayer * sizeof(RxYiqColor));
+	}
+	memcpy(&yiqbuf[0 * padWidth * nLayer], &yiqbuf[padWidth * nLayer], padWidth * nLayer * sizeof(RxYiqColor));
+	memcpy(&yiqbuf[(height + 1) * padWidth * nLayer], &yiqbuf[height * padWidth * nLayer], padWidth * nLayer * sizeof(RxYiqColor));
+
+
+	for (unsigned int y = 0; y < height; y++) {
+		
+		RxYiqColor *row0 = &yiqbuf[(y + 0) * padWidth * nLayer];
+		RxYiqColor *row1 = &yiqbuf[(y + 1) * padWidth * nLayer];
+		RxYiqColor *row2 = &yiqbuf[(y + 2) * padWidth + nLayer];
+
+		for (unsigned int x = 0; x < width; x++) {
+
+			RxYiqColor *top = &row0[(x + 1) * nLayer];
+			RxYiqColor *bottom = &row2[(x + 1) * nLayer];
+			RxYiqColor *left = &row1[(x + 0) * nLayer];
+			RxYiqColor *right = &row1[(x + 2) * nLayer];
+			RxYiqColor *center = &row1[(x + 1) * nLayer];
+
+			//copy the center color to a temporary location as we may modify the color based on the alpha
+			//mode, and do not want this to affect the weighting calculations of other pixels.
+			RxYiqColor *col = reduction->tempLayeredColor;
+			memcpy(col, center, nLayer * sizeof(RxYiqColor));
+
+			//when we calculate the weight of multiple colors, we take the weight to be the sum of weights
+			//of individual colors. This allows a color where there exist completely transparent pixels
+			//but receive a nonzero weight since one color may be opaque. Only when all individual colors
+			//have a zero weight do we discard an input pixel.
+
+			//compute weight, accumulated per layer
+			double totalWeight = 0.0;
+			for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+				double yInter = 0.25 * (left[i].y + right[i].y + top[i].y + bottom[i].y);
+				double yCenter = center->y;
+				double yDiff = fabs(yCenter - yInter);
+				double weight = 16.0 - fabs(16.0 - yDiff) / 8.0;
+				if (weight < 1.0) weight = 1.0;
+
+				//process the alpha value.
+				switch (reduction->alphaMode) {
+					case RX_ALPHA_NONE:
+					case RX_ALPHA_RESERVE:
+						//we use tha alpha threshold here since these alpha modes imply binary alpha.
+						if (col[i].a < reduction->fAlphaThreshold) {
+							RxiColorMakeTransparent(&col[i]);
+							weight = 0.0;
+						} else {
+							RxiColorMakeOpaque(&col[i]);
+						}
+						break;
+
+					case RX_ALPHA_PIXEL:
+						//we'll discard alpha=0 since it doesn't need to appear in the palette.
+						weight *= col[i].a;
+						if (col[i].a > 0.0f) RxiColorMakeOpaque(&col[i]);
+						break;
+
+					case RX_ALPHA_PALETTE:
+						//we explicitly must pass all alpha values.
+						break;
+
+					default:
+						//must not reach here
+						RX_ASSUME(0);
+				}
+
+				totalWeight += weight;
+			}
+
+			//add the color to the histogram only if its total weight was nonzero.
+			if (totalWeight > 0.0) {
+				RxHistAddColor(reduction, col, totalWeight);
+			}
+		}
+	}
+
+	RxMemFree(yiqbuf);
+
 	return reduction->status;
 }
+
+double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, double maxError) {
+	double error = 0.0;
+
+	//sum total weighted squared differences
+	for (int i = 0; i < reduction->histogram->nEntries; i++) {
+		RxHistEntry *entry = reduction->histogramFlat[i];
+
+		double diff = 0.0;
+		(void) RxiPaletteFindClosestColor(reduction, palette, nColors, &entry->color[0], &diff);
+		error += diff * entry->weight;
+
+		if (error >= maxError) return maxError;
+	}
+	return error;
+}
+
+double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, unsigned int nColors, double maxError) {
+	RxYiqColor yiqPaletteStack[16];
+	RxYiqColor *yiqPalette = yiqPaletteStack;
+	if (nColors > 16) {
+		yiqPalette = (RxYiqColor *) RxMemCalloc(nColors, sizeof(RxYiqColor));
+	}
+
+	//convert palette colors
+	for (unsigned int i = 0; i < nColors; i++) {
+		RxConvertRgbToYiq(palette[i], &yiqPalette[i]);
+	}
+
+	double error = RxHistComputePaletteErrorYiq(reduction, yiqPalette, nColors, maxError);
+
+	if (yiqPalette != yiqPaletteStack) RxMemFree(yiqPalette);
+	return error;
+}
+
+
+// ----- routines for searching palettes (unaccelerated)
+
+static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff) {
+	double leastDiff = RX_LARGE_NUMBER;
+	int leastIndex = 0;
+	for (unsigned int i = 0; i < nColors; i++) {
+		const RxYiqColor *yiq2 = &palette[i];
+
+		double diff = RxiComputeColorDifference(reduction, col, yiq2);
+		if (diff < leastDiff) {
+			leastDiff = diff;
+			leastIndex = i;
+			if (diff == 0.0) break;
+		}
+	}
+	if (outDiff != NULL) *outDiff = leastDiff;
+	return leastIndex;
+}
+
+static int RxiPaletteFindClosestLayeredColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int palettePitch, unsigned int nColors, const RxYiqColor *col, double *outDiff) {
+	RX_ASSUME(reduction->paletteLayers < palettePitch);
+
+	double leastDiff = RX_LARGE_NUMBER;
+	int leastIndex = 0;
+	for (unsigned int i = 0; i < nColors; i++) {
+		const RxYiqColor *yiq2 = &palette[i * palettePitch];
+
+		double diff = 0.0;
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			diff += RxiComputeColorDifference(reduction, &col[j], &yiq2[j]);
+			if (diff >= leastDiff) break;
+		}
+
+		if (diff < leastDiff) {
+			leastDiff = diff;
+			leastIndex = i;
+			if (diff == 0.0) break;
+		}
+	}
+	if (outDiff != NULL) *outDiff = leastDiff;
+	return leastIndex;
+}
+
+static int RxiPaletteFindClosestRgbColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, COLOR32 col, double *outDiff) {
+	RxYiqColor yiq;
+	RxConvertRgbToYiq(col, &yiq);
+
+	return RxiPaletteFindClosestColor(reduction, palette, nColors, &yiq, outDiff);
+}
+
+
+
+// ----- clustering code
 
 void RxiTreeFree(RxColorNode *node, int freeThis) {
 	if (node->left != NULL) {
@@ -773,101 +953,106 @@ static RxColorNode *RxiTreeFindSplittableNode(const RxColorNode *tree) {
 }
 
 static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int endIndex, double *axis, double *pVar) {
-	double mtx[4][4] = { 0 };
-	double x0bar = 0.0, x1bar = 0.0, x2bar = 0.0, x3bar = 0.0;
+	//clear work
+	memset(&reduction->pcaWork, 0, sizeof(reduction->pcaWork));
+
+	double (*mtx)[4 * RX_PALETTE_MAX_COUNT] = reduction->pcaWork.cov;
+	double *means = reduction->pcaWork.means;   // vector: mean of each dimension
+	double *x = reduction->pcaWork.x;           // vector: temporary storage for each input vector
 	double sumWeight = 0.0;
+
+	//dimension of vectors is 4 * [number of palettes] (YIQA for each input layer)
+	unsigned int dim = 4 * reduction->paletteLayers;
 
 	//compute the covariance matrix for the input range of colors.
 	for (int i = startIndex; i < endIndex; i++) {
 		RxHistEntry *entry = reduction->histogramFlat[i];
 
-		double x0 = reduction->yWeight * entry->color.y;
-		double x1 = reduction->iWeight * entry->color.i;
-		double x2 = reduction->qWeight * entry->color.q;
-		double x3 = reduction->aWeight * entry->color.a;
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			x[j * 4 + 0] = reduction->yWeight * entry->color[j].y;
+			x[j * 4 + 1] = reduction->iWeight * entry->color[j].i;
+			x[j * 4 + 2] = reduction->qWeight * entry->color[j].q;
+			x[j * 4 + 3] = reduction->aWeight * entry->color[j].a;
+		}
+
 		double weight = entry->weight;
 
 		if (reduction->alphaMode == RX_ALPHA_PALETTE) {
 			//in palette alpha mode, we ignore the alpha channel when running PCA, and scale the
 			//color weights by the alpha value (they did not receive this treatment during the
 			//creation of the histogram).
-			if (entry->color.a > 0.0f) {
-				double invA = 1.0 / entry->color.a;
-				x0 *= invA;
-				x1 *= invA;
-				x2 *= invA;
+			//TODO: how best to handle in the case where multiple palette layers make this no
+			//longer mathematically valid?
+			if (entry->color[0].a > 0.0f) {
+				double invA = 1.0 / entry->color[0].a;
+				x[0] *= invA;
+				x[1] *= invA;
+				x[2] *= invA;
 			}
-			weight *= entry->color.a;
-			x3 = 0.0;
+			weight *= entry->color[0].a;
+			x[3] = 0.0;
 		}
 
-		//covariances (upper diagonal)
-		mtx[0][0] += weight * x0 * x0;
-		mtx[0][1] += weight * x0 * x1;
-		mtx[0][2] += weight * x0 * x2;
-		mtx[0][3] += weight * x0 * x3;
-		mtx[1][1] += weight * x1 * x1;
-		mtx[1][2] += weight * x1 * x2;
-		mtx[1][3] += weight * x1 * x3;
-		mtx[2][2] += weight * x2 * x2;
-		mtx[2][3] += weight * x2 * x3;
-		mtx[3][3] += weight * x3 * x3;
+		//means and covariances update
+		for (unsigned int j = 0; j < dim; j++) {
+			//update means
+			means[j] += weight * x[j];
 
-		x0bar += weight * x0;
-		x1bar += weight * x1;
-		x2bar += weight * x2;
-		x3bar += weight * x3;
+			//update covariances (upper diagonal elements)
+			for (unsigned int k = j; k < dim; k++) {
+				mtx[j][k] += weight * x[j] * x[k];
+			}
+		}
+
 		sumWeight += weight;
 	}
-	x0bar /= sumWeight;
-	x1bar /= sumWeight;
-	x2bar /= sumWeight;
-	x3bar /= sumWeight;
 
-	mtx[0][0] = mtx[0][0] / sumWeight - x0bar * x0bar;
-	mtx[0][1] = mtx[0][1] / sumWeight - x0bar * x1bar;
-	mtx[0][2] = mtx[0][2] / sumWeight - x0bar * x2bar;
-	mtx[0][3] = mtx[0][3] / sumWeight - x0bar * x3bar;
-	mtx[1][0] = mtx[0][1];
-	mtx[1][1] = mtx[1][1] / sumWeight - x1bar * x1bar;
-	mtx[1][2] = mtx[1][2] / sumWeight - x1bar * x2bar;
-	mtx[1][3] = mtx[1][3] / sumWeight - x1bar * x3bar;
-	mtx[2][0] = mtx[0][2];
-	mtx[2][1] = mtx[1][2];
-	mtx[2][2] = mtx[2][2] / sumWeight - x2bar * x2bar;
-	mtx[2][3] = mtx[2][3] / sumWeight - x2bar * x3bar;
-	mtx[3][0] = mtx[0][3];
-	mtx[3][1] = mtx[1][3];
-	mtx[3][2] = mtx[2][3];
-	mtx[3][3] = mtx[3][3] / sumWeight - x3bar * x3bar;
+	//divide sums by total weight to get means of each component
+	for (unsigned int i = 0; i < dim; i++) {
+		means[i] /= sumWeight;
+	}
+
+	for (unsigned int i = 0; i < dim; i++) {
+		for (unsigned int j = 0; j < dim; j++) {
+			if (i > j) {
+				//below diagonal: mirror elements on above diagonal
+				mtx[i][j] = mtx[j][i];
+			} else {
+				//finalize covariance calculation
+				mtx[i][j] = mtx[i][j] / sumWeight - means[i] * means[j];
+			}
+		}
+	}
+
+	// ----- Jacobi eigenvalue calculation on the covariance matrix
 
 	//fill identity
-	double E[4][4] = { 0 };
-	for (int i = 0; i < 4; i++) E[i][i] = 1.0;
+	double (*E)[4 * RX_PALETTE_MAX_COUNT] = reduction->pcaWork.E;
+	for (unsigned int i = 0; i < dim; i++) E[i][i] = 1.0;
 
-	double z[4] = { 0 };
-	double e[4] = { 0 };
-	double b[4] = { 0 };
-	for (int i = 0; i < 4; i++) {
+	double *z = reduction->pcaWork.z, *e = reduction->pcaWork.e, *b = reduction->pcaWork.b;
+	memset(z, 0, dim * sizeof(double));
+
+	for (unsigned int i = 0; i < dim; i++) {
 		e[i] = mtx[i][i];
 		b[i] = e[i];
 	}
 	
-	for (int iter = 0; iter < 1000; iter++) {
+	for (unsigned int iter = 0; iter < 1000; iter++) {
 		//sum above upper diagonal
 		double sum = 0.0;
-		for (int k = 0; k < 3; k++) {
-			for (int l = k + 1; l < 4; l++) {
+		for (unsigned int k = 0; k < dim - 1; k++) {
+			for (unsigned int l = k + 1; l < dim; l++) {
 				sum += fabs(mtx[k][l]);
 			}
 		}
 		if (sum == 0.0) break;
 
 		double th = 0.0;
-		if (iter < 4) th = 0.0125 * sum;
+		if (iter < 4) th = sum / (dim * dim * 5.0);
 
-		for (int k = 0; k < 3; k++) {
-			for (int l = k + 1; l < 4; l++) {
+		for (unsigned int k = 0; k < dim - 1; k++) {
+			for (unsigned int l = k + 1; l < dim; l++) {
 				double g = 100.0 * fabs(mtx[k][l]);
 				if (iter > 4 && (fabs(e[k]) + g) == fabs(e[k]) && (fabs(e[l]) + g) == fabs(e[l])) {
 					mtx[k][l] = 0.0;
@@ -898,81 +1083,82 @@ static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int 
 				mtx[k][l] = 0.0;
 
 				//rotations
-				for (int i = 0; i < k; i++) {
+				for (unsigned int i = 0; i < k; i++) {
 					double Sik = mtx[i][k], Sil = mtx[i][l];
 					mtx[i][k] = c * Sik - s * Sil;
 					mtx[i][l] = s * Sik + c * Sil;
 				}
-				for (int i = k + 1; i < l; i++) {
+				for (unsigned int i = k + 1; i < l; i++) {
 					double Ski = mtx[k][i], Sil = mtx[i][l];
 					mtx[k][i] = c * Ski - s * Sil;
 					mtx[i][l] = s * Ski + c * Sil;
 				}
-				for (int i = l + 1; i < 4; i++) {
+				for (unsigned int i = l + 1; i < dim; i++) {
 					double Ski = mtx[k][i], Sli = mtx[l][i];
 					mtx[k][i] = c * Ski - s * Sli;
 					mtx[l][i] = s * Ski + c * Sli;
 				}
 
-				for (int i = 0; i < 4; i++) {
+				for (unsigned int i = 0; i < dim; i++) {
 					double Eik = E[i][k], Eil = E[i][l];
 					E[i][k] = c * Eik - s * Eil;
 					E[i][l] = s * Eik + c * Eil;
 				}
 			}
 		}
-		for (int k = 0; k < 4; k++) {
+		for (unsigned int k = 0; k < dim; k++) {
 			b[k] += z[k];
-			z[k] = 0;
+			z[k] = 0.0;
 			e[k] = b[k];
 		}
 	}
 
 	//e now holds the eigenvalues. Negate negative one to compare magnitudes.
-	if (e[0] < 0.0) e[0] = -e[0];
-	if (e[1] < 0.0) e[1] = -e[1];
-	if (e[2] < 0.0) e[2] = -e[2];
-	if (e[3] < 0.0) e[3] = -e[3];
+	for (unsigned int i = 0; i < dim; i++) {
+		if (e[i] < 0.0) e[i] = -e[i];
+	}
 
 	//select the eigenvector with the greatest absolute eigenvalue.
-	int eigenNo = 0;
-	if (e[1] > e[eigenNo]) eigenNo = 1;
-	if (e[2] > e[eigenNo]) eigenNo = 2;
-	if (e[3] > e[eigenNo]) eigenNo = 3;
+	unsigned int eigenNo = 0;
+	for (unsigned int i = 1; i < dim; i++) {
+		if (e[i] > e[eigenNo]) eigenNo = i;
+	}
 
-	axis[0] = E[0][eigenNo];
-	axis[1] = E[1][eigenNo];
-	axis[2] = E[2][eigenNo];
-	axis[3] = E[3][eigenNo];
+	//return the loadings and variance of PC1
+	for (unsigned int i = 0; i < dim; i++) {
+		axis[i] = E[i][eigenNo];
+	}
 	*pVar = e[eigenNo];
 }
 
-static void RxiHistChooseSplitDirection(RxReduction *reduction, int startIndex, int endIndex, double *axis) {
+static void RxiHistChooseSplitAxis(RxReduction *reduction, int startIndex, int endIndex, double *axis) {
 	double varColor;
 	RxiHistComputePrincipal(reduction, startIndex, endIndex, axis, &varColor);
 	
 	//if not in the palette alpha mode, do not separately consider alpha.
 	if (reduction->alphaMode != RX_ALPHA_PALETTE) return;
 
-	//compute variance of the alpha
-	double Sa = 0.0, Saa = 0.0, totalWeight = 0.0;
-	for (int i = startIndex; i < endIndex; i++) {
-		RxHistEntry *entry = reduction->histogramFlat[i];
-		double a = entry->color.a * reduction->aWeight;
+	//compute variance of the alpha channels
+	//TODO: check joint distribution of alphas
+	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+		//accumulate sum and sum squares
+		double Sa = 0.0, Saa = 0.0, totalWeight = 0.0;
+		for (int i = startIndex; i < endIndex; i++) {
+			RxHistEntry *entry = reduction->histogramFlat[i];
+			double a = entry->color[j].a * reduction->aWeight;
 
-		Sa += entry->weight * a;
-		Saa += entry->weight * a * a;
-		totalWeight += entry->weight;
-	}
+			Sa += entry->weight * a;
+			Saa += entry->weight * a * a;
+			totalWeight += entry->weight;
+		}
 
-	if (totalWeight > 0.0) {
-		double varA = (Saa - Sa * Sa / totalWeight) / totalWeight;
-		if (varA > varColor) {
-			//variance of alpha dominates, so we choose to split on alpha.
-			axis[0] = 0.0;
-			axis[1] = 0.0;
-			axis[2] = 0.0;
-			axis[3] = 1.0;
+		if (totalWeight > 0.0) {
+			double varA = (Saa - Sa * Sa / totalWeight) / totalWeight;
+			if (varA > varColor) {
+				//variance of alpha dominates, so we choose to split on alpha.
+				memset(axis, 0, reduction->paletteLayers * 4 * sizeof(double));
+				axis[j * 4 + 3] = 1.0;  // alpha channel of layer j
+			}
 		}
 	}
 }
@@ -1002,31 +1188,31 @@ static inline double RxiVec4Mag(double x, double y, double z, double w) {
 }
 
 void RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
-	double principal[4];
+	double principal[COV_DIM];
 	RxHistEntry **thisHistogram = &reduction->histogramFlat[startIndex];
-	RxiHistChooseSplitDirection(reduction, startIndex, endIndex, principal);
+	RxiHistChooseSplitAxis(reduction, startIndex, endIndex, principal);
 
 	//check principal component, make sure principal[0] >= 0
 	if (principal[0] < 0) {
-		principal[0] = -principal[0];
-		principal[1] = -principal[1];
-		principal[2] = -principal[2];
-		principal[3] = -principal[3];
+		//reversing the direction of the whole vector
+		for (unsigned int i = 0; i < 4 * reduction->paletteLayers; i++) {
+			principal[i] = -principal[i];
+		}
 	}
 
-	double yWeight = principal[0] * reduction->yWeight;
-	double iWeight = principal[1] * reduction->iWeight;
-	double qWeight = principal[2] * reduction->qWeight;
-	double aWeight = principal[3] * reduction->aWeight;
-
+	//compute dot products with the split axis.
 	for (int i = startIndex; i < endIndex; i++) {
 		RxHistEntry *histEntry = reduction->histogramFlat[i];
-		double value = histEntry->color.y * yWeight
-			+ histEntry->color.i * iWeight
-			+ histEntry->color.q * qWeight
-			+ histEntry->color.a * aWeight;
 
-		histEntry->value = value;
+		double dot = 0.0;
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			dot += histEntry->color[j].y * reduction->yWeight * principal[j * 4 + 0]
+				+ histEntry->color[j].i * reduction->iWeight * principal[j * 4 + 1]
+				+ histEntry->color[j].q * reduction->qWeight * principal[j * 4 + 2]
+				+ histEntry->color[j].a * reduction->aWeight * principal[j * 4 + 3];
+		}
+
+		histEntry->value = dot;
 	}
 
 	//sort colors by dot product with the vector
@@ -1051,6 +1237,12 @@ unsigned int RxHistGetTopN(RxReduction *reduction, unsigned int n, RxYiqColor *c
 	return nGet;
 }
 
+static RxColorNode *RxiTreeNodeAlloc(RxReduction *reduction) {
+	//allocate the node structure plus enough color entries for the number of palette layers
+	RxColorNode *node = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode) + reduction->paletteLayers * sizeof(RxYiqColor));
+	return node;
+}
+
 static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int startIndex, int endIndex) {
 	node->startIndex = startIndex;
 	node->endIndex = endIndex;
@@ -1067,22 +1259,22 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		return;
 	}
 
-	double principal[4];
-	RxiHistChooseSplitDirection(reduction, node->startIndex, node->endIndex, principal);
-
-	double yWeight = principal[0] * reduction->yWeight;
-	double iWeight = principal[1] * reduction->iWeight;
-	double qWeight = principal[2] * reduction->qWeight;
-	double aWeight = principal[3] * reduction->aWeight;
+	//compute the split axis for this cluster
+	double *principal = reduction->splitAxis;
+	RxiHistChooseSplitAxis(reduction, node->startIndex, node->endIndex, principal);
 
 	double projMax = -RX_LARGE_NUMBER;
 	double projMin = RX_LARGE_NUMBER;
 	for (int i = node->startIndex; i < node->endIndex; i++) {
 		RxHistEntry *histEntry = reduction->histogramFlat[i];
-		double proj = histEntry->color.y * yWeight
-			+ histEntry->color.i * iWeight
-			+ histEntry->color.q * qWeight
-			+ histEntry->color.a * aWeight;
+
+		double proj = 0.0;
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			proj += histEntry->color[j].y * principal[j * 4 + 0] * reduction->yWeight
+				+ histEntry->color[j].i * principal[j * 4 + 1] * reduction->iWeight
+				+ histEntry->color[j].q * principal[j * 4 + 2] * reduction->qWeight
+				+ histEntry->color[j].a * principal[j * 4 + 3] * reduction->aWeight;
+		}
 			
 		histEntry->value = proj;
 		if (proj > projMax) projMax = proj;
@@ -1094,8 +1286,12 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		return;
 	}
 
-	RxiClusterSum *splits = (RxiClusterSum *) calloc(nColors, sizeof(RxiClusterSum));
-	if (splits == NULL) {
+	RxiLongColor *splits = (RxiLongColor *) calloc(nColors * reduction->paletteLayers, sizeof(RxiLongColor));
+	double *splitWeightL = (double *) calloc(nColors, sizeof(double));
+	if (splits == NULL || splitWeightL == NULL) {
+		free(splits);
+		free(splitWeightL);
+
 		reduction->status = RX_STATUS_NOMEM;
 		return;
 	}
@@ -1106,53 +1302,72 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 
 	//gather statistics for splitting
 	double totalWeight = 0.0;
-	double totalYA = 0.0, totalIA = 0.0, totalQA = 0.0;                         // 
-	double totalY = 0.0, sumSq = 0.0, totalI = 0.0, totalQ = 0.0, totalA = 0.0; // sum of weighted YIQA
+	double sumSq = 0.0;
+
+	//vector (sum of histogram weighted YIQA colors)
+	double total[4 * RX_PALETTE_MAX_COUNT] = { 0 };   // total straight
+	double totalA[3 * RX_PALETTE_MAX_COUNT] = { 0 };  // total alpha interactions
+
 	for (int i = 0; i < nColors; i++) {
 		RxHistEntry *entry = thisHistogram[i];
 		double weight = entry->weight;
-		double cy = reduction->yWeight * entry->color.y;
-		double ci = reduction->iWeight * entry->color.i;
-		double cq = reduction->qWeight * entry->color.q;
-		double ca = reduction->aWeight * entry->color.a;
-		sumSq += weight * RxiVec4Mag(cy, ci, cq, ca);
 
-		RxiClusterSum *split = &splits[i];
-		split->SyU = (totalY += weight * entry->color.y);  // accumulate color
-		split->SiU = (totalI += weight * entry->color.i);  // accumulate
-		split->SqU = (totalQ += weight * entry->color.q);  // accumulate
-		split->SaU = (totalA += weight * entry->color.a);  // accumulate
-		split->weightL = (totalWeight += weight);          // accumulate total weight
+		//accumulate sum of squares
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			double cy = reduction->yWeight * entry->color[j].y;
+			double ci = reduction->iWeight * entry->color[j].i;
+			double cq = reduction->qWeight * entry->color[j].q;
+			double ca = reduction->aWeight * entry->color[j].a;
+			sumSq += weight * RxiVec4Mag(cy, ci, cq, ca);
+		}
 
-		double aWeight = entry->weight * entry->color.a;
-		totalYA += aWeight * entry->color.y;
-		totalIA += aWeight * entry->color.i;
-		totalQA += aWeight * entry->color.q;
+		//accumulate means
+		RxiLongColor *split = &splits[i * reduction->paletteLayers];
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			split[j].SyU = (total[4 * j + 0] += weight * entry->color[j].y);  // accumulate Y
+			split[j].SiU = (total[4 * j + 1] += weight * entry->color[j].i);  // accumulate I
+			split[j].SqU = (total[4 * j + 2] += weight * entry->color[j].q);  // accumulate Q
+			split[j].SaU = (total[4 * j + 3] += weight * entry->color[j].a);  // accumulate A
+		}
+
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			double aWeight = entry->weight * entry->color[j].a;
+			totalA[j * 3 + 0] += aWeight * entry->color[j].y;
+			totalA[j * 3 + 1] += aWeight * entry->color[j].i;
+			totalA[j * 3 + 2] += aWeight * entry->color[j].q;
+		}
+
+		//accumulate total weight
+		splitWeightL[i] = (totalWeight += weight);
 	}
 	node->weight = totalWeight;
 
 	//computing representative color
 	double invWeight = 1.0 / totalWeight;
-	node->color.y = (float) (totalY * invWeight);
-	node->color.i = (float) (totalI * invWeight);
-	node->color.q = (float) (totalQ * invWeight);
-	node->color.a = (float) (totalA * invWeight);
+	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+		node->color[i].y = (float) (total[4 * i + 0] * invWeight);
+		node->color[i].i = (float) (total[4 * i + 1] * invWeight);
+		node->color[i].q = (float) (total[4 * i + 2] * invWeight);
+		node->color[i].a = (float) (total[4 * i + 3] * invWeight);
+	}
 
 	//initial WSS value, which we use to calculate the WSS reduction from split
-	double wssInitial = sumSq - RxiVec4Mag(totalY * reduction->yWeight, totalI * reduction->iWeight,
-		totalQ * reduction->qWeight, totalA * reduction->aWeight) * invWeight;
+	double wssInitial = sumSq;
+	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+		wssInitial -= RxiVec4Mag(total[i * 4 + 0] * reduction->yWeight, total[i * 4 + 1] * reduction->iWeight,
+			total[i * 4 + 2] * reduction->qWeight, total[i * 4 + 3] * reduction->aWeight) * invWeight;
+	}
 
 	//in alpha processing mode, we must apply the interaction terms to WSS.
 	if (reduction->alphaMode == RX_ALPHA_PALETTE) {
-		double meanY = node->color.y;
-		double meanI = node->color.i;
-		double meanQ = node->color.q;
-		double meanA = node->color.a;
-		wssInitial -= (
-			  reduction->interactionY * (totalYA - (meanY * meanA) * invWeight)
-			+ reduction->interactionI * (totalIA - (meanI * meanA) * invWeight)
-			+ reduction->interactionQ * (totalQA - (meanQ * meanA) * invWeight)
-		);
+		for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+			double meanY = node->color[i].y, meanI = node->color[i].i, meanQ = node->color[i].q, meanA = node->color[i].a;
+			wssInitial -= (
+				  reduction->interactionY * (totalA[3 * i + 0] - (meanY * meanA) * invWeight)
+				+ reduction->interactionI * (totalA[3 * i + 1] - (meanI * meanA) * invWeight)
+				+ reduction->interactionQ * (totalA[3 * i + 2] - (meanQ * meanA) * invWeight)
+			);
+		}
 	}
 
 	//determine pivot index based on the split that yields the best total WSS. This represents total
@@ -1160,53 +1375,75 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	int pivotIndex = 1;
 	double wssBest = RX_LARGE_NUMBER;
 	for (int i = 0; i < (nColors - 1); i++) {
-		RxiClusterSum *entry = &splits[i];
+		RxiLongColor *entry = &splits[i * reduction->paletteLayers];
 		
-		double weightL = entry->weightL;
+		double weightL = splitWeightL[i];
 		double weightR = totalWeight - weightL;
 		double invWeightL = 1.0 / weightL;
 		double invWeightR = 1.0 / weightR;
 
-		double SyL = entry->SyU, SyR = totalY - entry->SyU;
-		double SiL = entry->SiU, SiR = totalI - entry->SiU;
-		double SqL = entry->SqU, SqR = totalQ - entry->SqU;
-		double SaL = entry->SaU, SaR = totalA - entry->SaU;
+		double SyL[RX_PALETTE_MAX_COUNT], SiL[RX_PALETTE_MAX_COUNT], SqL[RX_PALETTE_MAX_COUNT], SaL[RX_PALETTE_MAX_COUNT];
+		double SyR[RX_PALETTE_MAX_COUNT], SiR[RX_PALETTE_MAX_COUNT], SqR[RX_PALETTE_MAX_COUNT], SaR[RX_PALETTE_MAX_COUNT];
+		double sumSqL = 0.0, sumSqR = 0.0;
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			SyL[j] = entry[j].SyU, SyR[j] = total[4 * j + 0] - entry[j].SyU;
+			SiL[j] = entry[j].SiU, SiR[j] = total[4 * j + 1] - entry[j].SiU;
+			SqL[j] = entry[j].SqU, SqR[j] = total[4 * j + 2] - entry[j].SqU;
+			SaL[j] = entry[j].SaU, SaR[j] = total[4 * j + 3] - entry[j].SaU;
 
-		double sumSqL = RxiVec4Mag(SyL * reduction->yWeight, SiL * reduction->iWeight, SqL * reduction->qWeight, SaL * reduction->aWeight);
-		double sumSqR = RxiVec4Mag(SyR * reduction->yWeight, SiR * reduction->iWeight, SqR * reduction->qWeight, SaR * reduction->aWeight);
+			sumSqL += RxiVec4Mag(SyL[j] * reduction->yWeight, SiL[j] * reduction->iWeight, SqL[j] * reduction->qWeight, SaL[j] * reduction->aWeight);
+			sumSqR += RxiVec4Mag(SyR[j] * reduction->yWeight, SiR[j] * reduction->iWeight, SqR[j] * reduction->qWeight, SaR[j] * reduction->aWeight);
+		}
+
 		double wss = sumSq - sumSqL * invWeightL - sumSqR * invWeightR;
 
 		//in alpha processing mode, we must apply the intercation terms to WSS.
 		if (reduction->alphaMode == RX_ALPHA_PALETTE) {
-			wss -= (
-				  reduction->interactionY * (totalYA - (SyL * SaL * invWeightL + SyR * SaR * invWeightR))
-				+ reduction->interactionI * (totalIA - (SiL * SaL * invWeightL + SiR * SaR * invWeightR))
-				+ reduction->interactionQ * (totalQA - (SqL * SaL * invWeightL + SqR * SaR * invWeightR))
-			);
+			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+				wss -= (
+					  reduction->interactionY * (totalA[3 * j + 0] - (SyL[j] * SaL[j] * invWeightL + SyR[j] * SaR[j] * invWeightR))
+					+ reduction->interactionI * (totalA[3 * j + 1] - (SiL[j] * SaL[j] * invWeightL + SiR[j] * SaR[j] * invWeightR))
+					+ reduction->interactionQ * (totalA[3 * j + 2] - (SqL[j] * SaL[j] * invWeightL + SqR[j] * SaR[j] * invWeightR))
+				);
+			}
 		}
 
 		//better sum of squares
 		if (wss < wssBest) {
 			//we'll check the mean left and mean right. They should be different with masking.
-			RxYiqColor yiqL, yiqR;
-			yiqL.y = (float) (SyL * invWeightL);
-			yiqL.i = (float) (SiL * invWeightL);
-			yiqL.q = (float) (SqL * invWeightL);
-			yiqL.a = (float) (SaL * invWeightL);
-			yiqR.y = (float) (SyR * invWeightR);
-			yiqR.i = (float) (SiR * invWeightR);
-			yiqR.q = (float) (SqR * invWeightR);
-			yiqR.a = (float) (SaR * invWeightR);
 
-			COLOR32 maskL = RxiMaskYiqToRgb(reduction, &yiqL);
-			COLOR32 maskR = RxiMaskYiqToRgb(reduction, &yiqR);
-			if (maskL == maskR) continue; // discard this split (centroids mask to the same color)
+			int same = 1;
+			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
 
-			wssBest = wss;
-			pivotIndex = i + 1;
+				RxYiqColor yiqL, yiqR;
+				yiqL.y = (float) (SyL[j] * invWeightL);
+				yiqL.i = (float) (SiL[j] * invWeightL);
+				yiqL.q = (float) (SqL[j] * invWeightL);
+				yiqL.a = (float) (SaL[j] * invWeightL);
+				yiqR.y = (float) (SyR[j] * invWeightR);
+				yiqR.i = (float) (SiR[j] * invWeightR);
+				yiqR.q = (float) (SqR[j] * invWeightR);
+				yiqR.a = (float) (SaR[j] * invWeightR);
+
+				COLOR32 maskL = RxiMaskYiqToRgb(reduction, &yiqL);
+				COLOR32 maskR = RxiMaskYiqToRgb(reduction, &yiqR);
+				if (maskL != maskR) {
+					//centroids differ in at least one color
+					same = 0;
+					break;
+				}
+			}
+
+			if (!same) {
+				//accept the split only if the centroids mask two different colors (at least one color must
+				//be different)
+				wssBest = wss;
+				pivotIndex = i + 1;
+			}
 		}
 	}
 	free(splits);
+	free(splitWeightL);
 	
 	if (wssBest == RX_LARGE_NUMBER) {
 		//any split must necessarily reduce the WSS, except for when color masking is used. If no split may be
@@ -1236,8 +1473,8 @@ static void RxiTreeSplitNode(RxReduction *reduction, RxColorNode *node) {
 	RX_ASSUME(node->left == NULL && node->right == NULL);
 	RX_ASSUME(node->pivotIndex > node->startIndex && node->pivotIndex < node->endIndex);
 
-	RxColorNode *lNode = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode));
-	RxColorNode *rNode = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode));
+	RxColorNode *lNode = RxiTreeNodeAlloc(reduction);
+	RxColorNode *rNode = RxiTreeNodeAlloc(reduction);
 	if (lNode == NULL || rNode == NULL) {
 		RxMemFree(lNode);
 		RxMemFree(rNode);
@@ -1268,8 +1505,8 @@ static RxColorNode *RxiTreeFindNodeByColor(RxReduction *reduction, const RxColor
 	}
 
 	//is leaf, does this match?
-	COLOR32 compare = RxiMaskYiqToRgb(reduction, &src->color);
-	COLOR32 thisRgb = RxiMaskYiqToRgb(reduction, &treeHead->color);
+	COLOR32 compare = RxiMaskYiqToRgb(reduction, &src->color[0]);
+	COLOR32 thisRgb = RxiMaskYiqToRgb(reduction, &treeHead->color[0]);
 	return (compare == thisRgb) ? (RxColorNode *) treeHead : NULL;
 }
 
@@ -1331,16 +1568,18 @@ static void RxiPaletteWrite(RxReduction *reduction) {
 
 	//convert to RGB
 	RxColorNode **colorBlockPtr = reduction->colorBlocks;
-	for (int i = 0; i < reduction->nUsedColors; i++) {
+	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
 		RX_ASSUME(colorBlockPtr[i] != NULL);
 		
-		COLOR32 rgb32 = RxiMaskYiqToRgb(reduction, &colorBlockPtr[i]->color);
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			COLOR32 rgb32 = RxiMaskYiqToRgb(reduction, &colorBlockPtr[i]->color[j]);
 
-		//write RGB
-		reduction->paletteRgb[i] = rgb32;
+			//write RGB
+			reduction->paletteRgb[i][j] = rgb32;
 
-		//write YIQ (with any loss of information to RGB)
-		RxConvertRgbToYiq(rgb32, &reduction->paletteYiq[i]);
+			//write YIQ (with any loss of information to RGB)
+			RxConvertRgbToYiq(rgb32, &reduction->paletteYiq[i][j]);
+		}
 	}
 }
 
@@ -1353,17 +1592,20 @@ static void RxiVoronoiAccumulateClusters(RxReduction *reduction) {
 		RxHistEntry *entry = reduction->histogramFlat[i];
 
 		double bestDistance;
-		int bestIndex = RxPaletteFindClosestColorYiq(reduction, &entry->color, &bestDistance);
+		int bestIndex = RxPaletteFindClosestColorYiq(reduction, &entry->color[0], &bestDistance);
 
 		//add to total. YIQ colors scaled by alpha to be unscaled later.
 		double weight = entry->weight;
 		totalsBuffer[bestIndex].weight += weight;
 		totalsBuffer[bestIndex].error += weight * bestDistance;
-		totalsBuffer[bestIndex].y += weight * entry->color.y;
-		totalsBuffer[bestIndex].i += weight * entry->color.i;
-		totalsBuffer[bestIndex].q += weight * entry->color.q;
-		totalsBuffer[bestIndex].a += weight * entry->color.a;
 		totalsBuffer[bestIndex].count++;
+
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			totalsBuffer[bestIndex].y[j] += weight * entry->color[j].y;
+			totalsBuffer[bestIndex].i[j] += weight * entry->color[j].i;
+			totalsBuffer[bestIndex].q[j] += weight * entry->color[j].q;
+			totalsBuffer[bestIndex].a[j] += weight * entry->color[j].a;
+		}
 		entry->entry = bestIndex;
 	}
 }
@@ -1373,25 +1615,29 @@ static void RxiVoronoiMoveToCluster(RxReduction *reduction, RxHistEntry *entry, 
 	int idxFrom = entry->entry;
 
 	double weight = entry->weight;
-	double y = weight * entry->color.y;
-	double i = weight * entry->color.i;
-	double q = weight * entry->color.q;
-	double a = weight * entry->color.a;
+	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+		double y = weight * entry->color[j].y;
+		double i = weight * entry->color[j].i;
+		double q = weight * entry->color[j].q;
+		double a = weight * entry->color[j].a;
 
-	//add weight to "to" cluster
-	totalsBuffer[idxTo].y += y;
-	totalsBuffer[idxTo].i += i;
-	totalsBuffer[idxTo].q += q;
-	totalsBuffer[idxTo].a += a;
+		//add weight to "to" cluster
+		totalsBuffer[idxTo].y[j] += y;
+		totalsBuffer[idxTo].i[j] += i;
+		totalsBuffer[idxTo].q[j] += q;
+		totalsBuffer[idxTo].a[j] += a;
+
+		//remove weight from "from" cluster
+		totalsBuffer[idxFrom].y[j] -= y;
+		totalsBuffer[idxFrom].i[j] -= i;
+		totalsBuffer[idxFrom].q[j] -= q;
+		totalsBuffer[idxFrom].a[j] -= a;
+	}
+
 	totalsBuffer[idxTo].weight += entry->weight;
 	totalsBuffer[idxTo].error += newDifference;
 	totalsBuffer[idxTo].count++;
 
-	//remove weight from "from" cluster
-	totalsBuffer[idxFrom].y -= y;
-	totalsBuffer[idxFrom].i -= i;
-	totalsBuffer[idxFrom].q -= q;
-	totalsBuffer[idxFrom].a -= a;
 	totalsBuffer[idxFrom].weight -= entry->weight;
 	totalsBuffer[idxFrom].error -= oldDifference;
 	totalsBuffer[idxFrom].count--;
@@ -1403,7 +1649,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
 
 	//load the palette into the acceleration structure
-	RxPaletteLoad(reduction, reduction->paletteRgbCopy, reduction->nUsedColors);
+	RxPaletteLoadYiq(reduction, &reduction->paletteYiqCopy[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
 
 	//map histogram colors to existing clusters and accumulate error.
 	RxiVoronoiAccumulateClusters(reduction);
@@ -1417,15 +1663,15 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	//squared deviation from its palette color (scaled by weight).
 	//when we do this, we recompute the cluster bounds.
 	int nHistEntries = reduction->histogram->nEntries;
-	for (int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
+	for (unsigned int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
 		if (totalsBuffer[i].weight > 0.0) continue;
 
 		//find the color furthest from its center and create a centroid for it in place of this one.
 		double largestDifference = 0.0, largestDifferenceReduction = 0.0;
 		int farthestIndex = -1;
 		for (int j = 0; j < nHistEntries; j++) {
-			RxHistEntry *entry = reduction->histogramFlat[j];            // histogram color
-			RxYiqColor *yiq1 = &reduction->paletteYiqCopy[entry->entry]; // ceontroid of the cluster the color belongs to
+			RxHistEntry *entry = reduction->histogramFlat[j];               // histogram color
+			RxYiqColor *yiq1 = &reduction->paletteYiqCopy[entry->entry][0]; // ceontroid of the cluster the color belongs to
 
 			//do not move a cluster with only one member
 			if (totalsBuffer[entry->entry].count <= 1) continue;
@@ -1433,18 +1679,18 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 			//if we mask colors, check this entry against the palette with clamping. If they compare equal,
 			//then we say that this color is as close as it will be to a palette color and we won't include
 			//this in our search candidates.
-			COLOR32 histMasked = RxiMaskYiqToRgb(reduction, &entry->color);
+			COLOR32 histMasked = RxiMaskYiqToRgb(reduction, &entry->color[0]);
 			COLOR32 palMasked = RxiMaskYiqToRgb(reduction, yiq1);
 			if (histMasked == palMasked) continue; // this difference can't be reconciled
 
 			//calculate the difference between the histogram color and its currently assigned best centroid.
-			double diff = RxiComputeColorDifference(reduction, yiq1, &entry->color) * entry->weight;
+			double diff = RxiComputeColorDifference(reduction, yiq1, &entry->color[0]) * entry->weight;
 
 			//we subtract the difference to the new centroid to calcualate the reduction in the error sum of
 			//squares. The highest reduction is desired.
 			RxYiqColor yiqNewCentroid;
 			RxConvertRgbToYiq(histMasked, &yiqNewCentroid);
-			double newDifference = RxiComputeColorDifference(reduction, &entry->color, &yiqNewCentroid) * entry->weight;
+			double newDifference = RxiComputeColorDifference(reduction, &entry->color[0], &yiqNewCentroid) * entry->weight;
 			
 			double diffReduction = diff - newDifference;
 			if (diffReduction > 0.0 && diffReduction > largestDifferenceReduction) {
@@ -1454,7 +1700,8 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 				int found = 0;
 				for (unsigned int k = 0; k < nNewCentroids; k++) {
 					unsigned int idx = newCentroidIdxs[k];
-					if (reduction->paletteRgbCopy[idx] == histMasked) {
+					//TODO: check all palette layers
+					if (reduction->paletteRgbCopy[idx][0] == histMasked) {
 						//remap to the existing centroid
 						RxiVoronoiMoveToCluster(reduction, entry, idx, newDifference, diff);
 						found = 1;
@@ -1475,11 +1722,13 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		if (farthestIndex != -1) {
 			//get RGB of new point (will be used when checking identical remapped colors)
 			RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
-			reduction->paletteRgbCopy[i] = RxiMaskYiqToRgb(reduction, &entry->color);
-			RxConvertRgbToYiq(reduction->paletteRgbCopy[i], &reduction->paletteYiqCopy[i]);
+			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+				reduction->paletteRgbCopy[i][j] = RxiMaskYiqToRgb(reduction, &entry->color[j]);
+				RxConvertRgbToYiq(reduction->paletteRgbCopy[i][j], &reduction->paletteYiqCopy[i][j]);
+			}
 
 			//move centroid
-			double newDifference = RxiComputeColorDifference(reduction, &entry->color, &reduction->paletteYiqCopy[i]) * entry->weight;
+			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, reduction->paletteYiqCopy[i]) * entry->weight;
 			RxiVoronoiMoveToCluster(reduction, entry, i, newDifference, largestDifference);
 			newCentroidIdxs[nNewCentroids++] = i;
 		} else {
@@ -1489,17 +1738,21 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	}
 
 	//average out the colors in the new partitions
-	for (int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
-		RxYiqColor yiq;
-		double invWeight = 1.0 / totalsBuffer[i].weight;
-		yiq.y = (float) (totalsBuffer[i].y * invWeight);
-		yiq.i = (float) (totalsBuffer[i].i * invWeight);
-		yiq.q = (float) (totalsBuffer[i].q * invWeight);
-		yiq.a = (float) (totalsBuffer[i].a * invWeight);
+	for (unsigned int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
+		RxYiqColor yiq[RX_PALETTE_MAX_COUNT];
+		COLOR32 as32[RX_PALETTE_MAX_COUNT];
 
-		//mask color
-		COLOR32 as32 = RxiMaskYiqToRgb(reduction, &yiq);
-		RxConvertRgbToYiq(as32, &yiq);
+		double invWeight = 1.0 / totalsBuffer[i].weight;
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			yiq[j].y = (float) (totalsBuffer[i].y[j] * invWeight);
+			yiq[j].i = (float) (totalsBuffer[i].i[j] * invWeight);
+			yiq[j].q = (float) (totalsBuffer[i].q[j] * invWeight);
+			yiq[j].a = (float) (totalsBuffer[i].a[j] * invWeight);
+
+			//mask color
+			as32[j] = RxiMaskYiqToRgb(reduction, &yiq[j]);
+			RxConvertRgbToYiq(as32[j], &yiq[j]);
+		}
 
 		//when color masking is used, it is possible that the new computed centroid may drift
 		//from optimal placement. We will select either the new centroid or the old one, based
@@ -1511,18 +1764,18 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 			if (reduction->histogramFlat[j]->entry != i) continue;
 
 			RxHistEntry *hist = reduction->histogramFlat[j];
-			errNewCluster += hist->weight * RxiComputeColorDifference(reduction, &hist->color, &yiq);
+			errNewCluster += hist->weight * RxiComputeLayeredColorDifference(reduction, hist->color, yiq);
 		}
 
 		//if the new cluster is an improvement over the old cluster
 		if (errNewCluster < totalsBuffer[i].error) {
-			reduction->paletteRgbCopy[i] = as32;
-			memcpy(&reduction->paletteYiqCopy[i], &yiq, sizeof(yiq));
+			memcpy(&reduction->paletteRgbCopy[i][0], as32, reduction->paletteLayers * sizeof(COLOR32));
+			memcpy(&reduction->paletteYiqCopy[i][0], yiq, reduction->paletteLayers * sizeof(RxYiqColor));
 		}
 	}
 
 	//load the new palette data into the accelerator
-	RxPaletteLoad(reduction, reduction->paletteRgbCopy, reduction->nUsedColors);
+	RxPaletteLoadYiq(reduction, &reduction->paletteYiqCopy[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
 
 	//compute new error
 	double error = 0.0;
@@ -1530,7 +1783,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		RxHistEntry *hist = reduction->histogramFlat[i];
 		
 		double err;
-		hist->entry = RxPaletteFindClosestColorYiq(reduction, &hist->color, &err);
+		hist->entry = RxPaletteFindClosestColorYiq(reduction, hist->color, &err);
 		error += err * hist->weight;
 	}
 
@@ -1566,29 +1819,30 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
 	memset(totalsBuffer, 0, sizeof(reduction->blockTotals));
 	for (int i = 0; i < reduction->histogram->nEntries; i++) {
-		RxYiqColor *histColor = &reduction->histogramFlat[i]->color;
+		RxYiqColor *histColor = &reduction->histogramFlat[i]->color[0];
 
 		//find nearest, add to total
-		int bestIndex = RxiPaletteFindClosestColor(reduction, reduction->paletteYiq, reduction->nUsedColors, histColor, NULL);
+		int bestIndex = RxiPaletteFindClosestLayeredColor(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT,
+			reduction->nUsedColors, histColor, NULL);
 		totalsBuffer[bestIndex].weight += reduction->histogramFlat[i]->weight;
 	}
 
 	//weight==0 => delete
-	int nRemoved = 0;
-	for (int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
+	unsigned int nRemoved = 0;
+	for (unsigned int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
 		if (totalsBuffer[i].weight > 0) continue;
 
 		//delete
-		memmove(&reduction->paletteRgb[i], &reduction->paletteRgb[i + 1], (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteRgb[0]));
-		memmove(&reduction->paletteYiq[i], &reduction->paletteYiq[i + 1], (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteYiq[0]));
+		memmove(reduction->paletteRgb[i], reduction->paletteRgb[i + 1], (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteRgb[0]));
+		memmove(reduction->paletteYiq[i], reduction->paletteYiq[i + 1], (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteYiq[0]));
 		memmove(&totalsBuffer[i], &totalsBuffer[i + 1], (reduction->nUsedColors - i - 1) * sizeof(RxTotalBuffer));
 		reduction->nUsedColors--;
 		i--;
 		nRemoved++;
 	}
 
-	memset(reduction->paletteRgb + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteRgb[0]));
-	memset(reduction->paletteYiq + reduction->nUsedColors, 0, nRemoved * sizeof(reduction->paletteYiq[0]));
+	memset(reduction->paletteRgb[reduction->nUsedColors], 0, nRemoved * sizeof(reduction->paletteRgb[0]));
+	memset(reduction->paletteYiq[reduction->nUsedColors], 0, nRemoved * sizeof(reduction->paletteYiq[0]));
 	RxiCreatePaletteUpdateProgress(reduction);
 }
 
@@ -1606,8 +1860,12 @@ static void RxiVoronoiLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned
 	reduction->nPaletteColors = nColors;
 	reduction->nUsedColors = nColors;
 
-	memcpy(reduction->paletteRgb, pltt, nColors * sizeof(COLOR32));
-	for (unsigned int i = 0; i < nColors; i++) RxConvertRgbToYiq(pltt[i], &reduction->paletteYiq[i]);
+	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+		const COLOR32 *thisPltt = pltt + nColors * j;
+
+		memcpy(&reduction->paletteRgb[j * reduction->nUsedColors], thisPltt, nColors * sizeof(COLOR32));
+		for (unsigned int i = 0; i < nColors; i++) RxConvertRgbToYiq(thisPltt[i], &reduction->paletteYiq[i][j]);
+	}
 }
 
 static void RxiAdjustHistogramIndices(RxColorNode *tree, int cutStart, int nCut) {
@@ -1629,7 +1887,7 @@ static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
 	if (reduction->nUsedColors < 2) return 0; // no merge possible
 
 	//duplicate color test
-	for (int i = 0; i < reduction->nUsedColors; i++) {
+	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
 		RxColorNode *node = RxiTreeFindNodeByIndex(treeHead, i);
 
 		int nDupMerge = 0;
@@ -1711,7 +1969,7 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	}
 
 	//do it
-	RxColorNode *treeHead = (RxColorNode *) RxMemCalloc(1, sizeof(RxColorNode));
+	RxColorNode *treeHead = RxiTreeNodeAlloc(reduction);
 	RxiTreeNodeInit(reduction, treeHead, 0, reduction->histogram->nEntries);
 
 	reduction->colorTreeHead = treeHead;
@@ -1754,7 +2012,7 @@ RxStatus RxHistClear(RxReduction *reduction) {
 	reduction->histogramFlat = NULL;
 
 	if (reduction->histogram != NULL) {
-		RxiSlabFree(&reduction->histogram->allocator);
+		RxiSlabFreeAll(&reduction->histogram->allocator);
 		free(reduction->histogram);
 		reduction->histogram = NULL;
 	}
@@ -1772,7 +2030,7 @@ void RxDestroy(RxReduction *reduction) {
 	RxPaletteFree(reduction);
 	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 	if (reduction->histogram != NULL) {
-		RxiSlabFree(&reduction->histogram->allocator);
+		RxiSlabFreeAll(&reduction->histogram->allocator);
 		free(reduction->histogram);
 	}
 	if (reduction->colorTreeHead != NULL) RxiTreeFree(reduction->colorTreeHead, FALSE);
@@ -1805,16 +2063,26 @@ RxStatus RxCreatePaletteWithContext(RxReduction *reduction, const COLOR32 *px, u
 	RxHistFinalize(reduction);
 	RxComputePalette(reduction, nColors);
 
-	//copy palette out
-	memcpy(pal, reduction->paletteRgb, nColors * sizeof(COLOR32));
+	//copy palettes out
+	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+		COLOR32 *thisPltt = pal + nColors * j;
+
+		//palette output ordering is [layer][i]
+		for (unsigned int i = 0; i < nColors; i++) {
+			thisPltt[i] = reduction->paletteRgb[i][j];
+		}
+	}
 
 	RxStatus status = reduction->status;
 	int nProduced = reduction->nUsedColors;
 
-	if (flag & RX_FLAG_SORT_ONLY_USED) {
-		qsort(pal, nProduced, sizeof(COLOR32), RxColorLightnessComparator);
-	} else {
-		qsort(pal, nColors, sizeof(COLOR32), RxColorLightnessComparator);
+	if (reduction->paletteLayers < 2) {
+		//TODO: sorting for higher order palettes (need to be jointly sorted)
+		if (flag & RX_FLAG_SORT_ONLY_USED) {
+			qsort(pal, nProduced, sizeof(COLOR32), RxColorLightnessComparator);
+		} else {
+			qsort(pal, nColors, sizeof(COLOR32), RxColorLightnessComparator);
+		}
 	}
 
 	if (pOutCols != NULL) *pOutCols = nProduced;
@@ -1838,64 +2106,6 @@ static void RxiTileCopy(RxiTile *dest, const COLOR32 *pxOrigin, unsigned int wid
 	for (int y = 0; y < 8; y++) {
 		memcpy(dest->rgb + y * 8, pxOrigin + y * width, 8 * sizeof(COLOR32));
 	}
-}
-
-static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff) {
-	double leastDiff = RX_LARGE_NUMBER;
-	int leastIndex = 0;
-	for (unsigned int i = 0; i < nColors; i++) {
-		const RxYiqColor *yiq2 = &palette[i];
-
-		double diff = RxiComputeColorDifference(reduction, col, yiq2);
-		if (diff < leastDiff) {
-			leastDiff = diff;
-			leastIndex = i;
-			if (diff == 0.0) break;
-		}
-	}
-	if (outDiff != NULL) *outDiff = leastDiff;
-	return leastIndex;
-}
-
-static int RxiPaletteFindClosestRgbColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, COLOR32 col, double *outDiff) {
-	RxYiqColor yiq;
-	RxConvertRgbToYiq(col, &yiq);
-
-	return RxiPaletteFindClosestColor(reduction, palette, nColors, &yiq, outDiff);
-}
-
-double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, double maxError) {
-	double error = 0.0;
-
-	//sum total weighted squared differences
-	for (int i = 0; i < reduction->histogram->nEntries; i++) {
-		RxHistEntry *entry = reduction->histogramFlat[i];
-		
-		double diff = 0.0;
-		(void) RxiPaletteFindClosestColor(reduction, palette, nColors, &entry->color, &diff);
-		error += diff * entry->weight;
-
-		if (error >= maxError) return maxError;
-	}
-	return error;
-}
-
-double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, unsigned int nColors, double maxError) {
-	RxYiqColor yiqPaletteStack[16];
-	RxYiqColor *yiqPalette = yiqPaletteStack;
-	if (nColors > 16) {
-		yiqPalette = (RxYiqColor *) RxMemCalloc(nColors, sizeof(RxYiqColor));
-	}
-
-	//convert palette colors
-	for (unsigned int i = 0; i < nColors; i++) {
-		RxConvertRgbToYiq(palette[i], &yiqPalette[i]);
-	}
-
-	double error = RxHistComputePaletteErrorYiq(reduction, yiqPalette, nColors, maxError);
-
-	if (yiqPalette != yiqPaletteStack) RxMemFree(yiqPalette);
-	return error;
 }
 
 static double RxiTileComputePaletteDifference(RxReduction *reduction, const RxiTile *tile1, const RxiTile *tile2) {
@@ -2059,7 +2269,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			RxHistFinalize(reduction);
 			RxComputePalette(reduction, nColsPerPalette);
 			for (int i = 0; i < RX_TILE_PALETTE_MAX; i++) {
-				COLOR32 col = reduction->paletteRgb[i];
+				COLOR32 col = reduction->paletteRgb[i][0];
 				RxConvertRgbToYiq(col, &tile->palette[i]);
 			}
 
@@ -2136,7 +2346,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		//write over the palette of the tile
 		RxiTile *palTile = &tiles[index1];
 		for (int i = 0; i < RX_TILE_PALETTE_MAX - 1; i++) {
-			RxConvertRgbToYiq(reduction->paletteRgb[i], &palTile->palette[i]);
+			RxConvertRgbToYiq(reduction->paletteRgb[i][0], &palTile->palette[i]);
 		}
 		palTile->nUsedColors = reduction->nUsedColors;
 		palTile->nSwallowed += nSwitched;
@@ -2614,13 +2824,13 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 }
 
 static inline double RxiAccelGetChannelN(RxReduction *reduction, const RxYiqColor *color, unsigned int n) {
-	RX_ASSUME(n < 4);
+	RX_ASSUME(n < 4 * reduction->paletteLayers);
 
-	switch (n) {
-		case 0: return reduction->yWeight * color->y;
-		case 1: return reduction->iWeight * color->i;
-		case 2: return reduction->qWeight * color->q;
-		case 3: return reduction->aWeight * color->a;
+	switch (n % 4) {
+		case 0: return reduction->yWeight * color[n / 4].y;
+		case 1: return reduction->iWeight * color[n / 4].i;
+		case 2: return reduction->qWeight * color[n / 4].q;
+		case 3: return reduction->aWeight * color[n / 4].a;
 	}
 	return 0.0;
 }
@@ -2643,15 +2853,19 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 	if (accel->nCol <= 1) {
 		//put split values for the node
 		accel->splitDir = nextSplit;
-		accel->splitVal = RxiAccelGetChannelN(reduction, &accel->mid->color, nextSplit);
+		accel->splitVal = RxiAccelGetChannelN(reduction, accel->mid->color, nextSplit);
 		return nodebuf;
 	}
 
 	//sort by
-	for (unsigned int i = 0; i < 4; i++) {
+	unsigned int nChannel = 4 * reduction->paletteLayers;
+	for (unsigned int i = 0; i < nChannel; i++) {
+		//skip alpha channels (cannot be used in the K-D tree)
+		if ((i % 4) == 3) continue;
+
 		//test sort
 		for (unsigned int i = 0; i < accel->nCol; i++) {
-			pltt[i].sortVal = RxiAccelGetChannelN(reduction, &pltt[i].color, nextSplit);
+			pltt[i].sortVal = RxiAccelGetChannelN(reduction, pltt[i].color, nextSplit);
 		}
 		qsort(pltt, accel->nCol, sizeof(RxPaletteMapEntry), RxiAccelSortPalette);
 
@@ -2661,8 +2875,8 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 		if (f1 != f2) break;
 
 		//else
-		nextSplit = (nextSplit + 1) % 4;
-		if (i == 3) return nodebuf; // not split (all axes degenerate)
+		nextSplit = (nextSplit + 1) % nChannel;
+		if (i == 2) return nodebuf; // not split (all axes degenerate)
 	}
 
 	//find split (subtract 1 for the median color)
@@ -2689,7 +2903,7 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 		childL->nCol = nLeft;
 		childL->parent = accel;
 		accel->pLeft = childL;
-		nodebuf = RxiAccelSplit(reduction, childL, nodebuf, plttFull, (nextSplit + 1) % 4);
+		nodebuf = RxiAccelSplit(reduction, childL, nodebuf, plttFull, (nextSplit + 1) % nChannel);
 	}
 
 	if (nRight > 0) {
@@ -2698,7 +2912,7 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 		childR->nCol = nRight;
 		childR->parent = accel;
 		accel->pRight = childR;
-		nodebuf = RxiAccelSplit(reduction, childR, nodebuf, plttFull, (nextSplit + 1) % 4);
+		nodebuf = RxiAccelSplit(reduction, childR, nodebuf, plttFull, (nextSplit + 1) % nChannel);
 	}
 
 	//put split
@@ -2717,7 +2931,7 @@ static void RxiAccelRecurseTreeInternal(RxReduction *reduction, RxPaletteAccelNo
 	if (diffFromSplit < *pBestDiff) {
 		intersectPlane = 1;
 
-		double diff = RxiComputeColorDifference(reduction, color, &accel->mid->color);
+		double diff = RxiComputeLayeredColorDifference(reduction, color, accel->mid->color);
 		if (diff < *pBestDiff) {
 			*pBestDiff = diff;
 			*piBest = accel->mid->index;
@@ -2752,7 +2966,7 @@ static void RxiAccelRecurseTree(RxReduction *reduction, RxPaletteAccelNode *acce
 	//radius, thus we must search the other sub-tree.
 	if (diffFromSplit < *pBestDiff) {
 		//because the plane is within the search radius, its point must be checked too.
-		double diff = RxiComputeColorDifference(reduction, color, &accel->mid->color);
+		double diff = RxiComputeLayeredColorDifference(reduction, color, accel->mid->color);
 		if (diff < *pBestDiff) {
 			*pBestDiff = diff;
 			*piBest = accel->mid->index;
@@ -2777,7 +2991,7 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(RxReduction *reduction
 	while (1) {
 		double split = nodep->splitVal;
 		double val = RxiAccelGetChannelN(reduction, color, nodep->splitDir);
-		RxYiqColor *nodeCol = &nodep->mid->color;
+		RxYiqColor *nodeCol = nodep->mid->color;
 
 		//if this is a leaf node or the split value matches, check for a matching color
 		if ((nodep->pLeft == NULL && nodep->pRight == NULL) || (split == val)) {
@@ -2801,7 +3015,7 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(RxReduction *reduction
 	//we're at the bottom of the tree, and there were no exact matches. We recurse the tree
 	//to find closer candidate points.
 	unsigned int iBest = nodep->mid->index;
-	double bestDiff = RxiComputeColorDifference(reduction, color, &nodep->mid->color);
+	double bestDiff = RxiComputeLayeredColorDifference(reduction, color, nodep->mid->color);
 
 	//traverse up
 	while (nodep->parent != NULL) {
@@ -2829,33 +3043,46 @@ unsigned int RxPaletteFindClosestColorYiq(RxReduction *reduction, const RxYiqCol
 		return 0;
 	}
 
-	RxYiqColor cpy;
-	memcpy(&cpy, color, sizeof(RxYiqColor));
+	RxYiqColor cpy[RX_PALETTE_MAX_COUNT];
+	memcpy(cpy, color, reduction->paletteLayers * sizeof(RxYiqColor));
 
 	//processing for alpha mode
 	unsigned int plttStart = 0;
 	switch (reduction->alphaMode) {
 		case RX_ALPHA_PIXEL:
-			RxiColorMakeOpaque(&cpy);
-			break;
-		case RX_ALPHA_RESERVE:
-			plttStart = 1;
-			if (cpy.a < reduction->fAlphaThreshold) {
-				if (outDiff != NULL) *outDiff = 0.0;
-				return 0; // transparent reserve
+		{
+			for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+				//pixel-mode alpha: do not consider alpha in calculation, so rescale all colors
+				//to full alpha
+				RxiColorMakeOpaque(&cpy[i]);
 			}
-			RxiColorMakeOpaque(&cpy);
 			break;
+		}
+		case RX_ALPHA_RESERVE:
+		{
+			plttStart = 1;
+
+			for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+				//alpha-reserve mode cannot cleanly support multiple alpha, but we will consider
+				//any color below the threshold to be transparent.
+				if (cpy[i].a < reduction->fAlphaThreshold) {
+					if (outDiff != NULL) *outDiff = 0.0;
+					return 0; // transparent reserve
+				}
+				RxiColorMakeOpaque(&cpy[i]);
+			}
+			break;
+		}
 		default:
 			break;
 	}
 
 	if (accel->useAccelerator) {
 		//accelerated search
-		return RxiPaletteFindClosestColorAccelerated(reduction, &cpy, outDiff) + plttStart;
+		return RxiPaletteFindClosestColorAccelerated(reduction, cpy, outDiff) + plttStart;
 	} else {
 		//slow search
-		return RxiPaletteFindClosestColor(reduction, accel->plttLarge + plttStart, accel->nPltt - plttStart, &cpy, outDiff) + plttStart;
+		return RxiPaletteFindClosestColor(reduction, accel->plttLarge + plttStart, accel->nPltt - plttStart, cpy, outDiff) + plttStart;
 	}
 }
 
@@ -2865,7 +3092,7 @@ static RxStatus RxiPaletteAlloc(RxReduction *reduction, unsigned int nCol) {
 
 	if (nCol > sizeof(accel->plttSmall) / sizeof(accel->plttSmall[0])) {
 		//above small threshold --> allocate on the heap
-		accel->plttLarge = (RxYiqColor *) RxMemCalloc(nCol, sizeof(RxYiqColor));
+		accel->plttLarge = (RxYiqColor *) RxMemCalloc(nCol * reduction->paletteLayers, sizeof(RxYiqColor));
 	} else {
 		//within small threshold --> use small buffer
 		accel->plttLarge = accel->plttSmall;
@@ -2919,7 +3146,9 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 		accel->pltt[i].index = i;
 
 		if (alphaMode == RX_ALPHA_PIXEL) {
-			RxiColorMakeOpaque(&accel->pltt[i].color);
+			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+				RxiColorMakeOpaque(&accel->pltt[i].color[j]);
+			}
 		}
 	}
 
@@ -2938,8 +3167,22 @@ static RxStatus RxiPaletteLoadUnaccelerated(RxReduction *reduction, const COLOR3
 	RxStatus status = RxiPaletteAlloc(reduction, nColors);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
+	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+		for (unsigned int i = 0; i < nColors; i++) {
+			RxConvertRgbToYiq(pltt[j * nColors + i], &reduction->accel.plttLarge[i * reduction->paletteLayers + j]);
+		}
+	}
+
+	return reduction->status;
+}
+
+static RxStatus RxiPaletteLoadYiqUnaccelerated(RxReduction *reduction, const RxYiqColor *pltt, unsigned int nColors, unsigned int srcPitch) {
+	RxStatus status = RxiPaletteAlloc(reduction, nColors);
+	if (status != RX_STATUS_OK) return reduction->status = status;
+
+	unsigned int nLayer = reduction->paletteLayers;
 	for (unsigned int i = 0; i < nColors; i++) {
-		RxConvertRgbToYiq(pltt[i], &reduction->accel.plttLarge[i]);
+		memcpy(&reduction->accel.plttLarge[i * nLayer], &pltt[i * srcPitch], nLayer * sizeof(RxYiqColor));
 	}
 
 	return reduction->status;
@@ -2953,6 +3196,25 @@ RxStatus RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int
 
 	//in all cases, we load without the accelerator first
 	RxStatus status = RxiPaletteLoadUnaccelerated(reduction, pltt, nColors);
+	if (status != RX_STATUS_OK) return reduction->status = status;
+
+	if (nColors > 16) {
+		//number of colors is high enough to benefit from acceleration
+		RxiPaletteLoadAccelerated(reduction);
+	}
+
+	accel->initialized = 1;
+	return reduction->status;
+}
+
+static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors) {
+	RxPaletteAccelerator *accel = &reduction->accel;
+
+	//if an accelerator is loaded already, unload it.
+	RxPaletteFree(reduction);
+
+	//in all cases, we load without the accelerator first
+	RxStatus status = RxiPaletteLoadYiqUnaccelerated(reduction, pltt, nColors, srcPitch);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
 	if (nColors > 16) {

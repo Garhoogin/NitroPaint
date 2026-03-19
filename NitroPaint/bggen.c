@@ -1187,7 +1187,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 
 					COLOR32 *outPal = pals + palNo * maxPaletteSize + paletteOffset + !paletteOffset;
 					for (int i = 0; i < paletteSize - !paletteOffset; i++) {
-						outPal[i] = reduction->paletteRgb[i];
+						outPal[i] = reduction->paletteRgb[i][0];
 					}
 					qsort(outPal, paletteSize - !paletteOffset, sizeof(COLOR32), RxColorLightnessComparator);
 					if (paletteOffset == 0) pals[palNo * maxPaletteSize] = 0xFF00FF;

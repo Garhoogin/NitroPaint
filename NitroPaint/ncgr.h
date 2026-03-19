@@ -45,6 +45,7 @@ typedef struct NCGR_{
 	int isExChar;             // is extended character data
 	int isIntermediate;       // is intermediate file?
 	unsigned char **tiles;
+	unsigned char *charbuf;   // character data buffer
 	CHAR_SLICE *slices;       // for Ghost Trick files
 	int nSlices;              // for Ghost Trick files
 } NCGR;

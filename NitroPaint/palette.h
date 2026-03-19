@@ -12,13 +12,16 @@
 #endif
 #endif
 
-#define BALANCE_DEFAULT      20 // Balance/Color Balance default setting
-#define BALANCE_MIN           1 // Balance/Color Balance minimum setting
-#define BALANCE_MAX          39 // Balance/Color Balance maximum setting
+#define BALANCE_DEFAULT          20 // Balance/Color Balance default setting
+#define BALANCE_MIN               1 // Balance/Color Balance minimum setting
+#define BALANCE_MAX              39 // Balance/Color Balance maximum setting
 
-#define RECLUSTER_DEFAULT     8 // Default number of reclusters applied to the color palette
+#define RECLUSTER_DEFAULT         8 // Default number of reclusters applied to the color palette
 
-#define RX_PALETTE_MAX_SIZE 256 // Maximum created color palette size
+#define RX_PALETTE_MAX_SIZE     256 // Maximum created color palette size
+#define RX_PALETTE_MAX_COUNT     16 // Maximum simultaneously generated palettes
+
+#define RX_HISTOGRAM_SIZE   0x20000
 
 #define RX_GAMMA 1.27
 
@@ -38,11 +41,14 @@
 //   RX_STATUS_INVALID           One or more of the parameters were invalid. This status code is
 //                               not retained and only returned by the API that generated the
 //                               error.
+//   RX_STATUS_INCORRECT_STATE   An operation was requested on the reduction context while it was
+//                               in an incorrect state.
 // -----------------------------------------------------------------------------------------------
 typedef enum RxStatus_ {
 	RX_STATUS_OK,                             // The operation was successful
 	RX_STATUS_NOMEM,                          // The operation failed due to insufficient memory
-	RX_STATUS_INVALID                         // The parameters were invalid
+	RX_STATUS_INVALID,                        // The parameters were invalid
+	RX_STATUS_INCORRECT_STATE                 // The state was incorrect for the request
 } RxStatus;
 
 // -----------------------------------------------------------------------------------------------
@@ -328,13 +334,6 @@ typedef enum RxAlphaMode_ {
 	RX_ALPHA_PALETTE      // alpha values are part of the color palette.
 } RxAlphaMode;
 
-typedef struct RxRgbColor_ {
-	int r;
-	int g;
-	int b;
-	int a;
-} RxRgbColor;
-
 typedef union RxYiqColor_ {
 	struct {
 		float y;
@@ -349,24 +348,24 @@ typedef union RxYiqColor_ {
 
 //histogram linked list entry as secondary sorting
 typedef struct RxHistEntry_ {
-	RxYiqColor color;
-	struct RxHistEntry_ *next;
-	int entry;
-	double weight;
-	double value;
+	int entry;                    // nearest cluster index mapped to
+	struct RxHistEntry_ *next;    // pointer to the next histogram entry in the bucket
+	double weight;                // weight of this histogram entry
+	double value;                 // used for PCA: dot product with PC1
+	RxYiqColor color[];           // color of this histogram node
 } RxHistEntry;
 
 //structure for a node in the color tree
 typedef struct RxColorNode_ {
-	RxYiqColor color;
-	double weight;
-	double priority;
-	int canSplit;
-	int pivotIndex;
-	int startIndex;
-	int endIndex;
-	struct RxColorNode_ *left;
-	struct RxColorNode_ *right;
+	double weight;                 // weight associated with this node
+	double priority;               // node-splitting priority
+	int canSplit;                  // indicates whether this node is allowed to be split
+	int pivotIndex;                // calculated pivot index for this node
+	int startIndex;                // starting index in the flat histogram
+	int endIndex;                  // ending index (non-inclusive) for this node
+	struct RxColorNode_ *left;     // left child node, if one exists
+	struct RxColorNode_ *right;    // right child node, if one exists
+	RxYiqColor color[];            // this node's color information
 } RxColorNode;
 
 //allocator for allocating the linked lists
@@ -385,19 +384,29 @@ typedef struct RxHistogram_ {
 	int firstSlot;
 } RxHistogram;
 
+typedef struct RxPcaWork_ {
+	double x[4 * RX_PALETTE_MAX_COUNT];
+	double means[4 * RX_PALETTE_MAX_COUNT];
+	double cov[4 * RX_PALETTE_MAX_COUNT][4 * RX_PALETTE_MAX_COUNT];
+	double z[4 * RX_PALETTE_MAX_COUNT];
+	double e[4 * RX_PALETTE_MAX_COUNT];
+	double b[4 * RX_PALETTE_MAX_COUNT];
+	double E[4 * RX_PALETTE_MAX_COUNT][4 * RX_PALETTE_MAX_COUNT];
+} RxPcaWork;
+
 //struct for totaling a bucket in reclustering
 typedef struct {
-	double y;
-	double i;
-	double q;
-	double a;
+	double y[RX_PALETTE_MAX_COUNT];
+	double i[RX_PALETTE_MAX_COUNT];
+	double q[RX_PALETTE_MAX_COUNT];
+	double a[RX_PALETTE_MAX_COUNT];
 	double weight;
 	double error;
 	unsigned int count;
 } RxTotalBuffer;
 
 typedef struct RxPaletteMapEntry_ {
-	RxYiqColor color;
+	RxYiqColor color[RX_PALETTE_MAX_COUNT];
 	unsigned int index;
 	double sortVal;
 } RxPaletteMapEntry;
@@ -414,15 +423,15 @@ typedef struct RxPaletteAccelNode_ {
 } RxPaletteAccelNode;
 
 typedef struct RxPaletteAccelerator_ {
-	int initialized;                      // marks that a palette has been loaded
-	int useAccelerator;                   // marks that the loaded palette is using the accelerator
-	RxPaletteAccelNode root;              // the root node of the accelerator
-	RxPaletteMapEntry *pltt;              // palette mapping entries used by the accelerator
-	RxPaletteAccelNode *nodebuf;          // accelerator working memory
+	int initialized;                                  // marks that a palette has been loaded
+	int useAccelerator;                               // marks that the loaded palette is using the accelerator
+	RxPaletteAccelNode root;                          // the root node of the accelerator
+	RxPaletteMapEntry *pltt;                          // palette mapping entries used by the accelerator
+	RxPaletteAccelNode *nodebuf;                      // accelerator working memory
 
-	RxYiqColor plttSmall[16];             // palette buffer used for small palettes
-	RxYiqColor *plttLarge;                // pointer to palette buffer (heap allocated or pointer to small)
-	unsigned int nPltt;                   // number of palette colors loaded
+	RxYiqColor plttSmall[16 * RX_PALETTE_MAX_COUNT];  // palette buffer used for small palettes
+	RxYiqColor *plttLarge;                            // pointer to palette buffer (heap allocated or pointer to small)
+	unsigned int nPltt;                               // number of palette colors loaded
 } RxPaletteAccelerator;
 
 //progress update callback function
@@ -465,27 +474,31 @@ struct RxReduction_ {
 #endif
 	};
 	RxStatus status;
-	int nPaletteColors;
-	int nUsedColors;
+	RxYiqColor tempLayeredColor[RX_PALETTE_MAX_COUNT];
+	double splitAxis[4 * RX_PALETTE_MAX_COUNT];
+	unsigned int nPaletteColors;
+	unsigned int nUsedColors;
+	unsigned int paletteLayers;
 	int enhanceColors;
 	int nReclusters;
 	int reclusterIteration;
-	int nPinnedClusters;
+	unsigned int nPinnedClusters;
 	double lastSSE;
 	COLOR32 (*maskColors) (COLOR32 col);
 	RxAlphaMode alphaMode;
 	float fAlphaThreshold;
 	RxHistogram *histogram;
 	RxHistEntry **histogramFlat;
+	RxPcaWork pcaWork;
 	RxPaletteAccelerator accel;
 	unsigned int newCentroids[RX_PALETTE_MAX_SIZE];
 	RxTotalBuffer blockTotals[RX_PALETTE_MAX_SIZE];
 	RxColorNode *colorTreeHead;
 	RxColorNode *colorBlocks[RX_PALETTE_MAX_SIZE];
-	COLOR32 paletteRgb[RX_PALETTE_MAX_SIZE];
-	COLOR32 paletteRgbCopy[RX_PALETTE_MAX_SIZE];
-	RxYiqColor paletteYiq[RX_PALETTE_MAX_SIZE];
-	RxYiqColor paletteYiqCopy[RX_PALETTE_MAX_SIZE];
+	COLOR32 paletteRgb[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
+	COLOR32 paletteRgbCopy[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
+	RxYiqColor paletteYiq[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
+	RxYiqColor paletteYiqCopy[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
 	RxProgressCallback progressCallback;
 	void *progressCallbackData;
 	double meanY;
@@ -606,6 +619,30 @@ void RxAssumeCompositingDistribution(
 	RxReduction   *reduction,
 	const COLOR32 *cols, 
 	unsigned int   nCols
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxSetPaletteLayers
+//
+// Sets the number of palette layers the color reduction context will process.
+//
+// By default, the reduction context assumes one palette layer. When set greater than 1, multiple
+// layers of colors are processed jointly. The input image data is assumed to take on this many
+// layers, and this many palettes are output during normal color reduction. This would be used
+// to create palette-swap graphics data from a set of input bitmaps.
+//
+// Image data passed to RxHistAdd is now assumed to be indexed as:
+//   px[layer][y][x]
+//
+// Color data psssed to RxHistAdd color is now processed as:
+//   color[layer].{y|i|q|a}
+//
+// Palette data is now output indexed as:
+//   palette[layer][i]
+// -----------------------------------------------------------------------------------------------
+RxStatus RxSetPaletteLayers(
+	RxReduction *reduction,
+	unsigned int nLayers
 );
 
 // -----------------------------------------------------------------------------------------------

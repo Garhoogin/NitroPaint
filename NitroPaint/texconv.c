@@ -381,9 +381,9 @@ static int TxiCreatePaletteFromHistogram(RxReduction *reduction, int nColors, CO
 
 	//extract created palette
 	int nUsed = reduction->nUsedColors;
-	memcpy(out, reduction->paletteRgb, nUsed * sizeof(COLOR32));
-	for (int i = nUsed; i < nColors; i++) {
-		out[i] = 0xFF000000;
+	for (int i = 0; i < nUsed; i++) {
+		if (i < nUsed) out[i] = reduction->paletteRgb[i][0];
+		else           out[i] = 0xFF000000;
 	}
 
 	qsort(out, nColors, sizeof(COLOR32), RxColorLightnessComparator);
@@ -451,7 +451,7 @@ static void TxiComputeEndpointsFromHistogram(RxReduction *reduction, int transpa
 	COLOR32 colors[2];
 	int nColors = 0;
 	for (int i = 0; i < reduction->histogram->nEntries; i++) {
-		COLOR32 col = RxConvertYiqToRgb(&reduction->histogramFlat[i]->color);
+		COLOR32 col = RxConvertYiqToRgb(&reduction->histogramFlat[i]->color[0]);
 
 		//round to 15-bit color for counting
 		col = ColorRoundToDS15(col) | 0xFF000000;
@@ -495,8 +495,8 @@ static void TxiComputeEndpointsFromHistogram(RxReduction *reduction, int transpa
 	RxHistEntry *firstEntry = reduction->histogramFlat[0];
 	RxHistEntry *lastEntry = reduction->histogramFlat[reduction->histogram->nEntries - 1];
 
-	COLOR32 full1 = RxConvertYiqToRgb(&firstEntry->color);
-	COLOR32 full2 = RxConvertYiqToRgb(&lastEntry->color);
+	COLOR32 full1 = RxConvertYiqToRgb(&firstEntry->color[0]);
+	COLOR32 full2 = RxConvertYiqToRgb(&lastEntry->color[0]);
 
 	//round to nearest colors.
 	COLOR c1 = ColorConvertToDS(full1);
