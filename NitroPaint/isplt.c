@@ -356,6 +356,17 @@ static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *
 	return reduction->maskColors(RxConvertYiqToRgb(yiq));
 }
 
+static inline void RxiColorSubtract(RxYiqColor *result, RxYiqColor *a, RxYiqColor *b) {
+#ifndef RX_SIMD
+	result->y = a->y - b->y;
+	result->i = a->i - b->i;
+	result->q = a->q - b->q;
+	result->a = a->a - b->a;
+#else
+	result->yiq = _mm_sub_ps(a->yiq, b->yiq);
+#endif
+}
+
 static inline void RxiColorMakeOpaque(RxYiqColor *yiq) {
 	RX_ASSUME(yiq->a != 0.0f);  // a fully transparent color has no meaningful color information
 
@@ -379,6 +390,42 @@ static inline void RxiColorMakeTransparent(RxYiqColor *yiq) {
 	yiq->a = 0.0f;
 #else
 	yiq->yiq = _mm_setzero_ps();
+#endif
+}
+
+static inline void RxiColorMakeBlack(RxYiqColor *yiq) {
+	//set YIQ channels to 0, leaving alpha unchanged
+#ifndef RX_SIMD
+	yiq->y = 0.0f;
+	yiq->i = 0.0f;
+	yiq->q = 0.0f;
+#else
+	yiq->yiq = _mm_and_ps(yiq->yiq, _mm_castsi128_ps(_mm_setr_epi32(0, 0, 0, -1)));
+#endif
+}
+
+static inline void RxiColorMakeWhite(RxYiqColor *yiq) {
+	//set Y channel to 511 (scaled by alpha), and IQ channels to 0
+#ifndef RX_SIMD
+	yiq->y = 511.0f * yiq->a;
+	yiq->i = 0.0f;
+	yiq->q = 0.0f;
+#else
+	__m128 yiqVec = yiq->yiq;
+	__m128 aVec = _mm_shuffle_ps(yiqVec, yiqVec, _MM_SHUFFLE(3, 3, 3, 3));
+	yiq->yiq = _mm_mul_ps(_mm_setr_ps(511.0f, 0.0f, 0.0f, 1.0f), aVec);
+#endif
+}
+
+static inline void RxiColorScale(RxYiqColor *yiq, float scale) {
+#ifndef RX_SIMD
+	yiq->y *= scale;
+	yiq->i *= scale;
+	yiq->q *= scale;
+	yiq->a *= scale;
+#else
+	__m128 vScale = _mm_set1_ps(scale);
+	yiq->yiq = _mm_mul_ps(yiq->yiq, vScale);
 #endif
 }
 
@@ -589,6 +636,15 @@ int RxColorLightnessComparator(const void *d1, const void *d2) {
 
 	if (yiq1.y < yiq2.y) return -1;
 	if (yiq1.y > yiq2.y) return 1;
+	return 0;
+}
+
+static int RxiYiqComparator(const void *d1, const void *d2) {
+	const RxYiqColor *yiq1 = (const RxYiqColor *) d1;
+	const RxYiqColor *yiq2 = (const RxYiqColor *) d2;
+
+	if (yiq1->y < yiq2->y) return -1;
+	if (yiq1->y > yiq2->y) return  1;
 	return 0;
 }
 
@@ -2004,6 +2060,36 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	return reduction->status;
 }
 
+RxStatus RxSortPalette(RxReduction *reduction, RxFlag flag) {
+	unsigned int nSort = reduction->nPaletteColors;
+	if (flag & RX_FLAG_SORT_ONLY_USED) nSort = reduction->nUsedColors;
+
+	//sort the color palette
+	qsort(reduction->paletteYiq, nSort, sizeof(reduction->paletteYiq[0]), RxiYiqComparator);
+
+	//remake the RGB colors
+	for (unsigned int i = 0; i < nSort; i++) {
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			reduction->paletteRgb[i][j] = RxConvertYiqToRgb(&reduction->paletteYiq[i][j]);
+		}
+	}
+
+	return RX_STATUS_OK;
+}
+
+RxStatus RxGetPalette(RxReduction *reduction, COLOR32 *pltt, unsigned int iPltt) {
+	if (iPltt >= reduction->paletteLayers) return RX_STATUS_INVALID;
+
+	//we write all nPaletteColors: If the palette was sorted prior, only outputting nUsedColors would cause
+	//some colors to be left out of the palette! This is also the cleanest contract for the caller, ensuring
+	//that they need not check the nUsedColors field to know how many colors were written.
+	for (unsigned int i = 0; i < reduction->nPaletteColors; i++) {
+		pltt[i] = reduction->paletteRgb[i][iPltt];
+	}
+
+	return RX_STATUS_OK;
+}
+
 RxStatus RxHistClear(RxReduction *reduction) {
 	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 	reduction->histogramFlat = NULL;
@@ -2596,42 +2682,63 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 	//initial progress
 	RxiUpdateProgress(reduction, 0, height);
 
+	//the rest of the color reduction routine requires at least one row for the row buffer, but
+	//a 0-line bitmap may be trivially indexed.
+	if (height == 0) return RX_STATUS_OK;
+
 	//load palette into context
 	RxStatus status = RxPaletteLoad(reduction, palette, nColors);
 	if (status != RX_STATUS_OK) return status;
 
-	RxYiqColor *rowbuf = (RxYiqColor *) RxMemCalloc(4 * (width + 2), sizeof(RxYiqColor));
-	if (rowbuf == NULL) {
-		//no memory
-		RxPaletteFree(reduction);
-		RxMemFree(rowbuf);
-		return RX_STATUS_NOMEM;
+	unsigned int nLayers = reduction->paletteLayers;
+	unsigned int nPxSrc = width * height;
+
+	//allocate the 4 row buffers
+	unsigned int linebufSize = 4 * (width + 2) * nLayers;
+
+	RxYiqColor *rowbuf = reduction->imgBuffer;
+	if (linebufSize > RX_TEMP_IMG_BUF_SIZE) {
+		rowbuf = (RxYiqColor *) RxMemCalloc(linebufSize, sizeof(RxYiqColor));
+		if (rowbuf == NULL) {
+			//no memory
+			RxPaletteFree(reduction);
+			RxMemFree(rowbuf);
+			return RX_STATUS_NOMEM;
+		}
 	}
 
-	//allocate row buffers for color and diffuse.
-	RxYiqColor *thisRow = rowbuf;
-	RxYiqColor *lastRow = thisRow + (width + 2);
-	RxYiqColor *thisDiffuse = lastRow + (width + 2);
-	RxYiqColor *nextDiffuse = thisDiffuse + (width + 2);
+	//each of the four row buffers:
+	RxYiqColor *thisRow = rowbuf;                                   // the color vector for the current scanline
+	RxYiqColor *lastRow = thisRow + (width + 2) * nLayers;          // the color vector for the previous scanline
+	RxYiqColor *thisDiffuse = lastRow + (width + 2) * nLayers;      // the diffuse vector for the current scanline
+	RxYiqColor *nextDiffuse = thisDiffuse + (width + 2) * nLayers;  // the diffuse vector for the next scanline
 
-	//fill the last row with the first row, just to make sure we don't run out of bounds
-	for (unsigned int i = 0; i < width; i++) {
-		RxConvertRgbToYiq(img[i], &lastRow[i + 1]);
+	//fill the previous-row buffer with the first row, to make sure we don't run out of bounds
+	for (unsigned int i = 0; i < nLayers; i++) {
+		COLOR32 *rgbRow = img + i * nPxSrc + 0 * width;
+
+		for (unsigned int x = 0; x < width; x++) {
+			RxConvertRgbToYiq(rgbRow[x], &lastRow[nLayers * (x + 1) + i]);
+		}
 	}
-	memcpy(lastRow, lastRow + 1, sizeof(RxYiqColor));
-	memcpy(lastRow + (width + 1), lastRow + width, sizeof(RxYiqColor));
+	memcpy(&lastRow[nLayers * (0)], &lastRow[nLayers * 1], nLayers * sizeof(RxYiqColor));
+	memcpy(&lastRow[nLayers * (width + 1)], &lastRow[nLayers * width], nLayers * sizeof(RxYiqColor));
 
 	//start dithering, do so in a serpentine path.
 	for (unsigned int y = 0; y < height; y++) {
 
 		//which direction?
 		int hDirection = (y & 1) ? -1 : 1;
-		COLOR32 *rgbRow = img + y * width;
-		for (unsigned int x = 0; x < width; x++) {
-			RxConvertRgbToYiq(rgbRow[x], &thisRow[x + 1]);
+
+		for (unsigned int i = 0; i < nLayers; i++) {
+			COLOR32 *rgbRow = img + i * nPxSrc + y * width;
+
+			for (unsigned int x = 0; x < width; x++) {
+				RxConvertRgbToYiq(rgbRow[x], &thisRow[nLayers * (x + 1) + i]);
+			}
 		}
-		memcpy(&thisRow[0], &thisRow[1], sizeof(RxYiqColor));
-		memcpy(&thisRow[width + 1], &thisRow[width], sizeof(RxYiqColor));
+		memcpy(&thisRow[nLayers * (0)], &thisRow[nLayers * 1], nLayers * sizeof(RxYiqColor));
+		memcpy(&thisRow[nLayers * (width + 1)], &thisRow[nLayers * width], nLayers * sizeof(RxYiqColor));
 
 		//scan across
 		unsigned int startPos = (hDirection == 1) ? 0 : (width - 1);
@@ -2640,154 +2747,162 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 			//take a sample of pixels nearby. This will be a gauge of variance around this pixel, and help
 			//determine if dithering should happen. Weight the sampled pixels with respect to distance from center.
 
-			RxYiqColor colorYiq;
+			RxYiqColor colorYiq[RX_PALETTE_MAX_COUNT];
 			if (adaptive) {
+				for (unsigned int i = 0; i < nLayers; i++) {
 #ifndef RX_SIMD
-				colorYiq.y = (thisRow[x + 1].y + thisRow[x + 2].y + thisRow[x].y + lastRow[x + 1].y) * 0.1875f + (lastRow[x].y + lastRow[x + 2].y) * 0.125f;
-				colorYiq.i = (thisRow[x + 1].i + thisRow[x + 2].i + thisRow[x].i + lastRow[x + 1].i) * 0.1875f + (lastRow[x].i + lastRow[x + 2].i) * 0.125f;
-				colorYiq.q = (thisRow[x + 1].q + thisRow[x + 2].q + thisRow[x].q + lastRow[x + 1].q) * 0.1875f + (lastRow[x].q + lastRow[x + 2].q) * 0.125f;
-				colorYiq.a = (thisRow[x + 1].a + thisRow[x + 2].a + thisRow[x].a + lastRow[x + 1].a) * 0.1875f + (lastRow[x].a + lastRow[x + 2].a) * 0.125f;
+					colorYiq[i].y = (thisRow[nLayers * (x + 1) + i].y + thisRow[nLayers * (x + 2) + i].y + thisRow[nLayers * x + i].y + lastRow[nLayers * (x + 1) + i].y)
+						* 0.1875f + (lastRow[nLayers * (x + 0) + i].y + lastRow[nLayers * (x + 2) + i].y) * 0.125f;
+					colorYiq[i].i = (thisRow[nLayers * (x + 1) + i].i + thisRow[nLayers * (x + 2) + i].i + thisRow[nLayers * x + i].i + lastRow[nLayers * (x + 1) + i].i)
+						* 0.1875f + (lastRow[nLayers * (x + 0) + i].i + lastRow[nLayers * (x + 2) + i].i) * 0.125f;
+					colorYiq[i].q = (thisRow[nLayers * (x + 1) + i].q + thisRow[nLayers * (x + 2) + i].q + thisRow[nLayers * x + i].q + lastRow[nLayers * (x + 1) + i].q)
+						* 0.1875f + (lastRow[nLayers * (x + 0) + i].q + lastRow[nLayers * (x + 2) + i].q) * 0.125f;
+					colorYiq[i].a = (thisRow[nLayers * (x + 1) + i].a + thisRow[nLayers * (x + 2) + i].a + thisRow[nLayers * x + i].a + lastRow[nLayers * (x + 1) + i].a)
+						* 0.1875f + (lastRow[nLayers * (x + 0) + i].a + lastRow[nLayers * (x + 2) + i].a) * 0.125f;
 #else
-				__m128 vec1 = _mm_add_ps(_mm_add_ps(thisRow[x + 1].yiq, thisRow[x + 2].yiq), _mm_add_ps(thisRow[x].yiq, lastRow[x + 1].yiq));
-				__m128 vec2 = _mm_add_ps(lastRow[x].yiq, lastRow[x + 2].yiq);
+					__m128 vec1 = _mm_add_ps(_mm_add_ps(thisRow[nLayers * (x + 1) + i].yiq, thisRow[nLayers * (x + 2) + i].yiq),
+						_mm_add_ps(thisRow[nLayers * x + i].yiq, lastRow[nLayers * (x + 1) + i].yiq));
+					__m128 vec2 = _mm_add_ps(lastRow[nLayers * x + i].yiq, lastRow[nLayers * (x + 2) + i].yiq);
 
-				colorYiq.yiq = _mm_add_ps(_mm_mul_ps(vec1, _mm_set1_ps(0.1875f)), _mm_mul_ps(vec2, _mm_set1_ps(0.125f)));
+					colorYiq[i].yiq = _mm_add_ps(_mm_mul_ps(vec1, _mm_set1_ps(0.1875f)), _mm_mul_ps(vec2, _mm_set1_ps(0.125f)));
+				}
 #endif
 			} else {
 				//no adaptive diffuse -> no local noise checking
-				memcpy(&colorYiq, &thisRow[x + 1], sizeof(RxYiqColor));
+				memcpy(colorYiq, &thisRow[nLayers * (x + 1)], nLayers * sizeof(RxYiqColor));
 			}
 
 			//match it to a palette color. We'll measure distance to it as well.
 			double paletteDistance = 0.0;
-			int matched = RxPaletteFindClosestColorYiq(reduction, &colorYiq, &paletteDistance);
+			int matched = RxPaletteFindClosestColorYiq(reduction, colorYiq, &paletteDistance);
 
 			//now measure distance from the actual color to its average surroundings
-			RxYiqColor *centerYiq = &thisRow[x + 1];
-			double centerDistance = RxiComputeColorDifference(reduction, centerYiq, &colorYiq);
+			RxYiqColor *centerYiq = &thisRow[nLayers * (x + 1)];
+			double centerDistance = RxiComputeLayeredColorDifference(reduction, centerYiq, colorYiq) / nLayers;
 
 			//now test: Should we dither?
 			double yw2 = reduction->yWeight2;
 			if (diffuse > 0.0f && (!adaptive || (centerDistance < 110.0 * yw2 && paletteDistance >  2.0 * yw2))) {
+				RxYiqColor diffuseVec[RX_PALETTE_MAX_COUNT];
+				memcpy(diffuseVec, &thisDiffuse[nLayers * (x + 1)], nLayers * sizeof(RxYiqColor));
 
-				RxYiqColor diffuseVec;
-				diffuseVec.y = thisDiffuse[x + 1].y * diffuse;
-				diffuseVec.i = thisDiffuse[x + 1].i * diffuse;
-				diffuseVec.q = thisDiffuse[x + 1].q * diffuse;
-				diffuseVec.a = thisDiffuse[x + 1].a * diffuse;
-				if (adaptive) {
-					diffuseVec.y = (float) RxiDiffuseCurveY(diffuseVec.y);
-					diffuseVec.i = (float) RxiDiffuseCurveI(diffuseVec.i);
-					diffuseVec.q = (float) RxiDiffuseCurveQ(diffuseVec.q);
-					diffuseVec.a = (float) RxiDiffuseCurveA(diffuseVec.a);
-				}
+				for (unsigned int i = 0; i < nLayers; i++) {
+					RxiColorScale(&diffuseVec[i], diffuse);
 
-				if (flag & RX_FLAG_NO_ALPHA_DITHER) {
-					//diffuse into the current color. We must unmultiply and remultiply by alpha.
-					if (colorYiq.a != 0.0f) {
-						float aFactor = 1.0f + diffuseVec.a / colorYiq.a;
-						colorYiq.y *= aFactor;
-						colorYiq.i *= aFactor;
-						colorYiq.q *= aFactor;
+					//in adaptive diffusion mode, we apply a tapering curve to the diffusion amount. This has the effect
+					//of reducing extreme noise that may result from dithering. The curves limit both the immediate
+					//intensity of diffusion, as well as the distance the diffusion travels. In cases where this would
+					//appear, it's usually unsightly anyways. Adaptive diffusion does not work well when the palette is not
+					//well-fit to the image data however, and color reduction error tends to be larger.
+					if (adaptive) {
+						diffuseVec[i].y = (float) RxiDiffuseCurveY(diffuseVec[i].y);
+						diffuseVec[i].i = (float) RxiDiffuseCurveI(diffuseVec[i].i);
+						diffuseVec[i].q = (float) RxiDiffuseCurveQ(diffuseVec[i].q);
+						diffuseVec[i].a = (float) RxiDiffuseCurveA(diffuseVec[i].a);
 					}
 
-					float colorA2 = colorYiq.a + diffuseVec.a;
-					diffuseVec.y *= colorA2;
-					diffuseVec.i *= colorA2;
-					diffuseVec.q *= colorA2;
-					diffuseVec.a = 0.0f;
-				} else {
-					//alpha dithering is enabled, so we diffuse directly without adjustment.
-				}
+					if (flag & RX_FLAG_NO_ALPHA_DITHER) {
+						//diffuse into the current color. We must unmultiply and remultiply by alpha. Doing this scales the
+						//error diffused by the alpha value of the source pixel (i.e. more transparent pixels diffuse less
+						//error to their neighbors), and the alpha diffusion is canceled.
+						if (colorYiq[i].a != 0.0f) {
+							float aFactor = 1.0f + diffuseVec[i].a / colorYiq[i].a;
+							colorYiq[i].y *= aFactor;
+							colorYiq[i].i *= aFactor;
+							colorYiq[i].q *= aFactor;
+						}
 
-				//apply the diffusion
+						RxiColorScale(&diffuseVec[i], colorYiq[i].a + diffuseVec[i].a);
+						diffuseVec[i].a = 0.0f;
+					} else {
+						//alpha dithering is enabled, so we diffuse directly without adjustment.
+					}
+
+					//apply the diffusion
 #ifndef RX_SIMD
-				colorYiq.y += diffuseVec.y;
-				colorYiq.i += diffuseVec.i;
-				colorYiq.q += diffuseVec.q;
-				colorYiq.a += diffuseVec.a;
+					colorYiq[i].y += diffuseVec[i].y;
+					colorYiq[i].i += diffuseVec[i].i;
+					colorYiq[i].q += diffuseVec[i].q;
+					colorYiq[i].a += diffuseVec[i].a;
 #else
-				colorYiq.yiq = _mm_add_ps(colorYiq.yiq, diffuseVec.yiq);
+					colorYiq[i].yiq = _mm_add_ps(colorYiq[i].yiq, diffuseVec[i].yiq);
 #endif
 
-				if (colorYiq.a < 0.0f) {
-					//normalize to alpha=0
-					RxiColorMakeTransparent(&colorYiq);
-				} else {
-					//clamp Y channel
-					if (colorYiq.y < 0.0f) {
-						colorYiq.y = 0.0f;
-						colorYiq.i = 0.0f;
-						colorYiq.q = 0.0f;
-					} else if (colorYiq.y > 511.0f * colorYiq.a) {
-						colorYiq.y = 511.0f * colorYiq.a;
-						colorYiq.i = 0.0f;
-						colorYiq.q = 0.0f;
-					}
+					if (colorYiq[i].a < 0.0f) {
+						//normalize to alpha=0
+						RxiColorMakeTransparent(&colorYiq[i]);
+					} else {
+						//clamp Y channel
+						if (colorYiq[i].y < 0.0f) {
+							RxiColorMakeBlack(&colorYiq[i]);
+						} else if (colorYiq[i].y > 511.0f * colorYiq[i].a) {
+							RxiColorMakeWhite(&colorYiq[i]);
+						}
 
-					if (colorYiq.a > 1.0f) {
-						//normalize to alpha=1
-						RxiColorMakeOpaque(&colorYiq);
+						if (colorYiq[i].a > 1.0f) {
+							//normalize to alpha=1
+							RxiColorMakeOpaque(&colorYiq[i]);
+						}
 					}
 				}
 
 				//match to palette color
-				matched = RxPaletteFindClosestColorYiq(reduction, &colorYiq, NULL);
-				RxYiqColor *chosenYiq = &reduction->accel.plttLarge[matched];
+				matched = RxPaletteFindClosestColorYiq(reduction, colorYiq, NULL);
+				RxYiqColor *chosenYiq = &reduction->accel.plttLarge[matched * nLayers];
 
 				//now diffuse to neighbors (mirrored with the scan direction):
 				//        X  7/16
 				// 3/16 5/16 1/16
-				RxYiqColor *diffuse21 = &thisDiffuse[x + 1 + hDirection];
-				RxYiqColor *diffuse12 = &nextDiffuse[x + 1];
-				RxYiqColor *diffuse22 = &nextDiffuse[x + 1 + hDirection];
-				RxYiqColor *diffuse02 = &nextDiffuse[x + 1 - hDirection];
+				RxYiqColor *diffuse21 = &thisDiffuse[nLayers * (x + 1 + hDirection)];
+				RxYiqColor *diffuse12 = &nextDiffuse[nLayers * (x + 1)];
+				RxYiqColor *diffuse22 = &nextDiffuse[nLayers * (x + 1 + hDirection)];
+				RxYiqColor *diffuse02 = &nextDiffuse[nLayers * (x + 1 - hDirection)];
 
-				RxYiqColor off;
-				if (flag & RX_FLAG_NO_ALPHA_DITHER) {
-					//alpha is not dithered, so we un-premultiply the colors and scale to palette alpha.
-					if (colorYiq.a > 0.0f) {
-						float chosenA = chosenYiq->a;
-						off.y = colorYiq.y * chosenA / colorYiq.a - chosenYiq->y;
-						off.i = colorYiq.i * chosenA / colorYiq.a - chosenYiq->i;
-						off.q = colorYiq.q * chosenA / colorYiq.a - chosenYiq->q;
-						off.a = 0.0f;
+				for (unsigned int i = 0; i < nLayers; i++) {
+					RxYiqColor off;
+
+					if (flag & RX_FLAG_NO_ALPHA_DITHER) {
+						//alpha is not dithered, so we un-premultiply the colors and scale to palette alpha.
+						if (colorYiq[i].a > 0.0f) {
+							float chosenA = chosenYiq[i].a;
+							off.y = colorYiq[i].y * chosenA / colorYiq[i].a - chosenYiq[i].y;
+							off.i = colorYiq[i].i * chosenA / colorYiq[i].a - chosenYiq[i].i;
+							off.q = colorYiq[i].q * chosenA / colorYiq[i].a - chosenYiq[i].q;
+							off.a = 0.0f;
+						} else {
+							//zero alpha, no color information to dither.
+							RxiColorMakeTransparent(&off);
+						}
 					} else {
-						//zero alpha, no color information to dither.
-						RxiColorMakeTransparent(&off);
+						//alpha is dithered, so we take the straight preultiplied difference to diffuse
+						//signal intensity.
+						RxiColorSubtract(&off, &colorYiq[i], &chosenYiq[i]);
 					}
-				} else {
-					//alpha is dithered, so we take the straight preultiplied difference to diffuse
-					//signal intensity.
-					off.y = colorYiq.y - chosenYiq->y;
-					off.i = colorYiq.i - chosenYiq->i;
-					off.q = colorYiq.q - chosenYiq->q;
-					off.a = colorYiq.a - chosenYiq->a;
-				}
 
 #ifndef RX_SIMD
-				diffuse21->y += off.y * 0.4375f; // 7/16
-				diffuse21->i += off.i * 0.4375f;
-				diffuse21->q += off.q * 0.4375f;
-				diffuse21->a += off.a * 0.4375f;
-				diffuse12->y += off.y * 0.3125f; // 5/16
-				diffuse12->i += off.i * 0.3125f;
-				diffuse12->q += off.q * 0.3125f;
-				diffuse12->a += off.a * 0.3125f;
-				diffuse02->y += off.y * 0.1875f; // 3/16
-				diffuse02->i += off.i * 0.1875f;
-				diffuse02->q += off.q * 0.1875f;
-				diffuse02->a += off.a * 0.1875f;
-				diffuse22->y += off.y * 0.0625f; // 1/16
-				diffuse22->i += off.i * 0.0625f;
-				diffuse22->q += off.q * 0.0625f;
-				diffuse22->a += off.a * 0.0625f;
+					diffuse21[i].y += off.y * 0.4375f; // 7/16
+					diffuse21[i].i += off.i * 0.4375f;
+					diffuse21[i].q += off.q * 0.4375f;
+					diffuse21[i].a += off.a * 0.4375f;
+					diffuse12[i].y += off.y * 0.3125f; // 5/16
+					diffuse12[i].i += off.i * 0.3125f;
+					diffuse12[i].q += off.q * 0.3125f;
+					diffuse12[i].a += off.a * 0.3125f;
+					diffuse02[i].y += off.y * 0.1875f; // 3/16
+					diffuse02[i].i += off.i * 0.1875f;
+					diffuse02[i].q += off.q * 0.1875f;
+					diffuse02[i].a += off.a * 0.1875f;
+					diffuse22[i].y += off.y * 0.0625f; // 1/16
+					diffuse22[i].i += off.i * 0.0625f;
+					diffuse22[i].q += off.q * 0.0625f;
+					diffuse22[i].a += off.a * 0.0625f;
 #else
-				diffuse21->yiq = _mm_add_ps(diffuse21->yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.4375f))); // 7/16
-				diffuse12->yiq = _mm_add_ps(diffuse12->yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.3125f))); // 5/16
-				diffuse02->yiq = _mm_add_ps(diffuse02->yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.1875f))); // 3/16
-				diffuse22->yiq = _mm_add_ps(diffuse22->yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.0625f))); // 1/16
+					diffuse21[i].yiq = _mm_add_ps(diffuse21[i].yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.4375f))); // 7/16
+					diffuse12[i].yiq = _mm_add_ps(diffuse12[i].yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.3125f))); // 5/16
+					diffuse02[i].yiq = _mm_add_ps(diffuse02[i].yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.1875f))); // 3/16
+					diffuse22[i].yiq = _mm_add_ps(diffuse22[i].yiq, _mm_mul_ps(off.yiq, _mm_set1_ps(0.0625f))); // 1/16
 #endif
+				}
 			} else {
 				//high noise area or dithering disabled, do not diffuse
 				matched = RxPaletteFindClosestColorYiq(reduction, centerYiq, NULL);
@@ -2795,10 +2910,17 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 
 			//put pixel
 			if (!(flag & RX_FLAG_NO_WRITEBACK)) {
-				COLOR32 chosen = palette[matched];
-				if (touchAlpha) img[x + y * width] = chosen;
-				else img[x + y * width] = (chosen & 0x00FFFFFF) | (img[x + y * width] & 0xFF000000);
+				for (unsigned int i = 0; i < nLayers; i++) {
+					const COLOR32 *plttI = &palette[i * nColors];
+					COLOR32 *imgI = img + i * nPxSrc;
+
+					COLOR32 chosen = plttI[matched];
+					if (touchAlpha) imgI[x + y * width] = chosen;
+					else imgI[x + y * width] = (chosen & 0x00FFFFFF) | (imgI[x + y * width] & 0xFF000000);
+				}
 			}
+
+			//put palette index
 			if (indices != NULL) indices[x + y * width] = matched;
 
 			x += hDirection;
@@ -2811,12 +2933,12 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 		temp = nextDiffuse;
 		nextDiffuse = thisDiffuse;
 		thisDiffuse = temp;
-		memset(nextDiffuse, 0, (width + 2) * sizeof(RxYiqColor));
+		memset(nextDiffuse, 0, nLayers * (width + 2) * sizeof(RxYiqColor));
 		RxiUpdateProgress(reduction, y + 1, height);
 	}
 
+	if (rowbuf != reduction->imgBuffer) RxMemFree(rowbuf);
 	RxPaletteFree(reduction);
-	RxMemFree(rowbuf);
 	return RX_STATUS_OK;
 }
 

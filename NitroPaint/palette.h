@@ -810,6 +810,44 @@ RxStatus RxComputePalette(
 );
 
 // -----------------------------------------------------------------------------------------------
+// Name: RxSortPalette
+//
+// Sorts the palette created and held in the color reduction context. By default, the palette is
+// not sorted. This applies the internal sorting rule to the palette.
+//
+// Parameters:
+//   reduction     The color reduction context.
+//   flag          Allows specifying how the colors should be sorted. If RX_FLAG_SORT_ONLY_USED
+//                 is specified, then only the colors produced are sorted. Otherwise, the
+//                 number of colors initially requested are sorted (inserting black palette colors
+//                 to fill space).
+// -----------------------------------------------------------------------------------------------
+RxStatus RxSortPalette(
+	RxReduction *reduction,
+	RxFlag      flag
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxGetPalette
+//
+// Retrieves the generated palette from the color reduction context.
+//
+// Parameters:
+//   reduction     The color reduction context.
+//   pltt          The output buffer to receive palette colors. This buffer should be large
+//                 enough to hold the number of colors passed to an earlier call to
+//                 RxComputePalette. All elements will be written to by this function, with
+//                 unused color slots receiving a black filler color.
+//   iPltt         The index of the palette to retrieve. This must be between 0 and the number
+//                 of palette layers minus 1.
+// -----------------------------------------------------------------------------------------------
+RxStatus RxGetPalette(
+	RxReduction *reduction,
+	COLOR32     *pltt,
+	unsigned int iPltt
+);
+
+// -----------------------------------------------------------------------------------------------
 // Name: RxCreatePaletteEx
 //
 // Creates a color palette for an image without reserving any color slots for transparency on a
