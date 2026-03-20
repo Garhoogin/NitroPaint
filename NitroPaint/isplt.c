@@ -893,7 +893,7 @@ static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *
 	for (unsigned int i = 0; i < nColors; i++) {
 		const RxYiqColor *yiq2 = &palette[i];
 
-		double diff = RxiComputeColorDifference(reduction, col, yiq2);
+		double diff = RxiComputeLayeredColorDifference(reduction, col, yiq2);
 		if (diff < leastDiff) {
 			leastDiff = diff;
 			leastIndex = i;
@@ -905,6 +905,7 @@ static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *
 }
 
 static int RxiPaletteFindClosestRgbColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, COLOR32 col, double *outDiff) {
+	//TODO: col: scalar color?
 	RxYiqColor yiq;
 	RxConvertRgbToYiq(col, &yiq);
 
@@ -1629,6 +1630,7 @@ static void RxiVoronoiMoveToCluster(RxReduction *reduction, RxHistEntry *entry, 
 
 static int RxiVoronoiIterate(RxReduction *reduction) {
 	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
+	unsigned int nLayers = reduction->paletteLayers;
 
 	//load the palette into the acceleration structure
 	RxPaletteLoadYiq(reduction, &reduction->paletteYiqCopy[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
@@ -1652,8 +1654,8 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		double largestDifference = 0.0, largestDifferenceReduction = 0.0;
 		int farthestIndex = -1;
 		for (int j = 0; j < nHistEntries; j++) {
-			RxHistEntry *entry = reduction->histogramFlat[j];               // histogram color
-			RxYiqColor *yiq1 = &reduction->paletteYiqCopy[entry->entry][0]; // ceontroid of the cluster the color belongs to
+			RxHistEntry *entry = reduction->histogramFlat[j];           // histogram color
+			RxYiqColor *yiq1 = reduction->paletteYiqCopy[entry->entry]; // ceontroid of the cluster the color belongs to
 
 			//do not move a cluster with only one member
 			if (totalsBuffer[entry->entry].count <= 1) continue;
@@ -1661,18 +1663,33 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 			//if we mask colors, check this entry against the palette with clamping. If they compare equal,
 			//then we say that this color is as close as it will be to a palette color and we won't include
 			//this in our search candidates.
-			COLOR32 histMasked = RxiMaskYiqToRgb(reduction, &entry->color[0]);
-			COLOR32 palMasked = RxiMaskYiqToRgb(reduction, yiq1);
-			if (histMasked == palMasked) continue; // this difference can't be reconciled
+			COLOR32 histMasked[RX_PALETTE_MAX_COUNT];
+			for (unsigned int k = 0; k < nLayers; k++) {
+				histMasked[k] = RxiMaskYiqToRgb(reduction, &entry->color[k]);
+			}
+
+			int same = 1;
+			for (unsigned int k = 0; k < nLayers; k++) {
+				COLOR32 palMasked = RxiMaskYiqToRgb(reduction, &yiq1[k]);
+
+				if (histMasked[k] != palMasked) {
+					//colors differ
+					same = 0;
+					break;
+				}
+			}
+			if (same) continue; // this difference can't be reconciled
 
 			//calculate the difference between the histogram color and its currently assigned best centroid.
 			double diff = RxiComputeColorDifference(reduction, yiq1, &entry->color[0]) * entry->weight;
 
 			//we subtract the difference to the new centroid to calcualate the reduction in the error sum of
 			//squares. The highest reduction is desired.
-			RxYiqColor yiqNewCentroid;
-			RxConvertRgbToYiq(histMasked, &yiqNewCentroid);
-			double newDifference = RxiComputeColorDifference(reduction, &entry->color[0], &yiqNewCentroid) * entry->weight;
+			RxYiqColor yiqNewCentroid[RX_PALETTE_MAX_COUNT];
+			for (unsigned int k = 0; k < reduction->paletteLayers; k++) {
+				RxConvertRgbToYiq(histMasked[k], &yiqNewCentroid[k]);
+			}
+			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, yiqNewCentroid) * entry->weight;
 			
 			double diffReduction = diff - newDifference;
 			if (diffReduction > 0.0 && diffReduction > largestDifferenceReduction) {
@@ -1682,8 +1699,8 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 				int found = 0;
 				for (unsigned int k = 0; k < nNewCentroids; k++) {
 					unsigned int idx = newCentroidIdxs[k];
-					//TODO: check all palette layers
-					if (reduction->paletteRgbCopy[idx][0] == histMasked) {
+					//check that all layers of the colors match
+					if (memcmp(reduction->paletteRgbCopy[idx], histMasked, nLayers * sizeof(COLOR32)) == 0) {
 						//remap to the existing centroid
 						RxiVoronoiMoveToCluster(reduction, entry, idx, newDifference, diff);
 						found = 1;
@@ -1704,7 +1721,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		if (farthestIndex != -1) {
 			//get RGB of new point (will be used when checking identical remapped colors)
 			RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
-			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			for (unsigned int j = 0; j < nLayers; j++) {
 				reduction->paletteRgbCopy[i][j] = RxiMaskYiqToRgb(reduction, &entry->color[j]);
 				RxConvertRgbToYiq(reduction->paletteRgbCopy[i][j], &reduction->paletteYiqCopy[i][j]);
 			}
@@ -1724,7 +1741,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		RxYiqColor yiq[RX_PALETTE_MAX_COUNT];
 		COLOR32 as32[RX_PALETTE_MAX_COUNT];
 
-		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+		for (unsigned int j = 0; j < nLayers; j++) {
 			RxiUnweightLongColor(&yiq[j], &totalsBuffer[i].sum[j], totalsBuffer[i].weight);
 
 			//mask color
@@ -1747,8 +1764,8 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 
 		//if the new cluster is an improvement over the old cluster
 		if (errNewCluster < totalsBuffer[i].error) {
-			memcpy(&reduction->paletteRgbCopy[i][0], as32, reduction->paletteLayers * sizeof(COLOR32));
-			memcpy(&reduction->paletteYiqCopy[i][0], yiq, reduction->paletteLayers * sizeof(RxYiqColor));
+			memcpy(reduction->paletteRgbCopy[i], as32, nLayers * sizeof(COLOR32));
+			memcpy(reduction->paletteYiqCopy[i], yiq, nLayers * sizeof(RxYiqColor));
 		}
 	}
 
@@ -3070,7 +3087,7 @@ static RxStatus RxiPaletteAlloc(RxReduction *reduction, unsigned int nCol) {
 	RxPaletteAccelerator *accel = &reduction->accel;
 	RX_ASSUME(accel->plttLarge == NULL);
 
-	if (nCol > sizeof(accel->plttSmall) / sizeof(accel->plttSmall[0])) {
+	if (nCol * reduction->paletteLayers > sizeof(accel->plttSmall) / sizeof(accel->plttSmall[0])) {
 		//above small threshold --> allocate on the heap
 		accel->plttLarge = (RxYiqColor *) RxMemCalloc(nCol * reduction->paletteLayers, sizeof(RxYiqColor));
 	} else {
@@ -3122,8 +3139,8 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 	}
 
 	for (unsigned int i = 0; i < nColors; i++) {
-		memcpy(&accel->pltt[i].color, &pltt[i], sizeof(RxYiqColor));
 		accel->pltt[i].index = i;
+		memcpy(accel->pltt[i].color, &pltt[i * reduction->paletteLayers], reduction->paletteLayers * sizeof(RxYiqColor));
 
 		if (alphaMode == RX_ALPHA_PIXEL) {
 			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
