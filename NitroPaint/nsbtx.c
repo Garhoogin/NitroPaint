@@ -474,7 +474,7 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 		texture->texImageParam = (texture->texImageParam & 0xFFFF0000) | ((ofs >> 3) & 0xFFFF);
 	}
 
-	unsigned int *paletteOffsets = (unsigned int *) calloc(nsbtx->nTextures, sizeof(unsigned int));
+	unsigned int *paletteOffsets = (unsigned int *) calloc(nsbtx->nPalettes, sizeof(unsigned int));
 	int has4Color = 0;
 	for (int i = 0; i < nsbtx->nPalettes; i++) {
 		PALETTE *palette = &nsbtx->palettes[i];
