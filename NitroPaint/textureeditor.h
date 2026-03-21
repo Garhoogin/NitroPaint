@@ -66,6 +66,7 @@ typedef struct {
 
 wchar_t *TexNarrowResourceNameToWideChar(const char *name);
 char *TexNarrowResourceNameFromWideChar(const wchar_t *name);
+void TexViewerChoosePaletteName(WCHAR *buffer, const WCHAR *file);
 
 void RegisterTextureEditorClass(void);
 

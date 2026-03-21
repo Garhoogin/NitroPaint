@@ -3235,7 +3235,7 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 	unsigned int nColors = accel->nPltt;
 	if (nColors > 0) {
 		nColors -= iStart;
-		pltt += iStart;
+		pltt += iStart * reduction->paletteLayers;
 	}
 
 	if (nColors == 0) return RX_STATUS_INVALID; // empty palette
@@ -3255,7 +3255,7 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 
 	if (accel->pltt == NULL || accel->nodebuf == NULL) {
 		//no memory
-		free(accel->pltt);
+		RxMemFree(accel->pltt);
 		free(accel->nodebuf);
 		return reduction->status = RX_STATUS_NOMEM;
 	}

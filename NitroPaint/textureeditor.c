@@ -1202,7 +1202,7 @@ static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-static void createPaletteName(WCHAR *buffer, const WCHAR *file) {
+void TexViewerChoosePaletteName(WCHAR *buffer, const WCHAR *file) {
 	//find the last \ or /
 	file = GetFileName(file);
 
@@ -1475,7 +1475,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			} else {
 				//generate a palette name
 				pname = (WCHAR *) calloc(16, sizeof(WCHAR));
-				createPaletteName(pname, data->szInitialFile);
+				TexViewerChoosePaletteName(pname, data->szInitialFile);
 			}
 
 			if (pname != NULL) {
