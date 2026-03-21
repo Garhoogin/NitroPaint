@@ -2060,12 +2060,53 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	return reduction->status;
 }
 
+static int RxiIsColorVectorAllEqual(const RxYiqColor *yiq, unsigned int n) {
+	//check colors 1...n-1
+	for (unsigned int i = 1; i < n; i++) {
+		if (memcmp(&yiq[i], &yiq[0], sizeof(RxYiqColor)) != 0) return 0;
+	}
+	return 1;
+}
+
 RxStatus RxSortPalette(RxReduction *reduction, RxFlag flag) {
 	unsigned int nSort = reduction->nPaletteColors;
 	if (flag & RX_FLAG_SORT_ONLY_USED) nSort = reduction->nUsedColors;
 
-	//sort the color palette
-	qsort(reduction->paletteYiq, nSort, sizeof(reduction->paletteYiq[0]), RxiYiqComparator);
+	//if the flag to move differing colors to the end was specified, we use the comparator that
+	//checks for shared colors.
+	if (flag & RX_FLAG_SORT_END_DIFFER) {
+		//sort by differ check, then Y of 1st palette
+		unsigned int nSame = 0;  // number of colors moved to the beginning of the palette
+		for (unsigned int i = 0; i < nSort; i++) {
+			RxYiqColor *yiq = reduction->paletteYiq[i];
+
+			if (RxiIsColorVectorAllEqual(yiq, reduction->paletteLayers)) {
+				//all components are the same: move to the beginning of the palette by swapping it out with
+				//whatever color was there
+				if (i > nSame) {
+					//swap colors
+					RxYiqColor temp[RX_PALETTE_MAX_COUNT];
+					memcpy(temp, &reduction->paletteYiq[nSame], sizeof(temp));
+					memcpy(&reduction->paletteYiq[nSame], &reduction->paletteYiq[i], sizeof(temp));
+					memcpy(&reduction->paletteYiq[i], temp, sizeof(temp));
+				}
+
+				nSame++;
+			} else {
+				//not all same, do nothing
+			}
+		}
+
+		//sort both halves of the palette
+		qsort(&reduction->paletteYiq[0], nSame, sizeof(reduction->paletteYiq[0]), RxiYiqComparator);
+		if (nSame < nSort) {
+			qsort(&reduction->paletteYiq[nSame], nSort - nSame, sizeof(reduction->paletteYiq[0]), RxiYiqComparator);
+		}
+
+	} else {
+		//sort only by Y channel of 1st palette
+		qsort(reduction->paletteYiq, nSort, sizeof(reduction->paletteYiq[0]), RxiYiqComparator);
+	}
 
 	//remake the RGB colors
 	for (unsigned int i = 0; i < nSort; i++) {

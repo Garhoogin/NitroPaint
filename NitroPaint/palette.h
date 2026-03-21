@@ -69,6 +69,9 @@ typedef enum RxStatus_ {
 //                               filled with black. This parameter controls whether to include
 //                               these unused slots in the final palette sorting process.
 //   RX_FLAG_SORT_ALL            The whole palette is sorted.
+//   RX_FLAG_SORT_END_DIFFER     When sorting a layered palette, this flag specifies that colors
+//                               that are the same across all layers are pushed to the beginning,
+//                               and colors that differ are pushed to the end.
 //
 // Alpha operation flags:
 //   RX_FLAG_ALPHA_MODE_NONE     Alpha processing does not take place.
@@ -98,21 +101,22 @@ typedef enum RxStatus_ {
 typedef enum RxFlag_ {
 	RX_FLAG_SORT_ALL            = (0x00<< 0), // sort the entire output palette
 	RX_FLAG_SORT_ONLY_USED      = (0x01<< 0), // only sorts the used portion of the palette
+	RX_FLAG_SORT_END_DIFFER     = (0x01<< 1), // sorts a layered palette with differing colors at the end
 
-	RX_FLAG_ALPHA_MODE_MASK     = (0x03<< 1), // mask for alpha modes
-	RX_FLAG_ALPHA_MODE_NONE     = (0x00<< 1), // no alpha awareness
-	RX_FLAG_ALPHA_MODE_RESERVE  = (0x01<< 1), // alpha is binary, and transparency is represented with a palette entry
-	RX_FLAG_ALPHA_MODE_PIXEL    = (0x02<< 1), // alpha is encoded per-pixel and discarded from the palette
-	RX_FLAG_ALPHA_MODE_PALETTE  = (0x03<< 1), // alpha is part of the color palette
+	RX_FLAG_ALPHA_MODE_MASK     = (0x03<< 2), // mask for alpha modes
+	RX_FLAG_ALPHA_MODE_NONE     = (0x00<< 2), // no alpha awareness
+	RX_FLAG_ALPHA_MODE_RESERVE  = (0x01<< 2), // alpha is binary, and transparency is represented with a palette entry
+	RX_FLAG_ALPHA_MODE_PIXEL    = (0x02<< 2), // alpha is encoded per-pixel and discarded from the palette
+	RX_FLAG_ALPHA_MODE_PALETTE  = (0x03<< 2), // alpha is part of the color palette
 
-	RX_FLAG_MASK_BITS           = (0x00<< 3), // color palette colors are masked to RGBA5551.
-	RX_FLAG_NO_MASK_BITS        = (0x01<< 3), // color palette colors are not masked
+	RX_FLAG_MASK_BITS           = (0x00<< 4), // color palette colors are masked to RGBA5551.
+	RX_FLAG_NO_MASK_BITS        = (0x01<< 4), // color palette colors are not masked
 
-	RX_FLAG_PRESERVE_ALPHA      = (0x00<< 4), // leaves the alpha channel unaffected in a color reduction operation.
-	RX_FLAG_NO_PRESERVE_ALPHA   = (0x01<< 4), // modifies the alpha channel in a color reduction operation.
-	RX_FLAG_NO_WRITEBACK        = (0x01<< 5), // suppresses writeback of RGB pixel data in color reduction
-	RX_FLAG_NO_ALPHA_DITHER     = (0x01<< 6), // the alpha channel will not be dithered
-	RX_FLAG_NO_ADAPTIVE_DIFFUSE = (0x01<< 7), // do not use the adaptive error diffusion
+	RX_FLAG_PRESERVE_ALPHA      = (0x00<< 5), // leaves the alpha channel unaffected in a color reduction operation.
+	RX_FLAG_NO_PRESERVE_ALPHA   = (0x01<< 5), // modifies the alpha channel in a color reduction operation.
+	RX_FLAG_NO_WRITEBACK        = (0x01<< 6), // suppresses writeback of RGB pixel data in color reduction
+	RX_FLAG_NO_ALPHA_DITHER     = (0x01<< 7), // the alpha channel will not be dithered
+	RX_FLAG_NO_ADAPTIVE_DIFFUSE = (0x01<< 8), // do not use the adaptive error diffusion
 } RxFlag;
 
 typedef enum RxAlphaMode_ {

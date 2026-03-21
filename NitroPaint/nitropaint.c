@@ -4867,7 +4867,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				RxHistAdd(reduction, imgCat, width, height);
 				RxHistFinalize(reduction);
 				RxComputePalette(reduction, plttSize - (c0xp ? 1 : 0));
-				RxSortPalette(reduction, RX_FLAG_SORT_ONLY_USED);
+				RxSortPalette(reduction, RX_FLAG_SORT_ONLY_USED | RX_FLAG_SORT_END_DIFFER);
 
 				//read palettes
 				for (unsigned int i = 0; i < data->nEntries; i++) {
