@@ -2080,11 +2080,18 @@ RxStatus RxSortPalette(RxReduction *reduction, RxFlag flag) {
 RxStatus RxGetPalette(RxReduction *reduction, COLOR32 *pltt, unsigned int iPltt) {
 	if (iPltt >= reduction->paletteLayers) return RX_STATUS_INVALID;
 
+	//when the alpha mode is "reserve", we write out a placeholder transparent black color in that slot.
+	unsigned int iStart = 0;
+	if (reduction->alphaMode == RX_ALPHA_RESERVE) {
+		iStart = 1;
+		pltt[0] = 0x00000000;
+	}
+
 	//we write all nPaletteColors: If the palette was sorted prior, only outputting nUsedColors would cause
 	//some colors to be left out of the palette! This is also the cleanest contract for the caller, ensuring
 	//that they need not check the nUsedColors field to know how many colors were written.
 	for (unsigned int i = 0; i < reduction->nPaletteColors; i++) {
-		pltt[i] = reduction->paletteRgb[i][iPltt];
+		pltt[i + iStart] = reduction->paletteRgb[i][iPltt];
 	}
 
 	return RX_STATUS_OK;

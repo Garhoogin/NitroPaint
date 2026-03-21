@@ -830,14 +830,14 @@ RxStatus RxSortPalette(
 // -----------------------------------------------------------------------------------------------
 // Name: RxGetPalette
 //
-// Retrieves the generated palette from the color reduction context.
+// Retrieves the generated palette from the color reduction context. The buffer should be big
+// enough to hold the number of colors passed to the last call to RxComputePalette on this
+// context. When the alpha mode is "reserve", an additional color slot is needed to
+// accommodate the reserved transparent color slot at the beginning of the palette.
 //
 // Parameters:
 //   reduction     The color reduction context.
-//   pltt          The output buffer to receive palette colors. This buffer should be large
-//                 enough to hold the number of colors passed to an earlier call to
-//                 RxComputePalette. All elements will be written to by this function, with
-//                 unused color slots receiving a black filler color.
+//   pltt          The output buffer to receive palette colors.
 //   iPltt         The index of the palette to retrieve. This must be between 0 and the number
 //                 of palette layers minus 1.
 // -----------------------------------------------------------------------------------------------

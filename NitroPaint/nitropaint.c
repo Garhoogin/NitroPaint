@@ -4871,7 +4871,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
 				//read palettes
 				for (unsigned int i = 0; i < data->nEntries; i++) {
-					RxGetPalette(reduction, pltt + plttSize * i + c0xp, i);
+					RxGetPalette(reduction, pltt + plttSize * i, i);
 				}
 
 				//index the images
