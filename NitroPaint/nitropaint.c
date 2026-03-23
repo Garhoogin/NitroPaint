@@ -1065,10 +1065,14 @@ typedef struct PaletteSwapData_ {
 	HWND hWndTextureFormat;
 	HWND hWndC0xp;
 	HWND hWndType;
+	HWND hWndDither;
+	HWND hWndDiffuse;
 	HWND hWndFileLabels[RX_PALETTE_MAX_COUNT];
 	HWND hWndPaletteNames[RX_PALETTE_MAX_COUNT];
 	HWND hWndUpButtons[RX_PALETTE_MAX_COUNT];
 	HWND hWndDownButtons[RX_PALETTE_MAX_COUNT];
+
+	NpBalanceControl balance;
 } PaletteSwapData;
 
 static char *propGetProperty(const char *ptr, unsigned int size, const char *name) {
@@ -2379,7 +2383,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 						for (int i = 0; i < nPaths; i++) {
 							PaletteSwapEntry ent = { 0 };
-							getPathFromPaths(paths, i, &ent.path);
+							getPathFromPaths(paths, i, ent.path);
 
 							ent.px = ImgRead(ent.path, &ent.width, &ent.height);
 							SendMessage(h, NV_SETDATA, 0, (LPARAM) &ent);
@@ -4769,10 +4773,18 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->hWndTextureFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(formats[0]), 110, panelY + 27, 100, 22, 2);
 			data->hWndC0xp = CreateCheckbox(hWnd, L"Color 0 is Transparent", 220, panelY + 27, 150, 22, c0xp);
 
-			data->hWndOK = CreateButton(hWnd, L"OK", 40 + fileWidth + 5 + 75, panelY + 27 + 32, 100, 22, TRUE);
-			data->hWndCancel = CreateButton(hWnd, L"Cancel", 40 + fileWidth + 5 + 75 - 105, panelY + 27 + 32, 100, 22, FALSE);
+			data->hWndDither = CreateCheckbox(hWnd, L"Dither:", 380, panelY + 27, 60, 22, FALSE);
+			data->hWndDiffuse = CreateEdit(hWnd, L"100", 440, panelY + 27, 50, 22, TRUE);
+			EnableWindow(data->hWndDiffuse, FALSE);
 
-			SetWindowSize(hWnd, 40 + fileWidth + 5 + 75 + 100 + 10, panelY + 27 + 32 + 22 + 10);
+			int balanceHeight = 3 * 27 - 5 + 10 + 10 + 10;
+			NpCreateBalanceInput(&data->balance, hWnd, 10, panelY + 27 + 32, 30 + fileWidth + 5 + 75 + 100);
+
+			int okY = panelY + 27 + 32 + balanceHeight + 10;
+			data->hWndOK = CreateButton(hWnd, L"OK", 40 + fileWidth + 5 + 75, okY, 100, 22, TRUE);
+			data->hWndCancel = CreateButton(hWnd, L"Cancel", 40 + fileWidth + 5 + 75 - 105, okY, 100, 22, FALSE);
+
+			SetWindowSize(hWnd, 40 + fileWidth + 5 + 75 + 100 + 10, okY + 22 + 10);
 			SetGUIFont(hWnd);
 			break;
 		}
@@ -4798,10 +4810,15 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 					case FMT_PLTT256 : texfmt = CT_256COLOR; maxCols = 256; bpp = 8; break;
 				}
 
+				//dither settings
+				int dither = GetCheckboxChecked(data->hWndDither);
+				float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
+				if (!dither) diffuse = 0.0f;
+
 				//TODO: ask the user?
 				unsigned int plttSize = maxCols;
-				float diffuse = 0.0f;
-				int balance = BALANCE_DEFAULT, colorBalance = BALANCE_DEFAULT, enhanceColors = 1;
+				RxBalanceSetting balance;
+				NpGetBalanceSetting(&data->balance, &balance);
 
 				RxFlag flag = RX_FLAG_NO_WRITEBACK;
 				if (1) flag |= RX_FLAG_NO_ALPHA_DITHER; // TODO: user input?
@@ -4861,7 +4878,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				COLOR32 *pltt = (COLOR32 *) calloc(plttSize * data->nEntries, sizeof(COLOR32));
 
 				//create the palette data
-				RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
+				RxReduction *reduction = RxNew(balance.balance, balance.colorBalance, balance.enhanceColors);
 				RxSetPaletteLayers(reduction, data->nEntries);
 				RxApplyFlags(reduction, flag);
 				RxHistAdd(reduction, imgCat, width, height);
@@ -4968,7 +4985,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 						texarc->nPalettes = data->nEntries;
 
 						//put texture
-						texarc->textures = (TEXTURE *) calloc(1, sizeof(TEXTURE));
+						texarc->textures = (TEXELS *) calloc(1, sizeof(TEXELS));
 						texarc->textures[0].name = _strdup("pswap");
 						texarc->textures[0].texImageParam = texImageParam;
 						texarc->textures[0].height = height;
@@ -5011,6 +5028,9 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 					EnableWindow(data->hWndPaletteNames[i], enablePaletteNames);
 				}
 
+			} else if (hWndControl == data->hWndDither && cmd == BN_CLICKED) {
+				int en = GetCheckboxChecked(hWndControl);
+				EnableWindow(data->hWndDiffuse, en);
 			}
 
 			break;
