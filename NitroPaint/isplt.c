@@ -1645,7 +1645,7 @@ static void RxiVoronoiAccumulateClusters(RxReduction *reduction) {
 		RxHistEntry *entry = reduction->histogramFlat[i];
 
 		double bestDistance;
-		int bestIndex = RxPaletteFindClosestColorYiq(reduction, &entry->color[0], &bestDistance);
+		int bestIndex = RxPaletteFindClosestColorYiq(reduction, entry->color, &bestDistance);
 
 		//add to total. YIQ colors scaled by alpha to be unscaled later.
 		double weight = entry->weight;
@@ -3051,7 +3051,7 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 
 		//else
 		nextSplit = (nextSplit + 1) % nChannel;
-		if (i == 2) return nodebuf; // not split (all axes degenerate)
+		if (i == nChannel - 2) return nodebuf; // not split (all axes degenerate)
 	}
 
 	//find split (subtract 1 for the median color)
