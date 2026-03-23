@@ -4749,7 +4749,14 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				data->hWndFileLabels[i] = CreateStatic(hWnd, data->entries[i].path, 40, y, fileWidth, 22);
 				CreateStatic(hWnd, L"Palette Name:", 40 + fileWidth + 5, y, 75, 22);
 				data->hWndPaletteNames[i] = CreateEdit(hWnd, plttName, 40 + fileWidth + 5 + 75, y, 100, 22, FALSE);
+
+				data->hWndUpButtons[i] = CreateButton(hWnd, L"\x25B4", 40 + fileWidth + 5 + 75 + 100 + 5, y - 2, 30, 13, FALSE);
+				data->hWndDownButtons[i] = CreateButton(hWnd, L"\x25BE", 40 + fileWidth + 5 + 75 + 100 + 5, y - 2 + 13, 30, 13, FALSE);
 			}
+
+			//disable the first up arrow and the last down arrow.
+			EnableWindow(data->hWndUpButtons[0], FALSE);
+			EnableWindow(data->hWndDownButtons[data->nEntries - 1], FALSE);
 
 			//should color 0 be transparent?
 			int c0xp = 0;
@@ -4778,13 +4785,15 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			EnableWindow(data->hWndDiffuse, FALSE);
 
 			int balanceHeight = 3 * 27 - 5 + 10 + 10 + 10;
-			NpCreateBalanceInput(&data->balance, hWnd, 10, panelY + 27 + 32, 30 + fileWidth + 5 + 75 + 100);
-
 			int okY = panelY + 27 + 32 + balanceHeight + 10;
-			data->hWndOK = CreateButton(hWnd, L"OK", 40 + fileWidth + 5 + 75, okY, 100, 22, TRUE);
-			data->hWndCancel = CreateButton(hWnd, L"Cancel", 40 + fileWidth + 5 + 75 - 105, okY, 100, 22, FALSE);
+			int okX = 40 + fileWidth + 5 + 75 + 5 + 30;
 
-			SetWindowSize(hWnd, 40 + fileWidth + 5 + 75 + 100 + 10, okY + 22 + 10);
+			NpCreateBalanceInput(&data->balance, hWnd, 10, panelY + 27 + 32, okX + 100 - 10);
+
+			data->hWndOK = CreateButton(hWnd, L"OK", okX, okY, 100, 22, TRUE);
+			data->hWndCancel = CreateButton(hWnd, L"Cancel", okX - 105, okY, 100, 22, FALSE);
+
+			SetWindowSize(hWnd, okX + 100 + 10, okY + 22 + 10);
 			SetGUIFont(hWnd);
 			break;
 		}
@@ -5031,6 +5040,35 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			} else if (hWndControl == data->hWndDither && cmd == BN_CLICKED) {
 				int en = GetCheckboxChecked(hWndControl);
 				EnableWindow(data->hWndDiffuse, en);
+			} else {
+
+				//check the up/down buttons
+				for (unsigned int i = 0; i < data->nEntries - 1; i++) {
+					if ((hWndControl == data->hWndDownButtons[i] || hWndControl == data->hWndUpButtons[i + 1]) && cmd == BN_CLICKED) {
+						//command to move item i down and item i+1 up
+
+						//swap data in struct
+						PaletteSwapEntry temp;
+						memcpy(&temp, &data->entries[i], sizeof(temp));
+						memcpy(&data->entries[i], &data->entries[i + 1], sizeof(temp));
+						memcpy(&data->entries[i + 1], &temp, sizeof(temp));
+
+						//swap the UI items
+						SendMessage(data->hWndFileLabels[i], WM_SETTEXT, -1, (LPARAM) data->entries[i].path);
+						SendMessage(data->hWndFileLabels[i + 1], WM_SETTEXT, -1, (LPARAM) data->entries[i + 1].path);
+
+						//swap palette names
+						wchar_t *pltt1 = UiEditGetText(data->hWndPaletteNames[i]);
+						wchar_t *pltt2 = UiEditGetText(data->hWndPaletteNames[i + 1]);
+						UiEditSetText(data->hWndPaletteNames[i + 1], pltt1);
+						UiEditSetText(data->hWndPaletteNames[i], pltt2);
+						free(pltt1);
+						free(pltt2);
+
+						break;
+					}
+				}
+
 			}
 
 			break;
