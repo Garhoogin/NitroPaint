@@ -947,7 +947,7 @@ static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *
 	double leastDiff = RX_LARGE_NUMBER;
 	int leastIndex = 0;
 	for (unsigned int i = 0; i < nColors; i++) {
-		const RxYiqColor *yiq2 = &palette[i];
+		const RxYiqColor *yiq2 = &palette[i * reduction->paletteLayers];
 
 		double diff = RxiComputeLayeredColorDifference(reduction, col, yiq2);
 		if (diff < leastDiff) {
@@ -1793,6 +1793,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	}
 
 	//average out the colors in the new partitions
+	unsigned int nMovedClusters = 0;
 	for (unsigned int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
 		RxYiqColor yiq[RX_PALETTE_MAX_COUNT];
 		COLOR32 as32[RX_PALETTE_MAX_COUNT];
@@ -1822,8 +1823,15 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		if (errNewCluster < totalsBuffer[i].error) {
 			memcpy(reduction->paletteRgbCopy[i], as32, nLayers * sizeof(COLOR32));
 			memcpy(reduction->paletteYiqCopy[i], yiq, nLayers * sizeof(RxYiqColor));
+			nMovedClusters++;
 		}
 	}
+
+	//nMovedClusters indicates the number of centroids that were not degenerate that were moved.
+	//nNewCentroids indicates the number of centroids that were degenerate but resolved.
+	//if both of these are zero, this indicates no change was made to the palette, meaning we have
+	//reached a stable clustering and don't need to proced with the error calculation.
+	if (nMovedClusters == 0 && nNewCentroids == 0) return 0;
 
 	//load the new palette data into the accelerator
 	RxPaletteLoadYiq(reduction, &reduction->paletteYiqCopy[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
@@ -3153,6 +3161,8 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(RxReduction *reduction
 		return 0;
 	}
 
+	unsigned int nLayer = reduction->paletteLayers;
+
 	//traverse down
 	RxPaletteAccelNode *nodep = &accel->root;
 	while (1) {
@@ -3163,7 +3173,7 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(RxReduction *reduction
 		//if this is a leaf node or the split value matches, check for a matching color
 		if ((nodep->pLeft == NULL && nodep->pRight == NULL) || (split == val)) {
 			//compare color
-			if (memcmp(nodeCol, color, sizeof(RxYiqColor)) == 0) {
+			if (memcmp(nodeCol, color, nLayer * sizeof(RxYiqColor)) == 0) {
 				if (outDiff != NULL) *outDiff = 0.0; // identical match
 				return nodep->mid->index;
 			}
