@@ -200,7 +200,7 @@ static double BgiTileDifference(RxReduction *reduction, BgTile *t1, BgTile *t2, 
 	return err;
 }
 
-static void BgiAddTileToTotal(RxReduction *reduction, RxYiqColor *pxBlock, BgTile *tile) {
+static void BgiAddTileToTotal(RxYiqColor *pxBlock, BgTile *tile) {
 	unsigned int iXor = 0;
 	if (tile->flipMode & TILE_FLIPX) iXor ^= 007;
 	if (tile->flipMode & TILE_FLIPY) iXor ^= 070;
@@ -486,7 +486,7 @@ int BgPerformCharacterCompression(
 		RxYiqColor pxBlock[64] = { 0 };
 		for (unsigned int j = 0; j < nTiles; j++) {
 			BgTile *tile2 = &tiles[j];
-			if (tile2->masterTile == i) BgiAddTileToTotal(reduction, pxBlock, tile2);
+			if (tile2->masterTile == i) BgiAddTileToTotal(pxBlock, tile2);
 		}
 
 		//divide by count, convert to 32-bit RGB

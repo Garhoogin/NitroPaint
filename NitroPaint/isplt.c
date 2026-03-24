@@ -2730,8 +2730,6 @@ RxStatus RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigne
 
 RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse) {
 	//decode flags
-	RxFlag alphaMode = flag & RX_FLAG_ALPHA_MODE_MASK;
-	int binaryAlpha = (alphaMode == RX_FLAG_ALPHA_MODE_NONE) || (alphaMode == RX_FLAG_ALPHA_MODE_RESERVE);
 	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
 	int adaptive = !(flag & RX_FLAG_NO_ADAPTIVE_DIFFUSE);
 
