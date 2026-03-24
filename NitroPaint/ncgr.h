@@ -66,6 +66,11 @@ void ChrRegisterFormats(void);
 int ChrGuessWidth(int nTiles);
 
 //
+// Allocate graphics. Does not free existing graphics.
+//
+void ChrAllocGraphics(NCGR *ncgr);
+
+//
 // Determines the validity of this file being a raw character graphics file.
 //
 int ChrIsValidBin(const unsigned char *buffer, unsigned int size);

@@ -150,6 +150,17 @@ int ChrGuessWidth(int nTiles) {
 	return height;
 }
 
+void ChrAllocGraphics(NCGR *ncgr) {
+	unsigned int nChars = ncgr->nTiles;
+	ncgr->charbuf = (unsigned char *) calloc(nChars, 64);
+	ncgr->tiles = (unsigned char **) calloc(nChars, sizeof(unsigned char *));
+	ncgr->attr = (unsigned char *) calloc(nChars, 1);
+
+	for (unsigned int i = 0; i < nChars; i++) {
+		ncgr->tiles[i] = ncgr->charbuf + i * 64;
+	}
+}
+
 int ChrIsValidBin(const unsigned char *buffer, unsigned int size) {
 	if (size & 0x1F) return 0;
 	return NCGR_TYPE_BIN;

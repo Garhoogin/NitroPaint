@@ -877,14 +877,13 @@ void BgGenerate(NCLR **pNclr, NCGR **pNcgr, NSCR **pNscr, COLOR32 *imgBits, int 
 
 	unsigned char *chrAttr = (unsigned char *) calloc(nCharsFile, 1);
 	uint16_t *scrdat = (uint16_t *) calloc(nTiles, sizeof(uint16_t));
-	unsigned char **blocks = (unsigned char **) calloc(nCharsFile, sizeof(unsigned char *));
-	for (int i = 0; i < nCharsFile; i++) blocks[i] = (unsigned char *) calloc(8 * 8, 1);
+	unsigned char *blocks = (unsigned char *) calloc(nCharsFile, 8 * 8);
 
 	for (int i = 0; i < nTiles; i++) {
 		BgTile *t = &tiles[i];
 		if (t->masterTile != i) continue;
 
-		memcpy(blocks[t->charNo], t->indices, sizeof(t->indices));
+		memcpy(&blocks[64 * t->charNo], t->indices, sizeof(t->indices));
 		chrAttr[t->charNo] = (unsigned char) t->palette;
 	}
 
@@ -981,8 +980,13 @@ void BgGenerate(NCLR **pNclr, NCGR **pNcgr, NSCR **pNscr, COLOR32 *imgBits, int 
 	ncgr->nTiles = nCharsFile;
 	ncgr->tilesX = outWidth;
 	ncgr->tilesY = outHeight;
-	ncgr->tiles = blocks;
-	ncgr->attr = chrAttr;
+	ChrAllocGraphics(ncgr);
+
+	memcpy(ncgr->attr, chrAttr, ncgr->nTiles);
+	memcpy(ncgr->charbuf, blocks, ncgr->nTiles * 64);
+	free(chrAttr);
+	free(blocks);
+
 	*pNcgr = ncgr;
 
 	NSCR *nscr = NULL;

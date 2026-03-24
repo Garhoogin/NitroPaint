@@ -3378,11 +3378,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					ncgr->tilesX = 32;
 					ncgr->tilesY = height;
 					ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
-					ncgr->tiles = (unsigned char **) calloc(ncgr->nTiles, sizeof(unsigned char *));
-					ncgr->attr = (unsigned char *) calloc(ncgr->nTiles, 1);
-					for (int i = 0; i < ncgr->nTiles; i++) {
-						ncgr->tiles[i] = (BYTE *) calloc(64, 1);
-					}
+					ChrAllocGraphics(ncgr);
 
 					//link objects
 					ObjLinkObjects(&nclr->header, &ncgr->header);
