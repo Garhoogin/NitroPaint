@@ -2821,8 +2821,8 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 					__m128 vec2 = _mm_add_ps(lastRow[nLayers * x + i].yiq, lastRow[nLayers * (x + 2) + i].yiq);
 
 					colorYiq[i].yiq = _mm_add_ps(_mm_mul_ps(vec1, _mm_set1_ps(0.1875f)), _mm_mul_ps(vec2, _mm_set1_ps(0.125f)));
-				}
 #endif
+				}
 			} else {
 				//no adaptive diffuse -> no local noise checking
 				memcpy(colorYiq, &thisRow[nLayers * (x + 1)], nLayers * sizeof(RxYiqColor));
