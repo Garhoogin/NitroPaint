@@ -2341,6 +2341,10 @@ static COLOR32 RxiChooseMultiPaletteColor0(RxReduction *reduction) {
 	return RxiMaskYiqToRgb(reduction, &worst) | 0xFF000000;
 }
 
+static void RxiGetPalette0Rgb(RxReduction *reduction, COLOR32 *dest, unsigned int nCols) {
+	for (unsigned int i = 0; i < nCols; i++) dest[i] = reduction->paletteRgb[i][0];
+}
+
 void RxCreateMultiplePalettes(const COLOR32 *px, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
 							int paletteSize, int nColsPerPalette, int paletteOffset, int *progress) {
 	RxCreateMultiplePalettesEx(px, tilesX, tilesY, dest, paletteBase, nPalettes, paletteSize, nColsPerPalette, 
@@ -2408,8 +2412,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			RxHistFinalize(reduction);
 			RxComputePalette(reduction, nColsPerPalette);
 			for (int i = 0; i < RX_TILE_PALETTE_MAX; i++) {
-				COLOR32 col = reduction->paletteRgb[i][0];
-				RxConvertRgbToYiq(col, &tile->palette[i]);
+				memcpy(&tile->palette[i], &reduction->paletteYiq[i][0], sizeof(RxYiqColor));
 			}
 
 			tile->nUsedColors = reduction->nUsedColors;
@@ -2540,7 +2543,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		RxHistFinalize(reduction);
 		RxComputePalette(reduction, nColsPerPalette);
 		
-		memcpy(palettes + nPalettesWritten * RX_TILE_PALETTE_MAX, reduction->paletteRgb, (RX_TILE_PALETTE_MAX - 1) * sizeof(COLOR32));
+		RxiGetPalette0Rgb(reduction, palettes + nPalettesWritten * RX_TILE_PALETTE_MAX, RX_TILE_PALETTE_MAX - 1);
 		nPalettesWritten++;
 		(*progress)++;
 	}
@@ -2592,7 +2595,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			RxComputePalette(reduction, nColsPerPalette);
 
 			//write back
-			memcpy(palettes + i * RX_TILE_PALETTE_MAX, reduction->paletteRgb, nColsPerPalette * sizeof(COLOR32));
+			RxiGetPalette0Rgb(reduction, palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette);
 		}
 	}
 	RxMemFree(yiqPalette);
@@ -2617,7 +2620,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			RxComputePalette(reduction, nFinalColsPerPalette);
 
 			//write and sort
-			memcpy(thisPalDest, reduction->paletteRgb, nFinalColsPerPalette * sizeof(COLOR32));
+			RxiGetPalette0Rgb(reduction, thisPalDest, nFinalColsPerPalette);
 			qsort(thisPalDest, nFinalColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
 		} else {
 			//already the correct size; simply sort and copy
@@ -2676,7 +2679,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			RxiPaletteRecluster(reduction);
 			RxiVoronoiUnpin(reduction);
 
-			memcpy(pltI, reduction->paletteRgb, (nFinalColsPerPalette + 1) * sizeof(COLOR32));
+			RxiGetPalette0Rgb(reduction, pltI, nFinalColsPerPalette + 1);
 			qsort(pltI + 1, nFinalColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
 		}
 	}
