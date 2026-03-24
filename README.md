@@ -94,3 +94,6 @@ You can export all the textures by clicking the "Export All" button. Since textu
 
 You can examine the VRAM usage of the texture archive by clicking the "VRAM Use" button. This opens a window that shows the total usage of VRAM by both textures and color palettes. The texture VRAM usage is further broken up into texture image data and palette index data. The list boxes list the texture format and VRAM usage for each texture and color palette.
 
+## Links
+
+[![Hypercommit](https://img.shields.io/badge/Hypercommit-DB2475)](https://hypercommit.com/nitropaint)
