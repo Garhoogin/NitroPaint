@@ -2754,6 +2754,7 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 
 	RxYiqColor *rowbuf = reduction->imgBuffer;
 	if (linebufSize > RX_TEMP_IMG_BUF_SIZE) {
+		//allocate a new row buffer on the heap
 		rowbuf = (RxYiqColor *) RxMemCalloc(linebufSize, sizeof(RxYiqColor));
 		if (rowbuf == NULL) {
 			//no memory
@@ -2761,6 +2762,9 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 			RxMemFree(rowbuf);
 			return RX_STATUS_NOMEM;
 		}
+	} else {
+		//clear the row buffer
+		memset(rowbuf, 0, linebufSize * sizeof(RxYiqColor));
 	}
 
 	//each of the four row buffers:
