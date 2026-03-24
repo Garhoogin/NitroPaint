@@ -4896,6 +4896,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				RxSortPalette(reduction, RX_FLAG_SORT_ONLY_USED | RX_FLAG_SORT_END_DIFFER);
 
 				//read palettes
+				unsigned int nUsedColors = reduction->nUsedColors;
 				for (unsigned int i = 0; i < data->nEntries; i++) {
 					RxGetPalette(reduction, pltt + plttSize * i, i);
 				}
@@ -5021,9 +5022,28 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 					}
 				}
 
+				//last: to report the created palette, calculate the number of shared palette colors.
+				unsigned int nShared = 0, nEntries = data->nEntries;
+				for (unsigned int i = 0; i < nUsedColors; i++) {
+					int shared = 1;
+
+					for (unsigned int j = 1; j < data->nEntries; j++) {
+						if (pltt[j * plttSize + i] != pltt[(j - 1) * plttSize + i]) shared = 0;
+					}
+
+					if (shared) nShared++;
+				}
+
 				free(pltt);
 
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
+
+				//user info message (after dialog closure)
+				wchar_t infobuf[64];
+				wsprintfW(infobuf, L"Created %d palettes. %d colors used, %d colors shared.", nEntries,
+					nUsedColors, nShared);
+				MessageBox(hWndMain, infobuf, L"Create Palette Swap", MB_ICONINFORMATION);
+
 			} else if ((hWndControl == data->hWndCancel || idCtl == IDCANCEL) && cmd == BN_CLICKED) {
 				//cancel dialog
 				SendMessage(hWnd, WM_CLOSE, 0, 0);
