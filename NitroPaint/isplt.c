@@ -2196,7 +2196,10 @@ RxStatus RxCreatePaletteWithContext(RxReduction *reduction, const COLOR32 *px, u
 	return status;
 }
 
-#define RX_TILE_PALETTE_MAX       32 //max colors in the internal work buffer
+
+// ----- character map color reduction routines
+
+#define RX_TILE_PALETTE_MAX      256 //max colors in the internal work buffer
 #define RX_TILE_PALETTE_COUNT_MAX 16 //max palettes produced
 
 typedef struct RxiTile_ {
@@ -2349,14 +2352,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 		return;
 	}
 
-	//if creating a palette with >= 15 colors per palette, final output colors per palette
-	int nFinalColsPerPalette = nColsPerPalette;
-	if (paletteOffset == 0) nFinalColsPerPalette--;
-	if (nFinalColsPerPalette > paletteSize - 1) nFinalColsPerPalette = paletteSize - 1;
-
-	//for palette sizes > 15, this algorithm will process the clustering in 15 colors only.
 	if (paletteOffset == 0) nColsPerPalette--;
-	if (nColsPerPalette >= RX_TILE_PALETTE_MAX) nColsPerPalette = RX_TILE_PALETTE_MAX - 1;
 	
 	//3 stage algorithm:
 	//	1 - split into tiles
@@ -2576,25 +2572,8 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 	for (int i = 0; i < nPalettes; i++) {
 		//recreate palette so that it can be output in its correct size
 		COLOR32 *thisPalDest = dest + paletteSize * (i + paletteBase) + outputOffs;
-		if (nFinalColsPerPalette != nColsPerPalette) {
-
-			//palette does need to be created again
-			RxHistClear(reduction);
-			for (unsigned int j = 0; j < nTiles; j++) {
-				if (bestPalettes[j] != i) continue;
-				RxHistAdd(reduction, tiles[j].rgb, 8, 8);
-			}
-			RxHistFinalize(reduction);
-			RxComputePalette(reduction, nFinalColsPerPalette);
-
-			//write and sort
-			RxiGetPalette0Rgb(reduction, thisPalDest, nFinalColsPerPalette);
-			qsort(thisPalDest, nFinalColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
-		} else {
-			//already the correct size; simply sort and copy
-			qsort(palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
-			memcpy(thisPalDest, palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette * sizeof(COLOR32));
-		}
+		qsort(palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
+		memcpy(thisPalDest, palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette * sizeof(COLOR32));
 
 		//accumulate error statistics
 		if (useColor0) {
@@ -2642,13 +2621,13 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			RxHistFinalize(reduction);
 
 			//run reclustering on the current palette, with color 0 pinned
-			RxiVoronoiLoad(reduction, pltI, nFinalColsPerPalette + 1);  // load palette
-			RxiVoronoiPinRange(reduction, 1);                           // pin first color
+			RxiVoronoiLoad(reduction, pltI, nColsPerPalette + 1);  // load palette
+			RxiVoronoiPinRange(reduction, 1);                      // pin first color
 			RxiPaletteRecluster(reduction);
 			RxiVoronoiUnpin(reduction);
 
-			RxiGetPalette0Rgb(reduction, pltI, nFinalColsPerPalette + 1);
-			qsort(pltI + 1, nFinalColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
+			RxiGetPalette0Rgb(reduction, pltI, nColsPerPalette + 1);
+			qsort(pltI + 1, nColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
 		}
 	}
 
