@@ -477,6 +477,7 @@ static int combo2dWriteBanner(COMBO2D *combo, BSTREAM *stream);
 static int combo2dWriteGrf(COMBO2D *combo, BSTREAM *stream);
 static int combo2dWriteMbb(COMBO2D *combo, BSTREAM *stream);
 static int combo2dWriteTimeAce(COMBO2D *combo, BSTREAM *stream);
+static int combo2dWriteDataFile(COMBO2D *combo, BSTREAM *stream);
 
 static const ObjIdEntry sFormats[] = {
 	{
@@ -527,6 +528,12 @@ static const ObjIdEntry sFormats[] = {
 		combo2dIsValidTimeAce,
 		(ObjReader) combo2dReadTimeAce,
 		(ObjWriter) combo2dWriteTimeAce
+	}, {
+		FILE_TYPE_COMBO2D, COMBO2D_TYPE_DATAFILE, "Data File",
+		0,
+		NULL,
+		NULL,
+		(ObjWriter) combo2dWriteDataFile
 	}
 };
 

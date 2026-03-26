@@ -1517,8 +1517,6 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 		//refName is the name of the file to read.
 		COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, COMBO2D_TYPE_DATAFILE);
-		combo->header.dispose = NULL;
-		combo->header.compression = COMPRESSION_NONE;
 		combo->extraData = (DATAFILECOMBO *) calloc(1, sizeof(DATAFILECOMBO));
 
 		int pltOffset = 0, pltSize = 0, chrOffset = 0, chrSize = 0, scrOffset = 0, scrSize = 0;
@@ -1541,27 +1539,28 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		//read applicable sections
 		if (pltRef != NULL) {
 			ObjReadBuffer(&nclr, dfc->data + pltOffset, pltSize, FILE_TYPE_PALETTE, NCLR_TYPE_BIN, COMPRESSION_NONE);
+			nclr->format = 0; // clear the format field
 			combo2dLink(combo, nclr);
+			free(pltRef);
 		}
 		if (chrRef != NULL) {
 			ObjReadBuffer(&ncgr, dfc->data + chrOffset, chrSize, FILE_TYPE_CHARACTER, NCGR_TYPE_BIN, COMPRESSION_NONE);
-			combo2dLink(combo, nclr);
+			ncgr->format = 0; // clear the format field
+			combo2dLink(combo, ncgr);
+			free(chrRef);
 		}
 		if (scrRef != NULL) {
 			ObjReadBuffer(&nscr, dfc->data + scrOffset, scrSize, FILE_TYPE_SCREEN, NSCR_TYPE_BIN, COMPRESSION_NONE);
-			combo2dLink(combo, nclr);
+			nscr->format = 0; // clear the format field
+			combo2dLink(combo, nscr);
+			free(scrRef);
 		}
 
-		if (pltRef != NULL) NpOpenObjectAtPath(hWnd, nclr, pathBuffer); // open the color palette
-		if (chrRef != NULL) NpOpenObjectAtPath(hWnd, ncgr, pathBuffer); // open the graphics
-		if (scrRef != NULL) NpOpenObjectAtPath(hWnd, nscr, pathBuffer); // open BG screen data
+		//open combo
+		NpOpenCombo(hWnd, combo, pathBuffer);
 
 		free(pathBuffer);
-
 		free(refName);
-		if (pltRef != NULL) free(pltRef);
-		if (chrRef != NULL) free(chrRef);
-		if (scrRef != NULL) free(scrRef);
 		goto cleanup;
 	}
 
