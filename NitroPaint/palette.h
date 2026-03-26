@@ -249,6 +249,7 @@ typedef struct RxPaletteAccelerator_ {
 	RxYiqColor plttSmall[16 * RX_PALETTE_MAX_COUNT];  // palette buffer used for small palettes
 	RxYiqColor *plttLarge;                            // pointer to palette buffer (heap allocated or pointer to small)
 	unsigned int nPltt;                               // number of palette colors loaded
+	RxAlphaMode alphaMode;                            // alpha processing mode used by the accelerator
 } RxPaletteAccelerator;
 
 //reduction workspace structure

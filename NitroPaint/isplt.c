@@ -3205,7 +3205,7 @@ unsigned int RxPaletteFindClosestColorYiq(RxReduction *reduction, const RxYiqCol
 
 	//processing for alpha mode
 	unsigned int plttStart = 0;
-	switch (reduction->alphaMode) {
+	switch (reduction->accel.alphaMode) {
 		case RX_ALPHA_PIXEL:
 		{
 			for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
@@ -3262,7 +3262,7 @@ static RxStatus RxiPaletteAlloc(RxReduction *reduction, unsigned int nCol) {
 
 static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 	//the K-D tree is incompatible with the palette with palette alpha.
-	RxAlphaMode alphaMode = reduction->alphaMode;
+	RxAlphaMode alphaMode = reduction->accel.alphaMode;
 	if (alphaMode == RX_ALPHA_PALETTE) return RX_STATUS_INVALID;
 
 	unsigned int iStart = 0;
@@ -3351,6 +3351,9 @@ RxStatus RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int
 	//if an accelerator is loaded already, unload it.
 	RxPaletteFree(reduction);
 
+	//set alpha mode
+	accel->alphaMode = reduction->alphaMode;
+
 	//in all cases, we load without the accelerator first
 	RxStatus status = RxiPaletteLoadUnaccelerated(reduction, pltt, nColors);
 	if (status != RX_STATUS_OK) return reduction->status = status;
@@ -3369,6 +3372,14 @@ static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt,
 
 	//if an accelerator is loaded already, unload it.
 	RxPaletteFree(reduction);
+
+	//set alpha mode
+	accel->alphaMode = reduction->alphaMode;
+
+	//for the internal YIQ palette load, we do not use transparency reserve mode. The internal palette
+	//does not keep the reserved color for transparency, and transparent colors will not be mapped to
+	//the palette. Thus, we change the alpha mode to "none" to disable these behaviors.
+	if (accel->alphaMode == RX_ALPHA_RESERVE) accel->alphaMode = RX_ALPHA_NONE;
 
 	//in all cases, we load without the accelerator first
 	RxStatus status = RxiPaletteLoadYiqUnaccelerated(reduction, pltt, nColors, srcPitch);
