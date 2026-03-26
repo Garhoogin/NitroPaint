@@ -1689,7 +1689,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	unsigned int nLayers = reduction->paletteLayers;
 
 	//load the palette into the acceleration structure
-	RxPaletteLoadYiq(reduction, &reduction->paletteYiqCopy[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
+	RxPaletteLoadYiq(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
 
 	//map histogram colors to existing clusters and accumulate error.
 	RxiVoronoiAccumulateClusters(reduction);
@@ -1711,7 +1711,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		int farthestIndex = -1;
 		for (int j = 0; j < nHistEntries; j++) {
 			RxHistEntry *entry = reduction->histogramFlat[j];           // histogram color
-			RxYiqColor *yiq1 = reduction->paletteYiqCopy[entry->entry]; // ceontroid of the cluster the color belongs to
+			RxYiqColor *yiq1 = reduction->paletteYiq[entry->entry]; // ceontroid of the cluster the color belongs to
 
 			//do not move a cluster with only one member
 			if (totalsBuffer[entry->entry].count <= 1) continue;
@@ -1756,7 +1756,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 				for (unsigned int k = 0; k < nNewCentroids; k++) {
 					unsigned int idx = newCentroidIdxs[k];
 					//check that all layers of the colors match
-					if (memcmp(reduction->paletteRgbCopy[idx], histMasked, nLayers * sizeof(COLOR32)) == 0) {
+					if (memcmp(reduction->paletteRgb[idx], histMasked, nLayers * sizeof(COLOR32)) == 0) {
 						//remap to the existing centroid
 						RxiVoronoiMoveToCluster(reduction, entry, idx, newDifference, diff);
 						found = 1;
@@ -1778,12 +1778,12 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 			//get RGB of new point (will be used when checking identical remapped colors)
 			RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
 			for (unsigned int j = 0; j < nLayers; j++) {
-				reduction->paletteRgbCopy[i][j] = RxiMaskYiqToRgb(reduction, &entry->color[j]);
-				RxConvertRgbToYiq(reduction->paletteRgbCopy[i][j], &reduction->paletteYiqCopy[i][j]);
+				reduction->paletteRgb[i][j] = RxiMaskYiqToRgb(reduction, &entry->color[j]);
+				RxConvertRgbToYiq(reduction->paletteRgb[i][j], &reduction->paletteYiq[i][j]);
 			}
 
 			//move centroid
-			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, reduction->paletteYiqCopy[i]) * entry->weight;
+			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, reduction->paletteYiq[i]) * entry->weight;
 			RxiVoronoiMoveToCluster(reduction, entry, i, newDifference, largestDifference);
 			newCentroidIdxs[nNewCentroids++] = i;
 		} else {
@@ -1821,8 +1821,8 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 
 		//if the new cluster is an improvement over the old cluster
 		if (errNewCluster < totalsBuffer[i].error) {
-			memcpy(reduction->paletteRgbCopy[i], as32, nLayers * sizeof(COLOR32));
-			memcpy(reduction->paletteYiqCopy[i], yiq, nLayers * sizeof(RxYiqColor));
+			memcpy(reduction->paletteRgb[i], as32, nLayers * sizeof(COLOR32));
+			memcpy(reduction->paletteYiq[i], yiq, nLayers * sizeof(RxYiqColor));
 			nMovedClusters++;
 		}
 	}
@@ -1832,27 +1832,6 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	//if both of these are zero, this indicates no change was made to the palette, meaning we have
 	//reached a stable clustering and don't need to proced with the error calculation.
 	if (nMovedClusters == 0 && nNewCentroids == 0) return 0;
-
-	//load the new palette data into the accelerator
-	RxPaletteLoadYiq(reduction, &reduction->paletteYiqCopy[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
-
-	//compute new error
-	double error = 0.0;
-	for (int i = 0; i < reduction->histogram->nEntries; i++) {
-		RxHistEntry *hist = reduction->histogramFlat[i];
-		
-		double err;
-		hist->entry = RxPaletteFindClosestColorYiq(reduction, hist->color, &err);
-		error += err * hist->weight;
-	}
-
-	//if the error is no longer decreasing, stop iteration
-	if (error >= reduction->lastSSE) return 0; // stop
-
-	//error check succeeded, copy this palette to the main palette.
-	memcpy(reduction->paletteYiq, reduction->paletteYiqCopy, sizeof(reduction->paletteYiqCopy));
-	memcpy(reduction->paletteRgb, reduction->paletteRgbCopy, sizeof(reduction->paletteRgbCopy));
-	reduction->lastSSE = error;
 
 	RxiCreatePaletteUpdateProgress(reduction);
 
@@ -1865,13 +1844,8 @@ static void RxiPaletteRecluster(RxReduction *reduction) {
 	//simple termination conditions
 	if (reduction->nReclusters <= 0 || reduction->nPinnedClusters >= reduction->nUsedColors) return;
 
-	//copy main palette to palette copy
-	memcpy(reduction->paletteYiqCopy, reduction->paletteYiq, sizeof(reduction->paletteYiq));
-	memcpy(reduction->paletteRgbCopy, reduction->paletteRgb, sizeof(reduction->paletteRgb));
-
 	//voronoi iteration
 	reduction->reclusterIteration = 0;
-	reduction->lastSSE = RX_LARGE_NUMBER;
 	while (RxiVoronoiIterate(reduction));
 
 	//load palette accelerator
@@ -3006,13 +2980,14 @@ RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *ind
 static inline double RxiAccelGetChannelN(RxReduction *reduction, const RxYiqColor *color, unsigned int n) {
 	RX_ASSUME(n < 4 * reduction->paletteLayers);
 
+	double ch = color[n / 4].vec[n % 4];
 	switch (n % 4) {
-		case 0: return reduction->yWeight * color[n / 4].y;
-		case 1: return reduction->iWeight * color[n / 4].i;
-		case 2: return reduction->qWeight * color[n / 4].q;
-		case 3: return reduction->aWeight * color[n / 4].a;
+		case 0: return ch * reduction->yWeight;
+		case 1: return ch * reduction->iWeight;
+		case 2: return ch * reduction->qWeight;
+		case 3: return ch * reduction->aWeight;
+		default: RX_ASSUME(0); // does not reach here
 	}
-	return 0.0;
 }
 
 static int RxiAccelSortPalette(const void *p1, const void *p2) {

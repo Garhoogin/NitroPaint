@@ -139,13 +139,14 @@ typedef struct RxDitherSetting_ {
 
 typedef union RxYiqColor_ {
 	struct {
-		float y;
-		float i;
-		float q;
-		float a;
+		float y;   // Y component
+		float i;   // I component
+		float q;   // Q component
+		float a;   // A component
 	};
+	float vec[4];  // YIQA components accessed as a vector of scalars
 #ifdef RX_SIMD
-	__m128 yiq;
+	__m128 yiq;    // YIQA components accessed as a single vector type
 #endif
 } RxYiqColor;
 
@@ -156,6 +157,7 @@ typedef union RxLongColor_ {
 		double q;
 		double a;
 	};
+	double vec[4];
 #ifdef RX_SIMD
 	struct {
 		__m128d yi;
@@ -295,8 +297,7 @@ struct RxReduction_ {
 	int nReclusters;
 	int reclusterIteration;
 	unsigned int nPinnedClusters;
-	double lastSSE;
-	COLOR32(*maskColors) (COLOR32 col);
+	COLOR32 (*maskColors) (COLOR32 col);
 	RxAlphaMode alphaMode;
 	float fAlphaThreshold;
 	RxHistogram *histogram;
@@ -309,9 +310,7 @@ struct RxReduction_ {
 	RxColorNode *colorTreeHead;
 	RxColorNode *colorBlocks[RX_PALETTE_MAX_SIZE];
 	COLOR32 paletteRgb[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
-	COLOR32 paletteRgbCopy[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
 	RxYiqColor paletteYiq[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
-	RxYiqColor paletteYiqCopy[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
 	RxProgressCallback progressCallback;
 	void *progressCallbackData;
 	double meanY;
