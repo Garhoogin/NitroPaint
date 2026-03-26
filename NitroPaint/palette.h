@@ -308,7 +308,6 @@ struct RxReduction_ {
 	unsigned int newCentroids[RX_PALETTE_MAX_SIZE];
 	RxTotalBuffer blockTotals[RX_PALETTE_MAX_SIZE];
 	RxYiqColor imgBuffer[RX_TEMP_IMG_BUF_SIZE];
-	RxColorNode *colorTreeHead;
 	RxColorNode *colorBlocks[RX_PALETTE_MAX_SIZE];
 	COLOR32 paletteRgb[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];
 	RxYiqColor paletteYiq[RX_PALETTE_MAX_SIZE][RX_PALETTE_MAX_COUNT];

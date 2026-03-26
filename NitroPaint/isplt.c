@@ -1616,9 +1616,7 @@ static void RxiCreatePaletteUpdateProgress(RxReduction *reduction) {
 	RxiUpdateProgress(reduction, progress, progressMax);
 }
 
-static void RxiPaletteWrite(RxReduction *reduction) {
-	if (reduction->colorTreeHead == NULL) return;
-
+static void RxiPaletteWriteMasked(RxReduction *reduction) {
 	//convert to RGB
 	RxColorNode **colorBlockPtr = reduction->colorBlocks;
 	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
@@ -2007,8 +2005,6 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	RxColorNode *treeHead = RxiTreeNodeAlloc(reduction);
 	RxiTreeNodeInit(reduction, treeHead, 0, reduction->histogram->nEntries);
 
-	reduction->colorTreeHead = treeHead;
-
 	//main color reduction loop
 	reduction->nUsedColors = 1;
 	while (reduction->nUsedColors < reduction->nPaletteColors) {
@@ -2032,13 +2028,17 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	//flatten
 	RxColorNode **nodep = reduction->colorBlocks;
 	memset(nodep, 0, sizeof(reduction->colorBlocks));
-	RxiAddTreeToList(reduction->colorTreeHead, nodep);
+	RxiAddTreeToList(treeHead, nodep);
 
 	//to array
-	RxiPaletteWrite(reduction);
+	RxiPaletteWriteMasked(reduction);
 
 	//perform voronoi iteration
 	RxiPaletteRecluster(reduction);
+
+	//cleanup
+	RxiTreeFree(treeHead, TRUE);
+
 	return reduction->status;
 }
 
@@ -2130,10 +2130,6 @@ RxStatus RxHistClear(RxReduction *reduction) {
 		reduction->histogram = NULL;
 	}
 
-	if (reduction->colorTreeHead != NULL) RxiTreeFree(reduction->colorTreeHead, FALSE);
-	RxMemFree(reduction->colorTreeHead);
-
-	reduction->colorTreeHead = NULL;
 	reduction->nUsedColors = 0;
 	memset(reduction->paletteRgb, 0, sizeof(reduction->paletteRgb));
 	return reduction->status = RX_STATUS_OK;
@@ -2146,8 +2142,6 @@ void RxDestroy(RxReduction *reduction) {
 		RxiSlabFreeAll(&reduction->histogram->allocator);
 		free(reduction->histogram);
 	}
-	if (reduction->colorTreeHead != NULL) RxiTreeFree(reduction->colorTreeHead, FALSE);
-	RxMemFree(reduction->colorTreeHead);
 }
 
 void RxFree(RxReduction *reduction) {
