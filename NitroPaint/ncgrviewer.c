@@ -787,14 +787,14 @@ static int ChrViewerSetSelectedColor(NCGRVIEWERDATA *data, int col) {
 	return 1;
 }
 
-static void ChrViewerPutPixelInternal(NCGR *ncgr, int x, int y, int col) {
-	int chrX = x / 8, chrY = y / 8;
+static void ChrViewerPutPixelInternal(NCGR *ncgr, unsigned int x, unsigned int y, int col) {
+	unsigned int chrX = x / 8, chrY = y / 8;
 	unsigned char *chr = ncgr->tiles[chrX + chrY * ncgr->tilesX];
 	chr[(x & 7) + (y & 7) * 8] = col;
 }
 
-static int ChrViewerGetPixelInternal(NCGR *ncgr, int x, int y) {
-	int chrX = x / 8, chrY = y / 8;
+static int ChrViewerGetPixelInternal(NCGR *ncgr, unsigned int x, unsigned int y) {
+	unsigned int chrX = x / 8, chrY = y / 8;
 	unsigned char *chr = ncgr->tiles[chrX + chrY * ncgr->tilesX];
 	return chr[(x & 7) + (y & 7) * 8];
 }

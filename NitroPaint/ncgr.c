@@ -1286,12 +1286,11 @@ void ChrResize(NCGR *ncgr, int width, int height) {
 	if (ncgr->tilesX == width && ncgr->tilesY == height) return;
 
 	//allocate new buffer
-	unsigned char **chars2 = (unsigned char **) calloc(width * height, sizeof(unsigned char *));
+	unsigned char *chars2 = (unsigned char *) calloc(width * height, 64);
 	unsigned char *attr2 = (unsigned char *) calloc(width * height, 1);
 	for (int y = 0; y < height; y++) {
 		for (int x = 0; x < width; x++) {
-			unsigned char *chr = (unsigned char *) calloc(64, 1);
-			chars2[x + y * width] = chr;
+			unsigned char *chr = &chars2[64 * (x + y * width)];
 
 			//read in
 			if (x < ncgr->tilesX && y < ncgr->tilesY) {
@@ -1303,12 +1302,14 @@ void ChrResize(NCGR *ncgr, int width, int height) {
 	}
 
 	//free original character
-	free(ncgr->tiles);
-	if (ncgr->attr != NULL) free(ncgr->attr);
-	ncgr->tiles = chars2;
-	ncgr->attr = attr2;
+	free(ncgr->charbuf);
+	free(ncgr->attr);
 
 	ncgr->tilesX = width;
 	ncgr->tilesY = height;
 	ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
+
+	ncgr->charbuf = chars2;
+	ncgr->attr = attr2;
+	ChriCreateIndexes(ncgr);
 }
