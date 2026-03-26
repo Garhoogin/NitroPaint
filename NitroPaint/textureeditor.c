@@ -306,7 +306,7 @@ static void TexViewerOnMouseMove(HWND hWnd, int pxX, int pxY) {
 					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
 
 					newPlttHighlightLength = 1;
-					newPlttHighlightStart = pval;
+					newPlttHighlightStart = pval & iMask;
 					break;
 				}
 				case CT_4x4:
