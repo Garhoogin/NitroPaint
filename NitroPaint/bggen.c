@@ -547,6 +547,7 @@ int BgPerformCharacterCompression(
 
 void BgSetupTiles(BgTile *tiles, int nTiles, int nBits, COLOR32 *palette, int paletteSize, int nPalettes, int paletteBase, int paletteOffset, int dither, float diffuse, int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
+	RxApplyFlags(reduction, RX_FLAG_ALPHA_MODE_RESERVE);
 
 	if (!dither) diffuse = 0.0f;
 
