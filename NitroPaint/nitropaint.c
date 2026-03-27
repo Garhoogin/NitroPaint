@@ -2928,6 +2928,8 @@ static void *ReadWholeFile(const wchar_t *path, unsigned int *pSize) {
 }
 
 typedef struct {
+	HWND hWnd;
+
 	HWND hWndNtftInput;
 	HWND hWndNtftBrowseButton;
 	HWND hWndNtfpInput;
@@ -2937,9 +2939,77 @@ typedef struct {
 	HWND hWndFormat;
 	HWND hWndWidthInput;
 	HWND hWndConvertButton;
+
+	//preview work
+	void *texel;
+	void *index;
+	void *palette;
+	unsigned int texelSize;
+	unsigned int indexSize;
+	unsigned int paletteSize;
+
+	FrameBuffer fb;
 } NTFTCONVERTDATA;
 
 extern int ilog2(int x);
+
+static void NtftConvertUpdatePreview(NTFTCONVERTDATA *data) {
+	unsigned int fmt = UiCbGetCurSel(data->hWndFormat) + 1;
+	unsigned int c0xp = 0; // TODO
+	unsigned int texS = UiCbGetCurSel(data->hWndWidthInput);
+	unsigned int width = 8 << texS;
+
+	//get the size of texel data
+	unsigned int texelSize = data->texelSize;
+	if (fmt == CT_4x4) {
+		//limit texel size by index size
+		unsigned int indexSize = data->indexSize;
+		if (texelSize > indexSize * 2) texelSize = indexSize * 2;
+	}
+
+	//use format and width to derive the height
+	static const unsigned int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+	unsigned int bpp = bppArray[fmt];
+	unsigned int height = (texelSize * 8) / bpp / width;
+	if (height > 1024) height = 1024; // clamp height for a large file
+	if (fmt == CT_4x4) {
+		height &= ~3; // round down height to a multiple of 4 pixels
+	}
+
+	//get texture T dimension (smallest number such that 8<<t >= height
+	unsigned int texT = 0;
+	while ((8u << texT) < height) texT++;
+
+	//texture
+	TEXTURE texture = { 0 };
+	texture.texels.texel = data->texel;
+	texture.texels.cmp = data->index;
+	texture.texels.texImageParam = (fmt << 26) | (texS << 20) | (texT << 23) | (c0xp << 20);
+	texture.texels.height = height;
+	texture.palette.pal = (COLOR *) data->palette;
+	texture.palette.nColors = data->paletteSize / 2;
+
+	//render
+	COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+	TxRender(px, &texture.texels, &texture.palette);
+
+	//scale to size
+	unsigned int previewWidth = 128;
+	unsigned int previewHeight = 128;
+	COLOR32 *preview = ImgScaleEx(px, width, height, previewWidth, previewHeight, IMG_SCALE_FIT);
+	free(px);
+
+	FbSetSize(&data->fb, previewWidth ,previewHeight);
+	for (unsigned int y = 0; y < previewHeight; y++) {
+		for (unsigned int x = 0; x < previewWidth; x++) {
+			COLOR32 col = preview[x + y * previewWidth];
+			data->fb.px[x + y * previewWidth] = TedAlphaBlendColor(REVERSE(col), x, y);
+		}
+	}
+	free(preview);
+
+	InvalidateRect(data->hWnd, NULL, FALSE);
+}
 
 LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NTFTCONVERTDATA *data = (NTFTCONVERTDATA *) GetWindowLongPtr(hWnd, 0);
@@ -2950,7 +3020,10 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	switch (msg) {
 		case WM_CREATE:
 		{
-			SetWindowSize(hWnd, 280, 177);
+			static LPCWSTR widths[] = { L"8", L"16", L"32", L"64", L"128", L"256", L"512", L"1024" };
+
+			data->hWnd = hWnd;
+			SetWindowSize(hWnd, 280 + 10 + 128, 177);
 			CreateStatic(hWnd, L"Format:", 10, 10, 50, 22);
 			CreateStatic(hWnd, L"NTFT:", 10, 37, 50, 22);
 			CreateStatic(hWnd, L"NTFP:", 10, 64, 50, 22);
@@ -2963,9 +3036,11 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndNtfpBrowseButton = CreateButton(hWnd, L"...", 240, 64, 30, 22, FALSE);
 			data->hWndNtfiInput = CreateEdit(hWnd, L"", 70, 91, 170, 22, FALSE);
 			data->hWndNtfiBrowseButton = CreateButton(hWnd, L"...", 240, 91, 30, 22, FALSE);
-			data->hWndWidthInput = CreateEdit(hWnd, L"8", 70, 118, 100, 22, TRUE);
+			data->hWndWidthInput = CreateCombobox(hWnd, widths, 8, 70, 118, 100, 22, 0);
 			data->hWndConvertButton = CreateButton(hWnd, L"Convert", 70, 145, 100, 22, TRUE);
 			SetGUIFont(hWnd);
+
+			FbCreate(&data->fb, hWnd, 1, 1);
 
 			//populate the dropdown list
 			for (int i = 1; i <= CT_DIRECT; i++) {
@@ -2975,8 +3050,24 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 			UiCbSetCurSel(data->hWndFormat, CT_4x4 - 1);
 			
+			//set preview
+			NtftConvertUpdatePreview(data);
+
 			HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 			EnableWindow(hWndParent, FALSE);
+			break;
+		}
+		case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hDC = BeginPaint(hWnd, &ps);
+
+			int x = 240 + 30 + 10;
+			int y = 10;
+
+			FbDraw(&data->fb, hDC, x, y, data->fb.width, data->fb.height, 0, 0);
+
+			EndPaint(hWnd, &ps);
 			break;
 		}
 		case WM_COMMAND:
@@ -2986,22 +3077,37 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			if (hWndControl == data->hWndNtftBrowseButton) {
 				LPWSTR path = openFileDialog(hWnd, L"Open NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0", L"ntft");
 				if (!path) break;
+
 				UiEditSetText(data->hWndNtftInput, path);
+				free(data->texel);
+				data->texel = ReadWholeFile(path, &data->texelSize);
+				NtftConvertUpdatePreview(data);
+
 				free(path);
 			} else if (hWndControl == data->hWndNtfpBrowseButton) {
 				LPWSTR path = openFileDialog(hWnd, L"Open NTFP", L"NTFP Files (*.ntfp)\0*.ntfp\0All Files\0*.*\0", L"ntfp");
 				if (!path) break;
+
 				UiEditSetText(data->hWndNtfpInput, path);
+				free(data->palette);
+				data->palette = ReadWholeFile(path, &data->paletteSize);
+				NtftConvertUpdatePreview(data);
+
 				free(path);
 			} else if (hWndControl == data->hWndNtfiBrowseButton) {
 				LPWSTR path = openFileDialog(hWnd, L"Open NTFI", L"NTFI Files (*.ntfi)\0*.ntfi\0All Files\0*.*\0", L"ntfi");
 				if (!path) break;
+
 				UiEditSetText(data->hWndNtfiInput, path);
+				free(data->index);
+				data->index = ReadWholeFile(path, &data->indexSize);
+				NtftConvertUpdatePreview(data);
+
 				free(path);
 			} else if (hWndControl == data->hWndFormat && notif == CBN_SELCHANGE) {
 				//every format needs NTFT. But not all NTFI or NTFP
 				int fmt = UiCbGetCurSel(hWndControl) + 1; //1-based since entry 0 corresponds to format 1
-				
+
 				//only 4x4 needs NTFI.
 				int needsNtfi = fmt == CT_4x4;
 				EnableWindow(data->hWndNtfiInput, needsNtfi);
@@ -3013,10 +3119,13 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				EnableWindow(data->hWndNtfpBrowseButton, needsNtfp);
 
 				//update
-				InvalidateRect(hWnd, NULL, FALSE);
+				NtftConvertUpdatePreview(data);
+			} else if (hWndControl == data->hWndWidthInput && notif == CBN_SELCHANGE) {
+				//update
+				NtftConvertUpdatePreview(data);
 			} else if (hWndControl == data->hWndConvertButton) {
 				WCHAR src[MAX_PATH + 1];
-				int width = GetEditNumber(data->hWndWidthInput);
+				int width = 8 << UiCbGetCurSel(data->hWndWidthInput);
 				int format = UiCbGetCurSel(data->hWndFormat) + 1;
 
 				unsigned int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
@@ -3128,6 +3237,10 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		case WM_DESTROY:
 		{
+			FbDestroy(&data->fb);
+			free(data->texel);
+			free(data->index);
+			free(data->palette);
 			free(data);
 			break;
 		}
