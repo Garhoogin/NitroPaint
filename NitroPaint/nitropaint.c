@@ -4811,6 +4811,73 @@ static LRESULT CALLBACK CompressFileProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 
 
 
+typedef struct PaletteSwapParams_ {
+	COLOR32 *imgCat;
+	int *indices;
+	unsigned int width;
+	unsigned int height;
+	unsigned int nLayers;
+	COLOR32 *pltt;
+	unsigned int plttSize;
+	float diffuse;
+	int c0xp;
+	RxFlag flag;
+	const RxBalanceSetting *balance;
+	unsigned int *pnUsed;
+} PaletteSwapParams;
+
+static DWORD CALLBACK PaletteSwapImpl(LPVOID lpParam) {
+	PaletteSwapParams *params = (PaletteSwapParams *) lpParam;
+
+	//create the palette data
+	RxReduction *reduction = RxNew(params->balance->balance, params->balance->colorBalance, params->balance->enhanceColors);
+	RxSetPaletteLayers(reduction, params->nLayers);
+	RxApplyFlags(reduction, params->flag);
+	RxHistAdd(reduction, params->imgCat, params->width, params->height);
+	RxHistFinalize(reduction);
+	RxComputePalette(reduction, params->plttSize - (params->c0xp ? 1 : 0));
+	RxSortPalette(reduction, RX_FLAG_SORT_ONLY_USED | RX_FLAG_SORT_END_DIFFER);
+
+	//read palettes
+	unsigned int nUsedColors = reduction->nUsedColors;
+	for (unsigned int i = 0; i < params->nLayers; i++) {
+		RxGetPalette(reduction, params->pltt + params->plttSize * i, i);
+	}
+	*params->pnUsed = nUsedColors;
+
+	//index the images
+	RxReduceImageWithContext(reduction, params->imgCat, params->indices, params->width, params->height, params->pltt, params->plttSize, params->flag, params->diffuse);
+	RxFree(reduction);
+	return 0;
+}
+
+static void PaletteSwapThreaded(HWND hWnd, COLOR32 *imgCat, int *indices, unsigned int width, unsigned int height, unsigned int nLayers, COLOR32 *pltt, unsigned int plttSize, float diffuse, int c0xp, RxFlag flag, const RxBalanceSetting *balance, unsigned int *pnUsedColors) {
+
+	//modal window
+	HWND hWndModal = CreateWindow(L"CompressionProgress", L"Compressing",
+		WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
+		CW_USEDEFAULT, CW_USEDEFAULT, 500, 150, hWnd, NULL, NULL, NULL);
+
+	PaletteSwapParams params;
+	params.imgCat = imgCat;
+	params.indices = indices;
+	params.width = width;
+	params.height = height;
+	params.nLayers = nLayers;
+	params.pltt = pltt;
+	params.plttSize = plttSize;
+	params.diffuse = diffuse;
+	params.c0xp = c0xp;
+	params.flag = flag;
+	params.balance = balance;
+	params.pnUsed = pnUsedColors;
+	HANDLE hThread = CreateThread(NULL, 0, PaletteSwapImpl, &params, 0, NULL);
+
+	DoModalWait(hWndModal, hThread);
+
+	CloseHandle(hThread);
+}
+
 static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	PaletteSwapData *data = (PaletteSwapData *) GetWindowLongPtr(hWnd, 0);
 
@@ -4916,6 +4983,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
 				int c0xp = GetCheckboxChecked(data->hWndC0xp);
 				int dataType = UiCbGetCurSel(data->hWndType);
+				unsigned int nLayers = data->nEntries;
 
 				//get texture format
 				int fmtSel = UiCbGetCurSel(data->hWndTextureFormat);
@@ -4950,7 +5018,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				//check that alpha values of corresponding pixels quantize to the same value and throw a warning.
 				unsigned int nPx = width * height;
 				int differAlpha = 0;
-				for (unsigned int i = 1; i < data->nEntries; i++) {
+				for (unsigned int i = 1; i < nLayers; i++) {
 					COLOR32 *img0 = data->entries[0].px;
 					COLOR32 *imgI = data->entries[i].px;
 
@@ -4974,45 +5042,30 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				for (unsigned int i = 0; i < nPx; i++) {
 					//get low alpha
 					unsigned int minA = 0xFF;
-					for (unsigned int j = 0; j < data->nEntries; j++) {
+					for (unsigned int j = 0; j < nLayers; j++) {
 						unsigned int a = data->entries[j].px[i] >> 24;
 						if (a < minA) minA = a;
 					}
 
 					//write across images
-					for (unsigned int j = 0; j < data->nEntries; j++) {
+					for (unsigned int j = 0; j < nLayers; j++) {
 						data->entries[j].px[i] = (data->entries[j].px[i] & 0x00FFFFFF) | (minA << 24);
 					}
 				}
 
 				//concatenate image buffers
-				COLOR32 *imgCat = (COLOR32 *) calloc(nPx * data->nEntries, sizeof(COLOR32));
-				for (unsigned int i = 0; i < data->nEntries; i++) {
+				COLOR32 *imgCat = (COLOR32 *) calloc(nPx * nLayers, sizeof(COLOR32));
+				for (unsigned int i = 0; i < nLayers; i++) {
 					memcpy(imgCat + i * nPx, data->entries[i].px, nPx * sizeof(COLOR32));
 				}
 
 				//create the palette data.
-				COLOR32 *pltt = (COLOR32 *) calloc(plttSize * data->nEntries, sizeof(COLOR32));
-
-				//create the palette data
-				RxReduction *reduction = RxNew(balance.balance, balance.colorBalance, balance.enhanceColors);
-				RxSetPaletteLayers(reduction, data->nEntries);
-				RxApplyFlags(reduction, flag);
-				RxHistAdd(reduction, imgCat, width, height);
-				RxHistFinalize(reduction);
-				RxComputePalette(reduction, plttSize - (c0xp ? 1 : 0));
-				RxSortPalette(reduction, RX_FLAG_SORT_ONLY_USED | RX_FLAG_SORT_END_DIFFER);
-
-				//read palettes
-				unsigned int nUsedColors = reduction->nUsedColors;
-				for (unsigned int i = 0; i < data->nEntries; i++) {
-					RxGetPalette(reduction, pltt + plttSize * i, i);
-				}
-
-				//index the images
+				COLOR32 *pltt = (COLOR32 *) calloc(plttSize * nLayers, sizeof(COLOR32));
 				int *indices = (int *) calloc(width * height, sizeof(int));
-				RxReduceImageWithContext(reduction, imgCat, indices, width, height, pltt, plttSize, flag, diffuse);
-				RxFree(reduction);
+
+				unsigned int nUsedColors;
+				PaletteSwapThreaded(hWnd, imgCat, indices, width, height, nLayers, pltt, plttSize, diffuse, c0xp, flag, &balance, &nUsedColors);
+
 				free(imgCat);
 
 				//create the texel data
@@ -5040,7 +5093,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 					case TYPE_MULTIPLE_TEXTURES:
 					{
 						//create multiple textures
-						for (unsigned int i = 0; i < data->nEntries; i++) {
+						for (unsigned int i = 0; i < nLayers; i++) {
 
 							TextureObject *tex = (TextureObject *) ObjAlloc(FILE_TYPE_TEXTURE, NpGetTextureFormatForPreset());
 
@@ -5084,7 +5137,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 						tex->texture.palette.name = TexNarrowResourceNameFromWideChar(plttName);
 						tex->texture.palette.nColors = plttSize * data->nEntries;
 						tex->texture.palette.pal = (COLOR *) calloc(plttSize * data->nEntries, sizeof(COLOR));
-						for (unsigned int i = 0; i < plttSize * data->nEntries; i++) {
+						for (unsigned int i = 0; i < plttSize * nLayers; i++) {
 							tex->texture.palette.pal[i] = ColorConvertToDS(pltt[i]);
 						}
 
@@ -5111,7 +5164,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
 						//put palettes
 						texarc->palettes = (PALETTE *) calloc(data->nEntries, sizeof(PALETTE));
-						for (unsigned int i = 0; i < data->nEntries; i++) {
+						for (unsigned int i = 0; i < nLayers; i++) {
 							wchar_t *plttName = UiEditGetText(data->hWndPaletteNames[i]);
 
 							texarc->palettes[i].name = TexNarrowResourceNameFromWideChar(plttName);
@@ -5131,11 +5184,11 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				}
 
 				//last: to report the created palette, calculate the number of shared palette colors.
-				unsigned int nShared = 0, nEntries = data->nEntries;
+				unsigned int nShared = 0;
 				for (unsigned int i = 0; i < nUsedColors; i++) {
 					int shared = 1;
 
-					for (unsigned int j = 1; j < data->nEntries; j++) {
+					for (unsigned int j = 1; j < nLayers; j++) {
 						if (pltt[j * plttSize + i] != pltt[(j - 1) * plttSize + i]) shared = 0;
 					}
 
@@ -5148,7 +5201,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
 				//user info message (after dialog closure)
 				wchar_t infobuf[64];
-				wsprintfW(infobuf, L"Created %d palettes. %d colors used, %d colors shared.", nEntries,
+				wsprintfW(infobuf, L"Created %d palettes. %d colors used, %d colors shared.", nLayers,
 					nUsedColors, nShared);
 				MessageBox(hWndMain, infobuf, L"Create Palette Swap", MB_ICONINFORMATION);
 
