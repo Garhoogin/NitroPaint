@@ -972,47 +972,31 @@ static int RxiPaletteFindClosestRgbColor(RxReduction *reduction, const RxYiqColo
 
 // ----- clustering code
 
-void RxiTreeFree(RxColorNode *node, int freeThis) {
-	if (node->left != NULL) {
-		RxiTreeFree(node->left, TRUE);
-		node->left = NULL;
-	}
-	if (node->right != NULL) {
-		RxiTreeFree(node->right, TRUE);
-		node->right = NULL;
-	}
-	if (freeThis) {
-		RxMemFree(node);
-	}
+static void RxiTreeNodeFree(RxColorNode *node) {
+	RxMemFree(node);
 }
 
-static int RxiTreeCountLeaves(const RxColorNode *tree) {
-	if (tree->left == NULL && tree->right == NULL) return 1;
-
-	int count = 0;
-	if (tree->left != NULL) count += RxiTreeCountLeaves(tree->left);
-	if (tree->right != NULL) count += RxiTreeCountLeaves(tree->right);
-	return count;
-}
-
-static RxColorNode *RxiTreeFindSplittableNode(const RxColorNode *tree) {
-	if (tree->left == NULL && tree->right == NULL) {
-		if (tree->canSplit) return (RxColorNode *) tree;
-		return NULL;
+static void RxiTreeFreeAll(RxReduction *reduction) {
+	//free all nodes
+	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
+		RxiTreeNodeFree(reduction->colorBlocks[i]);
 	}
 
-	RxColorNode *leafLeft = NULL, *leafRight = NULL;
-	if (tree->left != NULL) leafLeft = RxiTreeFindSplittableNode(tree->left);
-	if (tree->right != NULL) leafRight = RxiTreeFindSplittableNode(tree->right);
-	
-	//in the cases of one or no found nodes
-	if (leafLeft != NULL && leafRight == NULL) return leafLeft;
-	if (leafRight != NULL && leafLeft == NULL) return leafRight;
-	if (leafLeft == NULL && leafRight == NULL) return NULL;
+	memset(reduction->colorBlocks, 0, sizeof(reduction->colorBlocks));
+}
 
-	if (leafRight->priority >= leafLeft->priority) return leafRight;
-	return leafLeft;
+static RxColorNode *RxiTreeFindSplittableNode(RxReduction *reduction) {
+	RxColorNode *found = NULL;
 
+	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
+		RxColorNode *node = reduction->colorBlocks[i];
+		
+		//if the node is splittable, choose it at a higher priority
+		if (node->canSplit && (found == NULL || node->priority > found->priority)) {
+			found = node;
+		}
+	}
+	return found;
 }
 
 static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int endIndex, double *axis, double *pVar) {
@@ -1516,96 +1500,67 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 
 static void RxiTreeSplitNode(RxReduction *reduction, RxColorNode *node) {
 	RX_ASSUME(node->canSplit);
-	RX_ASSUME(node->left == NULL && node->right == NULL);
 	RX_ASSUME(node->pivotIndex > node->startIndex && node->pivotIndex < node->endIndex);
 
-	node->canSplit = FALSE;
-
-	RxColorNode *lNode = RxiTreeNodeAlloc(reduction);
+	//allocate a new right node, the left node will replace the old node
+	RxColorNode *lNode = node;
 	RxColorNode *rNode = RxiTreeNodeAlloc(reduction);
-	if (lNode == NULL || rNode == NULL) {
-		RxMemFree(lNode);
-		RxMemFree(rNode);
+	if (rNode == NULL) {
 		reduction->status = RX_STATUS_NOMEM;
 		return;
 	}
 
-	//init left node
-	node->left = lNode;
-	RxiTreeNodeInit(reduction, lNode, node->startIndex, node->pivotIndex);
+	//slot new node into the array
+	RX_ASSUME(reduction->nUsedColors < RX_PALETTE_MAX_SIZE);
+	reduction->colorBlocks[reduction->nUsedColors++] = rNode;
 
-	//init right node
-	node->right = rNode;
+	//init left and right nodes
 	RxiTreeNodeInit(reduction, rNode, node->pivotIndex, node->endIndex);
-
-	reduction->nUsedColors++;
+	RxiTreeNodeInit(reduction, lNode, node->startIndex, node->pivotIndex);
 }
 
-static RxColorNode *RxiTreeFindNodeByColor(RxReduction *reduction, const RxColorNode *treeHead, const RxColorNode *src) {
-	if (treeHead == NULL || treeHead == src) return NULL;
+static RxColorNode *RxiTreeFindNodeByColor(RxReduction *reduction, const RxColorNode *src, unsigned int *pIndex) {
+	
+	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
+		RxColorNode *node = reduction->colorBlocks[i];
+		if (node == src) continue; // do not return the query node
 
-	if (treeHead->left != NULL || treeHead->right != NULL) {
-		RxColorNode *foundLeft = RxiTreeFindNodeByColor(reduction, treeHead->left, src);
-		if (foundLeft != NULL) return foundLeft;
+		//check the color matches
+		int differ = 0;
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			COLOR32 compare = RxiMaskYiqToRgb(reduction, &src->color[j]);
+			COLOR32 thisRgb = RxiMaskYiqToRgb(reduction, &node->color[j]);
 
-		RxColorNode *foundRight = RxiTreeFindNodeByColor(reduction, treeHead->right, src);
-		return foundRight;
+			if (compare != thisRgb) {
+				//not the node we're looking for
+				differ = 1;
+				break;
+			}
+		}
+
+		//found macthing node
+		if (!differ) {
+			*pIndex = i;
+			return node;
+		}
 	}
 
-	//is leaf, does this match?
-	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
-		COLOR32 compare = RxiMaskYiqToRgb(reduction, &src->color[i]);
-		COLOR32 thisRgb = RxiMaskYiqToRgb(reduction, &treeHead->color[i]);
-		if (compare != thisRgb) return NULL;  // not the node we're looking for
+	//no nodes found
+	return NULL;
+}
+
+static void RxiTreeDeleteNode(RxReduction *reduction, unsigned int iNode) {
+	RX_ASSUME(iNode < reduction->nUsedColors);
+
+	//first free the node structure
+	RxiTreeNodeFree(reduction->colorBlocks[iNode]);
+
+	//move nodes
+	unsigned int nMove = reduction->nUsedColors - iNode - 1;
+	if (nMove > 0) {
+		memmove(&reduction->colorBlocks[iNode], &reduction->colorBlocks[iNode + 1], nMove * sizeof(RxColorNode *));
 	}
-
-	//all comparisons pass, this is the node we're looking for
-	return (RxColorNode *) treeHead;
-}
-
-static RxColorNode *RxiTreeFindNodeByChild(const RxColorNode *treeHead, const RxColorNode *child) {
-	if (treeHead == NULL) return NULL;
-	if (treeHead->left == child || treeHead->right == child) return (RxColorNode *) treeHead;
-
-	RxColorNode *foundLeft = RxiTreeFindNodeByChild(treeHead->left, child);
-	if (foundLeft != NULL) return foundLeft;
-
-	return RxiTreeFindNodeByChild(treeHead->right, child);
-}
-
-static RxColorNode *RxiTreeFindNodeByIndex(const RxColorNode *treeHead, int index) {
-	if (treeHead == NULL) return NULL;
-	if (treeHead->left == NULL && treeHead->right == NULL) return (RxColorNode *) treeHead;
-	if (treeHead->left == NULL) return RxiTreeFindNodeByIndex(treeHead->right, index);
-	if (treeHead->right == NULL) return RxiTreeFindNodeByIndex(treeHead->left, index);
-
-	//count nodes left. If greater than index, search left, else search right
-	int nodesLeft = RxiTreeCountLeaves(treeHead->left);
-	if (nodesLeft > index) return RxiTreeFindNodeByIndex(treeHead->left, index);
-	return RxiTreeFindNodeByIndex(treeHead->right, index - nodesLeft);
-}
-
-static void RxiTreeCleanEmptyNode(RxColorNode *treeHead, RxColorNode *node) {
-	//trace up the tree clearing out empty non-leaf nodes
-	RxColorNode *parent = RxiTreeFindNodeByChild(treeHead, node);
-	if (parent != NULL) {
-		if (parent->left == node) parent->left = NULL;
-		if (parent->right == node) parent->right = NULL;
-		if (parent->left == NULL && parent->right == NULL) RxiTreeCleanEmptyNode(treeHead, parent);
-	}
-	RxiTreeFree(node, TRUE);
-}
-
-static RxColorNode **RxiAddTreeToList(const RxColorNode *node, RxColorNode **list) {
-	if (node->left == NULL && node->right == NULL) {
-		//leaf node
-		*(list++) = (RxColorNode *) node;
-		return list;
-	}
-
-	if (node->left != NULL) list = RxiAddTreeToList(node->left, list);
-	if (node->right != NULL) list = RxiAddTreeToList(node->right, list);
-	return list;
+	reduction->nUsedColors--;
 }
 
 static void RxiCreatePaletteUpdateProgress(RxReduction *reduction) {
@@ -1901,32 +1856,34 @@ static void RxiVoronoiLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned
 	}
 }
 
-static void RxiAdjustHistogramIndices(RxColorNode *tree, int cutStart, int nCut) {
-	//adjust this node
-	if (tree->startIndex > cutStart) {
-		//when startIndex==cutStart, this node is referencing the space being deleted. Do not adjust.
-		tree->startIndex -= nCut;
-		tree->endIndex -= nCut;
-		tree->pivotIndex -= nCut;
-	}
+static void RxiAdjustHistogramIndices(RxReduction *reduction, int cutStart, int nCut) {
+	//adjust all nodes
+	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
+		RxColorNode *node = reduction->colorBlocks[i];
 
-	//adjust all children
-	if (tree->left != NULL) RxiAdjustHistogramIndices(tree->left, cutStart, nCut);
-	if (tree->right != NULL) RxiAdjustHistogramIndices(tree->right, cutStart, nCut);
+		//adjust this node
+		if (node->startIndex > cutStart) {
+			//when startIndex==cutStart, this node is referencing the space being deleted. Do not adjust.
+			node->startIndex -= nCut;
+			node->endIndex -= nCut;
+			node->pivotIndex -= nCut;
+		}
+	}
 }
 
-static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
+static int RxiMergeTreeNodes(RxReduction *reduction) {
 	if (reduction->status != RX_STATUS_OK) return 0;
 	if (reduction->nUsedColors < 2) return 0; // no merge possible
 
 	//duplicate color test
 	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
-		RxColorNode *node = RxiTreeFindNodeByIndex(treeHead, i);
+		RxColorNode *node = reduction->colorBlocks[i];
 
-		int nDupMerge = 0;
+		unsigned int nDupMerge = 0;
 		while (1) {
 			//find duplicate nodes until no duplicates are found
-			RxColorNode *dup = RxiTreeFindNodeByColor(reduction, treeHead, node);
+			unsigned int iDup;
+			RxColorNode *dup = RxiTreeFindNodeByColor(reduction, node, &iDup);
 			if (dup == NULL) break;
 
 			//we should combine these two nodes into one node of combined weight.
@@ -1943,12 +1900,8 @@ static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
 			int nColsMove = nCols1 + nCols2;
 			int nHist = reduction->histogram->nEntries;
 
-			//free one node. If the node's parent then has no children, we clean the tree upwards.
-			RxColorNode *parent = RxiTreeFindNodeByChild(treeHead, dup);
-			RxiTreeFree(dup, TRUE);
-			if (parent->left == dup) parent->left = NULL;
-			if (parent->right == dup) parent->right = NULL;
-			if (parent->right == NULL && parent->left == NULL) RxiTreeCleanEmptyNode(treeHead, parent);
+			//delete the duplicate node.
+			RxiTreeDeleteNode(reduction, iDup);
 
 			//we'll combine the histogram entries from both nodes into one. To accomplish this, we'll need to rearrange
 			//the histogram array.
@@ -1963,8 +1916,8 @@ static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
 			free(tempbuf);
 
 			//adjust the histogram indices of tree nodes
-			RxiAdjustHistogramIndices(treeHead, start1, nCols1);
-			RxiAdjustHistogramIndices(treeHead, start2 - nCols1, nCols2); // adjust starting index by amount we cut above
+			RxiAdjustHistogramIndices(reduction, start1, nCols1);
+			RxiAdjustHistogramIndices(reduction, start2 - nCols1, nCols2); // adjust starting index by amount we cut above
 
 			//we recalculate the new combined node.
 			RxiTreeNodeInit(reduction, node, loc3, loc4);
@@ -1972,11 +1925,7 @@ static int RxiMergeTreeNodes(RxReduction *reduction, RxColorNode *treeHead) {
 
 			node->canSplit = 0; // HACK
 
-			//fix leaves with one child to prevent the tree depth from spiraling
-			//RxiTreeAdjustOneChildNodes(treeHead);
-
 			//remove node from existence
-			reduction->nUsedColors--;
 			nDupMerge++;
 			continue;
 		}
@@ -1994,29 +1943,29 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	reduction->nPaletteColors = nColors;
 	reduction->reclusterIteration = 0;
 	reduction->nPinnedClusters = 0;
+	reduction->nUsedColors = 0;
 	RxiCreatePaletteUpdateProgress(reduction);
 
 	if (reduction->histogramFlat == NULL || reduction->histogram->nEntries == 0) {
-		reduction->nUsedColors = 0;
 		return reduction->status;
 	}
 
 	//do it
 	RxColorNode *treeHead = RxiTreeNodeAlloc(reduction);
 	RxiTreeNodeInit(reduction, treeHead, 0, reduction->histogram->nEntries);
+	reduction->colorBlocks[reduction->nUsedColors++] = treeHead;
 
 	//main color reduction loop
-	reduction->nUsedColors = 1;
 	while (reduction->nUsedColors < reduction->nPaletteColors) {
 		//split and initialize children for the found node.
-		RxColorNode *node = RxiTreeFindSplittableNode(treeHead);
+		RxColorNode *node = RxiTreeFindSplittableNode(reduction);
 		if (node != NULL) RxiTreeSplitNode(reduction, node); // split node
 
 		//when we would reach a termination condition, check first if any colors would be duplicates of each other.
 		//this may especially happen when color masking is used, since the masked colors are not yet known.
 		if (reduction->nUsedColors >= reduction->nPaletteColors || node == NULL) {
 			//merge loop
-			while (RxiMergeTreeNodes(reduction, treeHead));
+			while (RxiMergeTreeNodes(reduction));
 		}
 		RxiCreatePaletteUpdateProgress(reduction);
 
@@ -2025,11 +1974,6 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	}
 	RxiCreatePaletteUpdateProgress(reduction);
 
-	//flatten
-	RxColorNode **nodep = reduction->colorBlocks;
-	memset(nodep, 0, sizeof(reduction->colorBlocks));
-	RxiAddTreeToList(treeHead, nodep);
-
 	//to array
 	RxiPaletteWriteMasked(reduction);
 
@@ -2037,7 +1981,7 @@ RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	RxiPaletteRecluster(reduction);
 
 	//cleanup
-	RxiTreeFree(treeHead, TRUE);
+	RxiTreeFreeAll(reduction);
 
 	return reduction->status;
 }

@@ -183,8 +183,6 @@ typedef struct RxColorNode_ {
 	int pivotIndex;                // calculated pivot index for this node
 	int startIndex;                // starting index in the flat histogram
 	int endIndex;                  // ending index (non-inclusive) for this node
-	struct RxColorNode_ *left;     // left child node, if one exists
-	struct RxColorNode_ *right;    // right child node, if one exists
 	RxYiqColor color[];            // this node's color information
 } RxColorNode;
 
@@ -198,7 +196,7 @@ typedef struct RxSlab_ {
 //histogram structure
 typedef struct RxHistogram_ {
 	RxSlab allocator;
-	RxHistEntry *entries[0x20000];
+	RxHistEntry *entries[RX_HISTOGRAM_SIZE];
 	double totalWeight;
 	int nEntries;
 	int firstSlot;
