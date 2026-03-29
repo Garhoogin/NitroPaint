@@ -4323,7 +4323,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	unsigned int nColUse;
 	if (fixedPalette == NULL) {
 		//create a color palette
-		RxCreatePaletteEx(data->px, data->width, data->height,
+		RxCreatePalette(data->px, data->width, data->height,
 			data->pltt + plttOffs, nColors - plttOffs, balance.balance, balance.colorBalance, balance.enhanceColors, flag, &nColUse);
 		if ((flag & RX_FLAG_ALPHA_MODE_MASK) == RX_FLAG_ALPHA_MODE_RESERVE) {
 			data->pltt[0] = 0; // transparent
@@ -4345,7 +4345,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	//reduce
 	float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
 	if (!GetCheckboxChecked(data->hWndDither)) diffuse = 0.0f;
-	RxReduceImageEx(data->reduced, data->indices, data->width, data->height, data->pltt, nColUse + plttOffs,
+	RxReduceImage(data->reduced, data->indices, data->width, data->height, data->pltt, nColUse + plttOffs,
 		flag, diffuse, balance.balance, balance.colorBalance, balance.enhanceColors);
 
 	if (fixedPalette != NULL) free(fixedPalette);

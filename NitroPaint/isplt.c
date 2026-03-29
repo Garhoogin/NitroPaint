@@ -1,3 +1,27 @@
+// -----------------------------------------------------------------------------------------------
+// Copyright (c) 2020, Garhoogin
+// All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without modification, are permitted
+// provided that the following conditions are met:
+// 
+// 1. Redistributions of source code must retain the above copyright notice, this list of
+//    conditions and the following disclaimer.
+// 
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of
+//    conditions and the following disclaimer in the documentation and/or other materials provided
+//    with the distribution.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+// IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+// POSSIBILITY OF SUCH DAMAGE.
+// -----------------------------------------------------------------------------------------------
 #include <math.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -171,7 +195,7 @@ static inline float RxiLinearizeLuma(float luma) {
 #endif
 }
 
-void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
+void RX_API RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	//implementations using scalar and vector arithmetic
 #ifndef RX_SIMD
 	double r = (double) ((rgb >>  0) & 0xFF);
@@ -253,7 +277,7 @@ void RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 #endif
 }
 
-COLOR32 RxConvertYiqToRgb(const RxYiqColor *yiq) {
+COLOR32 RX_API RxConvertYiqToRgb(const RxYiqColor *yiq) {
 	double da = yiq->a;
 	double y = 0.0, i = 0.0, q = 0.0;
 	if (da > 0.0) {
@@ -338,7 +362,7 @@ static inline double RxiComputeLayeredColorDifference(RxReduction *reduction, co
 	return diff;
 }
 
-double RxComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
+double RX_API RxComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
 	return RxiComputeColorDifference(reduction, yiq1, yiq2);
 }
 
@@ -495,7 +519,7 @@ static void RxiComputeAlphaInteraction(RxReduction *reduction) {
 #endif
 }
 
-void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
+void RX_API RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
 	reduction->yWeight = 60 - balance;       // high balance -> lower Y weight
 	reduction->iWeight = colorBalance;       // high color balance -> high I weight
 	reduction->qWeight = 40 - colorBalance;  // high color balance -> low Q weight
@@ -510,7 +534,7 @@ void RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enh
 	reduction->enhanceColors = enhanceColors;
 }
 
-RxStatus RxSetPaletteLayers(RxReduction *reduction, unsigned int nLayers) {
+RxStatus RX_API RxSetPaletteLayers(RxReduction *reduction, unsigned int nLayers) {
 	//check valid layer count
 	if (nLayers == 0 || nLayers > RX_PALETTE_MAX_COUNT) return RX_STATUS_INVALID;
 
@@ -521,7 +545,7 @@ RxStatus RxSetPaletteLayers(RxReduction *reduction, unsigned int nLayers) {
 	return RX_STATUS_OK;
 }
 
-void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
+static void RxiInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
 	memset(reduction, 0, sizeof(RxReduction));
 
 	//default color space moments, precalculated assuming a uniform distribution of RGB colors
@@ -543,7 +567,7 @@ void RxInit(RxReduction *reduction, int balance, int colorBalance, int enhanceCo
 	reduction->status = RX_STATUS_OK;
 }
 
-void RxAssumeCompositingDistribution(RxReduction *reduction, const COLOR32 *cols, unsigned int nCols) {
+void RX_API RxAssumeCompositingDistribution(RxReduction *reduction, const COLOR32 *cols, unsigned int nCols) {
 	if (nCols == 0) {
 		//defaults (uniform distribution)
 		reduction->meanY = MEAN_Y;
@@ -583,15 +607,15 @@ void RxAssumeCompositingDistribution(RxReduction *reduction, const COLOR32 *cols
 	RxiComputeAlphaInteraction(reduction);
 }
 
-RxReduction *RxNew(int balance, int colorBalance, int enhanceColors) {
+RxReduction *RX_API RxNew(int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = (RxReduction *) RxMemCalloc(1, sizeof(RxReduction));
 	if (reduction == NULL) return NULL;
 
-	RxInit(reduction, balance, colorBalance, enhanceColors);
+	RxiInit(reduction, balance, colorBalance, enhanceColors);
 	return reduction;
 }
 
-void RxApplyFlags(RxReduction *reduction, RxFlag flag) {
+void RX_API RxApplyFlags(RxReduction *reduction, RxFlag flag) {
 	//set alpha mode
 	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
 		case RX_FLAG_ALPHA_MODE_NONE: reduction->alphaMode = RX_ALPHA_NONE; break;
@@ -609,7 +633,7 @@ void RxApplyFlags(RxReduction *reduction, RxFlag flag) {
 	}
 }
 
-void RxSetProgressCallback(RxReduction *reduction, RxProgressCallback callback, void *userData) {
+void RX_API RxSetProgressCallback(RxReduction *reduction, RxProgressCallback callback, void *userData) {
 	reduction->progressCallback = callback;
 	reduction->progressCallbackData = userData;
 }
@@ -717,7 +741,7 @@ RxStatus RxHistInit(RxReduction *reduction) {
 	return RX_STATUS_OK;
 }
 
-void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight) {
+void RX_API RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight) {
 	RxHistogram *histogram = reduction->histogram;
 	if (reduction->status != RX_STATUS_OK) return;
 
@@ -757,7 +781,7 @@ void RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double weight
 	histogram->totalWeight += weight;
 }
 
-RxStatus RxHistFinalize(RxReduction *reduction) {
+RxStatus RX_API RxHistFinalize(RxReduction *reduction) {
 	if (reduction->status != RX_STATUS_OK) return reduction->status;
 	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 
@@ -784,7 +808,7 @@ RxStatus RxHistFinalize(RxReduction *reduction) {
 	return RX_STATUS_OK;
 }
 
-RxStatus RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, unsigned int height) {
+RxStatus RX_API RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int width, unsigned int height) {
 	if (reduction->histogram == NULL) {
 		RxStatus status = RxHistInit(reduction);
 		if (status != RX_STATUS_OK) return reduction->status = status;
@@ -906,7 +930,7 @@ RxStatus RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned int widt
 	return reduction->status;
 }
 
-double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, double maxError) {
+double RX_API RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, double maxError) {
 	double error = 0.0;
 
 	//sum total weighted squared differences
@@ -922,7 +946,7 @@ double RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqColor *pa
 	return error;
 }
 
-double RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, unsigned int nColors, double maxError) {
+double RX_API RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, unsigned int nColors, double maxError) {
 	RxYiqColor yiqPaletteStack[16];
 	RxYiqColor *yiqPalette = yiqPaletteStack;
 	if (nColors > 16) {
@@ -1245,7 +1269,7 @@ static double RxiComputePcScore(RxReduction *reduction, const RxYiqColor *col, c
 	return dot;
 }
 
-void RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
+void RX_API RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
 	double principal[4 * RX_PALETTE_MAX_COUNT];
 	RxHistEntry **thisHistogram = &reduction->histogramFlat[startIndex];
 	RxiHistChooseSplitAxis(reduction, startIndex, endIndex, principal);
@@ -1269,7 +1293,7 @@ void RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
 	qsort(thisHistogram, nColors, sizeof(RxHistEntry *), RxiHistEntryComparator);
 }
 
-unsigned int RxHistGetTopN(RxReduction *reduction, unsigned int n, RxYiqColor *cols, double *weights) {
+unsigned int RX_API RxHistGetTopN(RxReduction *reduction, unsigned int n, RxYiqColor *cols, double *weights) {
 	if (reduction->histogram == NULL) return 0; // no histogram
 
 	//sort histogram
@@ -1939,7 +1963,7 @@ static int RxiMergeTreeNodes(RxReduction *reduction) {
 	return 0;
 }
 
-RxStatus RxComputePalette(RxReduction *reduction, unsigned int nColors) {
+RxStatus RX_API RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	reduction->nPaletteColors = nColors;
 	reduction->reclusterIteration = 0;
 	reduction->nPinnedClusters = 0;
@@ -1994,7 +2018,7 @@ static int RxiIsColorVectorAllEqual(const RxYiqColor *yiq, unsigned int n) {
 	return 1;
 }
 
-RxStatus RxSortPalette(RxReduction *reduction, RxFlag flag) {
+RxStatus RX_API RxSortPalette(RxReduction *reduction, RxFlag flag) {
 	unsigned int nSort = reduction->nPaletteColors;
 	if (flag & RX_FLAG_SORT_ONLY_USED) nSort = reduction->nUsedColors;
 
@@ -2044,7 +2068,7 @@ RxStatus RxSortPalette(RxReduction *reduction, RxFlag flag) {
 	return RX_STATUS_OK;
 }
 
-RxStatus RxGetPalette(RxReduction *reduction, COLOR32 *pltt, unsigned int iPltt) {
+RxStatus RX_API RxGetPalette(RxReduction *reduction, COLOR32 *pltt, unsigned int iPltt) {
 	if (iPltt >= reduction->paletteLayers) return RX_STATUS_INVALID;
 
 	//when the alpha mode is "reserve", we write out a placeholder transparent black color in that slot.
@@ -2064,7 +2088,7 @@ RxStatus RxGetPalette(RxReduction *reduction, COLOR32 *pltt, unsigned int iPltt)
 	return RX_STATUS_OK;
 }
 
-RxStatus RxHistClear(RxReduction *reduction) {
+RxStatus RX_API RxHistClear(RxReduction *reduction) {
 	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 	reduction->histogramFlat = NULL;
 
@@ -2079,7 +2103,7 @@ RxStatus RxHistClear(RxReduction *reduction) {
 	return reduction->status = RX_STATUS_OK;
 }
 
-void RxDestroy(RxReduction *reduction) {
+static void RxiDestroy(RxReduction *reduction) {
 	RxPaletteFree(reduction);
 	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 	if (reduction->histogram != NULL) {
@@ -2088,17 +2112,12 @@ void RxDestroy(RxReduction *reduction) {
 	}
 }
 
-void RxFree(RxReduction *reduction) {
-	RxDestroy(reduction);
+void RX_API RxFree(RxReduction *reduction) {
+	RxiDestroy(reduction);
 	RxMemFree(reduction);
 }
 
-RxStatus RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors) {
-	return RxCreatePaletteEx(img, width, height, pal, nColors, BALANCE_DEFAULT, BALANCE_DEFAULT, 0, 
-		RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_SORT_ALL | RX_FLAG_MASK_BITS, NULL);
-}
-
-RxStatus RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag, unsigned int *pOutCols) {
+RxStatus RX_API RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag, unsigned int *pOutCols) {
 	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 
@@ -2109,7 +2128,7 @@ RxStatus RxCreatePaletteEx(const COLOR32 *img, unsigned int width, unsigned int 
 	return status;
 }
 
-RxStatus RxCreatePaletteWithContext(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, RxFlag flag, unsigned int *pOutCols) {
+RxStatus RX_API RxCreatePaletteWithContext(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, RxFlag flag, unsigned int *pOutCols) {
 	RxHistAdd(reduction, px, width, height);
 	RxHistFinalize(reduction);
 	RxComputePalette(reduction, nColors);
@@ -2260,13 +2279,7 @@ static void RxiGetPalette0Rgb(RxReduction *reduction, COLOR32 *dest, unsigned in
 	for (unsigned int i = 0; i < nCols; i++) dest[i] = reduction->paletteRgb[i][0];
 }
 
-void RxCreateMultiplePalettes(const COLOR32 *px, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
-							int paletteSize, int nColsPerPalette, int paletteOffset, int *progress) {
-	RxCreateMultiplePalettesEx(px, tilesX, tilesY, dest, paletteBase, nPalettes, paletteSize, nColsPerPalette, 
-							 paletteOffset, 0, BALANCE_DEFAULT, BALANCE_DEFAULT, 0, progress);
-}
-
-void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
+void RX_API RxCreateMultiplePalettes(const COLOR32 *imgBits, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
 							  int paletteSize, int nColsPerPalette, int paletteOffset, int useColor0,
 							  int balance, int colorBalance, int enhanceColors, int *progress) {
 	if (nPalettes == 0) return;
@@ -2280,7 +2293,7 @@ void RxCreateMultiplePalettesEx(const COLOR32 *imgBits, unsigned int tilesX, uns
 			effectivePaletteSize--;
 		}
 
-		RxCreatePaletteEx(
+		RxCreatePalette(
 			imgBits,
 			tilesX * 8,
 			tilesY * 8,
@@ -2605,12 +2618,7 @@ static inline double RxiDiffuseCurveA(double x) {
 	return RxiDiffuseCurveY(x * 511.0) * INV_511;
 }
 
-RxStatus RxReduceImage(COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, float diffuse) {
-	return RxReduceImageEx(px, NULL, width, height, palette, nColors, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA,
-		diffuse, BALANCE_DEFAULT, BALANCE_DEFAULT, FALSE);
-}
-
-RxStatus RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse, int balance, int colorBalance, int enhanceColors) {
+RxStatus RX_API RxReduceImage(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse, int balance, int colorBalance, int enhanceColors) {
 	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 	
@@ -2622,7 +2630,7 @@ RxStatus RxReduceImageEx(COLOR32 *img, int *indices, unsigned int width, unsigne
 	return status;
 }
 
-RxStatus RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse) {
+RxStatus RX_API RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse) {
 	//decode flags
 	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
 	int adaptive = !(flag & RX_FLAG_NO_ADAPTIVE_DIFFUSE);
@@ -3103,13 +3111,13 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(RxReduction *reduction
 	return iBest;
 }
 
-unsigned int RxPaletteFindClosestColor(RxReduction *reduction, COLOR32 color, double *outDiff) {
+unsigned int RX_API RxPaletteFindClosestColor(RxReduction *reduction, COLOR32 color, double *outDiff) {
 	RxYiqColor yiq;
 	RxConvertRgbToYiq(color, &yiq);
 	return RxPaletteFindClosestColorYiq(reduction, &yiq, outDiff);
 }
 
-unsigned int RxPaletteFindClosestColorYiq(RxReduction *reduction, const RxYiqColor *color, double *outDiff) {
+unsigned int RX_API RxPaletteFindClosestColorYiq(RxReduction *reduction, const RxYiqColor *color, double *outDiff) {
 	RxPaletteAccelerator *accel = &reduction->accel;
 	if (!accel->initialized) {
 		//not initialized
@@ -3262,7 +3270,7 @@ static RxStatus RxiPaletteLoadYiqUnaccelerated(RxReduction *reduction, const RxY
 	return reduction->status;
 }
 
-RxStatus RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
+RxStatus RX_API RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
 	RxPaletteAccelerator *accel = &reduction->accel;
 
 	//if an accelerator is loaded already, unload it.
@@ -3311,7 +3319,7 @@ static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt,
 	return reduction->status;
 }
 
-void RxPaletteFree(RxReduction *reduction) {
+void RX_API RxPaletteFree(RxReduction *reduction) {
 	if (!reduction->accel.initialized) return;
 
 	RxMemFree(reduction->accel.pltt);
@@ -3321,7 +3329,7 @@ void RxPaletteFree(RxReduction *reduction) {
 	reduction->accel.initialized = 0;
 }
 
-double RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *pal, unsigned int nColors, double nMaxError) {
+double RX_API RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *pal, unsigned int nColors, double nMaxError) {
 	if (nMaxError == 0) nMaxError = RX_LARGE_NUMBER;
 	double error = 0;
 

@@ -826,10 +826,10 @@ void BgGenerate(NCLR **pNclr, NCGR **pNcgr, NSCR **pNscr, COLOR32 *imgBits, int 
 	//create color palettes for the background.
 	if (nPalettes == 1) {
 		RxFlag flag = RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE;
-		RxCreatePaletteEx(imgBits, width, height, palette + (paletteBase << nBits) + usedPaletteOffset,
+		RxCreatePalette(imgBits, width, height, palette + (paletteBase << nBits) + usedPaletteOffset,
 			usedPaletteSize, balance, colorBalance, enhanceColors, flag, NULL);
 	} else {
-		RxCreateMultiplePalettesEx(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits,
+		RxCreateMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits,
 			paletteSize, paletteOffset, !color0Transparent, balance, colorBalance, enhanceColors, progress1);
 	}
 
@@ -1160,7 +1160,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 	if (newPalettes) {
 		if (writeScreen) {
 			//if we're writing the screen, we can write the palette as normal.
-			RxCreateMultiplePalettesEx(px, tilesX, tilesY, pals, 0, nPalettes, maxPaletteSize, paletteSize,
+			RxCreateMultiplePalettes(px, tilesX, tilesY, pals, 0, nPalettes, maxPaletteSize, paletteSize,
 				paletteOffset, 0, balance, colorBalance, enhanceColors, progress);
 		} else {
 			//else, we need to be a bit more methodical. Lucky for us, though, the palettes are already partitioned.
