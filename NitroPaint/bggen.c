@@ -519,8 +519,6 @@ int BgPerformCharacterCompression(
 			pxBlock[j].i /= nRep;
 			pxBlock[j].q /= nRep;
 			pxBlock[j].a /= nRep;
-		}
-		for (unsigned int j = 0; j < 64; j++) {
 			tile->px[j] = RxConvertYiqToRgb(&pxBlock[j]);
 		}
 
@@ -644,15 +642,15 @@ void BgSetupTiles(
 	RxFree(reduction);
 }
 
-static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, BggenColor0Mode mode) {
+static COLOR32 BgiSelectColor0(const COLOR32 *px, unsigned int width, unsigned int height, BggenColor0Mode mode) {
 	//based on mode, determine color 0 mode
 	if (mode == BGGEN_COLOR0_FIXED) return 0xFF00FF;
 
 	if (mode == BGGEN_COLOR0_AVERAGE || mode == BGGEN_COLOR0_EDGE) {
 		int totalR = 0, totalG = 0, totalB = 0, nColors = 0;
-		for (int i = 0; i < height; i++) {
-			for (int j = 0; j < width; j++) {
-				int index = j + i * width;
+		for (unsigned int i = 0; i < height; i++) {
+			for (unsigned int j = 0; j < width; j++) {
+				unsigned int index = j + i * width;
 				COLOR32 c = px[index];
 
 				int add = 0;
@@ -664,20 +662,20 @@ static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, BggenColor0Mo
 					if ((c >> 24) >= 0x80) {
 						if (i == 0 || i == height - 1 || j == 0 || j == width - 1) add = 1;
 						else {
-							int up = px[index - width] >> 24;
-							int down = px[index + width] >> 24;
-							int left = px[index - 1] >> 24;
-							int right = px[index + 1] >> 24;
+							unsigned int upA = px[index - width] >> 24;
+							unsigned int downA = px[index + width] >> 24;
+							unsigned int leftA = px[index - 1] >> 24;
+							unsigned int rightA = px[index + 1] >> 24;
 
-							if (up < 0x80 || down < 0x80 || left < 0x80 || right < 0x80) add = 1;
+							if (upA < 0x80 || downA < 0x80 || leftA < 0x80 || rightA < 0x80) add = 1;
 						}
 					}
 
 				}
 
 				if (add) {
-					totalR += c & 0xFF;
-					totalG += (c >> 8) & 0xFF;
+					totalR += (c >>  0) & 0xFF;
+					totalG += (c >>  8) & 0xFF;
 					totalB += (c >> 16) & 0xFF;
 					nColors++;
 				}
@@ -694,20 +692,20 @@ static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, BggenColor0Mo
 
 	//use an octree to find the space with the least weight
 	//in the event of a tie, favor the order RGB, RGb, rGB, rGb, RgB, Rgb, rgB, rgb
-	int rMin = 0, rMax = 256, gMin = 0, gMax = 256, bMin = 0, bMax = 256;
-	int rMid, gMid, bMid, boxSize = 256;
+	unsigned int rMin = 0, rMax = 256, gMin = 0, gMax = 256, bMin = 0, bMax = 256;
+	unsigned int rMid, gMid, bMid, boxSize = 256;
 	for (int i = 0; i < 7; i++) {
-		int octreeScores[2][2][2] = { 0 }; //[r][g][b]
+		unsigned int octreeScores[2][2][2] = { 0 }; //[r][g][b]
 		rMid = (rMin + rMax) / 2;
 		gMid = (gMin + gMax) / 2;
 		bMid = (bMin + bMax) / 2;
-		for (int j = 0; j < width * height; j++) {
+		for (unsigned int j = 0; j < width * height; j++) {
 			COLOR32 c = px[j];
-			int a = (c >> 24) & 0xFF;
+			unsigned int a = (c >> 24) & 0xFF;
 			if (a < 128) continue;
 
 			//add to bucket if it fits
-			int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
+			unsigned int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
 			if (r < (rMin - boxSize / 2) || r >= (rMax + boxSize / 2)) continue;
 			if (g < (gMin - boxSize / 2) || g >= (gMax + boxSize / 2)) continue;
 			if (b < (bMin - boxSize / 2) || b >= (bMax + boxSize / 2)) continue;
@@ -717,12 +715,12 @@ static COLOR32 BgiSelectColor0(COLOR32 *px, int width, int height, BggenColor0Mo
 		}
 
 		//find winner
-		int bestScore = 0x7FFFFFFF;
-		int bestIndex = 0;
-		for (int g = 1; g >= 0; g--) {
-			for (int b = 1; b >= 0; b--) {
-				for (int r = 1; r >= 0; r--) {
-					int score = octreeScores[r][g][b];
+		unsigned int bestScore = UINT_MAX;
+		unsigned int bestIndex = 0;
+		for (unsigned int r = 0; r < 2; r++) {
+			for (unsigned int g = 0; g < 2; g++) {
+				for (unsigned int b = 0; b < 2; b++) {
+					unsigned int score = octreeScores[r][g][b];
 					if (score < bestScore) {
 						bestScore = score;
 						bestIndex = r | (g << 1) | (b << 2);
