@@ -1598,7 +1598,6 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					params.width = data->width;
 					params.height = data->height;
 					params.fmt = fmt;
-					params.useFixedPalette = fixedPalette;
 					params.colorEntries = fixedPalette ? paletteFile->nColors : (fmt == CT_4x4 ? colorEntries : paletteSize);
 					params.dest = &data->texture->texture;
 					params.fixedPalette = fixedPalette ? paletteFile->colors : NULL;
@@ -2335,7 +2334,6 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 
 	texEntry.params.dest = (TEXTURE *) calloc(1, sizeof(TEXTURE));
 	texEntry.params.threshold = threshold4x4;
-	texEntry.params.useFixedPalette = useFixedPalette;
 	texEntry.params.fixedPalette = useFixedPalette ? fixedPalette : NULL;
 	texEntry.params.pnam = _strdup(pnam);
 	texEntry.path = _wcsdup(path);
