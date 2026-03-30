@@ -2267,6 +2267,11 @@ static void charImport(
 ) {
 	int maxPaletteSize = 1 << ncgr->nBits;
 	int bReleaseImage = FALSE; // do not release the image buffer
+
+	RxBalanceSetting balanceSetting;
+	balanceSetting.balance = balance;
+	balanceSetting.colorBalance = colorBalance;
+	balanceSetting.enhanceColors = enhanceColors;
 	
 	//for OBJ mode import, we'll swizzle the input bitmap.
 	if (objMode) {
@@ -2348,7 +2353,7 @@ static void charImport(
 		}
 	} else {
 		//create a palette, then encode them to the color palette
-		RxCreatePalette(pixels, width, height, palette + 1, paletteSize, balance, colorBalance, enhanceColors, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
+		RxCreatePalette(pixels, width, height, palette + 1, paletteSize, &balanceSetting, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
 		for (int i = 0; i < paletteSize; i++) {
 			nitroPalette[i] = ColorConvertToDS(palette[i + 1]);
 		}
@@ -2358,7 +2363,7 @@ static void charImport(
 	int *idxs = (int *) calloc(width * height, sizeof(int));
 	if (!dither) diffuse = 0.0f;
 	RxReduceImage(pixels, idxs, width, height, palette, paletteSize + 1, RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER,
-		diffuse, balance, colorBalance, enhanceColors);
+		diffuse, &balanceSetting);
 
 	//now, write out indices. 
 	int originOffset = originX + originY * ncgr->tilesX;
@@ -2432,9 +2437,9 @@ static void charImport(
 
 			int nTiles = nChars;
 			int allowFlip = 1;
-			BgSetupTiles(bgTiles, nChars, ncgr->nBits, dummyFull, paletteSize, 1, 0, paletteBase, 0, 0.0f, balance, colorBalance, enhanceColors);
+			BgSetupTiles(bgTiles, nChars, ncgr->nBits, dummyFull, paletteSize, 1, 0, paletteBase, 0, 0.0f, &balanceSetting);
 			nChars = BgPerformCharacterCompression(bgTiles, nChars, ncgr->nBits, nMaxChars, allowFlip, dummyFull, paletteSize, 1, 0, paletteBase, 
-				balance, colorBalance, progress);
+				&balanceSetting, progress);
 
 			//read back result
 			int outIndex = 0;

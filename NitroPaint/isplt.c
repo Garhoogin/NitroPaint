@@ -519,10 +519,10 @@ static void RxiComputeAlphaInteraction(RxReduction *reduction) {
 #endif
 }
 
-void RX_API RxSetBalance(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
-	reduction->yWeight = 60 - balance;       // high balance -> lower Y weight
-	reduction->iWeight = colorBalance;       // high color balance -> high I weight
-	reduction->qWeight = 40 - colorBalance;  // high color balance -> low Q weight
+void RX_API RxSetBalance(RxReduction *reduction, const RxBalanceSetting *balance) {
+	reduction->yWeight = 60 - balance->balance;       // high balance -> lower Y weight
+	reduction->iWeight = balance->colorBalance;       // high color balance -> high I weight
+	reduction->qWeight = 40 - balance->colorBalance;  // high color balance -> low Q weight
 
 	reduction->yWeight2 = reduction->yWeight * reduction->yWeight; // Y weight squared
 	reduction->iWeight2 = reduction->iWeight * reduction->iWeight; // I weight squared
@@ -531,7 +531,7 @@ void RX_API RxSetBalance(RxReduction *reduction, int balance, int colorBalance, 
 	//compute alpha weights and interactions
 	RxiComputeAlphaInteraction(reduction);
 
-	reduction->enhanceColors = enhanceColors;
+	reduction->enhanceColors = balance->enhanceColors;
 }
 
 RxStatus RX_API RxSetPaletteLayers(RxReduction *reduction, unsigned int nLayers) {
@@ -545,7 +545,7 @@ RxStatus RX_API RxSetPaletteLayers(RxReduction *reduction, unsigned int nLayers)
 	return RX_STATUS_OK;
 }
 
-static void RxiInit(RxReduction *reduction, int balance, int colorBalance, int enhanceColors) {
+static void RxiInit(RxReduction *reduction, const RxBalanceSetting *balance) {
 	memset(reduction, 0, sizeof(RxReduction));
 
 	//default color space moments, precalculated assuming a uniform distribution of RGB colors
@@ -556,7 +556,7 @@ static void RxiInit(RxReduction *reduction, int balance, int colorBalance, int e
 	reduction->meanI2 = MEAN_I2;
 	reduction->meanQ2 = MEAN_Q2;
 
-	RxSetBalance(reduction, balance, colorBalance, enhanceColors);
+	RxSetBalance(reduction, balance);
 	RxSetPaletteLayers(reduction, 1);
 
 	reduction->nReclusters = RECLUSTER_DEFAULT;
@@ -607,11 +607,11 @@ void RX_API RxAssumeCompositingDistribution(RxReduction *reduction, const COLOR3
 	RxiComputeAlphaInteraction(reduction);
 }
 
-RxReduction *RX_API RxNew(int balance, int colorBalance, int enhanceColors) {
+RxReduction *RX_API RxNew(const RxBalanceSetting *balance) {
 	RxReduction *reduction = (RxReduction *) RxMemCalloc(1, sizeof(RxReduction));
 	if (reduction == NULL) return NULL;
 
-	RxiInit(reduction, balance, colorBalance, enhanceColors);
+	RxiInit(reduction, balance);
 	return reduction;
 }
 
@@ -2117,8 +2117,8 @@ void RX_API RxFree(RxReduction *reduction) {
 	RxMemFree(reduction);
 }
 
-RxStatus RX_API RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, int balance, int colorBalance, int enhanceColors, RxFlag flag, unsigned int *pOutCols) {
-	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
+RxStatus RX_API RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, const RxBalanceSetting *balance, RxFlag flag, unsigned int *pOutCols) {
+	RxReduction *reduction = RxNew(balance);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 
 	RxApplyFlags(reduction, flag);
@@ -2279,9 +2279,20 @@ static void RxiGetPalette0Rgb(RxReduction *reduction, COLOR32 *dest, unsigned in
 	for (unsigned int i = 0; i < nCols; i++) dest[i] = reduction->paletteRgb[i][0];
 }
 
-void RX_API RxCreateMultiplePalettes(const COLOR32 *imgBits, unsigned int tilesX, unsigned int tilesY, COLOR32 *dest, int paletteBase, int nPalettes,
-							  int paletteSize, int nColsPerPalette, int paletteOffset, int useColor0,
-							  int balance, int colorBalance, int enhanceColors, int *progress) {
+void RX_API RxCreateMultiplePalettes(
+	const COLOR32          *imgBits,
+	unsigned int            tilesX,
+	unsigned int            tilesY,
+	COLOR32                *dest,
+	int                     paletteBase,
+	int                     nPalettes,
+	int                     paletteSize,
+	int                     nColsPerPalette,
+	int                     paletteOffset,
+	int                     useColor0,
+	const RxBalanceSetting *balance,
+	volatile int           *progress
+) {
 	if (nPalettes == 0) return;
 
 	//in the case of one palette, call to the faster single-palette routines.
@@ -2300,8 +2311,6 @@ void RX_API RxCreateMultiplePalettes(const COLOR32 *imgBits, unsigned int tilesX
 			dest + (paletteBase * paletteSize) + effectivePaletteOffset,
 			effectivePaletteSize,
 			balance,
-			colorBalance,
-			enhanceColors,
 			RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE,
 			NULL
 		);
@@ -2320,7 +2329,7 @@ void RX_API RxCreateMultiplePalettes(const COLOR32 *imgBits, unsigned int tilesX
 
 	unsigned int nTiles = tilesX * tilesY;
 	RxiTile *tiles = (RxiTile *) RxMemCalloc(nTiles, sizeof(RxiTile));
-	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
+	RxReduction *reduction = RxNew(balance);
 
 	for (unsigned int y = 0; y < tilesY; y++) {
 		for (unsigned int x = 0; x < tilesX; x++) {
@@ -2522,7 +2531,7 @@ void RX_API RxCreateMultiplePalettes(const COLOR32 *imgBits, unsigned int tilesX
 	RxMemFree(yiqPalette);
 
 	//a second histogram for accumulating per-color error
-	RxReduction *errHist = RxNew(balance, colorBalance, enhanceColors);
+	RxReduction *errHist = RxNew(balance);
 	RxHistInit(errHist);
 
 	//write palettes in the correct size
@@ -2618,8 +2627,8 @@ static inline double RxiDiffuseCurveA(double x) {
 	return RxiDiffuseCurveY(x * 511.0) * INV_511;
 }
 
-RxStatus RX_API RxReduceImage(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse, int balance, int colorBalance, int enhanceColors) {
-	RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
+RxStatus RX_API RxReduceImage(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse, const RxBalanceSetting *balance) {
+	RxReduction *reduction = RxNew(balance);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 	
 	RxApplyFlags(reduction, flag);

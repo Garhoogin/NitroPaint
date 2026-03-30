@@ -4324,7 +4324,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	if (fixedPalette == NULL) {
 		//create a color palette
 		RxCreatePalette(data->px, data->width, data->height,
-			data->pltt + plttOffs, nColors - plttOffs, balance.balance, balance.colorBalance, balance.enhanceColors, flag, &nColUse);
+			data->pltt + plttOffs, nColors - plttOffs, &balance, flag, &nColUse);
 		if ((flag & RX_FLAG_ALPHA_MODE_MASK) == RX_FLAG_ALPHA_MODE_RESERVE) {
 			data->pltt[0] = 0; // transparent
 		}
@@ -4346,7 +4346,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
 	if (!GetCheckboxChecked(data->hWndDither)) diffuse = 0.0f;
 	RxReduceImage(data->reduced, data->indices, data->width, data->height, data->pltt, nColUse + plttOffs,
-		flag, diffuse, balance.balance, balance.colorBalance, balance.enhanceColors);
+		flag, diffuse, &balance);
 
 	if (fixedPalette != NULL) free(fixedPalette);
 	InvalidateRect(data->hWndPreview2, NULL, FALSE);
@@ -4830,7 +4830,7 @@ static DWORD CALLBACK PaletteSwapImpl(LPVOID lpParam) {
 	PaletteSwapParams *params = (PaletteSwapParams *) lpParam;
 
 	//create the palette data
-	RxReduction *reduction = RxNew(params->balance->balance, params->balance->colorBalance, params->balance->enhanceColors);
+	RxReduction *reduction = RxNew(params->balance);
 	RxSetPaletteLayers(reduction, params->nLayers);
 	RxApplyFlags(reduction, params->flag);
 	RxHistAdd(reduction, params->imgCat, params->width, params->height);

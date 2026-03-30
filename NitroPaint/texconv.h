@@ -44,9 +44,7 @@ typedef struct TxConversionParameters_ {
 	int useFixedPalette;            // enable fixed palette (0=no, nonzero=yes)
 	COLOR *fixedPalette;            // pointer to fixed palette (used if useFixedPalette is nonzero)
 	int threshold;                  // 4x4 compression threshold (0-100)
-	int balance;                    // balance setting (1-39)
-	int colorBalance;               // color balance setting (1-39)
-	int enhanceColors;              // enhance largely used colors (0=no, nonzero=yes)
+	RxBalanceSetting balance;       // balance setting
 	TEXTURE *dest;                  // pointer to destination texture object
 	char *pnam;                     // palette name for output texture
 

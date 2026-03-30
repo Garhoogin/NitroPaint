@@ -2159,11 +2159,13 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 				int nPaths = getPathCount(paths);
 
 				int nColors = GetEditNumber(data->hWndColors);
-				int balance = GetTrackbarPosition(data->hWndBalance);
-				int colorBalance = GetTrackbarPosition(data->hWndColorBalance);
 				if (nColors > 256) nColors = 256;
 
-				BOOL enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+				RxBalanceSetting balanceSetting;
+				balanceSetting.balance = GetTrackbarPosition(data->hWndBalance);
+				balanceSetting.colorBalance = GetTrackbarPosition(data->hWndColorBalance);
+				balanceSetting.enhanceColors = GetCheckboxChecked(data->hWndEnhanceColors);
+
 				BOOL reserveFirst = GetCheckboxChecked(data->hWndReserve);
 
 				//create palette copy
@@ -2172,7 +2174,7 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 				COLOR32 *paletteCopy = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
 
 				//compute histogram
-				RxReduction *reduction = RxNew(balance, colorBalance, enhanceColors);
+				RxReduction *reduction = RxNew(&balanceSetting);
 				for (int i = 0; i < nPaths; i++) {
 					getPathFromPaths(paths, i, bf);
 					COLOR32 *bits = ImgRead(bf, &width, &height);

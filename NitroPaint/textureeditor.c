@@ -1558,11 +1558,9 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					params.threshold = GetTrackbarPosition(data->hWndOptimizationSlider);
 					SendMessage(data->hWndPaletteName, WM_GETTEXT, 63, (LPARAM) bf);
 
-					RxBalanceSetting balance;
 					params.dither = GetCheckboxChecked(data->hWndDither);
 					params.ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
 					params.c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
-					NpGetBalanceSetting(&data->balance, &balance);
 
 					//if we set to not limit palette, set the max size to the max allowed
 					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
@@ -1602,12 +1600,10 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					params.fmt = fmt;
 					params.useFixedPalette = fixedPalette;
 					params.colorEntries = fixedPalette ? paletteFile->nColors : (fmt == CT_4x4 ? colorEntries : paletteSize);
-					params.balance = balance.balance;
-					params.colorBalance = balance.colorBalance;
-					params.enhanceColors = balance.enhanceColors;
 					params.dest = &data->texture->texture;
 					params.fixedPalette = fixedPalette ? paletteFile->colors : NULL;
 					params.pnam = TexNarrowResourceNameFromWideChar(bf);
+					NpGetBalanceSetting(&data->balance, &params.balance);
 
 					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
@@ -2182,9 +2178,9 @@ void BatchTexReadOptions(LPCWSTR path, TxConversionParameters *params, char *pna
 	params->c0xp = BatchTexGetPropInt(path, L"C0xp", params->c0xp);
 
 	//balance
-	params->balance = BatchTexGetPropInt(path, L"Balance", params->balance);
-	params->colorBalance = BatchTexGetPropInt(path, L"ColorBalance", params->colorBalance);
-	params->enhanceColors = BatchTexGetPropInt(path, L"EnhanceColors", params->enhanceColors);
+	params->balance.balance = BatchTexGetPropInt(path, L"Balance", params->balance.balance);
+	params->balance.colorBalance = BatchTexGetPropInt(path, L"ColorBalance", params->balance.colorBalance);
+	params->balance.enhanceColors = BatchTexGetPropInt(path, L"EnhanceColors", params->balance.enhanceColors);
 }
 
 BOOL BatchTexShouldConvert(LPCWSTR path, LPCWSTR configPath, LPCWSTR outPath) {
@@ -2329,9 +2325,9 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	}
 
 	//balance settings
-	texEntry.params.balance = BALANCE_DEFAULT;
-	texEntry.params.colorBalance = BALANCE_DEFAULT;
-	texEntry.params.enhanceColors = 1;
+	texEntry.params.balance.balance = BALANCE_DEFAULT;
+	texEntry.params.balance.colorBalance = BALANCE_DEFAULT;
+	texEntry.params.balance.enhanceColors = 1;
 
 	//read overrides from file. Missing fields have default values written back.
 	BatchTexReadOptions(configPath, &texEntry.params, pnam);

@@ -1576,7 +1576,7 @@ TxConversionResult TxConvert(TxConversionParameters *params) {
 	COLOR32 *srcPx = params->px;
 	COLOR32 *padded = TxiPadTextureImage(srcPx, sourceWidth, sourceHeight, &padWidth, &padHeight);
 
-	RxReduction *reduction = RxNew(params->balance, params->colorBalance, params->enhanceColors);
+	RxReduction *reduction = RxNew(&params->balance);
 	if (padded == NULL || reduction == NULL) TEXCONV_THROW_STATUS(TEXCONV_NOMEM); // no memory
 
 	params->width = padWidth;
