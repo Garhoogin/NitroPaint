@@ -4846,7 +4846,8 @@ static DWORD CALLBACK PaletteSwapImpl(LPVOID lpParam) {
 	*params->pnUsed = nUsedColors;
 
 	//index the images
-	RxReduceImageWithContext(reduction, params->imgCat, params->indices, params->width, params->height, params->pltt, params->plttSize, params->flag, params->diffuse);
+	RxPaletteLoad(reduction, params->pltt, params->plttSize);
+	RxReduceImageWithContext(reduction, params->imgCat, params->indices, params->width, params->height, params->flag, params->diffuse);
 	RxFree(reduction);
 	return 0;
 }

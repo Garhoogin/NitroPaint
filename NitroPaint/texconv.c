@@ -141,7 +141,8 @@ static int TxConvertDirect(TxConversionParameters *params, RxReduction *reductio
 
 	RxApplyFlags(reduction, flag);
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate, params);
-	RxReduceImageWithContext(reduction, params->px, idxs, params->width, params->height, pltt, 32769, flag, diffuse);
+	RxPaletteLoad(reduction, pltt, 32769);
+	RxReduceImageWithContext(reduction, params->px, idxs, params->width, params->height, flag, diffuse);
 
 	for (unsigned int i = 0; i < params->width * params->height; i++) {
 		if (idxs[i] == 0) txel[i] = 0; // transparent
@@ -221,7 +222,8 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params, RxReduction *r
 	TEXCONV_CHECK_ABORT(params->terminate);
 
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate2, params);
-	RxReduceImageWithContext(reduction, params->px, idxs, width, height, palette, nColors, flag | RX_FLAG_NO_PRESERVE_ALPHA, diffuse);
+	RxPaletteLoad(reduction, palette, nColors);
+	RxReduceImageWithContext(reduction, params->px, idxs, width, height, flag | RX_FLAG_NO_PRESERVE_ALPHA, diffuse);
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
@@ -324,13 +326,15 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params, RxReducti
 		}
 
 		//when color and alpha not jointly dithered, we fall back to a simplified model.
-		RxReduceImageWithContext(reduction, params->px, idxs, width, height, palette + (alphaMax << alphaShift), nColors, flag, diffuse);
+		RxPaletteLoad(reduction, palette + (alphaMax << alphaShift), nColors);
+		RxReduceImageWithContext(reduction, params->px, idxs, width, height, flag, diffuse);
 	} else {
 		RxFlag flag = RX_FLAG_ALPHA_MODE_PALETTE | RX_FLAG_PRESERVE_ALPHA;
 		RxApplyFlags(reduction, flag);
 
 		//dithering with alpha: use alpha dithered mode
-		RxReduceImageWithContext(reduction, params->px, idxs, width, height, palette, 256, flag, diffuse);
+		RxPaletteLoad(reduction, palette, 256);
+		RxReduceImageWithContext(reduction, params->px, idxs, width, height, flag, diffuse);
 	}
 
 	//write texel data.
@@ -1036,7 +1040,8 @@ static TxiTileErrorMapEntry *TxiGetGreatestErrorTile(TxiTileErrorMapEntry *map, 
 
 static void TxiIndexTile(RxReduction *reduction, TxTileData *tile, uint32_t *txel, const COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
 	int idxbuf[16];
-	RxReduceImageWithContext(reduction, tile->rgb, idxbuf, 4, 4, tilepal, nOpaque, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_WRITEBACK, diffuse);
+	RxPaletteLoad(reduction, tilepal, nOpaque);
+	RxReduceImageWithContext(reduction, tile->rgb, idxbuf, 4, 4, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_NO_WRITEBACK, diffuse);
 
 	uint32_t texel = 0;
 	for (int j = 0; j < 16; j++) {

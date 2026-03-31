@@ -2627,19 +2627,44 @@ static inline double RxiDiffuseCurveA(double x) {
 	return RxiDiffuseCurveY(x * 511.0) * INV_511;
 }
 
-RxStatus RX_API RxReduceImage(COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse, const RxBalanceSetting *balance) {
+RxStatus RX_API RxReduceImage(
+	COLOR32                *img,
+	int                    *indices,
+	unsigned int            width,
+	unsigned int            height,
+	const COLOR32          *palette,
+	unsigned int            nColors,
+	RxFlag                  flag,
+	float                   diffuse,
+	const RxBalanceSetting *balance
+) {
 	RxReduction *reduction = RxNew(balance);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 	
+	RxStatus status;
 	RxApplyFlags(reduction, flag);
 
-	RxStatus status = RxReduceImageWithContext(reduction, img, indices, width, height, palette, nColors, flag, diffuse);
-	RxFree(reduction);
+	//load palette into context
+	status = RxPaletteLoad(reduction, palette, nColors);
 
+	if (status == RX_STATUS_OK) {
+		//reduce image
+		status = RxReduceImageWithContext(reduction, img, indices, width, height, flag, diffuse);
+	}
+
+	RxFree(reduction);
 	return status;
 }
 
-RxStatus RX_API RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, int *indices, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int nColors, RxFlag flag, float diffuse) {
+RxStatus RX_API RxReduceImageWithContext(
+	RxReduction *reduction,
+	COLOR32     *img,
+	int         *indices,
+	unsigned int width,
+	unsigned int height,
+	RxFlag       flag,
+	float        diffuse
+) {
 	//decode flags
 	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
 	int adaptive = !(flag & RX_FLAG_NO_ADAPTIVE_DIFFUSE);
@@ -2650,10 +2675,6 @@ RxStatus RX_API RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, i
 	//the rest of the color reduction routine requires at least one row for the row buffer, but
 	//a 0-line bitmap may be trivially indexed.
 	if (height == 0) return RX_STATUS_OK;
-
-	//load palette into context
-	RxStatus status = RxPaletteLoad(reduction, palette, nColors);
-	if (status != RX_STATUS_OK) return status;
 
 	unsigned int nLayers = reduction->paletteLayers;
 	unsigned int nPxSrc = width * height;
@@ -2743,7 +2764,7 @@ RxStatus RX_API RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, i
 
 			//match it to a palette color. We'll measure distance to it as well.
 			double paletteDistance = 0.0;
-			int matched = RxPaletteFindClosestColorYiq(reduction, colorYiq, &paletteDistance);
+			unsigned int matched = RxPaletteFindClosestColorYiq(reduction, colorYiq, &paletteDistance);
 
 			//now measure distance from the actual color to its average surroundings
 			RxYiqColor *centerYiq = &thisRow[nLayers * (x + 1)];
@@ -2880,10 +2901,9 @@ RxStatus RX_API RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, i
 			//put pixel
 			if (!(flag & RX_FLAG_NO_WRITEBACK)) {
 				for (unsigned int i = 0; i < nLayers; i++) {
-					const COLOR32 *plttI = &palette[i * nColors];
-					COLOR32 *imgI = img + i * nPxSrc;
+					COLOR32 chosen = RxPaletteGetColor(reduction, i, matched);
 
-					COLOR32 chosen = plttI[matched];
+					COLOR32 *imgI = img + i * nPxSrc;
 					if (touchAlpha) imgI[x + y * width] = chosen;
 					else imgI[x + y * width] = (chosen & 0x00FFFFFF) | (imgI[x + y * width] & 0xFF000000);
 				}
@@ -2907,7 +2927,6 @@ RxStatus RX_API RxReduceImageWithContext(RxReduction *reduction, COLOR32 *img, i
 	}
 
 	if (rowbuf != reduction->imgBuffer) RxMemFree(rowbuf);
-	RxPaletteFree(reduction);
 	return RX_STATUS_OK;
 }
 
@@ -3326,6 +3345,24 @@ static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt,
 
 	accel->initialized = 1;
 	return reduction->status;
+}
+
+COLOR32 RX_API RxPaletteGetColor(RxReduction *reduction, unsigned int iLayer, unsigned int iColor) {
+	RX_ASSUME(iLayer < reduction->paletteLayers);
+	RX_ASSUME(iColor < reduction->accel.nPltt);
+
+	//get the color at the index
+	const RxYiqColor *yiq = &reduction->accel.plttLarge[iColor * reduction->paletteLayers + iLayer];
+	return RxConvertYiqToRgb(yiq);
+}
+
+RxStatus RX_API RxPaletteGetColorYiq(RxReduction *reduction, unsigned int iLayer, unsigned int iColor, RxYiqColor *col) {
+	if (iLayer >= reduction->paletteLayers || iColor >= reduction->accel.nPltt) return RX_STATUS_INVALID;
+
+	//get the color at the index
+	const RxYiqColor *yiq = &reduction->accel.plttLarge[iColor * reduction->paletteLayers + iLayer];
+	memcpy(col, yiq, sizeof(RxYiqColor));
+	return RX_STATUS_OK;
 }
 
 void RX_API RxPaletteFree(RxReduction *reduction) {

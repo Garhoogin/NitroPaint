@@ -965,8 +965,6 @@ double RX_API RxHistComputePaletteErrorYiq(
 //   indices       The output indexed buffer (optional). This may be set to NULL.
 //   width         The image width.
 //   height        The image height.
-//   palette       The color palette with which to reduce the image.
-//   nColors       The number of colors in the color palette.
 //   flag          Color reduction flag.
 //   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
 // -----------------------------------------------------------------------------------------------
@@ -976,8 +974,6 @@ RxStatus RX_API RxReduceImageWithContext(
 	int           *indices,    // the output palette index data (optional)
 	unsigned int   width,      // the image width
 	unsigned int   height,     // the image height
-	const COLOR32 *palette,    // the color palette
-	unsigned int   nColors,    // the color palette size
 	RxFlag         flag,       // color reduction flags
 	float          diffuse     // the error diffusion amount (from 0 to 1)
 );
@@ -1051,6 +1047,48 @@ unsigned int RX_API RxPaletteFindClosestColorYiq(
 	RxReduction      *reduction,
 	const RxYiqColor *color,
 	double           *outDiff
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxPaletteGetColor
+//
+// Gets the color in the palette pointed to by the given index. The iLayer parameter should be in
+// the range of 0 to n-1, for n layers.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   iLayer        The palette layer index
+//   iColor        The palette color index
+//
+// Returns:
+//   The color at the given index.
+// -----------------------------------------------------------------------------------------------
+COLOR32 RX_API RxPaletteGetColor(
+	RxReduction *reduction,
+	unsigned int iLayer,
+	unsigned int iColor
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxPaletteGetColorYiq
+//
+// Gets the color in the palette pointed to by the given index. The iLayer parameter should be in
+// the range of 0 to n-1, for n layers.
+//
+// Parameters:
+//   reduction     The color reduction context
+//   iLayer        The palette layer index
+//   iColor        The palette color index
+//   col           A pointer to RxYiqColor receiving the color at the index
+//
+// Returns:
+//   The color at the given index.
+// -----------------------------------------------------------------------------------------------
+RxStatus RX_API RxPaletteGetColorYiq(
+	RxReduction *reduction,
+	unsigned int iLayer,
+	unsigned int iColor,
+	RxYiqColor  *col
 );
 
 // -----------------------------------------------------------------------------------------------
