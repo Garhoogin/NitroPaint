@@ -947,9 +947,8 @@ double RX_API RxHistComputePaletteErrorYiq(RxReduction *reduction, const RxYiqCo
 }
 
 double RX_API RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *palette, unsigned int nColors, double maxError) {
-	RxYiqColor yiqPaletteStack[16];
-	RxYiqColor *yiqPalette = yiqPaletteStack;
-	if (nColors > 16) {
+	RxYiqColor *yiqPalette = reduction->imgBuffer;
+	if (nColors > RX_TEMP_IMG_BUF_SIZE) {
 		yiqPalette = (RxYiqColor *) RxMemCalloc(nColors, sizeof(RxYiqColor));
 	}
 
@@ -960,7 +959,7 @@ double RX_API RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *p
 
 	double error = RxHistComputePaletteErrorYiq(reduction, yiqPalette, nColors, maxError);
 
-	if (yiqPalette != yiqPaletteStack) RxMemFree(yiqPalette);
+	if (yiqPalette != reduction->imgBuffer) RxMemFree(yiqPalette);
 	return error;
 }
 
