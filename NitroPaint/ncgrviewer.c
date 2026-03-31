@@ -2353,7 +2353,7 @@ static void charImport(
 		}
 	} else {
 		//create a palette, then encode them to the color palette
-		RxCreatePalette(pixels, width, height, palette + 1, paletteSize, &balanceSetting, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
+		RxGlbCreatePalette(pixels, width, height, palette + 1, paletteSize, &balanceSetting, RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE, NULL);
 		for (int i = 0; i < paletteSize; i++) {
 			nitroPalette[i] = ColorConvertToDS(palette[i + 1]);
 		}
@@ -2362,7 +2362,7 @@ static void charImport(
 	//index image with given parameters.
 	int *idxs = (int *) calloc(width * height, sizeof(int));
 	if (!dither) diffuse = 0.0f;
-	RxReduceImage(pixels, idxs, width, height, palette, paletteSize + 1, RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER,
+	RxGlbReduceImage(pixels, idxs, width, height, palette, paletteSize + 1, RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER,
 		diffuse, &balanceSetting);
 
 	//now, write out indices. 

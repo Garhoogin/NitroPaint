@@ -142,7 +142,7 @@ static int TxConvertDirect(TxConversionParameters *params, RxReduction *reductio
 	RxApplyFlags(reduction, flag);
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate, params);
 	RxPaletteLoad(reduction, pltt, 32769);
-	RxReduceImageWithContext(reduction, params->px, idxs, params->width, params->height, flag, diffuse);
+	RxReduceImage(reduction, params->px, idxs, params->width, params->height, flag, diffuse);
 
 	for (unsigned int i = 0; i < params->width * params->height; i++) {
 		if (idxs[i] == 0) txel[i] = 0; // transparent
@@ -211,7 +211,7 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params, RxReduction *r
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate1, params);
 	if (params->fixedPalette == NULL) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		RxCreatePaletteWithContext(reduction, params->px, width, height, palette + hasTransparent, nColors - hasTransparent,
+		RxCreatePalette(reduction, params->px, width, height, palette + hasTransparent, nColors - hasTransparent,
 			flag | RX_FLAG_SORT_ONLY_USED, NULL);
 	} else {
 		for (unsigned int i = 0; i < nColors; i++) {
@@ -223,7 +223,7 @@ static int TxConvertIndexedOpaque(TxConversionParameters *params, RxReduction *r
 
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate2, params);
 	RxPaletteLoad(reduction, palette, nColors);
-	RxReduceImageWithContext(reduction, params->px, idxs, width, height, flag | RX_FLAG_NO_PRESERVE_ALPHA, diffuse);
+	RxReduceImage(reduction, params->px, idxs, width, height, flag | RX_FLAG_NO_PRESERVE_ALPHA, diffuse);
 
 	TEXCONV_CHECK_ABORT(params->terminate);
 
@@ -288,7 +288,7 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params, RxReducti
 	RxSetProgressCallback(reduction, TxiConvertProgressUpdate1, params);
 	if (params->fixedPalette == NULL) {
 		//generate a palette, making sure to leave a transparent color, if applicable.
-		RxCreatePaletteWithContext(reduction, params->px, width, height, palette, nColors,
+		RxCreatePalette(reduction, params->px, width, height, palette, nColors,
 			RX_FLAG_SORT_ONLY_USED | RX_FLAG_ALPHA_MODE_PIXEL, NULL);
 	} else {
 		for (unsigned int i = 0; i < nColors; i++) {
@@ -327,14 +327,14 @@ static int TxConvertIndexedTranslucent(TxConversionParameters *params, RxReducti
 
 		//when color and alpha not jointly dithered, we fall back to a simplified model.
 		RxPaletteLoad(reduction, palette + (alphaMax << alphaShift), nColors);
-		RxReduceImageWithContext(reduction, params->px, idxs, width, height, flag, diffuse);
+		RxReduceImage(reduction, params->px, idxs, width, height, flag, diffuse);
 	} else {
 		RxFlag flag = RX_FLAG_ALPHA_MODE_PALETTE | RX_FLAG_PRESERVE_ALPHA;
 		RxApplyFlags(reduction, flag);
 
 		//dithering with alpha: use alpha dithered mode
 		RxPaletteLoad(reduction, palette, 256);
-		RxReduceImageWithContext(reduction, params->px, idxs, width, height, flag, diffuse);
+		RxReduceImage(reduction, params->px, idxs, width, height, flag, diffuse);
 	}
 
 	//write texel data.
@@ -1041,7 +1041,7 @@ static TxiTileErrorMapEntry *TxiGetGreatestErrorTile(TxiTileErrorMapEntry *map, 
 static void TxiIndexTile(RxReduction *reduction, TxTileData *tile, uint32_t *txel, const COLOR32 *tilepal, int nOpaque, int baseIndex, float diffuse) {
 	int idxbuf[16];
 	RxPaletteLoad(reduction, tilepal, nOpaque);
-	RxReduceImageWithContext(reduction, tile->rgb, idxbuf, 4, 4, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_NO_WRITEBACK, diffuse);
+	RxReduceImage(reduction, tile->rgb, idxbuf, 4, 4, RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_NO_WRITEBACK, diffuse);
 
 	uint32_t texel = 0;
 	for (int j = 0; j < 16; j++) {

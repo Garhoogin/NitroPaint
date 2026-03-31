@@ -4323,7 +4323,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	unsigned int nColUse;
 	if (fixedPalette == NULL) {
 		//create a color palette
-		RxCreatePalette(data->px, data->width, data->height,
+		RxGlbCreatePalette(data->px, data->width, data->height,
 			data->pltt + plttOffs, nColors - plttOffs, &balance, flag, &nColUse);
 		if ((flag & RX_FLAG_ALPHA_MODE_MASK) == RX_FLAG_ALPHA_MODE_RESERVE) {
 			data->pltt[0] = 0; // transparent
@@ -4345,7 +4345,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 	//reduce
 	float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
 	if (!GetCheckboxChecked(data->hWndDither)) diffuse = 0.0f;
-	RxReduceImage(data->reduced, data->indices, data->width, data->height, data->pltt, nColUse + plttOffs,
+	RxGlbReduceImage(data->reduced, data->indices, data->width, data->height, data->pltt, nColUse + plttOffs,
 		flag, diffuse, &balance);
 
 	if (fixedPalette != NULL) free(fixedPalette);
@@ -4847,7 +4847,7 @@ static DWORD CALLBACK PaletteSwapImpl(LPVOID lpParam) {
 
 	//index the images
 	RxPaletteLoad(reduction, params->pltt, params->plttSize);
-	RxReduceImageWithContext(reduction, params->imgCat, params->indices, params->width, params->height, params->flag, params->diffuse);
+	RxReduceImage(reduction, params->imgCat, params->indices, params->width, params->height, params->flag, params->diffuse);
 	RxFree(reduction);
 	return 0;
 }

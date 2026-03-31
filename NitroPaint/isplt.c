@@ -2138,18 +2138,18 @@ void RX_API RxFree(RxReduction *reduction) {
 	RxMemFree(reduction);
 }
 
-RxStatus RX_API RxCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, const RxBalanceSetting *balance, RxFlag flag, unsigned int *pOutCols) {
+RxStatus RX_API RxGlbCreatePalette(const COLOR32 *img, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, const RxBalanceSetting *balance, RxFlag flag, unsigned int *pOutCols) {
 	RxReduction *reduction = RxNew(balance);
 	if (reduction == NULL) return RX_STATUS_NOMEM;
 
 	RxApplyFlags(reduction, flag);
 
-	RxStatus status = RxCreatePaletteWithContext(reduction, img, width, height, pal, nColors, flag, pOutCols);
+	RxStatus status = RxCreatePalette(reduction, img, width, height, pal, nColors, flag, pOutCols);
 	RxFree(reduction);
 	return status;
 }
 
-RxStatus RX_API RxCreatePaletteWithContext(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, RxFlag flag, unsigned int *pOutCols) {
+RxStatus RX_API RxCreatePalette(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, COLOR32 *pal, unsigned int nColors, RxFlag flag, unsigned int *pOutCols) {
 	RxHistAdd(reduction, px, width, height);
 	RxHistFinalize(reduction);
 	RxComputePalette(reduction, nColors);
@@ -2325,7 +2325,7 @@ void RX_API RxCreateMultiplePalettes(
 			effectivePaletteSize--;
 		}
 
-		RxCreatePalette(
+		RxGlbCreatePalette(
 			imgBits,
 			tilesX * 8,
 			tilesY * 8,
@@ -2648,7 +2648,7 @@ static inline double RxiDiffuseCurveA(double x) {
 	return RxiDiffuseCurveY(x * 511.0) * INV_511;
 }
 
-RxStatus RX_API RxReduceImage(
+RxStatus RX_API RxGlbReduceImage(
 	COLOR32                *img,
 	int                    *indices,
 	unsigned int            width,
@@ -2670,14 +2670,14 @@ RxStatus RX_API RxReduceImage(
 
 	if (status == RX_STATUS_OK) {
 		//reduce image
-		status = RxReduceImageWithContext(reduction, img, indices, width, height, flag, diffuse);
+		status = RxReduceImage(reduction, img, indices, width, height, flag, diffuse);
 	}
 
 	RxFree(reduction);
 	return status;
 }
 
-RxStatus RX_API RxReduceImageWithContext(
+RxStatus RX_API RxReduceImage(
 	RxReduction *reduction,
 	COLOR32     *img,
 	int         *indices,

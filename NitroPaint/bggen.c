@@ -540,7 +540,7 @@ int BgPerformCharacterCompression(
 		RxPaletteLoad(reduction, pal + paletteOffset - !!paletteOffset, paletteSize + !!paletteOffset);
 
 		int idxs[64];
-		RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8,
+		RxReduceImage(reduction, tile->px, idxs, 8, 8,
 			RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, 0.0f);
 		for (unsigned int j = 0; j < 64; j++) {
 			tile->indices[j] = idxs[j] == 0 ? 0 : (idxs[j] + paletteOffset - !!paletteOffset);
@@ -621,7 +621,7 @@ void BgSetupTiles(
 		//(we will always have space for this). Reduction producing a color index 0 will be taken to be
 		//transparent.
 		int idxs[64];
-		RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8,
+		RxReduceImage(reduction, tile->px, idxs, 8, 8,
 			RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, diffuse);
 		for (int j = 0; j < 64; j++) {
 			//YIQ color
@@ -864,7 +864,7 @@ void BgGenerate(
 	//create color palettes for the background.
 	if (nPalettes == 1) {
 		RxFlag flag = RX_FLAG_SORT_ALL | RX_FLAG_ALPHA_MODE_NONE;
-		RxCreatePalette(imgBits, width, height, palette + (paletteBase << nBits) + usedPaletteOffset,
+		RxGlbCreatePalette(imgBits, width, height, palette + (paletteBase << nBits) + usedPaletteOffset,
 			usedPaletteSize, &params->balance, flag, NULL);
 	} else {
 		RxCreateMultiplePalettes(imgBits, tilesX, tilesY, palette, paletteBase, nPalettes, 1 << nBits,
@@ -1289,7 +1289,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 					unsigned char *chr = ncgr->tiles[charIndex];
 					COLOR32 *thisPalette = pals + palIndex * maxPaletteSize + paletteOffset - !!paletteOffset;
 					RxPaletteLoad(reduction, thisPalette, paletteSize + !!paletteOffset);
-					RxReduceImageWithContext(reduction, tile->px, idxs, 8, 8,
+					RxReduceImage(reduction, tile->px, idxs, 8, 8,
 						RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, dither ? diffuse : 0.0f);
 
 					//mask to map source to destination pixels
@@ -1420,7 +1420,7 @@ void BgReplaceSection(NCLR *nclr, NCGR *ncgr, NSCR *nscr, COLOR32 *px, int width
 						int idxs[64];
 						COLOR32 *thisPal = pals + leastIndex * maxPaletteSize + paletteOffset - !!paletteOffset;
 						RxPaletteLoad(reduction, thisPal, paletteSize + !!paletteOffset);
-						RxReduceImageWithContext(reduction, block, idxs, 8, 8,
+						RxReduceImage(reduction, block, idxs, 8, 8,
 							RX_FLAG_ALPHA_MODE_RESERVE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, dither ? diffuse : 0.0f);
 
 						for (int i = 0; i < 64; i++) {

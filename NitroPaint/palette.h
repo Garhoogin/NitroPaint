@@ -423,104 +423,6 @@ int RxColorLightnessComparator(
 );
 
 // -----------------------------------------------------------------------------------------------
-// Name: RxCreatePalette
-//
-// Creates a color palette for an image without reserving any color slots for transparency, with
-// color balance parameters.
-//
-// Parameters:
-//   px            The image pixels.
-//   width         The image width.
-//   height        The image height.
-//   pal           The output palette buffer.
-//   nColors       The size of the color palette to create.
-//   balance       Balance setting.
-//   colorBalance  Color balance setting.
-//   enhanceColors Enhance largely used colors.
-//   flag          Color reduction flags (see enum RxFlag).
-//   pOutCols      Pointer to output number of colors (may be NULL).
-//
-// Returns:
-//   The completed operation status.
-// -----------------------------------------------------------------------------------------------
-RxStatus RX_API RxCreatePalette(
-	const COLOR32          *px,       // the image pixels
-	unsigned int            width,    // the image width
-	unsigned int            height,   // the image height
-	COLOR32                *pal,      // the output palette
-	unsigned int            nColors,  // the number of palette colors to create
-	const RxBalanceSetting *balance,  //
-	RxFlag                  flag,     // color reduction flags
-	unsigned int           *pOutCols  // number of output colors
-);
-
-// -----------------------------------------------------------------------------------------------
-// Name: RxReduceImage
-//
-// Reduce the colors of image according to a given color palette. This function optionally writes
-// the indexed color values to an array with the same dimension as the input image.
-//
-// Parameters:
-//   px            The image pixels.
-//   indices       The output indexed buffer (optional). This may be set to NULL.
-//   width         The image width.
-//   height        The image height.
-//   palette       The color palette with which to reduce the image.
-//   nColors       The number of colors in the color palette.
-//   flag          Color reduction flag.
-//   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
-//   balance       The balance setting.
-// -----------------------------------------------------------------------------------------------
-RxStatus RX_API RxReduceImage(
-	COLOR32                *px,       // the image pixels
-	int                    *indices,  // the output palette index data (optional)
-	unsigned int            width,    // the image width
-	unsigned int            height,   // the image height
-	const COLOR32          *palette,  // the color palette
-	unsigned int            nColors,  // the color palette size
-	RxFlag                  flag,     // color reduction flags
-	float                   diffuse,  // the error diffusion amount (from 0 to 1)
-	const RxBalanceSetting *balance   // the balance setting
-);
-
-// -----------------------------------------------------------------------------------------------
-// Name: RxCreateMultiplePalettes
-//
-// Creates multiple palettes for an image for character map color reduction with user-provided
-// balance, color balance, and color enhancement settings.
-//
-// Parameters:
-//   px              The image pixels.
-//   tilesX          The image width, in 8-pixel units.
-//   tilesY          The image height, in 8-pixel units.
-//   dest            The output color palette buffer.
-//   paletteBase     The index of the first palette to generate.
-//   nPalettes       The number of palettes to generate. This must be between 1 and 16.
-//   paletteSize     The size of a color palette in the output.
-//   nColsPerPalette The number of colors to generate for each palette.
-//   paletteOffset   The index into a color palette of the first usable color.
-//   useColor0       Enables using color 0 of the palette as an opaque color.
-//   balance         The balance setting.
-//   colorBalance    The color balance setting.
-//   enhanceColors   Enhance largely used colors.
-//   progress        The output progress.
-// -----------------------------------------------------------------------------------------------
-void RX_API RxCreateMultiplePalettes(
-	const COLOR32          *px,               // the image pixels
-	unsigned int            tilesX,           // the image width in 8-pixel units
-	unsigned int            tilesY,           // the image height in 8-pixel units
-	COLOR32                *dest,             // the palette destination
-	int                     paletteBase,      // the base palette index
-	int                     nPalettes,        // the number of palettes
-	int                     paletteSize,      // the full size of one palette entry
-	int                     nColsPerPalette,  // the number of colors to create per palette
-	int                     paletteOffset,    // the offset into the palette to write colors
-	int                     useColor0,        // use color 0 of the palette for reduction
-	const RxBalanceSetting *balance,          // the balance settings
-	volatile int           *progress          // pointer to current progress
-);
-
-// -----------------------------------------------------------------------------------------------
 // Name: RxConvertRgbToYiq
 //
 // Encode an RGBA color to a YIQA color.
@@ -820,7 +722,7 @@ RxStatus RX_API RxGetPalette(
 );
 
 // -----------------------------------------------------------------------------------------------
-// Name: RxCreatePaletteWithContext
+// Name: RxCreatePalette
 //
 // Creates a color palette for an image without reserving any color slots for transparency on a
 // given color reduction context.
@@ -838,7 +740,7 @@ RxStatus RX_API RxGetPalette(
 // Returns:
 //   The completed operation status.
 // -----------------------------------------------------------------------------------------------
-RxStatus RX_API RxCreatePaletteWithContext(
+RxStatus RX_API RxCreatePalette(
 	RxReduction   *reduction,  // the color reduction context
 	const COLOR32 *px,         // the input image
 	unsigned int   width,      // the image width
@@ -950,7 +852,7 @@ double RX_API RxHistComputePaletteErrorYiq(
 );
 
 // -----------------------------------------------------------------------------------------------
-// Name: RxReduceImageWithContext
+// Name: RxReduceImage
 //
 // Reduce the colors of image according to a given color palette. This function optionally writes
 // the indexed color values to an array with the same dimension as the input image.
@@ -971,7 +873,7 @@ double RX_API RxHistComputePaletteErrorYiq(
 //   flag          Color reduction flag.
 //   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
 // -----------------------------------------------------------------------------------------------
-RxStatus RX_API RxReduceImageWithContext(
+RxStatus RX_API RxReduceImage(
 	RxReduction   *reduction,  // the color reduction context
 	COLOR32       *px,         // the image pixels
 	int           *indices,    // the output palette index data (optional)
@@ -1117,4 +1019,115 @@ void RX_API RxPaletteFree(
 // -----------------------------------------------------------------------------------------------
 void RX_API RxFree(
 	RxReduction *reduction
+);
+
+
+// -----------------------------------------------------------------------------------------------
+// Color Reduction Global Functions
+//
+// The functions below are the "global" functions, those that do not operate on a color reduction
+// context. These routines do not maintain any information across function calls and are indented
+// for ease of use. For more complex functionality, use an equivalent non-global function.
+//
+// Each of the global functions allocates a color reduction context internally and calls to the 
+// non-global routines to carry out tasks.
+// -----------------------------------------------------------------------------------------------
+
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxGlbCreatePalette
+//
+// Creates a color palette for an image without reserving any color slots for transparency, with
+// color balance parameters.
+//
+// Parameters:
+//   px            The image pixels.
+//   width         The image width.
+//   height        The image height.
+//   pal           The output palette buffer.
+//   nColors       The size of the color palette to create.
+//   balance       Balance setting.
+//   colorBalance  Color balance setting.
+//   enhanceColors Enhance largely used colors.
+//   flag          Color reduction flags (see enum RxFlag).
+//   pOutCols      Pointer to output number of colors (may be NULL).
+//
+// Returns:
+//   The completed operation status.
+// -----------------------------------------------------------------------------------------------
+RxStatus RX_API RxGlbCreatePalette(
+	const COLOR32          *px,       // the image pixels
+	unsigned int            width,    // the image width
+	unsigned int            height,   // the image height
+	COLOR32                *pal,      // the output palette
+	unsigned int            nColors,  // the number of palette colors to create
+	const RxBalanceSetting *balance,  //
+	RxFlag                  flag,     // color reduction flags
+	unsigned int           *pOutCols  // number of output colors
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxGlbReduceImage
+//
+// Reduce the colors of image according to a given color palette. This function optionally writes
+// the indexed color values to an array with the same dimension as the input image.
+//
+// Parameters:
+//   px            The image pixels.
+//   indices       The output indexed buffer (optional). This may be set to NULL.
+//   width         The image width.
+//   height        The image height.
+//   palette       The color palette with which to reduce the image.
+//   nColors       The number of colors in the color palette.
+//   flag          Color reduction flag.
+//   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
+//   balance       The balance setting.
+// -----------------------------------------------------------------------------------------------
+RxStatus RX_API RxGlbReduceImage(
+	COLOR32                *px,       // the image pixels
+	int                    *indices,  // the output palette index data (optional)
+	unsigned int            width,    // the image width
+	unsigned int            height,   // the image height
+	const COLOR32          *palette,  // the color palette
+	unsigned int            nColors,  // the color palette size
+	RxFlag                  flag,     // color reduction flags
+	float                   diffuse,  // the error diffusion amount (from 0 to 1)
+	const RxBalanceSetting *balance   // the balance setting
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxCreateMultiplePalettes
+//
+// Creates multiple palettes for an image for character map color reduction with user-provided
+// balance, color balance, and color enhancement settings.
+//
+// Parameters:
+//   px              The image pixels.
+//   tilesX          The image width, in 8-pixel units.
+//   tilesY          The image height, in 8-pixel units.
+//   dest            The output color palette buffer.
+//   paletteBase     The index of the first palette to generate.
+//   nPalettes       The number of palettes to generate. This must be between 1 and 16.
+//   paletteSize     The size of a color palette in the output.
+//   nColsPerPalette The number of colors to generate for each palette.
+//   paletteOffset   The index into a color palette of the first usable color.
+//   useColor0       Enables using color 0 of the palette as an opaque color.
+//   balance         The balance setting.
+//   colorBalance    The color balance setting.
+//   enhanceColors   Enhance largely used colors.
+//   progress        The output progress.
+// -----------------------------------------------------------------------------------------------
+void RX_API RxCreateMultiplePalettes(
+	const COLOR32          *px,               // the image pixels
+	unsigned int            tilesX,           // the image width in 8-pixel units
+	unsigned int            tilesY,           // the image height in 8-pixel units
+	COLOR32                *dest,             // the palette destination
+	int                     paletteBase,      // the base palette index
+	int                     nPalettes,        // the number of palettes
+	int                     paletteSize,      // the full size of one palette entry
+	int                     nColsPerPalette,  // the number of colors to create per palette
+	int                     paletteOffset,    // the offset into the palette to write colors
+	int                     useColor0,        // use color 0 of the palette for reduction
+	const RxBalanceSetting *balance,          // the balance settings
+	volatile int           *progress          // pointer to current progress
 );

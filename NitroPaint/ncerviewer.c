@@ -3121,7 +3121,7 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 				if (writePalette) {
 					//compute palette from pixels
 					palette[0] = 0xFF00FF;
-					RxCreatePalette(px, width, height, palette + paletteOffset, paletteLength, &balance,
+					RxGlbCreatePalette(px, width, height, palette + paletteOffset, paletteLength, &balance,
 						RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_SORT_ALL | RX_FLAG_MASK_BITS, NULL);
 
 					//write palette
@@ -3142,7 +3142,7 @@ static LRESULT CALLBACK NcerCreateCellWndProc(HWND hWnd, UINT msg, WPARAM wParam
 					int width = slice->bounds.width, height = slice->bounds.height;
 					int nChars = slice->bounds.width * slice->bounds.height / 8 / 8;
 
-					RxReduceImage(slice->px, indicesBuffer, width, height, palette + paletteOffset, paletteLength, 
+					RxGlbReduceImage(slice->px, indicesBuffer, width, height, palette + paletteOffset, paletteLength, 
 						RX_FLAG_ALPHA_MODE_NONE | RX_FLAG_PRESERVE_ALPHA | RX_FLAG_NO_ALPHA_DITHER, diffuse, &balance);
 
 					//convert to character array in indicesBuffer8
