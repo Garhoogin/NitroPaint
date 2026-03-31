@@ -102,6 +102,7 @@
 #define RX_PALETTE_MAX_COUNT      16  // Maximum simultaneously generated palettes
 
 #define RX_HISTOGRAM_SIZE    0x20000  // size of the histogram in slots
+#define RX_HISTOGRAM_SMALL       256  // size of a "small" histogram
 #define RX_TEMP_IMG_BUF_SIZE (10*10)  // buffer for holding YIQ image color data
 
 #define RX_GAMMA 1.27
@@ -280,6 +281,8 @@ typedef struct RxHistogram_ {
 	double totalWeight;
 	int nEntries;
 	int firstSlot;
+	int nSlotsUsed;
+	int slotIndices[RX_HISTOGRAM_SMALL];
 } RxHistogram;
 
 typedef struct RxPcaWork_ {

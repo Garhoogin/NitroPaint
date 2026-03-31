@@ -753,6 +753,7 @@ void RX_API RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double
 
 	//find a slot with the same YIQA, or create a new one if none exists.
 	RxHistEntry **ppslot = &histogram->entries[slotIndex];
+	int slotUsed = *ppslot != NULL;
 	while (*ppslot != NULL) {
 		RxHistEntry *slot = *ppslot;
 
@@ -779,6 +780,13 @@ void RX_API RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double
 	slot->value = 0.0;
 	histogram->nEntries++;
 	histogram->totalWeight += weight;
+
+	if (!slotUsed) {
+		if (reduction->histogram->nSlotsUsed < RX_HISTOGRAM_SMALL) {
+			reduction->histogram->slotIndices[reduction->histogram->nSlotsUsed] = slotIndex;
+		}
+		reduction->histogram->nSlotsUsed++;
+	}
 }
 
 RxStatus RX_API RxHistFinalize(RxReduction *reduction) {
@@ -797,14 +805,28 @@ RxStatus RX_API RxHistFinalize(RxReduction *reduction) {
 
 	RxHistEntry **pos = reduction->histogramFlat;
 
-	for (int i = reduction->histogram->firstSlot; i < RX_HISTOGRAM_SIZE; i++) {
-		RxHistEntry *entry = reduction->histogram->entries[i];
+	if (reduction->histogram->nSlotsUsed > RX_HISTOGRAM_SMALL) {
+		//check the histogram's slots in order
+		for (int i = reduction->histogram->firstSlot; i < RX_HISTOGRAM_SIZE; i++) {
+			RxHistEntry *entry = reduction->histogram->entries[i];
 
-		while (entry != NULL) {
-			*(pos++) = entry;
-			entry = entry->next;
+			while (entry != NULL) {
+				*(pos++) = entry;
+				entry = entry->next;
+			}
+		}
+	} else {
+		//check only slots in the small histogram list
+		for (int i = 0; i < reduction->histogram->nSlotsUsed; i++) {
+			RxHistEntry *entry = reduction->histogram->entries[reduction->histogram->slotIndices[i]];
+
+			while (entry != NULL) {
+				*(pos++) = entry;
+				entry = entry->next;
+			}
 		}
 	}
+
 	return RX_STATUS_OK;
 }
 
