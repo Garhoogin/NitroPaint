@@ -366,6 +366,16 @@ Cleanup:
 
 // ----- 4x4 texture compression routines
 
+typedef struct TxTileData_ {
+	COLOR32 rgb[16];           // the tile's initial RGBA color data
+	COLOR32 palette32[4];      // the tile's initial color palette
+	uint16_t mode;             // the tile's working palette mode
+	uint16_t paletteIndex;     // the tile's working palette index
+	uint16_t used;             // marks a used tile
+	uint8_t transparentPixels; // number of transparent pixels
+	uint8_t duplicate;         // is duplicate?
+} TxTileData;
+
 
 //threshold for tentatively selecting an interpolated mode for a 4x4 block based on mean square
 //error. Calculated as about the max squared error of rounding a color to its nearest representable
@@ -392,22 +402,12 @@ static double TxiYFromRGB(COLOR32 rgb) {
 	return yiq.y;
 }
 
-typedef struct TxTileData_ {
-	COLOR32 rgb[16];           // the tile's initial RGBA color data
-	uint16_t used;             // marks a used tile
-	uint16_t mode;             // the tile's working palette mode
-	COLOR32 palette32[4];      // the tile's initial color palette
-	uint16_t paletteIndex;     // the tile's working palette index
-	uint8_t transparentPixels; // number of transparent pixels
-	uint8_t duplicate;         // is duplicate?
-} TxTileData;
-
 static int TxiCreatePaletteFromHistogram(RxReduction *reduction, int nColors, COLOR32 *out) {
 	RxComputePalette(reduction, nColors);
 
 	//extract created palette
 	int nUsed = reduction->nUsedColors;
-	for (int i = 0; i < nUsed; i++) {
+	for (int i = 0; i < nColors; i++) {
 		if (i < nUsed) out[i] = reduction->paletteRgb[i][0];
 		else           out[i] = 0xFF000000;
 	}
