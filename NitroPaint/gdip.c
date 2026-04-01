@@ -158,7 +158,7 @@ static void ImgiReadTgaGrayscale(COLOR32 *px, int width, int height, const unsig
 	ImgiReadTgaIndexedCommon(px, width, height, buffer, palette, rle);
 }
 
-static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight) {
+static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
 	int dataOffset = buffer[0x00] + 0x12;
 	int colorType = buffer[0x02];
 	int depth = buffer[0x10] >> 3;
@@ -174,9 +174,9 @@ static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *
 	*pHeight = height;
 	buffer += dataOffset;
 
-	int needsVFlip = !(attr & 0x20);  //flipped by default, we interpret this backwards for convenience
-	int needsHFlip = !!(attr & 0x10); //actual H flip
-	COLOR32 *pixels = (COLOR32 *) calloc(width * height, 4);
+	int needsVFlip = !(attr & 0x20);  // flipped by default, we interpret this backwards for convenience
+	int needsHFlip = !!(attr & 0x10); // actual H flip
+	COLOR32 *pixels = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
 	switch (colorFormat) {
 		case TGA_CTYPE_DIRECT:
 			ImgiReadTgaDirect(pixels, width, height, buffer, depth, colorType & TGA_CTYPE_RLE);
@@ -188,6 +188,10 @@ static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *
 			ImgiReadTgaGrayscale(pixels, width, height, buffer, colorType & TGA_CTYPE_RLE);
 			break;
 	}
+
+	if (indices != NULL) *indices = NULL;
+	if (pImagePalette != NULL) *pImagePalette = NULL;
+	if (pPaletteSize != NULL) *pPaletteSize = 0;
 
 	//perform necessary flips
 	ImgFlip(pixels, width, height, needsHFlip, needsVFlip);
@@ -637,10 +641,7 @@ COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, int *pWidt
 
 	//WIC doesn't support TGA format by default, so try that first.
 	if (ImgIsValidTGA(buffer, size)) {
-		bits = ImgiReadTga(buffer, size, pWidth, pHeight);
-		*indices = NULL;
-		*pImagePalette = NULL;
-		*pPaletteSize = 0;
+		bits = ImgiReadTga(buffer, size, pWidth, pHeight, indices, pImagePalette, pPaletteSize);
 	} else {
 		HRESULT hr = ImgiRead(buffer, size, &bits, indices, pWidth, pHeight, pImagePalette, pPaletteSize);
 		if (!SUCCEEDED(hr)) bits = NULL;
