@@ -638,6 +638,9 @@ COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, int *pWidt
 	//WIC doesn't support TGA format by default, so try that first.
 	if (ImgIsValidTGA(buffer, size)) {
 		bits = ImgiReadTga(buffer, size, pWidth, pHeight);
+		*indices = NULL;
+		*pImagePalette = NULL;
+		*pPaletteSize = 0;
 	} else {
 		HRESULT hr = ImgiRead(buffer, size, &bits, indices, pWidth, pHeight, pImagePalette, pPaletteSize);
 		if (!SUCCEEDED(hr)) bits = NULL;
