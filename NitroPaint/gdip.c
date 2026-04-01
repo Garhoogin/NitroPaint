@@ -55,6 +55,40 @@ int ImgIsValidTGA(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+int ImgIsValidPIC(const unsigned char *buffer, unsigned int size) {
+	if (size < 0x6C) return 0;
+
+	//check file magic
+	static const unsigned char signature[] = { 0x53, 0x80, 0xF6, 0x34, 0x40, 0x6C, 0xCC, 0xCD };
+	if (memcmp(buffer, signature, sizeof(signature)) != 0) return 0;
+
+	//check PICT data
+	const unsigned char *pict = buffer + 0x58;
+	if (memcmp(pict, "PICT", 4) != 0) return 0;
+
+	unsigned int w = (pict[0x4] << 8) | (pict[0x5] << 0);
+	unsigned int h = (pict[0x6] << 8) | (pict[0x7] << 0);
+	uint32_t field4 = (pict[0x8] << 24) | (pict[0x9] << 16) | (pict[0xA] << 8) | (pict[0xB] << 0);
+	int hasAlphaTable = pict[0x10];
+	if (field4 != 0x3F800000) return 0;  // is this a float??
+	if (hasAlphaTable > 1) return 0;
+
+	//decode alpha table
+	const unsigned char *data = pict + 0x14;
+	unsigned int dataSize = size - 0x6C;
+	if (hasAlphaTable) {
+		if (dataSize < 4) return 0;
+
+		//TODO: check?
+
+		data += 4;
+		dataSize -= 4;
+	}
+
+	//TODO: check main data bytes
+	return 1;
+}
+
 static void ImgiReadTgaDirect(COLOR32 *pixels, int width, int height, const unsigned char *buffer, int depth, int rle) {
 	int nPx = width * height;
 	if (!rle) {

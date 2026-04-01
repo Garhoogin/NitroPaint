@@ -248,21 +248,8 @@ int TxDimensionIsValid(int x) {
 	return 1;
 }
 
-int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size) {
-	//is the file even big enough to hold a TGA header and comment?
-	if (size < 0x16) return 0;
-	
-	unsigned int commentLength = *buffer;
-	if (commentLength < 4) return 0;
-
-	unsigned int ptrOffset = 0x12 + commentLength - 4;
-	if (ptrOffset + 4 > size) return 0;
-
-	uint32_t ptr = *(uint32_t *) (buffer + ptrOffset);
-	if (ptr + 0xC > size) return 0;
-
-	//process sections. When any anomalies are found, return 0.
-	const unsigned char *curr = buffer + ptr;
+static int TxIsValidNnsTextureData(const unsigned char *buffer, unsigned int size) {
+	const unsigned char *curr = buffer;
 	while (1) {
 		//is there space enough left for a section header?
 		if (curr + 0xC > buffer + size) return 0;
@@ -284,6 +271,34 @@ int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size) {
 	}
 
 	return 1;
+}
+
+int TxIsValidNnsTga(const unsigned char *buffer, unsigned int size) {
+	//is the file even big enough to hold a TGA header and comment?
+	if (size < 0x16) return 0;
+	
+	unsigned int commentLength = *buffer;
+	if (commentLength < 4) return 0;
+
+	unsigned int ptrOffset = 0x12 + commentLength - 4;
+	if (ptrOffset + 4 > size) return 0;
+
+	//process sections. When any anomalies are found, return 0.
+	uint32_t ptr = *(const uint32_t *) (buffer + ptrOffset);
+	if (ptr >= size) return 0;
+
+	return TxIsValidNnsTextureData(buffer + ptr, size - ptr);
+}
+
+static int TxIsValidNnsPic(const unsigned char *buffer, unsigned int size) {
+	//check the file is a valid PIC
+	if (!ImgIsValidPIC(buffer, size)) return 0;
+
+	//NNS data pointer
+	uint32_t ptr = *(const uint32_t *) (buffer + 0x18);
+	if (ptr >= size) return 0;
+
+	return TxIsValidNnsTextureData(buffer + ptr, size - ptr);
 }
 
 int TxIsValidIStudio(const unsigned char *buffer, unsigned int size) {
@@ -483,6 +498,7 @@ static int TxIsValidGrf(const unsigned char *buffer, unsigned int size) {
 }
 
 static int TxReadNnsTga(TextureObject *texture, const unsigned char *buffer, unsigned int size);
+static int TxReadNnsPic(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 static int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 static int TxReadSpt(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 static int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int size);
@@ -491,6 +507,7 @@ static int TxReadToLoveRu(TextureObject *texture, const unsigned char *buffer, u
 static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsigned int size);
 
 static int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream);
+static int TxWriteNnsPic(TextureObject *texture, BSTREAM *stream);
 static int TxWriteIStudio(TextureObject *texture, BSTREAM *stream);
 static int TxWriteSpt(TextureObject *texture, BSTREAM *stream);
 static int TxWriteTds(TextureObject *texture, BSTREAM *stream);
@@ -505,6 +522,12 @@ static const ObjIdEntry sFormats[] = {
 		TxIsValidNnsTga,
 		(ObjReader) TxReadNnsTga,
 		(ObjWriter) TxWriteNnsTga
+	}, {
+		FILE_TYPE_TEXTURE, TEXTURE_TYPE_NNSPIC, "NNS PIC",
+		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE,
+		TxIsValidNnsPic,
+		(ObjReader) TxReadNnsPic,
+		(ObjWriter) TxWriteNnsPic
 	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_ISTUDIO, "5TX",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED,
@@ -566,14 +589,7 @@ int TxIdentifyFile(const wchar_t *path) {
 	return type;
 }
 
-int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned int dwSize) {
-	int commentLength = *lpBuffer;
-	int nitroOffset = *(int *) (lpBuffer + 0x12 + commentLength - 4);
-	const unsigned char *buffer = lpBuffer + nitroOffset;
-
-	int width = *(int16_t *) (lpBuffer + 0xC);
-	int height = *(int16_t *) (lpBuffer + 0xE);
-
+static void TxReadNnsTextureData(TextureObject *texture, const unsigned char *buffer, unsigned int width, unsigned int height) {
 	int frmt = 0;
 	int c0xp = 0;
 	char *pnam = NULL;
@@ -646,7 +662,27 @@ int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned
 	texture->texture.texels.texImageParam = texImageParam;
 	texture->texture.texels.height = height;
 
-	return 0;
+}
+
+int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned int dwSize) {
+	int commentLength = *lpBuffer;
+	int nitroOffset = *(int *) (lpBuffer + 0x12 + commentLength - 4);
+	int width = *(int16_t *) (lpBuffer + 0xC);
+	int height = *(int16_t *) (lpBuffer + 0xE);
+
+	const unsigned char *buffer = lpBuffer + nitroOffset;
+
+	TxReadNnsTextureData(texture, buffer, width, height);
+	return OBJ_STATUS_SUCCESS;
+}
+
+static int TxReadNnsPic(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
+	//TODO
+	uint32_t nitroOffset = *(const uint32_t *) (buffer + 0x18);
+	unsigned int width = (buffer[0x5C] << 8) | (buffer[0x5D] << 0);
+	unsigned int height = (buffer[0x5E] << 8) | (buffer[0x5F] << 0);
+	TxReadNnsTextureData(texture, buffer + nitroOffset, width, height);
+	return OBJ_STATUS_SUCCESS;
 }
 
 int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned int size) {
@@ -1016,6 +1052,11 @@ int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
 	free(pixels);
 
 	return 0;
+}
+
+static int TxWriteNnsPic(TextureObject *texture, BSTREAM *stream) {
+	//TODO
+	return OBJ_STATUS_INVALID;
 }
 
 int TxWriteIStudio(TextureObject *texture, BSTREAM *stream) {

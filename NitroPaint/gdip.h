@@ -6,6 +6,8 @@
 
 int ImgIsValidTGA(const unsigned char *buffer, unsigned int dwSize);
 
+int ImgIsValidPIC(const unsigned char *buffer, unsigned int size);
+
 COLOR32 *ImgReadEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize);
 
 //
