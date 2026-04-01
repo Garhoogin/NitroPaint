@@ -321,7 +321,7 @@ static void ObjiIdentifyMultipleByTypeInternal(StList *list, const unsigned char
 		if (pEnt->type != type && type != FILE_TYPE_INVALID) continue;
 
 		//check validity
-		if (pEnt->idProc(buffer, size)) {
+		if (pEnt->idProc != NULL && pEnt->idProc(buffer, size)) {
 			//match
 			StListAdd(list, pEnt);
 
