@@ -379,7 +379,6 @@ ObjHeader *ObjAlloc(int type, int format) {
 	obj->size = ent.size;
 	obj->type = type;
 	obj->format = format;
-	obj->writer = fmtEntry.writer;
 	obj->dispose = ent.dispose;
 	obj->link.to = NULL;
 	StListCreateInline(&obj->link.from, ObjHeader *, NULL);
@@ -796,9 +795,11 @@ int ObjWrite(ObjHeader *object, BSTREAM *stream) {
 		COMBO2D *combo = (COMBO2D *) object->combo;
 		return ObjWrite(&combo->header, stream);
 	} else {
-		if (object->writer == NULL) return OBJ_STATUS_UNSUPPORTED;
+		ObjIdEntry fmt;
+		int status = ObjGetFormat(&fmt, object->type, object->format);
+		if (!status || fmt.writer == NULL) return OBJ_STATUS_UNSUPPORTED;
 
-		return object->writer(object, stream);
+		return fmt.writer(object, stream);
 	}
 }
 

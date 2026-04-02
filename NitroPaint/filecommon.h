@@ -86,7 +86,6 @@ struct ObjHeader_ {
 	int format;           // The format of file (specific to file type)
 	int compression;      // The compression scheme used on this file
 	ObjDispose dispose;   // The callback for freeing the file
-	ObjWriter writer;     // The callback for writing the file to a stream
 	ObjHeader *combo;     // Pointer to a structure maintaining strict links to objects in the same file
 	ObjLink link;         // A structure maintaining file links to this file
 	char *fileLink;       // The name of the file that this object references
