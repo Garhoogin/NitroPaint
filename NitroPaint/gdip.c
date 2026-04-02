@@ -56,7 +56,7 @@ int ImgIsValidTGA(const unsigned char *buffer, unsigned int size) {
 }
 
 int ImgIsValidPIC(const unsigned char *buffer, unsigned int size) {
-	if (size < 0x6C) return 0;
+	if (size < 0x68) return 0;
 
 	//check file magic
 	static const unsigned char signature[] = { 0x53, 0x80, 0xF6, 0x34, 0x40, 0x6C, 0xCC, 0xCD };
@@ -68,24 +68,93 @@ int ImgIsValidPIC(const unsigned char *buffer, unsigned int size) {
 
 	unsigned int w = (pict[0x4] << 8) | (pict[0x5] << 0);
 	unsigned int h = (pict[0x6] << 8) | (pict[0x7] << 0);
-	uint32_t field4 = (pict[0x8] << 24) | (pict[0x9] << 16) | (pict[0xA] << 8) | (pict[0xB] << 0);
-	int hasAlphaTable = pict[0x10];
-	if (field4 != 0x3F800000) return 0;  // is this a float??
-	if (hasAlphaTable > 1) return 0;
+	unsigned char c = pict[0xD];
 
-	//decode alpha table
-	const unsigned char *data = pict + 0x14;
-	unsigned int dataSize = size - 0x6C;
-	if (hasAlphaTable) {
-		if (dataSize < 4) return 0;
+	if (w == 0 || h == 0) return 0; // zero size
+	if (c > 3) return 0;            // not sure
+	
+	unsigned char planeMasks[4] = { 0 };
+	unsigned char planeFormats[4] = { 0 };
+	unsigned int nPlane = 0;
 
-		//TODO: check?
+	const unsigned char *planeInfo = pict + 0x10;
+	for (unsigned int i = 0; i < 4; i++) {
+		//check space for plane data
+		if (0x58 + 0x10 + (i + 1) * 4 > size) return 0;
 
-		data += 4;
-		dataSize -= 4;
+		unsigned char morePlanes = planeInfo[0];
+		unsigned char planeBits = planeInfo[1];
+		unsigned char planeComp = planeInfo[2];
+		unsigned char planeMask = planeInfo[3];
+
+		if (i == 3 && morePlanes) return 0;             // too many planes
+		if (planeComp != 0 && planeComp != 2) return 0; // incorrect row format
+		if (planeBits != 8) return 0;                   // unsupported data bits
+
+		planeMasks[i] = planeMask;
+		planeFormats[i] = planeComp;
+
+		nPlane++;
+		planeInfo += 4;
+
+		if (!morePlanes) break; // last plane
 	}
 
-	//TODO: check main data bytes
+	//check bitmap data
+	const unsigned char *data = planeInfo;
+	unsigned int offset = 0, dataSize = size - 0x58 - 0x10 - 4 * nPlane;
+	for (unsigned int y = 0; y < h; y++) {
+		//decode row planes
+		for (unsigned int plane = 0; plane < nPlane; plane++) {
+			unsigned char planeMask = planeMasks[plane];
+
+			unsigned int nPlaneChannel = 0;
+			if (planeMask & 0x80) nPlaneChannel++;
+			if (planeMask & 0x40) nPlaneChannel++;
+			if (planeMask & 0x20) nPlaneChannel++;
+			if (planeMask & 0x10) nPlaneChannel++;
+
+			//decode row
+			unsigned int x = 0;
+			if (planeFormats[plane] == 0) {
+				//format: direct.
+				//check size
+				if ((dataSize - offset) < (w * nPlaneChannel)) return 0;
+				offset += w * nPlaneChannel;
+			} else {
+				//format: RLE row
+				while (x < w) {
+					unsigned char flag = data[offset++];
+
+					unsigned int nRep, nColRead = 1;
+					if (flag & 0x80) {
+						//repeat colors
+						if ((flag & 0x7F) == 0) {
+							//special case length
+							nRep = data[offset++] << 8;
+							nRep |= data[offset++];
+						} else {
+							//7-bit length
+							nRep = (flag & 0x7F) + 1;
+						}
+					} else {
+						//direct run
+						nRep = (flag & 0x7F) + 1;
+						nColRead = nRep;
+					}
+
+					//check offset of read
+					if ((dataSize - offset) < (nColRead * nPlaneChannel)) return 0;
+					offset += nColRead * nPlaneChannel;
+
+					//check X position
+					if ((w - x) < nRep) return 0;
+					x += nRep;
+				}
+			}
+		}
+	}
+
 	return 1;
 }
 
@@ -230,6 +299,127 @@ static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *
 	//perform necessary flips
 	ImgFlip(pixels, width, height, needsHFlip, needsVFlip);
 	return pixels;
+}
+
+static COLOR32 *ImgiReadPic(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
+	//check PICT data
+	const unsigned char *pict = buffer + 0x58;
+
+	unsigned int w = (pict[0x4] << 8) | (pict[0x5] << 0);
+	unsigned int h = (pict[0x6] << 8) | (pict[0x7] << 0);
+	const unsigned char *data = pict + 0x10;
+
+	unsigned char planeMasks[4] = { 0 };
+	unsigned char planeFormats[4] = { 0 };
+	unsigned int nPlane = 0;
+
+	//decode plane info
+	for (unsigned int i = 0; i < 4; i++) {
+		unsigned char morePlanes = data[0];
+		unsigned char format = data[2];
+		unsigned char mask = data[3];
+		nPlane++;
+
+		planeFormats[i] = format;
+		planeMasks[i] = mask;
+
+		data += 4;
+
+		if (!morePlanes) break;
+	}
+
+	*pWidth = w;
+	*pHeight = h;
+	COLOR32 *px = (COLOR32 *) calloc(w * h, sizeof(COLOR32));
+
+	//fill default pixel values
+	unsigned int nPx = w * h;
+	for (unsigned int i = 0; i < nPx; i++) {
+		px[i] = 0xFF000000;
+	}
+
+	//decode bitmap scans
+	unsigned int offset = 0;
+	for (unsigned int y = 0; y < h; y++) {
+		COLOR32 *pRow = px + y * w;
+		
+		//decode row planes
+		for (unsigned int plane = 0; plane < nPlane; plane++) {
+			unsigned char planeMask = planeMasks[plane];
+
+			COLOR32 planeColorMask = 0;
+			if (planeMask & 0x10) planeColorMask |= 0xFF000000;
+			if (planeMask & 0x20) planeColorMask |= 0x00FF0000;
+			if (planeMask & 0x40) planeColorMask |= 0x0000FF00;
+			if (planeMask & 0x80) planeColorMask |= 0x000000FF;
+
+			//decode row
+			unsigned int x = 0;
+			while (x < w) {
+				if (planeFormats[plane] == 2) {
+					//format: RLE row
+					unsigned char flag = data[offset++];
+
+					if (flag & 0x80) {
+						//repeat
+						unsigned int nRep;
+						if ((flag & 0x7F) == 0) {
+							//special case length
+							nRep = data[offset++] << 8;
+							nRep |= data[offset++];
+						} else {
+							//7-bit length
+							nRep = (flag & 0x7F) + 1;
+						}
+
+						//decode the channels that exist
+						unsigned char rgb[4] = { 0 };
+						if (planeMask & 0x80) rgb[0] = data[offset++];
+						if (planeMask & 0x40) rgb[1] = data[offset++];
+						if (planeMask & 0x20) rgb[2] = data[offset++];
+						if (planeMask & 0x10) rgb[3] = data[offset++];
+
+						for (unsigned int i = 0; i < nRep; i++) {
+							pRow[x] = (pRow[x] & ~planeColorMask) | (rgb[0] << 0) | (rgb[1] << 8) | (rgb[2] << 16) | (rgb[3] << 24);
+							x++;
+						}
+					} else {
+						//direct run
+						unsigned int nRep = (flag & 0x7F) + 1;
+						for (unsigned int i = 0; i < nRep; i++) {
+
+							//decode the channels that exist
+							unsigned char rgb[4] = { 0 };
+							if (planeMask & 0x80) rgb[0] = data[offset++];
+							if (planeMask & 0x40) rgb[1] = data[offset++];
+							if (planeMask & 0x20) rgb[2] = data[offset++];
+							if (planeMask & 0x10) rgb[3] = data[offset++];
+
+							pRow[x] = (pRow[x] & ~planeColorMask) | (rgb[0] << 0) | (rgb[1] << 8) | (rgb[2] << 16) | (rgb[3] << 24);
+							x++;
+						}
+					}
+				} else {
+					//format: direct
+
+					//decode the channels that exist
+					unsigned char rgb[4] = { 0 };
+					if (planeMask & 0x80) rgb[0] = data[offset++];
+					if (planeMask & 0x40) rgb[1] = data[offset++];
+					if (planeMask & 0x20) rgb[2] = data[offset++];
+					if (planeMask & 0x10) rgb[3] = data[offset++];
+
+					pRow[x] = (pRow[x] & ~planeColorMask) | (rgb[0] << 0) | (rgb[1] << 8) | (rgb[2] << 16) | (rgb[3] << 24);
+					x++;
+				}
+			}
+		}
+	}
+
+	if (indices != NULL) *indices = NULL;
+	if (pImagePalette != NULL) *pImagePalette = NULL;
+	if (pPaletteSize != NULL) *pPaletteSize = 0;
+	return px;
 }
 
 #define CHECK_RESULT(x) if(!SUCCEEDED(x)) goto cleanup
@@ -673,8 +863,10 @@ HRESULT ImgWrite(const COLOR32 *px, int width, int height, LPCWSTR path) {
 COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
 	COLOR32 *bits = NULL;
 
-	//WIC doesn't support TGA format by default, so try that first.
-	if (ImgIsValidTGA(buffer, size)) {
+	//WIC doesn't support PIC or TGA format by default, so try that first.
+	if (ImgIsValidPIC(buffer, size)) {
+		bits = ImgiReadPic(buffer, size, pWidth, pHeight, indices, pImagePalette, pPaletteSize);
+	} else if (ImgIsValidTGA(buffer, size)) {
 		bits = ImgiReadTga(buffer, size, pWidth, pHeight, indices, pImagePalette, pPaletteSize);
 	} else {
 		HRESULT hr = ImgiRead(buffer, size, &bits, indices, pWidth, pHeight, pImagePalette, pPaletteSize);

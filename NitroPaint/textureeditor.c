@@ -2718,6 +2718,8 @@ void RegisterTextureEditorClass(void) {
 	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
 	EDITOR_CLASS *cls = EditorRegister(L"TextureEditorClass", TextureEditorWndProc, L"Texture Editor", sizeof(TEXTUREEDITORDATA), features);
 	EditorAddFilter(cls, TEXTURE_TYPE_NNSTGA, L"tga", L"NNS TGA Files (*.tga)\0*.tga\0");
+	EditorAddFilter(cls, TEXTURE_TYPE_NNSPIC, L"pic", L"NNS PIC Files (*.pic)\0*.pic\0");
+	EditorAddFilter(cls, TEXTURE_TYPE_SPT, L"spt", L"Simple Particle Texture Files (*.spt)\0*.spt\0");
 	EditorAddFilter(cls, TEXTURE_TYPE_ISTUDIO, L"5tx", L"iMageStudio Textures (*.5tx)\0*.5tx\0");
 	EditorAddFilter(cls, TEXTURE_TYPE_TDS, L"tds", L"Ghost Trick Textures (*.tds)\0*.tds\0");
 	EditorAddFilter(cls, TEXTURE_TYPE_NTGA, L"nnstga", L"NTGA Files (*.nnstga)\0*.nnstga\0");

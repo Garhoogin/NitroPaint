@@ -535,6 +535,12 @@ static const ObjIdEntry sFormats[] = {
 		(ObjReader) TxReadIStudio,
 		(ObjWriter) TxWriteIStudio
 	}, {
+		FILE_TYPE_TEXTURE, TEXTURE_TYPE_SPT, "SPT",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
+		TxIsValidSpt,
+		(ObjReader) TxReadSpt,
+		(ObjWriter) TxWriteSpt
+	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_TDS, "TDS",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
 		TxIsValidTds,
@@ -977,28 +983,7 @@ static void TxiNnsTgaWritePixels(BSTREAM *stream, COLOR32 *rawPx, int width, int
 	//bad
 }
 
-int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
-	TEXELS *texels = &texture->texture.texels;
-	PALETTE *palette = &texture->texture.palette;
-
-	int width = TEXW(texels->texImageParam);
-	int height = TEXH(texels->texImageParam);
-
-	COLOR32 *pixels = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-	TxRender(pixels, texels, palette);
-	ImgSwapRedBlue(pixels, width, height);
-	ImgFlip(pixels, width, height, 0, 1);
-
-	int depth = imageHasTransparent(pixels, width * height) ? 32 : 24;
-
-	uint8_t header[] = { 0x14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 8,
-		'N', 'N', 'S', '_', 'T', 'g', 'a', ' ', 'V', 'e', 'r', ' ', '1', '.', '0', 0, 0, 0, 0, 0 };
-	*(uint16_t *) (header + 0x0C) = width;
-	*(uint16_t *) (header + 0x0E) = height;
-	*(uint8_t *) (header + 0x10) = depth;
-	*(uint32_t *) (header + 0x22) = sizeof(header) + width * height * (depth / 8);
-	bstreamWrite(stream, header, sizeof(header));
-	TxiNnsTgaWritePixels(stream, pixels, width, height, depth);
+static void TxiNnsWriteTextureData(BSTREAM *stream, TEXELS *texels, PALETTE *palette, unsigned int width, unsigned int height) {
 
 	//format
 	const char *fstr = TxNameFromTexFormat(FORMAT(texels->texImageParam));
@@ -1016,7 +1001,9 @@ int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
 
 	//palette (if applicable)
 	if (FORMAT(texels->texImageParam) != CT_DIRECT) {
-		TxiNnsTgaWriteSection(stream, "nns_pnam", palette->name, strlen(palette->name));
+		const char *pnam = palette->name;
+		if (pnam == NULL) pnam = "";
+		TxiNnsTgaWriteSection(stream, "nns_pnam", pnam, strlen(pnam));
 
 		int nColors = palette->nColors;
 		if (FORMAT(texels->texImageParam) == CT_4COLOR && nColors > 4) nColors = 4;
@@ -1049,14 +1036,232 @@ int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
 
 	//write end
 	TxiNnsTgaWriteSection(stream, "nns_endb", NULL, 0);
-	free(pixels);
+}
 
-	return 0;
+int TxWriteNnsTga(TextureObject *texture, BSTREAM *stream) {
+	TEXELS *texels = &texture->texture.texels;
+	PALETTE *palette = &texture->texture.palette;
+
+	int width = TEXW(texels->texImageParam);
+	int height = TEXH(texels->texImageParam);
+
+	COLOR32 *pixels = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+	TxRender(pixels, texels, palette);
+	ImgSwapRedBlue(pixels, width, height);
+	ImgFlip(pixels, width, height, 0, 1);
+
+	int depth = imageHasTransparent(pixels, width * height) ? 32 : 24;
+
+	uint8_t header[] = { 0x14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 8,
+		'N', 'N', 'S', '_', 'T', 'g', 'a', ' ', 'V', 'e', 'r', ' ', '1', '.', '0', 0, 0, 0, 0, 0 };
+	*(uint16_t *) (header + 0x0C) = width;
+	*(uint16_t *) (header + 0x0E) = height;
+	*(uint8_t *) (header + 0x10) = depth;
+	*(uint32_t *) (header + 0x22) = sizeof(header) + width * height * (depth / 8);
+	bstreamWrite(stream, header, sizeof(header));
+
+	TxiNnsTgaWritePixels(stream, pixels, width, height, depth);
+	TxiNnsWriteTextureData(stream, texels, palette, width, height);
+
+	free(pixels);
+	return OBJ_STATUS_SUCCESS;
+}
+
+static void PutBe16(void *p, uint16_t x) {
+	((unsigned char *) p)[0] = (x >> 8) & 0xFF;
+	((unsigned char *) p)[1] = (x >> 0) & 0xFF;
+}
+
+static void PutBe32(void *p, uint32_t x) {
+	PutBe16(((unsigned char *) p) + 0, (x >> 16) & 0xFFFF);
+	PutBe16(((unsigned char *) p) + 2, (x >>  0) & 0xFFFF);
+}
+
+static unsigned int TxiGetRunLengthPIC(const COLOR32 *p, unsigned int nPx, COLOR32 eqMask) {
+	if (nPx == 0) return 0;
+
+	unsigned int runLength = 1;
+	for (unsigned int i = 1; i < nPx; i++) {
+		if ((p[i] ^ p[0]) & eqMask) break;
+		runLength++;
+	}
+	return runLength;
+}
+
+static unsigned int TxiGetDirectLengthPIC(const COLOR32 *p, unsigned int nPx, COLOR32 eqMask) {
+	for (unsigned int i = 0; i < nPx; i++) {
+		unsigned int runLength = TxiGetRunLengthPIC(p + i, nPx - i, eqMask);
+		if (runLength > 1) return i;
+	}
+
+	//no run found
+	return nPx;
+}
+
+static void TxiWriteBitmapRowDataPicRLE(BSTREAM *stream, const COLOR32 *row, unsigned int width, const unsigned int *pShifts, unsigned int pxBytes) {
+	unsigned char rgb[4];
+
+	//even when a bit plane has no data, we must output RLE row data for it.
+
+	//to compare equality of colors, we define an equality mask based on the given shifts.
+	COLOR32 eqMask = 0;
+	for (unsigned int i = 0; i < pxBytes; i++) {
+		eqMask |= 0xFF << pShifts[i];
+	}
+
+	unsigned int x = 0;
+	while (x < width) {
+
+		//get run length
+		unsigned int runLength = TxiGetRunLengthPIC(row + x, width - x, eqMask);
+
+		//put run
+		if (runLength > 1) {
+			//run
+			unsigned char header[3];
+			unsigned int headerSize;
+			if (runLength <= 0x80) {
+				//short run
+				headerSize = 1;
+				header[0] = 0x80 | (runLength - 1);
+			} else {
+				//long run
+				headerSize = 3;
+				header[0] = 0x80;
+				header[1] = (runLength >> 8) & 0xFF;
+				header[2] = (runLength >> 0) & 0xFF;
+			}
+			bstreamWrite(stream, header, headerSize);
+
+			//run color
+			for (unsigned int i = 0; i < pxBytes; i++) {
+				rgb[i] = (row[x] >> pShifts[i]) & 0xFF;
+			}
+			bstreamWrite(stream, rgb, pxBytes);
+			x += runLength;
+		} else {
+			//direct store
+			unsigned int dirLength = TxiGetDirectLengthPIC(row + x, width - x, eqMask);
+			if (dirLength > 0x80) dirLength = 0x80;
+
+			unsigned char header = (unsigned char) (dirLength - 1);
+			bstreamWrite(stream, &header, sizeof(header));
+
+			for (unsigned int i = 0; i < dirLength; i++, x++) {
+				for (unsigned int j = 0; j < pxBytes; j++) {
+					rgb[j] = (row[x] >> pShifts[j]) & 0xFF;
+				}
+				bstreamWrite(stream, rgb, pxBytes);
+			}
+		}
+	}
+}
+
+static void TxiWriteBitmapRowDataPicDirect(BSTREAM *stream, const COLOR32 *row, unsigned int width, const unsigned int *pShifts, unsigned int pxBytes) {
+	unsigned char rgb[4];
+
+	//direct store bytes
+	for (unsigned int x = 0; x < width; x++) {
+		COLOR32 c = row[x];
+
+		for (unsigned int j = 0; j < pxBytes; j++) rgb[j] = (c >> pShifts[j]) & 0xFF;
+		bstreamWrite(stream, rgb, pxBytes);
+	}
+}
+
+static void TxiWriteBitmapRowDataPic(BSTREAM *stream, const COLOR32 *row, unsigned int width, const unsigned int *pShifts, unsigned int pxBytes, int encoding) {
+	switch (encoding) {
+		default:
+		case 0:
+			TxiWriteBitmapRowDataPicDirect(stream, row, width, pShifts, pxBytes);
+			break;
+		case 2:
+			TxiWriteBitmapRowDataPicRLE(stream, row, width, pShifts, pxBytes);
+			break;
+	}
 }
 
 static int TxWriteNnsPic(TextureObject *texture, BSTREAM *stream) {
-	//TODO
-	return OBJ_STATUS_INVALID;
+	uint32_t texImageParam = texture->texture.texels.texImageParam;
+	unsigned int width = TEXW(texImageParam);
+	unsigned int height = texture->texture.texels.height;
+
+	COLOR32 *pixels = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+	TxRender(pixels, &texture->texture.texels, &texture->texture.palette);
+
+	//check if variation exists in channels
+	int hasR = 0, hasG = 0, hasB = 0, hasA = 0;
+	for (unsigned int i = 0; i < width * height; i++) {
+		COLOR32 c = pixels[i];
+
+		if (((c >>  0) & 0xFF) != 0x00) hasR = 1;
+		if (((c >>  8) & 0xFF) != 0x00) hasG = 1;
+		if (((c >> 16) & 0xFF) != 0x00) hasB = 1;
+		if (((c >> 24) & 0xFF) != 0xFF) hasA = 1;
+	}
+
+	//build header
+	unsigned char header[0x68] = { 0x53, 0x80, 0xF6, 0x34, 0x40, 0x6C, 0xCC, 0xCD };
+	const char *comment = "NNS_Pic Ver 1.0";
+	strcpy(header + 0x8, comment);
+
+	memcpy(header + 0x58, "PICT", 4);
+	PutBe16(header + 0x5C, width);
+	PutBe16(header + 0x5E, height);
+	PutBe32(header + 0x60, 0x3F800000);
+	PutBe16(header + 0x64, 3);  // must not be greater than 3 (not sure what it is)
+	PutBe16(header + 0x66, 0);
+	bstreamWrite(stream, header, sizeof(header));
+
+	unsigned char rgbPlaneMask = 0;
+	if (hasR) rgbPlaneMask |= 0x80;
+	if (hasG) rgbPlaneMask |= 0x40;
+	if (hasB) rgbPlaneMask |= 0x20;
+
+	unsigned char rgbInfo[4] = { 0 }, alphaInfo[4] = { 0 };
+	rgbInfo[0] = hasA ? 1 : 0;  // alpha image present
+	rgbInfo[1] = 8;             // 8 bit channels
+	rgbInfo[2] = 2;             // plane compression (must be 0 or 2)
+	rgbInfo[3] = rgbPlaneMask;  // upper 4 bits: channel bitmap (RGBA0000)
+	bstreamWrite(stream, rgbInfo, sizeof(rgbInfo));
+
+	if (hasA) {
+		alphaInfo[0] = 0;     // indicate no more bit planes follow
+		alphaInfo[1] = 8;     // 8 bit channels
+		alphaInfo[2] = 2;     // plane compression (must be 0 or 2)
+		alphaInfo[3] = 0x10;  // upper 4 bits: channel bitmap (RGBA0000)
+		bstreamWrite(stream, alphaInfo, sizeof(alphaInfo));
+	}
+
+	//shift amounts for included channels
+	unsigned int nChannel = 0;
+	unsigned int rgbShifts[3];
+	if (hasR) rgbShifts[nChannel++] =  0;
+	if (hasG) rgbShifts[nChannel++] =  8;
+	if (hasB) rgbShifts[nChannel++] = 16;
+	
+	//write lines
+	for (unsigned int y = 0; y < height; y++) {
+		COLOR32 *rgbRow = pixels + y * width;
+
+		//write RGB
+		TxiWriteBitmapRowDataPic(stream, rgbRow, width, rgbShifts, nChannel, rgbInfo[2]);
+
+		//write alpha
+		if (hasA) {
+			unsigned int aShifts[] = { 24 };
+			TxiWriteBitmapRowDataPic(stream, rgbRow, width, aShifts, 1, alphaInfo[2]);
+		}
+	}
+
+	free(pixels);
+
+	//NNS PIC data
+	uint32_t ofsNns = stream->pos;
+	TxiNnsWriteTextureData(stream, &texture->texture.texels, &texture->texture.palette, width, TEXH(texImageParam));
+	*(uint32_t *) (stream->buffer + 0x18) = ofsNns;
+
+	return OBJ_STATUS_SUCCESS;
 }
 
 int TxWriteIStudio(TextureObject *texture, BSTREAM *stream) {
