@@ -273,6 +273,10 @@ static int ScrIsValidTose(const unsigned char *buffer, unsigned int size) {
 	unsigned int nTileY = *(const uint8_t *) (buffer + 0x9);
 	if (nTileX * nTileY != nScrTile) return 0;
 
+	unsigned char field6 = *(const uint8_t *) (buffer + 0x6);
+	unsigned char field7 = *(const uint8_t *) (buffer + 0x7);
+	if (field6 > 4 || field7 > 2) return 0;
+
 	return 1;
 }
 
@@ -599,14 +603,32 @@ static int ScrReadTose(NSCR *nscr, const unsigned char *buffer, unsigned int siz
 	unsigned int tileY = *(const uint8_t *) (buffer + 0x9);
 	uint16_t clrc = *(const uint16_t *) (buffer + 0xA);
 
+	unsigned char format = *(const uint8_t *) (buffer + 0x6);
+
+	//decode the screen format and color mode
+	switch (format) {
+		case 0:
+			nscr->fmt = SCREENFORMAT_TEXT;
+			nscr->colorMode = SCREENCOLORMODE_16x16;
+			break;
+		case 1:
+			nscr->fmt = SCREENFORMAT_AFFINE;
+			nscr->colorMode = SCREENCOLORMODE_256x1;
+			break;
+		case 2:
+			nscr->fmt = SCREENFORMAT_AFFINEEXT;
+			nscr->colorMode = SCREENCOLORMODE_256x16;
+			break;
+		default:
+			break; // not supported (bitmap/direct color bitmap)
+	}
+
 	nscr->tilesX = tileX;
 	nscr->tilesY = tileY;
 	nscr->dataSize = 2 * tileX * tileY;
 	nscr->clearValue = clrc;
 	nscr->data = (uint16_t  *) calloc(tileX * tileY, sizeof(uint16_t));
-	nscr->colorMode = SCREENCOLORMODE_256x16;
-	nscr->fmt = SCREENFORMAT_AFFINEEXT;
-	ScriReadScreenData(nscr, buffer + 0xC, tileX * tileY * 2);
+	ScriReadScreenDataAs(nscr, buffer + 0xC, nscr->dataSize, nscr->fmt, 0);
 	ScrComputeHighestCharacter(nscr);
 
 	return OBJ_STATUS_SUCCESS;
@@ -908,15 +930,38 @@ static int ScrWriteHudson2(NSCR *nscr, BSTREAM *stream) {
 }
 
 static int ScrWriteTose(NSCR *nscr, BSTREAM *stream) {
+	unsigned char bgType = 0, colorMode = 0;
+
+	switch (nscr->fmt) {
+		case SCREENFORMAT_TEXT:
+			if (nscr->colorMode == SCREENCOLORMODE_16x16) {
+				bgType = 0;
+				colorMode = 0;
+			} else {
+				bgType = 2;
+				colorMode = 1;
+			}
+			break;
+		case SCREENFORMAT_AFFINE:
+			bgType = 1;
+			colorMode = 0;
+			break;
+		case SCREENFORMAT_AFFINEEXT:
+			bgType = 2;
+			colorMode = 2;
+			break;
+	}
+
 	unsigned char header[] = { 'N', 'S', 'C', 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	*(uint16_t *) (header + 0x4) = nscr->tilesX * nscr->tilesY;
-	*(uint16_t *) (header + 0x6) = 0x200; // TODO?
+	*(uint8_t *) (header + 0x6) = bgType;
+	*(uint8_t *) (header + 0x7) = colorMode;
 	*(uint8_t *) (header + 0x8) = nscr->tilesX;
 	*(uint8_t *) (header + 0x9) = nscr->tilesY;
 	*(uint16_t *) (header + 0xA) = nscr->clearValue;
 	bstreamWrite(stream, header, sizeof(header));
 
-	bstreamWrite(stream, nscr->data, nscr->dataSize);
+	ScriWriteScreenDataAs(nscr, stream, nscr->fmt, 0);
 
 	return OBJ_STATUS_SUCCESS;
 }
