@@ -16,6 +16,12 @@
 #define TGA_CTYPE_FMT_MASK     0x03 // color format type mask
 #define TGA_CTYPE_RLE          0x08 // RLE flag
 
+void ImgIndexedImageFree(ImgIndexedImage *pIndexed) {
+	free(pIndexed->bits);
+	free(pIndexed->pltt);
+	memset(pIndexed, 0, sizeof(ImgIndexedImage));
+}
+
 int ImgIsValidTGA(const unsigned char *buffer, unsigned int size) {
 	if (size < 0x12) return 0;
 
@@ -124,6 +130,7 @@ int ImgIsValidPIC(const unsigned char *buffer, unsigned int size) {
 			} else {
 				//format: RLE row
 				while (x < w) {
+					if ((dataSize - offset) < 1) return 0;
 					unsigned char flag = data[offset++];
 
 					unsigned int nRep, nColRead = 1;
@@ -131,6 +138,7 @@ int ImgIsValidPIC(const unsigned char *buffer, unsigned int size) {
 						//repeat colors
 						if ((flag & 0x7F) == 0) {
 							//special case length
+							if ((dataSize - offset) < 2) return 0;
 							nRep = data[offset++] << 8;
 							nRep |= data[offset++];
 						} else {
@@ -158,7 +166,7 @@ int ImgIsValidPIC(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
-static void ImgiReadTgaDirect(COLOR32 *pixels, int width, int height, const unsigned char *buffer, int depth, int rle) {
+static void ImgiReadTgaDirect(COLOR32 *pixels, int width, int height, const unsigned char *buffer, int depth, int rle, ImgIndexedImage *pIndexed) {
 	int nPx = width * height;
 	if (!rle) {
 		int offset = 0;
@@ -200,20 +208,26 @@ static void ImgiReadTgaDirect(COLOR32 *pixels, int width, int height, const unsi
 			nPixelsRead += num;
 		}
 	}
+
+	//output indexed data (does not exist)
+	if (pIndexed != NULL) {
+		memset(pIndexed, 0, sizeof(ImgIndexedImage));
+	}
 }
 
-static void ImgiReadTgaIndexedCommon(COLOR32 *px, int width, int height, const unsigned char *buffer, const COLOR32 *palette, int rle) {
-	int nPx = width * height;
+static void ImgiReadTgaIndexedCommon(COLOR32 *px, unsigned int width, unsigned int height, const unsigned char *buffer, const COLOR32 *palette, unsigned int nColors, int rle, ImgIndexedImage *pIndexed) {
+	unsigned int nPx = width * height;
+
+	unsigned char *indexed = (unsigned char *) calloc(nPx, 1);
 
 	if (!rle) {
 		//read pixel colors from palette
-		for (int i = 0; i < nPx; i++) {
-			unsigned int index = buffer[i];
-			px[i] = palette[index];
+		for (unsigned int i = 0; i < nPx; i++) {
+			indexed[i] = buffer[i];
 		}
 	} else {
 		//read RLE
-		int nPixelsRead = 0, offset = 0;
+		unsigned int nPixelsRead = 0, offset = 0;
 		while (nPixelsRead < nPx) {
 			COLOR32 col = 0;
 			unsigned char b = buffer[offset++];
@@ -221,11 +235,8 @@ static void ImgiReadTgaIndexedCommon(COLOR32 *px, int width, int height, const u
 
 			//process run of pixels
 			for (unsigned int i = 0; i < num; i++) {
-				//read color values
-				col = palette[buffer[offset]];
-
 				//write and increment
-				px[nPixelsRead + i] = col;
+				indexed[nPixelsRead + i] = buffer[offset];
 				if (!rlFlag) offset++;
 			}
 
@@ -233,9 +244,29 @@ static void ImgiReadTgaIndexedCommon(COLOR32 *px, int width, int height, const u
 			nPixelsRead += num;
 		}
 	}
+
+	//map colors
+	for (unsigned int i = 0; i < nPx; i++) {
+		unsigned int index = indexed[i];
+		if (index < nColors) px[i] = palette[indexed[i]];
+		else px[i] = 0;
+	}
+
+	//output indexed image data
+	if (pIndexed != NULL) {
+		pIndexed->bits = indexed;
+		pIndexed->width = width;
+		pIndexed->height = height;
+		pIndexed->nPltt = nColors;
+		pIndexed->pltt = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
+		memcpy(pIndexed->pltt, palette, nColors * sizeof(COLOR32));
+	} else {
+		memset(pIndexed, 0, sizeof(ImgIndexedImage));
+		free(indexed);
+	}
 }
 
-static void ImgiReadTgaMapped(COLOR32 *px, int width, int height, const unsigned char *buffer, int tableBase, int tableSize, int tableDepth, int rle) {
+static void ImgiReadTgaMapped(COLOR32 *px, unsigned int width, unsigned int height, const unsigned char *buffer, int tableBase, int tableSize, int tableDepth, int rle, ImgIndexedImage *pIndexed) {
 	COLOR32 palette[256] = { 0 };
 
 	//read palette
@@ -249,19 +280,19 @@ static void ImgiReadTgaMapped(COLOR32 *px, int width, int height, const unsigned
 	}
 
 	buffer += tableSize * tableDepth;
-	ImgiReadTgaIndexedCommon(px, width, height, buffer, palette, rle);
+	ImgiReadTgaIndexedCommon(px, width, height, buffer, palette, tableSize, rle, pIndexed);
 }
 
-static void ImgiReadTgaGrayscale(COLOR32 *px, int width, int height, const unsigned char *buffer, int rle) {
+static void ImgiReadTgaGrayscale(COLOR32 *px, unsigned int width, unsigned int height, const unsigned char *buffer, int rle, ImgIndexedImage *pIndexed) {
 	COLOR32 palette[256];
 	for (unsigned int i = 0; i < 256; i++) {
 		palette[i] = 0xFF000000 | (i << 0) | (i << 8) | (i << 16);
 	}
 
-	ImgiReadTgaIndexedCommon(px, width, height, buffer, palette, rle);
+	ImgiReadTgaIndexedCommon(px, width, height, buffer, palette, 256, rle, pIndexed);
 }
 
-static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
+static COLOR32 *ImgiReadTga(const unsigned char *buffer, unsigned int dwSize, unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	int dataOffset = buffer[0x00] + 0x12;
 	int colorType = buffer[0x02];
 	int depth = buffer[0x10] >> 3;
@@ -282,26 +313,23 @@ static COLOR32 *ImgiReadTga(const BYTE *buffer, DWORD dwSize, int *pWidth, int *
 	COLOR32 *pixels = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
 	switch (colorFormat) {
 		case TGA_CTYPE_DIRECT:
-			ImgiReadTgaDirect(pixels, width, height, buffer, depth, colorType & TGA_CTYPE_RLE);
+			ImgiReadTgaDirect(pixels, width, height, buffer, depth, colorType & TGA_CTYPE_RLE, pIndexed);
 			break;
 		case TGA_CTYPE_CMAP:
-			ImgiReadTgaMapped(pixels, width, height, buffer, colorTableBase, colorTableLength, colorTableDepth, colorType & TGA_CTYPE_RLE);
+			ImgiReadTgaMapped(pixels, width, height, buffer, colorTableBase, colorTableLength, colorTableDepth, colorType & TGA_CTYPE_RLE, pIndexed);
 			break;
 		case TGA_CTYPE_GRAYSCALE: //unsupported
-			ImgiReadTgaGrayscale(pixels, width, height, buffer, colorType & TGA_CTYPE_RLE);
+			ImgiReadTgaGrayscale(pixels, width, height, buffer, colorType & TGA_CTYPE_RLE, pIndexed);
 			break;
 	}
 
-	if (indices != NULL) *indices = NULL;
-	if (pImagePalette != NULL) *pImagePalette = NULL;
-	if (pPaletteSize != NULL) *pPaletteSize = 0;
-
 	//perform necessary flips
+	//TODO: flip indexed bits
 	ImgFlip(pixels, width, height, needsHFlip, needsVFlip);
 	return pixels;
 }
 
-static COLOR32 *ImgiReadPic(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
+static COLOR32 *ImgiReadPic(const unsigned char *buffer, unsigned int size, unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	//check PICT data
 	const unsigned char *pict = buffer + 0x58;
 
@@ -416,15 +444,16 @@ static COLOR32 *ImgiReadPic(const unsigned char *buffer, unsigned int size, int 
 		}
 	}
 
-	if (indices != NULL) *indices = NULL;
-	if (pImagePalette != NULL) *pImagePalette = NULL;
-	if (pPaletteSize != NULL) *pPaletteSize = 0;
+	//return indexed image data (does not exist)
+	if (pIndexed != NULL) {
+		memset(pIndexed, 0, sizeof(ImgIndexedImage));
+	}
 	return px;
 }
 
 #define CHECK_RESULT(x) if(!SUCCEEDED(x)) goto cleanup
 
-static HRESULT ImgiWrite(const void *scan0, WICPixelFormatGUID *format, int width, int height, int stride, int scan0Size, const COLOR32 *palette, int paletteSize, void **pBuffer, unsigned int *pBufferSize) {
+static HRESULT ImgiWrite(const void *scan0, WICPixelFormatGUID *format, unsigned int width, unsigned int height, unsigned int stride, unsigned int scan0Size, const COLOR32 *palette, int paletteSize, void **pBuffer, unsigned int *pBufferSize) {
 	//WICPixelFormatGUID format = GUID_WICPixelFormat8bppIndexed;
 	IWICImagingFactory *factory = NULL;
 	IStream *stream = NULL;
@@ -505,7 +534,7 @@ cleanup:
 	return result;
 }
 
-static HRESULT ImgiWriteFile(LPCWSTR path, const void *scan0, WICPixelFormatGUID *format, int width, int height, int stride, int scan0Size, const COLOR32 *palette, int paletteSize) {
+static HRESULT ImgiWriteFile(LPCWSTR path, const void *scan0, WICPixelFormatGUID *format, unsigned int width, unsigned int height, unsigned int stride, unsigned int scan0Size, const COLOR32 *palette, int paletteSize) {
 	void *buffer;
 	unsigned int size;
 	HRESULT hr = ImgiWrite(scan0, format, width, height, stride, scan0Size, palette, paletteSize, &buffer, &size);
@@ -527,7 +556,7 @@ static HRESULT ImgiWriteFile(LPCWSTR path, const void *scan0, WICPixelFormatGUID
 	return hr;
 }
 
-HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, int width, int height, const int *pDurations, int nFrames) {
+HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, unsigned int width, unsigned int height, const int *pDurations, int nFrames) {
 	WICPixelFormatGUID fmtSrc = GUID_WICPixelFormat32bppRGBA, fmtDst = GUID_WICPixelFormat8bppIndexed;
 	IWICImagingFactory *factory = NULL;
 	IWICBitmapEncoder *encoder = NULL;
@@ -634,7 +663,7 @@ cleanup:
 	return result;
 }
 
-static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsigned char **ppIndices, int *pWidth, int *pHeight, COLOR32 **ppPalette, int *pPaletteSize) {
+static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	IWICImagingFactory *factory = NULL;
 	IWICStream *stream = NULL;
 	IWICBitmapDecoder *decoder = NULL;
@@ -645,6 +674,11 @@ static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsi
 	WICPixelFormatGUID trueColorFormat, pixelFormat;
 	COLOR32 *pxBuffer = NULL;
 	unsigned char *scan0 = NULL, *indices = NULL;
+
+	//zero the indexed image return
+	if (pIndexed != NULL) {
+		memset(pIndexed, 0, sizeof(ImgIndexedImage));
+	}
 
 	//get factory instance
 	HRESULT result = CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, &factory);
@@ -670,25 +704,22 @@ static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsi
 	CHECK_RESULT(result);
 
 	//write palette output
-	if (ppPalette != NULL) {
-		*ppPalette = NULL;
-		*pPaletteSize = 0;
-	}
-	if (ppPalette != NULL && SUCCEEDED(frame->lpVtbl->CopyPalette(frame, wicPalette))) {
-		result = wicPalette->lpVtbl->GetColorCount(wicPalette, pPaletteSize);
+	if (pIndexed != NULL && SUCCEEDED(frame->lpVtbl->CopyPalette(frame, wicPalette))) {
+		UINT paletteSize;
+		result = wicPalette->lpVtbl->GetColorCount(wicPalette, &paletteSize);
 		CHECK_RESULT(result);
 
 		UINT nActualColors;
-		wicPaletteColors = (WICColor *) calloc(*pPaletteSize, sizeof(WICColor));
-		result = wicPalette->lpVtbl->GetColors(wicPalette, *pPaletteSize, wicPaletteColors, &nActualColors);
+		wicPaletteColors = (WICColor *) calloc(paletteSize, sizeof(WICColor));
+		result = wicPalette->lpVtbl->GetColors(wicPalette, paletteSize, wicPaletteColors, &nActualColors);
 		CHECK_RESULT(result);
 
 		//same format, will need to swap red and blue
-		*ppPalette = (COLOR32 *) wicPaletteColors;
-		for (int i = 0; i < *pPaletteSize; i++) {
+		pIndexed->pltt = (COLOR32 *) wicPaletteColors;
+		pIndexed->nPltt = paletteSize;
+		for (unsigned int i = 0; i < paletteSize; i++) {
 			WICColor c = wicPaletteColors[i];
-			c = (c & 0xFF00FF00) | ((c >> 16) & 0xFF) | ((c & 0xFF) << 16);
-			wicPaletteColors[i] = c;
+			wicPaletteColors[i] = REVERSE(c);
 		}
 	}
 
@@ -700,41 +731,40 @@ static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsi
 	CHECK_RESULT(result);
 
 	//read converted pixels
-	int width = *pWidth, height = *pHeight;
-	int rgbStride = *pWidth * 4;
-	int pxBufferSize = rgbStride * *pHeight;
+	unsigned int width = *pWidth, height = *pHeight;
+	unsigned int rgbStride = *pWidth * 4;
+	unsigned int pxBufferSize = rgbStride * *pHeight;
 	pxBuffer = (COLOR32 *) calloc(pxBufferSize, 1);
 	result = converter->lpVtbl->CopyPixels(converter, NULL, rgbStride, pxBufferSize, (BYTE *) pxBuffer);
 
 	//swap red and blue channels
-	int nPx = width * height;
-	for (int i = 0; i < nPx; i++) {
+	unsigned int nPx = width * height;
+	for (unsigned int i = 0; i < nPx; i++) {
 		COLOR32 c = pxBuffer[i];
-		c = (c & 0xFF00FF00) | ((c >> 16) & 0xFF) | ((c & 0xFF) << 16);
-		pxBuffer[i] = c;
+		pxBuffer[i] = REVERSE(c);
 	}
 	*ppPixels = pxBuffer;
 
 	//read index data
-	if (ppIndices != NULL) {
+	if (pIndexed != NULL) {
 		//get pixel format
 		result = frame->lpVtbl->GetPixelFormat(frame, &pixelFormat);
 		CHECK_RESULT(result);
 
 		//check for 8bpp and 4bpp, else don't return any index data
-		int depth = 0;
+		unsigned int depth = 0;
 		if (memcmp(&pixelFormat, &GUID_WICPixelFormat8bppIndexed, sizeof(GUID)) == 0) {
 			depth = 8;
 		} else if (memcmp(&pixelFormat, &GUID_WICPixelFormat4bppIndexed, sizeof(GUID)) == 0) {
 			depth = 4;
 		} else {
-			*ppIndices = NULL;
+			//no supported indexed data exists
 		}
 
 		//if indexed to 4bpp or 8bpp
 		if (depth != 0) {
-			int stride = ((width * depth + 7) / 8 + 3) & ~3;
-			int scan0Size = stride * height;
+			unsigned int stride = ((width * depth + 7) / 8 + 3) & ~3;
+			unsigned int scan0Size = stride * height;
 			scan0 = (unsigned char *) calloc(scan0Size, 1);
 
 			//read pixels in
@@ -744,19 +774,22 @@ static HRESULT ImgiRead(const void *buffer, DWORD size, COLOR32 **ppPixels, unsi
 			indices = (unsigned char *) calloc(width * height, 1);
 
 			//copy in rows
-			for (int y = 0; y < height; y++) {
+			for (unsigned int y = 0; y < height; y++) {
 				unsigned char *rowSrc = scan0 + y * stride;
 				unsigned char *rowDst = indices + y * width;
 
 				if (depth == 8) {
 					memcpy(rowDst, rowSrc, width);
 				} else {
-					for (int x = 0; x < width; x++) {
+					for (unsigned int x = 0; x < width; x++) {
 						rowDst[x] = (rowSrc[x / 2] >> (((x ^ 1) & 1) * 4)) & 0xF;
 					}
 				}
 			}
-			*ppIndices = indices;
+			pIndexed->bits = indices;
+			pIndexed->width = width;
+			pIndexed->height = height;
+
 			free(scan0);
 			scan0 = NULL;
 		}
@@ -773,10 +806,7 @@ cleanup:
 	if (!SUCCEEDED(result)) {
 		*pWidth = 0;
 		*pHeight = 0;
-		if (pPaletteSize != NULL) *pPaletteSize = 0;
-		if (ppPalette != NULL) *ppPalette = NULL;
 		if (ppPixels != NULL) *ppPixels = NULL;
-		if (ppIndices != NULL) *ppIndices = NULL;
 		if (wicPaletteColors != NULL) free(wicPaletteColors);
 		if (pxBuffer != NULL) free(pxBuffer);
 		if (indices != NULL) free(indices);
@@ -784,30 +814,29 @@ cleanup:
 	return result;
 }
 
-HRESULT ImgWriteMemIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, void **pBuffer, unsigned int *pSize) {
+HRESULT ImgWriteMemIndexed(const unsigned char *bits, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int paletteSize, void **pBuffer, unsigned int *pSize) {
 	int depth = paletteSize <= 16 ? 4 : 8;
 	int stride = ((width * depth + 7) / 8 + 3) & ~3;
 
 	//allocate and populate scan0
 	int scan0Size = stride * height;
 	unsigned char *scan0 = (unsigned char *) calloc(height, stride);
-	for (int y = 0; y < height; y++) {
+	for (unsigned int y = 0; y < height; y++) {
 		const unsigned char *rowSrc = bits + y * width;
 		unsigned char *rowDest = scan0 + y * stride;
 
 		if (depth == 8) {
 			memcpy(rowDest, bits + y * width, width);
 		} else {
-			for (int x = 0; x < width; x++) {
-				int index = rowSrc[x];
-				rowDest[x / 2] |= index << (((x ^ 1) & 1) * 4);
+			for (unsigned int x = 0; x < width; x++) {
+				rowDest[x / 2] |= rowSrc[x] << (((x ^ 1) & 1) * 4);
 			}
 		}
 	}
 
 	//create palette copy to swap red/blue order
 	COLOR32 *paletteCopy = (COLOR32 *) calloc(paletteSize, 4);
-	for (int i = 0; i < paletteSize; i++) {
+	for (unsigned int i = 0; i < paletteSize; i++) {
 		COLOR32 c = palette[i];
 		c = (c & 0xFF00FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF);
 		paletteCopy[i] = c;
@@ -822,7 +851,7 @@ HRESULT ImgWriteMemIndexed(const unsigned char *bits, int width, int height, con
 	return result;
 }
 
-HRESULT ImgWriteIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, LPCWSTR path) {
+HRESULT ImgWriteIndexed(const unsigned char *bits, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int paletteSize, LPCWSTR path) {
 	void *buffer;
 	unsigned int size;
 	HRESULT result = ImgWriteMemIndexed(bits, width, height, palette, paletteSize, &buffer, &size);
@@ -844,12 +873,11 @@ HRESULT ImgWriteIndexed(const unsigned char *bits, int width, int height, const 
 	return result;
 }
 
-HRESULT ImgWrite(const COLOR32 *px, int width, int height, LPCWSTR path) {
+HRESULT ImgWrite(const COLOR32 *px, unsigned int width, unsigned int height, LPCWSTR path) {
 	COLOR32 *bits = (COLOR32 *) calloc(height, width * 4);
-	for (int i = 0; i < width * height; i++) {
+	for (unsigned int i = 0; i < width * height; i++) {
 		COLOR32 c = px[i];
-		c = (c & 0xFF00FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF);
-		bits[i] = c;
+		bits[i] = REVERSE(c);
 	}
 
 	int stride = width * 4;
@@ -860,23 +888,23 @@ HRESULT ImgWrite(const COLOR32 *px, int width, int height, LPCWSTR path) {
 	return result;
 }
 
-COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
+COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	COLOR32 *bits = NULL;
 
 	//WIC doesn't support PIC or TGA format by default, so try that first.
 	if (ImgIsValidPIC(buffer, size)) {
-		bits = ImgiReadPic(buffer, size, pWidth, pHeight, indices, pImagePalette, pPaletteSize);
+		bits = ImgiReadPic(buffer, size, pWidth, pHeight, pIndexed);
 	} else if (ImgIsValidTGA(buffer, size)) {
-		bits = ImgiReadTga(buffer, size, pWidth, pHeight, indices, pImagePalette, pPaletteSize);
+		bits = ImgiReadTga(buffer, size, pWidth, pHeight, pIndexed);
 	} else {
-		HRESULT hr = ImgiRead(buffer, size, &bits, indices, pWidth, pHeight, pImagePalette, pPaletteSize);
+		HRESULT hr = ImgiRead(buffer, size, &bits, pWidth, pHeight, pIndexed);
 		if (!SUCCEEDED(hr)) bits = NULL;
 	}
 
 	return bits;
 }
 
-COLOR32 *ImgReadEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize) {
+COLOR32 *ImgReadEx(LPCWSTR lpszFileName, unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	//test for valid file, or TGA file, which WIC does not support.
 	HANDLE hFile = CreateFile(lpszFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) {
@@ -889,18 +917,18 @@ COLOR32 *ImgReadEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, unsigned cha
 	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
 	CloseHandle(hFile);
 
-	COLOR32 *bits = ImgReadMemEx(buffer, dwSizeLow, pWidth, pHeight, indices, pImagePalette, pPaletteSize);
+	COLOR32 *bits = ImgReadMemEx(buffer, dwSizeLow, pWidth, pHeight, pIndexed);
 	free(buffer);
 
 	return bits;
 }
 
-COLOR32 *ImgReadMem(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight) {
-	return ImgReadMemEx(buffer, size, pWidth, pHeight, NULL, NULL, NULL);
+COLOR32 *ImgReadMem(const unsigned char *buffer, unsigned int size, unsigned int *pWidth, unsigned int *pHeight) {
+	return ImgReadMemEx(buffer, size, pWidth, pHeight, NULL);
 }
 
-COLOR32 *ImgRead(LPCWSTR path, int *pWidth, int *pHeight) {
-	return ImgReadEx(path, pWidth, pHeight, NULL, NULL, NULL);
+COLOR32 *ImgRead(LPCWSTR path, unsigned int *pWidth, unsigned int *pHeight) {
+	return ImgReadEx(path, pWidth, pHeight, NULL);
 }
 
 void ImgFlip(COLOR32 *px, unsigned int width, unsigned int height, int hFlip, int vFlip) {

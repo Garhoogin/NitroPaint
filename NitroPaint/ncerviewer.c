@@ -1060,8 +1060,8 @@ static void CellViewerPaste(NCERVIEWERDATA *data) {
 		CloseClipboard();
 	} else {
 		//check for image data
-		int width, height;
-		COLOR32 *px = GetClipboardBitmap(&width, &height, NULL, NULL, NULL);
+		unsigned int width, height;
+		COLOR32 *px = GetClipboardBitmap(&width, &height, NULL);
 		if (px != NULL) {
 			//paste image data
 			CloseClipboard();

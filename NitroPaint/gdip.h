@@ -4,47 +4,63 @@
 #include "color.h"
 
 
+typedef struct ImgImage_ {
+	COLOR32 *px;
+	unsigned int width;
+	unsigned int height;
+} ImgImage;
+
+typedef struct ImgIndexedImage_ {
+	unsigned char *bits;   // bitmap bits
+	COLOR32 *pltt;         // color palette
+	unsigned int nPltt;    // palette size
+	unsigned int width;    // width
+	unsigned int height;   // height
+} ImgIndexedImage;
+
+void ImgIndexedImageFree(ImgIndexedImage *pIndexed);
+
 int ImgIsValidTGA(const unsigned char *buffer, unsigned int dwSize);
 
 int ImgIsValidPIC(const unsigned char *buffer, unsigned int size);
 
-COLOR32 *ImgReadEx(LPCWSTR lpszFileName, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize);
+COLOR32 *ImgReadEx(LPCWSTR lpszFileName, unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed);
 
 //
 // Read an image and return an array of pixels and size.
 //
-COLOR32 *ImgRead(LPCWSTR path, int *pWidth, int *pHeight);
+COLOR32 *ImgRead(LPCWSTR path, unsigned int *pWidth, unsigned int *pHeight);
 
 //
 // Read an image from a memory block.
 //
-COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight, unsigned char **indices, COLOR32 **pImagePalette, int *pPaletteSize);
+COLOR32 *ImgReadMemEx(const unsigned char *buffer, unsigned int size, unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed);
 
 //
 // Read an image from a memory block.
 // 
-COLOR32 *ImgReadMem(const unsigned char *buffer, unsigned int size, int *pWidth, int *pHeight);
+COLOR32 *ImgReadMem(const unsigned char *buffer, unsigned int size, unsigned int *pWidth, unsigned int *pHeight);
 
 //
 // Write an array of pixels to an image file.
 //
-HRESULT ImgWrite(const COLOR32 *px, int width, int height, LPCWSTR path);
+HRESULT ImgWrite(const COLOR32 *px, unsigned int width, unsigned int height, LPCWSTR path);
 
 //
 // Write an indexed image to a file from a given color palette and index data.
 // Index data is 8 bits per pixel with the stride equal to the image's width.
 //
-HRESULT ImgWriteIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, LPCWSTR path);
+HRESULT ImgWriteIndexed(const unsigned char *bits, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int paletteSize, LPCWSTR path);
 
 //
 // Write an indexed image to a memory buffer.
 //
-HRESULT ImgWriteMemIndexed(const unsigned char *bits, int width, int height, const COLOR32 *palette, int paletteSize, void **pBuffer, unsigned int *pSize);
+HRESULT ImgWriteMemIndexed(const unsigned char *bits, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int paletteSize, void **pBuffer, unsigned int *pSize);
 
 //
 // Write an animated GIF to a file.
 //
-HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, int width, int height, const int *pDurations, int nFrames);
+HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, unsigned int width, unsigned int height, const int *pDurations, int nFrames);
 
 
 // ----- image operations

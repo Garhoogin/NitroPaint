@@ -5,6 +5,7 @@
 #include "filecommon.h"
 #include "palette.h"
 #include "editor.h"
+#include "gdip.h"
 
 #define g_useDarkTheme 0
 
@@ -194,7 +195,7 @@ void ClipCopyBitmapEx(const void *bits, unsigned int width, unsigned int height,
 //
 // Get a copied bitmap from the clipboard.
 //
-COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize);
+COLOR32 *GetClipboardBitmap(unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed);
 
 //
 // Creates a text prompt

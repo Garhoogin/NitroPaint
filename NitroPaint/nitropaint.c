@@ -714,7 +714,7 @@ static size_t GetBitmapSize(BITMAPINFO *pbmi) {
 	return GetBitmapOffsetBits(pbmi) + sizeBits;
 }
 
-static COLOR32 *ClipGetClipboardDIBFromHGlobal(HGLOBAL hGlobal, int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+static COLOR32 *ClipGetClipboardDIBFromHGlobal(HGLOBAL hGlobal, unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	//create bitmap file header
 	BITMAPINFO *pbmi = (BITMAPINFO *) GlobalLock(hGlobal);
 	SIZE_T dibSize = GetBitmapSize(pbmi);
@@ -726,26 +726,25 @@ static COLOR32 *ClipGetClipboardDIBFromHGlobal(HGLOBAL hGlobal, int *pWidth, int
 	bmfh->bfReserved2 = 0;
 	bmfh->bfOffBits = sizeof(BITMAPFILEHEADER) + GetBitmapOffsetBits(pbmi);
 
-	COLOR32 *pxDib = ImgReadMemEx((unsigned char *) bmfh, bmfh->bfSize, pWidth, pHeight, indexed, pplt, pPaletteSize);
+	COLOR32 *pxDib = ImgReadMemEx((unsigned char *) bmfh, bmfh->bfSize, pWidth, pHeight, pIndexed);
 	free(bmfh);
 	GlobalUnlock(hGlobal);
 	return pxDib;
 }
 
-static COLOR32 *ClipGetClipboardDIB(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+static COLOR32 *ClipGetClipboardDIB(unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	HGLOBAL hDib = GetClipboardData(CF_DIB);
 	if (hDib == NULL) {
 		//no DIB
-		*pWidth = *pHeight = *pPaletteSize = 0;
-		*indexed = NULL;
-		*pplt = NULL;
+		*pWidth = *pHeight = 0;
+		memset(pIndexed, 0, sizeof(ImgIndexedImage));
 		return NULL;
 	}
 
-	COLOR32 *pxDib = ClipGetClipboardDIBFromHGlobal(hDib, pWidth, pHeight, indexed, pplt, pPaletteSize);
+	COLOR32 *pxDib = ClipGetClipboardDIBFromHGlobal(hDib, pWidth, pHeight, pIndexed);
 	
 	//get opacity info for an indexed palette.
-	if (*indexed != NULL) {
+	if (pIndexed != NULL && pIndexed->bits != NULL) {
 		//indexed image: get palette alpha data if it exists
 		HGLOBAL hOpx = GetClipboardData(EnsureOpxDibAlphaPalClipboardFormat());
 
@@ -753,22 +752,21 @@ static COLOR32 *ClipGetClipboardDIB(int *pWidth, int *pHeight, unsigned char **i
 		if (hOpx != NULL) {
 			//the color table should hold the alpha values, referenced by the bitmap
 			//image data with 1 pixel to 1 palette color.
-			int alphaW, alphaH;
-			COLOR32 *alphabm = ClipGetClipboardDIBFromHGlobal(hOpx, &alphaW, &alphaH, NULL, NULL, NULL);
+			unsigned int alphaW, alphaH;
+			COLOR32 *alphabm = ClipGetClipboardDIBFromHGlobal(hOpx, &alphaW, &alphaH, NULL);
 
-			int nAlpha = alphaW * alphaH;
-			if (nAlpha >= *pPaletteSize) nAlpha = *pPaletteSize;
-			for (int i = 0; i < alphaW * alphaH && i < *pPaletteSize; i++) {
-				COLOR32 c = alphabm[i];
-				unsigned int a = (c & 0xFF);
-				(*pplt)[i] = ((*pplt)[i] & 0x00FFFFFF) | (a << 24);
+			unsigned int nAlpha = alphaW * alphaH;
+			if (nAlpha >= pIndexed->nPltt) nAlpha = pIndexed->nPltt;
+			for (unsigned int i = 0; i < alphaW * alphaH && i < pIndexed->nPltt; i++) {
+				unsigned int a = (alphabm[i] & 0xFF);
+				pIndexed->pltt[i] = (pIndexed->pltt[i] & 0x00FFFFFF) | (a << 24);
 			}
 
 			free(alphabm);
 
 			//rewrite
-			for (int i = 0;  i < *pWidth * *pHeight; i++) {
-				pxDib[i] = (*pplt)[(*indexed)[i]];
+			for (unsigned int i = 0;  i < *pWidth * *pHeight; i++) {
+				pxDib[i] = pIndexed->pltt[pIndexed->bits[i]];
 			}
 		}
 	} else {
@@ -778,13 +776,13 @@ static COLOR32 *ClipGetClipboardDIB(int *pWidth, int *pHeight, unsigned char **i
 		//exists
 		if (hAlpha != NULL) {
 			//read bitmap: alpha channel per pixel of bitmap
-			int alphaW, alphaH;
-			COLOR32 *alphabm = ClipGetClipboardDIBFromHGlobal(hAlpha, &alphaW, &alphaH, NULL, NULL, NULL);
+			unsigned int alphaW, alphaH;
+			COLOR32 *alphabm = ClipGetClipboardDIBFromHGlobal(hAlpha, &alphaW, &alphaH, NULL);
 
-			for (int y = 0; y < alphaH; y++) {
+			for (unsigned int y = 0; y < alphaH; y++) {
 				if (y >= *pHeight) break;
 
-				for (int x = 0; x < alphaW; x++) {
+				for (unsigned int x = 0; x < alphaW; x++) {
 					if (x >= *pWidth) break;
 
 					//set alpha
@@ -799,27 +797,27 @@ static COLOR32 *ClipGetClipboardDIB(int *pWidth, int *pHeight, unsigned char **i
 	return pxDib;
 }
 
-static COLOR32 *ClipGetClipboardPNG(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+static COLOR32 *ClipGetClipboardPNG(unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	int fmt = EnsurePngClipboardFormat();
 	HGLOBAL hPng = GetClipboardData(fmt);
 	if (hPng == NULL) {
 		//no clipboard data
-		*pWidth = *pHeight = *pPaletteSize = 0;
-		*indexed = NULL;
-		*pplt = NULL;
+		*pWidth = 0;
+		*pHeight = 0;
+		memset(pIndexed, 0, sizeof(ImgIndexedImage));
 		return NULL;
 	}
 
 	void *pngData = GlobalLock(hPng);
 	SIZE_T size = GlobalSize(hPng);
 
-	COLOR32 *px = ImgReadMemEx(pngData, size, pWidth, pHeight, indexed, pplt, pPaletteSize);
+	COLOR32 *px = ImgReadMemEx(pngData, size, pWidth, pHeight, pIndexed);
 
 	GlobalUnlock(hPng);
 	return px;
 }
 
-static COLOR32 *ClipGetClipboardFileImage(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+static COLOR32 *ClipGetClipboardFileImage(unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	HANDLE hGDrop = GetClipboardData(CF_HDROP);
 	if (hGDrop != NULL) {
 		HDROP hDrop = (HDROP) GlobalLock(hGDrop);
@@ -832,7 +830,7 @@ static COLOR32 *ClipGetClipboardFileImage(int *pWidth, int *pHeight, unsigned ch
 			DragQueryFile(hDrop, i, buf, bufsiz + 1);
 
 			//try parse
-			COLOR32 *px = ImgReadEx(buf, pWidth, pHeight, indexed, pplt, pPaletteSize);
+			COLOR32 *px = ImgReadEx(buf, pWidth, pHeight, pIndexed);
 			free(buf);
 
 			if (px != NULL) {
@@ -846,48 +844,42 @@ static COLOR32 *ClipGetClipboardFileImage(int *pWidth, int *pHeight, unsigned ch
 
 	//no data
 	*pWidth = *pHeight = 0;
-	if (indexed != NULL) *indexed = NULL;
-	if (pplt != NULL) *pplt = NULL;
-	if (pPaletteSize != NULL) *pPaletteSize = 0;
+	memset(pIndexed, 0, sizeof(ImgIndexedImage));
 	return NULL;
 }
 
-COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, COLOR32 **pplt, int *pPaletteSize) {
+COLOR32 *GetClipboardBitmap(unsigned int *pWidth, unsigned int *pHeight, ImgIndexedImage *pIndexed) {
 	//if we've made it this far, we have DIB data on the clipboard. Read it now.
-	int dibWidth = 0, dibHeight = 0, pngWidth = 0, pngHeight = 0, dibPaletteSize = 0, pngPaletteSize = 0;
-	unsigned char *dibIndex = NULL, *pngIndex = NULL;
-	COLOR32 *dibPalette = NULL, *pngPalette = NULL;
-	COLOR32 *pxDib = ClipGetClipboardDIB(&dibWidth, &dibHeight, &dibIndex, &dibPalette, &dibPaletteSize);
-	COLOR32 *pxPng = ClipGetClipboardPNG(&pngWidth, &pngHeight, &pngIndex, &pngPalette, &pngPaletteSize);
+	unsigned int dibWidth = 0, dibHeight = 0, pngWidth = 0, pngHeight = 0, dibPaletteSize = 0, pngPaletteSize = 0;
+	ImgIndexedImage indexedDib, indexedPng;
+	COLOR32 *pxDib = ClipGetClipboardDIB(&dibWidth, &dibHeight, &indexedDib);
+	COLOR32 *pxPng = ClipGetClipboardPNG(&pngWidth, &pngHeight, &indexedPng);
 
 	//check also 
 
 	//if neither format available...
 	if (pxPng == NULL && pxDib == NULL) {
 		//check clipboard for file
-		int fileWidth, fileHeight, filePaletteSize;
-		unsigned char *fileIndexed;
-		COLOR32 *filePalette;
-		COLOR32 *pxFile = ClipGetClipboardFileImage(&fileWidth, &fileHeight, &fileIndexed, &filePalette, &filePaletteSize);
+		unsigned int fileWidth, fileHeight;
+		ImgIndexedImage fileIndexed;
+		COLOR32 *pxFile = ClipGetClipboardFileImage(&fileWidth, &fileHeight, &fileIndexed);
 		if (pxFile != NULL) {
 			//found
 			*pWidth = fileWidth;
 			*pHeight = fileHeight;
-			if (indexed != NULL) *indexed = fileIndexed;
-			else if (fileIndexed != NULL) free(fileIndexed);
-			if (pplt != NULL) *pplt = filePalette;
-			else if (filePalette != NULL) free(filePalette);
-			if (pPaletteSize != NULL) *pPaletteSize = filePaletteSize;
+			if (pIndexed != NULL) {
+				memcpy(pIndexed, &fileIndexed, sizeof(ImgIndexedImage));
+			} else {
+				ImgIndexedImageFree(&fileIndexed);
+			}
 			return pxFile;
 		}
 
 		*pWidth = 0;
 		*pHeight = 0;
-		if (pngPalette != NULL) free(pngPalette);
-		if (dibPalette != NULL) free(dibPalette);
-		if (indexed != NULL) *indexed = NULL;
-		if (pplt != NULL) *pplt = NULL;
-		if (pPaletteSize != NULL) *pPaletteSize = 0;
+		ImgIndexedImageFree(&indexedPng);
+		ImgIndexedImageFree(&indexedDib);
+		if (pIndexed != NULL) memset(pIndexed, 0, sizeof(ImgIndexedImage));
 		return NULL;
 	}
 
@@ -901,35 +893,33 @@ COLOR32 *GetClipboardBitmap(int *pWidth, int *pHeight, unsigned char **indexed, 
 		usePng = 1;
 	} else {
 		//we have both DIB and PNG. Use DIB if it is indexed and the PNG is not, otherwise use the PNG.
-		if (dibIndex != NULL && pngIndex == NULL) usePng = 0;
+		if (indexedDib.bits != NULL && indexedPng.bits == NULL) usePng = 0;
 		else usePng = 1;
 	}
 
 	if (usePng) {
 		if (pxDib != NULL) free(pxDib);
-		if (dibIndex != NULL) free(dibIndex);
-		if (dibPalette != NULL) free(dibPalette);
+		ImgIndexedImageFree(&indexedDib);
 
 		*pWidth = pngWidth;
 		*pHeight = pngHeight;
-		if (pplt != NULL) *pplt = pngPalette;
-		else free(pngPalette);
-		if (indexed != NULL) *indexed = pngIndex;
-		else free(pngIndex);
-		if (pPaletteSize != NULL) *pPaletteSize = pngPaletteSize;
+		if (pIndexed != NULL) {
+			memcpy(pIndexed, &indexedPng, sizeof(ImgIndexedImage));
+		} else {
+			ImgIndexedImageFree(&indexedPng);
+		}
 		return pxPng;
 	} else {
 		if (pxPng != NULL) free(pxPng);
-		if (pngIndex != NULL) free(pngIndex);
-		if (pngPalette != NULL) free(pngPalette);
+		ImgIndexedImageFree(&indexedPng);
 
 		*pWidth = dibWidth;
 		*pHeight = dibHeight;
-		if (pplt != NULL) *pplt = dibPalette;
-		else free(dibPalette);
-		if (indexed != NULL) *indexed = dibIndex;
-		else free(dibIndex);
-		if (pPaletteSize != NULL) *pPaletteSize = dibPaletteSize;
+		if (pIndexed != NULL) {
+			memcpy(pIndexed, &indexedDib, sizeof(ImgIndexedImage));
+		} else {
+			ImgIndexedImageFree(&indexedDib);
+		}
 		return pxDib;
 	}
 }
@@ -4485,8 +4475,8 @@ static LRESULT CALLBACK RedGuiIndexImageWndProc(HWND hWnd, UINT msg, WPARAM wPar
 				//from clipboard
 				if (OpenClipboard(hWnd)) {
 
-					int width, height;
-					COLOR32 *px = GetClipboardBitmap(&width, &height, NULL, NULL, NULL);
+					unsigned int width, height;
+					COLOR32 *px = GetClipboardBitmap(&width, &height, NULL);
 					if (px != NULL) {
 						RedGuiSetSourceImage(data, px, width, height);
 					}

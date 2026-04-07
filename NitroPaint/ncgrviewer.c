@@ -641,10 +641,10 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 		unsigned char *attrs = chars + npc->width * npc->height * 64;
 
 		//paste char data
-		for (int y = 0; y < npc->height; y++) {
-			for (int x = 0; x < npc->width; x++) {
-				if ((pasteX + x) >= ncgr->tilesX) continue;
-				if ((pasteY + y) >= ncgr->tilesY) continue;
+		for (unsigned int y = 0; y < npc->height; y++) {
+			for (unsigned int x = 0; x < npc->width; x++) {
+				if ((pasteX + x) >= (unsigned int) ncgr->tilesX) continue;
+				if ((pasteY + y) >= (unsigned int) ncgr->tilesY) continue;
 
 				int i = x + y * npc->width;
 				memcpy(ncgr->tiles[(pasteX + x) + (pasteY + y) * data->ncgr->tilesX], chars + i * 64, 64);
@@ -660,30 +660,29 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 	}
 
 	//read bitmap off the clipboard
-	int width, height, pltSize;
-	COLOR32 *imgPalette;
-	unsigned char *indexed;
-	COLOR32 *px = GetClipboardBitmap(&width, &height, &indexed, &imgPalette, &pltSize);
+	unsigned int width, height;
+	ImgIndexedImage indexed;
+	COLOR32 *px = GetClipboardBitmap(&width, &height, &indexed);
 
 	if (px != NULL) {
 		//decode bitmap
-		int nColsDest = 1 << ncgr->nBits;
-		int palFirst = nColsDest * data->selectedPalette;
+		unsigned int nColsDest = 1 << ncgr->nBits;
+		unsigned int palFirst = nColsDest * data->selectedPalette;
 
 		//check palette for matching the current data
-		int matchesPalette = (indexed == NULL) ? FALSE : TRUE; //cannot have a matching palette if there's no palette!
+		int matchesPalette = (indexed.bits == NULL) ? FALSE : TRUE; //cannot have a matching palette if there's no palette!
 		if (matchesPalette && nclr != NULL) {
 			//check matching from the start of the currently selected palette in the viewer
-			for (int iPx = 0; iPx < width * height; iPx++) {
-				int i = indexed[iPx];
-				if (i > nColsDest || i >= pltSize || (palFirst + i) >= nclr->nColors) {
+			for (unsigned int iPx = 0; iPx < width * height; iPx++) {
+				unsigned int i = indexed.bits[iPx];
+				if (i > nColsDest || i >= indexed.nPltt || (palFirst + i) >= (unsigned int) nclr->nColors) {
 					//if the indexed value is out of bounds of either the source or destination
 					//palette, mark it as unmatching.
 					matchesPalette = FALSE;
 					break;
 				}
 
-				COLOR32 c = imgPalette[i];
+				COLOR32 c = indexed.pltt[i];
 				if (ColorConvertToDS(c) != nclr->colors[palFirst + i]) {
 					matchesPalette = FALSE;
 					break;
@@ -710,14 +709,14 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 		} else {
 
 			//scan pixels from bitmap into the graphics editor
-			int tilesY = height / 8;
-			int tilesX = width / 8;
-			for (int y = 0; y < tilesY * 8; y++) {
-				for (int x = 0; x < tilesX * 8; x++) {
+			unsigned int tilesY = height / 8;
+			unsigned int tilesX = width / 8;
+			for (unsigned int y = 0; y < tilesY * 8; y++) {
+				for (unsigned int x = 0; x < tilesX * 8; x++) {
 					//copy bits directly
 					COLOR32 c = px[x + y * width];
-					if (indexed != NULL) {
-						c = indexed[x + y * width];
+					if (indexed.bits != NULL) {
+						c = indexed.bits[x + y * width];
 					}
 					ChrViewerPutPixel(data, pasteX * 8 + x, pasteY * 8 + y, c);
 				}
@@ -728,9 +727,8 @@ static void ChrViewerPaste(NCGRVIEWERDATA *data, BOOL contextMenu) {
 		}
 
 	Done:
-		if (px != NULL) free(px);
-		if (indexed != NULL) free(indexed);
-		if (imgPalette != NULL) free(imgPalette);
+		ImgIndexedImageFree(&indexed);
+		free(px);
 	}
 
 ReleaseClipboard:
