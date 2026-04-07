@@ -1661,7 +1661,7 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 		const unsigned char *pGlyphbm = pGlyph + 2;
 
 		uint16_t cp = (pGlyph[0] << 8) | (pGlyph[1]); // SJIS
-		if (inCP == FONT_CHARSET_SJIS) {
+		if (inCP == FONT_CHARSET_SJIS && data->nftr->charset != FONT_CHARSET_SJIS) {
 			cp = (uint16_t) NftrViewerDecodeSjisCharacter(cp);
 			if (!cp) continue;
 		}
