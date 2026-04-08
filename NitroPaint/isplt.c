@@ -1373,10 +1373,10 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		return;
 	}
 
-	RxLongColor *splits = (RxLongColor *) calloc(nColors * reduction->paletteLayers, sizeof(RxLongColor));
+	RxLongColor *splits = (RxLongColor *) RxMemCalloc(nColors * reduction->paletteLayers, sizeof(RxLongColor));
 	double *splitWeightL = (double *) calloc(nColors, sizeof(double));
 	if (splits == NULL || splitWeightL == NULL) {
-		free(splits);
+		RxMemFree(splits);
 		free(splitWeightL);
 
 		reduction->status = RX_STATUS_NOMEM;
@@ -1519,7 +1519,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 			}
 		}
 	}
-	free(splits);
+	RxMemFree(splits);
 	free(splitWeightL);
 	
 	if (wssBest == RX_LARGE_NUMBER) {
