@@ -1446,9 +1446,9 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
 			double meanY = node->color[i].y, meanI = node->color[i].i, meanQ = node->color[i].q, meanA = node->color[i].a;
 			wssInitial -= (
-				  reduction->interactionY * (totalA[3 * i + 0] - (meanY * meanA) * invWeight)
-				+ reduction->interactionI * (totalA[3 * i + 1] - (meanI * meanA) * invWeight)
-				+ reduction->interactionQ * (totalA[3 * i + 2] - (meanQ * meanA) * invWeight)
+				  reduction->interactionY * (totalA[3 * i + 0] - (meanY * meanA) * totalWeight)
+				+ reduction->interactionI * (totalA[3 * i + 1] - (meanI * meanA) * totalWeight)
+				+ reduction->interactionQ * (totalA[3 * i + 2] - (meanQ * meanA) * totalWeight)
 			);
 		}
 	}
@@ -1994,7 +1994,7 @@ RxStatus RX_API RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	if (reduction->histogramFlat == NULL || reduction->histogram->nEntries == 0) {
 		return reduction->status;
 	}
-
+	
 	//do it
 	RxColorNode *treeHead = RxiTreeNodeAlloc(reduction);
 	RxiTreeNodeInit(reduction, treeHead, 0, reduction->histogram->nEntries);
