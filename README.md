@@ -8,15 +8,17 @@ The list of file formats supported by NitroPaint is outlined as follows:
 
 | Type | Formats |
 | ---- | ------- |
-| Color Palette | NCLR, NCPR, NCL, ICL, ACL, 5PL, 5PC, Hudson, raw |
-| Character Graphics | NCGR, NCBR, NCG, ICG, ACG, Hudson, raw |
-| Background Screen | NSCR, NSC, ISC, ASC, Hudson, raw |
+| Color Palette | NCLR, NCPR, NCL, ICL, ACL, 5PL, 5PC, Hudson, Tose, raw |
+| Character Graphics | NCGR, NCBR, NCG, ICG, ACG, Hudson, Tose, raw |
+| Background Screen | NSCR, NSC, ISC, ASC, Hudson, Tose, raw |
 | Cell | NCER, Hudson, Ghost Trick |
 | Cell Animation | NANR, Ghost Trick |
+| Font | NFTR (0.1, 1.0, 1.1, 1.2, GameFreak 1.1), BNFR (1.1, 1.2, 2.0), SHARP LC Font, Starfy |
+| Message | BMG |
 | Layout | BNLL, BNCL, BNBL |
-| Texture | NNS TGA, 5TX, NTGA, Ghost Trick |
+| Texture | NNS TGA, NNS PIC, SPT, 5TX, NTGA, Ghost Trick |
 | Texture Archive | NSBMD/NSBTX, BMD (Super Mario 64 DS) |
-| Mixed | BNR, MBB, 5BG, Time Ace |
+| Mixed | BNR, MBB, 5BG, Time Ace, GRF |
 
 The following are the supported compression formats:
 
@@ -24,7 +26,7 @@ The following are the supported compression formats:
 | ---- | ------- |
 | BIOS Standard | LZ, RLE, Huffman, Differential Filter |
 | Extended Formats | LZX, ASH |
-| Third Party | LZX Chunked (Lego Battles), Mario vs Donkey Kong, VLX (Pac Man World) |
+| Third Party | LZX Chunked (Lego Battles), Mario vs Donkey Kong, VLX (Pac Man World), PuCrunch (Griptonite Games) |
 
 
 # BG Generator
