@@ -6,6 +6,8 @@
 
 #pragma comment(lib, "windowscodecs.lib")
 
+static void ImgiFlipBits(void *rows, unsigned int width, unsigned int height, int hFlip, int vFlip, unsigned int unitSize);
+
 #define TGA_CMAP_NONE             0 // TGA: no color map
 #define TGA_CMAP_PRESENT          1 // TGA: uses color map
 
@@ -324,8 +326,11 @@ static COLOR32 *ImgiReadTga(const unsigned char *buffer, unsigned int dwSize, un
 	}
 
 	//perform necessary flips
-	//TODO: flip indexed bits
 	ImgFlip(pixels, width, height, needsHFlip, needsVFlip);
+	if (pIndexed != NULL && pIndexed->bits != NULL) {
+		//flip the indexed bits
+		ImgiFlipBits(pIndexed->bits, width, height, needsHFlip, needsVFlip, 1);
+	}
 	return pixels;
 }
 
@@ -931,29 +936,39 @@ COLOR32 *ImgRead(LPCWSTR path, unsigned int *pWidth, unsigned int *pHeight) {
 	return ImgReadEx(path, pWidth, pHeight, NULL);
 }
 
-void ImgFlip(COLOR32 *px, unsigned int width, unsigned int height, int hFlip, int vFlip) {
+static void ImgiFlipBits(void *rows, unsigned int width, unsigned int height, int hFlip, int vFlip, unsigned int unitSize) {
 	//V flip
 	if (vFlip) {
-		COLOR32 *rowbuf = (COLOR32 *) calloc(width, sizeof(COLOR32));
+		void *rowbuf = calloc(width, unitSize);
 		for (unsigned int y = 0; y < height / 2; y++) {
-			memcpy(rowbuf, px + y * width, width * sizeof(COLOR32));
-			memcpy(px + y * width, px + (height - 1 - y) * width, width * sizeof(COLOR32));
-			memcpy(px + (height - 1 - y) * width, rowbuf, width * sizeof(COLOR32));
+			void *row1 = ((unsigned char *) rows) + (y * width * unitSize);
+			void *row2 = ((unsigned char *) rows) + ((height - 1 - y) * width * unitSize);
+
+			memcpy(rowbuf, row1, width * unitSize);
+			memcpy(row1, row2, width * unitSize);
+			memcpy(row2, rowbuf, width * unitSize);
 		}
 		free(rowbuf);
 	}
 
 	//H flip
 	if (hFlip) {
+		unsigned char temp[4];
 		for (unsigned int y = 0; y < height; y++) {
 			for (unsigned int x = 0; x < width / 2; x++) {
-				COLOR32 left = px[x + y * width];
-				COLOR32 right = px[width - 1 - x + y * width];
-				px[x + y * width] = right;
-				px[width - 1 - x + y * width] = left;
+				void *left = ((unsigned char *) rows) + (x + y * width) * unitSize;
+				void *right = ((unsigned char *) rows) + (width - 1 - x + y * width) * unitSize;
+
+				memcpy(temp, left, unitSize);
+				memcpy(left, right, unitSize);
+				memcpy(right, temp, unitSize);
 			}
 		}
 	}
+}
+
+void ImgFlip(COLOR32 *px, unsigned int width, unsigned int height, int hFlip, int vFlip) {
+	ImgiFlipBits(px, width, height, hFlip, vFlip, sizeof(COLOR32));
 }
 
 void ImgSwapRedBlue(COLOR32 *px, unsigned int width, unsigned int height) {
