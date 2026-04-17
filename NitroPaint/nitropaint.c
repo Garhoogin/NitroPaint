@@ -30,6 +30,7 @@
 #include "lyteditor.h"
 #include "mesgeditor.h"
 #include "combo2d.h"
+#include "scene.h"
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \

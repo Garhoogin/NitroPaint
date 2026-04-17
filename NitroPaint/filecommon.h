@@ -23,7 +23,8 @@
 #define FILE_TYPE_BNCL       16
 #define FILE_TYPE_BNBL       17
 #define FILE_TYPE_MESG       18
-#define FILE_TYPE_MAX        19  // highest file type +1
+#define FILE_TYPE_SCENE      19
+#define FILE_TYPE_MAX        20  // highest file type +1
 
 // ----- common status codes
 #define OBJ_STATUS_SUCCESS            0  // the operation completed successfully
@@ -357,6 +358,23 @@ int ObjReadFile(
 ObjHeader *ObjAutoReadFile(
 	const wchar_t *path,
 	int            type
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjWrite
+//
+// Writes an object to a byte stream.
+//
+// Parameters:
+//   object        The object
+//   path          The byte stream
+//
+// Returns:
+//   The status of the operation.
+// -----------------------------------------------------------------------------------------------
+int ObjWrite(
+	ObjHeader *object,
+	BSTREAM   *stream
 );
 
 // -----------------------------------------------------------------------------------------------
