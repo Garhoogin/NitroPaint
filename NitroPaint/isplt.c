@@ -1838,7 +1838,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	return 1; // continue
 }
 
-static void RxiPaletteRecluster(RxReduction *reduction) {
+static void RxiVoronoiRecluster(RxReduction *reduction) {
 	//simple termination conditions
 	if (reduction->nReclusters <= 0 || reduction->nPinnedClusters >= reduction->nUsedColors) return;
 
@@ -2023,7 +2023,7 @@ RxStatus RX_API RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	RxiPaletteWriteMasked(reduction);
 
 	//perform voronoi iteration
-	RxiPaletteRecluster(reduction);
+	RxiVoronoiRecluster(reduction);
 
 	//cleanup
 	RxiTreeFreeAll(reduction);
@@ -2610,7 +2610,7 @@ void RX_API RxCreateMultiplePalettes(
 			//run reclustering on the current palette, with color 0 pinned
 			RxiVoronoiLoad(reduction, pltI, nColsPerPalette + 1);  // load palette
 			RxiVoronoiPinRange(reduction, 1);                      // pin first color
-			RxiPaletteRecluster(reduction);
+			RxiVoronoiRecluster(reduction);
 			RxiVoronoiUnpin(reduction);
 
 			RxiGetPalette0Rgb(reduction, pltI, nColsPerPalette + 1);
@@ -2734,6 +2734,7 @@ RxStatus RX_API RxReduceImage(
 	}
 	memcpy(&lastRow[nLayers * (0)], &lastRow[nLayers * 1], nLayers * sizeof(RxYiqColor));
 	memcpy(&lastRow[nLayers * (width + 1)], &lastRow[nLayers * width], nLayers * sizeof(RxYiqColor));
+	reduction->accel.useAccelerator = 0; // DEBUG
 
 	//start dithering, do so in a serpentine path.
 	for (unsigned int y = 0; y < height; y++) {
