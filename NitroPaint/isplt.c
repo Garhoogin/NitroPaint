@@ -2734,7 +2734,6 @@ RxStatus RX_API RxReduceImage(
 	}
 	memcpy(&lastRow[nLayers * (0)], &lastRow[nLayers * 1], nLayers * sizeof(RxYiqColor));
 	memcpy(&lastRow[nLayers * (width + 1)], &lastRow[nLayers * width], nLayers * sizeof(RxYiqColor));
-	reduction->accel.useAccelerator = 0; // DEBUG
 
 	//start dithering, do so in a serpentine path.
 	for (unsigned int y = 0; y < height; y++) {
@@ -3214,7 +3213,8 @@ unsigned int RX_API RxPaletteFindClosestColorYiq(RxReduction *reduction, const R
 		return RxiPaletteFindClosestColorAccelerated(reduction, cpy, outDiff) + plttStart;
 	} else {
 		//slow search
-		return RxiPaletteFindClosestColor(reduction, accel->plttLarge + plttStart, accel->nPltt - plttStart, cpy, outDiff) + plttStart;
+		RxYiqColor *pltt = &accel->plttLarge[plttStart * reduction->paletteLayers];
+		return RxiPaletteFindClosestColor(reduction, pltt, accel->nPltt - plttStart, cpy, outDiff) + plttStart;
 	}
 }
 
