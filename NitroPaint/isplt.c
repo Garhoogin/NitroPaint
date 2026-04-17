@@ -1347,7 +1347,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	if (nColors < 2) {
 		//1 color: set leaf color to the single histogram color and its weight
 		RxHistEntry *entry = reduction->histogramFlat[node->startIndex];
-		memcpy(&node->color, &entry->color, sizeof(RxYiqColor));
+		memcpy(&node->color, &entry->color, reduction->paletteLayers * sizeof(RxYiqColor));
 		node->weight = entry->weight;
 		node->canSplit = FALSE;
 		return;
