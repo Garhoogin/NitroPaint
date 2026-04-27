@@ -2183,14 +2183,13 @@ RxStatus RX_API RxCreatePalette(RxReduction *reduction, const COLOR32 *px, unsig
 
 // ----- character map color reduction routines
 
-#define RX_TILE_PALETTE_MAX      256 //max colors in the internal work buffer
-#define RX_TILE_PALETTE_COUNT_MAX 16 //max palettes produced
+#define RX_TILE_PALETTE_COUNT_MAX 16 // max palettes produced
 
 typedef struct RxiTile_ {
 	COLOR32 rgb[64];                         // RGBA 8x8 block color
 	uint8_t indices[64];                     // indices into color palette per 8x8 pixels
-	RxYiqColor palette[RX_TILE_PALETTE_MAX]; // YIQ color palette
-	int useCounts[RX_TILE_PALETTE_MAX];
+	RxYiqColor palette[RX_PALETTE_MAX_SIZE]; // YIQ color palette
+	int useCounts[RX_PALETTE_MAX_SIZE];
 	unsigned int palIndex;                   // points to the index of the tile that is maintaining the palette this tile uses
 	unsigned int nUsedColors;                // number of filled slots
 	unsigned int nSwallowed;
@@ -2307,7 +2306,7 @@ static int RxiPaletteLightnessComparator(const void *e1, const void *e2) {
 	double y1 = 0.0, y2 = 0.0, a1 = 0.0, a2 = 0.0;
 
 	//average lightness per palette
-	for (unsigned int i = 0; i < RX_TILE_PALETTE_MAX; i++) {
+	for (unsigned int i = 0; i < RX_PALETTE_MAX_SIZE; i++) {
 		RxYiqColor yiq1, yiq2;
 		RxConvertRgbToYiq(p1[i], &yiq1);
 		RxConvertRgbToYiq(p2[i], &yiq2);
@@ -2390,7 +2389,7 @@ void RX_API RxCreateMultiplePalettes(
 			RxHistAdd(reduction, tile->rgb, 8, 8);
 			RxHistFinalize(reduction);
 			RxComputePalette(reduction, nColsPerPalette);
-			for (int i = 0; i < RX_TILE_PALETTE_MAX; i++) {
+			for (int i = 0; i < RX_PALETTE_MAX_SIZE; i++) {
 				memcpy(&tile->palette[i], &reduction->paletteYiq[i][0], sizeof(RxYiqColor));
 			}
 
@@ -2399,7 +2398,7 @@ void RX_API RxCreateMultiplePalettes(
 			//match pixels to palette indices
 			for (int i = 0; i < 64; i++) {
 				int index = RxiPaletteFindClosestRgbColor(reduction, &tile->palette[0], tile->nUsedColors, tile->rgb[i], NULL);
-				if ((tile->rgb[i] >> 24) == 0) index = RX_TILE_PALETTE_MAX - 1;
+				if ((tile->rgb[i] >> 24) == 0) index = RX_PALETTE_MAX_SIZE - 1;
 				tile->indices[i] = (uint8_t) index;
 				tile->useCounts[index]++;
 			}
@@ -2466,7 +2465,7 @@ void RX_API RxCreateMultiplePalettes(
 
 		//write over the palette of the tile
 		RxiTile *palTile = &tiles[index1];
-		for (int i = 0; i < RX_TILE_PALETTE_MAX - 1; i++) {
+		for (int i = 0; i < RX_PALETTE_MAX_SIZE - 1; i++) {
 			RxConvertRgbToYiq(reduction->paletteRgb[i][0], &palTile->palette[i]);
 		}
 		palTile->nUsedColors = reduction->nUsedColors;
@@ -2482,7 +2481,7 @@ void RX_API RxCreateMultiplePalettes(
 			for (int j = 0; j < 64; j++) {
 				COLOR32 col = tile->rgb[j];
 				int index = RxiPaletteFindClosestRgbColor(reduction, tile->palette, tile->nUsedColors, tile->rgb[j], NULL);
-				if ((col >> 24) == 0) index = RX_TILE_PALETTE_MAX - 1;
+				if ((col >> 24) == 0) index = RX_PALETTE_MAX_SIZE - 1;
 				tile->indices[j] = (uint8_t) index;
 				rep->useCounts[index]++;
 			}
@@ -2506,7 +2505,7 @@ void RX_API RxCreateMultiplePalettes(
 	//get palette output from previous step
 	int nPalettesWritten = 0;
 	int outputOffs = max(paletteOffset, 1);
-	COLOR32 *palettes = (COLOR32 *) calloc(RX_TILE_PALETTE_COUNT_MAX * RX_TILE_PALETTE_MAX, sizeof(COLOR32));
+	COLOR32 *palettes = (COLOR32 *) calloc(RX_TILE_PALETTE_COUNT_MAX * RX_PALETTE_MAX_SIZE, sizeof(COLOR32));
 
 	for (unsigned int i = 0; i < nTiles; i++) {
 		RxiTile *t = &tiles[i];
@@ -2522,7 +2521,7 @@ void RX_API RxCreateMultiplePalettes(
 		RxHistFinalize(reduction);
 		RxComputePalette(reduction, nColsPerPalette);
 		
-		RxiGetPalette0Rgb(reduction, palettes + nPalettesWritten * RX_TILE_PALETTE_MAX, RX_TILE_PALETTE_MAX - 1);
+		RxiGetPalette0Rgb(reduction, palettes + nPalettesWritten * RX_PALETTE_MAX_SIZE, RX_PALETTE_MAX_SIZE - 1);
 		nPalettesWritten++;
 		(*progress)++;
 	}
@@ -2530,12 +2529,12 @@ void RX_API RxCreateMultiplePalettes(
 	//palette refinement
 	int nRefinements = 8;
 	int *bestPalettes = (int *) calloc(nTiles, sizeof(int));
-	RxYiqColor *yiqPalette = (RxYiqColor *) RxMemCalloc(nPalettes, RX_TILE_PALETTE_MAX * sizeof(RxYiqColor));
+	RxYiqColor *yiqPalette = (RxYiqColor *) RxMemCalloc(nPalettes, RX_PALETTE_MAX_SIZE * sizeof(RxYiqColor));
 	for (int k = 0; k < nRefinements; k++) {
 		//palette to YIQ
 		for (int i = 0; i < nPalettes; i++) {
 			for (int j = 0; j < nColsPerPalette; j++) {
-				RxConvertRgbToYiq(palettes[i * RX_TILE_PALETTE_MAX + j], &yiqPalette[i * RX_TILE_PALETTE_MAX + j]);
+				RxConvertRgbToYiq(palettes[i * RX_PALETTE_MAX_SIZE + j], &yiqPalette[i * RX_PALETTE_MAX_SIZE + j]);
 			}
 		}
 
@@ -2553,7 +2552,7 @@ void RX_API RxCreateMultiplePalettes(
 
 			//determine which palette is best for this tile for remap
 			for (int j = 0; j < nPalettes; j++) {
-				double error = RxHistComputePaletteErrorYiq(reduction, yiqPalette + (j * RX_TILE_PALETTE_MAX), nColsPerPalette, bestError);
+				double error = RxHistComputePaletteErrorYiq(reduction, yiqPalette + (j * RX_PALETTE_MAX_SIZE), nColsPerPalette, bestError);
 				if (error < bestError) {
 					bestError = error;
 					best = j;
@@ -2574,7 +2573,7 @@ void RX_API RxCreateMultiplePalettes(
 			RxComputePalette(reduction, nColsPerPalette);
 
 			//write back
-			RxiGetPalette0Rgb(reduction, palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette);
+			RxiGetPalette0Rgb(reduction, palettes + i * RX_PALETTE_MAX_SIZE, nColsPerPalette);
 		}
 	}
 	RxMemFree(yiqPalette);
@@ -2584,14 +2583,14 @@ void RX_API RxCreateMultiplePalettes(
 	RxHistInit(errHist);
 
 	//sort palettes by lightness
-	qsort(palettes, nPalettes, RX_TILE_PALETTE_MAX * sizeof(COLOR32), RxiPaletteLightnessComparator);
+	qsort(palettes, nPalettes, RX_PALETTE_MAX_SIZE * sizeof(COLOR32), RxiPaletteLightnessComparator);
 
 	//write palettes in the correct size
 	for (int i = 0; i < nPalettes; i++) {
 		//recreate palette so that it can be output in its correct size
 		COLOR32 *thisPalDest = dest + paletteSize * (i + paletteBase) + outputOffs;
-		qsort(palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
-		memcpy(thisPalDest, palettes + i * RX_TILE_PALETTE_MAX, nColsPerPalette * sizeof(COLOR32));
+		qsort(palettes + i * RX_PALETTE_MAX_SIZE, nColsPerPalette, sizeof(COLOR32), RxColorLightnessComparator);
+		memcpy(thisPalDest, palettes + i * RX_PALETTE_MAX_SIZE, nColsPerPalette * sizeof(COLOR32));
 
 		//accumulate error statistics
 		if (useColor0) {
