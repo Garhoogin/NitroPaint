@@ -2300,6 +2300,34 @@ static void RxiGetPalette0Rgb(RxReduction *reduction, COLOR32 *dest, unsigned in
 	for (unsigned int i = 0; i < nCols; i++) dest[i] = reduction->paletteRgb[i][0];
 }
 
+static int RxiPaletteLightnessComparator(const void *e1, const void *e2) {
+	const COLOR32 *p1 = (const COLOR32 *) e1;
+	const COLOR32 *p2 = (const COLOR32 *) e2;
+
+	double y1 = 0.0, y2 = 0.0, a1 = 0.0, a2 = 0.0;
+
+	//average lightness per palette
+	for (unsigned int i = 0; i < RX_TILE_PALETTE_MAX; i++) {
+		RxYiqColor yiq1, yiq2;
+		RxConvertRgbToYiq(p1[i], &yiq1);
+		RxConvertRgbToYiq(p2[i], &yiq2);
+
+		y1 += yiq1.y; a1 += yiq1.a;
+		y2 += yiq2.y; a2 += yiq2.a;
+	}
+
+	if (a2 == 0.0 && a1 == 0.0) return 0; // equivalent
+	if (a2 == 0.0) return -1;
+	if (a1 == 0.0) return  1;
+
+	y1 /= a1;
+	y2 /= a2;
+
+	if (y1 < y2) return -1;
+	if (y1 > y2) return  1;
+	return 0;
+}
+
 void RX_API RxCreateMultiplePalettes(
 	const COLOR32          *imgBits,
 	unsigned int            tilesX,
@@ -2554,6 +2582,9 @@ void RX_API RxCreateMultiplePalettes(
 	//a second histogram for accumulating per-color error
 	RxReduction *errHist = RxNew(balance);
 	RxHistInit(errHist);
+
+	//sort palettes by lightness
+	qsort(palettes, nPalettes, RX_TILE_PALETTE_MAX * sizeof(COLOR32), RxiPaletteLightnessComparator);
 
 	//write palettes in the correct size
 	for (int i = 0; i < nPalettes; i++) {
