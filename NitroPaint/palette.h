@@ -114,6 +114,21 @@ typedef struct RxReduction_ RxReduction;
 typedef void (RX_CALLBACK *RxProgressCallback) (RxReduction *reduction, unsigned int progress, unsigned int progressMax, void *data);
 
 // -----------------------------------------------------------------------------------------------
+// Name: enum RxBool
+//
+// Represents a boolean data type. Valid values are RX_FALSE and RX_TRUE. Where a function expects
+// an RxBool, do not pass values not defined in this enumeration.
+//
+// Boolean values:
+//   RX_FALSE                    A falsey value.
+//   RX_TRUE                     A truthy value.
+// -----------------------------------------------------------------------------------------------
+typedef enum RxBool_ {
+	RX_FALSE,
+	RX_TRUE
+} RxBool;
+
+// -----------------------------------------------------------------------------------------------
 // Name: enum RxStatus
 //
 // Represents the current operational status of a color reduction context or operation. The status
@@ -208,13 +223,13 @@ typedef enum RxAlphaMode_ {
 } RxAlphaMode;
 
 typedef struct RxBalanceSetting_ {
-	int balance;          // relative priority of lightness over color information (1-39)
-	int colorBalance;     // relative priority of reds over greens                 (1-39)
-	int enhanceColors;    // give more weight to gradient colors                   (0 or 1)
+	int balance;           // relative priority of lightness over color information (1-39)
+	int colorBalance;      // relative priority of reds over greens                 (1-39)
+	RxBool enhanceColors;  // enhance largely used colors
 } RxBalanceSetting;
 
 typedef struct RxDitherSetting_ {
-	int dither;           // enable dithering (0 or 1)
+	RxBool dither;        // enable dithering
 	float diffuse;        // dithering amount (0-1)
 } RxDitherSetting;
 
@@ -260,7 +275,7 @@ typedef struct RxHistEntry_ {
 typedef struct RxColorNode_ {
 	double weight;                 // weight associated with this node
 	double priority;               // node-splitting priority
-	int canSplit;                  // indicates whether this node is allowed to be split
+	RxBool canSplit;               // indicates whether this node is allowed to be split
 	int pivotIndex;                // calculated pivot index for this node
 	int startIndex;                // starting index in the flat histogram
 	int endIndex;                  // ending index (non-inclusive) for this node
@@ -321,8 +336,8 @@ typedef struct RxPaletteAccelNode_ {
 } RxPaletteAccelNode;
 
 typedef struct RxPaletteAccelerator_ {
-	int initialized;                                  // marks that a palette has been loaded
-	int useAccelerator;                               // marks that the loaded palette is using the accelerator
+	RxBool initialized;                               // marks that a palette has been loaded
+	RxBool useAccelerator;                            // marks that the loaded palette is using the accelerator
 	RxPaletteAccelNode root;                          // the root node of the accelerator
 	RxPaletteMapEntry *pltt;                          // palette mapping entries used by the accelerator
 	RxPaletteAccelNode *nodebuf;                      // accelerator working memory
@@ -375,7 +390,7 @@ struct RxReduction_ {
 	unsigned int nPaletteColors;
 	unsigned int nUsedColors;
 	unsigned int paletteLayers;
-	int enhanceColors;
+	RxBool enhanceColors;
 	int nReclusters;
 	int reclusterIteration;
 	unsigned int nPinnedClusters;
@@ -418,8 +433,8 @@ void RxMemFree(void *p);
 // Comparator for use with qsort, sorts an array of colors by lightness.
 //
 int RxColorLightnessComparator(
-	const void *d1,   // pointer to a COLOR32
-	const void *d2    // pointer to a COLOR32
+	const void *d1,
+	const void *d2
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -432,8 +447,8 @@ int RxColorLightnessComparator(
 //   yiq           The output YIQ color.
 // -----------------------------------------------------------------------------------------------
 void RX_API RxConvertRgbToYiq(
-	COLOR32     rgb, // the input RGB color
-	RxYiqColor *yiq  // the output YIQ color
+	COLOR32     rgb,
+	RxYiqColor *yiq
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -448,7 +463,20 @@ void RX_API RxConvertRgbToYiq(
 //   The input YIQ color converted to RGB.
 // -----------------------------------------------------------------------------------------------
 COLOR32 RX_API RxConvertYiqToRgb(
-	const RxYiqColor *yiq  // the input YIQ color
+	const RxYiqColor *yiq
+);
+
+// -----------------------------------------------------------------------------------------------
+// Name: RxGetDefaultBalance
+//
+// Get the default balance parameters. Using the default parameters may be equivalently be done
+// by passing NULL where an RxBalanceSetting is required.
+//
+// Parameters:
+//   balance       The output balance information. This may not be NULL.
+// -----------------------------------------------------------------------------------------------
+void RX_API RxGetDefaultBalance(
+	RxBalanceSetting *balance
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -458,12 +486,12 @@ COLOR32 RX_API RxConvertYiqToRgb(
 // context using the RxFree function.
 //
 // Parameters:
-//   balance       The balance settings.
+//   balance       The balance settings. This may be NULL to use the default balance parameters.
 //
 // Returns:
 //   A pointer to the allocated color reduction context, if successful, or NULL on failure.
 // -----------------------------------------------------------------------------------------------
-RxReduction *RX_API RxNew(
+RxReduction RX_API *RxNew(
 	const RxBalanceSetting *balance
 );
 
@@ -474,13 +502,11 @@ RxReduction *RX_API RxNew(
 //
 // Parameters:
 //   reduction     The color reduction context
-//   balance       The balance setting.
-//   colorBalance  The color balance setting.
-//   enhanceColors Enhance largely used colors.
+//   balance       The balance settings. This may be NULL to use the default balance parameters.
 // -----------------------------------------------------------------------------------------------
 void RX_API RxSetBalance(
-	RxReduction            *reduction,  // the color reduction context
-	const RxBalanceSetting *balance     // the balance settings
+	RxReduction            *reduction,
+	const RxBalanceSetting *balance
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -559,9 +585,9 @@ void RX_API RxApplyFlags(
 //   userData      A user pointer passed to the callback function
 // -----------------------------------------------------------------------------------------------
 void RX_API RxSetProgressCallback(
-	RxReduction       *reduction,  // the color reduction context
-	RxProgressCallback callback,   // the progress callback
-	void              *userData    // user data passed to the callback function
+	RxReduction       *reduction,
+	RxProgressCallback callback,
+	void              *userData
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -576,9 +602,9 @@ void RX_API RxSetProgressCallback(
 //   weight        The weight given to the color
 // -----------------------------------------------------------------------------------------------
 void RX_API RxHistAddColor(
-	RxReduction      *reduction,  // the color reduction context
-	const RxYiqColor *col,        // the color to add
-	double            weight      // the color's weight
+	RxReduction      *reduction,
+	const RxYiqColor *col,
+	double            weight
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -593,10 +619,10 @@ void RX_API RxHistAddColor(
 //   height        The image height.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxHistAdd(
-	RxReduction   *reduction,  // the color reduction context
-	const COLOR32 *px,         // the image pixels
-	unsigned int   width,      // the image width
-	unsigned int   height      // the image height
+	RxReduction   *reduction,
+	const COLOR32 *px,
+	unsigned int   width,
+	unsigned int   height
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -611,9 +637,9 @@ RxStatus RX_API RxHistAdd(
 //   endIndex      The index of the last (non-inclusive) entry in the histogram to sort.
 // -----------------------------------------------------------------------------------------------
 void RX_API RxHistSort(
-	RxReduction *reduction,   // the color reduction context
-	int          startIndex,  // the first index in the histogram to sort
-	int          endIndex     // the last (non-inclusive) index in the histogram to sort
+	RxReduction *reduction,
+	int          startIndex,
+	int          endIndex
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -636,10 +662,10 @@ void RX_API RxHistSort(
 //   number of entries in the histogram.
 // -----------------------------------------------------------------------------------------------
 unsigned int RX_API RxHistGetTopN(
-	RxReduction *reduction,  // the color reduction context
-	unsigned int n,          // number of colors to return
-	RxYiqColor  *cols,       // buffer for returned colors
-	double      *weights     // buffer for returned weights
+	RxReduction *reduction,
+	unsigned int n,
+	RxYiqColor  *cols,
+	double      *weights
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -651,7 +677,7 @@ unsigned int RX_API RxHistGetTopN(
 //   reduction     The color reduction context.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxHistClear(
-	RxReduction *reduction  // the color reduction context
+	RxReduction *reduction
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -665,7 +691,7 @@ RxStatus RX_API RxHistClear(
 //   reduction     The color reduction context.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxHistFinalize(
-	RxReduction *reduction  // the color reduction context
+	RxReduction *reduction
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -674,13 +700,17 @@ RxStatus RX_API RxHistFinalize(
 // Compute a color palette using the histogram held by the color reduction context. Before calling
 // this function, the histogram must be finalized by a call to RxHistFinalize. 
 //
+// On successful return, the created palette is loaded and active. It may be used directly by
+// functions like RxReduceImage without being explicitly loaded.
+//
 // Parameters:
 //   reduction     The color reduction context.
-//   nColors       The number of palette colors.
+//   nColors       The number of palette colors. This does not include the transparent slot, if
+//                 RX_ALPHA_RESERVE mode is used.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxComputePalette(
-	RxReduction *reduction,  // the color reduction context
-	unsigned int nColors     // the number of palette colors
+	RxReduction *reduction,
+	unsigned int nColors
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -688,6 +718,12 @@ RxStatus RX_API RxComputePalette(
 //
 // Sorts the palette created and held in the color reduction context. By default, the palette is
 // not sorted. This applies the internal sorting rule to the palette.
+//
+// The sorting rule sorts palette colors that are identical across all layers before colors that
+// differ. This allows a created palette swap to require only the end of the palette be swapped.
+// Secondarily, the palette colors are sorted by ascending alpha value. In some indexed formats,
+// the palette alpha may be optimized by omitting the last colors where the alpha values are
+// fully opaque. Lastly, colors are sorted by ascending lightness.
 //
 // Parameters:
 //   reduction     The color reduction context.
@@ -741,14 +777,14 @@ RxStatus RX_API RxGetPalette(
 //   The completed operation status.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxCreatePalette(
-	RxReduction   *reduction,  // the color reduction context
-	const COLOR32 *px,         // the input image
-	unsigned int   width,      // the image width
-	unsigned int   height,     // the image height
-	COLOR32       *pal,        // a buffer receiving the created palette
-	unsigned int   nColors,    // the maximum number of colors to generate
-	RxFlag         flag,       // the flags for palette sorting
-	unsigned int  *pOutCols    // a pointer receiving the number of generated colors (optional)
+	RxReduction   *reduction,
+	const COLOR32 *px,
+	unsigned int   width,
+	unsigned int   height,
+	COLOR32       *pal,
+	unsigned int   nColors,
+	RxFlag         flag,
+	unsigned int  *pOutCols
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -794,13 +830,13 @@ double RX_API RxComputeColorDifference(
 //   whichever is lesser.
 // -----------------------------------------------------------------------------------------------
 double RX_API RxComputePaletteError(
-	RxReduction   *reduction,  // the color reduction context
-	const COLOR32 *px,         // the input pixels
-	unsigned int   width,      // the input width
-	unsigned int   height,     // the input height
-	const COLOR32 *palette,    // the color palette
-	unsigned int   nColors,    // the number of colors in the palette
-	double         maxError    // the maximum error value to return
+	RxReduction   *reduction,
+	const COLOR32 *px,
+	unsigned int   width,
+	unsigned int   height,
+	const COLOR32 *palette,
+	unsigned int   nColors,
+	double         maxError
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -821,10 +857,10 @@ double RX_API RxComputePaletteError(
 //   whichever is lesser.
 // -----------------------------------------------------------------------------------------------
 double RX_API RxHistComputePaletteError(
-	RxReduction   *reduction,  // the color reduction context
-	const COLOR32 *palette,    // the color palette
-	unsigned int   nColors,    // the number of colors in the palette
-	double         maxError    // the maximum error value to return
+	RxReduction   *reduction,
+	const COLOR32 *palette,
+	unsigned int   nColors,
+	double         maxError
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -845,10 +881,10 @@ double RX_API RxHistComputePaletteError(
 //   or maxError, whichever is lesser.
 // -----------------------------------------------------------------------------------------------
 double RX_API RxHistComputePaletteErrorYiq(
-	RxReduction      *reduction,  // the color reduction context
-	const RxYiqColor *palette,    // the color palette
-	unsigned int      nColors,    // the number of colors in the palette
-	double            maxError    // the maximum error value to return
+	RxReduction      *reduction,
+	const RxYiqColor *palette,
+	unsigned int      nColors,
+	double            maxError
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -874,13 +910,13 @@ double RX_API RxHistComputePaletteErrorYiq(
 //   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxReduceImage(
-	RxReduction   *reduction,  // the color reduction context
-	COLOR32       *px,         // the image pixels
-	int           *indices,    // the output palette index data (optional)
-	unsigned int   width,      // the image width
-	unsigned int   height,     // the image height
-	RxFlag         flag,       // color reduction flags
-	float          diffuse     // the error diffusion amount (from 0 to 1)
+	RxReduction   *reduction,
+	COLOR32       *px,
+	int           *indices,
+	unsigned int   width,
+	unsigned int   height,
+	RxFlag         flag,
+	float          diffuse
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -903,9 +939,9 @@ RxStatus RX_API RxReduceImage(
 //   nColors       The number of colors in the color palette to load.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxPaletteLoad(
-	RxReduction   *reduction,  // the color reduction context
-	const COLOR32 *pltt,       // the palette to load
-	unsigned int   nColors     // the number of colors in the palette
+	RxReduction   *reduction,
+	const COLOR32 *pltt,
+	unsigned int   nColors
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -1046,7 +1082,7 @@ void RX_API RxFree(
 //   height        The image height.
 //   pal           The output palette buffer.
 //   nColors       The size of the color palette to create.
-//   balance       Balance setting.
+//   balance       Balance settings. This may be NULL to use the default settings.
 //   colorBalance  Color balance setting.
 //   enhanceColors Enhance largely used colors.
 //   flag          Color reduction flags (see enum RxFlag).
@@ -1056,14 +1092,14 @@ void RX_API RxFree(
 //   The completed operation status.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxGlbCreatePalette(
-	const COLOR32          *px,       // the image pixels
-	unsigned int            width,    // the image width
-	unsigned int            height,   // the image height
-	COLOR32                *pal,      // the output palette
-	unsigned int            nColors,  // the number of palette colors to create
-	const RxBalanceSetting *balance,  //
-	RxFlag                  flag,     // color reduction flags
-	unsigned int           *pOutCols  // number of output colors
+	const COLOR32          *px,
+	unsigned int            width,
+	unsigned int            height,
+	COLOR32                *pal,
+	unsigned int            nColors,
+	const RxBalanceSetting *balance,
+	RxFlag                  flag,
+	unsigned int           *pOutCols
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -1081,18 +1117,18 @@ RxStatus RX_API RxGlbCreatePalette(
 //   nColors       The number of colors in the color palette.
 //   flag          Color reduction flag.
 //   diffuse       The error diffusion amount, from 0 to 1. Set to 0 to disable dithering.
-//   balance       The balance setting.
+//   balance       The balance settings. This may be NULL to use the default settings.
 // -----------------------------------------------------------------------------------------------
 RxStatus RX_API RxGlbReduceImage(
-	COLOR32                *px,       // the image pixels
-	int                    *indices,  // the output palette index data (optional)
-	unsigned int            width,    // the image width
-	unsigned int            height,   // the image height
-	const COLOR32          *palette,  // the color palette
-	unsigned int            nColors,  // the color palette size
-	RxFlag                  flag,     // color reduction flags
-	float                   diffuse,  // the error diffusion amount (from 0 to 1)
-	const RxBalanceSetting *balance   // the balance setting
+	COLOR32                *px,
+	int                    *indices,
+	unsigned int            width,
+	unsigned int            height,
+	const COLOR32          *palette,
+	unsigned int            nColors,
+	RxFlag                  flag,
+	float                   diffuse,
+	const RxBalanceSetting *balance
 );
 
 // -----------------------------------------------------------------------------------------------
@@ -1112,22 +1148,20 @@ RxStatus RX_API RxGlbReduceImage(
 //   nColsPerPalette The number of colors to generate for each palette.
 //   paletteOffset   The index into a color palette of the first usable color.
 //   useColor0       Enables using color 0 of the palette as an opaque color.
-//   balance         The balance setting.
-//   colorBalance    The color balance setting.
-//   enhanceColors   Enhance largely used colors.
+//   balance         The balance settings. This may be NULL to use the default settings.
 //   progress        The output progress.
 // -----------------------------------------------------------------------------------------------
 void RX_API RxCreateMultiplePalettes(
-	const COLOR32          *px,               // the image pixels
-	unsigned int            tilesX,           // the image width in 8-pixel units
-	unsigned int            tilesY,           // the image height in 8-pixel units
-	COLOR32                *dest,             // the palette destination
-	int                     paletteBase,      // the base palette index
-	int                     nPalettes,        // the number of palettes
-	int                     paletteSize,      // the full size of one palette entry
-	int                     nColsPerPalette,  // the number of colors to create per palette
-	int                     paletteOffset,    // the offset into the palette to write colors
-	int                     useColor0,        // use color 0 of the palette for reduction
-	const RxBalanceSetting *balance,          // the balance settings
-	volatile int           *progress          // pointer to current progress
+	const COLOR32          *px,
+	unsigned int            tilesX,
+	unsigned int            tilesY,
+	COLOR32                *dest,
+	int                     paletteBase,
+	int                     nPalettes,
+	int                     paletteSize,
+	int                     nColsPerPalette,
+	int                     paletteOffset,
+	RxBool                  useColor0,
+	const RxBalanceSetting *balance,
+	volatile int           *progress
 );

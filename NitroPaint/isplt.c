@@ -55,9 +55,6 @@
 #define restrict __restrict
 #endif
 
-#define TRUE 1
-#define FALSE 0
-
 #define RX_LARGE_NUMBER             1e32 // constant to represent large color difference
 #define RX_SLAB_SIZE            0x100000 // slab size of allocator
 #define INV_512    0.0019531250000000000 // 1.0/512.0
@@ -76,7 +73,7 @@
 
 
 static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff);
-static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors);
+static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxBool overrideMode);
 
 
 //luma table: sLumaTable[i] = 511.0 * pow(i / 511.0, RX_GAMMA)
@@ -519,10 +516,28 @@ static void RxiComputeAlphaInteraction(RxReduction *reduction) {
 #endif
 }
 
+void RX_API RxGetDefaultBalance(RxBalanceSetting *balance) {
+	balance->balance = BALANCE_DEFAULT;      // lightness-color balance
+	balance->colorBalance = BALANCE_DEFAULT; // IQ balance
+	balance->enhanceColors = RX_TRUE;        // enhance largely used colors
+}
+
 void RX_API RxSetBalance(RxReduction *reduction, const RxBalanceSetting *balance) {
-	reduction->yWeight = 60 - balance->balance;       // high balance -> lower Y weight
-	reduction->iWeight = balance->colorBalance;       // high color balance -> high I weight
-	reduction->qWeight = 40 - balance->colorBalance;  // high color balance -> low Q weight
+
+	RxBalanceSetting effBalance;
+	if (balance != NULL) {
+		//use the user-specified parameters
+		effBalance.balance = balance->balance;
+		effBalance.colorBalance = balance->colorBalance;
+		effBalance.enhanceColors = balance->enhanceColors;
+	} else {
+		//use the default balance parameters
+		RxGetDefaultBalance(&effBalance);
+	}
+
+	reduction->yWeight = 60 - effBalance.balance;       // high balance -> lower Y weight
+	reduction->iWeight = effBalance.colorBalance;       // high color balance -> high I weight
+	reduction->qWeight = 40 - effBalance.colorBalance;  // high color balance -> low Q weight
 
 	reduction->yWeight2 = reduction->yWeight * reduction->yWeight; // Y weight squared
 	reduction->iWeight2 = reduction->iWeight * reduction->iWeight; // I weight squared
@@ -531,7 +546,7 @@ void RX_API RxSetBalance(RxReduction *reduction, const RxBalanceSetting *balance
 	//compute alpha weights and interactions
 	RxiComputeAlphaInteraction(reduction);
 
-	reduction->enhanceColors = balance->enhanceColors;
+	reduction->enhanceColors = effBalance.enhanceColors;
 }
 
 RxStatus RX_API RxSetPaletteLayers(RxReduction *reduction, unsigned int nLayers) {
@@ -1340,7 +1355,7 @@ static RxColorNode *RxiTreeNodeAlloc(RxReduction *reduction) {
 static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int startIndex, int endIndex) {
 	node->startIndex = startIndex;
 	node->endIndex = endIndex;
-	node->canSplit = TRUE;
+	node->canSplit = RX_TRUE;
 
 	//calculate the pivot index, as well as average YIQA values.
 	int nColors = node->endIndex - node->startIndex;
@@ -1349,7 +1364,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		RxHistEntry *entry = reduction->histogramFlat[node->startIndex];
 		memcpy(&node->color, &entry->color, reduction->paletteLayers * sizeof(RxYiqColor));
 		node->weight = entry->weight;
-		node->canSplit = FALSE;
+		node->canSplit = RX_FALSE;
 		return;
 	}
 
@@ -1369,7 +1384,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	}
 
 	if (projMin == projMax) {
-		node->canSplit = FALSE;
+		node->canSplit = RX_FALSE;
 		return;
 	}
 
@@ -1495,7 +1510,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 		if (wss < wssBest) {
 			//we'll check the mean left and mean right. They should be different with masking.
 
-			int same = 1;
+			RxBool same = RX_TRUE;
 			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
 
 				RxYiqColor yiqL, yiqR;
@@ -1506,7 +1521,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 				COLOR32 maskR = RxiMaskYiqToRgb(reduction, &yiqR);
 				if (maskL != maskR) {
 					//centroids differ in at least one color
-					same = 0;
+					same = RX_FALSE;
 					break;
 				}
 			}
@@ -1525,7 +1540,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	if (wssBest == RX_LARGE_NUMBER) {
 		//any split must necessarily reduce the WSS, except for when color masking is used. If no split may be
 		//made, then we mark the node as unsplittable.
-		node->canSplit = FALSE;
+		node->canSplit = RX_FALSE;
 		return;
 	}
 
@@ -1571,14 +1586,14 @@ static RxColorNode *RxiTreeFindNodeByColor(RxReduction *reduction, const RxColor
 		if (node == src) continue; // do not return the query node
 
 		//check the color matches
-		int differ = 0;
+		RxBool differ = 0;
 		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
 			COLOR32 compare = RxiMaskYiqToRgb(reduction, &src->color[j]);
 			COLOR32 thisRgb = RxiMaskYiqToRgb(reduction, &node->color[j]);
 
 			if (compare != thisRgb) {
 				//not the node we're looking for
-				differ = 1;
+				differ = RX_TRUE;
 				break;
 			}
 		}
@@ -1687,7 +1702,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	unsigned int nLayers = reduction->paletteLayers;
 
 	//load the palette into the acceleration structure
-	RxPaletteLoadYiq(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
+	RxiPaletteLoadYiq(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors, RX_TRUE);
 
 	//map histogram colors to existing clusters and accumulate error.
 	RxiVoronoiAccumulateClusters(reduction);
@@ -1722,13 +1737,13 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 				histMasked[k] = RxiMaskYiqToRgb(reduction, &entry->color[k]);
 			}
 
-			int same = 1;
+			RxBool same = RX_TRUE;
 			for (unsigned int k = 0; k < nLayers; k++) {
 				COLOR32 palMasked = RxiMaskYiqToRgb(reduction, &yiq1[k]);
 
 				if (histMasked[k] != palMasked) {
 					//colors differ
-					same = 0;
+					same = RX_FALSE;
 					break;
 				}
 			}
@@ -1750,14 +1765,14 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 				//lastly, since an earlier cluster reassignment may have produced a cluster matching
 				//what would be this entry's new centroid, we'll check the existing centroids and assign
 				//to an existing one if it exists.
-				int found = 0;
+				RxBool found = RX_FALSE;
 				for (unsigned int k = 0; k < nNewCentroids; k++) {
 					unsigned int idx = newCentroidIdxs[k];
 					//check that all layers of the colors match
 					if (memcmp(reduction->paletteRgb[idx], histMasked, nLayers * sizeof(COLOR32)) == 0) {
 						//remap to the existing centroid
 						RxiVoronoiMoveToCluster(reduction, entry, idx, newDifference, diff);
-						found = 1;
+						found = RX_TRUE;
 						break;
 					}
 				}
@@ -1847,7 +1862,7 @@ static void RxiVoronoiRecluster(RxReduction *reduction) {
 	while (RxiVoronoiIterate(reduction));
 
 	//load palette accelerator
-	RxPaletteLoadYiq(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors);
+	RxiPaletteLoadYiq(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors, RX_TRUE);
 
 	//delete any entries we couldn't use and shrink the palette size.
 	RxTotalBuffer *totalsBuffer = reduction->blockTotals;
@@ -2028,6 +2043,9 @@ RxStatus RX_API RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	//cleanup
 	RxiTreeFreeAll(reduction);
 
+	//load the palette into the accelerator.
+	RxiPaletteLoadYiq(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors, RX_FALSE);
+
 	return reduction->status;
 }
 
@@ -2085,6 +2103,9 @@ RxStatus RX_API RxSortPalette(RxReduction *reduction, RxFlag flag) {
 			reduction->paletteRgb[i][j] = RxConvertYiqToRgb(&reduction->paletteYiq[i][j]);
 		}
 	}
+
+	//load into the accelerator.
+	RxiPaletteLoadYiq(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors, RX_FALSE);
 
 	return RX_STATUS_OK;
 }
@@ -2337,7 +2358,7 @@ void RX_API RxCreateMultiplePalettes(
 	int                     paletteSize,
 	int                     nColsPerPalette,
 	int                     paletteOffset,
-	int                     useColor0,
+	RxBool                  useColor0,
 	const RxBalanceSetting *balance,
 	volatile int           *progress
 ) {
@@ -2992,6 +3013,9 @@ static inline double RxiAccelGetChannelN(RxReduction *reduction, const RxYiqColo
 		case 3: return ch * reduction->aWeight;
 		default: RX_ASSUME(0); // does not reach here
 	}
+
+	//does not reach here
+	return 0.0;
 }
 
 static int RxiAccelSortPalette(const void *p1, const void *p2) {
@@ -3082,13 +3106,13 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 
 static void RxiAccelRecurseTreeInternal(RxReduction *reduction, RxPaletteAccelNode *accel, const RxYiqColor *color, double *pBestDiff, unsigned int *piBest) {
 	//distance of color to the root node
-	int intersectPlane = 0;
+	RxBool intersectPlane = RX_FALSE;
 	double projColor = RxiAccelGetChannelN(reduction, color, accel->splitDir);
 	double diffFromSplit = accel->splitVal - projColor;
 	diffFromSplit *= diffFromSplit;
 
 	if (diffFromSplit < *pBestDiff) {
-		intersectPlane = 1;
+		intersectPlane = RX_TRUE;
 
 		double diff = RxiComputeLayeredColorDifference(reduction, color, accel->mid->color);
 		if (diff < *pBestDiff) {
@@ -3314,7 +3338,7 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 		}
 	}
 
-	accel->useAccelerator = 1;
+	accel->useAccelerator = RX_TRUE;
 	accel->root.parent = NULL;
 	accel->root.start = 0;
 	accel->root.nCol = nColors;
@@ -3339,15 +3363,23 @@ static RxStatus RxiPaletteLoadUnaccelerated(RxReduction *reduction, const COLOR3
 }
 
 static RxStatus RxiPaletteLoadYiqUnaccelerated(RxReduction *reduction, const RxYiqColor *pltt, unsigned int nColors, unsigned int srcPitch) {
-	RxStatus status = RxiPaletteAlloc(reduction, nColors);
-	if (status != RX_STATUS_OK) return reduction->status = status;
+	//this is for loading palettes from internal representation, where transparent color-0
+	//is not reserved. We adjust the indexes here so that our palette accelerator does not
+	//have to care.
+	unsigned int iStart = 0;
+	if (reduction->accel.alphaMode == RX_ALPHA_RESERVE) {
+		iStart++;
+	}
+
+	RxStatus status = RxiPaletteAlloc(reduction, nColors + iStart);
+	if (status != RX_STATUS_OK) return status;
 
 	unsigned int nLayer = reduction->paletteLayers;
 	for (unsigned int i = 0; i < nColors; i++) {
-		memcpy(&reduction->accel.plttLarge[i * nLayer], &pltt[i * srcPitch], nLayer * sizeof(RxYiqColor));
+		memcpy(&reduction->accel.plttLarge[(i + iStart) * nLayer], &pltt[i * srcPitch], nLayer * sizeof(RxYiqColor));
 	}
 
-	return reduction->status;
+	return RX_STATUS_OK;
 }
 
 RxStatus RX_API RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
@@ -3368,11 +3400,11 @@ RxStatus RX_API RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsig
 		RxiPaletteLoadAccelerated(reduction);
 	}
 
-	accel->initialized = 1;
+	accel->initialized = RX_TRUE;
 	return reduction->status;
 }
 
-static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors) {
+static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxBool overrideMode) {
 	RxPaletteAccelerator *accel = &reduction->accel;
 
 	//if an accelerator is loaded already, unload it.
@@ -3381,10 +3413,12 @@ static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt,
 	//set alpha mode
 	accel->alphaMode = reduction->alphaMode;
 
-	//for the internal YIQ palette load, we do not use transparency reserve mode. The internal palette
-	//does not keep the reserved color for transparency, and transparent colors will not be mapped to
-	//the palette. Thus, we change the alpha mode to "none" to disable these behaviors.
-	if (accel->alphaMode == RX_ALPHA_RESERVE) accel->alphaMode = RX_ALPHA_NONE;
+	if (overrideMode) {
+		//for the internal YIQ palette load, we do not use transparency reserve mode. The internal palette
+		//does not keep the reserved color for transparency, and transparent colors will not be mapped to
+		//the palette. Thus, we change the alpha mode to "none" to disable these behaviors.
+		if (accel->alphaMode == RX_ALPHA_RESERVE) accel->alphaMode = RX_ALPHA_NONE;
+	}
 
 	//in all cases, we load without the accelerator first
 	RxStatus status = RxiPaletteLoadYiqUnaccelerated(reduction, pltt, nColors, srcPitch);
@@ -3395,7 +3429,7 @@ static RxStatus RxPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt,
 		RxiPaletteLoadAccelerated(reduction);
 	}
 
-	accel->initialized = 1;
+	accel->initialized = RX_TRUE;
 	return reduction->status;
 }
 
@@ -3424,7 +3458,7 @@ void RX_API RxPaletteFree(RxReduction *reduction) {
 	if (reduction->accel.plttLarge != reduction->accel.plttSmall) RxMemFree(reduction->accel.plttLarge);
 	free(reduction->accel.nodebuf);
 	memset(&reduction->accel, 0, sizeof(reduction->accel));
-	reduction->accel.initialized = 0;
+	reduction->accel.initialized = RX_FALSE;
 }
 
 double RX_API RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *pal, unsigned int nColors, double nMaxError) {
