@@ -377,6 +377,41 @@ static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *
 	return reduction->maskColors(RxConvertYiqToRgb(yiq));
 }
 
+static inline void RxiColorCopy(RxYiqColor *dest, const RxYiqColor *src) {
+#ifndef RX_SIMD
+	memcpy(dest, src, sizeof(RxYiqColor));
+#else
+	dest->yiq = src->yiq;
+#endif
+}
+
+static inline void RxiColorVecCopy(RxYiqColor *dest, const RxYiqColor *src, unsigned int n) {
+	RX_ASSUME(n > 0);
+
+#ifndef RX_SIMD
+	memcpy(dest, src, n * sizeof(RxYiqColor));
+#else
+	do {
+		RxiColorCopy(dest++, src++);
+	} while (--n);
+#endif
+}
+
+static inline void RxiColorSwap(RxYiqColor *col1, RxYiqColor *col2) {
+	RxYiqColor tmp;
+	RxiColorCopy(&tmp, col1);
+	RxiColorCopy(col1, col2);
+	RxiColorCopy(col2, &tmp);
+}
+
+static inline void RxiColorVecSwap(RxYiqColor *vec1, RxYiqColor *vec2, unsigned int n) {
+	RX_ASSUME(n > 0);
+
+	do {
+		RxiColorSwap(vec1++, vec2++);
+	} while (--n);
+}
+
 static inline void RxiColorSubtract(RxYiqColor *result, RxYiqColor *a, RxYiqColor *b) {
 #ifndef RX_SIMD
 	result->y = a->y - b->y;
@@ -789,7 +824,7 @@ void RX_API RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double
 
 	//put new color
 	*ppslot = slot;
-	memcpy(slot->color, col, nLayer * sizeof(RxYiqColor));
+	RxiColorVecCopy(slot->color, col, nLayer);
 	slot->weight = weight;
 	slot->next = NULL;
 	slot->value = 0.0;
@@ -884,11 +919,11 @@ RxStatus RX_API RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned i
 	for (unsigned int y = 0; y < height; y++) {
 		RxYiqColor *row = &yiqbuf[(y + 1) * padWidth * nLayer];
 
-		memcpy(&row[0], &row[1 * nLayer], nLayer * sizeof(RxYiqColor));
-		memcpy(&row[(width + 1) * nLayer], &row[width * nLayer], nLayer * sizeof(RxYiqColor));
+		RxiColorVecCopy(&row[0], &row[1 * nLayer], nLayer);
+		RxiColorVecCopy(&row[(width + 1) * nLayer], &row[width * nLayer], nLayer);
 	}
-	memcpy(&yiqbuf[0 * padWidth * nLayer], &yiqbuf[padWidth * nLayer], padWidth * nLayer * sizeof(RxYiqColor));
-	memcpy(&yiqbuf[(height + 1) * padWidth * nLayer], &yiqbuf[height * padWidth * nLayer], padWidth * nLayer * sizeof(RxYiqColor));
+	RxiColorVecCopy(&yiqbuf[0 * padWidth * nLayer], &yiqbuf[padWidth * nLayer], padWidth * nLayer);
+	RxiColorVecCopy(&yiqbuf[(height + 1) * padWidth * nLayer], &yiqbuf[height * padWidth * nLayer], padWidth * nLayer);
 
 
 	for (unsigned int y = 0; y < height; y++) {
@@ -908,7 +943,7 @@ RxStatus RX_API RxHistAdd(RxReduction *reduction, const COLOR32 *img, unsigned i
 			//copy the center color to a temporary location as we may modify the color based on the alpha
 			//mode, and do not want this to affect the weighting calculations of other pixels.
 			RxYiqColor *col = reduction->tempLayeredColor;
-			memcpy(col, center, nLayer * sizeof(RxYiqColor));
+			RxiColorVecCopy(col, center, nLayer);
 
 			//when we calculate the weight of multiple colors, we take the weight to be the sum of weights
 			//of individual colors. This allows a color where there exist completely transparent pixels
@@ -1341,7 +1376,7 @@ unsigned int RX_API RxHistGetTopN(RxReduction *reduction, unsigned int n, RxYiqC
 
 	for (unsigned int i = 0; i < nGet; i++) {
 		if (weights != NULL) weights[i] = reduction->histogramFlat[i]->weight;
-		memcpy(&cols[i], &reduction->histogramFlat[i]->color, sizeof(RxYiqColor));
+		RxiColorCopy(&cols[i], reduction->histogramFlat[i]->color);
 	}
 	return nGet;
 }
@@ -1362,7 +1397,7 @@ static void RxiTreeNodeInit(RxReduction *reduction, RxColorNode *node, int start
 	if (nColors < 2) {
 		//1 color: set leaf color to the single histogram color and its weight
 		RxHistEntry *entry = reduction->histogramFlat[node->startIndex];
-		memcpy(&node->color, &entry->color, reduction->paletteLayers * sizeof(RxYiqColor));
+		RxiColorVecCopy(node->color, entry->color, reduction->paletteLayers);
 		node->weight = entry->weight;
 		node->canSplit = RX_FALSE;
 		return;
@@ -1835,7 +1870,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		//if the new cluster is an improvement over the old cluster
 		if (errNewCluster < totalsBuffer[i].error) {
 			memcpy(reduction->paletteRgb[i], as32, nLayers * sizeof(COLOR32));
-			memcpy(reduction->paletteYiq[i], yiq, nLayers * sizeof(RxYiqColor));
+			RxiColorVecCopy(reduction->paletteYiq[i], yiq, nLayers);
 			nMovedClusters++;
 		}
 	}
@@ -2074,10 +2109,7 @@ RxStatus RX_API RxSortPalette(RxReduction *reduction, RxFlag flag) {
 				//whatever color was there
 				if (i > nSame) {
 					//swap colors
-					RxYiqColor temp[RX_PALETTE_MAX_COUNT];
-					memcpy(temp, &reduction->paletteYiq[nSame], sizeof(temp));
-					memcpy(&reduction->paletteYiq[nSame], &reduction->paletteYiq[i], sizeof(temp));
-					memcpy(&reduction->paletteYiq[i], temp, sizeof(temp));
+					RxiColorVecSwap(reduction->paletteYiq[i], reduction->paletteYiq[nSame], reduction->paletteLayers);
 				}
 
 				nSame++;
@@ -2410,15 +2442,15 @@ void RX_API RxCreateMultiplePalettes(
 			RxHistAdd(reduction, tile->rgb, 8, 8);
 			RxHistFinalize(reduction);
 			RxComputePalette(reduction, nColsPerPalette);
-			for (int i = 0; i < RX_PALETTE_MAX_SIZE; i++) {
-				memcpy(&tile->palette[i], &reduction->paletteYiq[i][0], sizeof(RxYiqColor));
+			for (unsigned int i = 0; i < RX_PALETTE_MAX_SIZE; i++) {
+				RxiColorCopy(&tile->palette[i], &reduction->paletteYiq[i][0]);
 			}
 
 			tile->nUsedColors = reduction->nUsedColors;
 
 			//match pixels to palette indices
-			for (int i = 0; i < 64; i++) {
-				int index = RxiPaletteFindClosestRgbColor(reduction, &tile->palette[0], tile->nUsedColors, tile->rgb[i], NULL);
+			for (unsigned int i = 0; i < 64; i++) {
+				unsigned int index = RxiPaletteFindClosestRgbColor(reduction, &tile->palette[0], tile->nUsedColors, tile->rgb[i], NULL);
 				if ((tile->rgb[i] >> 24) == 0) index = RX_PALETTE_MAX_SIZE - 1;
 				tile->indices[i] = (uint8_t) index;
 				tile->useCounts[index]++;
@@ -2783,8 +2815,8 @@ RxStatus RX_API RxReduceImage(
 			RxConvertRgbToYiq(rgbRow[x], &lastRow[nLayers * (x + 1) + i]);
 		}
 	}
-	memcpy(&lastRow[nLayers * (0)], &lastRow[nLayers * 1], nLayers * sizeof(RxYiqColor));
-	memcpy(&lastRow[nLayers * (width + 1)], &lastRow[nLayers * width], nLayers * sizeof(RxYiqColor));
+	RxiColorVecCopy(&lastRow[nLayers * (0)], &lastRow[nLayers * 1], nLayers);
+	RxiColorVecCopy(&lastRow[nLayers * (width + 1)], &lastRow[nLayers * width], nLayers);
 
 	//start dithering, do so in a serpentine path.
 	for (unsigned int y = 0; y < height; y++) {
@@ -2799,8 +2831,8 @@ RxStatus RX_API RxReduceImage(
 				RxConvertRgbToYiq(rgbRow[x], &thisRow[nLayers * (x + 1) + i]);
 			}
 		}
-		memcpy(&thisRow[nLayers * (0)], &thisRow[nLayers * 1], nLayers * sizeof(RxYiqColor));
-		memcpy(&thisRow[nLayers * (width + 1)], &thisRow[nLayers * width], nLayers * sizeof(RxYiqColor));
+		RxiColorVecCopy(&thisRow[nLayers * (0)], &thisRow[nLayers * 1], nLayers);
+		RxiColorVecCopy(&thisRow[nLayers * (width + 1)], &thisRow[nLayers * width], nLayers);
 
 		//scan across
 		unsigned int startPos = (hDirection == 1) ? 0 : (width - 1);
@@ -2831,7 +2863,7 @@ RxStatus RX_API RxReduceImage(
 				}
 			} else {
 				//no adaptive diffuse -> no local noise checking
-				memcpy(colorYiq, &thisRow[nLayers * (x + 1)], nLayers * sizeof(RxYiqColor));
+				RxiColorVecCopy(colorYiq, &thisRow[nLayers * (x + 1)], nLayers);
 			}
 
 			//match it to a palette color. We'll measure distance to it as well.
@@ -2846,7 +2878,7 @@ RxStatus RX_API RxReduceImage(
 			double yw2 = reduction->yWeight2;
 			if (diffuse > 0.0f && (!adaptive || (centerDistance < 110.0 * yw2 && paletteDistance >  2.0 * yw2))) {
 				RxYiqColor diffuseVec[RX_PALETTE_MAX_COUNT];
-				memcpy(diffuseVec, &thisDiffuse[nLayers * (x + 1)], nLayers * sizeof(RxYiqColor));
+				RxiColorVecCopy(diffuseVec, &thisDiffuse[nLayers * (x + 1)], nLayers);
 
 				for (unsigned int i = 0; i < nLayers; i++) {
 					RxiColorScale(&diffuseVec[i], diffuse);
@@ -3228,8 +3260,8 @@ unsigned int RX_API RxPaletteFindClosestColorYiq(RxReduction *reduction, const R
 		return 0;
 	}
 
-	RxYiqColor cpy[RX_PALETTE_MAX_COUNT];
-	memcpy(cpy, color, reduction->paletteLayers * sizeof(RxYiqColor));
+	RxYiqColor *cpy = reduction->tempLayeredColor;
+	RxiColorVecCopy(cpy, color, reduction->paletteLayers);
 
 	//processing for alpha mode
 	unsigned int plttStart = 0;
@@ -3329,7 +3361,7 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 
 	for (unsigned int i = 0; i < nColors; i++) {
 		accel->pltt[i].index = i;
-		memcpy(accel->pltt[i].color, &pltt[i * reduction->paletteLayers], reduction->paletteLayers * sizeof(RxYiqColor));
+		RxiColorVecCopy(accel->pltt[i].color, &pltt[i * reduction->paletteLayers], reduction->paletteLayers);
 
 		if (alphaMode == RX_ALPHA_PIXEL) {
 			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
@@ -3376,7 +3408,7 @@ static RxStatus RxiPaletteLoadYiqUnaccelerated(RxReduction *reduction, const RxY
 
 	unsigned int nLayer = reduction->paletteLayers;
 	for (unsigned int i = 0; i < nColors; i++) {
-		memcpy(&reduction->accel.plttLarge[(i + iStart) * nLayer], &pltt[i * srcPitch], nLayer * sizeof(RxYiqColor));
+		RxiColorVecCopy(&reduction->accel.plttLarge[(i + iStart) * nLayer], &pltt[i * srcPitch], nLayer);
 	}
 
 	return RX_STATUS_OK;
@@ -3447,7 +3479,7 @@ RxStatus RX_API RxPaletteGetColorYiq(RxReduction *reduction, unsigned int iLayer
 
 	//get the color at the index
 	const RxYiqColor *yiq = &reduction->accel.plttLarge[iColor * reduction->paletteLayers + iLayer];
-	memcpy(col, yiq, sizeof(RxYiqColor));
+	RxiColorCopy(col, yiq);
 	return RX_STATUS_OK;
 }
 
