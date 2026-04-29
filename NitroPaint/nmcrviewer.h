@@ -29,6 +29,11 @@ typedef struct {
 	WCHAR listviewItemBuffers[2][32];
 	HWND hWndMultiCellList;
 
+	HWND hWndPreview;
+
+	HWND hWndPlayPause;   // Play | Pause
+	HWND hWndStop;        // Step | Stop
+
 } NMCRVIEWERDATA;
 
 VOID RegisterNmcrViewerClass(VOID);

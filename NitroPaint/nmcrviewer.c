@@ -8,6 +8,7 @@
 #include "ncgrviewer.h"
 #include "ncerviewer.h"
 #include "nanrviewer.h"
+#include "resource.h"
 
 #define PREVIEW_ICON_WIDTH     64
 #define PREVIEW_ICON_HEIGHT    64
@@ -139,10 +140,7 @@ static void NmcrViewerRenderCurrentMultiCellFrame(NMCRVIEWERDATA *data) {
 
 static void RenderNmcrFrame(NMCRVIEWERDATA *data, McPlayer *player, NMCR *nmcr, NCLR *nclr, NCGR *ncgr, NCER *ncer, NANR *nanr) {
 	//checkered background
-	for (int i = 0; i < 512 * 256; i++) {
-		int cc = ((i ^ (i >> 9)) >> 2) & 1;
-		data->rendered[i] = 0xC0C0C0 + ((-cc) & 0x3F3F3F);
-	}
+	memset(data->rendered, 0, sizeof(data->rendered));
 
 	if (nmcr == NULL || nanr == NULL || ncer == NULL) return;
 
@@ -210,31 +208,6 @@ static HWND NmcrViewerMultiCellListCreate(NMCRVIEWERDATA *data) {
 	return h;
 }
 
-static void NmcrViewerOnPaint(NMCRVIEWERDATA *data) {
-	PAINTSTRUCT ps;
-	HDC hDC = BeginPaint(data->hWnd, &ps);
-
-	float dpiScale = GetDpiScale();
-
-	NCLR *nclr = (NCLR *) NmcrViewerGetAssociatedObject(data, FILE_TYPE_PALETTE);
-	NCGR *ncgr = (NCGR *) NmcrViewerGetAssociatedObject(data, FILE_TYPE_CHARACTER);
-	NCER *ncer = (NCER *) NmcrViewerGetAssociatedObject(data, FILE_TYPE_CELL);
-	NANR *nanr = (NANR *) NmcrViewerGetAssociatedObject(data, FILE_TYPE_NANR);
-
-	//TODO: move this into a separate child window
-
-	RenderNmcrFrame(data, &data->player, data->nmcr, nclr, ncgr, ncer, nanr);
-	HBITMAP hBitmap = CreateBitmap(512, 256, 1, 32, data->rendered);
-
-	HDC hOffDC = CreateCompatibleDC(hDC);
-	SelectObject(hOffDC, hBitmap);
-	BitBlt(hDC, UI_SCALE_COORD(200, dpiScale), 0, 512, 256, hOffDC, 0, 0, SRCCOPY);
-	DeleteObject(hOffDC);
-	DeleteObject(hBitmap);
-
-	EndPaint(data->hWnd, &ps);
-}
-
 static void NmcrViewerRegisterNanrViewer(NMCRVIEWERDATA *data, NANRVIEWERDATA *nanrViewerData) {
 	//set new pointer
 	data->nanrViewer = nanrViewerData;
@@ -271,6 +244,9 @@ static void NmcrViewerOnCreateNanrViewer(EDITOR_DATA *nanrViewerData, void *para
 }
 
 static void NmcrViewerOnCreate(NMCRVIEWERDATA *data) {
+	data->scale = 2;
+	data->showBorders = 1;
+
 	data->hWndMultiCellList = NmcrViewerMultiCellListCreate(data);
 
 	//attach to NANR viewer
@@ -284,6 +260,43 @@ static void NmcrViewerOnCreate(NMCRVIEWERDATA *data) {
 
 	//register NANR viewer create callback
 	EditorRegisterCreateCallback(data->editorMgr, FILE_TYPE_NANR, NmcrViewerOnCreateNanrViewer, data);
+
+	data->hWndPreview = CreateWindow(L"NmcrPreviewClass", L"", WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, data->hWnd, NULL, NULL, NULL);
+	FbCreate(&data->fb, data->hWndPreview, 0, 0);
+
+	//TODO: top bar: [Start/Pause] [Step/Stop] [Sequences] [x] Force Affine [x] Force Double Size
+	data->hWndPlayPause = CreateButton(data->hWnd, L"Play", 0, 0, 0, 0, FALSE);
+	data->hWndStop = CreateButton(data->hWnd, L"Stop", 0, 0, 0, 0, FALSE);
+
+	SetGUIFont(data->hWnd);
+}
+
+static void NmcrViewerPreviewCenter(NMCRVIEWERDATA *data) {
+	//get client
+	RECT rcClient;
+	GetClientRect(data->hWndPreview, &rcClient);
+
+	//get view size
+	int viewWidth = 512 * data->scale;
+	int viewHeight = 256 * data->scale;
+
+	//check dimensions of view
+	if (rcClient.right < viewWidth) {
+		//set scroll H
+		SCROLLINFO scroll = { 0 };
+		scroll.cbSize = sizeof(scroll);
+		scroll.fMask = SIF_POS;
+		scroll.nPos = (viewWidth - rcClient.right) / 2;
+		SetScrollInfo(data->hWndPreview, SB_HORZ, &scroll, TRUE);
+	}
+	if (rcClient.bottom < viewHeight) {
+		//set scroll V
+		SCROLLINFO scroll = { 0 };
+		scroll.cbSize = sizeof(scroll);
+		scroll.fMask = SIF_POS;
+		scroll.nPos = (viewHeight - rcClient.bottom) / 2;
+		SetScrollInfo(data->hWndPreview, SB_VERT, &scroll, TRUE);
+	}
 }
 
 static void NmcrViewerOnDestroy(NMCRVIEWERDATA *data) {
@@ -301,8 +314,15 @@ static void NmcrViewerOnSize(NMCRVIEWERDATA *data) {
 	GetClientRect(data->hWnd, &rcClient);
 
 	float dpiScale = GetDpiScale();
+	int listWidth = UI_SCALE_COORD(200, dpiScale);
+	int barHeight = UI_SCALE_COORD(22, dpiScale);
+	int ctlWidth = UI_SCALE_COORD(50, dpiScale);
 
-	MoveWindow(data->hWndMultiCellList, 0, 0, UI_SCALE_COORD(200, dpiScale), rcClient.bottom, TRUE);
+	MoveWindow(data->hWndMultiCellList, 0, 0, listWidth, rcClient.bottom, TRUE);
+	MoveWindow(data->hWndPreview, listWidth, barHeight, rcClient.right - listWidth, rcClient.bottom - barHeight, FALSE);
+
+	MoveWindow(data->hWndPlayPause, listWidth, 0, ctlWidth, barHeight, TRUE);
+	MoveWindow(data->hWndStop, listWidth + ctlWidth, 0, ctlWidth, barHeight, TRUE);
 }
 
 static BOOL NmcrViewerOnNotify(NMCRVIEWERDATA *data, WPARAM wParam, LPNMHDR hdr) {
@@ -364,6 +384,23 @@ static BOOL NmcrViewerOnNotify(NMCRVIEWERDATA *data, WPARAM wParam, LPNMHDR hdr)
 	return DefWindowProc(data->hWnd, WM_NOTIFY, wParam, (LPARAM) hdr);
 }
 
+static void NmcrViewerOnMenuCommand(NMCRVIEWERDATA *data, int idMenu) {
+	switch (idMenu) {
+		case ID_VIEW_GRIDLINES:
+		case ID_VIEW_RENDERTRANSPARENCY:
+			InvalidateRect(data->hWndPreview, NULL, FALSE);
+			break;
+	}
+}
+
+static void NmcrViewerOnCommand(NMCRVIEWERDATA *data, WPARAM wParam, LPARAM lParam) {
+	//TODO: UI command
+
+	if (lParam == 0 && HIWORD(wParam) == 0) {
+		NmcrViewerOnMenuCommand(data, LOWORD(wParam));
+	}
+}
+
 LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	NMCRVIEWERDATA *data = (NMCRVIEWERDATA *) EditorGetData(hWnd);
 	switch (msg) {
@@ -377,6 +414,10 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			data->nmcr = (NMCR *) lParam;
 			NmcrViewerSetMC(data, 0);
 
+			data->frameData.contentWidth = 512 * data->scale;
+			data->frameData.contentHeight = 256 * data->scale;
+			NmcrViewerPreviewCenter(data);
+
 			ListView_SetItemCount(data->hWndMultiCellList, data->nmcr->nMultiCell);
 
 			InvalidateRect(hWnd, NULL, FALSE);
@@ -385,11 +426,13 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			NmcrViewerStartPlayback(data);
 			break;
 		}
+		case NV_ZOOMUPDATED:
+			SendMessage(data->hWndPreview, NV_RECALCULATE, 0, 0);
+			RedrawWindow(data->hWndPreview, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+			break;
 		case WM_SIZE:
-		{
 			NmcrViewerOnSize(data);
 			break;
-		}
 		case WM_TIMER:
 		{
 			//increment timers
@@ -399,24 +442,13 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			break;
 		}
 		case WM_COMMAND:
+			NmcrViewerOnCommand(data, wParam, lParam);
+			break;
+		case WM_PAINT:
+			InvalidateRect(data->hWndPreview, NULL, FALSE);
 			break;
 		case WM_NOTIFY:
 			return NmcrViewerOnNotify(data, wParam, (LPNMHDR) lParam);
-		case WM_KEYDOWN:
-		{
-			if (wParam == VK_SPACE) {
-				//DEBUG: tick animation
-				if (NmcrViewerTick(data)) {
-					InvalidateRect(hWnd, NULL, FALSE);
-				}
-			}
-			break;
-		}
-		case WM_PAINT:
-		{
-			NmcrViewerOnPaint(data);
-			return 0;
-		}
 		case WM_DESTROY:
 			NmcrViewerOnDestroy(data);
 			break;
@@ -424,10 +456,154 @@ LRESULT CALLBACK NmcrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 	return DefMDIChildProc(hWnd, msg, wParam, lParam);
 }
 
+static void NmcrViewerPreviewGetScroll(NMCRVIEWERDATA *data, int *scrollX, int *scrollY) {
+	//get scroll info
+	SCROLLINFO scrollH = { 0 }, scrollV = { 0 };
+	scrollH.cbSize = scrollV.cbSize = sizeof(scrollH);
+	scrollH.fMask = scrollV.fMask = SIF_ALL;
+	GetScrollInfo(data->hWndPreview, SB_HORZ, &scrollH);
+	GetScrollInfo(data->hWndPreview, SB_VERT, &scrollV);
+
+	*scrollX = scrollH.nPos;
+	*scrollY = scrollV.nPos;
+}
+
+static void NmcrViewerOnPaint(NMCRVIEWERDATA *data) {
+	PAINTSTRUCT ps;
+	HDC hDC = BeginPaint(data->hWndPreview, &ps);
+
+	RECT rcClient;
+	GetClientRect(data->hWndPreview, &rcClient);
+
+	int width = rcClient.right, height = rcClient.bottom;
+	FbSetSize(&data->fb, width, height);
+
+	NCLR *nclr = (NCLR *) NmcrViewerGetAssociatedObject(data, FILE_TYPE_PALETTE);
+	NCGR *ncgr = (NCGR *) NmcrViewerGetAssociatedObject(data, FILE_TYPE_CHARACTER);
+	NCER *ncer = (NCER *) NmcrViewerGetAssociatedObject(data, FILE_TYPE_CELL);
+	NANR *nanr = (NANR *) NmcrViewerGetAssociatedObject(data, FILE_TYPE_NANR);
+
+	RenderNmcrFrame(data, &data->player, data->nmcr, nclr, ncgr, ncer, nanr);
+	
+	int scrollX = 0, scrollY = 0, scale = data->scale;
+	NmcrViewerPreviewGetScroll(data, &scrollX, &scrollY);
+
+	int viewWidth = 512 * data->scale - scrollX;
+	int viewHeight = 256 * data->scale - scrollY;
+	if (viewWidth > rcClient.right) viewWidth = rcClient.right;
+	if (viewHeight > rcClient.bottom) viewHeight = rcClient.bottom;
+
+	COLOR32 bgColor = 0;
+	if (nclr != NULL && nclr->nColors >= 1) {
+		bgColor = ColorConvertFromDS(nclr->colors[0]);
+		bgColor = REVERSE(bgColor);
+	}
+
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++) {
+			int srcX = (x + scrollX) / scale, srcY = (y + scrollY) / scale;
+
+			COLOR32 sample = 0xFFF0F0F0;
+			if (srcX < 512 && srcY < 256) {
+				sample = data->rendered[srcX + srcY * 512];
+			}
+
+			if ((sample >> 24) == 0) {
+				if (g_configuration.renderTransparent) {
+					//render transparent checkerboard
+					COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
+					sample = checker[((x ^ y) >> 2) & 1];
+				} else {
+					//render backdrop color
+					sample = bgColor;
+				}
+			}
+
+			data->fb.px[x + y * width] = sample;
+		}
+	}
+
+	//render borders
+	if (data->showBorders) {
+		CellViewerRenderGridlines(&data->fb, data->scale, scrollX, scrollY);
+	}
+
+	FbDraw(&data->fb, hDC, 0, 0, rcClient.right, rcClient.bottom, 0, 0);
+	EndPaint(data->hWndPreview, &ps);
+}
+
+static void NmcrViewerPreviewOnRecalculate(NMCRVIEWERDATA *data) {
+	int contentWidth = 512 * data->scale, contentHeight = 256 * data->scale;
+
+	SCROLLINFO info;
+	info.cbSize = sizeof(info);
+	info.nMin = 0;
+	info.nMax = contentWidth;
+	info.fMask = SIF_RANGE;
+	SetScrollInfo(data->hWndPreview, SB_HORZ, &info, TRUE);
+
+	info.nMax = contentHeight;
+	SetScrollInfo(data->hWndPreview, SB_VERT, &info, TRUE);
+	RECT rcClient;
+	GetClientRect(data->hWndPreview, &rcClient);
+	SendMessage(data->hWndPreview, WM_SIZE, 0, rcClient.right | (rcClient.bottom << 16));
+}
+
+static LRESULT CALLBACK NmcrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	HWND hWndEditor = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
+	NMCRVIEWERDATA *data = EditorGetData(hWndEditor);
+
+	if (data != NULL) {
+		data->frameData.contentWidth = 512 * data->scale;
+		data->frameData.contentHeight = 256 * data->scale;
+
+		if (GetWindowLongPtr(hWnd, 0) == 0) {
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+		}
+	}
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			break;
+		}
+		case WM_PAINT:
+		{
+			NmcrViewerOnPaint(data);
+			return 0;
+		}
+		case NV_RECALCULATE:
+			NmcrViewerPreviewOnRecalculate(data);
+			break;
+		case WM_SIZE:
+		{
+			UpdateScrollbarVisibility(hWnd);
+
+			SCROLLINFO info;
+			info.cbSize = sizeof(info);
+			info.nMin = 0;
+			info.nMax = data->frameData.contentWidth;
+			info.fMask = SIF_RANGE;
+			SetScrollInfo(hWnd, SB_HORZ, &info, TRUE);
+
+			info.nMax = data->frameData.contentHeight;
+			SetScrollInfo(hWnd, SB_VERT, &info, TRUE);
+			return DefChildProc(hWnd, msg, wParam, lParam);
+		}
+		case WM_HSCROLL:
+		case WM_VSCROLL:
+		case WM_MOUSEWHEEL:
+			return DefChildProc(hWnd, msg, wParam, lParam);
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 void RegisterNmcrViewerClass(void) {
 	McbkRegisterFormats();
 
-	EditorRegister(L"NmcrViewerClass", NmcrViewerWndProc, L"Multi-Cell Viewer", sizeof(NMCRVIEWERDATA), 0);
+	int features = EDITOR_FEATURE_ZOOM | EDITOR_FEATURE_GRIDLINES;
+	EditorRegister(L"NmcrViewerClass", NmcrViewerWndProc, L"Multi-Cell Viewer", sizeof(NMCRVIEWERDATA), features);
+	RegisterGenericClass(L"NmcrPreviewClass", NmcrViewerPreviewWndProc, sizeof(void *));
 }
 
 HWND CreateNmcrViewerImmediate(int x, int y, int width, int height, HWND hWndParent, NMCR *nmcr) {
