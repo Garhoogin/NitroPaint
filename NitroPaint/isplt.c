@@ -155,6 +155,8 @@ static const float sLumaTable[] = {
 
 void *RxMemAlloc(size_t size) {
 	unsigned char *req = malloc((size + sizeof(void *) + ALLOC_ALIGN - 1) & ~(ALLOC_ALIGN - 1));
+	if (req == NULL) return NULL;
+
 	unsigned char *aligned = (unsigned char *) ((((uintptr_t) req) + sizeof(void *) + ALLOC_ALIGN - 1) & ~(uintptr_t) (ALLOC_ALIGN - 1));
 	if (aligned != NULL) ((void **) aligned)[-1] = req;
 
@@ -163,6 +165,8 @@ void *RxMemAlloc(size_t size) {
 
 void *RxMemCalloc(size_t nMemb, size_t size) {
 	unsigned char *req = calloc((size * nMemb + sizeof(void *) + ALLOC_ALIGN - 1) & ~(ALLOC_ALIGN - 1), 1);
+	if (req == NULL) return NULL;
+
 	unsigned char *aligned = (unsigned char *) ((((uintptr_t) req) + sizeof(void *) + ALLOC_ALIGN - 1) & ~(uintptr_t) (ALLOC_ALIGN - 1));
 	if (aligned != NULL) ((void **) aligned)[-1] = req;
 
