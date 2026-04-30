@@ -689,29 +689,40 @@ unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned s
 }
 
 void *ObjReadWholeFile(const wchar_t *name, unsigned int *size) {
+	DWORD dwRead, dwSizeLow = 0, dwSizeHigh = 0;
+	void *buffer = NULL;
+
 	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwRead, dwSizeLow, dwSizeHigh = 0;
+	if (hFile == INVALID_HANDLE_VALUE) goto Error;
 
-	if (hFile == INVALID_HANDLE_VALUE) {
-		*size = 0;
-		return NULL;
-	}
-
-	void *buffer;
 	if (ObjiPathStartsWith(name, L"\\\\.\\pipe\\")) {
 		//pipe protocol: first 4 bytes file size, followed by file data.
 		ReadFile(hFile, &dwSizeLow, 4, &dwRead, NULL);
-		buffer = malloc(dwSizeLow);
-		ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
 	} else {
+		//normal files may use GetFileSize
 		dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
-		buffer = malloc(dwSizeLow);
-		ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
 	}
+
+	//size of file must be readable into memory. Must be under 4GB and an increment
+	//to file size must not overflow
+	if (dwSizeHigh != 0 || (dwSizeLow + 1) == 0) goto Error;
+
+	//add 1 to the buffer size to prevent malloc from returning a NULL pointer (which
+	//we take as an error return from this function)
+	buffer = malloc(dwSizeLow + 1);
+	if (buffer == NULL) goto Error;
+
+	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
 
 	CloseHandle(hFile);
 	*size = dwSizeLow;
 	return buffer;
+
+Error:
+	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
+	free(buffer);
+	*size = 0;
+	return NULL;
 }
 
 int ObjReadBuffer(ObjHeader **ppObject, const unsigned char *buffer, unsigned int size, int type, int format, int compression) {
