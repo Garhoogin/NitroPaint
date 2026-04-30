@@ -279,14 +279,14 @@ void RX_API RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 }
 
 COLOR32 RX_API RxConvertYiqToRgb(const RxYiqColor *yiq) {
-	double da = yiq->a;
 	double y = 0.0, i = 0.0, q = 0.0;
-	if (da > 0.0) {
-		y = RxiDelinearizeLuma(yiq->y) / da;
+	if (yiq->a > 0.0f) {
+		double da = yiq->a;
+		y = RxiDelinearizeLuma((float) (yiq->y / da));
 		i = yiq->i / da;
 		q = yiq->q / da;
 	}
-
+	
 	if (i < 0.0 && q > 0.0) y += (q * i) * INV_512;
 
 	if (y < 0.0) y = 0.0;
@@ -302,6 +302,7 @@ COLOR32 RX_API RxConvertYiqToRgb(const RxYiqColor *yiq) {
 	if (q < -215.0) q = (q + 215.0) * 1.5 - 215.0;
 	if (i >  245.0) i = (i - 245.0) * 1.5 + 245.0;
 
+#ifndef RX_SIMD
 	int r = (int) (y * 0.5 + i * 0.477791 + q * 0.311426 + 0.5);
 	int g = (int) (y * 0.5 - i * 0.136066 - q * 0.324141 + 0.5);
 	int b = (int) (y * 0.5 - i * 0.552535 + q * 0.852230 + 0.5);
@@ -313,6 +314,26 @@ COLOR32 RX_API RxConvertYiqToRgb(const RxYiqColor *yiq) {
 	b = min(max(b, 0), 255);
 	a = min(max(a, 0), 255);
 	return r | (g << 8) | (b << 16) | (a << 24);
+#else
+	__m128 yVec = _mm_set1_ps((float) y);
+	__m128 iVec = _mm_set1_ps((float) i);
+	__m128 qVec = _mm_set1_ps((float) q);
+	__m128 aVec = _mm_set1_ps(yiq->a);
+
+	__m128 row0 = _mm_mul_ps(yVec, _mm_setr_ps(0.500000f,  0.500000f,  0.500000f,   0.0f));
+	__m128 row1 = _mm_mul_ps(iVec, _mm_setr_ps(0.477791f, -0.136066f, -0.552535f,   0.0f));
+	__m128 row2 = _mm_mul_ps(qVec, _mm_setr_ps(0.311426f, -0.324141f,  0.852230f,   0.0f));
+	__m128 row3 = _mm_mul_ps(aVec, _mm_setr_ps(     0.0f,       0.0f,       0.0f, 255.0f));
+	__m128 rgbaF = _mm_add_ps(_mm_add_ps(row0, row1), _mm_add_ps(row2, row3));
+
+	//rounding to integer
+	__m128i rgbaI = _mm_cvtps_epi32(rgbaF);
+
+	//clamp and pack to 8-bit by s32->s16->u8 with saturation
+	rgbaI = _mm_packs_epi32(rgbaI, _mm_setzero_si128());
+	rgbaI = _mm_packus_epi16(rgbaI, _mm_setzero_si128());
+	return _mm_cvtsi128_si32(rgbaI);
+#endif
 }
 
 static inline double RxiComputeColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
