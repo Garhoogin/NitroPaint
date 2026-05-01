@@ -402,6 +402,34 @@ static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *
 	return reduction->maskColors(RxConvertYiqToRgb(yiq));
 }
 
+static inline void RxiMaskYiq(RxReduction *reduction, const RxYiqColor *yiq, RxYiqColor *out) {
+	COLOR32 rgb = RxiMaskYiqToRgb(reduction, yiq);
+	RxConvertRgbToYiq(rgb, out);
+}
+
+static inline RxBool RxiColorEqual(const RxYiqColor *a, const RxYiqColor *b) {
+#ifndef RX_SIMD
+	return memcmp(a, b, sizeof(RxYiqColor)) == 0;
+#else
+	__m128 eq = _mm_cmpneq_ps(a->yiq, b->yiq);
+	return _mm_movemask_ps(eq) == 0;  // all equality results
+#endif
+}
+
+static inline RxBool RxiColorVecEqual(const RxYiqColor *a, const RxYiqColor *b, unsigned int n) {
+	RX_ASSUME(n > 0);
+
+#ifndef RX_SIMD
+	return memcmp(a, b, n * sizeof(RxYiqColor)) == 0;
+#else
+	do {
+		if (!RxiColorEqual(a++, b++)) return 0;
+	} while (--n);
+
+	return 1;
+#endif
+}
+
 static inline void RxiColorCopy(RxYiqColor *dest, const RxYiqColor *src) {
 #ifndef RX_SIMD
 	memcpy(dest, src, sizeof(RxYiqColor));
@@ -833,7 +861,7 @@ void RX_API RxHistAddColor(RxReduction *reduction, const RxYiqColor *col, double
 		RxHistEntry *slot = *ppslot;
 
 		//matching slot? add weight
-		if (memcmp(slot->color, col, nLayer * sizeof(RxYiqColor)) == 0) {
+		if (RxiColorVecEqual(slot->color, col, nLayer)) {
 			slot->weight += weight;
 			return;
 		}
@@ -1698,13 +1726,8 @@ static void RxiPaletteWriteMasked(RxReduction *reduction) {
 		RX_ASSUME(colorBlockPtr[i] != NULL);
 		
 		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
-			COLOR32 rgb32 = RxiMaskYiqToRgb(reduction, &colorBlockPtr[i]->color[j]);
-
-			//write RGB
-			reduction->paletteRgb[i][j] = rgb32;
-
 			//write YIQ (with any loss of information to RGB)
-			RxConvertRgbToYiq(rgb32, &reduction->paletteYiq[i][j]);
+			RxiMaskYiq(reduction, &colorBlockPtr[i]->color[j], &reduction->paletteYiq[i][j]);
 		}
 	}
 }
@@ -1783,41 +1806,37 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		double largestDifference = 0.0, largestDifferenceReduction = 0.0;
 		int farthestIndex = -1;
 		for (int j = 0; j < nHistEntries; j++) {
-			RxHistEntry *entry = reduction->histogramFlat[j];           // histogram color
+			RxHistEntry *entry = reduction->histogramFlat[j];       // histogram color
 			RxYiqColor *yiq1 = reduction->paletteYiq[entry->entry]; // ceontroid of the cluster the color belongs to
 
 			//do not move a cluster with only one member
 			if (totalsBuffer[entry->entry].count <= 1) continue;
 
+			//calculate the masked histogram color
+			RxYiqColor *yiqNewCentroid = reduction->tempLayeredColor;
+
 			//if we mask colors, check this entry against the palette with clamping. If they compare equal,
 			//then we say that this color is as close as it will be to a palette color and we won't include
 			//this in our search candidates.
-			COLOR32 histMasked[RX_PALETTE_MAX_COUNT];
-			for (unsigned int k = 0; k < nLayers; k++) {
-				histMasked[k] = RxiMaskYiqToRgb(reduction, &entry->color[k]);
-			}
-
 			RxBool same = RX_TRUE;
 			for (unsigned int k = 0; k < nLayers; k++) {
 				COLOR32 palMasked = RxiMaskYiqToRgb(reduction, &yiq1[k]);
+				COLOR32 histMasked = RxiMaskYiqToRgb(reduction, &entry->color[k]);
+				RxConvertRgbToYiq(histMasked, &yiqNewCentroid[k]);
 
-				if (histMasked[k] != palMasked) {
+				//check if the histogram and palette still differ after masking
+				if (histMasked != palMasked) {
 					//colors differ
 					same = RX_FALSE;
-					break;
 				}
 			}
-			if (same) continue; // this difference can't be reconciled
+			if (same) continue; // this difference can't be reconciled (mask to the same color)
 
 			//calculate the difference between the histogram color and its currently assigned best centroid.
 			double diff = RxiComputeColorDifference(reduction, yiq1, &entry->color[0]) * entry->weight;
 
 			//we subtract the difference to the new centroid to calcualate the reduction in the error sum of
 			//squares. The highest reduction is desired.
-			RxYiqColor yiqNewCentroid[RX_PALETTE_MAX_COUNT];
-			for (unsigned int k = 0; k < reduction->paletteLayers; k++) {
-				RxConvertRgbToYiq(histMasked[k], &yiqNewCentroid[k]);
-			}
 			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, yiqNewCentroid) * entry->weight;
 			
 			double diffReduction = diff - newDifference;
@@ -1829,7 +1848,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 				for (unsigned int k = 0; k < nNewCentroids; k++) {
 					unsigned int idx = newCentroidIdxs[k];
 					//check that all layers of the colors match
-					if (memcmp(reduction->paletteRgb[idx], histMasked, nLayers * sizeof(COLOR32)) == 0) {
+					if (RxiColorVecEqual(reduction->paletteYiq[idx], yiqNewCentroid, nLayers)) {
 						//remap to the existing centroid
 						RxiVoronoiMoveToCluster(reduction, entry, idx, newDifference, diff);
 						found = RX_TRUE;
@@ -1851,8 +1870,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 			//get RGB of new point (will be used when checking identical remapped colors)
 			RxHistEntry *entry = reduction->histogramFlat[farthestIndex];
 			for (unsigned int j = 0; j < nLayers; j++) {
-				reduction->paletteRgb[i][j] = RxiMaskYiqToRgb(reduction, &entry->color[j]);
-				RxConvertRgbToYiq(reduction->paletteRgb[i][j], &reduction->paletteYiq[i][j]);
+				RxiMaskYiq(reduction, &entry->color[j], &reduction->paletteYiq[i][j]);
 			}
 
 			//move centroid
@@ -1868,15 +1886,14 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 	//average out the colors in the new partitions
 	unsigned int nMovedClusters = 0;
 	for (unsigned int i = reduction->nPinnedClusters; i < reduction->nUsedColors; i++) {
-		RxYiqColor yiq[RX_PALETTE_MAX_COUNT];
-		COLOR32 as32[RX_PALETTE_MAX_COUNT];
+		//compute the final new masked color for the cluster
+		RxYiqColor *yiq = reduction->tempLayeredColor;
 
 		for (unsigned int j = 0; j < nLayers; j++) {
 			RxiUnweightLongColor(&yiq[j], &totalsBuffer[i].sum[j], totalsBuffer[i].weight);
 
 			//mask color
-			as32[j] = RxiMaskYiqToRgb(reduction, &yiq[j]);
-			RxConvertRgbToYiq(as32[j], &yiq[j]);
+			RxiMaskYiq(reduction, &yiq[j], &yiq[j]);
 		}
 
 		//when color masking is used, it is possible that the new computed centroid may drift
@@ -1894,7 +1911,6 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 
 		//if the new cluster is an improvement over the old cluster
 		if (errNewCluster < totalsBuffer[i].error) {
-			memcpy(reduction->paletteRgb[i], as32, nLayers * sizeof(COLOR32));
 			RxiColorVecCopy(reduction->paletteYiq[i], yiq, nLayers);
 			nMovedClusters++;
 		}
@@ -1941,7 +1957,6 @@ static void RxiVoronoiRecluster(RxReduction *reduction) {
 		if (totalsBuffer[i].weight > 0) continue;
 
 		//delete
-		memmove(reduction->paletteRgb[i], reduction->paletteRgb[i + 1], (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteRgb[0]));
 		memmove(reduction->paletteYiq[i], reduction->paletteYiq[i + 1], (reduction->nUsedColors - i - 1) * sizeof(reduction->paletteYiq[0]));
 		memmove(&totalsBuffer[i], &totalsBuffer[i + 1], (reduction->nUsedColors - i - 1) * sizeof(RxTotalBuffer));
 		reduction->nUsedColors--;
@@ -1949,7 +1964,6 @@ static void RxiVoronoiRecluster(RxReduction *reduction) {
 		nRemoved++;
 	}
 
-	memset(reduction->paletteRgb[reduction->nUsedColors], 0, nRemoved * sizeof(reduction->paletteRgb[0]));
 	memset(reduction->paletteYiq[reduction->nUsedColors], 0, nRemoved * sizeof(reduction->paletteYiq[0]));
 	RxiCreatePaletteUpdateProgress(reduction);
 }
@@ -2103,6 +2117,13 @@ RxStatus RX_API RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	//cleanup
 	RxiTreeFreeAll(reduction);
 
+	//DEBUG: write RGB palette
+	for (unsigned int i = 0; i < reduction->nUsedColors; i++) {
+		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			reduction->paletteRgb[i][j] = RxConvertYiqToRgb(&reduction->paletteYiq[i][j]);
+		}
+	}
+
 	//load the palette into the accelerator.
 	RxiPaletteLoadYiq(reduction, &reduction->paletteYiq[0][0], RX_PALETTE_MAX_COUNT, reduction->nUsedColors, RX_FALSE);
 
@@ -2112,7 +2133,7 @@ RxStatus RX_API RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 static int RxiIsColorVectorAllEqual(const RxYiqColor *yiq, unsigned int n) {
 	//check colors 1...n-1
 	for (unsigned int i = 1; i < n; i++) {
-		if (memcmp(&yiq[i], &yiq[0], sizeof(RxYiqColor)) != 0) return 0;
+		if (!RxiColorEqual(&yiq[i], &yiq[0])) return 0;
 	}
 	return 1;
 }
@@ -3238,7 +3259,7 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(RxReduction *reduction
 		//if this is a leaf node or the split value matches, check for a matching color
 		if ((nodep->pLeft == NULL && nodep->pRight == NULL) || (split == val)) {
 			//compare color
-			if (memcmp(nodeCol, color, nLayer * sizeof(RxYiqColor)) == 0) {
+			if (RxiColorVecEqual(nodeCol, color, nLayer)) {
 				if (outDiff != NULL) *outDiff = 0.0; // identical match
 				return nodep->mid->index;
 			}
