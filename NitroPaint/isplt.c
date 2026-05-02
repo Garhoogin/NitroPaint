@@ -2307,10 +2307,13 @@ static void RxiTileCopy(RxiTile *dest, const COLOR32 *pxOrigin, unsigned int wid
 
 static double RxiTileComputePaletteDifference(RxReduction *reduction, const RxiTile *tile1, const RxiTile *tile2) {
 	//if either palette has 0 colors, return 0 (perfect fit)
-	if (tile1->nUsedColors == 0 || tile2->nUsedColors == 0) return 0;
+	if (tile1->nUsedColors == 0 || tile2->nUsedColors == 0) return 0.0;
 
 	//are the palettes identical?
-	if (tile1->nUsedColors == tile2->nUsedColors && memcmp(tile1->palette, tile2->palette, tile1->nUsedColors * sizeof(tile1->palette[0])) == 0) return 0;
+	if (tile1->nUsedColors == tile2->nUsedColors) {
+		//if (memcmp(tile1->palette, tile2->palette, tile1->nUsedColors * sizeof(tile1->palette[0])) == 0) return 0.0;
+		if (RxiColorVecEqual(tile1->palette, tile2->palette, tile1->nUsedColors)) return 0.0;
+	}
 
 	//map each color from tile2 to one of tile1
 	double totalDiff = 0.0;
@@ -2322,7 +2325,7 @@ static double RxiTileComputePaletteDifference(RxReduction *reduction, const RxiT
 	}
 	
 	//if all colors match perfectly, return 0
-	if (totalDiff == 0) return 0;
+	if (totalDiff == 0.0) return 0.0;
 
 	//imperfect fit. 
 	unsigned int fullSize = 2 * reduction->nPaletteColors;
@@ -3548,9 +3551,8 @@ double RX_API RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, u
 	if (nMaxError == 0) nMaxError = RX_LARGE_NUMBER;
 	double error = 0;
 
-	RxYiqColor paletteYiqStack[16]; //small palettes
-	RxYiqColor *paletteYiq = paletteYiqStack;
-	if (nColors > 16) {
+	RxYiqColor *paletteYiq = reduction->imgBuffer;
+	if (nColors > RX_TEMP_IMG_BUF_SIZE) {
 		paletteYiq = (RxYiqColor *) RxMemCalloc(nColors, sizeof(RxYiqColor));
 	}
 
@@ -3566,17 +3568,17 @@ double RX_API RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, u
 		p |= 0xFF000000;
 
 		RxYiqColor yiq;
-		RxConvertRgbToYiq(px[i], &yiq);
+		RxConvertRgbToYiq(p, &yiq);
 		double bestDiff;
 		(void) RxiPaletteFindClosestColor(reduction, paletteYiq, nColors, &yiq, &bestDiff);
 
 		error += bestDiff;
 		if (error >= nMaxError) {
-			if (paletteYiq != paletteYiqStack) RxMemFree(paletteYiq);
-			return nMaxError;
+			error = nMaxError;
+			break;
 		}
 	}
 
-	if (paletteYiq != paletteYiqStack) RxMemFree(paletteYiq);
+	if (paletteYiq != reduction->imgBuffer) RxMemFree(paletteYiq);
 	return error;
 }
