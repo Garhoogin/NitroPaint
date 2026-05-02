@@ -2092,6 +2092,9 @@ RxStatus RX_API RxComputePalette(RxReduction *reduction, unsigned int nColors) {
 	if (reduction->histogramFlat == NULL || reduction->histogram->nEntries == 0) {
 		return reduction->status;
 	}
+
+	//max palette size check
+	if (nColors > RX_PALETTE_MAX_SIZE) return RX_STATUS_INVALID;
 	
 	//create the root cluster holding all colors
 	RxColorNode *head = RxiTreeNodeAlloc(reduction);

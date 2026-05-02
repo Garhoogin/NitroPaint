@@ -4287,12 +4287,21 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 		}
 		
 		if (fixedPalette == NULL) {
-			MessageBox(data->hWnd, L"The fixed palette file is invalid or could not be read.", L"Error", MB_ICONERROR);
+			MessageBox(data->hWnd, L"The fixed palette file is invalid or could not be read.", L"Color Reduction", MB_ICONERROR);
 		}
 	}
 
-	RxBalanceSetting balance;
 	unsigned int nColors = GetEditNumber(data->hWndColors);
+	if (nColors == 0 || nColors > RX_PALETTE_MAX_SIZE) {
+		//correct the palette size and display the warning
+		if (nColors == 0) nColors = 1;
+		else nColors = RX_PALETTE_MAX_SIZE;
+		SetEditNumber(data->hWndColors, nColors);
+
+		MessageBox(data->hWnd, L"The palette size is incorrect.", L"Color Reduction", MB_ICONERROR);
+	}
+
+	RxBalanceSetting balance;
 	NpGetBalanceSetting(&data->balance, &balance);
 
 	RxFlag flag = RX_FLAG_NO_PRESERVE_ALPHA | RX_FLAG_SORT_ONLY_USED;
