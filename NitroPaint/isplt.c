@@ -2147,6 +2147,19 @@ RxStatus RX_API RxSortPalette(RxReduction *reduction, RxFlag flag) {
 	unsigned int nSort = reduction->nPaletteColors;
 	if (flag & RX_FLAG_SORT_ONLY_USED) nSort = reduction->nUsedColors;
 
+	if (nSort > reduction->nUsedColors) {
+		//when the user requests to sort more palette colors than are generated, we
+		//pad space by filling with opaque black slots. When these extra slots are
+		//included in sorting, we increase the number of used colors to account for
+		//the fact that now the expanded range is being used.
+		for (unsigned int i = reduction->nUsedColors; i < nSort; i++) {
+			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+				RxiColorMakeBlack(&reduction->paletteYiq[i][j]);
+			}
+		}
+		reduction->nUsedColors = nSort;
+	}
+
 	//if the flag to move differing colors to the end was specified, we use the comparator that
 	//checks for shared colors.
 	if (flag & RX_FLAG_SORT_END_DIFFER) {
@@ -2846,7 +2859,6 @@ RxStatus RX_API RxReduceImage(
 		rowbuf = (RxYiqColor *) RxMemCalloc(linebufSize, sizeof(RxYiqColor));
 		if (rowbuf == NULL) {
 			//no memory
-			RxPaletteFree(reduction);
 			RxMemFree(rowbuf);
 			return RX_STATUS_NOMEM;
 		}

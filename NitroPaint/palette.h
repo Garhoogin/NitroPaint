@@ -898,7 +898,8 @@ double RX_API RxHistComputePaletteErrorYiq(
 // a color palette subscripted as [layer][i]. The width and height parameters reflect the size
 // of one individual layer.
 //
-// This function internally uses the RxPaletteLoad routine, and frees the palette when finished.
+// If using the output of a prior call to RxComputePalette, the palette does not need to be
+// explicitly loaded before calling.
 //
 // Parameters:
 //   reduction     The color reduction context.
@@ -1083,8 +1084,6 @@ void RX_API RxFree(
 //   pal           The output palette buffer.
 //   nColors       The size of the color palette to create.
 //   balance       Balance settings. This may be NULL to use the default settings.
-//   colorBalance  Color balance setting.
-//   enhanceColors Enhance largely used colors.
 //   flag          Color reduction flags (see enum RxFlag).
 //   pOutCols      Pointer to output number of colors (may be NULL).
 //
