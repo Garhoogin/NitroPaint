@@ -926,6 +926,25 @@ Done:
 		}
 		RxMemFree(plttYiq);
 	}
+
+	//if the output palette data was less than the internal buffer size, we reassign palette
+	//indices to something in bounds (tiles will be re-indexed later anyway).
+	if (availableSlot > outPlttSize) {
+		availableSlot = outPlttSize;
+
+		for (int i = 0; i < nTiles; i++) {
+			int plttAddr = tileData[i].paletteIndex * 2;
+			int nPlttUse = 4;
+			if (tileData[i].mode & COMP_INTERPOLATE) nPlttUse = 2;
+
+			if ((plttAddr + nPlttUse) > outPlttSize) {
+				//dummy index and mode
+				tileData[i].paletteIndex = 0;
+				tileData[i].mode = COMP_INTERPOLATE | COMP_TRANSPARENT;
+			}
+		}
+	}
+
 	return availableSlot;
 }
 
