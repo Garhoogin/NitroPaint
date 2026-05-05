@@ -35,7 +35,7 @@
 #define COMP_TRANSPARENT   0x0000
 #define COMP_MODE_MASK     0xC000
 #define COMP_INDEX_MASK    0x3FFF
-#define COMP_INDEX(c)      (((c)&COMP_INDEX_MASK)<<1)
+#define COMP_INDEX(c)      ((unsigned int)(((c)&COMP_INDEX_MASK)<<1))
 
 typedef struct {
 	int texImageParam;
