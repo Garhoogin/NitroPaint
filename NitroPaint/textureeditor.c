@@ -2324,9 +2324,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	}
 
 	//balance settings
-	texEntry.params.balance.balance = BALANCE_DEFAULT;
-	texEntry.params.balance.colorBalance = BALANCE_DEFAULT;
-	texEntry.params.balance.enhanceColors = 1;
+	RxGetDefaultBalance(&texEntry.params.balance);
 
 	//read overrides from file. Missing fields have default values written back.
 	BatchTexReadOptions(configPath, &texEntry.params, pnam);

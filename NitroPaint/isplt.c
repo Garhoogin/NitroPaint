@@ -605,9 +605,9 @@ static void RxiComputeAlphaInteraction(RxReduction *reduction) {
 }
 
 void RX_API RxGetDefaultBalance(RxBalanceSetting *balance) {
-	balance->balance = BALANCE_DEFAULT;      // lightness-color balance
-	balance->colorBalance = BALANCE_DEFAULT; // IQ balance
-	balance->enhanceColors = RX_TRUE;        // enhance largely used colors
+	balance->balance = RX_BALANCE_DEFAULT;           // lightness-color balance
+	balance->colorBalance = RX_COLORBALANCE_DEFAULT; // IQ balance
+	balance->enhanceColors = RX_TRUE;                // enhance largely used colors
 }
 
 void RX_API RxSetBalance(RxReduction *reduction, const RxBalanceSetting *balance) {

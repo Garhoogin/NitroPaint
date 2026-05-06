@@ -2128,11 +2128,11 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 			CreateStatic(hWnd, L"Balance:", 10, 96, 100, 22);
 			CreateStaticAligned(hWnd, L"Lightness", 120, 96, 50, 22, SCA_RIGHT);
 			CreateStaticAligned(hWnd, L"Color", 170 + 150, 95, 50, 22, SCA_LEFT);
-			data->hWndBalance = CreateTrackbar(hWnd, 170, 96, 150, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndBalance = CreateTrackbar(hWnd, 170, 96, 150, 22, BALANCE_MIN, BALANCE_MAX, RX_BALANCE_DEFAULT);
 			CreateStatic(hWnd, L"Color Balance:", 10, 123, 100, 22);
 			CreateStaticAligned(hWnd, L"Green", 120, 123, 50, 22, SCA_RIGHT);
 			CreateStaticAligned(hWnd, L"Red", 170 + 150, 123, 50, 22, SCA_LEFT);
-			data->hWndColorBalance = CreateTrackbar(hWnd, 170, 123, 150, 22, BALANCE_MIN, BALANCE_MAX, BALANCE_DEFAULT);
+			data->hWndColorBalance = CreateTrackbar(hWnd, 170, 123, 150, 22, BALANCE_MIN, BALANCE_MAX, RX_COLORBALANCE_DEFAULT);
 			CreateStatic(hWnd, L"Enhance Colors:", 10, 150, 100, 22);
 			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"", 120, 150, 22, 22, FALSE);
 
