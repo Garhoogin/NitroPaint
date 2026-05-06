@@ -92,8 +92,8 @@
 #define RX_API
 #define RX_CALLBACK
 
-#define RX_BALANCE_DEFAULT        20  // Balance default setting
-#define RX_COLORBALANCE_DEFAULT   20  // Color Balance default setting
+#define RX_BALANCE_DEFAULT        36  // Balance default setting
+#define RX_COLORBALANCE_DEFAULT   13  // Color Balance default setting
 #define BALANCE_MIN                1  // Balance/Color Balance minimum setting
 #define BALANCE_MAX               39  // Balance/Color Balance maximum setting
 

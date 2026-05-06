@@ -424,7 +424,7 @@ typedef struct TxiConversionWork_ {
 //threshold for tentatively selecting an interpolated mode for a 4x4 block based on mean square
 //error. Calculated as about the max squared error of rounding a color to its nearest representable
 //color, and dividing by the sum of squared channel weights.
-#define TXC_BLOCK_INTERP_THRESHOLD     71.0
+#define TXC_BLOCK_INTERP_THRESHOLD     45.0 // 71.0
 
 
 //TxiBlend18 two colors together by weight. (out of 8)
