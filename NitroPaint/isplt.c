@@ -64,85 +64,16 @@
 #define TWO_THIRDS 0.6666666666666666667 // 2.0/  3.0
 
 //default parameters for alpha processing (describes the distribution of colors)
-#define MEAN_Y    218.5703266931449500000  // mean of Y
-#define MEAN_I     -0.0126499310411609110  // mean of I
-#define MEAN_Q      0.0094274570675025038  // mean of Q
-#define MEAN_Y2 58097.5917021356730000000  // mean of Y^2
-#define MEAN_I2 11648.0137399607650000000  // mean of I^2
-#define MEAN_Q2  9024.7174610226702000000  // mean of Q^2
+#define MEAN_Y    217.7410308381821300000  // mean of Y
+#define MEAN_I     -0.0000041426875938555  // mean of I
+#define MEAN_Q     -0.0000076075821411337  // mean of Q
+#define MEAN_Y2 58357.1112772430790000000  // mean of Y^2
+#define MEAN_I2  6772.8810438603696000000  // mean of I^2
+#define MEAN_Q2 15832.5709062345540000000  // mean of Q^2
 
 
 static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff);
 static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxBool overrideMode);
-
-
-//luma table: sLumaTable[i] = 511.0 * pow(i / 511.0, RX_GAMMA)
-static const float sLumaTable[] = {
-	  0.000000f,   0.185663f,   0.447749f,   0.749325f,   1.079798f,   1.433568f,   1.807084f,   2.197864f,
-	  2.604058f,   3.024227f,   3.457215f,   3.902070f,   4.357993f,   4.824301f,   5.300404f,   5.785785f,
-	  6.279987f,   6.782604f,   7.293272f,   7.811662f,   8.337473f,   8.870434f,   9.410293f,   9.956821f,
-	 10.509804f,  11.069045f,  11.634360f,  12.205578f,  12.782537f,  13.365088f,  13.953089f,  14.546406f,
-	 15.144915f,  15.748495f,  16.357035f,  16.970427f,  17.588570f,  18.211367f,  18.838726f,  19.470558f,
-	 20.106781f,  20.747313f,  21.392077f,  22.041000f,  22.694011f,  23.351041f,  24.012026f,  24.676902f,
-	 25.345609f,  26.018088f,  26.694283f,  27.374140f,  28.057605f,  28.744629f,  29.435162f,  30.129156f,
-	 30.826566f,  31.527347f,  32.231455f,  32.938848f,  33.649487f,  34.363330f,  35.080341f,  35.800480f,
-	 36.523713f,  37.250004f,  37.979317f,  38.711621f,  39.446882f,  40.185068f,  40.926148f,  41.670092f,
-	 42.416871f,  43.166456f,  43.918818f,  44.673930f,  45.431766f,  46.192299f,  46.955504f,  47.721355f,
-	 48.489828f,  49.260899f,  50.034544f,  50.810742f,  51.589468f,  52.370702f,  53.154421f,  53.940604f,
-	 54.729232f,  55.520282f,  56.313736f,  57.109575f,  57.907778f,  58.708327f,  59.511203f,  60.316389f,
-	 61.123867f,  61.933619f,  62.745628f,  63.559878f,  64.376351f,  65.195032f,  66.015904f,  66.838952f,
-	 67.664160f,  68.491514f,  69.320998f,  70.152597f,  70.986298f,  71.822085f,  72.659945f,  73.499865f,
-	 74.341830f,  75.185827f,  76.031843f,  76.879865f,  77.729881f,  78.581878f,  79.435843f,  80.291764f,
-	 81.149629f,  82.009427f,  82.871145f,  83.734773f,  84.600299f,  85.467711f,  86.336999f,  87.208152f,
-	 88.081159f,  88.956009f,  89.832692f,  90.711198f,  91.591516f,  92.473637f,  93.357551f,  94.243248f,
-	 95.130717f,  96.019950f,  96.910938f,  97.803670f,  98.698139f,  99.594334f, 100.492246f, 101.391868f,
-	102.293190f, 103.196203f, 104.100900f, 105.007271f, 105.915308f, 106.825004f, 107.736349f, 108.649337f,
-	109.563958f, 110.480206f, 111.398071f, 112.317548f, 113.238627f, 114.161303f, 115.085566f, 116.011410f,
-	116.938827f, 117.867811f, 118.798355f, 119.730450f, 120.664091f, 121.599270f, 122.535980f, 123.474215f,
-	124.413969f, 125.355234f, 126.298004f, 127.242273f, 128.188033f, 129.135280f, 130.084006f, 131.034205f,
-	131.985872f, 132.938999f, 133.893582f, 134.849614f, 135.807088f, 136.766001f, 137.726344f, 138.688114f,
-	139.651303f, 140.615907f, 141.581920f, 142.549336f, 143.518149f, 144.488356f, 145.459949f, 146.432924f,
-	147.407275f, 148.382997f, 149.360086f, 150.338535f, 151.318340f, 152.299495f, 153.281997f, 154.265838f,
-	155.251016f, 156.237525f, 157.225359f, 158.214515f, 159.204988f, 160.196772f, 161.189863f, 162.184257f,
-	163.179949f, 164.176934f, 165.175208f, 166.174766f, 167.175604f, 168.177717f, 169.181102f, 170.185753f,
-	171.191667f, 172.198839f, 173.207265f, 174.216941f, 175.227862f, 176.240025f, 177.253425f, 178.268058f,
-	179.283920f, 180.301008f, 181.319317f, 182.338843f, 183.359583f, 184.381532f, 185.404687f, 186.429044f,
-	187.454598f, 188.481347f, 189.509286f, 190.538412f, 191.568721f, 192.600210f, 193.632874f, 194.666711f,
-	195.701716f, 196.737886f, 197.775218f, 198.813708f, 199.853352f, 200.894147f, 201.936090f, 202.979177f,
-	204.023405f, 205.068771f, 206.115270f, 207.162901f, 208.211659f, 209.261541f, 210.312544f, 211.364665f,
-	212.417901f, 213.472248f, 214.527703f, 215.584264f, 216.641926f, 217.700688f, 218.760545f, 219.821495f,
-	220.883535f, 221.946662f, 223.010872f, 224.076163f, 225.142532f, 226.209975f, 227.278491f, 228.348076f,
-	229.418727f, 230.490441f, 231.563216f, 232.637048f, 233.711935f, 234.787874f, 235.864863f, 236.942898f,
-	238.021976f, 239.102096f, 240.183254f, 241.265448f, 242.348675f, 243.432932f, 244.518216f, 245.604526f,
-	246.691858f, 247.780210f, 248.869580f, 249.959964f, 251.051360f, 252.143766f, 253.237179f, 254.331596f,
-	255.427016f, 256.523436f, 257.620852f, 258.719263f, 259.818667f, 260.919061f, 262.020442f, 263.122808f,
-	264.226157f, 265.330486f, 266.435794f, 267.542077f, 268.649333f, 269.757561f, 270.866757f, 271.976920f,
-	273.088047f, 274.200136f, 275.313185f, 276.427191f, 277.542152f, 278.658067f, 279.774932f, 280.892746f,
-	282.011507f, 283.131212f, 284.251859f, 285.373447f, 286.495972f, 287.619433f, 288.743827f, 289.869154f,
-	290.995410f, 292.122593f, 293.250702f, 294.379734f, 295.509688f, 296.640561f, 297.772351f, 298.905056f,
-	300.038675f, 301.173205f, 302.308645f, 303.444992f, 304.582244f, 305.720399f, 306.859457f, 307.999413f,
-	309.140268f, 310.282018f, 311.424662f, 312.568199f, 313.712625f, 314.857940f, 316.004141f, 317.151226f,
-	318.299195f, 319.448044f, 320.597772f, 321.748377f, 322.899858f, 324.052213f, 325.205439f, 326.359536f,
-	327.514501f, 328.670332f, 329.827028f, 330.984587f, 332.143008f, 333.302288f, 334.462426f, 335.623420f,
-	336.785269f, 337.947970f, 339.111522f, 340.275924f, 341.441174f, 342.607269f, 343.774209f, 344.941992f,
-	346.110616f, 347.280079f, 348.450380f, 349.621518f, 350.793490f, 351.966295f, 353.139931f, 354.314397f,
-	355.489692f, 356.665813f, 357.842759f, 359.020529f, 360.199121f, 361.378533f, 362.558764f, 363.739813f,
-	364.921677f, 366.104356f, 367.287847f, 368.472150f, 369.657263f, 370.843183f, 372.029911f, 373.217444f,
-	374.405781f, 375.594920f, 376.784861f, 377.975600f, 379.167138f, 380.359473f, 381.552602f, 382.746525f,
-	383.941241f, 385.136747f, 386.333043f, 387.530127f, 388.727998f, 389.926654f, 391.126093f, 392.326316f,
-	393.527319f, 394.729102f, 395.931664f, 397.135002f, 398.339116f, 399.544005f, 400.749667f, 401.956100f,
-	403.163303f, 404.371276f, 405.580016f, 406.789522f, 407.999794f, 409.210829f, 410.422627f, 411.635186f,
-	412.848504f, 414.062581f, 415.277416f, 416.493006f, 417.709352f, 418.926450f, 420.144301f, 421.362903f,
-	422.582255f, 423.802355f, 425.023202f, 426.244796f, 427.467134f, 428.690215f, 429.914039f, 431.138604f,
-	432.363909f, 433.589953f, 434.816734f, 436.044251f, 437.272504f, 438.501490f, 439.731209f, 440.961660f,
-	442.192841f, 443.424751f, 444.657390f, 445.890755f, 447.124846f, 448.359661f, 449.595200f, 450.831461f,
-	452.068443f, 453.306146f, 454.544567f, 455.783706f, 457.023562f, 458.264133f, 459.505418f, 460.747417f,
-	461.990128f, 463.233550f, 464.477682f, 465.722523f, 466.968071f, 468.214327f, 469.461288f, 470.708953f,
-	471.957322f, 473.206394f, 474.456166f, 475.706640f, 476.957812f, 478.209682f, 479.462250f, 480.715513f,
-	481.969472f, 483.224125f, 484.479470f, 485.735508f, 486.992236f, 488.249654f, 489.507761f, 490.766556f,
-	492.026038f, 493.286205f, 494.547058f, 495.808594f, 497.070812f, 498.333713f, 499.597294f, 500.861556f,
-	502.126496f, 503.392113f, 504.658408f, 505.925379f, 507.193024f, 508.461343f, 509.730336f, 511.000000f
-};
 
 
 
@@ -182,149 +113,99 @@ void RxMemFree(void *p) {
 
 // ----- routines for operating on colors
 
-
-static inline double RxiDelinearizeLuma(float luma) {
-	return 511.0 * pow(luma * INV_511, 1.0 / RX_GAMMA);
-}
-
-static inline float RxiLinearizeLuma(float luma) {
-	RX_ASSUME(luma >= 0 && luma < 512);
-#ifndef RX_SIMD
-	return sLumaTable[(int) (luma + 0.5)];
-#else
-	return sLumaTable[_mm_cvtss_si32(_mm_set_ss(luma))];
-#endif
-}
-
 void RX_API RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	//implementations using scalar and vector arithmetic
 #ifndef RX_SIMD
-	double r = (double) ((rgb >>  0) & 0xFF);
-	double g = (double) ((rgb >>  8) & 0xFF);
-	double b = (double) ((rgb >> 16) & 0xFF);
+	float r = (float) ((rgb >>  0) & 0xFF);
+	float g = (float) ((rgb >>  8) & 0xFF);
+	float b = (float) ((rgb >> 16) & 0xFF);
+	float a = (float) ((rgb >> 24) & 0xFF) / 255.0f;
 
-	//twice the standard RGB->YIQ matrix (doubles output components)
-	double y = r * 0.59800 + g * 1.17400 + b * 0.22800;
-	double i = r * 1.19208 - g * 0.54804 - b * 0.64406;
-	double q = r * 0.42204 - g * 1.04408 + b * 0.62206;
-
-	if (i >  245.0) i = (i - 245.0) * TWO_THIRDS + 245.0;
-	if (q < -215.0) q = (q + 215.0) * TWO_THIRDS - 215.0;
-
-	double iqDiff = q - i;
-	if (iqDiff > 265.0) {
-		double diq = (iqDiff - 265.0) * 0.25;
-		i += diq;
-		q -= diq;
-	}
-
-	if (i < 0.0 && q > 0.0) y -= (q * i) * INV_512;
+	//this is no longer true YIQ anymore
+	float y =  0.5146329f * r + 1.2303905f * g + 0.2588982f * b;
+	float i = -0.5885085f * r - 0.3060195f * g + 0.8945280f * b;
+	float q =  0.7227111f * r - 1.3898515f * g + 0.6671403f * b;
 
 	//write rounded color
-	float a = ((rgb >> 24) & 0xFF) / 255.0f;
-	yiq->y = a * RxiLinearizeLuma((float) y); //    0 - 511
-	yiq->i = a * (float) i;                   // -320 - 319
-	yiq->q = a * (float) q;                   // -270 - 269
+	yiq->y = a * y;
+	yiq->i = a * i;
+	yiq->q = a * q;
 	yiq->a = a;
 #else
 	//vectorized implementation
 	__m128i rgbVeci = _mm_unpacklo_epi16(_mm_unpacklo_epi8(_mm_cvtsi32_si128(rgb), _mm_setzero_si128()), _mm_setzero_si128());
 	__m128 rgbVec = _mm_cvtepi32_ps(rgbVeci);
 
-	__m128 yVec = _mm_mul_ps(rgbVec, _mm_setr_ps(0.59800f,  1.17400f,  0.22800f, 0.0f));
-	__m128 iVec = _mm_mul_ps(rgbVec, _mm_setr_ps(1.19208f, -0.54804f, -0.64406f, 0.0f));
-	__m128 qVec = _mm_mul_ps(rgbVec, _mm_setr_ps(0.42204f, -1.04408f,  0.62206f, 0.0f));
-
-	//do three horizontal sums
-	yVec = _mm_add_ps(yVec, _mm_shuffle_ps(yVec, yVec, _MM_SHUFFLE(2, 3, 0, 1)));
-	iVec = _mm_add_ps(iVec, _mm_shuffle_ps(iVec, iVec, _MM_SHUFFLE(0, 1, 2, 3)));
-	qVec = _mm_add_ps(qVec, _mm_shuffle_ps(qVec, qVec, _MM_SHUFFLE(0, 1, 2, 3)));
-
-	__m128 iqVec = _mm_shuffle_ps(iVec, qVec, _MM_SHUFFLE(0, 1, 0, 1)); // lo: half I sum, hi: half Q sum, halves reversed
-	iqVec = _mm_add_ps(iqVec, _mm_shuffle_ps(iqVec, iqVec, _MM_SHUFFLE(2, 3, 0, 1)));
-
-	//place components into low parts of vector registers
-	__m128 y = _mm_add_ss(yVec, _mm_movehl_ps(yVec, yVec));
-	__m128 i = iqVec;
-	__m128 q = _mm_movehl_ps(iqVec, iqVec);
-
-	//apply soft clamping by I>245, Q<-215 by 2/3
-	__m128 twoThirds = _mm_set_ss((float) TWO_THIRDS);
-	if (_mm_ucomigt_ss(i, _mm_set_ss( 245.0f))) i = _mm_add_ss(_mm_mul_ss(i, twoThirds), _mm_set_ss((float) (245.0 - 245.0 * TWO_THIRDS)));
-	if (_mm_ucomilt_ss(q, _mm_set_ss(-215.0f))) q = _mm_add_ss(_mm_mul_ss(q, twoThirds), _mm_set_ss((float) (215.0 * TWO_THIRDS - 215.0)));
-
-	__m128 iqDiff = _mm_sub_ss(q, i);
-	if (_mm_ucomigt_ss(iqDiff, _mm_set_ss(265.0f))) {
-		__m128 diq = _mm_mul_ss(_mm_sub_ss(iqDiff, _mm_set_ss(265.0f)), _mm_set_ss(0.25f));
-		i = _mm_add_ss(i, diq);
-		q = _mm_sub_ss(q, diq);
-	}
-
-	__m128 zero = _mm_setzero_ps();
-	if (_mm_ucomilt_ss(i, zero) && _mm_ucomigt_ss(q, zero)) y = _mm_sub_ss(y, _mm_mul_ss(_mm_mul_ss(q, i), _mm_set_ss((float) INV_512)));
-
-	//horizontal sum
-	__m128 yiqa = _mm_movelh_ps(_mm_unpacklo_ps(y, i), _mm_unpacklo_ps(q, zero));
-
-	//linearize luma
-	yiqa = _mm_move_ss(yiqa, _mm_load_ss(&sLumaTable[_mm_cvt_ss2si(yiqa)]));
-
-	//insert alpha channel to the output vector and premultiply
+	//matrix transform
+	__m128 rVec = _mm_shuffle_ps(rgbVec, rgbVec, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 gVec = _mm_shuffle_ps(rgbVec, rgbVec, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 bVec = _mm_shuffle_ps(rgbVec, rgbVec, _MM_SHUFFLE(2, 2, 2, 2));
 	__m128 aVec = _mm_div_ps(_mm_shuffle_ps(rgbVec, rgbVec, _MM_SHUFFLE(3, 3, 3, 3)), _mm_set1_ps(255.0f));
+
+	__m128 row0 = _mm_mul_ps(rVec, _mm_setr_ps(0.5146329f, -0.5885085f,  0.7227111f, 0.0f));
+	__m128 row1 = _mm_mul_ps(gVec, _mm_setr_ps(1.2303905f, -0.3060195f, -1.3898515f, 0.0f));
+	__m128 row2 = _mm_mul_ps(bVec, _mm_setr_ps(0.2588982f,  0.8945280f,  0.6671403f, 0.0f));
+	__m128 row3 = _mm_mul_ps(aVec, _mm_setr_ps(      0.0f,        0.0f,        0.0f, 1.0f));
+	__m128 yiqa = _mm_add_ps(_mm_add_ps(row0, row1), row2);
+		
+	//alpha premultiplication and insertion
 	yiqa = _mm_mul_ps(yiqa, aVec);
-	yiqa = _mm_or_ps(yiqa, _mm_and_ps(_mm_castsi128_ps(_mm_setr_epi32(0, 0, 0, -1)), aVec));
+	yiqa = _mm_add_ps(yiqa, row3);
 
 	yiq->yiq = yiqa;
 #endif
 }
 
 COLOR32 RX_API RxConvertYiqToRgb(const RxYiqColor *yiq) {
-	double y = 0.0, i = 0.0, q = 0.0;
-	if (yiq->a > 0.0f) {
-		double da = yiq->a;
-		y = RxiDelinearizeLuma((float) (yiq->y / da));
-		i = yiq->i / da;
-		q = yiq->q / da;
-	}
-	
-	if (i < 0.0 && q > 0.0) y += (q * i) * INV_512;
-
-	if (y < 0.0) y = 0.0;
-	else if (y > 511.0) y = 511.0;	
-
-	double iqDiff = q - i;
-	if (iqDiff > 265.0) {
-		double diq = (iqDiff - 265.0) * 0.5;
-		i -= diq;
-		q += diq;
-	}
-
-	if (q < -215.0) q = (q + 215.0) * 1.5 - 215.0;
-	if (i >  245.0) i = (i - 245.0) * 1.5 + 245.0;
-
+	//scalar and SIMD versions
 #ifndef RX_SIMD
-	int r = (int) (y * 0.5 + i * 0.477791 + q * 0.311426 + 0.5);
-	int g = (int) (y * 0.5 - i * 0.136066 - q * 0.324141 + 0.5);
-	int b = (int) (y * 0.5 - i * 0.552535 + q * 0.852230 + 0.5);
-	int a = (int) (yiq->a * 255.0 + 0.5);
+	float y = 0.0f, i = 0.0f, q = 0.0f;
+	if (yiq->a > 0.0f) {
+		y = yiq->y / yiq->a;
+		i = yiq->i / yiq->a;
+		q = yiq->q / yiq->a;
+	}
 
-	//pack clamped color
-	r = min(max(r, 0), 255);
-	g = min(max(g, 0), 255);
-	b = min(max(b, 0), 255);
-	a = min(max(a, 0), 255);
-	return r | (g << 8) | (b << 16) | (a << 24);
+	float r = 0.4990215f * y - 0.56700944f * i + 0.5666126f * q;
+	float g = 0.4990215f * y + 0.07502532f * i - 0.2942529f * q;
+	float b = 0.4990215f * y + 0.77053964f * i + 0.2721091f * q;
+	float a = yiq->a * 255.0f;
+
+	//clamp color
+	r = min(max(r, 0.0f), (255.0f));
+	g = min(max(g, 0.0f), (255.0f));
+	b = min(max(b, 0.0f), (255.0f));
+	a = min(max(a, 0.0f), (255.0f));
+
+	int iR = (int) (r + 0.5f);
+	int iG = (int) (g + 0.5f);
+	int iB = (int) (b + 0.5f);
+	int iA = (int) (a + 0.5f);
+	return iR | (iG << 8) | (iB << 16) | (iA << 24);
 #else
-	__m128 yVec = _mm_set1_ps((float) y);
-	__m128 iVec = _mm_set1_ps((float) i);
-	__m128 qVec = _mm_set1_ps((float) q);
-	__m128 aVec = _mm_set1_ps(yiq->a);
+	__m128 yiqa = yiq->yiq;
+	__m128 aVec = _mm_shuffle_ps(yiqa, yiqa, _MM_SHUFFLE(3, 3, 3, 3));
 
-	__m128 row0 = _mm_mul_ps(yVec, _mm_setr_ps(0.500000f,  0.500000f,  0.500000f,   0.0f));
-	__m128 row1 = _mm_mul_ps(iVec, _mm_setr_ps(0.477791f, -0.136066f, -0.552535f,   0.0f));
-	__m128 row2 = _mm_mul_ps(qVec, _mm_setr_ps(0.311426f, -0.324141f,  0.852230f,   0.0f));
-	__m128 row3 = _mm_mul_ps(aVec, _mm_setr_ps(     0.0f,       0.0f,       0.0f, 255.0f));
+	// if a > 0
+	if (_mm_ucomigt_ss(aVec, _mm_setzero_ps())) {
+		yiqa = _mm_div_ps(yiqa, aVec);
+	} else {
+		yiqa = _mm_setzero_ps();
+	}
+
+	__m128 yVec = _mm_shuffle_ps(yiqa, yiqa, _MM_SHUFFLE(0, 0, 0, 0));
+	__m128 iVec = _mm_shuffle_ps(yiqa, yiqa, _MM_SHUFFLE(1, 1, 1, 1));
+	__m128 qVec = _mm_shuffle_ps(yiqa, yiqa, _MM_SHUFFLE(2, 2, 2, 2));
+
+	__m128 row0 = _mm_mul_ps(yVec, _mm_setr_ps( 0.49902150f,  0.49902150f, 0.49902150f,   0.0f));
+	__m128 row1 = _mm_mul_ps(iVec, _mm_setr_ps(-0.56700944f,  0.07502532f, 0.77053964f,   0.0f));
+	__m128 row2 = _mm_mul_ps(qVec, _mm_setr_ps(  0.5666126f, -0.29425290f, 0.27210910f,   0.0f));
+	__m128 row3 = _mm_mul_ps(aVec, _mm_setr_ps(        0.0f,         0.0f,        0.0f, 255.0f));
 	__m128 rgbaF = _mm_add_ps(_mm_add_ps(row0, row1), _mm_add_ps(row2, row3));
+
+	//clamping
+	rgbaF = _mm_max_ps(rgbaF, _mm_setr_ps(  0.0f,   0.0f,   0.0f,   0.0f));
+	rgbaF = _mm_min_ps(rgbaF, _mm_setr_ps(255.0f, 255.0f, 255.0f, 255.0f));
 
 	//rounding to integer
 	__m128i rgbaI = _mm_cvtps_epi32(rgbaF);
@@ -623,7 +504,7 @@ void RX_API RxSetBalance(RxReduction *reduction, const RxBalanceSetting *balance
 		RxGetDefaultBalance(&effBalance);
 	}
 
-	reduction->yWeight = 60 - effBalance.balance;       // high balance -> lower Y weight
+	reduction->yWeight = 40 - effBalance.balance;       // high balance -> lower Y weight
 	reduction->iWeight = effBalance.colorBalance;       // high color balance -> high I weight
 	reduction->qWeight = 40 - effBalance.colorBalance;  // high color balance -> low Q weight
 

@@ -5503,7 +5503,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	InitializeDpiAwareness();
 
 	ObjInitCommon();
-
+	
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
 	wcex.hInstance = hInstance;

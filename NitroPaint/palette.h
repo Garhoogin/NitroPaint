@@ -92,8 +92,8 @@
 #define RX_API
 #define RX_CALLBACK
 
-#define RX_BALANCE_DEFAULT        36  // Balance default setting
-#define RX_COLORBALANCE_DEFAULT   13  // Color Balance default setting
+#define RX_BALANCE_DEFAULT        20  // Balance default setting
+#define RX_COLORBALANCE_DEFAULT   20  // Color Balance default setting
 #define BALANCE_MIN                1  // Balance/Color Balance minimum setting
 #define BALANCE_MAX               39  // Balance/Color Balance maximum setting
 
@@ -105,8 +105,6 @@
 #define RX_HISTOGRAM_SIZE    0x20000  // size of the histogram in slots
 #define RX_HISTOGRAM_SMALL       256  // size of a "small" histogram
 #define RX_TEMP_IMG_BUF_SIZE (10*10)  // buffer for holding YIQ image color data
-
-#define RX_GAMMA 1.27
 
 
 typedef struct RxReduction_ RxReduction;
