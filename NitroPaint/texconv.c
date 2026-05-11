@@ -421,10 +421,14 @@ typedef struct TxiConversionWork_ {
 } TxiConversionWork;
 
 
-//threshold for tentatively selecting an interpolated mode for a 4x4 block based on mean square
-//error. Calculated as about the max squared error of rounding a color to its nearest representable
-//color, and dividing by the sum of squared channel weights.
+// Threshold for tentatively selecting an interpolated mode for a 4x4 block based on mean square
+// error. Calculated as about the max squared error of rounding a color to its nearest representable
+// color, and dividing by the sum of squared channel weights.
 #define TXC_BLOCK_INTERP_THRESHOLD     53.0
+
+// Defines the number of refinement iterations done during 4x4 compression. More iterations have
+// diminishing returns.
+#define TXC_PALETTE_REFINEMENTS           4
 
 
 //TxiBlend18 two colors together by weight. (out of 8)
@@ -1368,11 +1372,11 @@ static void Txi4x4RefineCoalesceSingleColor(TxiConversionWork *work) {
 
 			//search for an instance of the color somewhere else
 			for (unsigned int j = 0; (j + 1) < work->plttSize; j += 2) {
-				if (tilePltt[j] != findCol && tilePltt[j + 1] != findCol) continue; // must contain the search color
-				if (tilePltt[j] == tilePltt[j + 1]) continue;                       // must not be doubled color
+				if (work->pltt[j] != findCol && work->pltt[j + 1] != findCol) continue; // must contain the search color
+				if (work->pltt[j] == work->pltt[j + 1]) continue;                       // must not be doubled color
 
 				//found, map any opaque color index to the found slot.
-				int iCol = (tilePltt[j + 1] == findCol);            // 0 or 1 color index
+				int iCol = (work->pltt[j + 1] == findCol);            // 0 or 1 color index
 				Txi4x4RefineRemapColors(&work->tiles[i], iCol, iCol, iCol, iCol);
 
 				work->tiles[i].paletteIndex = j >> 1;
@@ -1712,7 +1716,7 @@ static void Txi4x4RefinePalette(TxiConversionWork *work) {
 
 	//perform a series of refinement steps on the resultant palette. This will alter the texel,
 	//index, and palette data and try to remove any inefficiencies. 
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < TXC_PALETTE_REFINEMENTS; i++) {
 		unsigned int nAfterRefinement = Txi4x4RefineIteration(work);
 		nNewUsed = (nAfterRefinement + 7) & ~7;
 
