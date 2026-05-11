@@ -386,15 +386,16 @@ Cleanup:
 // ----- 4x4 texture compression routines
 
 typedef struct TxTileData_ {
-	COLOR32 rgb[16];       // the tile's initial RGBA color data
-	COLOR32 palette32[4];  // the tile's initial color palette
-	uint16_t mode;         // the tile's working palette mode
-	uint16_t initMode;     // the tile's initial mode
-	uint16_t paletteIndex; // the tile's working palette index
-	uint16_t used;         // marks a used tile
-	uint8_t nTransparent;  // number of transparent pixels
-	uint8_t duplicate;     // is duplicate?
-	uint32_t txel;         // indexed color data
+	COLOR32 rgb[16];          // the tile's initial RGBA color data
+	COLOR32 palette32[4];     // the tile's initial color palette
+	uint16_t mode;            // the tile's working palette mode
+	uint16_t initMode;        // the tile's initial mode
+	uint16_t paletteIndex;    // the tile's working palette index
+	uint16_t used;            // marks a used tile
+	uint8_t nTransparent;     // number of transparent pixels
+	uint8_t duplicate;        // is duplicate?
+	unsigned int nDuplicates; // number of tiles marked as duplicate of this
+	uint32_t txel;            // indexed color data
 } TxTileData;
 
 typedef struct TxiTileErrorMpEntry_ {
@@ -730,6 +731,7 @@ static void Txi4x4AddTile(
 	tile->nTransparent = 0;
 	tile->mode = 0;
 	tile->paletteIndex = 0;
+	tile->nDuplicates = 0;
 
 	//fill and count transparent pixels
 	for (unsigned int i = 0; i < 16; i++) {
@@ -763,6 +765,7 @@ static void Txi4x4AddTile(
 			memcpy(tile, &work->tiles[i - 1], sizeof(TxTileData));
 			tile->paletteIndex = work->tiles[i - 1].paletteIndex;
 			tile->duplicate = 1;
+			work->tiles[i - 1].nDuplicates++;
 			return;
 		}
 	}
@@ -786,6 +789,7 @@ static void Txi4x4AddTile(
 			//palettes and modes are the same, mark as duplicate.
 			tile->duplicate = 1;
 			tile->paletteIndex = tile1->paletteIndex;
+			tile1->nDuplicates++;
 			return;
 		}
 	} else {
@@ -1041,7 +1045,7 @@ static unsigned int Txi4x4BuildCompressedPalette(
 		for (unsigned int j = 0; j < nConsumed; j++) {
 			RxConvertRgbToYiq(tile->palette32[j], &plttYiq[availableSlot + j]);
 			colorTable[availableSlot + j] = tile->mode;
-			useTable[availableSlot + j] = 1;
+			useTable[availableSlot + j] = tile->nDuplicates + 1;
 		}
 		tile->paletteIndex = availableSlot / 2;
 		availableSlot += nConsumed;
