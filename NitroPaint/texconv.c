@@ -832,49 +832,54 @@ static double Txi4x4ComputePaletteDifference(
 	RxReduction      *reduction,
 	const RxYiqColor *pltt1,
 	const RxYiqColor *pltt2,
-	unsigned int      nPltt,
-	double            maxError
+	unsigned int      nPltt
 ) {
 	TX_ASSUME(nPltt == 2 || nPltt == 4);
 
-	double total = 0.0, errScale = 1.0, errInvScale = 1.0;
-	if (nPltt == 2) {
-		//2-color palettes have doubled error (to be comparable to 4-color errors)
-		errScale = 2.0;
-		errInvScale = 0.5;
-		maxError *= errInvScale;
-	}
-	
+	double total = 0.0;
+
+#ifdef RX_SIMD
+	__m128 totalVec = _mm_setzero_ps();
 	for (unsigned int i = 0; i < nPltt; i++) {
 		const RxYiqColor *yiq1 = &pltt1[i], *yiq2 = &pltt2[i];
-#ifndef RX_SIMD
+
+		__m128 diff = _mm_sub_ps(yiq1->yiq, yiq2->yiq);
+		diff = _mm_mul_ps(diff, diff);
+		totalVec = _mm_add_ps(totalVec, diff);
+	}
+
+	totalVec = _mm_mul_ps(totalVec, reduction->yiqaWeight2);
+	totalVec = _mm_add_ps(totalVec, _mm_shuffle_ps(totalVec, totalVec, _MM_SHUFFLE(2, 3, 0, 1)));
+	totalVec = _mm_add_ss(totalVec, _mm_movehl_ps(totalVec, totalVec));
+	total = _mm_cvtss_f32(totalVec);
+
+#else // RX_SIMD
+	for (unsigned int i = 0; i < nPltt; i++) {
+		const RxYiqColor *yiq1 = &pltt1[i], *yiq2 = &pltt2[i];
 		double dy = yiq1->y - yiq2->y;
 		double di = yiq1->i - yiq2->i;
 		double dq = yiq1->q - yiq2->q;
 		total += reduction->yWeight2 * (dy * dy) + reduction->iWeight2 * (di * di) + reduction->qWeight2 * (dq * dq);
-#else
-		__m128 diff = _mm_sub_ps(yiq1->yiq, yiq2->yiq);
-		diff = _mm_mul_ps(diff, diff);
-		diff = _mm_mul_ps(diff, reduction->yiqaWeight2);
-		diff = _mm_add_ps(diff, _mm_shuffle_ps(diff, diff, _MM_SHUFFLE(2, 3, 0, 1)));
-		diff = _mm_add_ss(diff, _mm_movehl_ps(diff, diff));
-		total += _mm_cvtss_f32(diff);
+	}
 #endif
 
-		if (total >= maxError) return maxError * errScale;
+	if (nPltt == 2) {
+		//2-color palettes have doubled error (to be comparable to 4-color errors)
+		total *= 2.0;
 	}
 
 	//for 2-color (interpolated) palettes, we'll double the difference to scale to 4 colors.
-	return total * errScale;
+	return total;
 }
 
 static double Txi4x4FindClosestPalettes(
-	RxReduction      *reduction,
-	const RxYiqColor *pltt,
-	const int        *colorTable,
-	unsigned int      nColors,
-	int              *colorIndex1,
-	int              *colorIndex2
+	RxReduction        *reduction,
+	const RxYiqColor   *pltt,
+	const int          *colorTable,
+	const unsigned int *useTable,
+	unsigned int        nColors,
+	int                *colorIndex1,
+	int                *colorIndex2
 ) {
 	//determine which two palettes are the most similar. For 2-color palettes, multiply difference by 2.
 	double leastDistance = 1e32;
@@ -882,14 +887,15 @@ static double Txi4x4FindClosestPalettes(
 
 	while (idx1 < nColors) {
 		int type1 = colorTable[idx1];
-		unsigned int nColorsInThisPalette = 4;
-		if (type1 & COMP_INTERPOLATE) nColorsInThisPalette = 2;
+		unsigned int nColorsInThisPalette = Txi4x4GetPaletteSizeForMode(type1);
+		unsigned int use1 = useTable[idx1];
 
 		//start searching forward.
 		unsigned int idx2 = idx1 + nColorsInThisPalette;
 		while (idx2 + nColorsInThisPalette <= nColors) {
 			int type2 = colorTable[idx2];
-			int nColorsInSecondPalette = Txi4x4GetPaletteSizeForMode(type2);
+			unsigned int nColorsInSecondPalette = Txi4x4GetPaletteSizeForMode(type2);
+			unsigned int use2 = useTable[idx2];
 
 			if (type2 != type1) {
 				idx2 += nColorsInSecondPalette;
@@ -897,7 +903,7 @@ static double Txi4x4FindClosestPalettes(
 			}
 
 			//same type, let's compare.
-			double dst = Txi4x4ComputePaletteDifference(reduction, &pltt[idx1], &pltt[idx2], nColorsInThisPalette, leastDistance);
+			double dst = Txi4x4ComputePaletteDifference(reduction, &pltt[idx1], &pltt[idx2], nColorsInThisPalette) * (double) (use1 + use2);
 			if (dst < leastDistance) {
 				leastDistance = dst;
 				*colorIndex1 = idx1;
@@ -970,6 +976,7 @@ static unsigned int Txi4x4BuildCompressedPalette(
 
 	RxYiqColor *plttYiq = (RxYiqColor *) RxMemCalloc(plttSize, sizeof(RxYiqColor));
 	int *colorTable = (int *) calloc(plttSize, sizeof(int));
+	unsigned int *useTable = (unsigned int *) calloc(plttSize, sizeof(unsigned int));
 	
 	RxReduction *reduction = work->reduction;
 	TxTileData *tiles = work->tiles;
@@ -996,11 +1003,11 @@ static unsigned int Txi4x4BuildCompressedPalette(
 		while ((availableSlot + nConsumed) > outPlttSize || threshold > 0) {
 			//determine which two palettes are the most similar.
 			int colorIndex1 = -1, colorIndex2 = -1;
-			double distance = Txi4x4FindClosestPalettes(work->reduction, plttYiq, colorTable, availableSlot, &colorIndex1, &colorIndex2);
+			double distance = Txi4x4FindClosestPalettes(work->reduction, plttYiq, colorTable, useTable, availableSlot, &colorIndex1, &colorIndex2);
 			if (colorIndex1 == -1) break;
 			if ((availableSlot + nConsumed) <= outPlttSize && distance > diffThreshold) break;
 
-			uint16_t palettesMode = colorTable[colorIndex1];
+			int palettesMode = colorTable[colorIndex1];
 			unsigned int nColsRemove = Txi4x4GetPaletteSizeForMode(palettesMode);
 
 			//find tiles that use colorIndex2. Set them to use colorIndex1. 
@@ -1018,6 +1025,12 @@ static unsigned int Txi4x4BuildCompressedPalette(
 			unsigned int nToShift = plttSize - colorIndex2 - nColsRemove;
 			memmove(plttYiq + colorIndex2, plttYiq + colorIndex2 + nColsRemove, nToShift * sizeof(RxYiqColor));
 			memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColsRemove, nToShift * sizeof(int));
+			memmove(useTable + colorIndex2, colorTable + colorIndex2 + nColsRemove, nToShift * sizeof(unsigned int));
+
+			//add use counts
+			for (unsigned int j = 0; j < nToShift; j++) {
+				useTable[colorIndex1 + j] += useTable[colorIndex2 + j];
+			}
 
 			//merge those palettes that we've just combined.
 			Txi4x4MergePalettes(work, plttYiq, colorIndex1 / 2, palettesMode);
@@ -1028,6 +1041,7 @@ static unsigned int Txi4x4BuildCompressedPalette(
 		for (unsigned int j = 0; j < nConsumed; j++) {
 			RxConvertRgbToYiq(tile->palette32[j], &plttYiq[availableSlot + j]);
 			colorTable[availableSlot + j] = tile->mode;
+			useTable[availableSlot + j] = 1;
 		}
 		tile->paletteIndex = availableSlot / 2;
 		availableSlot += nConsumed;
@@ -1036,6 +1050,7 @@ static unsigned int Txi4x4BuildCompressedPalette(
 		if (*work->terminate) goto Done;
 	}
 Done:
+	free(useTable);
 	free(colorTable);
 
 	//copy palette out
