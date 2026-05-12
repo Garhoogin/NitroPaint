@@ -987,7 +987,8 @@ static unsigned int Txi4x4BuildCompressedPalette(
 	unsigned int nTiles = work->nTiles;
 
 	//user-specified threshold, normalized to correspond to a half (squared) difference in Y value.
-	double diffThreshold = (threshold * threshold) * work->reduction->yWeight2 * (255.0 * 4.0 / 10000.0);
+	double th = ((double) threshold) / 100.0 * (511.0 / 2.0);            // max Y diff=511, half max=511/2
+	double diffThreshold = (th * th) * work->reduction->yWeight2 * 4.0;  // squared+weighted, scaled 4x (for 4 colors)
 
 	//iterate over all non-duplicate tiles, adding the palettes.
 	unsigned int availableSlot = 0;
