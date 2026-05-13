@@ -406,6 +406,7 @@ typedef struct TxiTileErrorMpEntry_ {
 typedef struct TxiConversionWork_ {
 	RxReduction *reduction;          // the color reduction context
 	float diffuse;                   // error diffusion amount
+	double threshold;                // 4x4 conversion threshold setting (0-1)
 
 	TxTileData *tiles;               // the texture tile data
 	TxiTileErrorMapEntry *errorMap;  // the texture tile error entries
@@ -651,10 +652,11 @@ static double Txi4x4ComputeMSE(
 }
 
 static void Txi4x4ChooseTilePaletteAndMode(
-	RxReduction *reduction,
-	TxTileData  *tile
+	TxiConversionWork *work,
+	TxTileData        *tile
 ) {
 	//add pixels to histogram
+	RxReduction *reduction = work->reduction;
 	RxHistClear(reduction);
 	RxHistAdd(reduction, tile->rgb, 4, 4);
 	RxHistFinalize(reduction);
@@ -663,12 +665,17 @@ static void Txi4x4ChooseTilePaletteAndMode(
 	COLOR32 colorMin, colorMax;
 	Txi4x4ComputeEndpointsFromHistogram(reduction, tile->nTransparent > 0, &colorMin, &colorMax);
 
+	//Multiply palette error by this factor. The greater the threshold is, the less error we see.
+	//This makes it more likely that a tile uses an interpolated palette mode the higher the
+	//threshold is set to.
+	double errFactor = 1.0 - work->threshold;
+
 	if (tile->nTransparent > 0) {
 		COLOR32 mid = TxiBlend18(colorMin, 4, colorMax, 4);
 		COLOR32 palette[] = { colorMax, mid, colorMin, 0 };
 		COLOR32 paletteFull[4];
 
-		double error = Txi4x4ComputeMSE(reduction, palette, 1);
+		double error = Txi4x4ComputeMSE(reduction, palette, 1) * errFactor;
 		int nFull = Txi4x4CreatePaletteFromHistogram(reduction, 3, paletteFull);
 
 		//if error <= thresh, then these colors are good enough
@@ -692,7 +699,7 @@ static void Txi4x4ChooseTilePaletteAndMode(
 		COLOR32 palette[] = { colorMax, mid2, mid1, colorMin };
 		COLOR32 paletteFull[4];
 
-		double error = Txi4x4ComputeMSE(reduction, palette, 0);
+		double error = Txi4x4ComputeMSE(reduction, palette, 0) * errFactor;
 		int nFull = Txi4x4CreatePaletteFromHistogram(reduction, 4, paletteFull);
 
 		if (error <= TXC_BLOCK_INTERP_THRESHOLD || nFull <= 2) {
@@ -772,7 +779,7 @@ static void Txi4x4AddTile(
 
 	if (createPalette) {
 		//generate a palette and determine the mode.
-		Txi4x4ChooseTilePaletteAndMode(work->reduction, tile);
+		Txi4x4ChooseTilePaletteAndMode(work, tile);
 		tile->paletteIndex = *pPlttIndex;
 
 		//is the palette and mode identical to a non-duplicate tile?
@@ -968,8 +975,7 @@ static void Txi4x4MergePalettes(
 }
 
 static unsigned int Txi4x4BuildCompressedPalette(
-	TxiConversionWork *work,
-	int                threshold
+	TxiConversionWork *work
 ) {
 	//the main palette loop must be able to accommadate at least 16 colors. If the requested palette
 	//size is below this, we will still make a best effort, truncating if needed.
@@ -987,7 +993,7 @@ static unsigned int Txi4x4BuildCompressedPalette(
 	unsigned int nTiles = work->nTiles;
 
 	//user-specified threshold, normalized to correspond to a half (squared) difference in Y value.
-	double th = ((double) threshold) / 100.0 * (511.0 / 2.0);            // max Y diff=511, half max=511/2
+	double th = work->threshold * (511.0 / 2.0);                         // normalized to half max Y diff
 	double diffThreshold = (th * th) * work->reduction->yWeight2 * 4.0;  // squared+weighted, scaled 4x (for 4 colors)
 
 	//iterate over all non-duplicate tiles, adding the palettes.
@@ -1005,7 +1011,7 @@ static unsigned int Txi4x4BuildCompressedPalette(
 
 		//palette merge loop: merge palettes while either the colors to be added do not fit, or palettes
 		//are within merge threshold.
-		while ((availableSlot + nConsumed) > outPlttSize || threshold > 0) {
+		while ((availableSlot + nConsumed) > outPlttSize || th > 0.0) {
 			//determine which two palettes are the most similar.
 			int colorIndex1 = -1, colorIndex2 = -1;
 			double distance = Txi4x4FindClosestPalettes(work->reduction, plttYiq, colorTable, useTable, availableSlot, &colorIndex1, &colorIndex2);
@@ -1271,6 +1277,13 @@ static void Txi4x4IndexTilesByPalette(TxiConversionWork *work) {
 	}
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4AccountColor
+// 
+// This routine marks a single color as used within a pixel block. If that pixel would correspond
+// to transparency, then no colors are actually marked. When a color index is part of an
+// interpolated palette, then both endpoints of the palette are marked as used.
+// -----------------------------------------------------------------------------------------------
 static void Txi4x4AccountColor(
 	unsigned char *useMap,
 	uint16_t       pidx,
@@ -1296,6 +1309,16 @@ static void Txi4x4AccountColor(
 	}
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4AccountColors
+// 
+// This routine constructs the palette usage map. After this function is called, unused colors
+// have their map position set to 0, and used colors are set to 1.
+//
+// A color is deemed "used" if it is directly used, or used as a result of color interpolation.
+// A color that is part of a palette where transparency is used, but never used as an opaque
+// color, is not marked as used. This is used to survey the palette during refinement.
+// -----------------------------------------------------------------------------------------------
 static void Txi4x4AccountColors(TxiConversionWork *work) {
 	//clear the account buffer
 	memset(work->useMap, 0, work->plttSize);
@@ -1313,6 +1336,13 @@ static void Txi4x4AccountColors(TxiConversionWork *work) {
 	}
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4RefineRemapColors
+//
+// This routine re-maps the colors of a block of pixels. This remaps any index (0-3) to some new
+// indxe (0-3). When the pixel block is using a transparent mode, color index 3 (transparent) is
+// not remapped.
+// -----------------------------------------------------------------------------------------------
 static void Txi4x4RefineRemapColors(
 	TxTileData  *tile,
 	unsigned int to0,
@@ -1341,6 +1371,13 @@ static void Txi4x4RefineRemapColors(
 	tile->txel = newval;
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4RefineCoalesceDown
+// 
+// This routine searches for identical palettes to those each tile uses earlier in the palette.
+// This has the effect of biasing the palette indices downward, leaving the upper indices with
+// an increased probabiliy of being unused, and thus eliminated.
+// -----------------------------------------------------------------------------------------------
 static void Txi4x4RefineCoalesceDown(TxiConversionWork *work) {
 	//we'll enter a pass where we try to coalesce palette indices down. This helps to
 	//free up redundant sections of the palette, making higher-index colors unused.
@@ -1378,6 +1415,15 @@ static void Txi4x4RefineCoalesceDown(TxiConversionWork *work) {
 	}
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4RefineCoalesceSingleColor
+//
+// This routine searches for tiles that refer to a palette consisting of a color pair where both
+// colors are identical. In this case, only one color of the pair really holds meaning. If it is
+// possible, we prefer that a palette be shared. We try to find this color somewhere else in the
+// palette that is not part of a doublet of the same color. The aim of this transformation is to
+// eliminate redundant color doublets wherever possible.
+// -----------------------------------------------------------------------------------------------
 static void Txi4x4RefineCoalesceSingleColor(TxiConversionWork *work) {
 	//search for tiles using interpolation mode and a palette with both identical colors. We try to
 	//find this one color represented in another palette (that isn't duplicating this color), with
@@ -1406,6 +1452,12 @@ static void Txi4x4RefineCoalesceSingleColor(TxiConversionWork *work) {
 	}
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4RefineReduceColorPairs
+//
+// This routine searches for duplicated color pairs adjacent to each other. These doublets may
+// be reduced. 
+// -----------------------------------------------------------------------------------------------
 static void Txi4x4RefineReduceColorPairs(TxiConversionWork *work) {
 	//search for adjacent identical color pairs. These can always be reduced.
 	unsigned int pairScanLength = work->plttSize;
@@ -1438,6 +1490,19 @@ static void Txi4x4RefineReduceColorPairs(TxiConversionWork *work) {
 	}
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4RefineFillGaps
+//
+// This routine searches for adjacent pairs of colors in the palette that may be reduced. These
+// reducible pairs take the form:
+//   Xo Xo
+//   Xo oX
+//   oX Xo
+//   oX oX
+// Where 'X' represents a used color, and 'o' represents an unused color. In all of these cases,
+// each pair has exactly one used color, which may be combined into one pair where both colors are
+// used.
+// -----------------------------------------------------------------------------------------------
 static void Txi4x4RefineFillGaps(TxiConversionWork *work) {
 	//search for palette usage in the pattern XoXo, XooX, oXXo, oXoX (X=used, o=unused), and
 	//merge the two halves.
@@ -1484,6 +1549,17 @@ static void Txi4x4RefineFillGaps(TxiConversionWork *work) {
 	}
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4RefineBubbleUnusedPairs
+// 
+// This routine finds unused pairs of colors in the color palette and bubbles them up to the end
+// of the palette. The goal of this function is to take multiple individual unused color pairs
+// and creating a single large contiguous range at the end of the palette. This new enclave may
+// be used to re-fit some tiles, or to truncate the palette.
+//
+// This function returns the size of the used portion of the palette, and the number of single
+// unused slots within the used portion that may be reused.
+// -----------------------------------------------------------------------------------------------
 static void Txi4x4RefineBubbleUnusedPairs(
 	TxiConversionWork *work,
 	unsigned int      *pUsed,
@@ -1532,6 +1608,14 @@ static void Txi4x4RefineBubbleUnusedPairs(
 	*pSingles = nSingleAvailable;
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: Txi4x4RefineIteration
+// 
+// This routine runs one iteration of the 4x4 palette optimization pass. This will try to maximize
+// the number of unused palette spaces, and re-fill them with palette colors that seek to reduce
+// the reduction error as much as possible. This may be run multiple times for added effect, but
+// more calls have diminishing returns.
+// -----------------------------------------------------------------------------------------------
 static int Txi4x4RefineIteration(TxiConversionWork *work) {
 	//We begin with a few passes over the texture data with the goal of maximizing the number of
 	//unused colors, which may then be moved and reused.
@@ -1759,6 +1843,7 @@ static int TxConvert4x4(TxConversionParameters *params, RxReduction *reduction) 
 	TxiConversionWork work = { 0 };
 	work.reduction = reduction;
 	work.diffuse = params->dither ? params->diffuseAmount : 0.0f;
+	work.threshold = ((double) params->threshold) / 100.0;
 	work.nTiles = nTiles;
 	work.plttSize = params->colorEntries;
 	work.terminate = &params->terminate;
@@ -1786,7 +1871,7 @@ static int TxConvert4x4(TxConversionParameters *params, RxReduction *reduction) 
 	//build the palettes.
 	if (params->fixedPalette == NULL) {
 		//build the texture palette from tile data
-		work.plttSize = Txi4x4BuildCompressedPalette(&work, params->threshold);
+		work.plttSize = Txi4x4BuildCompressedPalette(&work);
 	} else {
 		//copy the palette from the fixed palette
 		work.plttSize = params->colorEntries;
