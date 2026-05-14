@@ -391,7 +391,7 @@ static HMENU TexViewerGetPopupMenu(HWND hWnd) {
 
 static void TexViewerOnCreate(HWND hWnd) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
-	data->scale = 1;
+	data->scale = 2;
 
 	data->highlightStart = 0;
 	data->highlightLength = 0;
