@@ -1717,13 +1717,6 @@ void EnumChildWindowsInHierarchy(HWND hWnd, WNDENUMPROC lpEnumFunc, LPARAM lPara
 	free(list);
 }
 
-BOOL SetNscrEditorTransparentProc(HWND hWnd, void *param) {
-	NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) EditorGetData(hWnd);
-	int state = (int) param;
-	nscrViewerData->transparent = state;
-	return TRUE;
-}
-
 BOOL CALLBACK UpdatePreviewProc(HWND hWnd, LPARAM lParam) {
 	SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 	return TRUE;
@@ -2179,21 +2172,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						g_configuration.renderTransparent = state;
 
 						//update viewers
-						if (data->hWndNcgrViewer != NULL) {
-							NCGRVIEWERDATA *ncgrViewerData = (NCGRVIEWERDATA *) EditorGetData(data->hWndNcgrViewer);
-							ncgrViewerData->transparent = state;
-						}
-						EditorInvalidateAllByType(hWnd, FILE_TYPE_CHAR);
-						EditorInvalidateAllByType(hWnd, FILE_TYPE_SCREEN);
-						EditorInvalidateAllByType(hWnd, FILE_TYPE_CELL);
-
-						//update all screen editors
-						for (size_t i = 0; i < data->edMgr.editorList.length; i++) {
-							EDITOR_DATA *ed = *(EDITOR_DATA **) StListGetPtr(&data->edMgr.editorList, i);
-							if (ed->file->type == FILE_TYPE_SCREEN) {
-								SetNscrEditorTransparentProc(ed->hWnd, (void *) state);
-							}
-						}
+						EditorInvalidateAllByType(hWnd, FILE_TYPE_INVALID);
 						break;
 					}
 					case ID_FILE_PREVIEWTARGET:

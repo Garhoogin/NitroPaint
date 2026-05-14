@@ -25,7 +25,6 @@ typedef struct {
 	int verifyEnd;
 	int verifySelMode;
 	int verifyFrames;
-	int transparent;
 
 	HWND hWndCharacterLabel;
 	HWND hWndPaletteDropdown;

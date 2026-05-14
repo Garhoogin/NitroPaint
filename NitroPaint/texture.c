@@ -65,6 +65,13 @@ static COLOR32 TxiSamplePltt(const COLOR *pltt, unsigned int nPltt, unsigned int
 	return ColorConvertFromDS(pltt[i]);
 }
 
+static COLOR32 TxiSamplePlttN_Common(const COLOR *pltt, unsigned int nPltt, unsigned int index, int c0xp) {
+	COLOR32 col = TxiSamplePltt(pltt, nPltt, index);
+
+	if (index == 0 && c0xp) return col;
+	return col | 0xFF000000;
+}
+
 static COLOR32 TxiSampleDirect(const unsigned char *txel, const uint16_t *pidx, unsigned int texW, int c0xp, unsigned int x, unsigned int y, const COLOR *pltt, unsigned int nPltt) {
 	(void) pidx;
 	(void) c0xp;
@@ -84,9 +91,7 @@ static COLOR32 TxiSamplePltt4(const unsigned char *txel, const uint16_t *pidx, u
 
 	unsigned int iPx = x + y * texW;
 	unsigned int index = (txel[iPx >> 2] >> ((iPx & 3) * 2)) & 0x3;
-	if (index == 0 && c0xp) return 0;
-
-	return TxiSamplePltt(pltt, nPltt, index) | 0xFF000000;
+	return TxiSamplePlttN_Common(pltt, nPltt, index, c0xp);
 }
 
 static COLOR32 TxiSamplePltt16(const unsigned char *txel, const uint16_t *pidx, unsigned int texW, int c0xp, unsigned int x, unsigned int y, const COLOR *pltt, unsigned int nPltt) {
@@ -94,9 +99,7 @@ static COLOR32 TxiSamplePltt16(const unsigned char *txel, const uint16_t *pidx, 
 
 	unsigned int iPx = x + y * texW;
 	unsigned int index = (txel[iPx >> 1] >> ((iPx & 1) * 4)) & 0xF;
-	if (index == 0 && c0xp) return 0;
-
-	return TxiSamplePltt(pltt, nPltt, index) | 0xFF000000;
+	return TxiSamplePlttN_Common(pltt, nPltt, index, c0xp);
 }
 
 static COLOR32 TxiSamplePltt256(const unsigned char *txel, const uint16_t *pidx, unsigned int texW, int c0xp, unsigned int x, unsigned int y, const COLOR *pltt, unsigned int nPltt) {
@@ -104,9 +107,7 @@ static COLOR32 TxiSamplePltt256(const unsigned char *txel, const uint16_t *pidx,
 
 	unsigned int iPx = x + y * texW;
 	unsigned int index = txel[iPx];
-	if (index == 0 && c0xp) return 0;
-
-	return TxiSamplePltt(pltt, nPltt, index) | 0xFF000000;
+	return TxiSamplePlttN_Common(pltt, nPltt, index, c0xp);
 }
 
 static COLOR32 TxiSampleA3I5(const unsigned char *txel, const uint16_t *pidx, unsigned int texW, int c0xp, unsigned int x, unsigned int y, const COLOR *pltt, unsigned int nPltt) {

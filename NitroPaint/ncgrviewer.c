@@ -1184,7 +1184,6 @@ static void ChrViewerOnCreate(NCGRVIEWERDATA *data) {
 	data->scale = 2; //default 200%
 	data->selectedPalette = 0;
 	data->useAttribute = 0;
-	data->transparent = g_configuration.renderTransparent;
 
 	HWND hWndViewer = CreateWindow(L"NcgrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL,
 		MARGIN_TOTAL_SIZE, MARGIN_TOTAL_SIZE, 256, 256, hWnd, NULL, NULL, NULL);
@@ -1875,7 +1874,7 @@ static void ChrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 				col = ColorConvertFromDS(nclr->colors[idx]);
 			}
 			if (rawIdx) col |= 0xFF000000;
-			if (data->transparent) {
+			if (g_configuration.renderTransparent) {
 				//alpha blend
 				col = TedAlphaBlendColor(col, x, y);
 			}

@@ -7,6 +7,10 @@
 #include "tilededitor.h"
 #include "framebuffer.h"
 
+typedef enum TextureEditorMode_ {
+	TEXVIEWER_MODE_SELECT
+} TextureEditorMode;
+
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
 	TextureObject *texture;
@@ -19,6 +23,8 @@ typedef struct {
 	int width;
 	int height;
 	int showAlpha;
+
+	TextureEditorMode mode;
 
 	HWND hWndConvert;
 	HWND hWndTileEditor;

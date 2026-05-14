@@ -249,7 +249,7 @@ static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 			}
 
 			//handle alpha
-			if (data->transparent) {
+			if (g_configuration.renderTransparent) {
 				//render transparent
 				c = TedAlphaBlendColor(c, x, y);
 			}
@@ -519,7 +519,6 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			data->showBorders = 0;
 			data->scale = 2;
-			data->transparent = g_configuration.renderTransparent;
 
 
 			HWND hWndViewer = CreateWindow(L"NscrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL, 0, 0, 300, 300, hWnd, NULL, NULL, NULL);

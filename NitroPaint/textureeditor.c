@@ -357,8 +357,11 @@ static void TexViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY
 
 			//alpha blend
 			if (!data->showAlpha) {
-				//alpha blend to background
-				c = TedAlphaBlendColor(c, x, y);
+				//do alpha blending if enabled
+				if (g_configuration.renderTransparent) {
+					//alpha blend to background
+					c = TedAlphaBlendColor(c, x, y);
+				}
 			} else {
 				//broadcast alpha across RGB channels
 				c = c >> 24;
@@ -378,7 +381,8 @@ static void TexViewerGraphicsUpdated(TEXTUREEDITORDATA *data) {
 }
 
 static int TexViewerIsSelectionModeCallback(HWND hWnd) {
-	return 0;
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
+	return data->mode == TEXVIEWER_MODE_SELECT;
 }
 
 static void TexViewerUpdateCursorCallback(HWND hWnd, int pxX, int pxY) {
@@ -392,6 +396,7 @@ static HMENU TexViewerGetPopupMenu(HWND hWnd) {
 static void TexViewerOnCreate(HWND hWnd) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
 	data->scale = 2;
+	data->mode = TEXVIEWER_MODE_SELECT;
 
 	data->highlightStart = 0;
 	data->highlightLength = 0;
@@ -1120,13 +1125,16 @@ static LRESULT CALLBACK TexturePreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	switch (msg) {
 		case WM_CREATE:
 			SetWindowLong(hWnd, GWL_STYLE, GetWindowLong(hWnd, GWL_STYLE) | WS_HSCROLL | WS_VSCROLL);
+			SetClassLong(hWnd, GCL_STYLE, GetClassLong(hWnd, GCL_STYLE) | CS_DBLCLKS);
 			break;
 		case WM_PAINT:
 			TedOnViewerPaint((EDITOR_DATA *) data, &data->ted);
 			return 1;
 		case WM_LBUTTONDOWN:
-		{
 			TedViewerOnLButtonDown((EDITOR_DATA *) data, &data->ted);
+			break;
+		case WM_LBUTTONDBLCLK:
+		{
 			if (!TexViewerIsConverted(data)) break;
 
 			int x = data->ted.hoverX;

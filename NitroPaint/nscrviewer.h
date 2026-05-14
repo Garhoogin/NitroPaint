@@ -9,7 +9,6 @@
 typedef struct {
 	EDITOR_BASIC_MEMBERS;
 	NSCR *nscr;
-	int transparent;
 
 	TedData ted;
 
