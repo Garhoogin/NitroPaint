@@ -1098,11 +1098,23 @@ static void NclrViewerPalOpUpdateCallback(PAL_OP *palOp) {
 	PalViewerUpdatePreview(data);
 }
 
-static int PalViewerLightness(COLOR col) {
+static float PalViewerLightness(COLOR col) {
 	RxYiqColor yiq;
 	RxConvertRgbToYiq(ColorConvertFromDS(col) | 0xFF000000, &yiq);
 	
-	return (int) (yiq.y + 0.5f);
+	return yiq.y;
+}
+
+static COLOR PalViewerColorToGrayscale(COLOR col) {
+	double r = pow(((col >>  0) & 0x1F) / 31.0, 2.2);
+	double g = pow(((col >>  5) & 0x1F) / 31.0, 2.2);
+	double b = pow(((col >> 10) & 0x1F) / 31.0, 2.2);
+
+	//XYZ -> back to channel (all equal channels)
+	double c = pow(0.2126 * r + 0.7152 * g + 0.0722 * b, 1.0 / 2.2);
+
+	int i = (int) (31.0 * c + 0.5);
+	return (COLOR) (i * 0x0421);
 }
 
 typedef struct PalViewerSortEntry_ {
@@ -1115,7 +1127,13 @@ typedef struct PalViewerSortEntry_ {
 static int PalViewerSortLightness(const void *p1, const void *p2) {
 	COLOR c1 = ((PalViewerSortEntry *) p1)->col;
 	COLOR c2 = ((PalViewerSortEntry *) p2)->col;
-	return PalViewerLightness(c1) - PalViewerLightness(c2);
+
+	float l1 = PalViewerLightness(c1);
+	float l2 = PalViewerLightness(c2);
+
+	if (l1 < l2) return -1;
+	if (l1 > l2) return  1;
+	return 0;
 }
 
 static int PalViewerSortHue(const void *p1, const void *p2) {
@@ -1791,8 +1809,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						for (int i = 0; i < data->nclr->nColors; i++) {
 							if (!PalViewerIndexInSelection(data, i)) continue;
 
-							int l = (PalViewerLightness(pal[i]) * 31 + 255) / 511;
-							pal[i] = ColorCreate(l, l, l);
+							pal[i] = PalViewerColorToGrayscale(pal[i]);
 						}
 						PalViewerUpdatePreview(data);
 						break;
