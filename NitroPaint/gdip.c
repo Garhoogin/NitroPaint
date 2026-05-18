@@ -856,6 +856,25 @@ HRESULT ImgWriteMemIndexed(const unsigned char *bits, unsigned int width, unsign
 	return result;
 }
 
+HRESULT ImgWriteMem(const COLOR32 *px, unsigned int width, unsigned int height, void **pBuffer, unsigned int *pSize) {
+	COLOR32 *bits = (COLOR32 *) calloc(height, width * 4);
+	for (unsigned int i = 0; i < width * height; i++) {
+		COLOR32 c = px[i];
+		bits[i] = REVERSE(c);
+	}
+
+	unsigned int stride = width * sizeof(COLOR32);
+	WICPixelFormatGUID format;
+	memcpy(&format, &GUID_WICPixelFormat32bppBGRA, sizeof(format));
+
+	void *buffer = NULL;
+	unsigned int size = 0;
+	HRESULT result = ImgiWrite(bits, &format, width, height, stride, stride * height, NULL, 0, &buffer, &size);
+	
+	free(bits);
+	return result;
+}
+
 HRESULT ImgWriteIndexed(const unsigned char *bits, unsigned int width, unsigned int height, const COLOR32 *palette, unsigned int paletteSize, LPCWSTR path) {
 	void *buffer;
 	unsigned int size;

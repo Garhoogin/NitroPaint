@@ -24,6 +24,28 @@
 #define TEXVIEWER_SB_CURPOS    5
 #define TEXVIEWER_SB_COLOR     6
 
+static int sNpTexFormat = 0;
+
+// Format for texture data copied to the clipboard
+typedef struct NP_TEX_ {
+	uint32_t texImageParam; // TEXIMAGE_PARAM
+	uint16_t height;        // height of texture data
+	uint16_t srcX;          // origin X (in texel)
+	uint16_t srcY;          // origin Y (in texel)
+	uint16_t srcW;          // origin W (in texel)
+	uint16_t srcH;          // origin H (in texel)
+	uint32_t ofsTex;        // offset to texel data
+	uint32_t ofsPlttIdx;    // offset to palette index data (if fmt==CT_4x4)
+	uint32_t ofsTexPltt;    // offset to palette data (if fmt!=CT_DIRECT)
+	unsigned char data[0];  // texture data
+} NP_TEX;
+
+static int TexViewerEnsureClipboardFormatNP_TEX(void) {
+	if (sNpTexFormat) return sNpTexFormat;
+
+	return sNpTexFormat = RegisterClipboardFormat(L"NP_TEX");
+}
+
 
 extern HICON g_appIcon;
 
@@ -79,80 +101,265 @@ int TexViewerIsConverted(TEXTUREEDITORDATA *data) {
 	return fmt != 0;
 }
 
-static void TexViewerExportTextureImage(LPCWSTR path, TEXTURE *texture) {
+static unsigned int TexViewerGetIndexedPalette(TEXTURE *texture, COLOR32 *palette) {
+	uint32_t texImageParam = texture->texels.texImageParam;
+	int format = FORMAT(texImageParam);
+	int c0xp = COL0TRANS(texImageParam);
+	memset(palette, 0, 256 * sizeof(COLOR32));
+
+	if (format == CT_DIRECT || format == CT_4x4) return 0; // no palette
+
+	//fill palette colors
+	unsigned int paletteSize = texture->palette.nColors;
+	if (paletteSize > 256) paletteSize = 256;
+	for (unsigned int i = 0; i < paletteSize; i++) {
+		palette[i] = ColorConvertFromDS(texture->palette.pal[i]);
+	}
+
+	//palette conversion step
+	switch (format) {
+		case CT_A3I5:
+		case CT_A5I3:
+		{
+			//for a3i5 and a5i3, we build a 256-color palette by varying the alpha of the palette. This results
+			//in 8 or 32 duplicates of the palette with different alpha levels. This allows us to store the
+			//texture's bits as they already are.
+			unsigned int nAlphaLevels = format == CT_A3I5 ? 8 : 32;
+			unsigned int nColorsPerAlpha = 256 / nAlphaLevels;
+
+			for (unsigned int i = 1; i < nAlphaLevels; i++) {
+				//a3i5: alpha expands from 3 -> 5 bits by bitwise operations.
+				unsigned int a = i;
+				if (format == CT_A3I5) a = (a << 2) | (a >> 1);
+
+				//alpha is expanded from 5 -> 8 bits by rounding to nearest.
+				a = (a * 510 + 31) / 62;
+
+				for (unsigned int j = 0; j < paletteSize; j++) {
+					palette[j + i * nColorsPerAlpha] = palette[j] | (a << 24);
+				}
+			}
+			paletteSize = 256;
+			break;
+		}
+		case CT_4COLOR:
+		case CT_16COLOR:
+		case CT_256COLOR:
+		{
+			//make palette opaque except first color if c0xp
+			for (unsigned int i = 0; i < paletteSize; i++) {
+				if (i > 0 || !c0xp) palette[i] |= 0xFF000000;
+			}
+			break;
+		}
+	}
+
+	return paletteSize;
+}
+
+static void *TexViewerRegionToBitmap(TEXTURE *texture, unsigned int x, unsigned int y, unsigned int w, unsigned int h, unsigned int *pSize) {
+	void *buffer = NULL;
+	*pSize = 0;
+
 	//export as PNG
 	//if texture is palette4, palette16 or palette256, output indexed image with appropriate color 0
 	//if texture is direct or 4x4, output non-indexed
 	//if texture is a3i5 or a5i3, use a 256-color palette that repeats the palette at varying alphas
-	int texImageParam = texture->texels.texImageParam;
+	uint32_t texImageParam = texture->texels.texImageParam;
 	int format = FORMAT(texImageParam);
-	int width = TEXW(texImageParam);
-	int height = texture->texels.height;
+	unsigned int width = TEXW(texImageParam);
+	unsigned int height = texture->texels.height;
 
-	//buffer to hold converted palette
-	int paletteSize = 0;
+	//convert palette to 32-bit
 	COLOR32 palette[256] = { 0 };
-	if (format != CT_DIRECT) {
-		//convert to 24-bit
-		if (format != CT_4x4) {
-			paletteSize = texture->palette.nColors;
-			if (paletteSize > 256) paletteSize = 256;
-			for (int i = 0; i < paletteSize; i++) {
-				palette[i] = ColorConvertFromDS(texture->palette.pal[i]);
+	unsigned int paletteSize = TexViewerGetIndexedPalette(texture, palette);
+
+	unsigned char *texel = (unsigned char *) texture->texels.texel;
+	switch (format) {
+		case CT_4COLOR:
+		case CT_16COLOR:
+		case CT_256COLOR:
+		case CT_A3I5:
+		case CT_A5I3:
+		{
+			//for formats: palette4, palette16, palette256, a3i5, a5i3: data are already in an indexed
+			//form. 
+			unsigned int depth = 0;
+			switch (format) {
+				case CT_4COLOR:
+					depth = 2;
+					break;
+				case CT_16COLOR:
+					depth = 4;
+					break;
+				case CT_256COLOR:
+				case CT_A3I5:
+				case CT_A5I3:
+					depth = 8;
+					break;
 			}
-		}
+			unsigned int mask = (1 << depth) - 1;
 
-		//for a3i5 and a5i3, build up varying levels of alpha
-		if (format == CT_A3I5 || format == CT_A5I3) {
-			int nAlphaLevels = format == CT_A3I5 ? 8 : 32;
-			int nColorsPerAlpha = 256 / nAlphaLevels;
-
-			for (int i = 1; i < nAlphaLevels; i++) {
-				int alpha = (i * 510 + nAlphaLevels - 1) / (2 * nAlphaLevels - 2); //rounding to nearest
-				for (int j = 0; j < paletteSize; j++) {
-					COLOR32 c = palette[j];
-					c |= alpha << 24;
-					palette[j + i * nColorsPerAlpha] = c;
+			unsigned char *bits = (unsigned char *) calloc(width * height, 1);
+			for (unsigned int y = 0; y < height; y++) {
+				unsigned char *rowSrc = texel + y * width * depth / 8;
+				unsigned char *rowDst = bits + y * width;
+				for (unsigned int x = 0; x < width; x++) {
+					rowDst[x] = (rowSrc[x * depth / 8] >> ((x * depth) % 8)) & mask;
 				}
 			}
-			paletteSize = 256;
-		} else if (format == CT_4COLOR || format == CT_16COLOR || format == CT_256COLOR) {
-			//make palette opaque except first color if c0xp
-			int c0xp = COL0TRANS(texImageParam);
-			for (int i = 0; i < paletteSize; i++) {
-				if (i || !c0xp) palette[i] |= 0xFF000000;
-			}
-		} else {
-			//else we can't export an indexed image unfortunately (4x4 and direct)
-			paletteSize = 0;
+
+			ImgWriteMemIndexed(bits, width, height, palette, paletteSize, &buffer, pSize);
+			free(bits);
+			break;
+		}
+		case CT_4x4:
+		case CT_DIRECT:
+		{
+			//else if 4x4 or direct, just export full-color image.
+			COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
+			TxRender(px, &texture->texels, &texture->palette);
+
+			ImgWriteMem(px, width, height, &buffer, pSize);
+			free(px);
+			break;
 		}
 	}
 
-	if (format == CT_256COLOR || format == CT_A3I5 || format == CT_A5I3) {
-		//prepare image output. For palette256, a3i5 and a5i3, we can export the data as it already is.
-		ImgWriteIndexed((unsigned char *) texture->texels.texel, width, height, palette, paletteSize, path);
-	} else if (format == CT_4x4 || format == CT_DIRECT) {
-		//else if 4x4 or direct, just export full-color image. Red/blue must be swapped here
-		COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-		TxRender(px, &texture->texels, &texture->palette);
-		
-		ImgWrite(px, width, height, path);
-		free(px);
-	} else {
-		//palette16 or palette4, will need to convert the bit depth
-		unsigned char *bits = (unsigned char *) calloc(width * height, 1);
-		int depth = format == CT_4COLOR ? 2 : 4;
-		int mask = depth == 2 ? 0x3 : 0xF;
+	return buffer;
+}
 
-		for (int y = 0; y < height; y++) {
-			unsigned char *rowSrc = texture->texels.texel + y * width * depth / 8;
-			unsigned char *rowDst = bits + y * width;
-			for (int x = 0; x < width; x++) {
-				rowDst[x] = (rowSrc[x * depth / 8] >> ((x * depth) % 8)) & mask;
+static void TexViewerExportTextureImage(LPCWSTR path, TEXTURE *texture) {
+	uint32_t texImageParam = texture->texels.texImageParam;
+	unsigned int width = TEXW(texImageParam);
+	unsigned int height = texture->texels.height;
+
+	unsigned int size;
+	void *bm = TexViewerRegionToBitmap(texture, 0, 0, width, height, &size);
+
+	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile != INVALID_HANDLE_VALUE) {
+		DWORD dwWritten;
+		WriteFile(hFile, bm, size, &dwWritten, NULL);
+		CloseHandle(hFile);
+	}
+
+	free(bm);
+}
+
+static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
+	//texture format
+	uint32_t texImageParam = data->texture->texture.texels.texImageParam;
+	int fmt = FORMAT(texImageParam);
+
+	unsigned int width = data->width, height = data->height;
+
+	int selX = 0, selY = 0, selW = width, selH = height;
+	if (TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH)) {
+		//in terms of tiles, conv to texel coordinates
+		selX *= 4;
+		selY *= 4;
+		selW *= 4;
+		selH *= 4;
+	}
+
+	//bit depth of texel data
+	unsigned int nBpp = 8;  // palette256, a3i5, a5i3
+	switch (fmt) {
+		case CT_4COLOR:
+		case CT_4x4:
+			nBpp = 2;
+			break;
+		case CT_16COLOR:
+			nBpp = 4;
+			break;
+		case CT_256COLOR:
+		case CT_A3I5:
+		case CT_A5I3:
+			nBpp = 8;
+			break;
+		case CT_DIRECT:
+			nBpp = 16;
+			break;
+	}
+
+	//if the texture is not converted or is direct/4x4, we will copy a direct color bitmap.
+	if (fmt == 0 || fmt == CT_DIRECT || fmt == CT_4x4) {
+		//crop direct color bits to selection and copy non-indexed
+		COLOR32 *crop = ImgCrop(data->px, width, height, selX, selY, selW, selH);
+		copyBitmap(crop, selW, selH);
+		free(crop);
+	} else {
+
+		//we will write an indexed color bitmap. First convert the palette into something we can use.
+		COLOR32 pltbuf[256] = { 0 };
+		unsigned int nPltt = TexViewerGetIndexedPalette(&data->texture->texture, pltbuf);
+
+		//copy bitmap bits
+		unsigned char *bmp = (unsigned char *) calloc(selW * selH, sizeof(unsigned char));
+		unsigned char *txel = data->texture->texture.texels.texel;
+
+		//copy with bit conversion
+		unsigned int pxPerByte = 8 / nBpp;
+		unsigned int pxMask = (1 << nBpp) - 1;
+		for (int y = 0; y < selH; y++) {
+			for (int x = 0; x < selW; x++) {
+				unsigned int iDst = x + y * selW;
+				unsigned int iSrc = (x + selX) + (y + selY) * width;
+
+				bmp[iDst] = (txel[iSrc / pxPerByte] >> ((iSrc % pxPerByte) * nBpp)) & pxMask;
 			}
 		}
-		ImgWriteIndexed(bits, width, height, palette, paletteSize, path);
-		free(bits);
+
+		if (nPltt >= (1u << nBpp)) nPltt = 1u << nBpp;
+
+		ClipCopyBitmapEx(bmp, selW, selH, 1, pltbuf, nPltt);
+
+		free(bmp);
+	}
+
+	//for 4x4 and direct, we copy additional clipboard information.
+	if (fmt == CT_4x4 || fmt == CT_DIRECT) {
+		unsigned int texWidth = TEXW(texImageParam), texHeight = data->texture->texture.texels.height;
+
+		size_t sizeTex = TxGetTexelSize(texWidth, texHeight, texImageParam);
+		size_t sizePlttIdx = 0, sizeTexPltt = 0;
+		if (fmt == CT_4x4) {
+			sizePlttIdx = sizeTex / 2;
+		}
+		if (fmt != CT_DIRECT) {
+			sizeTexPltt = data->texture->texture.palette.nColors * sizeof(COLOR);
+		}
+
+		size_t size = sizeof(NP_TEX) + sizeTex + sizePlttIdx + sizeTexPltt;
+		HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, size);
+		NP_TEX *npTex = GlobalLock(hGlobal);
+
+		npTex->texImageParam = texImageParam;
+		npTex->height = (uint16_t) texHeight;
+		npTex->srcX = (uint16_t) selX;
+		npTex->srcY = (uint16_t) selY;
+		npTex->srcW = (uint16_t) selW;
+		npTex->srcH = (uint16_t) selH;
+		npTex->ofsTex = 0;
+		npTex->ofsPlttIdx = npTex->ofsTex + sizeTex;
+		npTex->ofsTexPltt = npTex->ofsPlttIdx + sizePlttIdx;
+
+		//texel data
+		memcpy(npTex->data + npTex->ofsTex, data->texture->texture.texels.texel, sizeTex);
+
+		//palette index data
+		if (fmt == CT_4x4) {
+			memcpy(npTex->data + npTex->ofsPlttIdx, data->texture->texture.texels.cmp, sizePlttIdx);
+		}
+
+		//texture palette
+		if (sizeTexPltt > 0) {
+			memcpy(npTex->data + npTex->ofsTexPltt, data->texture->texture.palette.pal, sizeTexPltt);
+		}
+
+		GlobalUnlock(hGlobal);
+		SetClipboardData(TexViewerEnsureClipboardFormatNP_TEX(), hGlobal);
 	}
 }
 
@@ -380,6 +587,76 @@ static void TexViewerGraphicsUpdated(TEXTUREEDITORDATA *data) {
 	InvalidateRect(data->hWnd, NULL, FALSE);
 }
 
+static void TexViewerPutColor(TEXTUREEDITORDATA *data, unsigned int x, unsigned int y, COLOR32 col) {
+	//check dimensions first
+	if (x >= (unsigned int) data->width || y >= (unsigned int) data->height) return;
+
+	//if the texture is unconverted, put the pixel
+	uint32_t texImageParam = data->texture->texture.texels.texImageParam;
+	int fmt = FORMAT(texImageParam);
+
+	unsigned int iPx = x + y * data->width;
+
+	if (fmt == 0) {
+		data->px[iPx] = col;
+		return;
+	}
+
+	unsigned char *txel = data->texture->texture.texels.texel;
+
+	switch (fmt) {
+		case CT_4x4:
+		{
+			unsigned int blockX = x / 4, blockY = y / 4;
+			unsigned int nBlockX = TEXW(texImageParam) / 4;
+			txel = &txel[4 * (blockX + blockY * nBlockX)];
+			iPx = (x % 4) + (y % 4) * 4;
+
+			//fall-through
+		}
+		case CT_4COLOR:
+		{
+			unsigned char c = txel[iPx >> 2];
+			c &= ~(0x3 << (2 * (iPx & 0x3)));
+			c |= (col & 0x3) << (2 * (iPx & 0x3));
+			txel[iPx >> 2] = c;
+			break;
+		}
+		case CT_16COLOR:
+		{
+			unsigned char c = txel[iPx >> 1];
+			c &= ~(0xF << (4 * (iPx & 1)));
+			c |= (col & 0xF) << (4 * (iPx & 1));
+			txel[iPx >> 1] = c;
+			break;
+		}
+		case CT_256COLOR:
+		case CT_A3I5:
+		case CT_A5I3:
+			txel[iPx] = (unsigned char) col;
+			break;
+		case CT_DIRECT:
+			((COLOR *) txel)[iPx] = (COLOR) col;
+			break;
+	}
+}
+
+static void TexViewerDeleteSelection(TEXTUREEDITORDATA *data) {
+	int x, y, width, height;
+	if (!TedGetSelectionBounds(&data->ted, &x, &y, &width, &height)) return;
+
+	for (int yy = 0; yy < height * 4; yy++) {
+		for (int xx = 0; xx < width * 4; xx++) {
+			TexViewerPutColor(data, x * 4 + xx, y * 4 + yy, 0);
+		}
+	}
+
+	//TODO: clear pidx for 4x4?
+
+	TedDeselect(&data->ted);
+	TexViewerGraphicsUpdated(data);
+}
+
 static int TexViewerIsSelectionModeCallback(HWND hWnd) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
 	return data->mode == TEXVIEWER_MODE_SELECT;
@@ -548,77 +825,6 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 	}
 }
 
-static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
-	//texture format
-	int fmt = FORMAT(data->texture->texture.texels.texImageParam);
-
-	//color-0 transparency
-	int c0xp = 0;
-	if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && COL0TRANS(data->texture->texture.texels.texImageParam)) c0xp = 1;
-
-	//if the texture is not converted or is direct/4x4, we will copy a direct color bitmap.
-	if (fmt == 0 || fmt == CT_DIRECT || fmt == CT_4x4) {
-		copyBitmap(data->px, data->width, data->height);
-		return;
-	}
-
-	//we will write an indexed color bitmap. 
-	COLOR32 pltbuf[256] = { 0 };
-	for (int i = 0; i < data->texture->texture.palette.nColors && i < 0x100; i++) {
-		COLOR32 c = ColorConvertFromDS(data->texture->texture.palette.pal[i]);
-
-		//set alpha bits (except color 0 of a c0xp-marked palette)
-		if (i > 0 || !c0xp) c |= 0xFF000000;
-		pltbuf[i] = c;
-	}
-
-	//for a3i5 and a5i3 textures, we will duplicate colors of the palette at varying alpha levels.
-	if (fmt == CT_A3I5 || fmt == CT_A5I3) {
-		unsigned int alphaBit = (fmt == CT_A3I5) ? 3 : 5;
-		unsigned int indexBit = 8 - alphaBit;
-
-		unsigned int indexMax = (1 << indexBit) - 1;
-		unsigned int alphaMax = (1 << alphaBit) - 1;
-		for (unsigned int i = 0; i <= indexMax; i++) {
-			COLOR32 c = pltbuf[i] & 0x00FFFFFF;
-
-			//all alphas
-			for (unsigned int j = 0; j <= alphaMax; j++) {
-				unsigned int a = (j * 510 + alphaMax) / (2 * alphaMax);
-				pltbuf[i + (j << indexBit)] = c | (a << 24);
-			}
-		}
-	}
-
-	//create bitmap data for texture image.
-	unsigned int nBpp = 8;
-	if (fmt == CT_4COLOR) nBpp = 2;
-	if (fmt == CT_16COLOR) nBpp = 4;
-
-	unsigned int width = TEXW(data->texture->texture.texels.texImageParam);
-	unsigned int height = TEXH(data->texture->texture.texels.texImageParam);
-	unsigned char *bmp = (unsigned char *) calloc(width * height, sizeof(char));
-
-	unsigned int nPltt = 256;
-	if (nBpp == 8) {
-		//copy direct
-		memcpy(bmp, data->texture->texture.texels.texel, width * height);
-	} else {
-		//copy with bit conversion
-		unsigned int pxPerByte = 8 / nBpp;
-		unsigned int pxMask = (1 << nBpp) - 1;
-		for (unsigned int i = 0; i < width * height; i++) {
-			bmp[i] = (data->texture->texture.texels.texel[i / pxPerByte] >> ((i % pxPerByte) * nBpp)) & pxMask;
-		}
-
-		if (nPltt >= (1u << nBpp)) nPltt = 1u << nBpp;
-	}
-
-	ClipCopyBitmapEx(bmp, width, height, 1, pltbuf, nPltt);
-
-	free(bmp);
-}
-
 static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 	switch (idMenu) {
 		case ID_VIEW_GRIDLINES:
@@ -660,11 +866,32 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 	}
 }
 
+static void TexViewerOnAccelerator(TEXTUREEDITORDATA *data, int idAccel) {
+	switch (idAccel) {
+		case ID_ACCELERATOR_CUT:
+			break;
+		case ID_ACCELERATOR_COPY:
+			break;
+		case ID_ACCELERATOR_PASTE:
+			break;
+		case ID_ACCELERATOR_DESELECT:
+			TedDeselect(&data->ted);
+			break;
+		case ID_ACCELERATOR_SELECT_ALL:
+			TedSelectAll(&data->ted);
+			break;
+	}
+	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
+	TedUpdateMargins(&data->ted);
+}
+
 static void TexViewerOnCommand(TEXTUREEDITORDATA *data, WPARAM wParam, LPARAM lParam) {
 	if (lParam) {
 		TexViewerOnCtlCommand(data, (HWND) lParam, HIWORD(wParam));
 	} else if (HIWORD(wParam) == 0) {
 		TexViewerOnMenuCommand(data, LOWORD(wParam));
+	} else if (HIWORD(wParam) == 1) {
+		TexViewerOnAccelerator(data, LOWORD(wParam));
 	}
 }
 
@@ -680,6 +907,20 @@ static void TexViewerSetImage(TEXTUREEDITORDATA *data, COLOR32 *px, unsigned int
 
 	//update the color count label
 	TexViewerUpdateImageColorCountLabel(data);
+}
+
+static void TexViewerOnKeyDown(TEXTUREEDITORDATA *data, WPARAM wParam, LPARAM lParam) {
+	//pass message
+	TedViewerOnKeyDown((EDITOR_DATA *) data, &data->ted, wParam, lParam);
+
+	switch (wParam) {
+		case VK_DELETE:
+		{
+			//TODO: delete selection
+			TexViewerDeleteSelection(data);
+			break;
+		}
+	}
 }
 
 static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -699,6 +940,9 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		case WM_MOUSELEAVE:
 		case WM_NCMOUSELEAVE:
 			TedMainOnMouseMove((EDITOR_DATA *) data, &data->ted, msg, wParam, lParam);
+			break;
+		case WM_KEYDOWN:
+			TexViewerOnKeyDown(data, wParam, lParam);
 			break;
 		case NV_ZOOMUPDATED:
 			SendMessage(data->ted.hWndViewer, NV_RECALCULATE, 0, 0);

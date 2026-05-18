@@ -47,6 +47,11 @@ COLOR32 *ImgReadMem(const unsigned char *buffer, unsigned int size, unsigned int
 HRESULT ImgWrite(const COLOR32 *px, unsigned int width, unsigned int height, LPCWSTR path);
 
 //
+// Write an array of pixels to a memory buffer.
+//
+HRESULT ImgWriteMem(const COLOR32 *px, unsigned int width, unsigned int height, void **pBuffer, unsigned int *pSize);
+
+//
 // Write an indexed image to a file from a given color palette and index data.
 // Index data is 8 bits per pixel with the stride equal to the image's width.
 //
