@@ -688,41 +688,105 @@ unsigned short ObjComputeCrc16(const unsigned char *data, int length, unsigned s
 	return r;
 }
 
-void *ObjReadWholeFile(const wchar_t *name, unsigned int *size) {
-	DWORD dwRead, dwSizeLow = 0, dwSizeHigh = 0;
-	void *buffer = NULL;
 
-	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) goto Error;
+static DWORD ObjiReadBytes(HANDLE hFile, void *buffer, unsigned int size) {
+	unsigned char *bufferBytes = (unsigned char *) buffer;
+	unsigned int ofs = 0, nRemaining = size;
 
-	if (ObjiPathStartsWith(name, L"\\\\.\\pipe\\")) {
-		//pipe protocol: first 4 bytes file size, followed by file data.
-		ReadFile(hFile, &dwSizeLow, 4, &dwRead, NULL);
-	} else {
-		//normal files may use GetFileSize
-		dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
+	//read loop
+	while (nRemaining > 0) {
+		DWORD dwRead;
+		BOOL b = ReadFile(hFile, bufferBytes + ofs, nRemaining, &dwRead, NULL);
+		if (!b) return GetLastError();
+
+		//next
+		ofs += dwRead;
+		nRemaining -= dwRead;
 	}
 
-	//size of file must be readable into memory. Must be under 4GB and an increment
-	//to file size must not overflow
-	if (dwSizeHigh != 0 || (dwSizeLow + 1) == 0) goto Error;
+	return ERROR_SUCCESS;
+}
 
-	//add 1 to the buffer size to prevent malloc from returning a NULL pointer (which
-	//we take as an error return from this function)
-	buffer = malloc(dwSizeLow + 1);
-	if (buffer == NULL) goto Error;
+static DWORD ObjiGetFileSize(HANDLE hFile, BOOL bRemoteProtocol, DWORD *pSize) {
+	DWORD dwSizeLow = 0, err = ERROR_SUCCESS;
 
-	ReadFile(hFile, buffer, dwSizeLow, &dwRead, NULL);
+	if (!bRemoteProtocol) {
+		//handle points to a real file
+		DWORD dwSizeHigh;
+		dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
 
-	CloseHandle(hFile);
-	*size = dwSizeLow;
-	return buffer;
+		//not support file size > 4GB
+		if (dwSizeHigh != 0) err = ERROR_OUTOFMEMORY;
+	} else {
+		err = ObjiReadBytes(hFile, &dwSizeLow, sizeof(dwSizeLow));
+	}
+
+	//return true size on non-error status
+	*pSize = err ? 0 : dwSizeLow;
+	return err;
+}
+
+static BOOL ObjiIsFileRemote(const wchar_t *path) {
+	//pipe path takes the form '\\server\pipe\...'
+	if (!ObjiPathStartsWith(path, L"\\\\")) return FALSE;
+
+	path += 2;
+	const wchar_t *pipe = wcschr(path, L'\\');
+	if (pipe == NULL) return FALSE;
+
+	if (!ObjiPathStartsWith(pipe, L"\\pipe\\")) return FALSE;
+	return TRUE;
+}
+
+DWORD ObjReadWholeFileEx(const wchar_t *name, void **pBuffer, unsigned int *size, HANDLE *pOutHandle) {
+	DWORD dwSizeLow = 0, err = ERROR_SUCCESS;
+	void *buffer = NULL;
+	BOOL bRemoteProtocol = ObjiIsFileRemote(name);
+
+	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) {
+		err = GetLastError();
+		goto Error;
+	}
+
+	//getting the file size
+	err = ObjiGetFileSize(hFile, bRemoteProtocol, &dwSizeLow);
+	if (err) goto Error;
+
+	//allocate the buffer, taking care not to allocate 0 bytes (NULL is an error return)
+	buffer = malloc(dwSizeLow == 0 ? 1 : dwSizeLow);
+	if (buffer == NULL) {
+		err = ERROR_OUTOFMEMORY;
+		goto Error;
+	}
+
+	//for a pipe or network file, a file read may be incomplete.
+	err = ObjiReadBytes(hFile, buffer, dwSizeLow);
+	if (err) goto Error;
 
 Error:
-	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
-	free(buffer);
-	*size = 0;
-	return NULL;
+	if (err == ERROR_SUCCESS) {
+		//if the user requests to keep the handle after file read, we don't close the handle.
+		if (pOutHandle == NULL) CloseHandle(hFile);
+		else *pOutHandle = hFile;
+	} else {
+		//free resoures and return error
+		if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
+		if (pOutHandle != NULL) *pOutHandle = INVALID_HANDLE_VALUE;
+		free(buffer);
+		buffer = NULL;
+		dwSizeLow = 0;
+	}
+
+	*size = dwSizeLow;
+	*pBuffer = buffer;
+	return err;
+}
+
+void *ObjReadWholeFile(const wchar_t *name, unsigned int *size) {
+	void *buffer;
+	(void) ObjReadWholeFileEx(name, &buffer, size, NULL);
+	return buffer;
 }
 
 int ObjReadBuffer(ObjHeader **ppObject, const unsigned char *buffer, unsigned int size, int type, int format, int compression) {
