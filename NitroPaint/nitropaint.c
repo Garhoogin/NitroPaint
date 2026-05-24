@@ -131,7 +131,9 @@ LPWSTR g_lpszNitroPaintClassName = L"NitroPaintClass";
 
 extern EXCEPTION_DISPOSITION __cdecl ExceptionHandler(EXCEPTION_RECORD *exceptionRecord, void *establisherFrame, CONTEXT *contextRecord, void *dispatcherContext);
 
-HANDLE g_hEvent = NULL;
+HANDLE g_hEvent = NULL;       // event handle to signal when the app window finishes initialization
+BOOL g_forceRemote = FALSE;   // flag to force single-instance mode (override config file)
+HWND g_hWndExisting = NULL;   // existing app window
 
 
 // ----- DPI scale code
@@ -1725,6 +1727,8 @@ BOOL CALLBACK UpdatePreviewProc(HWND hWnd, LPARAM lParam) {
 VOID HandleSwitch(LPWSTR lpSwitch) {
 	if (!wcsncmp(lpSwitch, L"EVENT:", 6)) {
 		g_hEvent = (HANDLE) _wtol(lpSwitch + 6);
+	} else if (!wcscmp(lpSwitch, L"REMOTE")) {
+		g_forceRemote = TRUE;
 	}
 }
 
@@ -1740,6 +1744,7 @@ VOID ProcessCommandLine(HWND hWnd, BOOL remoteWindow) {
 	int argc;
 	wchar_t **argv;
 	argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+
 	if (argc > 1) {
 		argc--;
 		argv++;
@@ -1749,14 +1754,22 @@ VOID ProcessCommandLine(HWND hWnd, BOOL remoteWindow) {
 				if (!remoteWindow) {
 					OpenFileByName(hWnd, argv[i]);
 				} else {
-					OpenFileByNameRemote(hWnd, argv[i]);
+					OpenFileByNameRemote(g_hWndExisting, argv[i]);
 				}
 			} else {
 				//command line switch
 				HandleSwitch(arg + 1);
+
+				//if in force-remote setting and an instance does exist, use remote mode
+				if (g_forceRemote && g_hWndExisting != NULL) remoteWindow = TRUE;
 			}
 		}
 	}
+
+	GlobalFree(argv);
+
+	//exit the process if the command line overrides the remote flag
+	if (g_forceRemote) ExitProcess(0);
 }
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -5353,7 +5366,7 @@ static void ReadConfiguration(void) {
 	}
 }
 
-VOID SetConfigPath() {
+static void SetConfigPath(void) {
 	LPWSTR name = L"nitropaint.ini";
 	g_configPath = calloc(MAX_PATH + 1, sizeof(WCHAR));
 	DWORD nLength = GetModuleFileNameW(GetModuleHandleW(NULL), g_configPath, MAX_PATH);
@@ -5364,15 +5377,17 @@ VOID SetConfigPath() {
 	memcpy(g_configPath + endOffset, name, wcslen(name) * 2 + 2);
 }
 
-VOID CheckExistingAppWindow() {
-	if (g_configuration.allowMultipleInstances) return;
-	HWND hWndNP = FindWindow(L"NitroPaintClass", NULL);
-	if (hWndNP == NULL) return;
+static void CheckExistingAppWindow(void) {
+	//find existing window by searching for the window class
+	g_hWndExisting = FindWindow(L"NitroPaintClass", NULL);
+	if (g_hWndExisting == NULL) return;
 
-	//forward to existing window
-	ProcessCommandLine(hWndNP, TRUE);
-	SetForegroundWindow(hWndNP);
-	ExitProcess(0);
+	if (!g_configuration.allowMultipleInstances) {
+		//forward to existing window
+		ProcessCommandLine(NULL, TRUE);
+		SetForegroundWindow(g_hWndExisting);
+		ExitProcess(0);
+	}
 }
 
 static void RegisterClasses(void) {
