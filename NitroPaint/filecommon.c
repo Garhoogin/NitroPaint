@@ -699,6 +699,11 @@ static DWORD ObjiReadBytes(HANDLE hFile, void *buffer, unsigned int size) {
 		BOOL b = ReadFile(hFile, bufferBytes + ofs, nRemaining, &dwRead, NULL);
 		if (!b) return GetLastError();
 
+		//successful API call, check for zero bytes
+		if (dwRead == 0) {
+			return ERROR_FILE_OFFLINE;
+		}
+
 		//next
 		ofs += dwRead;
 		nRemaining -= dwRead;
@@ -716,7 +721,7 @@ static DWORD ObjiGetFileSize(HANDLE hFile, BOOL bRemoteProtocol, DWORD *pSize) {
 		dwSizeLow = GetFileSize(hFile, &dwSizeHigh);
 
 		//not support file size > 4GB
-		if (dwSizeHigh != 0) err = ERROR_OUTOFMEMORY;
+		if (dwSizeHigh != 0) err = ERROR_FILE_TOO_LARGE;
 	} else {
 		err = ObjiReadBytes(hFile, &dwSizeLow, sizeof(dwSizeLow));
 	}
@@ -743,7 +748,13 @@ DWORD ObjReadWholeFileEx(const wchar_t *name, void **pBuffer, unsigned int *size
 	void *buffer = NULL;
 	BOOL bRemoteProtocol = ObjiIsFileRemote(name);
 
-	HANDLE hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	DWORD dwShare = FILE_SHARE_READ;
+	if (bRemoteProtocol) {
+		//for the pipe protocol, we must allow the remote end to write
+		dwShare |= FILE_SHARE_WRITE;
+	}
+
+	HANDLE hFile = CreateFile(name, GENERIC_READ, dwShare, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) {
 		err = GetLastError();
 		goto Error;
