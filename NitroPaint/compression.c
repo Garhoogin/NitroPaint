@@ -326,6 +326,7 @@ static uint32_t CxiBitReaderReadBit(CxiBitReader *reader) {
 	if (reader->nBitsBuffered == 0) {
 		//fetch next bits
 		CxiBitReaderFetch(reader);
+		if (reader->error) return 0;
 	}
 
 	uint32_t current = reader->current;
@@ -2309,8 +2310,8 @@ static void CxiMvdkCreateHuffmanTree(CxiLzToken *tokens, int nTokens, CxiHuffNod
 	}
 
 	//next: create Huffman tree.
-	CxiHuffNode *symbolTree = (CxiHuffNode *) calloc((0x100 + 29) * 2, sizeof(CxiHuffNode));
-	CxiHuffNode *offsetTree = (CxiHuffNode *) calloc(30 * 2, sizeof(CxiHuffNode));
+	CxiHuffNode *symbolTree = (CxiHuffNode *) calloc(570, sizeof(CxiHuffNode));
+	CxiHuffNode *offsetTree = (CxiHuffNode *) calloc(60, sizeof(CxiHuffNode));
 
 	int symbolTreeSize = 0, lengthTreeSize = 0;
 	for (int i = 0; i < 0x100 + 29; i++) {
@@ -3375,7 +3376,8 @@ static uint32_t BigToLittle32(uint32_t x) {
 }
 
 uint32_t CxAshReadTree(CxiBitReader *reader, int width, uint32_t *leftTree, uint32_t *rightTree) {
-	uint32_t *workmem = (uint32_t *) calloc(2 * (1 << width), sizeof(uint32_t));
+	if (width < 1 || width > 30) return UINT32_MAX;
+	uint32_t *workmem = (uint32_t *) calloc((size_t) 1 << (width + 1), sizeof(uint32_t));
 	uint32_t *work = workmem;
 
 	uint32_t r23 = (1 << width);
@@ -3412,12 +3414,13 @@ uint32_t CxAshReadTree(CxiBitReader *reader, int width, uint32_t *leftTree, uint
 		}
 	} while (nNodes > 0);
 
-	free(workmem);
-	return symRoot;
+	goto Cleanup;
 
 Error:
+	symRoot = UINT32_MAX;
+Cleanup:
 	free(workmem);
-	return UINT32_MAX;
+	return symRoot;
 }
 
 static void CxiAshWriteTree(CxiBitWriter *stream, CxiHuffNode *nodes, int nBits) {
@@ -3481,8 +3484,8 @@ unsigned char *CxCompressAsh(const unsigned char *buffer, unsigned int size, uns
 
 	int nSymNodes = (1 << nSymBits);
 	int nDstNodes = (1 << nDstBits);
-	CxiHuffNode *symNodes = (CxiHuffNode *) calloc(nSymNodes * 2, sizeof(CxiHuffNode));
-	CxiHuffNode *dstNodes = (CxiHuffNode *) calloc(nDstNodes * 2, sizeof(CxiHuffNode));
+	CxiHuffNode *symNodes = (CxiHuffNode *) calloc(nSymNodes, 2 * sizeof(CxiHuffNode));
+	CxiHuffNode *dstNodes = (CxiHuffNode *) calloc(nDstNodes, 2 * sizeof(CxiHuffNode));
 
 	for (int i = 0; i < nSymNodes; i++) symNodes[i].sym = i;
 	for (int i = 0; i < nDstNodes; i++) dstNodes[i].sym = i;
