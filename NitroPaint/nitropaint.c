@@ -1769,7 +1769,10 @@ VOID ProcessCommandLine(HWND hWnd, BOOL remoteWindow) {
 	GlobalFree(argv);
 
 	//exit the process if the command line overrides the remote flag
-	if (g_forceRemote) ExitProcess(0);
+	if (remoteWindow) {
+		SetForegroundWindow(g_hWndExisting);
+		ExitProcess(0);
+	}
 }
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -5385,8 +5388,6 @@ static void CheckExistingAppWindow(void) {
 	if (!g_configuration.allowMultipleInstances) {
 		//forward to existing window
 		ProcessCommandLine(NULL, TRUE);
-		SetForegroundWindow(g_hWndExisting);
-		ExitProcess(0);
 	}
 }
 
