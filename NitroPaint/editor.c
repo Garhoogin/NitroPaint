@@ -458,7 +458,7 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
 
 				//free the file handle, if applicable
-				ObjFreeConvertedPath(data->szOpenFile);
+				IoFreeConvertedPath(data->szOpenFile);
 
 				//remove editor from the editor list
 				EditorManager *mgr = data->editorMgr;
@@ -687,7 +687,7 @@ void EditorSetFile(HWND hWnd, LPCWSTR filename) {
 	LPCWSTR title = cls->title;
 
 	//free the resources held by the existing path
-	ObjFreeConvertedPath(data->szOpenFile);
+	IoFreeConvertedPath(data->szOpenFile);
 
 	//if global config dictates, use only file name
 	LPCWSTR fullname = filename;

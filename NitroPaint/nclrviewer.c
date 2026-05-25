@@ -1865,13 +1865,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							*(uint16_t *) (buf + 3 * 0x100 + 0) = nColorsWrite;
 							*(uint16_t *) (buf + 3 * 0x100 + 2) = 0;
 
-							HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-							if (hFile != INVALID_HANDLE_VALUE) {
-								DWORD dwWritten;
-								WriteFile(hFile, buf, bufSize, &dwWritten, NULL);
-								CloseHandle(hFile);
-							}
-							free(buf);
+							IoWriteWholeFile(path, buf, bufSize);
 						} else {
 							//construct bitmap
 							int width = 16;

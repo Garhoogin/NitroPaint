@@ -1440,13 +1440,7 @@ static void DecompressFileDialog(HWND hWndParent, const unsigned char *buf, unsi
 	//save
 	LPWSTR path = saveFileDialog(hWndParent, L"Save File", L"All Files\0*.*\0", L"");
 	if (path != NULL) {
-
-		HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hFile != NULL) {
-			DWORD dwWritten;
-			WriteFile(hFile, uncomp, uncompSize, &dwWritten, NULL);
-			CloseHandle(hFile);
-		}
+		IoWriteWholeFile(path, uncomp, uncompSize);
 	}
 
 	free(uncomp);
@@ -1485,10 +1479,10 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	DWORD dwSize = 0;
 
 	//transform path if necessary
-	wchar_t *objpath = ObjConvertPath(path);
+	wchar_t *objpath = IoConvertPath(path);
 	if (objpath == NULL) return; // bad path
 
-	char *buffer = (char *) ObjReadWholeFile(objpath, &dwSize);
+	char *buffer = (char *) IoReadWholeFile(objpath, &dwSize);
 
 	//test: Is this a specification file to open a file with?
 	if (specIsSpec(buffer, dwSize)) {
@@ -1511,7 +1505,7 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		}
 
 		unsigned comboSize;
-		void *fp = ObjReadWholeFile(pathBuffer, &comboSize);
+		void *fp = IoReadWholeFile(pathBuffer, &comboSize);
 
 		//refName is the name of the file to read.
 		COMBO2D *combo = (COMBO2D *) ObjAlloc(FILE_TYPE_COMBO2D, COMBO2D_TYPE_DATAFILE);
@@ -1960,7 +1954,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 						//take as unconverted image file.
 						unsigned int size;
-						unsigned char *buffer = ObjReadWholeFile(path, &size);
+						unsigned char *buffer = IoReadWholeFile(path, &size);
 
 						HWND h = CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, data->hWndMdi,
 							buffer, size, path);
@@ -2299,7 +2293,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						if (path == NULL) break;
 
 						unsigned int size;
-						void *buf = ObjReadWholeFile(path, &size);
+						void *buf = IoReadWholeFile(path, &size);
 						free(path);
 
 						CompressFileDialog(hWnd, buf, size);
@@ -2312,7 +2306,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						if (path == NULL) break;
 
 						unsigned int size;
-						void *buf = ObjReadWholeFile(path, &size);
+						void *buf = IoReadWholeFile(path, &size);
 						free(path);
 
 						DecompressFileDialog(hWnd, buf, size);
@@ -3359,7 +3353,7 @@ LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 				} else if (hWndControl == data->hWndTexture) {
 
 					unsigned int size;
-					unsigned char *buffer = ObjReadWholeFile(data->szPath, &size);
+					unsigned char *buffer = IoReadWholeFile(data->szPath, &size);
 
 					CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 						hWndMdi, buffer, size, data->szPath);
@@ -4160,7 +4154,7 @@ static LRESULT CALLBACK OpenAsDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			data->path = path;
 
 			unsigned int size;
-			unsigned char *buf = ObjReadWholeFile(path, &size);
+			unsigned char *buf = IoReadWholeFile(path, &size);
 			data->buffer = buf;
 			data->size = size;
 
@@ -4280,7 +4274,7 @@ static void RedGuiProcessReduction(RedGuiData *data) {
 		SendMessage(data->hWndFixedPalettePath, WM_GETTEXT, MAX_PATH, (LPARAM) buf);
 
 		unsigned int fileSize = 0;
-		unsigned char *filebuf = ObjReadWholeFile(buf, &fileSize);
+		unsigned char *filebuf = IoReadWholeFile(buf, &fileSize);
 
 		if (filebuf != NULL) {
 			fixedPalette = ActRead(filebuf, fileSize, &fixedPaletteSize);
@@ -4789,12 +4783,8 @@ static LRESULT CALLBACK CompressFileProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 				LPWSTR path = saveFileDialog(hWnd, L"Save File", L"All Files\0*.*\0", L"");
 				if (path == NULL) break;
 
-				HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-				if (hFile != INVALID_HANDLE_VALUE) {
-					DWORD dwWritten;
-					WriteFile(hFile, data->comp, data->compSize, &dwWritten, NULL);
-					CloseHandle(hFile);
-
+				IoStatus status = IoWriteWholeFile(path, data->comp, data->compSize);
+				if (status == ERROR_SUCCESS) {
 					//close
 					SendMessage(hWnd, WM_CLOSE, 0, 0);
 				}

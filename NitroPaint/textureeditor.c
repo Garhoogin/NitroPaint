@@ -237,12 +237,7 @@ static void TexViewerExportTextureImage(LPCWSTR path, TEXTURE *texture) {
 	unsigned int size;
 	void *bm = TexViewerRegionToBitmap(texture, 0, 0, width, height, &size);
 
-	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile != INVALID_HANDLE_VALUE) {
-		DWORD dwWritten;
-		WriteFile(hFile, bm, size, &dwWritten, NULL);
-		CloseHandle(hFile);
-	}
+	IoWriteWholeFile(path, bm, size);
 
 	free(bm);
 }
@@ -787,18 +782,13 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 			}
 		}
 
-		DWORD dwWritten;
 		int texImageParam = data->texture->texture.texels.texImageParam;
 		int texelSize = TxGetTexelSize(TEXW(texImageParam), data->texture->texture.texels.height, texImageParam);
-		HANDLE hFile = CreateFile(ntftPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		WriteFile(hFile, data->texture->texture.texels.texel, texelSize, &dwWritten, NULL);
-		CloseHandle(hFile);
+		IoWriteWholeFile(ntftPath, data->texture->texture.texels.texel, texelSize);
 		free(ntftPath);
 
 		if (ntfiPath != NULL) {
-			hFile = CreateFile(ntfiPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-			WriteFile(hFile, data->texture->texture.texels.cmp, texelSize / 2, &dwWritten, NULL);
-			CloseHandle(hFile);
+			IoWriteWholeFile(ntfiPath, data->texture->texture.texels.cmp, texelSize / 2);
 			free(ntfiPath);
 		}
 
@@ -810,11 +800,7 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 			LPWSTR ntfpPath = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
 			if (ntfpPath == NULL) return;
 
-			DWORD dwWritten;
-			HANDLE hFile = CreateFile(ntfpPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-			WriteFile(hFile, colors, nColors * 2, &dwWritten, NULL);
-			CloseHandle(hFile);
-
+			IoWriteWholeFile(ntfpPath, colors, nColors * sizeof(COLOR));
 			free(ntfpPath);
 		}
 	} else if (hWndControl == data->hWndShowAlpha) {
@@ -2670,7 +2656,7 @@ BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
 
 	//read file and determine if valid
 	int size;
-	void *pf = ObjReadWholeFile(path, &size);
+	void *pf = IoReadWholeFile(path, &size);
 	int valid = TxIsValidNnsTga(pf, size);
 	free(pf);
 	if (!valid) return TRUE;

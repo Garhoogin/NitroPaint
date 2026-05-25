@@ -330,7 +330,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 		int verySmall = -(CW_USEDEFAULT >> 1); //(smallest power of 2 that won't be picked up as CW_USEDEFAULT)
 
 		unsigned int size;
-		unsigned char *buf = ObjReadWholeFile(path, &size);
+		unsigned char *buf = IoReadWholeFile(path, &size);
 
 		HWND hWndTextureEditor = CreateTextureEditorFromUnconverted(verySmall, verySmall, 0, 0, hWndMdi, buf, size, path);
 		ShowWindow(hWndTextureEditor, SW_HIDE);

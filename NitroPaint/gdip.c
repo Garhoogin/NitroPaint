@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "gdip.h"
+#include "io.h"
 
 #pragma comment(lib, "windowscodecs.lib")
 
@@ -543,22 +544,11 @@ static HRESULT ImgiWriteFile(LPCWSTR path, const void *scan0, WICPixelFormatGUID
 	void *buffer;
 	unsigned int size;
 	HRESULT hr = ImgiWrite(scan0, format, width, height, stride, scan0Size, palette, paletteSize, &buffer, &size);
-	if (!SUCCEEDED(hr)) {
-		return hr;
-	}
+	if (!SUCCEEDED(hr)) return hr;
 
-	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) {
-		free(buffer);
-		return E_OUTOFMEMORY;
-	}
-
-	DWORD dwWritten;
-	WriteFile(hFile, buffer, size, &dwWritten, NULL);
-	CloseHandle(hFile);
-
+	IoStatus status = IoWriteWholeFile(path, buffer, size);
 	free(buffer);
-	return hr;
+	return HRESULT_FROM_WIN32(status);
 }
 
 HRESULT ImgWriteAnimatedGif(LPCWSTR path, const COLOR32 *const *pFrames, unsigned int width, unsigned int height, const int *pDurations, int nFrames) {
@@ -883,18 +873,9 @@ HRESULT ImgWriteIndexed(const unsigned char *bits, unsigned int width, unsigned 
 		return result;
 	}
 
-	HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) {
-		free(buffer);
-		return E_OUTOFMEMORY;
-	}
-
-	DWORD dwWritten;
-	WriteFile(hFile, buffer, size, &dwWritten, NULL);
-	CloseHandle(hFile);
-
+	IoStatus status = IoWriteWholeFile(path, buffer, size);
 	free(buffer);
-	return result;
+	return HRESULT_FROM_WIN32(status);
 }
 
 HRESULT ImgWrite(const COLOR32 *px, unsigned int width, unsigned int height, LPCWSTR path) {

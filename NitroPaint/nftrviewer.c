@@ -1589,7 +1589,7 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 	if (path == NULL) return;
 
 	unsigned int size;
-	unsigned char *buf = ObjReadWholeFile(path, &size);
+	unsigned char *buf = IoReadWholeFile(path, &size);
 	free(path);
 
 	if (buf == NULL) {
@@ -1856,7 +1856,7 @@ static void NftrViewerCmdImportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 	if (path == NULL) return;
 
 	int size;
-	void *buf = ObjReadWholeFile(path, &size);
+	void *buf = IoReadWholeFile(path, &size);
 	free(path);
 	if (BncmpIdentify(buf, size) == BNCMP_TYPE_INVALID) {
 		free(buf);
@@ -1910,10 +1910,7 @@ static void NftrViewerCmdExportCodeMap(HWND hWnd, HWND hWndCtl, int notif, void 
 	bstreamCreate(&stm, NULL, 0);
 	BncmpWrite(data->nftr, &stm);
 
-	DWORD dwWritten;
-	HANDLE hFile = CreateFile(filename, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	WriteFile(hFile, stm.buffer, stm.size, &dwWritten, NULL);
-	CloseHandle(hFile);
+	IoWriteWholeFile(filename, stm.buffer, stm.size);
 
 	bstreamFree(&stm);
 	free(filename);
