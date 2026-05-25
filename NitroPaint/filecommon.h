@@ -321,6 +321,31 @@ int ObjReadBuffer(
 );
 
 // -----------------------------------------------------------------------------------------------
+// Name: ObjConvertPath
+//
+// Converts a special path into an internal representation. 
+//
+// Parameters:
+//   path          The input file path
+//
+// Returns:
+//   The output file path, allocated on the heap. The caller is responsible for freeing this with
+//   free().
+// -----------------------------------------------------------------------------------------------
+wchar_t *ObjConvertPath(const wchar_t *path);
+
+// -----------------------------------------------------------------------------------------------
+// Name: ObjFreeConvertedPath
+//
+// Frees the internal resources held by a converted path. This should be called on any file path
+// returned by ObjConvertPath that is no longer being used.
+//
+// Parameters:
+//   path          The input file path
+// -----------------------------------------------------------------------------------------------
+void ObjFreeConvertedPath(const wchar_t *path);
+
+// -----------------------------------------------------------------------------------------------
 // Name: ObjReadBuffer
 //
 // Reads an object from a file.

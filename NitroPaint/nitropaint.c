@@ -1483,7 +1483,12 @@ void OpenFileByContent(HWND hWnd, const unsigned char *buffer, unsigned int size
 VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	NITROPAINTSTRUCT *data = NpGetData(hWnd);
 	DWORD dwSize = 0;
-	char *buffer = (char *) ObjReadWholeFile(path, &dwSize);
+
+	//transform path if necessary
+	wchar_t *objpath = ObjConvertPath(path);
+	if (objpath == NULL) return; // bad path
+
+	char *buffer = (char *) ObjReadWholeFile(objpath, &dwSize);
 
 	//test: Is this a specification file to open a file with?
 	if (specIsSpec(buffer, dwSize)) {
@@ -1494,13 +1499,13 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 		//determine the actual path of the referenced file.
 		int lastSlash = -1;
-		for (unsigned i = 0; i < wcslen(path); i++) {
-			if (path[i] == '\\' || path[i] == '/') lastSlash = i;
+		for (unsigned i = 0; i < wcslen(objpath); i++) {
+			if (objpath[i] == '\\' || objpath[i] == '/') lastSlash = i;
 		}
 		int pathLen = lastSlash + 1;
 		int relFileLen = strlen(refName);
 		WCHAR *pathBuffer = (WCHAR *) calloc(pathLen + relFileLen + 1, 2);
-		memcpy(pathBuffer, path, 2 * pathLen);
+		memcpy(pathBuffer, objpath, 2 * pathLen);
 		for (int i = 0; i < relFileLen; i++) {
 			pathBuffer[i + pathLen] = refName[i];
 		}
@@ -1559,11 +1564,11 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 
 	//identify the kind of object
 	int compression, format;
-	int type = ObjIdentify(buffer, dwSize, path, FILE_TYPE_INVALID, &compression, &format);
+	int type = ObjIdentify(buffer, dwSize, objpath, FILE_TYPE_INVALID, &compression, &format);
 
 	switch (type) {
 		case FILE_TYPE_IMAGE:
-			CreateImageDialog(hWnd, path);
+			CreateImageDialog(hWnd, objpath);
 			break;
 		case FILE_TYPE_PALETTE:
 		case FILE_TYPE_CHARACTER:
@@ -1584,9 +1589,9 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 			int status = ObjReadBuffer(&obj, buffer, dwSize, type, format, compression);
 			if (OBJ_SUCCEEDED(status)) {
 				if (obj->type == FILE_TYPE_COMBO2D) {
-					NpOpenCombo(hWnd, (COMBO2D *) obj, path);
+					NpOpenCombo(hWnd, (COMBO2D *) obj, objpath);
 				} else {
-					NpOpenObjectAtPath(hWnd, obj, path);
+					NpOpenObjectAtPath(hWnd, obj, objpath);
 				}
 			}
 			break;
@@ -1594,13 +1599,14 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 		default: //unrecognized file
 		{
 			WCHAR bf[MAX_PATH + 19];
-			wsprintfW(bf, L"Unrecognied file %s.", GetFileName(path));
+			wsprintfW(bf, L"Unrecognied file %s.", GetFileName(objpath));
 			MessageBox(hWnd, bf, L"Unrecognized File", MB_ICONERROR);
 			break;
 		}
 	}
 
 cleanup:
+	free(objpath);
 	free(buffer);
 }
 

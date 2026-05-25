@@ -453,8 +453,12 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				//free callback list
 				StListFree(&data->destroyCallbacks);
 
+				//free the editing object
 				if (ObjIsValid(data->file)) ObjFree(data->file);
 				SetWindowLongPtr(hWnd, EDITOR_WD_DATA, 0);
+
+				//free the file handle, if applicable
+				ObjFreeConvertedPath(data->szOpenFile);
 
 				//remove editor from the editor list
 				EditorManager *mgr = data->editorMgr;
@@ -681,6 +685,9 @@ void EditorSetFile(HWND hWnd, LPCWSTR filename) {
 	EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 	EDITOR_CLASS *cls = EditorGetClass(hWnd);
 	LPCWSTR title = cls->title;
+
+	//free the resources held by the existing path
+	ObjFreeConvertedPath(data->szOpenFile);
 
 	//if global config dictates, use only file name
 	LPCWSTR fullname = filename;

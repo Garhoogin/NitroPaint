@@ -6,6 +6,9 @@
 #include "combo2d.h"
 
 
+#define HANDLE_PATH_PREFIX   L"handle:\\\\"
+
+
 typedef struct ObjTypeEntry_ {
 	size_t size;        // The size of the object data
 	char *name;         // The type name
@@ -731,7 +734,7 @@ static DWORD ObjiGetFileSize(HANDLE hFile, BOOL bRemoteProtocol, DWORD *pSize) {
 	return err;
 }
 
-static BOOL ObjiIsFileRemote(const wchar_t *path) {
+static BOOL ObjiIsPathNamedPipe(const wchar_t *path) {
 	//pipe path takes the form '\\server\pipe\...'
 	if (!ObjiPathStartsWith(path, L"\\\\")) return FALSE;
 
@@ -743,25 +746,81 @@ static BOOL ObjiIsFileRemote(const wchar_t *path) {
 	return TRUE;
 }
 
+static HANDLE ObjiHandleFromPath(const wchar_t *path) {
+	return (HANDLE) _wtol(path + wcslen(HANDLE_PATH_PREFIX));
+}
+
+wchar_t *ObjConvertPath(const wchar_t *path) {
+	//if a file is from a named pipe, we open the pipe and construct a path indicating the
+	//handle value. We do this to implement the required special handling of a file served
+	//from a pipe.
+
+	if (ObjiIsPathNamedPipe(path)) {
+		//pipe format: \\server\pipe\ID:FileName
+
+		//open the pipe
+		HANDLE hFile = CreateFile(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile == INVALID_HANDLE_VALUE) return NULL; // invalid file path or could not be opened
+
+		//get the filename component
+		const wchar_t *pipeName = wcschr(path + 2, L'\\') + 6;
+
+		const wchar_t *filename = wcschr(pipeName, L':');
+		if (filename != NULL) {
+			//skip the colon
+			filename++;
+		} else {
+			//revert to the pipe name as the file name
+			filename = pipeName;
+		}
+
+		wchar_t handlebuf[32] = { 0 };
+		int handlelen = wsprintfW(handlebuf, L"%lu", (unsigned long) hFile);
+
+		wchar_t *buf = (wchar_t *) calloc(wcslen(HANDLE_PATH_PREFIX) + handlelen + 1 + wcslen(filename) + 1, sizeof(wchar_t));
+		wsprintfW(buf, L"%s%s\\%s", HANDLE_PATH_PREFIX, handlebuf, filename);
+
+		return buf;
+	} else {
+		//duplicate the string
+		return _wcsdup(path);
+	}
+}
+
+void ObjFreeConvertedPath(const wchar_t *path) {
+	//assume the caller owns the string (they are responsible for freeing)
+
+	if (ObjiPathStartsWith(path, HANDLE_PATH_PREFIX)) {
+		//parse int handle (truncates on slash)
+		HANDLE hFile = ObjiHandleFromPath(path);
+		CloseHandle(hFile);
+	}
+}
+
 DWORD ObjReadWholeFileEx(const wchar_t *name, void **pBuffer, unsigned int *size, HANDLE *pOutHandle) {
 	DWORD dwSizeLow = 0, err = ERROR_SUCCESS;
 	void *buffer = NULL;
-	BOOL bRemoteProtocol = ObjiIsFileRemote(name);
+	BOOL bIsHandlePath = ObjiPathStartsWith(name, HANDLE_PATH_PREFIX);
 
-	DWORD dwShare = FILE_SHARE_READ;
-	if (bRemoteProtocol) {
-		//for the pipe protocol, we must allow the remote end to write
-		dwShare |= FILE_SHARE_WRITE;
+	HANDLE hFile;
+
+	if (!bIsHandlePath) {
+		//open handle
+		hFile = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	} else {
+		//handle is already open
+		hFile = ObjiHandleFromPath(name);
 	}
 
-	HANDLE hFile = CreateFile(name, GENERIC_READ, dwShare, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	//checking the handle
 	if (hFile == INVALID_HANDLE_VALUE) {
 		err = GetLastError();
 		goto Error;
 	}
 
 	//getting the file size
-	err = ObjiGetFileSize(hFile, bRemoteProtocol, &dwSizeLow);
+	err = ObjiGetFileSize(hFile, bIsHandlePath, &dwSizeLow);
 	if (err) goto Error;
 
 	//allocate the buffer, taking care not to allocate 0 bytes (NULL is an error return)
@@ -778,8 +837,8 @@ DWORD ObjReadWholeFileEx(const wchar_t *name, void **pBuffer, unsigned int *size
 Error:
 	if (err == ERROR_SUCCESS) {
 		//if the user requests to keep the handle after file read, we don't close the handle.
-		if (pOutHandle == NULL) CloseHandle(hFile);
-		else *pOutHandle = hFile;
+		if (pOutHandle != NULL) *pOutHandle = hFile;
+		else if (!bIsHandlePath) CloseHandle(hFile);
 	} else {
 		//free resoures and return error
 		if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
@@ -893,35 +952,49 @@ int ObjWriteFile(ObjHeader *object, const wchar_t *name) {
 	BSTREAM stream;
 	bstreamCreate(&stream, NULL, 0);
 	int status = ObjWrite(object, &stream);
+	if (!OBJ_SUCCEEDED(status)) return status;
 
 	//to byte array (releases buffer from stream)
 	unsigned int outSize;
 	unsigned char *outbuf = bstreamToByteArray(&stream, &outSize);
 
-	if (OBJ_SUCCEEDED(status)) {
-		if (object->compression != COMPRESSION_NONE) {
-			//compress buffer
-			unsigned int compSize;
-			unsigned char *comp = CxCompress(outbuf, outSize, object->compression, &compSize);
+	if (object->compression != COMPRESSION_NONE) {
+		//compress buffer
+		unsigned int compSize;
+		unsigned char *comp = CxCompress(outbuf, outSize, object->compression, &compSize);
 			
-			//replace buffer
-			free(outbuf);
-			outbuf = comp;
-			outSize = compSize;
-		}
-
-		DWORD dwWritten;
-		HANDLE hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hFile == INVALID_HANDLE_VALUE) {
-			free(outbuf);
-			return OBJ_STATUS_NO_ACCESS;
-		}
-		WriteFile(hFile, outbuf, outSize, &dwWritten, NULL);
-		CloseHandle(hFile);
+		//replace buffer
+		free(outbuf);
+		outbuf = comp;
+		outSize = compSize;
 	}
 
-	free(outbuf);
+	BOOL bIsHandle = ObjiPathStartsWith(name, HANDLE_PATH_PREFIX);
 
+	HANDLE hFile;
+	if (!bIsHandle) {
+		//file path represents a normal file path
+		hFile = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	} else {
+		//file path represents a file handle
+		hFile = ObjiHandleFromPath(name);
+	}
+
+	if (hFile == INVALID_HANDLE_VALUE) {
+		free(outbuf);
+		return OBJ_STATUS_NO_ACCESS;
+	}
+
+	DWORD dwWritten;
+	if (bIsHandle) {
+		DWORD dwSize = outSize;
+		WriteFile(hFile, &dwSize, sizeof(dwSize), &dwWritten, NULL);
+	}
+	WriteFile(hFile, outbuf, outSize, &dwWritten, NULL);
+
+	if (!bIsHandle) CloseHandle(hFile);
+
+	free(outbuf);
 	return status;
 }
 
