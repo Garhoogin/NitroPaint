@@ -191,7 +191,7 @@ const char *const g_ObjCompressionNames[] = {
 	NULL
 };
 
-static LPCWSTR sCommonPaletteEndings[] = {
+static const wchar_t *const sCommonPaletteEndings[] = {
 	L"ncl.bin",
 	L"icl.bin",
 	L"plt.bin",
@@ -205,7 +205,7 @@ static LPCWSTR sCommonPaletteEndings[] = {
 	NULL
 };
 
-static LPCWSTR sCommonCharacterEndings[] = {
+static const wchar_t *const sCommonCharacterEndings[] = {
 	L"ncg.bin",
 	L"icg.bin",
 	L"chr.bin",
@@ -218,7 +218,7 @@ static LPCWSTR sCommonCharacterEndings[] = {
 	NULL
 };
 
-static LPCWSTR sCommonScreenEndings[] = {
+static const wchar_t *const sCommonScreenEndings[] = {
 	L"nsc.bin",
 	L"isc.bin",
 	L"scr.bin",
@@ -252,13 +252,13 @@ const wchar_t *ObjStatusToString(int status) {
 	return NULL;
 }
 
-static int ObjiPathEndsWith(LPCWSTR str, LPCWSTR substr) {
+static int ObjiPathEndsWith(const wchar_t *str, const wchar_t *substr) {
 	if (wcslen(substr) > wcslen(str)) return 0;
-	LPCWSTR str1 = str + wcslen(str) - wcslen(substr);
+	const wchar_t *str1 = str + wcslen(str) - wcslen(substr);
 	return !_wcsicmp(str1, substr);
 }
 
-static int ObjiPathEndsWithOneOf(LPCWSTR str, LPCWSTR *endings) {
+static int ObjiPathEndsWithOneOf(const wchar_t *str, const wchar_t *const *endings) {
 	while (*endings) {
 		if (ObjiPathEndsWith(str, *endings)) return 1;
 		endings++;
