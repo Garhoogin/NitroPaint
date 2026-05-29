@@ -394,7 +394,7 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 static int NsbtxViewerCheckSave(NSBTXVIEWERDATA *data) {
 	//NSBTX files: check lengths under 16 characters
 
-	if (data->nsbtx->header.format == NSBTX_TYPE_NNS) {
+	if (data->nsbtx->header.format == NSBTX_TYPE_NNS || data->nsbtx->header.format == NSBTX_TYPE_STTEX) {
 		int warnNames = 0;
 		WCHAR *warnbuf = _wcsdup(L"Resource names truncated on save:");
 		WCHAR warntemp[96];

@@ -158,11 +158,57 @@ int TexarcIsValidBmd(const unsigned char *buffer, unsigned int size) {
 	return 1;
 }
 
+static int TexarcIsValidSttex(const unsigned char *buffer, unsigned int size) {
+	if (size < 0x14) return 0;
+
+	uint32_t field0 = *(const uint32_t *) (buffer + 0x00);
+	unsigned int nTex = *(const uint32_t *) (buffer + 0x04);
+	unsigned int nPlt = *(const uint32_t *) (buffer + 0x08);
+	uint32_t texSlotPlaceholder = *(const uint32_t *) (buffer + 0x0C);
+	uint32_t pltSlotPlaceholder = *(const uint32_t *) (buffer + 0x10);
+
+	if (field0 != 0xE1000001) return 0;              // not used at runtime?
+	if (texSlotPlaceholder != 0xFFFFFFFF) return 0;  // placeholder overwritten at runtime
+	if (pltSlotPlaceholder != 0xFFFFFFFF) return 0;  // placeholder overwritten at runtime
+
+	//check textures
+	unsigned int ofs = 0x14;
+	for (unsigned int i = 0; i < nTex; i++) {
+		unsigned int nRemaining = size - ofs;
+		if (nRemaining < 0x18) return 0;
+
+		//get texture parameters
+		const unsigned char *texData = buffer + ofs;
+		uint32_t texSize = *(const uint32_t *) (texData + 0x10);
+		uint32_t texImageParam = *(const uint32_t *) (texData + 0x14);
+		if (nRemaining < (0x18 + texSize)) return 0;
+
+		ofs += 0x18 + texSize;
+	}
+
+	//check palettes
+	for (unsigned int i = 0; i < nPlt; i++) {
+		unsigned int nRemaining = size - ofs;
+		if (nRemaining < 0x18) return 0;
+		
+		//get palette parameters
+		const unsigned char *pltData = buffer + ofs;
+		uint32_t pltSize = *(const uint32_t *) (pltData + 0x10);
+		if (nRemaining < (0x18 + pltSize)) return 0;
+
+		ofs += 0x18 + pltSize;
+	}
+
+	return 1;
+}
+
 static int TexarcReadNsbtx(TexArc *texarc, const unsigned char *buffer, unsigned int size);
 static int TexarcReadBmd(TexArc *texarc, const unsigned char *buffer, unsigned int size);
+static int TexarcReadSttex(TexArc *texarc, const unsigned char *buffer, unsigned int size);
 
 static int TexarcWriteNsbtx(TexArc *texarc, BSTREAM *stream);
 static int TexarcWriteBmd(TexArc *texarc, BSTREAM *stream);
+static int TexarcWriteSttex(TexArc *texarc, BSTREAM *stream);
 
 static const ObjIdEntry sFormats[] = {
 	{
@@ -177,6 +223,12 @@ static const ObjIdEntry sFormats[] = {
 		TexarcIsValidBmd,
 		(ObjReader) TexarcReadBmd,
 		(ObjWriter) TexarcWriteBmd
+	}, {
+		FILE_TYPE_NSBTX, NSBTX_TYPE_STTEX, "STTEX",
+		OBJ_ID_HEADER | OBJ_ID_SIGNATURE,
+		TexarcIsValidSttex,
+		(ObjReader) TexarcReadSttex,
+		(ObjWriter) TexarcWriteSttex
 	}
 };
 
@@ -186,6 +238,25 @@ void TexarcRegisterFormats(void) {
 	for (size_t i = 0; i < sizeof(sFormats) / sizeof(sFormats[0]); i++) {
 		ObjRegisterFormat(&sFormats[i]);
 	}
+}
+
+static char *MakeStringNT(const char *src, unsigned int maxlen) {
+	unsigned int len = strnlen(src, maxlen);
+	char *out = (char *) calloc(len + 1, sizeof(char));
+	if (out == NULL) return NULL;
+
+	//copy and null terminate
+	memcpy(out, src, len);
+	out[len] = '\0';
+	return out;
+}
+
+static void PutStringFixed(char *dest, const char *srcNT, unsigned int maxlen) {
+	memset(dest, 0, maxlen);
+
+	unsigned int len = strlen(srcNT);
+	if (len > maxlen) len = maxlen;
+	memcpy(dest, srcNT, len);
 }
 
 static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, unsigned int size) {
@@ -261,9 +332,7 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, unsigned 
 			memcpy(texels[i].texel, tex0 + offset + textureDataOffset, texelSize);
 		}
 
-		int texNameLen = strnlen(dictTex.namesPtr + i * 16, 16);
-		texels[i].name = calloc(texNameLen + 1, 1);
-		memcpy(texels[i].name, dictTex.namesPtr + i * 16, texNameLen);
+		texels[i].name = MakeStringNT(dictTex.namesPtr + i * 16, 16);
 	}
 
 	for (int i = 0; i < dictPal.nEntries; i++) {
@@ -285,9 +354,7 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, unsigned 
 		palettes[i].pal = (COLOR *) calloc(nColors, sizeof(COLOR));
 		memcpy(palettes[i].pal, tex0 + paletteDataOffset + (palData->offset << 3), nColors * sizeof(COLOR));
 
-		int palNameLen = strnlen(dictPal.namesPtr + i * 16, 16);
-		palettes[i].name = calloc(palNameLen + 1, 1);
-		memcpy(palettes[i].name, dictPal.namesPtr + i * 16, palNameLen);
+		palettes[i].name = MakeStringNT(dictPal.namesPtr + i * 16, 16);
 	}
 
 	//finally write out tex and pal info
@@ -390,6 +457,58 @@ int TexarcReadBmd(TexArc *nsbtx, const unsigned char *buffer, unsigned int size)
 	memcpy(bmd->preTexture, buffer + 0x3C, preTextureSize);
 
 	return 0;
+}
+
+static int TexarcReadSttex(TexArc *texarc, const unsigned char *buffer, unsigned int size) {
+	unsigned int nTex = *(const uint32_t *) (buffer + 0x04);
+	unsigned int nPlt = *(const uint32_t *) (buffer + 0x08);
+
+	TEXELS *textures = (TEXELS *) calloc(nTex, sizeof(TEXELS));
+	PALETTE *palettes = (PALETTE *) calloc(nPlt, sizeof(PALETTE));
+
+	//read textures
+	unsigned int ofs = 0x14;
+	for (unsigned int i = 0; i < nTex; i++) {
+		TEXELS *tex = &textures[i];
+
+		//get texture parameters
+		const unsigned char *texData = buffer + ofs;
+		const char *texName = (const char *) (texData + 0x00);
+		uint32_t texSize = *(const uint32_t *) (texData + 0x10);
+		uint32_t texImageParam = *(const uint32_t *) (texData + 0x14);
+
+		tex->name = MakeStringNT(texName, 16);
+		tex->cmp = NULL; // TODO? does the format support this?
+		tex->texImageParam = texImageParam & 0xFFFF0000;
+		tex->height = TEXH(texImageParam);
+		tex->texel = (unsigned char *) calloc(texSize, 1);
+		memcpy(tex->texel, texData + 0x18, texSize);
+
+		ofs += 0x18 + texSize;
+	}
+
+	//read palettes
+	for (unsigned int i = 0; i < nPlt; i++) {
+		PALETTE *plt = &palettes[i];
+
+		//get palette parameters
+		const unsigned char *pltData = buffer + ofs;
+		const char *pltName = (const char *) (pltData + 0x00);
+		uint32_t pltSize = *(const uint32_t *) (pltData + 0x10);
+		
+		plt->name = MakeStringNT(pltName, 16);
+		plt->nColors = pltSize / sizeof(COLOR);
+		plt->pal = (COLOR *) calloc(plt->nColors, sizeof(COLOR));
+		memcpy(plt->pal, pltData + 0x18, plt->nColors * sizeof(COLOR));
+
+		ofs += 0x18 + pltSize;
+	}
+
+	texarc->textures = textures;
+	texarc->palettes = palettes;
+	texarc->nTextures = nTex;
+	texarc->nPalettes = nPlt;
+	return OBJ_STATUS_SUCCESS;
 }
 
 static char *TexarciGetTextureNameCallback(void *texels) {
@@ -705,6 +824,59 @@ int TexarcWriteBmd(TexArc *nsbtx, BSTREAM *stream) {
 	bstreamWrite(stream, header, sizeof(header));
 
 	return 0;
+}
+
+static int TexarcWriteSttex(TexArc *texarc, BSTREAM *stream) {
+	//if the texture archive has tex4x4 textures, return error unsupported
+	for (int i = 0; i < texarc->nTextures; i++) {
+		uint32_t texImageparam = texarc->textures[i].texImageParam;
+		if (FORMAT(texImageparam) == CT_4x4) return OBJ_STATUS_UNSUPPORTED;
+	}
+
+	//header
+	uint32_t header[5];
+	header[0] = 0xE1000001;
+	header[1] = texarc->nTextures;
+	header[2] = texarc->nPalettes;
+	header[3] = 0xFFFFFFFF;
+	header[4] = 0xFFFFFFFF;
+	bstreamWrite(stream, header, sizeof(header));
+
+	//textures
+	for (int i = 0; i < texarc->nTextures; i++) {
+		TEXELS *tex = &texarc->textures[i];
+
+		//does not support partial height
+		unsigned int texSize = TxGetTexelSize(TEXW(tex->texImageParam), TEXH(tex->texImageParam), tex->texImageParam);
+
+		//resoure header
+		unsigned char rsrcHeader[0x18] = { 0 };
+		PutStringFixed(rsrcHeader + 0, tex->name, 16);
+		*(uint32_t *) (rsrcHeader + 0x10) = texSize;
+		*(uint32_t *) (rsrcHeader + 0x14) = tex->texImageParam & 0xFFFF0000;
+		bstreamWrite(stream, rsrcHeader, sizeof(rsrcHeader));
+
+		//texel data
+		bstreamWrite(stream, tex->texel, texSize);
+	}
+
+	//palettes
+	for (int i = 0; i < texarc->nPalettes; i++) {
+		PALETTE *plt = &texarc->palettes[i];
+
+		//resource header
+		unsigned char rsrcHeader[0x18] = { 0 };
+		PutStringFixed(rsrcHeader + 0x00, plt->name, 16);
+		*(uint32_t *) (rsrcHeader + 0x10) = (plt->nColors * sizeof(COLOR) + 3) & ~3;
+		*(uint32_t *) (rsrcHeader + 0x14) = 0; // TEXPLTT_BASE
+		bstreamWrite(stream, rsrcHeader, sizeof(rsrcHeader));
+
+		//palette data
+		bstreamWrite(stream, plt->pal, plt->nColors * sizeof(COLOR));
+		bstreamAlign(stream, 4);
+	}
+
+	return OBJ_STATUS_SUCCESS;
 }
 
 int TexarcGetTextureIndexByName(TexArc *nsbtx, const char *name) {

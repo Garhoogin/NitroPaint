@@ -5,6 +5,7 @@
 #define NSBTX_TYPE_INVALID   0
 #define NSBTX_TYPE_NNS       1
 #define NSBTX_TYPE_BMD       2
+#define NSBTX_TYPE_STTEX     3
 
 
 typedef struct BMD_DATA_ {
