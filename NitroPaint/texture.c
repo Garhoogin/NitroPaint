@@ -178,6 +178,13 @@ void TxRenderRect(COLOR32 *px, unsigned int srcX, unsigned int srcY, unsigned in
 	unsigned int width = TEXW(texels->texImageParam);
 	unsigned int height = texels->height;
 
+	COLOR *pltt = NULL;
+	unsigned int plttSize = 0;
+	if (palette != NULL) {
+		pltt = palette->pal;
+		plttSize = palette->nColors;
+	}
+
 	typedef COLOR32(*pfnSample) (const unsigned char *texel, const uint16_t *pidx, unsigned int texW, int c0xp,
 		unsigned int x, unsigned int y, const COLOR *pltt, unsigned int nPltt);
 
@@ -197,7 +204,7 @@ void TxRenderRect(COLOR32 *px, unsigned int srcX, unsigned int srcY, unsigned in
 		for (unsigned int x = 0; x < srcW; x++) {
 			COLOR32 c = 0;
 			if (sample != NULL && x < width && y < height) {
-				c = sample(texels->texel, texels->cmp, width, COL0TRANS(texels->texImageParam), srcX + x, srcY + y, palette->pal, palette->nColors);
+				c = sample(texels->texel, texels->cmp, width, COL0TRANS(texels->texImageParam), srcX + x, srcY + y, pltt, plttSize);
 			}
 
 			px[x + y * srcW] = c;
