@@ -1553,6 +1553,12 @@ static void NftrViewerExport(NFTRVIEWERDATA *data) {
 	free(path);
 }
 
+typedef enum LcFontTrimOption_ {
+	LC_FONT_TRIM_NONE,
+	LC_FONT_TRIM_MONOSPACE,
+	LC_FONT_TRIM_VARIABLE
+} LcFontTrimOption;
+
 static unsigned int NftrViewerLcFontGetPitch(const unsigned char *buf, unsigned int size) {
 	//iterate over factors of the size, greater than 2
 	for (unsigned int i = 0; i < size; i++) {
@@ -1583,27 +1589,52 @@ static unsigned int NftrViewerLcFontGetPitch(const unsigned char *buf, unsigned 
 	return UINT_MAX;
 }
 
-static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
+static FontCharacterSet NftrViewerGuessLcFontEncoding(const unsigned char *buf, unsigned int size, unsigned int nGlyph) {
+	FontCharacterSet inCP = FONT_CHARSET_SJIS;
+	if (nGlyph > 0) {
+		const unsigned char *pGlyph = buf;
+		uint16_t cp = (pGlyph[0] << 8) | (pGlyph[1]);
+
+		if (cp < 0x8000) {
+			//SJIS LC fonts will begin in the 8xxx range.
+			inCP = FONT_CHARSET_UTF16;
+		}
+	}
+	return inCP;
+}
+
+static void NftrViewerGetLcFontGlyphHBounds(const unsigned char *pGlyphbm, unsigned int cellWidth, unsigned int cellHeight, unsigned int *pMin, unsigned int *pMax) {
+	unsigned int xMin = cellWidth, xMax = 0;
+	for (unsigned int y = 0; y < cellHeight; y++) {
+		for (unsigned int x = 0; x < cellWidth; x++) {
+			unsigned int pxno = y * cellWidth + x;
+			unsigned int pxval = (pGlyphbm[pxno / 8] >> (7 - (pxno % 8))) & 1;
+
+			if (pxval) {
+				//update bounds
+				if (x > xMax) xMax = x;
+				if (x < xMin) xMin = x;
+			}
+		}
+	}
+
+	*pMin = xMin;
+	*pMax = xMax;
+}
+
+static void NftrViewerImportLcFontImpl(
+	NFTRVIEWERDATA  *data,
+	unsigned char   *buf,
+	unsigned int     size,
+	FontCharacterSet inCP,
+	BOOL             bFullToHalf,
+	unsigned char    color,
+	BOOL             bReplaceChars,
+	LcFontTrimOption trim
+) {
 	HWND hWndMain = data->editorMgr->hWnd;
-	LPWSTR path = openFileDialog(hWndMain, L"Import LC Font", L"LC Font Files (*.dat)\0*.dat\0All Files\0*.*\0", L"dat");
-	if (path == NULL) return;
 
-	unsigned int size;
-	unsigned char *buf = IoReadWholeFile(path, &size);
-	free(path);
-
-	if (buf == NULL) {
-		MessageBox(hWndMain, L"Could not open the LC font.", L"Error", MB_ICONERROR);
-		return;
-	}
-
-	//get LC font pitch
 	unsigned int pitch = NftrViewerLcFontGetPitch(buf, size);
-	if (pitch == UINT_MAX) {
-		MessageBox(hWndMain, L"Not an LC font.", L"Error", MB_ICONERROR);
-		free(buf);
-		return;
-	}
 
 	//glyph size
 	unsigned int glyphSize = pitch - 2;
@@ -1635,22 +1666,21 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 
 	SendMessage(data->hWndGlyphList, WM_SETREDRAW, 0, 0);
 
-	//detect input code-page.
-	FontCharacterSet inCP = FONT_CHARSET_SJIS;
-	if (nGlyph > 0) {
-		const unsigned char *pGlyph = buf;
-		uint16_t cp = (pGlyph[0] << 8) | (pGlyph[1]);
-
-		if (cp < 0x8000) {
-			//SJIS LC fonts will begin in the 8xxx range.
-			inCP = FONT_CHARSET_UTF16;
-		}
+	if (inCP != FONT_CHARSET_SJIS) {
+		//SJIS LC fonts have latin characters in the full-width range
+		bFullToHalf = FALSE;
 	}
 
-	int mapFullToHalf = 0;
-	if (inCP == FONT_CHARSET_SJIS) {
-		//SJIS LC fonts have latin characters in the full-width range
-		mapFullToHalf = MessageBox(hWndMain, L"Map full-width glyphs to half-width?", L"Import LC Font", MB_ICONQUESTION | MB_YESNO) == IDYES;
+	//find furthest horizontal extent of all glyphs
+	unsigned int extentMinX = cellWidth - 1, extentMaxX = 0;
+	for (unsigned int i = 0; i < nGlyph; i++) {
+		const unsigned char *pGlyphbm = buf + i * pitch + 2;
+
+		unsigned int xMin, xMax;
+		NftrViewerGetLcFontGlyphHBounds(pGlyphbm, cellWidth, cellHeight, &xMin, &xMax);
+
+		if (xMin < extentMinX) extentMinX = xMin;
+		if (xMax > extentMaxX) extentMaxX = xMax;
 	}
 
 	//add glyphs in range
@@ -1667,13 +1697,22 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 		}
 
 		//map full to half width
-		if (mapFullToHalf) {
+		if (bFullToHalf) {
 			if (cp >= 0xFF01 && cp <= 0xFF5E) cp = cp - 0xFF01 + 0x21;
 		}
 
-		//check exists
 		NFTR_GLYPH *glyph = NftrViewerGetGlyphByCP(data, cp);
-		if (glyph != NULL) continue;
+
+		//check exists
+		if (glyph != NULL) {
+			if (!bReplaceChars) {
+				//skip existing characters
+				continue;
+			} else {
+				//delete the old glyph entry
+				NftrViewerDeleteGlyph(data, NftrViewerGetGlyphIndexByCP(data, cp));
+			}
+		}
 
 		//add
 		NftrViewerCreateGlyph(data, cp);
@@ -1682,21 +1721,30 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 
 		//render
 		glyph = NftrViewerGetGlyphByCP(data, cp);
-
-		unsigned int xMin = cellWidth, xMax = 0;
 		for (unsigned int y = 0; y < cellHeight; y++) {
 			for (unsigned int x = 0; x < cellWidth; x++) {
 				unsigned int pxno = y * cellWidth + x;
 				unsigned int pxval = (pGlyphbm[pxno / 8] >> (7 - (pxno % 8))) & 1;
 
-				if (pxval) {
-					//update bounds
-					if (x > xMax) xMax = x;
-					if (x < xMin) xMin = x;
-				}
-
-				glyph->px[x + y * newCellWidth] = pxval;
+				glyph->px[x + y * newCellWidth] = pxval ? color : 0;
 			}
+		}
+
+		//adjust glyph cell bounding box based on the user spacing parameter
+		unsigned int xMin = 0, xMax = cellWidth - 1;
+		switch (trim) {
+			case LC_FONT_TRIM_NONE:
+				//no trim
+				break;
+			case LC_FONT_TRIM_MONOSPACE:
+				//calculate min/max, adjusting to fixed width
+				xMin = extentMinX;
+				xMax = extentMaxX;
+				break;
+			case LC_FONT_TRIM_VARIABLE:
+				//calculate min/max
+				NftrViewerGetLcFontGlyphHBounds(pGlyphbm, cellWidth, cellHeight, &xMin, &xMax);
+				break;
 		}
 
 		//adjust glyph to the left
@@ -1721,7 +1769,6 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 		//track widest added glyph
 		if (width > maxAddWidth) maxAddWidth = width;
 	}
-	free(buf);
 
 	//if the widest added glyph is narrower than the required size, we may shrink the cell size horizontally.
 	if (maxAddWidth > oldCellWidth) {
@@ -1740,7 +1787,41 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 	//confirm add
 	WCHAR textbuf[32];
 	wsprintfW(textbuf, L"Imported %d glyph(s).", nAdd);
-	MessageBox(data->editorMgr->hWnd, textbuf, L"Success", MB_ICONINFORMATION);
+	MessageBox(data->editorMgr->hWnd, textbuf, L"Import LC Font", MB_ICONINFORMATION);
+}
+
+static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
+	HWND hWndMain = data->editorMgr->hWnd;
+	LPWSTR path = openFileDialog(hWndMain, L"Import LC Font", L"LC Font Files (*.dat)\0*.dat\0All Files\0*.*\0", L"dat");
+	if (path == NULL) return;
+
+
+	unsigned int size;
+	unsigned char *buf = IoReadWholeFile(path, &size);
+	free(path);
+
+	if (buf == NULL) {
+		MessageBox(hWndMain, L"Could not open the LC font.", L"Import LC Font", MB_ICONERROR);
+		return;
+	}
+
+	//get LC font pitch
+	unsigned int pitch = NftrViewerLcFontGetPitch(buf, size);
+	if (pitch == UINT_MAX) {
+		MessageBox(hWndMain, L"Not an LC font.", L"Import LC Font", MB_ICONERROR);
+		free(buf);
+		return;
+	}
+
+	//DEBUG
+	HWND h = CreateWindow(L"LcFontImportClass", L"Import LC Font",
+		WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
+	SendMessage(h, NV_SETDATA, 0, (LPARAM) data);
+	SendMessage(h, NV_INITIALIZE, (WPARAM) size, (LPARAM) buf);
+	DoModal(h);
+
+	free(buf);
 
 }
 
@@ -2567,6 +2648,114 @@ static LRESULT CALLBACK NftrViewerExportWndProc(HWND hWnd, UINT msg, WPARAM wPar
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+typedef struct NftrViewerImportLcFontData_ {
+	NFTRVIEWERDATA *data;
+	unsigned char *buffer;
+	unsigned int size;
+	HWND hWndEncoding;
+	HWND hWndTrim;
+	HWND hWndColor;
+	HWND hWndFullToHalf;
+	HWND hWndReplace;
+	HWND hWndOK;
+	HWND hWndCancel;
+} NftrViewerImportLcFontData;
+
+static LRESULT CALLBACK NftrViewerImportLcFontProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	NftrViewerImportLcFontData *data = (NftrViewerImportLcFontData *) GetWindowLongPtr(hWnd, 0);
+	
+	switch (msg) {
+		case WM_CREATE:
+		{
+			data = (NftrViewerImportLcFontData *) calloc(1, sizeof(*data));
+			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
+
+			LPCWSTR encodings[] = { L"Shift-JIS", L"UTF-16" };
+			LPCWSTR trimOptions[] = { L"No Trim", L"Monospace Trim", L"Variable-Width Trim" };
+
+			CreateStatic(hWnd, L"Character Encoding:", 10, 10, 100, 22);
+			data->hWndEncoding = CreateCombobox(hWnd, encodings, 2, 115, 10, 100, 22, 0);
+			CreateStatic(hWnd, L"Glyph Trim:", 10, 37, 100, 22);
+			data->hWndTrim = CreateCombobox(hWnd, trimOptions, 3, 115, 37, 150, 22, 2);
+			CreateStatic(hWnd, L"Glyph Color:", 10, 64, 100, 22);
+			data->hWndColor = CreateEdit(hWnd, L"1", 115, 64, 50, 22, TRUE);
+			data->hWndFullToHalf = CreateCheckbox(hWnd, L"Map full-width glyphs to half-width", 10, 91, 200, 22, TRUE);
+			data->hWndReplace = CreateCheckbox(hWnd, L"Replace Existing", 10, 118, 100, 22, TRUE);
+
+			data->hWndOK = CreateButton(hWnd, L"Import", 315-50 - 100, 150, 100, 22, TRUE);
+			data->hWndCancel = CreateButton(hWnd, L"Cancel", 315-50 - 100 - 5 - 100, 150, 100, 22, FALSE);
+
+			SetWindowSize(hWnd, 325-50, 182);
+
+			SetGUIFont(hWnd);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndCtl = (HWND) lParam;
+			int idCtl = LOWORD(wParam);
+			int notif = HIWORD(wParam);
+
+			if ((hWndCtl == data->hWndOK || idCtl == IDOK) && notif == BN_CLICKED) {
+				//font import parameters
+				NFTRVIEWERDATA *nftrViewerData = data->data;
+				unsigned char *buffer = data->buffer;
+				unsigned int size = data->size;
+
+				//font character encoding
+				FontCharacterSet enc = FONT_CHARSET_SJIS;
+				switch (UiCbGetCurSel(data->hWndEncoding)) {
+					case 0:
+						enc = FONT_CHARSET_SJIS;
+						break;
+					case 1:
+						enc = FONT_CHARSET_UTF16;
+						break;
+				}
+
+				//trim type
+				LcFontTrimOption trim = (LcFontTrimOption) UiCbGetCurSel(data->hWndTrim);
+
+				BOOL bReplace = GetCheckboxChecked(data->hWndReplace);
+				BOOL bFullToHalf = GetCheckboxChecked(data->hWndFullToHalf);
+				unsigned char color = GetEditNumber(data->hWndColor);
+
+				//close GUI
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+
+				//import font
+				NftrViewerImportLcFontImpl(nftrViewerData, buffer, size, enc, bFullToHalf, color, bReplace, trim);
+			} else if ((hWndCtl == data->hWndCancel || idCtl == IDCANCEL) && notif == BN_CLICKED) {
+				//abort
+				SendMessage(hWnd, WM_CLOSE, 0, 0);
+			}
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			data->buffer = (unsigned char *) lParam;
+			data->size = wParam;
+
+			//auto-detect CP
+			FontCharacterSet inCP = NftrViewerGuessLcFontEncoding(data->buffer, data->size, data->size >= 2 ? 1 : 0);
+			if (inCP == FONT_CHARSET_SJIS) UiCbSetCurSel(data->hWndEncoding, 0);
+			else UiCbSetCurSel(data->hWndEncoding, 1);
+
+			//by default only map full to half only in SJIS
+			SendMessage(data->hWndFullToHalf, BM_SETCHECK, (inCP == FONT_CHARSET_SJIS) ? BST_CHECKED : BST_UNCHECKED, 0);
+
+			break;
+		}
+		case NV_SETDATA:
+			data->data = (NFTRVIEWERDATA *) lParam;
+			break;
+		case WM_DESTROY:
+			free(data);
+			break;
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 void RegisterNftrViewerClass(void) {
 	NftrRegisterFormats();
 
@@ -2586,6 +2775,7 @@ void RegisterNftrViewerClass(void) {
 	RegisterGenericClass(NFTR_VIEWER_MARGIN_CLASS, NftrViewerMarginWndProc, sizeof(void *));
 	RegisterGenericClass(NFTR_VIEWER_PREVIEW_CLASS, NftrViewerCellEditorWndProc, sizeof(void *));
 	RegisterGenericClass(L"NftrExportClass", NftrViewerExportWndProc, sizeof(void *));
+	RegisterGenericClass(L"LcFontImportClass", NftrViewerImportLcFontProc, sizeof(void *));
 }
 
 static HWND CreateNftrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NFTR *nftr) {
