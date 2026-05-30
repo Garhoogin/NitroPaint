@@ -60,6 +60,29 @@ typedef enum ObjIdFlag_ {
 } ObjIdFlag;
 
 
+typedef enum ObjKeyType_ {
+	OBJ_KEYTYPE_NULL,  // no data -- marks the last key in the list
+	OBJ_KEYTYPE_INT,   // intVal is valid
+	OBJ_KEYTYPE_UINT,  // uintVal is valid
+	OBJ_KEYTYPE_STR,   // strVal is valid
+	OBJ_KEYTYPE_WCSTR  // wcstrVal is valid
+} ObjKeyType;
+
+typedef struct ObjKey_ {
+	ObjKeyType type;
+	int key;
+	union {
+		int intVal;
+		unsigned int uintVal;
+		char *strVal;
+		wchar_t *wcstrVal;
+	} value;
+} ObjKey;
+
+#define OBJ_KEY_MAX 0  // for use when we decide to reserve some values
+
+
+
 typedef int (*ObjReader) (ObjHeader *object, char *buffer, int size);
 typedef int (*ObjWriter) (ObjHeader *object, BSTREAM *stream);
 typedef int (*ObjInitProc) (ObjHeader *object);
@@ -76,6 +99,7 @@ typedef struct ObjIdEntry_ {
 	ObjIdProc idProc;  // The callback for identification
 	ObjReader reader;  // Object reader routine
 	ObjWriter writer;  // Object writer routine
+	ObjKey *attr;      // Format attributes
 } ObjIdEntry;
 
 typedef struct ObjLink_ {
@@ -160,6 +184,8 @@ int ObjRegisterFormat(
 	const ObjIdEntry *entry
 );
 
+int ObjQueryFormat(ObjIdEntry *fmt, ObjKeyType type, int key, void *dest);
+
 // -----------------------------------------------------------------------------------------------
 // Name: ObjAlloc
 //
@@ -193,6 +219,8 @@ ObjHeader *ObjAlloc(
 void ObjFree(
 	ObjHeader *obj
 );
+
+int ObjQuery(ObjHeader *hdr, ObjKeyType type, int key, void *dest);
 
 // -----------------------------------------------------------------------------------------------
 // Name: ObjIdentify

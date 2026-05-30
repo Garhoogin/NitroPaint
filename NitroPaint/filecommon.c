@@ -122,6 +122,7 @@ int ObjRegisterFormat(const ObjIdEntry *entry) {
 	ent.idProc = entry->idProc;
 	ent.reader = entry->reader;
 	ent.writer = entry->writer;
+	ent.attr = entry->attr;
 
 	StListAdd(&type->formats, &ent);
 	StListAdd(&sObjFormats, &ent);
@@ -168,6 +169,41 @@ static int ObjGetFormat(ObjIdEntry *pInfo, int type, int format) {
 	}
 
 	//not found
+	return 0;
+}
+
+int ObjQueryFormat(ObjIdEntry *fmt, ObjKeyType type, int key, void *dest) {
+	//scan keys
+	ObjKey *pKey = fmt->attr;
+	while (pKey != NULL && pKey->type != OBJ_KEYTYPE_NULL) {
+		//matching key+type
+		if (pKey->type == type && pKey->key == key) {
+			//found
+
+			switch (type) {
+				case OBJ_KEYTYPE_INT:
+					*(int *) dest = pKey->value.intVal;
+					return 1;
+				case OBJ_KEYTYPE_UINT:
+					*(unsigned int *) dest = pKey->value.uintVal;
+					return 1;
+				case OBJ_KEYTYPE_STR:
+					*(char **) dest = pKey->value.strVal;
+					return 1;
+				case OBJ_KEYTYPE_WCSTR:
+					*(wchar_t **) dest = pKey->value.wcstrVal;
+					return 1;
+			}
+
+			//bad key type
+			return 0;
+		}
+
+		//next
+		pKey++;
+	}
+
+	//none
 	return 0;
 }
 
@@ -423,6 +459,14 @@ void ObjFree(ObjHeader *header) {
 
 	//heap free
 	free(header);
+}
+
+int ObjQuery(ObjHeader *hdr, ObjKeyType type, int key, void *dest) {
+	//query based on the object format
+	ObjIdEntry info;
+	if (!ObjGetFormat(&info, hdr->type, hdr->format)) return 0;
+
+	return ObjQueryFormat(&info, type, key, dest);
 }
 
 

@@ -210,25 +210,44 @@ static int TexarcWriteNsbtx(TexArc *texarc, BSTREAM *stream);
 static int TexarcWriteBmd(TexArc *texarc, BSTREAM *stream);
 static int TexarcWriteSttex(TexArc *texarc, BSTREAM *stream);
 
+#define ALL_TEXFMT ((1 << CT_4COLOR) | (1 << CT_16COLOR) | (1 << CT_256COLOR) \
+	| (1 << CT_A3I5) | (1 << CT_A5I3) | (1 << CT_DIRECT) | (1 << CT_4x4))
+
+static ObjKey sNsbtxKeys[] = {
+	{ OBJ_KEYTYPE_UINT, NSBTX_KEY_MAX_TEXNAME_LEN, { .intVal = 16 } },
+	{ OBJ_KEYTYPE_UINT, NSBTX_KEY_MAX_PLTNAME_LEN, { .intVal = 16 } },
+	{ OBJ_KEYTYPE_NULL }
+};
+
+static ObjKey sSttexKeys[] = {
+	{ OBJ_KEYTYPE_UINT, NSBTX_KEY_MAX_TEXNAME_LEN, {.intVal = 16 } },
+	{ OBJ_KEYTYPE_UINT, NSBTX_KEY_MAX_PLTNAME_LEN, {.intVal = 16 } },
+	{ OBJ_KEYTYPE_UINT, NSBTX_KEY_TEXFMT_SUPPORT, {.intVal = ALL_TEXFMT & ~(1 << CT_4x4) } },
+	{ OBJ_KEYTYPE_NULL }
+};
+
 static const ObjIdEntry sFormats[] = {
 	{
 		FILE_TYPE_NSBTX, NSBTX_TYPE_NNS, "NSBTX",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_OFFSETS | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
 		TexarcIsValidNsbtx,
 		(ObjReader) TexarcReadNsbtx,
-		(ObjWriter) TexarcWriteNsbtx
+		(ObjWriter) TexarcWriteNsbtx,
+		sNsbtxKeys
 	}, {
 		FILE_TYPE_NSBTX, NSBTX_TYPE_BMD, "BMD",
 		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
 		TexarcIsValidBmd,
 		(ObjReader) TexarcReadBmd,
-		(ObjWriter) TexarcWriteBmd
+		(ObjWriter) TexarcWriteBmd,
+		NULL
 	}, {
 		FILE_TYPE_NSBTX, NSBTX_TYPE_STTEX, "STTEX",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE,
 		TexarcIsValidSttex,
 		(ObjReader) TexarcReadSttex,
-		(ObjWriter) TexarcWriteSttex
+		(ObjWriter) TexarcWriteSttex,
+		sSttexKeys
 	}
 };
 

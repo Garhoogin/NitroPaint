@@ -391,38 +391,84 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 	return succeeded;
 }
 
-static int NsbtxViewerCheckSave(NSBTXVIEWERDATA *data) {
-	//NSBTX files: check lengths under 16 characters
-
-	if (data->nsbtx->header.format == NSBTX_TYPE_NNS || data->nsbtx->header.format == NSBTX_TYPE_STTEX) {
-		int warnNames = 0;
-		WCHAR *warnbuf = _wcsdup(L"Resource names truncated on save:");
-		WCHAR warntemp[96];
-
-		for (int i = 0; i < data->nsbtx->nTextures; i++) {
-			if (strlen(data->nsbtx->textures[i].name) <= 16) continue;
-
-			wsprintfW(warntemp, L"\n  %.64S -> %.16S", data->nsbtx->textures[i].name, data->nsbtx->textures[i].name);
-
-			warnbuf = (WCHAR *) realloc(warnbuf, (wcslen(warnbuf) + wcslen(warntemp) + 1) * sizeof(WCHAR));
-			memcpy(warnbuf + wcslen(warnbuf), warntemp, (wcslen(warntemp) + 1) * sizeof(WCHAR));
-			warnNames++;
-		}
-		for (int i = 0; i < data->nsbtx->nPalettes; i++) {
-			if (strlen(data->nsbtx->palettes[i].name) <= 16) continue;
-
-			wsprintfW(warntemp, L"\n  %.64S -> %.16S", data->nsbtx->palettes[i].name, data->nsbtx->palettes[i].name);
-
-			warnbuf = (WCHAR *) realloc(warnbuf, (wcslen(warnbuf) + wcslen(warntemp) + 1) * sizeof(WCHAR));
-			memcpy(warnbuf + wcslen(warnbuf), warntemp, (wcslen(warntemp) + 1) * sizeof(WCHAR));
-			warnNames++;
-		}
-
-		if (warnNames) {
-			MessageBox(data->hWnd, warnbuf, L"Name Truncation", MB_ICONWARNING);
-		}
-		free(warnbuf);
+static char *TruncateString(const char *str, unsigned int len) {
+	char *buf2 = _strdup(str);
+	
+	if (strlen(buf2) > len) {
+		buf2[len] = '\0';
 	}
+	return buf2;
+}
+
+static int NsbtxViewerCheckSave(NSBTXVIEWERDATA *data) {
+	//get supported texture formats
+	unsigned int supTexFmts = ~0; // all formats (default)
+	ObjQuery(&data->nsbtx->header, OBJ_KEYTYPE_UINT, NSBTX_KEY_TEXFMT_SUPPORT, &supTexFmts);
+
+	//check texture formats
+	unsigned int foundFormats = 0;
+	for (int i = 0; i < data->nsbtx->nTextures; i++) {
+		TEXELS *texture = &data->nsbtx->textures[i];
+		int texfmt = FORMAT(texture->texImageParam);
+
+		//found formats
+		foundFormats |= 1 << texfmt;
+	}
+
+	unsigned int badFormats = foundFormats & ~supTexFmts;
+	if (badFormats) {
+		WCHAR *errbuf = _wcsdup(L"The file contains texture formats not supported by the file format:");
+		WCHAR errtemp[96];
+
+		for (int i = 1; i <= 7; i++) {
+			if (badFormats & (1 << i)) {
+				wsprintfW(errtemp, L"\n  %S", TxNameFromTexFormat(i));
+				errbuf = (WCHAR *) realloc(errbuf, (wcslen(errbuf) + wcslen(errtemp) + 1) * sizeof(WCHAR));
+				memcpy(errbuf + wcslen(errbuf), errtemp, (wcslen(errtemp) + 1) * sizeof(WCHAR));
+			}
+		}
+
+		MessageBox(data->hWnd, errbuf, L"Save Error", MB_ICONERROR);
+		free(errbuf);
+		return 0;
+	}
+
+	//query the max resource name sizes (default to UINT_MAX)
+	unsigned int maxPlttNameLength = UINT_MAX, maxTexNameLength = UINT_MAX;
+	ObjQuery(&data->nsbtx->header, OBJ_KEYTYPE_UINT, NSBTX_KEY_MAX_PLTNAME_LEN, &maxPlttNameLength);
+	ObjQuery(&data->nsbtx->header, OBJ_KEYTYPE_UINT, NSBTX_KEY_MAX_TEXNAME_LEN, &maxTexNameLength);
+
+	int warnNames = 0;
+	WCHAR *warnbuf = _wcsdup(L"Resource names truncated on save:");
+	WCHAR warntemp[96];
+
+	for (int i = 0; i < data->nsbtx->nTextures; i++) {
+		if (strlen(data->nsbtx->textures[i].name) <= maxTexNameLength) continue;
+
+		char *trunc = TruncateString(data->nsbtx->textures[i].name, maxTexNameLength);
+		wsprintfW(warntemp, L"\n  %.64S -> %S", data->nsbtx->textures[i].name, trunc);
+		free(trunc);
+
+		warnbuf = (WCHAR *) realloc(warnbuf, (wcslen(warnbuf) + wcslen(warntemp) + 1) * sizeof(WCHAR));
+		memcpy(warnbuf + wcslen(warnbuf), warntemp, (wcslen(warntemp) + 1) * sizeof(WCHAR));
+		warnNames++;
+	}
+	for (int i = 0; i < data->nsbtx->nPalettes; i++) {
+		if (strlen(data->nsbtx->palettes[i].name) <= maxPlttNameLength) continue;
+
+		char *trunc = TruncateString(data->nsbtx->palettes[i].name, maxPlttNameLength);
+		wsprintfW(warntemp, L"\n  %.64S -> %S", data->nsbtx->palettes[i].name, trunc);
+		free(trunc);
+
+		warnbuf = (WCHAR *) realloc(warnbuf, (wcslen(warnbuf) + wcslen(warntemp) + 1) * sizeof(WCHAR));
+		memcpy(warnbuf + wcslen(warnbuf), warntemp, (wcslen(warntemp) + 1) * sizeof(WCHAR));
+		warnNames++;
+	}
+
+	if (warnNames) {
+		MessageBox(data->hWnd, warnbuf, L"Save Warnings", MB_ICONWARNING);
+	}
+	free(warnbuf);
 
 	return 1;
 }

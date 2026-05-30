@@ -8,6 +8,13 @@
 #define NSBTX_TYPE_STTEX     3
 
 
+// Texture archive format keys
+
+#define NSBTX_KEY_MAX_TEXNAME_LEN (OBJ_KEY_MAX+0)  // Max texture name length
+#define NSBTX_KEY_MAX_PLTNAME_LEN (OBJ_KEY_MAX+1)  // Max palette name length
+#define NSBTX_KEY_TEXFMT_SUPPORT  (OBJ_KEY_MAX+2)  // Supported texture format bitmap
+
+
 typedef struct BMD_DATA_ {
 	int scale;
 	int nBones;
