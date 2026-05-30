@@ -230,6 +230,10 @@ static const wchar_t *const sCommonScreenEndings[] = {
 };
 
 const wchar_t *ObjStatusToString(int status) {
+	if (status >= OBJ_STATUS_SYSERROR_START && status < OBJ_STATUS_SYSERROR_MAX) {
+		return IoGetErrorMessage((IoStatus) (status - OBJ_STATUS_SYSERROR_START));
+	}
+
 	switch (status) {
 		case OBJ_STATUS_SUCCESS:
 			return L"Success";
@@ -237,8 +241,6 @@ const wchar_t *ObjStatusToString(int status) {
 			return L"Invalid";
 		case OBJ_STATUS_MISMATCH:
 			return L"Mismatch";
-		case OBJ_STATUS_NO_ACCESS:
-			return L"Access denied";
 		case OBJ_STATUS_NO_MEMORY:
 			return L"Out of memory";
 		case OBJ_STATUS_UNSUPPORTED:
@@ -729,8 +731,9 @@ int ObjReadBuffer(ObjHeader **ppObject, const unsigned char *buffer, unsigned in
 
 int ObjReadFile(ObjHeader **ppObject, const wchar_t *name, int type, int format, int compression) {
 	unsigned int size;
-	void *buffer = IoReadWholeFile(name, &size);
-	if (buffer == NULL) return OBJ_STATUS_NO_ACCESS;
+	void *buffer;
+	IoStatus ioStatus = IoReadWholeFileEx(name, &buffer, &size);
+	if (ioStatus) return OBJ_STATUS_SYSERROR_START + ioStatus;
 
 	ObjHeader *object = ObjAlloc(type, format);
 	if (object == NULL) return OBJ_STATUS_NO_MEMORY;
@@ -797,7 +800,7 @@ int ObjWriteFile(ObjHeader *object, const wchar_t *name) {
 	IoStatus ioStatus = IoWriteWholeFile(name, outbuf, outSize);
 	free(outbuf);
 
-	return ioStatus ? OBJ_STATUS_NO_ACCESS : OBJ_STATUS_SUCCESS;
+	return ioStatus ? (ioStatus + OBJ_STATUS_SYSERROR_START) : OBJ_STATUS_SUCCESS;
 }
 
 void ObjLinkObjects(ObjHeader *to, ObjHeader *from) {

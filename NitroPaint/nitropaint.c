@@ -1482,7 +1482,14 @@ VOID OpenFileByName(HWND hWnd, LPCWSTR path) {
 	wchar_t *objpath = IoConvertPath(path);
 	if (objpath == NULL) return; // bad path
 
-	char *buffer = (char *) IoReadWholeFile(objpath, &dwSize);
+	char *buffer;
+	IoStatus ioStatus = IoReadWholeFileEx(objpath, &buffer, &dwSize);
+	if (ioStatus) {
+		//error display
+		wchar_t *msg = IoGetErrorMessage(ioStatus);
+		MessageBox(hWnd, msg, L"Error", MB_ICONERROR);
+		return;
+	}
 
 	//test: Is this a specification file to open a file with?
 	if (specIsSpec(buffer, dwSize)) {

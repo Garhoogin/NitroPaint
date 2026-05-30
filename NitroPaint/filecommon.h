@@ -28,15 +28,16 @@
 #define FILE_TYPE_MAX        20  // highest file type +1
 
 // ----- common status codes
-#define OBJ_STATUS_SUCCESS            0  // the operation completed successfully
-#define OBJ_STATUS_INVALID            1  // the byte stream did not represent a valid object
-#define OBJ_STATUS_NO_MEMORY          2  // not enough memory
-#define OBJ_STATUS_UNSUPPORTED        3  // feature unsupported
-#define OBJ_STATUS_NO_ACCESS          4  // access denied when accessing a resource
-#define OBJ_STATUS_MISMATCH           5  // a data mismatch error occurred
-#define OBJ_STATUS_OUTSTANDING_REFS   6  // the resource could not be freed because of outstanding references
-#define OBJ_STATUS_ALREADY_REGISTERED 7  // the object could not be registered because it was already registered
-#define OBJ_STATUS_MAX                8
+#define OBJ_STATUS_SUCCESS                     0  // the operation completed successfully
+#define OBJ_STATUS_INVALID                     1  // the byte stream did not represent a valid object
+#define OBJ_STATUS_NO_MEMORY                   2  // not enough memory
+#define OBJ_STATUS_UNSUPPORTED                 3  // feature unsupported
+#define OBJ_STATUS_MISMATCH                    4  // a data mismatch error occurred
+#define OBJ_STATUS_OUTSTANDING_REFS            5  // the resource could not be freed because of outstanding references
+#define OBJ_STATUS_ALREADY_REGISTERED          6  // the object could not be registered because it was already registered
+#define OBJ_STATUS_SYSERROR_START     0x00010000  // base of error codes for system errors
+#define OBJ_STATUS_SYSERROR_MAX       0x00020000  // max of system errors (+1)
+#define OBJ_STATUS_MAX                0x00020000  // maximum object manager error (+1)
 
 #define OBJ_SUCCEEDED(s)       ((s)==OBJ_STATUS_SUCCESS)
 

@@ -105,6 +105,25 @@ void *IoReadWholeFile(
 );
 
 // -----------------------------------------------------------------------------------------------
+// Name: IoReadWholeFileEx
+//
+// Reads a file entirely into memory.
+//
+// Parameters:
+//   path          The file path
+//   buffer        Pointer receiving an allocated buffer of the file's contents
+//   size          Pointer to an integer receiving the file's size
+//
+// Returns:
+//   The status of the operation.
+// -----------------------------------------------------------------------------------------------
+IoStatus IoReadWholeFileEx(
+	const wchar_t *path,
+	void         **buffer,
+	unsigned int  *size
+);
+
+// -----------------------------------------------------------------------------------------------
 // Name: IoWriteWholeFile
 //
 // Writes a byte sequence to a file.
@@ -123,4 +142,18 @@ IoStatus IoWriteWholeFile(
 	unsigned int   size
 );
 
-
+// -----------------------------------------------------------------------------------------------
+// Name: IoGetErrorMessage
+//
+// Get an error message for an IO status code. The returned pointer is valid until the next call
+// to IoGetErrorMessage.
+//
+// Parameters:
+//   status        The status code
+//
+// Returns:
+//   The pointer to the error message string.
+// -----------------------------------------------------------------------------------------------
+wchar_t *IoGetErrorMessage(
+	IoStatus status
+);

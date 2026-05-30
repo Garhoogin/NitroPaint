@@ -245,3 +245,19 @@ Error:
 	return status;
 }
 
+
+
+// ----- Error routines
+
+wchar_t *IoGetErrorMessage(IoStatus status) {
+	//keep the old buffer and free it the next time around (buffer is only good for one call!)
+	static wchar_t *buf = NULL;
+	if (buf != NULL) LocalFree(buf);
+	buf = NULL;
+
+	//format the message
+	FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL, (DWORD) status, 0, (LPWSTR) &buf, 0, NULL);
+	return buf;
+}
+
