@@ -90,7 +90,7 @@ static int calculateHighestPaletteIndex(TEXELS *texture) {
 	if (format == CT_DIRECT) return -1;
 
 	int nHighest = 0;
-	int texelSize = TxGetTexelSize(TEXW(texture->texImageParam), texture->height, texture->texImageParam);
+	int texelSize = TxGetTexelSize(texture);
 	switch (format) {
 		case CT_4COLOR:
 			for (int i = 0; i < texelSize; i++) {
@@ -356,8 +356,8 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 			TEXELS *srcTexel = &teData->texture->texture.texels;
 			PALETTE *srcPal = &teData->texture->texture.palette;
 
-			int texImageParam = srcTexel->texImageParam;
-			int texelSize = TxGetTexelSize(TEXW(texImageParam), srcTexel->height, texImageParam);
+			uint32_t texImageParam = srcTexel->texImageParam;
+			int texelSize = TxGetTexelSize(srcTexel);
 			texels->texImageParam = texImageParam;
 			texels->height = srcTexel->height;
 			texels->texel = (unsigned char *) calloc(texelSize, 1);
@@ -856,8 +856,8 @@ LRESULT CALLBACK VramUseWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 				TEXELS *tex = nsbtx->textures + i;
 				int texImageParam = tex->texImageParam;
 				int format = FORMAT(texImageParam);
-				int texelSize = TxGetTexelSize(TEXW(texImageParam), tex->height, texImageParam);
-				int indexSize = TxGetIndexVramSize(tex);
+				unsigned int texelSize = TxGetTexelSize(tex);
+				unsigned int indexSize = TxGetPlttIdxSize(tex);
 
 				//copy name. Beware, not null terminated
 				unsigned int len = strnlen(tex->name, 255);

@@ -67,13 +67,25 @@ void TxRenderRect(COLOR32 *px, unsigned int srcX, unsigned int srcY, unsigned in
 
 void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette);
 
-int TxGetTexelSize(int width, int height, int texImageParam);
+unsigned int TxCalcTexelSize(uint32_t texImageParam, unsigned int width, unsigned int height);
 
-int TxGetTextureVramSize(TEXELS *texels);
+unsigned int TxCalcPlttIdxSize(uint32_t texImageParam, unsigned int width, unsigned int height);
 
-int TxGetIndexVramSize(TEXELS *texels);
+unsigned int TxCalcTotalTexImageSize(uint32_t texImageParam, unsigned int width, unsigned int height);
 
-int TxGetTexPlttVramSize(PALETTE *palette);
+unsigned int TxGetTexelSize(TEXELS *texels);
+
+unsigned int TxGetPlttIdxSize(TEXELS *texels);
+
+unsigned int TxGetTotalTexImageSize(TEXELS *texels);
+
+unsigned int TxGetTexPlttVramSize(PALETTE *palette);
+
+unsigned int TxGetTexelSizeFull(TEXELS *texels);
+
+unsigned int TxGetPlttIdxSizeFull(TEXELS *texels);
+
+unsigned int TxGetTotalTexImageSizeFull(TEXELS *texels);
 
 int TxDimensionIsValid(int x);
 

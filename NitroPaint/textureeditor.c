@@ -315,9 +315,9 @@ static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
 
 	//for 4x4 and direct, we copy additional clipboard information.
 	if (fmt == CT_4x4 || fmt == CT_DIRECT) {
-		unsigned int texWidth = TEXW(texImageParam), texHeight = data->texture->texture.texels.height;
+		unsigned int texHeight = data->texture->texture.texels.height;
 
-		size_t sizeTex = TxGetTexelSize(texWidth, texHeight, texImageParam);
+		size_t sizeTex = TxGetTexelSize(&data->texture->texture.texels);
 		size_t sizePlttIdx = 0, sizeTexPltt = 0;
 		if (fmt == CT_4x4) {
 			sizePlttIdx = sizeTex / 2;
@@ -392,7 +392,7 @@ static void TexViewerFormatLabelKB(TEXTUREEDITORDATA *data, int iLabel, const wc
 
 static void TexViewerUpdateVramLabel(TEXTUREEDITORDATA *data) {
 	//this code is ugly due to being unable to just use %.2f
-	TexViewerFormatLabelKB(data, TEXVIEWER_SB_TEX_VRAM, L"Texel", TxGetTextureVramSize(&data->texture->texture.texels));
+	TexViewerFormatLabelKB(data, TEXVIEWER_SB_TEX_VRAM, L"Texel", TxGetTotalTexImageSize(&data->texture->texture.texels));
 
 	TexViewerFormatLabelKB(data, TEXVIEWER_SB_PLT_VRAM, L"Palette", TxGetTexPlttVramSize(&data->texture->texture.palette));
 }
@@ -782,20 +782,21 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 			}
 		}
 
-		int texImageParam = data->texture->texture.texels.texImageParam;
-		int texelSize = TxGetTexelSize(TEXW(texImageParam), data->texture->texture.texels.height, texImageParam);
-		IoWriteWholeFile(ntftPath, data->texture->texture.texels.texel, texelSize);
+		TEXTURE *texture = &data->texture->texture;
+
+		int texelSize = TxGetTexelSize(&texture->texels);
+		IoWriteWholeFile(ntftPath, texture->texels.texel, texelSize);
 		free(ntftPath);
 
 		if (ntfiPath != NULL) {
-			IoWriteWholeFile(ntfiPath, data->texture->texture.texels.cmp, texelSize / 2);
+			IoWriteWholeFile(ntfiPath, texture->texels.cmp, texelSize / 2);
 			free(ntfiPath);
 		}
 
 		//palette export
-		if (data->texture->texture.palette.pal != NULL) {
-			COLOR *colors = data->texture->texture.palette.pal;
-			int nColors = data->texture->texture.palette.nColors;
+		if (texture->palette.pal != NULL) {
+			COLOR *colors = texture->palette.pal;
+			int nColors = texture->palette.nColors;
 
 			LPWSTR ntfpPath = saveFileDialog(hWndMain, L"Save NTFP", L"NTFP files (*.ntfp)\0*.ntfp\0All Files\0*.*\0\0", L"ntfp");
 			if (ntfpPath == NULL) return;
@@ -1808,7 +1809,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 
 					//check texture format 
 					unsigned int nPx = data->width * data->height;
-					unsigned int texelSize = TxGetTexelSize(data->width, data->height, fmt << 20);
+					unsigned int texelSize = TxCalcTexelSize(fmt << 20, data->width, data->height);
 
 					if (fmt == CT_4x4 && nPx > (512 * 1024)) {
 						//ordinary texture VRAM allocation prohibits this

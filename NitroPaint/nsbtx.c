@@ -310,7 +310,7 @@ static int TexarcReadNsbtx(TexArc *nsbtx, const unsigned char *buffer, unsigned 
 
 		unsigned int width = TEXW(texData->texImageParam);
 		unsigned int height = TEXH(texData->texImageParam);
-		unsigned int texelSize = TxGetTexelSize(width, height, texData->texImageParam);
+		unsigned int texelSize = TxCalcTexelSize(texData->texImageParam, width, height);
 
 		uint32_t paramEx = texData->extraParam;
 		unsigned int origWidth = width, origHeight = height;
@@ -575,9 +575,7 @@ int TexarcWriteNsbtx(TexArc *nsbtx, BSTREAM *stream) {
 
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		TEXELS *texture = &nsbtx->textures[i];
-		unsigned int width = TEXW(texture->texImageParam);
-		unsigned int height = TEXH(texture->texImageParam);
-		unsigned int texelSize = TxGetTexelSize(width, height, texture->texImageParam);
+		unsigned int texelSize = TxGetTexelSizeFull(texture);
 
 		unsigned int fmt = FORMAT(texture->texImageParam);
 		unsigned int ofs;
@@ -711,7 +709,7 @@ int TexarcWriteBmd(TexArc *nsbtx, BSTREAM *stream) {
 		TEXELS *texture = nsbtx->textures + i;
 
 		int texImageParam = texture->texImageParam;
-		*(uint32_t *) (texEntry + 0x08) = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+		*(uint32_t *) (texEntry + 0x08) = TxGetTexelSizeFull(texture);
 		*(uint16_t *) (texEntry + 0x0C) = TEXW(texImageParam);
 		*(uint16_t *) (texEntry + 0x0E) = TEXH(texImageParam);
 		*(uint32_t *) (texEntry + 0x10) = texImageParam;
@@ -782,7 +780,7 @@ int TexarcWriteBmd(TexArc *nsbtx, BSTREAM *stream) {
 	for (int i = 0; i < nsbtx->nTextures; i++) {
 		TEXELS *texture = nsbtx->textures + i;
 		int texImageParam = texture->texImageParam;
-		int texelSize = TxGetTexelSize(TEXW(texImageParam), TEXH(texImageParam), texImageParam);
+		unsigned int texelSize = TxGetTexelSizeFull(texture);
 		uint32_t pos = stream->pos;
 
 		bstreamSeek(stream, texturePos + i * 0x14 + 4, 0);
@@ -847,7 +845,7 @@ static int TexarcWriteSttex(TexArc *texarc, BSTREAM *stream) {
 		TEXELS *tex = &texarc->textures[i];
 
 		//does not support partial height
-		unsigned int texSize = TxGetTexelSize(TEXW(tex->texImageParam), TEXH(tex->texImageParam), tex->texImageParam);
+		unsigned int texSize = TxGetTexelSizeFull(tex);
 
 		//resoure header
 		unsigned char rsrcHeader[0x18] = { 0 };
