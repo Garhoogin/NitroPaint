@@ -250,6 +250,38 @@ static void EditorHandleMenu(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 	}
 }
 
+static void EditorHandleAccelerator(HWND hWnd, WPARAM wParam, LPARAM lParam) {
+	//process the basic accelerators and translate the message, sending it to the focused window
+	HWND hWndFocus = GetFocus();
+	if (hWndFocus == NULL || !IsChild(hWnd, hWndFocus)) return;
+
+	//determine if the control is an edit control
+	WCHAR cls[5] = { 0 };
+	GetClassName(hWndFocus, cls, sizeof(cls) / sizeof(cls[0]));
+	int isEdit = _wcsicmp(cls, L"EDIT") == 0;
+
+	switch (LOWORD(wParam)) {
+		case ID_ACCELERATOR_CUT:
+			SendMessage(hWndFocus, WM_CUT, 0, 0);
+			break;
+		case ID_ACCELERATOR_COPY:
+			SendMessage(hWndFocus, WM_COPY, 0, 0);
+			break;
+		case ID_ACCELERATOR_PASTE:
+			SendMessage(hWndFocus, WM_PASTE, 0, 0);
+			break;
+		case ID_ACCELERATOR_UNDO:
+			SendMessage(hWndFocus, WM_UNDO, 0, 0);
+			break;
+		case ID_ACCELERATOR_REDO:
+			SendMessage(hWndFocus, WM_UNDO, 0, 0);
+			break;
+		case ID_ACCELERATOR_SELECT_ALL:
+			if (isEdit) SendMessage(hWndFocus, EM_SETSEL, 0, -1);
+			break;
+	}
+}
+
 static void EditorHandleActivate(HWND hWnd, HWND to) {
 	if (hWnd != to) return; //focusing away from this window
 
@@ -376,6 +408,9 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 				if (lParam == 0 && HIWORD(wParam) == 0) {
 					//menu command message, handle basic ones
 					EditorHandleMenu(hWnd, wParam, lParam);
+				} else if (lParam == 0 && HIWORD(wParam) == 1) {
+					//accelerator command, forward basic ones
+					EditorHandleAccelerator(hWnd, wParam, lParam);
 				}
 				break;
 			case WM_MDIACTIVATE:
