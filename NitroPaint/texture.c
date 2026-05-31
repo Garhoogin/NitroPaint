@@ -1323,20 +1323,19 @@ int TxWriteIStudio(TextureObject *texture, BSTREAM *stream) {
 	unsigned char paltHeader[] = { 0, 0, 0, 0 };
 	unsigned char imgeHeader[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	int texImageParam = texture->texture.texels.texImageParam;
+	uint32_t texImageParam = texture->texture.texels.texImageParam;
 	int format = FORMAT(texImageParam);
-	int width = TEXW(texImageParam);
-	int height = texture->texture.texels.height;
-	int texelSize = TxCalcTexelSize(texImageParam, width, height);
-	int nColors = texture->texture.palette.nColors;
+	unsigned int texelSize = TxGetTexelSizeFull(&texture->texture.texels);
+	unsigned int indexSize = TxGetPlttIdxSizeFull(&texture->texture.texels);
+	unsigned int nColors = texture->texture.palette.nColors;
 
-	unsigned int imgeSize = texelSize + (format == CT_4x4 ? (texelSize / 2) : 0);
+	unsigned int imgeSize = texelSize + indexSize;
 	*(uint32_t *) (paltHeader + 0x0) = nColors;
 	*(uint8_t *) (imgeHeader + 0x0) = format;
 	*(uint8_t *) (imgeHeader + 0x1) = (texImageParam >> 20) & 7;
 	*(uint8_t *) (imgeHeader + 0x2) = (texImageParam >> 23) & 7;
-	*(uint16_t *) (imgeHeader + 0x4) = width;
-	*(uint16_t *) (imgeHeader + 0x6) = height;
+	*(uint16_t *) (imgeHeader + 0x4) = TEXW(texImageParam);
+	*(uint16_t *) (imgeHeader + 0x6) = texture->texture.texels.height;
 	*(uint32_t *) (imgeHeader + 0x8) = imgeSize;
 
 	NnsStream nnsStream;
@@ -1353,7 +1352,7 @@ int TxWriteIStudio(TextureObject *texture, BSTREAM *stream) {
 	NnsStreamWrite(&nnsStream, imgeHeader, sizeof(imgeHeader));
 	NnsStreamWrite(&nnsStream, texture->texture.texels.texel, texelSize);
 	if (format == CT_4x4) {
-		NnsStreamWrite(&nnsStream, texture->texture.texels.cmp, texelSize / 2);
+		NnsStreamWrite(&nnsStream, texture->texture.texels.cmp, indexSize);
 	}
 	NnsStreamEndBlock(&nnsStream);
 
