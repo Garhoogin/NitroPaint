@@ -276,7 +276,9 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 	//read texture
 	TextureObject *tex = (TextureObject *) ObjAutoReadFile(path, FILE_TYPE_TEXTURE);
 	if (tex != NULL) {
-		//success: return
+		//construct a texture name from the file path
+		ConstructResourceNameFromFilePath(path, &tex->texture.texels.name);
+
 		free(path);
 
 		TEXTURE outTex;
