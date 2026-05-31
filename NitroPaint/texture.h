@@ -66,6 +66,9 @@ typedef struct {
 typedef struct TextureObject_ {
 	ObjHeader header;
 	TEXTURE texture;
+
+	char *generatorName;
+	char *generatorVersion;
 } TextureObject;
 
 const char *TxNameFromTexFormat(int fmt);

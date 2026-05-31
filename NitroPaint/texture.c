@@ -259,9 +259,11 @@ void TxRender(COLOR32 *px, TEXELS *texels, PALETTE *palette) {
 
 void TxFree(ObjHeader *obj) {
 	TextureObject *texture = (TextureObject *) obj;
-	if (texture->texture.texels.texel != NULL) free(texture->texture.texels.texel);
-	if (texture->texture.texels.cmp != NULL) free(texture->texture.texels.cmp);
-	if (texture->texture.palette.pal != NULL) free(texture->texture.palette.pal);
+	free(texture->generatorName);
+	free(texture->generatorVersion);
+	free(texture->texture.texels.texel);
+	free(texture->texture.texels.cmp);
+	free(texture->texture.palette.pal);
 	texture->texture.texels.texel = NULL;
 	texture->texture.texels.cmp = NULL;
 	texture->texture.palette.pal = NULL;
@@ -661,78 +663,66 @@ void TxRegisterFormats(void) {
 }
 
 static void TxReadNnsTextureData(TextureObject *texture, const unsigned char *buffer, unsigned int width, unsigned int height) {
-	int frmt = 0;
-	int c0xp = 0;
-	char *pnam = NULL;
-	unsigned char *txel = NULL;
-	unsigned char *pcol = NULL;
-	unsigned char *pidx = NULL;
+	TEXELS *texels = &texture->texture.texels;
+	PALETTE *palette = &texture->texture.palette;
 
-	int nColors = 0;
+	uint32_t texImageParam = 0;
+	texImageParam |= ilog2(TxRoundTextureSize(width ) >> 3) << 20;
+	texImageParam |= ilog2(TxRoundTextureSize(height) >> 3) << 23;
 
+	//read data blocks
 	while (1) {
-		char sect[9] = { 0 };
-		memcpy(sect, buffer, 8);
-		if (!strcmp(sect, "nns_endb")) break;
+		const unsigned char *blockHeader = buffer;
+		const char *blockName = (const char *) blockHeader;
+		unsigned int length = *(const uint32_t *) (buffer + 8);
+		length -= 0xC;
+		buffer += 0xC;
 
-		buffer += 8;
-		int length = (*(uint32_t *) buffer) - 0xC;
-		buffer += 4;
-
-		if (!strcmp(sect, "nns_txel")) {
-			txel = calloc(length, 1);
-			memcpy(txel, buffer, length);
-		} else if (!strcmp(sect, "nns_pcol")) {
-			pcol = calloc(length, 1);
-			memcpy(pcol, buffer, length);
-			nColors = length / 2;
-		} else if (!strcmp(sect, "nns_pidx")) {
-			pidx = calloc(length, 1);
-			memcpy(pidx, buffer, length);
-		} else if (!strcmp(sect, "nns_frmt")) {
-			if (!strncmp(buffer, "tex4x4", length)) {
-				frmt = CT_4x4;
-			} else if (!strncmp(buffer, "palette4", length)) {
-				frmt = CT_4COLOR;
-			} else if (!strncmp(buffer, "palette16", length)) {
-				frmt = CT_16COLOR;
-			} else if (!strncmp(buffer, "palette256", length)) {
-				frmt = CT_256COLOR;
-			} else if (!strncmp(buffer, "a3i5", length)) {
-				frmt = CT_A3I5;
-			} else if (!strncmp(buffer, "a5i3", length)) {
-				frmt = CT_A5I3;
-			} else if (!strncmp(buffer, "direct", length)) {
-				frmt = CT_DIRECT;
+		if (memcmp(blockName, "nns_endb", 8) == 0) {
+			break;
+		} else if (memcmp(blockName, "nns_txel", 8) == 0) {
+			//texel data
+			texels->texel = calloc(length, 1);
+			memcpy(texels->texel, buffer, length);
+		} else if (memcmp(blockName, "nns_pcol", 8) == 0) {
+			//palette color data
+			palette->nColors = length / sizeof(COLOR);
+			palette->pal = (COLOR *) calloc(length, 1);
+			memcpy(palette->pal, buffer, length);
+		} else if (memcmp(blockName, "nns_pidx", 8) == 0) {
+			//palette index data
+			texels->cmp = (uint16_t *) calloc(length, 1);
+			memcpy(texels->cmp, buffer, length);
+		} else if (memcmp(blockName, "nns_frmt", 8) == 0) {
+			//texture format
+			for (int frmt = 1; frmt <= 7; frmt++) {
+				if (strncmp(buffer, TxNameFromTexFormat(frmt), length) == 0) {
+					texImageParam |= frmt << 26;
+					break;
+				}
 			}
-		} else if (!strcmp(sect, "nns_c0xp")) {
-			c0xp = 1;
-		} else if (!strcmp(sect, "nns_pnam")) {
-			pnam = calloc(length + 1, 1);
-			memcpy(pnam, buffer, length);
+		} else if (memcmp(blockName, "nns_c0xp", 8) == 0) {
+			//color 0 is transparent
+			texImageParam |= (1 << 29);
+		} else if (memcmp(blockName, "nns_pnam", 8) == 0) {
+			//palette name
+			palette->name = calloc(length + 1, 1);
+			memcpy(palette->name, buffer, length);
+		} else if (memcmp(blockName, "nns_gnam", 8) == 0) {
+			//generator name
+			texture->generatorName = (char *) calloc(length + 1, sizeof(char));
+			memcpy(texture->generatorName, buffer, length);
+		} else if (memcmp(blockName, "nns_gver", 8) == 0) {
+			//generator version
+			texture->generatorVersion = (char *) calloc(length + 1, sizeof(char));
+			memcpy(texture->generatorVersion, buffer, length);
 		}
 
 		buffer += length;
 	}
 
-	if (frmt != CT_DIRECT) {
-		texture->texture.palette.pal = (COLOR *) pcol;
-		texture->texture.palette.nColors = nColors;
-		texture->texture.palette.name = pnam;
-	} else {
-		if (pnam != NULL) free(pnam);
-	}
-	texture->texture.texels.cmp = (uint16_t *) pidx;
-	texture->texture.texels.texel = txel;
-
-	int texImageParam = 0;
-	if (c0xp) texImageParam |= (1 << 29);
-	texImageParam |= (1 << 17) | (1 << 16);
-	texImageParam |= (ilog2(TxRoundTextureSize(width) >> 3) << 20) | (ilog2(TxRoundTextureSize(height) >> 3) << 23);
-	texImageParam |= frmt << 26;
-	texture->texture.texels.texImageParam = texImageParam;
-	texture->texture.texels.height = height;
-
+	texels->texImageParam = texImageParam;
+	texels->height = height;
 }
 
 int TxReadNnsTga(TextureObject *texture, const unsigned char *lpBuffer, unsigned int dwSize) {
