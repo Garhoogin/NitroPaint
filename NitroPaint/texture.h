@@ -13,6 +13,13 @@
 #define TEXTURE_TYPE_TOLOVERU    7 // To Love Ru format
 #define TEXTURE_TYPE_GRF         8 // GRF format
 
+
+#define TX_KEY_SUPPORT_TEXFMT         (OBJ_KEY_MAX+0)  // supported texture format bitmap
+#define TX_KEY_SUPPORT_C0XP           (OBJ_KEY_MAX+1)  // support c0xp bit
+#define TX_KEY_SUPPORT_PARTIAL_HEIGHT (OBJ_KEY_MAX+2)  // support partial height texture
+
+
+
 #define CT_A3I5 1			/*can read and write*/
 #define CT_4COLOR 2			/*can read and write*/
 #define CT_16COLOR 3		/*can read and write*/

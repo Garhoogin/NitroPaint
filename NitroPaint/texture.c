@@ -563,55 +563,92 @@ static int TxWriteNtga(TextureObject *texture, BSTREAM *stream);
 static int TxWriteToLoveRu(TextureObject *texture, BSTREAM *stream);
 static int TxWriteGRF(TextureObject *texture, BSTREAM *stream);
 
+#define ALL_TEXFMT ((1 << CT_4COLOR) | (1 << CT_16COLOR) | (1 << CT_256COLOR) \
+	| (1 << CT_A3I5) | (1 << CT_A5I3) | (1 << CT_DIRECT) | (1 << CT_4x4))
+
+static ObjKey s5txKeys[] = {
+	{ OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_C0XP, { .intVal = 0 } },
+	{ OBJ_KEYTYPE_NULL }
+};
+
+static ObjKey sSptKeys[] = {
+	{ OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_PARTIAL_HEIGHT, { .intVal = 0 } },
+	{ OBJ_KEYTYPE_NULL }
+};
+
+static ObjKey sTdsKeys[] = {
+	{ OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_C0XP, { .intVal = 0 } },
+	{ OBJ_KEYTYPE_NULL }
+};
+
+static ObjKey sNtgaKeys[] = {
+	{ OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_C0XP, { .intVal = 0 } },
+	{ OBJ_KEYTYPE_NULL }
+};
+
+static ObjKey sToLoveRuKeys[] = {
+	{ OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_C0XP, { .intVal = 0 } },
+	{ OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_PARTIAL_HEIGHT, { .intVal = 0 } },
+	{ OBJ_KEYTYPE_NULL }
+};
+
 static const ObjIdEntry sFormats[] = {
 	{
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_NNSTGA, "NNS TGA",
 		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE,
 		TxIsValidNnsTga,
 		(ObjReader) TxReadNnsTga,
-		(ObjWriter) TxWriteNnsTga
+		(ObjWriter) TxWriteNnsTga,
+		NULL
 	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_NNSPIC, "NNS PIC",
 		OBJ_ID_HEADER | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED | OBJ_ID_OFFSETS | OBJ_ID_WINCODEC_OVERRIDE,
 		TxIsValidNnsPic,
 		(ObjReader) TxReadNnsPic,
-		(ObjWriter) TxWriteNnsPic
+		(ObjWriter) TxWriteNnsPic,
+		NULL
 	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_ISTUDIO, "5TX",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_CHUNKED,
 		TxIsValidIStudio,
 		(ObjReader) TxReadIStudio,
-		(ObjWriter) TxWriteIStudio
+		(ObjWriter) TxWriteIStudio,
+		s5txKeys
 	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_SPT, "SPT",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED,
 		TxIsValidSpt,
 		(ObjReader) TxReadSpt,
-		(ObjWriter) TxWriteSpt
+		(ObjWriter) TxWriteSpt,
+		sSptKeys
 	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_TDS, "TDS",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
 		TxIsValidTds,
 		(ObjReader) TxReadTds,
-		(ObjWriter) TxWriteTds
+		(ObjWriter) TxWriteTds,
+		sTdsKeys
 	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_NTGA, "NTGA",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
 		TxIsValidNtga,
 		(ObjReader) TxReadNtga,
-		(ObjWriter) TxWriteNtga
+		(ObjWriter) TxWriteNtga,
+		sNtgaKeys
 	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_TOLOVERU, "To Love-Ru",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_VALIDATED | OBJ_ID_OFFSETS,
 		TxIsValidToLoveRu,
 		(ObjReader) TxReadToLoveRu,
-		(ObjWriter) TxWriteToLoveRu
+		(ObjWriter) TxWriteToLoveRu,
+		sToLoveRuKeys
 	}, {
 		FILE_TYPE_TEXTURE, TEXTURE_TYPE_GRF, "GRF",
 		OBJ_ID_HEADER | OBJ_ID_SIGNATURE | OBJ_ID_CHUNKED | OBJ_ID_VALIDATED,
 		TxIsValidGrf,
 		(ObjReader) TxReadGrf,
-		(ObjWriter) TxWriteGRF
+		(ObjWriter) TxWriteGRF,
+		NULL
 	}
 };
 

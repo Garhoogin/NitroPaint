@@ -745,12 +745,58 @@ static LRESULT TexViewerOnSize(TEXTUREEDITORDATA *data, WPARAM wParam, LPARAM lP
 	return DefMDIChildProc(data->hWnd, WM_SIZE, wParam, lParam);
 }
 
-static int TexViewerCheckConverted(TEXTUREEDITORDATA *data) {
-	if (TexViewerIsConverted(data)) return 1;
-	
-	//show user error
-	MessageBox(data->hWnd, L"Texture must be converted.", L"Texture Editor", MB_ICONERROR);
-	return 0;
+static int TexViewerCheckSave(TEXTUREEDITORDATA *data) {
+	//first check that the texture data is converted
+	if (!TexViewerIsConverted(data)) {
+		//show user error
+		MessageBox(data->hWnd, L"Texture must be converted.", L"Save Error", MB_ICONERROR);
+		return 0;
+	}
+
+	//check texture format, partial height, c0xp
+	//  format: error
+	//  height: warning
+	//  c0xp  : warning
+	int supportC0xp = 1, supportPartialHeight = 1;
+	unsigned int supTexFmt = ~0;
+	ObjQuery(&data->texture->header, OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_C0XP, &supportC0xp);
+	ObjQuery(&data->texture->header, OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_PARTIAL_HEIGHT, &supportPartialHeight);
+	ObjQuery(&data->texture->header, OBJ_KEYTYPE_UINT, TX_KEY_SUPPORT_TEXFMT, &supTexFmt);
+
+	const char *fmtName = ObjGetFormatNameByType(data->texture->header.type, data->texture->header.format);
+
+	TEXELS *texels = &data->texture->texture.texels;
+	uint32_t texImageParam = texels->texImageParam;
+	int texfmt = FORMAT(texImageParam);
+	unsigned int height = texels->height;
+
+	//check texture format
+	if (!(supTexFmt & (1 << texfmt))) {
+		const char *texfmtName = TxNameFromTexFormat(texfmt);
+
+		WCHAR textbuf[128];
+		wsprintfW(textbuf, L"The %S texture format is not supported by %S.", texfmtName, fmtName);
+
+		MessageBox(data->hWnd, textbuf, L"Save Error", MB_ICONERROR);
+		return 1;
+	}
+
+	//warn for height or c0xp
+	WCHAR warnbuf[256];
+	warnbuf[0] = L'\0';
+
+	if ((texfmt >= CT_4COLOR && texfmt <= CT_256COLOR && COL0TRANS(texImageParam)) && !supportC0xp) {
+		wsprintfW(warnbuf + wcslen(warnbuf), L"%S does not support color-0 transparency mode.\n", fmtName);
+	}
+	if ((height < 8 || (height & (height - 1))) && !supportPartialHeight) {
+		wsprintfW(warnbuf + wcslen(warnbuf), L"%S does not support partial height textures.\n", fmtName);
+	}
+
+	if (warnbuf[0] != L'\0') {
+		MessageBox(data->hWnd, warnbuf, L"Save Warning", MB_ICONWARNING);
+	}
+
+	return 1;
 }
 
 static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int notification) {
@@ -764,7 +810,7 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 		DoModal(data->hWndConvertDialog);
 	} else if (hWndControl == data->hWndExportNTF) {
 		//if not in any format, it cannot be exported.
-		if (!TexViewerCheckConverted(data)) return;
+		if (!TexViewerCheckSave(data)) return;
 
 		HWND hWndMain = data->editorMgr->hWnd;
 		LPWSTR ntftPath = saveFileDialog(hWndMain, L"Save NTFT", L"NTFT Files (*.ntft)\0*.ntft\0All Files\0*.*\0\0", L"ntft");
@@ -818,12 +864,12 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 			InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 			break;
 		case ID_FILE_SAVE:
-			if (!TexViewerCheckConverted(data)) break;
+			if (!TexViewerCheckSave(data)) break;
 
 			EditorSave(data->hWnd);
 			break;
 		case ID_FILE_SAVEAS:
-			if (!TexViewerCheckConverted(data)) break;
+			if (!TexViewerCheckSave(data)) break;
 
 			EditorSaveAs(data->hWnd);
 			break;
