@@ -445,6 +445,52 @@ static void TexViewerTileHoverCallback(HWND hWnd, int tileX, int tileY) {
 	
 }
 
+static unsigned int TexViewerGetColor(TEXTUREEDITORDATA *data, unsigned int x, unsigned int y, uint16_t *pIdx) {
+	TEXELS *texels = &data->texture->texture.texels;
+
+	uint32_t texImageParam = texels->texImageParam;
+	unsigned int texW = TEXW(texImageParam);
+	int fmt = FORMAT(texImageParam);
+	if (fmt == 0) return 0;
+
+	void *texel = texels->texel;
+	uint16_t *pidx = texels->cmp;
+
+	static const unsigned char bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+	unsigned int depth = bits[fmt];
+	unsigned int iPx = x + y * texW;
+
+	switch (fmt) {
+		case CT_DIRECT:
+		{
+			COLOR c = ((COLOR *) texel)[iPx];
+			return c;
+		}
+		case CT_4COLOR:
+		case CT_16COLOR:
+		case CT_256COLOR:
+		case CT_A3I5:
+		case CT_A5I3:
+		{
+			unsigned int pxPerByte = 8 / depth;
+			unsigned char pval = (((unsigned char *) texel)[iPx / pxPerByte] >> ((iPx % pxPerByte) * depth)) & ((1 << depth) - 1);
+			return pval;
+		}
+		case CT_4x4:
+		{
+			unsigned int iBlock = (x / 4) + (y / 4) * (texW / 4);
+			uint32_t block = ((uint32_t *) texel)[iBlock];
+			uint16_t idx = pidx[iBlock];
+
+			unsigned int pval = (block >> ((x & 3) + 4 * (y * 3))) & 0x3;
+
+			if (pIdx != NULL) *pIdx = idx;
+			return pval;
+		}
+	}
+	return 0;
+}
+
 static void TexViewerOnMouseMove(HWND hWnd, int pxX, int pxY) {
 	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) EditorGetData(hWnd);
 
@@ -463,71 +509,46 @@ static void TexViewerOnMouseMove(HWND hWnd, int pxX, int pxY) {
 		uint32_t texImageParam = data->texture->texture.texels.texImageParam;
 		int fmt = FORMAT(texImageParam);
 
+		uint16_t idx = 0;
+		unsigned int pval = TexViewerGetColor(data, pxX, pxY, &idx);
+
 		//color
-		if (fmt == 0) {
-			UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, L"");
-		} else {
-			void *texel = data->texture->texture.texels.texel;
-			uint16_t *pidx = data->texture->texture.texels.cmp;
-			unsigned int texW = TEXW(texImageParam);
+		switch (fmt) {
+			case 0: // not converted
+				buf[0] = L'\0';
+				break;
+			case CT_DIRECT:
+				wsprintfW(buf, L"Color: %04X", (COLOR) pval);
+				break;
+			case CT_4COLOR:
+			case CT_16COLOR:
+			case CT_256COLOR:
+				wsprintfW(buf, L"Color: %02X", pval);
 
-			static const unsigned char bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
-			unsigned int depth = bits[fmt];
-			unsigned int iPx = pxX + pxY * texW;
+				newPlttHighlightLength = 1;
+				newPlttHighlightStart = pval;
+				break;
+			case CT_A3I5:
+			case CT_A5I3:
+			{
+				unsigned int iBits = (fmt == CT_A3I5) ? 5 : 3;
+				unsigned int iMask = (1 << iBits) - 1;
 
-			switch (fmt) {
-				case CT_DIRECT:
-				{
-					COLOR c = ((COLOR *) texel)[iPx];
-					wsprintfW(buf, L"Color: %04X", c);
-					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
-					break;
-				}
-				case CT_4COLOR:
-				case CT_16COLOR:
-				case CT_256COLOR:
-				{
-					unsigned int pxPerByte = 8 / depth;
-					unsigned char pval = (((unsigned char *) texel)[iPx / pxPerByte] >> ((iPx % pxPerByte) * depth)) & ((1 << depth) - 1);
+				wsprintfW(buf, L"Color: %02X A=%d", pval & iMask, pval >> iBits);
 
-					wsprintfW(buf, L"Color: %02X", pval);
-					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
-
-					newPlttHighlightLength = 1;
-					newPlttHighlightStart = pval;
-					break;
-				}
-				case CT_A3I5:
-				case CT_A5I3:
-				{
-					unsigned int iBits = (fmt == CT_A3I5) ? 5 : 3;
-					unsigned int iMask = (1 << iBits) - 1;
-					unsigned char pval = ((unsigned char *) texel)[iPx];
-
-					wsprintfW(buf, L"Color: %02X A=%d", pval & iMask, pval >> iBits);
-					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
-
-					newPlttHighlightLength = 1;
-					newPlttHighlightStart = pval & iMask;
-					break;
-				}
-				case CT_4x4:
-				{
-					unsigned int iBlock = (pxX / 4) + (pxY / 4) * (texW / 4);
-					uint32_t block = ((uint32_t *) texel)[iBlock];
-					uint16_t idx = pidx[iBlock];
-
-					unsigned int pval = (block >> ((pxX & 3) + 4 * (pxY * 3))) & 0x3;
-
-					wsprintfW(buf, L"Color: %d (%04X)", pval, idx);
-					UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
-
-					newPlttHighlightLength = (idx & COMP_INTERPOLATE) ? 2 : 4;
-					newPlttHighlightStart = COMP_INDEX(idx);
-					break;
-				}
+				newPlttHighlightLength = 1;
+				newPlttHighlightStart = pval & iMask;
+				break;
 			}
+			case CT_4x4:
+				wsprintfW(buf, L"Color: %d (%04X)", pval, idx);
+
+				newPlttHighlightLength = (idx & COMP_INTERPOLATE) ? 2 : 4;
+				newPlttHighlightStart = COMP_INDEX(idx);
+				break;
 		}
+
+		UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, buf);
 	} else {
 		UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_CURPOS, L"");
 		UiStatusbarSetText(data->hWndStatus, TEXVIEWER_SB_COLOR, L"");
@@ -634,6 +655,67 @@ static void TexViewerPutColor(TEXTUREEDITORDATA *data, unsigned int x, unsigned 
 			((COLOR *) txel)[iPx] = (COLOR) col;
 			break;
 	}
+}
+
+static unsigned int TexViewerCountUsedPaletteColors(TEXTUREEDITORDATA *data) {
+
+	TEXELS *texels = &data->texture->texture.texels;
+	uint32_t texImageParam = texels->texImageParam;
+	int fmt = FORMAT(texImageParam);
+
+	if (fmt == CT_DIRECT || fmt == 0) return 0; // none
+
+	//create a buffer to indicate each color that could be used
+	unsigned char *accountBuffer = (unsigned char *) calloc(32768, 1);
+
+	for (int y = 0; y < data->height; y++) {
+		for (int x = 0; x < data->width; x++) {
+			uint16_t idx = 0;
+			unsigned int pval = TexViewerGetColor(data, x, y, &idx);
+
+			switch (fmt) {
+				case CT_4COLOR:
+				case CT_16COLOR:
+				case CT_256COLOR:
+					accountBuffer[pval] = 1;
+					break;
+				case CT_A3I5:
+					accountBuffer[pval & 0x1F] = 1;
+					break;
+				case CT_A5I3:
+					accountBuffer[pval & 0x07] = 1;
+					break;
+				case CT_4x4:
+				{
+					unsigned int baseIndex = COMP_INDEX(idx);
+					uint16_t mode = idx & COMP_MODE_MASK;
+
+					if (pval == 3 && (mode & COMP_TRANSPARENT)) break; // not a used color
+
+					if (pval < 2 || !(mode & COMP_INTERPOLATE)) {
+						//always a simple color reference
+						accountBuffer[(baseIndex + pval) & 0x7FFF] = 1;
+					} else {
+						//an interpolation, mark both endpoints as used
+						accountBuffer[(baseIndex + 0) & 0x7FFF] = 1;
+						accountBuffer[(baseIndex + 1) & 0x7FFF] = 1;
+					}
+
+					break;
+				}
+			}
+
+		}
+	}
+
+	//count used colors
+	unsigned int nUsed = 0;
+	for (unsigned int i = 0; i < 32768; i++) {
+		nUsed += accountBuffer[i];
+	}
+
+	free(accountBuffer);
+	return nUsed;
 }
 
 static void TexViewerDeleteSelection(TEXTUREEDITORDATA *data) {
@@ -896,14 +978,49 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 			CloseClipboard();
 			break;
 		}
+		case ID_TEXTUREMENU_PROPERTIES:
+		{
+			TextureObject *txobj = data->texture;
+			TEXTURE *texture = &txobj->texture;
+			TEXELS *texels = &texture->texels;
+			PALETTE *palette = &texture->palette;
+
+			uint32_t texImageParam = texels->texImageParam;
+			int fmt = FORMAT(texImageParam);
+			int c0xp = (fmt >= CT_4COLOR && fmt <= CT_256COLOR) && COL0TRANS(texImageParam);
+
+			const char *texfmt = TxNameFromTexFormat(fmt);
+			const char *generator = data->texture->generatorName;
+			const char *version = data->texture->generatorVersion;
+
+			WCHAR buffer[256];
+			wsprintfW(buffer,
+				L"Texture:\n  Format: %S\n  Color 0 transparent: %s\n  Size: %dx%d\n"
+				L"  Generated by: %S\n  Version: %S\n\n"
+				L"Palette:\n  Name: %S\n  Colors: %d\n  Used colors: %d\n\n"
+				L"Image:\n  RGBA colors: %d",
+
+				texfmt, c0xp? L"yes" : L"no", data->width, data->height, generator, version,
+				palette->name, palette->nColors, TexViewerCountUsedPaletteColors(data),
+				ImgCountColorsEx(data->px, data->width, data->height, IMG_CCM_NO_IGNORE_TRANSPARENT_COLOR)
+			);
+
+			MessageBox(data->hWnd, buffer, L"Properties", MB_ICONINFORMATION);
+
+
+			break;
+		}
 	}
 }
 
 static void TexViewerOnAccelerator(TEXTUREEDITORDATA *data, int idAccel) {
 	switch (idAccel) {
 		case ID_ACCELERATOR_CUT:
+			TexViewerOnMenuCommand(data, ID_TEXTUREMENU_COPY);
+			TexViewerDeleteSelection(data);
 			break;
 		case ID_ACCELERATOR_COPY:
+			TexViewerOnMenuCommand(data, ID_TEXTUREMENU_COPY);
 			break;
 		case ID_ACCELERATOR_PASTE:
 			break;
@@ -987,6 +1104,11 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			//initializing from unconverted
 			COLOR32 *px = (COLOR32 *) lParam;
 			data->texture = (TextureObject *) ObjAlloc(FILE_TYPE_TEXTURE, TexViewerGetFormatForPreset());
+
+			//set default generator name for new textures
+			extern const char *NpGetVersion(void);
+			data->texture->generatorName = _strdup("NitroPaint");
+			data->texture->generatorVersion = _strdup(NpGetVersion());
 
 			TexViewerEnsurePaletteEditor(data);
 			TexViewerSetImage(data, px, LOWORD(wParam), HIWORD(wParam));
