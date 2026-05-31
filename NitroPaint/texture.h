@@ -99,8 +99,6 @@ int TxDimensionIsValid(int x);
 
 // ----- Functions operating on the texture as an object
 
-void TxFree(ObjHeader *texture);
-
 TextureObject *TxContain(TEXTURE *texture, int format);
 
 void TxUncontain(TextureObject *texture, TEXTURE *out);
@@ -112,7 +110,3 @@ int TxIsValidIStudio(const unsigned char *buffer, unsigned int size);
 int TxIsValidTds(const unsigned char *buffer, unsigned int size);
 
 void TxRegisterFormats(void);
-
-int TxIdentify(const unsigned char *buffer, unsigned int size);
-
-int TxIdentifyFile(const wchar_t *path);

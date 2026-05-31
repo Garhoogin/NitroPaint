@@ -1894,15 +1894,13 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						int nColors = 0;
 
 						//try texture
-						if (TxIdentifyFile(path) != TEXTURE_TYPE_INVALID) {
-							TextureObject *texture = (TextureObject *) ObjAutoReadFile(path, FILE_TYPE_TEXTURE);
-
+						TextureObject *texture = (TextureObject *) ObjAutoReadFile(path, FILE_TYPE_TEXTURE);
+						if (texture != NULL) {
 							if (texture->texture.palette.pal != NULL) {
 								nColors = texture->texture.palette.nColors;
 								colors = (COLOR *) calloc(nColors, sizeof(COLOR));
 								memcpy(colors, texture->texture.palette.pal, nColors * sizeof(COLOR));
 							}
-							TxFree(&texture->header);
 							ObjFree(&texture->header);
 						} else {
 							//try image

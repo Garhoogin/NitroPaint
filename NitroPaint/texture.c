@@ -660,26 +660,6 @@ void TxRegisterFormats(void) {
 	}
 }
 
-int TxIdentify(const unsigned char *buffer, unsigned int size) {
-	int fmt = TEXTURE_TYPE_INVALID;
-	ObjIdentifyExByType(buffer, size, FILE_TYPE_TEXTURE, &fmt);
-	return fmt;
-}
-
-int TxIdentifyFile(const wchar_t *path) {
-	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	DWORD dwSizeHigh;
-	DWORD dwSize = GetFileSize(hFile, &dwSizeHigh);
-	LPBYTE lpBuffer = (LPBYTE) malloc(dwSize);
-	DWORD dwRead;
-	ReadFile(hFile, lpBuffer, dwSize, &dwRead, NULL);
-	CloseHandle(hFile);
-
-	int type = TxIdentify(lpBuffer, dwRead);
-	free(lpBuffer);
-	return type;
-}
-
 static void TxReadNnsTextureData(TextureObject *texture, const unsigned char *buffer, unsigned int width, unsigned int height) {
 	int frmt = 0;
 	int c0xp = 0;
