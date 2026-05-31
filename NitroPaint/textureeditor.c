@@ -657,16 +657,16 @@ static void TexViewerPutColor(TEXTUREEDITORDATA *data, unsigned int x, unsigned 
 	}
 }
 
-static unsigned int TexViewerCountUsedPaletteColors(TEXTUREEDITORDATA *data) {
+static void TexViewerMarkUsedColors(TEXTUREEDITORDATA *data, unsigned char *accountBuffer) {
+	//on output: 
+	// bit0: color used directly
+	// bit1: color used indirectly
 
 	TEXELS *texels = &data->texture->texture.texels;
 	uint32_t texImageParam = texels->texImageParam;
 	int fmt = FORMAT(texImageParam);
 
-	if (fmt == CT_DIRECT || fmt == 0) return 0; // none
-
-	//create a buffer to indicate each color that could be used
-	unsigned char *accountBuffer = (unsigned char *) calloc(32768, 1);
+	if (fmt == CT_DIRECT || fmt == 0) return; // none
 
 	for (int y = 0; y < data->height; y++) {
 		for (int x = 0; x < data->width; x++) {
@@ -677,13 +677,13 @@ static unsigned int TexViewerCountUsedPaletteColors(TEXTUREEDITORDATA *data) {
 				case CT_4COLOR:
 				case CT_16COLOR:
 				case CT_256COLOR:
-					accountBuffer[pval] = 1;
+					accountBuffer[pval] |= 1;
 					break;
 				case CT_A3I5:
-					accountBuffer[pval & 0x1F] = 1;
+					accountBuffer[pval & 0x1F] |= 1;
 					break;
 				case CT_A5I3:
-					accountBuffer[pval & 0x07] = 1;
+					accountBuffer[pval & 0x07] |= 1;
 					break;
 				case CT_4x4:
 				{
@@ -694,11 +694,11 @@ static unsigned int TexViewerCountUsedPaletteColors(TEXTUREEDITORDATA *data) {
 
 					if (pval < 2 || !(mode & COMP_INTERPOLATE)) {
 						//always a simple color reference
-						accountBuffer[(baseIndex + pval) & 0x7FFF] = 1;
+						accountBuffer[(baseIndex + pval) & 0x7FFF] |= 1;
 					} else {
 						//an interpolation, mark both endpoints as used
-						accountBuffer[(baseIndex + 0) & 0x7FFF] = 1;
-						accountBuffer[(baseIndex + 1) & 0x7FFF] = 1;
+						accountBuffer[(baseIndex + 0) & 0x7FFF] |= 2;
+						accountBuffer[(baseIndex + 1) & 0x7FFF] |= 2;
 					}
 
 					break;
@@ -707,11 +707,18 @@ static unsigned int TexViewerCountUsedPaletteColors(TEXTUREEDITORDATA *data) {
 
 		}
 	}
+}
+
+static unsigned int TexViewerCountUsedPaletteColors(TEXTUREEDITORDATA *data) {
+	//create a buffer to indicate each color that could be used
+	unsigned char *accountBuffer = (unsigned char *) calloc(32768, 1);
+
+	TexViewerMarkUsedColors(data, accountBuffer);
 
 	//count used colors
 	unsigned int nUsed = 0;
 	for (unsigned int i = 0; i < 32768; i++) {
-		nUsed += accountBuffer[i];
+		if (accountBuffer[i]) nUsed++;
 	}
 
 	free(accountBuffer);
@@ -2135,6 +2142,15 @@ typedef struct {
 	HPEN hGreenPen;
 } TEXTUREPALETTEEDITORDATA;
 
+static COLOR32 MakeContrastingColor(COLOR32 c) {
+	int r = (c >> 0) & 0xFF;
+	int g = (c >> 8) & 0xFF;
+	int b = (c >> 16) & 0xFF;
+	int luma = (2 * r + 7 * g + 1 * b);
+
+	return (luma > 1275) ? 0 : 0xFFFFFF;
+}
+
 LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TEXTUREPALETTEEDITORDATA *data = (TEXTUREPALETTEEDITORDATA *) GetWindowLongPtr(hWnd, 0);
 	if (data == NULL) {
@@ -2179,6 +2195,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			vert.cbSize = sizeof(vert);
 			vert.fMask = SIF_ALL;
 			GetScrollInfo(hWnd, SB_VERT, &vert);
+			int scroll = vert.nPos;
 
 			PAINTSTRUCT ps;
 			HDC hDC = BeginPaint(hWnd, &ps);
@@ -2190,6 +2207,13 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			Rectangle(hOffDC, 0, 0, rcClient.right + 1, rcClient.bottom + 1);
 			SelectObject(hOffDC, data->hBlackPen);
 
+			//palette usages
+			int showUnused = data->data->showUnusedPalette;
+			unsigned char *accountBuffer = NULL;
+			if (showUnused) {
+				accountBuffer = calloc(32768, 1);
+				TexViewerMarkUsedColors(data->data, accountBuffer);
+			}
 
 			int hlStart = data->data->highlightStart;
 			int hlEnd = hlStart + data->data->highlightLength;
@@ -2199,7 +2223,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			for (int i = 0; i < nColors; i++) {
 				int x = i & 0xF, y = i >> 4;
 
-				if (y * 16 + 16 - vert.nPos >= 0 && y * 16 - vert.nPos < rcClient.bottom) {
+				if (y * 16 + 16 - scroll >= 0 && y * 16 - scroll < rcClient.bottom) {
 					HBRUSH hbr = CreateSolidBrush(ColorConvertFromDS(palette[i]));
 					SelectObject(hOffDC, hbr);
 
@@ -2210,10 +2234,33 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					else if (y == data->hoverY) SelectObject(hOffDC, data->hRowPen);
 					else SelectObject(hOffDC, data->hBlackPen);
 
-					Rectangle(hOffDC, x * 16, y * 16 - vert.nPos, x * 16 + 16, y * 16 + 16 - vert.nPos);
+					Rectangle(hOffDC, x * 16, y * 16 - scroll, x * 16 + 16, y * 16 + 16 - scroll);
 					DeleteObject(hbr);
+
+					if (showUnused && !(accountBuffer[i] & 1)) {
+						COLOR32 slashColor = MakeContrastingColor(ColorConvertFromDS(palette[i]));
+						HPEN hSlashPen = CreatePen(PS_SOLID, 1, slashColor);
+						HPEN hOldPen = SelectObject(hOffDC, hSlashPen);
+
+						if (!(accountBuffer[i] & 2)) {
+							//not used directly or indirectly
+							MoveToEx(hOffDC, (x + 0) * 16 + 1, (y + 1) * 16 - 2 - scroll, NULL);
+							LineTo(hOffDC, (x + 1) * 16 - 1, (y + 0) * 16 - scroll);
+							MoveToEx(hOffDC, (x + 0) * 16 + 1, (y + 0) * 16 + 1 - scroll, NULL);
+							LineTo(hOffDC, (x + 1) * 16 - 1, (y + 1) * 16 - 1 - scroll);
+						} else {
+							//used indirectly only
+							MoveToEx(hOffDC, (x + 0) * 16 + 1, (y + 0) * 16 + 8 - scroll, NULL);
+							LineTo(hOffDC, (x + 1) * 16 - 1, (y + 0) * 16 + 8 - scroll);
+						}
+
+						SelectObject(hOffDC, hOldPen);
+						DeleteObject(hSlashPen);
+					}
 				}
 			}
+
+			if (showUnused) free(accountBuffer);
 
 			FbDraw(&data->fb, hDC, 0, 0, rcClient.right, rcClient.bottom, 0, 0);
 			EndPaint(hWnd, &ps);
@@ -2315,6 +2362,8 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						//otherwise open context menu
 						data->contextHoverIndex = data->hoverIndex;
 						HMENU hPopup = GetSubMenu(LoadMenu(GetModuleHandle(NULL), MAKEINTRESOURCE(IDR_MENU2)), 3);
+						CheckMenuItem(hPopup, ID_PALETTEMENU_SHOWUNUSED, data->data->showUnusedPalette ? MF_CHECKED : MF_UNCHECKED);
+
 						POINT mouse;
 						GetCursorPos(&mouse);
 						TrackPopupMenu(hPopup, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RIGHTBUTTON, mouse.x, mouse.y, 0, hWnd, NULL);
@@ -2357,6 +2406,12 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						EmptyClipboard();
 						CopyPalette(data->data->texture->texture.palette.pal + offset, length);
 						CloseClipboard();
+						break;
+					}
+					case ID_PALETTEMENU_SHOWUNUSED:
+					{
+						data->data->showUnusedPalette = !data->data->showUnusedPalette;
+						InvalidateRect(hWnd, NULL, FALSE);
 						break;
 					}
 					case ID_FILE_SAVE:

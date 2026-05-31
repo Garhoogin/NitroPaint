@@ -24,6 +24,8 @@ typedef struct {
 	int height;
 	int showAlpha;
 
+	int showUnusedPalette;
+
 	TextureEditorMode mode;
 
 	HWND hWndConvert;
