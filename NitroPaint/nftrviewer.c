@@ -1127,22 +1127,6 @@ static void NftrViewerOnNotify(NFTRVIEWERDATA *data, HWND hWnd, WPARAM wParam, L
 }
 
 
-static void NftrViewerCopyCurrentCharacter(NFTRVIEWERDATA *data) {
-	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
-	if (glyph == NULL) return;
-
-	HANDLE hString = GlobalAlloc(GMEM_MOVEABLE, 2 * sizeof(WCHAR));
-	WCHAR *textbuf = (WCHAR *) GlobalLock(hString);
-	textbuf[0] = NftrDecodeCharacter(data->nftr, glyph->cp);
-	textbuf[1] = L'\0';
-	GlobalUnlock(hString);
-
-	OpenClipboard(data->hWnd);
-	EmptyClipboard();
-	SetClipboardData(CF_UNICODETEXT, hString);
-	CloseClipboard();
-}
-
 static void NftrViewerCopyCurrentGlyph(NFTRVIEWERDATA *data) {
 	NFTR_GLYPH *glyph = NftrViewerGetCurrentGlyph(data);
 	if (glyph == NULL) return;
@@ -1153,13 +1137,23 @@ static void NftrViewerCopyCurrentGlyph(NFTRVIEWERDATA *data) {
 		pxbuf[i] = ColorConvertFromDS(data->palette[0]);
 	}
 
+	//copy glyph bitmap
 	NftrViewerRenderGlyph(data->nftr, pxbuf, data->nftr->cellWidth, data->nftr->cellHeight, 0, 0, glyph, data->palette);
 	ImgSwapRedBlue(pxbuf, data->nftr->cellWidth, data->nftr->cellHeight);
+
+	//copy the character itself
+	HANDLE hString = GlobalAlloc(GMEM_MOVEABLE, 2 * sizeof(WCHAR));
+	WCHAR *textbuf = (WCHAR *) GlobalLock(hString);
+	textbuf[0] = NftrDecodeCharacter(data->nftr, glyph->cp);
+	textbuf[1] = L'\0';
+	GlobalUnlock(hString);
 
 	OpenClipboard(data->hWnd);
 	EmptyClipboard();
 	copyBitmap(pxbuf, data->nftr->cellWidth, data->nftr->cellHeight);
+	SetClipboardData(CF_UNICODETEXT, hString);
 	CloseClipboard();
+
 	free(pxbuf);
 }
 
@@ -1846,9 +1840,6 @@ static void NftrViewerOnMenuCommand(NFTRVIEWERDATA *data, int idMenu) {
 			InvalidateRect(data->hWndPreview, NULL, FALSE);
 			break;
 		}
-		case ID_FONTMENU_COPYCHARACTER:
-			NftrViewerCopyCurrentCharacter(data);
-			break;
 		case ID_FONTMENU_COPYGLYPH:
 			NftrViewerCopyCurrentGlyph(data);
 			break;
