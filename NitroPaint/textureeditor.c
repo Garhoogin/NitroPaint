@@ -250,8 +250,9 @@ static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
 	unsigned int width = data->width, height = data->height;
 
 	int selX = 0, selY = 0, selW = width, selH = height;
-	if (TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH)) {
+	if (TedHasSelection(&data->ted)) {
 		//in terms of tiles, conv to texel coordinates
+		TedGetSelectionBounds(&data->ted, &selX, &selY, &selW, &selH);
 		selX *= 4;
 		selY *= 4;
 		selW *= 4;
@@ -313,49 +314,47 @@ static void TexViewerCopyTexture(TEXTUREEDITORDATA *data) {
 		free(bmp);
 	}
 
-	//for 4x4 and direct, we copy additional clipboard information.
-	if (fmt == CT_4x4 || fmt == CT_DIRECT) {
-		unsigned int texHeight = data->texture->texture.texels.height;
+	//copy additional clipboard information (DS texture specific).
+	unsigned int texHeight = data->texture->texture.texels.height;
 
-		size_t sizeTex = TxGetTexelSize(&data->texture->texture.texels);
-		size_t sizePlttIdx = 0, sizeTexPltt = 0;
-		if (fmt == CT_4x4) {
-			sizePlttIdx = sizeTex / 2;
-		}
-		if (fmt != CT_DIRECT) {
-			sizeTexPltt = data->texture->texture.palette.nColors * sizeof(COLOR);
-		}
-
-		size_t size = sizeof(NP_TEX) + sizeTex + sizePlttIdx + sizeTexPltt;
-		HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, size);
-		NP_TEX *npTex = GlobalLock(hGlobal);
-
-		npTex->texImageParam = texImageParam;
-		npTex->height = (uint16_t) texHeight;
-		npTex->srcX = (uint16_t) selX;
-		npTex->srcY = (uint16_t) selY;
-		npTex->srcW = (uint16_t) selW;
-		npTex->srcH = (uint16_t) selH;
-		npTex->ofsTex = 0;
-		npTex->ofsPlttIdx = npTex->ofsTex + sizeTex;
-		npTex->ofsTexPltt = npTex->ofsPlttIdx + sizePlttIdx;
-
-		//texel data
-		memcpy(npTex->data + npTex->ofsTex, data->texture->texture.texels.texel, sizeTex);
-
-		//palette index data
-		if (fmt == CT_4x4) {
-			memcpy(npTex->data + npTex->ofsPlttIdx, data->texture->texture.texels.cmp, sizePlttIdx);
-		}
-
-		//texture palette
-		if (sizeTexPltt > 0) {
-			memcpy(npTex->data + npTex->ofsTexPltt, data->texture->texture.palette.pal, sizeTexPltt);
-		}
-
-		GlobalUnlock(hGlobal);
-		SetClipboardData(TexViewerEnsureClipboardFormatNP_TEX(), hGlobal);
+	size_t sizeTex = TxGetTexelSize(&data->texture->texture.texels);
+	size_t sizePlttIdx = 0, sizeTexPltt = 0;
+	if (fmt == CT_4x4) {
+		sizePlttIdx = sizeTex / 2;
 	}
+	if (fmt != CT_DIRECT) {
+		sizeTexPltt = data->texture->texture.palette.nColors * sizeof(COLOR);
+	}
+
+	size_t size = sizeof(NP_TEX) + sizeTex + sizePlttIdx + sizeTexPltt;
+	HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, size);
+	NP_TEX *npTex = GlobalLock(hGlobal);
+
+	npTex->texImageParam = texImageParam;
+	npTex->height = (uint16_t) texHeight;
+	npTex->srcX = (uint16_t) selX;
+	npTex->srcY = (uint16_t) selY;
+	npTex->srcW = (uint16_t) selW;
+	npTex->srcH = (uint16_t) selH;
+	npTex->ofsTex = 0;
+	npTex->ofsPlttIdx = npTex->ofsTex + sizeTex;
+	npTex->ofsTexPltt = npTex->ofsPlttIdx + sizePlttIdx;
+
+	//texel data
+	memcpy(npTex->data + npTex->ofsTex, data->texture->texture.texels.texel, sizeTex);
+
+	//palette index data
+	if (fmt == CT_4x4) {
+		memcpy(npTex->data + npTex->ofsPlttIdx, data->texture->texture.texels.cmp, sizePlttIdx);
+	}
+
+	//texture palette
+	if (sizeTexPltt > 0) {
+		memcpy(npTex->data + npTex->ofsTexPltt, data->texture->texture.palette.pal, sizeTexPltt);
+	}
+
+	GlobalUnlock(hGlobal);
+	SetClipboardData(TexViewerEnsureClipboardFormatNP_TEX(), hGlobal);
 }
 
 static void TexViewerUpdateImageColorCountLabel(TEXTUREEDITORDATA *data) {
@@ -445,16 +444,10 @@ static void TexViewerTileHoverCallback(HWND hWnd, int tileX, int tileY) {
 	
 }
 
-static unsigned int TexViewerGetColor(TEXTUREEDITORDATA *data, unsigned int x, unsigned int y, uint16_t *pIdx) {
-	TEXELS *texels = &data->texture->texture.texels;
-
-	uint32_t texImageParam = texels->texImageParam;
+static unsigned int TexViewerGetColorFrom(uint32_t texImageParam, const void *texel, const uint16_t *pidx, unsigned int x, unsigned int y, uint16_t *pIdx) {
 	unsigned int texW = TEXW(texImageParam);
 	int fmt = FORMAT(texImageParam);
 	if (fmt == 0) return 0;
-
-	void *texel = texels->texel;
-	uint16_t *pidx = texels->cmp;
 
 	static const unsigned char bits[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
 	unsigned int depth = bits[fmt];
@@ -482,13 +475,20 @@ static unsigned int TexViewerGetColor(TEXTUREEDITORDATA *data, unsigned int x, u
 			uint32_t block = ((uint32_t *) texel)[iBlock];
 			uint16_t idx = pidx[iBlock];
 
-			unsigned int pval = (block >> ((x & 3) + 4 * (y * 3))) & 0x3;
+			unsigned int pval = (block >> (2 * ((x & 3) + 4 * (y & 3)))) & 0x3;
 
 			if (pIdx != NULL) *pIdx = idx;
 			return pval;
 		}
 	}
 	return 0;
+}
+
+static unsigned int TexViewerGetColor(TEXTUREEDITORDATA *data, unsigned int x, unsigned int y, uint16_t *pIdx) {
+	TEXELS *texels = &data->texture->texture.texels;
+
+	uint32_t texImageParam = texels->texImageParam;
+	return TexViewerGetColorFrom(texImageParam, texels->texel, texels->cmp, x, y, pIdx);
 }
 
 static void TexViewerOnMouseMove(HWND hWnd, int pxX, int pxY) {
@@ -657,6 +657,75 @@ static void TexViewerPutColor(TEXTUREEDITORDATA *data, unsigned int x, unsigned 
 	}
 }
 
+static void TexViewerPutIndex(TEXTUREEDITORDATA *data, unsigned int blockX, unsigned int blockY, uint16_t index) {
+	if (blockX * 4 >= (unsigned int) data->width || blockY * 4 >= (unsigned int) data->height) return;
+
+	TEXELS *texels = &data->texture->texture.texels;
+	uint32_t texImageParam = texels->texImageParam;
+
+	//format must be 4x4
+	int fmt = FORMAT(texImageParam);
+	if (fmt != CT_4x4) return;
+
+	unsigned int nBlockX = TEXW(texImageParam) / 4;
+	unsigned int iBlock = blockX + blockY * nBlockX;
+	texels->cmp[iBlock] = index;
+}
+
+static void TexViewerOnPaste(TEXTUREEDITORDATA *data, BOOL bFromContextMenu) {
+	TEXTURE *texture = &data->texture->texture;
+	TEXELS *texels = &texture->texels;
+	PALETTE *palette = &texture->palette;
+
+	uint32_t texImageParam = texels->texImageParam;
+
+	//get paste region
+	int pasteX, pasteY;
+	TedGetPasteLocation(&data->ted, bFromContextMenu, &pasteX, &pasteY);
+
+	int destX = pasteX * 4;
+	int destY = pasteY * 4;
+
+	OpenClipboard(data->hWnd);
+
+	//get clipboard texture data
+	HGLOBAL hNpTex = GetClipboardData(TexViewerEnsureClipboardFormatNP_TEX());
+	if (hNpTex != NULL) {
+		NP_TEX *npTex = (NP_TEX *) GlobalLock(hNpTex);
+		const void *npTexTexel = npTex->data + npTex->ofsTex;
+		const void *npTexIndex = npTex->data + npTex->ofsPlttIdx;
+		const void *npTexPltt = npTex->data + npTex->ofsTexPltt;
+
+
+		uint32_t copyTexImageParam = npTex->texImageParam;
+		if (FORMAT(copyTexImageParam) == FORMAT(texImageParam)) {
+
+			//copy bits
+			for (unsigned int y = 0; y < npTex->srcH; y++) {
+				for (unsigned int x = 0; x < npTex->srcW; x++) {
+					unsigned int srcX = x + npTex->srcX;
+					unsigned int srcY = y + npTex->srcY;
+
+					uint16_t idx;
+					unsigned int srcCol = TexViewerGetColorFrom(copyTexImageParam, npTexTexel, npTexIndex, srcX, srcY, &idx);
+
+					//put color and index (if applicable)
+					TexViewerPutColor(data, x + destX, y + destY, srcCol);
+					TexViewerPutIndex(data, (x + destX) / 4, (y + destY) / 4, idx);
+				}
+			}
+
+			TedSelect(&data->ted, destX / 4, destY / 4, npTex->srcW / 4, npTex->srcH / 4);
+		}
+
+		GlobalUnlock(hNpTex);
+	}
+
+	CloseClipboard();
+
+	TexViewerGraphicsUpdated(data);
+}
+
 static void TexViewerMarkUsedColors(TEXTUREEDITORDATA *data, unsigned char *accountBuffer) {
 	//on output: 
 	// bit0: color used directly
@@ -732,10 +801,9 @@ static void TexViewerDeleteSelection(TEXTUREEDITORDATA *data) {
 	for (int yy = 0; yy < height * 4; yy++) {
 		for (int xx = 0; xx < width * 4; xx++) {
 			TexViewerPutColor(data, x * 4 + xx, y * 4 + yy, 0);
+			TexViewerPutIndex(data, x + xx / 4, y + yy / 4, 0);
 		}
 	}
-
-	//TODO: clear pidx for 4x4?
 
 	TedDeselect(&data->ted);
 	TexViewerGraphicsUpdated(data);
@@ -977,6 +1045,13 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 			free(path);
 			break;
 		}
+		case ID_TEXTUREMENU_CUT:
+			TexViewerOnMenuCommand(data, ID_TEXTUREMENU_COPY);
+			TexViewerDeleteSelection(data);
+			break;
+		case ID_TEXTUREMENU_DELETE:
+			TexViewerDeleteSelection(data);
+			break;
 		case ID_TEXTUREMENU_COPY:
 		{
 			OpenClipboard(data->hWnd);
@@ -985,6 +1060,15 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 			CloseClipboard();
 			break;
 		}
+		case ID_TEXTUREMENU_PASTE:
+			TexViewerOnPaste(data, TRUE);
+			break;
+		case ID_TEXTUREMENU_SELECTALL:
+			TedSelectAll(&data->ted);
+			break;
+		case ID_TEXTUREMENU_DESELECT:
+			TedDeselect(&data->ted);
+			break;
 		case ID_TEXTUREMENU_PROPERTIES:
 		{
 			TextureObject *txobj = data->texture;
@@ -1018,6 +1102,8 @@ static void TexViewerOnMenuCommand(TEXTUREEDITORDATA *data, int idMenu) {
 			break;
 		}
 	}
+	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
+	TedUpdateMargins(&data->ted);
 }
 
 static void TexViewerOnAccelerator(TEXTUREEDITORDATA *data, int idAccel) {
@@ -1030,6 +1116,7 @@ static void TexViewerOnAccelerator(TEXTUREEDITORDATA *data, int idAccel) {
 			TexViewerOnMenuCommand(data, ID_TEXTUREMENU_COPY);
 			break;
 		case ID_ACCELERATOR_PASTE:
+			TexViewerOnPaste(data, FALSE);
 			break;
 		case ID_ACCELERATOR_DESELECT:
 			TedDeselect(&data->ted);

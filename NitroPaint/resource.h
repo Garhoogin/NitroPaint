@@ -285,13 +285,18 @@
 #define ID_TEXTURE_CREATEPALETTESWAP    40296
 #define ID_TEXTUREMENU_PROPERTIES       40297
 #define ID_PALETTEMENU_SHOWUNUSED       40298
+#define ID_TEXTUREMENU_CUT              40299
+#define ID_TEXTUREMENU_PASTE            40300
+#define ID_TEXTUREMENU_DELETE           40301
+#define ID_TEXTUREMENU_SELECTALL        40302
+#define ID_TEXTUREMENU_DESELECT         40303
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        112
-#define _APS_NEXT_COMMAND_VALUE         40299
+#define _APS_NEXT_COMMAND_VALUE         40304
 #define _APS_NEXT_CONTROL_VALUE         1001
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
