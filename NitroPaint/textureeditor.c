@@ -844,7 +844,7 @@ static void TexViewerMarkUsedColors(TEXTUREEDITORDATA *data, unsigned char *acco
 					unsigned int baseIndex = COMP_INDEX(idx);
 					uint16_t mode = idx & COMP_MODE_MASK;
 
-					if (pval == 3 && (mode & COMP_TRANSPARENT)) break; // not a used color
+					if (pval == 3 && !(mode & COMP_OPAQUE)) break; // not a used color
 
 					if (pval < 2 || !(mode & COMP_INTERPOLATE)) {
 						//always a simple color reference
