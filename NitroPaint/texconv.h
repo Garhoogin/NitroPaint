@@ -124,6 +124,35 @@ typedef struct TxConversionParameters_ {
 
 
 // -----------------------------------------------------------------------------------------------
+// Name: TxPadTextureImage
+//
+// Pads a texture image to a valid DS texture size. If the texture dimensions are not powers of 2,
+// this function pads right and bottom edges of the image to the next power of 2. The inserted
+// pixels are produced by duplicating the previous row/column, a behavior consistent with the
+// standard behavior, allowing a texture to be used with clamping.
+//
+// If the texture dimensions exceed 1024, the image dimensions are clamped.
+//
+// Parameters:
+//   px                          The input pixel buffer.
+//   width                       The input image width.
+//   height                      The input image height.
+//   outWidth                    Pointer receiving the output width, on success.
+//   outHeight                   Pointer receiving the output height, on success.
+//
+// Returns:
+//   The output pixel buffer, on success. NULL on failure.
+// -----------------------------------------------------------------------------------------------
+COLOR32 *TxPadTextureImage(
+	const COLOR32 *px,
+	unsigned int   width,
+	unsigned int   height,
+	unsigned int  *outWidth,
+	unsigned int  *outHeight
+);
+
+
+// -----------------------------------------------------------------------------------------------
 // Name: TxConvert
 //
 // Begins a texture conversion operation. Parameters are passed through the params parameter.

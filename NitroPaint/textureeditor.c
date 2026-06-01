@@ -707,7 +707,12 @@ static void TexViewerDoPasteBits(TEXTUREEDITORDATA *data, uint32_t texImageParam
 		}
 	}
 
-	TedSelect(&data->ted, destX / 4, destY / 4, w / 4, h / 4);
+	unsigned int destBlockX = destX / 4;
+	unsigned int destBlockY = destY / 4;
+	unsigned int destBlockW = (destX + w + 3) / 4 - destBlockX;
+	unsigned int destBlockH = (destY + h + 3) / 4 - destBlockY;
+
+	TedSelect(&data->ted, destBlockX, destBlockY, destBlockW, destBlockH);
 }
 
 static void TexViewerOnPaste(TEXTUREEDITORDATA *data, BOOL bFromContextMenu) {
@@ -742,11 +747,16 @@ static void TexViewerOnPaste(TEXTUREEDITORDATA *data, BOOL bFromContextMenu) {
 		unsigned int width, height;
 		COLOR32 *px = GetClipboardBitmap(&width, &height, NULL);
 		if (px != NULL) {
+			//padding the image to a pwer of 2 in size
+			unsigned int padWidth, padHeight;
+			COLOR32 *pxPad = TxPadTextureImage(px, width, height, &padWidth, &padHeight);
+			free(px);
+
 			//routine requires encoded image bits
 			void *tempbuf;
 			unsigned int tempSize;
-			HRESULT hr = ImgWriteMem(px, width, height, &tempbuf, &tempSize);
-			free(px);
+			HRESULT hr = ImgWriteMem(pxPad, padWidth, padHeight, &tempbuf, &tempSize);
+			free(pxPad);
 
 			TEXELS convTexel;
 			PALETTE convPalette;
@@ -787,6 +797,7 @@ static void TexViewerOnPaste(TEXTUREEDITORDATA *data, BOOL bFromContextMenu) {
 				free(convPalette.pal);
 			}
 
+			if (tempbuf != NULL) free(tempbuf);
 			if (hReadPipe != NULL) CloseHandle(hReadPipe);
 			if (hWritePipe != NULL) CloseHandle(hWritePipe);
 			if (fixedPalette != NULL) ObjFree(&fixedPalette->header);

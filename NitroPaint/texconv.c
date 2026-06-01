@@ -59,13 +59,17 @@
 int ilog2(int x);
 
 static unsigned int TxiRoundUpDimension(unsigned int x) {
-	x = (x << 1) - 1;
-	return 1 << ilog2(x); //rounds down
+	//checks for max dimension
+	if (x < 8) return 8;
+	if (x > 1024) return 1024;
+	
+	//round up to a power of 2
+	return 1u << ilog2((x << 1) - 1);
 }
 
-static COLOR32 *TxiPadTextureImage(COLOR32 *px, unsigned int width, unsigned int height, unsigned int *outWidth, unsigned int *outHeight) {
-	//if this is a 0x0 image somehow just return an 8x8 transparent square
+COLOR32 *TxPadTextureImage(const COLOR32 *px, unsigned int width, unsigned int height, unsigned int *outWidth, unsigned int *outHeight) {
 	if (width == 0 || height == 0) {
+		//a 0x0 image, output an 8x8 transparent square
 		*outWidth = 8;
 		*outHeight = 8;
 		return (COLOR32 *) calloc(8 * 8, sizeof(COLOR32));
@@ -74,24 +78,17 @@ static COLOR32 *TxiPadTextureImage(COLOR32 *px, unsigned int width, unsigned int
 	//function imitates iMageStudio behavior
 	unsigned int padWidth = TxiRoundUpDimension(width);
 	unsigned int padHeight = TxiRoundUpDimension(height);
-	if (padWidth < 8) padWidth = 8;
-	if (padHeight < 8) padHeight = 8;
 
 	COLOR32 *out = (COLOR32 *) calloc(padWidth * padHeight, sizeof(COLOR32));
 	if (out == NULL) return NULL;
 
-	//fill rows
 	for (unsigned int y = 0; y < padHeight; y++) {
-		const COLOR32 *rowSrc = px + y * width;
-		COLOR32 *rowDst = out + y * padWidth;
-		if (y >= height) {
-			rowSrc = px + (height - 1) * width;
-		}
-		memcpy(rowDst, rowSrc, width * sizeof(COLOR32));
+		unsigned int srcY = (y >= height) ? (height - 1) : y;
 
-		//copy last pixel for the remainder of the width
-		for (unsigned int x = width; x < padWidth; x++) {
-			rowDst[x] = rowSrc[width - 1];
+		for (unsigned int x = 0; x < padWidth; x++) {
+			unsigned int srcX = (x >= width) ? (width - 1) : x;
+
+			out[x + y * padWidth] = px[srcX + width * srcY];
 		}
 	}
 
@@ -1930,7 +1927,7 @@ TxConversionResult TxConvert(TxConversionParameters *params) {
 	//pad texture if needed
 	unsigned int padWidth, padHeight, sourceWidth = params->width, sourceHeight = params->height;
 	COLOR32 *srcPx = params->px;
-	COLOR32 *padded = TxiPadTextureImage(srcPx, sourceWidth, sourceHeight, &padWidth, &padHeight);
+	COLOR32 *padded = TxPadTextureImage(srcPx, sourceWidth, sourceHeight, &padWidth, &padHeight);
 
 	RxReduction *reduction = RxNew(&params->balance);
 	if (padded == NULL || reduction == NULL) TEXCONV_THROW_STATUS(TEXCONV_NOMEM); // no memory
