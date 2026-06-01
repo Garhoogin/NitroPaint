@@ -37,6 +37,16 @@ static IoHandle IoiHandleFromPath(const wchar_t *path) {
 
 // ----- path conversion routines
 
+wchar_t *IoPathFromHandle(IoHandle handle, const wchar_t *filename) {
+	wchar_t handlebuf[32] = { 0 };
+	int handlelen = wsprintfW(handlebuf, L"%lu", (unsigned long) handle);
+
+	wchar_t *buf = (wchar_t *) calloc(wcslen(HANDLE_PATH_PREFIX) + handlelen + 1 + wcslen(filename) + 1, sizeof(wchar_t));
+	wsprintfW(buf, L"%s%s\\%s", HANDLE_PATH_PREFIX, handlebuf, filename);
+
+	return buf;
+}
+
 wchar_t *IoConvertPath(const wchar_t *path) {
 	//if a file is from a named pipe, we open the pipe and construct a path indicating the
 	//handle value. We do this to implement the required special handling of a file served
@@ -62,13 +72,7 @@ wchar_t *IoConvertPath(const wchar_t *path) {
 			filename = pipeName;
 		}
 
-		wchar_t handlebuf[32] = { 0 };
-		int handlelen = wsprintfW(handlebuf, L"%lu", (unsigned long) hFile);
-
-		wchar_t *buf = (wchar_t *) calloc(wcslen(HANDLE_PATH_PREFIX) + handlelen + 1 + wcslen(filename) + 1, sizeof(wchar_t));
-		wsprintfW(buf, L"%s%s\\%s", HANDLE_PATH_PREFIX, handlebuf, filename);
-
-		return buf;
+		return IoPathFromHandle(hFile, filename);
 	} else {
 		//duplicate the string
 		return _wcsdup(path);

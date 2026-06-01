@@ -13,6 +13,24 @@ typedef enum IoBool_ {
 
 
 // -----------------------------------------------------------------------------------------------
+// Name: IoPathFromHandle
+//
+// Creates a special path from a handle.
+//
+// Parameters:
+//   handle        The handle
+//   filename      The pseudo-name for the resource
+//
+// Returns:
+//   A file path, allocated on the heap. This path does not need to be passed to the 
+//   IoFreeConvertedPath function to be freed. 
+// -----------------------------------------------------------------------------------------------
+wchar_t *IoPathFromHandle(
+	IoHandle       handle,
+	const wchar_t *filename
+);
+
+// -----------------------------------------------------------------------------------------------
 // Name: IoConvertPath
 //
 // Converts a special path into an internal representation. This is necessary if a file path would

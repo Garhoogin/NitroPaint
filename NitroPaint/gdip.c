@@ -857,9 +857,7 @@ HRESULT ImgWriteMem(const COLOR32 *px, unsigned int width, unsigned int height, 
 	WICPixelFormatGUID format;
 	memcpy(&format, &GUID_WICPixelFormat32bppBGRA, sizeof(format));
 
-	void *buffer = NULL;
-	unsigned int size = 0;
-	HRESULT result = ImgiWrite(bits, &format, width, height, stride, stride * height, NULL, 0, &buffer, &size);
+	HRESULT result = ImgiWrite(bits, &format, width, height, stride, stride * height, NULL, 0, pBuffer, pSize);
 	
 	free(bits);
 	return result;

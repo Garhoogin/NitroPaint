@@ -290,9 +290,8 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 
 	//invalid NNS TGA. try reading as an image file and convert on the spot.
 	int succeeded = 0;
-	COLOR32 *px;
 	int bWidth = 0, bHeight = 0;
-	px = ImgRead(path, &bWidth, &bHeight);
+	COLOR32 *px = ImgRead(path, &bWidth, &bHeight);
 	if (px == NULL || bWidth == 0 || bHeight == 0) {
 		//invalid NNS TGA and image. Try reading a palette.
 		memset(texels, 0, sizeof(TEXELS));
@@ -321,72 +320,14 @@ static int TexarcViewerPromptTexImage(NSBTXVIEWERDATA *data, TEXELS *texels, PAL
 		succeeded = 0;
 		free(px);
 	} else {
-		//must be converted.
-		NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) data->editorMgr;
-		HWND hWndMdi = nitroPaintStruct->hWndMdi;
-
-		free(px); //for validation
-
-		//create temporary texture editor
-		SendMessage(hWndMdi, WM_SETREDRAW, FALSE, 0);
-		int verySmall = -(CW_USEDEFAULT >> 1); //(smallest power of 2 that won't be picked up as CW_USEDEFAULT)
+		//must be converted
+		free(px); // for validation
 
 		unsigned int size;
 		unsigned char *buf = IoReadWholeFile(path, &size);
 
-		HWND hWndTextureEditor = CreateTextureEditorFromUnconverted(verySmall, verySmall, 0, 0, hWndMdi, buf, size, path);
-		ShowWindow(hWndTextureEditor, SW_HIDE);
+		succeeded = TexViewerConvertImmediate(data->editorMgr->hWnd, buf, size, path, NULL, texels, palette);
 		free(buf);
-
-		TEXTUREEDITORDATA *teData = (TEXTUREEDITORDATA *) EditorGetData(hWndTextureEditor);
-		
-		//open conversion dialog
-		HWND hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
-			WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
-			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, nitroPaintStruct->edMgr.hWnd, NULL, NULL, NULL);
-		teData->hWndConvertDialog = hWndConvertDialog; //prevent from redrawing the whole screen
-		SendMessage(hWndMdi, WM_SETREDRAW, TRUE, 0);
-		SetWindowLongPtr(hWndConvertDialog, 0, (LONG_PTR) teData);
-		SendMessage(hWndConvertDialog, NV_INITIALIZE, 0, 0);
-		DoModal(hWndConvertDialog);
-
-		//we can check the isNitro field of the texture editor to determine if the conversion succeeded.
-		if (TexViewerIsConverted(teData)) {
-			succeeded = 1;
-
-			//copy data
-			TEXELS *srcTexel = &teData->texture->texture.texels;
-			PALETTE *srcPal = &teData->texture->texture.palette;
-
-			uint32_t texImageParam = srcTexel->texImageParam;
-			int texelSize = TxGetTexelSize(srcTexel);
-			texels->texImageParam = texImageParam;
-			texels->height = srcTexel->height;
-			texels->texel = (unsigned char *) calloc(texelSize, 1);
-			memcpy(texels->texel, srcTexel->texel, texelSize);
-
-			//4x4 palette index
-			if (FORMAT(texImageParam) == CT_4x4) {
-				texels->cmp = (uint16_t *) calloc(texelSize / 2, 1);
-				memcpy(texels->cmp, srcTexel->cmp, texelSize / 2);
-			}
-
-			//palette
-			if (FORMAT(texImageParam) != CT_DIRECT) {
-				unsigned int namelen = strlen(srcPal->name);
-				palette->nColors = srcPal->nColors;
-				palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
-				palette->name = (char *) calloc(namelen + 1, 1);
-				memcpy(palette->pal, srcPal->pal, palette->nColors * sizeof(COLOR));
-				memcpy(palette->name, srcPal->name, namelen);
-			}
-
-			//texture name
-			ConstructResourceNameFromFilePath(path, &texels->name);
-		} else {
-			succeeded = 0;
-		}
-		DestroyChild(hWndTextureEditor);
 	}
 
 	free(path);

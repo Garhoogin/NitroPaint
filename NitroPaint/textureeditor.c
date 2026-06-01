@@ -49,6 +49,11 @@ static int TexViewerEnsureClipboardFormatNP_TEX(void) {
 
 extern HICON g_appIcon;
 
+extern size_t my_strnlen(const char *_Str, size_t _MaxCount);
+extern size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
+#define strnlen my_strnlen
+#define wcsnlen my_wcsnlen
+
 HWND CreateTexturePaletteEditor(TEXTUREEDITORDATA *data);
 static void TexViewerEnsurePaletteEditor(TEXTUREEDITORDATA *data);
 
@@ -672,6 +677,39 @@ static void TexViewerPutIndex(TEXTUREEDITORDATA *data, unsigned int blockX, unsi
 	texels->cmp[iBlock] = index;
 }
 
+static HGLOBAL TexViewerGetCopiedNP_TEX(TEXTUREEDITORDATA *data) {
+	HGLOBAL hNpTex = GetClipboardData(TexViewerEnsureClipboardFormatNP_TEX());
+	if (hNpTex == NULL) return NULL;
+
+	NP_TEX *npTex = (NP_TEX *) GlobalLock(hNpTex);
+	int copyFmt = FORMAT(npTex->texImageParam);
+	int toFmt = FORMAT(data->texture->texture.texels.texImageParam);
+
+	GlobalUnlock(hNpTex);
+	if (copyFmt != toFmt) return NULL;
+
+	return hNpTex;
+}
+
+static void TexViewerDoPasteBits(TEXTUREEDITORDATA *data, uint32_t texImageParam, const void *texel, const void *pidx, unsigned int destX, unsigned int destY, unsigned int x1, unsigned int y1, unsigned int w, unsigned int h) {
+	//copy bits
+	for (unsigned int y = 0; y < h; y++) {
+		for (unsigned int x = 0; x < w; x++) {
+			unsigned int srcX = x + x1;
+			unsigned int srcY = y + y1;
+
+			uint16_t idx;
+			unsigned int srcCol = TexViewerGetColorFrom(texImageParam, texel, pidx, srcX, srcY, &idx);
+
+			//put color and index (if applicable)
+			TexViewerPutColor(data, x + destX, y + destY, srcCol);
+			TexViewerPutIndex(data, (x + destX) / 4, (y + destY) / 4, idx);
+		}
+	}
+
+	TedSelect(&data->ted, destX / 4, destY / 4, w / 4, h / 4);
+}
+
 static void TexViewerOnPaste(TEXTUREEDITORDATA *data, BOOL bFromContextMenu) {
 	TEXTURE *texture = &data->texture->texture;
 	TEXELS *texels = &texture->texels;
@@ -689,36 +727,72 @@ static void TexViewerOnPaste(TEXTUREEDITORDATA *data, BOOL bFromContextMenu) {
 	OpenClipboard(data->hWnd);
 
 	//get clipboard texture data
-	HGLOBAL hNpTex = GetClipboardData(TexViewerEnsureClipboardFormatNP_TEX());
+	HGLOBAL hNpTex = TexViewerGetCopiedNP_TEX(data);
 	if (hNpTex != NULL) {
 		NP_TEX *npTex = (NP_TEX *) GlobalLock(hNpTex);
 		const void *npTexTexel = npTex->data + npTex->ofsTex;
 		const void *npTexIndex = npTex->data + npTex->ofsPlttIdx;
 		const void *npTexPltt = npTex->data + npTex->ofsTexPltt;
-
-
 		uint32_t copyTexImageParam = npTex->texImageParam;
-		if (FORMAT(copyTexImageParam) == FORMAT(texImageParam)) {
 
-			//copy bits
-			for (unsigned int y = 0; y < npTex->srcH; y++) {
-				for (unsigned int x = 0; x < npTex->srcW; x++) {
-					unsigned int srcX = x + npTex->srcX;
-					unsigned int srcY = y + npTex->srcY;
-
-					uint16_t idx;
-					unsigned int srcCol = TexViewerGetColorFrom(copyTexImageParam, npTexTexel, npTexIndex, srcX, srcY, &idx);
-
-					//put color and index (if applicable)
-					TexViewerPutColor(data, x + destX, y + destY, srcCol);
-					TexViewerPutIndex(data, (x + destX) / 4, (y + destY) / 4, idx);
-				}
-			}
-
-			TedSelect(&data->ted, destX / 4, destY / 4, npTex->srcW / 4, npTex->srcH / 4);
-		}
+		TexViewerDoPasteBits(data, copyTexImageParam, npTexTexel, npTexIndex, destX, destY, npTex->srcX, npTex->srcY, npTex->srcW, npTex->srcH);
 
 		GlobalUnlock(hNpTex);
+	} else {
+		unsigned int width, height;
+		COLOR32 *px = GetClipboardBitmap(&width, &height, NULL);
+		if (px != NULL) {
+			//routine requires encoded image bits
+			void *tempbuf;
+			unsigned int tempSize;
+			HRESULT hr = ImgWriteMem(px, width, height, &tempbuf, &tempSize);
+			free(px);
+
+			TEXELS convTexel;
+			PALETTE convPalette;
+
+			TexViewerConvExtInfo extInfo;
+			extInfo.c0xp = COL0TRANS(texImageParam);
+			extInfo.format = FORMAT(texImageParam);
+			extInfo.fixedPalettePath = NULL;
+
+			HANDLE hReadPipe = INVALID_HANDLE_VALUE, hWritePipe = INVALID_HANDLE_VALUE;
+			NCLR *fixedPalette = NULL;
+
+			if (FORMAT(texImageParam) != CT_DIRECT) {
+				fixedPalette = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NCLR_TYPE_ISTUDIO);
+				fixedPalette->colors = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
+				fixedPalette->nColors = palette->nColors;
+				memcpy(fixedPalette->colors, palette->pal, palette->nColors * sizeof(COLOR));
+
+				//create pipe
+				CreatePipe(&hReadPipe, &hWritePipe, NULL, 0x20 + palette->nColors * sizeof(COLOR));
+
+				extInfo.fixedPalettePath = IoPathFromHandle(hReadPipe, L"palette.NCLR");
+
+				wchar_t *writePath = IoPathFromHandle(hWritePipe, L"palette.NCLR");
+				ObjWriteFile(&fixedPalette->header, writePath);
+				free(writePath);
+			}
+
+
+			int conv = TexViewerConvertImmediate(data->editorMgr->hWnd, tempbuf, tempSize, L"", &extInfo, &convTexel, &convPalette);
+			if (conv) {
+				TexViewerDoPasteBits(data, convTexel.texImageParam, convTexel.texel, convTexel.cmp, destX, destY, 0, 0, width, height);
+
+				free(convTexel.name);
+				free(convTexel.texel);
+				free(convTexel.cmp);
+				free(convPalette.name);
+				free(convPalette.pal);
+			}
+
+			if (hReadPipe != NULL) CloseHandle(hReadPipe);
+			if (hWritePipe != NULL) CloseHandle(hWritePipe);
+			if (fixedPalette != NULL) ObjFree(&fixedPalette->header);
+			if (extInfo.fixedPalettePath != NULL) free(extInfo.fixedPalettePath);
+
+		}
 	}
 
 	CloseClipboard();
@@ -1922,7 +1996,15 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 				UiCbAddString(data->hWndFormat, bf);
 			}
 
-			int format = TexViewerJudgeFormat(data->px, data->width, data->height, data->szInitialFile);
+			//get extra info
+			TexViewerConvExtInfo *extInfo = (TexViewerConvExtInfo *) lParam;
+			
+			int format;
+			if (extInfo == NULL) {
+				format = TexViewerJudgeFormat(data->px, data->width, data->height, data->szInitialFile);
+			} else {
+				format = extInfo->format;
+			}
 			UiCbSetCurSel(data->hWndFormat, format - 1);
 
 			//based on the texture format and presence of transparent pixels, select default color 0 mode. This option
@@ -1985,6 +2067,31 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			}
 
 			updateConvertDialog(data);
+
+			//if extra parameters are set, restrict the conversion options
+			if (extInfo != NULL) {
+				//disable all non-applicable settings
+				EnableWindow(data->hWndFormat, FALSE);
+				EnableWindow(data->hWndFixedPalette, FALSE);
+				EnableWindow(data->hWndColor0Transparent, FALSE);
+				EnableWindow(data->balance.hWndEnhanceColors, FALSE);
+				EnableWindow(data->hWndPaletteName, FALSE);
+				EnableWindow(data->hWndFixedPalette, FALSE);
+
+				SendMessage(data->hWndFixedPalette, BM_SETCHECK, BST_CHECKED, 0);
+				EnableWindow(data->hWndFixedPalette, FALSE);
+				EnableWindow(data->hWndPaletteBrowse, FALSE);
+				EnableWindow(data->hWndPaletteInput, FALSE);
+				EnableWindow(data->hWndLimitPalette, FALSE);
+				EnableWindow(data->hWndOptimizationSlider, FALSE);
+				EnableWindow(data->hWndPaletteSize, FALSE);
+				EnableWindow(data->hWndColorEntries, FALSE);
+
+				if (extInfo->format != CT_DIRECT) {
+					SendMessage(data->hWndPaletteInput, WM_SETTEXT, 0, (LPARAM) extInfo->fixedPalettePath);
+				}
+			}
+
 			SetGUIFont(hWnd);
 			break;
 		}
@@ -3303,6 +3410,83 @@ static void TexViewerEnsurePaletteEditor(TEXTUREEDITORDATA *data) {
 
 	//the texture viewer window scrollbars might not update correctly.
 	RedrawWindow(data->ted.hWndViewer, NULL, NULL, RDW_FRAME | RDW_INVALIDATE);
+}
+
+
+static void ConstructResourceNameFromFilePath(LPCWSTR path, char **out) {
+	LPCWSTR name = GetFileName(path);
+	const WCHAR *lastDot = wcsrchr(name, L'.');
+
+	unsigned int len = wcsnlen(name, 16);
+	if (lastDot != NULL && len > (unsigned int) (lastDot - name)) len = lastDot - name;
+	*out = (char *) calloc(len + 1, 1);
+
+	for (unsigned int i = 0; i < len; i++) {
+		(*out)[i] = (char) name[i];
+	}
+}
+
+int TexViewerConvertImmediate(HWND hWndMain, const unsigned char *buffer, unsigned int size, const wchar_t *path, TexViewerConvExtInfo *ext, TEXELS *texels, PALETTE *palette) {
+	NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+	HWND hWndMdi = nitroPaintStruct->hWndMdi;
+
+	//create temporary texture editor
+	SendMessage(hWndMdi, WM_SETREDRAW, FALSE, 0);
+	int verySmall = -(CW_USEDEFAULT >> 1); //(smallest power of 2 that won't be picked up as CW_USEDEFAULT)
+
+	HWND hWndTextureEditor = CreateTextureEditorFromUnconverted(verySmall, verySmall, 0, 0, hWndMdi, buffer, size, path);
+	ShowWindow(hWndTextureEditor, SW_HIDE);
+
+	TEXTUREEDITORDATA *teData = (TEXTUREEDITORDATA *) EditorGetData(hWndTextureEditor);
+
+	//open conversion dialog
+	HWND hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
+		WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
+		CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, nitroPaintStruct->edMgr.hWnd, NULL, NULL, NULL);
+	teData->hWndConvertDialog = hWndConvertDialog; //prevent from redrawing the whole screen
+	SendMessage(hWndMdi, WM_SETREDRAW, TRUE, 0);
+	SetWindowLongPtr(hWndConvertDialog, 0, (LONG_PTR) teData);
+	SendMessage(hWndConvertDialog, NV_INITIALIZE, 0, (LPARAM) ext);
+	DoModal(hWndConvertDialog);
+
+	//we can check the isNitro field of the texture editor to determine if the conversion succeeded.
+	int succeeded = 0;
+	if (TexViewerIsConverted(teData)) {
+		succeeded = 1;
+
+		//copy data
+		TEXELS *srcTexel = &teData->texture->texture.texels;
+		PALETTE *srcPal = &teData->texture->texture.palette;
+
+		uint32_t texImageParam = srcTexel->texImageParam;
+		int texelSize = TxGetTexelSize(srcTexel);
+		texels->texImageParam = texImageParam;
+		texels->height = srcTexel->height;
+		texels->texel = (unsigned char *) calloc(texelSize, 1);
+		memcpy(texels->texel, srcTexel->texel, texelSize);
+
+		//4x4 palette index
+		if (FORMAT(texImageParam) == CT_4x4) {
+			texels->cmp = (uint16_t *) calloc(texelSize / 2, 1);
+			memcpy(texels->cmp, srcTexel->cmp, texelSize / 2);
+		}
+
+		//palette
+		if (FORMAT(texImageParam) != CT_DIRECT) {
+			unsigned int namelen = strlen(srcPal->name);
+			palette->nColors = srcPal->nColors;
+			palette->pal = (COLOR *) calloc(palette->nColors, sizeof(COLOR));
+			palette->name = (char *) calloc(namelen + 1, 1);
+			memcpy(palette->pal, srcPal->pal, palette->nColors * sizeof(COLOR));
+			memcpy(palette->name, srcPal->name, namelen);
+		}
+
+		//texture name
+		ConstructResourceNameFromFilePath(path, &texels->name);
+	}
+
+	DestroyChild(hWndTextureEditor);
+	return succeeded;
 }
 
 HWND CreateTextureEditorFromUnconverted(int x, int y, int width, int height, HWND hWndParent, const unsigned char *buffer, unsigned int size, const wchar_t *path) {

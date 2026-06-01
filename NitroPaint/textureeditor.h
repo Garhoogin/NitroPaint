@@ -72,6 +72,12 @@ typedef struct {
 	HWND hWndPaletteBase;
 } TEXTUREEDITORDATA;
 
+typedef struct TexViewerConvExtInfo_ {
+	int format;
+	int c0xp;
+	wchar_t *fixedPalettePath;
+} TexViewerConvExtInfo;
+
 wchar_t *TexNarrowResourceNameToWideChar(const char *name);
 char *TexNarrowResourceNameFromWideChar(const wchar_t *name);
 void TexViewerChoosePaletteName(WCHAR *buffer, const WCHAR *file);
@@ -87,3 +93,5 @@ HWND CreateTextureEditorImmediate(int x, int y, int width, int height, HWND hWnd
 int BatchTextureDialog(HWND hWndParent);
 
 void BatchTexShowVramStatistics(HWND hWnd, LPCWSTR convertedDir);
+
+int TexViewerConvertImmediate(HWND hWndMain, const unsigned char *buffer, unsigned int size, const wchar_t *path, TexViewerConvExtInfo *extInfo, TEXELS *texels, PALETTE *palette);
