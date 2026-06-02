@@ -420,6 +420,13 @@ typedef struct TxiConversionWork_ {
 } TxiConversionWork;
 
 
+// Bit flags for accounting the used colors in the palette.
+#define TXC_ACC_UNUSED             0x00  // color is not used
+#define TXC_ACC_USED_DIRECT        0x01  // color is used directly
+#define TXC_ACC_USED_HALF          0x02  // color is used as a one-half endpoint
+#define TXC_ACC_USED_THIRD         0x04  // color is used as a 3/8 or 5/8 endpoint
+
+
 // Threshold for tentatively selecting an interpolated mode for a 4x4 block based on mean square
 // error. Calculated as about the max squared error of rounding a color to its nearest representable
 // color, and dividing by the sum of squared channel weights.
@@ -1295,14 +1302,22 @@ static void Txi4x4AccountColor(
 	if (pidx & COMP_INTERPOLATE) {
 		//color slots 0 and 1 mark those colors, 2 and 3 mark both
 		if (cindex == 0 || cindex == 1) {
-			useMap[pindex + cindex] = 1;
+			useMap[pindex + cindex] |= TXC_ACC_USED_DIRECT;
 		} else {
-			useMap[pindex + 0] = 1;
-			useMap[pindex + 1] = 1;
+			//interpolation color, mark both endpoints
+			if (pidx & COMP_OPAQUE) {
+				//opaque mode interpolated --> third colors
+				useMap[pindex + 0] |= TXC_ACC_USED_THIRD;
+				useMap[pindex + 1] |= TXC_ACC_USED_THIRD;
+			} else {
+				//transparent mode interpolated --> halfway color
+				useMap[pindex + 0] |= TXC_ACC_USED_HALF;
+				useMap[pindex + 1] |= TXC_ACC_USED_HALF;
+			}
 		}
 	} else {
 		//mark color used
-		useMap[pindex + cindex] = 1;
+		useMap[pindex + cindex] |= TXC_ACC_USED_DIRECT;
 	}
 }
 
@@ -1505,8 +1520,8 @@ static void Txi4x4RefineFillGaps(TxiConversionWork *work) {
 	//merge the two halves.
 	unsigned int paletteSize = work->plttSize;
 	for (unsigned int i = 0; (i + 3) < paletteSize; i += 2) {
-		int nUsedPair1 = work->useMap[i + 0] + work->useMap[i + 1];
-		int nUsedPair2 = work->useMap[i + 2] + work->useMap[i + 3];
+		unsigned int nUsedPair1 = (work->useMap[i + 0] != 0) + (work->useMap[i + 1] != 0);
+		unsigned int nUsedPair2 = (work->useMap[i + 2] != 0) + (work->useMap[i + 3] != 0);
 
 		if (nUsedPair1 != 1 || nUsedPair2 != 1) continue;
 
@@ -1536,13 +1551,13 @@ static void Txi4x4RefineFillGaps(TxiConversionWork *work) {
 		}
 
 		//update use map
-		work->useMap[i + iDest1] = 1;
+		work->useMap[i + iDest1] = work->useMap[i + 2 + iSrc2];
 
 		//slide colors over
 		memmove(work->pltt + i + 2, work->pltt + i + 4, (paletteSize - i - 4) * sizeof(COLOR));
 		memmove(work->useMap + i + 2, work->useMap + i + 4, (paletteSize - i - 4));
-		work->useMap[--paletteSize] = 0;
-		work->useMap[--paletteSize] = 0;
+		work->useMap[--paletteSize] = TXC_ACC_UNUSED;
+		work->useMap[--paletteSize] = TXC_ACC_UNUSED;
 	}
 }
 
@@ -1574,8 +1589,8 @@ static void Txi4x4RefineBubbleUnusedPairs(
 		int nMovedColors = nUsedColors - i - 2;
 		memmove(work->pltt + i, work->pltt + i + 2, nMovedColors * sizeof(COLOR));
 		memmove(work->useMap + i, work->useMap + i + 2, nMovedColors);
-		work->useMap[i + nMovedColors + 0] = 0;
-		work->useMap[i + nMovedColors + 1] = 0;
+		work->useMap[i + nMovedColors + 0] = TXC_ACC_UNUSED;
+		work->useMap[i + nMovedColors + 1] = TXC_ACC_UNUSED;
 
 		//adjust palette indices for all 4x4 blocks that have had their palette colors moved.
 		for (unsigned int j = 0; j < work->nTiles; j++) {
@@ -1666,7 +1681,7 @@ static int Txi4x4RefineIteration(TxiConversionWork *work) {
 		for (unsigned int j = 0; j < work->plttSize; j++) {
 			if (work->useMap[j]) continue;
 
-			work->useMap[j] = 1;
+			work->useMap[j] |= TXC_ACC_USED_DIRECT;
 			work->pltt[j] = ColorConvertToDS(tile->palette32[0]);
 			nSingleAvailable--;
 			nAvailable--;
@@ -1720,7 +1735,7 @@ static int Txi4x4RefineIteration(TxiConversionWork *work) {
 						work->pltt[j] = ColorConvertToDS(tile->palette32[0]);
 
 						//mark as used
-						work->useMap[j] = 1;
+						work->useMap[j] |= TXC_ACC_USED_DIRECT;
 						nSingleAvailable--;
 						slottedIndex = j;
 						break;
@@ -1737,15 +1752,17 @@ static int Txi4x4RefineIteration(TxiConversionWork *work) {
 
 				//copy to end of palette
 				slottedIndex = nUsedColors;
-				for (unsigned int i = 0; i < nColsToCopy; i++) work->pltt[slottedIndex + i] = ColorConvertToDS(tile->palette32[i]);
-				memset(work->useMap + slottedIndex, 1, nColsToCopy);
+				for (unsigned int i = 0; i < nColsToCopy; i++) {
+					work->pltt[slottedIndex + i] = ColorConvertToDS(tile->palette32[i]);
+					work->useMap[slottedIndex + i] = TXC_ACC_USED_DIRECT;
+				}
 
 				//if we add an odd number of colors, increase size by 2 and mark the second color as an unused single.
 				nUsedColors += nColsToCopy;
 				if (nColsToCopy & 1) {
 					nUsedColors++;
 					nSingleAvailable++;
-					work->useMap[nUsedColors - 1] = 0;
+					work->useMap[nUsedColors - 1] = TXC_ACC_UNUSED;
 				}
 			}
 
