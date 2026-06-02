@@ -31,7 +31,7 @@ unsigned int TxCalcTexelSize(uint32_t texImageParam, unsigned int width, unsigne
 unsigned int TxCalcPlttIdxSize(uint32_t texImageParam, unsigned int width, unsigned int height) {
 	//for tex4x4, palette index size is exactly half the texel size
 	if (FORMAT(texImageParam) != CT_4x4) return 0;
-	return TxCalcTexelSize(texImageParam, width, height);
+	return TxCalcTexelSize(texImageParam, width, height) / 2;
 }
 
 unsigned int TxCalcTotalTexImageSize(uint32_t texImageParam, unsigned int width, unsigned int height) {
