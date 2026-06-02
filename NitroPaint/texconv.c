@@ -1562,6 +1562,38 @@ static void Txi4x4RefineFillGaps(TxiConversionWork *work) {
 }
 
 // -----------------------------------------------------------------------------------------------
+// Name: Txi4x4RefineReduceInterpolationPairs
+// 
+// This routine finds color pairs that are only used for their halfway interpolated color. In 
+// these cases, we can bring the two endpoints closer together. This hopes to reduce the amount
+// of variability in the palette, and increase the chances of a successful merge later.
+// -----------------------------------------------------------------------------------------------
+static void Txi4x4RefineReduceInterpolationPairs(TxiConversionWork *work) {
+	//find halfway color pair
+	for (unsigned int i = 0; (i + 1) < work->plttSize; i += 2) {
+
+		if (work->useMap[i + 0] == TXC_ACC_USED_HALF && work->useMap[i + 1] == TXC_ACC_USED_HALF) {
+
+			COLOR c1 = work->pltt[i + 0];
+			COLOR c2 = work->pltt[i + 1];
+			unsigned int r1 = GetR(c1), g1 = GetG(c1), b1 = GetB(c1);
+			unsigned int r2 = GetR(c2), g2 = GetG(c2), b2 = GetB(c2);
+
+			//move c2 -> mean (round down, darker biased)
+			unsigned int r3 = (r1 + r2) / 2, g3 = (g1 + g2) / 2, b3 = (b1 + b2) / 2;
+			unsigned int r4 = r1 + r2 - r3, g4 = g1 + g2 - g3, b4 = b1 + b2 - b3;
+
+			//switch colors, darker second
+			work->pltt[i + 0] = r4 | (g4 << 5) | (b4 << 10);
+			work->pltt[i + 1] = r3 | (g3 << 5) | (b3 << 10);
+
+			//no need to adjust the texel data since only the halfway interpolation is used
+		}
+
+	}
+}
+
+// -----------------------------------------------------------------------------------------------
 // Name: Txi4x4RefineBubbleUnusedPairs
 // 
 // This routine finds unused pairs of colors in the color palette and bubbles them up to the end
@@ -1641,6 +1673,10 @@ static int Txi4x4RefineIteration(TxiConversionWork *work) {
 	//marked as "used" when they are directly referenced by index, or are used as part of a color
 	//interpolation. This allows the discovery of inefficiencies in the current layout.
 	Txi4x4AccountColors(work);
+
+	//using the mapped out palette, try to optimize color pairs where only the halfway color is
+	//used. Nudge the two endpoints closer together.
+	Txi4x4RefineReduceInterpolationPairs(work);
 
 	//for all tiles marked as duplicates, exclude them from the list.
 	for (unsigned int i = 0; i < work->nTiles; i++) {
