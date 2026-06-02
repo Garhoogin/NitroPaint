@@ -264,7 +264,6 @@ static void ImgiReadTgaIndexedCommon(COLOR32 *px, unsigned int width, unsigned i
 		pIndexed->pltt = (COLOR32 *) calloc(nColors, sizeof(COLOR32));
 		memcpy(pIndexed->pltt, palette, nColors * sizeof(COLOR32));
 	} else {
-		memset(pIndexed, 0, sizeof(ImgIndexedImage));
 		free(indexed);
 	}
 }
