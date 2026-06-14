@@ -204,6 +204,7 @@ typedef enum RxFlag_ {
 	RX_FLAG_ALPHA_MODE_PIXEL    = (0x02<< 2), // alpha is encoded per-pixel and discarded from the palette
 	RX_FLAG_ALPHA_MODE_PALETTE  = (0x03<< 2), // alpha is part of the color palette
 
+	RX_FLAG_MASK_BITS_TYPE_MASK = (0x01<< 4), // mask for mask bits types
 	RX_FLAG_MASK_BITS           = (0x00<< 4), // color palette colors are masked to RGBA5551.
 	RX_FLAG_NO_MASK_BITS        = (0x01<< 4), // color palette colors are not masked
 
@@ -317,35 +318,7 @@ typedef struct {
 	unsigned int count;
 } RxTotalBuffer;
 
-typedef struct RxPaletteMapEntry_ {
-	RxYiqColor color[RX_PALETTE_MAX_COUNT];
-	unsigned int index;
-	double sortVal;
-} RxPaletteMapEntry;
-
-typedef struct RxPaletteAccelNode_ {
-	struct RxPaletteAccelNode_ *pLeft;    // left pointer
-	struct RxPaletteAccelNode_ *pRight;   // right pointer
-	struct RxPaletteAccelNode_ *parent;   // parent node
-	RxPaletteMapEntry *mid;               // mid color
-	double splitVal;                      // value of split
-	unsigned int nCol;                    // number of colors this node
-	unsigned int start;                   // start index of color
-	unsigned int splitDir;                // split direction (Y,I,Q,A)
-} RxPaletteAccelNode;
-
-typedef struct RxPaletteAccelerator_ {
-	RxBool initialized;                               // marks that a palette has been loaded
-	RxBool useAccelerator;                            // marks that the loaded palette is using the accelerator
-	RxPaletteAccelNode root;                          // the root node of the accelerator
-	RxPaletteMapEntry *pltt;                          // palette mapping entries used by the accelerator
-	RxPaletteAccelNode *nodebuf;                      // accelerator working memory
-
-	RxYiqColor plttSmall[16 * RX_PALETTE_MAX_COUNT];  // palette buffer used for small palettes
-	RxYiqColor *plttLarge;                            // pointer to palette buffer (heap allocated or pointer to small)
-	unsigned int nPltt;                               // number of palette colors loaded
-	RxAlphaMode alphaMode;                            // alpha processing mode used by the accelerator
-} RxPaletteAccelerator;
+typedef struct RxPalette_ RxPalette;
 
 //reduction workspace structure
 struct RxReduction_ {
@@ -399,7 +372,8 @@ struct RxReduction_ {
 	RxHistogram *histogram;
 	RxHistEntry **histogramFlat;
 	RxPcaWork pcaWork;
-	RxPaletteAccelerator accel;
+	RxPalette *accel;
+	RxPalette *maskAccel;
 	unsigned int newCentroids[RX_PALETTE_MAX_SIZE];
 	RxTotalBuffer blockTotals[RX_PALETTE_MAX_SIZE];
 	RxYiqColor imgBuffer[RX_TEMP_IMG_BUF_SIZE];

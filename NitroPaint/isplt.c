@@ -72,6 +72,36 @@
 #define MEAN_Q2 15832.5709062345540000000  // mean of Q^2
 
 
+typedef struct RxPaletteMapEntry_ {
+	RxYiqColor color[RX_PALETTE_MAX_COUNT];
+	unsigned int index;
+	double sortVal;
+} RxiPaletteMapEntry;
+
+typedef struct RxPaletteAccelNode_ {
+	struct RxPaletteAccelNode_ *pLeft;    // left pointer
+	struct RxPaletteAccelNode_ *pRight;   // right pointer
+	struct RxPaletteAccelNode_ *parent;   // parent node
+	RxiPaletteMapEntry *mid;               // mid color
+	double splitVal;                      // value of split
+	unsigned int nCol;                    // number of colors this node
+	unsigned int start;                   // start index of color
+	unsigned int splitDir;                // split direction (Y,I,Q,A)
+} RxiPaletteAccelNode;
+
+struct RxPalette_ {
+	RxBool useAccelerator;                            // marks that the loaded palette is using the accelerator
+	RxiPaletteAccelNode root;                          // the root node of the accelerator
+	RxiPaletteMapEntry *pltt;                          // palette mapping entries used by the accelerator
+	RxiPaletteAccelNode *nodebuf;                      // accelerator working memory
+
+	RxYiqColor plttSmall[16 * RX_PALETTE_MAX_COUNT];  // palette buffer used for small palettes
+	RxYiqColor *plttLarge;                            // pointer to palette buffer (heap allocated or pointer to small)
+	unsigned int nPltt;                               // number of palette colors loaded
+	RxAlphaMode alphaMode;                            // alpha processing mode used by the accelerator
+};
+
+
 static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff);
 static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxBool overrideMode);
 
@@ -269,12 +299,12 @@ double RX_API RxComputeColorDifference(RxReduction *reduction, const RxYiqColor 
 	return RxiComputeColorDifference(reduction, yiq1, yiq2);
 }
 
-static COLOR32 RxMaskColorToDS15(COLOR32 c) {
+static COLOR32 RxiMaskColorToDS15(COLOR32 c) {
 	//DS mode masking: round color channels to 5-bit values, and force alpha=0xff
 	return ColorRoundToDS15(c) | 0xFF000000;
 }
 
-static COLOR32 RxMaskColorDummy(COLOR32 c) {
+static COLOR32 RxiMaskColorDummy(COLOR32 c) {
 	//no-mask dummy: pass colors
 	return c;
 }
@@ -545,7 +575,7 @@ static void RxiInit(RxReduction *reduction, const RxBalanceSetting *balance) {
 
 	reduction->nReclusters = RECLUSTER_DEFAULT;
 	reduction->nPaletteColors = RX_PALETTE_MAX_SIZE;
-	reduction->maskColors = RxMaskColorToDS15;
+	reduction->maskColors = RxiMaskColorToDS15;
 	reduction->alphaMode = RX_ALPHA_NONE; // default: no alpha processing
 	reduction->fAlphaThreshold = (float) (0x80 * INV_255);
 	reduction->status = RX_STATUS_OK;
@@ -607,13 +637,18 @@ void RX_API RxApplyFlags(RxReduction *reduction, RxFlag flag) {
 		case RX_FLAG_ALPHA_MODE_PIXEL: reduction->alphaMode = RX_ALPHA_PIXEL; break;
 		case RX_FLAG_ALPHA_MODE_PALETTE: reduction->alphaMode = RX_ALPHA_PALETTE; break;
 	}
+	
+	//clean-up previous mask bits mode
+	//TODO
 
-	if (flag & RX_FLAG_NO_MASK_BITS) {
-		//no color masking -> use dummy color mask callback
-		reduction->maskColors = RxMaskColorDummy;
-	} else {
-		//with color masking
-		reduction->maskColors = RxMaskColorToDS15;
+	//setting the mask bits mode
+	switch (flag & RX_FLAG_MASK_BITS_TYPE_MASK) {
+		case RX_FLAG_NO_MASK_BITS:
+			reduction->maskColors = RxiMaskColorDummy;
+			break;
+		case RX_FLAG_MASK_BITS:
+			reduction->maskColors = RxiMaskColorToDS15;
+			break;
 	}
 }
 
@@ -2724,6 +2759,9 @@ RxStatus RX_API RxReduceImage(
 	int touchAlpha = (flag & RX_FLAG_NO_PRESERVE_ALPHA);
 	int adaptive = !(flag & RX_FLAG_NO_ADAPTIVE_DIFFUSE);
 
+	//the context must have an active palette.
+	if (reduction->accel == NULL) return RX_STATUS_INCORRECT_STATE;
+
 	//initial progress
 	RxiUpdateProgress(reduction, 0, height);
 
@@ -2892,7 +2930,7 @@ RxStatus RX_API RxReduceImage(
 
 				//match to palette color
 				matched = RxPaletteFindClosestColorYiq(reduction, colorYiq, NULL);
-				RxYiqColor *chosenYiq = &reduction->accel.plttLarge[matched * nLayers];
+				RxYiqColor *chosenYiq = &reduction->accel->plttLarge[matched * nLayers];
 
 				//now diffuse to neighbors (mirrored with the scan direction):
 				//        X  7/16
@@ -2984,6 +3022,9 @@ RxStatus RX_API RxReduceImage(
 	return RX_STATUS_OK;
 }
 
+
+// ----- palette accelerator routines
+
 static inline double RxiAccelGetChannelN(RxReduction *reduction, const RxYiqColor *color, unsigned int n) {
 	RX_ASSUME(n < 4 * reduction->paletteLayers);
 
@@ -3001,17 +3042,23 @@ static inline double RxiAccelGetChannelN(RxReduction *reduction, const RxYiqColo
 }
 
 static int RxiAccelSortPalette(const void *p1, const void *p2) {
-	const RxPaletteMapEntry *e1 = (const RxPaletteMapEntry *) p1;
-	const RxPaletteMapEntry *e2 = (const RxPaletteMapEntry *) p2;
+	const RxiPaletteMapEntry *e1 = (const RxiPaletteMapEntry *) p1;
+	const RxiPaletteMapEntry *e2 = (const RxiPaletteMapEntry *) p2;
 	if (e1->sortVal < e2->sortVal) return -1;
 	if (e1->sortVal > e2->sortVal) return 1;
 	return 0;
 }
 
-static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelNode *accel, RxPaletteAccelNode *nodebuf, RxPaletteMapEntry *plttFull, unsigned int nextSplit) {
+static RxiPaletteAccelNode *RxiAccelSplit(
+	RxReduction         *reduction,
+	RxiPaletteAccelNode *accel,
+	RxiPaletteAccelNode *nodebuf,
+	RxiPaletteMapEntry  *plttFull,
+	unsigned int         nextSplit
+) {
 	RX_ASSUME(accel->nCol > 0);
 
-	RxPaletteMapEntry *pltt = plttFull + accel->start;
+	RxiPaletteMapEntry *pltt = plttFull + accel->start;
 
 	//we split the node if it has more than one node.
 	accel->mid = &pltt[0]; // set to first color in the trvial/degenerate case
@@ -3032,7 +3079,7 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 		for (unsigned int i = 0; i < accel->nCol; i++) {
 			pltt[i].sortVal = RxiAccelGetChannelN(reduction, pltt[i].color, nextSplit);
 		}
-		qsort(pltt, accel->nCol, sizeof(RxPaletteMapEntry), RxiAccelSortPalette);
+		qsort(pltt, accel->nCol, sizeof(RxiPaletteMapEntry), RxiAccelSortPalette);
 
 		//split test
 		double f1 = pltt[0].sortVal;
@@ -3063,7 +3110,7 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 	accel->mid = pltt + iSplit;
 
 	if (nLeft > 0) {
-		RxPaletteAccelNode *childL = nodebuf++;
+		RxiPaletteAccelNode *childL = nodebuf++;
 		childL->start = accel->start;
 		childL->nCol = nLeft;
 		childL->parent = accel;
@@ -3072,7 +3119,7 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 	}
 
 	if (nRight > 0) {
-		RxPaletteAccelNode *childR = nodebuf++;
+		RxiPaletteAccelNode *childR = nodebuf++;
 		childR->start = accel->start + iSplit + 1;
 		childR->nCol = nRight;
 		childR->parent = accel;
@@ -3086,7 +3133,13 @@ static RxPaletteAccelNode *RxiAccelSplit(RxReduction *reduction, RxPaletteAccelN
 	return nodebuf;
 }
 
-static void RxiAccelRecurseTreeInternal(RxReduction *reduction, RxPaletteAccelNode *accel, const RxYiqColor *color, double *pBestDiff, unsigned int *piBest) {
+static void RxiAccelRecurseTreeInternal(
+	RxReduction         *reduction,
+	RxiPaletteAccelNode *accel,
+	const RxYiqColor    *color,
+	double              *pBestDiff,
+	unsigned int        *piBest
+) {
 	//distance of color to the root node
 	RxBool intersectPlane = RX_FALSE;
 	double projColor = RxiAccelGetChannelN(reduction, color, accel->splitDir);
@@ -3105,7 +3158,7 @@ static void RxiAccelRecurseTreeInternal(RxReduction *reduction, RxPaletteAccelNo
 
 	//based on the difference from the split, we may only need to search one child.
 	//left/right nodes, if they exist, and are within the search space
-	RxPaletteAccelNode *nodeL = accel->pLeft;
+	RxiPaletteAccelNode *nodeL = accel->pLeft;
 	if (nodeL != NULL) {
 		//left node: lesser values (search only if the splitting plane is greater)
 		if (intersectPlane || projColor <= accel->splitVal) {
@@ -3113,7 +3166,7 @@ static void RxiAccelRecurseTreeInternal(RxReduction *reduction, RxPaletteAccelNo
 		}
 	}
 
-	RxPaletteAccelNode *nodeR = accel->pRight;
+	RxiPaletteAccelNode *nodeR = accel->pRight;
 	if (nodeR != NULL) {
 		//right node: greater values (seeach only if the splitting plane is lesser)
 		if (intersectPlane || projColor >= accel->splitVal) {
@@ -3122,7 +3175,14 @@ static void RxiAccelRecurseTreeInternal(RxReduction *reduction, RxPaletteAccelNo
 	}
 }
 
-static void RxiAccelRecurseTree(RxReduction *reduction, RxPaletteAccelNode *accel, const RxYiqColor *color, double *pBestDiff, unsigned int *piBest, int lrbit) {
+static void RxiAccelRecurseTree(
+	RxReduction         *reduction,
+	RxiPaletteAccelNode *accel,
+	const RxYiqColor    *color,
+	double              *pBestDiff,
+	unsigned int        *piBest,
+	int                  lrbit
+) {
 	//test the root and then recurse down (only the half not explored)
 	double diffFromSplit = accel->splitVal - RxiAccelGetChannelN(reduction, color, accel->splitDir);
 	diffFromSplit *= diffFromSplit;
@@ -3138,23 +3198,21 @@ static void RxiAccelRecurseTree(RxReduction *reduction, RxPaletteAccelNode *acce
 		}
 
 		//choose the sub tree opposite the way we came, search down
-		RxPaletteAccelNode *sub = lrbit ? accel->pLeft : accel->pRight;
+		RxiPaletteAccelNode *sub = lrbit ? accel->pLeft : accel->pRight;
 		if (sub != NULL) RxiAccelRecurseTreeInternal(reduction, sub, color, pBestDiff, piBest);
 	}
 }
 
-static unsigned int RxiPaletteFindClosestColorAccelerated(RxReduction *reduction, const RxYiqColor *color, double *outDiff) {
-	RxPaletteAccelerator *accel = &reduction->accel;
-	if (!accel->initialized) {
-		//not initialized
-		if (outDiff != NULL) *outDiff = RX_LARGE_NUMBER;
-		return 0;
-	}
-
+static unsigned int RxiPaletteFindClosestColorAccelerated(
+	RxReduction      *reduction,
+	RxPalette        *accel,
+	const RxYiqColor *color,
+	double           *outDiff
+) {
 	unsigned int nLayer = reduction->paletteLayers;
 
 	//traverse down
-	RxPaletteAccelNode *nodep = &accel->root;
+	RxiPaletteAccelNode *nodep = &accel->root;
 	while (1) {
 		double split = nodep->splitVal;
 		double val = RxiAccelGetChannelN(reduction, color, nodep->splitDir);
@@ -3196,26 +3254,20 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(RxReduction *reduction
 	return iBest;
 }
 
-unsigned int RX_API RxPaletteFindClosestColor(RxReduction *reduction, COLOR32 color, double *outDiff) {
-	RxYiqColor yiq;
-	RxConvertRgbToYiq(color, &yiq);
-	return RxPaletteFindClosestColorYiq(reduction, &yiq, outDiff);
-}
-
-unsigned int RX_API RxPaletteFindClosestColorYiq(RxReduction *reduction, const RxYiqColor *color, double *outDiff) {
-	RxPaletteAccelerator *accel = &reduction->accel;
-	if (!accel->initialized) {
-		//not initialized
-		if (outDiff != NULL) *outDiff = RX_LARGE_NUMBER;
-		return 0;
-	}
+static unsigned int RxiPaletteFindClosestColorOnAccel(
+	RxReduction      *reduction,
+	RxPalette        *accel,
+	const RxYiqColor *color,
+	double           *outDiff
+) {
+	RX_ASSUME(accel != NULL);
 
 	RxYiqColor *cpy = reduction->tempLayeredColor;
 	RxiColorVecCopy(cpy, color, reduction->paletteLayers);
 
 	//processing for alpha mode
 	unsigned int plttStart = 0;
-	switch (reduction->accel.alphaMode) {
+	switch (reduction->accel->alphaMode) {
 		case RX_ALPHA_PIXEL:
 		{
 			for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
@@ -3246,7 +3298,7 @@ unsigned int RX_API RxPaletteFindClosestColorYiq(RxReduction *reduction, const R
 
 	if (accel->useAccelerator) {
 		//accelerated search
-		return RxiPaletteFindClosestColorAccelerated(reduction, cpy, outDiff) + plttStart;
+		return RxiPaletteFindClosestColorAccelerated(reduction, accel, cpy, outDiff) + plttStart;
 	} else {
 		//slow search
 		RxYiqColor *pltt = &accel->plttLarge[plttStart * reduction->paletteLayers];
@@ -3254,9 +3306,34 @@ unsigned int RX_API RxPaletteFindClosestColorYiq(RxReduction *reduction, const R
 	}
 }
 
-static RxStatus RxiPaletteAlloc(RxReduction *reduction, unsigned int nCol) {
-	RxPaletteAccelerator *accel = &reduction->accel;
-	RX_ASSUME(accel->plttLarge == NULL);
+unsigned int RX_API RxPaletteFindClosestColorYiq(RxReduction *reduction, const RxYiqColor *color, double *outDiff) {
+	RxPalette *accel = reduction->accel;
+	if (accel == NULL) {
+		//not initialized
+		if (outDiff != NULL) *outDiff = RX_LARGE_NUMBER;
+		return 0;
+	}
+
+	return RxiPaletteFindClosestColorOnAccel(reduction, accel, color, outDiff);
+}
+
+unsigned int RX_API RxPaletteFindClosestColor(RxReduction *reduction, COLOR32 color, double *outDiff) {
+	RxYiqColor yiq;
+	RxConvertRgbToYiq(color, &yiq);
+	return RxPaletteFindClosestColorYiq(reduction, &yiq, outDiff);
+}
+
+static RxStatus RxiPaletteAllocCurrent(RxReduction *reduction) {
+	RxPalette *accel = (RxPalette *) RxMemCalloc(1, sizeof(RxPalette));
+	if (accel == NULL) return reduction->status = RX_STATUS_NOMEM;
+
+	reduction->accel = accel;
+	return RX_STATUS_OK;
+}
+
+static RxStatus RxiPaletteAllocColors(RxReduction *reduction, unsigned int nCol) {
+	RxPalette *accel = reduction->accel;
+	RX_ASSUME(accel != NULL);
 
 	if (nCol * reduction->paletteLayers > sizeof(accel->plttSmall) / sizeof(accel->plttSmall[0])) {
 		//above small threshold --> allocate on the heap
@@ -3266,20 +3343,23 @@ static RxStatus RxiPaletteAlloc(RxReduction *reduction, unsigned int nCol) {
 		accel->plttLarge = accel->plttSmall;
 	}
 
-	if (accel->plttLarge == NULL) reduction->status = RX_STATUS_NOMEM;
-	else accel->nPltt = nCol;
+	if (accel->plttLarge == NULL) {
+		reduction->status = RX_STATUS_NOMEM;
+	} else {
+		accel->nPltt = nCol;
+	}
 	return reduction->status;
 }
 
 static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 	//the K-D tree is incompatible with the palette with palette alpha.
-	RxAlphaMode alphaMode = reduction->accel.alphaMode;
+	RxAlphaMode alphaMode = reduction->accel->alphaMode;
 	if (alphaMode == RX_ALPHA_PALETTE) return RX_STATUS_INVALID;
 
 	unsigned int iStart = 0;
 	if (alphaMode == RX_ALPHA_RESERVE) iStart = 1; // skip 1st color in reserve mode
 
-	RxPaletteAccelerator *accel = &reduction->accel;
+	RxPalette *accel = reduction->accel;
 	RxYiqColor *pltt = accel->plttLarge;
 	unsigned int nColors = accel->nPltt;
 	if (nColors > 0) {
@@ -3299,8 +3379,8 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 	}
 
 	//working memory for accelerator
-	accel->pltt = (RxPaletteMapEntry *) RxMemCalloc(nColors, sizeof(RxPaletteMapEntry));
-	accel->nodebuf = (RxPaletteAccelNode *) calloc(nColors, sizeof(RxPaletteAccelNode));
+	accel->pltt = (RxiPaletteMapEntry *) RxMemCalloc(nColors, sizeof(RxiPaletteMapEntry));
+	accel->nodebuf = (RxiPaletteAccelNode *) calloc(nColors, sizeof(RxiPaletteAccelNode));
 
 	if (accel->pltt == NULL || accel->nodebuf == NULL) {
 		//no memory
@@ -3332,12 +3412,12 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 }
 
 static RxStatus RxiPaletteLoadUnaccelerated(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
-	RxStatus status = RxiPaletteAlloc(reduction, nColors);
+	RxStatus status = RxiPaletteAllocColors(reduction, nColors);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
 	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
 		for (unsigned int i = 0; i < nColors; i++) {
-			RxConvertRgbToYiq(pltt[j * nColors + i], &reduction->accel.plttLarge[i * reduction->paletteLayers + j]);
+			RxConvertRgbToYiq(pltt[j * nColors + i], &reduction->accel->plttLarge[i * reduction->paletteLayers + j]);
 		}
 	}
 
@@ -3349,32 +3429,34 @@ static RxStatus RxiPaletteLoadYiqUnaccelerated(RxReduction *reduction, const RxY
 	//is not reserved. We adjust the indexes here so that our palette accelerator does not
 	//have to care.
 	unsigned int iStart = 0;
-	if (reduction->accel.alphaMode == RX_ALPHA_RESERVE) {
+	if (reduction->accel->alphaMode == RX_ALPHA_RESERVE) {
 		iStart++;
 	}
 
-	RxStatus status = RxiPaletteAlloc(reduction, nColors + iStart);
+	RxStatus status = RxiPaletteAllocColors(reduction, nColors + iStart);
 	if (status != RX_STATUS_OK) return status;
 
 	unsigned int nLayer = reduction->paletteLayers;
 	for (unsigned int i = 0; i < nColors; i++) {
-		RxiColorVecCopy(&reduction->accel.plttLarge[(i + iStart) * nLayer], &pltt[i * srcPitch], nLayer);
+		RxiColorVecCopy(&reduction->accel->plttLarge[(i + iStart) * nLayer], &pltt[i * srcPitch], nLayer);
 	}
 
 	return RX_STATUS_OK;
 }
 
 RxStatus RX_API RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
-	RxPaletteAccelerator *accel = &reduction->accel;
-
 	//if an accelerator is loaded already, unload it.
 	RxPaletteFree(reduction);
 
+	RxStatus status = RxiPaletteAllocCurrent(reduction);
+	if (status != RX_STATUS_OK) return status;
+
 	//set alpha mode
+	RxPalette *accel = reduction->accel;
 	accel->alphaMode = reduction->alphaMode;
 
 	//in all cases, we load without the accelerator first
-	RxStatus status = RxiPaletteLoadUnaccelerated(reduction, pltt, nColors);
+	status = RxiPaletteLoadUnaccelerated(reduction, pltt, nColors);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
 	if (nColors > 16) {
@@ -3382,17 +3464,18 @@ RxStatus RX_API RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsig
 		RxiPaletteLoadAccelerated(reduction);
 	}
 
-	accel->initialized = RX_TRUE;
 	return reduction->status;
 }
 
 static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxBool overrideMode) {
-	RxPaletteAccelerator *accel = &reduction->accel;
-
 	//if an accelerator is loaded already, unload it.
 	RxPaletteFree(reduction);
 
+	RxStatus status = RxiPaletteAllocCurrent(reduction);
+	if (status != RX_STATUS_OK) return reduction->status = status;
+
 	//set alpha mode
+	RxPalette *accel = reduction->accel;
 	accel->alphaMode = reduction->alphaMode;
 
 	if (overrideMode) {
@@ -3403,7 +3486,7 @@ static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt
 	}
 
 	//in all cases, we load without the accelerator first
-	RxStatus status = RxiPaletteLoadYiqUnaccelerated(reduction, pltt, nColors, srcPitch);
+	status = RxiPaletteLoadYiqUnaccelerated(reduction, pltt, nColors, srcPitch);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
 	if (nColors > 16) {
@@ -3411,36 +3494,41 @@ static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt
 		RxiPaletteLoadAccelerated(reduction);
 	}
 
-	accel->initialized = RX_TRUE;
 	return reduction->status;
 }
 
 COLOR32 RX_API RxPaletteGetColor(RxReduction *reduction, unsigned int iLayer, unsigned int iColor) {
+	RX_ASSUME(reduction->accel != NULL);
 	RX_ASSUME(iLayer < reduction->paletteLayers);
-	RX_ASSUME(iColor < reduction->accel.nPltt);
+	RX_ASSUME(iColor < reduction->accel->nPltt);
 
 	//get the color at the index
-	const RxYiqColor *yiq = &reduction->accel.plttLarge[iColor * reduction->paletteLayers + iLayer];
+	const RxYiqColor *yiq = &reduction->accel->plttLarge[iColor * reduction->paletteLayers + iLayer];
 	return RxConvertYiqToRgb(yiq);
 }
 
 RxStatus RX_API RxPaletteGetColorYiq(RxReduction *reduction, unsigned int iLayer, unsigned int iColor, RxYiqColor *col) {
-	if (iLayer >= reduction->paletteLayers || iColor >= reduction->accel.nPltt) return RX_STATUS_INVALID;
+	if (reduction->accel == NULL) return RX_STATUS_INCORRECT_STATE;
+	if (iLayer >= reduction->paletteLayers || iColor >= reduction->accel->nPltt) return RX_STATUS_INVALID;
 
 	//get the color at the index
-	const RxYiqColor *yiq = &reduction->accel.plttLarge[iColor * reduction->paletteLayers + iLayer];
+	const RxYiqColor *yiq = &reduction->accel->plttLarge[iColor * reduction->paletteLayers + iLayer];
 	RxiColorCopy(col, yiq);
 	return RX_STATUS_OK;
 }
 
-void RX_API RxPaletteFree(RxReduction *reduction) {
-	if (!reduction->accel.initialized) return;
+static void RxiPaletteFree(RxPalette *palette) {
+	if (palette->plttLarge != palette->plttSmall) RxMemFree(palette->plttLarge);
+	RxMemFree(palette->pltt);
+	free(palette->nodebuf);
+	RxMemFree(palette);
+}
 
-	RxMemFree(reduction->accel.pltt);
-	if (reduction->accel.plttLarge != reduction->accel.plttSmall) RxMemFree(reduction->accel.plttLarge);
-	free(reduction->accel.nodebuf);
-	memset(&reduction->accel, 0, sizeof(reduction->accel));
-	reduction->accel.initialized = RX_FALSE;
+void RX_API RxPaletteFree(RxReduction *reduction) {
+	if (reduction->accel == NULL) return;
+
+	RxiPaletteFree(reduction->accel);
+	reduction->accel = NULL;
 }
 
 double RX_API RxComputePaletteError(RxReduction *reduction, const COLOR32 *px, unsigned int width, unsigned int height, const COLOR32 *pal, unsigned int nColors, double nMaxError) {
