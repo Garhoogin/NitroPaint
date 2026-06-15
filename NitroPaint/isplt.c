@@ -102,8 +102,11 @@ struct RxPalette_ {
 };
 
 
+static unsigned int RxiPaletteFindClosestColorOnAccel(RxReduction *reduction, RxPalette *accel, const RxYiqColor *color, double *outDiff);
 static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff);
+static RxPalette *RxiPaletteAllocAndLoadYiqInternal(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxAlphaMode alphaMode);
 static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxBool overrideMode);
+static void RxiPaletteFree(RxPalette *palette);
 
 
 
@@ -299,18 +302,43 @@ double RX_API RxComputeColorDifference(RxReduction *reduction, const RxYiqColor 
 	return RxiComputeColorDifference(reduction, yiq1, yiq2);
 }
 
-static COLOR32 RxiMaskColorToDS15(COLOR32 c) {
-	//DS mode masking: round color channels to 5-bit values, and force alpha=0xff
-	return ColorRoundToDS15(c) | 0xFF000000;
+static COLOR32 RxiMaskColorToDS15(RxReduction *reduction, COLOR32 c) {
+	RX_ASSUME(reduction->maskAccel != NULL);
+
+	RxYiqColor yiq;
+	RxConvertRgbToYiq(c | 0xFF000000, &yiq);
+
+	//find nearest 15-bit color
+	unsigned int n = RxiPaletteFindClosestColorOnAccel(reduction, reduction->maskAccel, &yiq, NULL);
+	return ColorConvertFromDS((COLOR) n) | 0xFF000000;
 }
 
-static COLOR32 RxiMaskColorDummy(COLOR32 c) {
+static COLOR32 RxiMaskColorToDS15Yiq(RxReduction *reduction, const RxYiqColor *col) {
+	RX_ASSUME(reduction->maskAccel != NULL);
+
+	//find nearest 15-bit color
+	unsigned int n = RxiPaletteFindClosestColorOnAccel(reduction, reduction->maskAccel, col, NULL);
+	return ColorConvertFromDS((COLOR) n) | 0xFF000000;
+}
+
+
+
+static COLOR32 RxiMaskColorDummy(RxReduction *reduction, COLOR32 c) {
 	//no-mask dummy: pass colors
+	(void) reduction;
+
 	return c;
 }
 
+static COLOR32 RxiMaskColorDummyYiq(RxReduction *reduction, const RxYiqColor *col) {
+	return RxiMaskColorDummy(reduction, RxConvertYiqToRgb(col));
+}
+
+
+
 static inline COLOR32 RxiMaskYiqToRgb(RxReduction *reduction, const RxYiqColor *yiq) {
-	return reduction->maskColors(RxConvertYiqToRgb(yiq));
+	//return reduction->maskColors(reduction, RxConvertYiqToRgb(yiq));
+	return reduction->maskColorsYiq(reduction, yiq);
 }
 
 static inline void RxiMaskYiq(RxReduction *reduction, const RxYiqColor *yiq, RxYiqColor *out) {
@@ -559,6 +587,57 @@ RxStatus RX_API RxSetPaletteLayers(RxReduction *reduction, unsigned int nLayers)
 	return RX_STATUS_OK;
 }
 
+static RxStatus RxiInitForMask5(RxReduction *reduction) {
+	//create a color palette for all representable colors
+	RxYiqColor *pltt = (RxYiqColor *) RxMemCalloc(32768, sizeof(RxYiqColor));
+	if (pltt == NULL) return RX_STATUS_NOMEM;
+
+	for (unsigned int i = 0; i < 0x8000; i++) {
+		//each 5-bit color -> 8-bit, to YIQ space
+		RxConvertRgbToYiq(ColorConvertFromDS((COLOR) i) | 0xFF000000, &pltt[i]);
+	}
+
+	RxPalette *accel = RxiPaletteAllocAndLoadYiqInternal(reduction, pltt, 1, 32768, RX_FLAG_ALPHA_MODE_NONE);
+	RxMemFree(pltt);
+
+	if (accel == NULL) return RX_STATUS_NOMEM;
+
+	reduction->maskAccel = accel;
+	return RX_STATUS_OK;
+}
+
+static RxStatus RxiSetColorMaskMode(RxReduction *reduction, RxMaskBitsMode mode) {
+	//if the mask bits mode is already set appropriately, do nothing
+	if (reduction->maskMode == mode) return RX_STATUS_OK;
+
+	//clean-up previous mask bits mode
+	RxiPaletteFree(reduction->maskAccel);
+	reduction->maskAccel = NULL;
+
+	//setting the mask bits mode
+	switch (mode) {
+		case RX_MASK_8:
+			//set function pointers
+			reduction->maskColors = RxiMaskColorDummy;
+			reduction->maskColorsYiq = RxiMaskColorDummyYiq;
+			break;
+		case RX_MASK_5:
+		{
+			//init mode
+			RxStatus status = RxiInitForMask5(reduction);
+			if (status != RX_STATUS_OK) return status;
+
+			//set function pointers
+			reduction->maskColors = RxiMaskColorToDS15;
+			reduction->maskColorsYiq = RxiMaskColorToDS15Yiq;
+			break;
+		}
+	}
+
+	reduction->maskMode = mode;
+	return RX_STATUS_OK;
+}
+
 static void RxiInit(RxReduction *reduction, const RxBalanceSetting *balance) {
 	memset(reduction, 0, sizeof(RxReduction));
 
@@ -572,10 +651,10 @@ static void RxiInit(RxReduction *reduction, const RxBalanceSetting *balance) {
 
 	RxSetBalance(reduction, balance);
 	RxSetPaletteLayers(reduction, 1);
+	RxiSetColorMaskMode(reduction, RX_MASK_5);
 
 	reduction->nReclusters = RECLUSTER_DEFAULT;
 	reduction->nPaletteColors = RX_PALETTE_MAX_SIZE;
-	reduction->maskColors = RxiMaskColorToDS15;
 	reduction->alphaMode = RX_ALPHA_NONE; // default: no alpha processing
 	reduction->fAlphaThreshold = (float) (0x80 * INV_255);
 	reduction->status = RX_STATUS_OK;
@@ -632,24 +711,14 @@ RxReduction *RX_API RxNew(const RxBalanceSetting *balance) {
 void RX_API RxApplyFlags(RxReduction *reduction, RxFlag flag) {
 	//set alpha mode
 	switch (flag & RX_FLAG_ALPHA_MODE_MASK) {
-		case RX_FLAG_ALPHA_MODE_NONE: reduction->alphaMode = RX_ALPHA_NONE; break;
-		case RX_FLAG_ALPHA_MODE_RESERVE: reduction->alphaMode = RX_ALPHA_RESERVE; break;
-		case RX_FLAG_ALPHA_MODE_PIXEL: reduction->alphaMode = RX_ALPHA_PIXEL; break;
-		case RX_FLAG_ALPHA_MODE_PALETTE: reduction->alphaMode = RX_ALPHA_PALETTE; break;
+		case RX_FLAG_ALPHA_MODE_NONE    : reduction->alphaMode = RX_ALPHA_NONE   ; break;
+		case RX_FLAG_ALPHA_MODE_RESERVE : reduction->alphaMode = RX_ALPHA_RESERVE; break;
+		case RX_FLAG_ALPHA_MODE_PIXEL   : reduction->alphaMode = RX_ALPHA_PIXEL  ; break;
+		case RX_FLAG_ALPHA_MODE_PALETTE : reduction->alphaMode = RX_ALPHA_PALETTE; break;
 	}
 	
-	//clean-up previous mask bits mode
-	//TODO
-
-	//setting the mask bits mode
-	switch (flag & RX_FLAG_MASK_BITS_TYPE_MASK) {
-		case RX_FLAG_NO_MASK_BITS:
-			reduction->maskColors = RxiMaskColorDummy;
-			break;
-		case RX_FLAG_MASK_BITS:
-			reduction->maskColors = RxiMaskColorToDS15;
-			break;
-	}
+	RxFlag maskMode = flag & RX_FLAG_MASK_BITS_TYPE_MASK;
+	RxiSetColorMaskMode(reduction, (maskMode == RX_FLAG_MASK_BITS) ? RX_MASK_5 : RX_MASK_8);
 }
 
 void RX_API RxSetProgressCallback(RxReduction *reduction, RxProgressCallback callback, void *userData) {
@@ -2162,6 +2231,8 @@ RxStatus RX_API RxHistClear(RxReduction *reduction) {
 
 static void RxiDestroy(RxReduction *reduction) {
 	RxPaletteFree(reduction);
+	RxiPaletteFree(reduction->maskAccel);
+
 	if (reduction->histogramFlat != NULL) free(reduction->histogramFlat);
 	if (reduction->histogram != NULL) {
 		RxiSlabFreeAll(&reduction->histogram->allocator);
@@ -3267,7 +3338,7 @@ static unsigned int RxiPaletteFindClosestColorOnAccel(
 
 	//processing for alpha mode
 	unsigned int plttStart = 0;
-	switch (reduction->accel->alphaMode) {
+	switch (accel->alphaMode) {
 		case RX_ALPHA_PIXEL:
 		{
 			for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
@@ -3331,8 +3402,7 @@ static RxStatus RxiPaletteAllocCurrent(RxReduction *reduction) {
 	return RX_STATUS_OK;
 }
 
-static RxStatus RxiPaletteAllocColors(RxReduction *reduction, unsigned int nCol) {
-	RxPalette *accel = reduction->accel;
+static RxStatus RxiPaletteAllocColors(RxReduction *reduction, RxPalette *accel, unsigned int nCol) {
 	RX_ASSUME(accel != NULL);
 
 	if (nCol * reduction->paletteLayers > sizeof(accel->plttSmall) / sizeof(accel->plttSmall[0])) {
@@ -3351,15 +3421,16 @@ static RxStatus RxiPaletteAllocColors(RxReduction *reduction, unsigned int nCol)
 	return reduction->status;
 }
 
-static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
+static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction, RxPalette *accel) {
+	RX_ASSUME(accel != NULL);
+
 	//the K-D tree is incompatible with the palette with palette alpha.
-	RxAlphaMode alphaMode = reduction->accel->alphaMode;
+	RxAlphaMode alphaMode = accel->alphaMode;
 	if (alphaMode == RX_ALPHA_PALETTE) return RX_STATUS_INVALID;
 
 	unsigned int iStart = 0;
 	if (alphaMode == RX_ALPHA_RESERVE) iStart = 1; // skip 1st color in reserve mode
 
-	RxPalette *accel = reduction->accel;
 	RxYiqColor *pltt = accel->plttLarge;
 	unsigned int nColors = accel->nPltt;
 	if (nColors > 0) {
@@ -3412,7 +3483,7 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction) {
 }
 
 static RxStatus RxiPaletteLoadUnaccelerated(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
-	RxStatus status = RxiPaletteAllocColors(reduction, nColors);
+	RxStatus status = RxiPaletteAllocColors(reduction, reduction->accel, nColors);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
 	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
@@ -3424,21 +3495,21 @@ static RxStatus RxiPaletteLoadUnaccelerated(RxReduction *reduction, const COLOR3
 	return reduction->status;
 }
 
-static RxStatus RxiPaletteLoadYiqUnaccelerated(RxReduction *reduction, const RxYiqColor *pltt, unsigned int nColors, unsigned int srcPitch) {
+static RxStatus RxiPaletteLoadYiqUnaccelerated(RxReduction *reduction, RxPalette *accel, const RxYiqColor *pltt, unsigned int nColors, unsigned int srcPitch) {
 	//this is for loading palettes from internal representation, where transparent color-0
 	//is not reserved. We adjust the indexes here so that our palette accelerator does not
 	//have to care.
 	unsigned int iStart = 0;
-	if (reduction->accel->alphaMode == RX_ALPHA_RESERVE) {
+	if (accel->alphaMode == RX_ALPHA_RESERVE) {
 		iStart++;
 	}
 
-	RxStatus status = RxiPaletteAllocColors(reduction, nColors + iStart);
+	RxStatus status = RxiPaletteAllocColors(reduction, accel, nColors + iStart);
 	if (status != RX_STATUS_OK) return status;
 
 	unsigned int nLayer = reduction->paletteLayers;
 	for (unsigned int i = 0; i < nColors; i++) {
-		RxiColorVecCopy(&reduction->accel->plttLarge[(i + iStart) * nLayer], &pltt[i * srcPitch], nLayer);
+		RxiColorVecCopy(&accel->plttLarge[(i + iStart) * nLayer], &pltt[i * srcPitch], nLayer);
 	}
 
 	return RX_STATUS_OK;
@@ -3461,10 +3532,31 @@ RxStatus RX_API RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsig
 
 	if (nColors > 16) {
 		//number of colors is high enough to benefit from acceleration
-		RxiPaletteLoadAccelerated(reduction);
+		RxiPaletteLoadAccelerated(reduction, accel);
 	}
 
 	return reduction->status;
+}
+
+static RxPalette *RxiPaletteAllocAndLoadYiqInternal(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxAlphaMode alphaMode) {
+	//alllocate new palette
+	RxPalette *accel = (RxPalette *) RxMemCalloc(1, sizeof(RxPalette));
+	if (accel == NULL) return NULL;
+
+	accel->alphaMode = alphaMode;
+
+	RxStatus status = RxiPaletteLoadYiqUnaccelerated(reduction, accel, pltt, nColors, srcPitch);
+	if (status != RX_STATUS_OK) {
+		RxMemFree(accel);
+		return NULL;
+	}
+
+	if (nColors > 16) {
+		//number of colors is high enough to benefit from acceleration
+		RxiPaletteLoadAccelerated(reduction, accel);
+	}
+
+	return accel;
 }
 
 static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxBool overrideMode) {
@@ -3486,12 +3578,12 @@ static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt
 	}
 
 	//in all cases, we load without the accelerator first
-	status = RxiPaletteLoadYiqUnaccelerated(reduction, pltt, nColors, srcPitch);
+	status = RxiPaletteLoadYiqUnaccelerated(reduction, accel, pltt, nColors, srcPitch);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
 	if (nColors > 16) {
 		//number of colors is high enough to benefit from acceleration
-		RxiPaletteLoadAccelerated(reduction);
+		RxiPaletteLoadAccelerated(reduction, accel);
 	}
 
 	return reduction->status;
@@ -3518,6 +3610,8 @@ RxStatus RX_API RxPaletteGetColorYiq(RxReduction *reduction, unsigned int iLayer
 }
 
 static void RxiPaletteFree(RxPalette *palette) {
+	if (palette == NULL) return; // no palette
+
 	if (palette->plttLarge != palette->plttSmall) RxMemFree(palette->plttLarge);
 	RxMemFree(palette->pltt);
 	free(palette->nodebuf);
@@ -3525,8 +3619,6 @@ static void RxiPaletteFree(RxPalette *palette) {
 }
 
 void RX_API RxPaletteFree(RxReduction *reduction) {
-	if (reduction->accel == NULL) return;
-
 	RxiPaletteFree(reduction->accel);
 	reduction->accel = NULL;
 }

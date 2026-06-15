@@ -222,6 +222,12 @@ typedef enum RxAlphaMode_ {
 	RX_ALPHA_PALETTE      // alpha values are part of the color palette.
 } RxAlphaMode;
 
+typedef enum RxMaskBitsMode_ {
+	RX_MASK_INVALID, // invalid value (do not use)
+	RX_MASK_8,       // 8-bit color channels mode
+	RX_MASK_5        // 5-bit color channels mode
+} RxMaskBitsMode;
+
 typedef struct RxBalanceSetting_ {
 	int balance;           // relative priority of lightness over color information (1-39)
 	int colorBalance;      // relative priority of reds over greens                 (1-39)
@@ -366,7 +372,9 @@ struct RxReduction_ {
 	int nReclusters;
 	int reclusterIteration;
 	unsigned int nPinnedClusters;
-	COLOR32 (*maskColors) (COLOR32 col);
+	RxMaskBitsMode maskMode;
+	COLOR32 (*maskColors) (RxReduction *reduction, COLOR32 col);
+	COLOR32 (*maskColorsYiq) (RxReduction *reduction, const RxYiqColor *col);
 	RxAlphaMode alphaMode;
 	float fAlphaThreshold;
 	RxHistogram *histogram;
