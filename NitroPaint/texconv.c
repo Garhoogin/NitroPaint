@@ -701,7 +701,7 @@ static double Txi4x4ComputeMSE(
 	unsigned int nPlttColors = Txi4x4ExpandPalette32(palette, mode, effPltt);
 
 	//take the sum of square errors and normalize by the channel weighting norm
-	double sse = RxHistComputePaletteError(reduction, palette, nPlttColors, 1e32);
+	double sse = RxHistComputePaletteError(reduction, effPltt, nPlttColors, 1e32);
 	return (sse / (reduction->yWeight2 + reduction->iWeight2 + reduction->qWeight2)) / reduction->histogram->totalWeight;
 }
 
