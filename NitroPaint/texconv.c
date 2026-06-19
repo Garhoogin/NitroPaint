@@ -432,6 +432,9 @@ typedef struct TxiConversionWork_ {
 // color, and dividing by the sum of squared channel weights.
 #define TXC_BLOCK_INTERP_THRESHOLD     53.0
 
+// Defines the number of iterations used when optimizing interpolation block endpoints.
+#define TXC_ENDPOINT_STEPS               10
+
 // Defines the number of refinement iterations done during 4x4 compression. More iterations have
 // diminishing returns.
 #define TXC_PALETTE_REFINEMENTS           4
@@ -449,6 +452,58 @@ static COLOR32 TxiBlend18(COLOR32 col1, unsigned int weight1, COLOR32 col2, unsi
 	return ColorRoundToDS18(r3 | (g3 << 8) | (b3 << 16)) | 0xFF000000;
 }
 
+static unsigned int Txi4x4ExpandPalette32(
+	const COLOR32 *pltt,
+	uint16_t       mode,
+	COLOR32       *dest
+) {
+	dest[0] = pltt[0];
+	dest[1] = pltt[1];
+
+	switch (mode & COMP_MODE_MASK) {
+		case COMP_OPAQUE | COMP_FULL:
+			dest[2] = pltt[2];
+			dest[3] = pltt[3];
+			break;
+		case COMP_TRANSPARENT | COMP_FULL:
+			dest[2] = pltt[2];
+			dest[3] = 0;
+			break;
+		case COMP_TRANSPARENT | COMP_INTERPOLATE:
+			dest[2] = TxiBlend18(dest[0], 4, dest[1], 4) | 0xFF000000;
+			dest[3] = 0;
+			break;
+		case COMP_OPAQUE | COMP_INTERPOLATE:
+			dest[2] = TxiBlend18(dest[0], 5, dest[1], 3) | 0xFF000000;
+			dest[3] = TxiBlend18(dest[0], 3, dest[1], 5) | 0xFF000000;
+			break;
+		default:
+			TX_ASSUME(0);
+	}
+
+	if (mode & COMP_OPAQUE) return 4;
+	else                    return 3;
+}
+
+static unsigned int Txi4x4ExpandPalette(
+	const COLOR  *pltt,
+	uint16_t      mode,
+	COLOR32      *dest
+) {
+	//convert 2 to 4 colors to 32-bit
+	COLOR32 nnsPal32[4];
+	nnsPal32[0] = ColorConvertFromDS(pltt[0]) | 0xFF000000;
+	nnsPal32[1] = ColorConvertFromDS(pltt[1]) | 0xFF000000;
+	if (!(mode & COMP_INTERPOLATE)) {
+		nnsPal32[2] = ColorConvertFromDS(pltt[2]) | 0xFF000000;
+		if (mode & COMP_OPAQUE) {
+			nnsPal32[3] = ColorConvertFromDS(pltt[3]) | 0xFF000000;
+		}
+	}
+
+	return Txi4x4ExpandPalette32(nnsPal32, mode, dest);
+}
+
 //RGB to YIQ, for only Y channel
 static double TxiYFromRGB(COLOR32 rgb) {
 	RxYiqColor yiq;
@@ -456,7 +511,7 @@ static double TxiYFromRGB(COLOR32 rgb) {
 	return yiq.y;
 }
 
-static int Txi4x4CreatePaletteFromHistogram(
+static unsigned int Txi4x4CreatePaletteFromHistogram(
 	RxReduction *reduction,
 	unsigned int nColors,
 	COLOR32     *out
@@ -474,59 +529,49 @@ static int Txi4x4CreatePaletteFromHistogram(
 	return nUsed;
 }
 
-static double Txi4x4ComputeInterpolatedError(
+static double Txi4x4ComputePaletteError(
 	RxReduction *reduction,
-	COLOR        c1,
-	COLOR        c2,
-	RxBool       transparentMode,
+	const COLOR *pltt,
+	uint16_t     mode,
 	double       maxError
 ) {
 	//expand palette
-	COLOR32 col0 = ColorConvertFromDS(c1) | 0xFF000000;
-	COLOR32 col1 = ColorConvertFromDS(c2) | 0xFF000000;
-	COLOR32 col2 = 0xFF000000, col3 = 0xFF000000;
-	if (!transparentMode) {
-		col2 = TxiBlend18(col0, 3, col1, 5);
-		col3 = TxiBlend18(col0, 5, col1, 3);
-	} else {
-		col2 = TxiBlend18(col0, 4, col1, 4);
-	}
-	int nColors = 3 + !transparentMode;
-	COLOR32 palette[] = { col0, col1, col2, col3 };
-
-	return RxHistComputePaletteError(reduction, palette, nColors, maxError);
+	COLOR32 effPltt[4];
+	unsigned int nColors = Txi4x4ExpandPalette(pltt, mode, effPltt);
+	return RxHistComputePaletteError(reduction, effPltt, nColors, maxError);
 }
 
 static double Txi4x4TestAddEndpoints(
 	RxReduction *reduction,
-	RxBool       transparentMode,
-	COLOR       *pc1,
-	COLOR       *pc2,
+	uint16_t     mode,
+	COLOR       *pts,
 	int          amt,
 	int          cshift,
 	double       error
 ) {
+	TX_ASSUME(mode & COMP_INTERPOLATE);
+
 	//try adding to color 1
-	int channel = (*pc1 >> cshift) & 0x1F;
-	if ((amt < 0 && channel >= -amt) || (amt > 0 && channel <= 31 - amt)) { //check for over/underflows
-		*pc1 -= (amt << cshift);
-		double err2 = Txi4x4ComputeInterpolatedError(reduction, *pc1, *pc2, transparentMode, error);
+	int channel = (pts[0] >> cshift) & 0x1F;
+	if ((amt < 0 && channel >= -amt) || (amt > 0 && channel <= 31 - amt)) { // check for over/underflows
+		pts[0] -= (amt << cshift);
+		double err2 = Txi4x4ComputePaletteError(reduction, pts, mode, error);
 		if (err2 < error) {
 			error = err2;
 		} else {
-			*pc1 += (amt << cshift);
+			pts[0] += (amt << cshift);
 		}
 	}
 
 	//now try adding to color 2
-	channel = (*pc2 >> cshift) & 0x1F;
-	if ((amt < 0 && channel >= -amt) || (amt > 0 && channel <= 31 - amt)) { //check for over/underflows
-		*pc2 -= (amt << cshift);
-		double err2 = Txi4x4ComputeInterpolatedError(reduction, *pc1, *pc2, transparentMode, error);
+	channel = (pts[1] >> cshift) & 0x1F;
+	if ((amt < 0 && channel >= -amt) || (amt > 0 && channel <= 31 - amt)) { // check for over/underflows
+		pts[1] -= (amt << cshift);
+		double err2 = Txi4x4ComputePaletteError(reduction, pts, mode, error);
 		if (err2 < error) {
 			error = err2;
 		} else {
-			*pc2 += (amt << cshift);
+			pts[1] += (amt << cshift);
 		}
 	}
 
@@ -536,34 +581,35 @@ static double Txi4x4TestAddEndpoints(
 
 static double Txi4x4TestStepEndpoints(
 	RxReduction *reduction,
-	RxBool       transparentMode,
-	COLOR       *c1,
-	COLOR       *c2,
+	uint16_t     mode,
+	COLOR       *pts,
 	int          channel,
 	double       error
 ) {
 	TX_ASSUME(channel == COLOR_CHANNEL_R || channel == COLOR_CHANNEL_G || channel == COLOR_CHANNEL_B);
+	TX_ASSUME(mode & COMP_INTERPOLATE);
 
 	//test adding 1 to the channel, then test subtracting if adding did not decrease error.
-	double newErr = Txi4x4TestAddEndpoints(reduction, transparentMode, c1, c2, 1, 5 * channel, error); // add
+	double newErr = Txi4x4TestAddEndpoints(reduction, mode, pts, 1, 5 * channel, error); // add
 	if (newErr < error) {
 		error = newErr;
 	} else {
-		error = Txi4x4TestAddEndpoints(reduction, transparentMode, c1, c2, -1, 5 * channel, error);   // subtract
+		error = Txi4x4TestAddEndpoints(reduction, mode, pts, -1, 5 * channel, error);   // subtract
 	}
 	return error;
 }
 
 static void Txi4x4ComputeEndpointsFromHistogram(
 	RxReduction *reduction,
-	RxBool       transparentMode,
-	COLOR32     *colorMin,
-	COLOR32     *colorMax
+	uint16_t     mode,
+	COLOR32     *pEndpoints
 ) {
-	//if only 1 or 2 colors, fill the palette with those.
+	TX_ASSUME(mode & COMP_INTERPOLATE);
+
+	//we will count the number of unique colors, up to 2.
 	COLOR32 colors[2];
-	int nColors = 0;
-	for (int i = 0; i < reduction->histogram->nEntries; i++) {
+	unsigned int nHistEntry = reduction->histogram->nEntries, nColors = 0;
+	for (unsigned int i = 0; i < nHistEntry; i++) {
 		COLOR32 col = RxConvertYiqToRgb(&reduction->histogramFlat[i]->color[0]);
 
 		//round to 15-bit color for counting
@@ -580,75 +626,79 @@ static void Txi4x4ComputeEndpointsFromHistogram(
 		}
 	}
 
-	if (nColors <= 2) {
-		if (nColors == 0) {
-			//no opaque colors this block: flil black.
-			*colorMin = 0xFF000000;
-			*colorMax = 0xFF000000;
-		} else if (nColors == 1) {
+	//special cases for few unique colors
+	switch (nColors) {
+		case 0:
+			//no opaque colors this block: fill black.
+			pEndpoints[0] = 0xFF000000;
+			pEndpoints[1] = 0xFF000000;
+			return;
+		case 1:
 			//one opaque color: fill palette with one color
-			*colorMin = colors[0];
-			*colorMax = colors[0];
-		} else {
-			//two colors: sort the two colors such that the lighter one is first.
+			pEndpoints[0] = colors[0];
+			pEndpoints[1] = colors[0];
+			return;
+		case 2:
+			//two colors: sort the two colors such that the lighter one is second.
 			if (TxiYFromRGB(colors[0]) > TxiYFromRGB(colors[1])) {
-				*colorMin = colors[1];
-				*colorMax = colors[0];
+				pEndpoints[0] = colors[1];
+				pEndpoints[1] = colors[0];
 			} else {
-				*colorMin = colors[0];
-				*colorMax = colors[1];
+				pEndpoints[0] = colors[0];
+				pEndpoints[1] = colors[1];
 			}
-		}
-		return;
+			return;
 	}
+
+	//by this point, we should guarantee at least two entries in the histogram.
+	TX_ASSUME(nHistEntry >= 2);
 
 	//use principal component analysis to determine endpoints.
 	//choose first and last colors along the principal axis (greatest Y is at the end)
-	RxHistSort(reduction, 0, reduction->histogram->nEntries);
-	RxHistEntry *firstEntry = reduction->histogramFlat[0];
-	RxHistEntry *lastEntry = reduction->histogramFlat[reduction->histogram->nEntries - 1];
+	RxHistSort(reduction, 0, nHistEntry);
+	RxYiqColor *firstEntry = &reduction->histogramFlat[0]->color[0];
+	RxYiqColor *lastEntry = &reduction->histogramFlat[nHistEntry - 1]->color[0];
 
-	COLOR32 full1 = RxConvertYiqToRgb(&firstEntry->color[0]);
-	COLOR32 full2 = RxConvertYiqToRgb(&lastEntry->color[0]);
-
-	//round to nearest colors.
-	COLOR c1 = ColorConvertToDS(full1);
-	COLOR c2 = ColorConvertToDS(full2);
+	//use the two extreme points from PCA and round to the nearest DS color.
+	COLOR c[2];
+	c[0] = ColorConvertToDS(RxConvertYiqToRgb(firstEntry));
+	c[1] = ColorConvertToDS(RxConvertYiqToRgb(lastEntry));
 
 	//try out varying the RGB values. Start G, then R, then B. Do this a few times.
-	double error = Txi4x4ComputeInterpolatedError(reduction, c1, c2, transparentMode, 1e32);
-	for (int i = 0; i < 10; i++) {
-		COLOR old1 = c1, old2 = c2;
-		error = Txi4x4TestStepEndpoints(reduction, transparentMode, &c1, &c2, COLOR_CHANNEL_G, error);
-		error = Txi4x4TestStepEndpoints(reduction, transparentMode, &c1, &c2, COLOR_CHANNEL_R, error);
-		error = Txi4x4TestStepEndpoints(reduction, transparentMode, &c1, &c2, COLOR_CHANNEL_B, error);
+	double error = Txi4x4ComputePaletteError(reduction, c, mode, 1e32);
+	for (int i = 0; i < TXC_ENDPOINT_STEPS; i++) {
+		COLOR old1 = c[0], old2 = c[1];
+		error = Txi4x4TestStepEndpoints(reduction, mode, c, COLOR_CHANNEL_G, error);
+		error = Txi4x4TestStepEndpoints(reduction, mode, c, COLOR_CHANNEL_R, error);
+		error = Txi4x4TestStepEndpoints(reduction, mode, c, COLOR_CHANNEL_B, error);
 
 		//early breakout check: are we doing anything?
-		if (old1 == c1 && old2 == c2) break;
+		if (old1 == c[0] && old2 == c[1]) break;
 	}
 
-	//sanity check: impose color ordering (high Y must come first)
-	full1 = ColorConvertFromDS(c1);
-	full2 = ColorConvertFromDS(c2);
+	//final sanity check of the color order to ensure the lighter color is second
+	COLOR32 full1 = ColorConvertFromDS(c[0]) | 0xFF000000;
+	COLOR32 full2 = ColorConvertFromDS(c[1]) | 0xFF000000;
 	if (TxiYFromRGB(full2) > TxiYFromRGB(full1)) {
-		//swap order to keep me sane
-		COLOR32 temp = full2;
-		full2 = full1;
-		full1 = temp;
+		pEndpoints[0] = full1;
+		pEndpoints[1] = full2;
+	} else {
+		pEndpoints[0] = full2;
+		pEndpoints[1] = full1;
 	}
-	*colorMin = full2 | 0xFF000000;
-	*colorMax = full1 | 0xFF000000;
 }
 
-//compute mean square error
 static double Txi4x4ComputeMSE(
 	RxReduction   *reduction,
 	const COLOR32 *palette,
-	unsigned int   nTransparent
+	uint16_t       mode
 ) {
-	unsigned int nPlttColors = 4 - (nTransparent > 0);
-	unsigned int nOpaquePixel = 16 - nTransparent;
-	if (nOpaquePixel == 0) return 0;
+	//with no histogram entry we return early
+	if (reduction->histogram == NULL || reduction->histogram->totalWeight == 0.0) return 0.0;
+
+	//get the effective palette
+	COLOR32 effPltt[4];
+	unsigned int nPlttColors = Txi4x4ExpandPalette32(palette, mode, effPltt);
 
 	//take the sum of square errors and normalize by the channel weighting norm
 	double sse = RxHistComputePaletteError(reduction, palette, nPlttColors, 1e32);
@@ -665,60 +715,60 @@ static void Txi4x4ChooseTilePaletteAndMode(
 	RxHistAdd(reduction, tile->rgb, 4, 4);
 	RxHistFinalize(reduction);
 
-	//first try interpolated. If it's not good enough, use full color.
-	COLOR32 colorMin, colorMax;
-	Txi4x4ComputeEndpointsFromHistogram(reduction, tile->nTransparent > 0, &colorMin, &colorMax);
-
 	//Multiply palette error by this factor. The greater the threshold is, the less error we see.
 	//This makes it more likely that a tile uses an interpolated palette mode the higher the
 	//threshold is set to.
 	double errFactor = 1.0 - work->threshold;
 
-	if (tile->nTransparent > 0) {
-		COLOR32 mid = TxiBlend18(colorMin, 4, colorMax, 4);
-		COLOR32 palette[] = { colorMax, mid, colorMin, 0 };
-		COLOR32 paletteFull[4];
+	COLOR32 effPlttFull[4], endpoints[2];
 
-		double error = Txi4x4ComputeMSE(reduction, palette, 1) * errFactor;
-		int nFull = Txi4x4CreatePaletteFromHistogram(reduction, 3, paletteFull);
+	//we will try to make as many blocks as possible use interpolation. We calculate the color
+	//endpoints first, then we assess the fit. If the error from interpolation is within our
+	//tolerance, or a full color palette would not outperform it, we select the interpolation
+	//mode. Otherwise, we fall back to a full palette.
+
+	if (tile->nTransparent > 0) {
+		//interpolation pass
+		Txi4x4ComputeEndpointsFromHistogram(reduction, COMP_TRANSPARENT | COMP_INTERPOLATE, endpoints);
+		double errInterp = Txi4x4ComputeMSE(reduction, endpoints, COMP_TRANSPARENT | COMP_INTERPOLATE) * errFactor;
+
+		unsigned int nFull = Txi4x4CreatePaletteFromHistogram(reduction, 3, effPlttFull);
 
 		//if error <= thresh, then these colors are good enough
-		if (error <= TXC_BLOCK_INTERP_THRESHOLD || nFull <= 2) {
-			tile->palette32[0] = colorMax;
-			tile->palette32[1] = colorMin;
+		if (errInterp <= TXC_BLOCK_INTERP_THRESHOLD || nFull <= 2) {
+			tile->palette32[0] = endpoints[1];
+			tile->palette32[1] = endpoints[0];
 			tile->palette32[2] = 0xFF000000;
 			tile->palette32[3] = 0xFF000000;
 			tile->mode = COMP_TRANSPARENT | COMP_INTERPOLATE;
 		} else {
 			//swap index 3 and 0, 2 and 1
-			tile->palette32[0] = paletteFull[2]; // entry 3 empty, double up entry 2
-			tile->palette32[1] = paletteFull[1];
-			tile->palette32[2] = paletteFull[2];
-			tile->palette32[3] = paletteFull[0];
+			tile->palette32[0] = effPlttFull[2]; // entry 3 empty, double up entry 2
+			tile->palette32[1] = effPlttFull[1];
+			tile->palette32[2] = effPlttFull[2];
+			tile->palette32[3] = effPlttFull[0];
 			tile->mode = COMP_TRANSPARENT | COMP_FULL;
 		}
 	} else {
-		COLOR32 mid1 = TxiBlend18(colorMin, 5, colorMax, 3);
-		COLOR32 mid2 = TxiBlend18(colorMin, 3, colorMax, 5);
-		COLOR32 palette[] = { colorMax, mid2, mid1, colorMin };
-		COLOR32 paletteFull[4];
+		//interpolation pass
+		Txi4x4ComputeEndpointsFromHistogram(reduction, COMP_OPAQUE | COMP_INTERPOLATE, endpoints);
+		double errInterp = Txi4x4ComputeMSE(reduction, endpoints, COMP_TRANSPARENT | COMP_INTERPOLATE) * errFactor;
 
-		double error = Txi4x4ComputeMSE(reduction, palette, 0) * errFactor;
-		int nFull = Txi4x4CreatePaletteFromHistogram(reduction, 4, paletteFull);
+		unsigned int nFull = Txi4x4CreatePaletteFromHistogram(reduction, 4, effPlttFull);
 
-		if (error <= TXC_BLOCK_INTERP_THRESHOLD || nFull <= 2) {
-			tile->palette32[0] = colorMax;
-			tile->palette32[1] = colorMin;
+		if (errInterp <= TXC_BLOCK_INTERP_THRESHOLD || nFull <= 2) {
+			tile->palette32[0] = endpoints[1];
+			tile->palette32[1] = endpoints[0];
 			tile->palette32[2] = 0xFF000000;
 			tile->palette32[3] = 0xFF000000;
 			tile->mode = COMP_OPAQUE | COMP_INTERPOLATE;
 		} else {
 			//swap index 3 and 0, 2 and 1
-			if (nFull < 4) paletteFull[0] = paletteFull[1];
-			tile->palette32[0] = paletteFull[3];
-			tile->palette32[1] = paletteFull[1];
-			tile->palette32[2] = paletteFull[2];
-			tile->palette32[3] = paletteFull[0];
+			if (nFull < 4) effPlttFull[0] = effPlttFull[1];
+			tile->palette32[0] = effPlttFull[3];
+			tile->palette32[1] = effPlttFull[1];
+			tile->palette32[2] = effPlttFull[2];
+			tile->palette32[3] = effPlttFull[0];
 			tile->mode = COMP_OPAQUE | COMP_FULL;
 		}
 	}
@@ -962,13 +1012,13 @@ static void Txi4x4MergePalettes(
 		RxConvertRgbToYiq(expandPal[0], &yiqPalette[3]);
 	} else if (mode & COMP_INTERPOLATE) {
 		//transparent, interpolated, and opaque, interpolated
-		Txi4x4ComputeEndpointsFromHistogram(work->reduction, !!(mode & COMP_TRANSPARENT), &expandPal[0], &expandPal[1]);
+		Txi4x4ComputeEndpointsFromHistogram(work->reduction, !!(mode & COMP_TRANSPARENT), expandPal);
 
 		RxConvertRgbToYiq(expandPal[1], &yiqPalette[0]);
 		RxConvertRgbToYiq(expandPal[0], &yiqPalette[1]);
 	} else if (mode == (COMP_OPAQUE | COMP_FULL)) {
 		//opaque, full color
-		int nFull = Txi4x4CreatePaletteFromHistogram(work->reduction, 4, expandPal);
+		unsigned int nFull = Txi4x4CreatePaletteFromHistogram(work->reduction, 4, expandPal);
 
 		if (nFull < 4) expandPal[0] = expandPal[1];
 		RxConvertRgbToYiq(expandPal[3], &yiqPalette[0]);
@@ -1097,70 +1147,15 @@ Done:
 	return availableSlot;
 }
 
-static void Txi4x4ExpandPalette32(
-	const COLOR32 *pltt,
-	uint16_t       mode,
-	COLOR32       *dest,
-	unsigned int  *pnPltt
-) {
-	dest[0] = pltt[0];
-	dest[1] = pltt[1];
-
-	if (mode & COMP_OPAQUE) *pnPltt = 4;
-	else *pnPltt = 3;
-
-	switch (mode & COMP_MODE_MASK) {
-		case COMP_OPAQUE | COMP_FULL:
-			dest[2] = pltt[2];
-			dest[3] = pltt[3];
-			break;
-		case COMP_TRANSPARENT | COMP_FULL:
-			dest[2] = pltt[2];
-			dest[3] = 0;
-			break;
-		case COMP_TRANSPARENT | COMP_INTERPOLATE:
-			dest[2] = TxiBlend18(dest[0], 4, dest[1], 4) | 0xFF000000;
-			dest[3] = 0;
-			break;
-		case COMP_OPAQUE | COMP_INTERPOLATE:
-			dest[2] = TxiBlend18(dest[0], 5, dest[1], 3) | 0xFF000000;
-			dest[3] = TxiBlend18(dest[0], 3, dest[1], 5) | 0xFF000000;
-			break;
-		default:
-			TX_ASSUME(0);
-	}
-}
-
-static void Txi4x4ExpandPalette(
-	const COLOR  *pltt,
-	uint16_t      mode,
-	COLOR32      *dest,
-	unsigned int *pnPltt
-) {
-	//convert 2 to 4 colors to 32-bit
-	COLOR32 nnsPal32[4];
-	nnsPal32[0] = ColorConvertFromDS(pltt[0]) | 0xFF000000;
-	nnsPal32[1] = ColorConvertFromDS(pltt[1]) | 0xFF000000;
-	if (!(mode & COMP_INTERPOLATE)) {
-		nnsPal32[2] = ColorConvertFromDS(pltt[2]) | 0xFF000000;
-		if (mode & COMP_OPAQUE) {
-			nnsPal32[3] = ColorConvertFromDS(pltt[3]) | 0xFF000000;
-		}
-	}
-
-	Txi4x4ExpandPalette32(nnsPal32, mode, dest, pnPltt);
-}
-
 static double Txi4x4ComputeTilePidxError(
 	TxiConversionWork *work,
 	const COLOR32     *px,
 	uint16_t           mode,
 	double             maxError
 ) {
-	unsigned int nOpaque;
 	COLOR32 effPltt[4];
-	Txi4x4ExpandPalette(work->pltt + COMP_INDEX(mode), mode, effPltt, &nOpaque);
-	return RxComputePaletteError(work->reduction, px, 4, 4, effPltt, nOpaque, maxError);
+	unsigned int nColors = Txi4x4ExpandPalette(work->pltt + COMP_INDEX(mode), mode, effPltt);
+	return RxComputePaletteError(work->reduction, px, 4, 4, effPltt, nColors, maxError);
 }
 
 static uint16_t Txi4x4FindOptimalPidx(
@@ -1264,8 +1259,7 @@ static void Txi4x4IndexTilesByPalette(TxiConversionWork *work) {
 		work->tiles[i].paletteIndex = index;
 
 		COLOR32 palette[4];
-		unsigned int paletteSize;
-		Txi4x4ExpandPalette(thisPalette, mode, palette, &paletteSize);
+		unsigned int paletteSize = Txi4x4ExpandPalette(thisPalette, mode, palette);
 
 		//store palette error
 		work->errorMap[i].tile = &work->tiles[i];
@@ -1741,9 +1735,8 @@ static int Txi4x4RefineIteration(TxiConversionWork *work) {
 		TxTileData *tile = errorEntry->tile;
 
 		//first try using the tile's initial palette and mode
-		int nOpaque;
 		COLOR32 tilepal[4] = { 0 };
-		Txi4x4ExpandPalette32(tile->palette32, tile->initMode, tilepal, &nOpaque);
+		int nOpaque = Txi4x4ExpandPalette32(tile->palette32, tile->initMode, tilepal);
 
 		double newErr = RxComputePaletteError(work->reduction, tile->rgb, 4, 4, tilepal, nOpaque, highestError);
 		if (newErr >= highestError) {
@@ -1851,9 +1844,8 @@ static int Txi4x4RefineIteration(TxiConversionWork *work) {
 		//store error
 		entry->error = newerr;
 
-		unsigned int nOpaque = 0;
 		COLOR32 tilepal[4] = { 0 };
-		Txi4x4ExpandPalette(work->pltt + COMP_INDEX(newpidx), newMode, tilepal, &nOpaque);
+		unsigned int nOpaque = Txi4x4ExpandPalette(work->pltt + COMP_INDEX(newpidx), newMode, tilepal);
 
 		tile->mode = newMode;
 		tile->paletteIndex = newIdx;
