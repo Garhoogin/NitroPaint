@@ -624,6 +624,24 @@ void RX_API RxHistSort(
 );
 
 // -----------------------------------------------------------------------------------------------
+// Name: RxHistProjectToPrincipalAxis
+//
+// Uses the computed principal axis from a previous call to RxHistSort, the input color is
+// projected onto the first principal axis. When the principal axis is degenerate, the input
+// color is returned unmodified.
+//
+// Parameters:
+//   reduction     The color reduction context.
+//   col           The color to project.
+//   proj          A pointer to a color reciving the color projected onto the principal axis.
+// -----------------------------------------------------------------------------------------------
+void RX_API RxHistProjectToPrincipalAxis(
+	RxReduction      *reduction,
+	const RxYiqColor *col,
+	RxYiqColor       *proj
+);
+
+// -----------------------------------------------------------------------------------------------
 // Name: RxHistGetTopN
 //
 // Gets the n most highly-weighted colors in the histogram. This internally sorts the histogram,

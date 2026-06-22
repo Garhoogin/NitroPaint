@@ -1378,8 +1378,37 @@ static double RxiComputePcScore(RxReduction *reduction, const RxYiqColor *col, c
 	return dot;
 }
 
+void RX_API RxHistProjectToPrincipalAxis(RxReduction *reduction, const RxYiqColor *col, RxYiqColor *proj) {
+	//we project: z = col.pc1 / |pc1| ; proj = z*pc1
+	double *principal = reduction->splitAxis;
+	double z = RxiComputePcScore(reduction, col, principal);
+
+	double pcMag = 0.0;
+	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+		double *pci = &principal[i * 4];
+		pcMag += RxiVec4Mag(pci[0], pci[1], pci[2], pci[3]);
+	}
+	pcMag = sqrt(pcMag);
+
+	if (pcMag == 0.0) {
+		//fallback: degenerate principal axis, copy output color.
+		memcpy(proj, col, sizeof(RxYiqColor) * reduction->paletteLayers);
+		return;
+	}
+
+	z /= pcMag;
+
+	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+		RxLongColor cLong;
+		proj[i].y = (float) (principal[i * 4 + 0] * z);
+		proj[i].i = (float) (principal[i * 4 + 1] * z);
+		proj[i].q = (float) (principal[i * 4 + 2] * z);
+		proj[i].a = (float) (principal[i * 4 + 3] * z);
+	}
+}
+
 void RX_API RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
-	double principal[4 * RX_PALETTE_MAX_COUNT];
+	double *principal = reduction->splitAxis;
 	RxHistEntry **thisHistogram = &reduction->histogramFlat[startIndex];
 	RxiHistChooseSplitAxis(reduction, startIndex, endIndex, principal);
 
