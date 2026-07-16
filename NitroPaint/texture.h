@@ -2,7 +2,7 @@
 #include "color.h"
 #include "filecommon.h"
 
-//texture file types
+// ----- texture file types
 #define TEXTURE_TYPE_INVALID     0
 #define TEXTURE_TYPE_NNSTGA      1 // NNS TGA format
 #define TEXTURE_TYPE_NNSPIC      2 // NNS PIC format
@@ -13,36 +13,77 @@
 #define TEXTURE_TYPE_TOLOVERU    7 // To Love Ru format
 #define TEXTURE_TYPE_GRF         8 // GRF format
 
-
+// ----- texture object keys for object manager
 #define TX_KEY_SUPPORT_TEXFMT         (OBJ_KEY_MAX+0)  // supported texture format bitmap
 #define TX_KEY_SUPPORT_C0XP           (OBJ_KEY_MAX+1)  // support c0xp bit
 #define TX_KEY_SUPPORT_PARTIAL_HEIGHT (OBJ_KEY_MAX+2)  // support partial height texture
 
 
 
-#define CT_A3I5 1			/*can read and write*/
-#define CT_4COLOR 2			/*can read and write*/
-#define CT_16COLOR 3		/*can read and write*/
-#define CT_256COLOR 4		/*can read and write*/
-#define CT_4x4 5			/*can read and write*/
-#define CT_A5I3 6			/*can read and write*/
-#define CT_DIRECT 7			/*can read and write*/
+// ----- texture format names
+#define GX_TEXFMT_NONE     0  // no texture
+#define GX_TEXFMT_A3I5     1  // a3i5 format
+#define GX_TEXFMT_PLTT4    2  // palette4 format
+#define GX_TEXFMT_PLTT16   3  // palette16 format
+#define GX_TEXFMT_PLTT256  4  // palette256 format
+#define GX_TEXFMT_TEX4x4   5  // tex4x4 format
+#define GX_TEXFMT_A5I3     6  // a5i3 format
+#define GX_TEXFMT_DIRECT   7  // direct format
+
+// ----- obsolete names (TODO: delete)
+#define CT_A3I5     GX_TEXFMT_A3I5
+#define CT_4COLOR   GX_TEXFMT_PLTT4
+#define CT_16COLOR  GX_TEXFMT_PLTT16
+#define CT_256COLOR GX_TEXFMT_PLTT256
+#define CT_4x4      GX_TEXFMT_TEX4x4
+#define CT_A5I3     GX_TEXFMT_A5I3
+#define CT_DIRECT   GX_TEXFMT_DIRECT
 
 
-#define FORMAT(p)		(((p)>>26)&7)
-#define COL0TRANS(p)	(((p)>>29)&1)
-#define OFFSET(p)		(((p)&0xFFFF)<<3)
-#define TEXW(p)			(8<<(((p)>>20)&7))
-#define TEXH(p)			(8<<(((p)>>23)&7))
+// ----- tex4x4 palette index data layout macros
+#define GX_TEX4x4_PIDX_PTY_INTERPOLATE  0x4000
+#define GX_TEX4x4_PIDX_PTY_FULL         0x0000
+#define GX_TEX4x4_PIDX_A_OPAQUE         0x8000
+#define GX_TEX4x4_PIDX_A_XPNT           0x0000
+#define GX_TEX4x4_PIDX_MODE_MASK        0xC000
+#define GX_TEX4x4_PIDX_ADDR_MASK        0x3FFF
+#define GX_TEX4x4_PIDX_ADDR(c)          ((unsigned int)(((c)&GX_TEX4x4_PIDX_ADDR_MASK)<<1))
 
-//4x4 compression macros
-#define COMP_INTERPOLATE   0x4000
-#define COMP_FULL          0x0000
-#define COMP_OPAQUE        0x8000
-#define COMP_TRANSPARENT   0x0000
-#define COMP_MODE_MASK     0xC000
-#define COMP_INDEX_MASK    0x3FFF
-#define COMP_INDEX(c)      ((unsigned int)(((c)&COMP_INDEX_MASK)<<1))
+// ----- tex4x4 palette index data layout macros (obsolete) (TODO: delete)
+#define COMP_INTERPOLATE   GX_TEX4x4_PIDX_PTY_INTERPOLATE
+#define COMP_FULL          GX_TEX4x4_PIDX_PTY_FULL
+#define COMP_OPAQUE        GX_TEX4x4_PIDX_A_OPAQUE
+#define COMP_TRANSPARENT   GX_TEX4x4_PIDX_A_XPNT
+#define COMP_MODE_MASK     GX_TEX4x4_PIDX_MODE_MASK
+#define COMP_INDEX_MASK    GX_TEX4x4_PIDX_ADDR_MASK
+#define COMP_INDEX(c)      GX_TEX4x4_PIDX_ADDR(c)
+
+// ----- a3i5 texel data layout macros
+#define GX_A3I5_I_MASK       0x1F
+#define GX_A3I5_A_MASK       0xE0
+#define GX_A3I5_I_SHIFT         0
+#define GX_A3I5_A_SHIT          5
+#define GX_A3I5_A3_TO_A5(x)  ((x)<<2)|((x)>>1)
+
+// ----- TEXIMAGE_PARAM layout macros
+#define GX_TEXIMAGE_PARAM_ADDR_MASK 0x0000FFFF
+#define GX_TEXIMAGE_PARAM_W_MASK    0x00700000
+#define GX_TEXIMAGE_PARAM_H_MASK    0x03800000
+#define GX_TEXIMAGE_PARAM_FMT_MASK  0x1C000000
+#define GX_TEXIMAGE_PARAM_C0XP_MASK 0x20000000
+#define GX_TEXIMAGE_PARAM_ADDR_SHIFT         0
+#define GX_TEXIMAGE_PARAM_W_SHIFT           20
+#define GX_TEXIMAGE_PARAM_H_SHIFT           23
+#define GX_TEXIMAGE_PARAM_FMT_SHIFT         26
+#define GX_TEXIMAGE_PARAM_C0XP_SHIFT        29
+
+// ----- TEXIMAGE_PARAM layout macros (obsolete) (TODO: delete)
+#define FORMAT(p)		(((p)>>GX_TEXIMAGE_PARAM_FMT_SHIFT)&7)
+#define COL0TRANS(p)	(((p)>>GX_TEXIMAGE_PARAM_C0XP_SHIFT)&1)
+#define OFFSET(p)		(((p)&GX_TEXIMAGE_PARAM_ADDR_MASK)<<3)
+#define TEXW(p)			(8<<(((p)>>GX_TEXIMAGE_PARAM_W_SHIFT)&7))
+#define TEXH(p)			(8<<(((p)>>GX_TEXIMAGE_PARAM_H_SHIFT)&7))
+
 
 typedef struct {
 	int texImageParam;
