@@ -179,7 +179,7 @@ static int TxiConvertDirect(TxConversionParameters *params, RxReduction *reducti
 	}
 
 	//set texture parameters
-	params->dest->texels.texImageParam = TxiConfigureTexImageParam(params->fmt, width, height, 0);
+	params->dest->texels.texImageParam = TxiConfigureTexImageParam(GX_TEXFMT_DIRECT, width, height, 0);
 	params->dest->texels.cmp = NULL;
 	params->dest->palette.pal = NULL;
 	params->dest->palette.nColors = 0;
@@ -200,15 +200,15 @@ static int TxiConvertPlttN(TxConversionParameters *params, RxReduction *reductio
 	unsigned int nColors = 0, bitsPerPixel = 0;
 	unsigned int width = params->width, height = params->height;
 	switch (params->fmt) {
-		case CT_4COLOR:
+		case GX_TEXFMT_PLTT4:
 			nColors      =   4; // 4-color palette
 			bitsPerPixel =   2; // 2 bits per pixel
 			break;
-		case CT_16COLOR:
+		case GX_TEXFMT_PLTT16:
 			nColors      =  16; // 16-color palette
 			bitsPerPixel =   4; // 4 bits per pixel
 			break;
-		case CT_256COLOR:
+		case GX_TEXFMT_PLTT256:
 			nColors      = 256; // 256-color palette
 			bitsPerPixel =   8; // 8 bits per pixel
 			break;
@@ -264,7 +264,7 @@ static int TxiConvertPlttN(TxConversionParameters *params, RxReduction *reductio
 	}
 
 	//update texture info
-	unsigned int param = TxiConfigureTexImageParam(GX_TEXFMT_DIRECT, width, height, hasTransparent);
+	unsigned int param = TxiConfigureTexImageParam(params->fmt, width, height, hasTransparent);
 	params->dest->palette.nColors = nColors;
 	params->dest->palette.pal = pal;
 	params->dest->texels.cmp = NULL;
@@ -291,12 +291,12 @@ static int TxiConvertAxIy(TxConversionParameters *params, RxReduction *reduction
 	unsigned int nColors = 0, alphaShift = 0, alphaMax = 0;
 	unsigned int width = params->width, height = params->height;
 	switch (params->fmt) {
-		case CT_A3I5:
+		case GX_TEXFMT_A3I5:
 			nColors    = 32; // 32-color
 			alphaShift =  5; // alpha shift 5-bit
 			alphaMax   =  7; // alpha max=7
 			break;
-		case CT_A5I3:
+		case GX_TEXFMT_A5I3:
 			nColors    =  8; // 8-color
 			alphaShift =  3; // alpha shift 3-bit
 			alphaMax   = 31; // alpha max=31
@@ -2490,7 +2490,7 @@ TxConversionResult TxConvert(TxConversionParameters *params) {
 	params->dest->texels.height = sourceHeight;
 
 	//copy name (null-terminated)
-	if (params->fmt != CT_DIRECT) {
+	if (params->fmt != GX_TEXFMT_DIRECT) {
 		params->dest->palette.name = strdup(params->pnam);
 	}
 

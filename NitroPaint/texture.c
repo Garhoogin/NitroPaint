@@ -17,7 +17,7 @@ int TxRoundTextureSize(int dimension) {
 unsigned int TxCalcTexelSize(uint32_t texImageParam, unsigned int width, unsigned int height) {
 	static const unsigned char bpps[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
 
-	if (FORMAT(texImageParam) == CT_4x4) {
+	if (FORMAT(texImageParam) == GX_TEXFMT_TEX4x4) {
 		//pad dimensions to block of 4x4
 		width = (width + 3) & ~3;
 		height = (height + 3) & ~3;
@@ -30,7 +30,7 @@ unsigned int TxCalcTexelSize(uint32_t texImageParam, unsigned int width, unsigne
 
 unsigned int TxCalcPlttIdxSize(uint32_t texImageParam, unsigned int width, unsigned int height) {
 	//for tex4x4, palette index size is exactly half the texel size
-	if (FORMAT(texImageParam) != CT_4x4) return 0;
+	if (FORMAT(texImageParam) != GX_TEXFMT_TEX4x4) return 0;
 	return TxCalcTexelSize(texImageParam, width, height) / 2;
 }
 
@@ -158,7 +158,7 @@ static COLOR32 TxiSampleA3I5(const unsigned char *txel, const uint16_t *pidx, un
 	unsigned int index = (d & 0x1F) >> 0;
 	unsigned int alpha = (d & 0xE0) >> 5;
 
-	alpha = (alpha << 2) | (alpha >> 1);  // 3-bit -> 5-bit alpha
+	alpha = GX_A3I5_A3_TO_A5(alpha);      // 3-bit -> 5-bit alpha
 	alpha = (alpha * 510 + 31) / 62;      // scale to 8-bit
 
 	return TxiSamplePltt(pltt, nPltt, index) | (alpha << 24);
@@ -185,21 +185,21 @@ static COLOR32 TxiSampleTex4x4(const unsigned char *txel, const uint16_t *pidx, 
 	uint32_t texel = *(const uint32_t *) (txel + (i << 2));
 	uint16_t index = pidx[i];
 
-	unsigned int address = COMP_INDEX(index);
+	unsigned int address = GX_TEX4x4_PIDX_ADDR(index);
 
 	COLOR32 colors[4] = { 0 };
 	colors[0] = TxiSamplePltt(pltt, nPltt, address + 0) | 0xFF000000;
 	colors[1] = TxiSamplePltt(pltt, nPltt, address + 1) | 0xFF000000;
 
-	if (!(index & COMP_INTERPOLATE)) {
+	if (!(index & GX_TEX4x4_PIDX_PTY_INTERPOLATE)) {
 		colors[2] = TxiSamplePltt(pltt, nPltt, address + 2) | 0xFF000000;
-		if (index & COMP_OPAQUE) {
+		if (index & GX_TEX4x4_PIDX_A_OPAQUE) {
 			colors[3] = TxiSamplePltt(pltt, nPltt, address + 3) | 0xFF000000;
 		}
 	}
 
-	if (index & COMP_INTERPOLATE) {
-		if (index & COMP_OPAQUE) {
+	if (index & GX_TEX4x4_PIDX_PTY_INTERPOLATE) {
+		if (index & GX_TEX4x4_PIDX_A_OPAQUE) {
 			//blend colors 0,1 to 2,3
 			colors[2] = TxiBlend(colors[0], colors[1], 3);
 			colors[3] = TxiBlend(colors[0], colors[1], 5);
@@ -366,8 +366,8 @@ int TxIsValidIStudio(const unsigned char *buffer, unsigned int size) {
 
 	//we don't support textures without palettes unless it's a direct color image
 	int fmt = imge[0];
-	if (fmt > CT_DIRECT) return 0;
-	if (fmt != CT_DIRECT && palt == NULL) return 0;
+	if (fmt > GX_TEXFMT_DIRECT) return 0;
+	if (fmt != GX_TEXFMT_DIRECT && palt == NULL) return 0;
 
 	//validate the PALT section
 	if (palt != NULL) {
@@ -414,7 +414,7 @@ int TxIsValidTds(const unsigned char *buffer, unsigned int size) {
 	if (width > (8u << texSizeS) || height > (8u << texSizeT) || texFormat == 0)
 		return 0;
 
-	if (texFormat == CT_4x4) {
+	if (texFormat == GX_TEXFMT_TEX4x4) {
 		//printf("!!!TexFormat is 4x4!?!?\n");
 		//return 0;
 	}
@@ -431,7 +431,7 @@ int TxIsValidNtga(const unsigned char *buffer, unsigned int size) {
 	uint32_t sizeT = *(uint32_t *) (buffer + 0x0C);
 	uint16_t srcWidth = *(uint16_t *) (buffer + 0x14);
 	uint16_t srcHeight = *(uint16_t *) (buffer + 0x16);
-	if (fmt == 0 || fmt > CT_DIRECT) return 0;
+	if (fmt == 0 || fmt > GX_TEXFMT_DIRECT) return 0;
 	if (sizeS > 7 || sizeT > 7) return 0;
 
 	//check size
@@ -472,13 +472,13 @@ static int TxIsValidToLoveRu(const unsigned char *buffer, unsigned int size) {
 	if ((8 << height) > 1024) return 0;
 
 	if (offsTexImage >= size || (size - offsTexImage) < sizeTexImage) return 0;
-	if (fmt == CT_4x4) {
+	if (fmt == GX_TEXFMT_TEX4x4) {
 		//check palette index fields
 		if (sizePlttIdx != (sizeTexImage / 2)) return 0;
 		if (offsPlttIdx == 0 || sizePlttIdx == 0) return 0;
 		if (offsPlttIdx >= size || (size - offsPlttIdx) < sizePlttIdx) return 0;
 	}
-	if (fmt != CT_DIRECT) {
+	if (fmt != GX_TEXFMT_DIRECT) {
 		//check texture palette fields
 		if (offsPltt >= size || (size - offsPltt) < sizePltt) return 0;
 		if (sizePltt & 1) return 0;
@@ -565,8 +565,8 @@ static int TxWriteNtga(TextureObject *texture, BSTREAM *stream);
 static int TxWriteToLoveRu(TextureObject *texture, BSTREAM *stream);
 static int TxWriteGRF(TextureObject *texture, BSTREAM *stream);
 
-#define ALL_TEXFMT ((1 << CT_4COLOR) | (1 << CT_16COLOR) | (1 << CT_256COLOR) \
-	| (1 << CT_A3I5) | (1 << CT_A5I3) | (1 << CT_DIRECT) | (1 << CT_4x4))
+#define ALL_TEXFMT ((1 << GX_TEXFMT_PLTT4) | (1 << GX_TEXFMT_PLTT16) | (1 << GX_TEXFMT_PLTT256) \
+	| (1 << GX_TEXFMT_A3I5) | (1 << GX_TEXFMT_A5I3) | (1 << GX_TEXFMT_DIRECT) | (1 << GX_TEXFMT_TEX4x4))
 
 static ObjKey s5txKeys[] = {
 	{ OBJ_KEYTYPE_INT, TX_KEY_SUPPORT_C0XP, { .intVal = 0 } },
@@ -667,8 +667,8 @@ static void TxReadNnsTextureData(TextureObject *texture, const unsigned char *bu
 	PALETTE *palette = &texture->texture.palette;
 
 	uint32_t texImageParam = 0;
-	texImageParam |= ilog2(TxRoundTextureSize(width ) >> 3) << 20;
-	texImageParam |= ilog2(TxRoundTextureSize(height) >> 3) << 23;
+	texImageParam |= ilog2(TxRoundTextureSize(width ) >> 3) << GX_TEXIMAGE_PARAM_W_SHIFT;
+	texImageParam |= ilog2(TxRoundTextureSize(height) >> 3) << GX_TEXIMAGE_PARAM_H_SHIFT;
 
 	//read data blocks
 	while (1) {
@@ -769,17 +769,17 @@ int TxReadIStudio(TextureObject *texture, const unsigned char *buffer, unsigned 
 	}
 	
 
-	int texImageParam = 0;
-	if (c0xp) texImageParam |= (1 << 29);
+	uint32_t texImageParam = 0;
+	if (c0xp) texImageParam |= (1 << GX_TEXIMAGE_PARAM_C0XP_SHIFT);
 	texImageParam |= (1 << 17) | (1 << 16);
-	texImageParam |= (log2Width << 20) | (log2Height << 23);
+	texImageParam |= (log2Width << GX_TEXIMAGE_PARAM_W_SHIFT) | (log2Height << GX_TEXIMAGE_PARAM_H_SHIFT);
 	texImageParam |= frmt << 26;
 	texture->texture.texels.texImageParam = texImageParam;
 	texture->texture.texels.height = origHeight;
 
 	//copy texel
 	int texelSize = TxCalcTexelSize(texture->texture.texels.texImageParam, 8 << log2Width, 8 << log2Height);
-	int indexSize = (frmt == CT_4x4) ? texelSize / 2 : 0;
+	int indexSize = (frmt == GX_TEXFMT_TEX4x4) ? texelSize / 2 : 0;
 	texture->texture.texels.texel = (unsigned char *) malloc(texelSize);
 	memcpy(texture->texture.texels.texel, imge + 0xC, texelSize);
 
@@ -805,9 +805,9 @@ int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int 
 	uint32_t height = *(uint32_t*) (buffer + 0x20);
 
 	uint32_t texImageParam = 0;
-	texImageParam |= (texSizeS & 0x7) << 20;
-	texImageParam |= (texSizeT & 0x7) << 23;
-	texImageParam |= (texFormat & 0x7) << 26;
+	texImageParam |= (texSizeS  & 0x7) << GX_TEXIMAGE_PARAM_W_SHIFT;
+	texImageParam |= (texSizeT  & 0x7) << GX_TEXIMAGE_PARAM_H_SHIFT;
+	texImageParam |= (texFormat & 0x7) << GX_TEXIMAGE_PARAM_FMT_SHIFT;
 
 	texture->texture.texels.texImageParam = texImageParam;
 	texture->texture.texels.height = height;
@@ -815,7 +815,7 @@ int TxReadTds(TextureObject *texture, const unsigned char *buffer, unsigned int 
 	texture->texture.texels.texel = calloc(textureLength, 1);
 	memcpy(texture->texture.texels.texel, buffer + textureOffset, textureLength);
 
-	if (texFormat == CT_4x4) {
+	if (texFormat == GX_TEXFMT_TEX4x4) {
 		texture->texture.texels.cmp = (uint16_t *) calloc(textureLength / 3, 1);
 		memcpy(texture->texture.texels.cmp, buffer + textureOffset + (textureLength * 2 / 3), textureLength / 3);
 	}
@@ -839,18 +839,21 @@ int TxReadNtga(TextureObject *texture, const unsigned char *buffer, unsigned int
 	uint32_t ofsPltt = *(uint32_t *) (buffer + 0x28);
 	uint32_t sizePltt = *(uint32_t *) (buffer + 0x2C);
 
+	texture->texture.texels.texImageParam =
+		  (sizeS << GX_TEXIMAGE_PARAM_W_SHIFT  )
+		| (sizeT << GX_TEXIMAGE_PARAM_H_SHIFT  )
+		| (fmt   << GX_TEXIMAGE_PARAM_FMT_SHIFT);
 	texture->texture.texels.height = 8 << sizeT;
-	texture->texture.texels.texImageParam = (sizeS << 20) | (sizeT << 23) | (fmt << 26);
 	texture->texture.texels.texel = (unsigned char *) calloc(sizeTexel, 1);
 	memcpy(texture->texture.texels.texel, buffer + ofsTexel, sizeTexel);
 
-	if (fmt != CT_DIRECT) {
+	if (fmt != GX_TEXFMT_DIRECT) {
 		texture->texture.palette.nColors = sizePltt / 2;
 		texture->texture.palette.pal = (COLOR *) calloc(sizePltt / 2, sizeof(COLOR));
 		memcpy(texture->texture.palette.pal, buffer + ofsPltt, sizePltt);
 	}
 
-	if (fmt == CT_4x4) {
+	if (fmt == GX_TEXFMT_TEX4x4) {
 		texture->texture.texels.cmp = (uint16_t *) calloc(sizePidx, 1);
 		memcpy(texture->texture.texels.cmp, buffer + ofsPidx, sizePidx);
 	}
@@ -872,22 +875,25 @@ int TxReadToLoveRu(TextureObject *texture, const unsigned char *buffer, unsigned
 	uint32_t sizePlttIdx = *(uint32_t *) (buffer + 0x24);
 
 	texture->texture.texels.height = 8 << height;
-	texture->texture.texels.texImageParam = (width << 20) | (height << 23) | (fmt << 26);
+	texture->texture.texels.texImageParam =
+		  (width  << GX_TEXIMAGE_PARAM_W_SHIFT  )
+		| (height << GX_TEXIMAGE_PARAM_H_SHIFT  )
+		| (fmt    << GX_TEXIMAGE_PARAM_FMT_SHIFT);
 	texture->texture.texels.texel = (unsigned char *) calloc(sizeTexImage, 1);
 	memcpy(texture->texture.texels.texel, buffer + offsTexImage, sizeTexImage);
 
-	if (fmt != CT_DIRECT) {
+	if (fmt != GX_TEXFMT_DIRECT) {
 		texture->texture.palette.nColors = sizePltt / 2;
 		texture->texture.palette.pal = (COLOR *) calloc(sizePltt / 2, sizeof(COLOR));
 		memcpy(texture->texture.palette.pal, buffer + offsPltt, sizePltt);
 	}
 
-	if (fmt == CT_4x4) {
+	if (fmt == GX_TEXFMT_TEX4x4) {
 		texture->texture.texels.cmp = (uint16_t *) calloc(sizePlttIdx, 1);
 		memcpy(texture->texture.texels.cmp, buffer + offsPlttIdx, sizePlttIdx);
 	}
 
-	//if (fmt != CT_DIRECT && fmt != CT_4x4) texture->texture.texels.texImageParam |= (1 << 29); // c0xp
+	//if (fmt != GX_TEXFMT_DIRECT && fmt != GX_TEXFMT_TEX4x4) texture->texture.texels.texImageParam |= (1 << 29); // c0xp
 
 	return 0;
 }
@@ -909,17 +915,21 @@ static int TxReadSpt(TextureObject *texture, const unsigned char *buffer, unsign
 	unsigned int plt0 = (param >> 16) & 0x1;
 	unsigned int flipRepeat = (param >> 12) & 0xF;
 
-	texture->texture.texels.texImageParam = (s << 20) | (t << 23) | (texfmt << 26) | (plt0 << 29) | (flipRepeat << 16);
+	texture->texture.texels.texImageParam = (s << GX_TEXIMAGE_PARAM_W_SHIFT)
+		| (t << GX_TEXIMAGE_PARAM_H_SHIFT)
+		| (texfmt << GX_TEXIMAGE_PARAM_FMT_SHIFT)
+		| (plt0 << GX_TEXIMAGE_PARAM_C0XP_SHIFT)
+		| (flipRepeat << 16);
 	texture->texture.texels.height = 8 << t;
 	texture->texture.texels.texel = (unsigned char *) calloc(sizTex, 1);
 	memcpy(texture->texture.texels.texel, buffer + 0x20, sizTex);
 
-	if (texfmt == CT_4x4) {
+	if (texfmt == GX_TEXFMT_TEX4x4) {
 		texture->texture.texels.cmp = (uint16_t *) calloc(sizIdx, 1);
 		memcpy(texture->texture.texels.cmp, buffer + ofsIdx, sizIdx);
 	}
 
-	if (texfmt != CT_DIRECT) {
+	if (texfmt != GX_TEXFMT_DIRECT) {
 		texture->texture.palette.nColors = sizPlt / 2;
 		texture->texture.palette.pal = (COLOR *) calloc(sizPlt / 2, sizeof(COLOR));
 		memcpy(texture->texture.palette.pal, buffer + ofsPlt, sizPlt);
@@ -938,13 +948,13 @@ static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsign
 	//graphics format to texture format
 	int texFmt = 0;
 	switch (gfxFmt) {
-		case 0x02: texFmt = CT_4COLOR; break;
-		case 0x04: texFmt = CT_16COLOR; break;
-		case 0x08: texFmt = CT_256COLOR; break;
-		case 0x10: texFmt = CT_DIRECT; break;
-		case 0x80: texFmt = CT_A3I5;  break;
-		case 0x81: texFmt = CT_A5I3;  break;
-		case 0x82: texFmt = CT_4x4; break;
+		case 0x02: texFmt = GX_TEXFMT_PLTT4; break;
+		case 0x04: texFmt = GX_TEXFMT_PLTT16; break;
+		case 0x08: texFmt = GX_TEXFMT_PLTT256; break;
+		case 0x10: texFmt = GX_TEXFMT_DIRECT; break;
+		case 0x80: texFmt = GX_TEXFMT_A3I5;  break;
+		case 0x81: texFmt = GX_TEXFMT_A5I3;  break;
+		case 0x82: texFmt = GX_TEXFMT_TEX4x4; break;
 	}
 
 	unsigned int palSize, gfxSize, pidxSize;
@@ -962,7 +972,11 @@ static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsign
 	if ((8 << t) < texH) t++;
 
 	texture->texture.texels.height = texH;
-	texture->texture.texels.texImageParam = (s << 20) | (t << 23) | (texFmt << 26) | (plt0 << 29);
+	texture->texture.texels.texImageParam =
+		  (s      << GX_TEXIMAGE_PARAM_W_SHIFT   )
+		| (t      << GX_TEXIMAGE_PARAM_H_SHIFT   )
+		| (texFmt << GX_TEXIMAGE_PARAM_FMT_SHIFT )
+		| (plt0   << GX_TEXIMAGE_PARAM_C0XP_SHIFT);
 
 	texture->texture.texels.texel = gfx;
 	texture->texture.texels.cmp = (uint16_t *) idx;
@@ -980,7 +994,7 @@ static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsign
 		texture->texture.texels.texel = realloc(texture->texture.texels.texel, texelSize);
 		memset(texture->texture.texels.texel + gfxSize, 0, texelSize - gfxSize);
 
-		if (texFmt == CT_4x4) {
+		if (texFmt == GX_TEXFMT_TEX4x4) {
 			texture->texture.texels.cmp = realloc(texture->texture.texels.cmp, indexSize);
 			memset(((unsigned char *) texture->texture.texels.cmp) + pidxSize, 0, indexSize - pidxSize);
 		}
@@ -1027,8 +1041,8 @@ static void TxiNnsTgaWritePixels(BSTREAM *stream, COLOR32 *rawPx, int width, int
 		for (int i = 0; i < width * height; i++) {
 			COLOR32 c = rawPx[i];
 			uint8_t *pixel = buffer + i * 3;
-			pixel[0] = (c >> 0) & 0xFF;
-			pixel[1] = (c >> 8) & 0xFF;
+			pixel[0] = (c >>  0) & 0xFF;
+			pixel[1] = (c >>  8) & 0xFF;
 			pixel[2] = (c >> 16) & 0xFF;
 		}
 		bstreamWrite(stream, buffer, width * height * 3);
@@ -1049,19 +1063,19 @@ static void TxiNnsWriteTextureData(BSTREAM *stream, TEXELS *texels, PALETTE *pal
 	TxiNnsTgaWriteSection(stream, "nns_txel", texels->texel, txelLength);
 
 	//write 4x4 if applicable
-	if (FORMAT(texels->texImageParam) == CT_4x4) {
+	if (FORMAT(texels->texImageParam) == GX_TEXFMT_TEX4x4) {
 		int pidxLength = txelLength / 2;
 		TxiNnsTgaWriteSection(stream, "nns_pidx", texels->cmp, pidxLength);
 	}
 
 	//palette (if applicable)
-	if (FORMAT(texels->texImageParam) != CT_DIRECT) {
+	if (FORMAT(texels->texImageParam) != GX_TEXFMT_DIRECT) {
 		const char *pnam = palette->name;
 		if (pnam == NULL) pnam = "";
 		TxiNnsTgaWriteSection(stream, "nns_pnam", pnam, strlen(pnam));
 
 		int nColors = palette->nColors;
-		if (FORMAT(texels->texImageParam) == CT_4COLOR && nColors > 4) nColors = 4;
+		if (FORMAT(texels->texImageParam) == GX_TEXFMT_PLTT4 && nColors > 4) nColors = 4;
 		if (nColors == 4 || (nColors % 8) == 0) {
 			//valid size
 			TxiNnsTgaWriteSection(stream, "nns_pcol", palette->pal, nColors * sizeof(COLOR));
@@ -1341,7 +1355,7 @@ int TxWriteIStudio(TextureObject *texture, BSTREAM *stream) {
 	NnsStream nnsStream;
 	NnsStreamCreate(&nnsStream, "NTTX", 1, 0, NNS_TYPE_G2D, NNS_SIG_BE);
 	
-	if (format != CT_DIRECT) {
+	if (format != GX_TEXFMT_DIRECT) {
 		NnsStreamStartBlock(&nnsStream, "PALT");
 		NnsStreamWrite(&nnsStream, paltHeader, sizeof(paltHeader));
 		NnsStreamWrite(&nnsStream, texture->texture.palette.pal, nColors * sizeof(COLOR));
@@ -1351,7 +1365,7 @@ int TxWriteIStudio(TextureObject *texture, BSTREAM *stream) {
 	NnsStreamStartBlock(&nnsStream, "IMGE");
 	NnsStreamWrite(&nnsStream, imgeHeader, sizeof(imgeHeader));
 	NnsStreamWrite(&nnsStream, texture->texture.texels.texel, texelSize);
-	if (format == CT_4x4) {
+	if (format == GX_TEXFMT_TEX4x4) {
 		NnsStreamWrite(&nnsStream, texture->texture.texels.cmp, indexSize);
 	}
 	NnsStreamEndBlock(&nnsStream);
@@ -1373,7 +1387,7 @@ int TxWriteTds(TextureObject *texture, BSTREAM *stream) {
 
 	unsigned int texelSize = TxGetTexelSize(&texture->texture.texels);
 	unsigned int totalTexelSize = texelSize;
-	if (format == CT_4x4) totalTexelSize += texelSize / 2;
+	if (format == GX_TEXFMT_TEX4x4) totalTexelSize += texelSize / 2;
 
 	*(uint8_t *) (header + 0x08) = format;
 	*(uint8_t *) (header + 0x09) = (texImageParam >> 20) & 7;
@@ -1387,8 +1401,8 @@ int TxWriteTds(TextureObject *texture, BSTREAM *stream) {
 
 	bstreamWrite(stream, header, sizeof(header));
 	bstreamWrite(stream, texture->texture.texels.texel, texelSize);
-	if (format == CT_4x4) bstreamWrite(stream, texture->texture.texels.cmp, texelSize / 2);
-	if (format != CT_DIRECT) bstreamWrite(stream, texture->texture.palette.pal, nColors * sizeof(COLOR));
+	if (format == GX_TEXFMT_TEX4x4) bstreamWrite(stream, texture->texture.texels.cmp, texelSize / 2);
+	if (format != GX_TEXFMT_DIRECT) bstreamWrite(stream, texture->texture.palette.pal, nColors * sizeof(COLOR));
 	return 0;
 }
 
@@ -1410,21 +1424,21 @@ int TxWriteNtga(TextureObject *texture, BSTREAM *stream) {
 	*(uint16_t *) (header + 0x16) = height;
 	*(uint32_t *) (header + 0x18) = sizeof(header);
 	*(uint32_t *) (header + 0x1C) = texelSize;
-	if (fmt == CT_4x4) {
+	if (fmt == GX_TEXFMT_TEX4x4) {
 		*(uint32_t *) (header + 0x20) = sizeof(header) + texelSize;
 		*(uint32_t *) (header + 0x24) = texelSize / 2;
 	}
-	if (fmt != CT_DIRECT) {
-		*(uint32_t *) (header + 0x28) = sizeof(header) + texelSize + (fmt == CT_4x4 ? (texelSize / 2) : 0);
+	if (fmt != GX_TEXFMT_DIRECT) {
+		*(uint32_t *) (header + 0x28) = sizeof(header) + texelSize + (fmt == GX_TEXFMT_TEX4x4 ? (texelSize / 2) : 0);
 		*(uint32_t *) (header + 0x2C) = paletteSize;
 	}
 
 	bstreamWrite(stream, header, sizeof(header));
 	bstreamWrite(stream, texture->texture.texels.texel, texelSize);
-	if (fmt == CT_4x4) {
+	if (fmt == GX_TEXFMT_TEX4x4) {
 		bstreamWrite(stream, texture->texture.texels.cmp, texelSize / 2);
 	}
-	if (fmt != CT_DIRECT) {
+	if (fmt != GX_TEXFMT_DIRECT) {
 		bstreamWrite(stream, texture->texture.palette.pal, paletteSize);
 	}
 
@@ -1440,11 +1454,11 @@ static int TxWriteToLoveRu(TextureObject *texture, BSTREAM *stream) {
 
 	unsigned int offsPltt = 0, sizePltt = 0, offsTexImage = 0, sizeTexImage = 0, offsPlttIdx = 0, sizePlttIdx = 0;
 	sizeTexImage = txelSize;
-	if (fmt != CT_DIRECT) {
+	if (fmt != GX_TEXFMT_DIRECT) {
 		sizePltt = texture->texture.palette.nColors * sizeof(COLOR);
 		offsPltt = sizeof(header);
 		offsTexImage = offsPltt + sizePltt;
-		if (fmt == CT_4x4) {
+		if (fmt == GX_TEXFMT_TEX4x4) {
 			sizePlttIdx = txelSize / 2;
 			offsPlttIdx = offsTexImage + sizeTexImage;
 		}
@@ -1457,19 +1471,19 @@ static int TxWriteToLoveRu(TextureObject *texture, BSTREAM *stream) {
 	*(uint16_t *) (header + 0x0A) = (texImageParam >> 23) & 0x7;
 	*(uint32_t *) (header + 0x0C) = offsPltt;
 	*(uint32_t *) (header + 0x10) = sizePltt;
-	*(uint32_t *) (header + 0x14) = (fmt == CT_DIRECT || fmt == CT_4x4 || fmt == CT_256COLOR) ? 1 : (texture->texture.palette.nColors);
+	*(uint32_t *) (header + 0x14) = (fmt == GX_TEXFMT_DIRECT || fmt == GX_TEXFMT_TEX4x4 || fmt == GX_TEXFMT_PLTT256) ? 1 : (texture->texture.palette.nColors);
 	*(uint32_t *) (header + 0x18) = offsTexImage;
 	*(uint32_t *) (header + 0x1C) = sizeTexImage;
 	*(uint32_t *) (header + 0x20) = offsPlttIdx;
 	*(uint32_t *) (header + 0x24) = sizePlttIdx;
 	bstreamWrite(stream, header, sizeof(header));
 	
-	if (fmt != CT_DIRECT) {
+	if (fmt != GX_TEXFMT_DIRECT) {
 		bstreamWrite(stream, texture->texture.palette.pal, texture->texture.palette.nColors * 2);
 	}
 
 	bstreamWrite(stream, texture->texture.texels.texel, txelSize);
-	if (FORMAT(texImageParam) == CT_4x4) {
+	if (FORMAT(texImageParam) == GX_TEXFMT_TEX4x4) {
 		bstreamWrite(stream, texture->texture.texels.cmp, txelSize / 2);
 	}
 	return 0;
@@ -1486,7 +1500,7 @@ static int TxWriteSpt(TextureObject *texture, BSTREAM *stream) {
 	unsigned int texSize = TxGetTexelSizeFull(&texture->texture.texels);
 	unsigned int pltSize = texture->texture.palette.nColors * sizeof(COLOR);
 	unsigned int idxSize = 0;
-	if (texfmt == CT_4x4) {
+	if (texfmt == GX_TEXFMT_TEX4x4) {
 		idxSize = texSize / 2;
 	}
 
@@ -1507,8 +1521,8 @@ static int TxWriteSpt(TextureObject *texture, BSTREAM *stream) {
 
 	//data
 	bstreamWrite(stream, texture->texture.texels.texel, texSize);
-	if (texfmt != CT_DIRECT) bstreamWrite(stream, texture->texture.palette.pal, pltSize);
-	if (texfmt == CT_4x4) bstreamWrite(stream, texture->texture.texels.cmp, idxSize);
+	if (texfmt != GX_TEXFMT_DIRECT) bstreamWrite(stream, texture->texture.palette.pal, pltSize);
+	if (texfmt == GX_TEXFMT_TEX4x4) bstreamWrite(stream, texture->texture.texels.cmp, idxSize);
 
 	return OBJ_STATUS_SUCCESS;
 }
@@ -1519,24 +1533,24 @@ static int TxWriteGRF(TextureObject *texture, BSTREAM *stream) {
 
 	int gfxAttr = 0, tileWidth = 0, tileHeight = 0, flags = 0;
 	switch (fmt) {
-		case CT_4COLOR  : gfxAttr = 0x02; break;
-		case CT_16COLOR : gfxAttr = 0x04; break;
-		case CT_256COLOR: gfxAttr = 0x08; break;
-		case CT_DIRECT  : gfxAttr = 0x10; break;
-		case CT_A3I5    : gfxAttr = 0x80; break;
-		case CT_A5I3    : gfxAttr = 0x81; break;
-		case CT_4x4     : gfxAttr = 0x82; break;
+		case GX_TEXFMT_PLTT4  : gfxAttr = 0x02; break;
+		case GX_TEXFMT_PLTT16 : gfxAttr = 0x04; break;
+		case GX_TEXFMT_PLTT256: gfxAttr = 0x08; break;
+		case GX_TEXFMT_DIRECT  : gfxAttr = 0x10; break;
+		case GX_TEXFMT_A3I5    : gfxAttr = 0x80; break;
+		case GX_TEXFMT_A5I3    : gfxAttr = 0x81; break;
+		case GX_TEXFMT_TEX4x4     : gfxAttr = 0x82; break;
 	}
 
 	int nColors = 0;
-	if (fmt != CT_DIRECT) nColors = texture->texture.palette.nColors;
+	if (fmt != GX_TEXFMT_DIRECT) nColors = texture->texture.palette.nColors;
 
-	if (fmt == CT_4x4) {
+	if (fmt == GX_TEXFMT_TEX4x4) {
 		tileWidth = 4;
 		tileHeight = 4;
 	}
 
-	if (fmt == CT_4COLOR || fmt == CT_16COLOR || fmt == CT_256COLOR) {
+	if (fmt == GX_TEXFMT_PLTT4 || fmt == GX_TEXFMT_PLTT16 || fmt == GX_TEXFMT_PLTT256) {
 		if (COL0TRANS(texImageParam)) flags |= 0x0001;
 	}
 
@@ -1557,13 +1571,13 @@ static int TxWriteGRF(TextureObject *texture, BSTREAM *stream) {
 
 	GrfStreamWriteBlock(&grfStream, "HDRX", hdr, sizeof(hdr));
 
-	if (fmt != CT_DIRECT) {
+	if (fmt != GX_TEXFMT_DIRECT) {
 		GrfStreamWriteBlockCompressedOptimal(&grfStream, "PAL ", texture->texture.palette.pal, nColors * sizeof(COLOR));
 	}
 
 	GrfStreamWriteBlockCompressedOptimal(&grfStream, "GFX ", texture->texture.texels.texel, texelSize);
 
-	if (fmt == CT_4x4) {
+	if (fmt == GX_TEXFMT_TEX4x4) {
 		GrfStreamWriteBlockCompressedOptimal(&grfStream, "PIDX", texture->texture.texels.cmp, texelSize / 2);
 	}
 
