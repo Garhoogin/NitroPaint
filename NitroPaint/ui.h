@@ -208,3 +208,14 @@ int UiCtlMgrInit(UiCtlManager *mgr, void *param);
 int UiCtlMgrFree(UiCtlManager *mgr);
 int UiCtlMgrAddCommand(UiCtlManager *mgr, HWND hWnd, int notif, UiMgrCommandProc proc);
 void UiCtlMgrOnCommand(UiCtlManager *mgr, HWND hWnd, WPARAM wParam, LPARAM lParam);
+
+
+// ----- Dialog manager
+void *UiDlgGetData(HWND hWnd);
+ATOM UiDlgRegister(const wchar_t *szClass, WNDPROC proc, size_t userSize);
+HWND UiDlgCreate(HWND hWndParent, const wchar_t *szClass, const wchar_t *szTitle, int width, int height, void *param);
+void UiDlgCreateModal(HWND hWndParent, const wchar_t *szClass, const wchar_t *szTitle, int width, int height, void *param);
+void UiDlgRegisterCtlCommand(HWND hWndDlg, HWND hWndCtl, int cmd, UiMgrCommandProc proc);
+void UiDlgRegisterCtlOK(HWND hWnd, HWND hWndOK);
+void UiDlgRegisterCtlCancel(HWND hWnd, HWND hWndCancel);
+void UiDlgEnd(HWND hWnd);

@@ -1151,6 +1151,10 @@ typedef struct CHARIMPORTDATA_ {
 	COLOR32 *px;
 	int width;
 	int height;
+	int plttBase;
+	int plttSize;
+	int nCharImport;
+	BOOL createPalette;
 	NCLR *nclr;
 	NCGR *ncgr;
 	int contextHoverX;
@@ -1341,10 +1345,7 @@ static void ChrViewerOnCtlCommand(NCGRVIEWERDATA *data, HWND hWndControl, int no
 		ChrViewerSetWidth(data, _wtol(text));
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndExpand) {
 		HWND hWndMain = data->editorMgr->hWnd;
-		HWND h = CreateWindow(L"ExpandNcgrClass", L"Resize Graphics", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
-			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
-		SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
-		DoModal(h);
+		UiDlgCreateModal(hWndMain, L"ExpandNcgrClass", L"Resize Graphics", 175, 96, data);
 		SendMessage(data->hWnd, NV_UPDATEPREVIEW, 0, 0);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWnd8bpp) {
 		int state = GetCheckboxChecked(hWndControl);
@@ -1359,18 +1360,10 @@ static void ChrViewerOnCtlCommand(NCGRVIEWERDATA *data, HWND hWndControl, int no
 }
 
 static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int pasteX, int pasteY, COLOR32 *px, int width, int height) {
-	HWND hWndMain = data->editorMgr->hWnd;
-	HWND h = CreateWindow(L"CharImportDialog", L"Import Bitmap", WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX,
-		CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
-	CHARIMPORTDATA *cidata = (CHARIMPORTDATA *) GetWindowLongPtr(h, 0);
-
-	//populate import params
-	cidata->px = px;
-	cidata->width = width;
-	cidata->height = height;
-	if (createPalette) SendMessage(cidata->hWndOverwritePalette, BM_SETCHECK, BST_CHECKED, 0);
-	if (data->ncgr->nBits == 4) SetEditNumber(cidata->hWndPaletteSize, 16);
-	SetEditNumber(cidata->hWndMaxChars, data->ncgr->nTiles - (data->ted.contextHoverX + pasteY * pasteX));
+	CHARIMPORTDATA cidata = { 0 };
+	cidata.px = px;
+	cidata.width = width;
+	cidata.height = height;
 
 	HWND hWndNclrViewer = ChrViewerGetAssociatedPaletteViewer(data);
 	NCLR *nclr = NULL;
@@ -1378,8 +1371,12 @@ static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int 
 	if (hWndNclrViewer != NULL) {
 		nclr = (NCLR *) EditorGetObject(hWndNclrViewer);
 	}
-	cidata->nclr = nclr;
-	cidata->ncgr = ncgr;
+	cidata.nclr = nclr;
+	cidata.ncgr = ncgr;
+
+	int plttSize = 1 << ncgr->nBits;
+	int plttBase = 0;
+	int nCharImport = ncgr->nTiles - (data->ted.contextHoverX + pasteY * pasteX);
 
 	//get selection in palette editor. If there is a valid selection of more than one color,
 	//then take this as the palette range to import with respect to.
@@ -1398,18 +1395,23 @@ static void ChrViewerImportDialog(NCGRVIEWERDATA *data, BOOL createPalette, int 
 			selEnd -= (data->selectedPalette << ncgr->nBits);
 
 			if (selStart >= 0 && selEnd >= 0 && selEnd < (1 << ncgr->nBits)) {
-				SetEditNumber(cidata->hWndPaletteBase, selStart);
-				SetEditNumber(cidata->hWndPaletteSize, selEnd - selStart + 1);
+				plttBase = selStart;
+				plttSize = selEnd - selStart + 1;
 			}
 		}
 	}
 
-	cidata->contextHoverX = pasteX;
-	cidata->contextHoverY = pasteY;
-	cidata->selectedPalette = data->selectedPalette;
+	cidata.plttBase = plttBase;
+	cidata.plttSize = plttSize;
+	cidata.nCharImport = nCharImport;
+	cidata.createPalette = createPalette;
 
-	//do modal
-	DoModal(h);
+	cidata.contextHoverX = pasteX;
+	cidata.contextHoverY = pasteY;
+	cidata.selectedPalette = data->selectedPalette;
+
+	HWND hWndMain = data->editorMgr->hWnd;
+	UiDlgCreateModal(hWndMain, L"CharImportDialog", L"Import Bitmap", 490, 390, &cidata);
 }
 
 static void ChrViewerImportAttributesFromScreen(NCGRVIEWERDATA *data, NSCRVIEWERDATA *nscrViewerData) {
@@ -2130,12 +2132,13 @@ void ChrViewerGraphicsSizeUpdated(HWND hWnd) {
 }
 
 static LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NCGRVIEWERDATA *data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCGRVIEWERDATA **pdata = UiDlgGetData(hWnd);
+	NCGRVIEWERDATA *data = pdata == NULL ? NULL : *pdata;
+
 	switch (msg) {
 		case NV_INITIALIZE:
 		{
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) lParam);
-			data = (NCGRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+			*pdata = data = (NCGRVIEWERDATA *) lParam;
 
 			CreateStatic(hWnd, L"Width:", 10, 10, 75, 22);
 			CreateStatic(hWnd, L"Height:", 10, 37, 75, 22);
@@ -2144,22 +2147,22 @@ static LRESULT CALLBACK NcgrExpandProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndExpandButton = CreateButton(hWnd, L"Set", 90, 64, 75, 22, TRUE);
 			SetEditNumber(data->hWndExpandRowsInput, data->ncgr->tilesY);
 			SetEditNumber(data->hWndExpandColsInput, data->ncgr->tilesX);
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 175, 96);
-			SetFocus(data->hWndExpandRowsInput);
+			UiDlgRegisterCtlOK(hWnd, data->hWndExpandButton);
+			SetFocus(data->hWndExpandColsInput);
 			break;
 		}
 		case WM_COMMAND:
 		{
-			int notification = LOWORD(wParam);
-			HWND hWndControl = (HWND) lParam;
-			if (notification == BN_CLICKED && hWndControl == data->hWndExpandButton) {
+			int notification = LOWORD(wParam), idCtl = HIWORD(wParam);
+			if (idCtl == IDOK && notification == BN_CLICKED) {
 				int nRows = GetEditNumber(data->hWndExpandRowsInput);
 				int nCols = GetEditNumber(data->hWndExpandColsInput);
 				ChrResize(data->ncgr, nCols, nRows);
 				ChrViewerGraphicsSizeUpdated(data->hWnd);
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
+			} else if (idCtl == IDCANCEL && notification == BN_CLICKED) {
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
@@ -2521,14 +2524,15 @@ static void ChrImportThreaded(PROGRESSDATA *progress) {
 }
 
 static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	CHARIMPORTDATA *data = (CHARIMPORTDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (CHARIMPORTDATA *) calloc(1, sizeof(CHARIMPORTDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	CHARIMPORTDATA **pdata = (CHARIMPORTDATA **) UiDlgGetData(hWnd);
+	CHARIMPORTDATA *data = pdata == NULL ? NULL : *pdata;
+	
 	switch (msg) {
-		case WM_CREATE:
+		case NV_INITIALIZE:
 		{
+			CHARIMPORTDATA *cidata = (CHARIMPORTDATA *) lParam;
+			data = *pdata = cidata;
+
 			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
 			int boxHeight = 3 * 27 - 5 + 10 + 10 + 10; //first row height
 			int boxHeight2 = 3 * 27 - 5 + 10 + 10 + 10; //second row height
@@ -2543,7 +2547,7 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			int bottomY = 10 + boxHeight + 10 + boxHeight2 + 10 + 10 + 8; //bottom box Y
 
 			//Palette
-			data->hWndOverwritePalette = CreateCheckbox(hWnd, L"Write Palette", leftX, topY, 150, 22, FALSE);
+			data->hWndOverwritePalette = CreateCheckbox(hWnd, L"Write Palette", leftX, topY, 150, 22, cidata->createPalette);
 			CreateStatic(hWnd, L"Palette Base:", leftX, topY + 27, 75, 22);
 			data->hWndPaletteBase = CreateEdit(hWnd, L"0", leftX + 85, topY + 27, 100, 22, TRUE);
 			CreateStatic(hWnd, L"Palette Size:", leftX, topY + 27 * 2, 75, 22);
@@ -2575,13 +2579,15 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateGroupbox(hWnd, L"Palette", 10, 10, boxWidth, boxHeight);
 			CreateGroupbox(hWnd, L"Graphics", 10 + boxWidth + 10, 10, boxWidth, boxHeight);
 			CreateGroupbox(hWnd, L"Dimension", 10, 10 + boxHeight + 10, boxWidth * 2 + 10, boxHeight2);
-
-			SetGUIFont(hWnd);
+			
 			EnableWindow(data->hWndDiffuse, FALSE);
 			EnableWindow(data->hWndCompression, FALSE);
 			EnableWindow(data->hWndMaxChars, FALSE);
 			EnableWindow(data->hWndObjSize, FALSE);
-			SetWindowSize(hWnd, width, height);
+
+			SetEditNumber(cidata->hWndMaxChars, cidata->nCharImport);
+			SetEditNumber(data->hWndPaletteSize, cidata->plttSize);
+			SetEditNumber(data->hWndPaletteBase, cidata->plttBase);
 			break;
 		}
 		case WM_COMMAND:
@@ -2683,29 +2689,18 @@ static LRESULT CALLBACK CharImportProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					SendMessage(hWndProgress, NV_SETDATA, 0, (LPARAM) progressData);
 					ChrImportThreaded(progressData);
 
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					UiDlgEnd(hWnd);
 					DoModalEx(hWndProgress, FALSE);
 				}
 			}
 			break;
 		}
-		case WM_DESTROY:
-			free(data);
-			break;
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 static void RegisterNcgrPreviewClass(void) {
 	RegisterGenericClass(L"NcgrPreviewClass", ChrViewerPreviewWndProc, sizeof(LPVOID));
-}
-
-static void RegisterNcgrExpandClass(void) {
-	RegisterGenericClass(L"ExpandNcgrClass", NcgrExpandProc, sizeof(LPVOID));
-}
-
-static void RegisterCharImportClass(void) {
-	RegisterGenericClass(L"CharImportDialog", CharImportProc, sizeof(LPVOID));
 }
 
 void RegisterNcgrViewerClass(void) {
@@ -2723,8 +2718,8 @@ void RegisterNcgrViewerClass(void) {
 	EditorAddFilter(cls, NCGR_TYPE_BIN, L"bin", L"Character Files (*.bin, *ncg.bin, *icg.bin, *.nbfc)\0*.bin;*.nbfc\0");
 	
 	RegisterNcgrPreviewClass();
-	RegisterNcgrExpandClass();
-	RegisterCharImportClass();
+	UiDlgRegister(L"ExpandNcgrClass", NcgrExpandProc, sizeof(void *));
+	UiDlgRegister(L"CharImportDialog", CharImportProc, sizeof(void *));
 }
 
 static HWND CreateNcgrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NCGR *ncgr) {
