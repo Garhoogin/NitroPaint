@@ -628,14 +628,14 @@ static LRESULT CALLBACK UiDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 			case WM_COMMAND:
 			{
 				HWND hWndControl = (HWND) lParam;
-				int notif = LOWORD(wParam), idCtl = HIWORD(wParam);
+				int notif = HIWORD(wParam), idCtl = LOWORD(wParam);
 				if (((data->hWndOK != NULL && hWndControl == data->hWndOK) || idCtl == IDOK) && notif == BN_CLICKED) {
 					//rewrite the WPARAM
-					wParam = MAKELONG(BN_CLICKED, IDOK);
+					wParam = MAKELONG(IDOK, BN_CLICKED);
 					lParam = 0;
 				} else if (((data->hWndCancel != NULL && hWndControl == data->hWndCancel) || idCtl == IDCANCEL) && notif == BN_CLICKED) {
 					//rewrite the WPARAM
-					wParam = MAKELONG(BN_CLICKED, IDCANCEL);
+					wParam = MAKELONG(IDCANCEL, BN_CLICKED);
 					lParam = 0;
 				}
 				break;
