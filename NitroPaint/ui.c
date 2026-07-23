@@ -553,31 +553,17 @@ void UiCtlMgrOnCommand(UiCtlManager *mgr, HWND hWnd, WPARAM wParam, LPARAM lPara
 
 // ----- dialog code
 
-typedef struct UiDlgClassData_{
-	WNDPROC wndProc;   // base class procedure
-	int init;          // mark initialization of the class
-	size_t userSize;   // size of user data
-} UiDlgClassData;
-
 typedef struct UiDlgData_ {
+	WNDPROC wndProc;      // base procedure
 	UiCtlManager mgr;     // UI control manager
 	void *userData;       // pointer to user data
 	HWND hWndOK;          // handle of "OK" button
 	HWND hWndCancel;      // handle of "Cancel" button
 } UiDlgData;
 
-static UiDlgClassData *UiDlgGetClass(HWND hWnd) {
-	UiDlgClassData *cls = (UiDlgClassData *) GetClassLongPtr(hWnd, 0 * sizeof(LONG_PTR));
-	return cls;
-}
-
 static UiDlgData *UiDlgGetDataIntern(HWND hWnd) {
-	UiDlgData *data = (UiDlgData *) GetWindowLongPtr(hWnd, 0 * sizeof(LONG_PTR));
+	UiDlgData *data = (UiDlgData *) GetWindowLongPtr(hWnd, GWL_USERDATA);
 	return data;
-}
-
-static int UiDlgGetWndInitialized(HWND hWnd) {
-	return GetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR));
 }
 
 void *UiDlgGetData(HWND hWnd) {
@@ -588,120 +574,86 @@ void *UiDlgGetData(HWND hWnd) {
 }
 
 static LRESULT CALLBACK UiDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	UiDlgClassData *cls = UiDlgGetClass(hWnd);
+	UiDlgData *data = UiDlgGetDataIntern(hWnd);
 
-	if (cls != NULL && cls->init) {
-		//messages for the dialog
-		UiDlgData *data = UiDlgGetDataIntern(hWnd);
-
-		//check initialized
-		if (!UiDlgGetWndInitialized(hWnd)) {
-			data = (UiDlgData *) calloc(1, sizeof(UiDlgData));
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
-			//init user data
-			void *userData = calloc(1, cls->userSize);
-			data->userData = userData;
-
-			//init control manager
-			UiCtlMgrInit(&data->mgr, userData);
-
-			//mark initialized
-			SetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR), 1);
+	switch (msg) {
+		case WM_NCCREATE:
+		{
+			//set data pointer
+			CREATESTRUCT *cs = (CREATESTRUCT *) lParam;
+			data = (UiDlgData *) cs->lpCreateParams;
+			SetWindowLongPtr(hWnd, GWL_USERDATA, (LONG_PTR) data);
+			break;
 		}
-
-		switch (msg) {
-			case WM_NCCREATE:
-			{
-
-				break;
+		case WM_COMMAND:
+		{
+			HWND hWndControl = (HWND) lParam;
+			int notif = HIWORD(wParam), idCtl = LOWORD(wParam);
+			if (((data->hWndOK != NULL && hWndControl == data->hWndOK) || idCtl == IDOK) && notif == BN_CLICKED) {
+				//rewrite the WPARAM
+				wParam = MAKELONG(IDOK, BN_CLICKED);
+				lParam = (LPARAM) data->hWndOK;
+			} else if (((data->hWndCancel != NULL && hWndControl == data->hWndCancel) || idCtl == IDCANCEL) && notif == BN_CLICKED) {
+				//rewrite the WPARAM
+				wParam = MAKELONG(IDCANCEL, BN_CLICKED);
+				lParam = (LPARAM) data->hWndCancel;
 			}
-			case WM_NCDESTROY:
-			{
-				//free stuff
-				UiCtlMgrFree(&data->mgr);
-				free(data->userData);
-				free(data);
-				SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
-				break;
-			}
-			case WM_COMMAND:
-			{
-				HWND hWndControl = (HWND) lParam;
-				int notif = HIWORD(wParam), idCtl = LOWORD(wParam);
-				if (((data->hWndOK != NULL && hWndControl == data->hWndOK) || idCtl == IDOK) && notif == BN_CLICKED) {
-					//rewrite the WPARAM
-					wParam = MAKELONG(IDOK, BN_CLICKED);
-					lParam = 0;
-				} else if (((data->hWndCancel != NULL && hWndControl == data->hWndCancel) || idCtl == IDCANCEL) && notif == BN_CLICKED) {
-					//rewrite the WPARAM
-					wParam = MAKELONG(IDCANCEL, BN_CLICKED);
-					lParam = 0;
-				}
-				break;
-			}
+			break;
 		}
-	} else {
-		//handling the dialog init class process
 	}
 
 	//call default handler
-	if (cls != NULL && cls->wndProc != NULL) {
-		return cls->wndProc(hWnd, msg, wParam, lParam);
+	if (data != NULL && data->wndProc != NULL) {
+		return data->wndProc(hWnd, msg, wParam, lParam);
 	} else {
 		return DefWindowProc(hWnd, msg, wParam, lParam);
 	}
 }
 
-ATOM UiDlgRegister(const wchar_t *szClass, WNDPROC proc, size_t userSize) {
+void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, int width, int height, void *initData) {
+	//a rolling buffer of class IDs to use
+	static volatile long classID = 0;
+	long id = _InterlockedIncrement(&classID);
+
+	wchar_t classbuf[32];
+	wsprintfW(classbuf, L"_UiDlg_%ld", id);
+
+	//register the window procedure
 	WNDCLASSEX wcex = { 0 };
 	wcex.cbSize = sizeof(wcex);
-	wcex.lpszClassName = szClass;
+	wcex.lpszClassName = classbuf;
 	wcex.lpfnWndProc = UiDlgProc;
-	wcex.cbClsExtra = 1 * sizeof(LONG_PTR);
-	wcex.cbWndExtra = 2 * sizeof(LONG_PTR);
 	wcex.hIcon = g_appIcon;
 	wcex.hIconSm = g_appIcon;
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH) (COLOR_BTNFACE + 1);
 	ATOM aClass = RegisterClassEx(&wcex);
 
-	if (aClass) {
-		//init class
-		UiDlgClassData *cls = (UiDlgClassData *) calloc(1, sizeof(UiDlgClassData));
+	//init dialog data
+	UiDlgData data = { 0 };
+	data.wndProc = wndProc;
+	data.userData = initData;
+	UiCtlMgrInit(&data.mgr, initData);
 
-		//create temp window
-		HWND hTemp = CreateWindow(szClass, L"", 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL);
-		SetClassLongPtr(hTemp, 0 * sizeof(LONG_PTR), (LONG_PTR) cls);
-		DestroyWindow(hTemp);
-
-		//finalize class registration
-		cls->wndProc = proc;
-		cls->userSize = userSize;
-		cls->init = 1;
-	}
-	return aClass;
-}
-
-HWND UiDlgCreate(HWND hWndParent, const wchar_t *szClass, const wchar_t *szTitle, int width, int height, void *initData) {
-	HWND h = CreateWindow(szClass, szTitle, WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
-		CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hWndParent, NULL, NULL, NULL);
+	HWND h = CreateWindow(MAKEINTATOM(aClass), szTitle, WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
+		CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hWndParent, NULL, NULL, &data);
 
 	//TODO: dialog init process
-	SendMessage(h, NV_INITIALIZE, 0, (LPARAM) initData);
+	SendMessage(h, NV_INITIALIZE, 0, 0);
 
 	//set the window size and font
 	SetWindowSize(h, width, height);
 	SetGUIFont(h);
 
-	//show window and return
+	//show window and modal wait
 	ShowWindow(h, SW_SHOW);
-	return h;
-}
+	DoModal(h);
 
-void UiDlgCreateModal(HWND hWndParent, const wchar_t *szClass, const wchar_t *szTitle, int width, int height, void *param) {
-	HWND hWnd = UiDlgCreate(hWndParent, szClass, szTitle, width, height, param);
-	DoModal(hWnd);
+	//free data
+	UiCtlMgrFree(&data.mgr);
+
+	//free class
+	UnregisterClass(MAKEINTATOM(aClass), NULL);
 }
 
 void UiDlgRegisterCtlCommand(HWND hWndDlg, HWND hWndCtl, int cmd, UiMgrCommandProc proc) {

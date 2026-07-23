@@ -398,84 +398,94 @@ LPWSTR openFileDialog(HWND hWnd, LPCWSTR title, LPCWSTR filter, LPCWSTR extensio
 	return NULL;
 }
 
-int PromptUserText(HWND hWndParent, LPCWSTR title, LPCWSTR prompt, LPWSTR text, int maxLength) {
-	//create a prompt
-	int status = 0;
-	HWND hWnd = CreateWindow(L"TextPromptClass", title, WS_SYSMENU | WS_CAPTION, CW_USEDEFAULT, CW_USEDEFAULT,
-		300, 200, hWndParent, NULL, NULL, NULL);
-	SendMessage(hWnd, NV_INITIALIZE, (WPARAM) prompt, (LPARAM) text);
-	SetWindowLong(hWnd, 4 * sizeof(void *), maxLength);
-	SetWindowLong(hWnd, 0 * sizeof(void *), (LONG) &status);
-	ShowWindow(hWnd, SW_SHOW);
-	DoModal(hWnd);
-	return status;
-}
-
 int BatchTextureDialog(HWND hWndParent);
+static void CreateSpriteSheetDialog(HWND hWnd);
+static void CreateBgDialog(HWND hWnd, const wchar_t *path);
+static void ConvertFormatDialog(HWND hWnd, EDITOR_DATA *editor);
+static void SplitScreenDialog(HWND hWnd, EDITOR_DATA *editor);
+static void NtftConvertDialog(HWND hWnd);
+static void AlphaBlendDialog(HWND hWnd);
+static void NewScreenDialog(HWND hWnd);
+static void NewPaletteDialog(HWND hWnd);
+static void LinkEditDialog(HWND hWnd, HWND hWndEditor);
+
 void SetGUIFont(HWND hWnd);
 
+typedef struct TextInputData_ {
+	int status;
+	wchar_t *textBuffer;
+	const wchar_t *prompt;
+	int bufferLength;
+	HWND hWndEdit;
+} TextInputData;
+
 LRESULT CALLBACK TextInputWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HWND hWndOK = (HWND) GetWindowLongPtr(hWnd, 1 * sizeof(void *));
-	HWND hWndEdit = (HWND) GetWindowLongPtr(hWnd, 2 * sizeof(void *));
-	WCHAR *outBuffer = (WCHAR *) GetWindowLong(hWnd, 3 * sizeof(void *));
+	TextInputData *data = (TextInputData *) UiDlgGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
-			SetWindowLong(hWnd, 0 * sizeof(void *), 0); //status
 			SetWindowSize(hWnd, 225, 96);
 			break;
 		case NV_INITIALIZE:
 		{
-			LPCWSTR prompt = (LPCWSTR) wParam;
-			LPWSTR textBuffer = (LPWSTR) lParam;
+			LPCWSTR prompt = data->prompt;
 			CreateStatic(hWnd, prompt, 10, 10, 205, 22);
-			hWndEdit = CreateEdit(hWnd, textBuffer, 10, 37, 205, 22, FALSE);
+
+			data->hWndEdit = CreateEdit(hWnd, data->textBuffer, 10, 37, 205, 22, FALSE);
 			HWND hWndCancel = CreateButton(hWnd, L"Cancel", 10, 64, 100, 22, FALSE);
-			hWndOK = CreateButton(hWnd, L"OK", 115, 64, 100, 22, TRUE);
+			HWND hWndOK = CreateButton(hWnd, L"OK", 115, 64, 100, 22, TRUE);
+
+			UiDlgRegisterCtlOK(hWnd, hWndOK);
+			UiDlgRegisterCtlCancel(hWnd, hWndCancel);
 
 			//set focus and select all
-			SetFocus(hWndEdit);
-			SendMessage(hWndEdit, EM_SETSEL, 0, -1);
-
-			SetWindowLong(hWnd, 1 * sizeof(void *), (LONG) hWndOK);
-			SetWindowLong(hWnd, 2 * sizeof(void *), (LONG) hWndEdit);
-			SetWindowLong(hWnd, 3 * sizeof(void *), (LONG) textBuffer);
-			SetGUIFont(hWnd);
+			SetFocus(data->hWndEdit);
+			SendMessage(data->hWndEdit, EM_SETSEL, 0, -1);
 			break;
 		}
 		case WM_COMMAND:
 		{
-			HWND hWndControl = (HWND) lParam;
-			WORD notif = HIWORD(wParam);
-			if (notif == BN_CLICKED && hWndControl != NULL) {
+			int notif = HIWORD(wParam), idCtl = LOWORD(wParam);
+			if (notif == BN_CLICKED && (idCtl == IDOK || idCtl == IDCANCEL)) {
 				
 				//if OK, set status to 1 and copy text.
-				int *pStatus = (int *) GetWindowLong(hWnd, 0 * sizeof(void *));
-				*pStatus = 0;
-				if (hWndControl == hWndOK) {
+				data->status = 0;
+				if (idCtl == IDOK) {
 					//get length of user text. If it's too long, we should let them know.
-					int textLength = SendMessage(hWndEdit, WM_GETTEXTLENGTH, 0, 0);
-					int bufferLength = GetWindowLong(hWnd, 4 * sizeof(void *));
+					int textLength = SendMessage(data->hWndEdit, WM_GETTEXTLENGTH, 0, 0);
+					int bufferLength = data->bufferLength;
 					if (textLength + 1 > bufferLength) {
 						WCHAR strbuf[48];
 						wsprintfW(strbuf, L"Too long. Maximum length: %d", bufferLength - 1);
 						MessageBox(hWnd, strbuf, L"Too Long", MB_ICONERROR);
-						SetFocus(hWndEdit);
-						SendMessage(hWndEdit, EM_SETSEL, 0, -1);
+						SetFocus(data->hWndEdit);
+						SendMessage(data->hWndEdit, EM_SETSEL, 0, -1);
 						break;
 					} else {
 						//success, copy out and raise status high
-						SendMessage(hWndEdit, WM_GETTEXT, bufferLength, (LPARAM) outBuffer);
-						*pStatus = 1;
+						SendMessage(data->hWndEdit, WM_GETTEXT, bufferLength, (LPARAM) data->textBuffer);
+						data->status = 1;
 					}
 				}
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
+}
+
+int PromptUserText(HWND hWndParent, LPCWSTR title, LPCWSTR prompt, LPWSTR text, int maxLength) {
+	//create a prompt
+	TextInputData data = { 0 };
+	data.prompt = prompt;
+	data.textBuffer = text;
+	data.bufferLength = maxLength;
+	data.status = 0;
+	
+	UiDlgCreateModal(hWndParent, TextInputWndProc, title, 225, 96, &data);
+	return data.status;
 }
 
 
@@ -1420,11 +1430,25 @@ static void NpEnsureComboObject(HWND hWndMain, ObjHeader *obj, int combofmt) {
 	StListFree(&editors);
 }
 
+typedef struct CompressFileData_ {
+	unsigned int size;
+	const unsigned char *buffer;
+
+	unsigned int compSize;
+	unsigned char *comp;
+
+	HWND hWndCompressionFormats;
+	HWND hWndStatus;
+} CompressFileData;
+
+static LRESULT CALLBACK CompressFileProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 static void CompressFileDialog(HWND hWndParent, const unsigned char *buf, unsigned int size) {
-	HWND h = CreateWindow(L"CompressFileDialog", L"Compress File", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndParent, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) size, (LPARAM) buf);
-	DoModal(h);
+	CompressFileData data = { 0 };
+	data.buffer = buf;
+	data.size = size;
+
+	UiDlgCreateModal(hWndParent, CompressFileProc, L"Compress File", 295, 96, &data);
 }
 
 static void DecompressFileDialog(HWND hWndParent, const unsigned char *buf, unsigned int size) {
@@ -1447,12 +1471,166 @@ static void DecompressFileDialog(HWND hWndParent, const unsigned char *buf, unsi
 
 }
 
-VOID OpenFileByNameAs(HWND hWnd, LPCWSTR path) {
-	HWND h = CreateWindow(L"OpenAsDialogClass", L"Open As", WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWnd, NULL, NULL, NULL);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) path, (LPARAM) hWnd);
-	DoModal(h);
+
+void OpenFileByContent(HWND hWnd, const unsigned char *buffer, unsigned int size, const wchar_t *path, int compression, int type, int format);
+
+typedef struct OpenAsData_ {
+	HWND hWndMain;
+
+	const wchar_t *path;
+	unsigned char *buffer;
+	unsigned int size;
+
+	StList formats;
+	StList compressions;
+
+	HWND hWndCompressionLabel;
+	HWND hWndCompressionDropdown;
+
+	HWND hWndFormatLabel;
+	HWND hWndFormatDropdown;
+
+	HWND hWndOK;
+	HWND hWndCancel;
+} OpenAsData;
+
+static void OpenAsOnCompressionChanged(OpenAsData *data) {
+	int compression;
+	int sel = UiCbGetCurSel(data->hWndCompressionDropdown);
+	StListGet(&data->compressions, sel, &compression);
+
+	//decompress
+	unsigned int uncompSize;
+	unsigned char *uncomp = CxDecompress(data->buffer, data->size, compression, &uncompSize);
+
+	StListClear(&data->formats);
+	StListCreateInline(&data->formats, ObjIdEntry, NULL);
+	ObjIdentifyMultipleByType(&data->formats, uncomp, uncompSize, FILE_TYPE_INVALID);
+
+	SendMessage(data->hWndFormatDropdown, CB_RESETCONTENT, 0, 0);
+	for (size_t i = 0; i < data->formats.length; i++) {
+		ObjIdEntry *ent = StListGetPtr(&data->formats, i);
+		const char *typeName = ObjGetFileTypeName(ent->type);
+
+		wchar_t textbuf[64];
+		wsprintfW(textbuf, L"%S (%S)", typeName, ent->name);
+		UiCbAddString(data->hWndFormatDropdown, textbuf);
+	}
+
+	//set default
+	UiCbSetCurSel(data->hWndFormatDropdown, 0);
+
+	//if nonzero number of formats responded, enable the OK button.
+	if (data->formats.length > 0) {
+		EnableWindow(data->hWndOK, TRUE);
+	} else {
+		EnableWindow(data->hWndOK, FALSE);
+	}
+
+	free(uncomp);
 }
+
+static LRESULT CALLBACK OpenAsDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	OpenAsData *data = (OpenAsData *) UiDlgGetData(hWnd);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			//init lists
+			StListCreateInline(&data->formats, ObjIdEntry, NULL);
+			StListCreateInline(&data->compressions, int, NULL);
+
+			data->hWndCompressionLabel = CreateStatic(hWnd, L"Compression:", 10, 10, 100, 22);
+			data->hWndCompressionDropdown = CreateCombobox(hWnd, NULL, 0, 110, 10, 200, 22, 0);
+			data->hWndFormatLabel = CreateStatic(hWnd, L"Format:", 10, 37, 100, 22);
+			data->hWndFormatDropdown = CreateCombobox(hWnd, NULL, 0, 110, 37, 200, 22, 0);
+
+			data->hWndOK = CreateButton(hWnd, L"Open", 210, 64, 100, 22, TRUE);
+			data->hWndCancel = CreateButton(hWnd, L"Cancel", 105, 64, 100, 22, FALSE);
+			UiDlgRegisterCtlOK(hWnd, data->hWndOK);
+			UiDlgRegisterCtlCancel(hWnd, data->hWndCancel);
+			break;
+		}
+		case NV_INITIALIZE:
+		{
+			//detect compression
+			int def = 0; // no compression
+			for (int i = 0; i < COMPRESSION_MAX; i++) {
+				if (CxIsCompressed(data->buffer, data->size, i)) {
+					StListAdd(&data->compressions, &i);
+				}
+			}
+			def = CxGetCompressionType(data->buffer, data->size);
+
+			for (size_t i = 0; i < data->compressions.length; i++) {
+				int type;
+				StListGet(&data->compressions, i, &type);
+
+				wchar_t buf[64];
+				mbstowcs(buf, g_ObjCompressionNames[type], sizeof(buf) / sizeof(buf[0]));
+
+				UiCbAddString(data->hWndCompressionDropdown, buf);
+			}
+			UiCbSetCurSel(data->hWndCompressionDropdown, StListIndexOf(&data->compressions, &def));
+
+			OpenAsOnCompressionChanged(data);
+
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndCtl = (HWND) lParam;
+			int idCtl = LOWORD(wParam), cmd = HIWORD(wParam);
+
+			if (hWndCtl == data->hWndCompressionDropdown && cmd == CBN_SELCHANGE) {
+				//update detections list
+				OpenAsOnCompressionChanged(data);
+			} else if (idCtl == IDCANCEL && cmd == BN_CLICKED) {
+				//exit
+				UiDlgEnd(hWnd);
+			} else if (idCtl == IDOK && cmd == BN_CLICKED) {
+
+				//get selected parameters
+				int iCompression = UiCbGetCurSel(data->hWndCompressionDropdown);
+				int iFormat = UiCbGetCurSel(data->hWndFormatDropdown);
+
+				int compression;
+				ObjIdEntry idEntry;
+				StListGet(&data->compressions, iCompression, &compression);
+				StListGet(&data->formats, iFormat, &idEntry);
+
+				//select
+				OpenFileByContent(data->hWndMain, data->buffer, data->size, data->path, compression, idEntry.type, idEntry.format);
+
+				//close
+				UiDlgEnd(hWnd);
+			}
+			break;
+		}
+		case WM_DESTROY:
+		{
+			StListFree(&data->compressions);
+			StListFree(&data->formats);
+			break;
+		}
+	}
+	return DefModalProc(hWnd, msg, wParam, lParam);
+}
+
+VOID OpenFileByNameAs(HWND hWnd, LPCWSTR path) {
+	//read file to buffer
+	unsigned int size;
+	unsigned char *buf = IoReadWholeFile(path, &size);
+
+	OpenAsData data;
+	data.hWndMain = hWnd;
+	data.path = path;
+	data.buffer = buf;
+	data.size = size;
+	UiDlgCreateModal(hWnd, OpenAsDialogProc, L"Open As", 320, 96, &data);
+}
+
+
 
 void OpenFileByContent(HWND hWnd, const unsigned char *buffer, unsigned int size, const wchar_t *path, int compression, int type, int format) {
 	if (type == FILE_TYPE_IMAGE) {
@@ -1948,8 +2126,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEW_NEWNCGR40015: //NCGR+NSCR
 					{
-						HWND h = CreateWindow(L"CreateDialogClass", L"Create BG", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						DoModal(h);
+						CreateBgDialog(hWnd, L"");
 						break;
 					}
 					case ID_NEW_NEWTEXTURE:
@@ -1971,8 +2148,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEW_NEWSPRITESHEET:
 					{
-						HWND h = CreateWindow(L"SpriteSheetDialogClass", L"Create Sprite Sheet", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						DoModal(h);
+						CreateSpriteSheetDialog(hWnd);
 						break;
 					}
 					case ID_NEW_NEWCELLBANK:
@@ -2008,14 +2184,12 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						if (data->hWndNclrViewer != NULL) DestroyChild(data->hWndNclrViewer);
 						data->hWndNclrViewer = NULL;
 
-						HWND h = CreateWindow(L"NewPaletteClass", L"New Palette", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						DoModal(h);
+						NewPaletteDialog(hWnd);
 						break;
 					}
 					case ID_NEW_NEWSCREEN:
 					{
-						HWND h = CreateWindow(L"NewScreenDialogClass", L"New Screen", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						DoModal(h);
+						NewScreenDialog(hWnd);
 						break;
 					}
 					case ID_NEW_NEWANIMATION:
@@ -2110,9 +2284,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 						EDITOR_DATA *editorData = (EDITOR_DATA *) EditorGetData(hWndFocused);
 						if (editorData == NULL) break;
 
-						HWND h = CreateWindow(L"ConvertFormatDialogClass", L"Convert Format", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						SendMessage(h, NV_SETDATA, 0, (LPARAM) editorData);
-						DoModal(h);
+						ConvertFormatDialog(hWnd, editorData);
 						break;
 					}
 					case ID_HELP_ABOUT:
@@ -2223,14 +2395,12 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NTFT_NTFT40084:
 					{
-						HWND h = CreateWindow(L"NtftConvertDialogClass", L"NTFT To Texture", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						DoModal(h);
+						NtftConvertDialog(hWnd);
 						break;
 					}
 					case ID_TOOLS_ALPHABLEND:
 					{
-						HWND h = CreateWindow(L"AlphaBlendClass", L"Alpha Blend", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						DoModal(h);
+						AlphaBlendDialog(hWnd);
 						break;
 					}
 					case ID_TOOLS_COLORPICKER:
@@ -2253,8 +2423,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							MessageBox(hWnd, L"NO screen active.", L"Error", MB_ICONERROR);
 							break;
 						}
-						HWND h = CreateWindow(L"ScreenSplitDialogClass", L"Split Screen", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWnd, NULL, NULL, NULL);
-						DoModal(h);
+						
+						SplitScreenDialog(hWnd, EditorGetData(hWndFocus));
 						break;
 					}
 					case ID_BATCHPROCESSING_TEXTURECONVERSION:
@@ -2280,10 +2450,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							MessageBox(hWnd, L"No editor focused.", L"No editor focused", MB_ICONERROR);
 						} else {
 							//do modal dialog
-							HWND hWndDlg = CreateWindow(L"LinkEditClass", L"Edit Links", WS_CAPTION | WS_BORDER | WS_SYSMENU, CW_USEDEFAULT,
-								CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWnd, NULL, NULL, NULL);
-							SendMessage(hWndDlg, NV_INITIALIZE, 0, (LPARAM) hWndActive);
-							DoModal(hWndDlg);
+							LinkEditDialog(hWnd, hWndActive);
 						}
 						break;
 					}
@@ -2405,6 +2572,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 typedef struct {
+	HWND hWndMain;
+	const wchar_t *path;
+
 	HWND nscrCreateInput;
 	HWND nscrCreateInputButton;
 	HWND nscrCreateDither;
@@ -2574,17 +2744,11 @@ BOOL NpChooseColor15(HWND hWndMain, HWND hWndParent, COLOR *pColor) {
 }
 
 LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	CREATEDIALOGDATA *data = (CREATEDIALOGDATA *) GetWindowLongPtr(hWnd, 0);
-	if (!data) {
-		data = calloc(sizeof(CREATEDIALOGDATA), 1);
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	CREATEDIALOGDATA *data = (CREATEDIALOGDATA *) UiDlgGetData(hWnd);
+
 	switch (msg) {
 		case WM_CREATE:
 		{
-			HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-			EnableWindow(hWndParent, FALSE);
-
 			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
 			int boxHeight = 6 * 27 - 5 + 10 + 10 + 10; //first row height
 			int boxHeight2 = 2 * 27 - 5 + 10 + 10 + 10; //second row height
@@ -2599,7 +2763,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			int bottomY = 42 + boxHeight + 10 + boxHeight2 + 10 + 10 + 8; //bottom box Y
 
 			CreateStatic(hWnd, L"Bitmap:", 10, 10, 50, 22);
-			data->nscrCreateInput = CreateEdit(hWnd, L"", 70, 10, width - 10 - 50 - 70, 22, FALSE);
+			data->nscrCreateInput = CreateEdit(hWnd, data->path, 70, 10, width - 10 - 50 - 70, 22, FALSE);
 			data->nscrCreateInputButton = CreateButton(hWnd, L"...", width - 10 - 50, 10, 50, 22, FALSE);
 
 			LPCWSTR color0Settings[] = { L"Fixed", L"Average", L"Edge", L"Contrasting", L"Used" };
@@ -2670,10 +2834,7 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			CreateGroupbox(hWnd, L"Char compression", 10, 42 + boxHeight + 10, boxWidth, boxHeight2);
 			CreateGroupbox(hWnd, L"Output", 10 + boxWidth + 10, 42 + boxHeight + 10, boxWidth, boxHeight2);
 			data->nscrCreateButton = CreateButton(hWnd, L"Generate", width / 2 - 200 / 2, height - 32, 200, 22, TRUE);
-
-			SetWindowSize(hWnd, width, height);
-			SetGUIFont(hWnd);
-			return 1;
+			break;
 		}
 		case WM_COMMAND:
 		{
@@ -2831,17 +2992,16 @@ LRESULT WINAPI CreateDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			}
 			break;
 		}
-		case WM_DESTROY:
-		{
-			free(data);
-			break;
-		}
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
-void RegisterCreateDialogClass() {
-	RegisterGenericClass(L"CreateDialogClass", CreateDialogWndProc, sizeof(LPVOID));
+static void CreateBgDialog(HWND hWnd, const wchar_t *path) {
+	CREATEDIALOGDATA data = { 0 };
+	data.hWndMain = hWnd;
+	data.path = path;
+
+	UiDlgCreateModal(hWnd, CreateDialogWndProc, L"Create BG", 490, 476, &data);
 }
 
 LRESULT WINAPI ProgressWindowWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2925,6 +3085,7 @@ static void *ReadWholeFile(const wchar_t *path, unsigned int *pSize) {
 
 typedef struct {
 	HWND hWnd;
+	HWND hWndMain;
 
 	HWND hWndNtftInput;
 	HWND hWndNtftBrowseButton;
@@ -3008,18 +3169,14 @@ static void NtftConvertUpdatePreview(NTFTCONVERTDATA *data) {
 }
 
 LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NTFTCONVERTDATA *data = (NTFTCONVERTDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (NTFTCONVERTDATA *) calloc(1, sizeof(NTFTCONVERTDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	NTFTCONVERTDATA *data = (NTFTCONVERTDATA *) UiDlgGetData(hWnd);
+	
 	switch (msg) {
 		case WM_CREATE:
 		{
-			static LPCWSTR widths[] = { L"8", L"16", L"32", L"64", L"128", L"256", L"512", L"1024" };
+			static const LPCWSTR widths[] = { L"8", L"16", L"32", L"64", L"128", L"256", L"512", L"1024" };
 
 			data->hWnd = hWnd;
-			SetWindowSize(hWnd, 280 + 10 + 128, 177);
 			CreateStatic(hWnd, L"Format:", 10, 10, 50, 22);
 			CreateStatic(hWnd, L"NTFT:", 10, 37, 50, 22);
 			CreateStatic(hWnd, L"NTFP:", 10, 64, 50, 22);
@@ -3032,9 +3189,8 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndNtfpBrowseButton = CreateButton(hWnd, L"...", 240, 64, 30, 22, FALSE);
 			data->hWndNtfiInput = CreateEdit(hWnd, L"", 70, 91, 170, 22, FALSE);
 			data->hWndNtfiBrowseButton = CreateButton(hWnd, L"...", 240, 91, 30, 22, FALSE);
-			data->hWndWidthInput = CreateCombobox(hWnd, widths, 8, 70, 118, 100, 22, 0);
+			data->hWndWidthInput = CreateCombobox(hWnd, (LPCWSTR *) widths, 8, 70, 118, 100, 22, 0);
 			data->hWndConvertButton = CreateButton(hWnd, L"Convert", 70, 145, 100, 22, TRUE);
-			SetGUIFont(hWnd);
 
 			FbCreate(&data->fb, hWnd, 1, 1);
 
@@ -3048,9 +3204,6 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			
 			//set preview
 			NtftConvertUpdatePreview(data);
-
-			HWND hWndParent = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-			EnableWindow(hWndParent, FALSE);
 			break;
 		}
 		case WM_PAINT:
@@ -3124,7 +3277,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int width = 8 << UiCbGetCurSel(data->hWndWidthInput);
 				int format = UiCbGetCurSel(data->hWndFormat) + 1;
 
-				unsigned int bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
+				static const unsigned char bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
 				unsigned int bpp = bppArray[format];
 
 				unsigned int ntftSize = 0, ntfpSize = 0, ntfiSize = 0;
@@ -3218,8 +3371,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				memcpy(texture.palette.name, palName, strlen(palName));
 
 				//texture editor takes ownership of texture data, no need to free
-				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(data->hWndMain);
 				HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 				//create texture object
@@ -3227,7 +3379,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				memcpy(&obj->texture, &texture, sizeof(texture));
 				CreateTextureEditorImmediate(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMdi, obj);
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
@@ -3237,28 +3389,32 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			free(data->texel);
 			free(data->index);
 			free(data->palette);
-			free(data);
 			break;
 		}
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
-void RegisterNtftConvertDialogClass() {
-	RegisterGenericClass(L"NtftConvertDialogClass", NtftConvertDialogProc, sizeof(LPVOID));
+static void NtftConvertDialog(HWND hWnd) {
+	NTFTCONVERTDATA data = { 0 };
+	data.hWndMain = hWnd;
+
+	UiDlgCreateModal(hWnd, NtftConvertDialogProc, L"NTFT To Texture", 418, 177, &data);
 }
 
+typedef struct ConvertFormatData_ {
+	EDITOR_DATA *editor;
+	HWND hWndFormatCombobox;
+	HWND hWndCompressionCombobox;
+} ConvertFormatData;
+
 LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	ConvertFormatData *data = (ConvertFormatData *) UiDlgGetData(hWnd);
+
 	switch (msg) {
-		case WM_CREATE:
+		case NV_INITIALIZE:
 		{
-			SetWindowSize(hWnd, 230, 96);
-			break;
-		}
-		case NV_SETDATA:
-		{
-			EDITOR_DATA *editorData = (EDITOR_DATA *) lParam;
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) editorData);
+			EDITOR_DATA *editorData = data->editor;
 
 			CreateStatic(hWnd, L"Format:", 10, 10, 100, 22);
 			CreateStatic(hWnd, L"Compression:", 10, 37, 100, 22);
@@ -3286,22 +3442,21 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			}
 			UiCbSetCurSel(hWndCompressionCombobox, editorData->file->compression);
 
-			SetWindowLong(hWnd, sizeof(LPVOID), (LONG) hWndFormatCombobox);
-			SetWindowLong(hWnd, sizeof(LPVOID) * 2, (LONG) hWndCompressionCombobox);
-			SetGUIFont(hWnd);
+			data->hWndFormatCombobox = hWndFormatCombobox;
+			data->hWndCompressionCombobox = hWndCompressionCombobox;
 			break;
 		}
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl && HIWORD(wParam) == BN_CLICKED) {
-				int fmt = UiCbGetCurSel((HWND) GetWindowLong(hWnd, sizeof(LPVOID))) + 1;
-				int comp = UiCbGetCurSel((HWND) GetWindowLong(hWnd, sizeof(LPVOID) * 2));
-				EDITOR_DATA *editorData = (EDITOR_DATA *) EditorGetData(hWnd);
+				int fmt = UiCbGetCurSel(data->hWndFormatCombobox) + 1;
+				int comp = UiCbGetCurSel(data->hWndCompressionCombobox);
+				EDITOR_DATA *editorData = data->editor;
 				editorData->file->format = fmt;
 				editorData->file->compression = comp;
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
@@ -3309,78 +3464,71 @@ LRESULT CALLBACK ConvertFormatDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
-VOID CreateImageDialog(HWND hWnd, LPCWSTR path) {
-	HWND h = CreateWindow(L"ImageDialogClass", L"Image Conversion", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWnd, NULL, NULL, NULL);
-	SendMessage(h, NV_SETDATA, 0, (LPARAM) path);
-	DoModal(h);
+static void ConvertFormatDialog(HWND hWnd, EDITOR_DATA *editor) {
+	ConvertFormatData data = { 0 };
+	data.editor = editor;
+
+	UiDlgCreateModal(hWnd, ConvertFormatDialogProc, L"Convert Format", 230, 96, &data);
 }
 
+
 typedef struct {
-	WCHAR szPath[MAX_PATH + 1];
+	const wchar_t *path;
+	HWND hWndMain;
 	HWND hWndBg;
 	HWND hWndTexture;
 } IMAGEDLGDATA;
 
 LRESULT CALLBACK ImageDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	IMAGEDLGDATA *data = (IMAGEDLGDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (IMAGEDLGDATA *) calloc(1, sizeof(IMAGEDLGDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	IMAGEDLGDATA *data = (IMAGEDLGDATA *) UiDlgGetData(hWnd);
+	
 	switch (msg) {
-		case NV_SETDATA:
+		case WM_CREATE:
 		{
-			LPWSTR path = (LPWSTR) lParam;
-			memcpy(data->szPath, path, 2 * (wcslen(path) + 1));
-
-			CreateStatic(hWnd, GetFileName(path), 10, 10, 200, 22);
+			CreateStatic(hWnd, GetFileName(data->path), 10, 10, 200, 22);
 			data->hWndBg = CreateButton(hWnd, L"Create BG", 10, 42, 200, 22, FALSE);
 			data->hWndTexture = CreateButton(hWnd, L"Create Texture", 10, 74, 200, 22, FALSE);
-			SetWindowSize(hWnd, 220, 106);
-			SetGUIFont(hWnd);
 			break;
 		}
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+			HWND hWndMain = data->hWndMain;
 			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 			HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
-			if (hWndControl != NULL) {
-				if (hWndControl == data->hWndBg) {
-					HWND h = CreateWindow(L"CreateDialogClass", L"Create BG", WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMain, NULL, NULL, NULL);
+			if (hWndControl == data->hWndBg) {
+				//BG conversion dialog
+				UiDlgEnd(hWnd);
+				CreateBgDialog(hWndMain, data->path);
+			} else if (hWndControl == data->hWndTexture) {
 
-					//pre-populate path
-					CREATEDIALOGDATA *cdData = (CREATEDIALOGDATA *) GetWindowLongPtr(h, 0);
-					UiEditSetText(cdData->nscrCreateInput, data->szPath);
+				unsigned int size;
+				unsigned char *buffer = IoReadWholeFile(data->path, &size);
 
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
-					DoModal(h);
-				} else if (hWndControl == data->hWndTexture) {
-
-					unsigned int size;
-					unsigned char *buffer = IoReadWholeFile(data->szPath, &size);
-
-					CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-						hWndMdi, buffer, size, data->szPath);
-					free(buffer);
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
-				}
+				CreateTextureEditorFromUnconverted(CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+					hWndMdi, buffer, size, data->path);
+				free(buffer);
+				UiDlgEnd(hWnd);
 			}
-			break;
-		}
-		case WM_DESTROY:
-		{
-			free(data);
 			break;
 		}
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
+void CreateImageDialog(HWND hWnd, LPCWSTR path) {
+	IMAGEDLGDATA data = { 0 };
+	data.path = path;
+	data.hWndMain = hWnd;
+
+	UiDlgCreateModal(hWnd, ImageDialogProc, L"Image Conversion", 220, 106, &data);
+}
+
+
+
 typedef struct {
-	WCHAR szPath[MAX_PATH + 1];
+	HWND hWndParent;
 	HWND hWndBitDepth;
 	HWND hWndMapping;
 	HWND hWndFormat;
@@ -3388,11 +3536,8 @@ typedef struct {
 } SPRITESHEETDLGDATA;
 
 LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	SPRITESHEETDLGDATA *data = (SPRITESHEETDLGDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (SPRITESHEETDLGDATA *) calloc(1, sizeof(SPRITESHEETDLGDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	SPRITESHEETDLGDATA *data = (SPRITESHEETDLGDATA *) UiDlgGetData(hWnd);
+	
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -3423,30 +3568,32 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CreateStatic(hWnd, L"Format:", 10, 74, 50, 22);
 			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(*formats), 70, 74, 150, 100, def);
 			data->hWndCreate = CreateButton(hWnd, L"Create", 70, 106, 150, 22, TRUE);
-			SetWindowSize(hWnd, 280, 138);
-			SetGUIFont(hWnd);
 			break;
 		}
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-			HWND hWndMdi = nitroPaintStruct->hWndMdi;
 
 			if (hWndControl != NULL) {
 				if (hWndControl == data->hWndCreate) {
 					int is8bpp = GetCheckboxChecked(data->hWndBitDepth);
 					int nBits = is8bpp ? 8 : 4;
 					int mapping = UiCbGetCurSel(data->hWndMapping);
-					int mappings[] = { GX_OBJVRAMMODE_CHAR_2D, GX_OBJVRAMMODE_CHAR_1D_32K, GX_OBJVRAMMODE_CHAR_1D_64K,
-						GX_OBJVRAMMODE_CHAR_1D_128K, GX_OBJVRAMMODE_CHAR_1D_256K };
-					int heights[] = { 16, 32, 64, 128, 256 };
+					static const int mappings[] = { 
+						GX_OBJVRAMMODE_CHAR_2D,
+						GX_OBJVRAMMODE_CHAR_1D_32K,
+						GX_OBJVRAMMODE_CHAR_1D_64K,
+						GX_OBJVRAMMODE_CHAR_1D_128K,
+						GX_OBJVRAMMODE_CHAR_1D_256K
+					};
+					static const int heights[] = { 16, 32, 64, 128, 256 };
+
 					int height = heights[mapping];
 					mapping = mappings[mapping];
 					int format = UiCbGetCurSel(data->hWndFormat);
 
-					int charFormats[] = {
+					static const int charFormats[] = {
 						NCGR_TYPE_NCGR,
 						NCGR_TYPE_NC,
 						NCGR_TYPE_IC,
@@ -3458,7 +3605,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						NCGR_TYPE_BIN,     // raw (uncompressed)
 						NCGR_TYPE_BIN      // raw (compressed)
 					};
-					int palFormats[] = {
+					static const int palFormats[] = {
 						NCLR_TYPE_NCLR,
 						NCLR_TYPE_NC,
 						NCLR_TYPE_BIN,
@@ -3509,21 +3656,23 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					NpOpenObject(hWndMain, &nclr->header);
 					NpOpenObject(hWndMain, &ncgr->header);
 
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					UiDlgEnd(hWnd);
 				}
 			}
-			break;
-		}
-		case WM_DESTROY:
-		{
-			free(data);
 			break;
 		}
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
+static void CreateSpriteSheetDialog(HWND hWnd) {
+	SPRITESHEETDLGDATA dlgData = { 0 };
+	dlgData.hWndParent = hWnd;
+	UiDlgCreateModal(hWnd, SpriteSheetDialogProc, L"Create Sprite Sheet", 280, 138, &dlgData);
+}
+
 typedef struct CREATESCREENDATA_ {
+	HWND hWndMain;
 	HWND hWndWidth;
 	HWND hWndHeight;
 	HWND hWndCreate;
@@ -3531,22 +3680,18 @@ typedef struct CREATESCREENDATA_ {
 } CREATESCREENDATA;
 
 LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	CREATESCREENDATA *data = (CREATESCREENDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (CREATESCREENDATA *) calloc(1, sizeof(CREATESCREENDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	CREATESCREENDATA *data = (CREATESCREENDATA *) UiDlgGetData(hWnd);
+	
 	switch (msg) {
 		case WM_CREATE:
 		{
-			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+			NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(data->hWndMain);
 
 			CreateStatic(hWnd, L"Width (dots):", 10, 10, 75, 22);
 			CreateStatic(hWnd, L"Height (dots):", 10, 37, 75, 22);
 			CreateStatic(hWnd, L"Format:", 10, 64, 75, 22);
 
-			LPCWSTR formats[] = {
+			static const LPCWSTR formats[] = {
 				L"Text 16x16",
 				L"Text 256x1",
 				L"Affine 256x1",
@@ -3557,7 +3702,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			//determine which default format to use. If we have an open BG screen, copy its settings.
 			StList scrEditors;
 			StListCreateInline(&scrEditors, NSCRVIEWERDATA *, NULL);
-			EditorGetAllByType(hWndMain, FILE_TYPE_SCREEN, &scrEditors);
+			EditorGetAllByType(data->hWndMain, FILE_TYPE_SCREEN, &scrEditors);
 
 			NSCRVIEWERDATA *nscrViewerData = NULL;
 			if (scrEditors.length > 0) nscrViewerData = *(NSCRVIEWERDATA **) StListGetPtr(&scrEditors, 0);
@@ -3585,16 +3730,14 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			
 			data->hWndWidth = CreateEdit(hWnd, L"256", 85, 10, 150, 22, TRUE);
 			data->hWndHeight = CreateEdit(hWnd, L"256", 85, 37, 150, 22, TRUE);
-			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(formats[0]), 85, 64, 150, 100, defFmt);
+			data->hWndFormat = CreateCombobox(hWnd, (LPCWSTR *) formats, sizeof(formats) / sizeof(formats[0]), 85, 64, 150, 100, defFmt);
 			data->hWndCreate = CreateButton(hWnd, L"Create", 85, 91, 150, 22, TRUE);
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 245, 123);
 		}
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl != NULL && hWndControl == data->hWndCreate) {
-				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
+				HWND hWndMain = data->hWndMain;
 				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
 
 				int width = GetEditNumber(data->hWndWidth);
@@ -3639,14 +3782,7 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
 				NpOpenObject(hWndMain, &nscr->header);
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
-			}
-			break;
-		}
-		case WM_DESTROY:
-		{
-			if (data != NULL) {
-				free(data);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
@@ -3654,18 +3790,24 @@ LRESULT CALLBACK NewScreenDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
+static void NewScreenDialog(HWND hWnd) {
+	CREATESCREENDATA data = { 0 };
+	data.hWndMain = hWnd;
+
+	UiDlgCreateModal(hWnd, NewScreenDialogProc, L"New Screen", 245, 123, &data);
+}
+
+
 typedef struct SCREENSPLITDIALOGDATA_ {
+	HWND hWndMain;
+	EDITOR_DATA *editor;
 	HWND hWndX;
 	HWND hWndY;
-	HWND hWndComplete;
 } SCREENSPLITDIALOGDATA;
 
 LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	SCREENSPLITDIALOGDATA *data = (SCREENSPLITDIALOGDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (SCREENSPLITDIALOGDATA *) calloc(1, sizeof(SCREENSPLITDIALOGDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	SCREENSPLITDIALOGDATA *data = (SCREENSPLITDIALOGDATA *) UiDlgGetData(hWnd);
+	
 	switch (msg) {
 		case WM_CREATE:
 		{
@@ -3674,23 +3816,19 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			data->hWndX = CreateEdit(hWnd, L"1", 85, 10, 100, 22, TRUE);
 			data->hWndY = CreateEdit(hWnd, L"1", 85, 37, 100, 22, TRUE);
-			data->hWndComplete = CreateButton(hWnd, L"Complete", 85, 64, 100, 22, TRUE);
 
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 195, 96);
+			HWND hWndComplete = CreateButton(hWnd, L"Complete", 85, 64, 100, 22, TRUE);
+			UiDlgRegisterCtlOK(hWnd, hWndComplete);
 			break;
 		}
 		case WM_COMMAND:
 		{
-			HWND hWndControl = (HWND) lParam;
-			if (hWndControl == data->hWndComplete) {
+			int idCtl = LOWORD(wParam);
+			if (idCtl == IDOK) {
 				int x = GetEditNumber(data->hWndX);
 				int y = GetEditNumber(data->hWndY);
 
-				HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
-				HWND hWndScreen = (HWND) SendMessage(nitroPaintStruct->hWndMdi, WM_MDIGETACTIVE, 0, 0);
-				NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) GetWindowLongPtr(hWndScreen, 0);
+				NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) data->editor;
 				NSCR *nscr = nscrViewerData->nscr;
 				int tilesX = nscr->tilesX;
 				int tilesY = nscr->tilesY;
@@ -3718,84 +3856,81 @@ LRESULT CALLBACK ScreenSplitDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 							}
 						}
 
-						HWND h2 = NpOpenObject(hWndMain, &newNscr->header);
+						HWND h2 = NpOpenObject(data->hWndMain, &newNscr->header);
 						NscrViewerSetTileBase(h2, nscrViewerData->tileBase);
 					}
 				}
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
-			break;
-		}
-		case WM_DESTROY:
-		{
-			if (data != NULL)
-				free(data);
 			break;
 		}
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
+static void SplitScreenDialog(HWND hWnd, EDITOR_DATA *editor) {
+	SCREENSPLITDIALOGDATA data = { 0 };
+	data.hWndMain = hWnd;
+	data.editor = editor;
+
+	UiDlgCreateModal(hWnd, ScreenSplitDialogProc, L"Split Screen", 195, 96, &data);
+}
+
+
+
+typedef struct AlphaBlendData_ {
+	HWND hWndMain;
+	HWND hWndForegroundPath;
+	HWND hWndForegroundBrowse;
+	HWND hWndBackgroundPath;
+	HWND hWndBackgroundBrowse;
+	HWND hWndTiledCheckbox;
+	HWND hWndSave;
+} AlphaBlendData;
+
 LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	HWND hWndForegroundPath, hWndForegroundBrowse, hWndBackgroundPath, hWndBackgroundBrowse;
-	HWND hWndTiledCheckbox, hWndSave;
-	hWndForegroundPath = (HWND) GetWindowLongPtr(hWnd, 0 * sizeof(LPVOID));
-	hWndForegroundBrowse = (HWND) GetWindowLongPtr(hWnd, 1 * sizeof(LPVOID));
-	hWndBackgroundPath = (HWND) GetWindowLongPtr(hWnd, 2 * sizeof(LPVOID));
-	hWndBackgroundBrowse = (HWND) GetWindowLongPtr(hWnd, 3 * sizeof(LPVOID));
-	hWndTiledCheckbox = (HWND) GetWindowLongPtr(hWnd, 4 * sizeof(LPVOID));
-	hWndSave = (HWND) GetWindowLongPtr(hWnd, 5 * sizeof(LPVOID));
+	AlphaBlendData *data = (AlphaBlendData *) UiDlgGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
 		{
 			CreateStatic(hWnd, L"Background:", 10, 10, 70, 22);
 			CreateStatic(hWnd, L"Foreground:", 10, 37, 70, 22);
-			hWndForegroundPath = CreateEdit(hWnd, L"", 90, 37, 200, 22, FALSE);
-			hWndForegroundBrowse = CreateButton(hWnd, L"...", 290, 37, 30, 22, FALSE);
-			hWndBackgroundPath = CreateEdit(hWnd, L"", 90, 10, 200, 22, FALSE);
-			hWndBackgroundBrowse = CreateButton(hWnd, L"...", 290, 10, 30, 22, FALSE);
-			hWndTiledCheckbox = CreateCheckbox(hWnd, L"Tiled", 10, 64, 100, 22, TRUE);
-			hWndSave = CreateButton(hWnd, L"Save", 245, 96, 75, 22, TRUE);
-
-			SetWindowLongPtr(hWnd, 0 * sizeof(LPVOID), (LONG_PTR) hWndForegroundPath);
-			SetWindowLongPtr(hWnd, 1 * sizeof(LPVOID), (LONG_PTR) hWndForegroundBrowse);
-			SetWindowLongPtr(hWnd, 2 * sizeof(LPVOID), (LONG_PTR) hWndBackgroundPath);
-			SetWindowLongPtr(hWnd, 3 * sizeof(LPVOID), (LONG_PTR) hWndBackgroundBrowse);
-			SetWindowLongPtr(hWnd, 4 * sizeof(LPVOID), (LONG_PTR) hWndTiledCheckbox);
-			SetWindowLongPtr(hWnd, 5 * sizeof(LPVOID), (LONG_PTR) hWndSave);
-
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 330, 128);
+			data->hWndForegroundPath = CreateEdit(hWnd, L"", 90, 37, 200, 22, FALSE);
+			data->hWndForegroundBrowse = CreateButton(hWnd, L"...", 290, 37, 30, 22, FALSE);
+			data->hWndBackgroundPath = CreateEdit(hWnd, L"", 90, 10, 200, 22, FALSE);
+			data->hWndBackgroundBrowse = CreateButton(hWnd, L"...", 290, 10, 30, 22, FALSE);
+			data->hWndTiledCheckbox = CreateCheckbox(hWnd, L"Tiled", 10, 64, 100, 22, TRUE);
+			data->hWndSave = CreateButton(hWnd, L"Save", 245, 96, 75, 22, TRUE);
 			break;
 		}
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
 			int notif = HIWORD(wParam);
-			if (hWndControl == hWndForegroundBrowse && notif == BN_CLICKED) {
+			if (hWndControl == data->hWndForegroundBrowse && notif == BN_CLICKED) {
 				//set foreground path
 				LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
 				LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
 				if (path == NULL) break;
 
-				UiEditSetText(hWndForegroundPath, path);
+				UiEditSetText(data->hWndForegroundPath, path);
 				free(path);
-			} else if (hWndControl == hWndBackgroundBrowse && notif == BN_CLICKED) {
+			} else if (hWndControl == data->hWndBackgroundBrowse && notif == BN_CLICKED) {
 				//set background path
 				LPWSTR filter = L"Supported Image Files\0*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.tga\0All Files\0*.*\0";
 				LPWSTR path = openFileDialog(hWnd, L"Open Image", filter, L"");
 				if (path == NULL) break;
 
-				UiEditSetText(hWndBackgroundPath, path);
+				UiEditSetText(data->hWndBackgroundPath, path);
 				free(path);
-			} else if (hWndControl == hWndSave && notif == BN_CLICKED) {
+			} else if (hWndControl == data->hWndSave && notif == BN_CLICKED) {
 				//get paths
 				WCHAR forepath[MAX_PATH], backpath[MAX_PATH];
-				int isTiled = GetCheckboxChecked(hWndTiledCheckbox);
-				SendMessage(hWndForegroundPath, WM_GETTEXT, MAX_PATH, (LPARAM) forepath);
-				SendMessage(hWndBackgroundPath, WM_GETTEXT, MAX_PATH, (LPARAM) backpath);
+				int isTiled = GetCheckboxChecked(data->hWndTiledCheckbox);
+				SendMessage(data->hWndForegroundPath, WM_GETTEXT, MAX_PATH, (LPARAM) forepath);
+				SendMessage(data->hWndBackgroundPath, WM_GETTEXT, MAX_PATH, (LPARAM) backpath);
 
 				//read images
 				unsigned int foreWidth, foreHeight, backWidth, backHeight, blendWidth, blendHeight;
@@ -3877,7 +4012,18 @@ LRESULT CALLBACK AlphaBlendWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
+static void AlphaBlendDialog(HWND hWnd) {
+	AlphaBlendData data = { 0 };
+	data.hWndMain = hWnd;
+
+	UiDlgCreateModal(hWnd, AlphaBlendWndProc, L"Alpha Blend", 330, 128, &data);
+}
+
+
 typedef struct LINKEDITDATA_ {
+	HWND hWndMain;
+	HWND hWndEditor;
+
 	HWND hWndFormat;
 	HWND hWndOK;
 	HWND hWndObjects;
@@ -3887,13 +4033,11 @@ typedef struct LINKEDITDATA_ {
 } LINKEDITDATA;
 
 LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	LINKEDITDATA *data = (LINKEDITDATA *) GetWindowLongPtr(hWnd, 0);
+	LINKEDITDATA *data = (LINKEDITDATA *) UiDlgGetData(hWnd);
+
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data = (LINKEDITDATA *) calloc(1, sizeof(LINKEDITDATA));
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
 			CreateStatic(hWnd, L"Format:", 10, 10, 50, 22);
 			data->hWndFormat = CreateCombobox(hWnd, gComboFormats + 1, COMBO2D_TYPE_MAX - 1, 70, 10, 300, 100, COMBO2D_TYPE_5BG - 1);
 			CreateStatic(hWnd, L"Objects:", 10, 37, 50, 22);
@@ -3901,18 +4045,14 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 			data->hWndOK = CreateButton(hWnd, L"OK", 170, 252, 100, 22, TRUE);
 			data->combo = NULL;
 
-			HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
 			StListCreateInline(&data->editors, EDITOR_DATA *, NULL);
-			EditorGetAllByType(hWndMain, FILE_TYPE_INVALID, &data->editors);
-
-			SetWindowSize(hWnd, 380, 284);
-			SetGUIFont(hWnd);
+			EditorGetAllByType(data->hWndMain, FILE_TYPE_INVALID, &data->editors);
 			break;
 		}
 		case NV_INITIALIZE:
 		{
 			//active editor window in lParam.
-			HWND hWndEditor = (HWND) lParam;
+			HWND hWndEditor = data->hWndEditor;
 			ObjHeader *obj = (ObjHeader *) EditorGetObject(hWndEditor);
 
 			//get combo if the object is a part of one
@@ -3993,48 +4133,48 @@ LRESULT CALLBACK LinkEditWndPRoc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 						}
 					}
 
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					UiDlgEnd(hWnd);
 				}
 			}
 			break;
 		}
 		case WM_DESTROY:
-			if (data != NULL) {
-				StListFree(&data->editors);
-				free(data);
-				SetWindowLongPtr(hWnd, 0, 0);
-			}
+			StListFree(&data->editors);
 			break;
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
+static void LinkEditDialog(HWND hWnd, HWND hWndEditor) {
+	LINKEDITDATA data = { 0 };
+	data.hWndMain = hWnd;
+	data.hWndEditor = hWndEditor;
+
+	UiDlgCreateModal(hWnd, LinkEditWndPRoc, L"Edit Links", 380, 284, &data);
+}
+
+
 typedef struct NEWPALETTEDATA_ {
+	HWND hWndMain;
 	HWND hWndPaletteDepth;
 	HWND hWndPaletteCount;
 	HWND hWndOK;
 } NEWPALETTEDATA;
 
 static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NEWPALETTEDATA *data = (NEWPALETTEDATA *) GetWindowLongPtr(hWnd, 0);
+	NEWPALETTEDATA *data = (NEWPALETTEDATA *) UiDlgGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data = (NEWPALETTEDATA *) calloc(1, sizeof(NEWPALETTEDATA));
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
-			LPCWSTR depthOptions[] = { L"4 bit", L"8 bit" };
-			LPCWSTR paletteCounts[] = { L"1", L"2", L"3", L"4", L"5", L"6", L"7", L"8", L"9", L"10", L"11", L"12", L"13", L"14", L"15", L"16" };
+			const LPCWSTR depthOptions[] = { L"4 bit", L"8 bit" };
+			const LPCWSTR paletteCounts[] = { L"1", L"2", L"3", L"4", L"5", L"6", L"7", L"8", L"9", L"10", L"11", L"12", L"13", L"14", L"15", L"16" };
 
 			CreateStatic(hWnd, L"Palette Depth:", 10, 10, 75, 22);
 			CreateStatic(hWnd, L"Palette Count:", 10, 37, 75, 22);
-			data->hWndPaletteDepth = CreateCombobox(hWnd, depthOptions, 2, 95, 10, 100, 100, 0);
-			data->hWndPaletteCount = CreateCombobox(hWnd, paletteCounts, 16, 95, 37, 100, 100, 15);
+			data->hWndPaletteDepth = CreateCombobox(hWnd, (LPCWSTR *) depthOptions, 2, 95, 10, 100, 100, 0);
+			data->hWndPaletteCount = CreateCombobox(hWnd, (LPCWSTR *) paletteCounts, 16, 95, 37, 100, 100, 15);
 			data->hWndOK = CreateButton(hWnd, L"Create", 95, 64, 100, 22, TRUE);
-
-			SetWindowSize(hWnd, 205, 96);
-			SetGUIFont(hWnd);
 			break;
 		}
 		case WM_COMMAND:
@@ -4045,8 +4185,7 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 				int depthSel = UiCbGetCurSel(data->hWndPaletteDepth);
 				int countSel = UiCbGetCurSel(data->hWndPaletteCount) + 1;
 
-				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(hWndMain);
+				NITROPAINTSTRUCT *nitroPaintStruct = NpGetData(data->hWndMain);
 
 				NCLR *nclr = (NCLR *) ObjAlloc(FILE_TYPE_PALETTE, NpGetPaletteFormatForPreset());
 				nclr->nBits = depthSel ? 8 : 4;
@@ -4056,182 +4195,26 @@ static LRESULT CALLBACK NewPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 
 				//create combo for object if necessary
 				if (nclr->header.format == 0) {
-					NpEnsureComboObject(hWndMain, &nclr->header, NpGetComboFormatForPreset());
+					NpEnsureComboObject(data->hWndMain, &nclr->header, NpGetComboFormatForPreset());
 				}
 
-				NpOpenObject(hWndMain, &nclr->header);
+				NpOpenObject(data->hWndMain, &nclr->header);
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			} else if (LOWORD(wParam) == IDCANCEL) {
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
-		case WM_DESTROY:
-		{
-			free(data);
-			break;
-		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
-typedef struct OpenAsData_ {
-	const wchar_t *path;
-	unsigned char *buffer;
-	unsigned int size;
+static void NewPaletteDialog(HWND hWnd) {
+	NEWPALETTEDATA data = { 0 };
+	data.hWndMain = hWnd;
 
-	StList formats;
-	StList compressions;
-
-	HWND hWndCompressionLabel;
-	HWND hWndCompressionDropdown;
-
-	HWND hWndFormatLabel;
-	HWND hWndFormatDropdown;
-
-	HWND hWndOK;
-	HWND hWndCancel;
-} OpenAsData;
-
-static void OpenAsOnCompressionChanged(OpenAsData *data) {
-	int compression;
-	int sel = UiCbGetCurSel(data->hWndCompressionDropdown);
-	StListGet(&data->compressions, sel, &compression);
-
-	//decompress
-	unsigned int uncompSize;
-	unsigned char *uncomp = CxDecompress(data->buffer, data->size, compression, &uncompSize);
-
-	StListClear(&data->formats);
-	StListCreateInline(&data->formats, ObjIdEntry, NULL);
-	ObjIdentifyMultipleByType(&data->formats, uncomp, uncompSize, FILE_TYPE_INVALID);
-
-	SendMessage(data->hWndFormatDropdown, CB_RESETCONTENT, 0, 0);
-	for (size_t i = 0; i < data->formats.length; i++) {
-		ObjIdEntry *ent = StListGetPtr(&data->formats, i);
-		const char *typeName = ObjGetFileTypeName(ent->type);
-
-		wchar_t textbuf[64];
-		wsprintfW(textbuf, L"%S (%S)", typeName, ent->name);
-		UiCbAddString(data->hWndFormatDropdown, textbuf);
-	}
-
-	//set default
-	UiCbSetCurSel(data->hWndFormatDropdown, 0);
-
-	//if nonzero number of formats responded, enable the OK button.
-	if (data->formats.length > 0) {
-		EnableWindow(data->hWndOK, TRUE);
-	} else {
-		EnableWindow(data->hWndOK, FALSE);
-	}
-
-	free(uncomp);
-}
-
-static LRESULT CALLBACK OpenAsDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	OpenAsData *data = (OpenAsData *) GetWindowLongPtr(hWnd, 0);
-
-	switch (msg) {
-		case WM_CREATE:
-		{
-			data = (OpenAsData *) calloc(1, sizeof(OpenAsData));
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
-			//init lists
-			StListCreateInline(&data->formats, ObjIdEntry, NULL);
-			StListCreateInline(&data->compressions, int, NULL);
-
-			data->hWndCompressionLabel = CreateStatic(hWnd, L"Compression:", 10, 10, 100, 22);
-			data->hWndCompressionDropdown = CreateCombobox(hWnd, NULL, 0, 110, 10, 200, 22, 0);
-			data->hWndFormatLabel = CreateStatic(hWnd, L"Format:", 10, 37, 100, 22);
-			data->hWndFormatDropdown = CreateCombobox(hWnd, NULL, 0, 110, 37, 200, 22, 0);
-
-			data->hWndOK = CreateButton(hWnd, L"Open", 210, 64, 100, 22, TRUE);
-			data->hWndCancel = CreateButton(hWnd, L"Cancel", 105, 64, 100, 22, FALSE);
-
-			SetWindowSize(hWnd, 320, 96);
-			SetGUIFont(hWnd);
-			break;
-		}
-		case NV_INITIALIZE:
-		{
-			const wchar_t *path = (const wchar_t *) wParam;
-			data->path = path;
-
-			unsigned int size;
-			unsigned char *buf = IoReadWholeFile(path, &size);
-			data->buffer = buf;
-			data->size = size;
-
-			//detect compression
-			int def = 0; // no compression
-			for (int i = 0; i < COMPRESSION_MAX; i++) {
-				if (CxIsCompressed(buf, size, i)) {
-					StListAdd(&data->compressions, &i);
-				}
-			}
-			def = CxGetCompressionType(buf, size);
-
-			for (size_t i = 0; i < data->compressions.length; i++) {
-				int type;
-				StListGet(&data->compressions, i, &type);
-
-				wchar_t buf[64];
-				mbstowcs(buf, g_ObjCompressionNames[type], sizeof(buf) / sizeof(buf[0]));
-
-				UiCbAddString(data->hWndCompressionDropdown, buf);
-			}
-			UiCbSetCurSel(data->hWndCompressionDropdown, StListIndexOf(&data->compressions, &def));
-
-			OpenAsOnCompressionChanged(data);
-
-			break;
-		}
-		case WM_COMMAND:
-		{
-			HWND hWndCtl = (HWND) lParam;
-			int idCtl = LOWORD(wParam);
-			int cmd = HIWORD(wParam);
-
-			if (hWndCtl == data->hWndCompressionDropdown && cmd == CBN_SELCHANGE) {
-				//update detections list
-				OpenAsOnCompressionChanged(data);
-			} else if ((hWndCtl == data->hWndCancel || idCtl == IDCANCEL) && cmd == BN_CLICKED) {
-				//exit
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
-			} else if ((hWndCtl == data->hWndOK || idCtl == IDOK) && cmd == BN_CLICKED) {
-
-				//get selected parameters
-				int iCompression = UiCbGetCurSel(data->hWndCompressionDropdown);
-				int iFormat = UiCbGetCurSel(data->hWndFormatDropdown);
-
-				int compression;
-				ObjIdEntry idEntry;
-				StListGet(&data->compressions, iCompression, &compression);
-				StListGet(&data->formats, iFormat, &idEntry);
-
-				//select
-				HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-				OpenFileByContent(hWndMain, data->buffer, data->size, data->path, compression, idEntry.type, idEntry.format);
-
-				//close
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
-			}
-			break;
-		}
-		case WM_DESTROY:
-		{
-			StListFree(&data->compressions);
-			StListFree(&data->formats);
-
-			free(data);
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
-			break;
-		}
-	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	UiDlgCreateModal(hWnd, NewPaletteWndProc, L"New Palette", 205, 96, &data);
 }
 
 
@@ -4702,18 +4685,6 @@ static LRESULT CALLBACK RedGuiIndexImagePreviewProc(HWND hWnd, UINT msg, WPARAM 
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-typedef struct CompressFileData_ {
-	unsigned int size;
-	const unsigned char *buffer;
-
-	unsigned int compSize;
-	unsigned char *comp;
-
-	HWND hWndCompressionFormats;
-	HWND hWndStatus;
-	HWND hWndOK;
-} CompressFileData;
-
 static void CompressDialogUpdate(CompressFileData *data) {
 	int sel = UiCbGetCurSel(data->hWndCompressionFormats) + 1;
 
@@ -4745,18 +4716,17 @@ static void CompressDialogUpdate(CompressFileData *data) {
 }
 
 static LRESULT CALLBACK CompressFileProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	CompressFileData *data = (CompressFileData *) GetWindowLongPtr(hWnd, 0);
+	CompressFileData *data = (CompressFileData *) UiDlgGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data = (CompressFileData *) calloc(1, sizeof(CompressFileData));
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
 			CreateStatic(hWnd, L"Compression:", 10, 10, 75, 22);
 			data->hWndCompressionFormats = CreateCombobox(hWnd, NULL, 0, 85, 10, 200, 22, 0);
 			data->hWndStatus = CreateStatic(hWnd, L"", 10, 37, 275, 22);
-			data->hWndOK = CreateButton(hWnd, L"Compress", 185, 64, 100, 22, TRUE);
+
+			HWND hWndOK = CreateButton(hWnd, L"Compress", 185, 64, 100, 22, TRUE);
+			UiDlgRegisterCtlOK(hWnd, hWndOK);
 
 			//add compression formats
 			for (int i = 1; i < COMPRESSION_MAX; i++) {
@@ -4766,17 +4736,10 @@ static LRESULT CALLBACK CompressFileProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 				UiCbAddString(data->hWndCompressionFormats, buf);
 			}
 			UiCbSetCurSel(data->hWndCompressionFormats, 0);
-
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 295, 96);
 			break;
 		}
 		case NV_INITIALIZE:
 		{
-			unsigned int size = wParam;
-			const void *buf = (const void *) lParam;
-			data->size = size;
-			data->buffer = buf;
 			CompressDialogUpdate(data);
 			break;
 		}
@@ -4785,7 +4748,7 @@ static LRESULT CALLBACK CompressFileProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 			HWND hWndCtl = (HWND) lParam;
 			if (hWndCtl == data->hWndCompressionFormats && HIWORD(wParam) == CBN_SELCHANGE) {
 				CompressDialogUpdate(data);
-			} else if ((hWndCtl == data->hWndOK || LOWORD(wParam) == IDOK) && HIWORD(wParam) == BN_CLICKED) {
+			} else if (LOWORD(wParam) == IDOK && HIWORD(wParam) == BN_CLICKED) {
 				//save
 				LPWSTR path = saveFileDialog(hWnd, L"Save File", L"All Files\0*.*\0", L"");
 				if (path == NULL) break;
@@ -4803,11 +4766,10 @@ static LRESULT CALLBACK CompressFileProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
 		case WM_DESTROY:
 		{
 			free(data->comp);
-			free(data);
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 
@@ -5267,53 +5229,10 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 }
 
 
-static void RegisterImageDialogClass(void) {
-	RegisterGenericClass(L"ImageDialogClass", ImageDialogProc, sizeof(LPVOID));
-}
-
-static void RegisterFormatConversionClass(void) {
-	RegisterGenericClass(L"ConvertFormatDialogClass", ConvertFormatDialogProc, 3 * sizeof(LPVOID));
-}
-
-static void RegisterSpriteSheetDialogClass(void) {
-	RegisterGenericClass(L"SpriteSheetDialogClass", SpriteSheetDialogProc, sizeof(LPVOID));
-}
-
-static void RegisterScreenDialogClass(void) {
-	RegisterGenericClass(L"NewScreenDialogClass", NewScreenDialogProc, sizeof(LPVOID));
-}
-
-static void RegisterScreenSplitDialogClass(void) {
-	RegisterGenericClass(L"ScreenSplitDialogClass", ScreenSplitDialogProc, sizeof(LPVOID));
-}
-
-static void RegisterTextPromptClass(void) {
-	RegisterGenericClass(L"TextPromptClass", TextInputWndProc, sizeof(LPVOID) * 5); //2 HWNDs, status, out info
-}
-
-static void RegisterAlphaBlendClass(void) {
-	RegisterGenericClass(L"AlphaBlendClass", AlphaBlendWndProc, sizeof(LPVOID) * 6);
-}
-
-static void RegisterLinkEditClass(void) {
-	RegisterGenericClass(L"LinkEditClass", LinkEditWndPRoc, sizeof(LPVOID));
-}
-
-static void RegisterNewPaletteClass(void) {
-	RegisterGenericClass(L"NewPaletteClass", NewPaletteWndProc, sizeof(LPVOID));
-}
 
 static void RegisterIndexImageClass(void) {
 	RegisterGenericClass(L"IndexImageClass", RedGuiIndexImageWndProc, sizeof(LPVOID));
 	RegisterGenericClass(L"IndexImagePreview", RedGuiIndexImagePreviewProc, sizeof(LPVOID));
-}
-
-static void RegisterOpenAsDialogClass(void) {
-	RegisterGenericClass(L"OpenAsDialogClass", OpenAsDialogProc, sizeof(LPVOID));
-}
-
-static void RegisterCompressDialogClass(void) {
-	RegisterGenericClass(L"CompressFileDialog", CompressFileProc, sizeof(LPVOID));
 }
 
 static void RegisterPaletteSwapClass(void) {
@@ -5399,28 +5318,15 @@ static void RegisterClasses(void) {
 	RegisterNclrViewerClass();
 	RegisterNscrViewerClass();
 	RegisterNcerViewerClass();
-	RegisterCreateDialogClass();
 	RegisterNsbtxViewerClass();
 	RegisterNftrViewerClass();
 	RegisterProgressWindowClass();
-	RegisterNtftConvertDialogClass();
 	RegisterTextureEditorClass();
-	RegisterFormatConversionClass();
 	RegisterNanrViewerClass();
-	RegisterImageDialogClass();
-	RegisterSpriteSheetDialogClass();
 	RegisterNmcrViewerClass();
-	RegisterScreenDialogClass();
-	RegisterScreenSplitDialogClass();
-	RegisterTextPromptClass();
-	RegisterAlphaBlendClass();
-	RegisterLinkEditClass();
-	RegisterNewPaletteClass();
 	RegisterIndexImageClass();
 	RegisterLytEditor();
 	MesgEditorRegisterClass();
-	RegisterOpenAsDialogClass();
-	RegisterCompressDialogClass();
 	RegisterPaletteSwapClass();
 	combo2dRegisterFormats();
 }
