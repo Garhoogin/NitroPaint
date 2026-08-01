@@ -58,6 +58,8 @@ typedef struct {
 	HWND hWndPaletteEditor;
 	DWORD tmpCust[16];
 
+	void *convExtInfo;
+
 	//tile editor
 	int selectedColor;
 	int selectedAlpha;

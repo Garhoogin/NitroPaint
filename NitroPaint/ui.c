@@ -597,6 +597,8 @@ static LRESULT CALLBACK UiDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 				//rewrite the WPARAM
 				wParam = MAKELONG(IDCANCEL, BN_CLICKED);
 				lParam = (LPARAM) data->hWndCancel;
+			} else {
+				UiCtlMgrOnCommand(&data->mgr, hWnd, wParam, lParam);
 			}
 			break;
 		}

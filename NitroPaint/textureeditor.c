@@ -57,6 +57,9 @@ extern size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
 HWND CreateTexturePaletteEditor(TEXTUREEDITORDATA *data);
 static void TexViewerEnsurePaletteEditor(TEXTUREEDITORDATA *data);
 
+static void ConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, TexViewerConvExtInfo *convExtInfo);
+
+
 static int TexViewerGetFormatForPreset(void) {
 	switch (g_configuration.preset) {
 		default:
@@ -758,8 +761,8 @@ static void TexViewerOnPaste(TEXTUREEDITORDATA *data, BOOL bFromContextMenu) {
 			HRESULT hr = ImgWriteMem(pxPad, padWidth, padHeight, &tempbuf, &tempSize);
 			free(pxPad);
 
-			TEXELS convTexel;
-			PALETTE convPalette;
+			TEXELS convTexel = { 0 };
+			PALETTE convPalette = { 0 };
 
 			TexViewerConvExtInfo extInfo;
 			extInfo.c0xp = COL0TRANS(texImageParam);
@@ -1044,12 +1047,8 @@ static int TexViewerCheckSave(TEXTUREEDITORDATA *data) {
 static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int notification) {
 	HWND hWnd = data->hWnd;
 	if (hWndControl == data->hWndConvert) {
-		data->hWndConvertDialog = CreateWindowEx(WS_EX_CONTEXTHELP, L"ConvertDialogClass", L"Convert Texture",
-			WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
-			CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, data->editorMgr->hWnd, NULL, NULL, NULL);
-		SetWindowLongPtr(data->hWndConvertDialog, 0, (LONG_PTR) data);
-		SendMessage(data->hWndConvertDialog, NV_INITIALIZE, 0, 0);
-		DoModal(data->hWndConvertDialog);
+		//conversion dialog
+		ConvertTextureDialog(data->editorMgr->hWnd, data, NULL);
 	} else if (hWndControl == data->hWndExportNTF) {
 		//if not in any format, it cannot be exported.
 		if (!TexViewerCheckSave(data)) return;
@@ -1946,13 +1945,12 @@ static void TexViewerShowTooltip(HWND hWndParent, HWND hWndCtl, const wchar_t *p
 }
 
 static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) GetWindowLongPtr(hWnd, 0);
+	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) UiDlgGetData(hWnd);
 	switch (msg) {
 		case WM_CREATE:
-			SetWindowSize(hWnd, 490, 444);
-			break;
-		case NV_INITIALIZE:
 		{
+			data->hWndConvertDialog = hWnd;
+
 			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
 			int boxHeight = 5 * 27 - 5 + 10 + 10 + 10; //first row height
 			int boxHeight2 = 3 * 27 - 5 + 10 + 10 + 10; //second row height
@@ -2008,7 +2006,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			}
 
 			//get extra info
-			TexViewerConvExtInfo *extInfo = (TexViewerConvExtInfo *) lParam;
+			TexViewerConvExtInfo *extInfo = (TexViewerConvExtInfo *) data->convExtInfo;
 			
 			int format;
 			if (extInfo == NULL) {
@@ -2102,8 +2100,6 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					SendMessage(data->hWndPaletteInput, WM_SETTEXT, 0, (LPARAM) extInfo->fixedPalettePath);
 				}
 			}
-
-			SetGUIFont(hWnd);
 			break;
 		}
 		case WM_COMMAND:
@@ -2224,7 +2220,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					NpGetBalanceSetting(&data->balance, &params.balance);
 
 					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					UiDlgEnd(hWnd);
 
 					TxConversionResult result = TexViewerModalConvert(&params, hWndMain);
 					free(params.pnam);
@@ -2255,7 +2251,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
 					data->selectedColor = 0;
 				} else if (idc == IDCANCEL) {
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					UiDlgEnd(hWnd);
 				}
 			}
 			break;
@@ -2279,8 +2275,17 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
+
+static void ConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, TexViewerConvExtInfo *ext) {
+	data->convExtInfo = ext;
+	UiDlgCreateModal(hWnd, ConvertDialogWndProc, L"Convert Texture", 490, 444, data);
+	data->hWndConvertDialog = NULL;
+	data->convExtInfo = NULL;
+}
+
+
 
 LRESULT CALLBACK CompressionProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TxConversionParameters *params = (TxConversionParameters *) GetWindowLongPtr(hWnd, 1 * sizeof(LONG_PTR));
@@ -3124,11 +3129,7 @@ void BatchTexShowVramStatistics(HWND hWnd, LPCWSTR convertedDir) {
 }
 
 LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	BATCHTEXCONVDATA *data = (BATCHTEXCONVDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (BATCHTEXCONVDATA *) calloc(1, sizeof(BATCHTEXCONVDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	BATCHTEXCONVDATA *data = (BATCHTEXCONVDATA *) UiDlgGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
@@ -3140,9 +3141,6 @@ LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			data->hWndBrowse = CreateButton(hWnd, L"...", 325, 28, 25, 22, FALSE);
 			data->hWndConvert = CreateButton(hWnd, L"Convert", 20, 55, 100, 22, TRUE);
 			data->hWndClean = CreateButton(hWnd, L"Clean", 125, 55, 100, 22, FALSE);
-
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 370, 97);
 			break;
 		}
 		case WM_COMMAND:
@@ -3192,13 +3190,8 @@ LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 			}
 			break;
 		}
-		case WM_DESTROY:
-		{
-			free(data);
-			break;
-		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
 static LRESULT CALLBACK BatchTexProgressProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -3346,23 +3339,14 @@ static LRESULT CALLBACK BatchTexProgressProc(HWND hWnd, UINT msg, WPARAM wParam,
 }
 
 int BatchTextureDialog(HWND hWndParent) {
-	HWND hWnd = CreateWindow(L"BatchTextureClass", L"Batch Texture Conversion", WS_CAPTION | WS_SYSMENU,
-		CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, hWndParent, NULL, NULL, NULL);
-	ShowWindow(hWnd, SW_SHOW);
-	DoModal(hWnd);
-	return 0;
-}
+	BATCHTEXCONVDATA data = { 0 };
 
-static void RegisterBatchTextureDialogClass(void) {
-	RegisterGenericClass(L"BatchTextureClass", BatchTextureWndProc, sizeof(LPVOID));
+	UiDlgCreateModal(hWndParent, BatchTextureWndProc, L"Batch Texture Conversion", 370, 97, &data);
+	return 0;
 }
 
 static void RegisterTexturePreviewClass(void) {
 	RegisterGenericClass(L"TexturePreviewClass", TexturePreviewWndProc, sizeof(LPVOID));
-}
-
-static void RegisterConvertDialogClass(void) {
-	RegisterGenericClass(L"ConvertDialogClass", ConvertDialogWndProc, sizeof(LPVOID));
 }
 
 static void RegisterCompressionProgressClass(void) {
@@ -3391,11 +3375,9 @@ void RegisterTextureEditorClass(void) {
 	EditorAddFilter(cls, TEXTURE_TYPE_GRF, L"grf", L"GRF Files (*.grf)\0*.grf\0");
 
 	RegisterTexturePreviewClass();
-	RegisterConvertDialogClass();
 	RegisterCompressionProgressClass();
 	RegisterTexturePaletteEditorClass();
 	RegisterTextureTileEditorClass();
-	RegisterBatchTextureDialogClass();
 	RegisterGenericClass(L"BatchProgressClass", BatchTexProgressProc, sizeof(void *));
 }
 
@@ -3448,17 +3430,12 @@ int TexViewerConvertImmediate(HWND hWndMain, const unsigned char *buffer, unsign
 	HWND hWndTextureEditor = CreateTextureEditorFromUnconverted(verySmall, verySmall, 0, 0, hWndMdi, buffer, size, path);
 	ShowWindow(hWndTextureEditor, SW_HIDE);
 
+	SendMessage(hWndMdi, WM_SETREDRAW, TRUE, 0);
+
 	TEXTUREEDITORDATA *teData = (TEXTUREEDITORDATA *) EditorGetData(hWndTextureEditor);
 
 	//open conversion dialog
-	HWND hWndConvertDialog = CreateWindow(L"ConvertDialogClass", L"Convert Texture",
-		WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_MINIMIZEBOX & ~WS_THICKFRAME,
-		CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, nitroPaintStruct->edMgr.hWnd, NULL, NULL, NULL);
-	teData->hWndConvertDialog = hWndConvertDialog; //prevent from redrawing the whole screen
-	SendMessage(hWndMdi, WM_SETREDRAW, TRUE, 0);
-	SetWindowLongPtr(hWndConvertDialog, 0, (LONG_PTR) teData);
-	SendMessage(hWndConvertDialog, NV_INITIALIZE, 0, (LPARAM) ext);
-	DoModal(hWndConvertDialog);
+	ConvertTextureDialog(hWndMain, teData, ext);
 
 	//we can check the isNitro field of the texture editor to determine if the conversion succeeded.
 	int succeeded = 0;

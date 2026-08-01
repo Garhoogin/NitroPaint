@@ -24,6 +24,10 @@ static int sColorCellSize = COLOR_SIZE_DEFAULT; //size of one color cell entry
 
 extern HICON g_appIcon;
 
+static void PalViewerEditCompressedPaletteDialog(HWND hWnd, NCLRVIEWERDATA *data);
+static void PalViewerCreatePaletteDialog(HWND hWnd, NCLRVIEWERDATA *data);
+static void PalViewerGeneratePaletteDialog(HWND hWnd, NCLRVIEWERDATA *data);
+
 //IS.Colors4
 typedef struct NC_CLIPBOARD_PALETTE_HEADER_ {
 	DWORD magic; //0xC208B8
@@ -1821,15 +1825,8 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						PalViewerSortSelection(hWnd, data, LOWORD(wParam));
 						break;
 					case ID_MENU_EDITCOMPRESSEDPALETTE:
-					{
-						HWND hWndMdi = data->editorMgr->hWnd;
-						HWND h = CreateWindow(L"EditCompressedClass", L"Edit Compressed Palette",
-							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
-							CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndMdi, NULL, NULL, NULL);
-						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
-						DoModal(h);
+						PalViewerEditCompressedPaletteDialog(data->editorMgr->hWnd, data);
 						break;
-					}
 					case ID_FILE_SAVE:
 						EditorSave(hWnd);
 						break;
@@ -1977,41 +1974,21 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						break;
 					}
 					case ID_MENU_FREQUENCYHIGHLIGHT:
-					{
 						//toggle
-						int state = !data->showFrequency;
-						data->showFrequency = state;
+						data->showFrequency = !data->showFrequency;
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
-					}
 					case ID_MENU_SHOWUNUSED:
-					{
 						//toggle
-						int state = !data->showUnused;
-						data->showUnused = state;
+						data->showUnused = !data->showUnused;
 						InvalidateRect(hWnd, NULL, FALSE);
 						break;
-					}
 					case ID_MENU_CREATE:
-					{
-						HWND hWndMain = data->editorMgr->hWnd;
-						HWND hWndPaletteDialog = CreateWindow(L"PaletteGeneratorClass", L"Generate Palette",
-							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX), CW_USEDEFAULT, CW_USEDEFAULT,
-							200, 200, hWndMain, NULL, NULL, NULL);
-						SendMessage(hWndPaletteDialog, NV_INITIALIZE, 0, (LPARAM) data);
-						DoModal(hWndPaletteDialog);
+						PalViewerCreatePaletteDialog(data->editorMgr->hWnd, data);
 						break;
-					}
 					case ID_MENU_GENERATE:
-					{
-						HWND hWndMain = data->editorMgr->hWnd;
-						HWND hWndGenerateDialog = CreateWindow(L"GeneratePaletteClass", L"Generate Palette",
-							WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX),
-							CW_USEDEFAULT, CW_USEDEFAULT, 200, 200, hWndMain, NULL, NULL, NULL);
-						SendMessage(hWndGenerateDialog, NV_INITIALIZE, 0, (LPARAM) data);
-						DoModal(hWndGenerateDialog);
+						PalViewerGeneratePaletteDialog(data->editorMgr->hWnd, data);
 						break;
-					}
 					case ID_MENU_ANIMATEPALETTE:
 					{
 						data->tempPalette = (COLOR *) calloc(data->nclr->nColors, sizeof(COLOR));
@@ -2102,16 +2079,11 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 }
 
 static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) UiDlgGetData(hWnd);
+
 	switch (msg) {
-		case WM_CREATE:
-			SetWindowSize(hWnd, 355, 214);	
-			break;
 		case NV_INITIALIZE:
 		{
-			data = (NCLRVIEWERDATA *) lParam;
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
 			//compute defaults
 			int depth = data->nclr->nBits, baseIndex = data->selStart;
 			int selSize = PalViewerGetSelectionSize(data);
@@ -2146,7 +2118,6 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 			data->hWndEnhanceColors = CreateCheckbox(hWnd, L"", 120, 150, 22, 22, FALSE);
 
 			data->hWndGenerate = CreateButton(hWnd, L"Generate", 120, 182, 100, 22, TRUE);
-			SetGUIFont(hWnd);
 			break;
 		}
 		case WM_COMMAND:
@@ -2212,16 +2183,21 @@ static LRESULT CALLBACK PaletteGeneratorDialogProc(HWND hWnd, UINT msg, WPARAM w
 				PalViewerWrapSelection(data, as15, nColors);
 				free(as15);
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 				InvalidateRect((HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT), NULL, FALSE);
 			} else if (idc == IDCANCEL) {
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
+
+static void PalViewerCreatePaletteDialog(HWND hWnd, NCLRVIEWERDATA *data) {
+	UiDlgCreateModal(hWnd, PaletteGeneratorDialogProc, L"Generate Palette", 355, 214, data);
+}
+
 
 typedef struct PalViewerFillPaletteData_ {
 	HWND hWndType;
@@ -2234,14 +2210,11 @@ typedef struct PalViewerFillPaletteData_ {
 } PalViewerFillPaletteData;
 
 static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	PalViewerFillPaletteData *data = (PalViewerFillPaletteData *) GetWindowLongPtr(hWnd, 0);
+	PalViewerFillPaletteData *data = (PalViewerFillPaletteData *) UiDlgGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data = (PalViewerFillPaletteData *) calloc(1, sizeof(PalViewerFillPaletteData));
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
 			data->col1 = 0;
 			data->col2 = 0;
 
@@ -2257,14 +2230,6 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 			EnableWindow(data->hWndChoose2, FALSE);
 
 			data->hWndOK = CreateButton(hWnd, L"OK", 70, 91, 100, 22, TRUE);
-
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 280, 123);
-			break;
-		}
-		case NV_INITIALIZE:
-		{
-			data->nclrViewerData = (NCLRVIEWERDATA *) lParam;
 			break;
 		}
 		case WM_COMMAND:
@@ -2316,18 +2281,19 @@ static LRESULT CALLBACK GeneratePaletteDialogProc(HWND hWnd, UINT msg, WPARAM wP
 				}
 
 				PalViewerUpdatePreview(nclrViewerData);
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
-		case WM_DESTROY:
-		{
-			free(data);
-			SetWindowLongPtr(hWnd, 0, 0);
-			break;
-		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
+}
+
+static void PalViewerGeneratePaletteDialog(HWND hWnd, NCLRVIEWERDATA *editor) {
+	PalViewerFillPaletteData data = { 0 };
+	data.nclrViewerData = editor;
+
+	UiDlgCreateModal(hWnd, GeneratePaletteDialogProc, L"Generate Palette", 280, 123, &data);
 }
 
 
@@ -2406,14 +2372,11 @@ static void PalViewerSetCompressedPaletteSettings(NCLRVIEWERDATA *data, BOOL ena
 }
 
 static LRESULT CALLBACK EditCompressedPaletteWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) GetWindowLongPtr(hWnd, 0);
+	NCLRVIEWERDATA *data = (NCLRVIEWERDATA *) UiDlgGetData(hWnd);
 
 	switch (msg) {
-		case NV_INITIALIZE:
+		case WM_CREATE:
 		{
-			data = (NCLRVIEWERDATA *) lParam;
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
 			data->hWndEditCompressionCheckbox = CreateCheckbox(hWnd, L"Use Compressed Palette", 10, 10, 150, 22, data->nclr->compressedPalette);
 			data->hWndEditCompressionList = CreateCheckedListView(hWnd, 10, 37, 200, 200);
 			data->hWndEditCompressionOK = CreateButton(hWnd, L"OK", 110, 242, 100, 22, TRUE);
@@ -2430,10 +2393,6 @@ static LRESULT CALLBACK EditCompressedPaletteWndProc(HWND hWnd, UINT msg, WPARAM
 				EnableWindow(data->hWndEditCompressionList, FALSE);
 				UpdateWindow(data->hWndEditCompressionList);
 			}
-
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 220, 274);
-
 			break;
 		}
 		case WM_COMMAND:
@@ -2464,28 +2423,21 @@ static LRESULT CALLBACK EditCompressedPaletteWndProc(HWND hWnd, UINT msg, WPARAM
 				PalViewerSetCompressedPaletteSettings(data, enabled, newSelection);
 				PalViewerUpdatePreview(data);
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			} else if (idCtl == IDCANCEL && notif == BN_CLICKED) {
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
 
-static void PalViewerRegisterPaletteGenerationClass(void) {
-	RegisterGenericClass(L"PaletteGeneratorClass", PaletteGeneratorDialogProc, sizeof(LPVOID));
+static void PalViewerEditCompressedPaletteDialog(HWND hWnd, NCLRVIEWERDATA *data) {
+	UiDlgCreateModal(hWnd, EditCompressedPaletteWndProc, L"Edit Compressed Palette", 220, 274, data);
 }
 
-static void PalViewerRegisterPaletteFillClass(void) {
-	RegisterGenericClass(L"GeneratePaletteClass", GeneratePaletteDialogProc, sizeof(LPVOID));
-}
-
-static void PalViewerRegisterEditCompressedPaletteClass(void) {
-	RegisterGenericClass(L"EditCompressedClass", EditCompressedPaletteWndProc, sizeof(LPVOID));
-}
 
 void RegisterNclrViewerClass(void) {
 	PalRegisterFormats();
@@ -2499,9 +2451,6 @@ void RegisterNclrViewerClass(void) {
 	EditorAddFilter(cls, NCLR_TYPE_ISTUDIO, L"5pl", L"5PL Files (*.5pl)\0*.5pl\0");
 	EditorAddFilter(cls, NCLR_TYPE_ISTUDIOC, L"5pc", L"5PC Files (*.5pc)\0*.5pc\0");
 	EditorAddFilter(cls, NCLR_TYPE_SETOSA, L"splt", L"SPLT Files (*.splt)\0*.splt\0");
-	PalViewerRegisterPaletteGenerationClass();
-	PalViewerRegisterPaletteFillClass();
-	PalViewerRegisterEditCompressedPaletteClass();
 }
 
 static HWND CreateNclrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NCLR *nclr) {

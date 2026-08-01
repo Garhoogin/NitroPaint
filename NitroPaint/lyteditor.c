@@ -16,6 +16,8 @@
 static void LytEditorUnregisterFontByIndex(LYTEDITOR *data, int i);
 static void LytEditorUnregisterFontByData(LYTEDITOR *data, NFTRVIEWERDATA *nftrViewerData);
 
+static void LLytEditorReferenceTargetDialog(HWND hWnd, LYTEDITOR *editor);
+
 
 static void LytEditorOnFontEditorDestroyed(EDITOR_DATA *editorData, void *param) {
 	LYTEDITOR *data = (LYTEDITOR *) param;
@@ -847,11 +849,7 @@ static void LLytEditorOnClickedEditFonts(HWND hWnd, HWND hWndCtl, int notif, voi
 
 	//create modal
 	HWND hWndMain = data->editorMgr->hWnd;
-	HWND hWndModal = CreateWindow(L"ReferenceTargetClass", L"Register Reference Target",
-		WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
-	SendMessage(hWndModal, NV_INITIALIZE, 0, (LPARAM) &data->editor);
-	DoModal(hWndModal);
+	LLytEditorReferenceTargetDialog(hWndMain, &data->editor);
 }
 
 
@@ -1721,14 +1719,11 @@ typedef struct RefTargetData_ {
 } RefTargetData;
 
 static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	RefTargetData *data = (RefTargetData *) GetWindowLongPtr(hWnd, 0);
+	RefTargetData *data = (RefTargetData *) UiDlgGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data = (RefTargetData *) calloc(sizeof(RefTargetData), 1);
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
 			LPCWSTR defaults[] = { L"(None)" };
 
 			//create controls
@@ -1740,15 +1735,10 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 			}
 			data->hWndOK = CreateButton(hWnd, L"OK", 165, 10 + 27 * 16, 145, 22, TRUE);
 			data->hWndCancel = CreateButton(hWnd, L"Cancel", 10, 10 + 27 * 16, 145, 22, FALSE);
-			SetGUIFont(hWnd);
-			SetWindowSize(hWnd, 320, 15 + 27 * 17);
 			break;
 		}
 		case NV_INITIALIZE:
 		{
-			//get editor
-			data->editor = (LYTEDITOR *) lParam;
-
 			//get fonts
 			HWND hWndMain = ((EDITOR_DATA *) data->editor->data)->editorMgr->hWnd;
 			StListCreateInline(&data->dataList, EDITOR_DATA *, NULL);
@@ -1806,22 +1796,29 @@ static LRESULT CALLBACK LytReferenceTargetProc(HWND hWnd, UINT msg, WPARAM wPara
 				//repaint
 				InvalidateRect(data->editor->hWnd, NULL, FALSE);
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			} else if ((hWndControl == data->hWndCancel || id == IDCANCEL) && notif == BN_CLICKED) {
 				//close window, do not update linkage.
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
 		case WM_DESTROY:
 		{
 			StListFree(&data->dataList);
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
 			break;
 		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
+
+static void LLytEditorReferenceTargetDialog(HWND hWnd, LYTEDITOR *editor) {
+	RefTargetData data = { 0 };
+	data.editor = editor;
+
+	UiDlgCreateModal(hWnd, LytReferenceTargetProc, L"Register Reference Target", 320, 474, &data);
+}
+
 
 static HWND LytEditorCreateInternal(LPCWSTR className, int x, int y, HWND hWndParent, LPCWSTR path, ObjHeader *obj) {
 	HWND hWnd = EditorCreate(className, x, y, 0, 0, hWndParent);
@@ -1856,5 +1853,4 @@ void RegisterLytEditor(void) {
 	EditorAddFilter(clsBnbl, BNBL_TYPE_BNBL, L"bnbl", L"BNBL Files (*.bnbl)\0*.bnbl\0");
 
 	RegisterGenericClass(L"LytPreview", LytPreviewWndProc, sizeof(void *));
-	RegisterGenericClass(L"ReferenceTargetClass", LytReferenceTargetProc, sizeof(void *));
 }

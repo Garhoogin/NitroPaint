@@ -38,6 +38,10 @@ static void NftrViewerCmdSetGlyphTrailing(HWND hWnd, HWND hWndControl, int notif
 static void NftrViewerCmdSetCellWidth(HWND hWnd, HWND hWndControl, int notif, void *data);
 static void NftrViewerCmdSetCellHeight(HWND hWnd, HWND hWndControl, int notif, void *data);
 
+// Dialogs
+static void NftrViewerImportLcFontDialog(HWND hWnd, NFTRVIEWERDATA *data, const unsigned char *buf, unsigned int size);
+static void NftrViewerExportDialog(HWND hWnd, NFTRVIEWERDATA *data, LPCWSTR path);
+
 
 
 // ----- glyph rendering routines
@@ -1540,10 +1544,7 @@ static void NftrViewerExport(NFTRVIEWERDATA *data) {
 	if (path == NULL) return;
 
 	//create export dialog
-	HWND hWndModal = CreateWindow(L"NftrExportClass", L"Export Font", WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX),
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
-	SendMessage(hWndModal, NV_INITIALIZE, (WPARAM) path, (LPARAM) data);
-	DoModal(hWndModal);
+	NftrViewerExportDialog(hWndMain, data, path);
 	free(path);
 }
 
@@ -1808,12 +1809,7 @@ static void NftrViewerImportLcFont(NFTRVIEWERDATA *data) {
 	}
 
 	//DEBUG
-	HWND h = CreateWindow(L"LcFontImportClass", L"Import LC Font",
-		WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, hWndMain, NULL, NULL, NULL);
-	SendMessage(h, NV_SETDATA, 0, (LPARAM) data);
-	SendMessage(h, NV_INITIALIZE, (WPARAM) size, (LPARAM) buf);
-	DoModal(h);
+	NftrViewerImportLcFontDialog(hWndMain, data, buf, size);
 
 	free(buf);
 
@@ -2571,29 +2567,20 @@ static COLOR32 *NftrViewerExportImage(NFTR *nftr, int markers, int map, int unma
 }
 
 static LRESULT CALLBACK NftrViewerExportWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NftrExportData *data = (NftrExportData *) GetWindowLongPtr(hWnd, 0);
+	NftrExportData *data = (NftrExportData *) UiDlgGetData(hWnd);
 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data = (NftrExportData *) calloc(1, sizeof(NftrExportData));
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
 			//UI controls
 			data->hWndExportMarkers = CreateCheckbox(hWnd, L"Export Markers", 10, 10, 200, 22, TRUE);
 			data->hWndExportCodeMap = CreateCheckbox(hWnd, L"Use Code Map", 10, 37, 200, 22, TRUE);
 			data->hWndExportUnmapped = CreateCheckbox(hWnd, L"Export Unmapped", 10, 64, 200, 22, TRUE);
 			data->hWndExport = CreateButton(hWnd, L"Export", 110, 91, 100, 22, TRUE);
-
-			SetWindowSize(hWnd, 220, 123);
-			SetGUIFont(hWnd);
 			break;
 		}
 		case NV_INITIALIZE:
 		{
-			data->data = (NFTRVIEWERDATA *) lParam;
-			data->path = (LPWSTR) wParam;
-
 			//for a font without a code map, cannot export a code map.
 			int hasCodeMap = data->data->nftr->hasCodeMap;
 			SendMessage(data->hWndExportCodeMap, BM_SETCHECK, hasCodeMap ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -2621,23 +2608,26 @@ static LRESULT CALLBACK NftrViewerExportWndProc(HWND hWnd, UINT msg, WPARAM wPar
 
 				free(px);
 
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			} else if (hWndCtl == data->hWndExportCodeMap && notif == BN_CLICKED) {
 				EnableWindow(data->hWndExportUnmapped, GetCheckboxChecked(hWndCtl));
 			} else if (idCtl == IDCANCEL && notif == BN_CLICKED) {
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
-		case WM_DESTROY:
-		{
-			free(data);
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) NULL);
-			break;
-		}
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
+
+static void NftrViewerExportDialog(HWND hWnd, NFTRVIEWERDATA *editor, LPCWSTR path) {
+	NftrExportData data = { 0 };
+	data.data = editor;
+	data.path = path;
+
+	UiDlgCreateModal(hWnd, NftrViewerExportWndProc, L"Export Font", 220, 123, &data);
+}
+
 
 typedef struct NftrViewerImportLcFontData_ {
 	NFTRVIEWERDATA *data;
@@ -2653,21 +2643,18 @@ typedef struct NftrViewerImportLcFontData_ {
 } NftrViewerImportLcFontData;
 
 static LRESULT CALLBACK NftrViewerImportLcFontProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NftrViewerImportLcFontData *data = (NftrViewerImportLcFontData *) GetWindowLongPtr(hWnd, 0);
+	NftrViewerImportLcFontData *data = (NftrViewerImportLcFontData *) UiDlgGetData(hWnd);
 	
 	switch (msg) {
 		case WM_CREATE:
 		{
-			data = (NftrViewerImportLcFontData *) calloc(1, sizeof(*data));
-			SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-
-			LPCWSTR encodings[] = { L"Shift-JIS", L"UTF-16" };
-			LPCWSTR trimOptions[] = { L"No Trim", L"Monospace Trim", L"Variable-Width Trim" };
+			static const LPCWSTR encodings[] = { L"Shift-JIS", L"UTF-16" };
+			static const LPCWSTR trimOptions[] = { L"No Trim", L"Monospace Trim", L"Variable-Width Trim" };
 
 			CreateStatic(hWnd, L"Character Encoding:", 10, 10, 100, 22);
-			data->hWndEncoding = CreateCombobox(hWnd, encodings, 2, 115, 10, 100, 22, 0);
+			data->hWndEncoding = CreateCombobox(hWnd, (LPCWSTR *) encodings, 2, 115, 10, 100, 22, 0);
 			CreateStatic(hWnd, L"Glyph Trim:", 10, 37, 100, 22);
-			data->hWndTrim = CreateCombobox(hWnd, trimOptions, 3, 115, 37, 150, 22, 2);
+			data->hWndTrim = CreateCombobox(hWnd, (LPCWSTR *) trimOptions, 3, 115, 37, 150, 22, 2);
 			CreateStatic(hWnd, L"Glyph Color:", 10, 64, 100, 22);
 			data->hWndColor = CreateEdit(hWnd, L"1", 115, 64, 50, 22, TRUE);
 			data->hWndFullToHalf = CreateCheckbox(hWnd, L"Map full-width glyphs to half-width", 10, 91, 200, 22, TRUE);
@@ -2675,10 +2662,6 @@ static LRESULT CALLBACK NftrViewerImportLcFontProc(HWND hWnd, UINT msg, WPARAM w
 
 			data->hWndOK = CreateButton(hWnd, L"Import", 315-50 - 100, 150, 100, 22, TRUE);
 			data->hWndCancel = CreateButton(hWnd, L"Cancel", 315-50 - 100 - 5 - 100, 150, 100, 22, FALSE);
-
-			SetWindowSize(hWnd, 325-50, 182);
-
-			SetGUIFont(hWnd);
 			break;
 		}
 		case WM_COMMAND:
@@ -2712,21 +2695,18 @@ static LRESULT CALLBACK NftrViewerImportLcFontProc(HWND hWnd, UINT msg, WPARAM w
 				unsigned char color = GetEditNumber(data->hWndColor);
 
 				//close GUI
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 
 				//import font
 				NftrViewerImportLcFontImpl(nftrViewerData, buffer, size, enc, bFullToHalf, color, bReplace, trim);
 			} else if ((hWndCtl == data->hWndCancel || idCtl == IDCANCEL) && notif == BN_CLICKED) {
 				//abort
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 			}
 			break;
 		}
 		case NV_INITIALIZE:
 		{
-			data->buffer = (unsigned char *) lParam;
-			data->size = wParam;
-
 			//auto-detect CP
 			FontCharacterSet inCP = NftrViewerGuessLcFontEncoding(data->buffer, data->size, data->size >= 2 ? 1 : 0);
 			if (inCP == FONT_CHARSET_SJIS) UiCbSetCurSel(data->hWndEncoding, 0);
@@ -2737,15 +2717,20 @@ static LRESULT CALLBACK NftrViewerImportLcFontProc(HWND hWnd, UINT msg, WPARAM w
 
 			break;
 		}
-		case NV_SETDATA:
-			data->data = (NFTRVIEWERDATA *) lParam;
-			break;
-		case WM_DESTROY:
-			free(data);
-			break;
 	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
+	return DefModalProc(hWnd, msg, wParam, lParam);
 }
+
+static void NftrViewerImportLcFontDialog(HWND hWnd, NFTRVIEWERDATA *editor, const unsigned char *buf, unsigned int size) {
+	NftrViewerImportLcFontData data = { 0 };
+	data.data = editor;
+	data.buffer = buf;
+	data.size = size;
+
+	UiDlgCreateModal(hWnd, NftrViewerImportLcFontProc, L"Import LC Font", 275, 182, &data);
+}
+
+
 
 void RegisterNftrViewerClass(void) {
 	NftrRegisterFormats();
@@ -2765,8 +2750,6 @@ void RegisterNftrViewerClass(void) {
 
 	RegisterGenericClass(NFTR_VIEWER_MARGIN_CLASS, NftrViewerMarginWndProc, sizeof(void *));
 	RegisterGenericClass(NFTR_VIEWER_PREVIEW_CLASS, NftrViewerCellEditorWndProc, sizeof(void *));
-	RegisterGenericClass(L"NftrExportClass", NftrViewerExportWndProc, sizeof(void *));
-	RegisterGenericClass(L"LcFontImportClass", NftrViewerImportLcFontProc, sizeof(void *));
 }
 
 static HWND CreateNftrViewerInternal(int x, int y, int width, int height, HWND hWndParent, LPCWSTR path, NFTR *nftr) {

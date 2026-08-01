@@ -19,10 +19,12 @@ typedef struct PAL_OP_DATA_ {
 	HWND hWndDestCount;
 	HWND hWndDestStride;
 	HWND hWndComplete;
-	int inited;
+
+	PAL_OP *op;
+	int init;
 } PAL_OP_DATA;
 
-void PalopPopulateUI(PAL_OP_DATA *data, PAL_OP *op) {
+static void PalopPopulateUI(PAL_OP_DATA *data, PAL_OP *op) {
 	SendMessage(data->hWndIgnoreFirst, BM_SETCHECK, op->ignoreFirst, 0);
 	SetEditNumber(data->hWndHue, op->hueRotate);
 	SetEditNumber(data->hWndSaturation, op->saturationAdd);
@@ -35,7 +37,7 @@ void PalopPopulateUI(PAL_OP_DATA *data, PAL_OP *op) {
 	SetEditNumber(data->hWndDestStride, op->dstStride);
 }
 
-void PalopReadUI(PAL_OP_DATA *data, PAL_OP *op) {
+static void PalopReadUI(PAL_OP_DATA *data, PAL_OP *op) {
 	op->ignoreFirst = GetCheckboxChecked(data->hWndIgnoreFirst);
 	op->hueRotate = GetEditNumber(data->hWndHue);
 	op->saturationAdd = GetEditNumber(data->hWndSaturation);
@@ -107,13 +109,12 @@ void PalopRunOperation(COLOR *palIn, COLOR *palOut, int palSize, PAL_OP *op) {
 	}
 }
 
-LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	PAL_OP *palOp = (PAL_OP *) GetWindowLongPtr(hWnd, 0);
-	PAL_OP_DATA *data = (PAL_OP_DATA *) GetWindowLongPtr(hWnd, sizeof(PAL_OP *));
+static LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	PAL_OP_DATA *data = (PAL_OP_DATA *) UiDlgGetData(hWnd);
+	PAL_OP *palOp = data->op;
+
 	switch (msg) {
 		case WM_CREATE:
-			break;
-		case NV_SETDATA:
 		{
 			int boxWidth = 200, box1Height = 133, box2Height = 106, box3Height = 79 + 27;
 			int box1Y = 10;
@@ -121,9 +122,9 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			int box3Y = 30 + box1Height + box2Height;
 			int bottomY = 40 + box1Height + box2Height + box3Height;
 			int leftX = 20;
-			CreateWindow(L"BUTTON", L"Palette Operation", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 10, box1Y, boxWidth, box1Height, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Source", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 10, box2Y, boxWidth, box2Height, hWnd, NULL, NULL, NULL);
-			CreateWindow(L"BUTTON", L"Destination", WS_VISIBLE | WS_CHILD | BS_GROUPBOX, 10, box3Y, boxWidth, box3Height, hWnd, NULL, NULL, NULL);
+			CreateGroupbox(hWnd, L"Palette Operation", 10, box1Y, boxWidth, box1Height);
+			CreateGroupbox(hWnd, L"Source", 10, box2Y, boxWidth, box2Height);
+			CreateGroupbox(hWnd, L"Destination", 10, box3Y, boxWidth, box3Height);
 
 			CreateStatic(hWnd, L"Hue Rotation:", leftX, box1Y + 18, 100, 22);
 			CreateStatic(hWnd, L"Saturation:", leftX, box1Y + 18 + 27, 100, 22);
@@ -151,10 +152,9 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			data->hWndComplete = CreateButton(hWnd, L"Complete", 10 + boxWidth - 150, bottomY, 150, 22, TRUE);
 
 			PalopPopulateUI(data, palOp);
-			SetWindowSize(hWnd, 20 + boxWidth, 72 + box1Height + box2Height + box3Height);
-			SetGUIFont(hWnd);
 			SetFocus(data->hWndHue);
-			data->inited = 1;
+
+			data->init = 1;
 			if (palOp->updateCallback != NULL) {
 				palOp->updateCallback(palOp);
 			}
@@ -165,19 +165,18 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			HWND hWndControl = (HWND) lParam;
 			int idc = LOWORD(wParam);
 			int notif = HIWORD(wParam);
-			if (data == NULL || !data->inited) break;
-			if (hWndControl == NULL && idc == 0) break;
+			if (!data->init) break;
 
 			//complete button
 			if (hWndControl == data->hWndComplete) {
 				palOp->result = 1;
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 				break;
 			}
 
 			//exit
 			if (idc == IDCANCEL) {
-				SendMessage(hWnd, WM_CLOSE, 0, 0);
+				UiDlgEnd(hWnd);
 				break;
 			}
 
@@ -198,23 +197,12 @@ LRESULT CALLBACK PalopWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 }
 
 int SelectPaletteOperation(PAL_OP *opStruct) {
-	//test class registration
-	static int clsRegistered = 0;
-	if (!clsRegistered) {
-		RegisterGenericClass(L"PaletteOperationClass", PalopWndProc, sizeof(PAL_OP *) + sizeof(PAL_OP_DATA *));
-		clsRegistered = 1;
-	}
-
-	PAL_OP_DATA *data = (PAL_OP_DATA *) calloc(1, sizeof(PAL_OP_DATA));
-	HWND hWndParent = opStruct->hWndParent;
 	opStruct->result = 0;
-	HWND hWnd = CreateWindowEx(WS_EX_DLGMODALFRAME, L"PaletteOperationClass", L"Palette Operation", WS_SYSMENU,
-		CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, hWndParent, NULL, NULL, NULL);
-	SetWindowLongPtr(hWnd, 0, (LONG_PTR) opStruct);
-	SetWindowLongPtr(hWnd, sizeof(PAL_OP *), (LONG_PTR) data);
-	SendMessage(hWnd, NV_SETDATA, 0, 0);
-	DoModal(hWnd);
 
-	free(data);
+	//create dialog
+	PAL_OP_DATA data = { 0 };
+	data.op = opStruct;
+
+	UiDlgCreateModal(opStruct->hWndParent, PalopWndProc, L"Palette Operation", 220, 417, &data);
 	return opStruct->result;
 }

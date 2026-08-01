@@ -5,8 +5,6 @@
 #include "colorchooser.h"
 #include "color.h"
 
-static BOOL g_ccRegistered = FALSE;
-
 VOID ConvertRGBToHSV(COLORREF col, int *h, int *s, int *v) {
 	int r = col & 0xFF;
 	int g = (col >> 8) & 0xFF;
@@ -147,7 +145,7 @@ typedef struct {
 } CHOOSECOLORDATA;
 
 static VOID UpdateValues(HWND hWnd, COLORREF rgb) {
-	CHOOSECOLORDATA *data = (CHOOSECOLORDATA *) GetWindowLongPtr(hWnd, 0);
+	CHOOSECOLORDATA *data = (CHOOSECOLORDATA *) UiDlgGetData(hWnd);
 	data->noUpdateTextBoxes = TRUE;
 
 	WCHAR text[5];
@@ -173,11 +171,8 @@ static VOID UpdateValues(HWND hWnd, COLORREF rgb) {
 }
 
 static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	CHOOSECOLORDATA *data = (CHOOSECOLORDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = (CHOOSECOLORDATA *) calloc(1, sizeof(CHOOSECOLORDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	CHOOSECOLORDATA *data = (CHOOSECOLORDATA *) UiDlgGetData(hWnd);
+	
 	float dpiScale = GetDpiScale();
 
 	switch (msg) {
@@ -213,7 +208,9 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			data->hWndCancel = hWndCancel;
 			data->exitStatus = FALSE;
 
-			SetGUIFont(hWnd);
+			UpdateValues(hWnd, data->chooseColor->rgbResult);
+			InvalidateRect(hWnd, NULL, FALSE);
+			SetFocus(data->inputs[0]);
 			break;
 		}
 		case WM_LBUTTONDOWN:
@@ -514,34 +511,10 @@ static LRESULT WINAPI ColorChooserWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 
 BOOL WINAPI CustomChooseColor(CHOOSECOLORW *chooseColor) {
 	if (chooseColor->lStructSize != sizeof(CHOOSECOLORW)) return FALSE;
-	if (!g_ccRegistered) {
-		RegisterGenericClass(L"ColorChooserClass", ColorChooserWndProc, sizeof(LPVOID) * 14);
-		g_ccRegistered = TRUE;
-	}
 
-	DWORD dwStyle = WS_CAPTION | WS_SYSMENU;
-
-	RECT rc;
-	rc.top = 0;
-	rc.left = 0;
-	rc.right = 351;
-	rc.bottom = 209;
-	AdjustWindowRect(&rc, dwStyle, FALSE);
-
-	HWND hWndChooser = CreateWindowEx(WS_EX_DLGMODALFRAME, L"ColorChooserClass", L"Choose Color", dwStyle, 
-									CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, chooseColor->hwndOwner, NULL, NULL, NULL);
-	CHOOSECOLORDATA *data = (CHOOSECOLORDATA *) GetWindowLongPtr(hWndChooser, 0);
-	data->chooseColor = chooseColor;
-	ShowWindow(hWndChooser, SW_SHOW);
-	UpdateValues(hWndChooser, chooseColor->rgbResult);
-	InvalidateRect(hWndChooser, NULL, FALSE);
-	SetFocus(data->inputs[0]);
-
-	HWND hWndOwner = chooseColor->hwndOwner;
-	DoModal(hWndChooser);
-
-	int status = data->exitStatus;
-	free(data);
-
-	return status;
+	CHOOSECOLORDATA data = { 0 };
+	data.chooseColor = chooseColor;
+	
+	UiDlgCreateModal(chooseColor->hwndOwner, ColorChooserWndProc, L"Choose Color", 351, 209, &data);
+	return data.exitStatus;
 }

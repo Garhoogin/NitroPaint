@@ -20,6 +20,8 @@ extern HICON g_appIcon;
 
 static void ScrViewerRender(HWND hWnd, FrameBuffer *fb, int scrollX, int scrollY, int renderWidth, int renderHeight);
 
+static void ScrViewerImportDialog(HWND hWnd, NSCRVIEWERDATA *data);
+
 static void ScrViewerGraphicsChanged(NSCRVIEWERDATA *data) {
 	InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 	PreviewLoadBgScreen(data->nscr);
@@ -771,17 +773,8 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						EditorSave(hWnd);
 						break;
 					case ID_NSCRMENU_IMPORTBITMAPHERE:
-					{
-						HWND hWndMain = data->editorMgr->hWnd;
-						HWND h = CreateWindow(L"NscrBitmapImportClass", L"Import Bitmap",
-							WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
-							CW_USEDEFAULT, CW_USEDEFAULT, 300, 200, hWndMain, NULL, NULL, NULL);
-						SendMessage(h, NV_INITIALIZE, 0, (LPARAM) data);
-						WORD d = data->nscr->data[data->ted.contextHoverX + data->ted.contextHoverY * (data->nscr->tilesX * 8 >> 3)];
-						SendMessage(h, NV_INITIMPORTDIALOG, d, data->ted.contextHoverX | (data->ted.contextHoverY << 16));
-						DoModal(h);
+						ScrViewerImportDialog(data->editorMgr->hWnd, data);
 						break;
-					}
 					case ID_NSCRMENU_COPY:
 						ScrViewerCopy(data);
 						break;
@@ -888,6 +881,7 @@ static LRESULT WINAPI ScrViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 }
 
 typedef struct {
+	NSCRVIEWERDATA *editor;
 	HWND hWndEditor;
 	HWND hWndBitmapName;
 	HWND hWndBrowseButton;
@@ -978,8 +972,7 @@ static void ScrViewerThreadedImportBitmap(PROGRESSDATA *param) {
 	CreateThread(NULL, 0, ScrViewerBitmapImportInternal, param, 0, NULL);
 }
 
-static void ScrViewerImportDlgUpdate(HWND hWnd) {
-	NSCRBITMAPIMPORTDATA *data = (NSCRBITMAPIMPORTDATA *) GetWindowLongPtr(hWnd, 0);
+static void ScrViewerImportDlgUpdate(NSCRBITMAPIMPORTDATA *data) {
 	int dither = GetCheckboxChecked(data->hWndDitherCheckbox);
 	int writeChars = GetCheckboxChecked(data->hWndNewCharactersCheckbox);
 	int writeScreen = GetCheckboxChecked(data->hWndWriteScreenCheckbox);
@@ -1000,31 +993,30 @@ static void ScrViewerImportDlgUpdate(HWND hWnd) {
 	//if not overwriting screen, palette base and count are invalid
 	EnableWindow(data->hWndPaletteInput, writeScreen);
 	EnableWindow(data->hWndPalettesInput, writeScreen);
+}
 
-	InvalidateRect(hWnd, NULL, FALSE);
+static void ScrViewerImportDialogOnUpdateValues(HWND hWnd, HWND hWndCtl, int notif, void *param) {
+	ScrViewerImportDlgUpdate((NSCRBITMAPIMPORTDATA *) param);
 }
 
 static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	NSCRBITMAPIMPORTDATA *data = (NSCRBITMAPIMPORTDATA *) GetWindowLongPtr(hWnd, 0);
-	if (data == NULL) {
-		data = calloc(1, sizeof(NSCRBITMAPIMPORTDATA));
-		SetWindowLongPtr(hWnd, 0, (LONG_PTR) data);
-	}
+	NSCRBITMAPIMPORTDATA *data = (NSCRBITMAPIMPORTDATA *) UiDlgGetData(hWnd);
+	
 	switch (msg) {
 		case WM_CREATE:
 		{
-			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
-			int boxHeight = 2 * 27 - 5 + 10 + 10 + 10; //first row height
-			int boxHeight2 = 27 * 5 - 5 + 10 + 10 + 10; //second row height
-			int boxHeight3 = 3 * 27 - 5 + 10 + 10 + 10; //third row height
-			int width = 30 + 2 * boxWidth; //window width
-			int height = 42 + boxHeight + 10 + boxHeight2 + 10 + boxHeight3 + 10 + 22 + 10; //window height
+			int boxWidth = 100 + 100 + 10 + 10 + 10;    // box width
+			int boxHeight = 2 * 27 - 5 + 10 + 10 + 10;  // first row height
+			int boxHeight2 = 27 * 5 - 5 + 10 + 10 + 10; // second row height
+			int boxHeight3 = 3 * 27 - 5 + 10 + 10 + 10; // third row height
+			int width = 30 + 2 * boxWidth;              // window width
+			int height = 42 + boxHeight + 10 + boxHeight2 + 10 + boxHeight3 + 10 + 22 + 10; // window height
 
-			int leftX = 10 + 10; //left box X
-			int rightX = 10 + boxWidth + 10 + 10; //right box X
-			int topY = 42 + 10 + 8; //top box Y
-			int middleY = 42 + boxHeight + 10 + 10 + 8; //middle box Y
-			int bottomY = 42 + boxHeight + 10 + boxHeight2 + 10 + 10 + 8; //bottom box Y
+			int leftX = 10 + 10;                        // left box X
+			int rightX = 10 + boxWidth + 10 + 10;       // right box X
+			int topY = 42 + 10 + 8;                     // top box Y
+			int middleY = 42 + boxHeight + 10 + 10 + 8; // middle box Y
+			int bottomY = 42 + boxHeight + 10 + boxHeight2 + 10 + 10 + 8; // bottom box Y
 			
 			/*
 
@@ -1076,15 +1068,26 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			}
 			
 			EnableWindow(data->hWndDiffuseAmount, FALSE);
-
-			SetWindowSize(hWnd, width, height);
-			SetGUIFont(hWnd);
 			break;
 		}
 		case NV_INITIALIZE:
 		{
-			NSCRVIEWERDATA *nscrViewerData = (NSCRVIEWERDATA *) lParam;
-			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) nscrViewerData->editorMgr;
+			NSCRVIEWERDATA *editor = data->editor;
+
+			//get location
+			int scrX = editor->ted.contextHoverX;
+			int scrY = editor->ted.contextHoverY;
+			data->nscrTileX = scrX;
+			data->nscrTileY = scrY;
+
+			//defaults for import based on select location
+			uint16_t d = editor->nscr->data[scrX + scrY * editor->nscr->tilesX];
+			int palette    = (d >> 12) & 0x000F;
+			int charOrigin = (d >>  0) & 0x03FF;
+			data->characterOrigin = charOrigin;
+			UiCbSetCurSel(data->hWndPaletteInput, palette);
+
+			NITROPAINTSTRUCT *nitroPaintStruct = (NITROPAINTSTRUCT *) editor->editorMgr;
 			HWND hWndNcgrEditor = nitroPaintStruct->hWndNcgrViewer;
 			HWND hWndNclrEditor = nitroPaintStruct->hWndNclrViewer;
 
@@ -1104,22 +1107,11 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 			SetEditNumber(data->hWndPaletteSize, nMaxColors);
 			SetEditNumber(data->hWndCharacterCount, ncgr->nTiles);
 
-			data->hWndEditor = nscrViewerData->hWnd;
-			break;
-		}
-		case NV_INITIMPORTDIALOG:
-		{
-			WORD d = wParam;
-			int palette = (d >> 12) & 0xF;
-			int charOrigin = d & 0x3FF;
-			int nscrTileX = LOWORD(lParam);
-			int nscrTileY = HIWORD(lParam);
-
-			data->nscrTileX = nscrTileX;
-			data->nscrTileY = nscrTileY;
-			data->characterOrigin = charOrigin;
-
-			UiCbSetCurSel(data->hWndPaletteInput, palette);
+			//register control callbacks
+			UiDlgRegisterCtlCommand(hWnd, data->hWndNewCharactersCheckbox, BN_CLICKED, ScrViewerImportDialogOnUpdateValues);
+			UiDlgRegisterCtlCommand(hWnd, data->hWndDitherCheckbox, BN_CLICKED, ScrViewerImportDialogOnUpdateValues);
+			UiDlgRegisterCtlCommand(hWnd, data->hWndWriteScreenCheckbox, BN_CLICKED, ScrViewerImportDialogOnUpdateValues);
+			UiDlgRegisterCtlCommand(hWnd, data->hWndWriteCharIndicesCheckbox, BN_CLICKED, ScrViewerImportDialogOnUpdateValues);
 			break;
 		}
 		case WM_COMMAND:
@@ -1139,7 +1131,7 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					int width, height;
 					COLOR32 *px = ImgRead(textBuffer, &width, &height);
 
-					float diffuse = ((float) GetEditNumber(data->hWndDiffuseAmount)) * 0.01f;
+					float diffuse = ((float) GetEditNumber(data->hWndDiffuseAmount)) / 100.0f;
 
 					int characterBase = GetEditNumber(data->hWndCharacterBase);
 					int characterCount = GetEditNumber(data->hWndCharacterCount);
@@ -1209,27 +1201,24 @@ static LRESULT WINAPI ScrViewerImportDlgWndProc(HWND hWnd, UINT msg, WPARAM wPar
 					ShowWindow(hWndProgress, SW_SHOW);
 
 					ScrViewerThreadedImportBitmap(progressData);
-					SendMessage(hWnd, WM_CLOSE, 0, 0);
+					UiDlgEnd(hWnd);
 					DoModalEx(hWndProgress, FALSE);
-				} else if (hWndControl == data->hWndWriteCharIndicesCheckbox) {
-					ScrViewerImportDlgUpdate(hWnd);
-				} else if (hWndControl == data->hWndWriteScreenCheckbox) {
-					ScrViewerImportDlgUpdate(hWnd);
-				} else if (hWndControl == data->hWndDitherCheckbox) {
-					ScrViewerImportDlgUpdate(hWnd);
-				} else if (hWndControl == data->hWndNewCharactersCheckbox) {
-					ScrViewerImportDlgUpdate(hWnd);
 				}
 			}
 			break;
 		}
-		case WM_DESTROY:
-			free(data);
-			SetWindowLongPtr(hWnd, 0, 0);
-			break;
 	}
 	return DefModalProc(hWnd, msg, wParam, lParam);
 }
+
+static void ScrViewerImportDialog(HWND hWnd, NSCRVIEWERDATA *editor) {
+	NSCRBITMAPIMPORTDATA data = { 0 };
+	data.hWndEditor = editor->hWnd;
+	data.editor = editor;
+
+	UiDlgCreateModal(hWnd, ScrViewerImportDlgWndProc, L"Import Bitmap", 490, 449, &data);
+}
+
 
 static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	HWND hWndNscrViewer = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
@@ -1343,10 +1332,6 @@ static LRESULT WINAPI ScrViewerPreviewWndProc(HWND hWnd, UINT msg, WPARAM wParam
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-static void ScrViewerRegisterImportClass(void) {
-	RegisterGenericClass(L"NscrBitmapImportClass", ScrViewerImportDlgWndProc, sizeof(LPVOID));
-}
-
 static void ScrViewerRegisterPreviewClass(void) {
 	RegisterGenericClass(L"NscrPreviewClass", ScrViewerPreviewWndProc, sizeof(LPVOID));
 }
@@ -1364,7 +1349,6 @@ void RegisterNscrViewerClass(void) {
 	EditorAddFilter(cls, NSCR_TYPE_HUDSON2, L"bin", L"Screen Files (*.bin)\0*.bin\0");
 	EditorAddFilter(cls, NSCR_TYPE_BIN, L"bin", L"Screen Files (*.bin, *nsc.bin, *isc.bin, *.nbfs)\0*.bin;*.nbfs\0");
 
-	ScrViewerRegisterImportClass();
 	ScrViewerRegisterPreviewClass();
 }
 
