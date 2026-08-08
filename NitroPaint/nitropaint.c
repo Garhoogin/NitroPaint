@@ -2243,33 +2243,19 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEWLAYOUT_LETTERLAYOUT:
 					{
-						BNLL *bnll = (BNLL *) ObjAlloc(FILE_TYPE_BNLL, BNLL_TYPE_BNLL);
-						bnll->nMsg = 1;
-						bnll->messages = (BnllMessage *) calloc(1, sizeof(BnllMessage));
-						bnll->messages[0].pos.x.pos = 128;
-						bnll->messages[0].pos.y.pos = 96;
+						BNLL *bnll = LytEditorCreateDefaultLetterLayout(BNLL_TYPE_BNLL);
 						NpOpenObject(hWnd, &bnll->header);
 						break;
 					}
 					case ID_NEWLAYOUT_CELLLAYOUT:
 					{
-						BNCL *bncl = (BNCL *) ObjAlloc(FILE_TYPE_BNCL, BNCL_TYPE_BNCL);
-						bncl->nCell = 1;
-						bncl->cells = (BnclCell *) calloc(1, sizeof(BnclCell));
-						bncl->cells[0].pos.x.pos = 128;
-						bncl->cells[0].pos.y.pos = 96;
+						BNCL *bncl = LytEditorCreateDefaultCellLayout(FILE_TYPE_BNCL);
 						NpOpenObject(hWnd, &bncl->header);
 						break;
 					}
 					case ID_NEWLAYOUT_BUTTONLAYOUT:
 					{
-						BNBL *bnbl = (BNBL *) ObjAlloc(FILE_TYPE_BNBL, BNBL_TYPE_BNBL);
-						bnbl->nRegion = 1;
-						bnbl->regions = (BnblRegion *) calloc(1, sizeof(BnblRegion));
-						bnbl->regions[0].pos.x.pos = 128;
-						bnbl->regions[0].pos.y.pos = 96;
-						bnbl->regions[0].width = 64;
-						bnbl->regions[0].height = 64;
+						BNBL *bnbl = LytEditorCreateDefaultButtonLayout(BNBL_TYPE_BNBL);
 						NpOpenObject(hWnd, &bnbl->header);
 						break;
 					}

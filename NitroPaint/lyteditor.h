@@ -72,6 +72,8 @@ typedef struct BNLLEDITORDATA_ {
 	HWND hWndMessageLabel;
 	HWND hWndMessageInput;
 	HWND hWndEditFonts;
+
+	NFTR *defFont;
 } BNLLEDITORDATA;
 
 typedef struct BNCLEDITORDATA_ {
@@ -99,3 +101,8 @@ HWND CreateBnclViewerImmediate(int x, int y, int width, int height, HWND hWndPar
 HWND CreateBnblViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNBL *bnbl);
 
 void RegisterLytEditor(void);
+
+
+BNLL *LytEditorCreateDefaultLetterLayout(int format);
+BNCL *LytEditorCreateDefaultCellLayout(int format);
+BNBL *LytEditorCreateDefaultButtonLayout(int format);

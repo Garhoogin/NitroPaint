@@ -19,6 +19,42 @@ static void LytEditorUnregisterFontByData(LYTEDITOR *data, NFTRVIEWERDATA *nftrV
 static void LLytEditorReferenceTargetDialog(HWND hWnd, LYTEDITOR *editor);
 
 
+static void LytEditorInitDefaultPosition(JLytPosition *pos) {
+	pos->x.origin = JLYT_ORIG_X_LEFT;
+	pos->x.pos = 128;
+	pos->y.origin = JLYT_ORIG_Y_TOP;
+	pos->y.pos = 96;
+}
+
+static void LytEditorInitDefaultMessage(BNLL *bnll, int i) {
+	BnllMessage *msg = &bnll->messages[i];
+	memset(msg, 0, sizeof(BnllMessage));
+
+	msg->spaceX = 1;                 // default message spacing 1px h,v
+	msg->spaceY = 1;
+	msg->msg = _wcsdup(L"Message");  // placeholder text
+	LytEditorInitDefaultPosition(&msg->pos);
+
+	//TODO: set other attributes based on existing entries?
+}
+
+static void LytEditorInitDefaultCell(BNCL *bncl, int i) {
+	BnclCell *cell = &bncl->cells[i];
+	memset(cell, 0, sizeof(BnclCell));
+
+	cell->cell = 0;
+	LytEditorInitDefaultPosition(&cell->pos);
+}
+
+static void LytEditorInitDefaultRegion(BNBL *bnbl, int i) {
+	BnblRegion *rgn = &bnbl->regions[i];
+	memset(rgn, 0, sizeof(BnblRegion));
+
+	rgn->width  = 64;       // default size 64x64
+	rgn->height = 64;
+	LytEditorInitDefaultPosition(&rgn->pos);
+}
+
 static void LytEditorOnFontEditorDestroyed(EDITOR_DATA *editorData, void *param) {
 	LYTEDITOR *data = (LYTEDITOR *) param;
 
@@ -130,7 +166,7 @@ static NFTR_GLYPH *GetGlyph(NFTR *nftr, wchar_t chr) {
 	return NftrGetInvalidGlyph(nftr);
 }
 
-static int LLytEditorMeasureTextLineWidth(LYTEDITOR *ed, NFTRVIEWERDATA *nftrViewerData, int spaceX, const wchar_t **ppos) {
+static int LLytEditorMeasureTextLineWidth(LYTEDITOR *ed, NFTRVIEWERDATA *nftrViewerData, NFTR *nftr, int spaceX, const wchar_t **ppos) {
 	//we will scan the string for either a null terminator or a line feed, and ignore carriage returns.
 	const wchar_t *str = *ppos;
 
@@ -153,8 +189,8 @@ static int LLytEditorMeasureTextLineWidth(LYTEDITOR *ed, NFTRVIEWERDATA *nftrVie
 			{
 				//else: normal character
 				int chrWidth = defCharWidth;
-				if (nftrViewerData != NULL) {
-					NFTR_GLYPH *glyph = GetGlyph(nftrViewerData->nftr, chr);
+				if (nftr != NULL) {
+					NFTR_GLYPH *glyph = GetGlyph(nftr, chr);
 					if (glyph != NULL) {
 						chrWidth = glyph->width + glyph->spaceLeft + glyph->spaceRight;
 					}
@@ -179,6 +215,13 @@ static void LLytEditorMeasureText(LYTEDITOR *ed, int fontID, int spaceX, int spa
 		nftrViewerData = ed->registeredFontEditors[fontID];
 	}
 
+	BNLLEDITORDATA *data = (BNLLEDITORDATA *) ed->data;
+
+	NFTR *nftr = data->defFont;
+	if (nftrViewerData != NULL) {
+		nftr = nftrViewerData->nftr;
+	}
+
 	//if the registered font is NULL, report placeholder statistics.
 	int lineHeight = 12;  // line height of NITRO_LC_Font_s
 	int defCharWidth = 6; // latin average width
@@ -195,7 +238,7 @@ static void LLytEditorMeasureText(LYTEDITOR *ed, int fontID, int spaceX, int spa
 	int nLine = 0;
 	while (1) {
 		//repeat until we reach the end of the string
-		int lineWidth = LLytEditorMeasureTextLineWidth(ed, nftrViewerData, spaceX, &str);
+		int lineWidth = LLytEditorMeasureTextLineWidth(ed, nftrViewerData, nftr, spaceX, &str);
 		if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
 
 		nLine++;
@@ -208,9 +251,9 @@ static void LLytEditorMeasureText(LYTEDITOR *ed, int fontID, int spaceX, int spa
 	*pHeight = nLine * (lineHeight + spaceY) - spaceY;
 }
 
-static int LLytEditorCalcOffsetForAlignment(LYTEDITOR *ed, NFTRVIEWERDATA *nftrViewerData, const wchar_t *str, int spaceX, JLytOrigin alignX, int width) {
+static int LLytEditorCalcOffsetForAlignment(LYTEDITOR *ed, NFTRVIEWERDATA *nftrViewerData, NFTR *nftr, const wchar_t *str, int spaceX, JLytOrigin alignX, int width) {
 	//calculate line width
-	int lineWidth = LLytEditorMeasureTextLineWidth(ed, nftrViewerData, spaceX, &str);
+	int lineWidth = LLytEditorMeasureTextLineWidth(ed, nftrViewerData, nftr, spaceX, &str);
 
 	switch (alignX) {
 		case JLYT_ORIG_X_LEFT:
@@ -422,6 +465,9 @@ static void LytEditorFree(LYTEDITOR *ed) {
 	ed->data = NULL;
 	ed->type = FILE_TYPE_INVALID;
 	FbDestroy(&ed->fb);
+
+	//free the UI manager
+	UiCtlMgrFree(&ed->mgr);
 }
 
 static void LLytEditorSetCurrentElement(BNLLEDITORDATA *data, const BnllMessage *msg) {
@@ -617,6 +663,19 @@ static void LytEditorOnAddElement(HWND hWnd, HWND hWndCtl, int notif, void *para
 		case FILE_TYPE_BNBL:
 			((BNBLEDITORDATA *) ed->data)->bnbl->regions = (BnblRegion *) pbuf;
 			((BNBLEDITORDATA *) ed->data)->bnbl->nRegion = nElem;
+			break;
+	}
+
+	//initialize the element
+	switch (ed->type) {
+		case FILE_TYPE_BNLL:
+			LytEditorInitDefaultMessage(((BNLLEDITORDATA *) ed->data)->bnll, i + 1);
+			break;
+		case FILE_TYPE_BNCL:
+			LytEditorInitDefaultCell(((BNCLEDITORDATA *) ed->data)->bncl, i + 1);
+			break;
+		case FILE_TYPE_BNBL:
+			LytEditorInitDefaultRegion(((BNBLEDITORDATA *) ed->data)->bnbl, i + 1);
 			break;
 	}
 	
@@ -927,6 +986,30 @@ static void LLytEditorOnCreate(BNLLEDITORDATA *data) {
 	UiCtlMgrAddCommand(&data->editor.mgr, data->hWndMessageInput, EN_CHANGE, LLytEditorOnSetMessage);
 	UiCtlMgrAddCommand(&data->editor.mgr, data->hWndEditFonts, BN_CLICKED, LLytEditorOnClickedEditFonts);
 	UiCtlMgrAddCommand(&data->editor.mgr, data->hWndMessageLabel, BN_CLICKED, LLytEditorOnClickedMessageCheckbox);
+
+	//the default font
+	static const unsigned char fontData[] = {
+		0x4A, 0x4E, 0x46, 0x52, 0x01, 0x01, 0x02, 0x00, 0x87, 0x01, 0x00, 0x08, 0x00, 0x07, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x00, 0xFF, 0x3F, 0xC0, 0xC7, 0x51, 0xD9,
+		0x54, 0x1C, 0x1F, 0xE0, 0x0F, 0x00
+	};
+	static const unsigned char mapData[] = {
+		0x4A, 0x4E, 0x43, 0x4D, 0x01, 0x01, 0x02, 0x00, 0x20, 0x00, 0x40, 0x00
+	};
+
+	ObjReadBuffer((ObjHeader **) &data->defFont, fontData, sizeof(fontData), FILE_TYPE_FONT, NFTR_TYPE_BNFR_11, COMPRESSION_NONE);
+	BncmpRead(data->defFont, mapData, sizeof(mapData));
+}
+
+static void LLytEditorFree(BNLLEDITORDATA *data) {
+	//unregister fonts
+	for (int i = 0; i < LYT_EDITOR_MAX_FONTS; i++) {
+		LytEditorUnregisterFontByIndex(&data->editor, i);
+	}
+
+	//free the default font
+	ObjFree(&data->defFont->header);
+	data->defFont = NULL;
 }
 
 static void LLytEditorOnSize(BNLLEDITORDATA *data, const RECT *rcClient) {
@@ -1225,16 +1308,20 @@ static void LLytEditorDrawMessage(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER 
 	LytEditorGetElementBounds(data, msg, &x, &y, &width, &height);
 
 	//get registered font
+	BNLLEDITORDATA *bnllEditorData = (BNLLEDITORDATA *) data->data;
 	NFTRVIEWERDATA *fontEditorData = data->registeredFontEditors[msg->font];
-	if (fontEditorData == NULL) return; // TODO
 
-	//check font code map
-	NFTR *nftr = fontEditorData->nftr;
+	NFTR *nftr = bnllEditorData->defFont;
+	if (fontEditorData != NULL) nftr = fontEditorData->nftr;
+
+	if (nftr == NULL) return; // no font
+
+	//check font code map (required to render text)
 	if (!nftr->hasCodeMap) return;
 
 	//start position. Initialize (X,Y) with top-left, but adjust the X for alignment.
 	int curX = x, curY = y;
-	curX += LLytEditorCalcOffsetForAlignment(data, fontEditorData, pstr, msg->spaceX, msg->alignment.x, width);
+	curX += LLytEditorCalcOffsetForAlignment(data, fontEditorData, nftr, pstr, msg->spaceX, msg->alignment.x, width);
 
 	//draw loop
 	while (*pstr) {
@@ -1243,7 +1330,7 @@ static void LLytEditorDrawMessage(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER 
 		if (cc == L'\n') {
 			//advance line
 			curX = x;
-			curX += LLytEditorCalcOffsetForAlignment(data, fontEditorData, pstr, msg->spaceX, msg->alignment.x, width);
+			curX += LLytEditorCalcOffsetForAlignment(data, fontEditorData, nftr, pstr, msg->spaceX, msg->alignment.x, width);
 			curY += nftr->lineHeight + msg->spaceY;
 		} else if (cc == L'\r') {
 			//do nothing
@@ -1628,15 +1715,9 @@ static LRESULT CALLBACK BnllEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			LytEditorOnSize(ed);
 			break;
 		case WM_DESTROY:
-		{
-			//unregister all font destroy callbacks
-			for (int i = 0; i < LYT_EDITOR_MAX_FONTS; i++) {
-				LytEditorUnregisterFontByIndex(ed, i);
-			}
-			LytEditorFree(&data->editor);
-			UiCtlMgrFree(&ed->mgr);
+			LLytEditorFree(data);
+			LytEditorFree(ed);
 			break;
-		}
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
@@ -1668,8 +1749,7 @@ static LRESULT CALLBACK BnclEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			LytEditorOnSize(ed);
 			break;
 		case WM_DESTROY:
-			LytEditorFree(&data->editor);
-			UiCtlMgrFree(&ed->mgr);
+			LytEditorFree(ed);
 			break;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
@@ -1702,8 +1782,7 @@ static LRESULT CALLBACK BnblEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 			LytEditorOnSize(ed);
 			break;
 		case WM_DESTROY:
-			LytEditorFree(&data->editor);
-			UiCtlMgrFree(&ed->mgr);
+			LytEditorFree(ed);
 			break;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
@@ -1853,4 +1932,47 @@ void RegisterLytEditor(void) {
 	EditorAddFilter(clsBnbl, BNBL_TYPE_BNBL, L"bnbl", L"BNBL Files (*.bnbl)\0*.bnbl\0");
 
 	RegisterGenericClass(L"LytPreview", LytPreviewWndProc, sizeof(void *));
+}
+
+
+
+// ----- default object construction
+
+BNLL *LytEditorCreateDefaultLetterLayout(int format) {
+	//allocate the new object
+	BNLL *bnll = (BNLL *) ObjAlloc(FILE_TYPE_BNLL, format);
+	if (bnll == NULL) return NULL; // fail
+
+	//create default element
+	bnll->nMsg = 1;
+	bnll->messages = (BnllMessage *) calloc(1, sizeof(BnllMessage));
+	LytEditorInitDefaultMessage(bnll, 0);
+
+	return bnll;
+}
+
+BNCL *LytEditorCreateDefaultCellLayout(int format) {
+	//allocate the new object
+	BNCL *bncl = (BNCL *) ObjAlloc(FILE_TYPE_BNCL, format);
+	if (bncl == NULL) return NULL; // fail
+
+	//create default element
+	bncl->nCell = 1;
+	bncl->cells = (BnclCell *) calloc(1, sizeof(BnclCell));
+	LytEditorInitDefaultCell(bncl, 0);
+
+	return bncl;
+}
+
+BNBL *LytEditorCreateDefaultButtonLayout(int format) {
+	//allocate the new object
+	BNBL *bnbl = (BNBL *) ObjAlloc(FILE_TYPE_BNBL, format);
+	if (bnbl == NULL) return NULL; // fail
+
+	//create default element
+	bnbl->nRegion = 1;
+	bnbl->regions = (BnblRegion *) calloc(1, sizeof(BnblRegion));
+	LytEditorInitDefaultRegion(bnbl, 0);
+
+	return bnbl;
 }
