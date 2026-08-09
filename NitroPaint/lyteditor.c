@@ -637,15 +637,21 @@ static void LytEditorOnAddElement(HWND hWnd, HWND hWndCtl, int notif, void *para
 			break;
 	}
 
-	int i = ed->curElem;
-	if (i < 0 || i >= nElem) return;
-
 	//insert at i+1
-	pbuf = realloc(pbuf, (nElem + 1) * elemSize);
-	void *p1 = (void *) (((uintptr_t) pbuf) + (i + 1) * elemSize);
-	if (i < (nElem - 1)) {
-		void *p2 = (void *) (((uintptr_t) pbuf) + (i + 2) * elemSize);
-		memmove(p2, p1, (nElem - i - 1) * elemSize);
+	int iAdd = ed->curElem + 1;
+	if (ed->curElem < 0 || ed->curElem >= nElem) {
+		//default to insert at end
+		iAdd = nElem;
+	}
+
+	void *newbuf = realloc(pbuf, (nElem + 1) * elemSize);
+	if (newbuf == NULL) return; // error
+
+	pbuf = newbuf;
+	void *p1 = (void *) (((uintptr_t) pbuf) + iAdd * elemSize);
+	if (iAdd < nElem) {
+		void *p2 = (void *) (((uintptr_t) pbuf) + (iAdd + 1) * elemSize);
+		memmove(p2, p1, (nElem - iAdd) * elemSize);
 	}
 	memset(p1, 0, elemSize);
 	nElem++;
@@ -669,13 +675,13 @@ static void LytEditorOnAddElement(HWND hWnd, HWND hWndCtl, int notif, void *para
 	//initialize the element
 	switch (ed->type) {
 		case FILE_TYPE_BNLL:
-			LytEditorInitDefaultMessage(((BNLLEDITORDATA *) ed->data)->bnll, i + 1);
+			LytEditorInitDefaultMessage(((BNLLEDITORDATA *) ed->data)->bnll, iAdd);
 			break;
 		case FILE_TYPE_BNCL:
-			LytEditorInitDefaultCell(((BNCLEDITORDATA *) ed->data)->bncl, i + 1);
+			LytEditorInitDefaultCell(((BNCLEDITORDATA *) ed->data)->bncl, iAdd);
 			break;
 		case FILE_TYPE_BNBL:
-			LytEditorInitDefaultRegion(((BNBLEDITORDATA *) ed->data)->bnbl, i + 1);
+			LytEditorInitDefaultRegion(((BNBLEDITORDATA *) ed->data)->bnbl, iAdd);
 			break;
 	}
 	
@@ -685,7 +691,7 @@ static void LytEditorOnAddElement(HWND hWnd, HWND hWndCtl, int notif, void *para
 	UiCbAddString(ed->hWndElementDropdown, textbuf);
 
 	//select new element
-	LytEditorSetCurrentElement(ed, ed->curElem + 1);
+	LytEditorSetCurrentElement(ed, iAdd);
 	InvalidateRect(ed->hWndPreview, NULL, FALSE);
 }
 
@@ -1487,7 +1493,8 @@ static void LytEditorOnPaint(LYTEDITOR *data) {
 		}
 
 		//only draw the borders when the element is not being dragged.
-		if (!(data->mouseDown && effHitType == LYT_HIT_ELEM && (effHit & LYT_HIT_ID_MASK) == i && data->mouseDragged)) {
+		int effHitID = effHit & LYT_HIT_ID_MASK;
+		if (!(data->mouseDown && effHitType == LYT_HIT_ELEM && effHitID == i && data->mouseDragged)) {
 			FbDrawRect(&data->fb, x * scale - scrollX, y * scale - scrollY, width * scale, height * scale, borderColor);
 		}
 	}
