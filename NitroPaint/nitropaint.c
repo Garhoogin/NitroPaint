@@ -2249,7 +2249,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					}
 					case ID_NEWLAYOUT_CELLLAYOUT:
 					{
-						BNCL *bncl = LytEditorCreateDefaultCellLayout(FILE_TYPE_BNCL);
+						BNCL *bncl = LytEditorCreateDefaultCellLayout(BNCL_TYPE_BNCL);
 						NpOpenObject(hWnd, &bncl->header);
 						break;
 					}

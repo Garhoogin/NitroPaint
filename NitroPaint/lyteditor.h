@@ -19,12 +19,6 @@ typedef struct LYTEDITOR_ {
 	HWND hWndElementDropdown;
 	HWND hWndAddElement;
 	HWND hWndRemoveElement;
-	HWND hWndOriginLabel;
-	HWND hWndOriginXDropdown;
-	HWND hWndOriginYDropdown;
-	HWND hWndPositionLabel;
-	HWND hWndPositionX;
-	HWND hWndPositionY;
 
 	COLOR32 bgColor;
 	FrameBuffer fb;
@@ -45,7 +39,6 @@ typedef struct LYTEDITOR_ {
 	int dragStartY;      // Y position of dragged element at start of drag
 
 	int curElem;         // currently selected layout element
-	int updating;        // updating UI controls (suppress UI response)
 
 	//associated data
 	NFTRVIEWERDATA *registeredFontEditors[LYT_EDITOR_MAX_FONTS]; // registered font editors
@@ -57,20 +50,6 @@ typedef struct BNLLEDITORDATA_ {
 	BNLL *bnll;
 	LYTEDITOR editor;
 
-	HWND hWndAlignmentLabel;
-	HWND hWndAlignX;
-	HWND hWndAlignY;
-	HWND hWndSpacingLabel;
-	HWND hWndSpacingX;
-	HWND hWndSpacingY;
-	HWND hWndFontLabel;
-	HWND hWndFontInput;
-	HWND hWndPaletteLabel;
-	HWND hWndPaletteInput;
-	HWND hWndColorLabel;
-	HWND hWndColorInput;
-	HWND hWndMessageLabel;
-	HWND hWndMessageInput;
 	HWND hWndEditFonts;
 
 	NFTR *defFont;
@@ -80,20 +59,12 @@ typedef struct BNCLEDITORDATA_ {
 	EDITOR_BASIC_MEMBERS;
 	BNCL *bncl;
 	LYTEDITOR editor;
-
-	HWND hWndCellLabel;
-	HWND hWndCellInput;
 } BNCLEDITORDATA;
 
 typedef struct BNBLEDITORDATA_ {
 	EDITOR_BASIC_MEMBERS;
 	BNBL *bnbl;
 	LYTEDITOR editor;
-
-	HWND hWndWidthLabel;
-	HWND hWndWidthInput;
-	HWND hWndHeightLabel;
-	HWND hWndHeightInput;
 } BNBLEDITORDATA;
 
 HWND CreateBnllViewerImmediate(int x, int y, int width, int height, HWND hWndParent, BNLL *bnll);
