@@ -168,6 +168,16 @@ void FbDrawRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 co
 }
 
 void FbFillRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col) {
+	//fill blend rectangle, set alpha=1.0
+	FbFillBlendRect(fb, x, y, width, height, col | 0xFF000000);
+}
+
+void FbFillBlendRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col) {
+	//alpha weighting of foreground and background
+	unsigned int aFore = (col >> 24);
+	unsigned int aBack = 255 - aFore;
+	if (aFore == 0) return;
+
 	//if X<0, adjust X to 0
 	if (x < 0) {
 		width += x;
@@ -186,11 +196,32 @@ void FbFillRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 co
 		height = fb->height - y;
 	}
 
+	unsigned int r = ((col >>  0) & 0xFF) * aFore;
+	unsigned int g = ((col >>  8) & 0xFF) * aFore;
+	unsigned int b = ((col >> 16) & 0xFF) * aFore;
+
 	//fill
 	for (int i = 0; i < height; i++) {
 		COLOR32 *row = &fb->px[(y + i) * fb->width + x];
 		for (int j = 0; j < width; j++) {
-			row[j] = col;
+			//blend pixel color
+			if (aFore == 0xFF) {
+				//drawing color directly
+				row[j] = col;
+			} else {
+				//blending color
+
+				COLOR32 src = row[j];
+				unsigned int destR = ((src >>  0) & 0xFF) * aBack + r;
+				unsigned int destG = ((src >>  8) & 0xFF) * aBack + g;
+				unsigned int destB = ((src >> 16) & 0xFF) * aBack + b;
+
+				//scale down
+				destR = (destR * 2 + 255) / 510;
+				destG = (destG * 2 + 255) / 510;
+				destB = (destB * 2 + 255) / 510;
+				row[j] = destR | (destG << 8) | (destB << 16) | 0xFF000000;
+			}
 		}
 	}
 }

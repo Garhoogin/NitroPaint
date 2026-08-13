@@ -1456,8 +1456,8 @@ static void BLytEditorDrawRegion(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *
 	int x, y, width, height;
 	LytEditorGetElementBounds(data, rgn, &x, &y, &width, &height);
 
-	COLOR32 fillColor = 0xFFFFFF;
-	FbFillRect(&data->fb, x * scale - scrollX, y * scale - scrollY, width * scale, height * scale, fillColor);
+	COLOR32 fillColor = 0x7FFFFFFF;
+	FbFillBlendRect(&data->fb, x * scale - scrollX, y * scale - scrollY, width * scale, height * scale, fillColor);
 }
 
 static void LLytEditorDrawMessage(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *ncer, int scrollX, int scrollY, int scale, const BnllMessage *msg) {

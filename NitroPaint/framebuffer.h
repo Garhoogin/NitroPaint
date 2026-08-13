@@ -26,3 +26,4 @@ void FbDrawLine(FrameBuffer *fb, COLOR32 col, int x1, int y1, int x2, int y2);
 void FbRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col);
 void FbDrawRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col);
 void FbFillRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col);
+void FbFillBlendRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col);
