@@ -631,6 +631,19 @@ void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, 
 	wcex.hbrBackground = (HBRUSH) (COLOR_BTNFACE + 1);
 	ATOM aClass = RegisterClassEx(&wcex);
 
+	//get the top-level parent window
+	HWND hWndDesktop = GetDesktopWindow();
+	while (1) {
+		HWND hParent = (HWND) GetWindowLongPtr(hWndParent, GWL_HWNDPARENT);
+		if (hParent == NULL || hParent == hWndDesktop) break;
+
+		hWndParent = hParent;
+	}
+	
+	//get the screen rect of the top-level parent
+	RECT rcParent;
+	GetWindowRect(hWndParent, &rcParent);
+
 	//init dialog data
 	UiDlgData data = { 0 };
 	data.wndProc = wndProc;
@@ -646,6 +659,17 @@ void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, 
 	//set the window size and font
 	SetWindowSize(h, width, height);
 	SetGUIFont(h);
+
+	//calculate the position to place the dialog window at
+	RECT rcWindow;
+	GetWindowRect(h, &rcWindow);
+
+	//updated nonclient coordinates
+	int ncW = rcWindow.right - rcWindow.left;
+	int ncH = rcWindow.bottom - rcWindow.top;
+	int ncX = rcParent.left + (rcParent.right - rcParent.left - ncW) / 2;
+	int ncY = rcParent.top + (rcParent.bottom - rcParent.top - ncH) / 2;
+	SetWindowPos(h, NULL, ncX, ncY, ncW, ncH, SWP_NOSIZE);
 
 	//show window and modal wait
 	ShowWindow(h, SW_SHOW);
