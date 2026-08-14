@@ -7,10 +7,26 @@
 #include "combo2d.h"
 
 
-#define LYT_HIT_TYPE_MASK       0x8000 // hit type mask
-#define LYT_HIT_ID_MASK         0x7FFF // hit ID mask
-#define LYT_HIT_NOWHERE         0x0000 // hit type: nowhere
-#define LYT_HIT_ELEM            0x8000 // hit type: layout element
+// ----- element hit flags
+#define LYT_HIT_TYPE_MASK        0x8000  // hit type mask
+#define LYT_HIT_FLAG_MASK        0x7800  // hit flags mask
+#define LYT_HIT_ID_MASK          0x07FF  // hit ID mask
+#define LYT_HIT_NOWHERE          0x0000  // hit type: nowhere
+#define LYT_HIT_ELEM             0x8000  // hit type: layout element
+
+// ----- element state indicator flags
+#define ELEM_STATE_HOVER         0x0001  // the item is hovered
+#define ELEM_STATE_SELECT        0x0002  // the item is selected
+
+// ----- colors
+#define COLOR_OUTLINE        0xFF0000FF  // color of the box outline
+#define COLOR_OUTLINE_SELECT 0xFF00FF00  // color of the box on select
+#define COLOR_OUTLINE_HOVER  0xFF00FFFF  // color of the box on hover
+#define COLOR_RGN            0x700000FF  // color of the hit region fill
+#define COLOR_RGN_SELECT     0x7F00FF00  // color of the hit region fill on select
+#define COLOR_RGN_HOVER      0x7F00FFFF  // color of the hit region fill on hover
+#define COLOR_DEF_BG         0x00000000  // color of default background
+#define COLOR_DEF_FG         0xFFFFFFFF  // color of default foreground
 
 
 static void LytEditorUnregisterFontByIndex(LYTEDITOR *data, int i);
@@ -1416,7 +1432,7 @@ static int CLytIsCellBankBNCD(NCER *ncer) {
 	return combo->header.format == COMBO2D_TYPE_BNCD;
 }
 
-static void CLytEditorDrawCell(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *ncer, int scrollX, int scrollY, int scale, const BnclCell *bnclCell) {
+static void CLytEditorDrawCell(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *ncer, int scrollX, int scrollY, int scale, const BnclCell *bnclCell, int elemState) {
 	//draw
 	int x, y, width, height;
 	LytEditorGetElementBounds(data, bnclCell, &x, &y, &width, &height);
@@ -1452,15 +1468,19 @@ static void CLytEditorDrawCell(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *nc
 	}
 }
 
-static void BLytEditorDrawRegion(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *ncer, int scrollX, int scrollY, int scale, const BnblRegion *rgn) {
+static void BLytEditorDrawRegion(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *ncer, int scrollX, int scrollY, int scale, const BnblRegion *rgn, int elemState) {
 	int x, y, width, height;
 	LytEditorGetElementBounds(data, rgn, &x, &y, &width, &height);
 
-	COLOR32 fillColor = 0x7FFFFFFF;
+	//region color
+	COLOR32 fillColor = REVERSE(COLOR_RGN);
+	if (elemState & ELEM_STATE_HOVER) fillColor = REVERSE(COLOR_RGN_HOVER);
+	else if (elemState & ELEM_STATE_SELECT) fillColor = REVERSE(COLOR_RGN_SELECT);
+
 	FbFillBlendRect(&data->fb, x * scale - scrollX, y * scale - scrollY, width * scale, height * scale, fillColor);
 }
 
-static void LLytEditorDrawMessage(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *ncer, int scrollX, int scrollY, int scale, const BnllMessage *msg) {
+static void LLytEditorDrawMessage(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *ncer, int scrollX, int scrollY, int scale, const BnllMessage *msg, int elemState) {
 	//message text
 	const wchar_t *pstr = msg->msg;
 	if (pstr == NULL) pstr = L"\xffff";
@@ -1517,7 +1537,7 @@ static void LLytEditorDrawMessage(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER 
 					if (pxv == 0) continue;
 
 					//determine color to paint.
-					COLOR32 col = 0xFFFFFFFF;
+					COLOR32 col = REVERSE(COLOR_DEF_FG);
 					if (nclr != NULL) {
 						col = 0xFF000000;
 
@@ -1575,7 +1595,7 @@ static void LytEditorOnPaint(LYTEDITOR *data) {
 	NCLR *nclr = LytEditorGetAssociatedPalette(data);
 	NCGR *ncgr = LytEditorGetAssociatedCharacter(data);
 	NCER *ncer = LytEditorGetAssociatedCellBank(data);
-	COLOR32 bgColor = 0;
+	COLOR32 bgColor = COLOR_DEF_BG;
 	if (nclr != NULL && nclr->nColors > 0) {
 		bgColor = ColorConvertFromDS(nclr->colors[0]);
 		bgColor = REVERSE(bgColor);
@@ -1626,31 +1646,33 @@ static void LytEditorOnPaint(LYTEDITOR *data) {
 		int effHit = data->hit;
 		if (data->mouseDown) effHit = data->mouseDownHit;
 		int effHitType = effHit & LYT_HIT_TYPE_MASK;
+		int hitno = effHit & LYT_HIT_ID_MASK;
+
+		//get the element state
+		int elemState = 0;
+		if (i == data->curElem) elemState |= ELEM_STATE_SELECT;
+		if (effHitType == LYT_HIT_ELEM && hitno == i) elemState |= ELEM_STATE_HOVER;
 
 		//mark the currently selected element with a green border.
-		COLOR32 borderColor = 0xFF0000;
-		if (i == data->curElem) {
-			borderColor = 0x00FF00;
-		}
-		
-		//mark a hovered element with a yellow border.
-		if (effHitType == LYT_HIT_ELEM) {
-			int hitno = effHit & LYT_HIT_ID_MASK;
-			if (hitno == i) {
-				borderColor = 0xFFFF00;
-			}
-		}
+		COLOR32 borderColor = REVERSE(COLOR_OUTLINE);
+		if (elemState & ELEM_STATE_HOVER) borderColor = borderColor = REVERSE(COLOR_OUTLINE_HOVER);
+		else if (elemState & ELEM_STATE_SELECT) borderColor = REVERSE(COLOR_OUTLINE_SELECT);
 
 		//draw element
 		switch (data->type) {
-			case FILE_TYPE_BNLL: LLytEditorDrawMessage(data, nclr, ncgr, ncer, scrollX, scrollY, scale, (const BnllMessage *) elem); break;
-			case FILE_TYPE_BNCL: CLytEditorDrawCell(data, nclr, ncgr, ncer, scrollX, scrollY, scale, (const BnclCell *) elem); break;
-			case FILE_TYPE_BNBL: BLytEditorDrawRegion(data, nclr, ncgr, ncer, scrollX, scrollY, scale, (const BnblRegion *) elem); break;
+			case FILE_TYPE_BNLL:
+				LLytEditorDrawMessage(data, nclr, ncgr, ncer, scrollX, scrollY, scale, (const BnllMessage *) elem, elemState);
+				break;
+			case FILE_TYPE_BNCL:
+				CLytEditorDrawCell(data, nclr, ncgr, ncer, scrollX, scrollY, scale, (const BnclCell *) elem, elemState);
+				break;
+			case FILE_TYPE_BNBL:
+				BLytEditorDrawRegion(data, nclr, ncgr, ncer, scrollX, scrollY, scale, (const BnblRegion *) elem, elemState);
+				break;
 		}
 
 		//only draw the borders when the element is not being dragged.
-		int effHitID = effHit & LYT_HIT_ID_MASK;
-		if (!(data->mouseDown && effHitType == LYT_HIT_ELEM && effHitID == i && data->mouseDragged)) {
+		if (!(data->mouseDown && effHitType == LYT_HIT_ELEM && hitno == i && data->mouseDragged)) {
 			FbDrawRect(&data->fb, x * scale - scrollX, y * scale - scrollY, width * scale, height * scale, borderColor);
 		}
 	}
