@@ -397,12 +397,6 @@ static LRESULT CALLBACK EditorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 		EDITOR_DATA *data = (EDITOR_DATA *) EditorGetData(hWnd);
 		EditorManager *mgr = data == NULL ? NULL : data->editorMgr;
 		switch (msg) {
-			case NV_GETTYPE:
-				if (data != NULL && data->file != NULL) {
-					return data->file->type;
-				} else {
-					return FILE_TYPE_INVALID;
-				}
 			case WM_COMMAND:
 				//common command messages
 				if (lParam == 0 && HIWORD(wParam) == 0) {

@@ -1317,9 +1317,6 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			TexViewerUpdateStatusBar(hWnd);
 			break;
 		}
-		case NV_SETPATH:
-			memcpy(data->szInitialFile, (LPWSTR) lParam, 2 * wParam + 2);
-			break;
 		case WM_COMMAND:
 			TexViewerOnCommand(data, wParam, lParam);
 			break;
@@ -1338,8 +1335,6 @@ static LRESULT CALLBACK TextureEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			TedDestroy(&data->ted);
 			break;
 		}
-		case NV_GETTYPE:
-			return FILE_TYPE_TEXTURE;
 	}
 	return DefChildProc(hWnd, msg, wParam, lParam);
 }
@@ -1670,8 +1665,6 @@ static LRESULT CALLBACK TextureTileEditorWndProc(HWND hWnd, UINT msg, WPARAM wPa
 			
 			break;
 		}
-		case NV_GETTYPE:
-			return FILE_TYPE_TEXTURE;
 		case WM_LBUTTONUP:
 		{
 			data->tileMouseDown = 0;
