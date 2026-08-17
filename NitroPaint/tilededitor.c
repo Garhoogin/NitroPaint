@@ -1252,8 +1252,8 @@ void TedInit(TedData *ted, HWND hWnd, HWND hWndViewer, int tileWidth, int tileHe
 	ted->hWndViewer = hWndViewer;
 
 	//create dummy framebuffers
-	FbCreate(&ted->fb, hWnd, 1, 1);
-	FbCreate(&ted->fbMargin, hWnd, 1, 1);
+	FbCreateOnWindow(&ted->fb, hWnd, 1, 1);
+	FbCreateOnWindow(&ted->fbMargin, hWnd, 1, 1);
 	InvalidateRect(ted->hWnd, NULL, FALSE);
 }
 

@@ -869,7 +869,7 @@ static void NftrViewerOnCreate(NFTRVIEWERDATA *data) {
 	HIMAGELIST hLarge = ImageList_Create(PREVIEW_ICON_WIDTH, PREVIEW_ICON_HEIGHT, ILC_MASK | ILC_COLOR24, GLYPH_CACHE_SIZE, 1);
 	ListView_SetImageList(data->hWndGlyphList, hLarge, LVSIL_NORMAL);
 
-	FbCreate(&data->fbPreview, hWnd, 1, 1);
+	FbCreateOnWindow(&data->fbPreview, hWnd, 1, 1);
 	data->previewText = _wcsdup(L"Preview text...");
 	UiEditSetText(data->hWndPreviewInput, data->previewText);
 
@@ -1293,7 +1293,7 @@ static void NftrViewerGenerateGlyphsFromFont(NFTRVIEWERDATA *data, NFTR_GLYPH *g
 
 	//create glyph frame buffer
 	FrameBuffer fb;
-	FbCreate(&fb, NULL, maxWidth + 3, height); // +1 on the left, +2 on right for rounding
+	FbCreateOnWindow(&fb, NULL, maxWidth + 3, height); // +1 on the left, +2 on right for rounding
 	SelectObject(fb.hDC, hFont);
 
 	for (int i = 0; i < nGlyph; i++) {

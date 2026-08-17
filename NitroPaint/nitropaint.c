@@ -3178,7 +3178,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndWidthInput = CreateCombobox(hWnd, (LPCWSTR *) widths, 8, 70, 118, 100, 22, 0);
 			data->hWndConvertButton = CreateButton(hWnd, L"Convert", 70, 145, 100, 22, TRUE);
 
-			FbCreate(&data->fb, hWnd, 1, 1);
+			FbCreateOnWindow(&data->fb, hWnd, 1, 1);
 
 			//populate the dropdown list
 			for (int i = 1; i <= CT_DIRECT; i++) {
@@ -4563,7 +4563,7 @@ static LRESULT CALLBACK RedGuiIndexImagePreviewProc(HWND hWnd, UINT msg, WPARAM 
 	switch (msg) {
 		case WM_CREATE:
 		{
-			FbCreate(fb, hWnd, 1, 1);
+			FbCreateOnWindow(fb, hWnd, 1, 1);
 			frame = (FRAMEDATA *) calloc(1, sizeof(FRAMEDATA));
 			SetWindowLongPtr(hWnd, 0, (LONG_PTR) frame);
 

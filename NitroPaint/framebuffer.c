@@ -2,37 +2,78 @@
 
 #include <math.h>
 
-void FbCreate(FrameBuffer *fb, HWND hWnd, int width, int height) {
-	//create DC
+int FbCreateOnWindow(FrameBuffer *fb, HWND hWnd, int width, int height) {
+	fb->type = FB_TYPE_INVALID;
+
+	//create framebuffer compatible with window DC
 	HDC hDC = GetDC(hWnd);
-	HDC hCompatDC = CreateCompatibleDC(hDC);
+	if (hDC == NULL) return 0;
+
+	int status = FbCreateDeviceCompatible(fb, hDC, width, height);
+
 	ReleaseDC(hWnd, hDC);
-	fb->hDC = hCompatDC;
+	return status;
+}
+
+int FbCreateDeviceCompatible(FrameBuffer *fb, HDC hDC, int width, int height) {
+	fb->type = FB_TYPE_INVALID;
+
+	//create compatible DC
+	fb->hDC = CreateCompatibleDC(hDC);
+	if (fb->hDC == NULL) return 0;
 
 	fb->width = 0;
 	fb->height = 0;
-	fb->size = 0;
 	fb->hBitmap = NULL;
+	fb->type = FB_TYPE_DEVICE;
 	FbSetSize(fb, width, height);
+	return 1;
 }
 
-void FbDestroy(FrameBuffer *fb) {
+
+static void FbiDestroyForDevice(FrameBuffer *fb) {
+	//delete the DC
 	if (fb->hDC != NULL) {
 		DeleteDC(fb->hDC);
 		fb->hDC = NULL;
 	}
+
+	//delete the bitmap
 	if (fb->hBitmap != NULL) {
 		DeleteObject(fb->hBitmap);
 		fb->hBitmap = NULL;
 	}
+}
 
+void FbDestroy(FrameBuffer *fb) {
+	switch (fb->type) {
+		case FB_TYPE_INVALID:
+			//not valid frame buffer
+			break;
+		case FB_TYPE_DEVICE:
+			//device type frame buffer
+			FbiDestroyForDevice(fb);
+			break;
+		case FB_TYPE_MEMORY:
+			//TODO
+			break;
+
+	}
+	
+
+	fb->type = FB_TYPE_INVALID;
 	fb->width = 0;
 	fb->height = 0;
-	fb->size = 0;
 	fb->px = NULL;
 }
 
 void FbSetSize(FrameBuffer *fb, int width, int height) {
+	//set minimum dimension
+	if (width < 1 || height < 1) {
+		width = 1;
+		height = 1;
+	}
+
 	//if size differs at all in dimension
 	if (width != fb->width || height != fb->height) {
 		BITMAPINFO bmi = { 0 };
@@ -55,7 +96,6 @@ void FbSetSize(FrameBuffer *fb, int width, int height) {
 	//set new size
 	fb->width = width;
 	fb->height = height;
-	fb->size = fb->width * fb->height;
 }
 
 void FbDraw(FrameBuffer *fb, HDC hDC, int x, int y, int width, int height, int srcX, int srcY) {
@@ -78,11 +118,15 @@ static void SwapPoints(int *x1, int *y1, int *x2, int *y2) {
 	SwapInts(y1, y2);
 }
 
+static void FbiPutPixel(FrameBuffer *fb, int x, int y, COLOR32 col) {
+	fb->px[x + y * fb->width] = col;
+}
+
 void FbPutPixel(FrameBuffer *fb, int x, int y, COLOR32 col) {
 	if (x < 0 || x >= fb->width) return;
 	if (y < 0 || y >= fb->height) return;
 
-	fb->px[x + y * fb->width] = col;
+	FbiPutPixel(fb, x, y, col);
 }
 
 void FbDrawLine(FrameBuffer *fb, COLOR32 col, int x1, int y1, int x2, int y2) {
@@ -127,7 +171,7 @@ void FbDrawLine(FrameBuffer *fb, COLOR32 col, int x1, int y1, int x2, int y2) {
 	}
 }
 
-void FbRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
+void FbDrawCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
 	int r2 = cr * cr;
 	col = REVERSE(col);
 
@@ -152,19 +196,11 @@ void FbRenderSolidCircle(FrameBuffer *fb, int cx, int cy, int cr, COLOR32 col) {
 }
 
 void FbDrawRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col) {
-	for (int i = 0; i < width; i++) {
-		FbPutPixel(fb, x + i, y, col);
-	}
-	for (int i = 0; i < width; i++) {
-		FbPutPixel(fb, x + i, y + height - 1, col);
-	}
-
-	for (int i = 0; i < height; i++) {
-		FbPutPixel(fb, x, y + i, col);
-	}
-	for (int i = 0; i < height; i++) {
-		FbPutPixel(fb, x + width - 1, y + i, col);
-	}
+	FbDrawLine(fb, col, x, y, x + width - 1, y);
+	FbDrawLine(fb, col, x, y + height - 1, x + width - 1, y + height - 1);
+	
+	FbDrawLine(fb, col, x, y, x, y + height - 1);
+	FbDrawLine(fb, col, x + width - 1, y, x + width - 1, y + height - 1);
 }
 
 void FbFillRect(FrameBuffer *fb, int x, int y, int width, int height, COLOR32 col) {

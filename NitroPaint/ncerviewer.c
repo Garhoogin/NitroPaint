@@ -2497,7 +2497,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->showCellBounds = 1;
 			data->cellListRedrawCount = 0;
 			data->autoCalcBounds = 1;
-			FbCreate(&data->fb, hWnd, 0, 0);
+			FbCreateOnWindow(&data->fb, hWnd, 0, 0);
 			data->hWndViewer = CreateWindow(L"CellPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL | WS_CLIPSIBLINGS, 200, 0, 200, 20, hWnd, NULL, NULL, NULL);
 
 			//mapping modes
@@ -3443,7 +3443,7 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 		//get mid point
 		int midX = (cell->minX + cell->maxX) / 2;
 		int midY = (cell->minY + cell->maxY) / 2;
-		FbRenderSolidCircle(&data->fb, (midX + 256) * data->scale - scrollX, (midY + 128) * data->scale - scrollY, 
+		FbDrawCircle(&data->fb, (midX + 256) * data->scale - scrollX, (midY + 128) * data->scale - scrollY, 
 			((cell->cellAttr & 0x3F) << 2) * data->scale, 0x00FFFF);
 	}
 

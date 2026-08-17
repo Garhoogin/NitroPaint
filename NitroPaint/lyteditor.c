@@ -907,7 +907,7 @@ static void LytEditorOnInitialize(HWND hWnd, LYTEDITOR *ed, WPARAM wParam, LPARA
 			break;
 	}
 
-	FbCreate(&ed->fb, ed->hWndPreview, 1, 1);
+	FbCreateOnWindow(&ed->fb, ed->hWndPreview, 1, 1);
 	ed->bgColor = 0x00F0F0F0;
 
 	//populate dropdown

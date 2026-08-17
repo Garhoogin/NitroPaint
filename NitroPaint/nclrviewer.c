@@ -1411,7 +1411,7 @@ static LRESULT WINAPI PalViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hoverY = -1;
 			data->hoverIndex = -1;
 
-			FbCreate(&data->fb, hWnd, 256, 256);
+			FbCreateOnWindow(&data->fb, hWnd, 256, 256);
 
 			PAL_OP *palOp = &data->palOp;
 			palOp->hWndParent = data->editorMgr->hWnd;

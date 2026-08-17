@@ -262,7 +262,7 @@ static void NmcrViewerOnCreate(NMCRVIEWERDATA *data) {
 	EditorRegisterCreateCallback(data->editorMgr, FILE_TYPE_NANR, NmcrViewerOnCreateNanrViewer, data);
 
 	data->hWndPreview = CreateWindow(L"NmcrPreviewClass", L"", WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, data->hWnd, NULL, NULL, NULL);
-	FbCreate(&data->fb, data->hWndPreview, 0, 0);
+	FbCreateOnWindow(&data->fb, data->hWndPreview, 0, 0);
 
 	//TODO: top bar: [Start/Pause] [Step/Stop] [Sequences] [x] Force Affine [x] Force Double Size
 	data->hWndPlayPause = CreateButton(data->hWnd, L"Play", 0, 0, 0, 0, FALSE);

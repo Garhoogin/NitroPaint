@@ -1169,7 +1169,7 @@ static void AnmViewerOnCreate(NANRVIEWERDATA *data) {
 	data->hWndNewSequence = CreateButton(data->hWnd, L"New Sequence", 0, 0, 0, 0, FALSE);
 	data->hWndPreview = CreateWindow(L"NanrPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL | WS_CLIPSIBLINGS,
 		300, 0, 300, 300, data->hWnd, NULL, NULL, NULL);
-	FbCreate(&data->fb, data->hWndPreview, 0, 0);
+	FbCreateOnWindow(&data->fb, data->hWndPreview, 0, 0);
 
 	data->hWndPlayPause = CreateButton(data->hWnd, L"Play", 0, 0, 0, 0, FALSE);
 	data->hWndStop = CreateButton(data->hWnd, L"Step", 0, 0, 0, 0, FALSE);
@@ -1598,7 +1598,7 @@ static void AnmViewerPreviewOnPaint(NANRVIEWERDATA *data) {
 
 		int cx, cy, r;
 		AnmViewerGetRotCircle(data, &cx, &cy, &r);
-		FbRenderSolidCircle(&data->fb, cx + 256 * data->scale - scrollX, cy + 128 * data->scale - scrollY, r, col);
+		FbDrawCircle(&data->fb, cx + 256 * data->scale - scrollX, cy + 128 * data->scale - scrollY, r, col);
 	}
 
 	//draw anchor

@@ -853,7 +853,7 @@ static void MesgEditorOnSetEncoding(HWND hWnd, HWND hWndCtl, int notif, void *pa
 static void MesgEditorOnCreate(MesgEditorData *data) {
 	data->decodeSystemTags = 1;
 
-	FbCreate(&data->fbPreview, data->hWnd, 1, 1);
+	FbCreateOnWindow(&data->fbPreview, data->hWnd, 1, 1);
 
 	data->hWndList = CreateListView(data->hWnd, 0, 0, 360, 300);
 	AddListViewColumn(data->hWndList, L"#", 0, 40, SCA_LEFT);

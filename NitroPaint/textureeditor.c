@@ -2363,7 +2363,7 @@ LRESULT CALLBACK TexturePaletteEditorWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 	switch (msg) {
 		case WM_CREATE:
 		{
-			FbCreate(&data->fb, hWnd, 256, 256);
+			FbCreateOnWindow(&data->fb, hWnd, 256, 256);
 			data->hBlackPen = GetStockObject(BLACK_PEN);
 			data->hWhitePen = GetStockObject(WHITE_PEN);
 			data->hRowPen = CreatePen(PS_SOLID, 1, RGB(127, 127, 127));
