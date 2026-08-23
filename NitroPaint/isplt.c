@@ -31,45 +31,92 @@
 #include "color.h"
 #include "palette.h"
 
-//optimize for speed rather than size
+// ----- optimize for speed rather than size
 #ifndef _DEBUG
 #ifdef _MSC_VER
 #pragma optimize("t", on)
 #endif
 #endif
 
-//assumption+assertion macros
-#ifdef NDEBUG
+// ----- compiler macros
 #ifdef _MSC_VER
-#define RX_ASSUME(x)    __assume(x)
+#define RX_BREAK()        __debugbreak()
+#define RX_DO_ASSUME(x)   __assume(x)
 #else
-#define RX_ASSUME(x)    if(!(x)) __builtin_unreachable()
-#endif
-#else
-#define RX_ASSUME(x)    if(!(x)) __debugbreak()
+#define RX_BREAK()        __builtin_trap()
+#define RX_DO_ASSUME(x)   do { if (!(x)) __builtin_unreachable(); } while (0)
 #endif
 
-//inline and restrict for MSVC
+// ----- inline and restrict for MSVC
 #ifdef _MSC_VER
 #define inline   __inline
 #define restrict __restrict
 #endif
 
-#define RX_LARGE_NUMBER             1e32 // constant to represent large color difference
-#define RX_SLAB_SIZE            0x100000 // slab size of allocator
-#define INV_512    0.0019531250000000000 // 1.0/512.0
-#define INV_511    0.0019569471624266144 // 1.0/511.0
-#define INV_255    0.0039215686274509800 // 1.0/255.0
-#define INV_3      0.3333333333333333333 // 1.0/  3.0
-#define TWO_THIRDS 0.6666666666666666667 // 2.0/  3.0
+// ----- assumption/assertion macros
+#ifdef NDEBUG
+#define RX_ASSUME(x)    RX_DO_ASSUME(x)
+#else
+#define RX_ASSUME(x)    do { if (!(x)) RX_BREAK(); } while (0)
+#endif
 
-//default parameters for alpha processing (describes the distribution of colors)
-#define MEAN_Y    217.7410308381821300000  // mean of Y
-#define MEAN_I     -0.0000041426875938555  // mean of I
-#define MEAN_Q     -0.0000076075821411337  // mean of Q
-#define MEAN_Y2 58357.1112772430790000000  // mean of Y^2
-#define MEAN_I2  6772.8810438603696000000  // mean of I^2
-#define MEAN_Q2 15832.5709062345540000000  // mean of Q^2
+// -----------------------------------------------------------------------------------------------
+// These constants describe the RGB -> "YIQ" transformation matrix in row-major order. The
+// transormation described is:
+// 
+//   [ Y ]   [ R2Y_11  R2Y_12  R2Y_13 ]   [ R ]
+//   [ I ] = [ R2Y_21  R2Y_22  R2Y_23 ] x [ G ] 
+//   [ Q ]   [ R2Y_31  R2Y_23  R2Y_33 ]   [ B ]
+// -----------------------------------------------------------------------------------------------
+#define R2Y_11  0.5146329f  //  0.51784591f
+#define R2Y_12  1.2303905f  //  1.22839709f
+#define R2Y_13  0.2588982f  //  0.25767857f
+#define R2Y_21 -0.5885085f  // -0.56333807f
+#define R2Y_22 -0.3060195f  // -0.56333807f
+#define R2Y_23  0.8945280f  //  1.12667614f
+#define R2Y_31  0.7227111f  //  0.97478669f
+#define R2Y_32 -1.3898515f  // -1.06078468f
+#define R2Y_33  0.6671403f  //  0.08599800f
+
+// -----------------------------------------------------------------------------------------------
+// These constants describe the "YIQ" -> RGB transformation matrix in row-major order. This matrix
+// is the inverse of the RGB -> "YIQ" transformation matrix. The transormation described is:
+// 
+//   [ R ]   [ Y2R_11  Y2R_12  Y2R_13 ]   [ Y ]
+//   [ G ] = [ Y2R_21  Y2R_22  Y2R_23 ] x [ I ] 
+//   [ B ]   [ Y2R_31  Y2R_23  Y2R_33 ]   [ Q ]
+// -----------------------------------------------------------------------------------------------
+#define Y2R_11  0.49902152f  //  0.49902152f
+#define Y2R_12 -0.56700944f  // -0.16492309f
+#define Y2R_13  0.56661260f  //  0.66545460f
+#define Y2R_21  0.49902152f  //  0.49902152f
+#define Y2R_22  0.07502532f  // -0.08992799f
+#define Y2R_23 -0.29425290f  // -0.31707052f
+#define Y2R_31  0.49902152f  //  0.49902152f
+#define Y2R_32  0.77053964f  //  0.76014095f
+#define Y2R_33  0.27210910f  //  0.17419204f
+
+// -----------------------------------------------------------------------------------------------
+// These constants describe the default distribution of colors in YIQ space. These are in terms
+// of the transformation parameters described in the matrices above. 
+//
+// These defaults are constructed under an assumption of uniformly distributed RGB colors. These
+// are calculated by expanding the variance of a liner combination with the assumption of no
+// covariances.
+// -----------------------------------------------------------------------------------------------
+#define MEAN_Y  (255.0*(R2Y_11+R2Y_12+R2Y_13)/2.0)  // mean of Y
+#define MEAN_I  (255.0*(R2Y_21+R2Y_22+R2Y_23)/2.0)  // mean of I
+#define MEAN_Q  (255.0*(R2Y_31+R2Y_32+R2Y_33)/2.0)  // mean of Q
+#define MEAN_Y2 (255.0*255.0*((R2Y_11*R2Y_11+R2Y_12*R2Y_12+R2Y_13*R2Y_13)/3.0+(R2Y_11*R2Y_12+R2Y_11*R2Y_13+R2Y_12*R2Y_13)/2.0))  // mean of Y^2
+#define MEAN_I2 (255.0*255.0*((R2Y_21*R2Y_21+R2Y_22*R2Y_22+R2Y_23*R2Y_23)/3.0+(R2Y_21*R2Y_22+R2Y_21*R2Y_23+R2Y_22*R2Y_23)/2.0))  // mean of I^2
+#define MEAN_Q2 (255.0*255.0*((R2Y_31*R2Y_31+R2Y_32*R2Y_32+R2Y_33*R2Y_33)/3.0+(R2Y_31*R2Y_32+R2Y_31*R2Y_33+R2Y_32*R2Y_33)/2.0))  // mean of Q^2
+
+#define INV_511    0.0019569471624266144  // 1.0/511.0
+#define INV_255    0.0039215686274509800  // 1.0/255.0
+
+#define RX_LARGE_NUMBER             1e32  // constant to represent large color difference
+#define RX_SLAB_SIZE            0x100000  // slab size of allocator
+
 
 
 typedef struct RxPaletteMapEntry_ {
@@ -155,11 +202,11 @@ void RX_API RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	float a = (float) ((rgb >> 24) & 0xFF) / 255.0f;
 
 	//this is no longer true YIQ anymore
-	float y =  0.5146329f * r + 1.2303905f * g + 0.2588982f * b;
-	float i = -0.5885085f * r - 0.3060195f * g + 0.8945280f * b;
-	float q =  0.7227111f * r - 1.3898515f * g + 0.6671403f * b;
+	float y = R2Y_11 * r + R2Y_12 * g + R2Y_13 * b;
+	float i = R2Y_21 * r + R2Y_22 * g + R2Y_23 * b;
+	float q = R2Y_31 * r + R2Y_32 * g + R2Y_33 * b;
 
-	//write rounded color
+	//write scaled color
 	yiq->y = a * y;
 	yiq->i = a * i;
 	yiq->q = a * q;
@@ -175,10 +222,10 @@ void RX_API RxConvertRgbToYiq(COLOR32 rgb, RxYiqColor *yiq) {
 	__m128 bVec = _mm_shuffle_ps(rgbVec, rgbVec, _MM_SHUFFLE(2, 2, 2, 2));
 	__m128 aVec = _mm_div_ps(_mm_shuffle_ps(rgbVec, rgbVec, _MM_SHUFFLE(3, 3, 3, 3)), _mm_set1_ps(255.0f));
 
-	__m128 row0 = _mm_mul_ps(rVec, _mm_setr_ps(0.5146329f, -0.5885085f,  0.7227111f, 0.0f));
-	__m128 row1 = _mm_mul_ps(gVec, _mm_setr_ps(1.2303905f, -0.3060195f, -1.3898515f, 0.0f));
-	__m128 row2 = _mm_mul_ps(bVec, _mm_setr_ps(0.2588982f,  0.8945280f,  0.6671403f, 0.0f));
-	__m128 row3 = _mm_mul_ps(aVec, _mm_setr_ps(      0.0f,        0.0f,        0.0f, 1.0f));
+	__m128 row0 = _mm_mul_ps(rVec, _mm_setr_ps(R2Y_11, R2Y_21, R2Y_31, 0.0f));
+	__m128 row1 = _mm_mul_ps(gVec, _mm_setr_ps(R2Y_12, R2Y_22, R2Y_32, 0.0f));
+	__m128 row2 = _mm_mul_ps(bVec, _mm_setr_ps(R2Y_13, R2Y_23, R2Y_33, 0.0f));
+	__m128 row3 = _mm_mul_ps(aVec, _mm_setr_ps(  0.0f,   0.0f,   0.0f, 1.0f));
 	__m128 yiqa = _mm_add_ps(_mm_add_ps(row0, row1), row2);
 		
 	//alpha premultiplication and insertion
@@ -199,9 +246,9 @@ COLOR32 RX_API RxConvertYiqToRgb(const RxYiqColor *yiq) {
 		q = yiq->q / yiq->a;
 	}
 
-	float r = 0.4990215f * y - 0.56700944f * i + 0.5666126f * q;
-	float g = 0.4990215f * y + 0.07502532f * i - 0.2942529f * q;
-	float b = 0.4990215f * y + 0.77053964f * i + 0.2721091f * q;
+	float r = Y2R_11 * y + Y2R_12 * i + Y2R_13 * q;
+	float g = Y2R_21 * y + Y2R_22 * i + Y2R_23 * q;
+	float b = Y2R_31 * y + Y2R_32 * i + Y2R_33 * q;
 	float a = yiq->a * 255.0f;
 
 	//clamp color
@@ -230,10 +277,10 @@ COLOR32 RX_API RxConvertYiqToRgb(const RxYiqColor *yiq) {
 	__m128 iVec = _mm_shuffle_ps(yiqa, yiqa, _MM_SHUFFLE(1, 1, 1, 1));
 	__m128 qVec = _mm_shuffle_ps(yiqa, yiqa, _MM_SHUFFLE(2, 2, 2, 2));
 
-	__m128 row0 = _mm_mul_ps(yVec, _mm_setr_ps( 0.49902150f,  0.49902150f, 0.49902150f,   0.0f));
-	__m128 row1 = _mm_mul_ps(iVec, _mm_setr_ps(-0.56700944f,  0.07502532f, 0.77053964f,   0.0f));
-	__m128 row2 = _mm_mul_ps(qVec, _mm_setr_ps(  0.5666126f, -0.29425290f, 0.27210910f,   0.0f));
-	__m128 row3 = _mm_mul_ps(aVec, _mm_setr_ps(        0.0f,         0.0f,        0.0f, 255.0f));
+	__m128 row0 = _mm_mul_ps(yVec, _mm_setr_ps(Y2R_11, Y2R_21, Y2R_31,   0.0f));
+	__m128 row1 = _mm_mul_ps(iVec, _mm_setr_ps(Y2R_12, Y2R_22, Y2R_32,   0.0f));
+	__m128 row2 = _mm_mul_ps(qVec, _mm_setr_ps(Y2R_13, Y2R_23, Y2R_33,   0.0f));
+	__m128 row3 = _mm_mul_ps(aVec, _mm_setr_ps(  0.0f,   0.0f,   0.0f, 255.0f));
 	__m128 rgbaF = _mm_add_ps(_mm_add_ps(row0, row1), _mm_add_ps(row2, row3));
 
 	//clamping
@@ -1399,7 +1446,6 @@ void RX_API RxHistProjectToPrincipalAxis(RxReduction *reduction, const RxYiqColo
 	z /= pcMag;
 
 	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
-		RxLongColor cLong;
 		proj[i].y = (float) (principal[i * 4 + 0] * z);
 		proj[i].i = (float) (principal[i * 4 + 1] * z);
 		proj[i].q = (float) (principal[i * 4 + 2] * z);
@@ -1926,7 +1972,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 		//this ensures that the total error is at least monotonically decreasing.
 		double errNewCluster = 0.0;
 		for (int j = 0; j < reduction->histogram->nEntries; j++) {
-			if (reduction->histogramFlat[j]->entry != i) continue;
+			if (reduction->histogramFlat[j]->entry != (int) i) continue;
 
 			RxHistEntry *hist = reduction->histogramFlat[j];
 			errNewCluster += hist->weight * RxiComputeLayeredColorDifference(reduction, hist->color, yiq);
