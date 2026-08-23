@@ -1340,11 +1340,6 @@ static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int 
 		}
 	}
 
-	//e now holds the eigenvalues. Negate negative one to compare magnitudes.
-	for (unsigned int i = 0; i < dim; i++) {
-		if (e[i] < 0.0) e[i] = -e[i];
-	}
-
 	//select the eigenvector with the greatest absolute eigenvalue.
 	unsigned int eigenNo = 0;
 	for (unsigned int i = 1; i < dim; i++) {
@@ -1356,6 +1351,10 @@ static void RxiHistComputePrincipal(RxReduction *reduction, int startIndex, int 
 		axis[i] = E[i][eigenNo];
 	}
 	*pVar = e[eigenNo];
+
+	//a positive semi-definite matrix should not have negative eigenvalues. Double check
+	//for numerical stability.
+	if (*pVar < 0.0) *pVar = 0.0;
 }
 
 static void RxiHistChooseSplitAxis(RxReduction *reduction, int startIndex, int endIndex, double *axis) {
