@@ -56,6 +56,13 @@
 #define TEXCONV_CHECK_ABORT(flag) do { if (flag) { TEXCONV_THROW_STATUS(TEXCONV_ABORT); } } while (0)
 
 
+// Cut an array using memmove
+#define TxiCutArray(pArray,length,iCut,nCut) \
+	memmove((pArray)+(iCut),                 \
+		(pArray)+(iCut)+(nCut),              \
+		((length)-(iCut)-(nCut))*sizeof((pArray)[0]))
+
+
 int ilog2(int x);
 
 static unsigned int TxiRoundUpDimension(unsigned int x) {
@@ -1366,16 +1373,15 @@ static unsigned int Txi4x4BuildPalette(
 				}
 			}
 
-			//move entries in palette and colorTable.
-			unsigned int nToShift = plttSize - colorIndex2 - nColsRemove;
-			memmove(plttYiq + colorIndex2, plttYiq + colorIndex2 + nColsRemove, nToShift * sizeof(RxYiqColor));
-			memmove(colorTable + colorIndex2, colorTable + colorIndex2 + nColsRemove, nToShift * sizeof(int));
-			memmove(useTable + colorIndex2, colorTable + colorIndex2 + nColsRemove, nToShift * sizeof(unsigned int));
-
 			//add use counts
-			for (unsigned int j = 0; j < nToShift; j++) {
+			for (unsigned int j = 0; j < nColsRemove; j++) {
 				useTable[colorIndex1 + j] += useTable[colorIndex2 + j];
 			}
+
+			//move entries in palette and colorTable.
+			TxiCutArray(plttYiq,    plttSize, colorIndex2, nColsRemove);
+			TxiCutArray(colorTable, plttSize, colorIndex2, nColsRemove);
+			TxiCutArray(useTable,   plttSize, colorIndex2, nColsRemove);
 
 			//merge those palettes that we've just combined.
 			Txi4x4MergePalettes(work, colorIndex1 / 2, palettesMode);
@@ -1928,8 +1934,8 @@ static void Txi4x4RefineFillGaps(
 		work->useMap[i + iDest1] = work->useMap[i + 2 + iSrc2];
 
 		//slide colors over
-		memmove(work->pltt + i + 2, work->pltt + i + 4, (paletteSize - i - 4) * sizeof(COLOR));
-		memmove(work->useMap + i + 2, work->useMap + i + 4, (paletteSize - i - 4));
+		TxiCutArray(work->pltt,   paletteSize, i + 2, 2);
+		TxiCutArray(work->useMap, paletteSize, i + 2, 2);
 		work->useMap[--paletteSize] = TXC_ACC_UNUSED;
 		work->useMap[--paletteSize] = TXC_ACC_UNUSED;
 	}
@@ -2004,8 +2010,8 @@ static void Txi4x4RefineBubbleUnusedPairs(
 
 		//slide over the palette, slide over the usage buffer, and subract palette indices
 		int nMovedColors = nUsedColors - i - 2;
-		memmove(work->pltt + i, work->pltt + i + 2, nMovedColors * sizeof(COLOR));
-		memmove(work->useMap + i, work->useMap + i + 2, nMovedColors);
+		TxiCutArray(work->pltt,   nUsedColors, i, 2);
+		TxiCutArray(work->useMap, nUsedColors, i, 2);
 		work->useMap[i + nMovedColors + 0] = TXC_ACC_UNUSED;
 		work->useMap[i + nMovedColors + 1] = TXC_ACC_UNUSED;
 
