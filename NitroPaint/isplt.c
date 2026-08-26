@@ -60,6 +60,10 @@
 #define RX_ASSUME(x)    do { if (!(x)) RX_BREAK(); } while (0)
 #endif
 
+// ----- min/max macros
+#define RX_MIN(a,b)    (((a)<(b))?(a):(b))
+#define RX_MAX(a,b)    (((a)>(b))?(a):(b))
+
 // -----------------------------------------------------------------------------------------------
 // These constants describe the RGB -> "YIQ" transformation matrix in row-major order. The
 // transormation described is:
@@ -252,10 +256,10 @@ COLOR32 RX_API RxConvertYiqToRgb(const RxYiqColor *yiq) {
 	float a = yiq->a * 255.0f;
 
 	//clamp color
-	r = min(max(r, 0.0f), (255.0f));
-	g = min(max(g, 0.0f), (255.0f));
-	b = min(max(b, 0.0f), (255.0f));
-	a = min(max(a, 0.0f), (255.0f));
+	r = RX_MIN(RX_MAX(r, 0.0f), 255.0f);
+	g = RX_MIN(RX_MAX(g, 0.0f), 255.0f);
+	b = RX_MIN(RX_MAX(b, 0.0f), 255.0f);
+	a = RX_MIN(RX_MAX(a, 0.0f), 255.0f);
 
 	int iR = (int) (r + 0.5f);
 	int iG = (int) (g + 0.5f);
@@ -524,6 +528,15 @@ static inline void RxiColorScale(RxYiqColor *yiq, float scale) {
 #endif
 }
 
+static inline void RxiCopyLongColor(RxLongColor *dest, const RxLongColor *src) {
+#ifndef RX_SIMD
+	memcpy(dest, src, sizeof(RxLongColor));
+#else
+	dest->yi = src->yi;
+	dest->qa = src->qa;
+#endif
+}
+
 static void RxiUnweightLongColor(RxYiqColor *out, const RxLongColor *cLong, double weight) {
 	RX_ASSUME(weight > 0.0);
 
@@ -557,6 +570,64 @@ static void RxiAddWeightedLongColor(RxLongColor *cLong, const RxYiqColor *yiq, d
 
 	cLong->yi = _mm_add_pd(cLong->yi, _mm_mul_pd(yi, vWeight));
 	cLong->qa = _mm_add_pd(cLong->qa, _mm_mul_pd(qa, vWeight));
+#endif
+}
+
+static void RxiColorToWeightedLong(RxReduction *reduction, RxLongColor *cLong, const RxYiqColor *yiq) {
+	//scale by the weighting vector into long
+#ifndef RX_SIMD
+	cLong->y = yiq->y * reduction->yWeight;
+	cLong->i = yiq->i * reduction->iWeight;
+	cLong->q = yiq->q * reduction->qWeight;
+	cLong->a = yiq->a * reduction->aWeight;
+#else
+	__m128 col = yiq->yiq;
+	__m128d yi = _mm_cvtps_pd(col);
+	__m128d qa = _mm_cvtps_pd(_mm_movehl_ps(_mm_setzero_ps(), col));
+
+	cLong->yi = _mm_mul_pd(yi, reduction->yiWeight);
+	cLong->qa = _mm_mul_pd(qa, reduction->qaWeight);
+#endif
+}
+
+static inline void RxiWeightLongColor(RxReduction *reduction, RxLongColor *dest, const RxLongColor *src) {
+	//scale the long color by channel weights
+#ifndef RX_SIMD
+	dest->y = src->y * reduction->yWeight;
+	dest->i = src->i * reduction->iWeight;
+	dest->q = src->q * reduction->qWeight;
+	dest->a = src->a * reduction->aWeight;
+#else
+	dest->yi = _mm_mul_pd(src->yi, reduction->yiWeight);
+	dest->qa = _mm_mul_pd(src->qa, reduction->qaWeight);
+#endif
+}
+
+static inline double RxiDotLongColor(const RxLongColor *col1, const RxLongColor *col2) {
+#ifndef RX_SIMD
+	return col1->y * col2->y + col1->i * col2->i + col1->q * col2->q + col1->a * col2->a;
+#else
+	__m128d yi = _mm_mul_pd(col1->yi, col2->yi);
+	__m128d qa = _mm_mul_pd(col1->qa, col2->qa);
+	__m128d sum = _mm_add_pd(yi, qa);
+	sum = _mm_add_pd(sum, _mm_unpacklo_pd(sum, sum));
+	return _mm_cvtsd_f64(sum);
+#endif
+}
+
+static inline double RxiLongColorMag2(const RxLongColor *cLong) {
+#ifndef RX_SIMD
+	return cLong->y * cLong->y + cLong->i * cLong->i
+		+ cLong->q * cLong->q + cLong->a * cLong->a;
+#else
+	//square elements in both halves
+	__m128d half1 = _mm_mul_pd(cLong->yi, cLong->yi);
+	__m128d half2 = _mm_mul_pd(cLong->qa, cLong->qa);
+
+	//sum halves
+	__m128d sum = _mm_add_pd(half1, half2);
+	sum = _mm_add_sd(sum, _mm_unpackhi_pd(sum, sum));
+	return _mm_cvtsd_f64(sum);
 #endif
 }
 
@@ -1409,47 +1480,15 @@ static int RxiHistEntryWeightComparator(const void *p1, const void *p2) {
 	return 0;
 }
 
-static inline double RxiVec4Mag(double x, double y, double z, double w) {
-	return x * x + y * y + z * z + w * w;
-}
-
-static double RxiComputePcScore(RxReduction *reduction, const RxYiqColor *col, const double *principal) {
+static double RxiComputePcScore(RxReduction *reduction, const RxYiqColor *col, const RxLongColor *principal) {
 	double dot = 0.0;
 	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
-		dot += col[j].y * reduction->yWeight * principal[j * 4 + 0]
-			+ col[j].i * reduction->iWeight * principal[j * 4 + 1]
-			+ col[j].q * reduction->qWeight * principal[j * 4 + 2]
-			+ col[j].a * reduction->aWeight * principal[j * 4 + 3];
+		dot += col[j].y * reduction->yWeight * principal[j].y
+			+ col[j].i * reduction->iWeight * principal[j].i
+			+ col[j].q * reduction->qWeight * principal[j].q
+			+ col[j].a * reduction->aWeight * principal[j].a;
 	}
 	return dot;
-}
-
-void RX_API RxHistProjectToPrincipalAxis(RxReduction *reduction, const RxYiqColor *col, RxYiqColor *proj) {
-	//we project: z = col.pc1 / |pc1| ; proj = z*pc1
-	double *principal = reduction->splitAxis;
-	double z = RxiComputePcScore(reduction, col, principal);
-
-	double pcMag = 0.0;
-	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
-		double *pci = &principal[i * 4];
-		pcMag += RxiVec4Mag(pci[0], pci[1], pci[2], pci[3]);
-	}
-	pcMag = sqrt(pcMag);
-
-	if (pcMag == 0.0) {
-		//fallback: degenerate principal axis, copy output color.
-		memcpy(proj, col, sizeof(RxYiqColor) * reduction->paletteLayers);
-		return;
-	}
-
-	z /= pcMag;
-
-	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
-		proj[i].y = (float) (principal[i * 4 + 0] * z);
-		proj[i].i = (float) (principal[i * 4 + 1] * z);
-		proj[i].q = (float) (principal[i * 4 + 2] * z);
-		proj[i].a = (float) (principal[i * 4 + 3] * z);
-	}
 }
 
 void RX_API RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
@@ -1468,7 +1507,7 @@ void RX_API RxHistSort(RxReduction *reduction, int startIndex, int endIndex) {
 	//compute dot products with the split axis.
 	for (int i = startIndex; i < endIndex; i++) {
 		RxHistEntry *histEntry = reduction->histogramFlat[i];
-		histEntry->value = RxiComputePcScore(reduction, histEntry->color, principal);
+		histEntry->value = RxiComputePcScore(reduction, histEntry->color, reduction->splitAxisLong);
 	}
 
 	//sort colors by dot product with the vector
@@ -1516,14 +1555,13 @@ static void RxiColorNodeInit(RxReduction *reduction, RxColorNode *node, int star
 	}
 
 	//compute the split axis for this cluster
-	double *principal = reduction->splitAxis;
-	RxiHistChooseSplitAxis(reduction, node->startIndex, node->endIndex, principal);
+	RxiHistChooseSplitAxis(reduction, node->startIndex, node->endIndex, reduction->splitAxis);
 
 	double projMax = -RX_LARGE_NUMBER;
 	double projMin = RX_LARGE_NUMBER;
 	for (int i = node->startIndex; i < node->endIndex; i++) {
 		RxHistEntry *histEntry = reduction->histogramFlat[i];
-		double proj = RxiComputePcScore(reduction, histEntry->color, principal);
+		double proj = RxiComputePcScore(reduction, histEntry->color, reduction->splitAxisLong);
 
 		histEntry->value = proj;
 		if (proj > projMax) projMax = proj;
@@ -1554,53 +1592,50 @@ static void RxiColorNodeInit(RxReduction *reduction, RxColorNode *node, int star
 	double sumSq = 0.0;
 
 	//vector (sum of histogram weighted YIQA colors)
-	RxLongColor total[RX_PALETTE_MAX_COUNT] = { 0 };   // total straight
+	RxLongColor total[RX_PALETTE_MAX_COUNT] = { 0 };  // total straight
 	double totalA[3 * RX_PALETTE_MAX_COUNT] = { 0 };  // total alpha interactions
 
 	for (int i = 0; i < nColors; i++) {
 		RxHistEntry *entry = thisHistogram[i];
 		double weight = entry->weight;
 
-		//accumulate sum of squares
-		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
-			double cy = reduction->yWeight * entry->color[j].y;
-			double ci = reduction->iWeight * entry->color[j].i;
-			double cq = reduction->qWeight * entry->color[j].q;
-			double ca = reduction->aWeight * entry->color[j].a;
-			sumSq += weight * RxiVec4Mag(cy, ci, cq, ca);
-		}
+		//accumulate total weight
+		splitWeightL[i] = (totalWeight += weight);
 
-		//accumulate means
+		//accumulate means, sum of squares, and interactions for all layers
 		RxLongColor *split = &splits[i * reduction->paletteLayers];
 		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
-			RxiAddWeightedLongColor(&total[j], &entry->color[j], weight);  // accumulate YIQA
+			//mean accumulation
+			RxiAddWeightedLongColor(&total[j], &entry->color[j], weight);
+			RxiCopyLongColor(&split[j], &total[j]);
 
-			memcpy(&split[j], &total[j], sizeof(RxLongColor));
-		}
+			//sum of squares accumulation
+			RxLongColor cLong;
+			RxiColorToWeightedLong(reduction, &cLong, &entry->color[j]);
+			sumSq += weight * RxiLongColorMag2(&cLong);
 
-		for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			//interaction accumulation
 			double aWeight = entry->weight * entry->color[j].a;
 			totalA[j * 3 + 0] += aWeight * entry->color[j].y;
 			totalA[j * 3 + 1] += aWeight * entry->color[j].i;
 			totalA[j * 3 + 2] += aWeight * entry->color[j].q;
 		}
-
-		//accumulate total weight
-		splitWeightL[i] = (totalWeight += weight);
 	}
 	node->weight = totalWeight;
 
 	//computing representative color
-	double invWeight = 1.0 / totalWeight;
 	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
 		RxiUnweightLongColor(&node->color[i], &total[i], totalWeight);
 	}
 
 	//initial WSS value, which we use to calculate the WSS reduction from split
+	double invWeight = 1.0 / totalWeight;
 	double wssInitial = sumSq;
 	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
-		wssInitial -= RxiVec4Mag(total[i].y * reduction->yWeight, total[i].i * reduction->iWeight,
-			total[i].q * reduction->qWeight, total[i].a * reduction->aWeight) * invWeight;
+		RxLongColor cLong;
+		RxiWeightLongColor(reduction, &cLong, &total[i]);
+
+		wssInitial -= RxiLongColorMag2(&cLong) * invWeight;
 	}
 
 	//in alpha processing mode, we must apply the interaction terms to WSS.
@@ -1636,8 +1671,12 @@ static void RxiColorNodeInit(RxReduction *reduction, RxColorNode *node, int star
 			SR[j].q = total[j].q - SL[j].q;
 			SR[j].a = total[j].a - SL[j].a;
 
-			sumSqL += RxiVec4Mag(SL[j].y * reduction->yWeight, SL[j].i * reduction->iWeight, SL[j].q * reduction->qWeight, SL[j].a * reduction->aWeight);
-			sumSqR += RxiVec4Mag(SR[j].y * reduction->yWeight, SR[j].i * reduction->iWeight, SR[j].q * reduction->qWeight, SR[j].a * reduction->aWeight);
+			RxLongColor weightedL, weightedR;
+			RxiWeightLongColor(reduction, &weightedL, &SL[j]);
+			RxiWeightLongColor(reduction, &weightedR, &SR[j]);
+
+			sumSqL += RxiLongColorMag2(&weightedL);
+			sumSqR += RxiLongColorMag2(&weightedR);
 		}
 
 		double wss = sumSq - sumSqL * invWeightL - sumSqR * invWeightR;
@@ -2688,7 +2727,7 @@ void RX_API RxCreateMultiplePalettes(
 
 	//get palette output from previous step
 	int nPalettesWritten = 0;
-	int outputOffs = max(paletteOffset, 1);
+	int outputOffs = RX_MAX(paletteOffset, 1);
 	COLOR32 *palettes = (COLOR32 *) calloc(RX_TILE_PALETTE_COUNT_MAX * RX_PALETTE_MAX_SIZE, sizeof(COLOR32));
 
 	for (unsigned int i = 0; i < nTiles; i++) {

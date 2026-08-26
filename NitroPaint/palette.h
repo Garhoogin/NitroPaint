@@ -328,43 +328,44 @@ typedef struct RxPalette_ RxPalette;
 
 //reduction workspace structure
 struct RxReduction_ {
-	double yWeight;
-	double iWeight;
-	double qWeight;
-	double aWeight;
 	union {
 		struct {
-			double yWeight2;
-			double iWeight2;
-			double qWeight2;
-			double aWeight2;
+			double yWeight;       // Y channel weight
+			double iWeight;       // I channel weight
+			double qWeight;       // Q channel weight
+			double aWeight;       // A channel weight
+			double yWeight2;      // Y channel squared weight
+			double iWeight2;      // I channel squared weight
+			double qWeight2;      // Q channel squared weight
+			double aWeight2;      // A channel squared weight
+			float pad1[4];
+			double interactionY;  // Y alpha interaction coefficient
+			double interactionI;  // I alpha interaction coefficient
+			double interactionQ;  // Q alpha interaction coefficient
+			double interactionA;  // alpha interaction coefficient
+			float pad2[4];
 		};
 #ifdef RX_SIMD
 		struct {
-			__m128d yiWeight2;
-			__m128d qaWeight2;
-			__m128 yiqaWeight2; // YIQA weights packed into singles
-		};
-#endif
-	};
-	union {
-		struct {
-			double interactionY;
-			double interactionI;
-			double interactionQ;
-			double interactionA;
-		};
-#ifdef RX_SIMD
-		struct {
-			__m128d interactionYI;
-			__m128d interactionQA;
-			__m128 interactionYIQA;
+			__m128d yiWeight;        // Y, I channel weights
+			__m128d qaWeight;        // Q, A channel weights
+			__m128d yiWeight2;       // Y, I squared channel weights
+			__m128d qaWeight2;       // Q, A squared channel weights
+			__m128 yiqaWeight2;      // YIQA weights packed into singles
+			__m128d interactionYI;   // Y, I alpha interaction coefficients
+			__m128d interactionQA;   // Q, A alpha interaction coefficients
+			__m128 interactionYIQA;  // YIQA alpha interaction coefficients packed into singles
 		};
 #endif
 	};
 	RxStatus status;
 	RxYiqColor tempLayeredColor[RX_PALETTE_MAX_COUNT];
-	double splitAxis[4 * RX_PALETTE_MAX_COUNT];
+	union {
+		double splitAxis[4 * RX_PALETTE_MAX_COUNT];
+#ifdef RX_SIMD
+		RxLongColor splitAxisLong[RX_PALETTE_MAX_COUNT];
+#endif
+	};
 	unsigned int nPaletteColors;
 	unsigned int nUsedColors;
 	unsigned int paletteLayers;
@@ -621,24 +622,6 @@ void RX_API RxHistSort(
 	RxReduction *reduction,
 	int          startIndex,
 	int          endIndex
-);
-
-// -----------------------------------------------------------------------------------------------
-// Name: RxHistProjectToPrincipalAxis
-//
-// Uses the computed principal axis from a previous call to RxHistSort, the input color is
-// projected onto the first principal axis. When the principal axis is degenerate, the input
-// color is returned unmodified.
-//
-// Parameters:
-//   reduction     The color reduction context.
-//   col           The color to project.
-//   proj          A pointer to a color reciving the color projected onto the principal axis.
-// -----------------------------------------------------------------------------------------------
-void RX_API RxHistProjectToPrincipalAxis(
-	RxReduction      *reduction,
-	const RxYiqColor *col,
-	RxYiqColor       *proj
 );
 
 // -----------------------------------------------------------------------------------------------
