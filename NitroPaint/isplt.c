@@ -34,7 +34,8 @@
 // ----- optimize for speed rather than size
 #ifndef _DEBUG
 #ifdef _MSC_VER
-#pragma optimize("t", on)
+#pragma optimize("t", on)  // favor fast code
+#pragma optimize("y", on)  // frame pointer omission
 #endif
 #endif
 
@@ -715,7 +716,7 @@ static RxStatus RxiInitForMask5(RxReduction *reduction) {
 		RxConvertRgbToYiq(ColorConvertFromDS((COLOR) i) | 0xFF000000, &pltt[i]);
 	}
 
-	RxPalette *accel = RxiPaletteAllocAndLoadYiqInternal(reduction, pltt, 1, 32768, RX_FLAG_ALPHA_MODE_NONE);
+	RxPalette *accel = RxiPaletteAllocAndLoadYiqInternal(reduction, pltt, 1, 32768, RX_ALPHA_NONE);
 	RxMemFree(pltt);
 
 	if (accel == NULL) return RX_STATUS_NOMEM;

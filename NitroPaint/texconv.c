@@ -34,26 +34,32 @@
 #define strdup _strdup
 #endif
 
-//optimize for speed rather than size
+// ----- optimize for speed rather than size
 #ifndef _DEBUG
 #ifdef _MSC_VER
-#pragma optimize("t", on)
+#pragma optimize("t", on)  // favor fast code
+#pragma optimize("y", on)  // frame pointer omission
 #endif
 #endif
 
-//assumption+assertion macros
-#ifdef NDEBUG
+// ----- compiler macros
 #ifdef _MSC_VER
-#define TX_ASSUME(x)    __assume(x)
+#define TX_BREAK()        __debugbreak()
+#define TX_DO_ASSUME(x)   __assume(x)
 #else
-#define TX_ASSUME(x)    if(!(x)) __builtin_unreachable()
+#define TX_BREAK()        __builtin_trap()
+#define TX_DO_ASSUME(x)   do { if (!(x)) __builtin_unreachable(); } while (0)
 #endif
+
+// ----- assumption+assertion macros
+#ifdef NDEBUG
+#define TX_ASSUME(x)    TX_DO_ASSUME(x)
 #else
-#define TX_ASSUME(x)    if(!(x)) __debugbreak()
+#define TX_ASSUME(x)    do { if (!(x)) TX_BREAK(); } while (0)
 #endif
 
 #define TEXCONV_THROW_STATUS(status) do { result = status; goto Cleanup; } while (0)
-#define TEXCONV_CHECK_ABORT(flag) do { if (flag) { TEXCONV_THROW_STATUS(TEXCONV_ABORT); } } while (0)
+#define TEXCONV_CHECK_ABORT(flag)    do { if (flag) { TEXCONV_THROW_STATUS(TEXCONV_ABORT); } } while (0)
 
 
 // Cut an array using memmove
@@ -85,10 +91,10 @@ static uint32_t TxiConfigureTexImageParam(unsigned int fmt, unsigned int w, unsi
 	TX_ASSUME(c0xp == 0 || c0xp == 1);
 	TX_ASSUME(fmt != 0 && fmt <= GX_TEXFMT_DIRECT);
 
-	return (TxiDimensionToParam(w) << GX_TEXIMAGE_PARAM_W_SHIFT)
-		| (TxiDimensionToParam(h) << GX_TEXIMAGE_PARAM_H_SHIFT)
-		| (fmt << GX_TEXIMAGE_PARAM_FMT_SHIFT)
-		| (c0xp << GX_TEXIMAGE_PARAM_C0XP_SHIFT);
+	return (TxiDimensionToParam(w) << GX_TEXIMAGE_PARAM_W_SHIFT   )
+		 | (TxiDimensionToParam(h) << GX_TEXIMAGE_PARAM_H_SHIFT   )
+		 | (fmt                    << GX_TEXIMAGE_PARAM_FMT_SHIFT )
+		 | (c0xp                   << GX_TEXIMAGE_PARAM_C0XP_SHIFT);
 }
 
 COLOR32 *TxPadTextureImage(const COLOR32 *px, unsigned int width, unsigned int height, unsigned int *outWidth, unsigned int *outHeight) {
@@ -99,7 +105,8 @@ COLOR32 *TxPadTextureImage(const COLOR32 *px, unsigned int width, unsigned int h
 		return (COLOR32 *) calloc(8 * 8, sizeof(COLOR32));
 	}
 
-	//function imitates iMageStudio behavior
+	//function imitates iMageStudio behavior: round up to power of 2, doubling the last
+	//lines/columns to fit
 	unsigned int padWidth = TxiRoundUpDimension(width);
 	unsigned int padHeight = TxiRoundUpDimension(height);
 
@@ -122,6 +129,8 @@ COLOR32 *TxPadTextureImage(const COLOR32 *px, unsigned int width, unsigned int h
 }
 
 
+
+// ----- progress update callback routines
 
 static void TxiConvertProgressUpdate1(RxReduction *reduction, unsigned int progress, unsigned int progressMax, void *data) {
 	//first half of progress update
@@ -152,6 +161,18 @@ static void TxiConvertProgressUpdate(RxReduction *reduction, unsigned int progre
 
 
 
+// -----------------------------------------------------------------------------------------------
+// Name: TxiConvertDirect
+// 
+// This is the routine performing direct mode texture conversion.
+//
+// Parameters:
+//   params        The texture convresion parameters
+//   reduction     The color reduction context
+//
+// Returns:
+//   The status of the conversion operation.
+// -----------------------------------------------------------------------------------------------
 static int TxiConvertDirect(TxConversionParameters *params, RxReduction *reduction) {
 	//convert to direct color.
 	TxConversionResult result = TEXCONV_SUCCESS;
@@ -201,6 +222,19 @@ Cleanup:
 	return result;
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: TxiConvertPlttN
+// 
+// This is the routine performing indexed (palette4, palette16, palette256) mode texture
+// conversion.
+//
+// Parameters:
+//   params        The texture convresion parameters
+//   reduction     The color reduction context
+//
+// Returns:
+//   The status of the conversion operation.
+// -----------------------------------------------------------------------------------------------
 static int TxiConvertPlttN(TxConversionParameters *params, RxReduction *reduction) {
 	//generate a palette ofcolors.
 	TxConversionResult result = TEXCONV_SUCCESS;
@@ -292,9 +326,22 @@ Cleanup:
 	return result;
 }
 
+// -----------------------------------------------------------------------------------------------
+// Name: TxiConvertDirect
+// 
+// This is the routine performing translucent (a3i5, a5i3) mode texture conversion.
+//
+// Parameters:
+//   params        The texture convresion parameters
+//   reduction     The color reduction context
+//
+// Returns:
+//   The status of the conversion operation.
+// -----------------------------------------------------------------------------------------------
 static int TxiConvertAxIy(TxConversionParameters *params, RxReduction *reduction) {
 	//convert to translucent. First, generate a palette of colors.
 	TxConversionResult result = TEXCONV_SUCCESS;
+
 	unsigned int nColors = 0, alphaShift = 0, alphaMax = 0;
 	unsigned int width = params->width, height = params->height;
 	switch (params->fmt) {
