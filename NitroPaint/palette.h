@@ -362,9 +362,7 @@ struct RxReduction_ {
 	RxYiqColor tempLayeredColor[RX_PALETTE_MAX_COUNT];
 	union {
 		double splitAxis[4 * RX_PALETTE_MAX_COUNT];
-#ifdef RX_SIMD
 		RxLongColor splitAxisLong[RX_PALETTE_MAX_COUNT];
-#endif
 	};
 	unsigned int nPaletteColors;
 	unsigned int nUsedColors;

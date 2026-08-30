@@ -604,18 +604,6 @@ static inline void RxiWeightLongColor(RxReduction *reduction, RxLongColor *dest,
 #endif
 }
 
-static inline double RxiDotLongColor(const RxLongColor *col1, const RxLongColor *col2) {
-#ifndef RX_SIMD
-	return col1->y * col2->y + col1->i * col2->i + col1->q * col2->q + col1->a * col2->a;
-#else
-	__m128d yi = _mm_mul_pd(col1->yi, col2->yi);
-	__m128d qa = _mm_mul_pd(col1->qa, col2->qa);
-	__m128d sum = _mm_add_pd(yi, qa);
-	sum = _mm_add_pd(sum, _mm_unpacklo_pd(sum, sum));
-	return _mm_cvtsd_f64(sum);
-#endif
-}
-
 static inline double RxiLongColorMag2(const RxLongColor *cLong) {
 #ifndef RX_SIMD
 	return cLong->y * cLong->y + cLong->i * cLong->i
@@ -751,6 +739,8 @@ static RxStatus RxiSetColorMaskMode(RxReduction *reduction, RxMaskBitsMode mode)
 			reduction->maskColorsYiq = RxiMaskColorToDS15Yiq;
 			break;
 		}
+		default:
+			break;
 	}
 
 	reduction->maskMode = mode;
