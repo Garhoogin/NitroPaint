@@ -1,4 +1,22 @@
+*.ipch
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.obj
+*.tlog
+*.aps
 
 .vs/
 Debug/
 Release/
+OldVersions/
+NitroPaint/VTune*/
+NitroPaint/My Advisor*/
+*.aps
+*UserGuide.*
+*.txt
+*nitropaint.ini
+NitroPaint_BG.png
+NitroPaint.png
+bg.bmp
