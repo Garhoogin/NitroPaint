@@ -2943,8 +2943,8 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	//construct output path: change path for output texture and config file extensions
 	const wchar_t *filename = GetFileName(path);
 	wchar_t *outPath1 = BatchTexPathCat(g_batchTexOut, filename);
-	wchar_t *outPath = BatchTexPathChangeExtension(outPath1, L"TGA");
-	wchar_t *configPath = BatchTexPathChangeExtension(filename, L"INI");
+	wchar_t *outPath = BatchTexPathChangeExtension(outPath1, L"tga");
+	wchar_t *configPath = BatchTexPathChangeExtension(filename, L"ini");
 	free(outPath1);
 
 	//check: should we re-convert?

@@ -82,6 +82,7 @@
 //use of intrinsics under x86
 #if defined(_M_IX86) || defined(_M_X64)
 #define RX_SIMD
+#define RX_SSE_VER 2
 #ifdef _MSC_VER
 #include <intrin.h>
 #else // _MSC_VER
