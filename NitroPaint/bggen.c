@@ -27,7 +27,7 @@
 #include <math.h>
 
 #include "bggen.h"
-#include "combo2d.h"
+#include "object/combo2d.h"
 #include "color.h"
 #include "palette.h"
 

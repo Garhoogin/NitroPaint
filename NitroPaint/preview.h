@@ -1,9 +1,9 @@
 #pragma once
-#include "nclr.h"
-#include "ncgr.h"
-#include "nscr.h"
-#include "ncer.h"
-#include "nanr.h"
+#include "object/NitroPalette.h"
+#include "object/NitroCharacter.h"
+#include "object/NitroScreen.h"
+#include "object/NitroCell.h"
+#include "object/NitroAnim.h"
 #include "texture.h"
 
 //

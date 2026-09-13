@@ -2,9 +2,9 @@
 #include <Windows.h>
 
 #include "ui.h"
-#include "filecommon.h"
+#include "object/filecommon.h"
 #include "palette.h"
-#include "editor.h"
+#include "editor/editor.h"
 #include "gdip.h"
 
 #define g_useDarkTheme 0

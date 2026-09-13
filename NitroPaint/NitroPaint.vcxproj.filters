@@ -13,51 +13,33 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Source Files\editor">
+      <UniqueIdentifier>{3ff19f57-33e4-4c84-8d36-658b3ab2fd0a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\object">
+      <UniqueIdentifier>{af5ae305-d525-452b-9f1b-174372d60863}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\object">
+      <UniqueIdentifier>{942e0261-8ef7-4609-a2f4-8de1d4da01c1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\editor">
+      <UniqueIdentifier>{cf3cac22-27a5-4f87-af71-7bd2979b1138}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="nitropaint.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ncgrviewer.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nclrviewer.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="exceptions.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nscrviewer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="childwindow.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="nclr.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="ncgr.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nscr.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="gdip.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ncer.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="ncerviewer.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nsbtx.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="texture.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nsbtxviewer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="colorchooser.c">
@@ -69,37 +51,16 @@
     <ClCompile Include="compression.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="filecommon.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="textureeditor.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="texconv.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="undo.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="nanr.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nanrviewer.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="isplt.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="combo2d.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="bstream.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nmcr.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nmcrviewer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="palops.c">
@@ -108,13 +69,7 @@
     <ClCompile Include="ui.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="editor.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="cellgen.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nns.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="bggen.c">
@@ -126,54 +81,102 @@
     <ClCompile Include="framebuffer.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tilededitor.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="struct.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="setosa.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nftr.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="nftrviewer.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="jlyt.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="lyteditor.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="mesg.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="mesgeditor.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="scene.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="io.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="editor\editor.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\lyteditor.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\mesgeditor.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\nanrviewer.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\ncerviewer.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\ncgrviewer.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\nclrviewer.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\nftrviewer.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\nmcrviewer.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\nsbtxviewer.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\nscrviewer.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\textureeditor.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="editor\tilededitor.c">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroAnim.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroCell.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroCharacter.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroFont.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroLyt.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroMessage.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroMultiCell.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroPalette.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroScreen.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\NitroTexArc.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\nns.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\scene.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\setosa.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\combo2d.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
+    <ClCompile Include="object\filecommon.c">
+      <Filter>Source Files\object</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ncgrviewer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="nclrviewer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="exceptions.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nscrviewer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="nitropaint.h">
@@ -182,34 +185,13 @@
     <ClInclude Include="childwindow.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="nclr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ncgr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nscr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="gdip.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="palette.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ncer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ncerviewer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nsbtx.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="texture.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nsbtxviewer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="colorchooser.h">
@@ -218,13 +200,7 @@
     <ClInclude Include="color.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="filecommon.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="compression.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="textureeditor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="texconv.h">
@@ -233,22 +209,7 @@
     <ClInclude Include="undo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="nanr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nanrviewer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="combo2d.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="bstream.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nmcr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nmcrviewer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="palops.h">
@@ -257,13 +218,7 @@
     <ClInclude Include="ui.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="editor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="cellgen.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nns.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="bggen.h">
@@ -275,38 +230,95 @@
     <ClInclude Include="framebuffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="tilededitor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="struct.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="setosa.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nftr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nftrviewer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="jlyt.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="lyteditor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mesg.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mesgeditor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="scene.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="io.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="object\filecommon.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="object\combo2d.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroAnim.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroCell.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroCharacter.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroFont.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroLyt.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroMessage.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroMultiCell.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroPalette.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroScreen.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\NitroTexArc.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\setosa.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\scene.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="object\nns.h">
+      <Filter>Header Files\object</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\mesgeditor.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\nanrviewer.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\ncerviewer.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\ncgrviewer.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\nclrviewer.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\nftrviewer.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\nmcrviewer.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\nsbtxviewer.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\nscrviewer.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\textureeditor.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\tilededitor.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\lyteditor.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="editor\editor.h">
+      <Filter>Header Files\editor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

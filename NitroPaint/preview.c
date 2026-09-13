@@ -3,11 +3,11 @@
 
 #include "preview.h"
 #include "color.h"
-#include "nclr.h"
-#include "ncgr.h"
-#include "ncer.h"
-#include "nanr.h"
-#include "nscr.h"
+#include "object/NitroPalette.h"
+#include "object/NitroCharacter.h"
+#include "object/NitroCell.h"
+#include "object/NitroAnim.h"
+#include "object/NitroScreen.h"
 #include "texture.h"
 
 typedef HANDLE (__stdcall *pfnNNS_McsOpenStream) (USHORT port, DWORD dwFlags);

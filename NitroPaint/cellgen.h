@@ -1,5 +1,5 @@
 #pragma once
-#include "ncer.h"
+#include "object/NitroCell.h"
 
 typedef struct OBJ_BOUNDS_ {
 	int x;

@@ -89,6 +89,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -128,6 +129,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -163,101 +165,101 @@
   <ItemGroup>
     <ClCompile Include="bggen.c" />
     <ClCompile Include="io.c" />
-    <ClCompile Include="jlyt.c" />
+    <ClCompile Include="object\NitroLyt.c" />
     <ClCompile Include="bstream.c" />
     <ClCompile Include="cellgen.c" />
     <ClCompile Include="childwindow.c" />
     <ClCompile Include="color.c" />
     <ClCompile Include="colorchooser.c" />
-    <ClCompile Include="combo2d.c" />
-    <ClCompile Include="editor.c" />
+    <ClCompile Include="object\combo2d.c" />
+    <ClCompile Include="editor\editor.c" />
     <ClCompile Include="exceptions.c" />
-    <ClCompile Include="filecommon.c" />
+    <ClCompile Include="object\filecommon.c" />
     <ClCompile Include="framebuffer.c" />
-    <ClCompile Include="lyteditor.c" />
-    <ClCompile Include="mesg.c" />
-    <ClCompile Include="mesgeditor.c" />
-    <ClCompile Include="nftr.c" />
-    <ClCompile Include="nftrviewer.c" />
-    <ClCompile Include="nns.c" />
+    <ClCompile Include="editor\lyteditor.c" />
+    <ClCompile Include="object\NitroMessage.c" />
+    <ClCompile Include="editor\mesgeditor.c" />
+    <ClCompile Include="object\NitroFont.c" />
+    <ClCompile Include="editor\nftrviewer.c" />
+    <ClCompile Include="object\nns.c" />
     <ClCompile Include="gdip.c" />
     <ClCompile Include="compression.c" />
     <ClCompile Include="isplt.c" />
-    <ClCompile Include="nanr.c" />
-    <ClCompile Include="nanrviewer.c" />
-    <ClCompile Include="ncer.c" />
-    <ClCompile Include="ncerviewer.c" />
-    <ClCompile Include="ncgr.c" />
-    <ClCompile Include="ncgrviewer.c" />
-    <ClCompile Include="nclr.c" />
-    <ClCompile Include="nclrviewer.c" />
+    <ClCompile Include="object\NitroAnim.c" />
+    <ClCompile Include="editor\nanrviewer.c" />
+    <ClCompile Include="object\NitroCell.c" />
+    <ClCompile Include="editor\ncerviewer.c" />
+    <ClCompile Include="object\NitroCharacter.c" />
+    <ClCompile Include="editor\ncgrviewer.c" />
+    <ClCompile Include="object\NitroPalette.c" />
+    <ClCompile Include="editor\nclrviewer.c" />
     <ClCompile Include="nitropaint.c" />
-    <ClCompile Include="nmcr.c" />
-    <ClCompile Include="nmcrviewer.c" />
-    <ClCompile Include="nsbtx.c" />
-    <ClCompile Include="nsbtxviewer.c" />
-    <ClCompile Include="nscr.c" />
-    <ClCompile Include="nscrviewer.c" />
+    <ClCompile Include="object\NitroMultiCell.c" />
+    <ClCompile Include="editor\nmcrviewer.c" />
+    <ClCompile Include="object\NitroTexArc.c" />
+    <ClCompile Include="editor\nsbtxviewer.c" />
+    <ClCompile Include="object\NitroScreen.c" />
+    <ClCompile Include="editor\nscrviewer.c" />
     <ClCompile Include="palops.c" />
     <ClCompile Include="preview.c" />
-    <ClCompile Include="scene.c" />
-    <ClCompile Include="setosa.c" />
+    <ClCompile Include="object\scene.c" />
+    <ClCompile Include="object\setosa.c" />
     <ClCompile Include="struct.c" />
     <ClCompile Include="texconv.c" />
     <ClCompile Include="texture.c" />
-    <ClCompile Include="textureeditor.c" />
-    <ClCompile Include="tilededitor.c" />
+    <ClCompile Include="editor\textureeditor.c" />
+    <ClCompile Include="editor\tilededitor.c" />
     <ClCompile Include="ui.c" />
     <ClCompile Include="undo.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bggen.h" />
     <ClInclude Include="io.h" />
-    <ClInclude Include="jlyt.h" />
+    <ClInclude Include="object\NitroLyt.h" />
     <ClInclude Include="bstream.h" />
     <ClInclude Include="cellgen.h" />
     <ClInclude Include="childwindow.h" />
     <ClInclude Include="color.h" />
     <ClInclude Include="colorchooser.h" />
-    <ClInclude Include="combo2d.h" />
+    <ClInclude Include="object\combo2d.h" />
     <ClInclude Include="compression.h" />
-    <ClInclude Include="editor.h" />
+    <ClInclude Include="editor\editor.h" />
     <ClInclude Include="exceptions.h" />
-    <ClInclude Include="filecommon.h" />
+    <ClInclude Include="object\filecommon.h" />
     <ClInclude Include="framebuffer.h" />
-    <ClInclude Include="lyteditor.h" />
-    <ClInclude Include="mesg.h" />
-    <ClInclude Include="mesgeditor.h" />
-    <ClInclude Include="nftr.h" />
-    <ClInclude Include="nftrviewer.h" />
-    <ClInclude Include="nns.h" />
+    <ClInclude Include="editor\lyteditor.h" />
+    <ClInclude Include="object\NitroMessage.h" />
+    <ClInclude Include="editor\mesgeditor.h" />
+    <ClInclude Include="object\NitroFont.h" />
+    <ClInclude Include="editor\nftrviewer.h" />
+    <ClInclude Include="object\nns.h" />
     <ClInclude Include="gdip.h" />
-    <ClInclude Include="nanr.h" />
-    <ClInclude Include="nanrviewer.h" />
-    <ClInclude Include="ncer.h" />
-    <ClInclude Include="ncerviewer.h" />
-    <ClInclude Include="ncgr.h" />
-    <ClInclude Include="ncgrviewer.h" />
-    <ClInclude Include="nclr.h" />
-    <ClInclude Include="nclrviewer.h" />
+    <ClInclude Include="object\NitroAnim.h" />
+    <ClInclude Include="editor\nanrviewer.h" />
+    <ClInclude Include="object\NitroCell.h" />
+    <ClInclude Include="editor\ncerviewer.h" />
+    <ClInclude Include="object\NitroCharacter.h" />
+    <ClInclude Include="editor\ncgrviewer.h" />
+    <ClInclude Include="object\NitroPalette.h" />
+    <ClInclude Include="editor\nclrviewer.h" />
     <ClInclude Include="nitropaint.h" />
-    <ClInclude Include="nmcr.h" />
-    <ClInclude Include="nmcrviewer.h" />
-    <ClInclude Include="nsbtx.h" />
-    <ClInclude Include="nsbtxviewer.h" />
-    <ClInclude Include="nscr.h" />
-    <ClInclude Include="nscrviewer.h" />
+    <ClInclude Include="object\NitroMultiCell.h" />
+    <ClInclude Include="editor\nmcrviewer.h" />
+    <ClInclude Include="object\NitroTexArc.h" />
+    <ClInclude Include="editor\nsbtxviewer.h" />
+    <ClInclude Include="object\NitroScreen.h" />
+    <ClInclude Include="editor\nscrviewer.h" />
     <ClInclude Include="palette.h" />
     <ClInclude Include="palops.h" />
     <ClInclude Include="preview.h" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="scene.h" />
-    <ClInclude Include="setosa.h" />
+    <ClInclude Include="object\scene.h" />
+    <ClInclude Include="object\setosa.h" />
     <ClInclude Include="struct.h" />
     <ClInclude Include="texconv.h" />
     <ClInclude Include="texture.h" />
-    <ClInclude Include="textureeditor.h" />
-    <ClInclude Include="tilededitor.h" />
+    <ClInclude Include="editor\textureeditor.h" />
+    <ClInclude Include="editor\tilededitor.h" />
     <ClInclude Include="ui.h" />
     <ClInclude Include="undo.h" />
   </ItemGroup>

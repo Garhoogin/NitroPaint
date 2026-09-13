@@ -1,7 +1,7 @@
 #include <Windows.h>
 #include <stdio.h>
 #include "texture.h"
-#include "nns.h"
+#include "object/nns.h"
 
 int ilog2(int x);
 

@@ -33,9 +33,9 @@
 // the character map color reduction (the use of more than one color palette across the whole
 // background).
 // -----------------------------------------------------------------------------------------------
-#include "nclr.h"
-#include "ncgr.h"
-#include "nscr.h"
+#include "object/NitroPalette.h"
+#include "object/NitroCharacter.h"
+#include "object/NitroScreen.h"
 #include "palette.h"
 
 //#define BGGEN_USE_DCT

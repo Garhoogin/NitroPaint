@@ -1,6 +1,6 @@
 #pragma once
 #include "color.h"
-#include "filecommon.h"
+#include "object/filecommon.h"
 
 // ----- texture file types
 #define TEXTURE_TYPE_INVALID     0
