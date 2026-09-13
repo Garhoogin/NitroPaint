@@ -5,7 +5,7 @@
 #include "resource.h"
 #include "nftrviewer.h"
 #include "gdip.h"
-#include "colorchooser.h"
+#include "ui/colorchooser.h"
 
 #define NFTR_VIEWER_CLASS_NAME    L"NftrViewerClass"
 #define NFTR_VIEWER_MARGIN_CLASS  L"NftrViewerMarginClass"

@@ -170,7 +170,7 @@
     <ClCompile Include="cellgen.c" />
     <ClCompile Include="childwindow.c" />
     <ClCompile Include="color.c" />
-    <ClCompile Include="colorchooser.c" />
+    <ClCompile Include="ui\colorchooser.c" />
     <ClCompile Include="object\combo2d.c" />
     <ClCompile Include="editor\editor.c" />
     <ClCompile Include="exceptions.c" />
@@ -200,7 +200,7 @@
     <ClCompile Include="editor\nsbtxviewer.c" />
     <ClCompile Include="object\NitroScreen.c" />
     <ClCompile Include="editor\nscrviewer.c" />
-    <ClCompile Include="palops.c" />
+    <ClCompile Include="ui\palops.c" />
     <ClCompile Include="preview.c" />
     <ClCompile Include="object\scene.c" />
     <ClCompile Include="object\setosa.c" />
@@ -220,7 +220,7 @@
     <ClInclude Include="cellgen.h" />
     <ClInclude Include="childwindow.h" />
     <ClInclude Include="color.h" />
-    <ClInclude Include="colorchooser.h" />
+    <ClInclude Include="ui\colorchooser.h" />
     <ClInclude Include="object\combo2d.h" />
     <ClInclude Include="compression.h" />
     <ClInclude Include="editor\editor.h" />
@@ -250,7 +250,7 @@
     <ClInclude Include="object\NitroScreen.h" />
     <ClInclude Include="editor\nscrviewer.h" />
     <ClInclude Include="palette.h" />
-    <ClInclude Include="palops.h" />
+    <ClInclude Include="ui\palops.h" />
     <ClInclude Include="preview.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="object\scene.h" />

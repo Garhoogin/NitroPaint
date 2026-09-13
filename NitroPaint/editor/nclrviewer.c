@@ -9,7 +9,7 @@
 #include "ncgrviewer.h"
 #include "nscrviewer.h"
 #include "ncerviewer.h"
-#include "colorchooser.h"
+#include "ui/colorchooser.h"
 #include "resource.h"
 #include "palette.h"
 #include "gdip.h"

@@ -25,6 +25,12 @@
     <Filter Include="Header Files\editor">
       <UniqueIdentifier>{cf3cac22-27a5-4f87-af71-7bd2979b1138}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\ui">
+      <UniqueIdentifier>{bef6de2a-cc53-4d78-9371-550ddbadd6ef}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ui">
+      <UniqueIdentifier>{ccbdb8d2-87c5-4a8f-b54a-08b21ed0de97}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="nitropaint.c">
@@ -40,9 +46,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="texture.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="colorchooser.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="color.c">
@@ -61,9 +64,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="bstream.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="palops.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ui.c">
@@ -171,6 +171,12 @@
     <ClCompile Include="object\filecommon.c">
       <Filter>Source Files\object</Filter>
     </ClCompile>
+    <ClCompile Include="ui\palops.c">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\colorchooser.c">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -194,9 +200,6 @@
     <ClInclude Include="texture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="colorchooser.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="color.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -210,9 +213,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="bstream.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="palops.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ui.h">
@@ -319,6 +319,12 @@
     </ClInclude>
     <ClInclude Include="editor\editor.h">
       <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\colorchooser.h">
+      <Filter>Header Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\palops.h">
+      <Filter>Header Files\ui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

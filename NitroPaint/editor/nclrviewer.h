@@ -2,7 +2,7 @@
 #include <Windows.h>
 #include "editor.h"
 #include "object/NitroPalette.h"
-#include "palops.h"
+#include "ui/palops.h"
 #include "framebuffer.h"
 
 //edit modes

@@ -9,7 +9,7 @@
 #include "resource.h"
 #include "exceptions.h"
 #include "ui.h"
-#include "colorchooser.h"
+#include "ui/colorchooser.h"
 #include "palette.h"
 #include "object/filecommon.h"
 #include "object/combo2d.h"
