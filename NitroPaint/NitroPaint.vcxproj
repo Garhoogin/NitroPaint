@@ -170,6 +170,7 @@
     <ClCompile Include="cellgen.c" />
     <ClCompile Include="childwindow.c" />
     <ClCompile Include="color.c" />
+    <ClCompile Include="ui\texconvdlg.c" />
     <ClCompile Include="ui\colorchooser.c" />
     <ClCompile Include="object\combo2d.c" />
     <ClCompile Include="editor\editor.c" />
@@ -220,6 +221,7 @@
     <ClInclude Include="cellgen.h" />
     <ClInclude Include="childwindow.h" />
     <ClInclude Include="color.h" />
+    <ClInclude Include="ui\texconvdlg.h" />
     <ClInclude Include="ui\colorchooser.h" />
     <ClInclude Include="object\combo2d.h" />
     <ClInclude Include="compression.h" />

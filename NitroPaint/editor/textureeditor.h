@@ -35,30 +35,8 @@ typedef struct {
 	HWND hWndStatus;
 	HWND hWndShowAlpha;
 
-	HWND hWndFormat;
-	HWND hWndPaletteName;
-	HWND hWndDither;
-	HWND hWndDiffuseAmount;
-	HWND hWndDitherAlpha;
-	HWND hWndColorEntries;
-	HWND hWndDoConvertButton;
-	HWND hWndOptimizationSlider;
-	HWND hWndOptimizationLabel;
-	HWND hWndFixedPalette;
-	HWND hWndPaletteInput;
-	HWND hWndPaletteBrowse;
-	NpBalanceControl balance;
-	HWND hWndPaletteSize;
-	HWND hWndLimitPalette;
-	HWND hWndColor0Transparent;
-	HWND hWndCheckboxAlphaKey;
-	HWND hWndSelectAlphaKey;
-	COLOR32 alphaKey;
-
 	HWND hWndPaletteEditor;
 	DWORD tmpCust[16];
-
-	void *convExtInfo;
 
 	//tile editor
 	int selectedColor;

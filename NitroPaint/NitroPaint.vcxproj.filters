@@ -177,6 +177,9 @@
     <ClCompile Include="ui\colorchooser.c">
       <Filter>Source Files\ui</Filter>
     </ClCompile>
+    <ClCompile Include="ui\texconvdlg.c">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -324,6 +327,9 @@
       <Filter>Header Files\ui</Filter>
     </ClInclude>
     <ClInclude Include="ui\palops.h">
+      <Filter>Header Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\texconvdlg.h">
       <Filter>Header Files\ui</Filter>
     </ClInclude>
   </ItemGroup>

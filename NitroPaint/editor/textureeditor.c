@@ -4,11 +4,12 @@
 #include "nitropaint.h"
 #include "nclrviewer.h"
 #include "palette.h"
-#include "ui/colorchooser.h"
 #include "resource.h"
 #include "gdip.h"
 #include "texconv.h"
 #include "object/NitroPalette.h"
+#include "ui/colorchooser.h"
+#include "ui/texconvdlg.h"
 
 #include <Shlwapi.h>
 #include <ShlObj.h>
@@ -57,7 +58,7 @@ extern size_t my_wcsnlen(const wchar_t *_Str, size_t _MaxCount);
 HWND CreateTexturePaletteEditor(TEXTUREEDITORDATA *data);
 static void TexViewerEnsurePaletteEditor(TEXTUREEDITORDATA *data);
 
-static void ConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, TexViewerConvExtInfo *convExtInfo);
+static void TexViewerConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, TexViewerConvExtInfo *convExtInfo);
 
 
 static int TexViewerGetFormatForPreset(void) {
@@ -1048,7 +1049,7 @@ static void TexViewerOnCtlCommand(TEXTUREEDITORDATA *data, HWND hWndControl, int
 	HWND hWnd = data->hWnd;
 	if (hWndControl == data->hWndConvert) {
 		//conversion dialog
-		ConvertTextureDialog(data->editorMgr->hWnd, data, NULL);
+		TexViewerConvertTextureDialog(data->editorMgr->hWnd, data, NULL);
 	} else if (hWndControl == data->hWndExportNTF) {
 		//if not in any format, it cannot be exported.
 		if (!TexViewerCheckSave(data)) return;
@@ -1830,16 +1831,16 @@ static int TexViewerJudgeColor0Mode(const COLOR32 *px, unsigned int width, unsig
 
 static int TexViewerJudgeFormat(const COLOR32 *px, unsigned int nWidth, unsigned int nHeight, const wchar_t *path) {
 	//Guess a good format for the data. Default to 4x4.
-	int fmt = CT_4x4;
+	int fmt = GX_TEXFMT_TEX4x4;
 
 	//if the file's name ends in _cmp2 or _cmp4, select 4x4 compression.
 	if (path != NULL) {
 		const wchar_t *name = GetFileName(path);
-		if (wcsstr(name, L"_cmp2") != NULL || wcsstr(name, L"_cmp4") != NULL) return CT_4x4;
+		if (wcsstr(name, L"_cmp2") != NULL || wcsstr(name, L"_cmp4") != NULL) return GX_TEXFMT_TEX4x4;
 	}
 
 	//if the texture is 1024x1024, do not choose 4x4.
-	if (nWidth * nHeight == 1024 * 1024) fmt = CT_256COLOR;
+	if (nWidth * nHeight > 512 * 1024) fmt = GX_TEXFMT_PLTT256;
 
 	//is there translucency?
 	if (TexViewerImageHasTranslucentPixels(px, nWidth, nHeight)) {
@@ -1848,10 +1849,10 @@ static int TexViewerJudgeFormat(const COLOR32 *px, unsigned int nWidth, unsigned
 			IMG_CCM_IGNORE_ALPHA | IMG_CCM_NO_IGNORE_TRANSPARENT_COLOR | IMG_CCM_NO_COUNT_TRANSPARENT);
 		if (colorCount < 16) {
 			//colors < 16, choose a5i3.
-			fmt = CT_A5I3;
+			fmt = GX_TEXFMT_A5I3;
 		} else {
 			//otherwise, choose a3i5.
-			fmt = CT_A3I5;
+			fmt = GX_TEXFMT_A3I5;
 		}
 	} else {
 		//weigh the other format options for optimal size.
@@ -1859,18 +1860,18 @@ static int TexViewerJudgeFormat(const COLOR32 *px, unsigned int nWidth, unsigned
 
 		//if <= 4 colors, choose 4-color.
 		if (nColors <= 4) {
-			fmt = CT_4COLOR;
+			fmt = GX_TEXFMT_PLTT4;
 		} else {
 			//weigh 16-color, 256-color, and 4x4. 
 			if ((nWidth * nHeight) <= 1024 * 512) {
 				//unfrt 1024x512/512x1024: use 4x4
-				fmt = CT_4x4;
+				fmt = GX_TEXFMT_TEX4x4;
 			} else if (nColors < 32) {
 				//not more than 32 colors: use palette16
-				fmt = CT_16COLOR;
+				fmt = GX_TEXFMT_PLTT16;
 			} else {
 				//otherwise, use palette256
-				fmt = CT_256COLOR;
+				fmt = GX_TEXFMT_PLTT256;
 			}
 		}
 	}
@@ -1893,389 +1894,126 @@ static int TexViewerJudgeColorCount(int bWidth, int bHeight) {
 	return nColors;
 }
 
-static void updateConvertDialog(TEXTUREEDITORDATA *data) {
-	int fmt = UiCbGetCurSel(data->hWndFormat) + 1;
-	BOOL isPlttN = fmt == CT_4COLOR || fmt == CT_16COLOR || fmt == CT_256COLOR;
-	BOOL isPltt = fmt != CT_DIRECT;
-	BOOL is4x4 = fmt == CT_4x4;
+static void TexViewerSetDefaultParams(TexconvDialogParam *params, TEXTUREEDITORDATA *data) {
+	//default format
+	params->param.fmt = TexViewerJudgeFormat(data->px, data->width, data->height, data->szInitialFile);
 
-	BOOL fixedPalette = GetCheckboxChecked(data->hWndFixedPalette) && isPltt;
-	BOOL dither = GetCheckboxChecked(data->hWndDither);
-	BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette) && is4x4 && !fixedPalette;
+	//default max 4x4 colors
+	params->maxColors = TexViewerJudgeColorCount(data->width, data->height);
 
-	EnableWindow(data->hWndDitherAlpha, dither);
-	EnableWindow(data->hWndDiffuseAmount, dither);
-	EnableWindow(data->hWndColorEntries, limitPalette);
-	EnableWindow(data->hWndOptimizationSlider, is4x4 && !fixedPalette);
-	EnableWindow(data->hWndPaletteName, isPltt);
-	EnableWindow(data->hWndFixedPalette, isPltt);
-	EnableWindow(data->hWndPaletteInput, fixedPalette);
-	EnableWindow(data->hWndPaletteBrowse, fixedPalette);
-	EnableWindow(data->hWndPaletteSize, isPltt && !is4x4 && !fixedPalette);
-	EnableWindow(data->hWndLimitPalette, is4x4 && !fixedPalette);
-	EnableWindow(data->balance.hWndEnhanceColors, isPltt);
+	//color-0 mode
+	params->param.c0xp = TexViewerJudgeColor0Mode(data->px, data->width, data->height);
 
-	//paletteN formats: enable color 0 mode
-	EnableWindow(data->hWndColor0Transparent, isPlttN);
+	//initial palette name
+	WCHAR *pname = NULL;
+	if (TexViewerIsConverted(data)) {
+		//fill existing palette name
+		pname = TexNarrowResourceNameToWideChar(data->texture->texture.palette.name);
+	} else {
+		//generate a palette name
+		pname = (WCHAR *) calloc(16, sizeof(WCHAR));
+		TexViewerChoosePaletteName(pname, data->szInitialFile);
+	}
+	params->paletteName = pname;
 
-	//when alpha key is enabled, enable the select button
-	EnableWindow(data->hWndSelectAlphaKey, GetCheckboxChecked(data->hWndCheckboxAlphaKey));
+	//set default alpha key
+	params->alphaKey = 0xFF00FF; // default color: magenta
 
-	SetFocus(data->hWndConvertDialog);
-}
+	//we'll scan the image for appearances of common alpha keys.
+	int nFF00FF = 0, n00FF00 = 0, nFFFF00 = 0;
+	for (int i = 0; i < data->width * data->height; i++) {
+		COLOR32 c = data->px[i] & 0xFFFFFF;
 
-static void TexViewerShowTooltip(HWND hWndParent, HWND hWndCtl, const wchar_t *pstr) {
-	HWND hTool = CreateWindow(TOOLTIPS_CLASS, NULL, WS_VISIBLE | WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON,
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, NULL, NULL);
-
-	TOOLINFO toolInfo = { 0 };
-	toolInfo.cbSize = sizeof(toolInfo);
-	toolInfo.hwnd = hWndParent;
-	toolInfo.lpszText = (LPWSTR) pstr;
-	toolInfo.uId = (UINT_PTR) hWndCtl;
-	toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-	SendMessage(hTool, TTM_ADDTOOL, 0, (LPARAM) &toolInfo);
-}
-
-static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	TEXTUREEDITORDATA *data = (TEXTUREEDITORDATA *) UiDlgGetData(hWnd);
-	switch (msg) {
-		case WM_CREATE:
-		{
-			data->hWndConvertDialog = hWnd;
-
-			int boxWidth = 100 + 100 + 10 + 10 + 10; //box width
-			int boxHeight = 5 * 27 - 5 + 10 + 10 + 10; //first row height
-			int boxHeight2 = 3 * 27 - 5 + 10 + 10 + 10; //second row height
-			int boxHeight3 = 3 * 27 - 5 + 10 + 10 + 10; //third row height
-			int width = 30 + 2 * boxWidth; //window width
-			int height = 10 + boxHeight + 10 + boxHeight2 + 10 + boxHeight3 + 10 + 22 + 10; //window height
-
-			int leftX = 10 + 10; //left box X
-			int rightX = 10 + boxWidth + 10 + 10; //right box X
-			int topY = 10 + 10 + 8; //top box Y
-			int middleY = boxHeight + 10 + topY; //middle box Y
-			int bottomY = boxHeight + 10 + boxHeight2 + 10 + topY; //bottom box Y
-
-			CreateStatic(hWnd, L"Format:", leftX, topY, 75, 22);
-			data->hWndFormat = CreateCombobox(hWnd, NULL, 0, leftX + 85, topY, 100, 22, 0);
-			data->hWndDither = CreateCheckbox(hWnd, L"Dither", leftX, topY + 27, 100, 22, FALSE);
-			data->hWndDitherAlpha = CreateCheckbox(hWnd, L"Dither Alpha", leftX, topY + 27 * 2, 100, 22, FALSE);
-			CreateStatic(hWnd, L"Diffusion:", leftX, topY + 27 * 3, 75, 22);
-			data->hWndDiffuseAmount = CreateEdit(hWnd, L"100", leftX + 85, topY + 27 * 3, 100, 22, TRUE);
-			data->hWndCheckboxAlphaKey = CreateCheckbox(hWnd, L"Alpha Key:", leftX, topY + 27 * 4, 85, 22, FALSE);
-			data->hWndSelectAlphaKey = CreateButton(hWnd, L"...", leftX + 85, topY + 27 * 4, 50, 22, FALSE);
-
-			CreateStatic(hWnd, L"Palette Name:", rightX, topY, 75, 22);
-			data->hWndPaletteName = CreateEdit(hWnd, L"", rightX + 85, topY, 100, 22, FALSE);
-			data->hWndFixedPalette = CreateCheckbox(hWnd, L"Use Fixed Palette", rightX, topY + 27, 100, 22, FALSE);
-			CreateStatic(hWnd, L"Palette File:", rightX, topY + 27 * 2, 75, 22);
-			data->hWndPaletteInput = CreateEdit(hWnd, L"", rightX + 85, topY + 27 * 2, 75, 22, FALSE);
-			data->hWndPaletteBrowse = CreateButton(hWnd, L"...", rightX + 85 + 75, topY + 27 * 2, 25, 22, FALSE);
-			CreateStatic(hWnd, L"Colors:", rightX, topY + 27 * 3, 75, 22);
-			data->hWndPaletteSize = CreateEdit(hWnd, L"256", rightX + 85, topY + 27 * 3, 100, 22, TRUE);
-			data->hWndColor0Transparent = CreateCheckbox(hWnd, L"Color 0 is Transparent", rightX, topY + 27 * 4, 150, 22, FALSE);
-
-			data->hWndLimitPalette = CreateCheckbox(hWnd, L"Limit Palette Size", leftX, middleY, 100, 22, TRUE);
-			CreateStatic(hWnd, L"Maximum Colors:", leftX, middleY + 27, 100, 22);
-			data->hWndColorEntries = CreateEdit(hWnd, L"256", leftX + 110, middleY + 27, 100, 22, TRUE);
-			CreateStatic(hWnd, L"Optimization:", leftX, middleY + 27 * 2, 100, 22);
-			data->hWndOptimizationSlider = CreateTrackbar(hWnd, leftX + 110, middleY + 27 * 2, 210, 22, 0, 100, 0);
-			data->hWndOptimizationLabel = CreateStatic(hWnd, L"0", leftX + 330, middleY + 27 * 2, 50, 22);
-
-			NpCreateBalanceInput(&data->balance, hWnd, leftX - 10, bottomY - 18, rightX + boxWidth - leftX);
-
-			CreateGroupbox(hWnd, L"Texture", leftX - 10, topY - 18, boxWidth, boxHeight);
-			CreateGroupbox(hWnd, L"Palette", rightX - 10, topY - 18, boxWidth, boxHeight);
-			CreateGroupbox(hWnd, L"4x4 Compression", leftX - 10, middleY - 18, rightX + boxWidth - leftX, boxHeight2);
-
-			data->hWndDoConvertButton = CreateButton(hWnd, L"Convert", width / 2 - 100, height - 32, 200, 22, TRUE);
-
-			//populate the dropdown list
-			for (int i = 1; i <= CT_DIRECT; i++) {
-				WCHAR bf[16];
-				mbstowcs(bf, TxNameFromTexFormat(i), sizeof(bf) / sizeof(bf[0]));
-				UiCbAddString(data->hWndFormat, bf);
-			}
-
-			//get extra info
-			TexViewerConvExtInfo *extInfo = (TexViewerConvExtInfo *) data->convExtInfo;
-			
-			int format;
-			if (extInfo == NULL) {
-				format = TexViewerJudgeFormat(data->px, data->width, data->height, data->szInitialFile);
-			} else {
-				format = extInfo->format;
-			}
-			UiCbSetCurSel(data->hWndFormat, format - 1);
-
-			//based on the texture format and presence of transparent pixels, select default color 0 mode. This option
-			//only applies to paletteN texture formats, but we'll decide as though we were using one of those formats,
-			//in case the user changes the texture format, the default settings will still be applicable.
-			if (TexViewerJudgeColor0Mode(data->px, data->width, data->height)) {
-				SendMessage(data->hWndColor0Transparent, BM_SETCHECK, BST_CHECKED, 0);
-			}
-
-			//set default alpha key
-			{
-				data->alphaKey = 0xFF00FF; // default color: magenta
-
-				//we'll scan the image for appearances of common alpha keys.
-				int nFF00FF = 0, n00FF00 = 0, nFFFF00 = 0;
-				for (int i = 0; i < data->width * data->height; i++) {
-					COLOR32 c = data->px[i] & 0xFFFFFF;
-					
-					switch (c) {
-						case 0xFF00FF: // magenta
-							nFF00FF++; break;
-						case 0x00FF00: // green
-							n00FF00++; break;
-						case 0xFFFF00: // cyan
-							nFFFF00++; break;
-					}
-				}
-
-				if (nFF00FF) data->alphaKey = 0xFF00FF;
-				else if (n00FF00) data->alphaKey = 0x00FF00;
-				else if (nFFFF00) data->alphaKey = 0xFFFF00;
-				else {
-					//select top-left color.
-					if (data->width >= 1 && data->height >= 0) {
-						data->alphaKey = data->px[0] & 0xFFFFFF;
-					} else {
-						data->alphaKey = 0xFF00FF;
-					}
-				}
-			}
-
-			//pick default 4x4 color count
-			int maxColors = TexViewerJudgeColorCount(data->width, data->height);
-			SetEditNumber(data->hWndColorEntries, maxColors);
-
-			//fill palette name
-			WCHAR *pname = NULL;
-			if (TexViewerIsConverted(data)) {
-				//fill existing palette name
-				pname = TexNarrowResourceNameToWideChar(data->texture->texture.palette.name);
-			} else {
-				//generate a palette name
-				pname = (WCHAR *) calloc(16, sizeof(WCHAR));
-				TexViewerChoosePaletteName(pname, data->szInitialFile);
-			}
-
-			if (pname != NULL) {
-				UiEditSetText(data->hWndPaletteName, pname);
-				free(pname);
-			}
-
-			updateConvertDialog(data);
-
-			//if extra parameters are set, restrict the conversion options
-			if (extInfo != NULL) {
-				//disable all non-applicable settings
-				EnableWindow(data->hWndFormat, FALSE);
-				EnableWindow(data->hWndFixedPalette, FALSE);
-				EnableWindow(data->hWndColor0Transparent, FALSE);
-				EnableWindow(data->balance.hWndEnhanceColors, FALSE);
-				EnableWindow(data->hWndPaletteName, FALSE);
-				EnableWindow(data->hWndFixedPalette, FALSE);
-
-				SendMessage(data->hWndFixedPalette, BM_SETCHECK, BST_CHECKED, 0);
-				EnableWindow(data->hWndFixedPalette, FALSE);
-				EnableWindow(data->hWndPaletteBrowse, FALSE);
-				EnableWindow(data->hWndPaletteInput, FALSE);
-				EnableWindow(data->hWndLimitPalette, FALSE);
-				EnableWindow(data->hWndOptimizationSlider, FALSE);
-				EnableWindow(data->hWndPaletteSize, FALSE);
-				EnableWindow(data->hWndColorEntries, FALSE);
-
-				if (extInfo->format != CT_DIRECT) {
-					SendMessage(data->hWndPaletteInput, WM_SETTEXT, 0, (LPARAM) extInfo->fixedPalettePath);
-				}
-			}
-			break;
-		}
-		case WM_COMMAND:
-		{
-			HWND hWndControl = (HWND) lParam;
-			int idc = LOWORD(wParam);
-			if (hWndControl || idc) {
-				int controlCode = HIWORD(wParam);
-				if (hWndControl == data->hWndFormat && controlCode == LBN_SELCHANGE) {
-					updateConvertDialog(data);
-					
-					//color count - update for paletted textures
-					int format = UiCbGetCurSel(hWndControl) + 1;
-					if (format != CT_DIRECT && format != CT_4x4) {
-						int colorCounts[] = { 0, 32, 4, 16, 256, 0, 8, 0 };
-						SetEditNumber(data->hWndPaletteSize, colorCounts[format]);
-					}
-				} else if (hWndControl == data->hWndFixedPalette && controlCode == BN_CLICKED) {
-					updateConvertDialog(data);
-				} else if (hWndControl == data->hWndDither && controlCode == BN_CLICKED) {
-					updateConvertDialog(data);
-				} else if (hWndControl == data->hWndDitherAlpha && controlCode == BN_CLICKED) {
-					updateConvertDialog(data);
-				} else if (hWndControl == data->hWndLimitPalette && controlCode == BN_CLICKED) {
-					updateConvertDialog(data);
-				} else if (hWndControl == data->hWndCheckboxAlphaKey && controlCode == BN_CLICKED) {
-					updateConvertDialog(data);
-				} else if (hWndControl == data->hWndCheckboxAlphaKey && controlCode == BN_CLICKED) {
-					updateConvertDialog(data);
-				} else if (hWndControl == data->hWndSelectAlphaKey && controlCode == BN_CLICKED) {
-					//choose a color for the alpha key
-					HWND hWndMain = data->editorMgr->hWnd;
-					CHOOSECOLOR cc = { 0 };
-					cc.lStructSize = sizeof(cc);
-					cc.hInstance = (HWND) (HINSTANCE) GetWindowLongPtr(hWnd, GWL_HINSTANCE); //weird struct definition
-					cc.hwndOwner = hWnd;
-					cc.rgbResult = data->alphaKey;
-					cc.lpCustColors = data->tmpCust;
-					cc.Flags = 0x103;
-					if (ChooseColorW(&cc)) {
-						data->alphaKey = cc.rgbResult;
-					}
-				} else if (hWndControl == data->hWndPaletteBrowse && controlCode == BN_CLICKED) {
-					LPWSTR path = openFileDialog(hWnd, L"Select palette", L"Palette Files\0*.nclr;*ncl.bin;*.ntfp\0All Files\0*.*\0\0", L"");
-					if (path != NULL) {
-						UiEditSetText(data->hWndPaletteInput, path);
-						free(path);
-					}
-				} else if ((hWndControl == data->hWndDoConvertButton && controlCode == BN_CLICKED) || idc == IDOK) {
-					TxConversionParameters params = { 0 };
-
-					int fmt = UiCbGetCurSel(data->hWndFormat) + 1;
-
-					WCHAR path[MAX_PATH];
-					SendMessage(data->hWndPaletteInput, WM_GETTEXT, MAX_PATH, (LPARAM) path);
-
-					NCLR *paletteFile = NULL;
-					BOOL fixedPalette = GetCheckboxChecked(data->hWndFixedPalette);
-					if (fixedPalette && path[0]) {
-						paletteFile = (NCLR *) ObjAutoReadFile(path, FILE_TYPE_PALETTE);
-						if (paletteFile == NULL) {
-							MessageBox(hWnd, L"Invalid palette file.", L"Invalid file", MB_ICONERROR);
-							break;
-						}
-					}
-
-					WCHAR bf[64];
-					int colorEntries = GetEditNumber(data->hWndColorEntries); // for 4x4
-					int paletteSize = GetEditNumber(data->hWndPaletteSize);   // for non-4x4
-					params.diffuseAmount = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
-					params.threshold = GetTrackbarPosition(data->hWndOptimizationSlider);
-					SendMessage(data->hWndPaletteName, WM_GETTEXT, 63, (LPARAM) bf);
-
-					params.dither = GetCheckboxChecked(data->hWndDither);
-					params.ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
-					params.c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
-
-					//if we set to not limit palette, set the max size to the max allowed
-					BOOL limitPalette = GetCheckboxChecked(data->hWndLimitPalette);
-					if (!limitPalette || colorEntries > 32768) {
-						colorEntries = 32768;
-					}
-
-					//check texture format 
-					unsigned int nPx = data->width * data->height;
-					unsigned int texelSize = TxCalcTexelSize(fmt << 20, data->width, data->height);
-
-					if (fmt == CT_4x4 && nPx > (512 * 1024)) {
-						//ordinary texture VRAM allocation prohibits this
-						int cfm = MessageBox(hWnd, L"Converting tex4x4 texture larger than 1024x512. Proceed?", L"Texture Size Warning", MB_ICONWARNING | MB_YESNO);
-						if (cfm == IDNO) break;
-					}
-					if (texelSize > (512 * 1024) || (fmt == CT_4x4 && texelSize > (256 * 1024))) {
-						//texture cannot fit in VRAM (512KB for normal texture, 256KB for 4x4)
-						int cfm = MessageBox(hWnd, L"Texture data size exceeds VRAM capacity. Proceed?", L"Texture Size Warning", MB_ICONWARNING | MB_YESNO);
-						if (cfm == IDNO) break;
-					}
-
-					//alpha key preprocessing of input image
-					BOOL useAlphaKey = GetCheckboxChecked(data->hWndCheckboxAlphaKey);
-					if (useAlphaKey) {
-						for (int i = 0; i < data->width * data->height; i++) {
-							COLOR32 c = data->px[i];
-							if ((c & 0x00FFFFFF) == (data->alphaKey & 0x00FFFFFF)) {
-								data->px[i] = 0;
-							}
-						}
-					}
-
-					params.px = data->px;
-					params.width = data->width;
-					params.height = data->height;
-					params.fmt = fmt;
-					params.colorEntries = fixedPalette ? paletteFile->nColors : (fmt == CT_4x4 ? colorEntries : paletteSize);
-					params.dest = &data->texture->texture;
-					params.fixedPalette = fixedPalette ? paletteFile->colors : NULL;
-					params.pnam = TexNarrowResourceNameFromWideChar(bf);
-					NpGetBalanceSetting(&data->balance, &params.balance);
-
-					HWND hWndMain = (HWND) GetWindowLongPtr(hWnd, GWL_HWNDPARENT);
-					UiDlgEnd(hWnd);
-
-					TxConversionResult result = TexViewerModalConvert(&params, hWndMain);
-					free(params.pnam);
-					if (paletteFile != NULL) ObjFree(&paletteFile->header);
-
-					if (result != TEXCONV_SUCCESS) {
-						if (result != TEXCONV_ABORT) {
-							//explicit error
-							MessageBox(hWndMain, L"Texture conversion failed.", L"Error", MB_ICONERROR);
-						}
-						break;
-					}
-
-					//if the format is paletteN, we have not used fixed palette, color 0 was transparent and we used alpha keying, put 
-					//the alpha key into color index 0.
-					if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && params.c0xp && useAlphaKey && !fixedPalette) {
-						if (data->texture->texture.palette.nColors > 0) {
-							data->texture->texture.palette.pal[0] = ColorConvertToDS(data->alphaKey);
-						}
-					}
-
-					//if the format has a palette, show the palette viewer.
-					TexViewerEnsurePaletteEditor(data);
-
-					InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
-
-					TexViewerUpdateStatusBar(data->hWnd);
-					data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
-					data->selectedColor = 0;
-				} else if (idc == IDCANCEL) {
-					UiDlgEnd(hWnd);
-				}
-			}
-			break;
-		}
-		case WM_HELP:
-		{
-			HELPINFO *hi = (HELPINFO *) lParam;
-			if (hi->cbSize < sizeof(HELPINFO) || hi->iContextType != HELPINFO_WINDOW) break;
-
-			//to be implemented
-			break;
-		}
-		case WM_HSCROLL:
-		{
-			HWND hWndControl = (HWND) lParam;
-			 if (hWndControl == data->hWndOptimizationSlider) {
-				 WCHAR bf[8];
-				 int len = wsprintfW(bf, L"%d", SendMessage(hWndControl, TBM_GETPOS, 0, 0));
-				 SendMessage(data->hWndOptimizationLabel, WM_SETTEXT, len, (LPARAM) bf);
-			 }
-			break;
+		switch (c) {
+			case 0xFF00FF: // magenta
+				nFF00FF++; break;
+			case 0x00FF00: // green
+				n00FF00++; break;
+			case 0xFFFF00: // cyan
+				nFFFF00++; break;
 		}
 	}
-	return DefModalProc(hWnd, msg, wParam, lParam);
+
+	if      (nFF00FF) params->alphaKey = 0xFF00FF;
+	else if (n00FF00) params->alphaKey = 0x00FF00;
+	else if (nFFFF00) params->alphaKey = 0xFFFF00;
+	else {
+		//select top-left color.
+		if (data->width >= 1 && data->height >= 1) {
+			params->alphaKey = data->px[0] & 0xFFFFFF;
+		} else {
+			params->alphaKey = 0xFF00FF;
+		}
+	}
 }
 
-static void ConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, TexViewerConvExtInfo *ext) {
-	data->convExtInfo = ext;
-	UiDlgCreateModal(hWnd, ConvertDialogWndProc, L"Convert Texture", 490, 444, data);
-	data->hWndConvertDialog = NULL;
-	data->convExtInfo = NULL;
+static void TexViewerConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, TexViewerConvExtInfo *ext) {
+	TexconvDialogParam param = { 0 };
+	param.param.dest = &data->texture->texture;
+
+	//put source image
+	param.px = data->px;
+	param.width = data->width;
+	param.height = data->height;
+
+	if (ext == NULL) {
+		//default initialization of params
+		TexViewerSetDefaultParams(&param, data);
+	} else {
+		//set parameters for retaining the palette
+		param.noWritePalette = 1;
+		param.param.fmt = ext->format;
+		param.param.c0xp = ext->c0xp;
+		param.maxColors = data->texture->texture.palette.nColors;
+		param.fixedPalettePath = ext->fixedPalettePath;
+	}
+
+	param.pCustomColors = data->tmpCust;
+
+	int result = TexconvDialog(hWnd, &param);
+	if (result) {
+		int useFixedPalette = param.param.fixedPalette != NULL;
+
+		//texture conversion process
+		TxConversionResult result = TexViewerModalConvert(&param.param, hWnd);
+
+		//release buffers for conversion parameters
+		free(param.param.pnam);
+		free(param.param.fixedPalette);
+		free(param.param.px);
+
+		//check conversion status
+		if (result != TEXCONV_SUCCESS) {
+			if (result != TEXCONV_ABORT) {
+				//explicit error
+				MessageBox(hWnd, L"Texture conversion failed.", L"Error", MB_ICONERROR);
+			}
+			return;
+		}
+
+		//if the format is paletteN, we have not used fixed palette, color 0 was transparent and we used alpha keying, put 
+		//the alpha key into color index 0.
+		int fmt = param.param.fmt;
+		if (fmt >= CT_4COLOR && fmt <= CT_256COLOR && param.param.c0xp && param.useAlphaKey && !useFixedPalette) {
+			if (data->texture->texture.palette.nColors > 0) {
+				data->texture->texture.palette.pal[0] = ColorConvertToDS(param.alphaKey);
+			}
+		}
+
+		//render the texture image
+		TxRenderRect(data->px, 0, 0, data->width, data->height,
+			&data->texture->texture.texels, &data->texture->texture.palette);
+
+		//if the format has a palette, show the palette viewer.
+		TexViewerEnsurePaletteEditor(data);
+
+		InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
+
+		TexViewerUpdateStatusBar(data->hWnd);
+		data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
+		data->selectedColor = 0;
+	}
+
 }
 
 
@@ -3428,7 +3166,7 @@ int TexViewerConvertImmediate(HWND hWndMain, const unsigned char *buffer, unsign
 	TEXTUREEDITORDATA *teData = (TEXTUREEDITORDATA *) EditorGetData(hWndTextureEditor);
 
 	//open conversion dialog
-	ConvertTextureDialog(hWndMain, teData, ext);
+	TexViewerConvertTextureDialog(hWndMain, teData, ext);
 
 	//we can check the isNitro field of the texture editor to determine if the conversion succeeded.
 	int succeeded = 0;
