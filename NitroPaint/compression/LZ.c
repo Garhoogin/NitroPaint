@@ -45,8 +45,8 @@ unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsi
 
 	//LZ stream header
 	*(bufpos++) = 0x10;
-	*(bufpos++) = (size >> 0) & 0xFF;
-	*(bufpos++) = (size >> 8) & 0xFF;
+	*(bufpos++) = (size >>  0) & 0xFF;
+	*(bufpos++) = (size >>  8) & 0xFF;
 	*(bufpos++) = (size >> 16) & 0xFF;
 
 	for (unsigned int i = 0; i < nTokens; i++) {
@@ -59,13 +59,13 @@ unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsi
 
 			if (tok->isReference) {
 				//token is reference
-				unsigned int length = tok->length;
+				unsigned int length   = tok->length;
 				unsigned int distance = tok->distance;
 
 				uint16_t enc = (distance - LZ_MIN_DISTANCE) | ((length - LZ_MIN_LENGTH) << 12);
 				*(bufpos++) = (enc >> 8) & 0xFF;
 				*(bufpos++) = (enc >> 0) & 0xFF;
-				head |= 1 << (7 - i);
+				head |= 1 << (7 - j);
 			} else {
 				//token is literal byte
 				*(bufpos++) = tok->symbol;
@@ -230,8 +230,8 @@ unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, uns
 
 	//LZ extended stream header
 	*(bufpos++) = 0x11;
-	*(bufpos++) = (size >> 0) & 0xFF;
-	*(bufpos++) = (size >> 8) & 0xFF;
+	*(bufpos++) = (size >>  0) & 0xFF;
+	*(bufpos++) = (size >>  8) & 0xFF;
 	*(bufpos++) = (size >> 16) & 0xFF;
 
 	for (unsigned int i = 0; i < nTokens; i++) {
@@ -243,7 +243,7 @@ unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, uns
 
 			if (tok->isReference) {
 				//node is reference
-				unsigned int length = tok->length;
+				unsigned int length   = tok->length;
 				unsigned int distance = tok->distance;
 
 				uint32_t enc = (distance - LZX_MIN_DISTANCE) & 0xFFF;
@@ -251,20 +251,20 @@ unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, uns
 					enc |= ((length - LZX_MIN_LENGTH_3) << 12) | (1 << 28);
 					*(bufpos++) = (enc >> 24) & 0xFF;
 					*(bufpos++) = (enc >> 16) & 0xFF;
-					*(bufpos++) = (enc >> 8) & 0xFF;
-					*(bufpos++) = (enc >> 0) & 0xFF;
+					*(bufpos++) = (enc >>  8) & 0xFF;
+					*(bufpos++) = (enc >>  0) & 0xFF;
 				} else if (length >= LZX_MIN_LENGTH_2) {
 					enc |= ((length - LZX_MIN_LENGTH_2) << 12) | (0 << 20);
 					*(bufpos++) = (enc >> 16) & 0xFF;
-					*(bufpos++) = (enc >> 8) & 0xFF;
-					*(bufpos++) = (enc >> 0) & 0xFF;
+					*(bufpos++) = (enc >>  8) & 0xFF;
+					*(bufpos++) = (enc >>  0) & 0xFF;
 				} else if (length >= LZX_MIN_LENGTH_1) {
 					enc |= ((length - LZX_MIN_LENGTH_1 + 2) << 12);
-					*(bufpos++) = (enc >> 8) & 0xFF;
-					*(bufpos++) = (enc >> 0) & 0xFF;
+					*(bufpos++) = (enc >>  8) & 0xFF;
+					*(bufpos++) = (enc >>  0) & 0xFF;
 				}
 
-				head |= 1 << (7 - i);
+				head |= 1 << (7 - j);
 			} else {
 				//node is literal byte
 				*(bufpos++) = tok->symbol;

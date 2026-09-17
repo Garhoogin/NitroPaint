@@ -348,7 +348,7 @@ CxiLzToken *CxiLzGraphToTokens(
 		} else {
 			//byte literal (length==1)
 			tok->isReference = 0;
-			tok->symbol = buffer[i];
+			tok->symbol = buffer[pos];
 		}
 
 		pos += node->length;
