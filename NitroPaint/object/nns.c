@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "nns.h"
-#include "compression.h"
+#include "compression/compression.h"
 
 // ----- NNS generic
 

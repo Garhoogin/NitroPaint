@@ -31,6 +31,12 @@
     <Filter Include="Source Files\ui">
       <UniqueIdentifier>{ccbdb8d2-87c5-4a8f-b54a-08b21ed0de97}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\compression">
+      <UniqueIdentifier>{98ca12fd-04cf-431e-aa22-35c8f6f12c86}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\compression">
+      <UniqueIdentifier>{b9655a3c-fbbf-4dd2-8155-1a175c9a9abf}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="nitropaint.c">
@@ -49,9 +55,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="color.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="compression.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="texconv.c">
@@ -180,6 +183,42 @@
     <ClCompile Include="ui\texconvdlg.c">
       <Filter>Source Files\ui</Filter>
     </ClCompile>
+    <ClCompile Include="compression\LZCore.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\LZ.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\HuffCore.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\CxPrivate.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\PuCrunch.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\MvDK.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\VLX.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\RLE.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\ASH.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\DiffFilter.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\Huffman.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
+    <ClCompile Include="compression\CxMain.c">
+      <Filter>Source Files\compression</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -204,9 +243,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="color.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="compression.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="texconv.h">
@@ -331,6 +367,18 @@
     </ClInclude>
     <ClInclude Include="ui\texconvdlg.h">
       <Filter>Header Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="compression\compression.h">
+      <Filter>Header Files\compression</Filter>
+    </ClInclude>
+    <ClInclude Include="compression\CxPrivate.h">
+      <Filter>Header Files\compression</Filter>
+    </ClInclude>
+    <ClInclude Include="compression\LZCore.h">
+      <Filter>Header Files\compression</Filter>
+    </ClInclude>
+    <ClInclude Include="compression\HuffCore.h">
+      <Filter>Header Files\compression</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

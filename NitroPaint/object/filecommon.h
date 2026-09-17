@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #include "io.h"
-#include "compression.h"
+#include "compression/compression.h"
 #include "bstream.h"
 #include "struct.h"
 
