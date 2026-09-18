@@ -5,6 +5,12 @@
 #include "CxPrivate.h"
 
 
+typedef enum CxiLzStatus_ {
+	CX_LZ_OK,      // Success
+	CX_LZ_NOMEM    // No memory
+} CxiLzStatus;
+
+
 //struct for representing tokenized LZ data
 typedef struct CxiLzToken_ {
 	uint8_t isReference;
@@ -30,13 +36,15 @@ typedef struct CxiLzState_ {
 	unsigned int *chain;
 	unsigned int (*pfnHash) (const unsigned char *p);
 
-	unsigned char *restrictDst;
+	unsigned char *restrictDst;  // map of allowed distances
+	unsigned char *restrictLen;  // map of allowed lengths
+	unsigned int *lengthDown;    // map of valid length rounded down
 } CxiLzState;
 
 //struct for mapping an LZ graph
 typedef struct CxiLzNode_ {
-	uint32_t distance : 15;    // distance of node if reference
-	uint32_t length   : 17;    // length of node
+	uint32_t distance;         // distance of node if reference
+	uint32_t length;           // length of node
 	uint32_t weight;           // weight of node
 } CxiLzNode;
 
@@ -55,7 +63,7 @@ int CxiLzConfirmMatch(
 
 
 
-void CxiLzStateInit(
+CxiLzStatus CxiLzStateInit(
 	CxiLzState          *state,
 	const unsigned char *buffer,
 	unsigned int         size,
@@ -79,7 +87,7 @@ unsigned int CxiLzSearch(
 	unsigned int *pDistance
 );
 
-void CxiLzEnableRestrictDistance(
+CxiLzStatus CxiLzEnableRestrictDistance(
 	CxiLzState *state,
 	int         enable
 );
@@ -89,9 +97,27 @@ void CxiLzAllowDistance(
 	unsigned int distance
 );
 
+CxiLzStatus CxiLzEnableRestrictLength(
+	CxiLzState *state,
+	int         enable
+);
+
+void CxiLzAllowLength(
+	CxiLzState  *state,
+	unsigned int length
+);
+
+CxiLzStatus CxiLzFinalizeAllowedLengths(
+	CxiLzState *state
+);
+
 
 
 // ----- graph building routines 
+
+CxiLzNode *CxiLzGraphExploreOnState(
+	CxiLzState *state
+);
 
 CxiLzNode *CxiLzGraphExplore(
 	const unsigned char *buffer,
