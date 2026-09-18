@@ -229,6 +229,7 @@ CxiLzStatus CxiLzFinalizeAllowedLengths(
 ) {
 	//we create the buffer mapping lengths to the next valid length down
 	state->lengthDown = (unsigned int *) calloc(state->maxLength + 1, sizeof(unsigned int));
+	if (state->lengthDown == NULL) return CX_LZ_NOMEM;
 
 	//fill in the buffer, keeping track of the longest length we've seen
 	unsigned int longest = 0;
@@ -238,6 +239,7 @@ CxiLzStatus CxiLzFinalizeAllowedLengths(
 		//put the longest found
 		state->lengthDown[i] = longest;
 	}
+	return CX_LZ_OK;
 }
 
 unsigned int CxiLzSearch(

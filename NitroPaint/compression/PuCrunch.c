@@ -2,6 +2,66 @@
 
 #include "LZCore.h"
 
+// -----------------------------------------------------------------------------------------------
+// The PuCrunch Compression Format
+//
+// This is a format used in some games from Griptonite. It combines variable width LZ and RLE 
+// into a single format. Rather than marking tokens as literals, LZ, RLE, or end-of-file,
+// all bits are assumed to represent byte literals. Special tokens are instead denoted by
+// writing the escape sequence, which is defined in the file header, and which may be redefined
+// during the stream. Gamma codes are utilized heavily throughout the format.
+//
+// The compression header is similar to that of the SDK standard compression formats, using an
+// identifier of hex 60.
+//
+// This is followed with a header for the PuCrunch data. This is another 4-byte header, which
+// specifies the parameters for the compression:
+//   u8 : RL table size             Must be a nonzero multiple of 4 no more than 32
+//   u8 : Initial escape sequence
+//   u8 : LZ extra bits             Should be between 0 and 24 (large values rare though)
+//   u8 : Escape sequence length    Must be between 0 and 8
+//
+// The escape sequence may be any length between 0 and 8 bits long. The escape sequence itself
+// may change throughout the stream, but the length is fixed from the header. A length of 0
+// corresponds to all tokens being considered escape tokens. 
+//
+// The LZ extra bits indicate the number of extra bits used to encode LZ distances. Greater 
+// values correspond to greater possible distances, though all distances become more expensive to
+// encode. This value should be chosen based on the file's structure.
+//
+// The RL table immediately follows the headers. Its length must be nonzero and must be a multiple
+// of 4 bytes long. The maximum number of entries is 31, but this must be rounded up in the size
+// reported in the header. Because the size must be nonzero, its minimum length is 4 bytes.
+//
+// The bit stream parsing begins immediately following the RL table. While there are still bytes
+// left to output, we read the number of bits in the escape sequence from the stream and check
+// if it matches the escape sequence. If it is a match, then this is a special token. Otherwise,
+// we should decode a byte literal. For a byte literal, we read the rest of the bit required to
+// read a full byte, and output it as a byte literal. 
+//
+// For special tokens, there are the following types:
+//   LZ copy
+//   RL run
+//   Escaped byte
+//   End-of-file
+//
+// See code in the implementation for how these are distinguished. The format distinguishes
+// in particular between 2-byte and long LZ copies. The 2-byte copies have a reduced range
+// compared to long copies.
+//
+// RL copies utilize the RL table toward the start of the file. These byte values may be more 
+// efficiently as repeated bytes. The array is indexed using Gamma codes, thus values closer
+// to the front are used most efficiently. Since the table size is 31 entries at most, it is
+// possible to specify arbitrary byte values outside the table as well, though with reduced
+// storage efficiency. These length extensions only apply to long LZ copies.
+//
+// Escaped bytes give the stream the opportunity to redefine the escape sequence. Intuitively, an
+// encoder should choose a bit sequence that doesn't appear in the file or is particularly rare.
+// Sometimes it can't be guaranteed, and it could be that following the point where the escape
+// appeared, the distribution of byte values is changed. The encoder may change the escape
+// sequence here. Otherwise, it may write the same escape sequence again. 
+// -----------------------------------------------------------------------------------------------
+
 #define PUCRUNCH_MIN_DISTANCE    1
 
 
@@ -645,7 +705,10 @@ static unsigned char *CxiPcWriteCompression(
 
 	unsigned int complen = 4 + 4 + nFreqTbl + bitsSize;
 	unsigned char *comp = (unsigned char *) calloc(complen, 1);
-	*(uint32_t *) comp = 0x60 | (size << 8);
+	comp[0] = 0x60;
+	comp[1] = (size >>  0) & 0xFF;
+	comp[2] = (size >>  8) & 0xFF;
+	comp[3] = (size >> 16) & 0xFF;
 	comp[4] = nFreqTbl;
 	comp[5] = initEsc;
 	comp[6] = nLzExtra;
@@ -668,11 +731,8 @@ unsigned char *CxCompressPuCrunch(const unsigned char *buffer, unsigned int size
 	//we will vary this from its initial value downwards to find an optimal setting.
 	unsigned int nLzExtra = maxLzExtra;
 
-	//HACK: our internal structs are not big enough for the full sizes
-	if (maxWindow > 0x7FFF) maxWindow = 0x7FFF;
-
-	CxiLzNode *nodes = (CxiLzNode *) calloc(size, sizeof(CxiLzNode));  // buffer for LZ matches
-	uint16_t *rlLens = (uint16_t *) calloc(size, sizeof(uint16_t));    // buffer for RL matches
+	CxiLzNode *nodes  = (CxiLzNode *) calloc(size, sizeof(CxiLzNode));  // buffer for LZ matches
+	uint16_t  *rlLens = (uint16_t  *) calloc(size, sizeof(uint16_t ));  // buffer for RL matches
 	CxiPcExploreLzRl(buffer, size, maxWindow, nodes, rlLens);
 
 	//we will try this from 0-8 to find the best value. We do this after exploration.
@@ -681,8 +741,7 @@ unsigned char *CxCompressPuCrunch(const unsigned char *buffer, unsigned int size
 
 	unsigned int bestCompSize = UINT_MAX;
 	unsigned char *bestComp = NULL;
-	for (unsigned int i = 0; i <= 2; i++) {
-		unsigned int escBits = i;
+	for (unsigned int escBits = 0; escBits <= 2; escBits++) {
 		memset(freqTbl, 0, sizeof(freqTbl));
 
 		//run 2-pass: one graph optimize to build the RL table, then one more optimize.
@@ -755,9 +814,9 @@ unsigned char *CxDecompressPuCrunch(const unsigned char *buffer, unsigned int si
 	const unsigned char *info = buffer + 4;
 	const unsigned char *freqTable = info + 4;
 	unsigned int freqTblSize = info[0];  // size of RL table
-	unsigned char esc = info[1];         // initial escape sequence
-	unsigned int nLzExtra = info[2];     // # extra bits LZ
-	unsigned int escBits = info[3];      // # ecsape bits
+	unsigned char esc        = info[1];  // initial escape sequence
+	unsigned int nLzExtra    = info[2];  // # extra bits LZ
+	unsigned int escBits     = info[3];  // # ecsape bits
 
 	const unsigned char *bitStmStart = info + 4 + freqTblSize;
 
