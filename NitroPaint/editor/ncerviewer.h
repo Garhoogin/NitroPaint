@@ -17,6 +17,7 @@ typedef struct NCERVIEWERDATA_ {
 	int cellListRedrawCount;             // count of current redraw suppressions
 	int cellListDragging;                // cell list item drag state
 	int cellListDraggingItem;            // cell list index dragging
+	int onionSkinCell;                   // cell index of onion skin
 
 	int mouseDown;
 	int mouseDownHit;
@@ -30,6 +31,7 @@ typedef struct NCERVIEWERDATA_ {
 	int suppressObjListNotifications;    // suppress notifications for OBJ list
 
 	COLOR32 frameBuffer[256 * 512];      // buffer where the current cell is rendered
+	COLOR32 frameBufferOnion[256 * 512]; // bufffer where the onion skin cell is rendered
 	int covBuffer[256 * 512];            // coverage buffer for current cell render
 	FrameBuffer fb;                      // frame buffer the viewer renders
 	HWND hWndViewer;

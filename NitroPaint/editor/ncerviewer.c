@@ -30,6 +30,8 @@
 #define CV_HIT_SELECTION         2 // selection region
 #define CV_HIT_OBJ               3 // here and above for OBJ index
 
+#define ONION_ALPHA            127 // onion skin alpha value
+
 
 extern HICON g_appIcon;
 
@@ -1107,6 +1109,12 @@ static void CellViewerUpdateCellRender(NCERVIEWERDATA *data) {
 	memset(data->covBuffer, 0, sizeof(data->covBuffer));
 	if (data->cell != -1) {
 		CellViewerRenderCellByIndex(data->frameBuffer, data->covBuffer, data->ncer, ncgr, nclr, data->cell);
+	}
+
+	//render onion skin cell
+	memset(data->frameBufferOnion, 0, sizeof(data->frameBufferOnion));
+	if (data->onionSkinCell >= 0 && data->onionSkinCell < data->ncer->nCells) {
+		CellViewerRenderCellByIndex(data->frameBufferOnion, NULL, data->ncer, ncgr, nclr, data->onionSkinCell);
 	}
 }
 
@@ -2189,6 +2197,13 @@ static void CellViewerToggleSwappableCurrentCell(NCERVIEWERDATA *data) {
 	cell->forbidCompression = !cell->forbidCompression;
 }
 
+static void CellViewerSetOnionSkinCell(NCERVIEWERDATA *data, int idx) {
+	//bound check
+	if (idx < 0 || idx >= data->ncer->nCells) idx = -1;
+
+	data->onionSkinCell = idx;
+}
+
 static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 	HWND hWnd = data->hWnd;
 
@@ -2274,6 +2289,16 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 		case ID_ALIGNTO_CENTER:
 			CellViewerAlignSelection(data, 0, 0);
 			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_CELLMENU_SETONIONSKIN:
+		case ID_CELLMENU2_SETONIONSKIN:
+			CellViewerSetOnionSkinCell(data, data->cell);
+			CellViewerGraphicsUpdated(data->hWnd);
+			break;
+		case ID_CELLMENU_CLEARONIONSKIN:
+		case ID_CELLMENU2_CLEARONIONSKIN:
+			CellViewerSetOnionSkinCell(data, -1);
 			CellViewerGraphicsUpdated(data->hWnd);
 			break;
 		case ID_OBJPALETTE_0:
@@ -2497,6 +2522,7 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->showCellBounds = 1;
 			data->cellListRedrawCount = 0;
 			data->autoCalcBounds = 1;
+			data->onionSkinCell = -1;
 			FbCreateOnWindow(&data->fb, hWnd, 0, 0);
 			data->hWndViewer = CreateWindow(L"CellPreviewClass", L"", WS_VISIBLE | WS_CHILD | WS_HSCROLL | WS_VSCROLL | WS_CLIPSIBLINGS, 200, 0, 200, 20, hWnd, NULL, NULL, NULL);
 
@@ -3406,21 +3432,42 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 				int srcX = (x + scrollX) / data->scale, srcY = (y + scrollY) / data->scale;
 
 				//sample coordinate
-				COLOR32 sample = 0xFFF0F0F0;
+				COLOR32 sample = 0xFFF0F0F0, onionSample = 0x00000000;
 				if (srcX < 512 && srcY < 256) {
 					sample = data->frameBuffer[srcX + srcY * 512];
 					sample = REVERSE(sample); // internal framebuffer is reversed color order
+
+					//onion skin?
+					if (data->onionSkinCell >= 0 && data->onionSkinCell < data->ncer->nCells) {
+						onionSample = data->frameBufferOnion[srcX + srcY * 512];
+						onionSample = REVERSE(onionSample);
+					}
 				}
 
 				if ((sample >> 24) == 0) {
+
+					//get background color
+					COLOR32 bgSample = 0;
 					if (g_configuration.renderTransparent) {
 						//render transparent checkerboard
-						COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
-						sample = checker[((x ^ y) >> 2) & 1];
+						static const COLOR32 checker[] = { 0xFFFFFF, 0xC0C0C0 };
+						bgSample = checker[((x ^ y) >> 2) & 1];
 					} else {
 						//render backdrop color
-						if (nclr != NULL && nclr->nColors > 0) sample = ColorConvertFromDS(nclr->colors[0]);
-						else sample = 0;
+						if (nclr != NULL && nclr->nColors > 0) bgSample = ColorConvertFromDS(nclr->colors[0]);
+						else bgSample = 0;
+					}
+
+					//blend to the background, and show the onion skin layer
+					if ((onionSample >> 24) == 0) {
+						//show background
+						sample = bgSample;
+					} else {
+						//show onion blended to background
+						unsigned int r = (((onionSample >>  0) & 0xFF) * 2 * ONION_ALPHA + ((bgSample >>  0) & 0xFF) * (510 - 2 * ONION_ALPHA) + 255) / 510;
+						unsigned int g = (((onionSample >>  8) & 0xFF) * 2 * ONION_ALPHA + ((bgSample >>  8) & 0xFF) * (510 - 2 * ONION_ALPHA) + 255) / 510;
+						unsigned int b = (((onionSample >> 16) & 0xFF) * 2 * ONION_ALPHA + ((bgSample >> 16) & 0xFF) * (510 - 2 * ONION_ALPHA) + 255) / 510;
+						sample = r | (g << 8) | (b << 16);
 					}
 				}
 				data->fb.px[x + y * data->fb.width] = REVERSE(sample);
@@ -3842,6 +3889,10 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 	}
 	free(sel);
 
+	//onion skin items
+	int hasOnionSkin = data->onionSkinCell != -1;
+	EnableMenuItem(hPopup, ID_CELLMENU_CLEARONIONSKIN, hasOnionSkin ? MF_ENABLED : MF_DISABLED);
+
 	return hPopup;
 }
 
@@ -3854,6 +3905,10 @@ static HMENU CellViewerGetCellListContextMenu(NCERVIEWERDATA *data, int i) {
 
 		CheckMenuItem(hPopup, ID_CELLMENU2_SWAPPABLE, (cell->forbidCompression) ? MF_CHECKED : MF_UNCHECKED);
 	}
+	
+	//onion skin items
+	int hasOnionSkin = data->onionSkinCell != -1;
+	EnableMenuItem(hPopup, ID_CELLMENU2_CLEARONIONSKIN, hasOnionSkin ? MF_ENABLED : MF_DISABLED);
 
 	return hPopup;
 }
