@@ -1,7 +1,7 @@
 #include <string.h>
 
 #include "LZCore.h"
-#include "struct.h"
+#include "util/struct.h"
 
 
 // ----- Common LZ subroutines

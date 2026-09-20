@@ -5,7 +5,7 @@
 #include "nclrviewer.h"
 #include "palette.h"
 #include "resource.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "texconv.h"
 #include "object/NitroPalette.h"
 #include "ui/colorchooser.h"

@@ -26,7 +26,7 @@
 #include "editor/lyteditor.h"
 #include "editor/mesgeditor.h"
 #include "editor/textureeditor.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "texconv.h"
 #include "bggen.h"
 #include "preview.h"

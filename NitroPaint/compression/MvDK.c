@@ -2,7 +2,7 @@
 
 #include "LZCore.h"
 #include "HuffCore.h"
-#include "bstream.h"
+#include "util/bstream.h"
 #include "compression.h"
 
 

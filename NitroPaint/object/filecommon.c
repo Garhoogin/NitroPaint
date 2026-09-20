@@ -2,7 +2,7 @@
 #include "NitroPalette.h"
 #include "NitroCharacter.h"
 #include "NitroScreen.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "combo2d.h"
 
 

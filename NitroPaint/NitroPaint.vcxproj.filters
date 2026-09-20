@@ -37,6 +37,18 @@
     <Filter Include="Source Files\compression">
       <UniqueIdentifier>{b9655a3c-fbbf-4dd2-8155-1a175c9a9abf}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\util">
+      <UniqueIdentifier>{cb4ca7df-54c9-4383-93db-7ea70351b3f9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\util">
+      <UniqueIdentifier>{56da3228-b0f9-4fb7-9da5-1a7c5a818720}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\image">
+      <UniqueIdentifier>{308f1124-4ddd-4734-bb0d-ec78d4279473}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\image">
+      <UniqueIdentifier>{81d70156-faae-4921-81bd-9861df1d1a96}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="nitropaint.c">
@@ -46,9 +58,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="childwindow.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="gdip.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="texture.c">
@@ -66,9 +75,6 @@
     <ClCompile Include="isplt.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="bstream.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="ui.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -82,9 +88,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framebuffer.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="struct.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="io.c">
@@ -219,6 +222,15 @@
     <ClCompile Include="compression\CxMain.c">
       <Filter>Source Files\compression</Filter>
     </ClCompile>
+    <ClCompile Include="util\struct.c">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="util\bstream.c">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
+    <ClCompile Include="image\gdip.c">
+      <Filter>Source Files\image</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -231,9 +243,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="childwindow.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="gdip.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="palette.h">
@@ -251,9 +260,6 @@
     <ClInclude Include="undo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="bstream.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="ui.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -267,9 +273,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="framebuffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="struct.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="io.h">
@@ -379,6 +382,15 @@
     </ClInclude>
     <ClInclude Include="compression\HuffCore.h">
       <Filter>Header Files\compression</Filter>
+    </ClInclude>
+    <ClInclude Include="util\bstream.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="util\struct.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="image\gdip.h">
+      <Filter>Header Files\image</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

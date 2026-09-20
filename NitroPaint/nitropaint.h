@@ -5,7 +5,7 @@
 #include "object/filecommon.h"
 #include "palette.h"
 #include "editor/editor.h"
-#include "gdip.h"
+#include "image/gdip.h"
 
 #define g_useDarkTheme 0
 

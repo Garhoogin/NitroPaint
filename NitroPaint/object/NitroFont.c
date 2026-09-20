@@ -1,5 +1,5 @@
 #include "NitroFont.h"
-#include "struct.h"
+#include "util/struct.h"
 #include "nns.h"
 
 #include <string.h>

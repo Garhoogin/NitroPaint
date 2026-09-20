@@ -13,7 +13,7 @@
 #include "object/NitroCharacter.h"
 #include "object/NitroCell.h"
 #include "preview.h"
-#include "gdip.h"
+#include "image/gdip.h"
 
 extern HICON g_appIcon;
 

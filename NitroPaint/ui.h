@@ -1,7 +1,7 @@
 #pragma once
 #include <Windows.h>
 
-#include "struct.h"
+#include "util/struct.h"
 
 //static control alignments
 #define SCA_LEFT    0

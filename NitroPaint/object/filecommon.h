@@ -3,8 +3,8 @@
 
 #include "io.h"
 #include "compression/compression.h"
-#include "bstream.h"
-#include "struct.h"
+#include "util/bstream.h"
+#include "util/struct.h"
 
 #define FILE_TYPE_INVALID     0
 #define FILE_TYPE_PALETTE     1

@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#include "bstream.h"
+#include "util/bstream.h"
 
 typedef struct SetStream_ {
 	uint32_t nBlocks;

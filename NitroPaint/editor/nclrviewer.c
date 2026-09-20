@@ -12,7 +12,7 @@
 #include "ui/colorchooser.h"
 #include "resource.h"
 #include "palette.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "ui.h"
 
 #include "preview.h"

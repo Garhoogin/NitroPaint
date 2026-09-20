@@ -1,7 +1,7 @@
 #include <string.h>
 
 #include "LZCore.h"
-#include "bstream.h"
+#include "util/bstream.h"
 
 
 

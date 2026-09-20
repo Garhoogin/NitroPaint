@@ -1004,7 +1004,7 @@ static int TxReadGrf(TextureObject *texture, const unsigned char *buffer, unsign
 }
 
 
-#include "gdip.h"
+#include "image/gdip.h"
 
 extern const char *NpGetVersion(void);
 

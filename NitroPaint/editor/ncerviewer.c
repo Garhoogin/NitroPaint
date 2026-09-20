@@ -12,7 +12,7 @@
 #include "nclrviewer.h"
 #include "ncgrviewer.h"
 #include "palette.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "preview.h"
 
 #include "cellgen.h"

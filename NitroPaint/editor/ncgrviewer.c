@@ -10,11 +10,11 @@
 #include "nitropaint.h"
 #include "tilededitor.h"
 #include "resource.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "palette.h"
 #include "bggen.h"
 #include "ui.h"
-#include "struct.h"
+#include "util/struct.h"
 #include "cellgen.h"
 
 #include "preview.h"

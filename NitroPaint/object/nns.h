@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#include "bstream.h"
+#include "util/bstream.h"
 
 // ----- NNS generic functions
 

@@ -9,7 +9,7 @@
 #include "resource.h"
 #include "ui.h"
 #include "editor.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "object/NitroPalette.h"
 
 extern HICON g_appIcon;

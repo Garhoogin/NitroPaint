@@ -177,7 +177,7 @@
     <ClCompile Include="compression\VLX.c" />
     <ClCompile Include="io.c" />
     <ClCompile Include="object\NitroLyt.c" />
-    <ClCompile Include="bstream.c" />
+    <ClCompile Include="util\bstream.c" />
     <ClCompile Include="cellgen.c" />
     <ClCompile Include="childwindow.c" />
     <ClCompile Include="color.c" />
@@ -194,7 +194,7 @@
     <ClCompile Include="object\NitroFont.c" />
     <ClCompile Include="editor\nftrviewer.c" />
     <ClCompile Include="object\nns.c" />
-    <ClCompile Include="gdip.c" />
+    <ClCompile Include="image\gdip.c" />
     <ClCompile Include="compression\CxMain.c" />
     <ClCompile Include="isplt.c" />
     <ClCompile Include="object\NitroAnim.c" />
@@ -216,7 +216,7 @@
     <ClCompile Include="preview.c" />
     <ClCompile Include="object\scene.c" />
     <ClCompile Include="object\setosa.c" />
-    <ClCompile Include="struct.c" />
+    <ClCompile Include="util\struct.c" />
     <ClCompile Include="texconv.c" />
     <ClCompile Include="texture.c" />
     <ClCompile Include="editor\textureeditor.c" />
@@ -231,7 +231,7 @@
     <ClInclude Include="io.h" />
     <ClInclude Include="compression\LZCore.h" />
     <ClInclude Include="object\NitroLyt.h" />
-    <ClInclude Include="bstream.h" />
+    <ClInclude Include="util\bstream.h" />
     <ClInclude Include="cellgen.h" />
     <ClInclude Include="childwindow.h" />
     <ClInclude Include="color.h" />
@@ -249,7 +249,7 @@
     <ClInclude Include="object\NitroFont.h" />
     <ClInclude Include="editor\nftrviewer.h" />
     <ClInclude Include="object\nns.h" />
-    <ClInclude Include="gdip.h" />
+    <ClInclude Include="image\gdip.h" />
     <ClInclude Include="object\NitroAnim.h" />
     <ClInclude Include="editor\nanrviewer.h" />
     <ClInclude Include="object\NitroCell.h" />
@@ -271,7 +271,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="object\scene.h" />
     <ClInclude Include="object\setosa.h" />
-    <ClInclude Include="struct.h" />
+    <ClInclude Include="util\struct.h" />
     <ClInclude Include="texconv.h" />
     <ClInclude Include="texture.h" />
     <ClInclude Include="editor\textureeditor.h" />

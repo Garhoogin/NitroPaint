@@ -4,7 +4,7 @@
 #include "ui.h"
 #include "object/filecommon.h"
 #include "childwindow.h"
-#include "struct.h"
+#include "util/struct.h"
 
 typedef struct EditorFilter_ {
 	LPCWSTR filter;           // file filter

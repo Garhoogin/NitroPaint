@@ -4,7 +4,7 @@
 
 #include "resource.h"
 #include "nftrviewer.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "ui/colorchooser.h"
 
 #define NFTR_VIEWER_CLASS_NAME    L"NftrViewerClass"

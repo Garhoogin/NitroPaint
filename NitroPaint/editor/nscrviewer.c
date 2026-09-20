@@ -11,7 +11,7 @@
 #include "nitropaint.h"
 #include "object/NitroScreen.h"
 #include "bggen.h"
-#include "gdip.h"
+#include "image/gdip.h"
 #include "palette.h"
 
 #include "preview.h"
