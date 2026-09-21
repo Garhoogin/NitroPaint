@@ -2434,7 +2434,9 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			break;
 		case ID_CELLMENU_ADDOBJ:
 			CellViewerAppendDummyObj(data);
+			if (data->autoCalcBounds) CellViewerUpdateBounds(data);
 			CellViewerGraphicsUpdated(data->hWnd);
+			CellViewerUpdateCellSubItemText(data);
 			break;
 
 		case ID_CELLMENU2_SWAPPABLE:
