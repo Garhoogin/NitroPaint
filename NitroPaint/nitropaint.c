@@ -1069,6 +1069,7 @@ typedef struct PaletteSwapData_ {
 	HWND hWndType;
 	HWND hWndDither;
 	HWND hWndDiffuse;
+	HWND hWndMaxColors;
 	HWND hWndFileLabels[RX_PALETTE_MAX_COUNT];
 	HWND hWndPaletteNames[RX_PALETTE_MAX_COUNT];
 	HWND hWndUpButtons[RX_PALETTE_MAX_COUNT];
@@ -4921,11 +4922,14 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->hWndDiffuse = CreateEdit(hWnd, L"100", 440, panelY + 27, 50, 22, TRUE);
 			EnableWindow(data->hWndDiffuse, FALSE);
 
+			CreateStatic(hWnd, L"Colors per Palette:", 10, panelY + 27 + 27, 100, 22);
+			data->hWndMaxColors = CreateEdit(hWnd, L"256", 110, panelY + 27 + 27, 75, 22, TRUE);
+
 			int balanceHeight = 3 * 27 - 5 + 10 + 10 + 10;
-			int okY = panelY + 27 + 32 + balanceHeight + 10;
+			int okY = panelY + 27 + 27 + 32 + balanceHeight + 10;
 			int okX = 40 + fileWidth + 5 + 75 + 5 + 30;
 
-			NpCreateBalanceInput(&data->balance, hWnd, 10, panelY + 27 + 32, okX + 100 - 10);
+			NpCreateBalanceInput(&data->balance, hWnd, 10, panelY + 27 + 27 + 32, okX + 100 - 10);
 
 			data->hWndOK = CreateButton(hWnd, L"OK", okX, okY, 100, 22, TRUE);
 			data->hWndCancel = CreateButton(hWnd, L"Cancel", okX - 105, okY, 100, 22, FALSE);
@@ -4962,8 +4966,10 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				float diffuse = ((float) GetEditNumber(data->hWndDiffuse)) / 100.0f;
 				if (!dither) diffuse = 0.0f;
 
-				//TODO: ask the user?
-				unsigned int plttSize = maxCols;
+				//get max colors
+				unsigned int plttSize = GetEditNumber(data->hWndMaxColors);
+				if (plttSize > maxCols) plttSize = maxCols;
+
 				RxBalanceSetting balance;
 				NpGetBalanceSetting(&data->balance, &balance);
 
@@ -5183,6 +5189,24 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			} else if (hWndControl == data->hWndDither && cmd == BN_CLICKED) {
 				int en = GetCheckboxChecked(hWndControl);
 				EnableWindow(data->hWndDiffuse, en);
+			} else if (hWndControl == data->hWndTextureFormat && cmd == CBN_SELCHANGE) {
+				//texture format changed
+				int selIdx = UiCbGetCurSel(hWndControl);
+
+				static const unsigned char texfmts[] = {
+					GX_TEXFMT_PLTT4,
+					GX_TEXFMT_PLTT16,
+					GX_TEXFMT_PLTT256
+				};
+				int texfmt = texfmts[selIdx];
+				
+				int nMaxCols = 256;
+				switch (texfmt) {
+					case GX_TEXFMT_PLTT4   : nMaxCols =   4; break;
+					case GX_TEXFMT_PLTT16  : nMaxCols =  16; break;
+					case GX_TEXFMT_PLTT256 : nMaxCols = 256; break;
+				}
+				SetEditNumber(data->hWndMaxColors, nMaxCols);
 			} else {
 
 				//check the up/down buttons
