@@ -3080,6 +3080,7 @@ typedef struct {
 	HWND hWndNtfiBrowseButton;
 	HWND hWndFormat;
 	HWND hWndWidthInput;
+	HWND hWndC0xp;
 	HWND hWndConvertButton;
 
 	//preview work
@@ -3097,7 +3098,7 @@ extern int ilog2(int x);
 
 static void NtftConvertUpdatePreview(NTFTCONVERTDATA *data) {
 	unsigned int fmt = UiCbGetCurSel(data->hWndFormat) + 1;
-	unsigned int c0xp = 0; // TODO
+	unsigned int c0xp = GetCheckboxChecked(data->hWndC0xp);
 	unsigned int texS = UiCbGetCurSel(data->hWndWidthInput);
 	unsigned int width = 8 << texS;
 
@@ -3163,11 +3164,11 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 			data->hWnd = hWnd;
 			CreateStatic(hWnd, L"Format:", 10, 10, 50, 22);
-			CreateStatic(hWnd, L"NTFT:", 10, 37, 50, 22);
-			CreateStatic(hWnd, L"NTFP:", 10, 64, 50, 22);
-			CreateStatic(hWnd, L"NTFI:", 10, 91, 50, 22);
+			CreateStatic(hWnd, L"Texels:", 10, 37, 50, 22);
+			CreateStatic(hWnd, L"Palette:", 10, 64, 50, 22);
+			CreateStatic(hWnd, L"Index:", 10, 91, 50, 22);
 			CreateStatic(hWnd, L"Width:", 10, 118, 50, 22);
-			data->hWndFormat = CreateWindow(L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_HASSTRINGS | CBS_DROPDOWNLIST, 70, 10, 100, 100, hWnd, NULL, NULL, NULL);
+			data->hWndFormat = CreateCombobox(hWnd, NULL, 0, 70, 10, 100, 22, 0);
 			data->hWndNtftInput = CreateEdit(hWnd, L"", 70, 37, 170, 22, FALSE);
 			data->hWndNtftBrowseButton = CreateButton(hWnd, L"...", 240, 37, 30, 22, FALSE);
 			data->hWndNtfpInput = CreateEdit(hWnd, L"", 70, 64, 170, 22, FALSE);
@@ -3175,17 +3176,19 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			data->hWndNtfiInput = CreateEdit(hWnd, L"", 70, 91, 170, 22, FALSE);
 			data->hWndNtfiBrowseButton = CreateButton(hWnd, L"...", 240, 91, 30, 22, FALSE);
 			data->hWndWidthInput = CreateCombobox(hWnd, (LPCWSTR *) widths, 8, 70, 118, 100, 22, 0);
-			data->hWndConvertButton = CreateButton(hWnd, L"Convert", 70, 145, 100, 22, TRUE);
+			data->hWndC0xp = CreateCheckbox(hWnd, L"Color 0 is transparent", 10, 145, 200, 22, FALSE);
+			data->hWndConvertButton = CreateButton(hWnd, L"Convert", 70, 170, 100, 22, TRUE);
 
 			FbCreateOnWindow(&data->fb, hWnd, 1, 1);
 
 			//populate the dropdown list
-			for (int i = 1; i <= CT_DIRECT; i++) {
+			for (int i = 1; i <= GX_TEXFMT_DIRECT; i++) {
 				WCHAR bf[16];
 				mbstowcs(bf, TxNameFromTexFormat(i), sizeof(bf) / sizeof(bf[0]));
 				UiCbAddString(data->hWndFormat, bf);
 			}
-			UiCbSetCurSel(data->hWndFormat, CT_4x4 - 1);
+			UiCbSetCurSel(data->hWndFormat, GX_TEXFMT_TEX4x4 - 1);
+			EnableWindow(data->hWndC0xp, FALSE);
 			
 			//set preview
 			NtftConvertUpdatePreview(data);
@@ -3243,14 +3246,17 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				int fmt = UiCbGetCurSel(hWndControl) + 1; //1-based since entry 0 corresponds to format 1
 
 				//only 4x4 needs NTFI.
-				int needsNtfi = fmt == CT_4x4;
+				int needsNtfi = fmt == GX_TEXFMT_TEX4x4;
 				EnableWindow(data->hWndNtfiInput, needsNtfi);
 				EnableWindow(data->hWndNtfiBrowseButton, needsNtfi);
 
 				//only direct doesn't need and NTFP.
-				int needsNtfp = fmt != CT_DIRECT;
+				int needsNtfp = fmt != GX_TEXFMT_DIRECT;
 				EnableWindow(data->hWndNtfpInput, needsNtfp);
 				EnableWindow(data->hWndNtfpBrowseButton, needsNtfp);
+
+				int c0xpApplies = (fmt >= GX_TEXFMT_PLTT4 && fmt <= GX_TEXFMT_PLTT256);
+				EnableWindow(data->hWndC0xp, c0xpApplies);
 
 				//update
 				NtftConvertUpdatePreview(data);
@@ -3261,6 +3267,7 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				WCHAR src[MAX_PATH + 1];
 				int width = 8 << UiCbGetCurSel(data->hWndWidthInput);
 				int format = UiCbGetCurSel(data->hWndFormat) + 1;
+				int c0xp = GetCheckboxChecked(data->hWndC0xp);
 
 				static const unsigned char bppArray[] = { 0, 8, 2, 4, 8, 2, 8, 16 };
 				unsigned int bpp = bppArray[format];
@@ -3303,8 +3310,8 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 				//sort out texture format requirements
 				BOOL requiresNtft = TRUE;
-				BOOL requiresNtfp = (format != CT_DIRECT);
-				BOOL requiresNtfi = (format == CT_4x4);
+				BOOL requiresNtfp = (format != GX_TEXFMT_DIRECT);
+				BOOL requiresNtfi = (format == GX_TEXFMT_TEX4x4);
 
 				BOOL abortConvert = FALSE;
 				if (requiresNtft && ntft == NULL) {
@@ -3344,13 +3351,19 @@ LRESULT CALLBACK NtftConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					}
 				}
 
+				uint32_t texImageParam = 0;
+				texImageParam |= format   << GX_TEXIMAGE_PARAM_FMT_SHIFT;
+				texImageParam |= l2width  << GX_TEXIMAGE_PARAM_W_SHIFT;
+				texImageParam |= l2height << GX_TEXIMAGE_PARAM_H_SHIFT;
+				texImageParam |= c0xp     << GX_TEXIMAGE_PARAM_C0XP_SHIFT;
+
 				//ok now actually convert
 				TEXTURE texture = { 0 };
 				texture.palette.pal = (COLOR *) ntfp;
 				texture.palette.nColors = ntfpSize / 2;
 				texture.texels.texel = ntft;
 				texture.texels.cmp = (uint16_t *) ntfi;
-				texture.texels.texImageParam = (format << 26) | (l2width << 20) | (l2height << 23);
+				texture.texels.texImageParam = texImageParam;
 				texture.texels.height = height;
 				texture.palette.name = calloc(strlen(palName) + 1, 1);
 				memcpy(texture.palette.name, palName, strlen(palName));
@@ -3384,7 +3397,7 @@ static void NtftConvertDialog(HWND hWnd) {
 	NTFTCONVERTDATA data = { 0 };
 	data.hWndMain = hWnd;
 
-	UiDlgCreateModal(hWnd, NtftConvertDialogProc, L"NTFT To Texture", 418, 177, &data);
+	UiDlgCreateModal(hWnd, NtftConvertDialogProc, L"NTFT To Texture", 418, 204, &data);
 }
 
 typedef struct ConvertFormatData_ {
