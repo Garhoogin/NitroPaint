@@ -634,6 +634,9 @@ void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, 
 	//get the top-level parent window
 	HWND hWndDesktop = GetDesktopWindow();
 	while (1) {
+		DWORD dwStyle = GetWindowLong(hWndParent, GWL_STYLE);
+		if (!(dwStyle & WS_CHILD)) break;
+
 		HWND hParent = (HWND) GetWindowLongPtr(hWndParent, GWL_HWNDPARENT);
 		if (hParent == NULL || hParent == hWndDesktop) break;
 
