@@ -407,6 +407,7 @@ static void AlphaBlendDialog(HWND hWnd);
 static void NewScreenDialog(HWND hWnd);
 static void NewPaletteDialog(HWND hWnd);
 static void LinkEditDialog(HWND hWnd, HWND hWndEditor);
+static void ColorConvertDialog(HWND hWnd);
 
 void SetGUIFont(HWND hWnd);
 
@@ -2387,6 +2388,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					case ID_TOOLS_ALPHABLEND:
 					{
 						AlphaBlendDialog(hWnd);
+						break;
+					}
+					case ID_TOOLS_COLORCONVERSION:
+					{
+						ColorConvertDialog(hWnd);
 						break;
 					}
 					case ID_TOOLS_COLORPICKER:
@@ -5250,6 +5256,168 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+
+typedef struct ColorConvertDialogData_ {
+	HWND hWndMain;
+	HWND hWndInput15;
+	HWND hWndInput24;
+	HWND hWndChoose15;
+	HWND hWndChoose24;
+	COLOR32 col;
+
+	int updating;       // set while updating the value of inputs and we don't want to trigger another update
+} ColorConvertDialogData;
+
+static unsigned char ParseHexNybble(wchar_t c) {
+	if (c >= L'0' && c <= L'9') return c - L'0' + 0x0;
+	if (c >= L'A' && c <= L'F') return c - L'A' + 0xA;
+	if (c >= L'a' && c <= L'f') return c - L'a' + 0xA;
+	return 0;
+}
+
+static uint32_t ParseHexWord(const wchar_t *p) {
+	uint32_t x = 0;
+
+	wchar_t c;
+	while ((c = *p++) != L'\0') {
+		x = (x << 4) | ParseHexNybble(c);
+	}
+	return x;
+}
+
+static LRESULT CALLBACK ColorConvertDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	ColorConvertDialogData *data = (ColorConvertDialogData *) UiDlgGetData(hWnd);
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			int groupW = 200, groupH = 78;
+			int group1X = 10, group2X = group1X + groupW + 10, group1Y = 42;
+			CreateGroupbox(hWnd, L"DS Color", group1X, group1Y, groupW, groupH);
+
+			CreateStatic(hWnd, L"Hex:", group1X + 11, group1Y + 17, 50, 22);
+			data->hWndInput15 = CreateEdit(hWnd, L"0000", group1X + 11 + 50, group1Y + 17, 75, 22, FALSE);
+			data->hWndChoose15 = CreateButton(hWnd, L"Choose Color", group1X + 11, group1Y + 17 + 27, 100, 22, FALSE);
+
+			CreateStatic(hWnd, L"Hex:", group2X + 11, group1Y + 17, 50, 22);
+			data->hWndInput24 = CreateEdit(hWnd, L"000000", group2X + 11 + 50, group1Y + 17, 75, 22, FALSE);
+			data->hWndChoose24 = CreateButton(hWnd, L"Choose Color", group2X + 11, group1Y + 17 + 27, 100, 22, FALSE);
+
+			CreateGroupbox(hWnd, L"24-bit Color", group2X, group1Y, groupW, groupH);
+			break;
+		}
+		case WM_COMMAND:
+		{
+			HWND hWndCtl = (HWND) lParam;
+			int idCtl = LOWORD(wParam), cmd = HIWORD(wParam);
+			NITROPAINTSTRUCT *nps = NpGetData(data->hWndMain);
+
+			if (hWndCtl == data->hWndInput15 && cmd == EN_CHANGE) {
+				if (data->updating) break;
+				data->updating = 1;
+
+				//read input
+				wchar_t *text = UiEditGetText(hWndCtl);
+				uint32_t hex = ParseHexWord(text);
+				free(text);
+
+				hex &= 0x7FFF; // retain low 15 bits
+
+				COLOR32 col = ColorConvertFromDS((COLOR) hex);
+				data->col = col;
+
+				wchar_t textbuf[10];
+				wsprintfW(textbuf, L"%06X", col);
+				UiEditSetText(data->hWndInput24, textbuf);
+
+				InvalidateRect(hWnd, NULL, FALSE);
+				data->updating = 0;
+			} else if (hWndCtl == data->hWndInput24 && cmd == EN_CHANGE) {
+				if (data->updating) break;
+				data->updating = 1;
+
+				//read input
+				wchar_t *text = UiEditGetText(hWndCtl);
+				uint32_t hex = ParseHexWord(text);
+				free(text);
+
+				hex &= 0x00FFFFFF; // retain low 24 bits
+
+				COLOR col = ColorConvertToDS((COLOR32) hex);
+				data->col = ColorConvertFromDS(col);
+
+				wchar_t textbuf[10];
+				wsprintfW(textbuf, L"%04X", col);
+				UiEditSetText(data->hWndInput15, textbuf);
+
+				InvalidateRect(hWnd, NULL, FALSE);
+				data->updating = 0;
+			} else if ((hWndCtl == data->hWndChoose15 || hWndCtl == data->hWndChoose24) && cmd == BN_CLICKED) {
+				CHOOSECOLOR cc = { 0 };
+				cc.lStructSize = sizeof(cc);
+				cc.hInstance = (HWND) (HINSTANCE) GetWindowLong(hWnd, GWL_HINSTANCE); //weird struct definition?
+				cc.hwndOwner = hWnd;
+				cc.rgbResult = (COLORREF) data->col;
+				cc.lpCustColors = nps->tmpCust;
+				cc.Flags = 0x103;
+
+				BOOL result;
+				if (hWndCtl == data->hWndChoose15) {
+					result = CustomChooseColor(&cc);
+				} else {
+					result = ChooseColor(&cc);
+				}
+
+				if (result) {
+					data->col = (COLOR32) cc.rgbResult;
+
+					data->updating = 1;
+
+					wchar_t textbuf[10];
+					wsprintfW(textbuf, L"%06X", data->col);
+					UiEditSetText(data->hWndInput24, textbuf);
+
+					wsprintfW(textbuf, L"%04X", ColorConvertToDS(data->col));
+					UiEditSetText(data->hWndInput15, textbuf);
+
+					data->updating = 0;
+					InvalidateRect(hWnd, NULL, FALSE);
+				}
+			}
+			break;
+		}
+		case WM_PAINT:
+		{
+			PAINTSTRUCT ps;
+			HDC hDC = BeginPaint(hWnd, &ps);
+
+			HBRUSH hbr = CreateSolidBrush(data->col);
+			SelectObject(hDC, hbr);
+
+			RECT rcClient;
+			GetClientRect(hWnd, &rcClient);
+
+			float scale = GetDpiScale();
+			int x = UI_SCALE_COORD(10, scale);
+			int y = UI_SCALE_COORD(10, scale);
+			int h = UI_SCALE_COORD(22, scale);
+			Rectangle(hDC, x, y, rcClient.right - x, y + h);
+			
+			DeleteObject(hbr);
+
+			EndPaint(hWnd, &ps);
+			break;
+		}
+	}
+	return DefModalProc(hWnd, msg, wParam, lParam);
+}
+
+static void ColorConvertDialog(HWND hWnd) {
+	ColorConvertDialogData data = { 0 };
+	data.hWndMain = hWnd;
+
+	UiDlgCreateModal(hWnd, ColorConvertDialogProc, L"Convert Color", 430, 130, &data);
+}
 
 
 static void RegisterIndexImageClass(void) {
