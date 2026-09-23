@@ -3535,10 +3535,32 @@ void CreateImageDialog(HWND hWnd, LPCWSTR path) {
 typedef struct {
 	HWND hWndParent;
 	HWND hWndBitDepth;
+	HWND hWndBitmap;
 	HWND hWndMapping;
 	HWND hWndFormat;
 	HWND hWndCreate;
 } SPRITESHEETDLGDATA;
+
+static void SpriteSheetDialogUpdateBitmapSetting(SPRITESHEETDLGDATA *data) {
+	int bitmap = GetCheckboxChecked(data->hWndBitmap);
+	int is1d = UiCbGetCurSel(data->hWndMapping) > 0;
+
+	SendMessage(data->hWndMapping, CB_RESETCONTENT, 0, 0);
+	if (bitmap) {
+		UiCbAddString(data->hWndMapping, L"Bitmap 2D");
+		UiCbAddString(data->hWndMapping, L"Bitmap 1D");
+	} else {
+		UiCbAddString(data->hWndMapping, L"Char 2D");
+		UiCbAddString(data->hWndMapping, L"Char 1D 32K");
+		UiCbAddString(data->hWndMapping, L"Char 1D 64K");
+		UiCbAddString(data->hWndMapping, L"Char 1D 128K");
+		UiCbAddString(data->hWndMapping, L"Char 1D 256K");
+	}
+
+	//set mapping
+	if (is1d) UiCbSetCurSel(data->hWndMapping, 1);
+	else      UiCbSetCurSel(data->hWndMapping, 0);
+}
 
 LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	SPRITESHEETDLGDATA *data = (SPRITESHEETDLGDATA *) UiDlgGetData(hWnd);
@@ -3546,9 +3568,6 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	switch (msg) {
 		case WM_CREATE:
 		{
-			LPCWSTR mappings[] = {
-				L"Char 2D", L"Char 1D 32K", L"Char 1D 64K", L"Char 1D 128K", L"Char 1D 256K"
-			};
 			LPCWSTR formats[] = {
 				L"NITRO-System", L"NITRO-CHARACTER", L"IRIS-CHARACTER", L"AGB-CHARACTER", L"iMageStudio",
 				L"Hudson", L"Hudson 2", L"GRF", L"Raw", L"Raw Compressed"
@@ -3557,32 +3576,37 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			//get default format for preset
 			int def = 0;
 			switch (g_configuration.preset) {
-				case NP_PRESET_NITROSYSTEM: def = 0; break;
-				case NP_PRESET_NITROCHARACTER: def = 1; break;
-				case NP_PRESET_IRIS_CHARACTER: def = 2; break;
-				case NP_PRESET_AGB_CHARACTER: def = 3; break;
-				case NP_PRESET_IMAGESTUDIO: def = 4; break;
-				case NP_PRESET_GRIT: def = 7; break;
-				case NP_PRESET_RAW: def = 9; break;
+				case NP_PRESET_NITROSYSTEM    : def = 0; break;
+				case NP_PRESET_NITROCHARACTER : def = 1; break;
+				case NP_PRESET_IRIS_CHARACTER : def = 2; break;
+				case NP_PRESET_AGB_CHARACTER  : def = 3; break;
+				case NP_PRESET_IMAGESTUDIO    : def = 4; break;
+				case NP_PRESET_GRIT           : def = 7; break;
+				case NP_PRESET_RAW            : def = 9; break;
 			}
 
-			CreateStatic(hWnd, L"8 bit:", 10, 10, 50, 22);
-			data->hWndBitDepth = CreateCheckbox(hWnd, L"", 70, 10, 22, 22, FALSE);
+			data->hWndBitDepth = CreateCheckbox(hWnd, L"8-bit depth", 10, 10, 100, 22, FALSE);
+			data->hWndBitmap = CreateCheckbox(hWnd, L"Bitmap", 110, 10, 75, 22, FALSE);
 			CreateStatic(hWnd, L"Mapping:", 10, 42, 50, 22);
-			data->hWndMapping = CreateCombobox(hWnd, mappings, sizeof(mappings) / sizeof(*mappings), 70, 42, 200, 100, 1);
+			data->hWndMapping = CreateCombobox(hWnd, NULL, 0, 70, 42, 200, 100, 1);
 			CreateStatic(hWnd, L"Format:", 10, 74, 50, 22);
 			data->hWndFormat = CreateCombobox(hWnd, formats, sizeof(formats) / sizeof(*formats), 70, 74, 150, 100, def);
 			data->hWndCreate = CreateButton(hWnd, L"Create", 70, 106, 150, 22, TRUE);
+
+			SpriteSheetDialogUpdateBitmapSetting(data);
+			UiCbSetCurSel(data->hWndMapping, 1); // 1D
 			break;
 		}
 		case WM_COMMAND:
 		{
 			HWND hWndControl = (HWND) lParam;
+			int cmd = HIWORD(wParam);
 			HWND hWndMain = (HWND) GetWindowLong(hWnd, GWL_HWNDPARENT);
 
 			if (hWndControl != NULL) {
 				if (hWndControl == data->hWndCreate) {
 					int is8bpp = GetCheckboxChecked(data->hWndBitDepth);
+					int isBmp = GetCheckboxChecked(data->hWndBitmap);
 					int nBits = is8bpp ? 8 : 4;
 					int mapping = UiCbGetCurSel(data->hWndMapping);
 					static const int mappings[] = { 
@@ -3634,8 +3658,9 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, charFormat);
 					ncgr->header.compression = compression;
 					ncgr->nBits = nBits;
+					ncgr->bitmap = isBmp;
 					ncgr->mappingMode = mapping;
-					ncgr->tilesX = 32;
+					ncgr->tilesX = is8bpp ? 16 : 32;
 					ncgr->tilesY = height;
 					ncgr->nTiles = ncgr->tilesX * ncgr->tilesY;
 					ChrAllocGraphics(ncgr);
@@ -3662,6 +3687,8 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					NpOpenObject(hWndMain, &ncgr->header);
 
 					UiDlgEnd(hWnd);
+				} else if (hWndControl == data->hWndBitmap && cmd == BN_CLICKED) {
+					SpriteSheetDialogUpdateBitmapSetting(data);
 				}
 			}
 			break;
