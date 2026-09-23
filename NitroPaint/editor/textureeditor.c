@@ -2833,6 +2833,14 @@ BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
 	TEXTURE texture;
 	TxUncontain(textureObj, &texture);
 
+	//assign a name to the texel data from the file name
+	wchar_t *name = _wcsdup(GetFileName(path));
+	wchar_t *dot = wcsrchr(name, L'.');
+	if (dot != NULL) *dot = L'\0';
+
+	texture.texels.name = TexNarrowResourceNameFromWideChar(name);
+	free(name);
+
 	//add to TexArc
 	int fmt = FORMAT(texture.texels.texImageParam);
 	TexarcAddTexture(nsbtx, &texture.texels);
