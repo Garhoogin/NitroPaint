@@ -958,7 +958,7 @@ void CreateVramUseWindow(HWND hWndParent, TexArc *nsbtx) {
 	data.nsbtx = nsbtx;
 	
 	int width = 350 + GetSystemMetrics(SM_CXVSCROLL);
-	UiDlgCreateModal(hWndParent, VramUseWndProc, L"VRAM Usage", width, 344, &data);
+	UiDlgCreateModalEx(hWndParent, VramUseWndProc, L"VRAM Usage", width, 344, &data, UI_DLG_SIZEBOX);
 }
 
 VOID RegisterNsbtxViewerClass(VOID) {

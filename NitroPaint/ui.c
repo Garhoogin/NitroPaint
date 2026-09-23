@@ -612,7 +612,7 @@ static LRESULT CALLBACK UiDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
 	}
 }
 
-void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, int width, int height, void *initData) {
+void UiDlgCreateModalEx(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, int width, int height, void *initData, UiDlgFlag flag) {
 	//a rolling buffer of class IDs to use
 	static volatile long classID = 0;
 	long id = _InterlockedIncrement(&classID);
@@ -653,8 +653,11 @@ void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, 
 	data.userData = initData;
 	UiCtlMgrInit(&data.mgr, initData);
 
-	HWND h = CreateWindow(MAKEINTATOM(aClass), szTitle, WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME),
-		CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hWndParent, NULL, NULL, &data);
+	//compute dialog style
+	DWORD dwStyle = WS_OVERLAPPEDWINDOW & ~(WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME);
+	if (flag & UI_DLG_SIZEBOX) dwStyle |= WS_THICKFRAME;
+
+	HWND h = CreateWindow(MAKEINTATOM(aClass), szTitle, dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hWndParent, NULL, NULL, &data);
 
 	//TODO: dialog init process
 	SendMessage(h, NV_INITIALIZE, 0, 0);
@@ -683,6 +686,10 @@ void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, 
 
 	//free class
 	UnregisterClass(MAKEINTATOM(aClass), NULL);
+}
+
+void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, int width, int height, void *initData) {
+	UiDlgCreateModalEx(hWndParent, wndProc, szTitle, width, height, initData, 0);
 }
 
 void UiDlgRegisterCtlCommand(HWND hWndDlg, HWND hWndCtl, int cmd, UiMgrCommandProc proc) {

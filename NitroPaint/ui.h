@@ -211,8 +211,14 @@ void UiCtlMgrOnCommand(UiCtlManager *mgr, HWND hWnd, WPARAM wParam, LPARAM lPara
 
 
 // ----- Dialog manager
+
+typedef enum UiDlgFlag_ {
+	UI_DLG_SIZEBOX         = 0x00000001   // dialog may be re-sized
+} UiDlgFlag;
+
 void *UiDlgGetData(HWND hWnd);
 void UiDlgCreateModal(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, int width, int height, void *param);
+void UiDlgCreateModalEx(HWND hWndParent, WNDPROC wndProc, const wchar_t *szTitle, int width, int height, void *param, UiDlgFlag flag);
 void UiDlgRegisterCtlCommand(HWND hWndDlg, HWND hWndCtl, int cmd, UiMgrCommandProc proc);
 void UiDlgRegisterCtlOK(HWND hWnd, HWND hWndOK);
 void UiDlgRegisterCtlCancel(HWND hWnd, HWND hWndCancel);
