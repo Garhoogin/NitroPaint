@@ -1900,21 +1900,25 @@ static void TexViewerSetDefaultParams(TexconvDialogParam *params, TEXTUREEDITORD
 
 	//default max 4x4 colors
 	params->maxColors = TexViewerJudgeColorCount(data->width, data->height);
+	
+	//normal palette max colors
+	static const int colorCounts[] = { 0, 32, 4, 16, 256, 0, 8, 0 };
+	params->param.colorEntries = colorCounts[params->param.fmt];
 
 	//color-0 mode
 	params->param.c0xp = TexViewerJudgeColor0Mode(data->px, data->width, data->height);
 
 	//initial palette name
-	WCHAR *pname = NULL;
 	if (TexViewerIsConverted(data)) {
 		//fill existing palette name
-		pname = TexNarrowResourceNameToWideChar(data->texture->texture.palette.name);
+		params->param.pnam = _strdup(data->texture->texture.palette.name);
 	} else {
 		//generate a palette name
-		pname = (WCHAR *) calloc(16, sizeof(WCHAR));
-		TexViewerChoosePaletteName(pname, data->szInitialFile);
+		wchar_t *pname2 = (wchar_t *) calloc(17, sizeof(wchar_t));
+		TexViewerChoosePaletteName(pname2, data->szInitialFile);
+		params->param.pnam = TexNarrowResourceNameFromWideChar(pname2);
+		free(pname2);
 	}
-	params->paletteName = pname;
 
 	//set default alpha key
 	params->alphaKey = 0xFF00FF; // default color: magenta
@@ -1952,9 +1956,9 @@ static void TexViewerConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, Te
 	param.param.dest = &data->texture->texture;
 
 	//put source image
-	param.px = data->px;
-	param.width = data->width;
-	param.height = data->height;
+	param.param.px = data->px;
+	param.param.width = data->width;
+	param.param.height = data->height;
 
 	if (ext == NULL) {
 		//default initialization of params
@@ -1969,6 +1973,7 @@ static void TexViewerConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, Te
 	}
 
 	param.pCustomColors = data->tmpCust;
+	param.limitPaletteSize = 1;  // for 4x4
 
 	int result = TexconvDialog(hWnd, &param);
 	if (result) {
@@ -1980,7 +1985,6 @@ static void TexViewerConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, Te
 		//release buffers for conversion parameters
 		free(param.param.pnam);
 		free(param.param.fixedPalette);
-		free(param.param.px);
 
 		//check conversion status
 		if (result != TEXCONV_SUCCESS) {
@@ -2000,17 +2004,13 @@ static void TexViewerConvertTextureDialog(HWND hWnd, TEXTUREEDITORDATA *data, Te
 			}
 		}
 
-		//render the texture image
-		TxRenderRect(data->px, 0, 0, data->width, data->height,
-			&data->texture->texture.texels, &data->texture->texture.palette);
-
 		//if the format has a palette, show the palette viewer.
 		TexViewerEnsurePaletteEditor(data);
 
 		InvalidateRect(data->ted.hWndViewer, NULL, FALSE);
 
 		TexViewerUpdateStatusBar(data->hWnd);
-		data->selectedAlpha = (fmt == CT_A3I5) ? 7 : ((fmt == CT_A5I3) ? 31 : 0);
+		data->selectedAlpha = (fmt == GX_TEXFMT_A3I5) ? 7 : ((fmt == GX_TEXFMT_A5I3) ? 31 : 0);
 		data->selectedColor = 0;
 	}
 
@@ -2393,6 +2393,7 @@ typedef struct BATCHTEXENTRY_ {
 	TxConversionParameters params;
 	WCHAR *path;
 	WCHAR *outPath;
+	WCHAR *configPath;
 	HWND hWndProgress;
 	HANDLE hThread;
 	HWND hWndStatus;
@@ -2403,7 +2404,19 @@ typedef struct BATCHTEXENTRY_ {
 typedef struct BATCHTEXPROGRESSDATA_ {
 	StList texList;          // BATCHTEXENTRY*
 	unsigned int nThreads;   // number of conversion threads to spawn
+	StList otherTex;         // BATCHTEXENTRY*
 } BATCHTEXPROGRESSDATA;
+
+
+typedef struct BatchTexShowOptionsDialogData_ {
+	HWND hWndParent;
+	BATCHTEXPROGRESSDATA *batchData;
+	const wchar_t *text;
+	int result;
+
+	HWND hWndListView;
+} BatchTexShowOptionsDialogData;
+
 
 int EnumAllFiles(LPCWSTR path, BOOL(CALLBACK *fileCallback) (LPCWSTR, void *), BOOL(CALLBACK *dirCallback) (LPCWSTR, void *),
 	BOOL(CALLBACK *preprocessDirCallback) (LPCWSTR, void *), void *param) {
@@ -2542,6 +2555,29 @@ static void BatchTexGetPropStrA(LPCWSTR path, LPCWSTR prop, char *s, unsigned in
 	wcstombs(s, buf, nMax);
 }
 
+void BatchTexWriteOptions(LPCWSTR path, TxConversionParameters *params) {
+	//format
+	BatchTexPutPropStrA(path, L"Format", TxNameFromTexFormat(params->fmt));
+
+	//dithering
+	BatchTexPutPropInt(path, L"Dither", params->dither);
+	BatchTexPutPropInt(path, L"DitherAlpha", params->ditherAlpha);
+	BatchTexPutPropInt(path, L"Diffuse", (int) (params->diffuseAmount * 100.0f + 0.5f));
+
+	//palette
+	BatchTexPutPropStrA(path, L"PaletteName", params->pnam);
+	BatchTexPutPropInt(path, L"C0xp", params->c0xp);
+	BatchTexPutPropInt(path, L"PaletteSize", params->colorEntries);
+
+	//4x4
+	BatchTexPutPropInt(path, L"Optimization", params->threshold);
+
+	//balance
+	BatchTexPutPropInt(path, L"Balance",       params->balance.balance);
+	BatchTexPutPropInt(path, L"ColorBalance",  params->balance.colorBalance);
+	BatchTexPutPropInt(path, L"EnhanceColors", params->balance.enhanceColors);
+}
+
 void BatchTexReadOptions(LPCWSTR path, TxConversionParameters *params, char *pnam) {
 	char narrow[MAX_PATH] = { 0 };
 
@@ -2579,16 +2615,135 @@ void BatchTexReadOptions(LPCWSTR path, TxConversionParameters *params, char *pna
 	}
 	params->c0xp = BatchTexGetPropInt(path, L"C0xp", params->c0xp);
 
+	params->threshold = BatchTexGetPropInt(path, L"Optimization", params->threshold);
+
 	//balance
-	params->balance.balance = BatchTexGetPropInt(path, L"Balance", params->balance.balance);
-	params->balance.colorBalance = BatchTexGetPropInt(path, L"ColorBalance", params->balance.colorBalance);
+	params->balance.balance       = BatchTexGetPropInt(path, L"Balance",       params->balance.balance);
+	params->balance.colorBalance  = BatchTexGetPropInt(path, L"ColorBalance",  params->balance.colorBalance);
 	params->balance.enhanceColors = BatchTexGetPropInt(path, L"EnhanceColors", params->balance.enhanceColors);
 }
 
+
+
+static LRESULT CALLBACK BatchTexShowOptionsDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	BatchTexShowOptionsDialogData *data = (BatchTexShowOptionsDialogData *) UiDlgGetData(hWnd);
+	BATCHTEXPROGRESSDATA *batchData = data->batchData;
+
+	switch (msg) {
+		case WM_CREATE:
+		{
+			wchar_t buf[64];
+			int nBatch = batchData->texList.length;
+			wsprintfW(buf, L"%s: %d texture%s", data->text, nBatch, nBatch == 1 ? L"" : L"s");
+			CreateStatic(hWnd, buf, 10, 10, 280, 22);
+
+			HWND hWndListView = CreateListView(hWnd, 10, 42, 280, 300);
+			AddListViewColumn(hWndListView, L"Texture", 1, 150, SCA_LEFT);
+			AddListViewColumn(hWndListView, L"Format", 2, 75, SCA_LEFT);
+
+			//add tex
+			for (int i = 0; i < nBatch; i++) {
+				BATCHTEXENTRY *entry = StListGetPtr(&batchData->texList, (size_t) i);
+				
+				wchar_t fmtbuf[16];
+				wsprintfW(fmtbuf, L"%S", TxNameFromTexFormat(entry->params.fmt));
+
+				AddListViewItem(hWndListView, (LPWSTR) GetFileName(entry->path), i, 0);
+				AddListViewItem(hWndListView, fmtbuf, i, 1);
+			}
+
+			HWND hWndOK = CreateButton(hWnd, L"OK", 290 - 75, 347, 75, 22, TRUE);
+			HWND hWndCancel = CreateButton(hWnd, L"Cancel", 290 - 75 - 5 - 75, 347, 75, 22, FALSE);
+
+			UiDlgRegisterCtlOK(hWnd, hWndOK);
+			UiDlgRegisterCtlCancel(hWnd, hWndCancel);
+			data->hWndListView = hWndListView;
+			break;
+		}
+		case WM_COMMAND:
+		{
+			int idCtl = LOWORD(wParam), cmd = HIWORD(wParam);
+
+			if (idCtl == IDOK && cmd == BN_CLICKED) {
+				data->result = 1;
+				UiDlgEnd(hWnd);
+			} else if (idCtl == IDCANCEL && cmd == BN_CLICKED) {
+				data->result = 0;
+				UiDlgEnd(hWnd);
+			}
+			break;
+		}
+		case WM_NOTIFY:
+		{
+			LPNMHDR hdr = (LPNMHDR) lParam;
+			if (hdr->code == NM_DBLCLK && hdr->hwndFrom == data->hWndListView) {
+				LPNMITEMACTIVATE nmi = (LPNMITEMACTIVATE) hdr;
+				if (nmi->iItem >= 0) {
+					
+					//params for this 
+					BATCHTEXENTRY *ent = StListGetPtr(&batchData->texList, (size_t) nmi->iItem);
+					unsigned int width = ent->params.width;
+					unsigned int height = ent->params.height;
+
+					TexconvDialogParam convDlgParam = { 0 };
+					memcpy(&convDlgParam.param, &ent->params, sizeof(TxConversionParameters));
+
+					//palette parameters decode
+					if (ent->params.fmt == GX_TEXFMT_TEX4x4) {
+						//for 4x4
+						int maxColors = ent->params.colorEntries;
+						if (maxColors > 32768) maxColors = 32768;
+
+						convDlgParam.limitPaletteSize = maxColors < 32768;
+						convDlgParam.maxColors = maxColors < 32768 ? maxColors : TexViewerJudgeColorCount(width, height);
+						convDlgParam.param.colorEntries = 256;
+					} else {
+						//for other format (default 4x4 params)
+						convDlgParam.limitPaletteSize = 1;
+						convDlgParam.maxColors = TexViewerJudgeColorCount(width, height);
+					}
+
+					int result = TexconvDialog(hWnd, &convDlgParam);
+					if (result) {
+						//commit params
+						memcpy(&ent->params, &convDlgParam.param, sizeof(convDlgParam.param));
+
+						//write params
+						BatchTexWriteOptions(ent->configPath, &ent->params);
+						
+						//update the list view
+						wchar_t buf[16];
+						const char *fmtname = TxNameFromTexFormat(ent->params.fmt);
+						mbstowcs(buf, fmtname, sizeof(buf) / sizeof(buf[0]));
+
+						AddListViewItem(data->hWndListView, buf, nmi->iItem, 1);
+					}
+
+				}
+			}
+			break;
+		}
+	}
+	return DefModalProc(hWnd, msg, wParam, lParam);
+}
+
+static int BatchTexShowOptionsDialog(HWND hWnd, BATCHTEXPROGRESSDATA *batchData) {
+	BatchTexShowOptionsDialogData data = { 0 };
+	data.hWndParent = hWnd;
+	data.batchData = batchData;
+	data.text = L"Outstanding";
+
+	UiDlgCreateModalEx(hWnd, BatchTexShowOptionsDialogProc, L"Texture Parameters", 300, 379, &data, 0);
+
+	return data.result;
+}
+
+
+
 BOOL BatchTexShouldConvert(LPCWSTR path, LPCWSTR configPath, LPCWSTR outPath) {
-	HANDLE hTextureFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	HANDLE hConfigFile = CreateFile(configPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	HANDLE hOutFile = CreateFile(outPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hTextureFile = CreateFile(path,       GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hConfigFile  = CreateFile(configPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hOutFile     = CreateFile(outPath,    GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	
 	//if input doesn't exist, we can't possibly 
 	BOOL shouldWrite = FALSE;
@@ -2607,8 +2762,8 @@ BOOL BatchTexShouldConvert(LPCWSTR path, LPCWSTR configPath, LPCWSTR outPath) {
 	//if either of srcTime or configTime are greater than or equal to destTime, do write
 	LARGE_INTEGER srcInt, configInt, destInt;
 	GetFileTime(hTextureFile, NULL, NULL, &srcTime);
-	GetFileTime(hConfigFile, NULL, NULL, &configTime);
-	GetFileTime(hOutFile, NULL, NULL, &destTime);
+	GetFileTime(hConfigFile,  NULL, NULL, &configTime);
+	GetFileTime(hOutFile,     NULL, NULL, &destTime);
 	srcInt.LowPart = srcTime.dwLowDateTime;
 	srcInt.HighPart = srcTime.dwHighDateTime;
 	configInt.LowPart = configTime.dwLowDateTime;
@@ -2623,8 +2778,8 @@ BOOL BatchTexShouldConvert(LPCWSTR path, LPCWSTR configPath, LPCWSTR outPath) {
 
 cleanup:
 	if (hTextureFile != INVALID_HANDLE_VALUE) CloseHandle(hTextureFile);
-	if (hConfigFile != INVALID_HANDLE_VALUE) CloseHandle(hConfigFile);
-	if (hOutFile != INVALID_HANDLE_VALUE) CloseHandle(hOutFile);
+	if (hConfigFile  != INVALID_HANDLE_VALUE) CloseHandle(hConfigFile);
+	if (hOutFile     != INVALID_HANDLE_VALUE) CloseHandle(hOutFile);
 	return shouldWrite;
 }
 
@@ -2646,7 +2801,7 @@ void BatchTexCheckFormatDir(LPCWSTR path, int *fmt) {
 		dirNameBuf[i] = end[i];
 	}
 
-	for (int i = CT_A3I5; i <= CT_DIRECT; i++) {
+	for (int i = GX_TEXFMT_A3I5; i <= GX_TEXFMT_DIRECT; i++) {
 		WCHAR wideFmt[16] = { 0 };
 		const char *name = TxNameFromTexFormat(i);
 		for (unsigned int j = 0; j < strlen(name); j++) wideFmt[j] = name[j];
@@ -2719,11 +2874,11 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 
 	//max color entries for the selected format
 	switch (texEntry.params.fmt) {
-		case CT_4COLOR  : texEntry.params.colorEntries =   4; break;
-		case CT_16COLOR : texEntry.params.colorEntries =  16; break;
-		case CT_256COLOR: texEntry.params.colorEntries = 256; break;
-		case CT_A3I5    : texEntry.params.colorEntries =  32; break;
-		case CT_A5I3    : texEntry.params.colorEntries =   8; break;
+		case GX_TEXFMT_PLTT4   : texEntry.params.colorEntries =   4; break;
+		case GX_TEXFMT_PLTT16  : texEntry.params.colorEntries =  16; break;
+		case GX_TEXFMT_PLTT256 : texEntry.params.colorEntries = 256; break;
+		case GX_TEXFMT_A3I5    : texEntry.params.colorEntries =  32; break;
+		case GX_TEXFMT_A5I3    : texEntry.params.colorEntries =   8; break;
 	}
 
 	//balance settings
@@ -2731,7 +2886,6 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 
 	//read overrides from file. Missing fields have default values written back.
 	BatchTexReadOptions(configPath, &texEntry.params, pnam);
-	free(configPath);
 
 	texEntry.params.dest = (TEXTURE *) calloc(1, sizeof(TEXTURE));
 	texEntry.params.threshold = threshold4x4;
@@ -2739,6 +2893,7 @@ BOOL CALLBACK BatchTexConvertFileCallback(LPCWSTR path, void *param) {
 	texEntry.params.pnam = _strdup(pnam);
 	texEntry.path = _wcsdup(path);
 	texEntry.outPath = outPath;
+	texEntry.configPath = configPath;
 	StListAdd((StList *) param, &texEntry);
 
 	return TRUE;
@@ -2773,16 +2928,13 @@ int BatchTexConvert(LPCWSTR path, LPCWSTR convertedDir) {
 	int status = EnumAllFiles(path, BatchTexConvertFileCallback, BatchTexConvertDirectoryCallback, BatchTexConvertDirectoryExclusion, &batchData.texList);
 	g_batchTexOut = NULL;
 
-	WCHAR buf[48];
-	wsprintfW(buf, L"%d texture%s outstanding. OK?", batchData.texList.length, batchData.texList.length == 1 ? L"" : L"s");
-
 	int proceed = 1;
 	if (batchData.texList.length == 0) {
 		MessageBox(g_hWndBatchTexWindow, L"No textures outstanding.", L"No Textures", MB_ICONINFORMATION);
 		proceed = 0;
 	} else {
-		int id = MessageBox(g_hWndBatchTexWindow, buf, L"Proceed?", MB_ICONQUESTION | MB_OKCANCEL);
-		if (id != IDOK) proceed = 0;
+		int id = BatchTexShowOptionsDialog(g_hWndBatchTexWindow, &batchData);
+		if (!id) proceed = 0;
 	}
 
 	//if the user selects to proceed, show the modal conversion window and create threads.
@@ -2799,6 +2951,7 @@ int BatchTexConvert(LPCWSTR path, LPCWSTR convertedDir) {
 		BATCHTEXENTRY *ent = StListGetPtr(&batchData.texList, i);
 
 		//free texture allocation
+		free(ent->params.px);
 		free(ent->params.dest->palette.pal);
 		free(ent->params.dest->palette.name);
 		free(ent->params.dest->texels.texel);
@@ -2809,11 +2962,13 @@ int BatchTexConvert(LPCWSTR path, LPCWSTR convertedDir) {
 		free(ent->params.pnam);
 		free(ent->path);
 		free(ent->outPath);
+		free(ent->configPath);
 	}
 	
 	StListFree(&batchData.texList);
 
-	return status;
+	(void) status;
+	return proceed;
 }
 
 BOOL CALLBACK BatchTexAddTexture(LPCWSTR path, void *param) {
@@ -2922,8 +3077,6 @@ LRESULT CALLBACK BatchTextureWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 					int status = BatchTexConvert(path, convertedDir);
 					if (status) {
 						BatchTexShowVramStatistics(hWnd, convertedDir);
-					} else {
-						MessageBox(hWnd, L"An error occurred.", L"Error", MB_ICONERROR);
 					}
 				}
 			}

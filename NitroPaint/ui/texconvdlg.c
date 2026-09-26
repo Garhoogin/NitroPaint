@@ -88,11 +88,18 @@ static void TexconvDlgCallbackUpdate(HWND hWnd, HWND hWndCtl, int notif, void *p
 	TexconvDlgUpdate((TexconvDlgData *) param);
 }
 
+static void TexconvDlgUpdateOptimization(TexconvDlgData *data) {
+	WCHAR bf[8];
+	int len = wsprintfW(bf, L"%d", SendMessage(data->hWndOptimizationSlider, TBM_GETPOS, 0, 0));
+	SendMessage(data->hWndOptimizationLabel, WM_SETTEXT, len, (LPARAM) bf);
+}
+
 static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	TexconvDlgData *data = (TexconvDlgData *) UiDlgGetData(hWnd);
 	switch (msg) {
 		case WM_CREATE:
 		{
+			TxConversionParameters *params = &data->params->param;
 			int boxWidth = 100 + 100 + 10 + 10 + 10;     // box width
 			int boxHeight = 5 * 27 - 5 + 10 + 10 + 10;   // first row height
 			int boxHeight2 = 3 * 27 - 5 + 10 + 10 + 10;  // second row height
@@ -125,11 +132,11 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			data->hWndPaletteSize = CreateEdit(hWnd, L"256", rightX + 85, topY + 27 * 3, 100, 22, TRUE);
 			data->hWndColor0Transparent = CreateCheckbox(hWnd, L"Color 0 is Transparent", rightX, topY + 27 * 4, 150, 22, FALSE);
 
-			data->hWndLimitPalette = CreateCheckbox(hWnd, L"Limit Palette Size", leftX, middleY, 100, 22, TRUE);
+			data->hWndLimitPalette = CreateCheckbox(hWnd, L"Limit Palette Size", leftX, middleY, 100, 22, data->params->limitPaletteSize);
 			CreateStatic(hWnd, L"Maximum Colors:", leftX, middleY + 27, 100, 22);
 			data->hWndColorEntries = CreateEdit(hWnd, L"256", leftX + 110, middleY + 27, 100, 22, TRUE);
 			CreateStatic(hWnd, L"Optimization:", leftX, middleY + 27 * 2, 100, 22);
-			data->hWndOptimizationSlider = CreateTrackbar(hWnd, leftX + 110, middleY + 27 * 2, 210, 22, 0, 100, 0);
+			data->hWndOptimizationSlider = CreateTrackbar(hWnd, leftX + 110, middleY + 27 * 2, 210, 22, 0, 100, params->threshold);
 			data->hWndOptimizationLabel = CreateStatic(hWnd, L"0", leftX + 330, middleY + 27 * 2, 50, 22);
 
 			NpCreateBalanceInput(&data->balance, hWnd, leftX - 10, bottomY - 18, rightX + boxWidth - leftX);
@@ -159,13 +166,16 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			
 			data->alphaKey = data->params->alphaKey;
 
-			//pick default 4x4 color count
-			int maxColors = data->params->maxColors;
-			SetEditNumber(data->hWndColorEntries, maxColors);
+			//set color max count
+			SetEditNumber(data->hWndColorEntries, data->params->maxColors);
+			if (format != GX_TEXFMT_TEX4x4 && format != GX_TEXFMT_DIRECT) {
+				SetEditNumber(data->hWndPaletteSize, data->params->param.colorEntries);
+			}
 
 			//fill palette name
-			WCHAR *pname = data->params->paletteName;
+			wchar_t *pname = TexNarrowResourceNameToWideChar(data->params->param.pnam);
 			if (pname != NULL) UiEditSetText(data->hWndPaletteName, pname);
+			free(pname);
 
 			if (data->params->noWritePalette) {
 				SendMessage(data->hWndFixedPalette, BM_SETCHECK, BST_CHECKED, 0);
@@ -175,6 +185,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 			}
 
 			TexconvDlgUpdate(data);
+			TexconvDlgUpdateOptimization(data);
 
 			//register controls
 			UiDlgRegisterCtlOK(hWnd, data->hWndConvertButton);
@@ -265,9 +276,9 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 					}
 
 					//check texture format 
-					unsigned int width = data->params->width, height = data->params->height;
+					unsigned int width = params->width, height = params->height;
 					unsigned int nPx = width * height;
-					unsigned int texelSize = TxCalcTexelSize(fmt << 20, width, height);
+					unsigned int texelSize = TxCalcTexelSize(fmt << GX_TEXIMAGE_PARAM_FMT_SHIFT, width, height);
 					
 					if (fmt == GX_TEXFMT_TEX4x4 && nPx > (512 * 1024)) {
 						//ordinary texture VRAM allocation prohibits this
@@ -288,36 +299,38 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 						}
 					}
 
-					//copy pixel buffer
-					COLOR32 *px = (COLOR32 *) calloc(width * height, sizeof(COLOR32));
-					memcpy(px, data->params->px, width * height * sizeof(COLOR32));
-
 					//alpha key preprocessing of input image
 					BOOL useAlphaKey = GetCheckboxChecked(data->hWndCheckboxAlphaKey);
 					if (useAlphaKey) {
 						for (unsigned int i = 0; i < width * height; i++) {
-							COLOR32 c = px[i];
+							COLOR32 c = params->px[i];
 							if ((c & 0x00FFFFFF) == (data->alphaKey & 0x00FFFFFF)) {
-								px[i] = 0;
+								params->px[i] = 0;
 							}
 						}
 					}
 
-					params->diffuseAmount = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
-					params->threshold = GetTrackbarPosition(data->hWndOptimizationSlider);
+					//check the palette size field
+					static const int maxPlttSizes[] = { 0, 32, 4, 16, 256, 32768, 8, 0 };
+					if (fmt != GX_TEXFMT_TEX4x4 && fmt != GX_TEXFMT_DIRECT) {
+						if (paletteSize > maxPlttSizes[fmt]) paletteSize = maxPlttSizes[fmt];
+					}
 
-					params->dither = GetCheckboxChecked(data->hWndDither);
-					params->ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
-					params->c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
-
-					params->px = px;
-					params->width = width;
-					params->height = height;
+					//main params
 					params->fmt = fmt;
+					params->c0xp = GetCheckboxChecked(data->hWndColor0Transparent);
 					params->colorEntries = useFixedPalette ? fixedPaletteSize : (fmt == GX_TEXFMT_TEX4x4 ? colorEntries : paletteSize);
 					params->fixedPalette = useFixedPalette ? fixedPalette : NULL;
 					params->pnam = TexNarrowResourceNameFromWideChar(bf);
+					params->dither = GetCheckboxChecked(data->hWndDither);
+					params->ditherAlpha = GetCheckboxChecked(data->hWndDitherAlpha);
+					params->diffuseAmount = GetEditNumber(data->hWndDiffuseAmount) / 100.0f;
+					params->threshold = GetTrackbarPosition(data->hWndOptimizationSlider);
 					NpGetBalanceSetting(&data->balance, &params->balance);
+
+					//put extra parameters
+					data->params->useAlphaKey = useAlphaKey;
+					data->params->alphaKey = data->alphaKey;
 
 					data->result = 1; // complete
 
@@ -341,9 +354,7 @@ static LRESULT CALLBACK ConvertDialogWndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		{
 			HWND hWndControl = (HWND) lParam;
 			if (hWndControl == data->hWndOptimizationSlider) {
-				WCHAR bf[8];
-				int len = wsprintfW(bf, L"%d", SendMessage(hWndControl, TBM_GETPOS, 0, 0));
-				SendMessage(data->hWndOptimizationLabel, WM_SETTEXT, len, (LPARAM) bf);
+				TexconvDlgUpdateOptimization(data);
 			}
 			break;
 		}
