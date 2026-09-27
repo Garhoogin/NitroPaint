@@ -852,7 +852,7 @@ static int FloatToInt(double x) {
 	return (int) (x + (x < 0.0f ? -0.5f : 0.5f));
 }
 
-static void CellRenderOBJ(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
+static void CellRenderOBJ_Character(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
 	int tilesX = info->width / 8;
 	int tilesY = info->height / 8;
 
@@ -887,6 +887,59 @@ static void CellRenderOBJ(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *
 				memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
 			}
 		}
+	}
+}
+
+static void CellRenderOBJ_Bitmap(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping) {
+	//if the mapping mode is 2D mapping, then we can use the same logic as for the character type rendering
+	//since we emulate the graphics layout in character order.
+	if (mapping == GX_OBJVRAMMODE_CHAR_2D) {
+		CellRenderOBJ_Character(out, info, ncgr, nclr, mapping, NULL);
+		return;
+	}
+
+	//the handling for 1D bitmap graphics: bitmaps are placed sequentially, rather than
+	//assuming a 2D sheet layout.
+	unsigned int mapShift = (mapping >> 20) & 0x3;
+	unsigned int iPx = ((info->characterName * 64) << mapShift) >> (ncgr->nBits == 8);  // initial starting index of bitmap data
+	unsigned int pxW = 8 * ncgr->tilesX;                                                // width of the simulated sheet in dots
+
+	for (int y = 0; y < info->height; y++) {
+		for (int x = 0; x < info->width; x++, iPx++) {
+			
+			//convert into the internal character order
+			unsigned int pxX     = iPx % pxW, pxY     = iPx / pxW;
+			unsigned int charX   = pxX / 8,   charY   = pxY / 8;
+			unsigned int inCharX = pxX % 8,   inCharY = pxY % 8;
+			unsigned int iChar   = charX + charY * ncgr->tilesX;
+
+			//color index lookup
+			unsigned int pval = 0;
+			if (ncgr != NULL && iChar < (unsigned int) ncgr->nTiles) {
+				pval = ncgr->tiles[iChar][inCharX + 8 * inCharY];
+			}
+
+			//color palette lookup
+			COLOR c = 0;
+			if (nclr != NULL && pval < (unsigned int) nclr->nColors) {
+				c = nclr->colors[pval];
+			}
+
+			COLOR32 c32 = ColorConvertFromDS(c);
+			if (pval > 0) c32 |= 0xFF000000;
+			out[x + y * info->width] = REVERSE(c32);
+		}
+	}
+}
+
+static void CellRenderOBJ(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
+	//use the rendering procedure for the type of graphics
+	if (!ncgr->bitmap) {
+		//character graphics (use on the 2D graphics engine)
+		CellRenderOBJ_Character(out, info, ncgr, nclr, mapping, vramTransfer);
+	} else {
+		//bitmap graphics (use on the 3D graphics engine: no support for VRAM transfer characters)
+		CellRenderOBJ_Bitmap(out, info, ncgr, nclr, mapping);
 	}
 }
 
