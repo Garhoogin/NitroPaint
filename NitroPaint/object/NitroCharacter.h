@@ -78,7 +78,7 @@ int ChrIsValidBin(const unsigned char *buffer, unsigned int size);
 //
 // Get a 32-bit color render of graphics data
 //
-int ChrRenderCharacter(NCGR *ncgr, NCLR *nclr, int chNo, COLOR32 *out, int previewPalette, int transparent);
+int ChrRenderCharacter(NCGR *ncgr, NCLR *nclr, int chNo, COLOR32 *out, int previewPalette);
 
 //
 // Get single character, respecting VRAM transfer operations
@@ -88,7 +88,7 @@ void ChrGetChar(NCGR *ncgr, int chno, CHAR_VRAM_TRANSFER *transfer, unsigned cha
 //
 // Render character respecting a VRAM transfer operation.
 //
-int ChrRenderCharacterTransfer(NCGR *ncgr, NCLR *nclr, int chNo, CHAR_VRAM_TRANSFER *transfer, COLOR32 *out, int palette, int transparent);
+int ChrRenderCharacterTransfer(NCGR *ncgr, NCLR *nclr, int chNo, CHAR_VRAM_TRANSFER *transfer, COLOR32 *out, int palette);
 
 //
 // Update the width of graphics data. Useful for bitmapped graphics.

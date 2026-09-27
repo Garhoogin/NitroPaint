@@ -799,10 +799,10 @@ void ChrGetChar(NCGR *ncgr, int chno, CHAR_VRAM_TRANSFER *transfer, unsigned cha
 	}
 }
 
-static int ChriRenderCharacter(unsigned char *chr, int depth, int palette, NCLR *nclr, COLOR32 *out, int transparent) {
+static int ChriRenderCharacter(unsigned char *chr, int depth, int palette, NCLR *nclr, COLOR32 *out) {
 	for (int i = 0; i < 64; i++) {
 		int index = chr[i];
-		if (index || !transparent) {
+		if (index) {
 			COLOR w = 0;
 			if (nclr && (index + (palette << depth)) < nclr->nColors)
 				w = nclr->colors[index + (palette << depth)];
@@ -814,24 +814,24 @@ static int ChriRenderCharacter(unsigned char *chr, int depth, int palette, NCLR 
 	return 0;
 }
 
-int ChrRenderCharacter(NCGR *ncgr, NCLR *nclr, int chNo, COLOR32 *out, int previewPalette, int transparent) {
+int ChrRenderCharacter(NCGR *ncgr, NCLR *nclr, int chNo, COLOR32 *out, int previewPalette) {
 	if (chNo < ncgr->nTiles) {
 		unsigned char *tile = ncgr->tiles[chNo];
-		return ChriRenderCharacter(tile, ncgr->nBits, previewPalette, nclr, out, transparent);
+		return ChriRenderCharacter(tile, ncgr->nBits, previewPalette, nclr, out);
 	} else {
 		memset(out, 0, 64 * 4);
 		return 1;
 	}
 }
 
-int ChrRenderCharacterTransfer(NCGR *ncgr, NCLR *nclr, int chNo, CHAR_VRAM_TRANSFER *transfer, COLOR32 *out, int palette, int transparent) {
+int ChrRenderCharacterTransfer(NCGR *ncgr, NCLR *nclr, int chNo, CHAR_VRAM_TRANSFER *transfer, COLOR32 *out, int palette) {
 	//if transfer == NULL, render as normal
-	if (transfer == NULL) return ChrRenderCharacter(ncgr, nclr, chNo, out, palette, transparent);
+	if (transfer == NULL) return ChrRenderCharacter(ncgr, nclr, chNo, out, palette);
 
 	//else, read graphics and render
 	unsigned char buf[64];
 	ChrGetChar(ncgr, chNo, transfer, buf);
-	return ChriRenderCharacter(buf, ncgr->nBits, palette, nclr, out, transparent);
+	return ChriRenderCharacter(buf, ncgr->nBits, palette, nclr, out);
 }
 
 void ChrSetWidth(NCGR *ncgr, int width) {

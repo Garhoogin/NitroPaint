@@ -882,7 +882,7 @@ static void CellRenderOBJ_Character(COLOR32 *out, NCER_CELL_INFO *info, NCGR *nc
 				index = ncgrStart + x + y * tilesX;
 			}
 
-			ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette, 1);
+			ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette);
 			for (int i = 0; i < 8; i++) {
 				memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
 			}
