@@ -919,10 +919,12 @@ static void CellRenderOBJ_Bitmap(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr,
 				pval = ncgr->tiles[iChar][inCharX + 8 * inCharY];
 			}
 
+			unsigned int cidx = pval + (info->palette << ncgr->nBits);
+
 			//color palette lookup
 			COLOR c = 0;
-			if (nclr != NULL && pval < (unsigned int) nclr->nColors) {
-				c = nclr->colors[pval];
+			if (nclr != NULL && cidx < (unsigned int) nclr->nColors) {
+				c = nclr->colors[cidx];
 			}
 
 			COLOR32 c32 = ColorConvertFromDS(c);
