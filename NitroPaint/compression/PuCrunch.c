@@ -333,7 +333,7 @@ static void CxiPcExploreLzRl(
 	uint16_t            *rlLens      // The output RL length array
 ) {
 	CxiLzState state;
-	CxiLzStateInit(&state, buffer, size, 2, 256, PUCRUNCH_MIN_DISTANCE, maxWindow);
+	CxiLzStateInit(&state, buffer, size, 3, 256, PUCRUNCH_MIN_DISTANCE, maxWindow);
 
 	//run forwards pass for exploration
 	unsigned int pos = 0;
@@ -347,6 +347,7 @@ static void CxiPcExploreLzRl(
 
 		//if there was no LZ match, search for any 2-byte matches.
 		if (nodes[pos].length < 2 && (pos + 1) < size) {
+
 
 			const unsigned char *src = buffer + pos;
 			for (unsigned int i = PUCRUNCH_MIN_DISTANCE; i <= 256 && i <= pos; i++) {

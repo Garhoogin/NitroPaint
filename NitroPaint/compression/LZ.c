@@ -49,7 +49,7 @@ unsigned char *CxCompressLZ(const unsigned char *buffer, unsigned int size, unsi
 	*(bufpos++) = (size >>  8) & 0xFF;
 	*(bufpos++) = (size >> 16) & 0xFF;
 
-	for (unsigned int i = 0; i < nTokens; i++) {
+	for (unsigned int i = 0; i < nTokens;) {
 		//new grouping
 		unsigned char head = 0;
 		unsigned char *headpos = bufpos++;
@@ -234,7 +234,7 @@ unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, uns
 	*(bufpos++) = (size >>  8) & 0xFF;
 	*(bufpos++) = (size >> 16) & 0xFF;
 
-	for (unsigned int i = 0; i < nTokens; i++) {
+	for (unsigned int i = 0; i < nTokens;) {
 		unsigned char head = 0;
 		unsigned char *headpos = bufpos++;
 
