@@ -224,13 +224,16 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 
 	//bank
 	if (cebk != NULL) {
-		ncer->nCells = *(uint16_t *) cebk;
-		ncer->cells = (NCER_CELL *) calloc(ncer->nCells, sizeof(NCER_CELL));
-		ncer->bankAttribs = *(uint16_t *) (cebk + 2); //1 - with bounding rectangle, 0 - without
-		const unsigned char *cellData = cebk + *(uint32_t *) (cebk + 4);
+		ncer->nCells      = *(const uint16_t *) (cebk + 0x00);  // number of cells this bank
+		ncer->bankAttribs = *(const uint16_t *) (cebk + 0x02);  // 1 - with bounding rectangle, 0 - without
+		ncer->cells       = (NCER_CELL *) calloc(ncer->nCells, sizeof(NCER_CELL));
 
-		uint32_t mappingMode = *(uint32_t *) (cebk + 8);
-		const int mappingModes[] = {
+		uint32_t ofsCells    = *(const uint32_t *) (cebk + 0x04);  // offset to cell data
+		uint32_t mappingMode = *(const uint32_t *) (cebk + 0x08);  // mapping mode (0-4)
+		uint32_t ofsVramTran = *(const uint32_t *) (cebk + 0x0C);  // offset to VRAM transfer info
+		uint32_t ofsExtData  = *(const uint32_t *) (cebk + 0x14);  // offset to extended attribute data
+
+		static const int mappingModes[] = {
 			GX_OBJVRAMMODE_CHAR_1D_32K,
 			GX_OBJVRAMMODE_CHAR_1D_64K,
 			GX_OBJVRAMMODE_CHAR_1D_128K,
@@ -240,66 +243,63 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 		if (mappingMode < 5) ncer->mappingMode = mappingModes[mappingMode];
 		else ncer->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 
-		int perCellDataSize = 8;
-		if (ncer->bankAttribs == 1) perCellDataSize += 8;
+		//size of each cell entry in the bank (with vs. without bounding rect info)
+		unsigned int                    perCellDataSize = 0x08;  // cell
+		if (ncer->bankAttribs & 0x0001) perCellDataSize = 0x10;  // cell+BR
+
+		const unsigned char *cellData = cebk + ofsCells;
 		const unsigned char *oamData = cellData + (ncer->nCells * perCellDataSize);
 
 		for (int i = 0; i < ncer->nCells; i++) {
-			int nOAMEntries = *(uint16_t *) (cellData + 0);
-			int cellAttr = *(uint16_t *) (cellData + 2);
-			uint32_t pOamAttrs = *(uint32_t *) (cellData + 4);
+			NCER_CELL *cell = &ncer->cells[i];
 
-			NCER_CELL *cell = ncer->cells + i;
-			CellInitBankCell(ncer, cell, nOAMEntries ? nOAMEntries : 1);
+			int nOBJ           = *(const uint16_t *) (cellData + 0x00);
+			int cellAttr       = *(const uint16_t *) (cellData + 0x02);
+			uint32_t pOamAttrs = *(const uint32_t *) (cellData + 0x04);
+			const uint16_t *cellOam = (const uint16_t *) (oamData + pOamAttrs);
+
+			CellInitBankCell(ncer, cell, nOBJ);
+			memcpy(cell->attr, oamData + pOamAttrs, cell->nAttribs * 3 * sizeof(uint16_t));
 			cell->cellAttr = cellAttr;
 
-			if (nOAMEntries != 0) {
-				uint16_t *cellOam = (uint16_t *) (oamData + pOamAttrs);
-				memcpy(cell->attr, oamData + pOamAttrs, cell->nAttribs * 3 * 2);
-
-				if (perCellDataSize >= 16) {
-					cell->maxX = *(int16_t *) (cellData + 0x8);
-					cell->maxY = *(int16_t *) (cellData + 0xA);
-					cell->minX = *(int16_t *) (cellData + 0xC);
-					cell->minY = *(int16_t *) (cellData + 0xE);
-				}
-			} else {
-				// Provide at least one OAM attribute for empty cells
-				cell->attr[0] = 0x0200; // Disable rendering
+			if (perCellDataSize >= 16) {
+				//if the bounding box info exits
+				cell->maxX = *(const int16_t *) (cellData + 0x8);
+				cell->maxY = *(const int16_t *) (cellData + 0xA);
+				cell->minX = *(const int16_t *) (cellData + 0xC);
+				cell->minY = *(const int16_t *) (cellData + 0xE);
 			}
 
 			cellData += perCellDataSize;
 		}
 
 		//VRAM transfer
-		uint32_t vramTransferOffset = *(uint32_t *) (cebk + 0xC);
-		if (vramTransferOffset && vramTransferOffset != 0xFFFFFFFF) {
-			const unsigned char *vramTransferData = (cebk + vramTransferOffset);
-			uint32_t maxTransfer = *(uint32_t *) (vramTransferData);
-			uint32_t transferDataOffset = vramTransferOffset + *(uint32_t *) (vramTransferData + 4);
+		if (ofsVramTran && ofsVramTran != 0xFFFFFFFF) {
+			const unsigned char *vramTransferData = (cebk + ofsVramTran);
+			uint32_t maxTransfer        = *(const uint32_t *) (vramTransferData + 0x0);
+			uint32_t transferDataOffset = ofsVramTran + *(uint32_t *) (vramTransferData + 0x04);
 
 			ncer->vramTransfer = (CHAR_VRAM_TRANSFER *) calloc(ncer->nCells, sizeof(CHAR_VRAM_TRANSFER));
 			for (int i = 0; i < ncer->nCells; i++) {
 				ncer->vramTransfer[i].dstAddr = 0;
-				ncer->vramTransfer[i].srcAddr = *(uint32_t *) (cebk + transferDataOffset + i * 8 + 0);
-				ncer->vramTransfer[i].size = *(uint32_t *) (cebk + transferDataOffset + i * 8 + 4);
+				ncer->vramTransfer[i].srcAddr = *(const uint32_t *) (cebk + transferDataOffset + i * 8 + 0x00);
+				ncer->vramTransfer[i].size =    *(const uint32_t *) (cebk + transferDataOffset + i * 8 + 0x04);
 			}
 		}
 
 		//user extended attributes
-		uint32_t userExtendedOffset = *(uint32_t *) (cebk + 0x14);
-		if (userExtendedOffset) {
-			const unsigned char *userEx = cebk + userExtendedOffset;
+		if (ofsExtData) {
+			const unsigned char *userEx = cebk + ofsExtData;
 			
 			//search for UCAT block
 			if (userEx[0] == 'T' && userEx[1] == 'A' && userEx[2] == 'C' && userEx[3] == 'U') {
 				userEx += 8;
 
-				uint32_t offsStart = *(uint32_t *) (userEx + 0x4);
+				unsigned int nCellEx = *(const uint16_t *) (userEx + 0x0);
+				uint32_t offsStart   = *(const uint32_t *) (userEx + 0x4);
 
-				int nCellEx = *(const uint16_t *) (userEx + 0x0);
 				const uint32_t *attroffs = (const uint32_t *) (userEx + offsStart);
-				for (int i = 0; i < nCellEx; i++) {
+				for (unsigned int i = 0; i < nCellEx; i++) {
 					ncer->cells[i].attrEx = *(const uint32_t *) (userEx + attroffs[i]);
 				}
 				ncer->useExtAttr = 1;
@@ -325,22 +325,16 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 }
 
 int CellReadGhostTrick(NCER *ncer, const unsigned char *buffer, unsigned int size) {
-	const uint16_t *cellOffs = (const uint16_t *) buffer;
-	int nCells = *(uint16_t *) buffer;
+	const uint16_t *cellOffs =  (const uint16_t *) buffer;
+	int nCells               = *(const uint16_t *) buffer;
 	NCER_CELL *cells = (NCER_CELL *) calloc(nCells, sizeof(NCER_CELL));
 
 	for (int i = 0; i < nCells; i++) {
 		const unsigned char *cell = buffer + cellOffs[i] * 2;
 		int nObj = *(uint16_t *) cell;
-		CellInitBankCell(ncer, &cells[i], nObj ? nObj : 1);
+		CellInitBankCell(ncer, &cells[i], nObj);
 
-		if (nObj != 0) {
-			memcpy(cells[i].attr, cell + 2, nObj * 3 * 2);
-		} else {
-			// Provide at least one OAM attribute for empty cells
-			cells[i].attr[0] = 0x0200; // Disable rendering
-		}
-
+		memcpy(cells[i].attr, cell + 2, nObj * 3 * 2);
 	}
 
 	ncer->nCells = nCells;
