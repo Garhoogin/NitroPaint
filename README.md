@@ -96,3 +96,14 @@ You can export all the textures by clicking the "Export All" button. Since textu
 
 You can examine the VRAM usage of the texture archive by clicking the "VRAM Use" button. This opens a window that shows the total usage of VRAM by both textures and color palettes. The texture VRAM usage is further broken up into texture image data and palette index data. The list boxes list the texture format and VRAM usage for each texture and color palette.
 
+# Batch Texture Conversion
+
+Textures may be converted individually, but with many textures it is more efficient to use an automatic conversion procedure. This is where the batch texture conversion feature becomes useful.
+
+To use batch texture conversion, first create a directory which holds only your source texture files. Then select Tools -> Batch Operation -> Texture Conversion. Here, select the directory where texture source images are placed. When ready, select "Convert." This will open a dialog window showing the list of texture files to be converted and the format that has been auto-selected for it. You may edit conversion parameters for any given texture by double-clicking its list item entry. Finally, click OK to begin the batch operation.
+
+The batch operation will show the status of conversion of each texture image. Conversion will use more CPU cores when more are available on the system to speed up the process. When conversion is finished, a VRAM summary of converted textures is shown. After conversion, a subdirectory called `converted` will be created, holding the converted texture files. 
+
+A set of `ini` files will also be created as a result of conversion, one for each texture image. These hold the conversion parameters for each texture file. Parameters may be edited in these files to adjust conversion settings, in addition to by double-clicking the texture entry in the list. Editing either the source image or the `ini` file will cause batch conversion to see that the texture should be re-converted. Texture files and settings that are unchanged are skipped by batch conversion. To trigger a re-conversion of all textures, either delete all converted texture files in the `converted` directory, or select "Clean" from the batch texture conversion window.
+
+The texture format may also be hinted to the batch conversion by placing source images into a subdirectory named with the texture format (i.e. `palette4`, `palette16`, `palette256`, `a3i5`, `a5i3`, `tex4x4` or `direct`). Otherwise, batch conversion automatically selects an initial texture format based on the texture image. If you want to restore default conversion settings, the corresponding `ini` file may be deleted.
