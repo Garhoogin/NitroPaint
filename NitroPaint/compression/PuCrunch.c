@@ -62,7 +62,12 @@
 // sequence here. Otherwise, it may write the same escape sequence again. 
 // -----------------------------------------------------------------------------------------------
 
-#define PUCRUNCH_MIN_DISTANCE    1
+#define PUCRUNCH_LZ_MIN_DISTANCE            1  // min LZ distance
+#define PUCRUNCH_LZ_MAX_DISTANCE_BASE  0xFE00  // max LZ distance with no extra LZ bits
+#define PUCRUNCH_LZ_MAX_SHORT_DISTANCE  0x100  // max LZ short copy distance
+#define PUCRUNCH_LZ_SHORT_LENGTH            2  // LZ short copy length
+#define PUCRUNCH_LZ_MIN_LONG_LENGTH         3  // min LZ long copy length
+#define PUCRUNCH_RL_MAX_LENGTH         0xFF00  // max RL length
 
 
 // ----- Compression routines
@@ -309,7 +314,7 @@ static void CxiPcExploreRL(
 			for (unsigned int j = 0; j < nCurRun; j++) {
 				//decrement the length per each byte advance -- limit to FF00 length
 				unsigned int nRunHere = nCurRun - j;
-				rlLens[iRunStart + j] = nRunHere > 0xFF00 ? 0xFF00 : nRunHere;
+				rlLens[iRunStart + j] = nRunHere > PUCRUNCH_RL_MAX_LENGTH ? PUCRUNCH_RL_MAX_LENGTH : nRunHere;
 			}
 
 			//first byte or mismatched previous byte: reset count to 1
@@ -333,7 +338,7 @@ static void CxiPcExploreLzRl(
 	uint16_t            *rlLens      // The output RL length array
 ) {
 	CxiLzState state;
-	CxiLzStateInit(&state, buffer, size, 3, 256, PUCRUNCH_MIN_DISTANCE, maxWindow);
+	CxiLzStateInit(&state, buffer, size, PUCRUNCH_LZ_MIN_LONG_LENGTH, 256, PUCRUNCH_LZ_MIN_DISTANCE, maxWindow);
 
 	//run forwards pass for exploration
 	unsigned int pos = 0;
@@ -350,7 +355,7 @@ static void CxiPcExploreLzRl(
 
 
 			const unsigned char *src = buffer + pos;
-			for (unsigned int i = PUCRUNCH_MIN_DISTANCE; i <= 256 && i <= pos; i++) {
+			for (unsigned int i = PUCRUNCH_LZ_MIN_DISTANCE; i <= PUCRUNCH_LZ_MAX_SHORT_DISTANCE && i <= pos; i++) {
 				const unsigned char *src2 = buffer + pos - i;
 				if (src[0] == src2[0] && src[1] == src2[1]) {
 					//found 2-byte
@@ -457,10 +462,15 @@ static void CxiPcGraphOptimize(
 				unsigned int effectiveDistance = node->distance;
 
 				//check checkLength==2: must also check distance is within range
-				if (checkLength == 2 && node->distance > 256) {
+				if (checkLength == PUCRUNCH_LZ_SHORT_LENGTH && node->distance > PUCRUNCH_LZ_MAX_SHORT_DISTANCE) {
+
 					//check for in-range distances here (TODO: separate hash table perhaps?)
-					unsigned int matchDistance = UINT_MAX;
-					for (unsigned int checkDistance = PUCRUNCH_MIN_DISTANCE; checkDistance <= 256 && checkDistance <= pos; checkDistance++) {
+					unsigned int matchDistance = UINT_MAX, checkDistance;
+					for (
+						checkDistance  = PUCRUNCH_LZ_MIN_DISTANCE;
+						checkDistance <= PUCRUNCH_LZ_MAX_SHORT_DISTANCE && checkDistance <= pos;
+						checkDistance++
+					) {
 						const unsigned char *src = buffer + pos - checkDistance;
 						if (src[0] == buffer[pos] && src[1] == buffer[pos + 1]) {
 							//found
@@ -468,6 +478,7 @@ static void CxiPcGraphOptimize(
 							break;
 						}
 					}
+
 					if (matchDistance == UINT_MAX) break; // no match
 
 					//else, update the effective distance for this iteration
@@ -478,7 +489,7 @@ static void CxiPcGraphOptimize(
 				unsigned int testCost = CxiPcCalcLzCost(escBits, 8 + nLzExtra, checkLength, effectiveDistance);
 				if ((pos + checkLength) < size) testCost += nodes[pos + checkLength].weight;
 
-				if (testCost < cost) {
+				if (testCost <= cost) {
 					//update best
 					cost = testCost;
 					node->length = checkLength;
@@ -489,7 +500,7 @@ static void CxiPcGraphOptimize(
 			if (node->length < initLength && node->length > 2) {
 				//try reducing the distance of match (ONLY for long matches: short matches do not
 				//benefit from distance reduction, and we may have had to do it for them earlier anyway)
-				for (unsigned int checkDistance = PUCRUNCH_MIN_DISTANCE; checkDistance < node->distance; checkDistance++) {
+				for (unsigned int checkDistance = PUCRUNCH_LZ_MIN_DISTANCE; checkDistance < node->distance; checkDistance++) {
 					if (CxiLzConfirmMatch(buffer, size, pos, checkDistance, node->length)) {
 						//found
 						node->distance = checkDistance;
@@ -506,7 +517,7 @@ static void CxiPcGraphOptimize(
 				unsigned int testCost = CxiPcCalcRlCost(escBits, rlByteCosts[buffer[pos]], checkLength);
 				if ((pos + checkLength) < size) testCost += nodes[pos + checkLength].weight;
 
-				if (testCost < cost) {
+				if (testCost <= cost) {
 					//update best (switch to RL)
 					cost = testCost;
 					node->length = checkLength;
@@ -570,6 +581,23 @@ static unsigned int CxiPcCreateRlTable(
 }
 
 //
+// Calculate how many LZ extra bits are required for a given window size.
+//
+static unsigned int CxiPcCalcWindowNeededLzExtra(
+	unsigned int maxDistance
+) {
+	CX_ASSERT(maxDistance > 1);
+	maxDistance--;
+
+	unsigned int nLzExtra = 0;
+	while (maxDistance >= PUCRUNCH_LZ_MAX_DISTANCE_BASE) {
+		maxDistance >>= 1;
+		nLzExtra++;
+	}
+	return nLzExtra;
+}
+
+//
 // Writes a compressed node sequence to a byte array,
 //
 static unsigned char *CxiPcWriteCompression(
@@ -577,7 +605,6 @@ static unsigned char *CxiPcWriteCompression(
 	unsigned int          size,      // The input buffer size
 	const CxiLzNode      *nodes,     // The input node buffer
 	unsigned int          escBits,   // The number of escape bits
-	unsigned int          nLzExtra,  // The number of extra low LZ bits
 	const unsigned char  *freqTbl,   // The frequency table
 	unsigned int          nFreqTbl,  // The frequency table size
 	unsigned int         *pOutSize   // The output buffer size
@@ -601,15 +628,7 @@ static unsigned char *CxiPcWriteCompression(
 	}
 
 	//how many extra bits do we need? Low 8-bit fixed offset + upper Gamma code
-	{
-		unsigned int nNeededLzExtra = 0;
-		unsigned int hiBits = (maxOffset - 1) >> 8;
-		while (hiBits > 0xFD) {
-			hiBits >>= 1;
-			nNeededLzExtra++;
-		}
-		nLzExtra = nNeededLzExtra;
-	}
+	unsigned int nLzExtra = CxiPcCalcWindowNeededLzExtra(maxOffset);
 	unsigned int nLzBits = 8 + nLzExtra;
 
 	//get the initial escape sequence.
@@ -723,51 +742,67 @@ static unsigned char *CxiPcWriteCompression(
 
 unsigned char *CxCompressPuCrunch(const unsigned char *buffer, unsigned int size, unsigned int *compressedSize) {
 	//get max LZ extra bits
-	unsigned int maxWindow = 0xFE00, maxLzExtra = 0;
+	unsigned int maxWindow = PUCRUNCH_LZ_MAX_DISTANCE_BASE, maxLzExtra = 0;
 	while (maxWindow < size && maxLzExtra < 8) {
 		maxWindow <<= 1;
 		maxLzExtra++;
 	}
 
-	//we will vary this from its initial value downwards to find an optimal setting.
-	unsigned int nLzExtra = maxLzExtra;
-
 	CxiLzNode *nodes  = (CxiLzNode *) calloc(size, sizeof(CxiLzNode));  // buffer for LZ matches
 	uint16_t  *rlLens = (uint16_t  *) calloc(size, sizeof(uint16_t ));  // buffer for RL matches
 	CxiPcExploreLzRl(buffer, size, maxWindow, nodes, rlLens);
 
-	//we will try this from 0-8 to find the best value. We do this after exploration.
+	//check the worst-case length found, we'll restrict the number of LZ extra bits early if possible.
+	unsigned int maxWindowUsed = 1;
+	for (unsigned int i = 0; i < size; i++) {
+		CxiLzNode *node = &nodes[i];
+
+		if (node->length > 1 && node->distance > 0) {
+			//update the max window
+			if (node->distance > maxWindowUsed) maxWindowUsed = node->distance;
+		}
+	}
+
+	//compute the initial LZ extra as what is required to represent the longest match distance.
+	//the final tokenization may require an even smaller window, but this can make the distance
+	//cost more realistic for the initial graph optimization.
+	unsigned int nLzExtra = CxiPcCalcWindowNeededLzExtra(maxWindowUsed);
+
+	//the RL table and size
 	unsigned char freqTbl[32] = { 0 };
 	unsigned int nFreqTbl = 0;
 
+	//keeps track of the best representation
 	unsigned int bestCompSize = UINT_MAX;
 	unsigned char *bestComp = NULL;
+
+	//we will try this from 0-8 to find the best value. We do this after exploration.
+	//NOTE: in practice only a few escape lengths are usually beneficial.
 	for (unsigned int escBits = 0; escBits <= 2; escBits++) {
 		memset(freqTbl, 0, sizeof(freqTbl));
 
 		//run 2-pass: one graph optimize to build the RL table, then one more optimize.
-		{
-			CxiLzNode *nodesCopy = (CxiLzNode *) calloc(size, sizeof(CxiLzNode));
-			memcpy(nodesCopy, nodes, size * sizeof(CxiLzNode));
-
-			CxiPcGraphOptimizeGreedy(buffer, size, nodesCopy, rlLens);
-			nFreqTbl = CxiPcCreateRlTable(buffer, size, nodesCopy, freqTbl);
-
-			free(nodesCopy);
-		}
-
+		//first iteration is the initial tokenization, subsequent iterations are refinements.
 		CxiLzNode *nodesCopy = (CxiLzNode *) calloc(size, sizeof(CxiLzNode));
-		for (unsigned int j = 0; j < 2; j++) {
+		for (unsigned int j = 0; j < 3; j++) {
+			//copy the initial graph
 			memcpy(nodesCopy, nodes, size * sizeof(CxiLzNode));
 
-			//run backwards pass for node collapse
-			CxiPcGraphOptimize(buffer, size, nodesCopy, rlLens, escBits, nLzExtra, freqTbl, nFreqTbl);
+			if (j == 0) {
+				//initial tokenization (greedy)
+				CxiPcGraphOptimizeGreedy(buffer, size, nodesCopy, rlLens);
+			} else {
+				//run backwards pass for node collapse
+				CxiPcGraphOptimize(buffer, size, nodesCopy, rlLens, escBits, nLzExtra, freqTbl, nFreqTbl);
+			}
+
+			//construct the RL table after tokenization
 			nFreqTbl = CxiPcCreateRlTable(buffer, size, nodesCopy, freqTbl);
 		}
 
 		//compress
 		unsigned int compSize;
-		unsigned char *comp = CxiPcWriteCompression(buffer, size, nodesCopy, escBits, nLzExtra, freqTbl, nFreqTbl, &compSize);
+		unsigned char *comp = CxiPcWriteCompression(buffer, size, nodesCopy, escBits, freqTbl, nFreqTbl, &compSize);
 		free(nodesCopy);
 
 		if (compSize < bestCompSize) {
