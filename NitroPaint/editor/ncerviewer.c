@@ -2544,10 +2544,14 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->hWndExportAll = CreateButton(hWnd, L"Export All", 0, 0, 300, 22, FALSE);
 			data->hWndMappingModeLabel = CreateStatic(hWnd, L" Mapping Mode:", UI_SCALE_COORD(200, dpiScale), 0, ctlWidth, ctlHeight);
 			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, UI_SCALE_COORD(285, dpiScale), 0, ctlWidthNarrow, 100, 0);
-			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", UI_SCALE_COORD(365, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
-			data->hWndShowBounds = CreateCheckbox(hWnd, L"Show Bounds", UI_SCALE_COORD(455, dpiScale), 0, ctlWidth, ctlHeight, data->showCellBounds);
-			data->hWndAutoCalcBounds = CreateCheckbox(hWnd, L"Auto-Calculate Bounds", UI_SCALE_COORD(555, dpiScale), 0, ctlWidthWide, ctlHeight, data->autoCalcBounds);
-			data->hWndMake2D = CreateButton(hWnd, L"Make 2D", UI_SCALE_COORD(685, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
+
+			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", UI_SCALE_COORD(675, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
+
+			data->hWndShowBounds = CreateCheckbox(hWnd, L"Show Bounds", UI_SCALE_COORD(445, dpiScale), 0, ctlWidth, ctlHeight, data->showCellBounds);
+			data->hWndAutoCalcBounds = CreateCheckbox(hWnd, L"Auto-Calculate Bounds", UI_SCALE_COORD(545, dpiScale), 0, ctlWidthWide, ctlHeight, data->autoCalcBounds);
+
+			data->hWndMake2D = CreateButton(hWnd, L"Make 2D", UI_SCALE_COORD(365, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
+
 			data->hWndShowObjButton = CreateButton(hWnd, L"OBJ List", UI_SCALE_COORD(765, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
 
 			break;
