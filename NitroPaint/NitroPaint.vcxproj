@@ -176,6 +176,7 @@
     <ClCompile Include="compression\RLE.c" />
     <ClCompile Include="compression\VLX.c" />
     <ClCompile Include="io.c" />
+    <ClCompile Include="object\Cell\CellExt2D.c" />
     <ClCompile Include="object\NitroLyt.c" />
     <ClCompile Include="util\bstream.c" />
     <ClCompile Include="cellgen.c" />
@@ -230,6 +231,7 @@
     <ClInclude Include="compression\HuffCore.h" />
     <ClInclude Include="io.h" />
     <ClInclude Include="compression\LZCore.h" />
+    <ClInclude Include="object\Cell\CellExt2D.h" />
     <ClInclude Include="object\NitroLyt.h" />
     <ClInclude Include="util\bstream.h" />
     <ClInclude Include="cellgen.h" />

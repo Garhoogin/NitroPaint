@@ -49,6 +49,12 @@
     <Filter Include="Source Files\image">
       <UniqueIdentifier>{81d70156-faae-4921-81bd-9861df1d1a96}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\object\Cell">
+      <UniqueIdentifier>{ff5c4790-505e-45ce-8c2d-e2a208f13db7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\object\Cell">
+      <UniqueIdentifier>{aafb30fb-35df-4f6c-9a2f-18ec46e538d0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="nitropaint.c">
@@ -231,6 +237,9 @@
     <ClCompile Include="image\gdip.c">
       <Filter>Source Files\image</Filter>
     </ClCompile>
+    <ClCompile Include="object\Cell\CellExt2D.c">
+      <Filter>Source Files\object\Cell</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -391,6 +400,9 @@
     </ClInclude>
     <ClInclude Include="image\gdip.h">
       <Filter>Header Files\image</Filter>
+    </ClInclude>
+    <ClInclude Include="object\Cell\CellExt2D.h">
+      <Filter>Header Files\object\Cell</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

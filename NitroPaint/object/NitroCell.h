@@ -82,8 +82,6 @@ void CellInsertOBJ(NCER_CELL *cell, int index, int nObj);
 
 void CellDeleteOBJ(NCER_CELL *cell, int index, int nObj);
 
-int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable);
-
 void CellGetObjDimensions(int shape, int size, int *width, int *height);
 
 int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
