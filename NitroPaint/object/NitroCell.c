@@ -930,7 +930,7 @@ static void CellRenderOBJ_Bitmap(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr,
 
 static void CellRenderOBJ(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
 	//use the rendering procedure for the type of graphics
-	if (!ncgr->bitmap) {
+	if (ncgr == NULL || !ncgr->bitmap) {
 		//character graphics (use on the 2D graphics engine)
 		CellRenderOBJ_Character(out, info, ncgr, nclr, mapping, vramTransfer);
 	} else {
