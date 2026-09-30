@@ -502,17 +502,17 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 		//allocate new graphics
 		unsigned char *outAttr = (unsigned char *) calloc(graphicsSize, 1);
 		unsigned char **outChars = (unsigned char **) calloc(graphicsSize, sizeof(void *));
+		unsigned char *charbuf = (unsigned char *) calloc(graphicsSize, 64);
 		for (unsigned int i = 0; i < graphicsSize; i++) {
-			outChars[i] = calloc(64, 1);
+			outChars[i] = charbuf + 64 * i;
 		}
 		CellArrangeBankIn1D(ncer, ncgr, cellCompression, &graphicsSize, outChars, outAttr);
 
 		//replace graphics data with rearranged graphics
-		for (int i = 0; i < ncgr->nTiles; i++) {
-			free(ncgr->tiles[i]);
-		}
-		if (ncgr->attr != NULL) free(ncgr->attr);
+		free(ncgr->charbuf);
 		free(ncgr->tiles);
+		free(ncgr->attr);
+		ncgr->charbuf = charbuf;
 		ncgr->tiles = outChars;
 		ncgr->attr = outAttr;
 		ncgr->nTiles = graphicsSize;
@@ -561,20 +561,22 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 			int graphicsWidth, graphicsHeight;
 			CellArrangeBankIn2D(ncer, ncgr, &graphicsWidth, &graphicsHeight, NULL, NULL);
 
+			unsigned int graphicsSize = graphicsWidth * graphicsHeight;
+
 			//allocate new graphics
-			unsigned char *outAttr = (unsigned char *) calloc(graphicsWidth * graphicsHeight, 1);
-			unsigned char **outChars = (unsigned char **) calloc(graphicsWidth * graphicsHeight, sizeof(void *));
-			for (int i = 0; i < graphicsWidth * graphicsHeight; i++) {
-				outChars[i] = calloc(64, 1);
+			unsigned char *outAttr = (unsigned char *) calloc(graphicsSize, 1);
+			unsigned char **outChars = (unsigned char **) calloc(graphicsSize, sizeof(void *));
+			unsigned char *charbuf = (unsigned char *) calloc(graphicsSize, 64);
+			for (unsigned int i = 0; i < graphicsSize; i++) {
+				outChars[i] = charbuf + 64 * i;
 			}
 			CellArrangeBankIn2D(ncer, ncgr, &graphicsWidth, &graphicsHeight, outChars, outAttr);
 
 			//replace graphics data with rearranged graphics
-			for (int i = 0; i < ncgr->nTiles; i++) {
-				free(ncgr->tiles[i]);
-			}
-			if (ncgr->attr != NULL) free(ncgr->attr);
+			free(ncgr->charbuf);
 			free(ncgr->tiles);
+			free(ncgr->attr);
+			ncgr->charbuf = charbuf;
 			ncgr->tiles = outChars;
 			ncgr->attr = outAttr;
 			ncgr->tilesX = graphicsWidth;
