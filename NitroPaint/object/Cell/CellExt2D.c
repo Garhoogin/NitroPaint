@@ -4,14 +4,32 @@
 #define SEXT9(n)   (((n)<0x100)?(n):((n)-0x200))
 
 
+static void CellGetEffectiveObjBounds(NCER_CELL_INFO *pObj, int *pX, int *pY, int *pW, int *pH) {
+	//OBJ coordinates
+	int objX = SEXT9(pObj->x), objY = SEXT8(pObj->y);
+	int objW = pObj->width, objH = pObj->height;
+
+	//when double size, the effective region is shifted down and right by half the width/height
+	if (pObj->doubleSize) {
+		objX += objW / 2;
+		objY += objH / 2;
+	}
+
+	*pX = objX;
+	*pY = objY;
+	*pW = objW;
+	*pH = objH;
+}
+
 static void CellGetCellBounds(NCER_CELL *cell, int *pxMin, int *pyMin, int *pxMax, int *pyMax) {
 	int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
 
 	for (int i = 0; i < cell->nAttribs; i++) {
 		NCER_CELL_INFO info;
 		CellDecodeOamAttributes(&info, cell, i);
-		int objX = SEXT9(info.x), objY = SEXT8(info.y);
-		int objW = info.width << info.doubleSize, objH = info.height << info.doubleSize;
+
+		int objX, objY, objW, objH;
+		CellGetEffectiveObjBounds(&info, &objX, &objY, &objW, &objH);
 
 		if (i == 0 || objX < xMin) xMin = objX;
 		if (i == 0 || objY < yMin) yMin = objY;
@@ -34,8 +52,9 @@ static int CellIsCellSimple(NCER_CELL *cell) {
 	for (int i = 0; i < cell->nAttribs; i++) {
 		NCER_CELL_INFO info;
 		CellDecodeOamAttributes(&info, cell, i);
-		int objX = SEXT9(info.x), objY = SEXT8(info.y);
-		int objW = info.width << info.doubleSize, objH = info.height << info.doubleSize;
+
+		int objX, objY, objW, objH;
+		CellGetEffectiveObjBounds(&info, &objX, &objY, &objW, &objH);
 
 		//check overflow on right and bottom edges
 		if ((objX + objW) > 256) return 0;
@@ -49,7 +68,11 @@ static int CellIsCellSimple(NCER_CELL *cell) {
 	for (int i = 0; i < cell->nAttribs; i++) {
 		NCER_CELL_INFO info;
 		CellDecodeOamAttributes(&info, cell, i);
-		int objX = SEXT9(info.x) - xMin, objY = SEXT8(info.y) - yMin;
+
+		int objX, objY, objW, objH;
+		CellGetEffectiveObjBounds(&info, &objX, &objY, &objW, &objH);
+		objX -= xMin;
+		objY -= yMin;
 
 		if ((objX & 7) || (objY & 7)) return 0;
 	}
@@ -58,15 +81,16 @@ static int CellIsCellSimple(NCER_CELL *cell) {
 	for (int i = 0; i < cell->nAttribs; i++) {
 		NCER_CELL_INFO info1;
 		CellDecodeOamAttributes(&info1, cell, i);
-		int obj1X = SEXT9(info1.x), obj1Y = SEXT8(info1.y);
-		int obj1W = info1.width << info1.doubleSize, obj1H = info1.height << info1.doubleSize;
+
+		int obj1X, obj1Y, obj1W, obj1H;
+		CellGetEffectiveObjBounds(&info1, &obj1X, &obj1Y, &obj1W, &obj1H);
 
 		for (int j = i + 1; j < cell->nAttribs; j++) {
 			NCER_CELL_INFO info2;
 			CellDecodeOamAttributes(&info2, cell, j);
 
-			int obj2X = SEXT9(info2.x), obj2Y = SEXT8(info2.y);
-			int obj2W = info2.width << info2.doubleSize, obj2H = info2.height << info2.doubleSize;
+			int obj2X, obj2Y, obj2W, obj2H;
+			CellGetEffectiveObjBounds(&info2, &obj2X, &obj2Y, &obj2W, &obj2H);
 
 			//check bounds
 			if ((obj2X + obj2W) <= obj1X) continue;
@@ -160,13 +184,16 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 					}
 				}
 
-				int charX = (SEXT9(objInfo.x) - xMin) / 8;
-				int charY = (SEXT8(objInfo.y) - yMin) / 8;
+				int objX, objY, objW, objH;
+				CellGetEffectiveObjBounds(&objInfo, &objX, &objY, &objW, &objH);
+
+				int charX = (objX - xMin) / 8;
+				int charY = (objY - yMin) / 8;
 
 				if (outChars != NULL) {
 					//wrap graphics into 2D mapping
-					unsigned int nObjCharsX = objInfo.width / 8;
-					unsigned int nObjCharsY = objInfo.height / 8;
+					unsigned int nObjCharsX = objW / 8;
+					unsigned int nObjCharsY = objH / 8;
 					CellMapGraphicsTo2D(
 						outChars, outAttr,
 						*pGraphicsWidth,
