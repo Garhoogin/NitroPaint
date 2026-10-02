@@ -238,7 +238,7 @@ unsigned char *CxCompressLZX(const unsigned char *buffer, unsigned int size, uns
 		unsigned char head = 0;
 		unsigned char *headpos = bufpos++;
 
-		for (unsigned int j = 0; j < 8 && i < size; i++, j++) {
+		for (unsigned int j = 0; j < 8 && i < nTokens; i++, j++) {
 			CxiLzToken *tok = &tokens[i];
 
 			if (tok->isReference) {
