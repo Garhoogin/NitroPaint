@@ -97,7 +97,8 @@ static void CxiLzStateSlideByte(CxiLzState *state) {
 	//only update search structures when we have enough space left to necessitate searching.
 	if ((state->size - state->pos) >= state->minLength) {
 		//fetch next 3 bytes' hash
-		unsigned int next = state->pfnHash(state->buffer + state->pos);
+		const unsigned char *p = state->buffer + state->pos;
+		unsigned int next = state->pfnHash(p);
 
 		//get the distance back to the next byte before sliding. If it exists in the window,
 		//we'll have nextDelta less than UINT_MAX. We'll take this first occurrence and it 
@@ -262,6 +263,11 @@ unsigned int CxiLzSearch(
 	unsigned int distance = firstMatch + 1;
 	unsigned int bestLength = 1, bestDistance = 0;
 
+	//check if we may be in an RL region. We start in an RL region if the initial
+	//match distance is 1. Note that even when a matching distance of 1 is not
+	//allowed, we still start here.
+	int rlRun = distance == 1;
+
 	//clamp the max length by the number of bytes remaining
 	unsigned int maxLength = state->maxLength;
 	if (maxLength > nBytesLeft) maxLength = nBytesLeft;
@@ -273,35 +279,38 @@ unsigned int CxiLzSearch(
 	const unsigned char *curp = state->buffer + state->pos;
 	while (distance <= state->maxDistance) {
 		//check only if distance is at least minDistance
-		if (distance >= state->minDistance) {
-			//check if distance filtering is used
-			int allowDst = 1;
-			if (state->restrictDst != NULL) allowDst = state->restrictDst[distance];
+		if (distance < state->minDistance) goto NextCandidate;
 
-			if (allowDst) {
-				//confirm a match
-				unsigned int matchLen = CxiCompareMemory(curp - distance, curp, maxLength);
+		//check if distance filtering is used
+		int allowDst = 1;
+		if (state->restrictDst != NULL) allowDst = state->restrictDst[distance];
+		if (!allowDst) goto NextCandidate;
 
-				//restrict length. We could do this once at the very end to give a
-				//valid match solution, but doing it here keeps the distance from being
-				//larger than it needs to be.
-				if (state->lengthDown != NULL) {
-					matchLen = state->lengthDown[matchLen];
-				}
+		//filter candidate positions in heavily repeated regions
+		if (rlRun && bestLength >= state->minLength) goto NextCandidate; // without: takes 6:50
 
-				if (matchLen > bestLength) {
-					bestLength = matchLen;
-					bestDistance = distance;
-					if (bestLength == maxLength) break;
-				}
-			}
+		//confirm a match
+		//restrict length. We could do this once at the very end to give a
+		//valid match solution, but doing it here keeps the distance from being
+		//larger than it needs to be.
+		unsigned int matchLen = CxiCompareMemory(curp - distance, curp, maxLength);
+		if (state->lengthDown != NULL) matchLen = state->lengthDown[matchLen];
+
+		if (matchLen > bestLength) {
+			bestLength = matchLen;
+			bestDistance = distance;
+			if (bestLength == maxLength) break;
 		}
 
+		//next candidate in the list
+	NextCandidate:
 		if (distance == state->maxDistance) break;
 
 		unsigned int next = CxiLzStateGetChain(state, distance);
 		if (next == UINT_MAX) break;
+		if (next > 1) rlRun = 0;
 
+		CX_ASSERT(next > 0);
 		distance += next;
 	}
 
