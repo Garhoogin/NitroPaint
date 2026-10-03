@@ -203,27 +203,26 @@ static unsigned char *CxiVlxWriteTokenString(CxiLzToken *tokens, int nTokens, un
 		}
 	}
 
-	//write ending 24-bit dummy string
+	//write ending 24-bit dummy string (the game's decoder will read out of bounds, this prevents that)
 	CxiVlxWriteSymbol(&stream, 0, 24);
 
 	//last: switch endianness of stream (uses big endian)
-	for (unsigned int i = 0; i < stream.nWords; i++) {
-		stream.bits[i] = CxiByteSwap(stream.bits[i]);
-	}
+	unsigned int bitStreamSize;
+	unsigned char *bits = CxiBitWriterGetBytes(&stream, 0, 1, 1, &bitStreamSize);
+	CxiBitWriterFree(&stream);
 
-	unsigned int outsize = 1 + header[0] + treeDataSize * sizeof(uint16_t) + stream.nWords * 4;
-	outsize = (outsize + 3) & ~3;
-
+	unsigned int outsize = 1 + header[0] + treeDataSize * sizeof(uint16_t) + bitStreamSize;
 	unsigned char *outbuf = (unsigned char *) calloc(outsize, 1);
 	unsigned char *pos = outbuf;
+
 	memcpy(pos, header, header[0] + 1);
 	pos += header[0] + 1;
 	memcpy(pos, &treeHeader, sizeof(treeHeader));
 	pos += sizeof(treeHeader);
 	memcpy(pos, treeData, treeDataSize * sizeof(uint16_t));
 	pos += treeDataSize * sizeof(uint16_t);
-	memcpy(pos, stream.bits, stream.nWords * 4);
-	CxiBitWriterFree(&stream);
+	memcpy(pos, bits, bitStreamSize);
+	free(bits);
 
 	*compressedSize = outsize;
 	return outbuf;
