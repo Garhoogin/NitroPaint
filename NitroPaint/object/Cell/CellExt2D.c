@@ -613,3 +613,22 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 	}
 	return 1;
 }
+
+void CellRemoveEx2dAttr(
+	NCER *ncer
+) {
+	if (!ncer->isEx2d) return;
+
+	//set mapping to 2D
+	ncer->isEx2d = 0;
+	ncer->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
+
+	//free attributes
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = &ncer->cells[i];
+
+		free(cell->ex2dCharNames);
+		cell->ex2dCharNames = NULL;
+		cell->useEx2d = 0;
+	}
+}

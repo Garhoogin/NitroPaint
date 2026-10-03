@@ -12,4 +12,8 @@ int CellSetBankExt2D(
 	int   enable
 );
 
+void CellRemoveEx2dAttr(
+	NCER *ncer
+);
+
 

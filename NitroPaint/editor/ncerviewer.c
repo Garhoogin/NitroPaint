@@ -64,6 +64,14 @@ static const unsigned short sMenuIdSplitSizes[] = {
 	ID_SPLITINTO_8X16, ID_SPLITINTO_8X32,  ID_SPLITINTO_16X32, ID_SPLITINTO_32X64
 };
 
+static const int sMappingModes[] = {
+	GX_OBJVRAMMODE_CHAR_2D,
+	GX_OBJVRAMMODE_CHAR_1D_32K,
+	GX_OBJVRAMMODE_CHAR_1D_64K,
+	GX_OBJVRAMMODE_CHAR_1D_128K,
+	GX_OBJVRAMMODE_CHAR_1D_256K
+};
+
 
 static HMENU CellViewerGetCellListContextMenu(NCERVIEWERDATA *data, int i);
 
@@ -841,19 +849,7 @@ static int CellViewerObjVramMappingToID(int mapping) {
 }
 
 static int CellViewerIdToObjVramMode(int id) {
-	switch (id) {
-		case MAPPING_2D:
-			return GX_OBJVRAMMODE_CHAR_2D;
-		case MAPPING_1D_32K:
-			return GX_OBJVRAMMODE_CHAR_1D_32K;
-		case MAPPING_1D_64K:
-			return GX_OBJVRAMMODE_CHAR_1D_64K;
-		case MAPPING_1D_128K:
-			return GX_OBJVRAMMODE_CHAR_1D_128K;
-		case MAPPING_1D_256K:
-			return GX_OBJVRAMMODE_CHAR_1D_256K;
-	}
-	return 0;
+	return sMappingModes[id];
 }
 
 static int CellViewerClipboardHasMapping(NP_OBJ *obj, int mapping) {
@@ -1663,6 +1659,172 @@ static LRESULT CellViewerOnNotify(NCERVIEWERDATA *data, HWND hWnd, WPARAM wParam
 	return DefWindowProc(hWnd, WM_NOTIFY, wParam, lParam);
 }
 
+static void CellViewerUpdateMappingList(NCERVIEWERDATA *data) {
+	static const wchar_t *const sMappingNames[] = {
+		L"2D",
+		L"1D 32K",
+		L"1D 64K",
+		L"1D 128K",
+		L"1D 256K"
+	};
+
+	int sel = UiCbGetCurSel(data->hWndMappingMode);
+	SendMessage(data->hWndMappingMode, WM_SETREDRAW, 0, 0);
+
+	SendMessage(data->hWndMappingMode, CB_RESETCONTENT, 0, 0);
+	for (int i = 0; i < 5; i++) {
+		//a * suffix to indicate extended 2D mapping modes
+		wchar_t buf[16];
+		wsprintfW(buf, L"%s%s", sMappingNames[i], i > 0 && data->ncer->isEx2d ? L"*" : L"");
+		UiCbAddString(data->hWndMappingMode, buf);
+	}
+	UiCbSetCurSel(data->hWndMappingMode, sel);
+
+	SendMessage(data->hWndMappingMode, WM_SETREDRAW, 1, 0);
+	RedrawWindow(data->hWndMappingMode, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_ERASE);
+}
+
+static void CellViewerUpdateGenerateCellButton(NCERVIEWERDATA *data) {
+	//generate cell is only valid in 1D mode
+	if (data->ncer->isEx2d || data->ncer->mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
+		EnableWindow(data->hWndCreateCell, FALSE);
+	} else {
+		EnableWindow(data->hWndCreateCell, TRUE);
+	}
+}
+
+static void CellViewerEnableExt2D(NCERVIEWERDATA *data) {
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	NCER *ncer = data->ncer;
+
+	if (CellSetBankExt2D(ncer, ncgr, 1)) {
+		//set the intermediate flag on the character
+		ncgr->isIntermediate = 1;
+
+		SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
+
+		//we will set the mapping mode, but will not update the mapping mode selected item
+		CellViewerSetMappingModeSelection(data, GX_OBJVRAMMODE_CHAR_1D_32K);
+	} else {
+		//error
+		MessageBox(data->hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
+	}
+
+	//update character editor
+	HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(data, FILE_TYPE_CHARACTER);
+	CellViewerGraphicsUpdated(data->hWnd);
+	ChrViewerGraphicsSizeUpdated(hWndNcgrViewer);
+
+	CellViewerUpdateMappingList(data);
+	CellViewerUpdateGenerateCellButton(data);
+}
+
+static void CellViewerDisableExt2D(NCERVIEWERDATA *data) {
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	NCER *ncer = data->ncer;
+
+	if (CellSetBankExt2D(ncer, ncgr, 0)) {
+		//clear the intermediate flag on the character
+		ncgr->isIntermediate = 0;
+
+		SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
+		CellViewerSetMappingModeSelection(data, data->ncer->mappingMode);
+	} else {
+		//error
+		MessageBox(data->hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
+	}
+
+	//update character editor
+	HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(data, FILE_TYPE_CHARACTER);
+	CellViewerGraphicsUpdated(data->hWnd);
+	ChrViewerGraphicsSizeUpdated(hWndNcgrViewer);
+
+	CellViewerUpdateMappingList(data);
+	CellViewerUpdateGenerateCellButton(data);
+}
+
+static void CellViewerOnToggleExt2D(NCERVIEWERDATA *data) {
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+	if (ncgr == NULL) {
+		MessageBox(data->hWnd, L"Requires open character data.", L"Error", MB_ICONERROR);
+		return;
+	}
+
+	if (!data->ncer->isEx2d) {
+		//convert to extended 2D
+		CellViewerEnableExt2D(data);
+	} else {
+		//convert from extended 2D
+		CellViewerDisableExt2D(data);
+	}
+}
+
+static int CellViewerPromptConfirmStripEx2D(NCERVIEWERDATA *data) {
+	if (!data->ncer->isEx2d) return 1; // nothing to check
+
+	//check extended 2D attributes
+	int hasUpper = 0;
+	for (int i = 0; i < data->ncer->nCells; i++) {
+		NCER_CELL *cell = &data->ncer->cells[i];
+
+		uint32_t *ex2d = cell->ex2dCharNames;
+		for (int j = 0; j < cell->nAttribs; j++) {
+			if (ex2d[j] & ~0x03FF) hasUpper = 1;
+		}
+	}
+
+	//if there are attributes in the upper bits, these would be stripped. Otherwise,
+	//then reversion does nothing effectively.
+	if (!hasUpper) return 1;
+
+	int r = MessageBox(data->hWnd, L"Removing extended attributes will cause a loss of data. Proceed?",
+		L"Cell Editor", MB_ICONQUESTION | MB_OKCANCEL);
+	return r == IDOK;
+}
+
+static void CellViewerOnSetMappingMode(NCERVIEWERDATA *data, int idx) {
+	int sel = CellViewerIdToObjVramMode(idx);
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+
+	if (!data->ncer->isEx2d) {
+		//normal cell: set the cell mapping mode
+		CellViewerSetMappingMode(data, sel);
+	} else if (sel != GX_OBJVRAMMODE_CHAR_2D) {
+		//extended 2D cell: set the backing mapping mode
+		data->ncer->ex2dBaseMappingMode = sel;
+	} else {
+		//extended 2D cell, setting to 2D: strip extended attributes (warn user if nonzero attributes pressent)
+		if (ncgr != NULL && CellViewerPromptConfirmStripEx2D(data)) {
+			//proceed removing extended 2D attributes
+			CellRemoveEx2dAttr(data->ncer);
+			CellViewerUpdateMappingList(data);
+			CellViewerSetMappingModeSelection(data, sel);
+			CellViewerGraphicsUpdated(data->hWnd);
+		} else {
+			//abort, revert selection
+			UiCbSetCurSel(data->hWndMappingMode, CellViewerObjVramMappingToID(data->ncer->ex2dBaseMappingMode));
+			return;
+		}
+	}
+
+	if (data->ncer->isEx2d) {
+		//when in extended 2D mode, show the "Make 1D" text.
+		SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
+	} else if (data->ncer->mappingMode != GX_OBJVRAMMODE_CHAR_2D) {
+		//when in a 1D mode, show "Make 2D" text
+		SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
+	} else {
+		//when in a 2D mode, show "Make Extended" text
+		SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make Extd.");
+	}
+
+	//generate cell is only valid in 1D mode
+	CellViewerUpdateGenerateCellButton(data);
+
+	InvalidateRect(data->hWndMake2D, NULL, FALSE);
+	SendMessage(data->hWnd, NV_UPDATEPREVIEW, 0, 0);
+}
+
 static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int notification) {
 	HWND hWnd = data->hWnd;
 
@@ -1715,34 +1877,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		//free px
 		free(px);
 	} else if (notification == CBN_SELCHANGE && hWndControl == data->hWndMappingMode) {
-		const int mappings[] = {
-			GX_OBJVRAMMODE_CHAR_2D,
-			GX_OBJVRAMMODE_CHAR_1D_32K,
-			GX_OBJVRAMMODE_CHAR_1D_64K,
-			GX_OBJVRAMMODE_CHAR_1D_128K,
-			GX_OBJVRAMMODE_CHAR_1D_256K
-		};
-		int sel = mappings[UiCbGetCurSel(data->hWndMappingMode)];
-		CellViewerSetMappingMode(data, sel);
-		changed = 1;
-
-		if (sel == GX_OBJVRAMMODE_CHAR_2D) {
-			if (data->ncer->isEx2d) {
-				//when in extended 2D mode, show the "Make 1D" text.
-				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
-			} else {
-				//not in extended 2D mode, show "Make Extended" text.
-				SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make Extd.");
-			}
-		} else {
-			SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
-
-			//enable/disable
-			int disable = data->ncer->isEx2d;
-			EnableWindow(data->hWndMake2D, !disable);
-		}
-		InvalidateRect(data->hWndMake2D, NULL, FALSE);
-
+		CellViewerOnSetMappingMode(data, UiCbGetCurSel(hWndControl));
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndShowBounds) {
 		int state = GetCheckboxChecked(hWndControl);
 		data->showCellBounds = state;
@@ -1777,37 +1912,7 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 			SendMessage(data->hWndObjWindow, NV_INITIALIZE, 0, (LPARAM) data);
 		}
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndMake2D) {
-		NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
-		NCER *ncer = data->ncer;
-		if (ncgr == NULL) {
-			MessageBox(hWnd, L"Requires open character graphics file.", L"Error", MB_ICONERROR);
-			return;
-		}
-
-		if (!data->ncer->isEx2d) {
-			//convert to extended 2D
-			if (CellSetBankExt2D(ncer, ncgr, 1)) {
-				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
-				CellViewerSetMappingModeSelection(data, GX_OBJVRAMMODE_CHAR_2D);
-				ncgr->isIntermediate = 1; // set intermediate flag
-			} else {
-				MessageBox(hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
-			}
-		} else {
-			//convert from extended 2D
-			if (CellSetBankExt2D(ncer, ncgr, 0)) {
-				SendMessage(hWndControl, WM_SETTEXT, -1, (LPARAM) L"Make 2D");
-				CellViewerSetMappingModeSelection(data, data->ncer->mappingMode);
-				ncgr->isIntermediate = 0; // clear intermediate flag
-			} else {
-				MessageBox(hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);
-			}
-		}
-
-		//update character editor
-		HWND hWndNcgrViewer = CellEditorGetAssociatedEditor(data, FILE_TYPE_CHARACTER);
-		CellViewerGraphicsUpdated(data->hWnd);
-		ChrViewerGraphicsSizeUpdated(hWndNcgrViewer);
+		CellViewerOnToggleExt2D(data);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndExportAll) {
 		NCER *ncer = data->ncer;
 		NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
@@ -2554,7 +2659,6 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->hWndMake2D = CreateButton(hWnd, L"Make 2D", UI_SCALE_COORD(365, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
 
 			data->hWndShowObjButton = CreateButton(hWnd, L"OBJ List", UI_SCALE_COORD(765, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
-
 			break;
 		}
 		case NV_INITIALIZE:
@@ -2565,23 +2669,13 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			if (path != NULL) EditorSetFile(hWnd, path);
 			SendMessage(hWnd, NV_UPDATEPREVIEW, 0, 0);
 
+			CellViewerUpdateMappingList(data);
+
 			data->frameData.contentWidth = 512 * data->scale;
 			data->frameData.contentHeight = 256 * data->scale;
 
 			//set mapping mode selection
-			int mappingIndex = 0;
-			switch (data->ncer->mappingMode) {
-				case GX_OBJVRAMMODE_CHAR_2D:
-					mappingIndex = 0; break;
-				case GX_OBJVRAMMODE_CHAR_1D_32K:
-					mappingIndex = 1; break;
-				case GX_OBJVRAMMODE_CHAR_1D_64K:
-					mappingIndex = 2; break;
-				case GX_OBJVRAMMODE_CHAR_1D_128K:
-					mappingIndex = 3; break;
-				case GX_OBJVRAMMODE_CHAR_1D_256K:
-					mappingIndex = 4; break;
-			}
+			int mappingIndex = CellViewerObjVramMappingToID(data->ncer->mappingMode);
 			UiCbSetCurSel(data->hWndMappingMode, mappingIndex);
 
 			if (data->ncer->isEx2d) {
