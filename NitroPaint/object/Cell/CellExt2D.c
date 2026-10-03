@@ -610,6 +610,7 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 			ncgr->tilesY = graphicsHeight;
 			ncgr->nTiles = graphicsWidth * graphicsHeight;
 		}
+		ncer->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
 	}
 	return 1;
 }

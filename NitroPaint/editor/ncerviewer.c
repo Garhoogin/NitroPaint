@@ -1558,7 +1558,8 @@ static void CellViewerSetMappingModeSelection(NCERVIEWERDATA *data, int mapping)
 		case GX_OBJVRAMMODE_CHAR_1D_256K: idx = 4; break;
 	}
 	if (idx != -1) {
-		CellViewerSetMappingMode(data, mapping);
+		if (!data->ncer->isEx2d) CellViewerSetMappingMode(data, mapping);
+		else                     data->ncer->ex2dBaseMappingMode = mapping;
 		UiCbSetCurSel(data->hWndMappingMode, idx);
 	}
 }
