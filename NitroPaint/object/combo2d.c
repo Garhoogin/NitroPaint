@@ -1402,7 +1402,7 @@ static int combo2dWriteBncd(COMBO2D *combo, BSTREAM *stream) {
 	for (int i = 0; i < ncer->nCells; i++) {
 		NCER_CELL *cell = ncer->cells + i;
 		for (int j = 0; j < cell->nAttribs; j++) {
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, cell, j);
 
 			unsigned int nCharsSize = info.width * info.height / 64;

@@ -191,7 +191,7 @@ int CellReadHudson(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 		uint16_t *attrs = (uint16_t *) (buffer + ofs + 2);
 		for (int j = 0; j < nOAM; j++) {
 			memcpy(thisCell->attr + j * 3, attrs + j * 5, 6);
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, thisCell, j);
 
 			int16_t x = attrs[j * 5 + 3];
@@ -279,6 +279,7 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 			uint32_t maxTransfer        = *(const uint32_t *) (vramTransferData + 0x0);
 			uint32_t transferDataOffset = ofsVramTran + *(uint32_t *) (vramTransferData + 0x04);
 
+			ncer->useVramTransferCharacters = 1;
 			ncer->vramTransfer = (CHAR_VRAM_TRANSFER *) calloc(ncer->nCells, sizeof(CHAR_VRAM_TRANSFER));
 			for (int i = 0; i < ncer->nCells; i++) {
 				ncer->vramTransfer[i].srcAddr = *(const uint32_t *) (cebk + transferDataOffset + i * 8 + 0x00);
@@ -356,7 +357,6 @@ static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int 
 	ncer->uext = NULL;
 	ncer->uextSize = 0;
 	ncer->vramTransfer = NULL;
-	ncer->nVramTransferEntries = 0;
 	ncer->isEx2d = (block == cbexBlock);
 	ncer->ex2dBaseMappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	if (ncer->isEx2d) {
@@ -377,17 +377,16 @@ static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int 
 		cell->maxX = *(const int16_t *) (celldat + 0x04);
 		cell->maxY = *(const int16_t *) (celldat + 0x06);
 		cell->nAttribs = *(const uint16_t *) (celldat + 0x08);
-		cell->useEx2d = ncer->isEx2d;
 		cell->forbidCompression = ((*(const uint16_t *) (celldat + 0x0A)) >> 6) & 1;
 
 		cell->attr = (uint16_t *) calloc(cell->nAttribs, 3 * sizeof(uint16_t));
 		memcpy(cell->attr, celldat + 0xC, cell->nAttribs * 3 * sizeof(uint16_t));
 
-		if (cell->useEx2d) {
+		if (ncer->isEx2d) {
 			const uint16_t *exAttr = (const uint16_t *) (celldat + 0xC + 6 * cell->nAttribs);
-			cell->ex2dCharNames = (uint32_t *) calloc(cell->nAttribs, sizeof(uint32_t));
+			cell->exCharNames = (uint32_t *) calloc(cell->nAttribs, sizeof(uint32_t));
 			for (int j = 0; j < cell->nAttribs; j++) {
-				cell->ex2dCharNames[j] = (cell->attr[j * 3 + 2] & 0x03FF) | (exAttr[j] << 10);
+				cell->exCharNames[j] = (cell->attr[j * 3 + 2] & 0x03FF) | (exAttr[j] << 10);
 			}
 		}
 	}
@@ -462,7 +461,7 @@ void CellGetObjDimensions(int shape, int size, int *width, int *height) {
 	*height = heights[shape][size];
 }
 
-int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
+int CellDecodeOamAttributes(GxOamAttrInfo *info, NCER_CELL *cell, int oam) {
 	if (oam >= cell->nAttribs) {
 		return 1;
 	}
@@ -480,7 +479,7 @@ int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam) {
 	info->size = size;
 	info->shape = shape;
 
-	info->characterName = cell->useEx2d ? cell->ex2dCharNames[oam] : attr2 & 0x3FF;
+	info->characterName = cell->exCharNames != NULL ? cell->exCharNames[oam] : attr2 & 0x3FF;
 	info->priority = (attr2 >> 10) & 0x3;
 	info->palette = (attr2 >> 12) & 0xF;
 	info->mode = (attr0 >> 10) & 3;
@@ -565,7 +564,7 @@ int CellFree(ObjHeader *header) {
 	if (ncer->labl) free(ncer->labl);
 	for (int i = 0; i < ncer->nCells; i++) {
 		free(ncer->cells[i].attr);
-		if (ncer->cells[i].ex2dCharNames) free(ncer->cells[i].ex2dCharNames);
+		if (ncer->cells[i].exCharNames) free(ncer->cells[i].exCharNames);
 	}
 	if (ncer->cells) free(ncer->cells);
 	if (ncer->vramTransfer) free(ncer->vramTransfer);
@@ -738,7 +737,7 @@ static int CellWriteHudson(NCER *ncer, BSTREAM *stream) {
 		NCER_CELL *cell = ncer->cells + i;
 		bstreamWrite(stream, &cell->nAttribs, 2);
 		for (int j = 0; j < cell->nAttribs; j++) {
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, cell, j);
 
 			uint16_t pos[2];
@@ -786,7 +785,7 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 		//get cell attributes
 		int cellAffine = 0, commonPalette = 0;
 		for (int j = 0; j < cell->nAttribs; j++) {
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, cell, j);
 
 			if (info.rotateScale) cellAffine = 1;
@@ -810,8 +809,8 @@ static int CellWriteSetosa(NCER *ncer, BSTREAM *stream) {
 			uint16_t *pCellExAttr = (uint16_t *) (cellData + 0xC + cell->nAttribs * 0x6);
 
 			for (int j = 0; j < cell->nAttribs; j++) {
-				pCellAttr[3 * j + 2] = (pCellAttr[3 * j + 2] & ~0x03FF) | (cell->ex2dCharNames[j] & 0x03FF);
-				pCellExAttr[j] = cell->ex2dCharNames[j] >> 10;
+				pCellAttr[3 * j + 2] = (pCellAttr[3 * j + 2] & ~0x03FF) | (cell->exCharNames[j] & 0x03FF);
+				pCellExAttr[j] = cell->exCharNames[j] >> 10;
 			}
 		}
 
@@ -845,7 +844,7 @@ static int FloatToInt(double x) {
 	return (int) (x + (x < 0.0f ? -0.5f : 0.5f));
 }
 
-static void CellRenderOBJ_Character(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
+static void CellRenderOBJ_Character(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
 	int tilesX = info->width / 8;
 	int tilesY = info->height / 8;
 
@@ -883,7 +882,7 @@ static void CellRenderOBJ_Character(COLOR32 *out, NCER_CELL_INFO *info, NCGR *nc
 	}
 }
 
-static void CellRenderOBJ_Bitmap(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping) {
+static void CellRenderOBJ_Bitmap(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, NCLR *nclr, int mapping) {
 	//if the mapping mode is 2D mapping, then we can use the same logic as for the character type rendering
 	//since we emulate the graphics layout in character order.
 	if (mapping == GX_OBJVRAMMODE_CHAR_2D) {
@@ -927,7 +926,7 @@ static void CellRenderOBJ_Bitmap(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr,
 	}
 }
 
-static void CellRenderOBJ(COLOR32 *out, NCER_CELL_INFO *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
+static void CellRenderOBJ(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
 	//use the rendering procedure for the type of graphics
 	if (ncgr == NULL || !ncgr->bitmap) {
 		//character graphics (use on the 2D graphics engine)
@@ -991,7 +990,7 @@ void CellRender(
 
 	COLOR32 *block = (COLOR32 *) calloc(64 * 64, sizeof(COLOR32));
 	for (int i = cell->nAttribs - 1; i >= 0; i--) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		//if OBJ is marked disabled, skip rendering
@@ -1114,10 +1113,10 @@ void CellInsertOBJ(NCER_CELL *cell, int index, int nObj) {
 	memmove(cell->attr + 3 * (index + nObj), cell->attr + 3 * index, nMove * 3 * sizeof(uint16_t));
 	memset(cell->attr + 3 * index, 0, nObj * 3 * sizeof(uint16_t));
 
-	if (cell->useEx2d) {
-		cell->ex2dCharNames = realloc(cell->ex2dCharNames, cell->nAttribs * sizeof(uint32_t));
-		memmove(cell->ex2dCharNames + index + nObj, cell->ex2dCharNames + index, nMove * sizeof(uint32_t));
-		memset(cell->ex2dCharNames + index, 0, nObj * sizeof(uint32_t));
+	if (cell->exCharNames != NULL) {
+		cell->exCharNames = realloc(cell->exCharNames, cell->nAttribs * sizeof(uint32_t));
+		memmove(cell->exCharNames + index + nObj, cell->exCharNames + index, nMove * sizeof(uint32_t));
+		memset(cell->exCharNames + index, 0, nObj * sizeof(uint32_t));
 	}
 }
 
@@ -1129,9 +1128,9 @@ void CellDeleteOBJ(NCER_CELL *cell, int index, int nObj) {
 	memmove(cell->attr + (index) * 3, cell->attr + (index + nObj) * 3, nMove * 3 * sizeof(uint16_t));
 	cell->attr = realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
 
-	if (cell->useEx2d) {
-		memmove(cell->ex2dCharNames + index, cell->ex2dCharNames + index + nObj, nMove * sizeof(uint32_t));
-		cell->ex2dCharNames = realloc(cell->ex2dCharNames, cell->nAttribs * sizeof(uint32_t));
+	if (cell->exCharNames != NULL) {
+		memmove(cell->exCharNames + index, cell->exCharNames + index + nObj, nMove * sizeof(uint32_t));
+		cell->exCharNames = realloc(cell->exCharNames, cell->nAttribs * sizeof(uint32_t));
 	}
 }
 

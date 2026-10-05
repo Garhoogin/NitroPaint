@@ -1443,7 +1443,7 @@ static void ChrViewerImportAttributesFromCell(NCGRVIEWERDATA *data, NCERVIEWERDA
 		
 		//for each OBJ...
 		for (int j = 0; j < cell->nAttribs; j++) {
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, cell, j);
 
 			int objPlt = info.palette;

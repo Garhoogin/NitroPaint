@@ -19,14 +19,13 @@ typedef struct NCER_CELL_ {
 	int minX;
 	int minY;
 	
-	uint16_t *attr;
-	uint32_t *ex2dCharNames;
-	int useEx2d;
+	uint16_t *attr;         // raw OAM attribute info array
+	uint32_t *exCharNames;  // extended character name
 
 	int forbidCompression; // forbids compression of graphics
 } NCER_CELL;
 
-typedef struct NCER_CELL_INFO_ {
+typedef struct GxOamAttrInfo_ {
 	//Attribute 0
 	int y;				//
 	int rotateScale;	//
@@ -52,17 +51,17 @@ typedef struct NCER_CELL_INFO_ {
 	//Convenience
 	int width;
 	int height;
-} NCER_CELL_INFO;
+} GxOamAttrInfo;
 
 typedef struct NCER_ {
-	ObjHeader header;              // object header
+	ObjHeader header;                  // object header
 	int nCells;                        // number of cells in cell bank
 	int bankAttribs;                   // cell bank attribute
 	int mappingMode;                   // cell mapping mode
 	NCER_CELL *cells;                  // list of cells
 
 	CHAR_VRAM_TRANSFER *vramTransfer;  // list of VRAM transfer entries
-	int nVramTransferEntries;          // number of VRAM transfer animation entries
+	int useVramTransferCharacters;     // indicates the use of VRAM transfer characters
 	int useExtAttr;                    // use NCER extended attributes
 	int isEx2d;                        // use of pseudo extended 2D mapping
 	int ex2dBaseMappingMode;           // base mapping mode when extended 2D is used
@@ -84,7 +83,7 @@ void CellDeleteOBJ(NCER_CELL *cell, int index, int nObj);
 
 void CellGetObjDimensions(int shape, int size, int *width, int *height);
 
-int CellDecodeOamAttributes(NCER_CELL_INFO *info, NCER_CELL *cell, int oam);
+int CellDecodeOamAttributes(GxOamAttrInfo *info, NCER_CELL *cell, int oam);
 
 int CellFree(ObjHeader *header);
 

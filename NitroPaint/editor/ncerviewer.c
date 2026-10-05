@@ -135,7 +135,7 @@ static unsigned char *CellViewerMapGraphicsUsage(NCERVIEWERDATA *data, int exclu
 			NCER_CELL *cell = &data->ncer->cells[i];
 
 			for (int j = 0; j < cell->nAttribs; j++) {
-				NCER_CELL_INFO info;
+				GxOamAttrInfo info;
 				CellDecodeOamAttributes(&info, cell, j);
 
 				//compute VRAM destination address
@@ -242,7 +242,7 @@ static unsigned int CellViewerGetFirstUnusedCharacter(NCERVIEWERDATA *data, int 
 		} else {
 			//process each OBJ in cell to find graphics usage
 			for (int j = 0; j < cell->nAttribs; j++) {
-				NCER_CELL_INFO info;
+				GxOamAttrInfo info;
 				CellDecodeOamAttributes(&info, cell, j);
 
 				//compute VRAM destination address
@@ -320,7 +320,7 @@ static int *CellViewerGetSelectedOamObjects(NCERVIEWERDATA *data, int *pnSel) {
 
 	//test OBJ
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		//get OBJ bounds
@@ -381,7 +381,7 @@ static void CellViewerPreviewCenter(NCERVIEWERDATA *data) {
 static int CellViewerGetOamObjFromPoint(NCER_CELL *cell, int x, int y) {
 	int oam = -1;
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		//take into account double size!
@@ -471,7 +471,7 @@ static void CellViewerUpdateObjList(NCERVIEWERDATA *data) {
 	NCER_CELL *cell = CellViewerGetCurrentCell(data);
 	if (cell != NULL) {
 		for (int i = 0; i < cell->nAttribs; i++) {
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, cell, i);
 
 			int charAddr = (info.characterName << mappingShift) * 0x20;
@@ -664,7 +664,7 @@ static void CellViewerDeleteEmptySelection(NCERVIEWERDATA *data) {
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
 		int iSel = data->selectedOBJ[i];
 
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, iSel);
 
 		int isTransparent = 1;
@@ -725,7 +725,7 @@ static void CellViewerUpdateBounds(NCERVIEWERDATA *data) {
 	int xMin = 0, xMax = 0, yMin = 0, yMax = 0;
 
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		int objX = SEXT9(info.x), objY = SEXT8(info.y);
@@ -747,7 +747,7 @@ static void CellViewerUpdateBounds(NCERVIEWERDATA *data) {
 	//find OBJ with furthest extent point
 	float dMax = 0.0f;
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		int objX = SEXT9(info.x), objY = SEXT8(info.y);
@@ -781,7 +781,7 @@ static void CellViewerAlignSelection(NCERVIEWERDATA *data, int alignX, int align
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
 		int iSel = data->selectedOBJ[i];
 
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, iSel);
 
 		int objX = SEXT9(info.x);
@@ -872,11 +872,11 @@ static uint16_t *CellViewerGetSelectedOamAttributes(NCERVIEWERDATA *data, int *p
 
 	if (pExAttr != NULL) {
 		*pExAttr = NULL;
-		if (cell->useEx2d) {
+		if (cell->exCharNames != NULL) {
 			uint32_t *exAttr = (uint32_t *) calloc(data->nSelectedOBJ, sizeof(uint32_t));
 			for (int i = 0; i < data->nSelectedOBJ; i++) {
 				int ii = data->selectedOBJ[i];
-				exAttr[i] = cell->ex2dCharNames[ii];
+				exAttr[i] = cell->exCharNames[ii];
 			}
 			*pExAttr = exAttr;
 		}
@@ -908,8 +908,7 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	NCER_CELL *tmpCell = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
 	tmpCell->nAttribs = nSel;
 	tmpCell->attr = selAttr;
-	tmpCell->useEx2d = cell->useEx2d;
-	tmpCell->ex2dCharNames = exAttr;
+	tmpCell->exCharNames = exAttr;
 
 	CellRender(buf, NULL, data->ncer, ncgr, nclr, data->cell, tmpCell, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
 	free(tmpCell);
@@ -951,7 +950,7 @@ static void CellViewerCopy(NCERVIEWERDATA *data) {
 		memcpy(cpy->attr + i * 4, cell->attr + ii * 3, 6);
 
 		uint32_t charName = cell->attr[ii * 3 + 2] & 0x03FF;
-		if (cell->useEx2d) charName = cell->ex2dCharNames[ii];
+		if (cell->exCharNames != NULL) charName = cell->exCharNames[ii];
 		cpy->attr[i * 4 + 2] = (cpy->attr[i * 4 + 2] & 0xFC00) | (charName & 0x03FF);
 		cpy->attr[i * 4 + 3] = charName >> 10;
 	}
@@ -963,7 +962,7 @@ static void CellViewerCopy(NCERVIEWERDATA *data) {
 	int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
 	for (int i = 0; i < nSel; i++) {
 		int ii = sel[i];
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, ii);
 
 		int objX = SEXT9(info.x), objY = SEXT8(info.y);
@@ -1032,10 +1031,10 @@ static void CellViewerPaste(NCERVIEWERDATA *data) {
 			CellInsertOBJ(cell, 0, nObj);
 
 			for (int i = 0; i < nObj; i++) memcpy(cell->attr + i * 3, attr->attr + 4 * (offsObj + i), 6);
-			if (cell->useEx2d) {
+			if (cell->exCharNames != NULL) {
 				for (int i = 0; i < nObj; i++) {
 					uint16_t *objAttr = &attr->attr[4 * (offsObj + i)];
-					cell->ex2dCharNames[i] = (objAttr[2] & 0x03FF) | (objAttr[3] << 10);
+					cell->exCharNames[i] = (objAttr[2] & 0x03FF) | (objAttr[3] << 10);
 				}
 			}
 
@@ -1768,7 +1767,7 @@ static int CellViewerPromptConfirmStripEx2D(NCERVIEWERDATA *data) {
 	for (int i = 0; i < data->ncer->nCells; i++) {
 		NCER_CELL *cell = &data->ncer->cells[i];
 
-		uint32_t *ex2d = cell->ex2dCharNames;
+		uint32_t *ex2d = cell->exCharNames;
 		for (int j = 0; j < cell->nAttribs; j++) {
 			if (ex2d[j] & ~0x03FF) hasUpper = 1;
 		}
@@ -2025,7 +2024,7 @@ static void CellViewerToggleAffineSelection(NCERVIEWERDATA *data) {
 
 		//if was double size, adjust by position.
 		if (wasDoubleSize) {
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, cell, data->selectedOBJ[i]);
 
 			//unsetting: add correction
@@ -2048,7 +2047,7 @@ static void CellViewerToggleDoubleSizeSelection(NCERVIEWERDATA *data) {
 		//toggle double size flag
 		*pAttr0 ^= 0x0200;
 
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, data->selectedOBJ[i]);
 
 		int dispX, dispY;
@@ -2091,12 +2090,12 @@ static void CellViewerSetSelectionCharacterIndex(NCERVIEWERDATA *data, int chno)
 	for (int i = 0; i < data->nSelectedOBJ; i++) {
 		uint16_t *pAttr2 = &cell->attr[3 * data->selectedOBJ[i] + 2];
 
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, data->selectedOBJ[i]);
 
 		int oamCharName = (chno << (info.characterBits == 8)) >> mappingShift;
 		*pAttr2 = (*pAttr2 & 0xFC00) | (oamCharName & 0x03FF);
-		if (cell->useEx2d) cell->ex2dCharNames[data->selectedOBJ[i]] = oamCharName;
+		if (cell->exCharNames != NULL) cell->exCharNames[data->selectedOBJ[i]] = oamCharName;
 	}
 }
 
@@ -2113,7 +2112,7 @@ static void CellViewerSendSelectionToFront(NCERVIEWERDATA *data) {
 	//send to front: copy OBJ to front of list
 	CellInsertOBJ(cell, 0, nSel);
 	memcpy(cell->attr, sel, nSel * 6);
-	if (cell->useEx2d) memcpy(cell->ex2dCharNames, exSel, nSel * sizeof(uint32_t));
+	if (cell->exCharNames != NULL) memcpy(cell->exCharNames, exSel, nSel * sizeof(uint32_t));
 
 	//re-select moved OBJ
 	int *selidxs = (int *) calloc(nSel, sizeof(int));
@@ -2139,7 +2138,7 @@ static void CellViewerSendSelectionToBack(NCERVIEWERDATA *data) {
 	//send to front: copy OBJ to end of list
 	CellInsertOBJ(cell, cell->nAttribs, nSel);
 	memcpy(cell->attr + 3 * (cell->nAttribs - nSel), sel, nSel * 6);
-	if (cell->useEx2d) memcpy(cell->ex2dCharNames + cell->nAttribs - nSel, exSel, nSel * sizeof(uint32_t));
+	if (cell->exCharNames != NULL) memcpy(cell->exCharNames + cell->nAttribs - nSel, exSel, nSel * sizeof(uint32_t));
 
 	//re-select moved OBJ
 	int *selidxs = (int *) calloc(nSel, sizeof(int));
@@ -2179,9 +2178,9 @@ static void CellViewerAppendDummyObj(NCERVIEWERDATA *data) {
 	pAttr[1] = 0x0000;
 	pAttr[2] = 0x0000;
 
-	if (cell->useEx2d) {
-		cell->ex2dCharNames = (uint32_t *) realloc(cell->ex2dCharNames, cell->nAttribs * sizeof(uint32_t));
-		cell->ex2dCharNames[cell->nAttribs - 1] = 0;
+	if (cell->exCharNames != NULL) {
+		cell->exCharNames = (uint32_t *) realloc(cell->exCharNames, cell->nAttribs * sizeof(uint32_t));
+		cell->exCharNames[cell->nAttribs - 1] = 0;
 	}
 
 	//select
@@ -2210,10 +2209,10 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 		//get OBJ info
 		uint16_t attr[3];
 		uint32_t exAttr = 0;
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, iSel);
 		memcpy(attr, &cell->attr[3 * iSel], sizeof(attr));
-		if (cell->useEx2d) exAttr = cell->ex2dCharNames[iSel];
+		if (cell->exCharNames != NULL) exAttr = cell->exCharNames[iSel];
 
 		//OBJ size must be smaller than the split OBJ
 		if (info.width < splitWidth || info.height < splitHeight) continue;
@@ -2234,10 +2233,10 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 		memmove(&cell->attr[3 * (iSel + nObjSplit)], &cell->attr[3 * (iSel + 1)], (nObjPrev - iSel - 1) * 3 * sizeof(uint16_t));
 
 		//insert extended attribute for new OBJ
-		if (cell->useEx2d) {
+		if (cell->exCharNames != NULL) {
 			//insert space to ex2d char names
-			cell->ex2dCharNames = (uint32_t *) realloc(cell->ex2dCharNames, cell->nAttribs * sizeof(uint32_t));
-			memmove(&cell->ex2dCharNames[iSel + nObjSplit], &cell->ex2dCharNames[iSel + 1], (nObjPrev - iSel - 1) * sizeof(uint32_t));
+			cell->exCharNames = (uint32_t *) realloc(cell->exCharNames, cell->nAttribs * sizeof(uint32_t));
+			memmove(&cell->exCharNames[iSel + nObjSplit], &cell->exCharNames[iSel + 1], (nObjPrev - iSel - 1) * sizeof(uint32_t));
 		}
 
 		//write new OBJ attributes
@@ -2277,7 +2276,7 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 				exAttr = charName;
 
 				memcpy(&cell->attr[3 * (iSel + objX + objY * nObjX)], attr, sizeof(attr));
-				if (cell->useEx2d) cell->ex2dCharNames[iSel + objX + objY * nObjX] = exAttr;
+				if (cell->exCharNames != NULL) cell->exCharNames[iSel + objX + objY * nObjX] = exAttr;
 			}
 		}
 		
@@ -2498,7 +2497,7 @@ static void CellViewerOnMenuCommand(NCERVIEWERDATA *data, int idMenu) {
 			int commonCharIndex = -1;
 			NCER_CELL *cell = CellViewerGetCurrentCell(data);
 			for (int i = 0; i < data->nSelectedOBJ; i++) {
-				NCER_CELL_INFO info;
+				GxOamAttrInfo info;
 				CellDecodeOamAttributes(&info, cell, data->selectedOBJ[i]);
 
 				int charAddr = (info.characterName << mappingShift) * 0x20;
@@ -3620,7 +3619,7 @@ static void CellViewerPreviewOnPaint(NCERVIEWERDATA *data) {
 
 		//highlight OBJ in selection
 		for (int i = 0; i < nSelectedOBJ; i++) {
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, &data->ncer->cells[data->cell], selectedOBJ[i]);
 
 			int objX = SEXT9(info.x) + 256, objY = SEXT8(info.y) + 128;
@@ -3891,7 +3890,7 @@ static HMENU CellViewerGetPopupMenuForSelection(NCERVIEWERDATA *data) {
 		int commonH = 1, commonV = 1, commonWidth = 64, commonHeight = 64, commonMosaic = 1, commonBits = 4;
 		int minW = 64, minH = 64;
 		for (int i = 0; i < nSel; i++) {
-			NCER_CELL_INFO info;
+			GxOamAttrInfo info;
 			CellDecodeOamAttributes(&info, cell, sel[i]);
 
 			if (i == 0) {

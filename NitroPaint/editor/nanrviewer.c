@@ -316,7 +316,7 @@ static void AnmViewerGetCellBounds(NCER_CELL *cell, int *pBoundX, int *pBoundY, 
 	int xMin = 0, xMax = 0, yMin = 0, yMax = 0;
 
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		int objX = SEXT9(info.x), objY = SEXT8(info.y);

@@ -4,7 +4,7 @@
 #define SEXT9(n)   (((n)<0x100)?(n):((n)-0x200))
 
 
-static void CellGetEffectiveObjBounds(NCER_CELL_INFO *pObj, int *pX, int *pY, int *pW, int *pH) {
+static void CellGetEffectiveObjBounds(GxOamAttrInfo *pObj, int *pX, int *pY, int *pW, int *pH) {
 	//OBJ coordinates
 	int objX = SEXT9(pObj->x), objY = SEXT8(pObj->y);
 	int objW = pObj->width, objH = pObj->height;
@@ -25,7 +25,7 @@ static void CellGetCellBounds(NCER_CELL *cell, int *pxMin, int *pyMin, int *pxMa
 	int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
 
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		int objX, objY, objW, objH;
@@ -50,7 +50,7 @@ static int CellIsCellSimple(NCER_CELL *cell) {
 	CellGetCellBounds(cell, &xMin, &yMin, &xMax, &yMax);
 
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		int objX, objY, objW, objH;
@@ -66,7 +66,7 @@ static int CellIsCellSimple(NCER_CELL *cell) {
 
 	//check 8x8 boundaries
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info;
+		GxOamAttrInfo info;
 		CellDecodeOamAttributes(&info, cell, i);
 
 		int objX, objY, objW, objH;
@@ -79,14 +79,14 @@ static int CellIsCellSimple(NCER_CELL *cell) {
 
 	//check overlap
 	for (int i = 0; i < cell->nAttribs; i++) {
-		NCER_CELL_INFO info1;
+		GxOamAttrInfo info1;
 		CellDecodeOamAttributes(&info1, cell, i);
 
 		int obj1X, obj1Y, obj1W, obj1H;
 		CellGetEffectiveObjBounds(&info1, &obj1X, &obj1Y, &obj1W, &obj1H);
 
 		for (int j = i + 1; j < cell->nAttribs; j++) {
-			NCER_CELL_INFO info2;
+			GxOamAttrInfo info2;
 			CellDecodeOamAttributes(&info2, cell, j);
 
 			int obj2X, obj2Y, obj2W, obj2H;
@@ -169,7 +169,7 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 		if (CellIsCellSimple(cell)) {
 			//simple cell: arrange OBJ relative to their position in space
 			for (int j = 0; j < cell->nAttribs; j++) {
-				NCER_CELL_INFO objInfo;
+				GxOamAttrInfo objInfo;
 				CellDecodeOamAttributes(&objInfo, cell, j);
 
 				//get placement of OBJ
@@ -206,7 +206,7 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 					);
 
 					//write extended character name
-					cell->ex2dCharNames[j] = ((curX + charX) + ((curY + charY) * *pGraphicsWidth)) << chnameShift;
+					cell->exCharNames[j] = ((curX + charX) + ((curY + charY) * *pGraphicsWidth)) << chnameShift;
 
 					//reset flip state of current OBJ
 					if (objInfo.flipX || objInfo.flipY) {
@@ -222,7 +222,7 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 		} else {
 			//complex cell: arrange OBJ in order of occurrence
 			for (int j = 0; j < cell->nAttribs; j++) {
-				NCER_CELL_INFO objInfo;
+				GxOamAttrInfo objInfo;
 				CellDecodeOamAttributes(&objInfo, cell, j);
 
 				//get placement of OBJ
@@ -255,7 +255,7 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 					);
 
 					//write extended character name
-					cell->ex2dCharNames[j] = (curX + (curY * *pGraphicsWidth)) << chnameShift;
+					cell->exCharNames[j] = (curX + (curY * *pGraphicsWidth)) << chnameShift;
 
 					//reset flip state of current OBJ
 					if (objInfo.flipX || objInfo.flipY) {
@@ -394,7 +394,7 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 			}
 
 			for (int j = 0; j < cell->nAttribs; j++) {
-				NCER_CELL_INFO info;
+				GxOamAttrInfo info;
 				CellDecodeOamAttributes(&info, cell, j);
 
 				//lay out graphics into temp buffer
@@ -553,14 +553,12 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 	ncer->isEx2d = enable;
 	ncgr->isExChar = enable;
 	for (int i = 0; i < ncer->nCells; i++) {
-		ncer->cells[i].useEx2d = enable;
-
 		if (enable) {
-			ncer->cells[i].ex2dCharNames = calloc(ncer->cells[i].nAttribs, sizeof(uint32_t));
+			ncer->cells[i].exCharNames = calloc(ncer->cells[i].nAttribs, sizeof(uint32_t));
 		} else {
-			if (ncer->cells[i].ex2dCharNames != NULL) {
-				free(ncer->cells[i].ex2dCharNames);
-				ncer->cells[i].ex2dCharNames = NULL;
+			if (ncer->cells[i].exCharNames != NULL) {
+				free(ncer->cells[i].exCharNames);
+				ncer->cells[i].exCharNames = NULL;
 			}
 		}
 	}
@@ -571,11 +569,11 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 
 		//check source mapping mode
 		if (ncer->mappingMode == GX_OBJVRAMMODE_CHAR_2D) {
-			//mapped in 2D: we will not rearrange graphics, just populate the ex2dCharNames.
+			//mapped in 2D: we will not rearrange graphics, just populate the exCharNames.
 			for (int i = 0; i < ncer->nCells; i++) {
 				NCER_CELL *cell = &ncer->cells[i];
 				for (int j = 0; j < cell->nAttribs; j++) {
-					cell->ex2dCharNames[j] = cell->attr[3 * j + 2] & 0x03FF;
+					cell->exCharNames[j] = cell->attr[3 * j + 2] & 0x03FF;
 				}
 			}
 
@@ -626,8 +624,7 @@ void CellRemoveEx2dAttr(
 	for (int i = 0; i < ncer->nCells; i++) {
 		NCER_CELL *cell = &ncer->cells[i];
 
-		free(cell->ex2dCharNames);
-		cell->ex2dCharNames = NULL;
-		cell->useEx2d = 0;
+		free(cell->exCharNames);
+		cell->exCharNames = NULL;
 	}
 }
