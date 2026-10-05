@@ -52,7 +52,7 @@ typedef struct NCGR_{
 
 typedef struct CHAR_VRAM_TRANSFER_ {
 	unsigned int srcAddr; //source address in bytes
-	unsigned int dstAddr; //destination address in bytes
+	//unsigned int dstAddr; //destination address in bytes
 	unsigned int size;    //size in bytes
 } CHAR_VRAM_TRANSFER;
 

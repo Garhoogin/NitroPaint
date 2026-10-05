@@ -281,7 +281,6 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 
 			ncer->vramTransfer = (CHAR_VRAM_TRANSFER *) calloc(ncer->nCells, sizeof(CHAR_VRAM_TRANSFER));
 			for (int i = 0; i < ncer->nCells; i++) {
-				ncer->vramTransfer[i].dstAddr = 0;
 				ncer->vramTransfer[i].srcAddr = *(const uint32_t *) (cebk + transferDataOffset + i * 8 + 0x00);
 				ncer->vramTransfer[i].size =    *(const uint32_t *) (cebk + transferDataOffset + i * 8 + 0x04);
 			}

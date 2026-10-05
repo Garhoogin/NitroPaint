@@ -770,7 +770,7 @@ void ChrGetChar(NCGR *ncgr, int chno, CHAR_VRAM_TRANSFER *transfer, unsigned cha
 	//get character source address
 	unsigned int chrSize = 8 * ncgr->nBits;
 	unsigned int srcAddr = chno * chrSize;
-	if ((srcAddr + chrSize) < transfer->dstAddr || srcAddr >= (transfer->dstAddr + transfer->size)) {
+	if (srcAddr >= transfer->size) {
 		if (chno < ncgr->nTiles) memcpy(out, ncgr->tiles[chno], 64);
 		else memset(out, 0, 64);
 		return;
@@ -781,9 +781,9 @@ void ChrGetChar(NCGR *ncgr, int chno, CHAR_VRAM_TRANSFER *transfer, unsigned cha
 	for (unsigned int i = 0; i < 64; i++) {
 		//copy ncgr->tiles[chrno][i] to out[i]
 		unsigned int pxaddr = srcAddr + (i >> (ncgr->nBits == 4 ? 1 : 0));
-		if (pxaddr >= transfer->dstAddr && pxaddr < (transfer->dstAddr + transfer->size)) {
+		if (pxaddr < transfer->size) {
 			//in transfer destination
-			pxaddr = pxaddr - transfer->dstAddr + transfer->srcAddr;
+			pxaddr = pxaddr - transfer->srcAddr;
 			unsigned int transferChr = pxaddr / chrSize;
 			unsigned int transferChrPxOffset = pxaddr % chrSize;
 			unsigned int pxno = transferChrPxOffset;

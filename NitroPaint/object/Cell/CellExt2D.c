@@ -179,8 +179,8 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 					//transform character address in accordance with the VRAM transfer entry
 					CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
 					unsigned int chrAddrByte = chrAddr * chrSizeBytes;
-					if (chrAddrByte >= trans->dstAddr && chrAddrByte < (trans->dstAddr + trans->size)) {
-						chrAddr = (chrAddrByte + trans->srcAddr - trans->dstAddr) / chrSizeBytes;
+					if (chrAddrByte < trans->size) {
+						chrAddr = (chrAddrByte + trans->srcAddr) / chrSizeBytes;
 					}
 				}
 
@@ -280,7 +280,6 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 		for (int i = 0; i < ncer->nCells; i++) {
 			CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
 			trans->srcAddr = 0;
-			trans->dstAddr = 0;
 			trans->size = 0;
 		}
 	}
@@ -391,7 +390,6 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 			if (ncer->vramTransfer != NULL) {
 				//cell bank with VRAM transfer animation: set up source and destination
 				CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
-				trans->dstAddr = 0;
 				trans->srcAddr = searchStart * charSizeBytes;
 			}
 
