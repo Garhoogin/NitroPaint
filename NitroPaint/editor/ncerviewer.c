@@ -108,50 +108,27 @@ static unsigned char *CellViewerMapGraphicsUsage(NCERVIEWERDATA *data, int exclu
 	unsigned int mapSize = ncgr->nTiles;
 	unsigned char *map = (unsigned char *) calloc(1, mapSize);
 
-	//check for VRAM transfer data
-	CHAR_VRAM_TRANSFER *vramTransfer = data->ncer->vramTransfer;
-	if (vramTransfer != NULL) {
-		//VRAM transfer data present: carve blocks out of the available space
-		for (int i = 0; i < data->ncer->nCells; i++) {
-			CHAR_VRAM_TRANSFER *xfer = &vramTransfer[i];
+	//no VRAM transfer data present: iterate each cell and its constituent OBJ
+	for (int i = 0; i < data->ncer->nCells; i++) {
+		NCER_CELL *cell = &data->ncer->cells[i];
 
-			//get overlapping character index region
-			unsigned int chrStart = xfer->srcAddr / chrSize; // round down
-			unsigned int chrSize = (xfer->srcAddr + xfer->size + chrSize - 1) / chrSize - chrStart; // round up
+		for (int j = 0; j < cell->nAttribs; j++) {
+			GxOamAttrInfo info;
+			CellDecodeOamAttributes(&info, cell, j);
+
+			//compute VRAM destination address
+			unsigned int sizeChars = (info.width * info.height) / 64;
+			unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer->mappingMode, info.characterBits);
 
 			//fill use map
-			unsigned int reqSize = chrStart + chrSize;
+			unsigned int reqSize = vramAddr + sizeChars;
 			if (reqSize > mapSize) {
 				//expand map
 				map = (unsigned char *) realloc(map, reqSize);
 				memset(map + mapSize, 0, reqSize - mapSize);
 				mapSize = reqSize;
 			}
-			memset(map + chrStart, 1, chrSize);
-		}
-	} else {
-		//no VRAM transfer data present: iterate each cell and its constituent OBJ
-		for (int i = 0; i < data->ncer->nCells; i++) {
-			NCER_CELL *cell = &data->ncer->cells[i];
-
-			for (int j = 0; j < cell->nAttribs; j++) {
-				GxOamAttrInfo info;
-				CellDecodeOamAttributes(&info, cell, j);
-
-				//compute VRAM destination address
-				unsigned int sizeChars = (info.width * info.height) / 64;
-				unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer->mappingMode, info.characterBits);
-
-				//fill use map
-				unsigned int reqSize = vramAddr + sizeChars;
-				if (reqSize > mapSize) {
-					//expand map
-					map = (unsigned char *) realloc(map, reqSize);
-					memset(map + mapSize, 0, reqSize - mapSize);
-					mapSize = reqSize;
-				}
-				memset(map + vramAddr, 1, sizeChars);
-			}
+			memset(map + vramAddr, 1, sizeChars);
 		}
 	}
 
@@ -230,28 +207,17 @@ static unsigned int CellViewerGetFirstUnusedCharacter(NCERVIEWERDATA *data, int 
 		NCER_CELL *cell = &data->ncer->cells[i];
 		if (i == excludeCell) continue;
 		
-		//process VRAM transfer animation
-		if (data->ncer->vramTransfer != NULL) {
-			CHAR_VRAM_TRANSFER *xfer = &data->ncer->vramTransfer[i];
-			unsigned int vramAddr = xfer->srcAddr / chrSize;
-			unsigned int sizeChars = xfer->size / chrSize;
+		//process each OBJ in cell to find graphics usage
+		for (int j = 0; j < cell->nAttribs; j++) {
+			GxOamAttrInfo info;
+			CellDecodeOamAttributes(&info, cell, j);
+
+			//compute VRAM destination address
+			unsigned int sizeChars = (info.width * info.height) / 64;
+			unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer->mappingMode, info.characterBits);
+
 			unsigned int thisEnd = vramAddr + sizeChars;
 			if (thisEnd > end) end = thisEnd;
-
-			//TODO: other formats with more complex VRAM transfer formats?
-		} else {
-			//process each OBJ in cell to find graphics usage
-			for (int j = 0; j < cell->nAttribs; j++) {
-				GxOamAttrInfo info;
-				CellDecodeOamAttributes(&info, cell, j);
-
-				//compute VRAM destination address
-				unsigned int sizeChars = (info.width * info.height) / 64;
-				unsigned int vramAddr = NCGR_CHNAME(info.characterName, data->ncer->mappingMode, info.characterBits);
-
-				unsigned int thisEnd = vramAddr + sizeChars;
-				if (thisEnd > end) end = thisEnd;
-			}
 		}
 	}
 
@@ -899,10 +865,6 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	//get render params
 	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
 	NCLR *nclr = CellViewerGetAssociatedPalette(data);
-	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
-	if (data->ncer->vramTransfer != NULL) {
-		vramTransfer = data->ncer->vramTransfer + data->cell;
-	}
 	
 	//construct temporary cell
 	NCER_CELL *tmpCell = (NCER_CELL *) calloc(1, sizeof(NCER_CELL));
@@ -1704,7 +1666,7 @@ static void CellViewerEnableExt2D(NCERVIEWERDATA *data) {
 		SendMessage(data->hWndMake2D, WM_SETTEXT, -1, (LPARAM) L"Make 1D");
 
 		//we will set the mapping mode, but will not update the mapping mode selected item
-		CellViewerSetMappingModeSelection(data, GX_OBJVRAMMODE_CHAR_1D_32K);
+		CellViewerSetMappingModeSelection(data, ncer->ex2dBaseMappingMode);
 	} else {
 		//error
 		MessageBox(data->hWnd, L"OBJ graphics exceed maximum size.", L"Error", MB_ICONERROR);

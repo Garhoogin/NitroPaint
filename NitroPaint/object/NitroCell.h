@@ -1,6 +1,34 @@
+// -----------------------------------------------------------------------------------------------
+// Copyright (c) 2020, Garhoogin
+// All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without modification, are permitted
+// provided that the following conditions are met:
+// 
+// 1. Redistributions of source code must retain the above copyright notice, this list of
+//    conditions and the following disclaimer.
+// 
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of
+//    conditions and the following disclaimer in the documentation and/or other materials provided
+//    with the distribution.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+// IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+// AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+// POSSIBILITY OF SUCH DAMAGE.
+// -----------------------------------------------------------------------------------------------
 #pragma once
+
 #include "NitroCharacter.h"
 #include "NitroPalette.h"
+
+
+// ----- cell bank format types
 
 #define NCER_TYPE_INVALID    0
 #define NCER_TYPE_NCER       1
@@ -8,6 +36,27 @@
 #define NCER_TYPE_HUDSON     3
 #define NCER_TYPE_BOMBERMAN  4
 #define NCER_TYPE_GHOSTTRICK 5
+
+
+// -----------------------------------------------------------------------------------------------
+// Name: enum CellCompressionMode
+//
+// This indicates the kind of OBJ compression used when assembling a 1D mapped cell data bank.
+// This controls how graphics are optimized in that process.
+//
+// Boolean values:
+//   CELL_COMPRESS_NONE          OBJ graphics are not combined.
+//   CELL_COMPRESS_CELL          OBJ graphics are overlapped with matching character data within
+//                               the cell. This keeps graphics for different cells separate.
+//   CELL_COMPRESS_FILE          OBJ graphics are able to be merged across cells. This allows
+//                               different cells to referene the same characters. This option
+//                               should not be used with VRAM transfer characters.
+// -----------------------------------------------------------------------------------------------
+typedef enum CellCompressionMode_ {
+	CELL_COMPRESS_NONE,  // No compression
+	CELL_COMPRESS_CELL,  // Cell compression
+	CELL_COMPRESS_FILE   // File compression
+} CellCompressionMode;
 
 typedef struct NCER_CELL_ {
 	int nAttribs;
@@ -60,7 +109,6 @@ typedef struct NCER_ {
 	int mappingMode;                   // cell mapping mode
 	NCER_CELL *cells;                  // list of cells
 
-	CHAR_VRAM_TRANSFER *vramTransfer;  // list of VRAM transfer entries
 	int useVramTransferCharacters;     // indicates the use of VRAM transfer characters
 	int useExtAttr;                    // use NCER extended attributes
 	int isEx2d;                        // use of pseudo extended 2D mapping
@@ -91,6 +139,7 @@ void CellDeleteCell(NCER *ncer, int idx);
 
 void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst);
 
+unsigned int CellGetCharacterName(NCER_CELL *cell, int i);
 
 
 // ----- render cell

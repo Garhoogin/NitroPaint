@@ -148,7 +148,14 @@ static void CellMapGraphicsTo2D(
 	}
 }
 
-static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int *pGraphicsHeight, unsigned char **outChars, unsigned char *outAttr) {
+static void CellArrangeBankIn2D(
+	NCER           *ncer,
+	NCGR           *ncgr,
+	int            *pGraphicsWidth,
+	int            *pGraphicsHeight,
+	unsigned char **outChars,
+	unsigned char  *outAttr
+) {
 	*pGraphicsWidth = 32; // default: width=32 chars
 	*pGraphicsHeight = 0; // default: height=0 chars
 
@@ -173,16 +180,8 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 				CellDecodeOamAttributes(&objInfo, cell, j);
 
 				//get placement of OBJ
-				unsigned int chrName = cell->attr[j * 3 + 2] & 0x3FF; // use from OBJ directly, decode is overridden
+				unsigned int chrName = CellGetCharacterName(cell, j); // use from OBJ directly, decode is overridden
 				unsigned int chrAddr = (chrName << mappingShift) >> chrSizeShift;
-				if (ncer->vramTransfer != NULL) {
-					//transform character address in accordance with the VRAM transfer entry
-					CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
-					unsigned int chrAddrByte = chrAddr * chrSizeBytes;
-					if (chrAddrByte < trans->size) {
-						chrAddr = (chrAddrByte + trans->srcAddr) / chrSizeBytes;
-					}
-				}
 
 				int objX, objY, objW, objH;
 				CellGetEffectiveObjBounds(&objInfo, &objX, &objY, &objW, &objH);
@@ -226,7 +225,7 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 				CellDecodeOamAttributes(&objInfo, cell, j);
 
 				//get placement of OBJ
-				unsigned int chrName = cell->attr[j * 3 + 2] & 0x3FF; // use from OBJ directly, decode is overridden
+				unsigned int chrName = CellGetCharacterName(cell, j); // use from OBJ directly, decode is overridden
 				unsigned int chrAddr = (chrName << mappingShift) >> chrSizeShift;
 				if ((curX + objInfo.width / 8) > *pGraphicsWidth) {
 					//advance to next row
@@ -275,15 +274,6 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 		}
 	}
 
-	//on final output, stub out VRAM transfer entries
-	if (outChars != NULL && ncer->vramTransfer != NULL) {
-		for (int i = 0; i < ncer->nCells; i++) {
-			CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
-			trans->srcAddr = 0;
-			trans->size = 0;
-		}
-	}
-
 	//if graphics are empty, provide a minimum default
 	if (curY == 0) {
 		curY = 32;
@@ -292,7 +282,14 @@ static void CellArrangeBankIn2D(NCER *ncer, NCGR *ncgr, int *pGraphicsWidth, int
 	*pGraphicsHeight = curY;
 }
 
-static unsigned char CellSampleObjPixelWithFlip(const unsigned char *gfx, unsigned int nCharsX, unsigned int nCharsY, unsigned int pi, int flipX, int flipY) {
+static unsigned char CellSampleObjPixelWithFlip(
+	const unsigned char *gfx,
+	unsigned int         nCharsX,
+	unsigned int         nCharsY, 
+	unsigned int         pi,
+	int                  flipX,
+	int                  flipY
+) {
 	//xor mask for transforming coordinates
 	unsigned int xorMask = 0;
 	if (flipX) xorMask |= 007;
@@ -354,7 +351,14 @@ static unsigned int CellSearchGraphics(
 	return nCharsBuf;
 }
 
-static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsigned int *pGraphicsSize, unsigned char **outChars, unsigned char *outAttr) {
+static int CellArrangeBankIn1D(
+	NCER               *ncer,
+	NCGR               *ncgr,
+	CellCompressionMode cellCompression,
+	unsigned int       *pGraphicsSize,
+	unsigned char     **outChars,
+	unsigned char      *outAttr
+) {
 	//arrange all cell graphics in space.
 
 	unsigned char *curbuf = NULL;
@@ -385,12 +389,19 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 
 			//search start: beginning of file (cell mode: limit to within cell)
 			unsigned int searchStart = compressCellstart;
-			if (cellCompression) searchStart = (curbufSize + mappingGranularity - 1) & ~(mappingGranularity - 1);
-
-			if (ncer->vramTransfer != NULL) {
-				//cell bank with VRAM transfer animation: set up source and destination
-				CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
-				trans->srcAddr = searchStart * charSizeBytes;
+			switch (cellCompression) {
+				case CELL_COMPRESS_NONE:
+					//no compression: never scan.
+					searchStart = UINT_MAX;
+					break;
+				case CELL_COMPRESS_CELL:
+					//cell compression: start scan at beginning of this cell's characters
+					searchStart = (curbufSize + mappingGranularity - 1) & ~(mappingGranularity - 1);
+					break;
+				case CELL_COMPRESS_FILE:
+					//file compression: start scan at the start of compressible characters.
+					searchStart = compressCellstart;
+					break;
 			}
 
 			for (int j = 0; j < cell->nAttribs; j++) {
@@ -463,13 +474,11 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 
 				//compute character name
 				unsigned int chrName = (foundAt << (ncgr->nBits == 8)) >> mappingShift;
-				if (ncer->vramTransfer != NULL) {
-					//cell bank uses VRAM transfer animations, subtract the base character name
-					chrName = ((foundAt - searchStart) << (ncgr->nBits == 8)) >> mappingShift;
-				}
 
-				//check the character name did not overflow
-				if (chrName & ~0x03FF) {
+				//check the character name did not overflow. Normally the character name is restricted
+				//to 10 bits, but when the cell bank is using VRAM transfer characters, we allow an
+				//extended representation.
+				if (!ncer->useVramTransferCharacters && (chrName & ~0x03FF)) {
 					status = 0;
 					curbufSize = 0;
 					goto Done;
@@ -477,15 +486,11 @@ static int CellArrangeBankIn1D(NCER *ncer, NCGR *ncgr, int cellCompression, unsi
 
 				if (outChars != NULL) {
 					cell->attr[3 * j + 2] = (cell->attr[3 * j + 2] & 0xFC00) | (chrName & 0x03FF);
+					if (cell->exCharNames != NULL) cell->exCharNames[j] = chrName;
+
 					if (foundFlipX) cell->attr[3 * j + 1] ^= 0x1000; // flip H
 					if (foundFlipY) cell->attr[3 * j + 1] ^= 0x2000; // flip V
 				}
-			}
-
-			//after adding OBJ to cell, finalize VRAM transfer settings
-			if (ncer->vramTransfer != NULL) {
-				CHAR_VRAM_TRANSFER *trans = &ncer->vramTransfer[i];
-				trans->size = curbufSize * charSizeBytes - trans->srcAddr;
 			}
 		}
 
@@ -519,19 +524,19 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 	if (ncer->isEx2d == enable) return 1; // do nothing
 
 	if (!enable) {
-		int cellCompression = (ncer->vramTransfer != NULL);
+		CellCompressionMode compressMode = ncer->useVramTransferCharacters ? CELL_COMPRESS_CELL : CELL_COMPRESS_FILE;
 		unsigned int graphicsSize;
-		int status = CellArrangeBankIn1D(ncer, ncgr, cellCompression, &graphicsSize, NULL, NULL);
+		int status = CellArrangeBankIn1D(ncer, ncgr, compressMode, &graphicsSize, NULL, NULL);
 		if (!status) return 0;
 
 		//allocate new graphics
-		unsigned char *outAttr = (unsigned char *) calloc(graphicsSize, 1);
+		unsigned char  *outAttr  = (unsigned char  *) calloc(graphicsSize, 1);
 		unsigned char **outChars = (unsigned char **) calloc(graphicsSize, sizeof(void *));
-		unsigned char *charbuf = (unsigned char *) calloc(graphicsSize, 64);
+		unsigned char  *charbuf  = (unsigned char  *) calloc(graphicsSize, 64);
 		for (unsigned int i = 0; i < graphicsSize; i++) {
 			outChars[i] = charbuf + 64 * i;
 		}
-		CellArrangeBankIn1D(ncer, ncgr, cellCompression, &graphicsSize, outChars, outAttr);
+		CellArrangeBankIn1D(ncer, ncgr, compressMode, &graphicsSize, outChars, outAttr);
 
 		//replace graphics data with rearranged graphics
 		free(ncgr->charbuf);
@@ -552,11 +557,18 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 	//update ext 2D field
 	ncer->isEx2d = enable;
 	ncgr->isExChar = enable;
+
+	//for each cell, either allocate or free the extended character names. When entering
+	//extended 2D representation, we ensure the extended character names are present. When
+	//disabling extended 2D representation, free them only if the cell does not use VRAM
+	//transfer characters.
 	for (int i = 0; i < ncer->nCells; i++) {
 		if (enable) {
-			ncer->cells[i].exCharNames = calloc(ncer->cells[i].nAttribs, sizeof(uint32_t));
+			if (ncer->cells[i].exCharNames == NULL) {
+				ncer->cells[i].exCharNames = calloc(ncer->cells[i].nAttribs, sizeof(uint32_t));
+			}
 		} else {
-			if (ncer->cells[i].exCharNames != NULL) {
+			if (!ncer->useVramTransferCharacters) {
 				free(ncer->cells[i].exCharNames);
 				ncer->cells[i].exCharNames = NULL;
 			}
@@ -573,7 +585,7 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 			for (int i = 0; i < ncer->nCells; i++) {
 				NCER_CELL *cell = &ncer->cells[i];
 				for (int j = 0; j < cell->nAttribs; j++) {
-					cell->exCharNames[j] = cell->attr[3 * j + 2] & 0x03FF;
+					cell->exCharNames[j] = CellGetCharacterName(cell, j);
 				}
 			}
 
@@ -587,9 +599,9 @@ int CellSetBankExt2D(NCER *ncer, NCGR *ncgr, int enable) {
 			unsigned int graphicsSize = graphicsWidth * graphicsHeight;
 
 			//allocate new graphics
-			unsigned char *outAttr = (unsigned char *) calloc(graphicsSize, 1);
+			unsigned char  *outAttr  = (unsigned char  *) calloc(graphicsSize, 1);
 			unsigned char **outChars = (unsigned char **) calloc(graphicsSize, sizeof(void *));
-			unsigned char *charbuf = (unsigned char *) calloc(graphicsSize, 64);
+			unsigned char  *charbuf  = (unsigned char  *) calloc(graphicsSize, 64);
 			for (unsigned int i = 0; i < graphicsSize; i++) {
 				outChars[i] = charbuf + 64 * i;
 			}
@@ -621,10 +633,12 @@ void CellRemoveEx2dAttr(
 	ncer->mappingMode = GX_OBJVRAMMODE_CHAR_2D;
 
 	//free attributes
-	for (int i = 0; i < ncer->nCells; i++) {
-		NCER_CELL *cell = &ncer->cells[i];
+	if (!ncer->useVramTransferCharacters) {
+		for (int i = 0; i < ncer->nCells; i++) {
+			NCER_CELL *cell = &ncer->cells[i];
 
-		free(cell->exCharNames);
-		cell->exCharNames = NULL;
+			free(cell->exCharNames);
+			cell->exCharNames = NULL;
+		}
 	}
 }

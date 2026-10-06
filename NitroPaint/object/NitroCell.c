@@ -280,10 +280,18 @@ int CellReadNcer(NCER *ncer, const unsigned char *buffer, unsigned int size) {
 			uint32_t transferDataOffset = ofsVramTran + *(uint32_t *) (vramTransferData + 0x04);
 
 			ncer->useVramTransferCharacters = 1;
-			ncer->vramTransfer = (CHAR_VRAM_TRANSFER *) calloc(ncer->nCells, sizeof(CHAR_VRAM_TRANSFER));
+			//with VRAM transfer characters, we will simulate an extended addressing space, using the
+			//transfer source address as the base. The size is useful for the runtime but discarded here.
 			for (int i = 0; i < ncer->nCells; i++) {
-				ncer->vramTransfer[i].srcAddr = *(const uint32_t *) (cebk + transferDataOffset + i * 8 + 0x00);
-				ncer->vramTransfer[i].size =    *(const uint32_t *) (cebk + transferDataOffset + i * 8 + 0x04);
+				NCER_CELL *cell = &ncer->cells[i];
+
+				uint32_t srcAddr = *(const uint32_t *) (cebk + transferDataOffset + i * 8 + 0x00);
+				unsigned int charNameBase = srcAddr / NCGR_BYTE_BOUNDARY(ncer->mappingMode);
+
+				cell->exCharNames = (uint32_t *) calloc(cell->nAttribs, sizeof(uint32_t));
+				for (int j = 0; j < cell->nAttribs; j++) {
+					cell->exCharNames[j] = (cell->attr[j * 3 + 2] & 0x03FF) + charNameBase;
+				}
 			}
 		}
 
@@ -356,7 +364,6 @@ static int CellReadSetosa(NCER *ncer, const unsigned char *buffer, unsigned int 
 	ncer->lablSize = 0;
 	ncer->uext = NULL;
 	ncer->uextSize = 0;
-	ncer->vramTransfer = NULL;
 	ncer->isEx2d = (block == cbexBlock);
 	ncer->ex2dBaseMappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	if (ncer->isEx2d) {
@@ -514,15 +521,9 @@ int CellDecodeOamAttributes(GxOamAttrInfo *info, NCER_CELL *cell, int oam) {
 
 void CellDeleteCell(NCER *ncer, int idx) {
 	memmove(ncer->cells + idx, ncer->cells + idx + 1, (ncer->nCells - idx - 1) * sizeof(NCER_CELL));
-	if (ncer->vramTransfer != NULL) {
-		memmove(ncer->vramTransfer + idx, ncer->vramTransfer + idx + 1, (ncer->nCells - idx - 1) * sizeof(CHAR_VRAM_TRANSFER));
-	}
 
 	ncer->nCells--;
 	ncer->cells = (NCER_CELL *) realloc(ncer->cells, ncer->nCells * sizeof(NCER_CELL));
-	if (ncer->vramTransfer != NULL) {
-		ncer->vramTransfer = (CHAR_VRAM_TRANSFER *) realloc(ncer->vramTransfer, ncer->nCells * sizeof(CHAR_VRAM_TRANSFER));
-	}
 }
 
 void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst) {
@@ -530,32 +531,19 @@ void CellMoveCellIndex(NCER *ncer, int iSrc, int iDst) {
 
 	//copy temporarily
 	NCER_CELL cellTmp;
-	CHAR_VRAM_TRANSFER transTmp;
 	memcpy(&cellTmp, ncer->cells + iSrc, sizeof(cellTmp));
-	if (ncer->vramTransfer != NULL) {
-		memcpy(&transTmp, ncer->vramTransfer + iSrc, sizeof(transTmp));
-	}
 
 	//slide over the source
 	memmove(ncer->cells + iSrc, ncer->cells + iSrc + 1, (ncer->nCells - iSrc - 1) * sizeof(NCER_CELL));
-	if (ncer->vramTransfer != NULL) {
-		memmove(ncer->vramTransfer + iSrc, ncer->vramTransfer + iSrc + 1, (ncer->nCells - iSrc - 1) * sizeof(CHAR_VRAM_TRANSFER));
-	}
 	
 	//adjust destination index to account for changed indices
 	if (iDst > iSrc) iDst--;
 
 	//move items to make space
 	memmove(ncer->cells + iDst + 1, ncer->cells + iDst, (ncer->nCells - iDst - 1) * sizeof(NCER_CELL));
-	if (ncer->vramTransfer != NULL) {
-		memmove(ncer->vramTransfer + iDst + 1, ncer->vramTransfer + iDst, (ncer->nCells - iDst - 1) * sizeof(CHAR_VRAM_TRANSFER));
-	}
 
 	//copy from temp
 	memcpy(ncer->cells + iDst, &cellTmp, sizeof(cellTmp));
-	if (ncer->vramTransfer != NULL) {
-		memcpy(ncer->vramTransfer + iDst, &transTmp, sizeof(transTmp));
-	}
 }
 
 int CellFree(ObjHeader *header) {
@@ -567,7 +555,6 @@ int CellFree(ObjHeader *header) {
 		if (ncer->cells[i].exCharNames) free(ncer->cells[i].exCharNames);
 	}
 	if (ncer->cells) free(ncer->cells);
-	if (ncer->vramTransfer) free(ncer->vramTransfer);
 	
 	
 	return 0;
@@ -600,9 +587,48 @@ static int CellWriteNcer(NCER *ncer, BSTREAM *stream) {
 				mappingMode = 4; break;
 		}
 
+		unsigned int mappingShift = (ncer->mappingMode >> 20) & 0x7;  // shift amount for mapping mode
+		unsigned int charNameBoundary = 0x20 << mappingShift;         // size of one character name unit in bytes
+
+		//construct the VRAM transfer info
+		uint32_t *vramTransInfo = NULL;  // src:size pairs
+		if (ncer->useVramTransferCharacters) {
+			//the VRAM transfer information. First source addr, second size
+			vramTransInfo = (uint32_t *) calloc(ncer->nCells, 2 * sizeof(uint32_t));
+			for (int i = 0; i < ncer->nCells; i++) {
+				NCER_CELL *cell = &ncer->cells[i];
+
+				unsigned int chLo = UINT_MAX, chHi = 0;
+				for (int j = 0; j < cell->nAttribs; j++) {
+					GxOamAttrInfo info;
+					CellDecodeOamAttributes(&info, cell, j);
+
+					unsigned int chName = info.characterName << mappingShift;
+					if (chName < chLo) chLo = chName;
+
+					//get high character
+					unsigned int nCharOBJ = info.width * info.height / 64;
+					if ((chName + nCharOBJ) > chHi) chHi = chName + nCharOBJ;
+				}
+
+				//if lo==UINT_MAX, not found OBJ
+				if (chLo == UINT_MAX) chLo = 0;
+
+				//conversion of the character name into a VRAM address.
+				uint32_t addr = chLo * 0x20;
+				uint32_t size = (chHi - chLo) * 0x20;
+
+				//TODO: is this strictly necessary?
+				size = (size + charNameBoundary - 1) & ~(charNameBoundary - 1);
+
+				vramTransInfo[i * 2 + 0] = addr;
+				vramTransInfo[i * 2 + 1] = size;
+			}
+		}
+
 		unsigned int offsVramTransfer = 0;
 		unsigned int offsUserExtended = 0;
-		if (ncer->vramTransfer != NULL) {
+		if (ncer->useVramTransferCharacters) {
 			offsVramTransfer = sizeof(cebkHeader) + ncer->nCells * cellSize;
 			for (int i = 0; i < ncer->nCells; i++) offsVramTransfer += ncer->cells[i].nAttribs * 6;
 			offsVramTransfer = (offsVramTransfer + 3) & ~3;
@@ -612,7 +638,7 @@ static int CellWriteNcer(NCER *ncer, BSTREAM *stream) {
 			offsUserExtended += ncer->nCells * cellSize;
 			for (int i = 0; i < ncer->nCells; i++) offsUserExtended += ncer->cells[i].nAttribs * 6;
 			offsUserExtended = (offsUserExtended + 3) & ~3;
-			if (ncer->vramTransfer != NULL) {
+			if (ncer->useVramTransferCharacters) {
 				//add size of VRAM transfer information
 				offsUserExtended += 8 + 8 * ncer->nCells;
 			}
@@ -629,7 +655,7 @@ static int CellWriteNcer(NCER *ncer, BSTREAM *stream) {
 		//write out each cell. Keep track of the offsets of OAM data.
 		int oamOffset = 0;
 		for (int i = 0; i < ncer->nCells; i++) {
-			NCER_CELL *cell = ncer->cells + i;
+			NCER_CELL *cell = &ncer->cells[i];
 			unsigned char data[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 			*(uint16_t *) data = cell->nAttribs;
@@ -648,32 +674,43 @@ static int CellWriteNcer(NCER *ncer, BSTREAM *stream) {
 
 		//write each cell's OAM attributes
 		for (int i = 0; i < ncer->nCells; i++) {
-			NCER_CELL *cell = ncer->cells + i;
-			NnsStreamWrite(&nnsStream, cell->attr, cell->nAttribs * 6);
+			NCER_CELL *cell = &ncer->cells[i];
+
+			//get the VRAM transfer base addres in character name units
+			uint32_t baseAddr = 0;
+			if (vramTransInfo != NULL) {
+				baseAddr = vramTransInfo[i * 2 + 0] / charNameBoundary;
+			}
+
+			//we must account for the extended attributes for when VRAM transfer animations exist.
+			for (int j = 0; j < cell->nAttribs; j++) {
+				uint16_t tmp[3];
+				memcpy(tmp, &cell->attr[j * 3], sizeof(tmp));
+
+				unsigned int chName = CellGetCharacterName(cell, j);
+				tmp[2] = (tmp[2] & ~0x03FF) | ((chName - baseAddr) & 0x03FF);
+
+				NnsStreamWrite(&nnsStream, tmp, sizeof(tmp));
+			}
 		}
 
 		//write VRAM transfer character information
-		if (ncer->vramTransfer != NULL) {
+		if (ncer->useVramTransferCharacters) {
 			NnsStreamAlign(&nnsStream, 4);
 
-			uint32_t transferSizeMax = 0;
+			uint32_t transMaxSize = 0;
 			for (int i = 0; i < ncer->nCells; i++) {
-				if (ncer->vramTransfer[i].size > transferSizeMax) transferSizeMax = ncer->vramTransfer[i].size;
+				uint32_t size = vramTransInfo[i * 2 + 1];
+				if (size > transMaxSize) transMaxSize = size;
 			}
 
 			uint32_t vramTransferHeader[2];
-			vramTransferHeader[0] = transferSizeMax;
+			vramTransferHeader[0] = transMaxSize;
 			vramTransferHeader[1] = sizeof(vramTransferHeader); // offset to VRAM transfer info
 			NnsStreamWrite(&nnsStream, vramTransferHeader, sizeof(vramTransferHeader));
-
-			//each cell's transfer info
-			for (int i = 0; i < ncer->nCells; i++) {
-				uint32_t transfer[2];
-				transfer[0] = ncer->vramTransfer[i].srcAddr;
-				transfer[1] = ncer->vramTransfer[i].size;
-				NnsStreamWrite(&nnsStream, transfer, sizeof(transfer));
-			}
+			NnsStreamWrite(&nnsStream, vramTransInfo, ncer->nCells * 2 * sizeof(uint32_t));
 		}
+		free(vramTransInfo);
 
 		//write user extended attribute data
 		if (ncer->useExtAttr) {
@@ -840,11 +877,16 @@ static int CellWriteBomberman(NCER *ncer, BSTREAM *stream) {
 // ----- cell rendering
 
 
+unsigned int CellGetCharacterName(NCER_CELL *cell, int i) {
+	if (cell->exCharNames != NULL) return cell->exCharNames[i];
+	else                           return cell->attr[i * 3 + 2] & 0x03FF;
+}
+
 static int FloatToInt(double x) {
 	return (int) (x + (x < 0.0f ? -0.5f : 0.5f));
 }
 
-static void CellRenderOBJ_Character(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
+static void CellRenderOBJ_Character(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, NCLR *nclr, int mapping) {
 	int tilesX = info->width / 8;
 	int tilesY = info->height / 8;
 
@@ -874,7 +916,7 @@ static void CellRenderOBJ_Character(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncg
 				index = ncgrStart + x + y * tilesX;
 			}
 
-			ChrRenderCharacterTransfer(ncgr, nclr, index, vramTransfer, block, info->palette);
+			ChrRenderCharacter(ncgr, nclr, index, block, info->palette);
 			for (int i = 0; i < 8; i++) {
 				memcpy(out + bitsOffset + tilesX * 8 * i, block + i * 8, 32);
 			}
@@ -886,7 +928,7 @@ static void CellRenderOBJ_Bitmap(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, 
 	//if the mapping mode is 2D mapping, then we can use the same logic as for the character type rendering
 	//since we emulate the graphics layout in character order.
 	if (mapping == GX_OBJVRAMMODE_CHAR_2D) {
-		CellRenderOBJ_Character(out, info, ncgr, nclr, mapping, NULL);
+		CellRenderOBJ_Character(out, info, ncgr, nclr, mapping);
 		return;
 	}
 
@@ -926,13 +968,13 @@ static void CellRenderOBJ_Bitmap(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, 
 	}
 }
 
-static void CellRenderOBJ(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, NCLR *nclr, int mapping, CHAR_VRAM_TRANSFER *vramTransfer) {
+static void CellRenderOBJ(COLOR32 *out, GxOamAttrInfo *info, NCGR *ncgr, NCLR *nclr, int mapping) {
 	//use the rendering procedure for the type of graphics
 	if (ncgr == NULL || !ncgr->bitmap) {
 		//character graphics (use on the 2D graphics engine)
-		CellRenderOBJ_Character(out, info, ncgr, nclr, mapping, vramTransfer);
+		CellRenderOBJ_Character(out, info, ncgr, nclr, mapping);
 	} else {
-		//bitmap graphics (use on the 3D graphics engine: no support for VRAM transfer characters)
+		//bitmap graphics (use on the 3D graphics engine)
 		CellRenderOBJ_Bitmap(out, info, ncgr, nclr, mapping);
 	}
 }
@@ -958,10 +1000,6 @@ void CellRender(
 	xOffs += 256;
 	yOffs += 128;
 
-	//get VRAM transfer entry
-	CHAR_VRAM_TRANSFER *vramTransfer = NULL;
-	if (ncer != NULL && ncer->vramTransfer != NULL && cellIndex != -1) vramTransfer = &ncer->vramTransfer[cellIndex];
-
 	//if cell is NULL, we use cell at cellInex.
 	if (cell == NULL) {
 		cell = &ncer->cells[cellIndex];
@@ -974,15 +1012,15 @@ void CellRender(
 		//not identity matrix
 		double det = a * d - b * c; // DBCA
 		if (det != 0.0) {
-			invA = d / det;
+			invA =  d / det;
 			invB = -b / det;
 			invC = -c / det;
-			invD = a / det;
+			invD =  a / det;
 		} else {
 			//max scale identity
 			invA = 127.99609375;
-			invB = 0.0;
-			invC = 0.0;
+			invB =   0.0;
+			invC =   0.0;
 			invD = 127.99609375;
 		}
 		isMtxIdentity = 0; // not identity
@@ -996,7 +1034,7 @@ void CellRender(
 		//if OBJ is marked disabled, skip rendering
 		if (info.disable) continue;
 
-		CellRenderOBJ(block, &info, ncgr, nclr, ncer->mappingMode, vramTransfer);
+		CellRenderOBJ(block, &info, ncgr, nclr, ncer->mappingMode);
 
 		//HV flip? Only if not affine!
 		if (!(info.rotateScale || forceAffine)) {
