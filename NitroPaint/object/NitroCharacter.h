@@ -37,8 +37,9 @@ typedef struct NCGR_{
 	int nTiles;
 	int tilesX;
 	int tilesY;
-	int mappingMode;
-	int bitmap;
+	int mappingMode;          // the OBJ mapping mode
+	int bitmap;               // is it a bitmap format?
+	int vramTransfer;         // is it a VRAM transfer character?
 	int nBits;
 	int extPalette;           // whether character is using an extended palette
 	unsigned char *attr;      // per-character palette attribute data

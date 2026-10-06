@@ -708,8 +708,9 @@ static int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 	ncgr->nTiles = nChar;
 	ncgr->tilesX = nCharX;
 	ncgr->tilesY = nCharY;
-	ncgr->mappingMode = mapping;
-	ncgr->bitmap = (charFmt & 0xFF) == 1; // TODO: retain attribute of VRAM transfer character?
+	ncgr->mappingMode = mapping;             // OBJ mapping mode
+	ncgr->bitmap = (charFmt & 0xFF) == 1;    // bitmap graphics format
+	ncgr->vramTransfer = (charFmt >> 8) & 1; // flag indicating VRAM transfer character
 
 	ChrReadGraphics(ncgr, sChar + ofsCharacter);
 	return OBJ_STATUS_SUCCESS;
@@ -899,7 +900,7 @@ int ChrWriteNcgr(NCGR *ncgr, BSTREAM *stream) {
 	}
 	*(uint32_t *) (charHeader + 0x04) = gfxFormat;
 	*(uint32_t *) (charHeader + 0x08) = ncgr->mappingMode;
-	*(uint32_t *) (charHeader + 0x0C) = !!ncgr->bitmap;
+	*(uint32_t *) (charHeader + 0x0C) = (!!ncgr->bitmap) | (!!ncgr->vramTransfer << 8);
 	*(uint32_t *) (charHeader + 0x10) = nTiles * nBytesPerTile;
 	*(uint32_t *) (charHeader + 0x14) = sizeof(charHeader);
 
