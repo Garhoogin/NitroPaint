@@ -684,33 +684,34 @@ static int ChrReadNcgr(NCGR *ncgr, const unsigned char *buffer, unsigned int siz
 	unsigned int charSize = 0;
 	const unsigned char *sChar = NnsG2dFindBlockBySignature(buffer, size, "CHAR", NNS_SIG_LE, &charSize);
 
-	int tilesY = *(uint16_t *) (sChar + 0x0);
-	int tilesX = *(uint16_t *) (sChar + 0x2);
-	int depth = *(uint32_t *) (sChar + 0x4);
-	int mapping = *(uint32_t *) (sChar + 0x8);
-	depth = 1 << (depth - 1);
-	int tileDataSize = *(uint32_t *) (sChar + 0x10);
-	int type = *(uint32_t *) (sChar + 0xC);
-	uint32_t gfxOffset = *(uint32_t *) (sChar + 0x14);
+	unsigned int nCharY        = *(const uint16_t *) (sChar + 0x00);
+	unsigned int nCharX        = *(const uint16_t *) (sChar + 0x02);
+	uint32_t texfmt            = *(const uint32_t *) (sChar + 0x04);
+	uint32_t mapping           = *(const uint32_t *) (sChar + 0x08);
+	uint32_t charFmt           = *(const uint32_t *) (sChar + 0x0C);
+	unsigned int characterSize = *(const uint32_t *) (sChar + 0x10);
+	uint32_t ofsCharacter      = *(const uint32_t *) (sChar + 0x14);
 
-	int tileCount = tilesX * tilesY;
-	int nPresentTiles = tileDataSize >> 5;
+	int depth = (texfmt == /*GX_TEXFMT_PLTT256*/4) ? 8 : 4;
+
+	unsigned int nChar = nCharX * nCharY;
+	unsigned int nPresentTiles = characterSize >> 5;
 	if (depth == 8) nPresentTiles >>= 1;
-	if (NCGR_1D(mapping) || tileCount != nPresentTiles) {
-		tileCount = nPresentTiles;
-		tilesX = ChrGuessWidth(tileCount);
-		tilesY = tileCount / tilesX;
+	if (NCGR_1D(mapping) || nChar != nPresentTiles) {
+		nChar = nPresentTiles;
+		nCharX = ChrGuessWidth(nChar);
+		nCharY = nChar / nCharX;
 	}
 
 	ncgr->nBits = depth;
 	ncgr->bitmap = 0;
-	ncgr->nTiles = tileCount;
-	ncgr->tilesX = tilesX;
-	ncgr->tilesY = tilesY;
+	ncgr->nTiles = nChar;
+	ncgr->tilesX = nCharX;
+	ncgr->tilesY = nCharY;
 	ncgr->mappingMode = mapping;
-	ncgr->bitmap = (type == 1);
+	ncgr->bitmap = (charFmt & 0xFF) == 1; // TODO: retain attribute of VRAM transfer character?
 
-	ChrReadGraphics(ncgr, sChar + gfxOffset);
+	ChrReadGraphics(ncgr, sChar + ofsCharacter);
 	return OBJ_STATUS_SUCCESS;
 }
 
