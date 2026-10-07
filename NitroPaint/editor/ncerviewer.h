@@ -47,6 +47,7 @@ typedef struct NCERVIEWERDATA_ {
 	HWND hWndShowObjButton;              // button to show OBJ list
 	HWND hWndObjWindow;                  // window holding the OBJ list
 	HWND hWndObjList;                    // OBJ list
+	HWND hWndVramTransfer;               // VRAM transfer checkbox
 
 	HWND hWndCellAdd;
 	HWND hWndExportAll;

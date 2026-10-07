@@ -1787,6 +1787,40 @@ static void CellViewerOnSetMappingMode(NCERVIEWERDATA *data, int idx) {
 	SendMessage(data->hWnd, NV_UPDATEPREVIEW, 0, 0);
 }
 
+static void CellViewerSetUseVramTransfer(NCERVIEWERDATA *data, int use) {
+	NCER *ncer = data->ncer;
+	NCGR *ncgr = CellViewerGetAssociatedCharacter(data);
+
+	//if the character exists, mark it with the updated VRAM transfer state
+	if (ncgr != NULL) ncgr->vramTransfer = use;
+
+	if (ncer->useVramTransferCharacters == use) return;
+
+	ncer->useVramTransferCharacters = use;
+
+	//if disabling VRAM transfer, free them. If enabling, ensure allocated
+	//and fill in the character names.
+	for (int i = 0; i < ncer->nCells; i++) {
+		NCER_CELL *cell = &ncer->cells[i];
+
+		if (!use) {
+			//free extended character names if not in extended 2D mode
+			if (!ncer->isEx2d) {
+				free(cell->exCharNames);
+				cell->exCharNames = NULL;
+			}
+		} else {
+			//ensure extended character names exist
+			if (cell->exCharNames == NULL) {
+				cell->exCharNames = (uint32_t *) calloc(cell->nAttribs, sizeof(uint32_t));
+				for (int j = 0; j < cell->nAttribs; j++) cell->exCharNames[j] = CellGetCharacterName(cell, j);
+			}
+		}
+	}
+
+	CellViewerGraphicsUpdated(data->hWnd);
+}
+
 static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int notification) {
 	HWND hWnd = data->hWnd;
 
@@ -1846,6 +1880,11 @@ static void CellViewerOnCtlCommand(NCERVIEWERDATA *data, HWND hWndControl, int n
 		InvalidateRect(data->hWndViewer, NULL, FALSE);
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndAutoCalcBounds) {
 		data->autoCalcBounds = GetCheckboxChecked(hWndControl);
+	} else if (notification == BN_CLICKED && hWndControl == data->hWndVramTransfer) {
+		int state = GetCheckboxChecked(hWndControl);
+
+		CellViewerSetUseVramTransfer(data, state);
+
 	} else if (notification == BN_CLICKED && hWndControl == data->hWndCellAdd) {
 		WCHAR name[64];
 		wsprintfW(name, L"Cell %d", data->ncer->nCells);
@@ -2613,14 +2652,16 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			data->hWndMappingModeLabel = CreateStatic(hWnd, L" Mapping Mode:", UI_SCALE_COORD(200, dpiScale), 0, ctlWidth, ctlHeight);
 			data->hWndMappingMode = CreateCombobox(hWnd, mappingNames, 5, UI_SCALE_COORD(285, dpiScale), 0, ctlWidthNarrow, 100, 0);
 
-			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", UI_SCALE_COORD(675, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
+			data->hWndCreateCell = CreateButton(hWnd, L"Generate Cell", UI_SCALE_COORD(665, dpiScale), 0, ctlWidth, ctlHeight, FALSE);
 
 			data->hWndShowBounds = CreateCheckbox(hWnd, L"Show Bounds", UI_SCALE_COORD(445, dpiScale), 0, ctlWidth, ctlHeight, data->showCellBounds);
-			data->hWndAutoCalcBounds = CreateCheckbox(hWnd, L"Auto-Calculate Bounds", UI_SCALE_COORD(545, dpiScale), 0, ctlWidthWide, ctlHeight, data->autoCalcBounds);
+			data->hWndAutoCalcBounds = CreateCheckbox(hWnd, L"Auto-Calculate Bounds", UI_SCALE_COORD(535, dpiScale), 0, ctlWidthWide, ctlHeight, data->autoCalcBounds);
 
 			data->hWndMake2D = CreateButton(hWnd, L"Make 2D", UI_SCALE_COORD(365, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
 
-			data->hWndShowObjButton = CreateButton(hWnd, L"OBJ List", UI_SCALE_COORD(765, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
+			data->hWndShowObjButton = CreateButton(hWnd, L"OBJ List", UI_SCALE_COORD(755, dpiScale), 0, ctlWidthNarrow, ctlHeight, FALSE);
+
+			data->hWndVramTransfer = CreateCheckbox(hWnd, L"VRAM Transfer", UI_SCALE_COORD(835, dpiScale), 0, ctlWidthWide, ctlHeight, FALSE);
 			break;
 		}
 		case NV_INITIALIZE:
@@ -2639,6 +2680,9 @@ static LRESULT WINAPI CellViewerWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			//set mapping mode selection
 			int mappingIndex = CellViewerObjVramMappingToID(data->ncer->mappingMode);
 			UiCbSetCurSel(data->hWndMappingMode, mappingIndex);
+
+			SendMessage(data->hWndVramTransfer, BM_SETCHECK,
+				data->ncer->useVramTransferCharacters ? BST_CHECKED : BST_UNCHECKED, 0);
 
 			if (data->ncer->isEx2d) {
 				//make 1D
