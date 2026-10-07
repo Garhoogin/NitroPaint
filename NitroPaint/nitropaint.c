@@ -3543,23 +3543,29 @@ typedef struct {
 
 static void SpriteSheetDialogUpdateBitmapSetting(SPRITESHEETDLGDATA *data) {
 	int bitmap = GetCheckboxChecked(data->hWndBitmap);
-	int is1d = UiCbGetCurSel(data->hWndMapping) > 0;
+	int sel = UiCbGetCurSel(data->hWndMapping);
+
+	static const wchar_t *const mappings[] = {
+		L"2D",
+		L"1D 32K",
+		L"1D 64K",
+		L"1D 128K",
+		L"1D 256K"
+	};
 
 	SendMessage(data->hWndMapping, CB_RESETCONTENT, 0, 0);
-	if (bitmap) {
-		UiCbAddString(data->hWndMapping, L"Bitmap 2D");
-		UiCbAddString(data->hWndMapping, L"Bitmap 1D");
-	} else {
-		UiCbAddString(data->hWndMapping, L"Char 2D");
-		UiCbAddString(data->hWndMapping, L"Char 1D 32K");
-		UiCbAddString(data->hWndMapping, L"Char 1D 64K");
-		UiCbAddString(data->hWndMapping, L"Char 1D 128K");
-		UiCbAddString(data->hWndMapping, L"Char 1D 256K");
+
+	for (unsigned int i = 0; i < sizeof(mappings) / sizeof(mappings[0]); i++) {
+		wchar_t buf[32];
+		wsprintfW(buf, L"%s %s",
+			bitmap ? L"Bitmap" : L"Char",
+			mappings[i]);
+
+		UiCbAddString(data->hWndMapping, buf);
 	}
 
 	//set mapping
-	if (is1d) UiCbSetCurSel(data->hWndMapping, 1);
-	else      UiCbSetCurSel(data->hWndMapping, 0);
+	UiCbSetCurSel(data->hWndMapping, sel);
 }
 
 LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
