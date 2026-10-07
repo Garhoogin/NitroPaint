@@ -1143,7 +1143,7 @@ void CellRender(
 
 // ----- cell operations
 
-void CellInsertOBJ(NCER_CELL *cell, int index, int nObj) {
+void CellInsertOBJ(NCER *ncer, NCER_CELL *cell, int index, int nObj) {
 	int nMove = cell->nAttribs - index;
 
 	cell->nAttribs += nObj;
@@ -1151,14 +1151,14 @@ void CellInsertOBJ(NCER_CELL *cell, int index, int nObj) {
 	memmove(cell->attr + 3 * (index + nObj), cell->attr + 3 * index, nMove * 3 * sizeof(uint16_t));
 	memset(cell->attr + 3 * index, 0, nObj * 3 * sizeof(uint16_t));
 
-	if (cell->exCharNames != NULL) {
+	if (ncer->useVramTransferCharacters || ncer->isEx2d) {
 		cell->exCharNames = realloc(cell->exCharNames, cell->nAttribs * sizeof(uint32_t));
 		memmove(cell->exCharNames + index + nObj, cell->exCharNames + index, nMove * sizeof(uint32_t));
 		memset(cell->exCharNames + index, 0, nObj * sizeof(uint32_t));
 	}
 }
 
-void CellDeleteOBJ(NCER_CELL *cell, int index, int nObj) {
+void CellDeleteOBJ(NCER *ncer, NCER_CELL *cell, int index, int nObj) {
 	int nMove = cell->nAttribs - (index + nObj);
 
 	cell->nAttribs -= nObj;
@@ -1166,7 +1166,7 @@ void CellDeleteOBJ(NCER_CELL *cell, int index, int nObj) {
 	memmove(cell->attr + (index) * 3, cell->attr + (index + nObj) * 3, nMove * 3 * sizeof(uint16_t));
 	cell->attr = realloc(cell->attr, cell->nAttribs * 3 * sizeof(uint16_t));
 
-	if (cell->exCharNames != NULL) {
+	if (ncer->useVramTransferCharacters || ncer->isEx2d) {
 		memmove(cell->exCharNames + index, cell->exCharNames + index + nObj, nMove * sizeof(uint32_t));
 		cell->exCharNames = realloc(cell->exCharNames, cell->nAttribs * sizeof(uint32_t));
 	}

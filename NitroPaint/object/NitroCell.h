@@ -125,9 +125,9 @@ void CellRegisterFormats(void);
 
 void CellInitBankCell(NCER *ncer, NCER_CELL *cell, int nObj);
 
-void CellInsertOBJ(NCER_CELL *cell, int index, int nObj);
+void CellInsertOBJ(NCER *ncer, NCER_CELL *cell, int index, int nObj);
 
-void CellDeleteOBJ(NCER_CELL *cell, int index, int nObj);
+void CellDeleteOBJ(NCER *ncer, NCER_CELL *cell, int index, int nObj);
 
 void CellGetObjDimensions(int shape, int size, int *width, int *height);
 

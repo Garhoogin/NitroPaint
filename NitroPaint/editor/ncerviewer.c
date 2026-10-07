@@ -606,7 +606,7 @@ static void CellViewerDeleteSelection(NCERVIEWERDATA *data) {
 		int i = data->selectedOBJ[data->nSelectedOBJ - 1];
 
 		//remove this OBJ
-		CellDeleteOBJ(cell, i, 1);
+		CellDeleteOBJ(data->ncer, cell, i, 1);
 		data->nSelectedOBJ--;
 	}
 
@@ -667,7 +667,7 @@ static void CellViewerDeleteEmptySelection(NCERVIEWERDATA *data) {
 
 		if (isTransparent) {
 			//remove OBJ
-			CellDeleteOBJ(cell, iSel, 1);
+			CellDeleteOBJ(data->ncer, cell, iSel, 1);
 
 			//remove from selection
 			CellViewerRemoveObjFromSelection(data, iSel);
@@ -990,7 +990,7 @@ static void CellViewerPaste(NCERVIEWERDATA *data) {
 			//paste to beginning of OBJ list (brings to front)
 			int nObj = attr->nObj[mappingId];
 			int offsObj = attr->offsObjData[mappingId];
-			CellInsertOBJ(cell, 0, nObj);
+			CellInsertOBJ(data->ncer, cell, 0, nObj);
 
 			for (int i = 0; i < nObj; i++) memcpy(cell->attr + i * 3, attr->attr + 4 * (offsObj + i), 6);
 			if (cell->exCharNames != NULL) {
@@ -2072,7 +2072,7 @@ static void CellViewerSendSelectionToFront(NCERVIEWERDATA *data) {
 	CellViewerDeleteSelection(data);
 
 	//send to front: copy OBJ to front of list
-	CellInsertOBJ(cell, 0, nSel);
+	CellInsertOBJ(data->ncer, cell, 0, nSel);
 	memcpy(cell->attr, sel, nSel * 6);
 	if (cell->exCharNames != NULL) memcpy(cell->exCharNames, exSel, nSel * sizeof(uint32_t));
 
@@ -2098,7 +2098,7 @@ static void CellViewerSendSelectionToBack(NCERVIEWERDATA *data) {
 	CellViewerDeleteSelection(data);
 
 	//send to front: copy OBJ to end of list
-	CellInsertOBJ(cell, cell->nAttribs, nSel);
+	CellInsertOBJ(data->ncer, cell, cell->nAttribs, nSel);
 	memcpy(cell->attr + 3 * (cell->nAttribs - nSel), sel, nSel * 6);
 	if (cell->exCharNames != NULL) memcpy(cell->exCharNames + cell->nAttribs - nSel, exSel, nSel * sizeof(uint32_t));
 
