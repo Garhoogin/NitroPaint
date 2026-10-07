@@ -985,7 +985,6 @@ void CellRender(
 	NCER      *ncer,
 	NCGR      *ncgr,
 	NCLR      *nclr,
-	int        cellIndex,
 	NCER_CELL *cell,
 	int        xOffs,
 	int        yOffs,
@@ -999,11 +998,6 @@ void CellRender(
 	//adjust (X,Y) offset to center of preview
 	xOffs += 256;
 	yOffs += 128;
-
-	//if cell is NULL, we use cell at cellInex.
-	if (cell == NULL) {
-		cell = &ncer->cells[cellIndex];
-	}
 
 	//compute inverse matrix parameters.
 	double invA = 1.0, invB = 0.0, invC = 0.0, invD = 1.0;

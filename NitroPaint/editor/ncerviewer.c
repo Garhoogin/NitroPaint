@@ -872,7 +872,7 @@ static void CellViewerCopyDIB(NCERVIEWERDATA *data) {
 	tmpCell->attr = selAttr;
 	tmpCell->exCharNames = exAttr;
 
-	CellRender(buf, NULL, data->ncer, ncgr, nclr, data->cell, tmpCell, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
+	CellRender(buf, NULL, data->ncer, ncgr, nclr, tmpCell, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
 	free(tmpCell);
 	free(selAttr);
 	if (exAttr != NULL) free(exAttr);
@@ -1056,7 +1056,7 @@ static void CellViewerPaste(NCERVIEWERDATA *data) {
 // ----- rendering helper routines
 
 static void CellViewerRenderCellByIndex(COLOR32 *buf, int *covbuf, NCER *ncer, NCGR *ncgr, NCLR *nclr, int cellno) {
-	CellRender(buf, covbuf, ncer, ncgr, nclr, cellno, NULL, 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
+	CellRender(buf, covbuf, ncer, ncgr, nclr, &ncer->cells[cellno], 0, 0, 1.0f, 0.0f, 0.0f, 1.0f, 0, 0);
 }
 
 static void CellViewerUpdateCellRender(NCERVIEWERDATA *data) {

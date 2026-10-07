@@ -653,7 +653,7 @@ void AnmRenderSequenceFrame(COLOR32 *dest, NANR *nanr, NCER *ncer, NCGR *ncgr, N
 
 	double mtx[2][2] = { { 1.0, 0.0 }, { 0.0, 1.0 } }, trans[2] = { 0 };
 	AnmCalcTransformMatrix(0.0, 0.0, sx, sy, rot, (double) frm.px, (double) frm.py, &mtx[0][0], trans);
-	CellRender(dest, NULL, ncer, ncgr, nclr, frm.index, cell,
+	CellRender(dest, NULL, ncer, ncgr, nclr, cell,
 		FloatToInt(trans[0]) + x, FloatToInt(trans[1]) + y,
 		mtx[0][0], mtx[0][1], mtx[1][0], mtx[1][1],
 		forceAffine, forceDoubleSize);

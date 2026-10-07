@@ -1448,7 +1448,7 @@ static void CLytEditorDrawCell(LYTEDITOR *data, NCLR *nclr, NCGR *ncgr, NCER *nc
 	//render cell
 	memset(data->cellbuf, 0, sizeof(data->cellbuf));
 	if (ncer != NULL && bnclCell->cell < ncer->nCells) {
-		CellRender(data->cellbuf, NULL, ncer, ncgr, nclr, bnclCell->cell, NULL, x - 256, y - 128, 1.0, 0.0, 0.0, 1.0, 0, 0);
+		CellRender(data->cellbuf, NULL, ncer, ncgr, nclr, &ncer->cells[bnclCell->cell], x - 256, y - 128, 1.0, 0.0, 0.0, 1.0, 0, 0);
 	}
 
 	//blit cell to window

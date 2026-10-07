@@ -150,8 +150,7 @@ void CellRender(
 	NCER      *ncer,           // cell data bank
 	NCGR      *ncgr,           // character graphics
 	NCLR      *nclr,           // color palette
-	int        cellIndex,      // cell index (required if cell is in the cell data bank)
-	NCER_CELL *cell,           // cell data (required if not in the cell data bank)
+	NCER_CELL *cell,           // cell to render
 	int        xOffs,          // horizontal displacement of render
 	int        yOffs,          // vertical displacement of render
 	double     a,              // affine parameter A
