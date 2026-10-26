@@ -10,6 +10,7 @@
 #include "exceptions.h"
 #include "ui.h"
 #include "ui/colorchooser.h"
+#include "ui/DumpGraphics.h"
 #include "palette.h"
 #include "object/filecommon.h"
 #include "object/combo2d.h"
@@ -1290,9 +1291,6 @@ static int NpGetTextureFormatForPreset(void) {
 	}
 }
 
-static HWND NpOpenObject(HWND hWnd, ObjHeader *object);
-static HWND NpOpenObjectAtPath(HWND hWnd, ObjHeader *object, const wchar_t *path);
-
 static void NpOpenCombo(HWND hWnd, COMBO2D *combo, const wchar_t *path) {
 	for (unsigned int i = 0; i < combo->links.length; i++) {
 		ObjHeader *object;
@@ -1306,7 +1304,7 @@ static void NpOpenCombo(HWND hWnd, COMBO2D *combo, const wchar_t *path) {
 	}
 }
 
-static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
+HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 	NITROPAINTSTRUCT *data = NpGetData(hWnd);
 	HWND h = NULL;
 
@@ -1376,7 +1374,7 @@ static HWND NpOpenObject(HWND hWnd, ObjHeader *object) {
 	return h;
 }
 
-static HWND NpOpenObjectAtPath(HWND hWndMain, ObjHeader *object, const wchar_t *path) {
+HWND NpOpenObjectAtPath(HWND hWndMain, ObjHeader *object, const wchar_t *path) {
 	HWND h = NpOpenObject(hWndMain, object);
 	if (h != NULL) EditorSetFile(h, path);
 
@@ -2378,6 +2376,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 							PreviewEnd();
 							CheckMenuItem(GetMenu(hWnd), ID_FILE_PREVIEWTARGET, MF_UNCHECKED);
 						}
+						break;
+					}
+					case ID_DEVICE_DUMPGRAPHICS:
+					{
+						DumpGraphicsDialog(hWnd);
 						break;
 					}
 					case ID_NTFT_NTFT40084:

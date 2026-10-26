@@ -175,6 +175,8 @@
     <ClCompile Include="compression\PuCrunch.c" />
     <ClCompile Include="compression\RLE.c" />
     <ClCompile Include="compression\VLX.c" />
+    <ClCompile Include="ui\DumpGraphics.c" />
+    <ClCompile Include="ext\isdif.c" />
     <ClCompile Include="io.c" />
     <ClCompile Include="object\Cell\CellExt2D.c" />
     <ClCompile Include="object\NitroLyt.c" />
@@ -229,6 +231,8 @@
     <ClInclude Include="bggen.h" />
     <ClInclude Include="compression\CxPrivate.h" />
     <ClInclude Include="compression\HuffCore.h" />
+    <ClInclude Include="ui\DumpGraphics.h" />
+    <ClInclude Include="ext\isdif.h" />
     <ClInclude Include="io.h" />
     <ClInclude Include="compression\LZCore.h" />
     <ClInclude Include="object\Cell\CellExt2D.h" />

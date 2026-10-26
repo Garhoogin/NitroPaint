@@ -55,6 +55,12 @@
     <Filter Include="Source Files\object\Cell">
       <UniqueIdentifier>{aafb30fb-35df-4f6c-9a2f-18ec46e538d0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\ext">
+      <UniqueIdentifier>{172273ca-aba5-4fa9-8c5b-79abafa7808f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ext">
+      <UniqueIdentifier>{ca947754-4368-4098-b305-59223aaffc24}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="nitropaint.c">
@@ -240,6 +246,12 @@
     <ClCompile Include="object\Cell\CellExt2D.c">
       <Filter>Source Files\object\Cell</Filter>
     </ClCompile>
+    <ClCompile Include="ext\isdif.c">
+      <Filter>Source Files\ext</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\DumpGraphics.c">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -403,6 +415,12 @@
     </ClInclude>
     <ClInclude Include="object\Cell\CellExt2D.h">
       <Filter>Header Files\object\Cell</Filter>
+    </ClInclude>
+    <ClInclude Include="ext\isdif.h">
+      <Filter>Header Files\ext</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\DumpGraphics.h">
+      <Filter>Header Files\ui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -95,6 +95,10 @@ static void ScriReadScreenData(NSCR *nscr, const void *src, int srcSize) {
 	ScriReadScreenDataAs(nscr, src, srcSize, nscr->fmt, 1);
 }
 
+void ScrReadScreenData(NSCR *nscr, const void *src, unsigned int srcSize) {
+	ScriReadScreenData(nscr, src, srcSize);
+}
+
 static void ScriWriteScreenDataAs(NSCR *nscr, BSTREAM *stream, int fmt, int swizzle) {
 	switch (fmt) {
 		case SCREENFORMAT_TEXT:

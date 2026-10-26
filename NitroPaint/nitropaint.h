@@ -212,6 +212,9 @@ int getPathCount(LPCWSTR paths);
 //
 void getPathFromPaths(LPCWSTR paths, int index, WCHAR *path);
 
+HWND NpOpenObject(HWND hWnd, ObjHeader *object);
+HWND NpOpenObjectAtPath(HWND hWnd, ObjHeader *object, const wchar_t *path);
+
 //
 // Get NitroPaint struct
 //

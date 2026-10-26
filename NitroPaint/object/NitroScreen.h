@@ -48,6 +48,8 @@ int ScrIsValidBin(const unsigned char *buffer, unsigned int size);
 
 void ScrRegisterFormats(void);
 
+void ScrReadScreenData(NSCR *nscr, const void *src, unsigned int srcSize);
+
 //
 // Render a single tile of a screen to 32-bit output, with respect to character
 // base for quirks in some game setups.
