@@ -14,6 +14,7 @@ static int (*pfnIsdSelectProc) (IsdDevice *pDev, IsdProc proc) = NULL;
 static int (*pfnIsdReadMem) (IsdDevice *pDev, void *dest, uint32_t src, size_t len) = NULL;
 static int (*pfnIsdWriteMem) (IsdDevice *pDev, uint32_t dest, const void *src, size_t len) = NULL;
 static int (*pfnIsdMonGetStatus) (IsdDevice *pDev, IsdMonStatus *pStatus) = NULL;
+static void (*pfnIsdGetSerial) (IsdDevice *pDev, unsigned char *pSerial) = NULL;
 
 static IsdDevice *gDev = NULL;
 
@@ -34,6 +35,7 @@ int IsdifInit(void) {
 	if (!(pfnIsdReadMem      = (VOID FAR *) GetProcAddress(sMod, "IsdReadMem"     ))) return 0;
 	if (!(pfnIsdWriteMem     = (VOID FAR *) GetProcAddress(sMod, "IsdWriteMem"    ))) return 0;
 	if (!(pfnIsdMonGetStatus = (VOID FAR *) GetProcAddress(sMod, "IsdMonGetStatus"))) return 0;
+	if (!(pfnIsdGetSerial    = (VOID FAR *) GetProcAddress(sMod, "IsdGetSerial"   ))) return 0;
 
 	sInit = 1;
 	return 1;
@@ -83,6 +85,11 @@ int IsdifWriteMem(uint32_t dest, const void *src, size_t size) {
 
 int IsdifGetMonStatus(IsdMonStatus *pStatus) {
 	return pfnIsdMonGetStatus(gDev, pStatus);
+}
+
+void IsdifGetSerial(unsigned char *buf) {
+	pfnIsdGetSerial(gDev, buf);
+	buf[9] = 0; // terminator
 }
 
 IsdStatus IsdGetLastError(void) {

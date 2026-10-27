@@ -137,5 +137,6 @@ int IsdifResume(void);
 int IsdifReadMem(void *dest, uint32_t src, size_t size);
 int IsdifWriteMem(uint32_t dest, const void *src, size_t size);
 int IsdifGetMonStatus(IsdMonStatus *pStatus);
+void IsdifGetSerial(unsigned char *buf);
 
 IsdStatus IsdGetLastError(void);

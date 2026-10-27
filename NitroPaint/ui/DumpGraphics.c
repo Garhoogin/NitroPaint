@@ -939,7 +939,13 @@ void DumpGraphicsDialog(HWND hWnd) {
 		return;
 	}
 
-	UiDlgCreateModal(hWnd, DumpGraphicsDialogProc, L"Dump Graphics", 330, 368, &data);
+	unsigned char serial[ISD_SERIAL_SIZE];
+	IsdifGetSerial(serial);
+
+	wchar_t title[32];
+	wsprintfW(title, L"Dump Graphics - %S", serial);
+
+	UiDlgCreateModal(hWnd, DumpGraphicsDialogProc, title, 330, 368, &data);
 
 	IsdifClose();
 }
