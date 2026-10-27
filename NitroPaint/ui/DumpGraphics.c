@@ -10,6 +10,9 @@
 #include "object/NitroCell.h"
 
 
+#define ISD_POLLING_INTERVAL   200
+
+
 // ----- VRAM defs
 
 typedef enum GxVramBank_ {
@@ -604,8 +607,9 @@ typedef struct DumpGraphicsDialogData_ {
 
 	GxRegs regsMain;
 	GxRegs regsSub;
-	GxVramCnt vramCnt;
 	IsdMonStatus initMonStatus;
+	int stop;
+	int connected;
 } DumpGraphicsDialogData;
 
 static void DumpGraphics(DumpGraphicsDialogData *data, int sub, int obj, int bgLayer) {
@@ -666,7 +670,8 @@ static void DumpGraphics(DumpGraphicsDialogData *data, int sub, int obj, int bgL
 
 
 
-static void DumpGraphicsDialogMakeAllInvalid(DumpGraphicsDialogData *data) {
+static void DumpGraphicsDialogOnTargetDisconnect(DumpGraphicsDialogData *data) {
+	data->connected = 0;
 	EnableWindow(data->hWndStop, FALSE);
 	EnableWindow(data->hWndResume, FALSE);
 	EnableWindow(data->hWndDump, FALSE);
@@ -684,7 +689,7 @@ static void DumpGraphicsDialogHandleError(DumpGraphicsDialogData *data, const wc
 		case ISD_STATUS_COMM_CLOSE:
 		case ISD_STATUS_IRREGULAR:
 			MessageBox(data->hWnd, L"The target connection is interrupted.", L"NitroPaint", MB_ICONERROR);
-			DumpGraphicsDialogMakeAllInvalid(data);
+			DumpGraphicsDialogOnTargetDisconnect(data);
 			break;
 		default:
 			MessageBox(data->hWnd, genericMsg, L"NitroPaint", MB_ICONERROR);
@@ -741,6 +746,8 @@ static void DumpGraphicsGetLayerStatusText(wchar_t *buf, const GxRegs *regs, int
 }
 
 static void DumpGraphicsDialogUpdateUiForMonStatus(DumpGraphicsDialogData *data, int stop) {
+	data->stop = stop;
+
 	if (stop) {
 		//get layer texts
 		for (int i = 0; i < 10; i++) {
@@ -771,15 +778,19 @@ static void DumpGraphicsDialogUpdateUiForMonStatus(DumpGraphicsDialogData *data,
 	}
 }
 
+static int DumpGraphicsDialogReadGxRegs(DumpGraphicsDialogData *data) {
+	if (!IsdifReadMem(&data->regsMain, 0x04000000, sizeof(GxRegs))) return 0;
+	if (!IsdifReadMem(&data->regsSub,  0x04001000, sizeof(GxRegs))) return 0;
+	return 1;
+}
+
 static void DumpGraphicsDialogOnStop(HWND hWnd, HWND hWndCtl, int cmd, void *param) {
 	DumpGraphicsDialogData *data = (DumpGraphicsDialogData *) param;
 
 	if (!IsdifStop()) goto Error;
 
 	//get the state of graphics
-	if (!IsdifReadMem(&data->regsMain, 0x04000000, sizeof(GxRegs   ))) goto Error;
-	if (!IsdifReadMem(&data->regsSub,  0x04001000, sizeof(GxRegs   ))) goto Error;
-	if (!IsdifReadMem(&data->vramCnt,  0x04000240, sizeof(GxVramCnt))) goto Error;
+	if (!DumpGraphicsDialogReadGxRegs(data)) goto Error;
 
 	DumpGraphicsDialogUpdateUiForMonStatus(data, 1);
 	return;
@@ -836,6 +847,7 @@ static LRESULT CALLBACK DumpGraphicsDialogProc(HWND hWnd, UINT msg, WPARAM wPara
 	switch (msg) {
 		case WM_CREATE:
 		{
+			data->connected = 1;
 			data->hWnd = hWnd;
 			data->hWndStop = CreateButton(hWnd, L"Stop", 10, 10, 100, 22, FALSE);
 			data->hWndResume = CreateButton(hWnd, L"Resume", 115, 10, 100, 22, FALSE);
@@ -869,20 +881,38 @@ static LRESULT CALLBACK DumpGraphicsDialogProc(HWND hWnd, UINT msg, WPARAM wPara
 			//check the initial monitor state.
 			if (data->initMonStatus.fiqEnter) {			
 				//get the state of graphics
-				int status = 1;
-				if (status) status = IsdifReadMem(&data->regsMain, 0x04000000, sizeof(GxRegs   ));
-				if (status) status = IsdifReadMem(&data->regsSub,  0x04001000, sizeof(GxRegs   ));
-				if (status) status = IsdifReadMem(&data->vramCnt,  0x04000240, sizeof(GxVramCnt));
-				if (status) DumpGraphicsDialogUpdateUiForMonStatus(data, 1);
-
-				//fail
-				if (!status) {
+				if (DumpGraphicsDialogReadGxRegs(data)) {
+					DumpGraphicsDialogUpdateUiForMonStatus(data, 1);
+				} else {
+					//fail
 					DumpGraphicsDialogHandleError(data, L"The program could not be halted.");
 				}
 			} else {
 				DumpGraphicsDialogUpdateUiForMonStatus(data, 0);
 			}
 
+			//set polling timer
+			SetTimer(hWnd, 1, ISD_POLLING_INTERVAL, NULL);
+
+			break;
+		}
+		case WM_TIMER:
+		{
+			IsdMonStatus status;
+			if (!IsdifGetMonStatus(&status)) {
+				//target disconnect
+				DumpGraphicsDialogOnTargetDisconnect(data);
+				break;
+			}
+
+			//check break status updated
+			if (status.fiqEnter && !data->stop) {
+				if (DumpGraphicsDialogReadGxRegs(data)) {
+					DumpGraphicsDialogUpdateUiForMonStatus(data, 1);
+				}
+			} else if (!status.fiqEnter && data->stop) {
+				DumpGraphicsDialogUpdateUiForMonStatus(data, 0);
+			}
 			break;
 		}
 	}
