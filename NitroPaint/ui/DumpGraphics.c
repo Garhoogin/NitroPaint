@@ -294,11 +294,32 @@ typedef enum GxBgType_ {
 	BGTYPE_AFFINE,
 	BGTYPE_AFFINEEXT,
 	BGTYPE_LARGEBITMAP,
-	BGTYPE_INVALID
+	BGTYPE_INVALID,
+	BGTYPE_3D
 } GxBgType;
 
-static GxBgType GxdGetBgType(int iLayer, int bgMode, int bg03d) {
+typedef struct GxBgInfo_ {
+	GxBgType type;        // broad type of BG
+	unsigned int width;   // height, in pixels
+	unsigned int height;  // width, in pixels
+
+	int hasBgScreen;      // whether the BG has BG screen data
+	int screenFormat;     // ^ BG screen format
+	int colorMode;        // ^ BG color mode
+
+	int extPlttSlot;      // extended palette slot (or -1 if not used)
+
+	unsigned int depth;   // bit depth of graphics data
+	uint32_t ofsChar;     // byte address in BG VRAM of character/bitmap data
+	uint32_t ofsScrn;     // byte address in BG VRAM of screen data (if exists)
+} GxBgInfo;
+
+static GxBgType GxdGetBgType(uint32_t DISPCNT, int iLayer) {
+	uint32_t bgMode = (DISPCNT >> 0) & 0x07;
+	uint32_t bg03d  = (DISPCNT >> 3) & 0x01;
 	if (bgMode > 6) return BGTYPE_INVALID;
+
+	if (iLayer == 0 && bg03d) return BGTYPE_3D;
 
 	static const unsigned char modes[7][4] = {
 		{ BGTYPE_TEXT,    BGTYPE_TEXT,    BGTYPE_TEXT,        BGTYPE_TEXT      },
@@ -312,176 +333,148 @@ static GxBgType GxdGetBgType(int iLayer, int bgMode, int bg03d) {
 	return modes[bgMode][iLayer];
 }
 
-static void GxdGetBgSize(GxBgType bgType, int size, int colorMode, unsigned int *pWidth, unsigned int *pHeight) {
-	*pWidth = *pHeight = 0;
+static void GxdGetBgInfo(const GxRegs *regs, int iLayer, GxBgInfo *info) {
+	uint32_t DISPCNT = regs->DISPCNT;
+	uint16_t bgcnt = regs->BGxCNT[iLayer];
 
-	switch (bgType) {
-		case BGTYPE_TEXT:
-			switch (size) {
-				case 0: *pWidth = 256; *pHeight = 256; break;
-				case 1: *pWidth = 512; *pHeight = 256; break;
-				case 2: *pWidth = 256; *pHeight = 512; break;
-				case 3: *pWidth = 512; *pHeight = 512; break;
-			}
-			break;
-		case BGTYPE_AFFINE:
-			switch (size) {
-				case 0: *pWidth = 128; *pHeight = 128; break;
-				case 1: *pWidth = 256; *pHeight = 256; break;
-				case 2: *pWidth = 512; *pHeight = 512; break;
-				case 3: *pWidth = 1024; *pHeight = 1024; break;
-			}
-			break;
-		case BGTYPE_AFFINEEXT:
-			if (colorMode == 0) {
-				//character BG
-				switch (size) {
-					case 0: *pWidth = 128; *pHeight = 128; break;
-					case 1: *pWidth = 256; *pHeight = 256; break;
-					case 2: *pWidth = 512; *pHeight = 512; break;
-					case 3: *pWidth = 1024; *pHeight = 1024; break;
-				}
-			} else {
-				//bitmap (256-color or direct color) BG
-				switch (size) {
-					case 0: *pWidth = 128; *pHeight = 128; break;
-					case 1: *pWidth = 256; *pHeight = 256; break;
-					case 2: *pWidth = 512; *pHeight = 256; break;
-					case 3: *pWidth = 256; *pHeight = 512; break;
-				}
-			}
-			break;
-		case BGTYPE_LARGEBITMAP:
-			switch (size) {
-				case 0: *pWidth = 512; *pHeight = 1024; break;
-				case 1: *pWidth = 1024; *pHeight = 512; break;
-				case 2: *pWidth = 0; *pHeight = 0; break;  // invalid size
-				case 3: *pWidth = 0; *pHeight = 0; break;  // invalid size
-			}
-			break;
-	}
-}
+	uint32_t charBaseOffset = (DISPCNT >> 24) & 0x07;
+	uint32_t scrBaseOffset  = (DISPCNT >> 27) & 0x07;
+	uint32_t useExtPltt     = (DISPCNT >> 30) & 0x01;
+	
+	uint32_t charBaseBlock  = (bgcnt >>  2) & 0x0F;
+	uint32_t scrBaseBlock   = (bgcnt >>  8) & 0x1F;
+	uint32_t colorMode      = (bgcnt >>  7) & 0x01;
+	uint32_t size           = (bgcnt >> 14) & 0x03;
 
-static int GxdGetBgScreenFormatAndColorMode(GxBgType bgType, uint16_t cnt, int *pFmt, int *pColorMode) {
-	switch (bgType) {
+	static const uint16_t sizeText[4][2] = {
+		{ 256, 256 }, { 512, 256 }, { 256, 512 }, { 512, 512 }
+	};
+	static const uint16_t sizeAffine[4][2] = {
+		{ 128, 128 }, { 256, 256 }, { 512, 512 }, { 1024, 1024 }
+	};
+	static const uint16_t sizeBitmap[4][2] = {
+		{ 128, 128 }, { 256, 256 }, { 512, 256 }, { 256, 512 }
+	};
+	static const uint16_t sizeLargeBitmap[4][2] = {
+		{ 512, 1024 }, { 1024, 512 }, { 0, 0 }, { 0, 0 }
+	};
+
+	info->type = GxdGetBgType(DISPCNT, iLayer);
+
+	//decode BG screen format and size
+	switch (info->type) {
 		case BGTYPE_TEXT:
-			*pFmt = SCREENFORMAT_TEXT;
-			if (cnt & 0x80) {
+			info->hasBgScreen = 1;
+			info->screenFormat = SCREENFORMAT_TEXT;
+			if (colorMode) {
 				//color-mode: 8bpp
-				*pColorMode = SCREENCOLORMODE_256x1;
+				info->colorMode = SCREENCOLORMODE_256x1;
+				info->depth = 8;
 			} else {
 				//color-mode: 4bpp
-				*pColorMode = SCREENCOLORMODE_16x16;
+				info->colorMode = SCREENCOLORMODE_16x16;
+				info->depth = 4;
 			}
-			return 1;
+
+			info->width  = sizeText[size][0];
+			info->height = sizeText[size][1];
+			break;
+
 		case BGTYPE_AFFINE:
-			*pFmt = SCREENFORMAT_AFFINE;
-			*pColorMode = SCREENCOLORMODE_256x1;
-			return 1;
+			info->hasBgScreen = 1;
+			info->screenFormat = SCREENFORMAT_AFFINE;
+			info->colorMode = SCREENCOLORMODE_256x1;
+			info->depth = 8;
+			
+			info->width  = sizeAffine[size][0];
+			info->height = sizeAffine[size][1];
+			break;
+
 		case BGTYPE_AFFINEEXT:
-			if (cnt & 0x80) {
+			if (colorMode) {
 				//bitmap, no BG screen data
-				return 0;
+				info->hasBgScreen = 0;
+				
+				if (bgcnt & 0x04) {
+					//direct-color bitmap
+					info->depth = 16;
+				} else {
+					//8bpp bitmap
+					info->depth = 8;
+				}
+
+				info->width  = sizeBitmap[size][0];
+				info->height = sizeBitmap[size][1];
 			} else {
-				//8bpp affine extended
-				*pFmt = SCREENFORMAT_AFFINEEXT;
-				*pColorMode = SCREENCOLORMODE_256x16;
+				//8bpp affine extended character BG
+				info->hasBgScreen = 1;
+				info->screenFormat = SCREENFORMAT_AFFINEEXT;
+				info->colorMode = SCREENCOLORMODE_256x16;
+				info->depth = 8;
+
+				info->width  = sizeAffine[size][0];
+				info->height = sizeAffine[size][1];
 			}
-			return 1;
+			break;
+
 		case BGTYPE_LARGEBITMAP:
-			return 0; // no BG screen data
-	}
+			//large bitmap: 8bpp, no BG screen
+			info->hasBgScreen = 0;
+			info->depth = 8;
 
-	// unsupported format
-	return 0;
-}
-
-static unsigned int GxdGetBgGraphicsDepth(GxBgType bgType, uint16_t cnt) {
-	switch (bgType) {
-		case BGTYPE_TEXT:
-			if (cnt & 0x80) return 8;
-			else            return 4;
-		case BGTYPE_AFFINE:
-			return 8;
-		case BGTYPE_AFFINEEXT:
-			if (cnt & 0x80) {
-				if (cnt & 0x04) return 16;
-				else            return  8;
-			} else {
-				return 8;
-			}
-		case BGTYPE_LARGEBITMAP:
-			return 8;
-	}
-	return 0; // not support
-}
-
-static int GxdGetBgExtPlttSlot(const GxRegs *regs, int bgLayer) {
-	uint32_t bgMode     = (regs->DISPCNT >>  0) & 0x07;
-	uint32_t useExtPltt = (regs->DISPCNT >> 30) & 0x01;
-
-	//if ext pltt is enabled in DISPCNT
-	if (!useExtPltt) return -1;
-
-	uint16_t bgcnt = regs->BGxCNT[bgLayer];
-	GxBgType bgType = GxdGetBgType(bgLayer, bgMode, 0);
-	unsigned int bpp = GxdGetBgGraphicsDepth(bgType, bgcnt);
-
-	//not ext pltt if the bit depth is not 8
-	if (bpp != 8) return -1;
-
-	int extPlttSlot = -1;
-	switch (bgLayer) {
-		case 0:
-			if (bgcnt & 0x2000) extPlttSlot = 2;
-			else                extPlttSlot = 0;
+			info->width  = sizeLargeBitmap[size][0];
+			info->height = sizeLargeBitmap[size][1];
 			break;
-		case 1:
-			if (bgcnt & 0x2000) extPlttSlot = 3;
-			else                extPlttSlot = 1;
-			break;
-		case 2:
-			extPlttSlot = 2;
-			break;
-		case 3:
-			extPlttSlot = 3;
+
+		default:
+			//not supported
+			info->hasBgScreen = 0;
+			info->depth = 0;
+
+			info->width  = 0;
+			info->height = 0;
 			break;
 	}
-	return extPlttSlot;
-}
 
-static IsdStatus GxdDumpCharacterBG(NCGR **pNcgr, const GxRegs *regs, int sub, int iLayer) {
-	uint32_t bgMode         = (regs->DISPCNT >>  0) & 0x07;
-	uint32_t charBaseOffset = (regs->DISPCNT >> 24) & 0x07;
-	uint32_t scrBaseOffset  = (regs->DISPCNT >> 27) & 0x07;
-	uint32_t charBaseBlock  = (regs->BGxCNT[iLayer] >> 2) & 0x0F;
-	uint32_t scrBaseBlock   = (regs->BGxCNT[iLayer] >> 8) & 0x1F;
+	//get graphics location info
+	uint32_t chrAddr = (charBaseOffset * 0x10000) + (charBaseBlock * 0x4000);
+	uint32_t scrAddr = (scrBaseOffset  * 0x10000) + (scrBaseBlock  *  0x800);
 
-	uint32_t vramAddr = sub ? 0x06200000 : 0x06000000;
-	uint32_t chrAddr = vramAddr + (charBaseOffset * 0x10000) + (charBaseBlock * 0x4000);
-	uint32_t scrAddr = vramAddr + (scrBaseOffset  * 0x10000) + (scrBaseBlock  *  0x800);
+	if (info->hasBgScreen) {
+		//fields as normal
+		info->ofsChar = chrAddr;
+		info->ofsScrn = scrAddr;
+	} else {
+		//screen data points to graphics
+		info->ofsChar = scrAddr;
+	}
 
-	//get BG screen type
-	int hasBgScreen, screenFormat, colorMode;
-	GxBgType bgType = GxdGetBgType(iLayer, bgMode, 0);
-	hasBgScreen = GxdGetBgScreenFormatAndColorMode(bgType, regs->BGxCNT[iLayer], &screenFormat, &colorMode);
+	//get the extended palette slot info
+	if (!useExtPltt || info->depth != 8) {
+		//the extended palette is only applicable in 8 bits depth.
+		info->extPlttSlot = -1;
+	} else {
+		//BG0,1 have slot select bit. BG2,3 have fixed slot.
+		info->extPlttSlot = iLayer;
 
-	//get the bit depth and graphics size
-	unsigned int bpp = 4, charX = 32, charY = 32;
-	if (hasBgScreen) {
-		//bit depth with BG screen
-		switch (colorMode) {
-			case SCREENCOLORMODE_16x16:
-				bpp = 4;
-				break;
-			case SCREENCOLORMODE_256x1:
-			case SCREENCOLORMODE_256x16:
-				bpp = 8;
-				break;
+		if (iLayer == 0 || iLayer == 1) {
+			if (bgcnt & 0x2000) info->extPlttSlot += 2;
 		}
+	}
+}
 
-		//graphics size
-		switch (screenFormat) {
+static IsdStatus GxdDumpCharacterBG(NCGR **pNcgr, const GxBgInfo *info, int sub) {
+	//no support for 16bpp direct
+	if (info->depth == 16 || info->depth == 0) {
+		*pNcgr = NULL;
+		return ISD_STATUS_OK;
+	}
+
+	//determine the graphics size of export character
+	unsigned int charX = 32, charY = 32;
+	if (info->hasBgScreen) {
+		//dimensions of character export based on the BG screen format
+		switch (info->screenFormat) {
 			case SCREENFORMAT_TEXT:
 			case SCREENFORMAT_AFFINEEXT:
 				charX = 32;
@@ -493,46 +486,23 @@ static IsdStatus GxdDumpCharacterBG(NCGR **pNcgr, const GxRegs *regs, int sub, i
 				break;
 		}
 	} else {
-		//bit depth with no BG screen
-		switch (bgType) {
-			case BGTYPE_LARGEBITMAP:
-				bpp = 8;
-				break;
-			case BGTYPE_AFFINEEXT:
-			{
-				if (regs->BGxCNT[iLayer] & 0x80) {
-					if (regs->BGxCNT[iLayer] & 0x04) bpp = 16;
-					else                             bpp =  8;
-				} else {
-					bpp = 8;
-				}
-				break;
-			}
-		}
-
-		int width, height;
-		GxdGetBgSize(bgType, (regs->BGxCNT[iLayer] >> 14) & 0x03, (regs->BGxCNT[iLayer] >> 7) & 0x01, &width, &height);
-
-		charX = width / 8;
-		charY = height / 8;
+		//dimensions of character export are the BG size
+		charX = info->width  / 8;
+		charY = info->height / 8;
 	}
 
-	//no support for 16bpp direct
-	if (bpp == 16) {
-		*pNcgr = NULL;
-		return ISD_STATUS_OK;
-	}
+	uint32_t vramAddr = sub ? 0x06200000 : 0x06000000;
 
-	unsigned int charSize = (charX * charY) * (8 * bpp);
+	unsigned int charSize = (charX * charY) * (8 * info->depth);
 	unsigned char *buf = (unsigned char *) calloc(charSize, 1);
-	IsdifReadMem(buf, hasBgScreen ? chrAddr : scrAddr, charSize);
+	IsdifReadMem(buf, vramAddr + info->ofsChar, charSize);
 
 	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_NCGR);
-	ncgr->nBits = bpp;
+	ncgr->nBits = info->depth;
 	ncgr->tilesX = charX;
 	ncgr->tilesY = charY;
 	ncgr->nTiles = charX * charY;
-	ncgr->bitmap = !hasBgScreen;
+	ncgr->bitmap = !info->hasBgScreen;
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ChrAllocGraphics(ncgr);
 	ChrReadGraphics(ncgr, buf);
@@ -542,38 +512,25 @@ static IsdStatus GxdDumpCharacterBG(NCGR **pNcgr, const GxRegs *regs, int sub, i
 	return ISD_STATUS_OK;
 }
 
-static IsdStatus GxdDumpBgScreen(NSCR **pNscr, const GxRegs *regs, int sub, int iLayer) {
-	uint32_t bgMode         = (regs->DISPCNT >>  0) & 0x07;
-	uint32_t scrBaseOffset  = (regs->DISPCNT >> 27) & 0x07;
-	uint32_t scrBaseBlock   = (regs->BGxCNT[iLayer] >> 8) & 0x1F;
-
-	uint32_t vramAddr = sub ? 0x06200000 : 0x06000000;
-	uint32_t scrAddr = vramAddr + (scrBaseOffset  * 0x10000) + (scrBaseBlock  *  0x800);
-
-	//get BG type
-	int hasBgScreen, screenFormat, colorMode;
-	GxBgType bgType = GxdGetBgType(iLayer, bgMode, 0);
-	hasBgScreen = GxdGetBgScreenFormatAndColorMode(bgType, regs->BGxCNT[iLayer], &screenFormat, &colorMode);
-	if (!hasBgScreen) {
+static IsdStatus GxdDumpBgScreen(NSCR **pNscr, const GxBgInfo *info, int sub) {
+	if (!info->hasBgScreen) {
 		//no BG screen
 		*pNscr = NULL;
 		return ISD_STATUS_OK;
 	}
 
-	//get size
-	unsigned int width, height;
-	GxdGetBgSize(bgType, (regs->BGxCNT[iLayer] >> 14) & 0x03, (regs->BGxCNT[iLayer] >> 7) & 0x01, &width, &height);
+	uint32_t vramAddr = sub ? 0x06200000 : 0x06000000;
 
-	unsigned int unitSize = (screenFormat == SCREENFORMAT_AFFINE) ? 1 : 2;
-	unsigned int bufSize = (width / 8) * (height / 8) * (unitSize);
+	unsigned int unitSize = (info->screenFormat == SCREENFORMAT_AFFINE) ? 1 : 2;
+	unsigned int bufSize = (info->width / 8) * (info->height / 8) * (unitSize);
 	unsigned char *buf = (unsigned char *) calloc(bufSize, 1);
-	IsdifReadMem(buf, scrAddr, bufSize);
+	IsdifReadMem(buf, vramAddr + info->ofsScrn, bufSize);
 
 	NSCR *nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NSCR_TYPE_NSCR);
-	nscr->fmt = screenFormat;
-	nscr->colorMode = colorMode;
-	nscr->tilesX = width / 8;
-	nscr->tilesY = height / 8;
+	nscr->fmt = info->screenFormat;
+	nscr->colorMode = info->colorMode;
+	nscr->tilesX = info->width  / 8;
+	nscr->tilesY = info->height / 8;
 	nscr->dataSize = nscr->tilesX * nscr->tilesY * sizeof(uint16_t);
 	nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
 	ScrReadScreenData(nscr, buf, bufSize);
@@ -581,14 +538,6 @@ static IsdStatus GxdDumpBgScreen(NSCR **pNscr, const GxRegs *regs, int sub, int 
 
 	*pNscr = nscr;
 	return ISD_STATUS_OK;
-}
-
-static void SetAttributesForBgScreen(NSCR *nscr, NCGR *ncgr, NCLR *nclr) {
-	if (ncgr == NULL) return;
-
-	unsigned int depth = ncgr->nBits;
-
-	if (nclr != NULL) nclr->nBits = depth;
 }
 
 
@@ -613,14 +562,7 @@ typedef struct DumpGraphicsDialogData_ {
 } DumpGraphicsDialogData;
 
 static void DumpGraphics(DumpGraphicsDialogData *data, int sub, int obj, int bgLayer) {
-	GxRegs regs = { 0 };
-	if (sub) {
-		memcpy(&regs, &data->regsSub, sizeof(GxRegs));
-	} else {
-		memcpy(&regs, &data->regsMain, sizeof(GxRegs));
-	}
-
-	unsigned char enableObjExtPltt = (regs.DISPCNT >> 31) & 0x01;
+	GxRegs *regs = sub ? &data->regsSub : &data->regsMain;
 
 	//construct the object
 	NCLR *nclr = NULL;
@@ -630,13 +572,14 @@ static void DumpGraphics(DumpGraphicsDialogData *data, int sub, int obj, int bgL
 
 	if (obj) {
 		//get the OAM
-		GxdDumpOAM(&ncer, sub, regs.DISPCNT);
+		GxdDumpOAM(&ncer, sub, regs->DISPCNT);
 
 		//get the character
-		GxdDumpCharacterOBJ(&ncgr, sub, regs.DISPCNT);
+		GxdDumpCharacterOBJ(&ncgr, sub, regs->DISPCNT);
 
 		//get the palette
 		int useExtPltt = 0;
+		unsigned char enableObjExtPltt = (regs->DISPCNT >> 31) & 0x01;
 		if (GxdGetBitDepthForOAM(ncer) == 8 && enableObjExtPltt) {
 			useExtPltt = 1;
 		}
@@ -645,19 +588,18 @@ static void DumpGraphics(DumpGraphicsDialogData *data, int sub, int obj, int bgL
 		//setting the graphics bit depth based on OAM data
 		GxdSetAttributesForOAM(ncer, ncgr, nclr);
 	} else {
-		int extPlttSlot = GxdGetBgExtPlttSlot(&regs, bgLayer);
+		GxBgInfo bgInfo;
+		GxdGetBgInfo(regs, bgLayer, &bgInfo);
 
 		//get the palette
-		GxdDumpPalette(&nclr, sub, 0, extPlttSlot != -1, extPlttSlot);
+		GxdDumpPalette(&nclr, sub, 0, bgInfo.extPlttSlot != -1, bgInfo.extPlttSlot);
+		if (nclr != NULL) nclr->nBits = bgInfo.depth;
 
 		//get the character
-		GxdDumpCharacterBG(&ncgr, &regs, sub, bgLayer);
+		GxdDumpCharacterBG(&ncgr, &bgInfo, sub);
 
 		//get the BG screen
-		GxdDumpBgScreen(&nscr, &regs, sub, bgLayer);
-
-		//setting the graphics bit depth based on screen data
-		SetAttributesForBgScreen(nscr, ncgr, nclr);
+		GxdDumpBgScreen(&nscr, &bgInfo, sub);
 	}
 
 	//open
@@ -698,33 +640,28 @@ static void DumpGraphicsDialogHandleError(DumpGraphicsDialogData *data, const wc
 }
 
 static void DumpGraphicsGetLayerStatusText(wchar_t *buf, const GxRegs *regs, int bgLayer) {
-	uint32_t DISPCNT = regs->DISPCNT;
-	uint32_t bgMode    = (DISPCNT >> 0) & 0x07;
-	uint32_t bg03d     = (DISPCNT >> 3) & 0x01;
-	uint32_t layerMask = (DISPCNT >> 8) & 0x1F;
+	uint32_t layerMask = (regs->DISPCNT >> 8) & 0x1F;
 
 	if (bgLayer == -1) {
 		//OBJ
 		if (!(layerMask & 0x10)) wsprintfW(buf, L"Disabled");
-		else wsprintfW(buf, L"Enabled");
+		else                     wsprintfW(buf, L"Enabled");
 	} else {
 		//BGx
-		uint16_t bgcnt = regs->BGxCNT[bgLayer];
+		GxBgInfo info;
+		GxdGetBgInfo(regs, bgLayer, &info);
 
 		if (!(layerMask & (1 << bgLayer))) {
 			//layer disable
 			wsprintfW(buf, L"Disabled");
-		} else if (bgLayer == 0 && bg03d) {
+		} else if (info.type == BGTYPE_3D) {
 			//BG0 3D
 			wsprintfW(buf, L"3D");
 		} else {
 			//normal BG
-			unsigned int width, height;
-			GxBgType bgType = GxdGetBgType(bgLayer, bgMode, bg03d);
-			GxdGetBgSize(bgType, (bgcnt >> 14) & 0x03, (bgcnt >> 7) & 0x01, &width, &height);
 
 			const char *name = "";
-			switch (bgType) {
+			switch (info.type) {
 				case BGTYPE_TEXT:
 					name = "Text";
 					break;
@@ -739,7 +676,7 @@ static void DumpGraphicsGetLayerStatusText(wchar_t *buf, const GxRegs *regs, int
 					break;
 			}
 
-			wsprintfW(buf, L"%S (%d x %d)", name, width, height);
+			wsprintfW(buf, L"%S (%d x %d)", name, info.width, info.height);
 		}
 	}
 
