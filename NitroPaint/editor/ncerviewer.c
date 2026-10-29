@@ -2226,6 +2226,15 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 		int nObjCharsX = splitWidth / 8;
 		int nObjCharsY = splitHeight / 8;
 
+		//base position of new OBJ
+		int baseX = info.x, baseY = info.y;
+		if (info.doubleSize) {
+			//when double size, graphics start at X+(width/2). With new OBJ being doublesize,
+			//subtract 1/2 new size from position.
+			baseX += (info.width  - splitWidth ) / 2;
+			baseY += (info.height - splitHeight) / 2;
+		}
+
 		//insert new OBJ
 		int nObjPrev = cell->nAttribs;
 		int nObjInsert = nObjSplit - 1;
@@ -2243,12 +2252,12 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 		//write new OBJ attributes
 		for (int objX = 0; objX < nObjX; objX++) {
 			for (int objY = 0; objY < nObjY; objY++) {
-				int thisX = info.x + objX * splitWidth;
-				int thisY = info.y + objY * splitHeight;
+				int thisX = baseX + objX * splitWidth;
+				int thisY = baseY + objY * splitHeight;
 
 				//when OBJ flip modes are used, we'll adjust the position of the subdivided OBJ.
-				if (info.flipX) thisX = info.x + info.width - (objX + 1) * splitWidth;
-				if (info.flipY) thisY = info.y + info.height - (objY + 1) * splitHeight;
+				if (info.flipX) thisX = baseX + info.width  - (objX + 1) * splitWidth;
+				if (info.flipY) thisY = baseY + info.height - (objY + 1) * splitHeight;
 
 				//set location
 				attr[0] = (attr[0] & ~0x00FF) | (thisY & 0x00FF);
@@ -2256,7 +2265,7 @@ static void CellViewerSubdivideSelection(NCERVIEWERDATA *data, int shape, int si
 
 				//set size and shape
 				attr[0] = (attr[0] & ~0xC000) | (shape << 14);
-				attr[1] = (attr[1] & ~0xC000) | (size << 14);
+				attr[1] = (attr[1] & ~0xC000) | (size  << 14);
 
 				//set character name
 				int charName = info.characterName;
