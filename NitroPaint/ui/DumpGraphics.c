@@ -10,7 +10,8 @@
 #include "object/NitroCell.h"
 
 
-#define ISD_POLLING_INTERVAL   200
+#define ISD_POLLING_INTERVAL   200  // polling timer interval
+#define ISD_POLLING_TIMER        1  // polling timer ID
 
 
 // ----- VRAM defs
@@ -48,19 +49,31 @@ typedef enum GxVramBank_ {
 #define GX_VRAM_I_ADDR 0x068A0000
 
 
-#define VRAM_CNT_E_MASK           0x80
+#define VRAM_CNT_ENABLE_MASK      0x80
 #define VRAM_CNT_OFS_MASK         0x18
 #define VRAM_CNT_MST_MASK         0x07
+#define VRAM_CNT_ENABLE_SHIFT        7
 #define VRAM_CNT_OFS_SHIFT           3
+#define VRAM_CNT_MST_SHIFT           0
+
+#define VRAM_CNT_ENABLE            0x80
+#define VRAM_CNT_DISABLE           0x00
+#define VRAM_CNT_MST_LCDC          0x00
 
 
+#define ADDR_GXREGS         0x04000000
+#define ADDR_GXREGS_SUB     0x04001000
+#define ADDR_VRAMCNT        0x04000240
 #define ADDR_STANDARD_PLTT  0x05000000
 #define ADDR_PLTT_MAIN_BG   0x05000000
 #define ADDR_PLTT_MAIN_OBJ  0x05000200
 #define ADDR_PLTT_SUB_BG    0x05000400
 #define ADDR_PLTT_SUB_OBJ   0x05000600
+#define ADDR_OAM            0x07000000
+#define ADDR_OAM_SUB        0x07000400
 
 #define EXT_PLTT_SLOT_SIZE      0x2000
+#define OAM_SIZE                 0x400
 
 
 
@@ -120,18 +133,18 @@ static int GxdReadExtPltt(GxExtPltt *pExtPltt) {
 	memset(pExtPltt, 0, sizeof(GxExtPltt));
 	
 	GxVramCnt vramCnt = { 0 }, newCnt = { 0 };
-	if (!IsdifReadMem(&vramCnt, 0x04000240, sizeof(GxVramCnt))) return 0;
+	if (!IsdifReadMem(&vramCnt, ADDR_VRAMCNT, sizeof(GxVramCnt))) return 0;
 
 	//TODO: check VRAM before pulling them all down?
 
 	//pull each bank E-I down to LCDC.
 	memcpy(&newCnt, &vramCnt, sizeof(GxVramCnt));
-	newCnt.VRAM_E_CNT = 0x80;
-	newCnt.VRAM_F_CNT = 0x80;
-	newCnt.VRAM_G_CNT = 0x80;
-	newCnt.VRAM_H_CNT = 0x80;
-	newCnt.VRAM_I_CNT = 0x80;
-	if (!IsdifWriteMem(0x04000240, &newCnt, sizeof(GxVramCnt))) return 0;
+	newCnt.VRAM_E_CNT = VRAM_CNT_ENABLE | VRAM_CNT_MST_LCDC;
+	newCnt.VRAM_F_CNT = VRAM_CNT_ENABLE | VRAM_CNT_MST_LCDC;
+	newCnt.VRAM_G_CNT = VRAM_CNT_ENABLE | VRAM_CNT_MST_LCDC;
+	newCnt.VRAM_H_CNT = VRAM_CNT_ENABLE | VRAM_CNT_MST_LCDC;
+	newCnt.VRAM_I_CNT = VRAM_CNT_ENABLE | VRAM_CNT_MST_LCDC;
+	if (!IsdifWriteMem(ADDR_VRAMCNT, &newCnt, sizeof(GxVramCnt))) return 0;
 
 	//check each bank for its extended palette configuration. If it's mapped to ext pltt,
 	//copy it out from LCDC.
@@ -139,14 +152,14 @@ static int GxdReadExtPltt(GxExtPltt *pExtPltt) {
 	unsigned int gSlot = (vramCnt.VRAM_G_CNT & VRAM_CNT_OFS_MASK) >> VRAM_CNT_OFS_SHIFT;
 
 	//bank E
-	switch (vramCnt.VRAM_E_CNT & 0x87) {
+	switch (vramCnt.VRAM_E_CNT & (VRAM_CNT_ENABLE_MASK | VRAM_CNT_MST_MASK)) {
 		case 0x84:  // E -> main BG ext pltt (low 32KB to all 4 slots)
 			if (!IsdifReadMem(pExtPltt->mainBG, GX_VRAM_E_ADDR, GX_VRAM_E_SIZE / 2)) return 0;
 			break;
 	}
 
 	//bank F
-	switch (vramCnt.VRAM_F_CNT & 0x87) {
+	switch (vramCnt.VRAM_F_CNT & (VRAM_CNT_ENABLE_MASK | VRAM_CNT_MST_MASK)) {
 		case 0x84:  // F -> main BG ext pltt
 			if (!IsdifReadMem(&pExtPltt->mainBG[(fSlot & 1) * EXT_PLTT_SLOT_SIZE], GX_VRAM_F_ADDR, GX_VRAM_F_SIZE)) return 0;
 			break;
@@ -156,7 +169,7 @@ static int GxdReadExtPltt(GxExtPltt *pExtPltt) {
 	}
 
 	//bank G
-	switch (vramCnt.VRAM_G_CNT & 0x87) {
+	switch (vramCnt.VRAM_G_CNT & (VRAM_CNT_ENABLE_MASK | VRAM_CNT_MST_MASK)) {
 		case 0x84:  // G -> main BG ext pltt
 			if (!IsdifReadMem(&pExtPltt->mainBG[(gSlot & 1) * EXT_PLTT_SLOT_SIZE], GX_VRAM_G_ADDR, GX_VRAM_G_SIZE)) return 0;
 			break;
@@ -166,21 +179,21 @@ static int GxdReadExtPltt(GxExtPltt *pExtPltt) {
 	}
 
 	//bank H
-	switch (vramCnt.VRAM_H_CNT & 0x87) {
+	switch (vramCnt.VRAM_H_CNT & (VRAM_CNT_ENABLE_MASK | VRAM_CNT_MST_MASK)) {
 		case 0x82:  // H -> sub BG ext pltt
 			if (!IsdifReadMem(pExtPltt->subBG, GX_VRAM_H_ADDR, GX_VRAM_H_SIZE)) return 0;
 			break;
 	}
 
 	//bank I
-	switch (vramCnt.VRAM_I_CNT & 0x87) {
+	switch (vramCnt.VRAM_I_CNT & (VRAM_CNT_ENABLE_MASK | VRAM_CNT_MST_MASK)) {
 		case 0x83:  // I -> sub OBJ ext pltt
 			if (!IsdifReadMem(pExtPltt->subOBJ, GX_VRAM_I_ADDR, GX_VRAM_I_SIZE)) return 0;
 			break;
 	}
 
 	//restore
-	if (!IsdifWriteMem(0x04000240, &vramCnt, sizeof(GxVramCnt))) return 0;
+	if (!IsdifWriteMem(ADDR_VRAMCNT, &vramCnt, sizeof(GxVramCnt))) return 0;
 
 	return 1;
 }
@@ -190,28 +203,33 @@ static IsdStatus GxdDumpPalette(NCLR **pNclr, int sub, int obj, int extPltt, int
 
 	unsigned int plttSize = extPltt ? EXT_PLTT_SLOT_SIZE : (256 * sizeof(COLOR));
 	COLOR *pltt = (COLOR *) calloc(plttSize, 1);
+	IsdStatus status = ISD_STATUS_OK;
 
 	if (!extPltt) {
 		//standard palette use
 		uint32_t srcAddr = ADDR_STANDARD_PLTT + ((sub << 1) | obj) * 0x200;
-		(void) IsdifReadMem(pltt, srcAddr, plttSize);
+		if (!IsdifReadMem(pltt, srcAddr, plttSize)) goto Error;
 	} else {
 		//get ext palette slot
 		GxExtPltt *extPltt = (GxExtPltt *) calloc(1, sizeof(GxExtPltt));
-		GxdReadExtPltt(extPltt);
 
-		memcpy(pltt, extPltt->pltt[sub][obj][slot], EXT_PLTT_SLOT_SIZE);
-
-		free(extPltt);
+		if (GxdReadExtPltt(extPltt)) {
+			memcpy(pltt, extPltt->pltt[sub][obj][slot], EXT_PLTT_SLOT_SIZE);
+			free(extPltt);
+		} else {
+			status = IsdGetLastError();
+			free(extPltt);
+			goto Error;
+		}
 	}
 
 	ObjReadBuffer((ObjHeader **) &nclr, (unsigned char *) pltt, plttSize, FILE_TYPE_PALETTE, NCLR_TYPE_BIN, COMPRESSION_NONE);
-	free(pltt);
-
 	nclr->extPalette = extPltt;
-
 	*pNclr = nclr;
-	return ISD_STATUS_OK;
+
+Error:
+	free(pltt);
+	return status;
 }
 
 static IsdStatus GxdDumpCharacterOBJ(NCGR **pNcgr, int sub, uint32_t DISPCNT) {
@@ -241,8 +259,12 @@ static IsdStatus GxdDumpCharacterOBJ(NCGR **pNcgr, int sub, uint32_t DISPCNT) {
 static IsdStatus GxdDumpOAM(NCER **pNcer, int sub, uint32_t DISPCNT) {
 	uint32_t mappingMode = DISPCNT & 0x300010;
 
-	unsigned char *oam = (unsigned char *) calloc(0x400, 1);
-	IsdifReadMem(oam, sub ? 0x07000400 : 0x07000000, 0x400);
+	IsdStatus status = ISD_STATUS_OK;
+	unsigned char *oam = (unsigned char *) calloc(OAM_SIZE, 1);
+	if (!IsdifReadMem(oam, sub ? ADDR_OAM_SUB : ADDR_OAM, OAM_SIZE)) {
+		status = IsdGetLastError();
+		goto Error;
+	}
 
 	NCER *ncer = (NCER *) ObjAlloc(FILE_TYPE_CELL, NCER_TYPE_NCER);
 	ncer->nCells = 1;
@@ -260,10 +282,11 @@ static IsdStatus GxdDumpOAM(NCER **pNcer, int sub, uint32_t DISPCNT) {
 		pObj[0] = (pObj[0] & 0xFF00) | (((pObj[0] & 0x00FF) - 0x60) & 0x00FF);
 		pObj[1] = (pObj[1] & 0xFE00) | (((pObj[1] & 0x01FF) - 0x80) & 0x01FF);
 	}
-	free(oam);
-
 	*pNcer = ncer;
-	return ISD_STATUS_OK;
+
+Error:
+	free(oam);
+	return status;
 }
 
 static unsigned int GxdGetBitDepthForOAM(NCER *ncer) {
@@ -383,7 +406,7 @@ static void GxdGetBgInfo(const GxRegs *regs, int iLayer, GxBgInfo *info) {
 		case BGTYPE_AFFINE:
 			info->hasBgScreen = 1;
 			info->screenFormat = SCREENFORMAT_AFFINE;
-			info->colorMode = SCREENCOLORMODE_256x1;
+			info->colorMode    = SCREENCOLORMODE_256x1;
 			info->depth = 8;
 			
 			info->width  = sizeAffine[size][0];
@@ -409,7 +432,7 @@ static void GxdGetBgInfo(const GxRegs *regs, int iLayer, GxBgInfo *info) {
 				//8bpp affine extended character BG
 				info->hasBgScreen = 1;
 				info->screenFormat = SCREENFORMAT_AFFINEEXT;
-				info->colorMode = SCREENCOLORMODE_256x16;
+				info->colorMode    = SCREENCOLORMODE_256x16;
 				info->depth = 8;
 
 				info->width  = sizeAffine[size][0];
@@ -470,6 +493,8 @@ static IsdStatus GxdDumpCharacterBG(NCGR **pNcgr, const GxBgInfo *info, int sub)
 		return ISD_STATUS_OK;
 	}
 
+	IsdStatus status = ISD_STATUS_OK;
+
 	//determine the graphics size of export character
 	unsigned int charX = 32, charY = 32;
 	if (info->hasBgScreen) {
@@ -495,7 +520,10 @@ static IsdStatus GxdDumpCharacterBG(NCGR **pNcgr, const GxBgInfo *info, int sub)
 
 	unsigned int charSize = (charX * charY) * (8 * info->depth);
 	unsigned char *buf = (unsigned char *) calloc(charSize, 1);
-	IsdifReadMem(buf, vramAddr + info->ofsChar, charSize);
+	if (!IsdifReadMem(buf, vramAddr + info->ofsChar, charSize)) {
+		status = IsdGetLastError();
+		goto Error;
+	}
 
 	NCGR *ncgr = (NCGR *) ObjAlloc(FILE_TYPE_CHARACTER, NCGR_TYPE_NCGR);
 	ncgr->nBits = info->depth;
@@ -506,10 +534,11 @@ static IsdStatus GxdDumpCharacterBG(NCGR **pNcgr, const GxBgInfo *info, int sub)
 	ncgr->mappingMode = GX_OBJVRAMMODE_CHAR_1D_32K;
 	ChrAllocGraphics(ncgr);
 	ChrReadGraphics(ncgr, buf);
-	free(buf);
-
 	*pNcgr = ncgr;
-	return ISD_STATUS_OK;
+
+Error:
+	free(buf);
+	return status;
 }
 
 static IsdStatus GxdDumpBgScreen(NSCR **pNscr, const GxBgInfo *info, int sub) {
@@ -519,12 +548,17 @@ static IsdStatus GxdDumpBgScreen(NSCR **pNscr, const GxBgInfo *info, int sub) {
 		return ISD_STATUS_OK;
 	}
 
+	IsdStatus status = ISD_STATUS_OK;
+
 	uint32_t vramAddr = sub ? 0x06200000 : 0x06000000;
 
 	unsigned int unitSize = (info->screenFormat == SCREENFORMAT_AFFINE) ? 1 : 2;
 	unsigned int bufSize = (info->width / 8) * (info->height / 8) * (unitSize);
 	unsigned char *buf = (unsigned char *) calloc(bufSize, 1);
-	IsdifReadMem(buf, vramAddr + info->ofsScrn, bufSize);
+	if (!IsdifReadMem(buf, vramAddr + info->ofsScrn, bufSize)) {
+		status = IsdGetLastError();
+		goto Error;
+	}
 
 	NSCR *nscr = (NSCR *) ObjAlloc(FILE_TYPE_SCREEN, NSCR_TYPE_NSCR);
 	nscr->fmt = info->screenFormat;
@@ -534,10 +568,11 @@ static IsdStatus GxdDumpBgScreen(NSCR **pNscr, const GxBgInfo *info, int sub) {
 	nscr->dataSize = nscr->tilesX * nscr->tilesY * sizeof(uint16_t);
 	nscr->data = (uint16_t *) calloc(nscr->dataSize, 1);
 	ScrReadScreenData(nscr, buf, bufSize);
-	free(buf);
-
 	*pNscr = nscr;
-	return ISD_STATUS_OK;
+
+Error:
+	free(buf);
+	return status;
 }
 
 
@@ -613,7 +648,9 @@ static void DumpGraphics(DumpGraphicsDialogData *data, int sub, int obj, int bgL
 
 
 static void DumpGraphicsDialogOnTargetDisconnect(DumpGraphicsDialogData *data) {
+	KillTimer(data->hWnd, ISD_POLLING_TIMER);
 	data->connected = 0;
+
 	EnableWindow(data->hWndStop, FALSE);
 	EnableWindow(data->hWndResume, FALSE);
 	EnableWindow(data->hWndDump, FALSE);
@@ -829,7 +866,7 @@ static LRESULT CALLBACK DumpGraphicsDialogProc(HWND hWnd, UINT msg, WPARAM wPara
 			}
 
 			//set polling timer
-			SetTimer(hWnd, 1, ISD_POLLING_INTERVAL, NULL);
+			SetTimer(hWnd, ISD_POLLING_TIMER, ISD_POLLING_INTERVAL, NULL);
 
 			break;
 		}
