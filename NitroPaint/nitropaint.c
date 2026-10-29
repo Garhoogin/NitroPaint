@@ -3625,7 +3625,7 @@ LRESULT CALLBACK SpriteSheetDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 						GX_OBJVRAMMODE_CHAR_1D_128K,
 						GX_OBJVRAMMODE_CHAR_1D_256K
 					};
-					static const int heights[] = { 16, 32, 64, 128, 256 };
+					static const int heights[] = { 32, 32, 64, 128, 256 };
 
 					int height = heights[mapping];
 					mapping = mappings[mapping];
