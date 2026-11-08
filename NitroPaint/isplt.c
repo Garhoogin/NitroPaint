@@ -134,7 +134,7 @@ typedef struct RxPaletteAccelNode_ {
 	struct RxPaletteAccelNode_ *pLeft;    // left pointer
 	struct RxPaletteAccelNode_ *pRight;   // right pointer
 	struct RxPaletteAccelNode_ *parent;   // parent node
-	RxiPaletteMapEntry *mid;               // mid color
+	RxiPaletteMapEntry *mid;              // mid color
 	double splitVal;                      // value of split
 	unsigned int nCol;                    // number of colors this node
 	unsigned int start;                   // start index of color
@@ -143,22 +143,53 @@ typedef struct RxPaletteAccelNode_ {
 
 struct RxPalette_ {
 	RxBool useAccelerator;                            // marks that the loaded palette is using the accelerator
-	RxiPaletteAccelNode root;                          // the root node of the accelerator
-	RxiPaletteMapEntry *pltt;                          // palette mapping entries used by the accelerator
-	RxiPaletteAccelNode *nodebuf;                      // accelerator working memory
+	RxiPaletteAccelNode root;                         // the root node of the accelerator
+	RxiPaletteMapEntry *pltt;                         // palette mapping entries used by the accelerator
+	RxiPaletteAccelNode *nodebuf;                     // accelerator working memory
 
 	RxYiqColor plttSmall[16 * RX_PALETTE_MAX_COUNT];  // palette buffer used for small palettes
 	RxYiqColor *plttLarge;                            // pointer to palette buffer (heap allocated or pointer to small)
 	unsigned int nPltt;                               // number of palette colors loaded
+	unsigned int nLayers;                             // number of palette layers in this palette
 	RxAlphaMode alphaMode;                            // alpha processing mode used by the accelerator
 };
 
 
-static unsigned int RxiPaletteFindClosestColorOnAccel(RxReduction *reduction, RxPalette *accel, const RxYiqColor *color, double *outDiff);
-static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff);
-static RxPalette *RxiPaletteAllocAndLoadYiqInternal(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxAlphaMode alphaMode);
-static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxBool overrideMode);
-static void RxiPaletteFree(RxPalette *palette);
+static unsigned int RxiPaletteFindClosestColorOnAccel(
+	RxReduction *reduction,
+	RxPalette *accel,
+	const RxYiqColor *color,
+	double *outDiff
+);
+
+static int RxiPaletteFindClosestColor(
+	RxReduction      *reduction,
+	const RxYiqColor *palette,
+	unsigned int      nColors,
+	const RxYiqColor *col,
+	double           *outDiff
+);
+
+static RxPalette *RxiPaletteAllocAndLoadYiqInternal(
+	RxReduction      *reduction,
+	const RxYiqColor *pltt,
+	unsigned int      srcPitch,
+	unsigned int      nColors,
+	unsigned int      nLayers,
+	RxAlphaMode       alphaMode
+);
+
+static RxStatus RxiPaletteLoadYiq(
+	RxReduction      *reduction,
+	const RxYiqColor *pltt,
+	unsigned int      srcPitch,
+	unsigned int      nColors,
+	RxBool            overrideMode
+);
+
+static void RxiPaletteFree(
+	RxPalette *palette
+);
 
 
 
@@ -339,11 +370,11 @@ static inline double RxiComputeColorDifference(RxReduction *reduction, const RxY
 #endif
 }
 
-static inline double RxiComputeLayeredColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2) {
+static inline double RxiComputeLayeredColorDifference(RxReduction *reduction, const RxYiqColor *yiq1, const RxYiqColor *yiq2, unsigned int nLayer) {
 	double diff = 0.0;
 
 	//add multiple diffs
-	for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+	for (unsigned int i = 0; i < nLayer; i++) {
 		diff += RxiComputeColorDifference(reduction, &yiq1[i], &yiq2[i]);
 	}
 
@@ -704,7 +735,7 @@ static RxStatus RxiInitForMask5(RxReduction *reduction) {
 		RxConvertRgbToYiq(ColorConvertFromDS((COLOR) i) | 0xFF000000, &pltt[i]);
 	}
 
-	RxPalette *accel = RxiPaletteAllocAndLoadYiqInternal(reduction, pltt, 1, 32768, RX_ALPHA_NONE);
+	RxPalette *accel = RxiPaletteAllocAndLoadYiqInternal(reduction, pltt, 1, 32768, 1, RX_ALPHA_NONE);
 	RxMemFree(pltt);
 
 	if (accel == NULL) return RX_STATUS_NOMEM;
@@ -1185,13 +1216,13 @@ double RX_API RxHistComputePaletteError(RxReduction *reduction, const COLOR32 *p
 
 // ----- routines for searching palettes (unaccelerated)
 
-static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff) {
+static int RxiPaletteFindClosestColorEx(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, unsigned int nLayers, double *outDiff) {
 	double leastDiff = RX_LARGE_NUMBER;
 	int leastIndex = 0;
 	for (unsigned int i = 0; i < nColors; i++) {
-		const RxYiqColor *yiq2 = &palette[i * reduction->paletteLayers];
+		const RxYiqColor *yiq2 = &palette[i *nLayers];
 
-		double diff = RxiComputeLayeredColorDifference(reduction, col, yiq2);
+		double diff = RxiComputeLayeredColorDifference(reduction, col, yiq2, nLayers);
 		if (diff < leastDiff) {
 			leastDiff = diff;
 			leastIndex = i;
@@ -1202,12 +1233,16 @@ static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *
 	return leastIndex;
 }
 
+static int RxiPaletteFindClosestColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, const RxYiqColor *col, double *outDiff) {
+	return RxiPaletteFindClosestColorEx(reduction, palette, nColors, col, reduction->paletteLayers, outDiff);
+}
+
 static int RxiPaletteFindClosestRgbColor(RxReduction *reduction, const RxYiqColor *palette, unsigned int nColors, COLOR32 col, double *outDiff) {
 	//TODO: col: scalar color?
 	RxYiqColor yiq;
 	RxConvertRgbToYiq(col, &yiq);
 
-	return RxiPaletteFindClosestColor(reduction, palette, nColors, &yiq, outDiff);
+	return RxiPaletteFindClosestColorEx(reduction, palette, nColors, &yiq, 1, outDiff);
 }
 
 
@@ -1935,7 +1970,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 
 			//we subtract the difference to the new centroid to calcualate the reduction in the error sum of
 			//squares. The highest reduction is desired.
-			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, yiqNewCentroid) * entry->weight;
+			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, yiqNewCentroid, nLayers) * entry->weight;
 			
 			double diffReduction = diff - newDifference;
 			if (diffReduction > 0.0 && diffReduction > largestDifferenceReduction) {
@@ -1972,7 +2007,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 			}
 
 			//move centroid
-			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, reduction->paletteYiq[i]) * entry->weight;
+			double newDifference = RxiComputeLayeredColorDifference(reduction, entry->color, reduction->paletteYiq[i], nLayers) * entry->weight;
 			RxiVoronoiMoveToCluster(reduction, entry, i, newDifference, largestDifference);
 			newCentroidIdxs[nNewCentroids++] = i;
 		} else {
@@ -2004,7 +2039,7 @@ static int RxiVoronoiIterate(RxReduction *reduction) {
 			if (reduction->histogramFlat[j]->entry != (int) i) continue;
 
 			RxHistEntry *hist = reduction->histogramFlat[j];
-			errNewCluster += hist->weight * RxiComputeLayeredColorDifference(reduction, hist->color, yiq);
+			errNewCluster += hist->weight * RxiComputeLayeredColorDifference(reduction, hist->color, yiq, nLayers);
 		}
 
 		//if the new cluster is an improvement over the old cluster
@@ -3035,7 +3070,7 @@ RxStatus RX_API RxReduceImage(
 
 			//now measure distance from the actual color to its average surroundings
 			RxYiqColor *centerYiq = &thisRow[nLayers * (x + 1)];
-			double centerDistance = RxiComputeLayeredColorDifference(reduction, centerYiq, colorYiq) / nLayers;
+			double centerDistance = RxiComputeLayeredColorDifference(reduction, centerYiq, colorYiq, nLayers) / nLayers;
 
 			//now test: Should we dither?
 			double yw2 = reduction->yWeight2;
@@ -3310,6 +3345,7 @@ static RxiPaletteAccelNode *RxiAccelSplit(
 
 static void RxiAccelRecurseTreeInternal(
 	RxReduction         *reduction,
+	RxPalette           *root,
 	RxiPaletteAccelNode *accel,
 	const RxYiqColor    *color,
 	double              *pBestDiff,
@@ -3324,7 +3360,7 @@ static void RxiAccelRecurseTreeInternal(
 	if (diffFromSplit < *pBestDiff) {
 		intersectPlane = RX_TRUE;
 
-		double diff = RxiComputeLayeredColorDifference(reduction, color, accel->mid->color);
+		double diff = RxiComputeLayeredColorDifference(reduction, color, accel->mid->color, root->nLayers);
 		if (diff < *pBestDiff) {
 			*pBestDiff = diff;
 			*piBest = accel->mid->index;
@@ -3337,7 +3373,7 @@ static void RxiAccelRecurseTreeInternal(
 	if (nodeL != NULL) {
 		//left node: lesser values (search only if the splitting plane is greater)
 		if (intersectPlane || projColor <= accel->splitVal) {
-			RxiAccelRecurseTreeInternal(reduction, nodeL, color, pBestDiff, piBest);
+			RxiAccelRecurseTreeInternal(reduction, root, nodeL, color, pBestDiff, piBest);
 		}
 	}
 
@@ -3345,13 +3381,14 @@ static void RxiAccelRecurseTreeInternal(
 	if (nodeR != NULL) {
 		//right node: greater values (seeach only if the splitting plane is lesser)
 		if (intersectPlane || projColor >= accel->splitVal) {
-			RxiAccelRecurseTreeInternal(reduction, nodeR, color, pBestDiff, piBest);
+			RxiAccelRecurseTreeInternal(reduction, root, nodeR, color, pBestDiff, piBest);
 		}
 	}
 }
 
 static void RxiAccelRecurseTree(
 	RxReduction         *reduction,
+	RxPalette           *root,
 	RxiPaletteAccelNode *accel,
 	const RxYiqColor    *color,
 	double              *pBestDiff,
@@ -3366,7 +3403,7 @@ static void RxiAccelRecurseTree(
 	//radius, thus we must search the other sub-tree.
 	if (diffFromSplit < *pBestDiff) {
 		//because the plane is within the search radius, its point must be checked too.
-		double diff = RxiComputeLayeredColorDifference(reduction, color, accel->mid->color);
+		double diff = RxiComputeLayeredColorDifference(reduction, color, accel->mid->color, root->nLayers);
 		if (diff < *pBestDiff) {
 			*pBestDiff = diff;
 			*piBest = accel->mid->index;
@@ -3374,7 +3411,7 @@ static void RxiAccelRecurseTree(
 
 		//choose the sub tree opposite the way we came, search down
 		RxiPaletteAccelNode *sub = lrbit ? accel->pLeft : accel->pRight;
-		if (sub != NULL) RxiAccelRecurseTreeInternal(reduction, sub, color, pBestDiff, piBest);
+		if (sub != NULL) RxiAccelRecurseTreeInternal(reduction, root, sub, color, pBestDiff, piBest);
 	}
 }
 
@@ -3384,7 +3421,7 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(
 	const RxYiqColor *color,
 	double           *outDiff
 ) {
-	unsigned int nLayer = reduction->paletteLayers;
+	unsigned int nLayer = accel->nLayers;
 
 	//traverse down
 	RxiPaletteAccelNode *nodep = &accel->root;
@@ -3406,22 +3443,22 @@ static unsigned int RxiPaletteFindClosestColorAccelerated(
 		if (nodep->pLeft == NULL && nodep->pRight == NULL) break;
 
 		//choose left/right. We choose the only available path if only one (to ensure we reach the tree's bottom)
-		if (nodep->pLeft == NULL) nodep = nodep->pRight;
+		if      (nodep->pLeft  == NULL) nodep = nodep->pRight;
 		else if (nodep->pRight == NULL) nodep = nodep->pLeft;
-		else if (val < split) nodep = nodep->pLeft;
-		else nodep = nodep->pRight;
+		else if (val           < split) nodep = nodep->pLeft;
+		else                            nodep = nodep->pRight;
 	}
 
 	//we're at the bottom of the tree, and there were no exact matches. We recurse the tree
 	//to find closer candidate points.
 	unsigned int iBest = nodep->mid->index;
-	double bestDiff = RxiComputeLayeredColorDifference(reduction, color, nodep->mid->color);
+	double bestDiff = RxiComputeLayeredColorDifference(reduction, color, nodep->mid->color, accel->nLayers);
 
 	//traverse up
 	while (nodep->parent != NULL) {
 		int lrbit = (nodep == nodep->parent->pRight); // index of child, to avoid recursing the tree we've already checked
 		nodep = nodep->parent;
-		RxiAccelRecurseTree(reduction, nodep, color, &bestDiff, &iBest, lrbit);
+		RxiAccelRecurseTree(reduction, accel, nodep, color, &bestDiff, &iBest, lrbit);
 	}
 
 	//best index
@@ -3437,15 +3474,16 @@ static unsigned int RxiPaletteFindClosestColorOnAccel(
 ) {
 	RX_ASSUME(accel != NULL);
 
+	//TODO: fix this function
 	RxYiqColor *cpy = reduction->tempLayeredColor;
-	RxiColorVecCopy(cpy, color, reduction->paletteLayers);
+	RxiColorVecCopy(cpy, color, accel->nLayers);
 
 	//processing for alpha mode
 	unsigned int plttStart = 0;
 	switch (accel->alphaMode) {
 		case RX_ALPHA_PIXEL:
 		{
-			for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+			for (unsigned int i = 0; i < accel->nLayers; i++) {
 				//pixel-mode alpha: do not consider alpha in calculation, so rescale all colors
 				//to full alpha
 				RxiColorMakeOpaque(&cpy[i]);
@@ -3456,7 +3494,7 @@ static unsigned int RxiPaletteFindClosestColorOnAccel(
 		{
 			plttStart = 1;
 
-			for (unsigned int i = 0; i < reduction->paletteLayers; i++) {
+			for (unsigned int i = 0; i < accel->nLayers; i++) {
 				//alpha-reserve mode cannot cleanly support multiple alpha, but we will consider
 				//any color below the threshold to be transparent.
 				if (cpy[i].a < reduction->fAlphaThreshold) {
@@ -3476,8 +3514,8 @@ static unsigned int RxiPaletteFindClosestColorOnAccel(
 		return RxiPaletteFindClosestColorAccelerated(reduction, accel, cpy, outDiff) + plttStart;
 	} else {
 		//slow search
-		RxYiqColor *pltt = &accel->plttLarge[plttStart * reduction->paletteLayers];
-		return RxiPaletteFindClosestColor(reduction, pltt, accel->nPltt - plttStart, cpy, outDiff) + plttStart;
+		RxYiqColor *pltt = &accel->plttLarge[plttStart * accel->nLayers];
+		return RxiPaletteFindClosestColorEx(reduction, pltt, accel->nPltt - plttStart, cpy, accel->nLayers, outDiff) + plttStart;
 	}
 }
 
@@ -3509,9 +3547,9 @@ static RxStatus RxiPaletteAllocCurrent(RxReduction *reduction) {
 static RxStatus RxiPaletteAllocColors(RxReduction *reduction, RxPalette *accel, unsigned int nCol) {
 	RX_ASSUME(accel != NULL);
 
-	if (nCol * reduction->paletteLayers > sizeof(accel->plttSmall) / sizeof(accel->plttSmall[0])) {
+	if (nCol * accel->nLayers > sizeof(accel->plttSmall) / sizeof(accel->plttSmall[0])) {
 		//above small threshold --> allocate on the heap
-		accel->plttLarge = (RxYiqColor *) RxMemCalloc(nCol * reduction->paletteLayers, sizeof(RxYiqColor));
+		accel->plttLarge = (RxYiqColor *) RxMemCalloc(nCol * accel->nLayers, sizeof(RxYiqColor));
 	} else {
 		//within small threshold --> use small buffer
 		accel->plttLarge = accel->plttSmall;
@@ -3539,7 +3577,7 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction, RxPalette *acc
 	unsigned int nColors = accel->nPltt;
 	if (nColors > 0) {
 		nColors -= iStart;
-		pltt += iStart * reduction->paletteLayers;
+		pltt += iStart * accel->nLayers;
 	}
 
 	if (nColors == 0) return RX_STATUS_INVALID; // empty palette
@@ -3566,10 +3604,10 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction, RxPalette *acc
 
 	for (unsigned int i = 0; i < nColors; i++) {
 		accel->pltt[i].index = i;
-		RxiColorVecCopy(accel->pltt[i].color, &pltt[i * reduction->paletteLayers], reduction->paletteLayers);
+		RxiColorVecCopy(accel->pltt[i].color, &pltt[i * accel->nLayers], accel->nLayers);
 
 		if (alphaMode == RX_ALPHA_PIXEL) {
-			for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+			for (unsigned int j = 0; j < accel->nLayers; j++) {
 				RxiColorMakeOpaque(&accel->pltt[i].color[j]);
 			}
 		}
@@ -3586,13 +3624,13 @@ static RxStatus RxiPaletteLoadAccelerated(RxReduction *reduction, RxPalette *acc
 	return RX_STATUS_OK;
 }
 
-static RxStatus RxiPaletteLoadUnaccelerated(RxReduction *reduction, const COLOR32 *pltt, unsigned int nColors) {
-	RxStatus status = RxiPaletteAllocColors(reduction, reduction->accel, nColors);
+static RxStatus RxiPaletteLoadUnaccelerated(RxReduction *reduction, RxPalette *accel, const COLOR32 *pltt, unsigned int nColors) {
+	RxStatus status = RxiPaletteAllocColors(reduction, accel, nColors);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
-	for (unsigned int j = 0; j < reduction->paletteLayers; j++) {
+	for (unsigned int j = 0; j < accel->nLayers; j++) {
 		for (unsigned int i = 0; i < nColors; i++) {
-			RxConvertRgbToYiq(pltt[j * nColors + i], &reduction->accel->plttLarge[i * reduction->paletteLayers + j]);
+			RxConvertRgbToYiq(pltt[j * nColors + i], &accel->plttLarge[i * accel->nLayers + j]);
 		}
 	}
 
@@ -3611,7 +3649,7 @@ static RxStatus RxiPaletteLoadYiqUnaccelerated(RxReduction *reduction, RxPalette
 	RxStatus status = RxiPaletteAllocColors(reduction, accel, nColors + iStart);
 	if (status != RX_STATUS_OK) return status;
 
-	unsigned int nLayer = reduction->paletteLayers;
+	unsigned int nLayer = accel->nLayers;
 	for (unsigned int i = 0; i < nColors; i++) {
 		RxiColorVecCopy(&accel->plttLarge[(i + iStart) * nLayer], &pltt[i * srcPitch], nLayer);
 	}
@@ -3629,9 +3667,10 @@ RxStatus RX_API RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsig
 	//set alpha mode
 	RxPalette *accel = reduction->accel;
 	accel->alphaMode = reduction->alphaMode;
+	accel->nLayers = reduction->paletteLayers;
 
 	//in all cases, we load without the accelerator first
-	status = RxiPaletteLoadUnaccelerated(reduction, pltt, nColors);
+	status = RxiPaletteLoadUnaccelerated(reduction, accel, pltt, nColors);
 	if (status != RX_STATUS_OK) return reduction->status = status;
 
 	if (nColors > 16) {
@@ -3642,12 +3681,20 @@ RxStatus RX_API RxPaletteLoad(RxReduction *reduction, const COLOR32 *pltt, unsig
 	return reduction->status;
 }
 
-static RxPalette *RxiPaletteAllocAndLoadYiqInternal(RxReduction *reduction, const RxYiqColor *pltt, unsigned int srcPitch, unsigned int nColors, RxAlphaMode alphaMode) {
+static RxPalette *RxiPaletteAllocAndLoadYiqInternal(
+	RxReduction      *reduction,
+	const RxYiqColor *pltt,
+	unsigned int      srcPitch,
+	unsigned int      nColors,
+	unsigned int      nLayers,
+	RxAlphaMode       alphaMode
+) {
 	//alllocate new palette
 	RxPalette *accel = (RxPalette *) RxMemCalloc(1, sizeof(RxPalette));
 	if (accel == NULL) return NULL;
 
 	accel->alphaMode = alphaMode;
+	accel->nLayers = nLayers;
 
 	RxStatus status = RxiPaletteLoadYiqUnaccelerated(reduction, accel, pltt, nColors, srcPitch);
 	if (status != RX_STATUS_OK) {
@@ -3673,6 +3720,7 @@ static RxStatus RxiPaletteLoadYiq(RxReduction *reduction, const RxYiqColor *pltt
 	//set alpha mode
 	RxPalette *accel = reduction->accel;
 	accel->alphaMode = reduction->alphaMode;
+	accel->nLayers = reduction->paletteLayers;
 
 	if (overrideMode) {
 		//for the internal YIQ palette load, we do not use transparency reserve mode. The internal palette
