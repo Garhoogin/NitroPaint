@@ -1,6 +1,7 @@
 #include <math.h>
 
 #include "NitroCell.h"
+#include "Cell/CellRender.h"
 #include "NitroAnim.h"
 #include "NitroCharacter.h"
 #include "NitroPalette.h"

@@ -5,6 +5,7 @@
 #include "nftrviewer.h"
 #include "resource.h"
 #include "object/combo2d.h"
+#include "object/Cell/CellRender.h"
 
 
 // ----- element hit flags

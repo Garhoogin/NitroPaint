@@ -7,6 +7,7 @@
 #include "nanrviewer.h"
 #include "nitropaint.h"
 #include "object/Cell/CellExt2D.h"
+#include "object/Cell/CellRender.h"
 #include "object/NitroCharacter.h"
 #include "object/NitroPalette.h"
 #include "resource.h"

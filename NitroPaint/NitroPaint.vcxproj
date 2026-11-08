@@ -164,6 +164,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="bggen.c" />
+    <ClCompile Include="object\Cell\CellRender.c" />
     <ClCompile Include="compression\ASH.c" />
     <ClCompile Include="compression\CxPrivate.c" />
     <ClCompile Include="compression\DiffFilter.c" />
@@ -229,6 +230,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bggen.h" />
+    <ClInclude Include="object\Cell\CellRender.h" />
     <ClInclude Include="compression\CxPrivate.h" />
     <ClInclude Include="compression\HuffCore.h" />
     <ClInclude Include="ui\DumpGraphics.h" />

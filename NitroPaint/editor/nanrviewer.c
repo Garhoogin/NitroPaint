@@ -14,6 +14,7 @@
 #include "object/NitroCell.h"
 #include "preview.h"
 #include "image/gdip.h"
+#include "object/Cell/CellRender.h"
 
 extern HICON g_appIcon;
 
