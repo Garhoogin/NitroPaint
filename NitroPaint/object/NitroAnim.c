@@ -5,7 +5,7 @@
 #include "NitroAnim.h"
 #include "NitroCharacter.h"
 #include "NitroPalette.h"
-#include "nns.h"
+#include "format/nns.h"
 
 static int AnmIsValidNanr(const unsigned char *buffer, unsigned int size);
 static int AnmIsValidGhostTrick(const unsigned char *buffer, unsigned int size);

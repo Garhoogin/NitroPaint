@@ -1,6 +1,6 @@
 #include "color.h"
 #include "combo2d.h"
-#include "nns.h"
+#include "format/nns.h"
 
 #include "NitroPalette.h"
 #include "NitroCharacter.h"

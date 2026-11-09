@@ -1,7 +1,7 @@
 #include "NitroScreen.h"
 #include "NitroCharacter.h"
 #include "color.h"
-#include "nns.h"
+#include "format/nns.h"
 
 #include <stdio.h>
 #include <math.h>

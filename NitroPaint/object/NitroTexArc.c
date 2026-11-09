@@ -1,6 +1,6 @@
 #include "NitroTexArc.h"
 #include "texture.h"
-#include "nns.h"
+#include "format/nns.h"
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,8 +1,8 @@
 #include "NitroCell.h"
 #include "NitroPalette.h"
 #include "NitroCharacter.h"
-#include "nns.h"
-#include "setosa.h"
+#include "format/nns.h"
+#include "format/setosa.h"
 
 #include <string.h>
 

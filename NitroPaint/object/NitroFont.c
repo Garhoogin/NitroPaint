@@ -1,6 +1,6 @@
 #include "NitroFont.h"
 #include "util/struct.h"
-#include "nns.h"
+#include "format/nns.h"
 
 #include <string.h>
 

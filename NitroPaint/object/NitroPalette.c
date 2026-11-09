@@ -2,8 +2,8 @@
 #include <stdint.h>
 
 #include "NitroPalette.h"
-#include "nns.h"
-#include "setosa.h"
+#include "format/nns.h"
+#include "format/setosa.h"
 
 static int PalIsValidNclr(const unsigned char *buffer, unsigned int size);
 static int PalIsValidNcl(const unsigned char *buffer, unsigned int size);

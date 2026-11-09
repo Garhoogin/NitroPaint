@@ -2,8 +2,8 @@
 #include "NitroPalette.h"
 #include "NitroScreen.h"
 #include "color.h"
-#include "nns.h"
-#include "setosa.h"
+#include "format/nns.h"
+#include "format/setosa.h"
 
 #include <stdio.h>
 

@@ -197,7 +197,7 @@
     <ClCompile Include="editor\mesgeditor.c" />
     <ClCompile Include="object\NitroFont.c" />
     <ClCompile Include="editor\nftrviewer.c" />
-    <ClCompile Include="object\nns.c" />
+    <ClCompile Include="object\format\nns.c" />
     <ClCompile Include="image\gdip.c" />
     <ClCompile Include="compression\CxMain.c" />
     <ClCompile Include="isplt.c" />
@@ -219,7 +219,7 @@
     <ClCompile Include="ui\palops.c" />
     <ClCompile Include="preview.c" />
     <ClCompile Include="object\scene.c" />
-    <ClCompile Include="object\setosa.c" />
+    <ClCompile Include="object\format\setosa.c" />
     <ClCompile Include="util\struct.c" />
     <ClCompile Include="texconv.c" />
     <ClCompile Include="texture.c" />
@@ -256,7 +256,7 @@
     <ClInclude Include="editor\mesgeditor.h" />
     <ClInclude Include="object\NitroFont.h" />
     <ClInclude Include="editor\nftrviewer.h" />
-    <ClInclude Include="object\nns.h" />
+    <ClInclude Include="object\format\nns.h" />
     <ClInclude Include="image\gdip.h" />
     <ClInclude Include="object\NitroAnim.h" />
     <ClInclude Include="editor\nanrviewer.h" />
@@ -278,7 +278,7 @@
     <ClInclude Include="preview.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="object\scene.h" />
-    <ClInclude Include="object\setosa.h" />
+    <ClInclude Include="object\format\setosa.h" />
     <ClInclude Include="util\struct.h" />
     <ClInclude Include="texconv.h" />
     <ClInclude Include="texture.h" />

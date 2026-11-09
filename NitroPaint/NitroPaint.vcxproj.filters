@@ -61,6 +61,12 @@
     <Filter Include="Source Files\ext">
       <UniqueIdentifier>{ca947754-4368-4098-b305-59223aaffc24}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\object\format">
+      <UniqueIdentifier>{058a4b75-1644-43ac-9574-55ee9068f170}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\object\format">
+      <UniqueIdentifier>{b34551e6-690b-4432-a29a-f2282b4f080f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="nitropaint.c">
@@ -174,13 +180,7 @@
     <ClCompile Include="object\NitroTexArc.c">
       <Filter>Source Files\object</Filter>
     </ClCompile>
-    <ClCompile Include="object\nns.c">
-      <Filter>Source Files\object</Filter>
-    </ClCompile>
     <ClCompile Include="object\scene.c">
-      <Filter>Source Files\object</Filter>
-    </ClCompile>
-    <ClCompile Include="object\setosa.c">
       <Filter>Source Files\object</Filter>
     </ClCompile>
     <ClCompile Include="object\combo2d.c">
@@ -254,6 +254,12 @@
     </ClCompile>
     <ClCompile Include="object\Cell\CellRender.c">
       <Filter>Source Files\object\Cell</Filter>
+    </ClCompile>
+    <ClCompile Include="object\format\nns.c">
+      <Filter>Source Files\object\format</Filter>
+    </ClCompile>
+    <ClCompile Include="object\format\setosa.c">
+      <Filter>Source Files\object\format</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -338,13 +344,7 @@
     <ClInclude Include="object\NitroTexArc.h">
       <Filter>Header Files\object</Filter>
     </ClInclude>
-    <ClInclude Include="object\setosa.h">
-      <Filter>Header Files\object</Filter>
-    </ClInclude>
     <ClInclude Include="object\scene.h">
-      <Filter>Header Files\object</Filter>
-    </ClInclude>
-    <ClInclude Include="object\nns.h">
       <Filter>Header Files\object</Filter>
     </ClInclude>
     <ClInclude Include="editor\mesgeditor.h">
@@ -427,6 +427,12 @@
     </ClInclude>
     <ClInclude Include="object\Cell\CellRender.h">
       <Filter>Header Files\object\Cell</Filter>
+    </ClInclude>
+    <ClInclude Include="object\format\setosa.h">
+      <Filter>Header Files\object\format</Filter>
+    </ClInclude>
+    <ClInclude Include="object\format\nns.h">
+      <Filter>Header Files\object\format</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

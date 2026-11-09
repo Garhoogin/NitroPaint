@@ -1,5 +1,5 @@
 #include "filecommon.h"
-#include "nns.h"
+#include "format/nns.h"
 #include "NitroPalette.h"
 #include "NitroCharacter.h"
 #include "NitroCell.h"
