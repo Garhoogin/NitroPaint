@@ -68,6 +68,7 @@ typedef struct PaletteSwapParams_ {
 	unsigned int nLayers;
 	COLOR32 *pltt;
 	unsigned int plttSize;
+	int texfmt;
 	float diffuse;
 	int c0xp;
 	RxFlag flag;
@@ -94,14 +95,52 @@ static DWORD CALLBACK PaletteSwapImpl(LPVOID lpParam) {
 	}
 	*params->pnUsed = nUsedColors;
 
+	if (params->texfmt != GX_TEXFMT_A3I5 && params->texfmt != GX_TEXFMT_A5I3) {
+		//loading the palette as-is
+		RxPaletteLoad(reduction, params->pltt, params->plttSize);
+	} else {
+		//constructing the pseudo-palette for a3i5/a5i3
+		RxApplyFlags(reduction, RX_FLAG_ALPHA_MODE_PALETTE);
+
+		//TODO: this should belong in texconv
+		COLOR32 *tmp = (COLOR32 *) calloc(256 * params->nLayers, sizeof(COLOR32));
+
+		unsigned int nColsAlpha = params->texfmt == GX_TEXFMT_A3I5 ? 32 :  8;
+		unsigned int nAlpha     = params->texfmt == GX_TEXFMT_A3I5 ?  8 : 32;
+		for (unsigned int i = 0; i < params->nLayers; i++) {
+			COLOR32 *plttLayer = tmp + i * 256;
+
+			for (unsigned int j = 0; j < nAlpha; j++) {
+				COLOR32 *alphaPltt = plttLayer + j * nColsAlpha;
+				memcpy(alphaPltt, params->pltt + params->plttSize * i, nColsAlpha * sizeof(COLOR32));
+
+				unsigned int a = j;
+				if (params->texfmt == GX_TEXFMT_A3I5) a = GX_A3I5_A3_TO_A5(a);
+				a = (a * 510 + 31) / 62;
+
+				for (unsigned int k = 0; k < nColsAlpha; k++) {
+					alphaPltt[k] = (alphaPltt[k] & 0x00FFFFFF) | (a << 24);
+				}
+			}
+		}
+
+		RxPaletteLoad(reduction, tmp, 256);
+		free(tmp);
+	}
+
 	//index the images
-	RxPaletteLoad(reduction, params->pltt, params->plttSize);
-	RxReduceImage(reduction, params->imgCat, params->indices, params->width, params->height, params->flag, params->diffuse);
+	if (params->texfmt != GX_TEXFMT_A3I5 && params->texfmt != GX_TEXFMT_A5I3) {
+		RxReduceImage(reduction, params->imgCat, params->indices, params->width, params->height, params->flag, params->diffuse);
+	} else {
+		RxFlag flag = RX_FLAG_NO_WRITEBACK | RX_FLAG_ALPHA_MODE_PALETTE | RX_FLAG_NO_ALPHA_DITHER;
+		RxReduceImage(reduction, params->imgCat, params->indices, params->width, params->height, flag, params->diffuse);
+	}
+
 	RxFree(reduction);
 	return 0;
 }
 
-static void PaletteSwapThreaded(HWND hWnd, COLOR32 *imgCat, int *indices, unsigned int width, unsigned int height, unsigned int nLayers, COLOR32 *pltt, unsigned int plttSize, float diffuse, int c0xp, RxFlag flag, const RxBalanceSetting *balance, unsigned int *pnUsedColors) {
+static void PaletteSwapThreaded(HWND hWnd, COLOR32 *imgCat, int *indices, unsigned int width, unsigned int height, unsigned int nLayers, COLOR32 *pltt, unsigned int plttSize, float diffuse, int texfmt, int c0xp, RxFlag flag, const RxBalanceSetting *balance, unsigned int *pnUsedColors) {
 
 	//modal window
 	HWND hWndModal = CreateWindow(L"CompressionProgress", L"Compressing",
@@ -116,6 +155,7 @@ static void PaletteSwapThreaded(HWND hWnd, COLOR32 *imgCat, int *indices, unsign
 	params.nLayers = nLayers;
 	params.pltt = pltt;
 	params.plttSize = plttSize;
+	params.texfmt = texfmt;
 	params.diffuse = diffuse;
 	params.c0xp = c0xp;
 	params.flag = flag;
@@ -142,7 +182,9 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 	enum {
 		FMT_PLTT4,
 		FMT_PLTT16,
-		FMT_PLTT256
+		FMT_PLTT256,
+		FMT_A3I5,
+		FMT_A5I3
 	};
 
 	switch (msg) {
@@ -196,7 +238,7 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 			int panelY = 10 + data->nEntries * 27 - 5 + 10;
 
 			LPCWSTR types[] = { L"Separate Textures", L"Single Texture, Large Palette", L"Texture Archive" };
-			LPCWSTR formats[] = { L"palette4", L"palette16", L"palette256" };
+			LPCWSTR formats[] = { L"palette4", L"palette16", L"palette256", L"a3i5", L"a5i3" };
 
 			CreateStatic(hWnd, L"Data Output:", 10, panelY, 100, 22);
 			data->hWndType = CreateCombobox(hWnd, types, 3, 110, panelY, 175, 22, 0);
@@ -241,12 +283,16 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				//get texture format
 				int fmtSel = UiCbGetCurSel(data->hWndTextureFormat);
 				int texfmt = CT_256COLOR;
-				unsigned int maxCols = 256, bpp = 8;
+				unsigned int maxCols = 256, bpp = 8, translucent = 0;
 				switch (fmtSel) {
-					case FMT_PLTT4   : texfmt = CT_4COLOR;   maxCols =   4; bpp = 2; break;
-					case FMT_PLTT16  : texfmt = CT_16COLOR;  maxCols =  16; bpp = 4; break;
-					case FMT_PLTT256 : texfmt = CT_256COLOR; maxCols = 256; bpp = 8; break;
+					case FMT_PLTT4   : texfmt = CT_4COLOR;   maxCols =   4; bpp = 2; translucent = 0; break;
+					case FMT_PLTT16  : texfmt = CT_16COLOR;  maxCols =  16; bpp = 4; translucent = 0; break;
+					case FMT_PLTT256 : texfmt = CT_256COLOR; maxCols = 256; bpp = 8; translucent = 0; break;
+					case FMT_A3I5    : texfmt = CT_A3I5;     maxCols =  32; bpp = 8; translucent = 1; break;
+					case FMT_A5I3    : texfmt = CT_A5I3;     maxCols =   8; bpp = 8; translucent = 1; break;
 				}
+
+				if (translucent) c0xp = 0; // not applicable
 
 				//dither settings
 				int dither = GetCheckboxChecked(data->hWndDither);
@@ -261,50 +307,43 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				NpGetBalanceSetting(&data->balance, &balance);
 
 				RxFlag flag = RX_FLAG_NO_WRITEBACK;
-				if (1) flag |= RX_FLAG_NO_ALPHA_DITHER; // TODO: user input?
-				if (c0xp) flag |= RX_FLAG_ALPHA_MODE_RESERVE;
-				else      flag |= RX_FLAG_ALPHA_MODE_NONE;
+				flag |= RX_FLAG_NO_ALPHA_DITHER; // TODO: user input?
+
+				if (texfmt == CT_A3I5 || texfmt == CT_A5I3) {
+					flag |= RX_FLAG_ALPHA_MODE_PIXEL;
+				} else if (c0xp) {
+					flag |= RX_FLAG_ALPHA_MODE_RESERVE;
+				} else {
+					flag |= RX_FLAG_ALPHA_MODE_NONE;
+				}
 
 				unsigned int width = data->entries[0].width, height = data->entries[0].height;
 				unsigned int padWidth = 1, padHeight = 1;
 				while (padHeight < height) padHeight <<= 1;
-				while (padWidth < width) padWidth <<= 1;
+				while (padWidth  < width)  padWidth  <<= 1;
 
-				//check that alpha values of corresponding pixels quantize to the same value and throw a warning.
 				unsigned int nPx = width * height;
-				int differAlpha = 0;
-				for (unsigned int i = 1; i < nLayers; i++) {
-					COLOR32 *img0 = data->entries[0].px;
-					COLOR32 *imgI = data->entries[i].px;
 
-					for (unsigned int j = 0; j < nPx; j++) {
-						if ((imgI[j] & 0xFF000000) != (img0[j] & 0xFF000000)) {
-							differAlpha = 1;
-							break;
-						}
-					}
-				}
-
-				if (differAlpha) {
-					int mr = MessageBox(hWnd, L"Corresponding alpha levels differ across images. Continue?", L"Create Palette Swap",
-						MB_ICONWARNING | MB_OKCANCEL);
-					if (mr == IDCANCEL) break;
-				}
-
-				//the alpha levels cannot differ across images, so we will take the lowest alpha across images.
-				//when a pixel is transparent, it must be transparent across all images. Taking the average would
-				//possibly make transparent pixels have nonzero opacity, which is meaningless as they have no color.
+				//the alpha levels cannot differ across images, so we will take the mean alpha across
+				//images. When one image has an alpha of zero, we must take it to be zero across all
+				//layers.
 				for (unsigned int i = 0; i < nPx; i++) {
-					//get low alpha
-					unsigned int minA = 0xFF;
+					unsigned int aTotal = 0;
+					int transparent = 0;
+
 					for (unsigned int j = 0; j < nLayers; j++) {
 						unsigned int a = data->entries[j].px[i] >> 24;
-						if (a < minA) minA = a;
+						aTotal += a;
+
+						if (a == 0) transparent = 1;
 					}
+
+					if (transparent) aTotal = 0;
+					unsigned int a = (aTotal * 2 + nLayers) / (nLayers * 2);
 
 					//write across images
 					for (unsigned int j = 0; j < nLayers; j++) {
-						data->entries[j].px[i] = (data->entries[j].px[i] & 0x00FFFFFF) | (minA << 24);
+						data->entries[j].px[i] = (data->entries[j].px[i] & 0x00FFFFFF) | (a << 24);
 					}
 				}
 
@@ -315,11 +354,11 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				}
 
 				//create the palette data.
-				COLOR32 *pltt = (COLOR32 *) calloc(plttSize * nLayers, sizeof(COLOR32));
+				COLOR32 *pltt = (COLOR32 *) calloc(256 * nLayers, sizeof(COLOR32));
 				int *indices = (int *) calloc(width * height, sizeof(int));
 
 				unsigned int nUsedColors;
-				PaletteSwapThreaded(hWnd, imgCat, indices, width, height, nLayers, pltt, plttSize, diffuse, c0xp, flag, &balance, &nUsedColors);
+				PaletteSwapThreaded(hWnd, imgCat, indices, width, height, nLayers, pltt, plttSize, diffuse, texfmt, c0xp, flag, &balance, &nUsedColors);
 
 				free(imgCat);
 
@@ -483,7 +522,9 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 				static const unsigned char texfmts[] = {
 					GX_TEXFMT_PLTT4,
 					GX_TEXFMT_PLTT16,
-					GX_TEXFMT_PLTT256
+					GX_TEXFMT_PLTT256,
+					GX_TEXFMT_A3I5,
+					GX_TEXFMT_A5I3
 				};
 				int texfmt = texfmts[selIdx];
 				
@@ -492,8 +533,16 @@ static LRESULT CALLBACK PaletteSwapProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 					case GX_TEXFMT_PLTT4   : nMaxCols =   4; break;
 					case GX_TEXFMT_PLTT16  : nMaxCols =  16; break;
 					case GX_TEXFMT_PLTT256 : nMaxCols = 256; break;
+					case GX_TEXFMT_A3I5    : nMaxCols =  32; break;
+					case GX_TEXFMT_A5I3    : nMaxCols =   8; break;
 				}
 				SetEditNumber(data->hWndMaxColors, nMaxCols);
+
+				if (texfmt == GX_TEXFMT_A5I3 || texfmt == GX_TEXFMT_A3I5) {
+					EnableWindow(data->hWndC0xp, FALSE);
+				} else {
+					EnableWindow(data->hWndC0xp, TRUE);
+				}
 			} else {
 
 				//check the up/down buttons
