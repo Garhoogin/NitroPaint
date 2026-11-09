@@ -261,6 +261,9 @@
     <ClCompile Include="object\format\setosa.c">
       <Filter>Source Files\object\format</Filter>
     </ClCompile>
+    <ClCompile Include="ui\PaletteSwap.c">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -433,6 +436,9 @@
     </ClInclude>
     <ClInclude Include="object\format\nns.h">
       <Filter>Header Files\object\format</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\PaletteSwap.h">
+      <Filter>Header Files\ui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -176,6 +176,7 @@
     <ClCompile Include="compression\PuCrunch.c" />
     <ClCompile Include="compression\RLE.c" />
     <ClCompile Include="compression\VLX.c" />
+    <ClCompile Include="ui\PaletteSwap.c" />
     <ClCompile Include="ui\DumpGraphics.c" />
     <ClCompile Include="ext\isdif.c" />
     <ClCompile Include="io.c" />
@@ -233,6 +234,7 @@
     <ClInclude Include="object\Cell\CellRender.h" />
     <ClInclude Include="compression\CxPrivate.h" />
     <ClInclude Include="compression\HuffCore.h" />
+    <ClInclude Include="ui\PaletteSwap.h" />
     <ClInclude Include="ui\DumpGraphics.h" />
     <ClInclude Include="ext\isdif.h" />
     <ClInclude Include="io.h" />

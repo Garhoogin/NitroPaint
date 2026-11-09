@@ -212,6 +212,8 @@ int getPathCount(LPCWSTR paths);
 //
 void getPathFromPaths(LPCWSTR paths, int index, WCHAR *path);
 
+int NpGetTextureFormatForPreset(void);
+
 HWND NpOpenObject(HWND hWnd, ObjHeader *object);
 HWND NpOpenObjectAtPath(HWND hWnd, ObjHeader *object, const wchar_t *path);
 
